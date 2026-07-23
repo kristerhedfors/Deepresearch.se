@@ -54,11 +54,13 @@ import { handleAdminFeatures } from "./features.js";
 import { handleAdminPanels } from "./panels.js";
 import { handleAdminTestpoints } from "./testpoints.js";
 import { handleAdminBoards } from "./admin-boards.js";
+import { handleAdminServerErrors } from "./server-errors.js";
 import { handleAdminWebSearch } from "./websearch.js";
 import { webSearch } from "./exa.js";
 import { resolveSearchBackend } from "./websearch-backends.js";
 import { handleAdminProxy } from "./proxy.js";
 import { handleAdminServerToken } from "./server-grants.js";
+import { handleAdminPool } from "./pool.js";
 import { handleAgentLink } from "./agent-link.js";
 import { deleteUser, getUserByEmail, getUserById, listUsers, updateUser } from "./accounts.js";
 import { getDb } from "./db.js";
@@ -168,6 +170,13 @@ export async function handleAdminApi(request, env, url, log, identity) {
     if (path === "/testpoints" || path.startsWith("/testpoints/")) {
       return handleAdminTestpoints(request, env, url, log);
     }
+    // The server-ERROR fix queue (src/server-errors.js): the runtime-recorded
+    // uncaught top-level 500s, deduped per bug — list, read, set status
+    // (open|fixed|ignored), note, delete. The "type loop → next crash to fix"
+    // work queue.
+    if (path === "/errors" || path.startsWith("/errors/")) {
+      return handleAdminServerErrors(request, env, url, log);
+    }
     // The admin-BOARDS discovery index (src/admin-boards.js): one call that
     // lists every Claude-fetchable board and how to pull its prioritized
     // text view — the "pop up all the boards" entry point.
@@ -233,6 +242,12 @@ export async function handleAdminApi(request, env, url, log, identity) {
     // revoke. (Defaults are edited via PUT /config.)
     if (path === "/server-token" || path.startsWith("/server-token/")) {
       return handleAdminServerToken(request, env, url, log, identity);
+    }
+    // The compute-sharing oversight surface (src/pool.js): list live pool
+    // tokens + online providers across ALL pools, revoke any token. (Defaults
+    // are edited via PUT /config.)
+    if (path === "/pool" || path.startsWith("/pool/")) {
+      return handleAdminPool(request, env, url, log);
     }
     // Mint a shareable Se/rver token for an AgentSpec (src/agent-link.js):
     // the agent's spec sets the upstream services + quota; the token is a

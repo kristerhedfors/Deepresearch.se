@@ -10,7 +10,6 @@
     "bundle:rag": "node scripts/bundle-source-rag.mjs",
     "bundle:docs": "node scripts/bundle-docs.mjs",
     "bundle:docs-rag": "node scripts/bundle-docs-rag.mjs",
-    "bundle:docs-clean": "node scripts/bundle-docs-clean.mjs",
     "fetch:owasp": "node scripts/fetch-owasp.mjs",
     "bundle:owasp-rag": "node scripts/bundle-owasp-rag.mjs",
     "verify:owasp": "node scripts/verify-owasp-quotes.mjs",

@@ -29,16 +29,51 @@
      --check-blue. Applied to the real .check span under :root.sdk-mode so the
      canvas ✓ and the swapped-in span agree (docs/SYMBOL-LANGUAGE.md §7). */
   --check-green: #1f8a4c;
+  /* Introspection's ✓ — the titanium waiting balloon (public/js/mode-spinner.js
+     passes TITANIUM_SPINNER.check, which must match) folds into this slate
+     where Normal folds to --check-blue and SDK to --check-green. Applied to the
+     real .check span under :root.dev-mode so the canvas ✓ and the swapped-in
+     span agree (docs/SYMBOL-LANGUAGE.md §7). */
+  --check-tin: #5f6b78;
   --user: #d8edff;
 }
-/* Introspection mode's cue (the Se/rver tier). Toggling `dev-mode` on the ROOT
-   element (public/js/dev-mode.js) does NOT re-skin the background or palette —
-   the sky-blue field and every chrome surface stay as they are. The ONLY
-   change is the composer input pane, which picks up a soft ROSE-WHITE glass
-   tint with extra shine — the umbrella fleet's white-and-pink colour feel (see
-   `:root.dev-mode #composer` below), plus the small "introspection" wordmark
-   tag, so the mode is recognizable without the whole app changing color. The
-   Se/cure tier gets the SAME rose-white pane (public/cure/drc.css). */
+/* COMPLETE per-mode themes (owner directive, 2026-07-23). Each chat mode is a
+   full identity, not just a tinted composer pane: it remaps the WHOLE palette —
+   the field behind everything (--bg + the drifting waves), every chrome surface
+   (--panel/--border/--accent/--text), the waiting-animation colours, and the
+   iOS status-bar tint — so "the theme runs throughout." The entire stylesheet
+   already reads these custom properties, so overriding the subset below under
+   the root theme class re-skins the app in one place.
+   • Introspection → TITANIUM: a brushed-silver field, slate accents, the
+     rose-white composer pane (kept — the mode's established input cue), TIN the
+     titanium mascot as the entry character, and a titanium-recoloured waiting
+     balloon that folds into a slate ✓.
+   • SDK / Agent Studio → GREEN: a spring-green field with the blue taken out of
+     every accent, the green composer pane, SPROUT the plant greeter, and the
+     plant spinner that grows into a green ✓.
+   The composer-pane rules (`:root.dev-mode #composer` / `:root.sdk-mode
+   #composer`) and the palette overrides here are complementary halves of each
+   theme; the Se/cure tier keeps its own rose-white pane (public/cure/drc.css). */
+:root.dev-mode {
+  --bg: #ccd2d8;          /* brushed titanium silver — the field behind all */
+  --panel: #f4f6f8;
+  --panel-2: #e6eaee;
+  --border: #b6bfc9;
+  --text: #1f2831;        /* cool slate near-black (the blue drained out) */
+  --muted: #566270;
+  --accent: #5a6b7a;      /* titanium slate — links, buttons, focus, wordmark */
+  --user: #e3e8ed;
+}
+:root.sdk-mode {
+  --bg: #66cc92;          /* spring green — the field, no blue left in it */
+  --panel: #f1fbf5;
+  --panel-2: #e0f3e8;
+  --border: #a5d8b9;
+  --text: #10331f;        /* deep forest near-black */
+  --muted: #33684b;
+  --accent: #1f8a4c;      /* the pane green, now the accent throughout */
+  --user: #d7f0e0;
+}
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; overflow-x: hidden; }
 html { background: var(--bg); }
@@ -73,6 +108,30 @@ body::before {
 }
 @keyframes bg-drift {
   to { transform: translate3d(198px, 198px, 0); }
+}
+/* The same drifting waves, recoloured for the full mode themes: the white
+   highlight stays, the dark stripe swaps its sky-blue ink for the mode's own
+   (slate for titanium, forest for green) so the textured field matches --bg.
+   Geometry + animation are unchanged — only the stripe colours move. */
+:root.dev-mode body::before {
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0) 0,
+    rgba(255, 255, 255, .06) 70px,
+    rgba(255, 255, 255, 0) 140px,
+    rgba(58, 65, 75, .05) 210px,
+    rgba(255, 255, 255, 0) 280px
+  );
+}
+:root.sdk-mode body::before {
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0) 0,
+    rgba(255, 255, 255, .07) 70px,
+    rgba(255, 255, 255, 0) 140px,
+    rgba(15, 70, 40, .055) 210px,
+    rgba(255, 255, 255, 0) 280px
+  );
 }
 @media (prefers-reduced-motion: reduce) {
   body::before { animation: none; }
@@ -151,6 +210,11 @@ body::before {
 body.term-fg #chat {
   opacity: .16;
 }
+/* THIRD view mode (2026-07-23 directive): the terminal output is not shown at
+   all. Neither term-fg nor term-hidden = the default faint-backdrop state;
+   term-hidden drops the backdrop entirely so only the conversation remains
+   (agent-backdrop.js also sets display:none inline as a belt-and-suspenders). */
+body.term-hidden #dr-agent-backdrop { display: none; }
 body.term-fg #dr-agent-backdrop {
   z-index: 4;
   /* Terminal COLORING (2026-07-16 directive): the pane forward = a real
@@ -283,6 +347,19 @@ body.term-fg .brand {
 /* Tighten the slash so Se/cure and Se/rver read closer to "secure"/"server"
    wherever a wordmark tail wraps its slash in <span class="sl">. */
 .sl { margin: 0 -.12em; }
+/* The account panel wants a LITTLE more air around the slash (owner choice,
+   2026-07-23): the global -.12em measured TOUCHES/OVERLAPS on the left side
+   (e→/) for every font here, so wordmarks like "Not available in Se/cure",
+   "ready-to-use Se/cure session" and "run only on Se/rver" read as tight in
+   the drawer's small `.section-lbl` / `.setting-note` prose. -.02em is the
+   least tightening the slash-gap sweep supports at the 0.06em target, so it
+   clears the floor on the worst-case font while staying tighter than a normal
+   slash. Scoped by the `#account-body` container id (not `.account-card`) so
+   its ID specificity wins over the `.setting-note .sl -.04em` rule below for
+   the setting-note wordmarks in the drawer too — the owner asked for the whole
+   panel a touch airier than the -.04em norm, consistently. Every account view
+   renders into #account-body, so this covers the drawer whole. */
+#account-body .sl { margin: 0 -.02em; }
 /* The small "introspection" marker under the wordmark — the quiet label that
    names the mode the white-titanium skin puts you in. Only present while the
    introspection theme is active (root carries `dev-mode`); a no-op otherwise.
@@ -419,6 +496,21 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
 .content.md th { background: var(--panel-2); }
 .content.md hr { border: 0; border-top: 1px solid var(--border); }
 
+/* Inline [n] citations, linkified by markdown.js to jump to their footer
+   "Sources:" entry (where the URL is written out and live). Kept visually
+   light — a superscript-ish accent tag, not a heavy link. */
+.cite-ref {
+  color: var(--accent); text-decoration: none; font-weight: 600;
+  cursor: pointer; white-space: nowrap;
+}
+.cite-ref:hover { text-decoration: underline; }
+/* Brief highlight on the source entry a citation jumps to. */
+@keyframes cite-flash {
+  from { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+  to { background: transparent; }
+}
+.cite-target-flash { animation: cite-flash 1.6s ease-out; border-radius: 6px; }
+
 /* Answer tools (raw view toggle, copy) */
 .msg-tools {
   display: flex; gap: .3rem; justify-content: flex-end;
@@ -488,6 +580,9 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
 /* SDK mode: the completed-step ✓ is GREEN — matching the plant spinner's green
    ✓ so the animated fold and the swapped-in span agree (mode-theme.js sdk). */
 :root.sdk-mode .step .check { color: var(--check-green); }
+/* Introspection: the ✓ is titanium SLATE — matching the titanium waiting
+   balloon's fold (mode-spinner.js), so the canvas ✓ and this span agree. */
+:root.dev-mode .step .check { color: var(--check-tin); }
 /* A step settled by run-end (e.g. one still mid-flight when the stream
    dropped and the answer was recovered): finished, but muted — no green
    ✓, since its own result wasn't captured. */
@@ -754,7 +849,8 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
    faint dusty-rose waist, a lighter foot), a bright specular top edge, and a
    soft warm drop shadow. The fill is LIGHT and still translucent, so the pane
    keeps its ordinary dark text (no foreground override needed) and lets the
-   field show through. Background only; the sky-blue field is unchanged. */
+   field show through. The pane sits over the titanium field the palette
+   overrides above paint (`:root.dev-mode`), so the two read as one theme. */
 :root.dev-mode #composer {
   background:
     linear-gradient(180deg, rgba(253, 248, 250, .9) 0%, rgba(236, 210, 220, .92) 55%, rgba(247, 233, 239, .9) 100%),
@@ -771,8 +867,9 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
    Same metal construction as the introspection pane above (light top→bottom
    sheen, bright specular top edge, soft tinted drop shadow), in green: a
    near-white mint crown, a leafy waist, a lighter foot. Light and translucent
-   so the ordinary dark text needs no override; background only — the
-   sky-blue field is unchanged. */
+   so the ordinary dark text needs no override; it sits over the green field the
+   palette overrides above paint (`:root.sdk-mode`) — one green theme, no blue
+   left in it. */
 :root.sdk-mode #composer {
   background:
     linear-gradient(180deg, rgba(246, 253, 248, .9) 0%, rgba(203, 236, 214, .92) 55%, rgba(230, 247, 236, .9) 100%),
@@ -1196,10 +1293,21 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 /* Terminal switcher icon (public/js/agent-backdrop.js): hidden until the
    in-browser Linux VM prints something, then it appears — its presence is the
    sign the sandbox is active — and TAPPING it is the one way to switch between
-   the terminal pane and the conversation. Pressed (accent) = the terminal is the
-   foreground pane right now. No glow: just the symbol, matching the other icons. */
+   the terminal pane and the conversation. The icon now cycles THREE modes and
+   reflects each with a HARMONIZED highlight (2026-07-23 directive) — one accent
+   hue at descending intensity so the icon tells you which mode you're in:
+     .on      terminal forward         → full accent fill (strongest)
+     .mode-bg terminal a faint backdrop → accent-tinted outline (medium)
+     .mode-off terminal not shown at all → dim neutral glass (faintest)
+   No glow: just the symbol, matching the other icons. */
 #termbtn[hidden] { display: none; }
 #termbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+#termbtn.mode-bg {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+#termbtn.mode-off { opacity: .5; }
 /* Active incognito stays clearly visible while the chat runs — the lock
    dims the affordance, not the "nothing is being saved" signal. */
 #ghostbtn.on:disabled { opacity: .85; }
@@ -1337,7 +1445,7 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 /* SDK-mode showcase gallery (public/js/sdk-showcase.js), shown in this left
    library pane ONLY in SDK mode — so it wears the mode's spring-green skin
    regardless of the panel's usual glass, matching the green composer pane and
-   `sdk studio` tag. history-ui.js toggles [hidden]. */
+   `agent studio` tag. history-ui.js toggles [hidden]. */
 .showcase { display: flex; flex-direction: column; gap: .4rem; }
 .showcase[hidden] { display: none; }
 .showcase-head { display: flex; flex-direction: column; gap: .15rem; }
@@ -1602,6 +1710,13 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 .setting-pop[hidden] { display: none; }
 .setting-pop a { color: var(--accent); }
 .setting-note { font-size: .8em; margin: .1rem 0 .4rem; }
+/* At .8em with mixed bold wordmarks + bare-weight prose (e.g. the share
+   drawer's "A Se/cure workspace is one offline link…" in account-settings.js),
+   the global -.12em overlaps the e→/ side on every measured font at both
+   weights (slash-gap.mjs: TOUCHES/OVERLAPS -.010..-.037em). -.04em measures
+   ok everywhere (worst side +0.043em). Same small-font fix as the docs pages
+   and the account drawer. */
+.setting-note .sl { margin: 0 -.04em; }
 
 /* Article collection (public/js/account-articles.js) — the admin-only view
    of the planned article series. Each abstract is a collapsible <details>

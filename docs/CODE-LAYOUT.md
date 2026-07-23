@@ -50,17 +50,20 @@ Server (`src/`):
 | `proxy.js` | The SECURE-RESEARCH-SPACE bundle MINT subsystem + per-service METER (D1 `proxy_grants`, one row per service keyed by `jti`, grouped by `bundle_id`; defaults in `config.js`'s `proxy` block — invariant 4's SECOND bounded exception): `mintBundle` (a row + grant token per service, sealed into one encrypted bundle via `public/js/proxy-bundle.js`, global `budget` enforced), `grantBundle` (the GHOST path, reuse-per-user), `exchangeGrant` (grant token → proxy token), `proxyStatus` (non-consuming). Endpoints: AUTHED `POST /api/proxy/grant` (ghost); PUBLIC `POST /api/proxy/exchange`, `POST /api/proxy/status`, `POST /api/proxy/web` (Exa on the server key, reserve/refund), and `/api/proxy/llm/*` (an OpenAI-wire REVERSE PROXY to the server's Berget key — `/models` + a metered `/chat/completions`, so the DRC provider registry drives it unchanged; the `api` grant is the one place a Se/cure conversation reaches the server); ADMIN `/api/admin/proxy*` (GET list+defaults, POST mint→`…/cure?rp=<blob>#rk=<key>` link, PATCH /:jti per-service quota adjust, DELETE revoke a bundle); plus `adjustProxyGrantQuota` + AUTHED `POST /api/proxy/adjust` (the secure-workspaces minter control — same set/±/pause semantics as `websearch.js`'s, per service row). Fail-SAFE (no D1 → 503) and Berget-ONLY. Client: `public/cure/drc.js` (open bundle from URL, exchange, connected-APIs banner + Settings toggle), `public/js/drc-providers.js` `proxyLlmProvider`, and the `/admin` → **Secure research space grants** panel |
 | `server-token.js` | The CONSOLIDATED **Se/rver TOKEN**'s JWT half (near-leaf: imports only the `token-crypto.js` primitives) — "one ticket, one JWT" (2026-07-16 directive): mint/verify of a STANDARD HS256 JWT whose claims bundle the grant families' properties — a `perms` permission SET over the site's UPSTREAM APIs only (`web`/`api`, the CLOSED `SERVER_TOKEN_SERVICES` vocabulary), one `exp` duration for the whole grant, `jti` keying the D1 meter rows, `sub` accountability. Carries THE SERVER-TOKEN GUARANTEE (load-bearing): a Se/rver token grants upstream API access ONLY — NEVER any of Se/rver's own data (no project contents, no chat contents, no history, no accounts) — the name itself the reminder that using one sends data to a server somewhere. Family separation from `wsk1`/`prg1`/`prx1`/session HMACs under the one `SESSION_SECRET` is structural (canonical-header pinning kills alg:none/alg-swap; signing-input formats and signature encodings can't collide) and test-pinned. Node-tested; see `docs/SERVER-TOKENS.md` |
 | `server-grants.js` | The Se/rver-token MINT subsystem + per-PERMISSION METER (D1 `server_tokens`, one row per (jti, service) so each permission's quota is administered independently while the ONE JWT in circulation never changes; defaults in `config.js`'s `server_token` block): `mintServerTokenGrant` (one row per permission + one JWT, global `budget` enforced), `grantServerToken` (the GHOST path, reuse-per-user), `serverTokenStatus` (non-consuming), `adjustServerTokenQuota` (the minter control, per permission), `revokeServerToken` (delete all rows = instant kill). Endpoints: AUTHED `POST /api/server-token/grant` + `/adjust`; PUBLIC `POST /api/server-token/status`, `POST /api/server-token/web` (query-only Exa, atomic reserve/refund), `/api/server-token/llm/*` (OpenAI-wire Berget reverse proxy, the JWT as bearer — reuses the shared `llm-proxy.js` forwarders); ADMIN `/api/admin/server-token*` (GET list grouped by jti, POST mint→`…/cure?st=<jwt>` link, PATCH /:jti/:svc adjust, DELETE /:jti revoke). Fail-SAFE (no D1 → 503); the legacy families stay unchanged. Its module graph must NEVER include a data-bearing module (storage/vault/chatlog/accounts/rag/pub…) — pinned by a unit test (THE GUARANTEE, enforced structurally). Client: `public/cure/drc.js` (the `?st=` link reader + the GHOST crossover, which asks for the consolidated token FIRST with legacy fallback; web-search spend first in priority; the `serverTokenLlmProvider` model-dropdown entry; the connected banner + Settings row) over the pure `serverTokenService`/`serverTokenLive` (`drc-page-core.js`) and `serverTokenLlmProvider` (`drc-providers.js`); admin panel: `/admin` → **Se/rver tokens** (`public/js/admin.js`, panels-board id `server_tokens`) |
+| `pool-token.js` | The COMPUTE-SHARING pool-token half (near-leaf: imports only the `token-crypto.js` primitives): mint/verify of `pt1.<payload>.<hmac>` tokens (claims: `jti`, `pool`, `sub`, `iat`, `exp`) HMAC-signed with `SESSION_SECRET` under an independent `pool.` namespace, so a pool token can never be confused with another family. Carries THE POOL-TOKEN GUARANTEE: it authorizes ONLY submitting completion jobs to the ONE pool it names, is never a login, and unlocks no Se/rver data — its one disclosed difference from a Se/rver token is that the prompt is read by the pool owner's machine. Node-tested; see `docs/COMPUTE-SHARING.md` |
+| `pool.js` | The COMPUTE-SHARING BROKER + per-token METER (D1 `pool_providers`/`pool_jobs`/`pool_consumers`/`pool_tokens`; defaults in `config.js`'s `pool` block): a signed-in sharer lends their local OpenAI-compatible model, the server parks a consumer's completion in a D1 job queue, the sharer's browser pulls/runs/returns it (HTTP long-poll, NO Durable Objects/WebSockets — no new infra). One pool per sharer account. `registerProvider`/`heartbeatProvider`/`claimJob`/`requeueStaleJobs` (the queue), `reservePoolUnit`/`refundPoolUnit` (0 = uncapped "any number of requests"), `bumpConsumer`/`setConsumerState` (the dashboard aggregate + block list = "remove user"), `listPool` (oversight), `mintPoolTokenGrant`/`adjustPoolTokenQuota`/`revokePoolToken`. Endpoints: AUTHED provider `POST /api/pool/register`+`/poll`+`/result`+`/unregister` and sharer `GET /api/pool`+`POST /api/pool/{token,adjust,block,revoke}`; PUBLIC consumer `POST /api/pool/status`, `/api/pool/llm/*` (OpenAI-wire — a job parked + waited on, `stream:false` in v1); ADMIN `/api/admin/pool*`. Fail-SAFE (no D1 → 503). Its module graph must NEVER include a data-bearing module — pinned by a unit test (THE POOL-TOKEN GUARANTEE). See `docs/COMPUTE-SHARING.md` |
 | `rag.js` | Document RAG: `POST /api/embed` (Berget embedding proxy, used in BOTH storage modes) + `/api/rag/*` (Vectorize index/query, R2 export copies) |
 | `answers.js` | `/api/chat/answer`: TTL'd (15 min) answer recovery cache for dropped connections — ack-purged on intact delivery |
 | `chatlog.js` | Full-visibility chat interaction log (D1 `chat_logs`): complete Q&A + research metadata per exchange (chat AND mcp channels), skipped for incognito; `/api/admin/chatlogs*` read API built for the agentic debugging workflow — see the **chat-logs** skill + `scripts/chatlogs`. Also the home of the shared pure log helpers `truncateForLog`/`likePattern`/`cleanStr` (the last two imported by the `testpoints.js`/`feedback.js` board validators) |
 | `feedback.js` | The feedback pipeline (D1 `feedback` + `feedback_messages` + `feedback_images`): user feedback as dialogue threads with the development agent. `feedbackIntent` (EN+SV, anchored at message start) is the chat-side gate — a message opening with "feedback" is routed by `src/pipeline.js` (`runFeedbackCapture`) and recorded via `createFeedbackEntry` (called from `chat.js`), which ALSO tags the `chat_logs` row (`meta.feedback`) so discovery is double (structured queue + chatlogs scan). Surfaces: user CRUD (`/api/feedback*`) + the agent/operator queue (`/api/admin/feedback*`, chatlogs-style, `?format=text`) — incl. optional SCREENSHOT attachments on entries and replies (client-downscaled data URLs, one D1 row each, metadata-only in projections, served back as real images via `…/:id/images/:imgId`; `scripts/feedback --image` downloads one) — see the **feedback-loop** skill + `scripts/feedback` |
+| `server-errors.js` | The server-ERROR fix queue (D1 `server_errors`): every uncaught top-level exception caught by `index.js`'s `fetch` catch (the `{ error: "Internal server error.", request_id }` 500) is ALSO recorded here via `recordServerError` (fail-soft, off the hot path on `ctx.waitUntil`) — DEDUPED per distinct bug by a stable `signature` (method + normalized path + normalized message), so a recurring crash bumps one row's `count`/`last_seen_at` instead of flooding. A dynamic-queue board (the `feedback.js`/`chatlog.js` family, not a code catalog), status lifecycle `open → fixed | ignored` — a `fixed` row that recurs REOPENS (regression signal). Carries no user content (method/path/message/stack/request-id only). Agent/operator surface `/api/admin/errors*` (`?format=text` = the fix loop's input) + `scripts/errors`; registered in the `admin-boards.js` discovery index so `scripts/boards` surfaces it — see the **live-verify** skill |
 | `board.js` | The decision-board CORE — the one shared mechanism behind every admin panel whose choices feed an agent loop (see the **decision-boards** skill): choice-state validation (votes/score/note/priority), the priority-vs-rank orderings (admin priority = the loop's fixed work order), `reviewState`, the `*_reviews` D1 upsert helpers, and `projectedBoardItem` (the single-item re-projection every board's vote/patch endpoint answers with) — a new board implements none of this itself. THREE consumers today: the two backlog priority boards `security-risks.js` and `features.js`, plus `panels.js` — the ATTENTION board, a votes-only variant (same core, `"priority"` ordering with no priorities ever set → pure votes-desc) |
 | `security-risks.js` | The security-risk review board (D1 `security_reviews`) — the reference `board.js` consumer (façade-style: its pure surface re-exports the core): a code CATALOG mirroring `SECURITY-RISKS.md` §3 (same P-ids, same order — any register edit updates it in the same commit) + the admin's votes/manual score/note and the explicit per-item PRIORITY that is the security-fix loop's fixed work order (`/api/admin/security*`, `?format=text` = the loop's input; `scripts/security`) — see the **security-posture** skill |
 | `features.js` | The features/priority review board (D1 `features_reviews`) — the SECOND loop channel next to security (façade over `board.js`): a code CATALOG mirroring `FEATURES.md` §3 (same F-ids, same order, same mirror-in-one-commit discipline) + the admin's votes/EFFORT (the shared "score" field, relabelled)/note and the explicit PRIORITY that is the feature-build loop's fixed work order (`/api/admin/features*`, `?format=text` = the build loop's input; `scripts/features`; impact rank instead of severity, build order instead of fix order) — see the **feature-board** skill and `docs/DECISION-BOARD-LOOPS.md` |
 | `panels.js` | The panel-SELECTION board (D1 `panels_reviews`) — a THIRD `board.js` consumer but a different KIND of loop (the ATTENTION loop, not a backlog). Its catalog items ARE the admin panels themselves; it has NO board widget — each panel header on `/admin` carries ▲/▼ thumbs and voting reshapes the admin view in place (up floats to top, net-negative collapses + sinks). Reshapes PURELY on votes: no drag, no explicit priority (reuses the core's `"priority"` ordering with none ever set → votes-desc). The votes-driven focus order (`/api/admin/panels*`, `?format=text` = the attention loop's input; `scripts/panels`) tells a Claude Code session which admin surface the owner is working on now — read it, then read that surface's own board. See the **feature-board** skill §6 |
 | `testpoints.js` | The testable-interaction-points queue (D1 `test_points`): declared, linkable "try-it" points — each a `label` + a "what was fixed" `summary` + a same-origin `target` path + an ordered list of client ACTIONS (the deep-link reachability grammar: open a panel/settings-knob, prefill the composer, flip search, set the budget, pick a model, highlight an element) — plus the 👍/👎/❓ verdict (pass / fail / untestable–needs-clarification; the ❓ opens a tester↔loop DIALOGUE THREAD on the point — D1 `test_point_messages`, verdict notes land as tester messages, the loop answers via `…/:id/messages` / `scripts/testpoints --reply` and re-opens the point). Pure core (validation/projection/`?format=text`/`deepLink`) + `handleAdminTestpoints` (CRUD + result + thread, admin-gated, `/api/admin/testpoints*`) + `handleTryRedirect` (the `/try/:id` deep link → 302 to `<target>?try=<id>`, home-on-miss). The banner + queue UI live in `public/js/testpoints.js` over the pure `public/js/testpoints-core.js`; `scripts/testpoints` is the producer/reader CLI. Each point is also a numbered **use case**: `useCaseTag` gives it a stable `#UC-<id>` tag (on the projection as `.tag`, prepended to `compose` starter prompts client-side); `parseUseCaseRef` (EN+SV) reads it back off a `feedback #UC-<id> …` chat message and `recordUseCaseFeedback` posts the note onto that point's thread (admin-gated, from `chat.js`) — see the **testable-interaction-points** skill |
-| `admin-api.js` | `/api/admin/*`: overview, users, config, chatlogs, feedback, security, features, panels, testpoints, boards, and `user-cost` (one user's spend attribution — per-window LLM-vs-search totals + the per-model breakdown; `scripts/user-cost` is its CLI) |
-| `admin-boards.js` | The admin-BOARDS discovery index (`GET /api/admin/boards`, `scripts/boards`): one pure static registry (`ADMIN_BOARDS`) of every Claude-fetchable admin list (security, features, panels, feedback, chatlogs) — id/purpose/api/`text_query`/orderings/`order_help`/script/skill — with a `?format=text` render that prints each board's exact fetch line. The one-call "pop up every board and act on the admin's priority order" entry point; no D1, no secrets (see the **decision-boards** skill) |
+| `admin-api.js` | `/api/admin/*`: overview, users, config, chatlogs, feedback, security, features, panels, testpoints, errors, boards, and `user-cost` (one user's spend attribution — per-window LLM-vs-search totals + the per-model breakdown; `scripts/user-cost` is its CLI) |
+| `admin-boards.js` | The admin-BOARDS discovery index (`GET /api/admin/boards`, `scripts/boards`): one pure static registry (`ADMIN_BOARDS`) of every Claude-fetchable admin list (security, features, panels, feedback, errors, chatlogs) — id/purpose/api/`text_query`/orderings/`order_help`/script/skill — with a `?format=text` render that prints each board's exact fetch line. The one-call "pop up every board and act on the admin's priority order" entry point; no D1, no secrets (see the **decision-boards** skill) |
 | `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, per-user in-flight concurrency reservation (`reserveInflight`/`releaseInflight`, P-3), state, SSE scaffold, usage recording (the split-billing totals — `summarizeSpend`/`exaCost` now live in the shared `billing.js`, re-exported here) |
 | `mcp.js` | `POST /mcp`: exposes the deep-research pipeline AS an MCP server — the single `deep_research` tool any MCP client (Claude, Cursor) can call. Hand-rolled Streamable HTTP / JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`, plus the `notifications/initialized` ack) — no dependency; routed AFTER the identity gate so MCP inherits the site's access control. Pure protocol helpers are exported at the top for `mcp.test.js`; the heavy pipeline import is DYNAMIC inside `tools/call`, and it shares `resolveJsonModel` (`model-routing.js`) and the split-billing spend math (`billing.js`) with `chat.js` |
 | `pipeline.js` | The research pipeline's phase FLOW (triage → search → gap → synth → validate); iterates the source registries, never names a source |
@@ -140,16 +143,10 @@ derivation, history image-stripping, `splitUserContent`, plus
 pipeline-embedded elements (Street View panorama/frames, id-numbered)
 reduced to one-line references — the
 Node-testable core `stream.js` orchestrates around),
-`models.js` (model dropdown; its country-of-processing flags come from the
-shared `provider-region.js` — Berget EU/Sweden, OpenAI/Anthropic/Groq US,
-local/on-device no flag — read here, in `cure/drc.js`, and in
-`introspect-core.js`), `attachments.js` (pending images/docs;
+`models.js` (model dropdown), `attachments.js` (pending images/docs;
 the canvas downscaler itself lives in `image-downscale.js`, the shared
 leaf `feedback-attach.js` — the feedback pipeline's add-a-screenshot
-widget — also compresses through; `docs.js` extracts text AND metadata from
-attachments — pdf via the vendored pdf.js, docx via a hand-rolled
-ZIP/DecompressionStream reader that also surfaces tracked-changes /
-`&lt;w:delText&gt;` leaks, plus md/txt),
+widget — also compresses through),
 `account.js` (the account panel SHELL: `initAccountPanel`,
 the shared `PanelCtx`, and the `showView` dispatcher — the views live in
 `account-views.js` (summary, full usage,
@@ -215,7 +212,9 @@ conversation-mode gate, the source-RAG chunker / int8 vector codec /
 retrieval, and the capped context-block builder — the one implementation
 behind `src/introspect.js` and both tiers' clients),
 `markdown.js`
-(sanitized rendering), `report.js` (the branded PDF report export of
+(sanitized rendering; a complete ```` ```mermaid ```` fence in an answer draws
+as a real diagram — the vendored `mermaid.min.js` lazy-loads on first use
+only, fail-soft to the plain code block), `report.js` (the branded PDF report export of
 an answer — lazy-injects the vendored jsPDF on first use only, so the
 normal page load never pays for it), `timescale.js` (slider scale), `history-store.js`
 (IndexedDB + AES-GCM: the conversation store itself — encrypted, except
@@ -229,12 +228,7 @@ single-shot chatbot build briefs — each a ready-to-send SDK prompt sized for t
 reference model Claude Sonnet 5 — plus a pure `renderShowcaseGallery`; data +
 lookups are Node-tested, the one DOM export is guarded),
 `settings.js` (cached `/api/settings` client; `storageAvailable()` is the
-synchronous question every storage-touching module asks),
-`canned-faq.js` (the prepackaged NON-LLM "get-started helper" both tiers show
-BEFORE a model is reachable — Se/cure before an API key, Se/rver before
-sign-in: short prewritten answers to the common questions, each carrying the
-`CANNED_LABEL` badge so it is unmistakably not the AI; static markdown, EN+SV
-per invariant 6, Node-tested), `dev-mode.js`
+synchronous question every storage-touching module asks), `dev-mode.js`
 (developer mode's CLIENT presentation: the TITANIUM-GRAY theme — a `dev-mode`
 class on the ROOT element re-pointing the nine palette variables, `:root.dev-mode`
 in `css/app.css` — mirrored into a `dr_dev_mode` localStorage cache so a PWA
@@ -253,40 +247,14 @@ flavour) — and which per-send fields `stream.js` declares
 `reconcileChatMode` downgrades a stored pick when the knob is off; Node-tested),
 `sdk-core.js` (DistillSDK's shared PURE core — see the `src/sdk-tools.js`
 row above; lives under `public/` per the pure-core convention, imported by the
-Worker, the `sdk/pair-cli.mjs` CLI, and Node tests — Node-tested),
-`agent-spec-core.js` (the Agent Platform's shared PURE core — the AgentSpec
-schema, the closed control vocabulary, validation/resolution, the
-`composerMarkup` composer renderer + `proveComposer` visual-proof check,
-`agentLinkPlan` share-link minting contract, and `agentsFromSnapshot`; server
-façade `src/agent-spec.js`, CLI re-export, Node-tested `agent-spec-core.test.js`
-— see `docs/AGENT-PLATFORM.md`), `agent-preview.js` (the `/agents/preview.html`
-surface: renders each agent's composer from the registry, wires its example
-questions as composer deep-links, shows the share-link quota), `deeplink-core.js`
-(the pure composer deep-link parser `parseComposerDeepLink` behind the
-`/?mode=…&ask=…` "ask the source" links the agent-platform docs use; Node-tested,
-wired in `app.js`), `sandbox-mode.js` (the SANDBOX counterpart of
+Worker, the `sdk/pair-cli.mjs` CLI, and Node tests — Node-tested), `sandbox-mode.js` (the SANDBOX counterpart of
 `dev-mode.js`: a `dr_bash_lite` localStorage mirror of the `bash_lite_mcp` knob
 so the cross-origin-isolation self-heal fires SYNCHRONOUSLY at first paint from
 the cache — closing the 2026-07-13 boot-race where a send before `/api/settings`
 resolved fell back to a plain web answer with no sandbox activity, chat_logs
 #306 — plus the single `isolateForSandbox`/`shouldIsolate`/`clearIsolationGuard`
 self-heal helper `app.js`, the knob toggle, and the `pageshow` bfcache handler
-all route through; Node-tested),
-`sandbox-files.js` (the sandbox's file-mounting PURE core — the `/workspace`
-+ `/mnt/<projname>-<hash>` layout, the mount manifest, and `buildSeedScript`
-that cp's host bytes ingested via CheerpX DataDevices into the persistent
-tree; Node-tested, the DOM glue is `sandbox.js` — see the **execution-sandbox**
-skill),
-`agent-backdrop.js` over the pure `agent-backdrop-core.js` (the AGENT ACTIVITY
-BACKDROP — instead of popping the sandbox terminal open, raw commands + output
-drift faintly across the page background; fed from `execInSandbox` in
-`sandbox.js` so both tiers surface automatically; a ring-buffered
-multi-channel transcript, Node-tested; transparency has been FIXED since the
-2026-07-13 slider removal),
-`boot-messages.js` (the pure, Node-tested rotating boot-bar quips shown on the
-notification bar while the CheerpX Linux image streams and boots; ticked by
-`sandbox.js`),
-`bar-tint.js` (the iOS bar-tint re-assert
+all route through; Node-tested), `bar-tint.js` (the iOS bar-tint re-assert
 helper, an import-free PUBLIC-graph leaf both tiers boot with: iOS Safari can
 keep the PREVIOUS page's `theme-color` chrome tint across the tier crossing —
 2026-07-10, recurred 2026-07-17 with the bottom toolbar too — so `wireBarTint`
@@ -371,7 +339,7 @@ whole project — record, chats, decrypted file originals, RAG index
 with vectors — into ONE blob the server only ever sees encrypted; its
 static imports pull the DRS storage stack, so it must NEVER enter the
 /cure module graph — public modules import `vault-core.js` instead;
-pure core Node-tested). DRC's client modules — the whole public tier:
+pure core Node-tested). DRC's client modules, the whole public tier:
 `drc-core.js` (DRC's pure core, built on `vault-core.js`: ONE master secret →
 HKDF-independent public reference + blob id + blob key; the sealed
 project-state archive — provider API keys live INSIDE it; the HKDF info
@@ -490,7 +458,7 @@ page carries the sibling first-visit onboarding — the does/doesn't
 pane and the ghost mascot pointing out the ghost button, inline in
 `public/welcome/index.html` — see the **ui-notes** skill):
 a deliberate LOOK-AND-FEEL TWIN of the main app in a KHAKI
-palette (2026-07-10 directive) — the same floating glass chrome, waves,
+palette (2026-07-10 directive). The same floating glass chrome, waves,
 composer, spiderweb knob and slider shapes as `css/app.css`,
 self-contained since app.css is auth-served. DRS-only features (ghost,
 account, attach, camera) appear as DIMMED buttons
@@ -537,7 +505,9 @@ links, and the `/free*` legacy aliases (`/?continue=<slug>` is the
 legacy replay handoff).
 Admin UI: `admin/index.html` + `js/admin.js` + `css/admin.css` (served
 only to admins). Vendored libs in `vendor/` (`marked` and `DOMPurify`
-for Markdown rendering + sanitizing; `jsPDF`, lazy-loaded by `report.js`
+for Markdown rendering + sanitizing; `mermaid.min.js`, lazy-loaded by
+`markdown.js` only when an answer contains a mermaid diagram block;
+`jsPDF`, lazy-loaded by `report.js`
 for the PDF report; `pdf.js` for parsing PDF attachments client-side;
 `vendor/xterm/` — the sandbox terminal `@xterm/xterm@5.5.0` + fit addon,
 vendored 2026-07-15 with SHA-256 pins recorded in `sandbox.js`, so a CDN

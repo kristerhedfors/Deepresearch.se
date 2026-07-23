@@ -48,6 +48,14 @@ git log --oneline origin/main..HEAD    # what this PR will actually contain
 
 ## Step 1 — regenerate committed artifacts IF tracked text changed (maybe)
 
+> **Clean touched docs FIRST (owner directive, 2026-07-23).** If this branch's
+> diff changed any documentation prose (`*.md`, README, skill bodies, the static
+> pages), the doc pipelines require it to land **Cleaned** — run the
+> **anti-ai-smell** skill's Clean step in place on the changed prose (its
+> fact-preservation contract, scoped to what you edited) BEFORE regenerating the
+> artifacts below, so the Clean edits are captured in the same snapshot and
+> commit. A branch that touched no doc prose skips this.
+
 The introspection snapshot walks **every git-tracked text file** (`bundle-source.mjs`
 runs `git ls-files`), not just `src/`/`public/` — so a change to `CLAUDE.md`,
 a `.claude/skills/*` file, or a `docs/*` file makes it stale just as a code

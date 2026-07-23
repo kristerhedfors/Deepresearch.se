@@ -3,8 +3,8 @@
 *(2026-07-15, owner directive. The feature: shareable, completely OFFLINE
 Se/cure workspaces contained ONLY in the link that opens them, with the
 mechanism cloned as closely as possible from
-[github.com/kristerhedfors/hacka.re](https://github.com/kristerhedfors/hacka.re)
-— the owner's prior project. This document is the security architecture; the
+[github.com/kristerhedfors/hacka.re](https://github.com/kristerhedfors/hacka.re),
+the owner's prior project. This document is the security architecture; the
 implementation is `public/js/workspace-core.js` (pure core, Node-tested) plus
 the `/cure/workspace` pane wiring in `public/cure/drc.js` and the Se/rver-side
 minting row in `public/js/account-settings.js`.)*
@@ -23,7 +23,7 @@ https://deepresearch.se/cure/workspace#w=<base64url( salt ‖ nonce ‖ cipherte
 
 The link **is** the workspace. There is no server-side record of it, no
 storage row, no id. Everything after `#` is the anchor, which browsers do
-not send in HTTP requests and strip from referrers — so even the server that
+not send in HTTP requests and strip from referrers, so even the server that
 serves the static page never sees the ciphertext, let alone the plaintext.
 Opening a workspace is **completely offline** in the cryptographic sense:
 the only server involvement is serving the same static `/cure` assets it
@@ -39,7 +39,7 @@ fragment it opens the unlock flow. Both tiers can mint:
   workspace* — a DEDICATED view, kept separate from the gear-icon Settings so
   it shows only what a link can lend): mints the signed-in account's temporary
   grants (the same ghost-crossover allowances) and seals them into a workspace
-  link **client-side** — the server mints tokens but never sees the password or
+  link **client-side**. The server mints tokens but never sees the password or
   the assembled link. The view surfaces which capabilities can travel — web
   search (Exa) and the LLM **& embeddings** capability (Berget: completions
   plus the e5 embedding model that powers a borrowed session's RAG, both on the
@@ -69,8 +69,8 @@ invariant: hacka.re vendors TweetNaCl; this project ships **no crypto
 dependency**, and WebCrypto (available identically in the Worker, the
 browser, and Node ≥ 18) offers no Salsa-family cipher. AES-256-GCM is the
 same class of primitive (authenticated encryption; wrong password or a
-flipped bit fails closed to `null`), so the security architecture — what is
-derived from what, what travels where, what the server can see — is
+flipped bit fails closed to `null`), so the security architecture (what is
+derived from what, what travels where, what the server can see) is
 unchanged.
 
 ### The dual-key property
@@ -78,7 +78,7 @@ unchanged.
 The **link key** (password + salt) opens the blob. The **master key**
 (password + salt + nonce) is *derivable only by someone who can already open
 the link*, is never transmitted, and is reserved for encrypting the opened
-workspace at rest locally — so nothing stored on a device is decryptable
+workspace at rest locally. Nothing stored on a device is decryptable
 from the link blob alone, and the same link + password always re-derives the
 same master key (hacka.re's multi-tab / persistent-namespace property).
 `openWorkspace` returns it alongside the payload.
@@ -152,8 +152,8 @@ row**, not bearer amounts: the signed token authenticates, the row meters
 
 ## 6. The interchange standard (DRSW/1)
 
-Since 2026-07-17 the workspace bundle is also specified as an OPEN STANDARD —
-**DRSW/1, `docs/WORKSPACE-PROTOCOL.md`** — so other sites (on this source
+Since 2026-07-17 the workspace bundle is also specified as an OPEN STANDARD
+(**DRSW/1, `docs/WORKSPACE-PROTOCOL.md`**) so other sites (on this source
 code or entirely separate foundations) can implement the same envelope and
 payload and MOVE workspaces between nodes: the required/optional section
 registry, reader/writer conformance rules, test vectors generated from this
@@ -184,8 +184,8 @@ symmetric workspace below is unchanged.
 ## 7. Relationship to invariant 4 (the privacy split)
 
 Secure workspaces add **no new server data path**. The transport is
-fragment-only (server-blind), and the only server-touching contents — the
-grant tokens — are exactly the two existing, deliberate, bounded exceptions
+fragment-only (server-blind), and the only server-touching contents (the
+grant tokens) are exactly the two existing, deliberate, bounded exceptions
 (the web-search grant and the secure-research-space proxy bundle), reused
 under their existing meters and governance. The quota-adjust endpoints are
 new *control* surfaces over those existing meters, not new data paths.

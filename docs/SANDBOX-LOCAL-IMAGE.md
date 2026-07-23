@@ -45,8 +45,8 @@ blocks in IndexedDB. This works, but it means:
 
 - **A third-party runtime dependency in the hot path.** Every cold boot (and
   every not-yet-cached block) reaches out to `disks.webvm.io`. If it's slow,
-  rate-limited, moved, or gone, the sandbox degrades or dies — a dependency we
-  don't control and don't monitor.
+  rate-limited, moved, or gone, the sandbox degrades or dies. This is a
+  dependency we don't control and don't monitor.
 - **A big image.** `debian_large` is a full Debian install (multiple GB on
   disk). Even lazy block streaming pays for cold-cache reads across a large
   filesystem, and the IndexedDB block cache grows accordingly.
@@ -62,7 +62,7 @@ from the control panel.
 > inode / chunk by chunk." Two things to separate:
 >
 > 1. **Block-level lazy streaming is fundamental to how CheerpX mounts a disk
->    image** — `HttpBytesDevice` (the self-hosted device, below) *also* fetches
+>    image.** `HttpBytesDevice` (the self-hosted device, below) *also* fetches
 >    blocks on demand via HTTP `Range`, exactly like `CloudDevice` does over
 >    WebSocket. You do **not** download a whole image before boot with either
 >    device, and you would not *want* to for a large one. So the win isn't
@@ -70,7 +70,7 @@ from the control panel.
 >    a third party, (b) from a MUCH smaller image so there's little to stream
 >    and it fully caches fast, and (c) an image WE built and can pin.**
 > 2. If a truly small image is chosen (~150–300 MB), a **one-time full
->    prefetch into the IndexedDB cache** becomes practical — after the first
+>    prefetch into the IndexedDB cache** becomes practical: after the first
 >    boot the whole disk is local and later boots touch the network zero times.
 >    That's the closest thing to "don't stream chunk by chunk," and it's an
 >    opt-in optimization layered on top (see §6), not a different device.
@@ -90,7 +90,7 @@ CDN) JIT-compiles and emulates **32-bit x86 (i386) binaries only**. 64-bit
 port.
 
 **Consequence for "Arch Linux":** mainline Arch has been **x86_64-only since
-2017** and has **no i686 kernel or packages** — it **cannot boot on CheerpX**.
+2017** and has **no i686 kernel or packages**, so it **cannot boot on CheerpX**.
 The only i686 Arch is the community fork **`archlinux32`** (separate repos,
 smaller mirror network, slightly heavier base than Alpine). So:
 
@@ -106,7 +106,7 @@ smaller mirror network, slightly heavier base than Alpine). So:
 > literal "smaller Linux" the request asks for, ~10× smaller than the current
 > Debian), keep a **Debian i386-slim** image as the compatibility option, and
 > treat "Arch" as an **optional `archlinux32` image** an operator can build and
-> select if they specifically want it — with the size reality (several hundred
+> select if they specifically want it, with the size reality (several hundred
 > MB, not tiny) documented. The admin picker (below) makes this a per-deploy
 > choice, not a code change.
 >
@@ -129,9 +129,9 @@ CheerpX's documented device for a **self-hosted ext2 image over HTTP** is
 > `const httpDevice = await CheerpX.HttpBytesDevice.create('https://yourserver.com/image.ext2')`*"*
 > — CheerpX File-System-support guide
 
-It supports HTTP `Range` requests (lazy block streaming), and slots straight
+It supports HTTP `Range` requests (lazy block streaming) and slots straight
 into the existing overlay/cache stack. The `sandbox.js` change is minimal and
-**additive** — pick the base device by whether a local image is configured:
+**additive**: pick the base device by whether a local image is configured.
 
 ```js
 // public/js/sandbox.js — inside bootVM(), replacing the fixed CloudDevice line.
@@ -150,7 +150,7 @@ const overlayDevice = await CheerpX.OverlayDevice.create(blockDevice, blockCache
 ```
 
 Everything downstream (`OverlayDevice`, the mounts array, the `DataDevice`
-file-ingest work, the seed script, exec) is **unchanged** — only the base
+file-ingest work, the seed script, exec) is **unchanged**; only the base
 block device swaps.
 
 ### Cross-origin isolation is a non-issue here (unlike the CDN loads)
@@ -159,9 +159,9 @@ The sandbox document is served **COEP `require-corp`** (so `SharedArrayBuffer`
 exists — see the execution-sandbox skill). Under `require-corp` every
 *cross-origin* subresource must carry `Cross-Origin-Resource-Policy`. The image
 is served **same-origin** (from our own Worker route, §3), so **CORP does not
-apply** and there is nothing to configure — same-origin subresources are always
+apply** and there is nothing to configure: same-origin subresources are always
 allowed. (Contrast the xterm/CheerpX CDN loads, which are cross-origin and rely
-on the CDN sending CORP.) This is a real advantage of self-hosting: the disk
+on the CDN sending CORP.) Self-hosting has a real advantage here: the disk
 fetch stops being a cross-origin concern entirely.
 
 ### The IndexedDB block cache must be keyed per image
@@ -229,7 +229,7 @@ export async function handleSandboxImage(request, env, id) {
 
 Notes:
 - **Immutable + content-addressed by `<imageId>`.** Never mutate an image
-  in place — publish a new id (e.g. `alpine-i386-2026-07`) and switch the
+  in place. Publish a new id (e.g. `alpine-i386-2026-07`) and switch the
   config pointer. Then the year-long `immutable` cache and CheerpX's block
   cache are always coherent, and a rollback is just re-selecting the old id.
 - **Range parsing must be correct** (single-range `bytes=start-end`, and the
@@ -315,13 +315,13 @@ alongside the web-search/proxy grant panels:
 - the **prefetch** toggle.
 
 This is a plain config panel (not a decision-board), so it does **not** need the
-`board.js` machinery — it edits `config` like the quota/approval fields.
+`board.js` machinery; it edits `config` like the quota/approval fields.
 
 ---
 
 ## 5. Building the image (reproducible, out of band)
 
-Images are **build artifacts**, not code — build them on a Linux host or CI,
+Images are **build artifacts**, not code. Build them on a Linux host or CI,
 upload to R2, register the row. Add `scripts/build-sandbox-image.sh` (documented,
 not run by deploy) so the process is reproducible and auditable.
 
@@ -377,7 +377,7 @@ npx wrangler r2 object put \
   image is squarely fine (Alpine/Debian/Arch are FOSS); it also removes the
   `disks.webvm.io` dependency, which is a licensing *simplification*. The
   CheerpX **runtime** is still loaded from `cxrtnc.leaningtech.com` under the
-  Community License — unchanged by this.
+  Community License, unchanged by this.
 
 ---
 
@@ -395,7 +395,7 @@ Two approaches:
 
 Gate it behind the `sandbox.prefetch` config flag (default off) and the small
 image; **never** prefetch the multi-GB webvm.io default. This is the layer that
-most directly answers "don't stream chunk by chunk every time" — after one warm
+most directly answers "don't stream chunk by chunk every time": after one warm
 load, the disk is entirely in IndexedDB.
 
 ---
@@ -466,7 +466,7 @@ Images themselves live in **R2** (`sandbox-images/<id>.ext2`), never in git.
 
 1. **Which default image?** Recommendation: **Alpine i386** for "small," with
    **Debian i386-slim** as the compatibility option. "Arch" specifically means
-   **`archlinux32`** (i686) and is several hundred MB, not tiny — offer it as a
+   **`archlinux32`** (i686) and is several hundred MB, not tiny. Offer it as a
    selectable option, not the small default. (Mainline x86_64 Arch cannot boot.)
 2. **DRC parity now or later?** DRS-first is lower risk (authed, already the
    verified baseline). DRC can adopt the same public `/api/sandbox-image` in the
@@ -476,5 +476,3 @@ Images themselves live in **R2** (`sandbox-images/<id>.ext2`), never in git.
 4. **Retire the webvm.io fallback eventually?** Keep it as the `""` default
    until a self-hosted image is verified across browsers; then consider making a
    verified small image the built-in default and demoting webvm.io to a fallback.
-</content>
-</invoke>

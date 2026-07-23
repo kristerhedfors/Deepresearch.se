@@ -14,8 +14,8 @@
 ## 1. The trajectory at a glance
 
 Five milestones. Each has a **definition of done** tied to specific spec
-requirements (R1–R14 from the gap analysis), and each is shippable on its own —
-the site is never left half-migrated.
+requirements (R1–R14 from the gap analysis), and each is shippable on its own,
+so the site is never left half-migrated.
 
 | Milestone | Theme | Clears | DoD (observable) |
 |---|---|---|---|
@@ -28,7 +28,7 @@ the site is never left half-migrated.
 
 Plus a **continuous Track-A** running alongside from day one: the **disclosures**
 (identity + data-flow, R5) and **decision records** (accepted exceptions). These
-are cheap and are themselves the R5 MUST — they don't wait for a milestone.
+are cheap and are themselves the R5 MUST; they don't wait for a milestone.
 
 ```
 M0 ─ baseline (done)
@@ -49,7 +49,7 @@ independent** of the inference work and can interleave.
 
 ## 2. Invariants to preserve (do not regress these while migrating)
 
-Every phase must hold these — they are the load-bearing constraints of the
+Every phase must hold these. They are the load-bearing constraints of the
 codebase and the privacy model (see `CLAUDE.md` → Load-bearing invariants):
 
 1. **Server is in NO DRC data path.** New capability layers (web-search grant is the *only* sanctioned exception) must keep model/keys/conversation browser↔provider only. A local-inference endpoint is `localhost` — still not this server.
@@ -58,7 +58,7 @@ codebase and the privacy model (see `CLAUDE.md` → Load-bearing invariants):
 4. **Fail-soft helpers.** RAG, web search, sandbox, embeddings all degrade to a lesser result, never an error. New paths (local-server probe, WebLLM load, export/import) follow suit.
 5. **The `/cure` module-graph 401 rule.** Nothing in the `/cure` graph may statically import a non-public module — a single 401 kills the whole tier (the 2026-07-11 `vault.js`→DRS-stack incident). New modules import `vault-core.js`/pure cores only, and must be added to `isPublicAsset` in `src/assets.js`.
 6. **Frozen crypto/derivation constants.** `drc-core.js`'s HKDF info strings and `DRC_STATE_KIND` are frozen — changing them silently breaks every existing secret and sealed state. New state fields are additive (bump `DRC_STATE_V`, extend `migrateDrcState`), never a re-key.
-7. **Vendoring discipline (R7).** Any new runtime lib (QR, WebLLM, transformers.js) is vendored into `/vendor`, pinned, hash-recorded — never a runtime CDN fetch.
+7. **Vendoring discipline (R7).** Any new runtime lib (QR, WebLLM, transformers.js) is vendored into `/vendor`, pinned, hash-recorded, never a runtime CDN fetch.
 8. **EN+SV parity** for any new deterministic intent gate (invariant 6). Unlikely to bite here, but applies if a new knob adds phrase routing.
 
 ---
@@ -92,11 +92,11 @@ Plus a **user-editable base URL** persisted in state (§3.3).
 **Seam nuance — "configured" semantics.** `configuredDrcProviders` decides a
 provider is available iff `keys[p.id]` is a non-empty string. A local provider
 has *no key*. Either (a) store a sentinel key for `local`, or (b) generalise
-"configured" to "has a key **or** is keyless-with-a-base-url". Prefer (b) — it's
+"configured" to "has a key **or** is keyless-with-a-base-url". Prefer (b): it's
 the honest model and keeps `refreshModels`/the dropdown working unchanged.
 
 **M4 adds:** WebLLM and transformers.js as provider entries whose wire fns call
-the in-browser engine instead of `fetch` — the pipeline downstream never
+the in-browser engine instead of `fetch`, so the pipeline downstream never
 changes. `drcEmbed` gets a `local`/`webllm` embed entry (R12), removing the
 "Groq/Berget → no RAG" limit.
 
@@ -114,7 +114,7 @@ injected today (an optional callable), so the pattern is established.
 
 - **State shape:** `emptyDrcState()` / `validateDrcState()` / `migrateDrcState()` in `drc-core.js`. New fields are additive: **M1** → `localBaseUrl` (and maybe `inferenceMode`); **M5/P8** → `offlineDisk: bool`. Bump `DRC_STATE_V`, extend `migrate`, keep validation lenient (older blobs must still open — invariant 6).
 - **Sealing:** `sealDrcState`/`openDrcState` (AES-GCM) — unchanged; new fields ride inside the same blob for free.
-- **Settings toggles (the pattern to copy):** `drc.js` wires `$("bashlite")` / `$("devmode")` as `change` → set `state.X` → seal. **M1** adds a base-URL text input + a local-server "detected ✓" note beside it; **M5** adds the offline-disk toggle — all the same shape (`public/cure/index.html` `#settingsview`).
+- **Settings toggles (the pattern to copy):** `drc.js` wires `$("bashlite")` / `$("devmode")` as `change` → set `state.X` → seal. **M1** adds a base-URL text input + a local-server "detected ✓" note beside it; **M5** adds the offline-disk toggle, all the same shape (`public/cure/index.html` `#settingsview`).
 - **Model dropdown:** `refreshModels()` (line 764) builds `provider::model` option values from `configuredDrcProviders`. Once "configured" includes `local` (§3.1), the local models list appears with no other change. `listDrcModels` probes `GET {base}/models` and falls back to a static list — reuse it as the **local-server detection probe** (M1's "local model found" affordance).
 - **Send path:** `runDrcResearch(...)` call (line 1273) — **add `baseUrl: providerId === "local" ? state.localBaseUrl : undefined`**. One line; the rest is inherited.
 - **Key panel:** `saveKeys` / `#keyspanel` — for `local`, hide the key field, show the base-URL field instead (provider auto-detect already keys off prefixes; `local` is chosen explicitly).
@@ -124,13 +124,13 @@ injected today (an optional callable), so the pattern is established.
 The seam for **M3 (R10)**. `drc-store.js` is an injectable blob store:
 `putSealedProject` / `getSealedProject` / `deleteSealedProject` /
 `listSealedProjects(blobId, bytes, backend)`. The stored value is *already the
-sealed AES-GCM blob* — so transport is just moving those bytes.
+sealed AES-GCM blob*, so transport is just moving those bytes.
 
 - **Export:** `getSealedProject(blobId)` → bytes →
   - **file:** `Blob` download (`project-<refHash>.drc`). Lowest effort, also a backup against localStorage eviction.
   - **URL fragment:** `#` + base64(bytes) — never sent to the server (`encryption.md` pattern). Decrypt client-side with the secret.
   - **QR:** encode the link (needs a **vendored** QR lib — invariant 7).
-- **Import:** read file/fragment → `openDrcState(bytes, blobKey)` where `blobKey` comes from `deriveDrcProfile(secret)` → `validateDrcState` → `putSealedProject`. Import on another device **requires the secret** — which is the zero-knowledge point, and 1Password/Apple Passwords already hold it.
+- **Import:** read file/fragment → `openDrcState(bytes, blobKey)` where `blobKey` comes from `deriveDrcProfile(secret)` → `validateDrcState` → `putSealedProject`. Import on another device **requires the secret**, which is the zero-knowledge point, and 1Password/Apple Passwords already hold it.
 - **Deep-link handlers** in `drc.js` (`handleProjectLink`/`handlePublicationLink`, the `/my/project-<hash>` + `?continue=` routing) are where a `#`-fragment import handler slots in beside the existing recognizers.
 
 ### 3.5 Sandbox assets — `public/js/sandbox.js`
@@ -141,7 +141,7 @@ The seam for **M5/P4/P8 (R7 + offline sandbox)**.
 - Device stack (line 608): `CloudDevice.create(DISK_URL)` (remote, lazy) + `IDBDevice.create(IDB_CACHE_ID)` (local block cache) + `OverlayDevice.create(...)`. **Read blocks already persist locally** — see gap analysis R7/R13.
 - **P4:** point `XTERM_CDN`/`XTERM_FIT_CDN` at vendored `/vendor/xterm/…`; self-host `CHEERPX_CDN` (pending Leaning Technology license — an **open decision**, §5).
 - **P8:** an opt-in "download full image" action force-reads the whole `CloudDevice` to fill the IDB cache — **desktop-only guidance** (iOS quota/eviction, and the existing iOS `/workspace` IndexedDB stall, `docs/MAINTENANCE-OWNERS.md`).
-- COEP note: the sandbox needs cross-origin isolation (server-set COOP/COEP) — so the sandbox path is **not** `file://`-independent; M2/R9 compliance is scoped to the *core research app*, not the sandbox.
+- COEP note: the sandbox needs cross-origin isolation (server-set COOP/COEP), so the sandbox path is **not** `file://`-independent; M2/R9 compliance is scoped to the *core research app*, not the sandbox.
 
 ### 3.6 Offline shell — **new** service worker (M2/R6/P3)
 
@@ -172,7 +172,7 @@ precaching the app shell (HTML/CSS/JS + `/vendor/*`), registered from `drc.js` b
 
 **Fast path to "meaningfully a Forever Agent":** Track A → M1 → M2. That clears
 R5, R1, and R6 (the three MUST gaps) and needs only the provider-registry,
-one-line send-path, and service-worker seams — all of which already have their
+one-line send-path, and service-worker seams, all of which already have their
 plumbing in place.
 
 ---
@@ -180,7 +180,7 @@ plumbing in place.
 ## 5. Open decisions (need an owner call before their phase)
 
 1. **CheerpX engine license (M5/P4).** Can `cx.esm.js` be self-hosted same-origin under Leaning Technology's terms? If not, the engine stays a disclosed CDN exception and full R7 is unreachable for the sandbox only. *The disk is Debian — redistributable.*
-2. **`http://localhost` from `https://` (M1).** Confirm per-browser that a localhost call from the deployed HTTPS origin isn't mixed-content-blocked (localhost is usually a *potentially-trustworthy* origin). If it is anywhere, the `file://`/local-static deployment (R9) is the escape hatch — which M2/M5 provide anyway.
+2. **`http://localhost` from `https://` (M1).** Confirm per-browser that a localhost call from the deployed HTTPS origin isn't mixed-content-blocked (localhost is usually a *potentially-trustworthy* origin). If it is anywhere, the `file://`/local-static deployment (R9) is the escape hatch, which M2/M5 provide anyway.
 3. **"Configured provider" semantics (M1).** Generalise to keyless-with-base-url (recommended) vs. store a sentinel key. Affects `configuredDrcProviders` and the dropdown.
 4. **State migration (M1/M5).** New fields are additive and lenient — confirm the `DRC_STATE_V` bump + `migrateDrcState` default for `localBaseUrl`/`offlineDisk` before shipping (older blobs must open unchanged).
 5. **SW × COEP (M2).** Validate live that cached responses keep cross-origin isolation intact for the sandbox. If it's too fragile, ship the SW for the core shell and *exclude* sandbox assets from it.

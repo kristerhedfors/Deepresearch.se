@@ -53,10 +53,15 @@ export function offTint(target) {
  * `theme-color` meta. Safe to call once at boot on any page; returns the
  * nudge function (for tests) or null when the page has no theme-color meta.
  *
+ * `target` may be a constant color OR a getter re-read on every nudge — the
+ * Se/rver app passes a getter so the layered re-asserts (load / pageshow /
+ * visibility / timers) always paint the CURRENT chat mode's tint, not a stale
+ * boot-time one (introspection titanium, Agent Studio green, Normal blue).
+ *
  * `doc`/`win` are injectable for the Node unit test; real callers pass
  * `document` and `window`.
  *
- * @param {string} target the page's real theme color, e.g. "#c3b091"
+ * @param {string | (() => string)} target the page's theme color, or a getter
  * @param {*} [doc]
  * @param {*} [win]
  * @returns {(() => void) | null}
@@ -66,10 +71,11 @@ export function wireBarTint(target, doc, win) {
   const w = win || window;
   const meta = d.querySelector('meta[name="theme-color"]');
   if (!meta) return null;
-  const off = offTint(target);
+  const resolve = () => (typeof target === "function" ? target() : target);
   const nudge = () => {
-    meta.setAttribute("content", off);
-    w.requestAnimationFrame(() => meta.setAttribute("content", target));
+    const now = resolve();
+    meta.setAttribute("content", offTint(now));
+    w.requestAnimationFrame(() => meta.setAttribute("content", now));
   };
   // The original 2026-07-10 flip: first frame after boot.
   w.requestAnimationFrame(nudge);

@@ -1,19 +1,19 @@
 # DRSW/1 — the Deep Research Secure Workspace interchange protocol
 
 *(2026-07-17, owner directive. This document defines the bundle of
-information — required and optional — that constitutes a **deep research
-secure workspace**, and specifies it as an open standard so that OTHER sites —
-built on this source code or on completely separate foundations — can
+information (required and optional) that constitutes a **deep research
+secure workspace**, and specifies it as an open standard so that OTHER sites,
+built on this source code or on completely separate foundations, can
 implement the same bundle and move workspaces between each other. A site
 implementing this protocol is a **node**; deepresearch.se is the reference
 node, one of a potentially large number of data-compatible research nodes.
-The companion documents are `docs/PIPELINE-LANGUAGE.md` (DRPL — the formal
+The companion documents are `docs/PIPELINE-LANGUAGE.md` (DRPL, the formal
 language declaring the structure of the pipelines a workspace's research runs
 under) and `docs/STACKLESS-RESEARCH.md` (the vision the two standards serve).
 Machine-readable payload schema: `docs/schemas/drsw-payload-1.schema.json`.
 Security architecture of the deployed reference implementation:
 `docs/WORKSPACE-SECURITY.md`. Like everything in this project, the standard
-is EXPERIMENTAL — a research artifact into the privacy capabilities of LLM
+is EXPERIMENTAL: a research artifact into the privacy capabilities of LLM
 applications, not a ratified industry spec.)*
 
 The key words **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY**
@@ -22,11 +22,11 @@ are to be interpreted as in RFC 2119.
 ## 1. Purpose and scope
 
 A **Deep Research Secure Workspace (DRSW)** is a complete, portable research
-context — provider credentials, behavior settings, conversations, borrowed
-metered allowances, pipeline declarations, and a provenance/routing trail —
+context (provider credentials, behavior settings, conversations, borrowed
+metered allowances, pipeline declarations, and a provenance/routing trail)
 sealed into ciphertext that travels **only in places no server ever reads**:
 a URL fragment, a downloaded file, a QR code. The workspace is the unit of
-interchange between research nodes: the same sealed bundle opens at any
+interchange between research nodes. The same sealed bundle opens at any
 conforming node, so a user can conduct work on one **data foundation** across
 many **purpose-built nodes** — a generalist node, a legal-research node, a
 local-only node — each a different processor over the same portable state.
@@ -121,11 +121,11 @@ namespace = bb0ae363
 
 hacka.re's original suite uses XSalsa20-Poly1305 with a 24-byte expanded
 nonce; DRSW/1 substitutes AES-256-GCM (12-byte expanded IV) because
-WebCrypto — the only crypto this standard assumes — ships no Salsa-family
+WebCrypto (the only crypto this standard assumes) ships no Salsa-family
 cipher. Everything else (wire format, KDF, dual keys, namespace, password
 rules) is byte-for-byte the hacka.re architecture. Future suites (e.g. a
 NaCl suite for TweetNaCl-based nodes) would be negotiated by a version
-byte — DRSW/1 deliberately defines no in-band negotiation: one suite, no
+byte. DRSW/1 deliberately defines no in-band negotiation: one suite, no
 downgrade surface.
 
 ## 4. The payload (normative)
@@ -395,8 +395,8 @@ federation surface adds:
   that can read what gets applied there. Mitigations are structural, not
   promises: progressive trust (class N stages `keys` behind explicit consent
   at foreign-origin opens; users SHOULD share keyless workspaces to unknown
-  nodes), section disclosure before apply (§4 rule 4), and — the deep
-  mitigation — **open source with the client tier's server in no data path**,
+  nodes), section disclosure before apply (§4 rule 4), and (the deep
+  mitigation) **open source with the client tier's server in no data path**,
   so a node's actual behavior is auditable (the mission's "provable privacy"
   applied federation-wide). A workspace is a capability; opening it
   somewhere is granting that somewhere what it carries. The standard makes

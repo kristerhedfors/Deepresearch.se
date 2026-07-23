@@ -1,7 +1,7 @@
 {
   "spec": "distillsdk-agents",
   "version": "0.1.0",
-  "status": "wired (2026-07-23): AgentSpec logic lives in the shared core public/js/agent-spec-core.js (server façade src/agent-spec.js; sdk/pair-cli.mjs re-exports it); the Agent Builder mode and share-link minting resolve agents from this file via the committed source snapshot. An agent is DEFINED by its chat-input-pane controls, its intro + loading animations, its colour theme, its seed example questions, and the default quota a minted share-link token carries. Derive a new agent by copying one of these and changing those fields.",
+  "status": "wired (2026-07-23): AgentSpec logic lives in the shared core public/js/agent-spec-core.js (server façade src/agent-spec.js; sdk/pair-cli.mjs re-exports it); the Agent Studio mode and share-link minting resolve agents from this file via the committed source snapshot. An agent is DEFINED by its chat-input-pane controls, its intro + loading animations, its colour theme, its seed example questions, and the default quota a minted share-link token carries. Derive a new agent by copying one of these and changing those fields.",
   "reference_product": "deepresearch.se",
   "control_types": {
     "prompt-input": "the message textarea",
@@ -9,7 +9,7 @@
     "model-select": "choose the answer/synthesis model (provider registry)",
     "depth-slider": "research depth → number of pipeline search rounds",
     "toggle": "a boolean request flag (web search, incognito, …) — id IS the flag",
-    "mode-select": "choose the chat mode (Normal / Introspection / Agent Builder)",
+    "mode-select": "choose the chat mode (Normal / Introspection / Agent Studio)",
     "attachments": "attach files to the turn"
   },
   "agents": [
@@ -110,7 +110,7 @@
     },
     {
       "id": "agent-builder",
-      "name": "Agent Builder",
+      "name": "Agent Studio",
       "tagline": "The mode that builds agents — distil this site into a new flavour and publish it live.",
       "description": "Formerly 'SDK mode'. Describe a flavour to distil from the Se/cure tier; the model plans against the DistillSDK manifest, reads the deployed source, builds a self-contained agent, and publishes it at /app/<slug>/. This is the pair-studio module made real.",
       "platform": "server",

@@ -76,8 +76,8 @@ processors** — instead of a scatter of incompatible accounts.
 ## 3. Navigation: routing across processing states
 
 A workspace at any moment is a **data processing/enrichment state**: what
-has been gathered, synthesized, validated — and, via the `provenance`
-trail, *which declared pipeline structures produced it*. DRPL is what makes
+has been gathered, synthesized, validated, and (via the `provenance`
+trail) *which declared pipeline structures produced it*. DRPL is what makes
 those states navigable rather than anecdotal:
 
 - every hop records the structural fingerprint of what ran
@@ -93,12 +93,12 @@ those states navigable rather than anecdotal:
   executed by the user link by link, invisible to every server involved.
 
 This is a new kind of data pipeline: **a pipeline whose steps are sites.**
-Not a workflow engine scheduling containers — a human (or their agent)
-carrying a sealed state through a graph of specialized processors, with
-structure declared at every edge. The composition primitive is a link; the
-type discipline is DRPL; the audit log is provenance; the budget is grants.
-Nothing orchestrates it from above, which is precisely why nothing above it
-can log, block, or monetize the whole.
+It is not a workflow engine scheduling containers but a human (or their
+agent) carrying a sealed state through a graph of specialized processors,
+with structure declared at every edge. The composition primitive is a link;
+the type discipline is DRPL; the audit log is provenance; the budget is
+grants. Nothing orchestrates it from above, which is precisely why nothing
+above it can log, block, or monetize the whole.
 
 ## 4. Why the privacy properties survive composition
 
@@ -136,6 +136,6 @@ grants, `/.well-known/drsw.json`, and DRPL itself with its tooling
 manifest and DRPL documents; the workspace composer writing
 `origin`/`provenance`; a second node (even a toy local-only one) to prove
 the handoff loop end to end; then the routing UX. The standards are written
-so each step is small and independently testable — and so that somebody
+so each step is small and independently testable, and so that somebody
 else's node, on entirely different source code, is as legitimate a next
 step as ours.

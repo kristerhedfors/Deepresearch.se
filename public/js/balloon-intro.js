@@ -197,14 +197,23 @@ function lerpCol(c1, c2, t) {
  * the from-below burner glow. Works at any camera pitch in [0, π]. Shared by
  * the intro's fleet loop and the waiting symbol so the figure never drifts.
  *
+ * `cfg.fill` optionally overrides the LOGO-phase gore colours (the flag
+ * gold/blue that drains away before the revival); the waiting spinner passes a
+ * monochrome pair so a recoloured balloon (e.g. titanium introspection) carries
+ * no blue in its wind-down. Default keeps the flag gold/blue.
+ *
  * @param {CanvasRenderingContext2D} ctx
  * @param {{cx:number, cy:number, R:number,
  *          style:{col:string, alt:string, border:string},
  *          P:ReturnType<typeof paramsAt>, spin:number, sway?:number,
- *          alpha?:number, t?:number}} cfg
+ *          alpha?:number, t?:number, fill?:{a:string, b:string}}} cfg
  */
 export function drawBalloonFigure(ctx, cfg) {
   const { cx, cy, R, style, P, spin } = cfg;
+  // Logo-phase gore colours: the flag gold (even gores) + blue (odd), unless a
+  // caller overrides them (fill.a = the gold slot, fill.b = the blue slot).
+  const fillGold = cfg.fill?.a ?? PALETTE.gold;
+  const fillBlue = cfg.fill?.b ?? PALETTE.blue;
   const A = (cfg.alpha ?? 1) * P.fade;
   if (A <= 0.002) return;
   const t = cfg.t ?? 0;
@@ -315,7 +324,7 @@ export function drawBalloonFigure(ctx, cfg) {
         ctx.stroke();
       }
     };
-    if (P.fill > 0.01) fillGores(P.fill * A, (i) => (i % 2 ? PALETTE.blue : PALETTE.gold));
+    if (P.fill > 0.01) fillGores(P.fill * A, (i) => (i % 2 ? fillBlue : fillGold));
     if (P.revive > 0.01) {
       fillGores(smooth(P.revive) * A, (i) => (i % 2 ? style.alt : style.col));
     }

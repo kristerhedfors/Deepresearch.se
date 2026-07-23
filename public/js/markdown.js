@@ -66,6 +66,238 @@ export function isSafeDocImage(src) {
   return SAFE_IMG_PREFIXES.some((p) => s.startsWith(p)) && !s.includes("..") && !s.includes("//");
 }
 
+// Monotonic per-render id scope so citation anchors across multiple answers
+// never collide on the same document id (see linkifyCitations).
+let citeIdSeq = 0;
+
+/**
+ * Splits a run of text into segments, flagging each inline `[n]` citation
+ * whose number is a known source. Pure (no DOM) so it's unit-testable; the
+ * DOM wiring in `linkifyCitations` uses it to decide which text runs become
+ * clickable footer anchors. A `[n]` whose number ISN'T in `valid` is left as
+ * plain text — not every bracketed number is a citation, and the answer only
+ * ever cites sources that exist in its own "Sources:" list.
+ * @param {string} text
+ * @param {Set<number>} valid the source numbers that actually have a footer entry
+ * @returns {Array<{ text: string, ref: number|null }>} in order; ref!=null marks a citation
+ */
+export function citationSegments(text, valid) {
+  /** @type {Array<{ text: string, ref: number|null }>} */
+  const segs = [];
+  if (typeof text !== "string" || !text || !valid || !valid.size) {
+    return text ? [{ text, ref: null }] : [];
+  }
+  const re = /\[(\d{1,3})\]/g;
+  let last = 0;
+  let m;
+  while ((m = re.exec(text))) {
+    const n = Number(m[1]);
+    if (!valid.has(n)) continue; // leave unknown brackets as ordinary text
+    if (m.index > last) segs.push({ text: text.slice(last, m.index), ref: null });
+    segs.push({ text: m[0], ref: n });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) segs.push({ text: text.slice(last), ref: null });
+  return segs.length ? segs : [{ text, ref: null }];
+}
+
+/**
+ * Makes the inline `[n]` citations in a rendered answer clickable so they jump
+ * to the matching entry in the closing "Sources:" list, where the URL is
+ * written out and live. Operates on the already-sanitized DOM: it finds the
+ * numbered source list items (`<li>` whose text starts with `[n]`), gives each
+ * an id, then rewrites every plain-text `[n]` in the body into an anchor to it.
+ * A no-op when there's no numbered sources list (partial streams, plain chat).
+ * @param {HTMLElement} el
+ */
+export function linkifyCitations(el) {
+  const doc = el.ownerDocument;
+  if (!doc) return;
+  // Ids must be unique DOCUMENT-wide: several answers each carry a "[1]" source,
+  // and getElementById returns the first match — so scope every render's ids
+  // with a fresh counter to keep a citation pointing at its OWN footer entry.
+  const scope = `c${(citeIdSeq += 1)}`;
+  // 1. Register the footer source entries. A source item is a list item whose
+  //    text begins with "[n]" — that's exactly the "- [n] Title — URL" shape
+  //    the synthesis prompt emits.
+  /** @type {Set<number>} */
+  const valid = new Set();
+  /** @type {Map<number, string>} */
+  const refIds = new Map();
+  for (const li of el.querySelectorAll("li")) {
+    const m = /^\s*\[(\d{1,3})\]/.exec(li.textContent || "");
+    if (!m) continue;
+    const n = Number(m[1]);
+    if (valid.has(n)) continue; // first definition wins
+    valid.add(n);
+    li.classList.add("source-ref-item");
+    li.id = `${scope}-source-${n}`;
+    refIds.set(n, li.id);
+  }
+  if (!valid.size) return;
+
+  // 2. Collect the body text nodes to rewrite (snapshot first — we mutate the
+  //    tree as we go). Skip anything already inside a link, and skip the source
+  //    definitions themselves (their leading [n] is a label, not a citation).
+  const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  /** @type {Text[]} */
+  const targets = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    const parent = /** @type {Element|null} */ (node.parentElement);
+    if (!parent || parent.closest("a, .source-ref-item")) continue;
+    if (!/\[\d{1,3}\]/.test(node.nodeValue || "")) continue;
+    targets.push(/** @type {Text} */ (node));
+  }
+
+  for (const textNode of targets) {
+    const segs = citationSegments(textNode.nodeValue || "", valid);
+    if (!segs.some((s) => s.ref != null)) continue;
+    const frag = doc.createDocumentFragment();
+    for (const s of segs) {
+      if (s.ref == null) {
+        frag.appendChild(doc.createTextNode(s.text));
+        continue;
+      }
+      const targetId = refIds.get(s.ref) || "";
+      const a = doc.createElement("a");
+      a.className = "cite-ref";
+      a.href = "#" + targetId;
+      a.textContent = s.text;
+      a.setAttribute("aria-label", `Jump to source ${s.ref}`);
+      // Same-page jump: scroll the footer entry into view and flash it, without
+      // touching location.hash (the SPA uses hash routing for other things).
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        const dest = doc.getElementById(targetId);
+        if (!dest) return;
+        dest.scrollIntoView({ behavior: "smooth", block: "center" });
+        dest.classList.remove("cite-target-flash");
+        void /** @type {HTMLElement} */ (dest).offsetWidth; // reflow to restart the flash
+        dest.classList.add("cite-target-flash");
+      });
+      frag.appendChild(a);
+    }
+    textNode.parentNode?.replaceChild(frag, textNode);
+  }
+}
+
+// ---- Mermaid diagrams -------------------------------------------------------
+// A ```mermaid fence in an answer renders as a real flow diagram. The vendored
+// library (/vendor/mermaid.min.js, ~3.4 MB) is loaded ONLY when a rendered
+// answer actually contains a complete mermaid block — ordinary chats never pay
+// for it. Rendering is fail-soft end to end: a load failure, an invalid
+// diagram, or a half-streamed block just leaves the fenced code visible as
+// ordinary code, never breaks the answer.
+
+/** @type {Promise<any>|null} */
+let mermaidLoad = null; // one lazy script load per page
+let mmdSeq = 0; // unique render ids (mermaid requires one per render call)
+
+/**
+ * Extracts the bodies of COMPLETE ```mermaid fenced blocks from markdown
+ * source. Pure (no DOM) — unit-tested in Node. Exists because an UNTERMINATED
+ * fence still renders as a code block (CommonMark runs it to end of input), so
+ * during streaming the DOM alone can't tell a finished diagram from a
+ * half-streamed one; only blocks whose closing fence has arrived in the text
+ * are rendered — the rest stay code until the fence closes.
+ * @param {string} text
+ * @returns {string[]} trimmed diagram sources, in order
+ */
+export function completeMermaidSources(text) {
+  if (typeof text !== "string" || !text.includes("```mermaid")) return [];
+  /** @type {string[]} */
+  const out = [];
+  /** @type {string[]|null} */
+  let body = null;
+  for (const line of text.split("\n")) {
+    if (body === null) {
+      if (/^\s{0,3}```mermaid\s*$/.test(line)) body = [];
+    } else if (/^\s{0,3}```\s*$/.test(line)) {
+      const src = body.join("\n").trim();
+      if (src) out.push(src);
+      body = null;
+    } else {
+      body.push(line);
+    }
+  }
+  return out;
+}
+
+/** @returns {Promise<any>} the mermaid global, or null (fail soft) */
+function ensureMermaid() {
+  if (!mermaidLoad) {
+    mermaidLoad = new Promise((resolve) => {
+      const s = document.createElement("script");
+      s.src = "/vendor/mermaid.min.js";
+      s.onload = () => {
+        const m = /** @type {any} */ (window).mermaid;
+        try {
+          // strict: mermaid sanitizes label text itself; htmlLabels off keeps
+          // flowchart labels as plain SVG text (no foreignObject), which also
+          // survives the DOMPurify pass below. Light theme matches both tiers.
+          m?.initialize({
+            startOnLoad: false,
+            securityLevel: "strict",
+            theme: "default",
+            flowchart: { htmlLabels: false },
+          });
+          resolve(m || null);
+        } catch {
+          resolve(null);
+        }
+      };
+      s.onerror = () => resolve(null);
+      document.head.appendChild(s);
+    });
+  }
+  return mermaidLoad;
+}
+
+/**
+ * Replaces each rendered ```mermaid code block whose source is complete with
+ * the drawn diagram. Async (the library loads on first use); safe against
+ * re-renders — a block whose <pre> left the document while the diagram was
+ * being drawn is skipped.
+ * @param {HTMLElement} el @param {string} text the markdown source
+ */
+async function renderMermaidBlocks(el, text) {
+  const complete = new Set(completeMermaidSources(text));
+  if (!complete.size) return;
+  /** @type {Array<{pre: HTMLElement, src: string}>} */
+  const blocks = [];
+  for (const code of el.querySelectorAll("pre > code.language-mermaid")) {
+    const src = (code.textContent || "").trim();
+    const pre = /** @type {HTMLElement|null} */ (code.parentElement);
+    if (pre && complete.has(src)) blocks.push({ pre, src });
+  }
+  if (!blocks.length) return;
+  const mermaid = await ensureMermaid();
+  const { DOMPurify } = /** @type {any} */ (window);
+  if (!mermaid || !DOMPurify) return;
+  for (const { pre, src } of blocks) {
+    try {
+      const { svg } = await mermaid.render(`mmd-${(mmdSeq += 1)}`, src);
+      if (!pre.isConnected) continue; // the answer re-rendered meanwhile
+      const box = document.createElement("div");
+      box.className = "mermaid-diagram";
+      box.style.overflowX = "auto"; // wide diagrams scroll, never overflow the bubble
+      // Defense in depth: mermaid strict mode already sanitized the labels,
+      // but its SVG goes through DOMPurify like everything else we render.
+      box.innerHTML = DOMPurify.sanitize(svg, {
+        USE_PROFILES: { svg: true, svgFilters: true, html: true },
+      });
+      const svgEl = box.querySelector("svg");
+      if (!svgEl) continue;
+      svgEl.style.maxWidth = "100%";
+      svgEl.style.height = "auto";
+      pre.replaceWith(box);
+    } catch {
+      // invalid/unsupported diagram — the fenced code stays visible
+    }
+  }
+}
+
 /**
  * Render markdown into an element, sanitized; plain text when the vendored
  * libs are missing.
@@ -102,7 +334,16 @@ export function renderMarkdownInto(el, text) {
     img.classList.add("doc-img");
   }
   for (const a of el.querySelectorAll("a")) {
+    // In-page citation jumps (added below) stay same-tab; only real links open
+    // in a new tab.
+    if ((a.getAttribute("href") || "").startsWith("#")) continue;
     a.target = "_blank";
     a.rel = "noopener";
   }
+  // Run AFTER the loop above so the in-page [n] anchors it creates keep their
+  // default same-page behavior instead of getting target="_blank".
+  linkifyCitations(el);
+  // Fire-and-forget: diagrams draw in when the (lazy-loaded) library is
+  // ready; everything else in the answer is already usable.
+  void renderMermaidBlocks(el, text);
 }

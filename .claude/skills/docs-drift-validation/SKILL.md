@@ -141,6 +141,12 @@ the owner can pick the direction.
 
 ## Verify & close
 
+- **Clean the prose you touched** (the anti-ai-smell tail — owner directive,
+  2026-07-23): every doc you reconciled (Class M) or rewrote after owner
+  sign-off (approved Class C) leaves this skill **Cleaned** — run the
+  **anti-ai-smell** skill's Clean step in place on the changed prose, under its
+  fact-preservation contract. A posture claim you left *unchanged* pending the
+  owner's checkmark is not touched; you only Clean what you actually edited.
 - `npm test` + `npm run typecheck` green; editing `docs/*.md` stales the
   committed docs corpus — fix with `npm run bundle:docs` (and
   `bundle:docs-rag`), never by hand (see **help-docs**).

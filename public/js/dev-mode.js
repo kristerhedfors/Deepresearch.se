@@ -12,13 +12,16 @@
 //
 // This module is that local cache. It mirrors the server knob into
 // localStorage (`dr_dev_mode`) and toggles a `dev-mode` class on the ROOT
-// element. The cue is DELIBERATELY narrow: the sky-blue background and the
-// whole palette are unchanged — only the composer input pane picks up a
-// white-titanium glass tint (CSS `:root.dev-mode #composer` in public/css/app.css),
-// so introspection is recognizable without re-skinning the app or the iOS
-// status bar. (The class/key names keep the historical `dev` token — internal
-// identifiers, not user-facing copy; the mode is named "Introspection" in the
-// UI.)
+// element. That single class drives introspection's COMPLETE titanium theme in
+// CSS (owner directive, 2026-07-23): the whole palette is remapped under
+// `:root.dev-mode` (public/css/app.css) — the brushed-silver field + drifting
+// waves, slate accents, the rose-white composer pane, and the titanium ✓ — so
+// the theme runs throughout, not just the input pane. The waiting spinner
+// (mode-spinner.js) and the entry mascot (TIN, introspect-ui.js) complete it.
+// This module owns only the first-paint CACHE + class toggle; the status-bar
+// tint is driven per-mode from chat-mode.js. (The class/key names keep the
+// historical `dev` token — internal identifiers, not user-facing copy; the mode
+// is named "Introspection" in the UI.)
 //
 // Boot order:
 //   0. A tiny inline `<script data-devtheme>` in index.html's <head> adds the
@@ -78,7 +81,8 @@ export function storeDeveloperMode(on) {
  * unless told otherwise, persist the value so the next load paints it
  * immediately. The boot-time cached apply passes { persist: false } — it is
  * READING the cache, not making a new decision. The class alone drives the
- * composer-pane tint (CSS); the background and iOS status bar are untouched.
+ * whole titanium theme (CSS `:root.dev-mode`); the status-bar tint is applied
+ * separately, per-mode, from chat-mode.js.
  * @param {boolean} on
  * @param {{ persist?: boolean }} [opts]
  * @returns {boolean} the applied value

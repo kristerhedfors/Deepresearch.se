@@ -272,6 +272,27 @@ changed their mind: the switch is now a **header ICON** (`#termbtn`, a terminal
   put in app.css) are now MIRRORED into `cure/drc.css` too, plus `#termbtn`
   styling — so the switch actually works + is styled on DRC. Handshake `h34`.
 
+### Third mode — terminal HIDDEN + harmonized icon highlights (2026-07-23)
+
+Owner extended the icon from a two-mode toggle to a **three-mode cycle**: the two
+originals plus a mode where the terminal output is **not shown at all**. Tapping
+`#termbtn` now cycles `convo → terminal → hidden → convo …`.
+
+- Core (`agent-backdrop-core.js`): new `LAYER_HIDDEN = "hidden"`; `nextLayerMode`
+  is now a 3-cycle (unknown still → terminal first, so a first tap surfaces it).
+- `setLayerMode` toggles `body.term-hidden` alongside `body.term-fg` (both absent
+  = the default faint-backdrop convo state); `applyOpacity` also sets the layer
+  `display:none` inline in hidden mode (belt-and-suspenders vs. a stale class).
+  No slide-in flourish into hidden (nothing comes forward); keyboard hands back
+  to the composer in both convo and hidden.
+- **Harmonized icon highlights** reflect the mode with one accent hue at
+  descending intensity — `syncTermBtn` sets `.on` (terminal forward → full accent
+  fill), `.mode-bg` (convo/faint backdrop → accent-tinted outline via
+  `color-mix`), `.mode-off` (hidden → dim neutral glass, `opacity:.5`), plus a
+  per-mode `title`. CSS mirrored in `css/app.css` + `cure/drc.css`
+  (`body.term-hidden #dr-agent-backdrop { display:none }` + the three `#termbtn`
+  states). Core test: `nextLayerMode cycles convo → terminal → hidden → convo`.
+
 ### Terminal mode: real terminal coloring + tap-to-type (2026-07-16)
 
 Two owner directives on the terminal-forward state (`body.term-fg`):

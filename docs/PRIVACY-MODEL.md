@@ -14,8 +14,7 @@ every conversation and project is always stored in the cloud, with NO
 per-account or per-project opt-out (the former `server_history` knob and
 project knob are gone); the never-cloud tier is Se/cure, where the
 server is in no data path at all. Conversations and attached-file
-originals rest as
-ciphertext in BOTH the browser and R2 — the ONLY
+originals rest as ciphertext in BOTH the browser and R2. The ONLY
 readable exceptions are RAG-indexed material and project chats, because
 retrieval needs plaintext. The encryption key is derived server-side and
 held only in memory, never at rest beside the ciphertext. The
@@ -33,17 +32,17 @@ structurally stronger anonymity); the API contract stays honored for
 any client that sends the flag. DRC — "deep research secure", the
 public CLIENT-side tier at `/cure` — extends the strict tier to a whole
 surface, structurally: no accounts, and the server is in NO data path
-at all — the browser calls the user's own CORS-capable providers
+at all. The browser calls the user's own CORS-capable providers
 (OpenAI, Groq, Berget — or, since 2026-07-15, the user's OWN local
 OpenAI-compatible server: Ollama / LM Studio / llama.cpp, the keyless
 `local` provider entry, with which NO third party receives the
 conversation at all) directly, runs the research pipeline client-side, and
 stores the sealed project state (chats AND the user's API keys inside)
-in the BROWSER's own storage; the server serves static files and public
+in the BROWSER's own storage. The server serves static files and public
 replay JSONs, so it could not log content or keys even in principle.
 Secrets never appear in any log.
 Outbound requests to third parties carry the minimum (a query, a
-coordinate, a host) — never the conversation, filename, or account
+coordinate, a host), never the conversation, filename, or account
 identity.
 **TWO deliberate, bounded exceptions to "the server is in NO DRC data
 path".** The FIRST (2026-07-14 directive) is the **temporary web-search
@@ -57,7 +56,7 @@ an independent `websearch.` namespace; the quota is a D1
 number of live web searches routed through the server's Exa key — so a
 Se/cure session keeps the strong posture (own/local model, browser-local
 storage) while still getting fresh web results. It stays inside the
-minimal-outbound rule: only the search QUERY reaches the server and Exa —
+minimal-outbound rule: only the search QUERY reaches the server and Exa,
 never the conversation. **TWO ways to receive a grant:** (1) the GHOST
 CROSSOVER — a signed-in Se/rver user crossing to Se/cure mints/reuses their
 own grant (authed `POST /api/websearch/grant`, offered only when the ghost
@@ -123,9 +122,8 @@ it unifies the two above going forward:** "one ticket, one JWT"
 (`src/server-token.js` + `src/server-grants.js`, D1 `server_tokens`,
 `docs/SERVER-TOKENS.md`) — one standard HS256 JWT per grant carrying a
 permission SET (`perms: ["web","api"]`) over the SAME two bounded upstream
-services (the `api` permission covers the LLM completion AND embeddings
-routes — RAG parity), one duration, per-permission quota rows (token fixed,
-rows metered, same governance/budget/fail-safe posture). It carries THE
+services, one duration, per-permission quota rows (token fixed, rows
+metered, same governance/budget/fail-safe posture). It carries THE
 SERVER-TOKEN GUARANTEE (owner directive, stated so it is never diluted):
 **an API call bearing a Se/rver token reaches UPSTREAM APIs ONLY — it is
 NEVER handed project contents, chat contents, or any other Se/rver data**
@@ -138,3 +136,34 @@ admin interface and can never open it. The name is the reminder: it's
 called a SERVER token so nobody forgets it goes to a server somewhere. The legacy
 `wsk1`/`prg1`/`prx1` families keep working unchanged; new grants should be
 Se/rver tokens.
+
+## Compute sharing — peer-operated upstream (2026-07-23, PROPOSED framing, owner sign-off pending)
+
+`docs/COMPUTE-SHARING.md` designs a capability where a signed-in user LENDS
+their local LLM as pooled capacity: the server is a thin BROKER that relays a
+consumer's completion request to the sharer's browser, which runs it against
+their local model. This adds the `pt1` **pool-token** family
+(`src/pool-token.js`) and the D1 job-queue broker (`src/pool.js`).
+
+It touches this model in one place that is genuinely NEW and is therefore
+flagged, NOT silently adopted: **consuming a pool routes the consumer's prompt
+through the server to ANOTHER NAMED USER'S machine** — a peer-operated upstream,
+not the server's own Exa/Berget keys. The recommended framing (this section is
+descriptive; the CLAUDE.md invariant 4 text is unchanged pending the owner's
+decision) is to treat pool consumption as a **documented variant of the existing
+`api` exception** — "an upstream LLM, operated by a peer instead of Berget" —
+reusing the connected-APIs disclosure PLUS a stronger, unmissable line at the
+point of use: *the pool owner's machine can read everything you send.* Under that
+framing the "EXACTLY TWO exceptions" count is unchanged in spirit (peer compute
+is a variant of the second, a server-relayed upstream completion). The
+alternative — a literal THIRD exception, amending the invariant to say three —
+is cleaner to audit but rewrites a load-bearing owner-directive sentence.
+
+What is already firm and enforced by code: a pool token carries THE POOL-TOKEN
+GUARANTEE (upstream/peer completion access ONLY, never Se/rver data, never a
+login — same structural + module-graph enforcement as the Se/rver token, pinned
+by `src/pool.test.js`); the server forwards to the peer ONLY the completion body
+the consumer chose to send (no identity, filename, or account data);
+**SHARING** (being a provider) is a Se/rver-tier, signed-in action that exposes
+none of the provider's own data and adds no Se/cure exception. See
+`docs/COMPUTE-SHARING.md` §7 for the full analysis.

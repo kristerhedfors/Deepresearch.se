@@ -176,32 +176,44 @@ export async function handleGoogleCallback(request, env, url, log) {
   // session, but only the waiting page until the admin approves — so
   // approval takes effect on their next request, no re-login.
   const isAdminEmail = email === adminEmail(env);
-  let user = await getUserByEmail(env, email);
-  if (!user) {
-    const config = await getConfig(env);
-    user = await createUserFromGoogle(env, {
-      email,
-      name: typeof claims.name === "string" ? claims.name : "",
-      sub: typeof claims.sub === "string" ? claims.sub : "",
-      role: isAdminEmail ? "admin" : "user",
-      status: !isAdminEmail && config.require_approval ? "pending" : "active",
-    });
-    log.info("google.user_created", { role: user.role, status: user.status });
-  } else {
-    if (user.status === "disabled") return fail("disabled");
-    if (isAdminEmail && user.role !== "admin") {
-      // The row exists (we just loaded it), so the update returns it.
-      user = /** @type {User} */ (await updateUser(env, user.id, { role: "admin" }));
+  // Provisioning, role sync and session minting are wrapped so an UNEXPECTED
+  // failure here (a transient D1 read/write error, a provisioning race) honors
+  // this module's contract — every failure path bounces to /login with a flash,
+  // never a bare error page. Without this a throw escapes to index.js's
+  // top-level catch and the user, mid-sign-in, gets the generic
+  // `{"error":"Internal server error.","request_id":…}` 500 instead. This path
+  // is exactly what runs "upon login" for a first-time (invite-only) signer-in,
+  // where getConfig + createUserFromGoogle both touch D1.
+  try {
+    let user = await getUserByEmail(env, email);
+    if (!user) {
+      const config = await getConfig(env);
+      user = await createUserFromGoogle(env, {
+        email,
+        name: typeof claims.name === "string" ? claims.name : "",
+        sub: typeof claims.sub === "string" ? claims.sub : "",
+        role: isAdminEmail ? "admin" : "user",
+        status: !isAdminEmail && config.require_approval ? "pending" : "active",
+      });
+      log.info("google.user_created", { role: user.role, status: user.status });
+    } else {
+      if (user.status === "disabled") return fail("disabled");
+      if (isAdminEmail && user.role !== "admin") {
+        // The row exists (we just loaded it), so the update returns it.
+        user = /** @type {User} */ (await updateUser(env, user.id, { role: "admin" }));
+      }
     }
-  }
 
-  log.info("login.success", { role: user.role, via: "google" });
-  // The signed-in app lives at /rver (the DeepResearch.Se/rver = "deep
-  // research server" wordplay; the root redirects to DRC at /cure).
-  const headers = new Headers({ Location: "/rver" });
-  headers.append("Set-Cookie", clearStateCookie());
-  headers.append("Set-Cookie", await createSessionCookie(env, String(user.id)));
-  return new Response(null, { status: 303, headers });
+    log.info("login.success", { role: user.role, via: "google" });
+    // The signed-in app lives at /rver (the DeepResearch.Se/rver = "deep
+    // research server" wordplay; the root redirects to DRC at /cure).
+    const headers = new Headers({ Location: "/rver" });
+    headers.append("Set-Cookie", clearStateCookie());
+    headers.append("Set-Cookie", await createSessionCookie(env, String(user.id)));
+    return new Response(null, { status: 303, headers });
+  } catch (err) {
+    return fail("google-failed", /** @type {any} */ (err)?.message || String(err));
+  }
 }
 
 /** @returns {string} a Set-Cookie value that expires the state cookie */

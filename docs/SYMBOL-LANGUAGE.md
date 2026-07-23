@@ -8,13 +8,13 @@ owner's pick in `docs/symbol-language/proposals.html`.
 
 ## 1. Why a symbol language
 
-The project's mission is privacy research made *tangible* — the proof is the
-site itself. The symbols carry that: they are not decoration for its own sake
-but a second, wordless channel that tells the user something TRUE about the
-tier they are standing in. The craft rules are the umbrella intro's rules
+The project's mission is privacy research made *tangible*, and the proof is
+the site itself. The symbols carry that. They are a second, wordless channel
+that tells the user something TRUE about the tier they are standing in, not
+decoration for its own sake. The craft rules are the umbrella intro's rules
 (`public/cure/umbrella.js`): plain canvas, no dependencies, a pure Node-tested
 core under a browser-only DOM layer, tap-to-skip, `prefers-reduced-motion`
-respected, and fail-soft — decoration must never cost a chat.
+respected, and fail-soft. Decoration must never cost a chat.
 
 ## 2. The established Se/cure language (shipped)
 
@@ -77,7 +77,7 @@ review artifact) and press "✓ complete a task" on each. Summary:
 
 Semantic pairing with Se/cure (always named first): the umbrella says
 *"sheltered — nothing leaves"*; each candidate says the opposite half
-truthfully — *"carried"* (A), *"watched over"* (B), *"remembered"* (C),
+truthfully: *"carried"* (A), *"watched over"* (B), *"remembered"* (C),
 *"fetched for you"* (D).
 
 ## 5. THE DECISION (owner, 2026-07-15): the balloon — refined into the guide
@@ -218,7 +218,7 @@ The standing per-provider line beside the model picker
 ## 7. Per-MODE symbols inside the Se/rver app (owner, 2026-07-19)
 
 §2–6 give each TIER its symbol (Se/cure the umbrella + ghost, Se/rver the
-balloon). But the Se/rver app is not one experience — it holds three chat
+balloon). But the Se/rver app is not one experience. It holds three chat
 MODES picked from the dropdown (Normal / Introspection / SDK — `chat-mode.js`),
 and the brief now extends the language INWARD: each mode is distinct in its own
 way, along the same axes the tiers use — a **color theme**, an **animation**

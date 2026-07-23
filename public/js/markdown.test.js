@@ -47,6 +47,53 @@ describe("normalizeLlmMarkdown", () => {
   });
 });
 
+// The pure segment parser behind clickable inline [n] citations. The DOM
+// wiring (linkifyCitations) is verified live; this decides which text runs
+// become footer anchors, so it's covered here.
+import { citationSegments } from "./markdown.js";
+
+describe("citationSegments", () => {
+  test("marks a known [n] citation and keeps the surrounding text", () => {
+    const segs = citationSegments("The sky is blue [1] per NASA.", new Set([1]));
+    assert.deepEqual(segs, [
+      { text: "The sky is blue ", ref: null },
+      { text: "[1]", ref: 1 },
+      { text: " per NASA.", ref: null },
+    ]);
+  });
+
+  test("linkifies several citations, including consecutive [1][2]", () => {
+    const segs = citationSegments("Both agree [1][2] on this [10].", new Set([1, 2, 10]));
+    assert.deepEqual(
+      segs.filter((s) => s.ref != null).map((s) => s.ref),
+      [1, 2, 10],
+    );
+    // Text between them is preserved.
+    assert.equal(segs.map((s) => s.text).join(""), "Both agree [1][2] on this [10].");
+  });
+
+  test("leaves a bracketed number with no matching source as plain text", () => {
+    const segs = citationSegments("An array index a[3] and cite [1].", new Set([1]));
+    // [3] is NOT a source → stays text; only [1] becomes a ref.
+    assert.deepEqual(
+      segs.filter((s) => s.ref != null).map((s) => s.text),
+      ["[1]"],
+    );
+    assert.equal(segs.map((s) => s.text).join(""), "An array index a[3] and cite [1].");
+  });
+
+  test("returns a single plain segment when there are no valid sources", () => {
+    assert.deepEqual(citationSegments("Plain [1] text.", new Set()), [
+      { text: "Plain [1] text.", ref: null },
+    ]);
+  });
+
+  test("handles empty / non-string input safely", () => {
+    assert.deepEqual(citationSegments("", new Set([1])), []);
+    assert.deepEqual(citationSegments(/** @type {any} */ (null), new Set([1])), []);
+  });
+});
+
 // The same-origin documentation-image allowlist (HELP mode): the ONLY <img>
 // sources an answer may render inline. Everything else — external hosts,
 // protocol-relative, traversal — stays forbidden (the tracking-pixel class).
@@ -71,5 +118,47 @@ describe("isSafeDocImage", () => {
     ]) {
       assert.equal(isSafeDocImage(/** @type {any} */ (src)), false, String(src));
     }
+  });
+});
+
+// The pure fence scanner behind mermaid diagram rendering. The DOM/library
+// wiring (renderMermaidBlocks) is verified live; this decides WHICH code
+// blocks are drawn — above all that a half-streamed (unterminated) fence is
+// never rendered — so it's covered here.
+import { completeMermaidSources } from "./markdown.js";
+
+describe("completeMermaidSources", () => {
+  test("extracts a complete mermaid block", () => {
+    const md = "Intro.\n\n```mermaid\ngraph TD\n  A-->B\n```\n\nAfter.";
+    assert.deepEqual(completeMermaidSources(md), ["graph TD\n  A-->B"]);
+  });
+
+  test("extracts multiple blocks in order", () => {
+    const md = "```mermaid\ngraph TD\nA-->B\n```\ntext\n```mermaid\nsequenceDiagram\nA->>B: hi\n```";
+    assert.deepEqual(completeMermaidSources(md), [
+      "graph TD\nA-->B",
+      "sequenceDiagram\nA->>B: hi",
+    ]);
+  });
+
+  test("ignores an unterminated fence (mid-stream)", () => {
+    const md = "Answer so far…\n\n```mermaid\ngraph TD\n  A-->B";
+    assert.deepEqual(completeMermaidSources(md), []);
+  });
+
+  test("only the closed block renders while a later one is still streaming", () => {
+    const md = "```mermaid\ngraph TD\nA-->B\n```\n\n```mermaid\ngraph LR\nC-->";
+    assert.deepEqual(completeMermaidSources(md), ["graph TD\nA-->B"]);
+  });
+
+  test("ignores non-mermaid fences and empty blocks", () => {
+    assert.deepEqual(completeMermaidSources("```js\nlet x = 1;\n```"), []);
+    assert.deepEqual(completeMermaidSources("```mermaid\n\n```"), []);
+  });
+
+  test("handles non-string / empty input safely", () => {
+    assert.deepEqual(completeMermaidSources(""), []);
+    assert.deepEqual(completeMermaidSources(/** @type {any} */ (null)), []);
+    assert.deepEqual(completeMermaidSources(/** @type {any} */ (undefined)), []);
   });
 });

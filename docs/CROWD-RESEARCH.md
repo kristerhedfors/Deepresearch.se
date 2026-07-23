@@ -3,24 +3,24 @@
 *(2026-07-23, owner directive. This document specifies the **complete
 information flow and workflow** for a use case not yet covered technically:
 **crowd-sourced / distributed deep research**. A Se/rver user (the
-**organizer**) sets up one shared research task, mints a fan of invite links —
-each with its own password and its own **alias identity** — and hands them
+**organizer**) sets up one shared research task, mints a fan of invite links,
+each with its own password and its own **alias identity**, and hands them
 out. Each recipient (a **node**) does their part of the research in their own
 Se/cure session, packages the conclusions, **seals them to the organizer's
-project public key**, and channels the sealed result back — by link, file,
-message, or **QR code**. The organizer watches a **live dashboard** (one per
-campaign; lights, activity notifications, an aggregate conclusion that updates
-as results arrive — think of it as **Mentimeter for deep research**), and the
-pipeline merges the returned conclusions into one answer.*
+project public key**, and channels the sealed result back by link, file,
+message, or **QR code**. The organizer watches a **live dashboard**, one per
+campaign, showing lights, activity notifications, and an aggregate conclusion
+that updates as results arrive. Think of it as **Mentimeter for deep
+research**: the pipeline merges the returned conclusions into one answer.*
 
-*This builds directly on the secure-workspace machinery (`docs/WORKSPACE-SECURITY.md`)
+*This builds on the secure-workspace machinery (`docs/WORKSPACE-SECURITY.md`)
 and the DRSW/1 interchange protocol (`docs/WORKSPACE-PROTOCOL.md`). It adds
-exactly three things DRSW/1 does not have: (1) an **asymmetric** result-sealing
-envelope — every crypto path today is symmetric password-KDF, and sealing a
-result **to** the organizer without giving the recipient the ability to read
-other recipients' results requires public-key crypto; (2) **multi-alias
-campaign minting** — one task, many links, many identities; (3) a **server-side
-aggregation dashboard**. Like everything here it is EXPERIMENTAL — a research
+three things DRSW/1 does not have. First, an **asymmetric** result-sealing
+envelope: every crypto path today is symmetric password-KDF, and sealing a
+result **to** the organizer without letting the recipient read other
+recipients' results needs public-key crypto. Second, **multi-alias campaign
+minting**: one task, many links, many identities. Third, a **server-side
+aggregation dashboard**. Like everything here it is EXPERIMENTAL, a research
 artifact into the privacy capabilities of LLM applications, not a finished
 product. The status section (§11) states plainly what is seeded in code vs.
 specified ahead of it, per this repo's spec-first culture.)*
@@ -48,10 +48,10 @@ and folds their answers back together:
 Two properties make this more than a shared Google Doc:
 
 - **The task fans out and the answers fan in.** The organizer never has to be
-  in any recipient's data path to collect their work — the recipient seals it
+  in any recipient's data path to collect their work; the recipient seals it
   and sends it.
 - **The privacy split holds per node.** Each recipient's own research is a
-  normal Se/cure session (server in no data path); the only thing that ever
+  normal Se/cure session (server in no data path). The only thing that ever
   reaches the organizer is the conclusion the recipient chose to seal and
   return.
 
@@ -64,19 +64,19 @@ Two properties make this more than a shared Google Doc:
   it is a D1 row owned by the organizer.
 - **Project keypair** — a per-campaign **P-256 ECDH** keypair. The **public
   key** travels inside every invite link; the **private key** stays with the
-  organizer (client-held; the server stores only ciphertext — §7). It is what
+  organizer (client-held; the server stores only ciphertext, §7). It is what
   lets a node seal a result that ONLY the organizer can open.
 - **Alias** — an identity slot in the campaign (`alpha`, `beta`, a display
   name). One invite link per alias; each alias carries its own password.
 - **Invite link** — a DRSW/1 workspace (`/cure/workspace#w=…`) whose payload
-  carries a new `campaign` section (§4) alongside the usual settings / seeded
-  conversation / optional grants. Opening it is completely offline, exactly as
-  any workspace (`docs/WORKSPACE-SECURITY.md` §1).
-- **Node / participant** — the person + browser that opens an invite link and
-  does the research. Identical to a DRSW node; "participant" is the crowd-model
+  carries a new `campaign` section (§4) alongside the usual settings, seeded
+  conversation, and optional grants. Opening it is completely offline, exactly
+  as any workspace (`docs/WORKSPACE-SECURITY.md` §1).
+- **Node / participant** — the person and browser that open an invite link and
+  do the research. Identical to a DRSW node; "participant" is the crowd-model
   word for it.
 - **Result envelope** — the node's conclusion, sealed to the project public key
-  (§5). `kind: "drcr-result"`. Travels by link / file / message / QR — never
+  (§5). `kind: "drcr-result"`. Travels by link, file, message, or QR, and never
   needs the organizer online at send time.
 - **Aggregate** — the merged conclusion the pipeline synthesizes from all
   returned results, shown live on the dashboard (§6).
@@ -442,7 +442,7 @@ node implements the seed, not the whole):
 5. The **server endpoints + D1 tables** (§8), all fail-safe, ciphertext-only,
    owner-scoped, with EN+SV intent parity for any routing gate.
 
-Each step is small and independently testable, and — like DRSW — someone
+Each step is small and independently testable, and, as with DRSW, someone
 else's node implementing DRCR/1 on separate source is as legitimate a next step
 as ours.
 </content>

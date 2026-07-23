@@ -2,7 +2,7 @@
 
 **The complete documentation of `sdk/` — DistillSDK — as a standalone
 section of the project's documentation.** The SDK is the *constructive*
-counterpart to the repo's operational skills: a design, a 34-module skill
+counterpart to the repo's operational skills: a design, a 33-module skill
 library, a machine-readable manifest, an implementation-order rationale, and a
 dependency-free CLI for building **agent pairs** — one AI-assistant product
 shipped as two tiers of the same capability set, the way this site ships
@@ -78,8 +78,8 @@ The SDK has three parts:
 | File | What it is |
 |---|---|
 | `sdk/DESIGN.md` | The pair abstraction: zero-or-one server, capability classes C/S/B/X/D, contracts PA-1…PA-10, the module model, the design decisions |
-| `sdk/MANIFEST.json` | The module registry: 34 modules with layer, class, dependencies, skill path, reference files, acceptance criteria |
-| `sdk/ROADMAP.md` | The implementation order: seven phases (0–6), why each module lands where it does, exit criteria per phase |
+| `sdk/MANIFEST.json` | The module registry: 33 modules with layer, class, dependencies, skill path, reference files, acceptance criteria |
+| `sdk/ROADMAP.md` | The implementation order: six phases, why each module lands where it does, exit criteria per phase |
 | `sdk/skills/<id>/SKILL.md` | One buildable capability module per skill |
 | `sdk/README.md` | The catalog-and-usage front page of the `sdk/` directory |
 | `sdk/pair-cli.mjs` | The dependency-free CLI over the manifest (`list` / `show` / `plan` / `validate`), unit-tested in `npm test` |
@@ -92,7 +92,7 @@ therefore ships *knowledge* (skills with contracts, build plans, and
 acceptance tests) plus a thin generator, not a runtime library. Generated
 pairs own their `fetch` calls and their stream loops, exactly like the
 reference does. A skill is also the unit an agent session can actually
-execute — which is how both the reference and any generated pair are, in
+execute, which is how both the reference and any generated pair are, in
 practice, built.
 
 ---
@@ -104,7 +104,7 @@ one server component. There is no microservice mesh, no separate auth service,
 no search proxy fleet: every server-side responsibility lives in the one
 worker, and the client tier must remain fully functional with that worker
 reduced to a static file host (or replaced by any static host). This is the
-property the SDK exists to preserve — it is what makes the pair's privacy
+property the SDK exists to preserve. It is what makes the pair's privacy
 claims *auditable*: the client tier's guarantees follow from the absence of a
 server in the data path, not from a policy document.
 
@@ -123,19 +123,19 @@ server in the data path, not from a policy document.
 
 The upstream APIs themselves are **optional**: a client-tier session against a
 local model server has *no* upstream third party at all, and a pair can be
-generated with no web search, no maps, no enrichment — the baseplate plus a
+generated with no web search, no maps, no enrichment. The baseplate plus a
 provider registry is already a working product.
 
 **Why the worker is the only server.** One deployable, one routing table, one
 security-header function, one identity gate: auditable by reading a single
 module graph. Serverless-edge (Cloudflare Workers in the reference) makes "one
-server component" cheap to hold — no fleet to grow into. The design survives
+server component" cheap to hold, with no fleet to grow into. The design survives
 platform swaps (Deno Deploy, Bun on a VPS) because the skills state the
 *contract* (routing, D1-equivalent optionality, R2-equivalent blob store), not
 the vendor API.
 
-**Why the client tier is not a demo.** The client tier is the mission's proof
-— how far a useful assistant can be pushed toward *provable* privacy. Class C
+**Why the client tier is not a demo.** The client tier is the mission's proof:
+how far a useful assistant can be pushed toward *provable* privacy. Class C
 modules are first-class citizens with the same pipeline invariants (PA-1,
 PA-2, PA-3 all hold client-side in the reference's `drc-research.js`), not a
 feature-reduced teaser. Every capability skill states its client-tier story:
@@ -156,7 +156,7 @@ comes FIRST. Internal code names never appear in user-facing copy. See the
 ## 3. Capability classes
 
 Every SDK module is classified by where it can run. This classification is the
-heart of the design — it is what "preserving the properties" means:
+heart of the design. It is what "preserving the properties" means:
 
 | Class | Meaning | Examples |
 |---|---|---|
@@ -281,7 +281,7 @@ selectable. Three worked selections:
 selection, closes it over `deps`, sorts by layer, and emits/builds one module
 at a time, each landing with its unit tests green and its acceptance checklist
 satisfied before the next starts. A big-bang scaffold would generate 100+
-files no one has verified — exactly the failure mode PA-10 exists to prevent.
+files no one has verified, exactly the failure mode PA-10 exists to prevent.
 
 ### Platform types — what a generated app IS
 
@@ -293,7 +293,7 @@ the type is its logical boundary:
   local model server, or grant tokens borrowed through the bridge). Because it
   is just static files it is **instantly runnable**: the `pair-studio` module
   preview-deploys it into an in-app pane, and the saved artifact runs from any
-  static host. This is the default type, deliberately — the pair's own mission
+  static host. This is the default type, deliberately: the pair's own mission
   posture applied to what the pair builds.
 - **A server-tier build** adds the one server component. The pair's own server
   **never executes or hosts generated server code** (a hard rule — anything
@@ -304,10 +304,10 @@ the type is its logical boundary:
 
 ---
 
-## 6. The module catalog (34 modules)
+## 6. The module catalog (33 modules)
 
 The complete registry, grouped by layer. `Deps` is the manifest's dependency
-edge set — the generator's topological order.
+edge set, the generator's topological order.
 
 **Layer 0 — Foundation (the mandatory baseplate)**
 
@@ -375,7 +375,6 @@ edge set — the generator's topological order.
 |---|---|---|---|
 | `pair-generator` | D | pair-architecture | Selection → dependency closure → module-at-a-time generation; adoption mode for wiring an existing product. Meta — used from day one, listed last |
 | `pair-studio` | X | vm-toolchain, secure-tier, pair-generator | The in-app builder: prompt → SDK-guided generation in the VM → preview deploy in the same UI → save as a runnable test application |
-| `agent-platform` | X | pair-studio, symbol-language, grant-bridge | AgentSpec — an agent DEFINED by its chat-input-pane controls, intro + loading animations, colour theme, seed example questions, and a minted share-link's quota; the closed control vocabulary; the composer renderer + visual proof; the four shipped agents (research, secure, under-construction, agent-builder); example generation + share-link minting. Full docs: `docs/AGENT-PLATFORM.md` |
 | `deploy-pipeline` | S | workspace-fs, pair-studio, grant-bridge | Deploy the workspace and try it LIVE: a same-origin preview URL for client-tier builds, a push to the user's own edge account for server-tier builds (never the pair's origin). Server-tier only |
 
 ### The skill shape
@@ -399,9 +398,7 @@ selection. Unit-tested by `sdk/pair-cli.test.mjs` as part of the repo's
 node sdk/pair-cli.mjs list            # the catalog, grouped by layer
 node sdk/pair-cli.mjs show <id>       # one module: class, deps, provides, skill, reference, acceptance
 node sdk/pair-cli.mjs plan <id ...>   # dependency closure of a selection → build order
-node sdk/pair-cli.mjs validate       # manifest + AGENTS.json integrity + class rules (run before committing a change)
-node sdk/pair-cli.mjs agents         # the shipped agent flavours (sdk/AGENTS.json)
-node sdk/pair-cli.mjs agent <id>     # one agent's full definition: controls, theme, animations, quota, examples
+node sdk/pair-cli.mjs validate       # manifest integrity + class rules (run before committing a manifest change)
 ```
 
 `plan` is the generator's first step made inspectable: give it a selection
@@ -453,11 +450,12 @@ fine-tuning mechanism**: for a given (often small, mobile) model, fit an SDK
 whose dimensions and promised use cases are kept small enough for the model's
 size and attention span, chosen by *measured* task success rather than guessed.
 The distilled, model-sized SDK then becomes the basis for a bounded domain
-training set on which a small on-device model is fine-tuned — carrying SDK mode's
-green distill-and-build flow to its conclusion: not a prompt-time SDK a large
-model reads, but a distilled SDK *baked into* a small model that already knows
-how to build with it. It stays a note rather than a phase because every step is
-downstream of shipped, measured features and a plural SDK↔source binding.
+training set on which a small on-device model is fine-tuned, carrying SDK mode's
+green distill-and-build flow to its conclusion: the distilled SDK is *baked
+into* a small model that already knows how to build with it, rather than being a
+prompt-time SDK a large model reads. It stays a note rather than a phase because
+every step is downstream of shipped, measured features and a plural SDK↔source
+binding.
 
 ---
 
@@ -491,13 +489,8 @@ checklist satisfied before starting the next.
 
 ## 10. Relationship to the existing application (adoption mode)
 
-Nothing in `sdk/` is imported by `src/` or `public/` today (SDK **mode**
-consumes the manifest via the committed source snapshot — `manifestFromSnapshot`
-in `public/js/sdk-core.js` — not a direct `../sdk/` import; and `sdk/pair-cli.mjs`
-imports FROM `public/js/sdk-core.js`, not the reverse). This section is about
-per-module ADOPTION — renaming/aligning each reference file to its SDK
-contract — which genuinely hasn't happened. The later wiring task proceeds
-per module, in the manifest's dependency order:
+Nothing in `sdk/` is imported by `src/` or `public/` today. The later wiring
+task proceeds per module, in the manifest's dependency order:
 
 1. Pick a module; read its skill's "reference implementation" map.
 2. Extract/align the reference files to the module's stated contract (usually
@@ -507,7 +500,7 @@ per module, in the manifest's dependency order:
 
 Because the skills were distilled from the live code and its documented
 incident history, "wiring up" is mostly *adoption of the SDK's names and
-acceptance gates*, not a rewrite — and recreating the entire site from scratch
+acceptance gates*, not a rewrite. Recreating the entire site from scratch
 is the same walk in generation mode instead of adoption mode. That is also the
 swap discipline: replace one module's files with the SDK-generated equivalent,
 hold the acceptance checklist constant, and the swap is provably
@@ -542,7 +535,7 @@ behavior-preserving.
 **What the SDK does NOT promise.** It does not make a pair production-ready
 (the reference itself is explicitly experimental); it does not abstract away
 providers' wire quirks (skills document them instead); and it does not let a
-selection violate the contracts — there is no flag to "just this once" put the
+selection violate the contracts. There is no flag to "just this once" put the
 server in the client tier's data path.
 
 ---

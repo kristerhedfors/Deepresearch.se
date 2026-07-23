@@ -243,7 +243,7 @@ test("proveComposer passes for every shipped agent (the visual-proof gate)", () 
 test("rendering helpers produce readable text", () => {
   const reg = realRegistry();
   const list = renderAgentList(reg);
-  assert.ok(/research/.test(list) && /Agent Builder/.test(list));
+  assert.ok(/research/.test(list) && /Agent Studio/.test(list));
   const show = renderAgentShow(reg, "research");
   assert.ok(/drives `depth`/.test(show));
   assert.ok(/quota \(share link\)/.test(show));
