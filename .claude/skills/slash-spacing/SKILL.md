@@ -136,6 +136,14 @@ always tighter than `Se/cure`'s):
 - **`-.04em` passes everywhere measured**: worst side +0.043em, all
   verdicts `ok`. This is also exactly the value the `#ghostsay`/`#drspop`
   override had already converged on by hand.
+- **`-.02em` is the AIRIER owner preference (2026-07-23)** for surfaces
+  where a little extra space is explicitly wanted — it is the least
+  tightening the sweep supports at the 0.06em target (worst config
+  `sans-serif @ 700` recommends `-.023em`) while staying tighter than a
+  plain slash. The account panel (`.account-card .sl`) uses it. Don't
+  "correct" `-.02em` back to `-.04em`: it is a deliberate choice, not
+  drift — `-.04em` remains the default floor-safe fix, `-.02em` the
+  chosen-looser one.
 - Bold is tighter than regular in Arial-metric fonts (0.083 vs 0.093) but
   slightly wider in DejaVu (0.118 vs 0.110) — weight alone doesn't predict
   the direction; measure.
@@ -207,7 +215,7 @@ Fixed vs still running on the global constant (as of 2026-07-16):
 |---|---|---|---|
 | `public/help/index.html` (Se/rver docs) | `-.04em` (page-wide) | yes + regular body prose | FIXED 2026-07-16, RE-FIXED 2026-07-16 (regular-weight `.92rem` prose touched too — collapsed to one page-wide rule, see Measured facts) |
 | `public/cure/help/index.html` (Se/cure docs, split 2026-07-16) | `-.04em` (page-wide) | yes + regular body prose | FIXED 2026-07-16, RE-FIXED 2026-07-16 (the reported instance: "Se/cure is a deep-research assistant…" under "What this tier is" — regular weight, not bold) |
-| `public/css/app.css` (app + header brand) | `-.12em` | yes (header `<b>`) | on the global constant — owner-tuned, leave unless reported |
+| `public/css/app.css` (app + header brand) | `-.12em` + `.account-card .sl -.02em` | yes (header `<b>`) | header/app chrome on the global constant (owner-tuned, leave unless reported); the ACCOUNT PANEL scoped to `-.02em` — FIXED 2026-07-23 (owner choice: a LITTLE more air; the drawer's small `.section-lbl` / `.setting-note` wordmarks — "Not available in Se/cure", "ready-to-use Se/cure session", "run only on Se/rver" — read tight; MEASURED `-.12em` TOUCHES/OVERLAPS on the left side in every font, and the owner wanted them airier than the `-.04em` norm, so `-.02em`, the least tightening the sweep supports at the 0.06em target) |
 | `public/cure/drc.css` | `-.12em` + `#ghostsay/#drspop -.04em` + `#proxybanner/#notices -.04em` + `#settingsview .setting-pop -.04em` + `#accountview -.04em` | many | partial (`#proxybanner`/`#notices` MEASURED + fixed 2026-07-16; the settings-drawer ⓘ pops MEASURED + fixed 2026-07-17 — owner report: the secure-research-space pop (`#proxypop`) too tight; scoped to the whole `.setting-pop` class since `#wspop`/`#localpop` share the same `.8rem` mixed-weight prose context; the account drawer MEASURED + fixed 2026-07-18 — owner report: ~5-6 wordmarks in the account panel's `.82rem`/`.9rem`/`.74rem` prose touching, one page-scoped `#accountview .sl` rule covers the whole drawer) |
 | `public/welcome/index.html` | `-.12em` + `#mbubble +.02em` | yes | partial |
 | `public/build/index.html` | `-.12em` | yes | unmeasured on device |

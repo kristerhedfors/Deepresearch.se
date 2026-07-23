@@ -272,6 +272,15 @@ header {
 /* Tighten the slash so Se/cure and Se/rver read closer to "secure"/"server"
    wherever a wordmark tail wraps its slash in <span class="sl">. */
 .sl { margin: 0 -.12em; }
+/* The account panel wants a LITTLE more air around the slash (owner choice,
+   2026-07-23): the global -.12em measured TOUCHES/OVERLAPS on the left side
+   (e→/) for every font here, so wordmarks like "Not available in Se/cure",
+   "ready-to-use Se/cure session" and "run only on Se/rver" read as tight in
+   the drawer's small `.section-lbl` / `.setting-note` prose. -.02em is the
+   least tightening the slash-gap sweep supports at the 0.06em target, so it
+   clears the floor on the worst-case font while staying tighter than a normal
+   slash. Scoped to the whole panel so every wordmark in it stays consistent. */
+.account-card .sl { margin: 0 -.02em; }
 /* The small "introspection" marker under the wordmark — the quiet label that
    names the mode the white-titanium skin puts you in. Only present while the
    introspection theme is active (root carries `dev-mode`); a no-op otherwise.
