@@ -93,6 +93,15 @@ Both must pass. Test failures or type errors mean the branch is NOT ready — fi
 them (or report and stop). The freshness checks in `src/introspect.test.js` also
 fire here, so a skipped Step 1 surfaces as a test failure, not a silent gap.
 
+**Pipeline-sensitive diff? Note the bench gate.** If the branch touches
+`src/pipeline.js`, `prompts.js`, `budget.js`, `model-profiles.js`, or their
+neighbors (the pre-push hook prints the exact list), the scored bench gate
+applies AFTER deploy: `npm run bench:gate` in `tests/` against the deployment,
+ledger line appended to `tests/EVAL-BENCH-FINDINGS.md` (`docs/TESTING.md`
+§"The bench gate"). It can't run pre-merge from a container without a
+deployment of the change — so state in the PR body that the gate run is
+pending, and don't call the change verified until it has run.
+
 ## Step 3 — commit pending work (maybe)
 
 If `git status` shows uncommitted changes (including the regenerated artifacts),

@@ -123,7 +123,12 @@ sealed local projects is already the product.
    input for the API key plus a provider dropdown that auto-follows the
    pasted key's PREFIX (each provider's key prefix is a registry fact:
    detect on input, set the dropdown, show "— detected: X"); unknown
-   prefixes leave the dropdown to the user. Saved keys list below with
+   prefixes leave the dropdown to the user. Detection must obey the
+   most-specific-prefix rule from the provider-registry skill — `sk-ant-…`
+   (Anthropic) is inside `sk-…` (OpenAI), so a bare `sk-` pattern misroutes
+   Anthropic keys to OpenAI's wire; a recognized-but-unsupported shape gets
+   an honest "that's an X key — not supported here" hint, never a silent
+   wrong guess. Saved keys list below with
    per-provider remove buttons and a masked display. Also here: the keyless
    local-server base-URL row, every knob, and the grant/bridge master
    toggles with their disclosure rows.

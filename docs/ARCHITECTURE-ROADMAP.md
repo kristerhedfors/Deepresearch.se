@@ -421,14 +421,20 @@ degrades to accepting the draft.
 
 ### 5.5 Sub-question decomposition at the top tier
 
-> **Status: shipped in a lighter form.** Triage now emits `subquestions`
-> (threaded into the gap-check and synthesis prompts so coverage is
-> audited against each) and a `complexity` classification that caps
-> research depth BELOW the budget for simple questions
-> (`applyComplexityToPlan` in `src/budget.js` — the de-noised benchmark
-> found over-researching simple questions net-negative). The full form
-> below — concurrent bounded mini-pipelines per sub-question — remains
-> unbuilt.
+> **Status: shipped in a lighter form; full form built 2026-07-23, gated
+> OFF.** Triage now emits `subquestions` (threaded into the gap-check and
+> synthesis prompts so coverage is audited against each) and a
+> `complexity` classification that caps research depth BELOW the budget
+> for simple questions (`applyComplexityToPlan` in `src/budget.js` — the
+> de-noised benchmark found over-researching simple questions
+> net-negative). The full form now exists as `runSubquestionFanout`
+> (`src/pipeline.js`): concurrent per-sub-question coverage audits + one
+> deterministic merged wave, comparison/survey questions at the long tiers
+> only (multihop hops are dependency-ordered and stay serial). It is
+> behind `SUBQ_FANOUT_ENABLED = false` (`src/budget.js`) until the bench
+> gate (`tests/bench-gate.mjs`) proves it, exactly as this section
+> demanded ("only pays off once §5.0 can prove it"); enabling it is also
+> §6's migration trigger.
 
 For the most generous budgets, triage can already produce multi-angle
 plans; the next step is letting it produce *sub-questions*, each running
@@ -507,10 +513,13 @@ rides last and only once §5.0 can score the misses it targets.
 
 ## 6. Platform: Cloudflare Workflows, Durable Objects, and the recovery machinery
 
-> **Status: not adopted** — none of the trigger conditions below has
-> arrived; the hand-built recovery machinery (answers table, heartbeat,
-> stale-run detection, client stall watchdog) remains in place and
-> battle-tested.
+> **Status: not adopted; trigger armed 2026-07-23.** The hand-built
+> recovery machinery (answers table, heartbeat, stale-run detection,
+> client stall watchdog) remains in place and battle-tested. But §5.5's
+> fan-out now exists in code behind `SUBQ_FANOUT_ENABLED = false`
+> (`src/budget.js`), and that flag's comment binds the pair: turning the
+> fan-out on (bench-gate evidence in hand) and migrating the
+> orchestration shell to Workflows happen in the same effort.
 
 A striking amount of hard-won code exists because a long research run
 lives inside one fragile isolate: `ctx.waitUntil` survival, the D1
