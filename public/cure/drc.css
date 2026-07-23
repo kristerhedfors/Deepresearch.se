@@ -133,6 +133,10 @@ body::before {
   transition: opacity .26s ease, transform .3s cubic-bezier(.2, .72, .29, 1);
 }
 body.term-fg #chat { opacity: .16; }
+/* THIRD view mode (2026-07-23 directive) — mirror of app.css: the terminal
+   output is not shown at all. term-hidden drops the backdrop entirely, leaving
+   only the conversation (agent-backdrop.js also hides the layer inline). */
+body.term-hidden #dr-agent-backdrop { display: none; }
 body.term-fg #dr-agent-backdrop {
   z-index: 4;
   /* Terminal COLORING (2026-07-16 directive) — mirror of app.css: the pane
@@ -378,7 +382,16 @@ header {
    the sandbox active; tapping it is the one way to switch terminal ⇄ chat.
    Pressed (accent) = terminal is forward. No glow — just the symbol. */
 #termbtn[hidden] { display: none; }
+/* Three-mode harmonized highlight (2026-07-23 directive) — mirror of app.css,
+   using this tier's olive accent: full fill (forward) → tinted outline (faint
+   backdrop) → dim neutral (not shown). */
 #termbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+#termbtn.mode-bg {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+#termbtn.mode-off { opacity: .5; }
 
 /* DRS-only features: present where the app has them, but dimmed. Still
    tappable — the tap opens the explainer pointing to /rver. */
