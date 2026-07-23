@@ -703,8 +703,29 @@ form.addEventListener("submit", async (e) => {
   input.focus();
 });
 
-// Enter inserts a line break — nothing is sent until the arrow is tapped
-// (form submit). The input just grows via the autogrow handler above.
+// Enter sends the message; Shift+Enter inserts a newline — the near-universal
+// chat-composer convention (Claude, ChatGPT, Slack's default). Two guards keep
+// an Enter from sending when the user didn't mean it to:
+//   • IME composition (e.isComposing / keyCode 229): a CJK/other input method
+//     uses Enter to COMMIT a candidate, so that Enter must never send.
+//   • Touch-primary devices (coarse pointer — phones/tablets): their on-screen
+//     keyboard's Enter is a newline and the ↑ button is how you send there, so
+//     Enter stays a newline to avoid firing off a half-typed thought.
+// Shift/Ctrl/Cmd/Alt+Enter always fall through to the textarea's own newline.
+function enterShouldSend() {
+  try {
+    return !window.matchMedia("(pointer: coarse)").matches;
+  } catch {
+    return true; // no matchMedia (or it threw) → assume a physical keyboard
+  }
+}
+input.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.isComposing || e.keyCode === 229) return; // IME candidate commit, not a send
+  if (!enterShouldSend()) return; // touch device → let Enter insert a newline
+  e.preventDefault();
+  form.requestSubmit();
+});
 
 // CSS<->JS freshness handshake (the counterpart of app.css's
 // --css-version): the boot guard walks and repairs the JS MODULE graph,

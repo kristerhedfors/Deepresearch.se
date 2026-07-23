@@ -382,8 +382,15 @@ export function renderSummary(me) {
   const who = me.email
     ? `${me.name && me.name !== me.email ? me.name + " · " : ""}${me.email}`
     : "Site administrator";
-  const msgCount = me.notifications?.total || 0;
+  // The Messages button count must reflect ONLY what the message center VIEW
+  // actually shows: personal notices plus (for admins) pending approvals +
+  // open alerts. Feedback replies are surfaced by the separate Feedback button
+  // and are NOT rendered in the message center, so they must be excluded here —
+  // the header badge's `total` folds them in, but reusing that total for this
+  // button lit "Messages (n)" with a count that opened to an empty message
+  // center whenever the only unread item was a feedback reply.
   const fbCount = me.notifications?.unread_feedback || 0;
+  const msgCount = Math.max(0, (me.notifications?.total || 0) - fbCount);
   return `
     <p class="who">${who}<span class="role-badge">${me.unlimited ? "admin · unlimited" : me.role}</span></p>
     ${me.unlimited ? '<p class="muted">Break-glass admin session — usage is tracked under the shared "admin" identity with no personal quota. Sign in with Google to see your own bars.</p>' : ""}
