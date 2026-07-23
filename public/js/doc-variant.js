@@ -47,8 +47,16 @@ export function onDocVariantChange(cb) {
 /** @param {"original"|"clean"} variant */
 function apply(variant) {
   // Inline surfaces: show the matching variant blocks, hide the other.
+  // SKIP the documentElement: apply() reflects the current variant onto <html>
+  // as a styling hook (below), which makes the root match this very same
+  // [data-doc-variant] selector. Treating it as a content block would set
+  // html.hidden=true on any toggle where the previous (reflected) variant
+  // differs from the new one — blanking the entire page. That was the
+  // "screen turns white when I touch the knob" crash: reload cleared
+  // html.hidden, the next toggle re-hid the root, and so on.
   const blocks = document.querySelectorAll("[data-doc-variant]");
   for (const el of blocks) {
+    if (el === document.documentElement) continue;
     const want = el.getAttribute("data-doc-variant");
     /** @type {HTMLElement} */ (el).hidden = want !== variant;
   }
