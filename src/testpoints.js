@@ -53,6 +53,7 @@
 import { getDb } from "./db.js";
 import { jsonResponse, textResponse } from "./http.js";
 import { cleanStr, likePattern } from "./chatlog.js";
+import { parseUseCaseRef, useCaseTag } from "../public/js/testpoints-core.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -378,46 +379,13 @@ export function isOpenStatus(status) {
 //   feedback #UC-34 the map was cut off on mobile
 // records the outcome straight onto point #34's thread (src/chat.js →
 // recordUseCaseFeedback), so the outcome lands "as if answered in the list
-// of use cases" without reopening the queue. Mirrored in the client pure
-// core (public/js/testpoints-core.js) — keep the two in lockstep.
-
-/**
- * The canonical display tag for a use case (test point id). DISPLAY only —
- * the functional identifier stays the bare integer id everywhere else.
- * @param {number} id
- * @returns {string}
- */
-export function useCaseTag(id) {
-  return `#UC-${id}`;
-}
-
-// Strips an optional leading feedback keyword (EN + SV, invariant 6 — same
-// vocabulary as feedbackIntent) so parseUseCaseRef reads the ref whether the
-// message opens with "feedback"/"återkoppling"/"synpunkt" or the tag itself.
-const FEEDBACK_LEAD_RE =
-  /^\s*(?:feedback|återkoppling(?:en)?|synpunkt(?:er|en|erna)?)\b[\s:,.\-–—]*/i;
-
-// The use-case ref grammar, matched at the START of the (keyword-stripped)
-// message: "#UC-34", "#UC34", "UC-34", "UC 34", "uc34", or a bare "#34".
-// Language-neutral (the tag is a generated identifier), so EN + SV parity is
-// carried entirely by FEEDBACK_LEAD_RE above.
-const USE_CASE_REF_RE = /^(?:#?\s*uc[\s\-]?0*(\d{1,6})|#0*(\d{1,6}))\b/i;
-
-/**
- * Read a use-case reference out of a feedback message. Returns the referenced
- * point id and its canonical tag, or null when the message names no use case.
- * Pure — unit-tested in src/testpoints.test.js (EN + SV parity).
- * @param {unknown} text the user's feedback message
- * @returns {{ id: number, tag: string } | null}
- */
-export function parseUseCaseRef(text) {
-  if (typeof text !== "string" || !text) return null;
-  const body = text.replace(FEEDBACK_LEAD_RE, "");
-  const m = body.match(USE_CASE_REF_RE);
-  if (!m) return null;
-  const id = Number(m[1] || m[2]);
-  return Number.isInteger(id) && id > 0 ? { id, tag: useCaseTag(id) } : null;
-}
+// of use cases" without reopening the queue. useCaseTag/parseUseCaseRef live
+// ONCE in the client pure core (public/js/testpoints-core.js — the
+// agent-spec-core.js façade pattern: the browser can only import served
+// modules, the Worker bundler can import from anywhere), re-exported here so
+// server callers (pipeline.js, this module) and src/testpoints.test.js keep
+// their import path. Do not reintroduce a copy.
+export { parseUseCaseRef, useCaseTag };
 
 // The verdict symbol vocabulary — one glyph per result, used everywhere a
 // verdict is shown (text render here, the banner buttons, PR comments).
