@@ -21,7 +21,10 @@ description: >-
   /cure tier) only when the answer text contains a CLOSED mermaid fence
   (`completeMermaidSources`, Node-tested — an unterminated mid-stream fence
   stays a code block), renders with `securityLevel: "strict"` +
-  `htmlLabels: false`, re-sanitizes the SVG through DOMPurify, and fails
+  `htmlLabels: false` (ROOT-level in the config — mermaid 11's flowchart-v2
+  ignores the `flowchart`-scoped key and emits `foreignObject` labels that
+  DOMPurify strips, leaving diagrams with empty labels; found live
+  2026-07-23), re-sanitizes the SVG through DOMPurify, and fails
   soft to the visible code block on any load/parse error. Mermaid was
   chosen over lighter libraries (nomnoml, pintora, flowchart.js) because
   answer models emit mermaid syntax natively; the weight is paid only on
