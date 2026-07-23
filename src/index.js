@@ -82,6 +82,15 @@ import {
   handleServerTokenStatus,
   handleServerTokenWeb,
 } from "./server-grants.js";
+import {
+  handlePoolDashboard,
+  handlePoolLlm,
+  handlePoolPoll,
+  handlePoolRegister,
+  handlePoolResult,
+  handlePoolStatus,
+  handlePoolUnregister,
+} from "./pool.js";
 import { getConfig } from "./config.js";
 import { handleSandboxImage, handleSandboxImageConfig } from "./sandbox-image.js";
 import { isPublicAsset, serveAsset } from "./assets.js";
@@ -338,6 +347,17 @@ async function route(request, env, url, log, ctx, requestId) {
     return { response: await handleServerTokenLlm(request, env, log, url) };
   }
 
+  // Compute sharing — PUBLIC consumer surface (the pool token is the authority;
+  // it can never satisfy identify(), so the admin interface stays out of reach).
+  // /status is a non-consuming read; /llm/* parks a completion job for a
+  // provider's browser to run. Fail-safe: no D1 → 503.
+  if (request.method === "POST" && url.pathname === "/api/pool/status") {
+    return { response: await handlePoolStatus(request, env) };
+  }
+  if (url.pathname.startsWith("/api/pool/llm")) {
+    return { response: await handlePoolLlm(request, env, log, url) };
+  }
+
   // ---- unauthenticated: sign-in surface -----------------------------------
   if (url.pathname === "/login" && request.method === "GET") {
     return { response: htmlResponse(loginPage(url.searchParams.get("flash") || ""), 200) };
@@ -592,6 +612,27 @@ async function routeApi(request, env, url, log, identity, ctx, requestId) {
   }
   if (url.pathname === "/api/server-token/adjust" && request.method === "POST") {
     return handleServerTokenAdjust(request, env, log, identity);
+  }
+  // Compute sharing (src/pool.js) — AUTHED surfaces. The PROVIDER loop
+  // (register/poll/result/unregister) needs an identity (the pool is the
+  // caller's account; the dashboard and revocation are per-account). The
+  // sharer DASHBOARD (GET /api/pool + /token, /adjust, /block, /revoke under
+  // it) is the "full oversight" surface. Consumers spend via the PUBLIC
+  // /api/pool/llm/* above the gate.
+  if (url.pathname === "/api/pool/register" && request.method === "POST") {
+    return handlePoolRegister(request, env, log, identity);
+  }
+  if (url.pathname === "/api/pool/poll" && request.method === "POST") {
+    return handlePoolPoll(request, env, log, identity);
+  }
+  if (url.pathname === "/api/pool/result" && request.method === "POST") {
+    return handlePoolResult(request, env, log, identity);
+  }
+  if (url.pathname === "/api/pool/unregister" && request.method === "POST") {
+    return handlePoolUnregister(request, env, log, identity);
+  }
+  if (url.pathname === "/api/pool" || url.pathname.startsWith("/api/pool/")) {
+    return handlePoolDashboard(request, env, url, log, identity);
   }
   // Feedback pipeline (src/feedback.js): the user's own feedback entries and
   // their dialogue threads with the development agent (entries are created
