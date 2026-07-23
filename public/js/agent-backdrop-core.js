@@ -388,18 +388,34 @@ export function parallaxNudge(deltaY, factor = PARALLAX_FACTOR, cap = PARALLAX_C
 // weaker and shorter" — the request). The DOM glue that reads targets, animates
 // the slide, and wires the gestures lives in agent-backdrop.js.
 
-/** The two foreground panes. */
+/**
+ * The THREE view modes the header terminal icon cycles through (2026-07-23
+ * directive). The two originals plus HIDDEN, where the terminal output is not
+ * shown at all:
+ *   - CONVO    — conversation forward, the terminal a faint backdrop behind it.
+ *   - TERMINAL — the terminal forward at full strength (a real terminal field).
+ *   - HIDDEN   — the terminal is not visible at all; only the conversation.
+ * The icon reflects the current mode with harmonized highlights (agent-
+ * backdrop.js syncTermBtn + the CSS).
+ */
 export const LAYER_CONVO = "convo";
 export const LAYER_TERMINAL = "terminal";
+export const LAYER_HIDDEN = "hidden";
 
 /**
- * Toggle the foreground pane. Anything that is not already the terminal flips TO
- * the terminal (so a first background tap always brings the terminal forward).
+ * Advance to the next of the three view modes, cycling in a fixed order that
+ * reads as descending terminal presence and back around:
+ *   convo (faint backdrop) → terminal (forward) → hidden (gone) → convo …
+ * Anything unrecognized (mode unset/garbage) brings the terminal FORWARD, so a
+ * first tap always surfaces it — the long-standing behavior.
  * @param {unknown} mode
- * @returns {"convo"|"terminal"}
+ * @returns {"convo"|"terminal"|"hidden"}
  */
 export function nextLayerMode(mode) {
-  return mode === LAYER_TERMINAL ? LAYER_CONVO : LAYER_TERMINAL;
+  if (mode === LAYER_CONVO) return LAYER_TERMINAL;
+  if (mode === LAYER_TERMINAL) return LAYER_HIDDEN;
+  if (mode === LAYER_HIDDEN) return LAYER_CONVO;
+  return LAYER_TERMINAL;
 }
 
 // A press only counts as a "tap" (→ switch panes) when the pointer barely moved

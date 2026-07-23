@@ -133,6 +133,10 @@ body::before {
   transition: opacity .26s ease, transform .3s cubic-bezier(.2, .72, .29, 1);
 }
 body.term-fg #chat { opacity: .16; }
+/* THIRD view mode (2026-07-23 directive) — mirror of app.css: the terminal
+   output is not shown at all. term-hidden drops the backdrop entirely, leaving
+   only the conversation (agent-backdrop.js also hides the layer inline). */
+body.term-hidden #dr-agent-backdrop { display: none; }
 body.term-fg #dr-agent-backdrop {
   z-index: 4;
   /* Terminal COLORING (2026-07-16 directive) — mirror of app.css: the pane
@@ -378,7 +382,16 @@ header {
    the sandbox active; tapping it is the one way to switch terminal ⇄ chat.
    Pressed (accent) = terminal is forward. No glow — just the symbol. */
 #termbtn[hidden] { display: none; }
+/* Three-mode harmonized highlight (2026-07-23 directive) — mirror of app.css,
+   using this tier's olive accent: full fill (forward) → tinted outline (faint
+   backdrop) → dim neutral (not shown). */
 #termbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+#termbtn.mode-bg {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+#termbtn.mode-off { opacity: .5; }
 
 /* DRS-only features: present where the app has them, but dimmed. Still
    tappable — the tap opens the explainer pointing to /rver. */
@@ -493,6 +506,18 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
 .msg.assistant h2 { font-size: 1.15em; }
 .msg.assistant h3, .msg.assistant h4 { font-size: 1.05em; }
 .msg.assistant a { color: var(--accent); }
+/* Inline [n] citations, linkified by markdown.js to jump to their footer
+   "Sources:" entry (where the URL is written out and live). */
+.cite-ref {
+  color: var(--accent); text-decoration: none; font-weight: 600;
+  cursor: pointer; white-space: nowrap;
+}
+.cite-ref:hover { text-decoration: underline; }
+@keyframes cite-flash {
+  from { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+  to { background: transparent; }
+}
+.cite-target-flash { animation: cite-flash 1.6s ease-out; border-radius: 6px; }
 .msg.assistant code {
   background: var(--panel-2); border: 1px solid var(--border);
   border-radius: 4px; padding: .05em .3em; font-size: .9em;
