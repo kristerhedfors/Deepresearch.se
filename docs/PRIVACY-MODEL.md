@@ -136,3 +136,34 @@ admin interface and can never open it. The name is the reminder: it's
 called a SERVER token so nobody forgets it goes to a server somewhere. The legacy
 `wsk1`/`prg1`/`prx1` families keep working unchanged; new grants should be
 Se/rver tokens.
+
+## Compute sharing — peer-operated upstream (2026-07-23, PROPOSED framing, owner sign-off pending)
+
+`docs/COMPUTE-SHARING.md` designs a capability where a signed-in user LENDS
+their local LLM as pooled capacity: the server is a thin BROKER that relays a
+consumer's completion request to the sharer's browser, which runs it against
+their local model. This adds the `pt1` **pool-token** family
+(`src/pool-token.js`) and the D1 job-queue broker (`src/pool.js`).
+
+It touches this model in one place that is genuinely NEW and is therefore
+flagged, NOT silently adopted: **consuming a pool routes the consumer's prompt
+through the server to ANOTHER NAMED USER'S machine** — a peer-operated upstream,
+not the server's own Exa/Berget keys. The recommended framing (this section is
+descriptive; the CLAUDE.md invariant 4 text is unchanged pending the owner's
+decision) is to treat pool consumption as a **documented variant of the existing
+`api` exception** — "an upstream LLM, operated by a peer instead of Berget" —
+reusing the connected-APIs disclosure PLUS a stronger, unmissable line at the
+point of use: *the pool owner's machine can read everything you send.* Under that
+framing the "EXACTLY TWO exceptions" count is unchanged in spirit (peer compute
+is a variant of the second, a server-relayed upstream completion). The
+alternative — a literal THIRD exception, amending the invariant to say three —
+is cleaner to audit but rewrites a load-bearing owner-directive sentence.
+
+What is already firm and enforced by code: a pool token carries THE POOL-TOKEN
+GUARANTEE (upstream/peer completion access ONLY, never Se/rver data, never a
+login — same structural + module-graph enforcement as the Se/rver token, pinned
+by `src/pool.test.js`); the server forwards to the peer ONLY the completion body
+the consumer chose to send (no identity, filename, or account data);
+**SHARING** (being a provider) is a Se/rver-tier, signed-in action that exposes
+none of the provider's own data and adds no Se/cure exception. See
+`docs/COMPUTE-SHARING.md` §7 for the full analysis.

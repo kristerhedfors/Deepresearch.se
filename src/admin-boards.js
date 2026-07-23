@@ -100,6 +100,20 @@ export const ADMIN_BOARDS = [
     skill: "feedback-loop",
   },
   {
+    id: "errors",
+    title: "Server-error fix queue",
+    purpose:
+      "The runtime-recorded uncaught top-level 500s (index.js's catch), deduped per distinct bug with a recurrence count — the fix loop's queue of server crashes to turn into bug-fix tasks. A fixed row that recurs reopens (regression signal).",
+    feeds_loop: true,
+    api: "/api/admin/errors",
+    text_query: "format=text&open=1",
+    orderings: ["open", "all"],
+    order_help:
+      "open=1 (default) is the actionable queue (status=open); drop it for every row regardless of status. status=<open|fixed|ignored> filters to one state; q=<term> substring-matches message OR path OR signature. Always newest-failure first; limit=N sizes the window. Fetch one bug with /api/admin/errors/:id?format=text.",
+    script: "scripts/errors",
+    skill: "live-verify",
+  },
+  {
     id: "chatlogs",
     title: "Chat interaction log",
     purpose:
