@@ -41,7 +41,14 @@ import {
   targetPath,
   useCaseTag,
   tagStarterPrompt,
+  filterUseCases,
+  highlightSegments,
 } from "./testpoints-core.js";
+
+// The queue grows a substring filter once it holds more than a handful of
+// use cases (owner request — the list reached the mid-thirties). Below this
+// the filter is just clutter, so it stays hidden.
+const SEARCH_MIN = 8;
 
 const API = "/api/admin/testpoints";
 
@@ -61,6 +68,10 @@ const KNOB_SELECTORS = {
 let hooks = {};
 /** @type {any} */
 let els = null;
+// The current queue (oldest-first), held so the search box can re-filter the
+// rendered rows without re-fetching on every keystroke.
+/** @type {any[]} */
+let queuePoints = [];
 
 /**
  * @param {{ hooks?: Record<string, Function> }} [opts]
@@ -99,6 +110,8 @@ function buildDom() {
         <strong>Test queue</strong>
         <button type="button" class="tryqueue-close" aria-label="Close">‹</button>
       </div>
+      <input type="search" class="tryqueue-search" placeholder="Filter use cases…"
+             aria-label="Filter use cases" autocomplete="off" hidden />
       <div class="tryqueue-list"><p class="muted">Loading…</p></div>
     </div>`;
   const banner = document.createElement("div");
@@ -110,7 +123,10 @@ function buildDom() {
     overlay,
     banner,
     list: overlay.querySelector(".tryqueue-list"),
+    search: overlay.querySelector(".tryqueue-search"),
   };
+  // Live filter: re-render the rows (with highlight) as the tester types.
+  els.search.addEventListener("input", renderQueueRows);
   overlay.querySelector(".tryqueue-close").addEventListener("click", () => {
     overlay.hidden = true;
   });
@@ -160,30 +176,78 @@ async function refreshBadge() {
 async function openQueue() {
   if (!els) return;
   els.overlay.hidden = false;
+  els.search.hidden = true; // until we know the queue is long enough
   els.list.innerHTML = '<p class="muted">Loading…</p>';
   const queue = await loadQueue();
   if (!queue) {
+    queuePoints = [];
     els.list.innerHTML = '<p class="muted">Could not load the test queue.</p>';
     return;
   }
   if (!queue.length) {
+    queuePoints = [];
     els.list.innerHTML = '<p class="muted">Nothing to test — the queue is empty. 🎉</p>';
     return;
   }
   // Oldest first: work the backlog in the order points were declared.
-  const ordered = [...queue].sort((a, b) => a.id - b.id);
+  queuePoints = [...queue].sort((a, b) => a.id - b.id);
+  // Offer the quick-search only once the list is long enough to warrant it.
+  els.search.hidden = queuePoints.length < SEARCH_MIN;
+  renderQueueRows();
+  if (!els.search.hidden) {
+    try {
+      els.search.focus();
+    } catch {
+      /* ignore — focus is a nicety, not required */
+    }
+  }
+}
+
+// Render the queue rows from `queuePoints`, filtered by the current search
+// text and with matches highlighted. Called on open and on every keystroke.
+function renderQueueRows() {
+  if (!els) return;
+  const query = els.search.hidden ? "" : els.search.value;
+  const shown = filterUseCases(queuePoints, query);
   els.list.innerHTML = "";
-  for (const p of ordered) {
+  if (!shown.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = `No use cases match “${query.trim()}”.`;
+    els.list.appendChild(empty);
+    return;
+  }
+  for (const p of shown) {
     const row = document.createElement("button");
     row.type = "button";
     row.className = "tryqueue-item";
-    row.innerHTML =
-      `<span class="tryqueue-item-label"></span>` +
-      `<span class="tryqueue-item-target muted"></span>`;
-    row.querySelector(".tryqueue-item-label").textContent = `${useCaseTag(p.id)} ${p.label}`;
-    row.querySelector(".tryqueue-item-target").textContent = p.target;
+    const label = document.createElement("span");
+    label.className = "tryqueue-item-label";
+    setHighlighted(label, `${useCaseTag(p.id)} ${p.label}`, query);
+    const target = document.createElement("span");
+    target.className = "tryqueue-item-target muted";
+    setHighlighted(target, p.target, query);
+    row.appendChild(label);
+    row.appendChild(target);
     row.addEventListener("click", () => showDetail(p));
     els.list.appendChild(row);
+  }
+}
+
+// Set `el`'s content to `text`, wrapping every case-insensitive occurrence of
+// `query` in a highlight <mark>. Uses textContent per segment (never
+// innerHTML) so the point's own label/target can't inject markup.
+function setHighlighted(el, text, query) {
+  el.textContent = "";
+  for (const seg of highlightSegments(text, query)) {
+    if (seg.match) {
+      const mark = document.createElement("mark");
+      mark.className = "tryqueue-hl";
+      mark.textContent = seg.text;
+      el.appendChild(mark);
+    } else {
+      el.appendChild(document.createTextNode(seg.text));
+    }
   }
 }
 
@@ -197,6 +261,7 @@ async function openQueue() {
 // after trying it by hand.
 function showDetail(point) {
   if (!els) return;
+  els.search.hidden = true; // the filter belongs to the list view only
   const { unknown } = partitionActions(point.actions || []);
   const notes = noteTexts(point.actions || []);
   const crossPage = targetPath(point.target, location.origin) !== location.pathname;
