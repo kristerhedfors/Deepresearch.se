@@ -11,12 +11,14 @@
 
 export {
   AGENTS_PATH,
+  AGENT_LINK_SERVICES,
   BASE_THEME,
   CONTROL_REGISTRY,
   CONTROL_TYPES,
   PLATFORM_TYPES,
   QUOTA_WINDOWS,
   agentLinkPlan,
+  agentTokenGrantParams,
   agentsFromSnapshot,
   composerMarkup,
   composerModel,

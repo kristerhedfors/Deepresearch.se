@@ -8,10 +8,10 @@ put any question straight to the introspection agent, which answers from the
 project's own code.
 
 > **Status (2026-07-23):** the definition layer, the four shipped agents, the
-> composer renderer, the visual proof, the CLI, and the documentation are
-> **wired and tested**. The live preview surface and the metered share-link
-> mint are **built on the pieces below** and described honestly as such — the
-> project is experimental research into how far a useful assistant can be
+> composer renderer, the visual proof, the CLI, the live preview surface, and
+> the metered share-link **mint** are **wired and tested**. The mint reuses the
+> existing Se/rver-token subsystem verbatim (no new crypto, no new meter — §7).
+> The project is experimental research into how far a useful assistant can be
 > pushed toward *provable* privacy, not a finished product.
 
 ---
@@ -137,12 +137,28 @@ and the Agent Builder plan from), renders each agent's composer, and lets you:
 ## 7. Sharing an agent as a link (quota + credits)
 
 Creating an agent **as a link** mints a **token** carrying the agent's default
-**quota/credits** — bounded, disclosed, revocable, fail-safe. The quota comes
-straight from the spec (`resolveQuota()`); the token rides the pair's
-**server-token** bridge, whose full model is
-[`docs/SERVER-TOKENS.md`](./SERVER-TOKENS.md) and whose contracts are **PA-8**
-(bridge discipline) and **PA-9** (fail-safe metering) in
-[`sdk/DESIGN.md`](../sdk/DESIGN.md):
+**quota/credits** — bounded, disclosed, revocable, fail-safe. This is wired
+**by the book**: it reuses the pair's existing **Se/rver-token** subsystem
+verbatim — no new crypto, no new meter.
+
+- `agentTokenGrantParams(agent)` (pure) maps the spec to the subsystem's
+  arguments: the upstream `services` in the **closed** permission vocabulary
+  (`api` = LLM, `web` = search — [`src/server-token.js`](../src/server-token.js)
+  `SERVER_TOKEN_SERVICES`), the per-service `quotas` (the spec's credits, else
+  its request count), and the `ttlHours` from the quota window.
+- `POST /api/admin/agent-link` ([`src/agent-link.js`](../src/agent-link.js),
+  admin-gated like the existing shareable mint) loads the agent from the source
+  snapshot and calls `mintServerTokenGrant()` — which signs one standard HS256
+  **JWT** ([`mintServerToken`](../src/server-token.js)) and creates one D1
+  `server_tokens` meter row per permission. Optional `ttlHours` / `quotas` in
+  the body override the spec defaults ("go by default, or choose the credits").
+- The response includes the JWT and a shareable `link` (`/cure?st=<token>`) —
+  the same mechanism the admin server-token mint uses.
+
+Because it *is* a Se/rver token, it carries **THE SERVER-TOKEN GUARANTEE**
+unchanged — **PA-8** (bridge discipline) and **PA-9** (fail-safe metering) in
+[`sdk/DESIGN.md`](../sdk/DESIGN.md), full model in
+[`docs/SERVER-TOKENS.md`](./SERVER-TOKENS.md):
 
 - the token authorises **upstream API access only** — never the Se/rver tier's
   own data, and never a login;

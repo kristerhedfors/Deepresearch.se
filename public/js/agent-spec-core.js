@@ -214,14 +214,24 @@ export function resolveQuota(a) {
 // ---- share-link mint contract (PA-8 / PA-9) ----------------------------------
 
 /**
+ * The upstream services an agent SHARE LINK needs, named in the Se/rver
+ * token's CLOSED permission vocabulary (server-token.js `SERVER_TOKEN_SERVICES`
+ * = `web`/`api`): `api` = one LLM completion through the server's key (any agent
+ * that calls a model), `web` = one web search through the server's key (an agent
+ * with a web-search toggle). Kept here as plain strings so this pure module has
+ * no server-token import; the endpoint feeds them to `mintServerTokenGrant`.
+ */
+export const AGENT_LINK_SERVICES = { llm: "api", search: "web" };
+
+/**
  * The token-mint request an agent SHARE LINK produces: the upstream
  * permissions the agent needs (derived from its controls) plus the quota the
  * minted token is metered by (from resolveQuota). This is the bounded,
  * disclosed, revocable, fail-safe contract of the pair's server-token bridge —
  * the token authorises upstream API access ONLY, never the Se/rver tier's own
- * data, never a login. Pure: the caller signs/persists it (grant-bridge); this
- * only computes what a link for THIS agent should grant, straight from the spec,
- * so a shared agent runs on exactly the credits you defined and not one more.
+ * data, never a login. Pure: the caller signs/persists it (server-grants.js);
+ * this only computes what a link for THIS agent should grant, straight from the
+ * spec, so a shared agent runs on exactly the credits you defined and not more.
  * @param {any} a
  * @returns {{ agent: string, platform: string, perms: string[], quota: ReturnType<typeof resolveQuota> }}
  */
@@ -229,17 +239,49 @@ export function agentLinkPlan(a) {
   const controls = resolveControls(a);
   const perms = new Set();
   for (const c of controls) {
-    if (c.type === "model-select" || c.type === "prompt-input") perms.add("llm"); // the agent calls a model
-    if (c.type === "toggle" && (c.id === "web_search" || c.id === "search")) {
-      // only when the toggle defaults on OR is user-flippable does the link need the grant
-      perms.add("search");
-    }
+    if (c.type === "model-select" || c.type === "prompt-input") perms.add(AGENT_LINK_SERVICES.llm); // "api"
+    if (c.type === "toggle" && (c.id === "web_search" || c.id === "search")) perms.add(AGENT_LINK_SERVICES.search); // "web"
   }
   return {
     agent: a?.id || "",
     platform: a?.platform || "client",
     perms: [...perms],
     quota: resolveQuota(a),
+  };
+}
+
+/** A quota window as a token TTL in hours (the Se/rver token carries ONE duration). @param {string} window */
+export function windowHours(window) {
+  switch (window) {
+    case "minute": return 1 / 60;
+    case "hour": return 1;
+    case "month": return 24 * 30;
+    case "day":
+    default: return 24;
+  }
+}
+
+/**
+ * The exact arguments a share-link mint passes to `mintServerTokenGrant`
+ * (src/server-grants.js): the upstream `services`, a per-service `quotas` map
+ * (the spec's credits — else its request count — as the unit allowance), the
+ * `ttlHours` from the quota window, and a human `label`. This is the one seam
+ * between the pure AgentSpec and the existing server-token subsystem, so the
+ * endpoint stays a thin adapter and the JWT/metering stay entirely by the book.
+ * @param {any} a
+ * @returns {{ services: string[], quotas: Record<string, number>, ttlHours: number, label: string }}
+ */
+export function agentTokenGrantParams(a) {
+  const plan = agentLinkPlan(a);
+  const units = plan.quota.credits != null ? plan.quota.credits : plan.quota.requests;
+  /** @type {Record<string, number>} */
+  const quotas = {};
+  for (const svc of plan.perms) quotas[svc] = units;
+  return {
+    services: plan.perms,
+    quotas,
+    ttlHours: windowHours(plan.quota.window),
+    label: (a && a.name) ? String(a.name) : (a && a.id) || "agent",
   };
 }
 

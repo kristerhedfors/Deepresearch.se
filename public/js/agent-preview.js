@@ -73,6 +73,10 @@ function renderAgent(agent) {
         <input type="text" readonly value="${esc(shareUrl)}" aria-label="Share link">
         <button type="button" id="copyshare">Copy</button>
       </div>
+      <div class="share">
+        <button type="button" id="mintlink">Mint token link (admin)</button>
+        <span id="mintout" class="muted"></span>
+      </div>
       <p class="src">Defined in <code>sdk/AGENTS.json</code> · rendered by <code>composerMarkup()</code> · <a href="/docs#AGENT-PLATFORM">docs</a></p>
     </div>`;
 
@@ -82,6 +86,35 @@ function renderAgent(agent) {
       copy.textContent = "Copied";
       setTimeout(() => { copy.textContent = "Copy"; }, 1500);
     }).catch(() => {});
+  });
+
+  // Mint a real Se/rver token for this agent (admin-only endpoint — a non-admin
+  // gets a clear 403 message rather than a broken button).
+  const mint = document.getElementById("mintlink");
+  const mintOut = document.getElementById("mintout");
+  mint?.addEventListener("click", async () => {
+    if (!mintOut) return;
+    mint.setAttribute("disabled", "true");
+    mintOut.textContent = "Minting…";
+    try {
+      const res = await fetch("/api/admin/agent-link", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ agent: agent.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.link) {
+        mintOut.innerHTML = `Minted: <a href="${esc(data.link)}">token link</a> (${esc(String((data.services || []).map((/** @type {any} */ s) => `${s.svc}:${s.quota}`).join(", ")))})`;
+      } else if (res.status === 403) {
+        mintOut.textContent = "Minting a token link requires an admin sign-in.";
+      } else {
+        mintOut.textContent = data.error || `Couldn't mint (HTTP ${res.status}).`;
+      }
+    } catch {
+      mintOut.textContent = "Couldn't reach the mint endpoint.";
+    } finally {
+      mint.removeAttribute("disabled");
+    }
   });
 
   // Reflect the theme onto the stage container so the whole card is themed.

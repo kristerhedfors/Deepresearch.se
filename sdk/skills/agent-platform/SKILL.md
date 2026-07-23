@@ -115,9 +115,16 @@ and the visual proof — know every shape it must draw.
 5. **Agent Builder mode.** Rename SDK mode's user-facing label to "Agent
    Builder" (the internal `sdk` mode id / routes stay). Its purpose is building
    NEW agents by distilling the Se/cure tier.
-6. **Share-link minting.** On "create a link", mint a token (the `grant-bridge`
-   consolidated JWT) carrying `resolveQuota(spec)` — bounded, disclosed,
-   revocable, fail-safe.
+6. **Share-link minting.** On "create a link", mint a token carrying the
+   spec's quota — bounded, disclosed, revocable, fail-safe. Do it **by the
+   book**: reuse the existing Se/rver-token subsystem (`src/server-grants.js`
+   `mintServerTokenGrant` → `src/server-token.js` one HS256 JWT + one D1
+   `server_tokens` row per permission). The ONLY new code is the pure adapter
+   `agentTokenGrantParams` (spec → `{services, quotas, ttlHours}`, perms in the
+   closed `web`/`api` vocabulary) and the admin endpoint `src/agent-link.js`
+   (`POST /api/admin/agent-link`). No new crypto, no new meter — so the
+   SERVER-TOKEN GUARANTEE (upstream APIs only, never data, never a login) holds
+   for free.
 
 ## Reference implementation (this repo)
 
@@ -129,6 +136,7 @@ and the visual proof — know every shape it must draw.
 | CLI commands | `sdk/pair-cli.mjs` (`agents`, `agent <id>`) |
 | Live preview | `public/agents/preview.html`, `public/js/agent-preview.js` |
 | Visual proof | `scripts/agent-proof.mjs`, `proveComposer` |
+| Share-link mint | `src/agent-link.js` (`POST /api/admin/agent-link`), `agentTokenGrantParams` → `src/server-grants.js` |
 | Full docs | `docs/AGENT-PLATFORM.md` |
 
 ## Acceptance checklist
@@ -139,7 +147,10 @@ and the visual proof — know every shape it must draw.
 - [ ] `node scripts/agent-proof.mjs` PASS + writes the composer gallery.
 - [ ] Deriving a new agent = copy one spec, change fields, re-validate — no code
       change.
-- [ ] A minted share link meters a fresh token by the spec's quota (PA-8/PA-9).
+- [ ] `POST /api/admin/agent-link` mints a standard Se/rver token whose JWT
+      verifies and whose D1 meter rows carry the spec's quota
+      (`src/agent-link.test.js`) — reusing the existing subsystem, no new
+      crypto/meter (PA-8/PA-9).
 - [ ] A `client`-platform agent keeps the Se/cure privacy posture (PA-4).
 
 ## Pitfalls

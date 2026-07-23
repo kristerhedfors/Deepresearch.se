@@ -59,6 +59,7 @@ import { webSearch } from "./exa.js";
 import { resolveSearchBackend } from "./websearch-backends.js";
 import { handleAdminProxy } from "./proxy.js";
 import { handleAdminServerToken } from "./server-grants.js";
+import { handleAgentLink } from "./agent-link.js";
 import { deleteUser, getUserByEmail, getUserById, listUsers, updateUser } from "./accounts.js";
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
@@ -232,6 +233,13 @@ export async function handleAdminApi(request, env, url, log, identity) {
     // revoke. (Defaults are edited via PUT /config.)
     if (path === "/server-token" || path.startsWith("/server-token/")) {
       return handleAdminServerToken(request, env, url, log, identity);
+    }
+    // Mint a shareable Se/rver token for an AgentSpec (src/agent-link.js):
+    // the agent's spec sets the upstream services + quota; the token is a
+    // standard Se/rver token, metered by the same rows, honoring the same
+    // guarantee (upstream APIs only, never Se/rver data, never a login).
+    if (path === "/agent-link" && method === "POST") {
+      return handleAgentLink(request, env, url, log, identity);
     }
     const alertPath = path.match(/^\/alerts\/(\d+)\/ack$/);
     if (alertPath && method === "POST") {

@@ -30,6 +30,8 @@ import {
   controlMarkup,
   proveComposer,
   agentLinkPlan,
+  agentTokenGrantParams,
+  windowHours,
   AGENTS_PATH,
   BASE_THEME,
 } from "./agent-spec-core.js";
@@ -180,28 +182,52 @@ test("composerModel exposes the resolved pane", () => {
   assert.ok(Array.isArray(m.controls));
 });
 
-test("agentLinkPlan derives perms + quota from the spec", () => {
+test("agentLinkPlan derives server-token perms + quota from the spec", () => {
   const plan = agentLinkPlan({
     id: "x", platform: "server",
     controls: [{ type: "prompt-input" }, { type: "model-select" }, { type: "toggle", id: "web_search", label: "W" }],
     quota: { window: "hour", requests: 12 },
   });
-  assert.ok(plan.perms.includes("llm"));
-  assert.ok(plan.perms.includes("search"));
+  // perms are named in the CLOSED server-token vocabulary: api (llm) + web (search)
+  assert.ok(plan.perms.includes("api"));
+  assert.ok(plan.perms.includes("web"));
   assert.equal(plan.quota.requests, 12);
   assert.equal(plan.quota.window, "hour");
-  // an agent with no search toggle gets no search perm
+  // an agent with no search toggle gets no web perm
   const noSearch = agentLinkPlan({ id: "y", platform: "client", controls: [{ type: "prompt-input" }] });
-  assert.ok(!noSearch.perms.includes("search"));
-  assert.ok(noSearch.perms.includes("llm"));
+  assert.ok(!noSearch.perms.includes("web"));
+  assert.ok(noSearch.perms.includes("api"));
 });
 
-test("every shipped agent produces a link plan", () => {
+test("windowHours maps a quota window to a token TTL", () => {
+  assert.equal(windowHours("day"), 24);
+  assert.equal(windowHours("hour"), 1);
+  assert.equal(windowHours("month"), 24 * 30);
+  assert.equal(windowHours("weird"), 24); // safe default
+});
+
+test("agentTokenGrantParams feeds mintServerTokenGrant exactly", () => {
+  const p = agentTokenGrantParams({
+    id: "x", name: "X", platform: "server",
+    controls: [{ type: "prompt-input" }, { type: "toggle", id: "web_search", label: "W" }],
+    quota: { window: "day", requests: 30, credits: 100 },
+  });
+  assert.deepEqual(p.services.sort(), ["api", "web"]);
+  assert.equal(p.quotas.api, 100); // credits win over requests when set
+  assert.equal(p.quotas.web, 100);
+  assert.equal(p.ttlHours, 24);
+  assert.equal(p.label, "X");
+});
+
+test("every shipped agent produces a link plan + grant params", () => {
   const reg = realRegistry();
   for (const a of reg.agents) {
     const plan = agentLinkPlan(a);
     assert.equal(plan.agent, a.id);
     assert.ok(plan.quota.requests >= 0);
+    const params = agentTokenGrantParams(a);
+    assert.ok(params.services.length >= 1, `${a.id} needs at least one upstream service`);
+    assert.ok(params.services.every((s) => s === "web" || s === "api"), `${a.id} perms are in the closed vocabulary`);
   }
 });
 
