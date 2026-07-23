@@ -269,6 +269,17 @@ header {
   color: #f5c518; /* the logotype's golden swirl */
   text-shadow: 0 1px 4px rgba(10, 46, 92, .55);
 }
+/* Terminal mode (body.term-fg) brings a near-black field forward behind the
+   fixed header (body.term-fg #dr-agent-backdrop). The plain "DeepResearch."
+   half of the wordmark is dark navy (var(--text)) with a WHITE glow tuned for
+   the light waves — over the black terminal field it blends in and reads as
+   near-invisible. Flip it to light terminal ink with a dark shadow so it reads
+   white-on-black; the golden Se/rver tail already stands out on black.
+   (2026-07-23 owner report.) */
+body.term-fg .brand {
+  color: #e6edf3;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .8), 0 0 2px rgba(0, 0, 0, .6);
+}
 /* Tighten the slash so Se/cure and Se/rver read closer to "secure"/"server"
    wherever a wordmark tail wraps its slash in <span class="sl">. */
 .sl { margin: 0 -.12em; }
