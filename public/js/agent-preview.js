@@ -1,6 +1,6 @@
 // @ts-check
 // The Agent Platform preview surface (public/agents/preview.html). Loads the
-// agent registry the SAME way introspection and the Agent Builder do — from the
+// agent registry the SAME way introspection and the Agent Studio do — from the
 // committed source snapshot (public/introspect/source-snapshot.json) via the
 // pure agentsFromSnapshot() — so what you preview is by construction the
 // deployed definition. Renders each agent's composer from its spec
@@ -62,7 +62,7 @@ function renderAgent(agent) {
       </dl>
 
       <h3>Ask an example question</h3>
-      <div class="examples">${exampleChips || '<span class="muted">(no seed examples — the Agent Builder can generate some)</span>'}</div>
+      <div class="examples">${exampleChips || '<span class="muted">(no seed examples — Agent Studio can generate some)</span>'}</div>
 
       <h3>Share this agent</h3>
       <p class="muted">A shared link mints a token carrying this agent's quota — bounded, disclosed, revocable, fail-safe (PA-8/PA-9).</p>

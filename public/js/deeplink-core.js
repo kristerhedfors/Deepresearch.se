@@ -58,7 +58,7 @@ export function parseComposerDeepLink(search) {
 
 /**
  * Build a composer deep-link URL (the inverse — used by docs tooling / the
- * Agent Builder's "share this question" affordance). `base` defaults to the
+ * Agent Studio's "share this question" affordance). `base` defaults to the
  * app root; pass "/" or an absolute origin.
  * @param {{ mode?: string|null, ask: string, send?: boolean, base?: string }} opts
  * @returns {string}

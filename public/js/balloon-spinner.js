@@ -115,12 +115,20 @@ const CHECK_BLUE = "#0d4fa0"; // the finale's ✓ — app.css --check-blue, so t
  * host and allowed to overflow, self-terminating once the host leaves the
  * document.
  *
+ * `opts.palette` recolours the balloon into a single scheme (introspection's
+ * titanium, say) instead of cycling the blue-and-gold FLEET, and `opts.check`
+ * matches the ✓ to it — so a mode can wear the balloon in its own colour
+ * (mode-spinner.js passes both). Omitted → the tier's blue-and-gold balloon +
+ * blue ✓, unchanged.
+ *
  * @param {HTMLElement} host  the `.spin` / `.typing-icon` element
- * @param {{ size?: number, style?: number, speed?: number }} [opts]
+ * @param {{ size?: number, style?: number, speed?: number,
+ *           palette?: {col:string, alt:string, border:string, fill?:{a:string,b:string}, dir?:number, speed?:number},
+ *           check?: string }} [opts]
  * @returns {{ stop: () => void, finish: (onDone?: () => void) => void }}
  *   stop   — tear down immediately (no finale), for cancel/settle paths.
- *   finish — speed-run into the colored balloon, fold into the blue ✓,
- *            then call onDone ONCE; a no-op mount fires onDone immediately.
+ *   finish — speed-run into the colored balloon, fold into the ✓, then call
+ *            onDone ONCE; a no-op mount fires onDone immediately.
  */
 export function mountBalloonSpinner(host, opts = {}) {
   const noop = {
@@ -136,7 +144,11 @@ export function mountBalloonSpinner(host, opts = {}) {
     const hostBox = host.getBoundingClientRect();
     const base = Math.max(hostBox.width, hostBox.height) || 32;
     const size = Math.round(opts.size || base * 2.4);
-    const style = spinnerStyle(opts.style ?? 0);
+    // A per-mode palette wins over the cycled FLEET scheme; its `fill` (if any)
+    // recolours the logo wind-down so no stray flag-blue survives a recolour.
+    const style = opts.palette || spinnerStyle(opts.style ?? 0);
+    const fillPalette = opts.palette && opts.palette.fill;
+    const checkCol = typeof opts.check === "string" ? opts.check : CHECK_BLUE;
     const clockRate = BASE_SPEED * clampAnimMult(opts.speed);
 
     host.style.background = "none";
@@ -222,7 +234,7 @@ export function mountBalloonSpinner(host, opts = {}) {
       ctx.scale(sc2, sc2);
       ctx.translate(-ccx, -ccy);
       ctx.globalAlpha = a;
-      ctx.strokeStyle = CHECK_BLUE;
+      ctx.strokeStyle = checkCol;
       ctx.lineWidth = Math.max(2, R * 0.16);
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
@@ -299,7 +311,7 @@ export function mountBalloonSpinner(host, opts = {}) {
           ctx.translate(-cx, -cy);
         }
         // The tumble rides as the figure's sway — the turnaround somersault.
-        drawBalloonFigure(ctx, { cx, cy, R, style, P, spin, sway: flipA, alpha: a, t });
+        drawBalloonFigure(ctx, { cx, cy, R, style, P, spin, sway: flipA, alpha: a, t, fill: fillPalette });
         ctx.restore();
       }
       if (checkProg > 0) drawCheck(checkProg, smooth(checkProg));

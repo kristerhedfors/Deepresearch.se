@@ -9,6 +9,7 @@ import {
   CHAT_MODE_IDS,
   MODE_THEMES,
   TIER_THEMES,
+  barTint,
   checkColor,
   modeCharacter,
   modeTheme,
@@ -34,6 +35,7 @@ test("every descriptor declares all distinguishing axes", () => {
     assert.ok(typeof t.label === "string" && t.label);
     assert.ok(t.rootClass === null || typeof t.rootClass === "string");
     assert.ok(/^#[0-9a-f]{6}$/i.test(t.accent), `accent for ${t.id}`);
+    assert.ok(/^#[0-9a-f]{6}$/i.test(t.bar), `bar for ${t.id}`);
     assert.ok(/^#[0-9a-f]{6}$/i.test(t.check), `check for ${t.id}`);
     assert.ok(typeof t.checkVar === "string" && t.checkVar.startsWith("--"));
     assert.ok(spinners.has(t.spinner), `spinner for ${t.id}`);
@@ -54,22 +56,36 @@ test("depth slider is an optional theme feature: off for Introspection + SDK", (
   assert.equal(showsDepthSlider("nope"), true, "unknown → Normal (shows it)");
 });
 
-test("SDK is the plant / green / showcase identity", () => {
+test("SDK is the Agent Studio plant / green / showcase identity", () => {
   const sdk = MODE_THEMES.sdk;
   assert.equal(sdk.rootClass, "sdk-mode");
+  assert.equal(sdk.label, "Agent Studio"); // renamed from "Agent Builder", 2026-07-23
+  assert.equal(sdk.tag, "agent studio");
   assert.equal(sdk.spinner, "plant");
   assert.equal(sdk.character, "plant");
   assert.equal(sdk.panel, "showcase");
   assert.equal(sdk.checkVar, "--check-green");
 });
 
-test("introspection keeps the balloon spinner but its own character + class", () => {
+test("bar tint resolves per mode (the status-bar field color)", () => {
+  assert.equal(barTint("normal"), "#6fc3fd");
+  assert.equal(barTint("introspection"), "#ccd2d8");
+  assert.equal(barTint("sdk"), "#66cc92");
+  assert.equal(barTint("nope"), "#6fc3fd", "unknown → Normal");
+  // Each bar matches nothing but a hex — the descriptor axis test covers shape.
+});
+
+test("introspection wears the titanium balloon: recoloured spinner + slate ✓", () => {
   const i = MODE_THEMES.introspection;
   assert.equal(i.rootClass, "dev-mode");
+  // The spinner KIND stays balloon (a titanium recolour, not a new figure)…
   assert.equal(i.spinner, "balloon");
   assert.equal(i.character, "tin");
-  // Its ✓ matches the spinner it mounts, so canvas/real checks agree.
-  assert.equal(i.check, MODE_THEMES.normal.check);
+  // …but its ✓ is titanium slate, not the tier blue — and points at --check-tin
+  // so the canvas fold and the CSS .check span agree.
+  assert.notEqual(i.check, MODE_THEMES.normal.check);
+  assert.equal(i.check, "#5f6b78");
+  assert.equal(i.checkVar, "--check-tin");
 });
 
 test("normal has no theme class and mounts the balloon", () => {

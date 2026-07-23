@@ -29,8 +29,11 @@
  * @property {string} id            the mode id (matches chat-mode.js CHAT_MODES)
  * @property {string} label         the human name shown in the dropdown
  * @property {string|null} rootClass the class toggled on <html> (null = none)
- * @property {string|null} tag       the small wordmark tag ("sdk studio", …)
+ * @property {string|null} tag       the small wordmark tag ("agent studio", …)
  * @property {string} accent         the mode's accent color
+ * @property {string} bar            the iOS status-bar tint (theme-color meta) —
+ *                                   the mode's field color, so the chrome above
+ *                                   the app matches --bg (chat-mode.js applies it)
  * @property {string} check          the completion ✓ color (canvas + CSS agree)
  * @property {string} checkVar       the app.css custom property holding `check`
  * @property {"balloon"|"plant"} spinner  the waiting-symbol animation
@@ -61,6 +64,7 @@ export const MODE_THEMES = {
     rootClass: null,
     tag: null,
     accent: "#0d4fa0",
+    bar: "#6fc3fd",
     check: "#0d4fa0",
     checkVar: "--check-blue",
     spinner: "balloon",
@@ -76,12 +80,14 @@ export const MODE_THEMES = {
     rootClass: "dev-mode",
     tag: "introspection",
     accent: "#5a6b7a",
-    // Introspection keeps the Se/rver balloon spinner (its distinctness is the
-    // titanium pane + the TIN mascot), so its ✓ stays the tier blue — the
-    // canvas ✓ and the swapped-in real ✓ must not disagree. A dedicated
-    // titanium spinner would be a drop-in here (set spinner + check together).
-    check: "#0d4fa0",
-    checkVar: "--check-blue",
+    bar: "#ccd2d8", // brushed-silver status bar over the titanium field
+    // Introspection wears the balloon spinner recoloured in TITANIUM (mode-
+    // spinner.js TITANIUM_SPINNER), so its ✓ is titanium slate — the canvas fold
+    // and the swapped-in real ✓ must agree, so check/checkVar point at app.css
+    // --check-tin. The spinner KIND stays "balloon" (a recolour, not a new
+    // figure); the palette lives in mode-spinner.js.
+    check: "#5f6b78",
+    checkVar: "--check-tin",
     spinner: "balloon",
     character: "tin",
     panel: "history",
@@ -91,10 +97,11 @@ export const MODE_THEMES = {
   },
   sdk: {
     id: "sdk",
-    label: "SDK",
+    label: "Agent Studio",
     rootClass: "sdk-mode",
-    tag: "sdk studio",
+    tag: "agent studio",
     accent: "#1f8a4c",
+    bar: "#66cc92", // spring-green status bar over the green field
     check: "#1f8a4c",
     checkVar: "--check-green",
     spinner: "plant",
@@ -117,6 +124,7 @@ export const TIER_THEMES = {
     rootClass: null,
     tag: null,
     accent: "#7c6a24",
+    bar: "#c3b091", // /cure's khaki chrome tint
     check: "#e06c8c",
     checkVar: "--check-pink",
     spinner: "balloon", // n/a here — Se/cure mounts the umbrella spinner in its own app
@@ -132,6 +140,7 @@ export const TIER_THEMES = {
     rootClass: null,
     tag: null,
     accent: "#0d4fa0",
+    bar: "#6fc3fd", // the Se/rver app's sky-blue chrome tint
     check: "#0d4fa0",
     checkVar: "--check-blue",
     spinner: "balloon",
@@ -161,6 +170,12 @@ export function spinnerKind(mode) {
 /** The completion ✓ color for a mode. @param {unknown} mode @returns {string} */
 export function checkColor(mode) {
   return modeTheme(mode).check;
+}
+
+/** The iOS status-bar tint (theme-color) for a mode — its field color, so the
+ * chrome above the app matches --bg. @param {unknown} mode @returns {string} */
+export function barTint(mode) {
+  return modeTheme(mode).bar;
 }
 
 /** The theme character/greeter for a mode. @param {unknown} mode @returns {"balloon"|"tin"|"plant"} */

@@ -1,7 +1,7 @@
 // @ts-check
 // AgentSpec — DistillSDK's declarative definition of ONE agent (a "flavour" of
 // the Se/cure + Se/rver pair). This is the shared PURE core both tiers, the
-// sdk/pair-cli.mjs CLI, and the Agent Builder mode use to load, validate, and
+// sdk/pair-cli.mjs CLI, and the Agent Studio mode use to load, validate, and
 // resolve agent definitions. Same convention as sdk-core.js / bash-core.js /
 // introspect-core.js: it lives under public/ because the browser can only
 // import served modules while the Worker bundler imports from any repo path;
@@ -59,7 +59,7 @@ export const QUOTA_WINDOWS = ["minute", "hour", "day", "month"];
 /**
  * Structural validation of one agent spec. Returns a list of problem strings —
  * empty means valid. Never throws: a bad field is a reported problem, so the
- * Agent Builder can surface exactly what to fix.
+ * Agent Studio can surface exactly what to fix.
  * @param {any} a
  * @returns {string[]}
  */
@@ -290,7 +290,7 @@ export function agentTokenGrantParams(a) {
 /**
  * The example questions to show for an agent: its seed `examples`, de-duplicated
  * and bounded. `generatable` is true when the agent opted into on-demand
- * generation (the Agent Builder can then ask the model for more, seeded by these
+ * generation (the Agent Studio can then ask the model for more, seeded by these
  * and the agent's purpose). Pure: generation itself is a model call at the call
  * site — this only resolves the seed + the flag.
  * @param {any} a
@@ -333,7 +333,7 @@ export const AGENTS_PATH = "sdk/AGENTS.json";
 
 /**
  * Parse sdk/AGENTS.json out of a source snapshot ({files:[{p,t}]}). Null (never
- * a throw) when missing or unparsable — so the Agent Builder degrades to "no
+ * a throw) when missing or unparsable — so the Agent Studio degrades to "no
  * agent templates in this deployment" rather than erroring.
  * @param {{ files?: Array<{p: string, t: string}> } | null | undefined} snapshot
  * @returns {any | null}
