@@ -59,11 +59,11 @@ keeps the diff reviewable and avoids churn on prose the owner didn't ask about.
 Use Mode A (lint-guided in-place edit) by default; Mode B (full regeneration) is
 still owner-requested only.
 
-The **`docs/clean/` review candidates + the Original⇄Cleaned toggle**
-(`bundle-docs-clean.mjs`, `public/js/doc-variant.js`, `/docs`) are the SEPARATE
-compare-and-decide surface where the owner reviews de-smelled whole-file
-candidates against the originals; the wired Clean step above operates on the
-authoritative doc directly and does not go through that staging.
+There is no separate "candidate" copy to review anymore. The old `docs/clean/`
+staging + the Original⇄Cleaned toggle were retired (owner directive,
+2026-07-23) once the cleaned versions were promoted to canonical: **the cleaned
+doc IS the doc**. The Clean step edits the authoritative file in place, and the
+`/docs` viewer serves that single version. Keep only that.
 
 ## Scope guard (read first)
 

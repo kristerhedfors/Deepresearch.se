@@ -21,7 +21,7 @@ A deep-research pipeline — triage → source gathering → gap audit →
 synthesis → validation — has a *structure* that is independent of any
 implementation: which phases exist, what feeds what, which phases are
 optional or looped, what happens when one fails, which model class handles
-each, and — the part this project cares most about — **where each phase runs
+each, and (the part this project cares most about) **where each phase runs
 and which parties receive which data**. Today that structure lives buried in
 orchestration code (`src/pipeline.js`, `public/js/drc-research.js`), visible
 only by reading it.
@@ -240,8 +240,8 @@ harvests from the `model-provider`'s knowledge (and its optional granted
 spine), the diff instead names the optional phases each tier adds:
 `enrichment`/`notes` server-side, `recall`/`web-search` client-side.
 
-That is the language doing its job: the privacy split — this project's
-central claim — expressed as two fingerprints and a five-line diff.
+That is the language doing its job: the privacy split, this project's
+central claim, expressed as two fingerprints and a five-line diff.
 
 ## 6. DRPL in the federation
 

@@ -62,9 +62,9 @@ recipe and rebuilding. We host it from our own origin. So: proprietary engine
 (accepted), our image (built from scratch, self-hosted).
 
 **The governing image requirement is SMALL + FAST + NO MID-COMMAND STALLS.**
-It must load quickly enough to be convenient and — critically — commands must
-not stall while the VM fetches hundreds of MB of blocks on demand. That drives
-three choices:
+It must load quickly enough to be convenient, and commands must not stall
+while the VM fetches hundreds of MB of blocks on demand. That drives three
+choices:
 
 1. **Smallest practical image as the default: Alpine i386**, aggressively
    trimmed (docs/man/caches stripped, `resize2fs -M`), target well under
@@ -81,12 +81,12 @@ three choices:
    small, the whole disk is fetched once (backgrounded after first boot, or
    eager), after which **every command runs against a fully-local disk and
    touches the network zero times.** This is only practical *because* the
-   image is small — the two requirements reinforce each other.
+   image is small; the two requirements reinforce each other.
 
 The **`ExecEngine` interface** (the `exec-engine` module) is kept as thin,
-optional future-proofing — the reference already has the seam (the agent loop
+optional future-proofing. The reference already has the seam (the agent loop
 `bash-core.js` is engine-agnostic; only `sandbox.js` knows CheerpX), and
-formalizing it costs nothing and keeps the fallback ladder open — but it is
+formalizing it costs nothing and keeps the fallback ladder open. It is
 **not** a plan to move off CheerpX. The near-term work is entirely: build the
 small Alpine image from our recipe, self-host it, and wire full prefetch.
 

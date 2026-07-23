@@ -140,16 +140,10 @@ derivation, history image-stripping, `splitUserContent`, plus
 pipeline-embedded elements (Street View panorama/frames, id-numbered)
 reduced to one-line references — the
 Node-testable core `stream.js` orchestrates around),
-`models.js` (model dropdown; its country-of-processing flags come from the
-shared `provider-region.js` — Berget EU/Sweden, OpenAI/Anthropic/Groq US,
-local/on-device no flag — read here, in `cure/drc.js`, and in
-`introspect-core.js`), `attachments.js` (pending images/docs;
+`models.js` (model dropdown), `attachments.js` (pending images/docs;
 the canvas downscaler itself lives in `image-downscale.js`, the shared
 leaf `feedback-attach.js` — the feedback pipeline's add-a-screenshot
-widget — also compresses through; `docs.js` extracts text AND metadata from
-attachments — pdf via the vendored pdf.js, docx via a hand-rolled
-ZIP/DecompressionStream reader that also surfaces tracked-changes /
-`&lt;w:delText&gt;` leaks, plus md/txt),
+widget — also compresses through),
 `account.js` (the account panel SHELL: `initAccountPanel`,
 the shared `PanelCtx`, and the `showView` dispatcher — the views live in
 `account-views.js` (summary, full usage,
@@ -229,12 +223,7 @@ single-shot chatbot build briefs — each a ready-to-send SDK prompt sized for t
 reference model Claude Sonnet 5 — plus a pure `renderShowcaseGallery`; data +
 lookups are Node-tested, the one DOM export is guarded),
 `settings.js` (cached `/api/settings` client; `storageAvailable()` is the
-synchronous question every storage-touching module asks),
-`canned-faq.js` (the prepackaged NON-LLM "get-started helper" both tiers show
-BEFORE a model is reachable — Se/cure before an API key, Se/rver before
-sign-in: short prewritten answers to the common questions, each carrying the
-`CANNED_LABEL` badge so it is unmistakably not the AI; static markdown, EN+SV
-per invariant 6, Node-tested), `dev-mode.js`
+synchronous question every storage-touching module asks), `dev-mode.js`
 (developer mode's CLIENT presentation: the TITANIUM-GRAY theme — a `dev-mode`
 class on the ROOT element re-pointing the nine palette variables, `:root.dev-mode`
 in `css/app.css` — mirrored into a `dr_dev_mode` localStorage cache so a PWA
@@ -253,40 +242,14 @@ flavour) — and which per-send fields `stream.js` declares
 `reconcileChatMode` downgrades a stored pick when the knob is off; Node-tested),
 `sdk-core.js` (DistillSDK's shared PURE core — see the `src/sdk-tools.js`
 row above; lives under `public/` per the pure-core convention, imported by the
-Worker, the `sdk/pair-cli.mjs` CLI, and Node tests — Node-tested),
-`agent-spec-core.js` (the Agent Platform's shared PURE core — the AgentSpec
-schema, the closed control vocabulary, validation/resolution, the
-`composerMarkup` composer renderer + `proveComposer` visual-proof check,
-`agentLinkPlan` share-link minting contract, and `agentsFromSnapshot`; server
-façade `src/agent-spec.js`, CLI re-export, Node-tested `agent-spec-core.test.js`
-— see `docs/AGENT-PLATFORM.md`), `agent-preview.js` (the `/agents/preview.html`
-surface: renders each agent's composer from the registry, wires its example
-questions as composer deep-links, shows the share-link quota), `deeplink-core.js`
-(the pure composer deep-link parser `parseComposerDeepLink` behind the
-`/?mode=…&ask=…` "ask the source" links the agent-platform docs use; Node-tested,
-wired in `app.js`), `sandbox-mode.js` (the SANDBOX counterpart of
+Worker, the `sdk/pair-cli.mjs` CLI, and Node tests — Node-tested), `sandbox-mode.js` (the SANDBOX counterpart of
 `dev-mode.js`: a `dr_bash_lite` localStorage mirror of the `bash_lite_mcp` knob
 so the cross-origin-isolation self-heal fires SYNCHRONOUSLY at first paint from
 the cache — closing the 2026-07-13 boot-race where a send before `/api/settings`
 resolved fell back to a plain web answer with no sandbox activity, chat_logs
 #306 — plus the single `isolateForSandbox`/`shouldIsolate`/`clearIsolationGuard`
 self-heal helper `app.js`, the knob toggle, and the `pageshow` bfcache handler
-all route through; Node-tested),
-`sandbox-files.js` (the sandbox's file-mounting PURE core — the `/workspace`
-+ `/mnt/<projname>-<hash>` layout, the mount manifest, and `buildSeedScript`
-that cp's host bytes ingested via CheerpX DataDevices into the persistent
-tree; Node-tested, the DOM glue is `sandbox.js` — see the **execution-sandbox**
-skill),
-`agent-backdrop.js` over the pure `agent-backdrop-core.js` (the AGENT ACTIVITY
-BACKDROP — instead of popping the sandbox terminal open, raw commands + output
-drift faintly across the page background; fed from `execInSandbox` in
-`sandbox.js` so both tiers surface automatically; a ring-buffered
-multi-channel transcript, Node-tested; transparency has been FIXED since the
-2026-07-13 slider removal),
-`boot-messages.js` (the pure, Node-tested rotating boot-bar quips shown on the
-notification bar while the CheerpX Linux image streams and boots; ticked by
-`sandbox.js`),
-`bar-tint.js` (the iOS bar-tint re-assert
+all route through; Node-tested), `bar-tint.js` (the iOS bar-tint re-assert
 helper, an import-free PUBLIC-graph leaf both tiers boot with: iOS Safari can
 keep the PREVIOUS page's `theme-color` chrome tint across the tier crossing —
 2026-07-10, recurred 2026-07-17 with the bottom toolbar too — so `wireBarTint`
@@ -371,7 +334,7 @@ whole project — record, chats, decrypted file originals, RAG index
 with vectors — into ONE blob the server only ever sees encrypted; its
 static imports pull the DRS storage stack, so it must NEVER enter the
 /cure module graph — public modules import `vault-core.js` instead;
-pure core Node-tested). DRC's client modules — the whole public tier:
+pure core Node-tested). DRC's client modules, the whole public tier:
 `drc-core.js` (DRC's pure core, built on `vault-core.js`: ONE master secret →
 HKDF-independent public reference + blob id + blob key; the sealed
 project-state archive — provider API keys live INSIDE it; the HKDF info
@@ -476,7 +439,7 @@ page carries the sibling first-visit onboarding — the does/doesn't
 pane and the ghost mascot pointing out the ghost button, inline in
 `public/welcome/index.html` — see the **ui-notes** skill):
 a deliberate LOOK-AND-FEEL TWIN of the main app in a KHAKI
-palette (2026-07-10 directive) — the same floating glass chrome, waves,
+palette (2026-07-10 directive). The same floating glass chrome, waves,
 composer, spiderweb knob and slider shapes as `css/app.css`,
 self-contained since app.css is auth-served. DRS-only features (ghost,
 account, attach, camera) appear as DIMMED buttons

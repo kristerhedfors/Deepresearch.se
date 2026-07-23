@@ -4,7 +4,7 @@
 professionals assessing this architecture. Every normative statement in this
 document carries a claim ID (**E-1** … **E-38**, §12) anchored to the exact
 source file that implements it, so the document can be independently
-validated against the code — see §13 for the validation protocol. The whole
+validated against the code; §13 gives the validation protocol. The whole
 codebase is public, so nothing here relies on secrecy of design.*
 
 ---
@@ -65,7 +65,7 @@ any security-relevant path.
 
 The most important honest caveats an assessor should weigh (full list §11):
 the Se/rver history key is *derivable* by a live, compromised server
-(property 2 is "key never at rest", not "server can never know the key" —
+(property 2 is "key never at rest", not "server can never know the key";
 disclosed to users); the interaction log stores full Q&A plaintext in D1
 unless the conversation is flagged incognito (an explicit product decision);
 and the workspace-link KDF is iterative SHA-512, not a memory-hard KDF, by
@@ -112,13 +112,13 @@ flowchart LR
 
 **Trust boundary summary.** In Se/cure, the trust boundary is the browser
 itself: the server is structurally outside every data path (the two bounded
-exceptions — opt-in, quota-metered web-search and LLM-proxy grants — are
+exceptions, the opt-in, quota-metered web-search and LLM-proxy grants, are
 documented in §5.6 and disclosed in the UI). In Se/rver, content transits the
 server in memory during a request; the at-rest design ensures the server
 *stores* only ciphertext it cannot read from storage alone, with the
 enumerated exceptions of §7.
 
-The user-facing disclosure of this model is shown on first sign-in — it is
+The user-facing disclosure of this model appears on first sign-in. It is
 deliberately specific about the encryption model, the readable exceptions,
 and the interaction log:
 
@@ -277,7 +277,7 @@ CSPRNG IV per record. Two stored shapes:
 That last row is the honest limitation: this is a **"combination required"**
 model, not end-to-end encryption — see §11-1.
 
-**Cloud mirror (implicit — no knob, 2026-07-16 directive):** the *same*
+**Cloud mirror (implicit, no knob, 2026-07-16 directive):** the *same*
 ciphertext blob is
 PUT to R2 (`convos/{uid}/{id}`, `projects/{uid}/{id}` — `src/storage.js`); the
 server stores, lists and serves it back without ever holding key material at
@@ -296,7 +296,7 @@ server endpoint `src/vault.js`).
 **The secret:** `DR1-` + 8 groups of 4 Crockford-base32 chars = **160 bits
 from `crypto.getRandomValues`**. Copy-safe by construction: case-insensitive,
 separators ignored, and classic transcription misreads mapped back on input
-(O→0, I/L→1) — a secret read over the phone still works. The `DR1` prefix is
+(O→0, I/L→1), so a secret read over the phone still works. The `DR1` prefix is
 a format marker, not entropy.
 
 ![Generating a project vault secret in the Se/cure drawer — the DR1-… secret shown is a throwaway generated in an ephemeral browser session for this screenshot](img/encryption/cure-project-secret.png)
@@ -350,7 +350,7 @@ the same secret (`drc-core` test suite).
 
 A workspace is a fully configured Se/cure session sealed into **one offline
 link**: `…/cure/workspace#w=<blob>`. The blob rides the URL **fragment**,
-which browsers never send in HTTP requests and strip from referrers — so the
+which browsers never send in HTTP requests and strip from referrers, so the
 server (and any intermediary) never sees even the ciphertext. Architecture
 doc: `docs/WORKSPACE-SECURITY.md`; implementation
 `public/js/workspace-core.js`.
@@ -370,7 +370,7 @@ password  = 12 alphanumeric chars (~71 bits) generated, or user-chosen; shared O
 
 The substitution: hacka.re's XSalsa20-Poly1305 (TweetNaCl) becomes
 **AES-256-GCM**, because this repo ships no crypto dependency and WebCrypto
-has no Salsa — both are AEADs, and the 10-byte stored nonce is expanded by a
+has no Salsa. Both are AEADs, and the 10-byte stored nonce is expanded by a
 single SHA-512 exactly as the original does (24 bytes for NaCl there, 12 for
 GCM here).
 
@@ -392,8 +392,8 @@ sequenceDiagram
     B->>B: masterKey ← 8192 × SHA-512(prev ‖ salt ‖ nonce) — local at-rest use only
 ```
 
-**Dual-key rationale:** the link key opens the blob; the *master* key —
-derivable only by someone who can already open the link — is reserved for
+**Dual-key rationale:** the link key opens the blob; the *master* key
+(derivable only by someone who can already open the link) is reserved for
 encrypting the opened workspace at rest locally, so nothing on the
 recipient's disk is decryptable from the link blob alone.
 
@@ -424,8 +424,8 @@ blob = b64url( iv ‖ AES-256-GCM(JSON bundle) )
 URL  = …/cure?rp=<blob>#rk=<b64url(key)>
 ```
 
-The **ciphertext** rides the query string (`?rp=` — server-visible but
-opaque); the **key** rides the anchor (`#rk=` — never sent to any server,
+The **ciphertext** rides the query string (`?rp=`, server-visible but
+opaque); the **key** rides the anchor (`#rk=`, never sent to any server,
 stripped from referrers). A leaked server log or Referer header therefore
 carries a blob it can never open. The client reads both halves from its own
 address bar, decrypts, then exchanges each grant token for a working `prx1`
@@ -472,7 +472,7 @@ here).
 
 ## 7. Deliberate plaintext surfaces
 
-The exceptions register. Each is a conscious, disclosed product decision —
+The exceptions register. Each is a conscious, disclosed product decision, so
 an assessor should verify the *boundary* of each rather than their absence.
 
 1. **The interaction log (D1 `chat_logs`)** — since 2026-07-08 the server
@@ -519,8 +519,8 @@ an assessor should verify the *boundary* of each rather than their absence.
 | Workspace links / bundle keys | URL **fragments** — never transmitted in HTTP requests, stripped from referrers (§5.5, §5.6) |
 | Grant-bundle ciphertext | URL query — server-visible by design, opaque without the fragment key |
 
-There is no application-layer transport crypto beyond TLS — correct for this
-architecture, since WebCrypto AEAD already protects the payloads that matter
+There is no application-layer transport crypto beyond TLS. That is correct for
+this architecture, since WebCrypto AEAD already protects the payloads that matter
 before they hit the wire (the sealed blobs are the same bytes in transit and
 at rest).
 
@@ -581,18 +581,18 @@ trust the rest of the document less.
 
 1. **The history key is server-derivable.** Property "key never at rest" ≠
    end-to-end encryption: a live, compromised server can compute any user's
-   history key from `HISTORY_KEY_SECRET` — and since the cloud copy always
+   history key from `HISTORY_KEY_SECRET`. Since the cloud copy always
    rests in R2 on this tier, a live server compromise can decrypt stored
    history. The encryption is a real barrier against storage examined AT
-   REST (R2/D1 dumps, disk images — no key there), not against a fully
+   REST (R2/D1 dumps, disk images; no key there), not against a fully
    compromised live server. This is the designed trade-off for a signed-in,
    cross-device tier, and it is disclosed to users at `/help/` and in the
    first-run notice.
    Users wanting server-excluded crypto have the vault and the entire Se/cure
    tier for exactly that.
 2. **The workspace KDF is not memory-hard.** 8192 rounds of SHA-512 is a
-   provenance-mandated clone of hacka.re, not a modern password-KDF choice —
-   a GPU adversary with the blob can attempt offline guessing far faster than
+   provenance-mandated clone of hacka.re, not a modern password-KDF choice.
+   A GPU adversary with the blob can attempt offline guessing far faster than
    with Argon2id. Compensating controls: *generated* passwords carry ~71 bits
    (far beyond brute-force at any hash rate); the blob itself travels only in
    URL fragments; link and password are instructed to travel by different

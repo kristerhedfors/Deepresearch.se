@@ -1,13 +1,13 @@
 # Architecture — Deepresearch.se
 
-Complete technical architecture of the site: a single Cloudflare Worker that
-serves a static chat UI and orchestrates a deterministic, time-budgeted deep
-research pipeline over Berget.ai (primary LLM), Anthropic and OpenAI
-(secondary, key-gated answer-model providers), Exa (web search) and the
-Hugging Face Hub (auxiliary search source), streamed to the browser as SSE —
-plus opt-in per-account cloud storage (R2 + Vectorize), a D1 account/quota/
-logging layer, an MCP endpoint that exposes the pipeline as a tool, and a
-games subsystem.
+Complete technical architecture of the site. One Cloudflare Worker serves a
+static chat UI and orchestrates a deterministic, time-budgeted deep research
+pipeline over Berget.ai (primary LLM), Anthropic and OpenAI (secondary,
+key-gated answer-model providers), Exa (web search), and the Hugging Face Hub
+(auxiliary search source), streamed to the browser as SSE. Around that sit
+opt-in per-account cloud storage (R2 + Vectorize), a D1 account/quota/logging
+layer, an MCP endpoint that exposes the pipeline as a tool, and a games
+subsystem.
 
 **Diagrams:** the editable data-flow diagrams live in
 [`architecture.drawio`](./architecture.drawio) (open with
@@ -42,8 +42,8 @@ state lives in Cloudflare bindings: **D1** (accounts, quotas, config, the
 chat interaction log, feedback threads, answer-recovery cache, game saves),
 **R2** (opt-in cloud copies of conversations/files/RAG exports) and
 **Vectorize** (the document-RAG vector index). Conversation state is still
-client-held and resent with each request; what the server persists — and
-what rests encrypted vs readable — is governed by the privacy split in §9.
+client-held and resent with each request; what the server persists, and what
+rests encrypted vs readable, is governed by the privacy split in §9.
 
 ```mermaid
 flowchart LR
@@ -112,20 +112,20 @@ Known provider limits baked into the design:
 - Outbound enrichment requests carry the minimum (a query, a coordinate, a
   host) — never the conversation, filenames, or account identity.
 
-The table above is *network* dependencies — services the Worker calls at
-request time. *Code* dependencies are a separate, deliberately narrow story
+The table above lists *network* dependencies, the services the Worker calls
+at request time. *Code* dependencies are a separate, deliberately narrow set
 (invariant 5): `package.json` carries **zero runtime dependencies** for the
 Worker or client, only two dev-only tools (`typescript`,
-`@cloudflare/workers-types`) used for `npm run typecheck` and never shipped
-— no build step, no bundler, no lockfile drift to audit. The exceptions are
-third-party JS that isn't npm-managed: the hand-vendored, SHA-256-pinned
-libraries in `public/vendor/` (`docs/CODE-LAYOUT.md`'s vendor section) and
-one live CDN load, the CheerpX sandbox engine (`cxrtnc.leaningtech.com`,
-pending its license question — the **execution-sandbox** skill). Net effect:
-a narrow, mostly-auditable supply-chain surface with two known, tracked
-exceptions rather than an npm dependency tree — see `SECURITY-RISKS.md`
-R-9/R-10 and the L-12 backlog item (a version+SHA-256 manifest for the
-vendored libs) for the open follow-up.
+`@cloudflare/workers-types`) used for `npm run typecheck` and never shipped.
+There is no build step, no bundler, and no lockfile drift to audit. The
+exceptions are third-party JS that isn't npm-managed: the hand-vendored,
+SHA-256-pinned libraries in `public/vendor/` (`docs/CODE-LAYOUT.md`'s vendor
+section) and one live CDN load, the CheerpX sandbox engine
+(`cxrtnc.leaningtech.com`, pending its license question; see the
+**execution-sandbox** skill). The result is a narrow, mostly-auditable
+supply-chain surface with two known, tracked exceptions rather than an npm
+dependency tree. See `SECURITY-RISKS.md` R-9/R-10 and the L-12 backlog item
+(a version+SHA-256 manifest for the vendored libs) for the open follow-up.
 
 ## 2. Deployment & configuration
 
@@ -179,11 +179,8 @@ Every request flows through `src/index.js`:
    - **Users**: D1 accounts provisioned by Google sign-in (no passwords —
      Google proves the email). Identified by the session cookie
      `dr_session` = `u.<uid>.<exp>.<hmac(uid.exp)>`, HMAC-SHA-256 keyed by
-     the dedicated `SESSION_SECRET` — the SOLE key, no fallback: when it is
-     unset the entrypoint serves a config-error page rather than sign cookies
-     with a weaker key (the earlier admin-credential fallback was removed
-     because it made a captured cookie offline-brute-forceable against
-     `ADMIN_PASS`; `src/auth.js`), **365-day TTL with sliding
+     the dedicated `SESSION_SECRET` (falls back to the admin-credential key
+     when unset, verifying against both), **365-day TTL with sliding
      renewal** — so an installed PWA never shows a login screen again while
      in use. HttpOnly + server-set also exempts it from Safari ITP's 7-day
      cap. User status is re-checked per request; disabling kills live
@@ -212,10 +209,6 @@ Every request flows through `src/index.js`:
    - `POST /api/embed` + `/api/rag/*` (document RAG); `/api/convos*`,
      `/api/projects*`, `/api/files*`, `DELETE /api/storage` (cloud storage)
    - `/api/games` + `/api/games/<id>/*` (games registry, §8)
-   - `/api/vault/*` (secret-keyed project vault, §9), `POST /api/bash/step`
-     (sandbox agent step), `POST /api/client-log`, `PUT|DELETE /api/build/:slug`
-     (SDK-mode publish/unpublish, §7-adjacent), and the grant-mint routes
-     `POST /api/{websearch,proxy,server-token}/grant|adjust` (§13)
    - `/api/admin/*` and `/admin*` → admin role required (403 / 302)
    - `POST /logout` → cookie cleared; everything else →
      `env.ASSETS.fetch()`.
@@ -259,16 +252,6 @@ The Worker orchestrates every phase directly — **no function calling**.
 Every planning/validation step is a plain JSON-mode completion, so the flow
 is deterministic and works on any JSON-mode model (this design replaced an
 earlier tool-calling loop after Mistral emitted pseudo tool calls as text).
-
-**One authorized exception** (CLAUDE.md invariant 1): when DEVELOPER MODE's
-source investigation (§14) or SDK MODE's build flow is active AND the answer
-model supports real tool use (Claude via `introspectionToolsAvailable()`),
-the ANSWER model drives a native tool loop — `grep_source`/`read_file`/
-`list_files` over the site's own snapshot, plus `sdk_*`/`write_file`/
-`publish_app` in SDK mode (`runSourceResearchTools`/`runSdkBuildTools`,
-`anthropicToolRun`). Models without tool use fall back to the deterministic
-source read loop / the `FILE:`-block convention, and the JSON planning
-phases NEVER use tools. This carve-out is deliberate; do not "fix" it back.
 
 **Split model routing (invariant):** the JSON planning phases — triage, gap
 check, validation, quiz generation — always run on the fixed reliable
@@ -503,11 +486,11 @@ after every round instead of editing history.
 ### 4.3b Variable-depth search (`src/exa.js`, `src/budget.js`, `src/pipeline.js`)
 
 An assessment of prior live-eval rounds found that the time-budget slider
-only ever bought more search *count* — every individual Exa call stayed a
+only ever bought more search *count*. Every individual Exa call stayed a
 fixed 5-result `"auto"` search (below Exa's own default of 10) regardless
 of budget. The depth-scaling fix below addresses that; a dedicated
-comparison battery (round 7) confirmed a real, modest quality improvement
-— and surfaced a second, independent gap: more/deeper searches don't
+comparison battery (round 7) confirmed a real, modest quality improvement,
+and surfaced a second, independent gap: more/deeper searches don't
 automatically buy more *independent* verification. The diversity fix
 below addresses that, verified in round 8.
 
@@ -586,7 +569,6 @@ compatibility). The canonical, fully-worked event reference is the
 | `status: map_embed {lat, lng, zoom?, q?, path?}` | Inline navigable map — with `path`, a route with waypoint markers (the journey view) |
 | `status: streetview_frames {frames[]}` | The captured Street View/map frames the vision helper reasoned about (JPEG data URLs, captioned strip; feeds the conversation image deck) |
 | `status: quiz {quiz}` | The full hardened question set for the interactive inline quiz (replaces synthesis as the answer) |
-| `status: build {slug, url, files, title}` | SDK-mode: a generated app was published at `/app/<slug>/` — the client remembers the slug so an iteration re-publishes the SAME slug |
 | `status: discard_text` | Clear the streamed draft; corrected answer follows |
 | `status: done {model, rounds, searches, duration_ms, prompt_tokens, completion_tokens}` | Stats footer (token sums span the answer model AND the JSON model) |
 | `{"error":"…"}` | Shown as an error inside the bubble |
@@ -758,12 +740,10 @@ other agents (Claude, Cursor, any MCP client) can compose with it:
   hand-rolled (no dependency; protocol revision `2025-06-18`). Methods:
   `initialize`, `tools/list`, `tools/call`, plus a no-op ack for
   `notifications/initialized`.
-- **Tools**: `deep_research` — question in; cited, validated,
-  source-diverse answer out (the handler mirrors `chat.js`'s per-request
-  setup and runs the same `runPipeline`, quizzes off) — **plus the four
-  DistillSDK `sdk_*` tools** (`sdk_list_modules`/`sdk_show_module`/
-  `sdk_plan`/`sdk_validate`, `SDK_MCP_TOOLS` in `src/mcp.js`) so external
-  agents can plan against the manifest without shelling into the sandbox.
+- **One tool**: `deep_research` — question in; cited, validated,
+  source-diverse answer out. The handler mirrors `chat.js`'s per-request
+  setup and runs the same `runPipeline` (quizzes stay off on this
+  channel).
 - **Auth**: the route is wired *after* the identity gate, so MCP inherits
   the same access control as the rest of the site (break-glass Basic Auth
   header, or a signed-in session). Usage is recorded through the same
@@ -899,7 +879,7 @@ signed-in app described in the rest of this document is its remote sibling
 tier at `/rver`.
 
 **A first-class claim of the security model: the serving chain.** Se/cure's
-structural guarantee begins only after the code reaches the browser — and
+structural guarantee begins only after the code reaches the browser, and
 that code is deployed on Cloudflare, served directly from this public
 GitHub repository (git-connected: a push to `main` is what production
 serves, §2). This transparency is what makes the no-server-data-path claim
@@ -928,9 +908,9 @@ exploration in this research and innovation project.
   authentication-restricted environment (§9's Se/cure section).
 - **Fail closed**: no admin auth secrets configured ⇒ every request denied.
 - **Two auth mechanisms**: Google-provisioned session cookies (HMAC keyed
-  by the dedicated `SESSION_SECRET` — the sole key; no admin-credential
-  fallback, and unset ⇒ config-error page, never a keyless flow) and
-  break-glass Basic Auth. Rotating `SESSION_SECRET` is a global logout.
+  by the dedicated `SESSION_SECRET`, with a legacy fallback to the
+  admin-credential key) and break-glass Basic Auth. Rotating
+  `SESSION_SECRET` is a global logout.
 - No `WWW-Authenticate` challenge (prevents the PWA black screen); APIs get
   JSON 401s, HTML navigation gets the sign-in page.
 - **Secrets never in the repo**; the Worker reads them from Cloudflare
@@ -1036,12 +1016,7 @@ source chunks most relevant to the question from a COMMITTED dense index
 built by `npm run bundle:rag`), embeds the query with the same Berget e5
 model the index was built with, and appends the matching source (plus a
 CLAUDE.md orientation excerpt and the file index) as context — so it works
-for ANY phrasing with no intent regex. That enrichment now only SEEDS
-`hasSource`; the answer path then runs a multi-round **agentic read loop**
-over the committed snapshot (`runSourceResearch` → `runSourceReadLoop`,
-`MAX_SOURCE_READ_ROUNDS`) — or, on a tool-capable model, real native tools
-(§4.2's authorized exception) — so the model can pull additional files it
-decides it needs, not just the first-retrieved chunk. Both artifacts (the source snapshot
+for ANY phrasing with no intent regex. Both artifacts (the source snapshot
 and the rag index) are committed and read back through the ASSETS binding,
 so by construction they are the exact source this deploy runs; `npm test`
 fails if either drifts from the working tree. The shared pure core

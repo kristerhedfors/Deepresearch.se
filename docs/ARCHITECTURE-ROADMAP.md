@@ -1,10 +1,10 @@
 # Architecture roadmap — toward a stellar deep research agent
 
-A forward-looking assessment of major architectural moves for continued
-development of this codebase. `docs/ARCHITECTURE.md` describes what the
-system *is*; this document argues about what it should *become*, and —
-just as importantly — what it should refuse to become. Each section gives
-a verdict, the reasoning, and the honest costs.
+An assessment of the major architectural moves for continued development
+of this codebase. `docs/ARCHITECTURE.md` describes what the system *is*;
+this document argues about what it should *become*, and, just as
+importantly, what it should refuse to become. Each section gives a
+verdict, its reasoning, and the honest costs.
 
 Written against the codebase as of 2026-07: ~37K lines of dependency-free
 plain JS excluding tests (68 Worker modules in `src/`, 49 client modules
@@ -38,14 +38,14 @@ git-connected push.
 
 ## 1. What must not change — the load-bearing decisions
 
-Every improvement below is constrained by these. They are not legacy;
-they are the reasons the product works, and each traces to a reproduced
-production finding rather than a preference.
+Every improvement below is constrained by these. They are not legacy:
+they are the reasons the product works, and each one traces to a
+reproduced production finding rather than a preference.
 
 1. **Deterministic orchestration, no function calling.** The Worker picks
    every phase and every query; models only ever fill in JSON or prose.
-   This is what makes the pipeline work identically across Berget's whole
-   catalog — including reasoning models whose tool-calling/JSON is
+   That is what makes the pipeline work identically across Berget's whole
+   catalog, including reasoning models whose tool-calling/JSON is
    demonstrably unreliable (the GLM triage-corruption incident is the
    canonical evidence). Any proposal that hands control flow back to the
    model (function calling, ReAct loops, MCP tool selection *by the
@@ -60,8 +60,8 @@ production finding rather than a preference.
    warm and the budget planner honest.
 4. **The privacy split.** Encrypted-at-rest conversations, plaintext only
    for what's RAG-indexed, keys never at rest beside ciphertext,
-   metadata-only logs, minimal outbound requests to third parties. This
-   is a differentiator, not overhead — several sections below (evals,
+   metadata-only logs, minimal outbound requests to third parties. It is
+   a differentiator, not overhead: several sections below (evals,
    observability) must be designed *around* it.
 5. **Minimal dependencies, evidence-driven exceptions.** The codebase's
    actual bug history is integration behavior — hung fetches, silent
@@ -153,8 +153,8 @@ step 1 is reversible by deleting two files.
 ## 3. MCP — for integrations, and as a product
 
 **Verdict: do not rebuild the internal integrations on MCP. Formalize the
-internal "enrichment" contract they already share. Separately — and much
-more interestingly — expose DeepResearch itself *as* an MCP server.**
+internal "enrichment" contract they already share. Separately, and more
+interestingly, expose DeepResearch itself *as* an MCP server.**
 
 > **Status: shipped, both halves.** The enrichment contract is codified as
 > the `ENRICHMENTS` registry in `src/enrichment.js` (Shodan + Google Maps;
@@ -260,8 +260,8 @@ not the Worker.**
 CLAUDE.md is now a ~10,000-word monolith: architecture, six integration
 guides, storage/encryption design, SSE protocol, testing conventions,
 deploy gotchas, incident history. Every session pays its full token cost
-up front, most sessions use a fraction of it, and — the sharper problem —
-a document that long stops being reliably *followed*; critical invariants
+up front, most sessions use a fraction of it, and (the sharper problem) a
+document that long stops being reliably *followed*; critical invariants
 ("don't commit mid-battery", "never key sessions on ADMIN_PASS") sit in
 paragraph twelve of section nine.
 
@@ -307,11 +307,11 @@ single-pass research. The slider buys more angles, more results per
 search, more gap rounds — but every source contributes only its Exa
 highlights, synthesis is one streamed pass over a flat registry, and
 validation is one whole-draft check. The gap between this and
-state-of-the-art deep research systems (multi-phase agentic research à la
+the most advanced deep research systems (multi-phase agentic research à la
 STORM/GPT-Researcher, outline-driven long-form synthesis, claim-level
-verification) is well understood in the literature — and, notably, *every
-one of the missing pieces is expressible in this codebase's deterministic
-JSON-phase idiom*. No function calling required.
+verification) is well understood in the literature, and *every one of the
+missing pieces is expressible in this codebase's deterministic JSON-phase
+idiom*. No function calling required.
 
 ### 5.0 Measure first: scored evaluation
 

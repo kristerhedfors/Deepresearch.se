@@ -40,9 +40,9 @@ Why it belongs in this project: it is the logical endpoint of the privacy
 mission. The `local` provider (2026-07-15) already removed the third party
 when the user runs Ollama on their own machine; Bonsai-in-the-browser removes
 the *other machine*. A phone user gets deep research where **no request ever
-leaves the device** — stronger than every existing tier, and it demonstrably
-answers the project's research question ("how far can a real research
-assistant be pushed toward provable privacy").
+leaves the device**. That is stronger than every existing tier, and it
+demonstrably answers the project's research question ("how far can a real
+research assistant be pushed toward provable privacy").
 
 ## 2. Placement: a Se/cure (DRC) feature, zero new server surface
 
@@ -56,7 +56,7 @@ mirror later).
 `/cure` is already served **cross-origin-isolated unconditionally**
 (`src/index.js` gives the DRC page `{coep:true}`; COOP is site-wide
 `same-origin`), so `SharedArrayBuffer`/threads are available with no extra
-work — the CheerpX sandbox already banks on this. One consequence: with
+work. The CheerpX sandbox already banks on this. One consequence: with
 COEP `require-corp`, weight downloads must be plain `fetch(…, {mode:"cors"})`
 — huggingface.co serves permissive CORS, so this works; it just rules out
 no-cors tricks.
@@ -124,7 +124,7 @@ sub-text "Runs research entirely on this device. One-time ~3.9 GB download."
 Reflect on open, `change` listener persists via `saveState()`.
 
 Nothing downloads, probes, or even imports the engine module while the knob
-is off — the vendor payload is behind a dynamic `import()` exactly like
+is off. The vendor payload is behind a dynamic `import()` exactly like
 CheerpX in `sandbox.js`, so visitors who never opt in pay zero bytes for the
 feature. That is the point of the switch.
 
@@ -166,7 +166,7 @@ New module `public/js/model-cache.js` (pure planning core Node-tested):
 - Transformers.js is pointed at this cache (custom cache / `env` hooks)
   instead of its default Cache-API cache, so there is exactly **one**
   disclosed storage location, one delete button, and no silent second copy.
-- Weights are public model files — not user data — so plaintext at rest is
+- Weights are public model files (not user data), so plaintext at rest is
   correct (no conflict with invariant 4; nothing about the user is in them).
 
 ## 8. Capability gating + the slow-model contract

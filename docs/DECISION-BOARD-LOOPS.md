@@ -5,14 +5,13 @@ meetings. A **decision board** is a panel where **Claude Code produces a list,
 the admin decides over it, and a Claude Code loop reads the decisions back as
 its plan.** This doc is the visual companion to the **decision-boards** skill
 (the mechanism) and the **feature-board** skill (implementing one). It covers
-the shared architecture, the data flows for each loop, and where every piece
-lives.
+the shared architecture, the per-loop data flows, and where every piece lives.
 
 ---
 
 ## 1. The two priority channels (plus the read-only taps)
 
-Two boards feed a Claude Code loop with an **admin-decided priority order** —
+Two boards feed a Claude Code loop with an **admin-decided priority order**,
 the fixed work order the loop executes top-down:
 
 | Channel | Source of truth | Catalog module | D1 table | Text view / CLI | Loop skill |
@@ -32,12 +31,12 @@ are variants, not backlog priority boards:
 The **panel selection board** is a decision board too (built on the same
 `src/board.js` core), but a different KIND from the two priority channels: it
 orders no backlog. Its *items are the admin panels themselves*, and it has **no
-board widget** — each panel header carries ▲/▼ thumbs, and voting reshapes the
+board widget**. Each panel header carries ▲/▼ thumbs, and voting reshapes the
 admin view in place (up = float to top, down = collapse + sink). The
 votes-driven **focus order** is the admin's *attention*, read by a Claude Code
 session to decide which admin surface to work next (then it reads that
 surface's OWN board for the work order within it). It reshapes **purely on
-votes** — no drag, no explicit priority. See §4d.
+votes**: no drag, no explicit priority. See §4d.
 
 All of them are discoverable in one call — `scripts/boards` /
 `GET /api/admin/boards?format=text` (registry: `src/admin-boards.js`).
@@ -207,11 +206,11 @@ flowchart LR
 
 Because it reuses `orderBoardItems`' `"priority"` mode with **no priorities ever
 set**, the ordering collapses to exactly *votes-desc, catalog order as
-tiebreak* — the "reshapes purely on thumbs" property falls straight out of the
+tiebreak*. The "reshapes purely on thumbs" property falls straight out of the
 shared core, so `src/panels.js` stays a thin façade (catalog + projection +
 `formatPanelsText` + endpoint). All panels are `status: "open"` (a live admin
 surface has no closed/shipped notion). The loop this feeds is *"which surface is
-the owner focused on?"*, one level above the per-board work orders — read
+the owner focused on?"*, one level above the per-board work orders. Read
 `scripts/panels` first to choose the surface, then `scripts/security` /
 `scripts/features` for the items within it. See the **feature-board** skill (the
 attention board section).

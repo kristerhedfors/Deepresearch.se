@@ -36,10 +36,9 @@ export function isPublicAsset(url, method) {
     url.pathname.startsWith("/story/") ||
     url.pathname.startsWith("/architecture/") ||
     // The documentation viewer (/docs/): renders every repo doc from the
-    // committed docs-corpus.json, with the Original ⇄ Cleaned toggle
-    // (doc-variant.js) comparing each doc against its de-smelled review
-    // candidate in docs-corpus-clean.json. All public repo Markdown, so
-    // serving it unauthenticated exposes nothing.
+    // committed docs-corpus.json. The docs are de-smelled in place by the
+    // Clean step in the doc pipelines, so there is one authoritative version.
+    // All public repo Markdown, so serving it unauthenticated exposes nothing.
     url.pathname.startsWith("/docs/") ||
     // Project pulse — the commit-analytics dashboard: the page plus its
     // committed dataset (pulse/data.json). Public so it is reachable from
@@ -184,12 +183,7 @@ export function isPublicAsset(url, method) {
     // nothing. (The dense docs-rag.json is DRS-only, read through the ASSETS
     // binding — not here.)
     url.pathname === "/introspect/docs-corpus.json" ||
-    // The de-smelled review candidates shown opposite the originals in the
-    // /docs viewer's Original ⇄ Cleaned toggle. Same public-Markdown status.
-    url.pathname === "/introspect/docs-corpus-clean.json" ||
-    // The docs viewer's own modules (public graph): the shared variant toggle
-    // (also used by the static doc pages) and the viewer controller.
-    url.pathname === "/js/doc-variant.js" ||
+    // The docs viewer's controller module (public graph).
     url.pathname === "/js/docs-viewer.js" ||
     url.pathname.startsWith("/introspect/docs-img/") ||
     url.pathname === "/llm-assiterad-utveckling.mp4" ||
