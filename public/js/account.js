@@ -24,6 +24,7 @@
 
 import { loadArticlesView } from "./account-articles.js";
 import { loadFeedbackView } from "./account-feedback.js";
+import { loadKnowledgeView } from "./account-knowledge.js";
 import { loadMessagesView } from "./account-messages.js";
 import { loadSettingsView, loadShareView } from "./account-settings.js";
 import { loadGamesView, renderDocs, renderFullUsage, renderNotifBadge, renderSummary } from "./account-views.js";
@@ -144,6 +145,10 @@ function showView(ctx, view) {
     loadFeedbackView(ctx);
     return;
   }
+  if (view === "knowledge") {
+    loadKnowledgeView(ctx);
+    return;
+  }
   if (view === "games") {
     loadGamesView(ctx);
     return;
@@ -161,6 +166,7 @@ function showView(ctx, view) {
     document.getElementById("messagesbtn")?.addEventListener("click", () => ctx.show("messages"));
     document.getElementById("settingsbtn")?.addEventListener("click", () => ctx.show("settings"));
     document.getElementById("sharewsbtn")?.addEventListener("click", () => ctx.show("share"));
+    document.getElementById("knowledgebtn")?.addEventListener("click", () => ctx.show("knowledge"));
     document.getElementById("feedbackbtn")?.addEventListener("click", () => ctx.show("feedback"));
     document.getElementById("gamesbtn")?.addEventListener("click", () => ctx.show("games"));
     document.getElementById("articlesbtn")?.addEventListener("click", () => ctx.show("articles"));

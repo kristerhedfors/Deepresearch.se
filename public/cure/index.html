@@ -298,6 +298,27 @@
           <button type="button" id="local-save">Save &amp; detect</button>
           <span id="local-status" class="muted setting-note"></span>
         </div>
+        <!-- SHARE MY COMPUTE (compute sharing, wired by drc.js): a signed-in
+             sharer lends THIS local model to workspace members — this tab
+             pulls their completion jobs off the server's blind queue, runs
+             them here, posts the answers back. Oversight (who used it, block,
+             revoke) lives in the Se/rver account panel. -->
+        <div class="settings-row" style="margin-top:.6rem">
+          <span class="settings-label">Share my compute
+            <button type="button" class="setting-info" data-pop="poolsharepop" aria-label="More about sharing your compute">ⓘ</button>
+          </span>
+          <label class="switch">
+            <input type="checkbox" id="poolshare">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
+        </div>
+        <div class="setting-pop" id="poolsharepop" hidden>Lend this local model to people you share a
+          <b>secure workspace</b> with (requires being signed in to <span class="wm">Se<span class="sl">/</span>rver</span>).
+          While ON, this tab picks their completion requests off a server queue, runs them on
+          <b>your machine</b>, and returns the answers — <b>you can read what they send</b>, and they are
+          told so. Hand out access as a quota-bound token (embedded in your workspace link); watch usage,
+          block anyone, or revoke tokens in your <span class="wm">Se<span class="sl">/</span>rver</span> account panel.</div>
+        <span id="poolshare-status" class="muted setting-note"></span>
       </div>
 
       <!-- ON-DEVICE models — phone-local inference (the 1-bit Bonsai family,
@@ -433,6 +454,28 @@
         <span id="ststatus" class="muted setting-note"></span>
       </div>
 
+      <!-- SHARED COMPUTE (the pool) — visible ONLY when this session holds a
+           pt1 pool token (a workspace's grants.pool, or a ?pt= link).
+           Revealed by renderPoolRow() in drc.js. -->
+      <div class="settings-item" id="poolrow" hidden>
+        <div class="settings-row">
+          <span class="settings-label">Shared compute
+            <button type="button" class="setting-info" data-pop="poolpop" aria-label="More about shared compute">ⓘ</button>
+          </span>
+          <label class="switch">
+            <input type="checkbox" id="poolenabled">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
+        </div>
+        <div class="setting-pop" id="poolpop" hidden>Someone in your workspace is lending you
+          <b>their machine's model</b> (often a local Ollama). Prompts you send to the shared models travel
+          through this site's server — held only while the job runs, never stored — to <b>the sharer's
+          computer</b>, which can read everything you send. Requests are limited to a strict fixed shape
+          (model + messages only); the sharer meters, and can block or revoke, your access. Turn it off to
+          stay entirely on your own providers.</div>
+        <span id="poolstatus" class="muted setting-note"></span>
+      </div>
+
       <!-- Secure workspace — EVERY session has one: this browser's whole
            configuration (keys, settings, chats, any borrowed grants) can be
            sealed into a single offline link at /cure/workspace. Opens the
@@ -548,6 +591,40 @@
          into an offline #w= link under a password;
        · OPEN (when the URL carries #w=<blob>): ask for the password, decrypt
          locally, apply the workspace to this session. -->
+  <!-- WORKSPACE KNOWLEDGE curation (wired by drc.js): 👍 on a reply opens
+       this pane — context summary + query + the reply split into blocks the
+       curator steers: ＋ tags a block along as key context, − removes it
+       entirely; full undo/redo. The result seals to the site's import-agent
+       key and passes to the workspace owner (server inbox, or a .drskn
+       download delivered out-of-band). -->
+  <div id="curateview" hidden>
+    <aside class="drawer-panel account-panel">
+      <div class="drawer-head">
+        <strong>Pass along to the workspace</strong>
+        <button id="curate-close" type="button" aria-label="Close">›</button>
+      </div>
+      <p class="muted" style="font-size:.8rem;line-height:1.5">Curate what becomes workspace knowledge:
+        <b>＋</b> tags a block along as key context, <b>−</b> removes it entirely (it will not be shown or
+        included anywhere). The summary and question travel with the reply. Sealed before it leaves this
+        browser; only the workspace owner imports it.</p>
+      <div class="row" style="margin:.4rem 0">
+        <button type="button" id="curate-undo">↺ Undo</button>
+        <button type="button" id="curate-redo">↻ Redo</button>
+        <span id="curate-count" class="muted setting-note"></span>
+      </div>
+      <label class="setting-note" style="display:block">Context summary (editable)
+        <textarea id="curate-summary" rows="3" style="width:100%;margin-top:.2rem"></textarea>
+      </label>
+      <div class="setting-note" style="margin-top:.4rem"><b>Question:</b> <span id="curate-query"></span></div>
+      <div id="curate-blocks"></div>
+      <div class="row" style="margin-top:.6rem">
+        <button type="button" id="curate-send">Send to workspace</button>
+        <button type="button" id="curate-download">Download blob</button>
+      </div>
+      <span id="curate-status" class="muted setting-note"></span>
+    </aside>
+  </div>
+
   <div id="workspaceview" hidden>
     <aside class="drawer-panel account-panel">
       <div class="drawer-head">

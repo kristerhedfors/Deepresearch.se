@@ -406,6 +406,7 @@ export function renderSummary(me) {
       <button id="fullusagebtn" type="button">Full usage &amp; history</button>
       <button id="settingsbtn" type="button">Settings</button>
       ${me.email ? '<button id="sharewsbtn" type="button">Share a workspace</button>' : ""}
+      ${me.email ? '<button id="knowledgebtn" type="button">Workspace knowledge</button>' : ""}
       <button id="gamesbtn" type="button">Games</button>
       <button id="docsbtn" type="button">Documentation</button>
       ${me.role === "admin" ? '<button id="articlesbtn" type="button">Article collection</button>' : ""}

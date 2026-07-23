@@ -17,6 +17,8 @@ import {
   filterAndSortModels,
   foreignDrcKeyHint,
   listDrcModels,
+  POOL_LLM_PROVIDER_ID,
+  poolLlmProvider,
   providerErrorDetail,
   proxyLlmProvider,
   SERVER_TOKEN_LLM_PROVIDER_ID,
@@ -378,6 +380,23 @@ describe("provider calls over mock HTTP", () => {
     assert.deepEqual(live, ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]); // whisper filtered, newest first
     const fallback = await listDrcModels(groq, "bad-key", { baseUrl });
     assert.deepEqual(fallback, groq.fallbackModels);
+  });
+
+  test("the pool provider sends stream:false and gets back a synthesized SSE Response", async () => {
+    const pool = { ...poolLlmProvider(""), base: baseUrl };
+    assert.equal(pool.id, POOL_LLM_PROVIDER_ID);
+    assert.equal(pool.whole, true);
+    assert.equal(pool.jsonModel, null); // like `local`: no static catalog, no split routing
+    const res = await drcChatStream(pool, "pt1.claims.sig", "llama3", [{ role: "user", content: "hi" }], { baseUrl });
+    assert.equal(res.headers.get("content-type"), "text/event-stream");
+    const body = await res.text();
+    // The mock answers stream:false with a whole JSON completion; the adapter
+    // re-emits it as the one-chunk SSE every downstream consumer parses.
+    assert.ok(body.includes('"delta"'));
+    assert.ok(body.trim().endsWith("data: [DONE]"));
+    const req = requests.at(-1);
+    assert.equal(req.body.stream, false);
+    assert.equal(req.headers.authorization, "Bearer pt1.claims.sig");
   });
 
   test("drcCompleteJson: bearer auth, JSON mode requested, fenced JSON parsed", async () => {

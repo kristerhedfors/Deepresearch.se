@@ -36,7 +36,7 @@ const PAYLOAD = {
   model: "gpt-5.6-luna",
   settings: { research: true, bashLite: false },
   conversations: [{ title: "Hello", messages: [{ role: "user", content: "hi" }, { role: "assistant", content: "hej" }] }],
-  grants: { ws: "wsk1.payload.sig", proxy: [{ svc: "web", token: "prg1.a.b" }] },
+  grants: { ws: "wsk1.payload.sig", proxy: [{ svc: "web", token: "prg1.a.b" }], pool: "pt1.claims.sig" },
 };
 
 test("sealWorkspace → openWorkspace round-trips a full payload", async () => {
@@ -144,6 +144,8 @@ test("validateWorkspacePayload accepts the full and the minimal shape, rejects m
   assert.equal(validateWorkspacePayload({ ...PAYLOAD, conversations: [{ messages: [{ role: 1 }] }] }), false);
   assert.equal(validateWorkspacePayload({ ...PAYLOAD, grants: { proxy: [{ svc: "nope", token: "t" }] } }), false);
   assert.equal(validateWorkspacePayload({ ...PAYLOAD, grants: { ws: 42 } }), false);
+  assert.equal(validateWorkspacePayload({ ...PAYLOAD, grants: { pool: 42 } }), false);
+  assert.equal(validateWorkspacePayload({ ...PAYLOAD, grants: { pool: "pt1.c.s" } }), true);
 });
 
 test("buildWorkspacePayload projects only the selected sections", () => {
@@ -165,7 +167,7 @@ test("buildWorkspacePayload projects only the selected sections", () => {
     keys: true,
     settings: true,
     conversations: true,
-    grants: { ws: "wsk1.t.s", proxy: [{ svc: "api", token: "prg1.x.y" }, { svc: "bad", token: "" }] },
+    grants: { ws: "wsk1.t.s", proxy: [{ svc: "api", token: "prg1.x.y" }, { svc: "bad", token: "" }], pool: "pt1.x.y" },
     name: "N",
     note: "Welcome!",
   });
@@ -179,7 +181,7 @@ test("buildWorkspacePayload projects only the selected sections", () => {
   assert.equal(everything.conversations.length, 2);
   // messages are reduced to bare {role, content}
   assert.deepEqual(everything.conversations[0].messages[1], { role: "assistant", content: "a" });
-  assert.deepEqual(everything.grants, { ws: "wsk1.t.s", proxy: [{ svc: "api", token: "prg1.x.y" }] });
+  assert.deepEqual(everything.grants, { ws: "wsk1.t.s", pool: "pt1.x.y", proxy: [{ svc: "api", token: "prg1.x.y" }] });
 
   const minimal = buildWorkspacePayload(state, {});
   assert.deepEqual(minimal, { v: WORKSPACE_V, kind: WORKSPACE_KIND });
@@ -217,7 +219,7 @@ test("applyWorkspacePayload merges into a DRC state and hands back the grants", 
   assert.equal(state.conversations[0].id, "mine");
   assert.notEqual(state.conversations[1].id, undefined); // fresh id assigned
   assert.deepEqual(state.conversations[1].messages, PAYLOAD.conversations[0].messages);
-  assert.deepEqual(grants, { ws: "wsk1.payload.sig", proxy: [{ svc: "web", token: "prg1.a.b" }] });
+  assert.deepEqual(grants, { ws: "wsk1.payload.sig", proxy: [{ svc: "web", token: "prg1.a.b" }], pool: "pt1.claims.sig" });
   assert.equal(note, null);
   assert.equal(name, "Team research space");
 });

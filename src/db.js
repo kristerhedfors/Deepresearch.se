@@ -328,6 +328,29 @@ CREATE TABLE IF NOT EXISTS pool_tokens (
 );
 CREATE INDEX IF NOT EXISTS idx_pool_tokens_pool ON pool_tokens(pool_id, expires_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pool_tokens_exp ON pool_tokens(expires_at);
+
+-- Workspace knowledge (src/knowledge.js, docs/COMPUTE-SHARING.md §9b).
+-- knowledge_agent = the site's ONE import-agent ECDH keypair (generated on
+-- first use; participants seal conclusions to its public half).
+-- knowledge_inbox = sealed drskn envelopes, CIPHERTEXT at rest, routed to the
+-- pool owner the submitting token named; plaintext exists only in the moment
+-- the owner imports.
+CREATE TABLE IF NOT EXISTS knowledge_agent (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  public_key TEXT NOT NULL,
+  private_jwk TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS knowledge_inbox (
+  id TEXT PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  token_jti TEXT,
+  envelope_json TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'new',
+  created_at INTEGER NOT NULL,
+  imported_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_knowledge_inbox_owner ON knowledge_inbox(owner_id, created_at DESC);
 `;
 
 // Additive migrations for databases created before the column existed.

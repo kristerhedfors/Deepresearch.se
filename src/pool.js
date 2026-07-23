@@ -33,6 +33,7 @@ import {
 } from "./grant-http.js";
 import { jsonResponse } from "./http.js";
 import { mintPoolToken, verifyPoolToken } from "./pool-token.js";
+import { sanitizePoolRequest } from "../public/js/pool-core.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -703,13 +704,16 @@ export async function handlePoolLlm(request, env, log, url) {
 
   const raw = await request.text().catch(() => "");
   if (raw.length > REQUEST_MAX_CHARS) return jsonResponse({ error: "Request too large." }, 413);
-  let bodyObj = null;
-  try { bodyObj = JSON.parse(raw); } catch { bodyObj = null; }
-  if (!bodyObj || typeof bodyObj !== "object" || !Array.isArray(bodyObj.messages)) {
-    return jsonResponse({ error: "A chat-completions body with messages is required." }, 400);
-  }
-  bodyObj.stream = false; // v1: pooled completions return whole (design §11)
-  const model = typeof bodyObj.model === "string" ? bodyObj.model : null;
+  let parsed = null;
+  try { parsed = JSON.parse(raw); } catch { parsed = null; }
+  // The DRSC/1 gate (public/js/pool-core.js): a pooled job carries model +
+  // messages + two tuning knobs and NOTHING else. Unknown fields strip, sizes
+  // clamp, stream is forced false — the broker relays a fixed whitelisted
+  // shape to a peer's machine, never an arbitrary passthrough body.
+  const wire = sanitizePoolRequest(parsed);
+  if ("error" in wire) return jsonResponse({ error: wire.error, code: wire.code }, 400);
+  const bodyObj = wire.request;
+  const model = bodyObj.model;
 
   if (!(await poolHasCapacity(db, poolId, model, defaults.providerStaleS))) {
     return jsonResponse({ error: "No shared compute is online for this pool right now.", code: "no_capacity" }, 503);
