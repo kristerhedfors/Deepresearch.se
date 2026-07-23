@@ -419,6 +419,21 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
 .content.md th { background: var(--panel-2); }
 .content.md hr { border: 0; border-top: 1px solid var(--border); }
 
+/* Inline [n] citations, linkified by markdown.js to jump to their footer
+   "Sources:" entry (where the URL is written out and live). Kept visually
+   light — a superscript-ish accent tag, not a heavy link. */
+.cite-ref {
+  color: var(--accent); text-decoration: none; font-weight: 600;
+  cursor: pointer; white-space: nowrap;
+}
+.cite-ref:hover { text-decoration: underline; }
+/* Brief highlight on the source entry a citation jumps to. */
+@keyframes cite-flash {
+  from { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+  to { background: transparent; }
+}
+.cite-target-flash { animation: cite-flash 1.6s ease-out; border-radius: 6px; }
+
 /* Answer tools (raw view toggle, copy) */
 .msg-tools {
   display: flex; gap: .3rem; justify-content: flex-end;

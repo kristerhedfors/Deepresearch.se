@@ -493,6 +493,18 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
 .msg.assistant h2 { font-size: 1.15em; }
 .msg.assistant h3, .msg.assistant h4 { font-size: 1.05em; }
 .msg.assistant a { color: var(--accent); }
+/* Inline [n] citations, linkified by markdown.js to jump to their footer
+   "Sources:" entry (where the URL is written out and live). */
+.cite-ref {
+  color: var(--accent); text-decoration: none; font-weight: 600;
+  cursor: pointer; white-space: nowrap;
+}
+.cite-ref:hover { text-decoration: underline; }
+@keyframes cite-flash {
+  from { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+  to { background: transparent; }
+}
+.cite-target-flash { animation: cite-flash 1.6s ease-out; border-radius: 6px; }
 .msg.assistant code {
   background: var(--panel-2); border: 1px solid var(--border);
   border-radius: 4px; padding: .05em .3em; font-size: .9em;
