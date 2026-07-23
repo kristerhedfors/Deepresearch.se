@@ -200,18 +200,30 @@ export function wmHtml(s) {
  *                   (web search or LLM) is live in this session
  *   workspaceName — set when this session was opened from a shared secure
  *                   workspace link ("" / absent otherwise)
+ *   workspaceGrants — true when THAT workspace link bundled a borrowed
+ *                   allowance (a "research token": server-proxied LLM and/or
+ *                   web search) — so the session is NOT offline going forward
  * @param {{provider?: string, viaProxy?: boolean, local?: boolean,
  *          search?: string|null, embedProvider?: string, embedBorrowed?: boolean,
- *          grantsConnected?: boolean, workspaceName?: string}} [ctx]
+ *          grantsConnected?: boolean, workspaceName?: string, workspaceGrants?: boolean}} [ctx]
  * @returns {string[]} paragraphs, most important first — never empty
  */
 export function privacyNoticeLines(ctx = {}) {
   const lines = [];
   if (ctx.workspaceName) {
     const name = typeof ctx.workspaceName === "string" ? ctx.workspaceName : "";
+    // Scope "offline" to the LINK's transport only. The blob really does ride
+    // the URL fragment and never reaches a server — but that is NOT the same
+    // as an offline SESSION, and arriving via a shared link must not be left
+    // to read that way. What the link HANDED this browser (a research token,
+    // API keys) decides where the session sends data from here.
     lines.push(
-      `This session was opened from a shared secure workspace link${name ? ` (“${name}”)` : ""}. ` +
-        "Everything the link carried — keys, settings, chats, borrowed allowances — was decrypted and applied IN THIS BROWSER; the link's contents never reach any server (the whole workspace travels in the URL fragment, which browsers do not send).",
+      `This session opened from a shared secure workspace link${name ? ` (“${name}”)` : ""}. The LINK itself is offline: everything it carried — keys, settings, chats, any borrowed allowances — rode in the URL fragment (which browsers never send to a server), was decrypted IN THIS BROWSER, and reached no server.`,
+    );
+    lines.push(
+      ctx.workspaceGrants
+        ? "That does NOT make this an offline session. The workspace handed you a borrowed research token, and using it routes your conversation THROUGH the DeepResearch.Se server to Berget — and to any other provider the token covers — metered and time-limited. What the link handed you, not the link itself, decides where your data goes; the lines below are the exact routes for this session."
+        : "Whether this SESSION sends anything out depends not on the link but on what it handed you — the keys and settings now applied here. The lines below are the exact routes for this session.",
     );
   }
   lines.push(

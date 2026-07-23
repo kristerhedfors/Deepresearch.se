@@ -193,12 +193,41 @@ test("privacyNoticeLines: a shared workspace leads the notice, named or not", ()
   const named = privacyNoticeLines({ workspaceName: "research kit" });
   assert.match(named[0], /shared secure workspace link/);
   assert.match(named[0], /research kit/);
-  assert.match(named[0], /never reach any server/i);
+  // "offline" is scoped to the LINK's transport, not the session.
+  assert.match(named[0], /The LINK itself is offline/);
+  assert.match(named[0], /reached no server/i);
   const unnamed = privacyNoticeLines({ workspaceName: true });
   assert.match(unnamed[0], /shared secure workspace link/);
   assert.doesNotMatch(unnamed[0], /“/);
   // no workspace → no workspace line
   assert.doesNotMatch(privacyNoticeLines({})[0], /workspace/i);
+});
+
+test("privacyNoticeLines: a workspace with a bundled research token is stated NOT offline", () => {
+  // The user arrives via a link that carried a borrowed allowance: the notice
+  // must correct the "offline" read and name the server-touching route.
+  const lines = privacyNoticeLines({
+    workspaceName: "shared kit",
+    workspaceGrants: true,
+    provider: "Berget (borrowed)",
+    viaProxy: true,
+    grantsConnected: true,
+  });
+  assert.match(lines[0], /The LINK itself is offline/); // link transport only
+  const correction = lines[1];
+  assert.match(correction, /does NOT make this an offline session/i);
+  assert.match(correction, /research token/i);
+  assert.match(correction, /THROUGH the DeepResearch\.Se server/);
+  assert.match(correction, /Berget/);
+  assert.match(correction, /metered/i);
+});
+
+test("privacyNoticeLines: a workspace WITHOUT bundled allowances hands off without claiming offline", () => {
+  const lines = privacyNoticeLines({ workspaceName: true });
+  assert.match(lines[0], /The LINK itself is offline/);
+  // No research-token claim, but also no blanket "offline session" promise.
+  assert.doesNotMatch(lines[1], /research token/i);
+  assert.match(lines[1], /depends not on the link but on what it handed you/i);
 });
 
 test("providerVisibilityNote: the standing model-picker disclosure per provider kind", () => {

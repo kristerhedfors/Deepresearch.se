@@ -704,6 +704,13 @@ function showDrs(feature) {
 // Set when a shared workspace link opened this session: the workspace's name,
 // or true for an unnamed one (privacyNoticeLines renders both).
 let sharedWorkspace = false;
+// Set when THAT workspace link bundled a borrowed allowance (a research token:
+// server-proxied LLM and/or web search). The privacy notice must then say
+// plainly that the session is NOT offline — the token routes the conversation
+// through the server to Berget and others. Based on what the payload CARRIED
+// (independent of whether hydration succeeded), since the token still phones
+// home once it works.
+let sharedWorkspaceGrants = false;
 
 function privacyCtx() {
   const [pid] = ($("model").value || "").split("::");
@@ -726,6 +733,7 @@ function privacyCtx() {
     embedBorrowed,
     grantsConnected: grantSearch || apiProxyUsable() || stApiUsable(),
     workspaceName: sharedWorkspace,
+    workspaceGrants: sharedWorkspaceGrants,
   };
 }
 
@@ -2662,6 +2670,7 @@ async function unlockWorkspace(ev) {
     // configuration sends where — and can reopen it any time from the (i)
     // on the header wordmark.
     sharedWorkspace = name || true;
+    sharedWorkspaceGrants = !!(grants.ws || (grants.proxy && grants.proxy.length));
     showPrivacyNotice();
   } finally {
     $("wkunlock").disabled = false;
