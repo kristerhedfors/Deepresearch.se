@@ -41,6 +41,16 @@ locally so a bad publish fails fast instead of round-tripping). Re-running
 against the same slug republishes in place (files dropped since the last
 publish are pruned, same as the pipeline's own republish behavior).
 
+**In-place republish over a CHAT-BUILT app (`keepOwner`):** the manual PUT
+may target a slug that a user's chat conversation built — the fix lands at
+the SAME `/app/<slug>/` URL and the build KEEPS its original owner, so the
+user's chat can keep iterating on it afterwards (`publishBuild`'s
+`keepOwner` flag, set only by the admin-gated manual path). This is the
+feedback-loop maintenance path: fix a user's published app without moving
+its URL. Before the flag existed (pre-2026-07-23) the ownership guard
+minted a FRESH slug on such a publish — if you get a different slug back
+than you asked for, you're on a deploy that predates it.
+
 ## Publishing — raw curl
 
 ```bash

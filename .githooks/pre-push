@@ -19,6 +19,13 @@ scan="$repo_root/scripts/scan-secrets"
 zero='0000000000000000000000000000000000000000'
 rc=0
 
+# Pipeline-sensitive files (the P7 bench-gate discipline, docs/TESTING.md):
+# an outgoing change to any of these gets a REMINDER (never a block — the
+# gate needs live creds and a deployment, so it can't run here) that the
+# scored bench gate applies to it.
+bench_sensitive='^src/(pipeline|pipeline-inputs|prompts|budget|model-profiles|schema|triage|answer-stream|notes|sources|search-sources|exa|berget)\.js$'
+bench_hit=""
+
 while read -r local_ref local_sha remote_ref remote_sha; do
   # Branch deletion: nothing being added, skip.
   [ "$local_sha" = "$zero" ] && continue
@@ -38,7 +45,18 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   if ! "$scan" --range "$range"; then
     rc=1
   fi
+
+  hit="$(git diff --name-only "$range" 2>/dev/null | grep -E "$bench_sensitive" | head -5 || true)"
+  [ -n "$hit" ] && bench_hit="$hit"
 done
+
+if [ -n "$bench_hit" ]; then
+  echo "pre-push: NOTE — outgoing commits touch pipeline-sensitive files:" >&2
+  echo "$bench_hit" | sed 's/^/pre-push:   /' >&2
+  echo "pre-push: the scored bench gate applies (docs/TESTING.md): run 'npm run bench:gate'" >&2
+  echo "pre-push: in tests/ against the deployment before+after, and append the" >&2
+  echo "pre-push: printed ledger line to tests/EVAL-BENCH-FINDINGS.md." >&2
+fi
 
 if [ "$rc" -ne 0 ]; then
   echo "pre-push: BLOCKED — a credential-shaped token is in the outgoing commits." >&2

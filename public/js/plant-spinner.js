@@ -3,18 +3,24 @@
 // spinner family after Se/cure's umbrella (umbrella-spinner.js, pink ✓) and
 // Se/rver's balloon (balloon-spinner.js, blue ✓). SDK mode ("the lovable
 // distiller" — chat-mode.js, the green pane) grows a new flavour of the site,
-// so its symbol GROWS a plant: a seed falls and HITS THE GROUND, GETS PLANTED
-// into the soil, a sprout waggles while work is ongoing — and only the
-// completion FINALE lets it GROW: the stem shoots up, leaves unfurl, a
-// gold-green bloom opens, held a beat, then folded into a GREEN ✓. Growth is
-// the beat the waiting loop never reaches (the umbrella/balloon discipline —
-// the loop turns back JUST BEFORE the good part, reserved for "done").
+// so its symbol GROWS a plant — and unlike its boomerang siblings the loop
+// runs FORWARD, as a generational LIFE-CYCLE (owner directive, 2026-07-23:
+// the old boomerang rewound through the seed drop over and over and read as
+// a brown bouncing ball; the seed→seedling→flower story is the animation):
+// a seed falls, HITS THE GROUND, GETS PLANTED, sprouts, grows — stem, true
+// leaves — and BLOOMS right in the loop; the open flower sways a beat, then
+// RELEASES a fresh seed that falls to the soil while the parent withers
+// away, and the fallen seed replants as the next generation. The beat
+// reserved for "done" is the ✓ itself: the completion finale catches the
+// plant wherever it is, grows it out to full bloom, holds it, and folds it
+// into a GREEN ✓.
 //
-// It reuses the umbrella spinner's pure boomerang/tumble clocks and finale
-// pacing (umbrella-spinner.js) so all three symbols stay siblings by
-// construction; only the plant's own growth timeline + geometry + the green ✓
-// are new here. Split the family way: the pure helpers below (plantStateAt,
-// planPlantFinale, spinnerStyle, plantPhaseAt) run in Node for the unit suite
+// It keeps the umbrella family's finale pacing (FINALE_* from
+// umbrella-spinner.js) so the three symbols stay siblings by construction;
+// the plant's own forward cycle clock, growth timeline, geometry and the
+// green ✓ live here. Split the family way: the pure helpers below
+// (plantStateAt, cycleDesignTime, cycleStateAt, planPlantFinale,
+// spinnerStyle, plantPhaseAt) run in Node for the unit suite
 // (plant-spinner.test.js); mountPlantSpinner only ever runs in a browser.
 //
 // Same contract as mountBalloonSpinner / mountUmbrellaSpinner: best-effort
@@ -25,17 +31,16 @@ import {
   FINALE_CHECK_MS,
   FINALE_HOLD_MS,
   FINALE_RUN_MS,
-  boomerangDesignTime,
-  boomerangFlip,
   canCanvas,
   reducedMotion,
 } from "./umbrella-spinner.js";
 
 // ---- pure helpers (Node-tested) ----------------------------------------------------
 
-// The plant's clock is set at its own felt pace (design-ms per real-ms), so the
-// growth reads deliberately, a touch slower than the balloon's rise.
-export const BASE_SPEED = 2.4;
+// The plant's clock is set at its own felt pace (design-ms per real-ms). The
+// life-cycle loop tells a whole growth story per generation, so it runs
+// slower than the boomerang siblings — one generation lands around 2.6 s.
+export const BASE_SPEED = 1.6;
 
 /** Clamp any admin animation multiplier to a sane band (mirrors the family's
  * clampAnimMult; kept local so the plant doesn't couple to umbrella/balloon
@@ -66,31 +71,45 @@ function seg(t, a, b) {
   return b > a ? clamp01((t - a) / (b - a)) : t >= b ? 1 : 0;
 }
 
-// The growth timeline (design-ms). Four beats up to the LOOP apex, then the
-// finale-only GROW beat to full bloom:
-//   [0 .. DROP_END)     the seed falls and HITS the ground (gravity + squash)
-//   [DROP_END .. PLANT) it settles / GETS PLANTED, a soil mound forms
-//   [PLANT .. SPROUT)   a short sprout with two cotyledon leaves waggles
-//   SPROUT = LOOP_APEX  the loop's turnaround — a small sprout, NOT grown
-//   [LOOP_APEX .. FULL] (finale) stem shoots up, true leaves + gold-green bloom
+// The growth timeline (design-ms). One monotonic ladder serves both the loop
+// and the finale; past FULL_APEX the cycle beats (hold + release) carry the
+// loop into its next generation:
+//   [0 .. DROP_END)       the seed falls and HITS the ground (gravity + squash)
+//   [DROP_END .. PLANT)   it settles / GETS PLANTED, a soil mound forms
+//   [PLANT .. LOOP_APEX)  a short sprout with two cotyledon leaves
+//   [LOOP_APEX .. FULL)   stem shoots up, true leaves + the gold-green bloom
+//   [FULL .. +HOLD)       the open flower sways, held
+//   [+HOLD .. CYCLE_END)  a new seed detaches and falls; the parent withers
+// Later generations resume at REPLANT_AT — their seed has already fallen.
 export const DROP_END = 520;
 export const PLANT_END = 900;
-/** The loop's apex: the settled sprout, reserved short of real growth. */
+/** End of the sprout beat (the old boomerang loop's apex; the name stays for
+ * the family symmetry and the finale buckets). */
 export const LOOP_APEX = 1700;
-/** The finale's target: the fully grown, blooming plant (the beat "done" owns). */
+/** The fully grown, blooming plant — the growth ladder's top. */
 export const FULL_APEX = 2700;
+/** How long the open bloom is held, swaying, before the seed release. */
+export const BLOOM_HOLD_MS = 720;
+/** The release beat: a fresh seed detaches and falls; the parent withers. */
+export const RELEASE_MS = 760;
+/** One full generation of the forward loop. */
+export const CYCLE_END = FULL_APEX + BLOOM_HOLD_MS + RELEASE_MS;
+/** Where later generations resume: their seed already fell (as the release),
+ * so the sky-fall beat plays only for the first generation. */
+export const REPLANT_AT = DROP_END;
 
 // How long the impact squash lasts after the seed lands (design-ms).
 const SQUASH_MS = 170;
 
-/** Which named beat of the growth timeline design-time t lands in.
- * @param {number} t @returns {"drop"|"plant"|"sprout"|"grow"|"bloom"} */
+/** Which named beat of the cycle design-time t lands in.
+ * @param {number} t @returns {"drop"|"plant"|"sprout"|"grow"|"bloom"|"release"} */
 export function plantPhaseAt(t) {
   const tt = Number.isFinite(t) ? Math.max(0, t) : 0;
   if (tt < DROP_END) return "drop";
   if (tt < PLANT_END) return "plant";
   if (tt < LOOP_APEX) return "sprout";
-  // Past the loop apex is finale territory; the last third is the open bloom.
+  if (tt >= FULL_APEX + BLOOM_HOLD_MS) return "release";
+  // The last stretch of the growth ladder is the open bloom (held past FULL).
   return tt >= LOOP_APEX + (FULL_APEX - LOOP_APEX) * 0.62 ? "bloom" : "grow";
 }
 
@@ -125,6 +144,44 @@ export function plantStateAt(t) {
   // The bloom opens in the last stretch of the grow beat.
   const bloom = smooth(seg(tt, LOOP_APEX + (FULL_APEX - LOOP_APEX) * 0.5, FULL_APEX));
   return { fall, squash, plantDepth, stemH, leafOpen, trueLeaf, bloom };
+}
+
+// ---- the forward cycle (the loop's clock) ------------------------------------------
+
+/**
+ * The loop's forward clock: elapsed design-ms → cycle-time. The FIRST
+ * generation plays the whole story from the sky-fall; every later generation
+ * wraps into [REPLANT_AT, CYCLE_END) — its seed already fell during the
+ * parent's release, so the landing squash at REPLANT_AT (= DROP_END) is
+ * continuous with the released seed touching down. Pure, total, and
+ * monotonic within a generation.
+ * @param {number} elapsedDesign design-ms since mount
+ * @returns {number} cycle-time in [0, CYCLE_END)
+ */
+export function cycleDesignTime(elapsedDesign) {
+  const e = Number.isFinite(elapsedDesign) ? Math.max(0, elapsedDesign) : 0;
+  if (e < CYCLE_END) return e;
+  return REPLANT_AT + ((e - CYCLE_END) % (CYCLE_END - REPLANT_AT));
+}
+
+/**
+ * The cycle overlay at cycle-time ct — what the growth ladder alone can't
+ * say: how far the RELEASED seed has fallen and how far the parent has
+ * withered. Both run to 1 at the wrap, so the released seed hands off to the
+ * next generation's landed seed and the old plant is gone the frame the new
+ * one begins (no pop). Total; `t` is the growth design-time to render.
+ * @param {number} ct cycle-time
+ * @returns {{t:number, releasing:boolean, seedDrop:number, wither:number}}
+ */
+export function cycleStateAt(ct) {
+  const c = Number.isFinite(ct) ? Math.max(0, Math.min(ct, CYCLE_END)) : 0;
+  const releaseStart = FULL_APEX + BLOOM_HOLD_MS;
+  const t = Math.min(c, FULL_APEX);
+  if (c < releaseStart) return { t, releasing: false, seedDrop: 0, wither: 0 };
+  const seedDrop = clamp01((c - releaseStart) / RELEASE_MS);
+  // The seed lets go first; the parent starts fading once it is clearly away.
+  const wither = smooth(seg(c, releaseStart + RELEASE_MS * 0.3, CYCLE_END));
+  return { t, releasing: true, seedDrop, wither };
 }
 
 // Finale bucketing: how deep into the loop a completion was caught decides how
@@ -404,6 +461,8 @@ export function mountPlantSpinner(host, opts = {}) {
     let startMs = 0;
     let lastT = 0;
     let lastFlip = 0;
+    let lastWither = 0; // the loop's current parent-fade, for a finale catch
+    let witherAtFinale = 0;
     let stopped = false;
 
     let mode = /** @type {"loop"|"finale"} */ ("loop");
@@ -432,6 +491,9 @@ export function mountPlantSpinner(host, opts = {}) {
         return;
       }
       onFinaleDone = cb;
+      // A parent caught mid-wither revives at the finale's start (the grow-out
+      // needs a whole plant to grow); the released seed simply lets go.
+      witherAtFinale = lastWither;
       plan = planPlantFinale(lastT);
       finaleStart = 0;
       mode = "finale";
@@ -488,9 +550,13 @@ export function mountPlantSpinner(host, opts = {}) {
       let fold = 0;
       let checkProg = 0;
       let sway = 0;
+      let wither = 0;
+      let seedDrop = -1; // ≥0 only while a released seed is midair
       if (mode === "finale" && plan) {
         if (!finaleStart) finaleStart = now;
         const fe = now - finaleStart;
+        // Revive a mid-wither parent over the finale's opening beats.
+        wither = witherAtFinale * (1 - smooth(clamp01(fe / 320)));
         if (fe < plan.runMs) {
           t = plan.runStart + (plan.runEnd - plan.runStart) * smooth(fe / plan.runMs);
           master = 1;
@@ -505,18 +571,22 @@ export function mountPlantSpinner(host, opts = {}) {
           fold = checkProg;
         }
       } else {
-        t = boomerangDesignTime(now - startMs, clockRate, LOOP_APEX);
-        // A gentle stem sway from the family's tumble clock, scaled small.
-        sway = boomerangFlip(now - startMs, clockRate, LOOP_APEX) * 0.12
-          + Math.sin((now - startMs) / 620) * 0.05;
+        const cyc = cycleStateAt(cycleDesignTime((now - startMs) * clockRate));
+        t = cyc.t;
+        wither = cyc.wither;
+        if (cyc.releasing) seedDrop = cyc.seedDrop;
+        // A gentle sway that deepens as the plant grows tall.
+        sway = Math.sin((now - startMs) / 620) * (0.04 + 0.1 * (t / FULL_APEX));
         lastFlip = sway;
+        lastWither = wither;
         master = smooth((now - startMs) / 260);
       }
       lastT = t;
 
       ctx.clearRect(0, 0, size, size);
       const S = plantStateAt(t);
-      const a = master * (1 - smooth(checkProg));
+      const aBase = master * (1 - smooth(checkProg));
+      const a = aBase * (1 - wither);
       if (a > 0.002) {
         ctx.save();
         if (fold > 0) {
@@ -529,6 +599,23 @@ export function mountPlantSpinner(host, opts = {}) {
         }
         drawPlantFigure(ctx, geo, S, sway, a);
         ctx.restore();
+      }
+      if (seedDrop >= 0 && aBase > 0.002) {
+        // The released seed: it lets go at the bloom and falls gravity-eased,
+        // drifting to the soil's center so it lands exactly where the next
+        // generation's landed seed sits (the wrap is continuous).
+        const tipX = cx + Math.sin(sway) * maxStem * 0.28;
+        const dropTop = groundY - maxStem + seedR * 2.4; // just under the bloom
+        const sx2 = tipX + (cx - tipX) * seedDrop;
+        const sy2 = dropTop + (groundY - dropTop) * seedDrop * seedDrop;
+        ctx.save();
+        ctx.globalAlpha = aBase;
+        ctx.fillStyle = style.seed;
+        ctx.beginPath();
+        ctx.ellipse(sx2, sy2, seedR * 1.15, seedR, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        ctx.globalAlpha = 1;
       }
       if (checkProg > 0) drawCheck(checkProg, smooth(checkProg));
 

@@ -133,7 +133,9 @@ comment naming the sibling.
    deltas through the same path).
 8. **Client registry** (`public/js/<pair>-providers.js`): one declarative
    entry per CORS-capable provider — `id`, `label`, `base`, `keyPattern`
-   (key-prefix auto-detection for the one-field key form), `jsonModel`
+   (key-prefix auto-detection for the one-field key form — see **Key-prefix
+   detection** below for the collision table and the most-specific-prefix
+   rule), `jsonModel`
    (the fixed cheap planning model — the client-side mirror of PA-3),
    `fallbackModels` (static list shown until/instead of a live `/models`
    fetch), `modelFilter` (curation: current generation only, non-chat
@@ -157,6 +159,67 @@ comment naming the sibling.
    probe after deploy (`/api/models` lists the entries; one cheap chat run
    per model; one vision run; token totals priced at the new rates); then
    the bench A/B.
+
+## Key-prefix detection (the one-field key form)
+
+Every one-field key UX — the reference client tier's key panel and any
+distilled flavour of it — auto-detects the provider from the pasted key's
+prefix. Two rules make it safe, both learned from a live misdetection
+(feedback #6, 2026-07-23: an Anthropic key routed to OpenAI's wire, which
+401s):
+
+1. **The most specific prefix owns the key.** Prefixes NEST: `sk-ant-…`
+   (Anthropic) is inside `sk-…` (OpenAI). Write each pattern to exclude its
+   more specific siblings (`/^sk-(?!ant-)/` for OpenAI) so the patterns are
+   mutually exclusive by construction and no registry ordering can decide a
+   match. Pin that with a unit test asserting `sk-ant-…` has ZERO claimants.
+2. **Never claim a key you can't serve.** A recognized shape whose provider
+   is not in the registry detects as null plus an honest hint ("that's an
+   Anthropic key — not supported here yet"), not as the nearest lookalike.
+   A key routed to the wrong wire fails downstream with an opaque 401; the
+   hint fails upfront with the reason.
+
+The prefix table (mirror of the reference's `FOREIGN_KEY_SHAPES` +
+`keyPattern` facts, and of its secret-scanner's shapes):
+
+| Prefix | Provider | In the reference client registry? |
+|---|---|---|
+| `sk-ant-` | Anthropic | No (wire adapter needed — see below) |
+| `sk_ber_` | Berget (underscore) | Yes |
+| `gsk_` | Groq | Yes |
+| `sk-` minus `sk-ant-` (incl. `sk-proj-`, `sk-svcacct-`) | OpenAI | Yes |
+| `hf_` | Hugging Face token (not a chat key here) | No |
+
+## Anthropic browser-direct (single-shot recipe)
+
+Anthropic's API DOES serve browser CORS — re-probed live 2026-07-23
+(`Access-Control-Allow-Origin: *`; earlier notes claiming no CORS are
+stale) — gated on an explicit opt-in header acknowledging the key is
+exposed in a browser. What keeps it out of the reference client registry
+is only the WIRE: the Messages API is not OpenAI chat completions, so an
+entry needs a client-side foreign-wire adapter (the browser mirror of
+`src/anthropic.js`). A distilled flavour that wants Anthropic keys to work
+first-shot wires it like this:
+
+- **Endpoint**: `POST https://api.anthropic.com/v1/messages` (no
+  `/chat/completions`).
+- **Headers**: `x-api-key: <key>` (NOT `Authorization: Bearer`),
+  `anthropic-version: 2023-06-01`, `content-type: application/json`, and
+  `anthropic-dangerous-direct-browser-access: true` (mandatory for browser
+  calls — without it the request is rejected).
+- **Payload**: `{model, max_tokens (REQUIRED), messages, stream: true}`;
+  system prompts go in a top-level `system` field, never as a
+  `role: "system"` message; consecutive same-role turns must be merged.
+- **SSE shape**: event-typed frames, not OpenAI deltas — text arrives in
+  `content_block_delta` events (`delta.text`), the stop reason in
+  `message_delta` (`delta.stop_reason`, e.g. `end_turn` ↔ `stop`), usage in
+  `message_start`/`message_delta`, and an `error` event must error the
+  stream. Adapt at the wire per pattern A above so the shared consumer
+  stays unchanged.
+- **Models**: the set the reference server client serves is the safe
+  catalog to mirror (`src/anthropic.js`: `claude-opus-4-8`,
+  `claude-sonnet-5`, `claude-haiku-4-5`), with its wire pins (thinking
+  explicitly disabled where the model reasons by default).
 
 ## Reference implementation map
 
@@ -233,8 +296,10 @@ comment naming the sibling.
   limit raise). Keep the valve anyway.
 - **CORS status is empirical and dated**: Berget's browser CORS was
   probed live 2026-07-11 (origin-reflecting, POST+Authorization) — it
-  previously had none; Anthropic has none and is excluded from the client
-  tier. Re-probe before admitting or relying on a provider.
+  previously had none; Anthropic's was absent once, then present on a
+  2026-07-23 re-probe (behind the dangerous-direct-browser-access opt-in —
+  see the recipe above), which is the cautionary tale itself: re-probe
+  before admitting, relying on, or ruling out a provider.
 - **Body-size ceilings**: the reference's primary rejects bodies over
   ~1 MB (measured), which is why the client downscales images and strips
   them from history resends. Probe the limit; don't discover it in prod.

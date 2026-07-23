@@ -10,6 +10,7 @@ import {
   subquestionsSection,
   conflictsSection,
   extractClaims,
+  mergeFanoutQueries,
   takeSearchBatch,
 } from "./pipeline-inputs.js";
 
@@ -113,5 +114,32 @@ describe("takeSearchBatch", () => {
     const state = makeState();
     state.searchCount = 2; // one slot left
     assert.deepEqual(takeSearchBatch(state, ["a", "b", "c"]), ["a"]);
+  });
+});
+
+describe("mergeFanoutQueries", () => {
+  test("round-robin: every sub-question's first pick lands before any second pick", () => {
+    const merged = mergeFanoutQueries([["a1", "a2"], ["b1", "b2"], ["c1"]], 10);
+    assert.deepEqual(merged, ["a1", "b1", "c1", "a2", "b2"]);
+  });
+
+  test("the cap cuts the interleaved order, not the last list", () => {
+    // With cap 3 a verbose first audit must not take the third slot from the
+    // third sub-question — the round-robin order is the fairness rule.
+    assert.deepEqual(mergeFanoutQueries([["a1", "a2", "a3"], ["b1"], ["c1"]], 3), ["a1", "b1", "c1"]);
+  });
+
+  test("dedupes case-insensitively across lists and trims", () => {
+    const merged = mergeFanoutQueries([[" EU AI Act ", "x"], ["eu ai act", "y"]], 10);
+    assert.deepEqual(merged, ["EU AI Act", "x", "y"]);
+  });
+
+  test("non-arrays, non-strings, and blanks contribute nothing", () => {
+    const merged = mergeFanoutQueries([null, undefined, ["", "  ", 42, "real"], []], 10);
+    assert.deepEqual(merged, ["real"]);
+  });
+
+  test("zero cap → empty wave", () => {
+    assert.deepEqual(mergeFanoutQueries([["a"]], 0), []);
   });
 });

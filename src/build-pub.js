@@ -118,12 +118,18 @@ const BUILD_CSP =
  * Publish (or republish) a build: validate + cap the files, enforce slug
  * ownership, write the objects, and prune files dropped since the last
  * publish. Returns {slug, url, files, bytes} or {error}.
+ *
+ * `keepOwner` is the ADMIN-gated in-place republish (the manual PUT):
+ * an existing slug is reused even when the caller isn't its owner, and the
+ * build KEEPS its original owner — so a maintenance fix pushed over a
+ * user's app leaves the user able to keep iterating on it from their own
+ * chat. Only the admin-authenticated manual path may set it.
  * @param {Env} env
  * @param {Logger} log
- * @param {{ slug?: string | null, title: string, files: Array<{ path: string, content: string }>, userId: string }} opts
+ * @param {{ slug?: string | null, title: string, files: Array<{ path: string, content: string }>, userId: string, keepOwner?: boolean }} opts
  * @returns {Promise<{ slug: string, url: string, files: number, bytes: number } | { error: string }>}
  */
-export async function publishBuild(env, log, { slug, title, files, userId }) {
+export async function publishBuild(env, log, { slug, title, files, userId, keepOwner = false }) {
   if (!env.STORAGE) return { error: "Publishing is not configured on this server (no R2 bucket)." };
   const cleanTitle = String(title || "").trim().slice(0, 120) || "Untitled build";
 
@@ -147,14 +153,21 @@ export async function publishBuild(env, log, { slug, title, files, userId }) {
   if (!clean.has("index.html")) return { error: "A build needs an index.html entry point." };
 
   // Slug: reuse the conversation's existing one (iteration keeps the URL
-  // stable) when it's valid AND owned by this user; otherwise mint fresh.
+  // stable) when it's valid AND owned by this user — or when the admin
+  // in-place republish (keepOwner) is taking it over; otherwise mint
+  // fresh. On a keepOwner takeover the ORIGINAL owner is preserved.
+  let owner = String(userId);
   let finalSlug = buildSlugOk(slug) ? /** @type {string} */ (slug) : null;
   if (finalSlug) {
     try {
       const existing = await bucket(env).get(metaKey(finalSlug));
       if (existing) {
         const meta = /** @type {any} */ (await existing.json().catch(() => null));
-        if (!meta || String(meta.owner ?? "") !== String(userId)) finalSlug = null;
+        if (!meta) finalSlug = null;
+        else if (String(meta.owner ?? "") !== String(userId)) {
+          if (keepOwner) owner = String(meta.owner ?? "");
+          else finalSlug = null;
+        }
       }
     } catch {
       finalSlug = null;
@@ -182,12 +195,12 @@ export async function publishBuild(env, log, { slug, title, files, userId }) {
   const meta = {
     title: cleanTitle,
     createdAt: Date.now(),
-    owner: String(userId),
+    owner,
     files: [...clean].map(([p, c]) => ({ p, s: new TextEncoder().encode(c).length })),
   };
   await bucket(env).put(metaKey(finalSlug), JSON.stringify(meta), {
     httpMetadata: { contentType: "application/json" },
-    customMetadata: { title: cleanTitle.slice(0, 200), owner: String(userId).slice(0, 100) },
+    customMetadata: { title: cleanTitle.slice(0, 200), owner: owner.slice(0, 100) },
   });
   for (const [p, c] of clean) {
     await bucket(env).put(fileKey(finalSlug, p), c);
@@ -291,7 +304,10 @@ export async function handleBuildManualPublish(request, env, log, identity, slug
   if (!files || !files.length) {
     return jsonResponse({ error: "files must be a non-empty array of {path, content}." }, 400);
   }
-  const result = await publishBuild(env, log, { slug, title, files, userId: identity.id });
+  // keepOwner: this endpoint is admin-gated (the caller verified that), so
+  // it may republish an existing build IN PLACE — same /app/<slug>/ URL —
+  // while the build keeps its original owner (see publishBuild).
+  const result = await publishBuild(env, log, { slug, title, files, userId: identity.id, keepOwner: true });
   if ("error" in result) return jsonResponse({ error: result.error }, 400);
   log.info("build.manual_publish", { slug: result.slug, admin: identity.id });
   return jsonResponse({ ok: true, ...result });

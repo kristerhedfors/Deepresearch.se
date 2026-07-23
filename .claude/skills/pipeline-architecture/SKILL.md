@@ -95,7 +95,25 @@ Verification status: unit-tested (`prompts.test.js`, `pipeline.test.js`,
 `budget.test.js`); the live before/after A/B (rubric bench multi-hop kind +
 `tests/hf-bench.mjs` on `google/deepsearchqa`, fixed seed/judge/budget) is
 the merge-gate evidence — run it against the deployment once this change
-ships, and append the delta to the ledgers.
+ships, and append the delta to the ledgers. That before/after discipline is
+now tooled: `tests/bench-gate.mjs` (`npm run bench:gate`) compares a pinned
+de-noised battery against the committed `tests/bench-baseline.json` and the
+pre-push hook reminds when a pipeline-sensitive file is in the outgoing
+diff — see `docs/TESTING.md` §"The bench gate".
+
+**Sub-question fan-out (2026-07-23, flag-gated OFF).** The roadmap §5.5
+"full form": `runSubquestionFanout` (phase 2.75, between notes digest and
+the gap rounds) runs one bounded gap audit per sub-question CONCURRENTLY —
+comparison/survey questions at ≥240 s budgets only, ≤4 sub-questions, ≤2
+queries each — then ONE merged follow-up wave (`mergeFanoutQueries` in
+`pipeline-inputs.js`: round-robin in sub-question order, so the wave's
+source numbering stays deterministic). multihop is EXCLUDED on purpose:
+its sub-questions are dependency-ordered (hop 2's query needs a bridging
+fact from hop 1's sources), which is what the serial gap rounds are for.
+Gated behind `SUBQ_FANOUT_ENABLED = false` in `budget.js`
+(`wantsSubqFanout`) until the bench gate proves it earns its cost;
+flipping it on is ALSO the agreed trigger for the Cloudflare Workflows
+orchestration-shell migration (roadmap §6) — one effort, not two.
 
 Deliberately NOT added (evidence says skip, for this architecture):
 multi-agent parallel research with separate contexts (LangChain abandoned
