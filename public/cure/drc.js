@@ -704,6 +704,16 @@ function showDrs(feature) {
 // Set when a shared workspace link opened this session: the workspace's name,
 // or true for an unnamed one (privacyNoticeLines renders both).
 let sharedWorkspace = false;
+// Set when THAT workspace link bundled a borrowed allowance (a "research
+// token"), to `{ llm, search }` naming EXACTLY which services it carried —
+// mapped to the two share-menu grant families and nothing else: the `api`
+// grant (server-proxied Berget for the model + embeddings) → llm, the web /
+// legacy web-search grant (server-proxied Exa, query only) → search. These are
+// the ONLY third parties a link can borrow (never Shodan/Maps/etc.), so the
+// notice can state the exact routes AND the ceiling. Based on what the payload
+// CARRIED (independent of hydration success) — the token still phones home
+// once it works. `false` when no allowance was bundled.
+let sharedWorkspaceGrants = false;
 
 function privacyCtx() {
   const [pid] = ($("model").value || "").split("::");
@@ -726,6 +736,7 @@ function privacyCtx() {
     embedBorrowed,
     grantsConnected: grantSearch || apiProxyUsable() || stApiUsable(),
     workspaceName: sharedWorkspace,
+    workspaceGrants: sharedWorkspaceGrants,
   };
 }
 
@@ -855,10 +866,29 @@ function reflectBudget() {
   renderBudgetReadout();
 }
 
+// Web search is REACHABLE only when the session actually has a search source:
+// the user's own browser-direct backend (SearXNG / Exa-compatible), or a live,
+// enabled server grant/token (consolidated `web`, proxy bundle, or the legacy
+// web-search grant). A plain fresh arrival — "from nowhere", no previous
+// session — has none of these, so it has no web search.
+function webSearchAvailable() {
+  return directSearchActive() || stWebUsable() || webProxyUsable() || (wsGrantActive() && wsEnabled());
+}
+
+// Point the web-search knob at REALITY. It shows ON only when research is
+// desired (state.research, default true) AND web search is actually reachable —
+// so arriving with no credentials shows OFF instead of promising a capability
+// the session doesn't have, while a configured backend or an incoming grant/
+// token flips it back on. The send path copies the knob into state.research at
+// submit time, so the pipeline follows whatever the knob honestly shows.
+function reflectResearchKnob() {
+  $("websearch").checked = state.research !== false && webSearchAvailable();
+}
+
 // Reflect a freshly opened/restored state everywhere the UI shows it — the
 // shared tail of unlock() and importBackup().
 async function reflectOpenedState() {
-  $("websearch").checked = state.research !== false;
+  reflectResearchKnob();
   reflectBudget();
   $("bashlite").checked = state.bashLite === true;
   $("devmode").checked = state.developerMode === true;
@@ -2231,6 +2261,9 @@ function renderSearchBackend() {
       results: resEl.value,
     });
     renderSearchBackend();
+    // Configuring (or clearing) a browser-direct backend changes whether web
+    // search is reachable — keep the knob honest about it.
+    reflectResearchKnob();
     await saveState();
   };
   sel.onchange = persist;
@@ -2633,7 +2666,7 @@ async function unlockWorkspace(ev) {
     renderWsRow();
     renderProxyRow();
     renderStRow();
-    $("websearch").checked = state.research !== false;
+    reflectResearchKnob();
     reflectBudget();
     $("bashlite").checked = state.bashLite === true;
     $("devmode").checked = state.developerMode === true;
@@ -2662,6 +2695,13 @@ async function unlockWorkspace(ev) {
     // configuration sends where — and can reopen it any time from the (i)
     // on the header wordmark.
     sharedWorkspace = name || true;
+    // Map the carried grants to the exact share-menu families (nothing else is
+    // shareable): `api` proxy grant → Berget model + embeddings; web / legacy
+    // web-search grant → Exa web search.
+    const proxySvcs = new Set((grants.proxy || []).map((p) => p.svc));
+    const gotLlm = proxySvcs.has("api");
+    const gotSearch = !!grants.ws || proxySvcs.has("web");
+    sharedWorkspaceGrants = gotLlm || gotSearch ? { llm: gotLlm, search: gotSearch } : false;
     showPrivacyNotice();
   } finally {
     $("wkunlock").disabled = false;
@@ -2966,6 +3006,8 @@ renderKeysPanel();
 renderConvPicker();
 renderMessages();
 reflectBudget(); // the time slider's readout (the 60 s default until a state loads)
+reflectResearchKnob(); // the web-search knob DEFAULTS to reality: off unless a
+// search source (own backend, or a grant/token already in this browser) exists
 // A replay deep link counts like a project link — no intro over it.
 // On a genuine first visit the umbrella intro plays first (over the bare
 // page); when it finishes, new users land straight in the chat input rather
@@ -3223,6 +3265,21 @@ $("input").addEventListener("input", () => {
     if (state.developerMode === true) noteIntrospectionText($("input").value);
   }, 350);
 });
+// Enter sends; Shift+Enter inserts a newline — the near-universal chat-composer
+// convention, matching the Se/rver twin (public/js/app.js). Guarded against IME
+// candidate commits (e.isComposing / keyCode 229) and touch-primary devices
+// (coarse pointer), where Enter stays a newline and the ↑ button sends.
+$("input").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.isComposing || e.keyCode === 229) return;
+  try {
+    if (window.matchMedia("(pointer: coarse)").matches) return; // touch → newline
+  } catch {
+    /* no matchMedia → assume a physical keyboard, fall through to send */
+  }
+  e.preventDefault();
+  $("form").requestSubmit();
+});
 // Introspection knob (client-local, persisted in the sealed project state):
 // unlocks introspection mode for this browser's conversations, and tints the
 // composer pane WHITE TITANIUM (drc.css :root.dev-mode #composer) so the tier's
@@ -3310,6 +3367,7 @@ $("websearchserver").addEventListener("change", () => {
     /* ignore */
   }
   renderWsRow();
+  reflectResearchKnob(); // enabling/disabling the grant changes web-search reach
 });
 // The secure-research-space master toggle: turn the whole borrowed space off to
 // go fully client-side, or back on. Refreshes the model dropdown (the proxy
@@ -3321,6 +3379,7 @@ $("proxyenabled").addEventListener("change", () => {
     /* ignore */
   }
   renderProxyRow();
+  reflectResearchKnob(); // enabling/disabling the bundle changes web-search reach
   refreshModels().catch(() => {});
 });
 // The Se/rver-token master toggle: turn the whole borrowed token off to go
@@ -3333,6 +3392,7 @@ $("stenabled").addEventListener("change", () => {
     /* ignore */
   }
   renderStRow();
+  reflectResearchKnob(); // enabling/disabling the token changes web-search reach
   refreshModels().catch(() => {});
 });
 $("proxybannerclose")?.addEventListener("click", () => {
@@ -3349,10 +3409,14 @@ $("noticesclose")?.addEventListener("click", () => {
 // (?st= link, or the ghost intent — which the token path consumes on success
 // and leaves for the legacy path otherwise); (2) an encrypted proxy bundle
 // (?rp=/#rk=); (3) the legacy web-search grant. All fire-and-forget/fail-soft.
+// After the chain settles, re-point the web-search knob at reality: a grant/
+// token that just arrived makes web search reachable, so the knob turns ON
+// (unless a stored project already fixed the choice — reflectResearchKnob reads
+// state.research either way).
 maybeRequestServerToken().then(() => {
   maybeOpenProxyBundle().then((opened) => {
-    if (!opened) maybeRequestWsGrant();
-  });
+    if (!opened) return maybeRequestWsGrant();
+  }).finally(reflectResearchKnob);
 });
 $("form").addEventListener("submit", send);
 

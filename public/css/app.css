@@ -274,6 +274,17 @@ header {
   color: #f5c518; /* the logotype's golden swirl */
   text-shadow: 0 1px 4px rgba(10, 46, 92, .55);
 }
+/* Terminal mode (body.term-fg) brings a near-black field forward behind the
+   fixed header (body.term-fg #dr-agent-backdrop). The plain "DeepResearch."
+   half of the wordmark is dark navy (var(--text)) with a WHITE glow tuned for
+   the light waves — over the black terminal field it blends in and reads as
+   near-invisible. Flip it to light terminal ink with a dark shadow so it reads
+   white-on-black; the golden Se/rver tail already stands out on black.
+   (2026-07-23 owner report.) */
+body.term-fg .brand {
+  color: #e6edf3;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .8), 0 0 2px rgba(0, 0, 0, .6);
+}
 /* Tighten the slash so Se/cure and Se/rver read closer to "secure"/"server"
    wherever a wordmark tail wraps its slash in <span class="sl">. */
 .sl { margin: 0 -.12em; }
@@ -1607,6 +1618,13 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 .setting-pop[hidden] { display: none; }
 .setting-pop a { color: var(--accent); }
 .setting-note { font-size: .8em; margin: .1rem 0 .4rem; }
+/* At .8em with mixed bold wordmarks + bare-weight prose (e.g. the share
+   drawer's "A Se/cure workspace is one offline link…" in account-settings.js),
+   the global -.12em overlaps the e→/ side on every measured font at both
+   weights (slash-gap.mjs: TOUCHES/OVERLAPS -.010..-.037em). -.04em measures
+   ok everywhere (worst side +0.043em). Same small-font fix as the docs pages
+   and the account drawer. */
+.setting-note .sl { margin: 0 -.04em; }
 
 /* Article collection (public/js/account-articles.js) — the admin-only view
    of the planned article series. Each abstract is a collapsible <details>
@@ -1982,6 +2000,19 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 .tryqueue-item:hover { border-color: var(--accent); }
 .tryqueue-item-label { font-weight: 600; font-size: .86rem; }
 .tryqueue-item-target { font-size: .72rem; overflow-wrap: anywhere; }
+/* Quick-search over the queue: a substring filter that highlights matches. */
+.tryqueue-search {
+  width: 100%; box-sizing: border-box; margin: 0 0 .35rem;
+  padding: .45rem .6rem; font: inherit; font-size: .84rem;
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+}
+.tryqueue-search:focus { outline: none; border-color: var(--accent); }
+.tryqueue-search[hidden] { display: none; }
+.tryqueue-hl {
+  background: var(--accent); color: #fff;
+  border-radius: 3px; padding: 0 .08em;
+}
 
 /* The detail view a tapped queue item opens IN PLACE (read the task before
    going anywhere). The verdict widgets reuse the trybanner-* classes, so
