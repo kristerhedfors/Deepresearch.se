@@ -1645,7 +1645,20 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 }
 #projectpanel[hidden] { display: none; }
 .project-panel { width: min(420px, 92vw); }
-.project-body { display: flex; flex-direction: column; gap: .55rem; min-height: 0; }
+/* Scroll the BODY, not the whole glass panel, and never COMPRESS its stack.
+   .project-body is a flex column; when its content is taller than the panel
+   (a long file list + note form + chats on a phone) the default flex-shrink
+   squeezed the file rows, note form and "Add files" button into each other
+   instead of scrolling — the "paints piled up on top of each other" in the
+   report. Pinning the panel (overflow hidden) and giving the body its own
+   scroll fixes where the overflow goes; flex-shrink:0 on the children keeps
+   each block at its natural height so it scrolls cleanly. Header stays pinned. */
+#projectpanel .project-panel { overflow: hidden; }
+.project-body {
+  display: flex; flex-direction: column; gap: .55rem;
+  flex: 1; min-height: 0; overflow-y: auto;
+}
+.project-body > * { flex-shrink: 0; }
 .project-body .section-lbl { margin: .5rem 0 .1rem; font-size: .78rem; font-weight: 700; color: var(--muted); }
 .project-knob { background: rgba(255, 255, 255, .28); border: 1px solid rgba(255, 255, 255, .5); border-radius: 12px; padding: .45rem .7rem; }
 .project-chip {
