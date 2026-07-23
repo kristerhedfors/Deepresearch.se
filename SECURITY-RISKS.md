@@ -139,7 +139,9 @@ break-glass Basic Auth mechanism, and the edge-cache key scheme. Anything
 reachable-but-unhardened is found by reading, not scanning.
 
 **How it applies here:** the design already assumes this (fail-closed gates,
-server-derived ids everywhere, parameterised SQL, HMAC bounded only by
+server-derived ids everywhere, parameterised SQL — now regression-guarded by
+`src/sql-injection-guard.test.js`, which fails if any `${…}` reaches a SQL
+string other than a code-controlled identifier — HMAC bounded only by
 `SESSION_SECRET` entropy since the H-3 fix). The residual exposure is that
 **publicly documented open findings become instructions** — which is why §3
 items get fixed in priority order rather than accumulating.
