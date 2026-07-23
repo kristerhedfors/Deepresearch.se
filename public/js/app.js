@@ -58,6 +58,7 @@ import {
 import { BUDGET_MAX_S, BUDGET_MIN_S, budgetTier, fmtBudget, posToSeconds, secondsToPos } from "./timescale.js";
 import { clearChatDom, EMPTY_TEXT, initTurns } from "./turns.js";
 import { initTestpoints } from "./testpoints.js";
+import { parseComposerDeepLink } from "./deeplink-core.js";
 
 // ---- Elements -------------------------------------------------------------
 
@@ -832,3 +833,36 @@ initTestpoints({
 // index.html's inline boot guard blocks native form submits until this flag
 // exists (see the guard's comment for the stale-module incident it covers).
 window.__appReady = true;
+
+// Composer deep-links (public/js/deeplink-core.js). A shared URL can open the
+// site with a mode selected and a question ready to ask — the agent-platform
+// docs' "ask the source" links use /?mode=introspection&ask=<question> to drop
+// the reader into the introspection agent with the exact question prefilled.
+// Fail-soft and decoration-adjacent: a non-normal mode needs the developer_mode
+// capability (the async settings reconcile above is authoritative — if the
+// server denies it the mode falls back to normal, but the prefilled question
+// still lands). Never auto-submits unless the link says &go=1.
+(function applyComposerDeepLink() {
+  try {
+    const { mode, ask, send } = parseComposerDeepLink(location.search);
+    if (mode && mode !== "normal") {
+      const applied = applyChatModeTheme(mode);
+      syncModeSelect(applied);
+      if (!developerModeOn()) {
+        setDeveloperMode(true).then(() => storeDeveloperMode(true)).catch(() => {});
+      }
+      greetSdkMode(applied);
+    } else if (mode === "normal") {
+      syncModeSelect(applyChatModeTheme("normal"));
+    }
+    if (ask) {
+      input.value = ask;
+      autogrow();
+      input.focus();
+      try { input.setSelectionRange(input.value.length, input.value.length); } catch { /* not focusable yet */ }
+      if (send) form.requestSubmit();
+    }
+  } catch {
+    // A malformed link must never break boot.
+  }
+})();

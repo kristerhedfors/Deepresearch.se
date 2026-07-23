@@ -1,0 +1,143 @@
+{
+  "spec": "distillsdk-agents",
+  "version": "0.1.0",
+  "status": "wired (2026-07-23): AgentSpec logic lives in the shared core public/js/agent-spec-core.js (server façade src/agent-spec.js; sdk/pair-cli.mjs re-exports it); the Agent Builder mode and share-link minting resolve agents from this file via the committed source snapshot. An agent is DEFINED by its chat-input-pane controls, its intro + loading animations, its colour theme, its seed example questions, and the default quota a minted share-link token carries. Derive a new agent by copying one of these and changing those fields.",
+  "reference_product": "deepresearch.se",
+  "control_types": {
+    "prompt-input": "the message textarea",
+    "send-button": "submit the turn",
+    "model-select": "choose the answer/synthesis model (provider registry)",
+    "depth-slider": "research depth → number of pipeline search rounds",
+    "toggle": "a boolean request flag (web search, incognito, …) — id IS the flag",
+    "mode-select": "choose the chat mode (Normal / Introspection / Agent Builder)",
+    "attachments": "attach files to the turn"
+  },
+  "agents": [
+    {
+      "id": "research",
+      "name": "Research",
+      "tagline": "The full signed-in deep-research assistant — DeepResearch.Se/rver.",
+      "description": "The server tier: one edge worker orchestrates the deterministic triage → search → gap → synthesis → validation pipeline, with identity, quotas, cloud storage and the full model catalog.",
+      "platform": "server",
+      "tier": "Se/rver",
+      "derivesFrom": "baseplate",
+      "mode": "normal",
+      "theme": {
+        "--agent-accent": "#3b82f6",
+        "--agent-accent-soft": "rgba(59,130,246,0.14)",
+        "--agent-bg": "#0b0f17",
+        "--agent-fg": "#e8edf4"
+      },
+      "intro": { "kind": "fade", "durationMs": 400 },
+      "loading": { "kind": "pipeline-phases", "messages": ["Triaging…", "Searching…", "Checking gaps…", "Synthesising…", "Validating…"] },
+      "controls": [
+        { "type": "prompt-input", "placeholder": "Ask a research question…" },
+        { "type": "model-select", "providers": "all", "allowLocal": false },
+        { "type": "depth-slider", "min": 0, "max": 3, "default": 1, "ticks": ["Quick", "Standard", "Deep", "Exhaustive"] },
+        { "type": "toggle", "id": "web_search", "label": "Web search", "default": true },
+        { "type": "toggle", "id": "incognito", "label": "Incognito", "default": false },
+        { "type": "attachments", "accept": "*/*", "max": 5 },
+        { "type": "mode-select", "modes": ["normal", "introspection", "agent-builder"] },
+        { "type": "send-button" }
+      ],
+      "examples": [
+        "What are the trade-offs between HNSW and IVF for vector search at 10M vectors?",
+        "Summarise the current evidence on GLP-1 drugs and cardiovascular outcomes.",
+        "Compare Cloudflare Workers, Deno Deploy and Bun for a low-latency edge API."
+      ],
+      "generateExamples": true,
+      "quota": { "window": "day", "requests": 50, "credits": null, "note": "Signed-in default window; a share link mints its own metered token." }
+    },
+    {
+      "id": "secure",
+      "name": "Secure",
+      "tagline": "The never-cloud tier — the research assistant that runs wholly in your browser. DeepResearch.Se/cure.",
+      "description": "The client tier: the server is in no data path. Provider calls go browser-direct on your own keys (or your local model server), the pipeline runs in the page, and all state rests sealed in browser-local storage. Its privacy is structural.",
+      "platform": "client",
+      "tier": "Se/cure",
+      "derivesFrom": "research",
+      "mode": "normal",
+      "theme": {
+        "--agent-accent": "#10b981",
+        "--agent-accent-soft": "rgba(16,185,129,0.14)",
+        "--agent-bg": "#08120e",
+        "--agent-fg": "#e6f4ee"
+      },
+      "intro": { "kind": "seal", "durationMs": 500 },
+      "loading": { "kind": "pipeline-phases", "messages": ["Triaging…", "Searching…", "Synthesising…"] },
+      "controls": [
+        { "type": "prompt-input", "placeholder": "Ask — nothing leaves this device except the model call…" },
+        { "type": "model-select", "providers": "cors-capable", "allowLocal": true },
+        { "type": "depth-slider", "min": 0, "max": 2, "default": 1, "ticks": ["Quick", "Standard", "Deep"] },
+        { "type": "toggle", "id": "web_search", "label": "Web search (granted)", "default": false },
+        { "type": "attachments", "accept": "*/*", "max": 5 },
+        { "type": "send-button" }
+      ],
+      "examples": [
+        "Draft a privacy policy for a browser-only app that never sees my data.",
+        "Explain how AES-GCM sealing of local chat history works.",
+        "What can a static host observe about my session? What can't it?"
+      ],
+      "generateExamples": true,
+      "quota": { "window": "day", "requests": 0, "credits": null, "note": "No server quota by default — Se/cure runs on your own keys. A share link may add a bounded, disclosed web-search grant." }
+    },
+    {
+      "id": "under-construction",
+      "name": "Under Construction",
+      "tagline": "A placeholder tier — the template you copy to start a brand-new agent.",
+      "description": "The minimal viable agent: a composer, a send button, and an honest 'not built yet' notice. It exists to be copied — change the name, add controls, pick a theme, and you have a new agent.",
+      "platform": "client",
+      "tier": "Se/cure",
+      "derivesFrom": "baseplate",
+      "mode": "normal",
+      "theme": {
+        "--agent-accent": "#f59e0b",
+        "--agent-accent-soft": "rgba(245,158,11,0.14)",
+        "--agent-bg": "#14100a",
+        "--agent-fg": "#f4ecdd"
+      },
+      "intro": { "kind": "none" },
+      "loading": { "kind": "dots" },
+      "controls": [
+        { "type": "prompt-input", "placeholder": "This agent is under construction…" },
+        { "type": "send-button", "label": "Send" }
+      ],
+      "examples": [
+        "What will this agent do?"
+      ],
+      "generateExamples": false,
+      "quota": { "window": "day", "requests": 10, "credits": null, "note": "A cautious default for a work-in-progress share link." }
+    },
+    {
+      "id": "agent-builder",
+      "name": "Agent Builder",
+      "tagline": "The mode that builds agents — distil this site into a new flavour and publish it live.",
+      "description": "Formerly 'SDK mode'. Describe a flavour to distil from the Se/cure tier; the model plans against the DistillSDK manifest, reads the deployed source, builds a self-contained agent, and publishes it at /app/<slug>/. This is the pair-studio module made real.",
+      "platform": "server",
+      "tier": "Se/rver",
+      "derivesFrom": "research",
+      "mode": "agent-builder",
+      "theme": {
+        "--agent-accent": "#22c55e",
+        "--agent-accent-soft": "rgba(34,197,94,0.16)",
+        "--agent-bg": "#07130b",
+        "--agent-fg": "#e7f7ea"
+      },
+      "intro": { "kind": "assemble", "durationMs": 600 },
+      "loading": { "kind": "build-steps", "messages": ["Planning modules…", "Reading Se/cure source…", "Writing files…", "Publishing…"] },
+      "controls": [
+        { "type": "prompt-input", "placeholder": "Describe the agent to build…" },
+        { "type": "model-select", "providers": "tool-capable", "allowLocal": false },
+        { "type": "mode-select", "modes": ["normal", "introspection", "agent-builder"] },
+        { "type": "send-button", "label": "Build" }
+      ],
+      "examples": [
+        "Build a single-purpose legal-research agent themed in deep blue.",
+        "Distil a stripped-down single-file Se/cure client with only a model picker.",
+        "Make a Swedish-language study assistant with a depth slider and no web search."
+      ],
+      "generateExamples": true,
+      "quota": { "window": "day", "requests": 20, "credits": null, "note": "Building is expensive; a share link to a builder gets a tighter default." }
+    }
+  ]
+}

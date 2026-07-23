@@ -12,6 +12,15 @@ deployed Se/cure source, and the pipeline PUBLISHES the files at a live,
 shareable `/app/<slug>/` URL. Green is the mode's color (the composer pane + the
 `sdk studio` header tag), as titanium white is introspection's.
 
+> **Named "Agent Builder" in the UI (2026-07-23).** The dropdown option, the
+> account-settings label, and the plant greeter now read **Agent Builder** —
+> distilling this site into a new agent is the mode's purpose. The **mode id
+> stays `sdk`** and every internal name here (SDK mode, DistillSDK, `sdk_*`
+> tools, `sdk-mode` theme class) is unchanged. The agents this mode builds are
+> defined declaratively by the **agent-platform** SDK module (`sdk/AGENTS.json`,
+> `docs/AGENT-PLATFORM.md`) — an agent IS its chat-input-pane controls, theme,
+> animations, examples and share-link quota.
+
 ## The plant identity + the mode-theme registry (2026-07-19)
 
 SDK mode is not just a green pane — it has its own **symbol** in the site's
