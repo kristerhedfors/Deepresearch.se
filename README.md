@@ -62,16 +62,22 @@ holds the project purpose and EU AI Act use restrictions.
 
 ## The SDKs — Agents and Platform
 
-The architecture is also distilled into reusable form as **two SDKs**, both
-drawn from this repository. One builds a single **agent** inside a platform; the
-other builds a whole **platform**.
+The architecture is also distilled into reusable form as **two distinct SDKs**,
+both drawn from this repository. The Agents SDK builds a single **agent** and is
+tailored to Agent Studio and the integrated Linux environment; the Platform SDK
+builds an entire DeepResearch.se-like **platform**.
 
 - **DeepResearch Agents SDK** — build an individual **agent**: a flavour of this
   platform defined by its chat-input-pane controls, intro and loading
   animations, colour theme, example questions, and the quota a shared link
   carries. An agent is data, not code (`sdk/AGENTS.json`,
   `public/js/agent-spec-core.js`) — copy one spec, change those five things,
-  validate. The full reference is **`docs/AGENT-PLATFORM.md`**.
+  validate. This SDK is built for its two home surfaces: **Agent Studio** (the
+  chat mode that turns a description into a published agent at `/app/<slug>/`,
+  through its direct build tools `write_file`/`publish_app`) and the
+  **integrated Linux environment** (the in-browser execution sandbox where an
+  agent or build can run and test code, with the platform's own source mounted
+  at `/src`). The full reference is **`docs/AGENT-PLATFORM.md`**.
 - **DeepResearch Platform SDK** (internal codename **DistillSDK**, `sdk/`) —
   build a whole **platform**: one AI-assistant product shipped as a
   wholly-in-browser client tier plus a one-edge-worker server tier, with at most

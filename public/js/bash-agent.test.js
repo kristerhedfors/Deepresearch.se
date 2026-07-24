@@ -79,6 +79,21 @@ describe("fetchShellStep", () => {
     assert.equal(captured.url, "/api/bash/step");
     assert.deepEqual(captured.body, { messages, transcript });
   });
+
+  // Feedback #7 (2026-07-24): on an Agent Studio send the step prompt must
+  // steer file creation to the build tools — the flag rides only when set, so
+  // every other send's request body stays byte-identical.
+  test("sdk opt adds sdk_mode to the request body, and only then", async () => {
+    let captured;
+    const fake = async (_url, init) => {
+      captured = JSON.parse(init.body);
+      return { ok: true, json: async () => ({ commands: [], done: true, reasoning: "" }) };
+    };
+    await fetchShellStep([], [], /** @type {any} */ (fake), { sdk: true });
+    assert.equal(captured.sdk_mode, true);
+    await fetchShellStep([], [], /** @type {any} */ (fake));
+    assert.equal("sdk_mode" in captured, false);
+  });
 });
 
 // ---- runShellLoop (DRS shape: step = /api/bash/step) ----------------------

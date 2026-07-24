@@ -37,6 +37,15 @@ shell", a real x86 Linux boots **in the browser** (CheerpX WASM), an agentic
 loop runs commands in it, and the real output feeds the answer. Present on
 **both** tiers — DRS (`DeepResearch.Se/rver`) and DRC (`DeepResearch.Se/cure`).
 
+In the two-SDK division (owner directive, 2026-07-24) this sandbox is the
+**integrated Linux environment of the DeepResearch Agents SDK**
+(`docs/AGENT-PLATFORM.md`) — the surface where an agent or an Agent Studio
+build runs and tests code. It is EXECUTION-ONLY: files created in the sandbox
+are never published; shipping goes through Agent Studio's direct build tools
+(feedback #7, chat_logs #583 — the bash step prompt's `sdkMode` note, the
+build prompts, and the transcript framing all enforce this, and the DRS
+client skips the sandbox pre-pass on plain build turns).
+
 > ## ✅ WORKING FOUNDATION — DRS verified end to end (2026-07-13)
 >
 > **DRS (Se/rver) sandbox execution is CONFIRMED WORKING on the owner's real

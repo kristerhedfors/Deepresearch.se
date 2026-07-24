@@ -1,7 +1,11 @@
 // @ts-check
 // The bash-lite agent's SHARED PURE CORE — the single source of truth for the
 // experimental in-browser Linux execution sandbox (the `bash_lite_mcp` knob on
-// DRS, `bashLite` on DRC).
+// DRS, `bashLite` on DRC). The sandbox is the INTEGRATED LINUX ENVIRONMENT of
+// the DeepResearch Agents SDK (docs/AGENT-PLATFORM.md) — the surface where an
+// agent or an Agent Studio build runs and tests code. It is execution-only:
+// files created in the sandbox are never published; shipping goes through
+// Agent Studio's build tools (sdk-core.js BUILD_TOOLS).
 //
 // The sandbox is a JavaScript x86 Linux emulator (CheerpX) that boots IN THE
 // BROWSER (public/js/sandbox.js) — the server never runs a shell — so the
