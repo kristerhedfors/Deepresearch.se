@@ -1,0 +1,43 @@
+{
+  "branch": "claude/introspection-feedback-kw9i9m",
+  "pr": null,
+  "requested_at": "2026-07-24",
+  "points": [
+    {
+      "label": "Source peek: tap a cited file in an introspection answer",
+      "summary": "NEW (from your feedback #10): in Introspection mode, every inline-code repo path an answer cites is now a tap target. Ask the question below; in the answer, tap a plain path like `public/js/agent-spec-core.js` and then a line-ranged one like `agent-spec-core.js:34-45`. PASS = a popover opens showing the real file, syntax highlighted with line numbers; the line-ranged tap scrolls to and marks lines 34-45; backdrop tap / ✕ / Escape close it. FAIL = references aren't tappable, the popover shows the wrong file, or the range isn't marked.",
+      "target": "/rver",
+      "actions": [
+        { "type": "compose", "text": "what defines an agent, as produced by agent studio" },
+        { "type": "note", "text": "Make sure the chat-mode dropdown is on Introspection first. File references only become tappable in developer mode." }
+      ],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Source peek: markdown files render inside the popover",
+      "summary": "In an introspection answer that cites a markdown doc (e.g. `docs/AGENT-PLATFORM.md` from the same agent-studio question), tap it. PASS = the popover shows the doc RENDERED (headings, lists — not raw markup), it fits and scrolls inside the popover on the phone, and the 'View source' button flips to the raw text (and back). FAIL = raw markup by default, content overflowing the popover sideways, or a dead toggle.",
+      "target": "/rver",
+      "actions": [
+        { "type": "compose", "text": "what defines an agent, as produced by agent studio" },
+        { "type": "note", "text": "Introspection mode on. Any answer citing a .md file works — docs/AGENT-PLATFORM.md is the likely one for this question." }
+      ],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Source peek on Se/cure: same tap-to-open in /cure",
+      "summary": "Same feature on the secure tier: on /cure with Developer mode on (settings drawer) and a provider key configured, ask how the site is built and tap a cited file reference in the answer. PASS = the same popover opens with the highlighted file, entirely client-side. FAIL = references not tappable on /cure, or the popover errors.",
+      "target": "/cure",
+      "actions": [
+        { "type": "compose", "text": "How are you built? Name the key source files." },
+        { "type": "note", "text": "Turn on Developer mode in the /cure settings drawer first; needs any working provider key." }
+      ],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    }
+  ]
+}

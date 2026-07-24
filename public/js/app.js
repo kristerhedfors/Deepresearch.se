@@ -37,6 +37,7 @@ import {
   onIntrospectionRouteChange,
   openRoutePicker,
 } from "./introspect-ui.js";
+import { initSourcePeek } from "./source-peek.js";
 import { setMapViewAnchor, setPovAnchor } from "./activity.js";
 import { onDeckAsk } from "./imagedeck.js";
 import { pullNewer, syncToServer } from "./sync.js";
@@ -653,6 +654,10 @@ input.addEventListener("focus", () => applySandboxImage().finally(prewarmSandbox
 // (own-key, browser-direct) choice can be made BEFORE the question is sent.
 // Debounced; a no-op with the knob off. See public/js/introspect-ui.js.
 initIntrospectUi({ tier: "drs" });
+// Tappable file references in rendered answers (source-peek.js): in developer
+// mode an inline-code repo path opens the file from the deployed snapshot in
+// a popover. turns.js calls wireSourcePeek per render; this wires the gate.
+initSourcePeek({ enabled: developerModeOn });
 let introspectTypeTimer = 0;
 input.addEventListener("input", () => {
   clearTimeout(introspectTypeTimer);
