@@ -14,6 +14,7 @@ import {
   FEEDBACK_CAPS,
   FEEDBACK_IMAGE_CAPS,
   FEEDBACK_STATUSES,
+  feedbackImagesFromParts,
   feedbackIntent,
   formatFeedbackText,
   handleServerTokenFeedback,
@@ -260,6 +261,41 @@ test("validateFeedbackImages: oversize name truncates rather than erroring", () 
   assert.match(v.images[0].name, /…\[truncated 300 chars\]$/);
 });
 
+// Chat-filed feedback: screenshots ride the chat message as image_url parts
+// (feedback #12, 2026-07-24 — the bytes were dropped, images: [] in the queue).
+test("feedbackImagesFromParts: maps chat image parts to named feedback images", () => {
+  const out = feedbackImagesFromParts([
+    { type: "image_url", image_url: { url: JPEG_URL } },
+    { type: "image_url", image_url: { url: PNG_URL } },
+  ]);
+  assert.deepEqual(out, [
+    { name: "screenshot-1.jpg", data: JPEG_URL },
+    { name: "screenshot-2.png", data: PNG_URL },
+  ]);
+});
+
+test("feedbackImagesFromParts: take-what-fits, never an error (invariant 2)", () => {
+  // Junk, non-data URLs, and oversize parts are SKIPPED — the rest still land.
+  const huge = "data:image/png;base64," + "A".repeat(FEEDBACK_IMAGE_CAPS.dataChars);
+  const out = feedbackImagesFromParts([
+    null,
+    { type: "image_url", image_url: { url: "https://example.com/x.png" } },
+    { type: "image_url", image_url: { url: huge } },
+    { type: "image_url", image_url: { url: PNG_URL } },
+  ]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].data, PNG_URL);
+  // Count cap: never more than the per-submission maximum.
+  const four = Array.from({ length: FEEDBACK_IMAGE_CAPS.count + 1 }, () => ({
+    type: "image_url",
+    image_url: { url: PNG_URL },
+  }));
+  assert.equal(feedbackImagesFromParts(four).length, FEEDBACK_IMAGE_CAPS.count);
+  // Junk input shapes → empty, not a throw.
+  assert.deepEqual(feedbackImagesFromParts(/** @type {any} */ (null)), []);
+  assert.deepEqual(feedbackImagesFromParts(/** @type {any} */ ("x")), []);
+});
+
 test("validateFeedbackCreate carries validated images through (and their errors up)", () => {
   const v = validateFeedbackCreate({ comment: "c", images: [{ name: "s.png", data: PNG_URL }] });
   assert.equal(v.error, undefined);
@@ -460,7 +496,7 @@ test("followUpFeedbackBody: comment plus clearly-marked context, trimmed with [�
 // A minimal D1 fake: enough surface (prepare/bind/first/run) for the
 // threading decision — same spirit as the quota-grant combined-D1-fake.
 function fakeThreadingDb({ existing = null } = {}) {
-  const calls = { messages: [], statusUpdates: [], inserts: [] };
+  const calls = { messages: [], statusUpdates: [], inserts: [], images: [] };
   const db = {
     prepare(sql) {
       return {
@@ -475,6 +511,7 @@ function fakeThreadingDb({ existing = null } = {}) {
         },
         async run() {
           if (/INSERT INTO feedback_messages/.test(sql)) calls.messages.push(this.args);
+          else if (/INSERT INTO feedback_images/.test(sql)) calls.images.push(this.args);
           else if (/UPDATE feedback SET status = 'new'/.test(sql)) calls.statusUpdates.push(this.args);
           else if (/INSERT INTO feedback\b/.test(sql)) { calls.inserts.push(this.args); return { meta: { last_row_id: 99 } }; }
           return { meta: { last_row_id: calls.messages.length } };
@@ -534,6 +571,43 @@ test("createOrThreadFeedbackEntry: first feedback in a conversation creates a fr
   assert.deepEqual(res, { id: 99, threaded: false });
   assert.equal(calls.inserts.length, 1);
   assert.equal(calls.messages.length, 0);
+});
+
+// Screenshots on chat-filed feedback (feedback #12, 2026-07-24): the image
+// bytes must land as feedback_images rows, not just a "[1 image attached]"
+// line in the comment text.
+test("createOrThreadFeedbackEntry: a fresh entry stores its screenshots entry-level", async () => {
+  const { db, calls } = fakeThreadingDb({});
+  const res = await createOrThreadFeedbackEntry(db, "1", {
+    comment: "feedback: no visualisation, bomb symbol in the footer",
+    images: [{ name: "screenshot-1.jpg", data: JPEG_URL }],
+  }, [
+    { role: "user", content: "visualise the text input pipeline" },
+    { role: "assistant", content: "```mermaid …" },
+    { role: "user", content: "feedback: no visualisation, bomb symbol in the footer" },
+  ]);
+  assert.deepEqual(res, { id: 99, threaded: false });
+  assert.equal(calls.images.length, 1);
+  const [feedbackId, messageId, name, data] = calls.images[0];
+  assert.equal(feedbackId, 99);
+  assert.equal(messageId, null); // entry-level, not tied to a thread message
+  assert.equal(name, "screenshot-1.jpg");
+  assert.equal(data, JPEG_URL);
+});
+
+test("createOrThreadFeedbackEntry: a threaded follow-up's screenshots land on its message", async () => {
+  const { db, calls } = fakeThreadingDb({
+    existing: { id: 8, status: "in_progress", comment: "feedback: the diagrams have no text in the boxes" },
+  });
+  const res = await createOrThreadFeedbackEntry(db, "1", {
+    comment: "feedback still no text inside the boxes",
+    images: [{ name: "screenshot-1.png", data: PNG_URL }],
+  }, FOLLOW_UP_CONVO);
+  assert.deepEqual(res, { id: 8, threaded: true });
+  assert.equal(calls.images.length, 1);
+  const [feedbackId, messageId] = calls.images[0];
+  assert.equal(feedbackId, 8);
+  assert.equal(messageId, 1); // the follow-up message's own id
 });
 
 test("createOrThreadFeedbackEntry: a withdrawn/unmatched earlier report falls back to a fresh entry", async () => {
