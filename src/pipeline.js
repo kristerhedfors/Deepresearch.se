@@ -45,6 +45,7 @@ import {
   recordPhase,
   wantsClaimValidation,
   wantsFullContent,
+  wantsGapStrive,
   wantsNotes,
   wantsSubqFanout,
 } from "./budget.js";
@@ -1252,6 +1253,13 @@ async function runGapChecks(ctx) {
   const plan = state.plan;
   const est = plan.estimates;
 
+  // Gap-strive (budget.js wantsGapStrive, feedback #16): at a deep tier with
+  // most of the budget unspent, a "coverage sufficient" verdict is challenged —
+  // the NEXT round's gap prompt gets the wider-aperture strive block instead of
+  // the loop stopping. Bounded by GAP_STRIVE_MAX, the round ceiling, the
+  // deadline check below, and the no-new-sources saturation exit.
+  let strive = false;
+  let strives = 0;
   for (let it = 1; it <= plan.gapIterations; it++) {
     if (state.searchCount >= plan.maxSearches) break;
     // Skip further digging if this round plus the remaining mandatory
@@ -1262,7 +1270,7 @@ async function runGapChecks(ctx) {
       break;
     }
     const stepId = `gap${it}`;
-    ctx.step(stepId, `Checking coverage (round ${it})…`);
+    ctx.step(stepId, strive ? `Checking coverage (round ${it}, digging deeper)…` : `Checking coverage (round ${it})…`);
 
     const gapRaw = await jsonPhase(ctx, {
       label: `gap_check_${it}`,
@@ -1270,7 +1278,7 @@ async function runGapChecks(ctx) {
       recordStat: true,
       maxTokens: 400,
       messages: [
-        { role: "system", content: gapPrompt([...state.ranQueries], plan.followups, { subquestions: state.subquestions || [], reinforceJsonOnly }) },
+        { role: "system", content: gapPrompt([...state.ranQueries], plan.followups, { subquestions: state.subquestions || [], reinforceJsonOnly, strive }) },
         {
           role: "user",
           // convText rides along so a bare follow-up ("what's the latest")
@@ -1294,9 +1302,21 @@ async function runGapChecks(ctx) {
       : gap.queries.filter((/** @type {any} */ q) => typeof q === "string" && q.trim()).slice(0, plan.followups);
 
     if (followups.length === 0) {
+      // Deep budget, mostly unspent, first "sufficient" verdict(s): challenge
+      // the judgment with the strive prompt on the next round instead of
+      // settling (feedback #16). A strive round that ALSO comes back empty
+      // falls through here with the push budget spent and ends the loop.
+      if (wantsGapStrive(plan, Date.now() - state.startedAt, strives)) {
+        strives++;
+        strive = true;
+        ctx.stepDone(stepId, "Coverage looks sufficient — deep budget, challenging that");
+        log.info("chat.gap_strive", { round: it, strives });
+        continue;
+      }
       ctx.stepDone(stepId, "Coverage sufficient");
       break;
     }
+    strive = false;
     ctx.stepDone(
       stepId,
       `Digging deeper: ${followups.length} follow-up search${followups.length === 1 ? "" : "es"}`,
