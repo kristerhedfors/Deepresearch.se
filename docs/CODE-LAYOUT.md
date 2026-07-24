@@ -84,6 +84,7 @@ Server (`src/`):
 | `tokemon-data.js` | The game core's static DATA tables (Gen-1 provenance): the renamed type chart, moves, species, starters, balls/heal items, spawn/item-drop tables — re-exported through `tokemon.js`, so consumers see one surface |
 | `tokemon-api.js` | The first registered game: `/api/games/tokemon/*` (dispatched via `games.js`) — save persistence (D1 `tokemon_saves`), spawn re-derivation + proximity validation, server-side battle resolution; 503s without D1. Also the street-view AR mode: `…/scene` (a Street View frame at the player's position with spawns projected INTO the imagery, via `googlemaps.js`'s edge-cached POV capture, gated on the per-user `google_maps` knob) and `…/go` (text navigation) |
 | `tokemon-nav.js` | The street-view mode's PURE side (Node-tested): the bilingual text-command grammar (`parseGoCommand` — "go north 200 m" / "gå till Kungsgatan 1" / "look right", EN+SV parity per invariant 6), spherical geodesy (`destinationPoint`/`bearingBetween`), and `projectSpawns` (bearing→x, distance→y/size placement of spawns inside a Street View frame) |
+| `space.js` | The SPACE-ANIMATIONS domain's server FAÇADE: a pure re-export of the ONE shared core `public/js/space-core.js` (the scene registry — one "animation skill" per common space question, EN+SV — the deterministic `spaceIntent` matcher, zoom math, wireframe mesh builders, feedback validation) plus the domain's two endpoints: PUBLIC `POST /api/space/feedback` (the /space/ showcase gallery's 👍/👎 + short comment; validated against the registry, comment clamped, D1 `space_feedback` rows carry NO identity — the page is public) and admin `GET /api/admin/space-feedback` (newest-first entries + per-scene tallies, `?format=text` for loops). No D1 → 503, only the feedback button degrades — the animations are static assets and keep playing. See the **space-animations** skill and `docs/SPACE-ANIMATIONS.md` |
 | `prompts.js` | All LLM prompt builders |
 | `validation.js` | Request validation (messages, images) + model/vision resolution, plus the untrusted-client-input sanitizers (`resolveShellTranscript`, `sanitizeClientDiag`, `sanitizeFsSummary`) shared with `chat.js` |
 | `model-routing.js` | The shared split-model-routing decision (`resolveJsonModel` — JSON planning phases stay on the fixed reliable model): a leaf module (imports nothing) so `chat.js` and `mcp.js` share ONE implementation instead of a verbatim copy |
@@ -563,3 +564,20 @@ event list), `js/api.js` (fetch wrappers), `tokemon.css`. All game RULES
 live server-side (`src/tokemon.js`, `src/tokemon-nav.js`); the page only
 presents. The
 site-wide `Permissions-Policy` grants `geolocation=(self)` for this page.
+
+Space animations (`public/space/` — the PUBLIC showcase at `/space/`,
+allowlisted like `/pulse/`): an archive of playable wireframe 3D
+animations answering common space questions, with log-scale zoom spanning
+planet radii to light-years. `index.html` (markup + the dark space
+styling; the one page that is dark by nature — the scene IS the night
+sky) + `space.js` (the canvas renderer and gallery: per-kind scene
+runners — compare/orbits/launch/surface/rings/travel — drag-to-rotate,
+pinch/wheel zoom, play/pause/speed HUD, the EN/SV language toggle, the
+ask-box that routes a typed question to its scene via `spaceIntent`, and
+the per-card 👍/👎 feedback POST). The rendering rule is the page's
+identity: background stars — and only stars (the Sun, Proxima, the light
+pulse) — get real additive glow; every body, craft and figure is unlit
+wireframe. All deterministic logic lives in the shared pure core
+`public/js/space-core.js` (Node-tested; served publicly — the same
+public-module-graph rule as the /cure entries), which `src/space.js`
+re-exports server-side. See `docs/SPACE-ANIMATIONS.md`.

@@ -342,5 +342,6 @@ Features & surfaces:
 - **ui-notes** — client UI/UX conventions: rendering, attachments, static pages, the public (no-auth) surface.
 - **ux-conventions** — the numbered registry of codified UX interaction rules (UX-1 …); add an entry per new decision.
 - **slash-spacing** — measuring the wordmark slash gap (`scripts/slash-gap.mjs`); never eyeball `.sl` margins.
+- **space-animations** — the public /space/ archive of playable wireframe animations (one "animation skill" per common space question, EN+SV matched): the only-stars-glow rendering rule, real-scale zoom, the gallery feedback queue.
 - **tokemon-game** — the games registry seam + the Tokemon AR game (Pokémon Gen-1 mechanics verbatim, no invented rules).
 - **commit-analytics** — the public `/pulse` dashboard and its `npm run pulse` refresh workflow.
