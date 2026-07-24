@@ -7,6 +7,8 @@ import assert from "node:assert/strict";
 import {
   approxImageBytes,
   buildFeedbackContext,
+  buildFeedbackDebugContext,
+  cannedFeedbackAck,
   createOrThreadFeedbackEntry,
   followUpFeedbackBody,
   priorFeedbackComment,
@@ -148,6 +150,69 @@ test("buildFeedbackContext: reads text out of multimodal prior turns and tolerat
 });
 
 // ---------------------------------------------------------------------------
+// buildFeedbackDebugContext — the ENTIRE conversation + request metadata,
+// verbatim (owner directive, 2026-07-24): the entry itself is the complete
+// debugging context, no chatlogs hunt needed (incognito has no chatlogs row).
+// ---------------------------------------------------------------------------
+
+test("buildFeedbackDebugContext: every turn verbatim plus metadata header", () => {
+  const ctx = buildFeedbackDebugContext(
+    [
+      { role: "user", content: "What is the capital of Sweden?" },
+      { role: "assistant", content: "Stockholm." },
+      { role: "user", content: "feedback: the answer was too short" },
+    ],
+    { request_id: "r-123", model: "berget::x", incognito: false, client_diag: { coi: true } },
+  );
+  assert.match(ctx, /^request_id: r-123\nmodel: berget::x\nincognito: false\nclient_diag: {"coi":true}\n/);
+  assert.match(ctx, /--- conversation \(3 turns\) ---/);
+  assert.match(ctx, /\[user\]\nWhat is the capital of Sweden\?/);
+  assert.match(ctx, /\[assistant\]\nStockholm\./);
+  assert.match(ctx, /\[user\]\nfeedback: the answer was too short$/);
+});
+
+test("buildFeedbackDebugContext: skips empty metadata, flattens multimodal turns, junk-safe", () => {
+  const ctx = buildFeedbackDebugContext(
+    [
+      { role: "user", content: [{ type: "text", text: "look at this" }, { type: "image_url", image_url: { url: "data:…" } }] },
+      { role: "assistant", content: "Gamla stan." },
+    ],
+    { request_id: "r-1", use_case: undefined, page: null, note: "" },
+  );
+  assert.match(ctx, /^request_id: r-1\n---/);
+  assert.doesNotMatch(ctx, /use_case|page|note/);
+  assert.match(ctx, /look at this/);
+  // Nothing at all → null, junk shapes never throw.
+  assert.equal(buildFeedbackDebugContext([], {}), null);
+  assert.equal(buildFeedbackDebugContext(/** @type {any} */ (null)), null);
+  assert.match(buildFeedbackDebugContext(/** @type {any} */ ("junk"), { a: 1 }), /^a: 1/);
+});
+
+test("buildFeedbackDebugContext: an over-cap conversation trims the OLDEST turns, keeps the newest", () => {
+  const turns = [];
+  for (let i = 0; i < 40; i++) {
+    turns.push({ role: "user", content: `question ${i} ` + "x".repeat(4_000) });
+    turns.push({ role: "assistant", content: `answer ${i} ` + "y".repeat(4_000) });
+  }
+  turns.push({ role: "user", content: "feedback: the last answer was wrong" });
+  const ctx = buildFeedbackDebugContext(turns, { request_id: "r-9" });
+  assert.equal(ctx.length <= FEEDBACK_CAPS.context, true);
+  assert.match(ctx, /\[… earlier turns trimmed: \d+ chars …\]/);
+  // The newest turn (what the feedback is about) always survives; the oldest goes.
+  assert.match(ctx, /feedback: the last answer was wrong$/);
+  assert.doesNotMatch(ctx, /question 0 /);
+});
+
+// The canned acknowledgment is re-exported through this façade for the
+// pipeline's feedback case (full behavior tests live in feedback-core.test.js).
+test("cannedFeedbackAck rides the façade: deterministic, never a model call", () => {
+  const ack = cannedFeedbackAck("feedback: the map view was cut off");
+  assert.equal(typeof ack, "string");
+  assert.equal(ack.length > 0, true);
+  assert.equal(cannedFeedbackAck("feedback: the map view was cut off"), ack);
+});
+
+// ---------------------------------------------------------------------------
 // Status lifecycle
 // ---------------------------------------------------------------------------
 
@@ -190,7 +255,15 @@ test("validateFeedbackCreate: context fields are optional and null when absent/j
     answer_excerpt: null,
     model: null,
     page: null,
+    context: null,
   });
+});
+
+test("validateFeedbackCreate: a provided debugging context rides through, capped", () => {
+  const v = validateFeedbackCreate({ comment: "c", context: "request_id: r-1\n[user]\nhi" });
+  assert.equal(v.entry.context, "request_id: r-1\n[user]\nhi");
+  const long = validateFeedbackCreate({ comment: "c", context: "x".repeat(FEEDBACK_CAPS.context + 500) });
+  assert.match(long.entry.context, /…\[truncated 500 chars\]$/);
 });
 
 test("validateFeedbackCreate: oversize fields truncate with the explicit marker", () => {
@@ -418,6 +491,28 @@ test("formatFeedbackText omits absent context lines", () => {
   assert.doesNotMatch(text, /IMAGES:/);
 });
 
+test("projectFeedback: the debugging context is opt-in (single-entry reads), lists carry only its size", () => {
+  const row = { ...ROW, context: "request_id: r-1\n--- conversation (3 turns) ---\n[user]\nhi" };
+  const list = projectFeedback(row, MSGS);
+  assert.equal("context" in list, false);
+  assert.equal(list.context_chars, row.context.length);
+  const single = projectFeedback(row, MSGS, [], { context: true });
+  assert.equal(single.context, row.context);
+  // No context stored → 0 and null respectively.
+  assert.equal(projectFeedback(ROW).context_chars, 0);
+  assert.equal(projectFeedback(ROW, [], [], { context: true }).context, null);
+});
+
+test("formatFeedbackText: a single-entry read renders the full DEBUG CONTEXT; lists show its size", () => {
+  const row = { ...ROW, context: "request_id: r-1\n--- conversation (3 turns) ---\n[user]\nhi" };
+  const single = formatFeedbackText([projectFeedback(row, MSGS, [], { context: true })]);
+  assert.match(single, /DEBUG CONTEXT:\nrequest_id: r-1\n--- conversation \(3 turns\) ---\n\[user\]\nhi/);
+  const list = formatFeedbackText([projectFeedback(row, MSGS)]);
+  assert.match(list, /DEBUG CONTEXT: \d+ chars \(fetch the entry by id to read it\)/);
+  // Entries without context show neither line (pre-redesign rows).
+  assert.doesNotMatch(formatFeedbackText([projectFeedback(ROW, MSGS)]), /DEBUG CONTEXT/);
+});
+
 test("formatFeedbackText lists screenshot ids/names/sizes, per message too", () => {
   const IMGS = [
     { id: 11, feedback_id: 7, message_id: null, name: "shot.png", chars: 42_000 },
@@ -496,7 +591,7 @@ test("followUpFeedbackBody: comment plus clearly-marked context, trimmed with [�
 // A minimal D1 fake: enough surface (prepare/bind/first/run) for the
 // threading decision — same spirit as the quota-grant combined-D1-fake.
 function fakeThreadingDb({ existing = null } = {}) {
-  const calls = { messages: [], statusUpdates: [], inserts: [], images: [] };
+  const calls = { messages: [], statusUpdates: [], contextUpdates: [], inserts: [], images: [] };
   const db = {
     prepare(sql) {
       return {
@@ -513,6 +608,7 @@ function fakeThreadingDb({ existing = null } = {}) {
           if (/INSERT INTO feedback_messages/.test(sql)) calls.messages.push(this.args);
           else if (/INSERT INTO feedback_images/.test(sql)) calls.images.push(this.args);
           else if (/UPDATE feedback SET status = 'new'/.test(sql)) calls.statusUpdates.push(this.args);
+          else if (/UPDATE feedback SET context = /.test(sql)) calls.contextUpdates.push(this.args);
           else if (/INSERT INTO feedback\b/.test(sql)) { calls.inserts.push(this.args); return { meta: { last_row_id: 99 } }; }
           return { meta: { last_row_id: calls.messages.length } };
         },
@@ -621,6 +717,39 @@ test("createOrThreadFeedbackEntry: a withdrawn/unmatched earlier report falls ba
 
 test("createOrThreadFeedbackEntry: no DB → null (fail-soft)", async () => {
   assert.equal(await createOrThreadFeedbackEntry(null, "1", { comment: "c" }, FOLLOW_UP_CONVO), null);
+});
+
+test("createOrThreadFeedbackEntry: a fresh entry stores the debugging context on its row", async () => {
+  const { db, calls } = fakeThreadingDb({});
+  await createOrThreadFeedbackEntry(db, "1", {
+    comment: "feedback: first report",
+    context: "request_id: r-1\n--- conversation (3 turns) ---\n[user]\nhi",
+  }, [
+    { role: "user", content: "a question" },
+    { role: "assistant", content: "an answer" },
+    { role: "user", content: "feedback: first report" },
+  ]);
+  assert.equal(calls.inserts.length, 1);
+  // createFeedbackEntry binds: user_id, ts, ts, comment, question, excerpt, model, page, context.
+  assert.equal(calls.inserts[0][8], "request_id: r-1\n--- conversation (3 turns) ---\n[user]\nhi");
+});
+
+test("createOrThreadFeedbackEntry: a follow-up REFRESHES the entry's context to the latest transcript", async () => {
+  const { db, calls } = fakeThreadingDb({
+    existing: { id: 8, status: "in_progress", comment: "feedback: the diagrams have no text in the boxes" },
+  });
+  await createOrThreadFeedbackEntry(db, "1", {
+    comment: "feedback still no text inside the boxes",
+    context: "request_id: r-2\n--- conversation (5 turns) ---\n…",
+  }, FOLLOW_UP_CONVO);
+  assert.equal(calls.contextUpdates.length, 1);
+  assert.deepEqual(calls.contextUpdates[0], ["request_id: r-2\n--- conversation (5 turns) ---\n…", 8]);
+  // Without a context nothing is written (never overwrite with null).
+  const { db: db2, calls: calls2 } = fakeThreadingDb({
+    existing: { id: 8, status: "in_progress", comment: "feedback: the diagrams have no text in the boxes" },
+  });
+  await createOrThreadFeedbackEntry(db2, "1", { comment: "feedback still broken" }, FOLLOW_UP_CONVO);
+  assert.equal(calls2.contextUpdates.length, 0);
 });
 
 // ---------------------------------------------------------------------------

@@ -146,7 +146,7 @@ export const FEATURE_ITEMS = [
     impact: "medium",
     status: "shipped",
     summary:
-      "User feedback given straight from the chat — a message opening with the word \"feedback\" (feedbackIntent, EN+SV) routes to the feedback case (src/pipeline.js runFeedbackCapture), which answers warmly and records a dialogue-thread entry (src/feedback.js) the development agent gathers, decides on, acts on, and replies into. Discovery is double: the structured queue plus a chat_logs meta.feedback tag. Superseded the earlier per-reply Feedback button + settings knob (2026-07-18). See the feedback-loop skill.",
+      "User feedback given straight from the chat — a message opening with the word \"feedback\" (feedbackIntent, EN+SV) routes to the feedback case (src/pipeline.js runFeedbackCapture), which replies with a canned acknowledgment (no LLM in the path — 2026-07-24) and records a dialogue-thread entry (src/feedback.js) carrying the exact text plus the whole conversation and request metadata as debugging context; the development agent gathers, decides on, acts on, and replies into it. Discovery is double: the structured queue plus a chat_logs meta.feedback tag. Superseded the earlier per-reply Feedback button + settings knob (2026-07-18). See the feedback-loop skill.",
   },
   {
     id: "F-12",

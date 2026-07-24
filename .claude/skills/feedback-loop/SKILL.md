@@ -19,10 +19,17 @@ Users of deepresearch.se give feedback **straight from the chat**: a message
 whose text opens with the word "feedback" (`feedbackIntent`, EN+SV — e.g.
 "feedback: the map view was cut off") is routed by the research pipeline into
 the **feedback case** (`src/pipeline.js` `runFeedbackCapture`) instead of being
-researched. That answers the user warmly and records the message as a `feedback`
-entry (D1, `src/feedback.js` `createFeedbackEntry`, called from `chat.js`) —
-carrying the comment plus the turn it followed (the prior question and the reply
-it comments on). The capture is **double**: the entry lands in the queue AND the
+researched. That replies with a **canned acknowledgment** (owner directive,
+2026-07-24: user feedback is NEVER run through an LLM — the deterministic
+EN+SV variants live in `public/js/feedback-core.js` `cannedFeedbackAck`) and
+records the message as a `feedback` entry (D1, `src/feedback.js`
+`createFeedbackEntry`, called from `chat.js`) — carrying the user's EXACT text
+plus the prior turn AND the entry's `context` column: the **entire
+conversation** and the request metadata (request id, model, knobs,
+client_diag), rendered by `buildFeedbackDebugContext`, refreshed to the latest
+transcript when a follow-up threads on. The single-entry admin read
+(`scripts/feedback --id N`) returns it in full (`DEBUG CONTEXT:`); list reads
+show only its size. The capture is **double**: the entry lands in the queue AND the
 `chat_logs` row is tagged (`meta.feedback`), so feedback is findable both through
 `scripts/feedback` (the structured queue) and a chatlogs scan. There is no
 per-reply Feedback button and no settings knob any more.
@@ -174,7 +181,7 @@ requirement:
 
 - A feedback entry is user content stored readable **by the user's explicit
   act** — opening a chat message with "feedback" — disclosed in the chat
-  empty-state, the Settings note, and the warm reply the pipeline sends. Don't
+  empty-state, the Settings note, and the canned reply the pipeline sends. Don't
   copy thread content anywhere less protected than D1 (no pasting into public
   issues/PRs).
 - The user can withdraw an entry (deletes the thread). Respect it — never

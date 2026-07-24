@@ -87,7 +87,6 @@ import {
   claimExtractionPrompt,
   claimVerifyPrompt,
   directPrompt,
-  feedbackReplyPrompt,
   gapPrompt,
   notesPrompt,
   quizPrompt,
@@ -122,7 +121,7 @@ import {
   stripFileBlocks,
 } from "./sdk-tools.js";
 import { publishBuild, replyLinksTo } from "./build-pub.js";
-import { feedbackIntent, buildFeedbackContext, feedbackImagesFromParts } from "./feedback.js";
+import { feedbackIntent, buildFeedbackContext, cannedFeedbackAck, feedbackImagesFromParts } from "./feedback.js";
 import { parseUseCaseRef } from "./testpoints.js";
 import { loadSourceSnapshot } from "./introspect.js";
 import { DEFAULT_QUIZ_QUESTIONS, normalizeQuiz, quizIntent, quizQuestionCount } from "./quiz.js";
@@ -406,19 +405,15 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
 
 // ---- phases ------------------------------------------------------------
 
-// Fail-soft acknowledgment if the feedback reply model produced no text at all
-// (rare). EN only — this is a degraded path; the model handles EN/SV itself on
-// the normal path.
-const FEEDBACK_ACK_FALLBACK =
-  "Thank you — your feedback has been passed on to the developers, who read every submission. If a reply is needed, it will appear under Feedback in your account panel.";
-
 // The feedback case (routed at the top of runPipeline): the user's message is
 // feedback for the developers. Stash the report on the state so chat.js can
 // persist it as a feedback entry (the Claude Code work queue) AND tag the
-// chat-log row, then stream a short, warm acknowledgment. No search, no
-// sources, no validation — the fix is the developers' job, off the site. The
-// report is stashed BEFORE the model call so chat.js still records it even if
-// the acknowledgment stream fails.
+// chat-log row, then emit a CANNED acknowledgment (feedback-core.js
+// cannedFeedbackAck, EN+SV). NO model call anywhere in this case (owner
+// directive, 2026-07-24): feedback is never run through an LLM — the exact
+// text plus the whole conversation goes to the developers verbatim (chat.js
+// buildFeedbackDebugContext), and a deterministic reply can't fail, can't
+// paraphrase, and can't be prompt-injected.
 /** @param {PipelineCtx} ctx */
 async function runFeedbackCapture(ctx) {
   const { state } = ctx;
@@ -452,11 +447,7 @@ async function runFeedbackCapture(ctx) {
     images: feedbackImagesFromParts(ctx.imageParts),
     useCase: useCase || null,
   };
-  const draft = await streamCompletion(ctx, [
-    { role: "system", content: feedbackReplyPrompt(useCase ? useCase.tag : null) },
-    ...withImageNudge(ctx.conversation),
-  ]);
-  if (!(draft || "").trim()) emitChunked(ctx, FEEDBACK_ACK_FALLBACK);
+  emitChunked(ctx, cannedFeedbackAck(ctx.cleanLastUser, { useCaseTag: useCase ? useCase.tag : null }));
 }
 
 /** @param {PipelineCtx} ctx */

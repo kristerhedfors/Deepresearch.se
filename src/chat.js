@@ -52,7 +52,7 @@ import {
 } from "./validation.js";
 import { bashLiteEnabled, developerModeEnabled, shodanEnabled, googleMapsEnabled } from "./settings.js";
 import { buildSlugOk } from "./build-pub.js";
-import { createOrThreadFeedbackEntry } from "./feedback.js";
+import { buildFeedbackDebugContext, createOrThreadFeedbackEntry } from "./feedback.js";
 import { recordUseCaseFeedback } from "./testpoints.js";
 import { getDb } from "./db.js";
 
@@ -522,6 +522,21 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             // feedbackImagesFromParts) — without these the attached image was
             // silently lost (feedback #12).
             images: state.feedback.images || [],
+            // The ENTIRE conversation + request metadata, verbatim (owner
+            // directive, 2026-07-24) — complete debugging context on the
+            // entry itself, present even for incognito conversations where
+            // no chat_logs row exists.
+            context: buildFeedbackDebugContext(conversation, {
+              request_id: requestId,
+              model,
+              json_model: jsonModel,
+              incognito,
+              web_search: webSearchEnabled,
+              sdk_mode: sdkOn,
+              developer_mode: enrich.developerOn,
+              use_case: useCase ? useCase.tag : undefined,
+              client_diag: sanitizeClientDiag(body.client_diag) || undefined,
+            }),
           }, conversation);
           if (cap) log.info("feedback.captured", { user_id: identity.id, feedback_id: cap.id, threaded: cap.threaded, request_id: requestId });
         } catch (err) {
