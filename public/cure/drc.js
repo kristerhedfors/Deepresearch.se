@@ -3930,6 +3930,71 @@ $("websearch").addEventListener("change", () => {
   // 2026-07-18).
   saveState();
 });
+// The web-knob popover (UX-10): hovering (desktop) or long-pressing (touch)
+// the research knob answers "where does live web search come from?" with a
+// small card linking the local-browsing-agent setup page
+// (/cure/local-search/ — one-liner recipes for a self-hosted service). The
+// knob's tap/click behaviour is untouched: a completed long-press swallows
+// the click so the knob doesn't toggle underneath the card (the same 500 ms
+// hold the settings ⓘ pops use).
+(() => {
+  const knob = $("searchtoggle");
+  const pop = $("knobpop");
+  let hoverShow = 0;
+  let hoverHide = 0;
+  let holdTimer = 0;
+  let held = false;
+  const show = () => (pop.hidden = false);
+  const hide = () => (pop.hidden = true);
+  // Hover intent, only where hover is a real gesture (desktop pointers) — on
+  // touch, mouseenter is synthesized from taps and would fight the toggle.
+  if (matchMedia("(hover: hover) and (pointer: fine)").matches) {
+    knob.addEventListener("mouseenter", () => {
+      clearTimeout(hoverHide);
+      hoverShow = setTimeout(show, 300);
+    });
+    const disarm = () => {
+      clearTimeout(hoverShow);
+      hoverHide = setTimeout(hide, 250); // grace to travel into the card
+    };
+    knob.addEventListener("mouseleave", disarm);
+    pop.addEventListener("mouseenter", () => clearTimeout(hoverHide));
+    pop.addEventListener("mouseleave", disarm);
+  }
+  knob.addEventListener("pointerdown", () => {
+    held = false;
+    holdTimer = setTimeout(() => {
+      held = true;
+      show();
+    }, 500);
+  });
+  for (const ev of ["pointerup", "pointercancel", "pointerleave"]) {
+    knob.addEventListener(ev, () => clearTimeout(holdTimer));
+  }
+  knob.addEventListener("click", (e) => {
+    if (held) {
+      e.preventDefault(); // the hold opened the card; don't ALSO flip the knob
+      held = false;
+    }
+  });
+  // Chrome/Android take over the touch at the long-press threshold: they fire
+  // pointercancel (killing the timer above) and contextmenu. So contextmenu IS
+  // the long-press signal there — claim it for the card. iOS never fires it
+  // (the CSS touch-callout is off) and rides the timer instead; a desktop
+  // right-click lands here too, which is harmless on a toggle. Verified
+  // against headless Chromium with touch: timer-only missed the gesture.
+  knob.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    clearTimeout(holdTimer);
+    held = true;
+    show();
+  });
+  // Dismissal is UX-1: any outside interaction closes it; the link inside
+  // stays clickable.
+  document.addEventListener("click", (e) => {
+    if (!pop.hidden && !pop.contains(e.target) && !e.target.closest("#searchtoggle")) hide();
+  });
+})();
 // The time slider: live readout while dragging; persist the seconds on
 // release (change), not per input tick — sealing the state is not free.
 $("budget").addEventListener("input", renderBudgetReadout);

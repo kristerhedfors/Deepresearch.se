@@ -51,6 +51,10 @@ test("pubSlugOk: lowercase words with hyphens, dot-free", () => {
   // "help" is RESERVED for the Se/cure documentation page at /cure/help.
   assert.equal(pubSlugOk("help"), false);
   assert.equal(pubSlugOk("help-me-research"), true); // only the exact word is reserved
+  // "local-search" is RESERVED for the local-browsing-agent setup page at
+  // /cure/local-search (reached from the composer's web knob).
+  assert.equal(pubSlugOk("local-search"), false);
+  assert.equal(pubSlugOk("local-search-tips"), true); // only the exact word is reserved
 });
 
 test("validatePublication normalizes the frozen-session shape", () => {

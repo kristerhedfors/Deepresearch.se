@@ -221,6 +221,20 @@ async function route(request, env, url, log, ctx, requestId) {
     return { response: await serveAsset(request, env, url.origin + "/cure/help/") };
   }
 
+  // The local-browsing-agent setup page (public/cure/local-search/): one-liner
+  // recipes for running your own search service that Se/cure's web knob links
+  // to (hover / long-press). Same routing rule as /cure/help above —
+  // "local-search" is a RESERVED replay slug (src/pub.js pubSlugOk), and this
+  // must sit BEFORE the wordplay map or the path is swallowed as a
+  // (nonexistent) publication. The agent script itself (agent.mjs) needs no
+  // route: /cure/ paths WITH an extension are already public assets.
+  if (
+    (request.method === "GET" || request.method === "HEAD") &&
+    (url.pathname === "/cure/local-search" || url.pathname === "/cure/local-search/")
+  ) {
+    return { response: await serveAsset(request, env, url.origin + "/cure/local-search/") };
+  }
+
   // ---- the wordplay URL map (all BEFORE the identity gate) -----------------
   // The .se domain completes English words, and the two product tiers live
   // under them:

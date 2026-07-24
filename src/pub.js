@@ -37,8 +37,10 @@ const MAX_MESSAGES = 200;
 // is the secure-workspaces page (public/js/workspace-core.js), not a replay —
 // publishing over it would shadow the feature. "help" is RESERVED the same
 // way: /cure/help is the Se/cure tier's documentation page (public/cure/help/,
-// routed in index.js before the replay map).
-const RESERVED_SLUGS = new Set(["workspace", "help"]);
+// routed in index.js before the replay map). "local-search" likewise:
+// /cure/local-search is the local-browsing-agent setup page reached from the
+// web knob (public/cure/local-search/).
+const RESERVED_SLUGS = new Set(["workspace", "help", "local-search"]);
 /** @param {unknown} s */
 export const pubSlugOk = (s) =>
   typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,79}$/.test(s) && !RESERVED_SLUGS.has(s);

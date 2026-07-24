@@ -177,15 +177,31 @@ to the right group in `SDK_SHOWCASE` — don't renumber existing ids.
      the SDK skills live at `sdk/skills/<id>/SKILL.md`), `SDK_TOOLS`
      (sdk_list_modules/sdk_show_module/sdk_plan/sdk_validate over the
      snapshot's `sdk/MANIFEST.json`), and `BUILD_TOOLS` (`write_file` stages
-     into a Map; `publish_app` publishes). `MAX_SDK_TOOL_ROUNDS = 12`.
+     into a Map; `publish_app` publishes). `MAX_SDK_TOOL_ROUNDS = 12`, and
+     the rounds run with a RAISED per-round budget
+     (`SDK_BUILD_ROUND_MAX_TOKENS = 16_384`, `SDK_BUILD_ROUND_TIMEOUT_MS =
+     240_000` → `anthropicToolRun`'s `maxTokens`/`timeoutMs`): at the 4096/
+     45s defaults a `write_file` round staging a real-sized index.html
+     truncated (`stop_reason: max_tokens`) or hit the abort, so every meaty
+     build fell through to the fallback (feedback #13, chat_logs #599).
      If files were staged but publish_app never ran, the pipeline
      auto-publishes (the live-URL promise must not hinge on the model's
-     last call), and appends a "Try it live" link if the reply lacks it.
+     last call). A run that built+published but wrote no report gets its
+     reply composed server-side — never rebuilt; only a run with NOTHING
+     shipped and nothing written (or a max_tokens truncation that staged
+     no file) throws into the fallback. Every published turn's reply ends
+     with `sdkReplyTail`: build summary + "Try it live" link (unless
+     already linked) + the iteration question (unless the reply asked one).
   2. **Deterministic fallback** (`runSdkBuildDeterministic`, any catalog
-     model, also the tool path's fail-soft catch): one streamed completion
-     (`sdkBuildPrompt`) emitting the `FILE: path` + fenced-block convention;
-     `parseFileBlocks` collects, `publishBuild` publishes, the URL is
-     emitted as an extra chunk. The SDK context block
+     model, also the tool path's fail-soft catch): one BUFFERED completion
+     (`sdkBuildPrompt`) emitting the `FILE: path` + fenced-block convention.
+     The draft NEVER streams raw into the chat (feedback #13 — a whole
+     index.html scrolled by): `makeFileLineScanner` (sdk-core.js) watches
+     the buffer and emits live "Writing <path>…" steps per completed FILE
+     line, `parseFileBlocks` collects, `publishBuild` publishes, then the
+     user gets `stripFileBlocks(draft)` (the prose only) + the same
+     `sdkReplyTail` closing. A draft with no FILE blocks is shown unchanged
+     (a plain reply). The SDK context block
      (`buildSdkContextBlock`) teaches the convention and carries the module
      catalog; it is appended to the conversation the way the introspection
      block is.

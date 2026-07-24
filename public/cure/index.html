@@ -134,6 +134,17 @@
           <span id="drspop-text"></span><br>
           <a href="/login">Sign in — DeepResearch.<b><span class="wm">Se<span class="sl">/</span>rver</span></b> →</a>
         </div>
+        <!-- The web-knob popover (UX-10): hovering (desktop) or long-pressing
+             (touch) the research knob surfaces where live web search can come
+             from, pointing at the local-browsing-agent setup page. Wired at
+             the bottom of drc.js; a completed long-press swallows the click
+             so the knob doesn't toggle underneath. -->
+        <div id="knobpop" hidden>
+          <strong>Web research</strong><br>
+          <span>Off answers in one pass. Live web search needs a search source:
+          your own local browsing agent, or a server grant/token.</span><br>
+          <a href="/cure/local-search/">Run a local browsing agent — one-line setup →</a>
+        </div>
         <form id="form">
           <textarea id="input" rows="1" placeholder="Ask a research question…" autofocus></textarea>
           <div id="composer-row">
@@ -158,7 +169,10 @@
               <input id="budget" type="range" min="0" max="100" step="1" value="28" aria-label="Research time target">
               <span id="budgetval" title="Research time target"><span id="budgettime">1 m</span><span id="budgettier">Answer</span></span>
             </span>
-            <label id="searchtoggle" aria-label="Research phases on/off" title="Research phases on/off — Off answers in one pass; live web search needs a search source (your own backend, or a server grant/token)">
+            <!-- No title tooltip here: the hover/long-press #knobpop above
+                 carries this knob's explainer (and the local-agent link), and
+                 a native tooltip would double up on top of it. -->
+            <label id="searchtoggle" aria-label="Research phases on/off">
               <input id="websearch" type="checkbox">
               <span class="knob-track"><span class="knob"></span></span>
             </label>
@@ -389,8 +403,8 @@
           a <b>SearXNG</b> instance or any <b>Exa-compatible</b> endpoint — called directly from this browser, so
           no query touches this site's server at all. Your service must send <b>CORS</b> headers
           (<code>Access-Control-Allow-Origin</code>). The URL and key are stored only inside your sealed project,
-          in this browser. Leave it on “Server grant” to use a granted allowance instead (or nothing). Recipes for
-          running your own service: the <code>local-web-search</code> guide.</div>
+          in this browser. Leave it on “Server grant” to use a granted allowance instead (or nothing).
+          <a href="/cure/local-search/">One-line setup for a local browsing agent →</a></div>
         <label class="setting-note" style="display:block;margin-top:.4rem">Backend
           <select id="ws-backend" style="width:100%;margin-top:.2rem">
             <option value="grant">Server grant (default)</option>
@@ -400,7 +414,7 @@
         </label>
         <div id="ws-direct" hidden style="margin-top:.4rem;display:flex;flex-direction:column;gap:.4rem">
           <label class="setting-note">Service URL
-            <input id="ws-url" type="url" placeholder="https://search.example.com" style="width:100%;margin-top:.2rem"></label>
+            <input id="ws-url" type="url" placeholder="http://localhost:8099" style="width:100%;margin-top:.2rem"></label>
           <label class="setting-note">API key <span class="muted">(optional)</span>
             <input id="ws-key" type="password" autocomplete="off" placeholder="only if your service needs one" style="width:100%;margin-top:.2rem"></label>
           <label class="setting-note">Results per search
