@@ -186,3 +186,46 @@ export function textOfMessage(m) {
 
 export const imagesOfMessage = (m) =>
   Array.isArray(m.content) ? m.content.filter((p) => p.type === "image_url") : [];
+
+// Strip the break-glass `Authorization` header from CROSS-ORIGIN requests
+// (2026-07-24).
+//
+// The live configs authenticate with `extraHTTPHeaders`, which is what makes
+// `/` resolve to the signed-in `/rver` app — an unauthenticated `/` just 302s
+// to the anonymous `/cure` tier, where `window.__appReady` is never set. But
+// Playwright attaches those headers to EVERY request the context makes,
+// cross-origin ones included, which has two consequences:
+//
+//   1. It hands the admin password to third-party hosts.
+//   2. It breaks the execution sandbox outright. The CheerpX runtime is loaded
+//      with `import("https://cxrtnc.leaningtech.com/…/cx.esm.js")`; with an
+//      `authorization` header on it that fetch fails (net::ERR_FAILED), so the
+//      VM dies at the "loading CheerpX…" stage every time and the spec silently
+//      exercises only the fail-soft fallback. Measured: boot failed at 3.2 s
+//      with `Failed to fetch dynamically imported module`.
+//
+// Stripping the header for any origin that is not the site under test fixes
+// both. Verified against the alternative (re-fetching cross-origin responses
+// Node-side and re-serving them with CORP headers): both work, this one is
+// cheaper since it never leaves the browser's own network path.
+//
+// Call this on the CONTEXT before navigating, in any spec that boots the
+// sandbox or otherwise touches a cross-origin resource.
+export async function stripCrossOriginAuth(context, base = process.env.BASE_URL || "https://deepresearch.se") {
+  const siteOrigin = new URL(base).origin;
+  await context.route(
+    (url) => {
+      try {
+        return new URL(url).origin !== siteOrigin;
+      } catch {
+        return false;
+      }
+    },
+    async (route) => {
+      const headers = { ...route.request().headers() };
+      delete headers.authorization;
+      delete headers.Authorization;
+      await route.continue({ headers });
+    },
+  );
+}

@@ -29,6 +29,7 @@
 // VM does not come up, so this file is safe to run anywhere.
 
 import { expect, test } from "@playwright/test";
+import { stripCrossOriginAuth } from "./helpers.js";
 
 const BASE = process.env.BASE_URL || "https://deepresearch.se";
 // A cold Debian boot legitimately takes ~30 s here; sandbox.js caps it at 90 s.
@@ -112,8 +113,12 @@ const PROBES = [
   { id: "find-tree", group: "scan", cmd: "find /tmp/perf/tree -type f | wc -l", note: "200 files, one process" },
   { id: "grep-tree", group: "scan", cmd: "grep -rl needle7 /tmp/perf/tree | wc -l", note: "recursive grep, one process" },
   { id: "find-exec-grep", group: "scan", cmd: "find /tmp/perf/tree -type f -exec grep -l needle7 {} \\; | wc -l", note: "SAME result, but forks grep 200 times" },
-  { id: "grep-usr-share", group: "scan", cmd: "grep -rl nonexistentneedle /usr/share/doc 2>/dev/null | wc -l", note: "scan a COLD region of the disk image", timeoutMs: 30_000 },
-  { id: "du-etc", group: "scan", cmd: "du -sh /etc 2>/dev/null", note: "stat()s a whole tree" },
+  // Every probe that walks a COLD region of the disk image is wrapped in a
+  // guest-side `timeout` well under the 30 s exec ceiling. Hitting that ceiling
+  // is not a slow result — execInSandbox calls resetSandbox("exec_timeout") and
+  // DESTROYS the VM, so an unbounded scan here takes every later probe with it.
+  { id: "find-usr-share", group: "scan", cmd: "timeout 20 find /usr/share/doc -maxdepth 2 -type f 2>/dev/null | wc -l", note: "walk a COLD region of the streamed disk image" },
+  { id: "du-etc", group: "scan", cmd: "timeout 20 du -sh /etc 2>/dev/null", note: "stat()s a whole tree" },
 
   // --- 6. interpreters ----------------------------------------------------
   { id: "python-version", group: "interp", cmd: "python3 --version 2>&1", note: "CPython startup — large ELF + many .so", timeoutMs: 30_000 },
@@ -142,6 +147,8 @@ test("@live sandbox command performance battery", async ({ page }) => {
   page.on("console", (m) => consoleMsgs.push(`[${m.type()}] ${m.text()}`));
   page.on("pageerror", (e) => consoleMsgs.push(`[pageerror] ${e.message}`));
 
+  // The break-glass header must not reach the CheerpX CDN or the VM cannot boot.
+  await stripCrossOriginAuth(page.context(), BASE);
   await page.context().addCookies([{ name: "dr_privacy_ack", value: "1", url: BASE }]);
   await page.addInitScript(() => {
     try {
@@ -155,7 +162,18 @@ test("@live sandbox command performance battery", async ({ page }) => {
 
   await page.goto(`${BASE}/`);
   await expect(page.locator("#form")).toBeVisible({ timeout: 30_000 });
-  await page.waitForFunction(() => window.__appReady === true, { timeout: 30_000 });
+  // Fail FAST and loudly if the app never signals ready — landing on `/cure`
+  // (the anonymous tier) instead of `/rver` means auth didn't take, and without
+  // this guard the wait silently consumes the entire test timeout.
+  try {
+    await page.waitForFunction(() => window.__appReady === true, { timeout: 45_000 });
+  } catch {
+    const where = await page.evaluate(() => ({ url: location.href, ready: window.__appReady }));
+    throw new Error(
+      `app never became ready — landed on ${where.url} (__appReady=${where.ready}). ` +
+        `An unauthenticated "/" 302s to /cure, which never sets __appReady: check BASIC_AUTH_USER/PASS.`,
+    );
+  }
 
   const iso = await page.evaluate(() => ({
     coi: window.crossOriginIsolated === true,
@@ -197,21 +215,60 @@ test("@live sandbox command performance battery", async ({ page }) => {
       `both must be reachable. This is an environment limit, not a code failure.`,
   );
 
-  // ---- fixtures ----------------------------------------------------------
-  const setupResults = await page.evaluate(async (setup) => {
-    const out = [];
-    for (const s of setup) {
-      const t0 = performance.now();
-      const r = await window.__DR_SANDBOX.exec(s.cmd, { timeoutMs: 30000 });
-      out.push({
-        id: s.id,
-        ms: Math.round(performance.now() - t0),
-        rc: r.exitCode,
-        out: (r.stdout || r.stderr || "").trim().slice(0, 120),
-      });
-    }
-    return out;
+  // ---- install the in-page runner (shared by fixtures + battery) ---------
+  // The VM can be destroyed mid-run: any command that hits the 30 s exec ceiling
+  // makes execInSandbox call resetSandbox("exec_timeout"), which discards the
+  // CheerpX instance. Everything after it would then fail with "sandbox not
+  // ready" — 15 probes were lost that way on the first real run. So the runner
+  // detects a dead VM, re-boots it, and re-creates the fixtures (a re-boot gets
+  // a fresh overlay, so /tmp/perf does NOT survive), recording that it happened.
+  await page.evaluate(async (setup) => {
+    const mod = await import("/js/sandbox.js");
+    const exec = (cmd, opts) => window.__DR_SANDBOX.exec(cmd, opts || {});
+
+    window.__perfAlive = async () => {
+      try {
+        const r = await exec("true");
+        return r.exitCode === 0 && !/not ready/i.test(r.stderr || "");
+      } catch {
+        return false;
+      }
+    };
+
+    window.__perfSetup = async () => {
+      const out = [];
+      for (const s of setup) {
+        const t0 = performance.now();
+        const r = await exec(s.cmd, { timeoutMs: 30000 });
+        out.push({
+          id: s.id,
+          ms: Math.round(performance.now() - t0),
+          rc: r.exitCode,
+          out: (r.stdout || r.stderr || "").trim().slice(0, 120),
+        });
+      }
+      return out;
+    };
+
+    // Re-boot + re-seed. Returns true when the VM is usable again.
+    window.__perfRecover = async () => {
+      try {
+        mod.resetSandbox("perf_battery_recover");
+      } catch {
+        /* already down */
+      }
+      try {
+        await mod.ensureSandboxBooted(null, () => {});
+      } catch {
+        return false;
+      }
+      if (!(await window.__perfAlive())) return false;
+      await window.__perfSetup();
+      return true;
+    };
   }, SETUP);
+
+  const setupResults = await page.evaluate(() => window.__perfSetup());
   console.log("\n--- fixture setup (one-time, also a data point) ---");
   for (const s of setupResults) {
     console.log(`  ${String(s.ms).padStart(7)} ms  rc=${s.rc}  ${s.id.padEnd(16)} ${s.out}`);
@@ -226,6 +283,8 @@ test("@live sandbox command performance battery", async ({ page }) => {
         let rc = null;
         let bytes = 0;
         let sample = "";
+        let killedVm = false;
+        let recovered = null;
         for (let i = 0; i < repeats; i++) {
           const t0 = performance.now();
           let r;
@@ -238,8 +297,16 @@ test("@live sandbox command performance battery", async ({ page }) => {
           rc = r.exitCode;
           bytes = (r.stdout || "").length;
           if (i === 0) sample = ((r.stdout || "") + (r.stderr || "")).trim().slice(0, 160);
+
+          // rc 124 is the exec-ceiling timeout, and it has already torn the VM
+          // down by the time we see it. "not ready" means a PREVIOUS probe did.
+          if (r.exitCode === 124 || /not ready/i.test(r.stderr || "")) {
+            killedVm = true;
+            recovered = await window.__perfRecover();
+            if (!recovered) break; // unrecoverable — stop rather than log noise
+          }
         }
-        out.push({ ...p, samples, rc, bytes, sample });
+        out.push({ ...p, samples, rc, bytes, sample, killedVm, recovered });
       }
       return out;
     },
@@ -272,6 +339,12 @@ test("@live sandbox command performance battery", async ({ page }) => {
           `${r.id.padEnd(20)} ${r.cmd.slice(0, 62)}`,
       );
       if (r.note) console.log(`${" ".repeat(43)}↳ ${r.note}`);
+      if (r.killedVm) {
+        console.log(
+          `${" ".repeat(43)}⚠ DESTROYED THE VM (hit the ${Math.round((r.timeoutMs || 30_000) / 1000)}s exec ceiling) — ` +
+            `re-boot ${r.recovered ? "succeeded" : "FAILED"}`,
+        );
+      }
     }
   }
 
@@ -291,8 +364,14 @@ test("@live sandbox command performance battery", async ({ page }) => {
     contentType: "application/json",
   });
 
-  // The battery is an exploration tool, so the only hard assertions are that it
-  // actually produced data — the numbers themselves are the deliverable.
+  // The battery is an exploration tool, so the assertions only guard that it
+  // actually produced usable data — the numbers themselves are the deliverable.
+  const killed = rows.filter((r) => r.killedVm);
+  const unrecovered = rows.filter((r) => r.killedVm && !r.recovered);
+  if (killed.length) {
+    console.log(`NOTE: ${killed.length} probe(s) hit the exec ceiling and destroyed the VM: ${killed.map((r) => r.id).join(", ")}`);
+  }
   expect(rows.length).toBe(PROBES.length);
-  expect(rows.filter((r) => r.rc === -1).length, "no probe may throw").toBe(0);
+  expect(rows.filter((r) => r.rc === -1).map((r) => r.id), "no probe may throw").toEqual([]);
+  expect(unrecovered.map((r) => r.id), "every VM teardown must be recovered from").toEqual([]);
 });

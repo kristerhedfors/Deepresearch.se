@@ -23,6 +23,7 @@
 // collector while the original stream is handed to the app untouched.
 
 import { expect, test } from "@playwright/test";
+import { stripCrossOriginAuth } from "./helpers.js";
 
 const BASE = process.env.BASE_URL || "https://deepresearch.se";
 const ANSWER_TIMEOUT = 240_000;
@@ -127,6 +128,8 @@ test("@live sandbox agent trace: timestamps for every event in one sandbox-backe
     }
   });
 
+  // The break-glass header must not reach the CheerpX CDN or the VM cannot boot.
+  await stripCrossOriginAuth(page.context(), BASE);
   await page.context().addCookies([{ name: "dr_privacy_ack", value: "1", url: BASE }]);
   page.on("dialog", (d) => d.accept().catch(() => {}));
 
@@ -145,7 +148,15 @@ test("@live sandbox agent trace: timestamps for every event in one sandbox-backe
 
   await page.goto(`${BASE}/`);
   await expect(page.locator("#form")).toBeVisible({ timeout: 30_000 });
-  await page.waitForFunction(() => window.__appReady === true, { timeout: 30_000 });
+  try {
+    await page.waitForFunction(() => window.__appReady === true, { timeout: 45_000 });
+  } catch {
+    const where = await page.evaluate(() => ({ url: location.href, ready: window.__appReady }));
+    throw new Error(
+      `app never became ready — landed on ${where.url} (__appReady=${where.ready}); ` +
+        `an unauthenticated "/" 302s to /cure. Check BASIC_AUTH_USER/PASS.`,
+    );
+  }
 
   const iso = await page.evaluate(() => ({ coi: window.crossOriginIsolated === true }));
   console.log("crossOriginIsolated:", iso.coi);

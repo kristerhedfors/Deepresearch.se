@@ -27,15 +27,14 @@ export default defineConfig({
   reporter: [["list"]],
   use: {
     baseURL: process.env.BASE_URL || "https://deepresearch.se",
-    // ORIGIN-SCOPED credentials, deliberately NOT `extraHTTPHeaders`. A blanket
-    // `authorization` header is attached to EVERY request the context makes,
-    // including cross-origin ones — which (a) leaks the break-glass admin
-    // password to third parties, and (b) turns the CheerpX runtime's module
-    // fetch into a non-simple CORS request the CDN answers with no preflight,
-    // so `import(CHEERPX_CDN)` dies with net::ERR_FAILED and the VM can never
-    // boot. `httpCredentials` with an `origin` only answers a 401 challenge
-    // from the site itself, so the CDN and disk host see clean requests.
-    httpCredentials: { username: user, password: pass, origin: process.env.BASE_URL || "https://deepresearch.se" },
+    // Required so `/` resolves to the signed-in `/rver` app (unauthenticated it
+    // 302s to `/cure`, which never sets `window.__appReady`). Playwright puts
+    // these on cross-origin requests too, which breaks the CheerpX CDN import —
+    // both specs here call `stripCrossOriginAuth(context)` (e2e/helpers.js) to
+    // remove the header for any origin that is not the site under test.
+    extraHTTPHeaders: {
+      authorization: "Basic " + Buffer.from(`${user}:${pass}`).toString("base64"),
+    },
     launchOptions: {
       executablePath: "/opt/pw-browsers/chromium",
       ...(process.env.HTTPS_PROXY ? { args: ["--ssl-version-max=tls1.2"] } : {}),
