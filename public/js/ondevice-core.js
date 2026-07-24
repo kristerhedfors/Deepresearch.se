@@ -178,13 +178,47 @@ export function debugFlagFrom(search, stored) {
   return stored === "1" || /[?&]oddebug=1(&|$)/.test(search || "");
 }
 
+// ---- memory-exhaustion recognition (feedback #19) ---------------------------------
+//
+// Chatting with Bonsai 1.7B/8B crashed with a memory-exhaustion warning: on a
+// phone the wasm heap / GPU pool runs out mid-load or mid-decode, and the raw
+// runtime error ("RuntimeError: memory access out of bounds", "Aborted(OOM)",
+// "Device lost") explains nothing and advises nothing. These predicates
+// recognize the signature so the worker can RECOVER (dispose the wedged model
+// — see ondevice-worker.js) and every surfaced message can carry the remedy.
+
+const MEMORY_ERROR_RE =
+  /out of memory|memory access out of bounds|memory exhaust|allocation? fail|cannot allocate|aborted\(oom\)|\boom\b|device.{0,8}lost|out of bounds memory|grow(ing)? memory|failed to allocate/i;
+
+/** Does an error/detail string look like memory exhaustion or a lost GPU device? @param {string} [detail] */
+export function isMemoryError(detail) {
+  return MEMORY_ERROR_RE.test(detail || "");
+}
+
+export const OOM_ADVICE =
+  "This usually means the device ran out of memory for the model — close other tabs and apps, " +
+  "reload the page to free the GPU, and try again; if it keeps happening, this device likely " +
+  "needs the smaller Bonsai model.";
+
+/**
+ * Appends the memory remedy to a message whose text carries the memory
+ * signature; anything else passes through untouched.
+ * @param {string} message
+ */
+export function withOomAdvice(message) {
+  const m = message || "";
+  if (!isMemoryError(m) || m.includes(OOM_ADVICE)) return m;
+  return m + " " + OOM_ADVICE;
+}
+
 /**
  * The crash message the UI shows verbatim. WHEN the worker died matters as
  * much as why (first live field report: a bare detail-free crash left
  * stale-cache and device-failure indistinguishable): a worker that never
  * posted a single message never RAN — its script failed to load or evaluate,
  * which on a phone usually means a stale cached module graph — so that case
- * names itself and carries its own remedy.
+ * names itself and carries its own remedy. A memory-signature detail
+ * additionally carries the out-of-memory remedy (feedback #19).
  * @param {boolean} everSpoke did the worker deliver ANY message before dying?
  * @param {string} [detail] errorEventDetail/workerdiag text, "" when none
  */
@@ -193,7 +227,7 @@ export function crashMessage(everSpoke, detail) {
     ? "The on-device engine crashed"
     : "The on-device engine crashed before it could start — its script failed to load, " +
       "which usually means a stale cached copy of the app: fully close and reopen it (or hard-reload), then try again";
-  return base + (detail ? ": " + detail : ".");
+  return withOomAdvice(base + (detail ? ": " + detail : "."));
 }
 
 // ---- the on-screen trace ------------------------------------------------------------

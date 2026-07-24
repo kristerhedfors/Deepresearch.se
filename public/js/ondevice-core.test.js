@@ -16,6 +16,9 @@ import {
   capabilityVerdict,
   completionEnvelope,
   crashMessage,
+  isMemoryError,
+  withOomAdvice,
+  OOM_ADVICE,
   createSha256,
   createThinkFilter,
   debugFlagFrom,
@@ -356,6 +359,42 @@ test("crashMessage: a never-spoke worker names the load failure and its remedy",
   assert.ok(never.includes("stale cached copy"));
   assert.ok(never.endsWith("."));
   assert.ok(crashMessage(false, "SyntaxError").endsWith(": SyntaxError"));
+});
+
+// Feedback #19: chatting with Bonsai 1.7B/8B crashed with a memory-exhaustion
+// warning — the recognizers below drive the worker's dispose-and-advise
+// recovery, so the signature list is load-bearing.
+test("isMemoryError: recognizes the field memory/device-lost signatures, not ordinary errors", () => {
+  for (const s of [
+    "RuntimeError: memory access out of bounds",
+    "Out of memory",
+    "Aborted(OOM)",
+    "Memory exhaustion while growing memory",
+    "failed to allocate GPU buffer",
+    "Cannot allocate WasmMemory",
+    "GPUDevice was lost",
+  ]) {
+    assert.equal(isMemoryError(s), true, `should match: ${s}`);
+  }
+  for (const s of ["Couldn't reach huggingface.co", "checksum mismatch for onnx/model_q1.onnx", "Aborted.", ""]) {
+    assert.equal(isMemoryError(s), false, `should NOT match: ${s}`);
+  }
+});
+
+test("withOomAdvice: appends the remedy once to memory errors, passes others through", () => {
+  const oom = withOomAdvice("RuntimeError: memory access out of bounds");
+  assert.ok(oom.includes(OOM_ADVICE));
+  assert.equal(withOomAdvice(oom), oom); // idempotent — never stacks
+  const plain = "Couldn't reach huggingface.co — check the connection and try again.";
+  assert.equal(withOomAdvice(plain), plain);
+});
+
+test("crashMessage: a memory-signature crash detail carries the out-of-memory remedy", () => {
+  const m = crashMessage(true, "RuntimeError: memory access out of bounds (ort.mjs:3:9)");
+  assert.ok(m.includes("The on-device engine crashed"));
+  assert.ok(m.includes(OOM_ADVICE));
+  // Non-memory details stay exactly as before.
+  assert.equal(crashMessage(true, "SyntaxError"), "The on-device engine crashed: SyntaxError");
 });
 
 test("formatTraceLine: elapsed prefix, string and structured parts, empties dropped", () => {

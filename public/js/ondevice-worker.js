@@ -26,12 +26,14 @@ import {
   errorEventDetail,
   hfFileUrl,
   hfTreeUrl,
+  isMemoryError,
   onDeviceModel,
   opfsUnavailableMessage,
   planModelFiles,
   rejectionDetail,
   wasmPathsFor,
   withJsonReminder,
+  withOomAdvice,
 } from "/js/ondevice-core.js";
 
 const MODELS_DIR = "ondevice-models";
@@ -387,10 +389,31 @@ const opfsCache = {
   },
 };
 
+// Frees the currently loaded model's ONNX sessions and GPU buffers. Without
+// this, switching models kept the PREVIOUS model resident — trying Bonsai 8B
+// and then 1.7B held both in wasm/GPU memory, and the second one crashed the
+// tab with a memory-exhaustion warning (feedback #19). Also the recovery step
+// after a memory-signature generation failure: a wedged model must not serve
+// (or occupy) anything further.
+async function disposeLoaded() {
+  const prev = loaded;
+  loaded = null;
+  if (!prev) return;
+  try {
+    await prev.model?.dispose?.();
+    dbg("disposed model:", prev.modelId);
+  } catch (err) {
+    dbg("dispose failed (continuing):", err?.message || err);
+  }
+}
+
 async function ensureLoaded(modelId) {
   if (loaded?.modelId === modelId) return loaded;
   if (loadingPromise) await loadingPromise.catch(() => {});
   if (loaded?.modelId === modelId) return loaded;
+  // A DIFFERENT model is resident — release it before loading this one, or
+  // both sets of weights sit in memory at once (feedback #19).
+  await disposeLoaded();
   const model = onDeviceModel(modelId);
   if (!model) throw new Error("Unknown model " + modelId);
   loadingPromise = (async () => {
@@ -486,12 +509,19 @@ self.onmessage = async (e) => {
     } else if (msg.t === "canceldl") {
       dlAborts.get(msg.modelId)?.abort();
     } else if (msg.t === "delete") {
-      if (loaded?.modelId === msg.modelId) loaded = null; // a deleted model must not serve from memory
+      // A deleted model must not serve from (or occupy) memory.
+      if (loaded?.modelId === msg.modelId) await disposeLoaded();
       await deleteModel(msg.modelId);
       self.postMessage({ t: "deleted", modelId: msg.modelId });
     } else if (msg.t === "generate") {
-      await generate(msg).catch((err) => {
-        self.postMessage({ t: "generror", id: msg.id, message: err?.message || String(err) });
+      await generate(msg).catch(async (err) => {
+        // Memory-signature failures get the remedy appended AND the wedged
+        // model released, so the retry (or a switch to a smaller model)
+        // starts from a clean heap instead of compounding the exhaustion
+        // (feedback #19).
+        const message = withOomAdvice(err?.message || String(err));
+        if (isMemoryError(message)) await disposeLoaded();
+        self.postMessage({ t: "generror", id: msg.id, message });
       });
     } else if (msg.t === "abort") {
       stoppers.get(msg.id)?.interrupt();
