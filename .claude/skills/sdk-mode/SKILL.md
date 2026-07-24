@@ -45,11 +45,13 @@ its symbol is a **plant**:
 
 - **The waiting symbol** — `public/js/plant-spinner.js` (`mountPlantSpinner`),
   the sibling of the balloon (`balloon-spinner.js`) and umbrella
-  (`umbrella-spinner.js`) spinners: a seed **hits the ground, gets planted**,
-  boomerangs a settled sprout while working, and only the completion finale
-  **grows it out** into a **GREEN ✓** (`--check-green`). It reuses the umbrella
-  spinner's boomerang/finale clocks and exports a shared `drawPlantFigure`
-  renderer. Which spinner a loading slot mounts is decided by
+  (`umbrella-spinner.js`) spinners: while working, a sprout appears from
+  nothing and grows into the composer chip's 🌱 silhouette, over and over —
+  **nothing brown, no seed drop, no soil** (owner directive, 2026-07-24) —
+  and the completion finale **fast-forwards it into an open flower** that
+  scatters tiny golden seeds before folding into a **GREEN ✓**
+  (`--check-green`). It reuses the umbrella spinner's finale pacing and
+  exports a shared `drawPlantFigure` renderer. Which spinner a loading slot mounts is decided by
   `public/js/mode-spinner.js` off the current mode (`turns.js` / `activity.js`
   now call `mountModeSpinner`, not `mountBalloonSpinner`).
 - **The character** — `public/js/sdk-plant.js` (`showSdkPlantGreeter`), SPROUT:
