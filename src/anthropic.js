@@ -354,11 +354,12 @@ export async function anthropicChatCompletion(env, messages, { model, maxTokens 
  *   execTool: (name: string, input: any) => (string | Promise<string>),
  *   maxRounds?: number,
  *   maxTokens?: number,
+ *   timeoutMs?: number,
  *   onToolUse?: (info: { round: number, name: string, input: any, result: string }) => void,
  * }} opts
- * @returns {Promise<{ text: string, usage: { prompt_tokens: number, completion_tokens: number }, rounds: number, toolCalls: number }>}
+ * @returns {Promise<{ text: string, usage: { prompt_tokens: number, completion_tokens: number }, rounds: number, toolCalls: number, stopReason: string | null }>}
  */
-export async function anthropicToolRun(env, { model, system, userContent, tools, execTool, maxRounds = 8, maxTokens = MAX_TOKENS, onToolUse }) {
+export async function anthropicToolRun(env, { model, system, userContent, tools, execTool, maxRounds = 8, maxTokens = MAX_TOKENS, timeoutMs = JSON_CALL_TIMEOUT_MS, onToolUse }) {
   /** @type {Array<{ role: string, content: any }>} */
   const messages = [{ role: "user", content: userContent }];
   const usage = { prompt_tokens: 0, completion_tokens: 0 };
@@ -370,7 +371,11 @@ export async function anthropicToolRun(env, { model, system, userContent, tools,
       method: "POST",
       headers: headers(env),
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(JSON_CALL_TIMEOUT_MS),
+      // Callers size this with maxTokens: a non-streaming round that GENERATES
+      // (an SDK build's write_file staging a whole file) runs far past the
+      // 45s JSON-call default (feedback #13 — every meaty build round aborted
+      // here and the whole run fell back to the deterministic path).
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!resp.ok) {
       const detail = await resp.text().catch(() => "");
@@ -399,8 +404,11 @@ export async function anthropicToolRun(env, { model, system, userContent, tools,
     const blocks = Array.isArray(data.content) ? data.content : [];
     const toolUses = blocks.filter((/** @type {any} */ b) => b?.type === "tool_use");
     if (data.stop_reason !== "tool_use" || !toolUses.length) {
-      // The model answered (or stopped for another reason) — done.
-      return { text: textOfBlocks(data), usage, rounds: round, toolCalls };
+      // The model answered (or stopped for another reason) — done. stopReason
+      // lets the caller tell a real answer from a max_tokens truncation that
+      // cut a tool_use off mid-input (the response then carries no usable
+      // tool call and often no text — NOT a completed build turn).
+      return { text: textOfBlocks(data), usage, rounds: round, toolCalls, stopReason: data.stop_reason || null };
     }
     // Echo the assistant's tool_use turn back, then run each tool and reply with
     // the matching tool_result blocks (Anthropic requires them paired by id).
@@ -433,7 +441,7 @@ export async function anthropicToolRun(env, { model, system, userContent, tools,
   if (system) finalPayload.system = system;
   if (thinking) finalPayload.thinking = thinking;
   const finalData = await call(finalPayload);
-  return { text: textOfBlocks(finalData), usage, rounds: maxRounds, toolCalls };
+  return { text: textOfBlocks(finalData), usage, rounds: maxRounds, toolCalls, stopReason: finalData.stop_reason || null };
 }
 
 // Non-streaming JSON completion, same contract as berget.js's completeJson
