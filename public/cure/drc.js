@@ -112,6 +112,7 @@ import {
   validateSnapshot,
 } from "/js/introspect-core.js";
 import { engageIntrospection, initIntrospectUi, noteIntrospectionText } from "/js/introspect-ui.js";
+import { initSourcePeek, wireSourcePeek } from "/js/source-peek.js";
 import { drcStoreAvailable, getSealedProject, putSealedProject } from "/js/drc-store.js";
 import { BUDGET_MAX_S, BUDGET_MIN_S, budgetTier, fmtBudget, posToSeconds, secondsToPos } from "/js/timescale.js";
 import {
@@ -1599,8 +1600,12 @@ function renderMessages() {
 function messageEl(role, content, { conv, index } = {}) {
   const el = document.createElement("div");
   el.className = "msg " + role;
-  if (role === "assistant") renderMarkdownInto(el, content);
-  else el.textContent = content;
+  if (role === "assistant") {
+    renderMarkdownInto(el, content);
+    // Developer mode: inline-code repo paths open the file from the source
+    // snapshot in a popover (source-peek.js; gated on state.developerMode).
+    wireSourcePeek(el);
+  } else el.textContent = content;
   // WORKSPACE KNOWLEDGE: while a shared-compute workspace token is present,
   // every stored assistant reply carries a 👍 — "pass this along to the
   // workspace" — opening the curation pane (±blocks, undo/redo) over it.
@@ -3365,6 +3370,7 @@ async function send(ev) {
   live.classList.remove("streaming");
   if (answer) {
     renderMarkdownInto(live, answer);
+    wireSourcePeek(live);
     conv.messages.push({ role: "assistant", content: answer });
     conv.updatedAt = Date.now();
     await indexExchange(conv); // vectors join the state before it seals
@@ -3684,6 +3690,7 @@ $("odconsent").addEventListener("click", (e) => {
 // own implementation — here it explains that DRC is already the private
 // route (own key, browser-direct). Debounced; no-op with the knob off.
 initIntrospectUi({ tier: "drc" });
+initSourcePeek({ enabled: () => state.developerMode === true });
 let introTypeTimer = 0;
 $("input").addEventListener("input", () => {
   clearTimeout(introTypeTimer);

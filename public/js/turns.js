@@ -3,6 +3,7 @@
 // with the chat container and a scroll callback.
 
 import { renderMarkdownInto } from "./markdown.js";
+import { wireSourcePeek } from "./source-peek.js";
 import { downloadReport } from "./report.js";
 import { renderMapEmbed, renderStreetViewEmbed, renderStreetViewFrames } from "./activity.js";
 import { renderQuiz } from "./quiz.js";
@@ -483,6 +484,10 @@ function renderContent(turn) {
   } else {
     c.className = "content md";
     renderMarkdownInto(c, turn.text);
+    // Introspection answers cite repo files; in developer mode each becomes
+    // a tap target opening the file from the source snapshot (source-peek.js;
+    // gated inside — a no-op unless app.js wired the developer-mode gate).
+    wireSourcePeek(c);
   }
 }
 

@@ -174,6 +174,11 @@ export function isPublicAsset(url, method) {
     // same public-graph rule; its own imports, introspect-core.js and
     // drc-providers.js, are already above).
     url.pathname === "/js/introspect-ui.js" ||
+    // Source peek — tappable file references in introspection answers
+    // (imported by /cure/drc.js; the pure core rides along, the popover
+    // renders markdown via /js/markdown.js, already in this allowlist).
+    url.pathname === "/js/source-peek.js" ||
+    url.pathname === "/js/source-peek-core.js" ||
     // Provider country-of-processing flags — a leaf pure module imported by
     // /cure/drc.js and by introspect-core.js (both in the public graph).
     url.pathname === "/js/provider-region.js" ||

@@ -421,3 +421,30 @@ Claude uses… the most common convention.")
 keydown handler, Se/cure — inlined, since /cure surfaces don't import from
 `/js`); the `#send` `title` in `public/index.html` and `public/cure/index.html`.
 Language-agnostic (a key event, no text routing), so no EN/SV parity applies.
+
+---
+
+## UX-9 — In developer mode, an inline-code repo path in an answer is a tap target that opens the file in a popover
+
+**The rule.** When developer mode is on and a rendered answer names one of
+this repo's files in inline code (`src/pipeline.js`, `agent-spec-core.js:34-45`
+— with or without a `:line` range), tapping it opens SOURCE PEEK: a popover
+showing that file from the committed source snapshot, syntax highlighted, a
+`:line` range scrolled to and marked. Markdown files open RENDERED with a
+"View source" toggle (a line-ranged markdown reference opens raw, so the cited
+lines are visible). An ambiguous basename offers a picker; an unknown path
+says so honestly. Backdrop tap, ✕, and Escape all close it (UX-1's dismissal
+feel). Fenced code blocks and links are never rewritten — inline code only.
+
+**Why.** Introspection is about ease of access to internals: answers cite
+files constantly, and the reference itself should be the door — no retyping
+the path into a sandbox or the composer (feedback #10, 2026-07-24).
+
+**Canonical implementation:** `public/js/source-peek.js` (the popover +
+`wireSourcePeek`; scoped `spk-` styles, titanium palette — introspection's
+own look per the introspect-ui.js precedent) over the Node-tested pure core
+`public/js/source-peek-core.js`; wired in `public/js/turns.js`
+(`renderContent`) with the gate set in `app.js` (`developerModeOn`), and in
+`public/cure/drc.js` (`messageEl` + the live final render) gated on
+`state.developerMode`. Language-agnostic (path shapes, no text routing), so
+no EN/SV parity applies.
