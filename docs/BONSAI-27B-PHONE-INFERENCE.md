@@ -194,6 +194,19 @@ than global changes:
 All phases keep the fail-soft contract: a tripped engine phase degrades the
 research, never errors the chat.
 
+**The prompt budget** (added 2026-07-24, feedback #19): output was always
+capped (`ONDEVICE_MAX_TOKENS`, 1280), but the input side was not — a chat
+whose history carried one full research report crashed Bonsai 1.7B and 8B
+alike with memory exhaustion, because prefill attention memory grows with the
+square of prompt length (model size barely matters). The worker's `generate`
+now fits every prompt into `ONDEVICE_PROMPT_BUDGET_CHARS` (12 000 chars,
+`trimForOnDevice` in `ondevice-core.js`): the live question and a leading
+system prompt survive (clipped middle-out with a visible marker if huge),
+prior turns fill the remainder newest-first, whole turns only. Enforced in
+the worker so both tiers and every pipeline phase inherit it. The same fix
+made model switches dispose the outgoing model's GPU/wasm buffers, and a
+memory-looking generate failure frees the model and says so in the error.
+
 ## 9. Deferred (explicitly out of v1)
 
 - **Vision** (the ~0.9 GiB `mmproj`): separate opt-in download later.
