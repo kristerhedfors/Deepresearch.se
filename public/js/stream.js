@@ -33,6 +33,7 @@ import { loadOnDeviceEngine, onDeviceModelLabel } from "./ondevice-drs.js";
 import { runDrcResearch } from "./drc-research.js";
 import { runShellLoop, shellCommandLabel } from "./bash-agent.js";
 import { bashIntent, deliverablesRun, execTimeoutForBudget, wantsOutboxCollect } from "./bash-core.js";
+import { feedbackIntent } from "./feedback-core.js";
 import { aiModelIntent } from "./ai-models.js";
 import { collectDeliverables, ensureSandboxBooted, execInSandbox, resetSandboxIfLacking, sandboxFsSummary, sandboxIdle, sandboxSupported, sblog } from "./sandbox.js";
 import { hasPending } from "./attachments.js";
@@ -40,6 +41,7 @@ import {
   addAssistantTurn,
   addUserBubble,
   isTyping,
+  mountSpaceEmbed,
   renderDeliverables,
   renderStoredConversation,
   resetForRevision,
@@ -902,6 +904,13 @@ async function maybeRunShellLoop(turn, opts) {
     // "download glm-5.2 weights and du -sh them" still runs; the bash prompt
     // (AI_MODEL_NOT_A_PACKAGE_NOTE) covers the residual mixed-intent case.
     const latestUser = latestUserText();
+    // A "feedback …" message is a report to the developers, never a shell task
+    // — hard-left to the feedback pipeline BEFORE any pre-pass, mirroring the
+    // server (pipeline.js feedbackReq) and Se/cure (drc.js send). Without this
+    // the loop runs on every send (the model decides), and a feedback text
+    // that merely TALKS about Linux commands lures the model into proposing
+    // some — booting the VM on the way to the feedback case (feedback #18).
+    if (latestUser && feedbackIntent(latestUser)) return [];
     if (latestUser && aiModelIntent(latestUser) && !bashIntent(latestUser)) return [];
     // Agent Studio (SDK mode): building is the BUILD tools' job (write_file /
     // publish_app — files created in the sandbox are never published), so a
@@ -1395,6 +1404,10 @@ export async function sendMessage(text, opts) {
   const imageUrls = opts.images.map((a) => a.dataUrl);
   addUserBubble(text, imageUrls, opts.docs.map((d) => d.name));
   const turn = addAssistantTurn(text, imageUrls);
+  // A space-visual ask mounts its playable wireframe scene across the
+  // response area (feedback #18) — everywhere except Agent Studio, whose
+  // answer area is a build flow. The research answer still streams below.
+  if (cachedChatMode() !== "sdk") mountSpaceEmbed(turn, text);
   let acc = "";
   inFlight = true;
   const gen = generation;

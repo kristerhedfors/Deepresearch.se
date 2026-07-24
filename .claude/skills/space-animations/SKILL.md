@@ -18,13 +18,23 @@ checklist.
 
 - ONE shared pure core, `public/js/space-core.js` (the bash-core.js
   arrangement): scene registry `SPACE_SCENES`, matcher `SPACE_MATCHERS` +
-  `spaceIntent`, log-zoom math, wireframe mesh builders, feedback
-  validation. Node-tested in `public/js/space-core.test.js`. `src/space.js`
-  re-exports it and adds the two endpoints.
+  `spaceIntent`/`spaceIntentMatch` (the latter adds the matched language),
+  log-zoom math, wireframe mesh builders, feedback validation. Node-tested
+  in `public/js/space-core.test.js`. `src/space.js` re-exports it and adds
+  the two endpoints.
+- ONE embeddable renderer, `public/js/space-embed.js` (feedback #18): the
+  playable canvas — stage + HUD + pointer interaction + the per-kind
+  RUNNERS + the IntersectionObserver-gated play loop — behind
+  `mountSpaceScene(host, sceneId, {lang, caption, moreLink})`, with
+  self-injected `sp-` scoped CSS. The gallery mounts it per card; BOTH
+  tiers' chats mount it across the response area when the outgoing
+  question matches a scene (`turns.js mountSpaceEmbed` on Se/rver — live +
+  stored renders, deterministic re-detection, no embeds-registry entry;
+  `drc.js mountDrcSpaceEmbed` on Se/cure), answer streaming below.
 - The page `public/space/` is PUBLIC (allowlisted in `src/assets.js` like
-  /pulse/, including bare `/space` and the core module — the
-  public-module-graph rule: forget the allowlist entry and the page dies
-  with a 401'd import for signed-out visitors).
+  /pulse/, including bare `/space`, the core module AND the embed module —
+  the public-module-graph rule: forget the allowlist entry and the page
+  dies with a 401'd import for signed-out visitors).
 - `POST /api/space/feedback` is public and routed PRE-AUTH in
   `src/index.js` (next to /api/anim); rows carry scene + verdict + clamped
   comment, NO identity. Admin read: `GET /api/admin/space-feedback`
@@ -49,9 +59,11 @@ checklist.
 
 ## Adding a scene (the short version)
 
-Registry entry (bilingual, sound zoomKm) → matcher entry (EN+SV together)
-→ parity-suite phrasings → config for an existing `kind`, or a new runner
-in `public/space/space.js` RUNNERS + pure mesh builders in the core →
+Registry entry (bilingual, sound zoomKm) → matcher entry (EN+SV together;
+include chat-style visual-ask phrasings — "show/visualize/animate …",
+"visa/animera …" — so the chat embed fires too) → parity-suite phrasings
+→ config for an existing `kind`, or a new runner in
+`public/js/space-embed.js` RUNNERS + pure mesh builders in the core →
 `npm test` → verify in a real browser (canvas bugs are invisible to unit
 tests; a headless Playwright pass that scrolls each card and checks the
 canvas painted non-blank catches most of it).

@@ -56,6 +56,12 @@ export function isPublicAsset(url, method) {
     url.pathname === "/space" ||
     url.pathname.startsWith("/space/") ||
     url.pathname === "/js/space-core.js" ||
+    // The embeddable scene renderer (stage + HUD + runners), split out of the
+    // /space/ page so chat answers can mount a scene too (feedback #18):
+    // /space/space.js statically imports it, and both tiers' chats
+    // dynamic-import it — /cure included, so it must be public (a 401 here
+    // would kill the /space page's module graph for signed-out visitors).
+    url.pathname === "/js/space-embed.js" ||
     // DRC — the no-account client-side tier at /cure: the page, its
     // modules, and the vault/SSE primitives it reuses. Only FILES (with
     // an extension) match here: extensionless paths under /cure/ are page

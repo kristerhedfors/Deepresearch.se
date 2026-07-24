@@ -131,6 +131,7 @@ import {
 } from "/js/drc-page-core.js";
 import { matchCanned } from "/js/canned-faq.js";
 import { feedbackIntent } from "/js/feedback-core.js";
+import { spaceIntentMatch } from "/js/space-core.js";
 import { renderMarkdownInto } from "/js/markdown.js";
 import { mountUmbrellaSpinner } from "/js/umbrella-spinner.js";
 
@@ -1592,10 +1593,39 @@ function renderMessages() {
     return;
   }
   const conv = activeConv();
+  let prevUserText = "";
   messages.forEach((m, i) => {
+    // A space-visual ask re-mounts its wireframe scene above the stored
+    // answer (feedback #18) — deterministic re-detection from the question,
+    // the same rule the live send path applies, so reloads keep the canvas.
+    if (m.role === "assistant") mountDrcSpaceEmbed(box, prevUserText);
+    if (m.role === "user") prevUserText = typeof m.content === "string" ? m.content : "";
     box.appendChild(messageEl(m.role, m.content, { conv, index: i }));
   });
   box.scrollTop = box.scrollHeight;
+}
+
+// A space-visual ask ("show a moonshot from space between earth and moon",
+// "visa jorden och månen") mounts the /space/ archive's playable wireframe
+// scene across the response area, above the answer text (feedback #18) — the
+// Se/cure twin of the Se/rver app's turns.js mountSpaceEmbed. The renderer is
+// dynamic-imported so the module graph only pays for it when a scene actually
+// matches; it's a same-origin static asset, so the server stays out of the
+// data path. Fail-soft: never breaks a message render.
+function mountDrcSpaceEmbed(host, questionText, { before = null } = {}) {
+  try {
+    const m = spaceIntentMatch(questionText || "");
+    if (!m) return;
+    const box = document.createElement("div");
+    box.className = "space-embed-host";
+    if (before && before.parentNode) before.parentNode.insertBefore(box, before);
+    else host.appendChild(box);
+    import("/js/space-embed.js")
+      .then(({ mountSpaceScene }) => {
+        if (!mountSpaceScene(box, m.id, { lang: m.lang, caption: true, moreLink: true })) box.remove();
+      })
+      .catch(() => box.remove());
+  } catch { /* decorative — never break the chat */ }
 }
 
 function messageEl(role, content, { conv, index } = {}) {
@@ -3423,6 +3453,9 @@ async function send(ev) {
   const live = document.createElement("div");
   live.className = "msg assistant streaming";
   $("chat").appendChild(live);
+  // A space-visual ask mounts its playable wireframe scene above the incoming
+  // answer (feedback #18); the research answer still streams below it.
+  mountDrcSpaceEmbed($("chat"), text, { before: live });
   // The research steps render inline, just above this send's answer (matching
   // the DRS app's activity placement) — not in the composer footer.
   beginPhaseSteps(live);

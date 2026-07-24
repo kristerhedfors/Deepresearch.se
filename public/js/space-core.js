@@ -206,12 +206,27 @@ export const SPACE_MATCHERS = [
       /how far is it to the moon/,
       /distance (to|from (the )?earth to) the moon/,
       /moon distance/,
+      // Chat-style visual asks (feedback #18): "show a moonshot from space
+      // between earth and moon", "visualize the earth and the moon". A bare
+      // "moonshot" is NOT enough — the metaphor ("a moonshot project") needs
+      // a space word alongside before it means this scene.
+      /between (the )?earth and (the )?moon/,
+      /\bmoon ?shot\b[^.\n]*\b(space|earth|moon|orbit)\b/,
+      /\b(space|earth|orbit)\b[^.\n]*\bmoon ?shot\b/,
+      /(show|visuali[sz]e|animate|draw|render|display)( me| us)?[^.\n]*\bearth\b[^.\n]*\bmoon\b/,
+      /(show|visuali[sz]e|animate|draw|render|display)( me| us)?[^.\n]*\bmoon\b[^.\n]*\bearth\b/,
     ],
     sv: [
       /hur l[åa]ngt (bort|borta) [äa]r m[åa]nen/,
       /hur l[åa]ngt [äa]r det till m[åa]nen/,
       /avst[åa]nd(et)? till m[åa]nen/,
       /m[åa]nens avst[åa]nd/,
+      // Chat-style visual asks, same breadth as the EN set above.
+      /mellan jorden och m[åa]nen/,
+      /m[åa]nskott(et)?[^.\n]*\b(rymden|jorden|m[åa]nen|omloppsbana)\b/,
+      /\b(rymden|jorden|omloppsbana)\b[^.\n]*m[åa]nskott(et)?/,
+      /(visa|visualisera|animera|rita|rendera)( mig| oss)?[^.\n]*\bjorden\b[^.\n]*\bm[åa]nen\b/,
+      /(visa|visualisera|animera|rita|rendera)( mig| oss)?[^.\n]*\bm[åa]nen\b[^.\n]*\bjorden\b/,
     ],
   },
   {
@@ -235,11 +250,13 @@ export const SPACE_MATCHERS = [
       /how (high|fast) .*\b(iss|space station)/,
       /\b(iss|space station)\b.* (altitude|orbit|height)/,
       /where is the (iss|space station)/,
+      /(show|visuali[sz]e|animate|draw|render|display)( me| us)?[^.\n]*\b(iss|space station)\b/,
     ],
     sv: [
       /hur (h[öo]gt|snabbt) .*\b(iss|rymdstationen)/,
       /\b(iss|rymdstationen)\b.* (h[öo]jd|omloppsbana|bana)/,
       /var [äa]r (iss|rymdstationen)/,
+      /(visa|visualisera|animera|rita|rendera)( mig| oss)?[^.\n]*\b(iss|rymdstationen)\b/,
     ],
   },
   {
@@ -264,6 +281,9 @@ export const SPACE_MATCHERS = [
       /how do(es)? (a )?rockets? work/,
       /rocket launch/,
       /reach(ing)? orbit/,
+      /rockets? (blast(ing|s)? ?off|lift(ing|s)? ?off|tak(ing|es?) off)/,
+      /launch (of )?a rocket/,
+      /(show|visuali[sz]e|animate|draw|render|display)( me| us)?[^.\n]*\brockets?\b/,
     ],
     sv: [
       /hur n[åa]r en raket (omloppsbana|rymden)/,
@@ -271,6 +291,9 @@ export const SPACE_MATCHERS = [
       /raketuppskjutning(en)?/,
       /hur kommer (en )?raket(er)? (ut )?i (rymden|omloppsbana)/,
       /n[åa] omloppsbana/,
+      /raket(en)? (lyfter|startar|skjuts upp)/,
+      /uppskjutning(en)? av (en )?raket(en)?/,
+      /(visa|visualisera|animera|rita|rendera)( mig| oss)?[^.\n]*\braket(en|er|erna)?\b/,
     ],
   },
   {
@@ -281,6 +304,9 @@ export const SPACE_MATCHERS = [
       /walk(ing)? on the moon/,
       /moon landing/,
       /standing on the moon/,
+      // Chat-style visual ask; the SV set's bare /m[åa]nens yta/ already
+      // carries this breadth, so only EN needs the explicit verb form.
+      /(show|visuali[sz]e|animate|draw|render|display)( me| us)?[^.\n]*moon('s)? surface/,
     ],
     sv: [
       /m[åa]nens yta/,
@@ -342,12 +368,21 @@ export const SPACE_MATCHERS = [
  * Returns the scene id or null. Pure and never throws.
  */
 export function spaceIntent(text) {
+  return spaceIntentMatch(text)?.id || null;
+}
+
+/**
+ * spaceIntent with the matched LANGUAGE alongside — the chat embed picks its
+ * caption language from which pattern set fired ("visa jorden och månen" gets
+ * the Swedish reply). Returns { id, lang: "en"|"sv" } or null.
+ */
+export function spaceIntentMatch(text) {
   if (typeof text !== "string" || !text) return null;
   const t = text.toLowerCase().replace(/\s+/g, " ").trim();
   if (!t) return null;
   for (const m of SPACE_MATCHERS) {
-    for (const re of m.en) if (re.test(t)) return m.id;
-    for (const re of m.sv) if (re.test(t)) return m.id;
+    for (const re of m.en) if (re.test(t)) return { id: m.id, lang: "en" };
+    for (const re of m.sv) if (re.test(t)) return { id: m.id, lang: "sv" };
   }
   return null;
 }
