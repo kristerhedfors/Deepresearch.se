@@ -197,12 +197,16 @@ export function followUpFeedbackBody(entry) {
  * like createFeedbackEntry: null on no DB / no usable comment.
  * @param {D1Database | null} db
  * @param {string | number} userId
- * @param {{ comment: string, question?: string | null, answer_excerpt?: string | null, model?: string | null, page?: string | null }} entry
+ * Screenshots (`entry.images`, already validated/capped — see
+ * feedbackImagesFromParts for the chat path) land as feedback_images rows:
+ * entry-level on a fresh entry, message-level on a threaded follow-up.
+ * @param {{ comment: string, question?: string | null, answer_excerpt?: string | null, model?: string | null, page?: string | null, images?: FeedbackImageInput[] }} entry
  * @param {Msg[]} conversation the conversation the feedback arrived in
  * @returns {Promise<{ id: number, threaded: boolean } | null>}
  */
 export async function createOrThreadFeedbackEntry(db, userId, entry, conversation) {
   if (!db) return null;
+  const images = entry.images || [];
   const prior = priorFeedbackComment(conversation);
   if (prior) {
     const row = /** @type {{ id: number, status: string } | null} */ (
@@ -213,7 +217,8 @@ export async function createOrThreadFeedbackEntry(db, userId, entry, conversatio
         .catch(() => null)
     );
     if (row) {
-      await addMessage(db, row.id, "user", followUpFeedbackBody(entry));
+      const messageId = await addMessage(db, row.id, "user", followUpFeedbackBody(entry));
+      if (images.length) await insertImages(db, row.id, messageId ?? null, images);
       if (!isOpenStatus(row.status)) {
         await db.prepare("UPDATE feedback SET status = 'new' WHERE id = ?").bind(row.id).run();
       }
@@ -221,6 +226,7 @@ export async function createOrThreadFeedbackEntry(db, userId, entry, conversatio
     }
   }
   const id = await createFeedbackEntry(db, userId, entry);
+  if (id && images.length) await insertImages(db, id, null, images);
   return id ? { id, threaded: false } : null;
 }
 
@@ -273,6 +279,34 @@ export function validateFeedbackImages(value) {
     images.push({ name: cleanStr(item.name, FEEDBACK_IMAGE_CAPS.name), data });
   }
   return { images };
+}
+
+// Chat-filed feedback: the screenshots ride the chat message itself as
+// image_url parts, which textOf flattens to a "[N images attached]" line —
+// the bytes were dropped and the admin queue showed images: [] (feedback
+// #12, 2026-07-24). This maps those parts into feedback image inputs.
+// Take-what-fits, never an error: the capture path must not break the chat
+// (invariant 2), so an oversize or non-data-URL part is skipped and the
+// rest still land — unlike validateFeedbackImages' strict reject, which is
+// the right posture only where a 400 can reach the client.
+/**
+ * @param {Array<{type?: string, image_url?: {url?: string}}>} parts
+ * @returns {FeedbackImageInput[]}
+ */
+export function feedbackImagesFromParts(parts) {
+  /** @type {FeedbackImageInput[]} */
+  const out = [];
+  let total = 0;
+  for (const p of Array.isArray(parts) ? parts : []) {
+    if (out.length >= FEEDBACK_IMAGE_CAPS.count) break;
+    const url = typeof p?.image_url?.url === "string" ? p.image_url.url : "";
+    if (!IMAGE_DATA_RE.test(url) || url.length > FEEDBACK_IMAGE_CAPS.dataChars) continue;
+    if (total + url.length > FEEDBACK_IMAGE_CAPS.totalChars) continue;
+    total += url.length;
+    const ext = /^data:image\/(\w+)/.exec(url)?.[1] || "jpeg";
+    out.push({ name: `screenshot-${out.length + 1}.${ext === "jpeg" ? "jpg" : ext}`, data: url });
+  }
+  return out;
 }
 
 // A stored data URL → {mime, bytes} for the image-serving endpoints, or
