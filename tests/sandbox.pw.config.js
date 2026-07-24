@@ -24,8 +24,21 @@ export default defineConfig({
   reporter: [["list"]],
   use: {
     baseURL: process.env.BASE_URL || "https://deepresearch.se",
-    extraHTTPHeaders: {
-      authorization: "Basic " + Buffer.from(`${user}:${pass}`).toString("base64"),
+    // ORIGIN-SCOPED credentials, deliberately NOT `extraHTTPHeaders` (2026-07-24).
+    // A blanket `authorization` header rides on EVERY request the context makes,
+    // cross-origin ones included. That (a) hands the break-glass admin password
+    // to third parties, and (b) makes the CheerpX runtime's module fetch a
+    // non-simple CORS request, which the CDN answers without a preflight — so
+    // `import(CHEERPX_CDN)` fails with net::ERR_FAILED and the VM CANNOT boot.
+    // Measured: with extraHTTPHeaders the boot died at 3.2 s in "loading
+    // CheerpX…" every time, so this spec only ever exercised the fail-soft
+    // fallback and never the sandbox itself. `httpCredentials` with an `origin`
+    // only answers a 401 challenge from the site, leaving the CDN and the
+    // wss:// disk host to see clean, credential-free requests.
+    httpCredentials: {
+      username: user,
+      password: pass,
+      origin: process.env.BASE_URL || "https://deepresearch.se",
     },
     launchOptions: {
       executablePath: "/opt/pw-browsers/chromium",
