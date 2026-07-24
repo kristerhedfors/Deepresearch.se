@@ -357,11 +357,12 @@ reloads the page so the shell comes back isolated.
 
 ## Command performance — what is cheap and what is not
 
-Full measurements, method, and guidance: **`docs/SANDBOX-PERFORMANCE.md`**.
-The harness is `tests/e2e/sandbox-perf.spec.js` (a battery of one-liners timed
-in a real VM, cold vs warm) plus `tests/e2e/sandbox-agent-trace.spec.js` (one
-agent turn with every event timestamped), both run via
-`tests/sandbox-perf.pw.config.js`.
+Measurements and guidance: **`docs/SANDBOX-PERFORMANCE.md`**. How to reproduce,
+extend, and read them — plus the traps that make a run silently measure nothing
+— is the **sandbox-perf-eval** skill. The harness is
+`tests/e2e/sandbox-perf.spec.js` (a battery of one-liners timed in a real VM,
+cold vs warm) plus `tests/e2e/sandbox-agent-trace.spec.js` (one agent turn with
+every event timestamped), both run via `tests/sandbox-perf.pw.config.js`.
 
 The short version, for anyone choosing commands for the step prompt:
 

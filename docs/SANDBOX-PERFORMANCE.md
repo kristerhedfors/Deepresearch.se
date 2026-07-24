@@ -21,6 +21,9 @@ Both specs need `BASIC_AUTH_USER` / `BASIC_AUTH_PASS` (break-glass), and both
 call `stripCrossOriginAuth()` from `e2e/helpers.js` — see the "Auth must not
 reach the CDN" note at the bottom, which is a trap worth knowing about.
 
+How to extend the battery, read its output, and avoid the traps that make a run
+measure nothing: the **sandbox-perf-eval** skill.
+
 ## The cost model
 
 Four costs dominate, in this order. Nothing else measured mattered.
@@ -147,8 +150,8 @@ Observed twice while building this battery:
   command written specifically to be safe when `node` is missing — took the full
   30 s cold and destroyed the VM.
 
-So a single unlucky command does not merely fail; it ends the sandbox for the
-rest of the turn. Two mitigations, both cheap:
+So a single unlucky command ends the sandbox for the rest of the turn. Two
+mitigations, both cheap:
 
 - Wrap anything that might walk a cold tree in a guest-side `timeout 20 …`, so
   the command fails inside its own budget and the VM survives. The battery does
