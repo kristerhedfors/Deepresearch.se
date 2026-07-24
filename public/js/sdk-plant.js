@@ -4,7 +4,9 @@
 // introspection's TIN mascot), appearing the FIRST time a user enters SDK mode
 // (the green "lovable distiller"): a little plant grows in the corner above the
 // composer, says what this mode does, and retires — no persistent figure (the
-// owner directive the whole cast follows). It GROWS in, echoing the plant
+// owner directive the whole cast follows). It GROWS in from nothing straight to
+// full bloom — no seed, no soil, nothing brown (owner directive, 2026-07-24) —
+// echoing the plant
 // spinner's own animation, and it draws with the SAME shared renderer
 // (drawPlantFigure, plant-spinner.js) so the character and the waiting symbol
 // are the same plant by construction — the family rule.
@@ -36,13 +38,13 @@ export const SDK_GREETER_LINES = [
 
 const BOX_W = 92;
 const BOX_H = 118;
-const GROW_MS = 2200; // real ms for the seed to fall, plant and grow to bloom
+const GROW_MS = 2200; // real ms for the sprout to appear and grow to bloom
 const LINE_MS = 3600; // how long each pointer line lingers
 const SETTLE_MS = 820; // grown, then the first line
 const DEPART_MS = 620; // fade-out on the way out
 
-/** Growth design-time for the greeter at real `elapsed` ms — eases from the
- * falling seed into full bloom over GROW_MS, then pins at full. Pure/testable.
+/** Growth design-time for the greeter at real `elapsed` ms — eases from
+ * nothing into full bloom over GROW_MS, then pins at full. Pure/testable.
  * @param {number} elapsed @param {number} [dur] @returns {number} design-ms */
 export function greeterGrowth(elapsed, dur = GROW_MS) {
   const e = Number.isFinite(elapsed) ? Math.max(0, elapsed) : 0;
@@ -137,7 +139,7 @@ function frame(now) {
     const elapsed = now - g.start;
     const t = greeterGrowth(elapsed);
     const S = plantStateAt(t);
-    // A gentle sway once grown; none while it is still dropping in.
+    // A gentle sway once grown; none while it is still growing in.
     const grown = t >= FULL_APEX * 0.9;
     const sway = grown ? Math.sin(now / 720) * 0.06 : 0;
     g.ctx.clearRect(0, 0, BOX_W, BOX_H);
@@ -146,9 +148,7 @@ function frame(now) {
       {
         cx: BOX_W / 2,
         groundY: BOX_H * 0.86,
-        topY: BOX_H * 0.08,
         maxStem: BOX_H * 0.6,
-        seedR: BOX_W * 0.06,
         size: BOX_W,
         style: spinnerStyle(0),
       },
@@ -216,9 +216,7 @@ export function showSdkPlantGreeter() {
         {
           cx: BOX_W / 2,
           groundY: BOX_H * 0.86,
-          topY: BOX_H * 0.08,
           maxStem: BOX_H * 0.6,
-          seedR: BOX_W * 0.06,
           size: BOX_W,
           style: spinnerStyle(0),
         },

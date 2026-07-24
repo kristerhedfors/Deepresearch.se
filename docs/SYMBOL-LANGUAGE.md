@@ -248,17 +248,18 @@ As shipped:
   spinner is a drop-in in the registry later. It answers from the site's own
   source, so the research **depth slider is hidden** (`depthSlider: false`).
 - **SDK** — the **plant**. SDK mode grows a new flavour of the site, so its
-  symbol GROWS: the plant spinner (`public/js/plant-spinner.js`) runs a
-  forward **life-cycle** while work is ongoing — a seed falls, **hits the
-  ground**, **gets planted**, sprouts, grows and **blooms**; the open flower
-  then releases a fresh seed that falls to the soil while the parent withers,
-  and the cycle replants. (Owner directive, 2026-07-23: the earlier boomerang
-  loop rewound through the seed drop and read as a brown bouncing ball — the
-  loop now owns the whole seed→seedling→flower story, and only the ✓ is
-  reserved for "done".) The completion finale catches the plant wherever it
-  is, grows it out to full bloom and folds it into a **GREEN ✓**
-  (`--check-green`). It keeps the umbrella spinner's finale pacing, so the
-  three symbols stay siblings by construction. SDK's **character** is **SPROUT** (`public/js/sdk-plant.js`):
+  symbol GROWS: while work is ongoing the plant spinner
+  (`public/js/plant-spinner.js`) loops a **sprout** that appears from nothing
+  and grows into the composer chip's own **🌱 silhouette** — a stem with two
+  green leaves — sways there a beat, fades, and grows again. **Nothing brown
+  is ever drawn** (owner directive, 2026-07-24: no falling seed, no soil
+  mound — the earlier life-cycle's brown beats read as dirt; this supersedes
+  the 2026-07-23 seed→seedling→flower loop). The completion finale catches
+  the sprout wherever it is, **fast-forwards it into an actual open flower**,
+  scatters a handful of **tiny golden seeds** that fall all over, and folds
+  the plant into a **GREEN ✓** (`--check-green`). It keeps the umbrella
+  spinner's finale pacing, so the three symbols stay siblings by
+  construction. SDK's **character** is **SPROUT** (`public/js/sdk-plant.js`):
   the ghost/balloon/TIN counterpart, a one-shot greeter the first time a user
   enters SDK mode, drawn with the SAME shared renderer (`drawPlantFigure`) as
   the spinner so the character and the waiting symbol are one plant. The green

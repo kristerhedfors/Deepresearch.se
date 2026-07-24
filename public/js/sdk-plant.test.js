@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { SDK_GREET_KEY, SDK_GREETER_LINES, greeterGrowth } from "./sdk-plant.js";
 import { FULL_APEX } from "./plant-spinner.js";
 
-test("greeterGrowth: eases from the seed (0) into full bloom, then pins", () => {
+test("greeterGrowth: eases from nothing (0) into full bloom, then pins", () => {
   assert.equal(greeterGrowth(0), 0);
   assert.equal(greeterGrowth(2200), FULL_APEX, "full bloom at the end");
   assert.equal(greeterGrowth(9999), FULL_APEX, "pinned past the end");
