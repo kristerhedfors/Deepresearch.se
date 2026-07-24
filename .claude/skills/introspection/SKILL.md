@@ -465,6 +465,26 @@ served on BOTH tiers, so it's in `isPublicAsset`.
   Node-tested (`introspect-ui.test.js`, localStorage-stubbed); the DOM is
   verified live.
 
+## Source peek — tappable file references (2026-07-24, feedback #10)
+
+Answers in dev mode cite repo files constantly; each inline-code mention
+(`src/pipeline.js`, `agent-spec-core.js:34-45`) is a TAP TARGET opening that
+file from the committed snapshot in a popover — syntax highlighted with line
+numbers, `:line` ranges scrolled to and marked, markdown rendered with a
+raw toggle (a line-ranged .md ref opens raw so the cited lines show).
+`public/js/source-peek.js` is the view (scoped `spk-` styles, titanium
+palette — the introspect-ui.js self-styled precedent; snapshot fetched
+LAZILY on first tap, page-cached); `public/js/source-peek-core.js` is the
+Node-tested pure core (reference parsing with a closed extension list so
+`example.com`/`v1.5` never light up, exact→suffix→basename resolution with
+a picker for ambiguous basenames, the dependency-free tokenizer returning
+textContent-only tokens — file text never meets innerHTML). Wiring:
+`turns.js renderContent` + the `initSourcePeek({enabled: developerModeOn})`
+gate in app.js (DRS); `drc.js messageEl` + the live final render, gated on
+`state.developerMode` (DRC). Both modules are in `isPublicAsset` (the /cure
+graph imports them). Fenced blocks and links are never rewritten — inline
+code only. The interaction rule is UX-9 in the **ux-conventions** skill.
+
 ## Allowlist / caching facts
 
 - `/js/introspect-core.js` and `/introspect/source-snapshot.json` are in

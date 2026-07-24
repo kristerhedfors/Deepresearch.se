@@ -212,6 +212,14 @@ routing accessors are Node-tested, the DOM glue verified live) over the shared
 conversation-mode gate, the source-RAG chunker / int8 vector codec /
 retrieval, and the capped context-block builder — the one implementation
 behind `src/introspect.js` and both tiers' clients),
+`source-peek.js` (SOURCE PEEK — in developer mode every inline-code repo
+path an answer cites (`src/pipeline.js`, `agent-spec-core.js:34-45`) becomes
+a tap target opening that file from the committed source snapshot in a
+self-styled popover: syntax highlighted, markdown rendered with a raw
+toggle, `:line` ranges scrolled to and marked; snapshot fetched lazily on
+first tap, both tiers wire the same module over their own dev-mode gate)
+over the `source-peek-core.js` pure core (reference parsing, snapshot path
+resolution, the dependency-free tokenizer — Node-tested),
 `markdown.js`
 (sanitized rendering; a complete ```` ```mermaid ```` fence in an answer draws
 as a real diagram — the vendored `mermaid.min.js` lazy-loads on first use
