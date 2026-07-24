@@ -50,6 +50,7 @@ import {
   feedbackScope,
   feedbackScopeOfPrior,
   isStandalonePage,
+  isStrategyPage,
 } from "../public/js/feedback-core.js";
 
 /** @typedef {import('./conversation.js').Msg} Msg */
@@ -504,6 +505,10 @@ export function projectFeedback(row, messages = [], images = [], opts = {}) {
     // message of a conversation, NOT a report about a research session. The
     // development loop must not read session context into these.
     standalone: isStandalonePage(row.page),
+    // The outward-view lane: a note written while reading the outrospection
+    // feed is an operative/strategic idea about where the project should go,
+    // filed against a lens — direction, not a defect to reproduce.
+    strategy: isStrategyPage(row.page),
     context_chars: (row.context || "").length,
     ...(opts.context ? { context: row.context || null } : {}),
     images: images.filter((i) => !i.message_id).map(projectImage),
@@ -558,6 +563,15 @@ export function formatFeedbackText(entries) {
         lines.push(
           "SCOPE: standalone — generic developer feedback (first message of the conversation; " +
             "a suggestion or next-steps note, NOT a report about a research session)",
+        );
+      }
+      // Same reasoning for the outward lane: "reproduce the complaint" is the
+      // wrong first move on an idea about which library to build on next.
+      if (e.strategy) {
+        lines.push(
+          "SCOPE: strategy — an operative/strategic idea written from the outrospection view " +
+            "(the page tag carries the lens it answers). Read it as DIRECTION for the project, " +
+            "NOT as a defect report to reproduce.",
         );
       }
       if (e.images?.length) lines.push(imagesLine(e.images));

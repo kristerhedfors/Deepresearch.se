@@ -452,6 +452,10 @@ const DOC_LINKS = [
   ["/story/", "The build story", "How the site was built, session by session."],
   ["/architecture/", "The architecture story", "How the Worker, pipeline, and privacy split fit together."],
   ["/pulse/", "Project pulse", "Live charts of commits, lines, and new features over the repo's history."],
+  // Introspection's mirror image (src/outrospect.js): what everyone ELSE is
+  // building, through the seven standing lenses. Opens a refresh on arrival,
+  // so visiting it is what keeps it current.
+  ["/outrospect/", "Outrospection", "The outward feed — libraries, browser-runnable models, edge RAG, and other people's LLM architectures."],
   ["https://github.com/kristerhedfors/Deepresearch.se", "Source code", "MIT-licensed, on GitHub — every privacy claim is yours to verify."],
 ];
 

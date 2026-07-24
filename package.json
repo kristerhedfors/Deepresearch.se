@@ -13,6 +13,7 @@
     "fetch:owasp": "node scripts/fetch-owasp.mjs",
     "bundle:owasp-rag": "node scripts/bundle-owasp-rag.mjs",
     "verify:owasp": "node scripts/verify-owasp-quotes.mjs",
+    "outrospect": "node scripts/outrospect-scan.mjs",
     "pulse": "node scripts/build-pulse.mjs",
     "pulse:timeline": "node scripts/build-pulse-timeline.mjs",
     "pulse:size": "node scripts/build-pulse-size.mjs",

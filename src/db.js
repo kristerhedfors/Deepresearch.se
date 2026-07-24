@@ -235,6 +235,39 @@ CREATE TABLE IF NOT EXISTS test_point_messages (
   body TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_test_point_messages_point ON test_point_messages(point_id, id);
+-- The OUTROSPECTION feed (src/outrospect.js): the outward-looking counterpart
+-- to introspection — what everyone else is building, through the lens registry
+-- in public/js/outrospect-core.js. Rows are ARTICLES, deliberately carrying no
+-- identity column: who happened to be visiting when a headline was found is
+-- not part of the record. the key column (the normalized URL) is UNIQUE so two
+-- simultaneous visitor refreshes cannot double-file the same article and the
+-- earliest first_seen always wins.
+CREATE TABLE IF NOT EXISTS outrospect_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key TEXT UNIQUE NOT NULL,
+  lens TEXT NOT NULL,
+  title TEXT NOT NULL,
+  url TEXT NOT NULL,
+  teaser TEXT,
+  source TEXT,
+  first_seen INTEGER NOT NULL,
+  query TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_outrospect_items_seen ON outrospect_items(first_seen DESC);
+CREATE INDEX IF NOT EXISTS idx_outrospect_items_lens ON outrospect_items(lens, first_seen DESC);
+-- The refresh run log: what backs the per-lens cooldown and the per-user rate
+-- limit, and nothing more. It records WHICH lens was searched, never what the
+-- reader was looking for — the queries are the literal strings committed in
+-- the lens registry, so the queries column is a count, not text.
+CREATE TABLE IF NOT EXISTS outrospect_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts INTEGER NOT NULL,
+  user_id TEXT NOT NULL,
+  lens TEXT NOT NULL,
+  queries INTEGER NOT NULL DEFAULT 0,
+  found INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_outrospect_runs_ts ON outrospect_runs(ts DESC);
 CREATE TABLE IF NOT EXISTS websearch_grants (
   jti TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
