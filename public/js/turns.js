@@ -7,6 +7,7 @@ import { wireSourcePeek } from "./source-peek.js";
 import { downloadReport } from "./report.js";
 import { renderMapEmbed, renderStreetViewEmbed, renderStreetViewFrames } from "./activity.js";
 import { renderQuiz } from "./quiz.js";
+import { spaceIntentMatch } from "./space-core.js";
 import { mountModeSpinner } from "./mode-spinner.js";
 import { formatByteSize, mimeForName } from "./bash-core.js";
 import { addFilesToProject, listProjects } from "./projects.js";
@@ -73,6 +74,36 @@ function addFeedbackHint() {
   chat.appendChild(hint);
 }
 
+// A question with a tailored space animation (the /space/ archive's scenes —
+// space-core.js spaceIntentMatch, EN+SV) mounts the playable wireframe canvas
+// across the response area, above the streamed answer text, with the scene's
+// curated factual reply as its caption (feedback #18: "show a moonshot from
+// space between earth and moon" should animate, not just cite photos). Purely
+// decorative-additive: the research answer still streams below, and the mount
+// is DERIVED from the question — deterministic re-detection, so reloaded (and
+// pre-feature) conversations get it too without an embeds-registry entry.
+// The renderer is dynamic-imported: most conversations never ask about space,
+// and the module graph stays lean. Fail-soft — never breaks a turn.
+/**
+ * @param {Turn} turn
+ * @param {string} questionText the user message the turn answers
+ */
+export function mountSpaceEmbed(turn, questionText) {
+  try {
+    const m = spaceIntentMatch(questionText);
+    if (!m || !turn?.el || turn._spaceEmbed) return;
+    const host = document.createElement("div");
+    host.className = "space-embed-host";
+    turn.el.insertBefore(host, turn.content);
+    turn._spaceEmbed = host;
+    import("./space-embed.js")
+      .then(({ mountSpaceScene }) => {
+        if (!mountSpaceScene(host, m.id, { lang: m.lang, caption: true, moreLink: true })) host.remove();
+      })
+      .catch(() => host.remove());
+  } catch { /* decorative — never break the turn */ }
+}
+
 // Splits a stored {role:"user", content} entry back into bubble parts.
 // Document attachments aren't reconstructed as chips here — their text was
 // already embedded inline in the message when it was sent (see stream.js's
@@ -118,6 +149,7 @@ export function renderStoredConversation(messages, embeds = [], opts = {}) {
       // works the same as it does on a live turn.
       const turn = addAssistantTurn(lastUser.text, lastUser.imageUrls);
       setText(turn, m.content);
+      mountSpaceEmbed(turn, lastUser.text);
       for (const e of embeds) {
         if (e?.msgIndex !== i) continue;
         if (e.kind === "streetview_embed") {

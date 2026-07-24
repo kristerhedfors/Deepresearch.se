@@ -8,6 +8,7 @@ import {
   SPACE_MATCHERS,
   sceneById,
   spaceIntent,
+  spaceIntentMatch,
   zoomToDistance,
   distanceToZoom,
   formatKm,
@@ -76,8 +77,18 @@ const PARITY = [
   },
   {
     id: "earth-moon",
-    en: ["How far away is the Moon?", "how far is it to the moon", "What is the distance to the moon?"],
-    sv: ["Hur långt bort är månen?", "hur långt är det till månen", "avståndet till månen", "hur langt bort ar manen"],
+    en: [
+      "How far away is the Moon?", "how far is it to the moon", "What is the distance to the moon?",
+      // Chat-style visual asks (feedback #18) — the first is the verbatim
+      // reported query.
+      "show a moonshot from space between earth and moon",
+      "visualize the earth and the moon",
+      "show me the moon orbiting earth",
+    ],
+    sv: [
+      "Hur långt bort är månen?", "hur långt är det till månen", "avståndet till månen", "hur langt bort ar manen",
+      "visa jorden och månen", "mellan jorden och månen", "ett månskott från rymden", "visa manen och jorden",
+    ],
   },
   {
     id: "solar-system",
@@ -86,8 +97,8 @@ const PARITY = [
   },
   {
     id: "iss-orbit",
-    en: ["How high does the ISS fly?", "how fast is the space station moving", "what altitude does the iss orbit at"],
-    sv: ["Hur högt flyger ISS?", "hur snabbt åker rymdstationen", "vilken höjd har iss sin omloppsbana på", "hur hogt flyger rymdstationen"],
+    en: ["How high does the ISS fly?", "how fast is the space station moving", "what altitude does the iss orbit at", "show me the iss"],
+    sv: ["Hur högt flyger ISS?", "hur snabbt åker rymdstationen", "vilken höjd har iss sin omloppsbana på", "hur hogt flyger rymdstationen", "visa rymdstationen"],
   },
   {
     id: "satellites",
@@ -96,13 +107,21 @@ const PARITY = [
   },
   {
     id: "rocket-launch",
-    en: ["How does a rocket reach orbit?", "how do rockets work", "rocket launch"],
-    sv: ["Hur når en raket omloppsbana?", "hur fungerar en raket", "raketuppskjutning", "hur kommer raketer ut i rymden", "hur nar en raket rymden"],
+    en: [
+      "How does a rocket reach orbit?", "how do rockets work", "rocket launch",
+      // The second verbatim reported query (feedback #18, chat_logs #615).
+      "show a rocket launching into space",
+      "show me a rocket lifting off",
+    ],
+    sv: [
+      "Hur når en raket omloppsbana?", "hur fungerar en raket", "raketuppskjutning", "hur kommer raketer ut i rymden", "hur nar en raket rymden",
+      "visa en raket som skjuts upp", "uppskjutningen av en raket",
+    ],
   },
   {
     id: "moon-surface",
-    en: ["What does the surface of the moon look like?", "walking on the moon", "the moon landing"],
-    sv: ["Hur ser månens yta ut?", "hur ser det ut på månen", "månlandningen", "manens yta"],
+    en: ["What does the surface of the moon look like?", "walking on the moon", "the moon landing", "show me the moon's surface"],
+    sv: ["Hur ser månens yta ut?", "hur ser det ut på månen", "månlandningen", "manens yta", "visa månens yta"],
   },
   {
     id: "saturn-rings",
@@ -143,6 +162,18 @@ test("spaceIntent: unrelated questions stay unmatched", () => {
   assert.equal(spaceIntent(""), null);
   assert.equal(spaceIntent(null), null);
   assert.equal(spaceIntent(42), null);
+  // "moonshot" the metaphor must NOT fire the earth-moon scene: it needs a
+  // space word alongside (feedback #18's broadened matchers keep this out).
+  assert.equal(spaceIntent("our ai moonshot project needs funding"), null);
+  assert.equal(spaceIntent("moonshot thinking in business strategy"), null);
+});
+
+test("spaceIntentMatch: reports which language matched (caption language)", () => {
+  assert.deepEqual(spaceIntentMatch("show a moonshot from space between earth and moon"), { id: "earth-moon", lang: "en" });
+  assert.deepEqual(spaceIntentMatch("visa jorden och månen"), { id: "earth-moon", lang: "sv" });
+  assert.deepEqual(spaceIntentMatch("show a rocket launching into space"), { id: "rocket-launch", lang: "en" });
+  assert.deepEqual(spaceIntentMatch("visa en raket som skjuts upp"), { id: "rocket-launch", lang: "sv" });
+  assert.equal(spaceIntentMatch("write me a poem about autumn"), null);
 });
 
 // ---------------------------------------------------------------------------

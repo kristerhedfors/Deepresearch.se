@@ -29,8 +29,10 @@ the page's visual identity; keep it when adding scenes.
 
 | Piece | Where | What |
 |---|---|---|
-| Shared pure core | `public/js/space-core.js` | The scene registry, the `spaceIntent` EN+SV matcher, zoom math (`zoomToDistance` / `distanceToZoom`), `formatKm`, all mesh builders, `validateSpaceFeedback`. Node-tested (`space-core.test.js`), no imports, served publicly (the page imports it — the /cure public-module-graph rule applies). |
-| The page | `public/space/index.html` + `public/space/space.js` | Markup/styling + the canvas renderer and gallery glue: per-kind scene runners, pointer interaction, HUD, language toggle, ask-box, feedback POST. |
+| Shared pure core | `public/js/space-core.js` | The scene registry, the `spaceIntent` / `spaceIntentMatch` EN+SV matcher, zoom math (`zoomToDistance` / `distanceToZoom`), `formatKm`, all mesh builders, `validateSpaceFeedback`. Node-tested (`space-core.test.js`), no imports, served publicly (the page imports it — the /cure public-module-graph rule applies). |
+| Embeddable renderer | `public/js/space-embed.js` | The playable canvas itself — stage, HUD, pointer interaction, the per-kind scene runners, a shared play loop with IntersectionObserver gating — behind one call: `mountSpaceScene(host, sceneId, {lang, caption, moreLink})`. Injects its own `sp-` scoped CSS, so any host page can mount a scene. Served publicly (the /space page statically imports it; both chats dynamic-import it). |
+| The page | `public/space/index.html` + `public/space/space.js` | Markup/styling + the gallery chrome: cards mounting scenes via the embed renderer, chips, ask-box, language toggle, feedback POST. |
+| Chat embeds | `public/js/turns.js` `mountSpaceEmbed` (Se/rver) · `public/cure/drc.js` `mountDrcSpaceEmbed` (Se/cure) | A chat question that matches a scene mounts the animation across the response area, above the streamed answer — see "The chat embed" below. |
 | Server façade | `src/space.js` | Re-exports the core; owns `POST /api/space/feedback` (public) and `GET /api/admin/space-feedback` (admin, `?format=text`). |
 | Storage | `src/db.js` `space_feedback` | One row per verdict: ts, scene, verdict, comment. Deliberately no identity column. |
 
@@ -58,7 +60,31 @@ per invariant 6 every scene has Swedish patterns with the same breadth as
 the English ones — definite forms, synonyms, and `[åa]`-class tolerance
 for diacritic-dropped typing ("hur langt bort ar manen" matches). The
 parity unit test walks EN and SV phrasings for every scene and also fails
-if a new scene ships without parity coverage.
+if a new scene ships without parity coverage. Since feedback #18 the sets
+also carry chat-style visual asks — "show a moonshot from space between
+earth and moon", "show a rocket launching into space", "visa jorden och
+månen" — with a guard keeping the bare "moonshot" metaphor out (it needs a
+space word alongside). `spaceIntentMatch` returns `{ id, lang }` so a
+mount can pick its caption language from which pattern set fired.
+
+## The chat embed (feedback #18)
+
+Both tiers' chats run the same gate on every outgoing question. On a match,
+the scene mounts full-width at the top of the response area — the playable
+canvas with HUD and corner notes, the scene's curated bilingual `reply` as
+a caption, and a link to the `/space/` archive — while the research answer
+streams below it. The animation adds to the answer; it never replaces it.
+
+- Se/rver: `public/js/turns.js` `mountSpaceEmbed`, called on the live send
+  (`stream.js`, skipped in Agent Studio) and on stored-conversation
+  renders. The mount is DERIVED from the question by re-detection — no
+  embeds-registry entry — so reloaded and pre-feature conversations get it
+  too.
+- Se/cure: `public/cure/drc.js` `mountDrcSpaceEmbed`, same rule on the live
+  send and in `renderMessages`. The renderer is a same-origin static asset,
+  so the server stays out of the data path.
+- The renderer is dynamic-imported in both chats: conversations that never
+  ask about space never load it.
 
 ## Adding a scene
 
@@ -68,7 +94,7 @@ if a new scene ships without parity coverage.
 2. Add the EN+SV phrasings to the parity suite in
    `public/js/space-core.test.js` (the coverage test fails until you do).
 3. If the scene fits an existing `kind`, `config` is all it needs. A new
-   kind = a runner in `public/space/space.js`'s `RUNNERS` plus whatever
+   kind = a runner in `public/js/space-embed.js`'s `RUNNERS` plus whatever
    mesh builders it needs in the core (pure, deterministic, tested).
 4. `npm test`, then verify in a real browser — canvas code has failure
    modes unit tests can't see (the live-verify discipline).
