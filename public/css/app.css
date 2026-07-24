@@ -1417,11 +1417,14 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   background: none; border: 0; color: var(--muted); font-size: 1rem; padding: .2rem .4rem;
 }
 /* The history drawer's close chevron (‹ — points left, the way this
-   left drawer slides away) floats at the exact screen position of the
-   header's history button (measured by history-ui.js when the drawer
-   opens), so on a phone the same tap spot opens AND closes the drawer.
-   Styled like the header glass buttons it stands in for. The project
-   panel's chevron (#projectclose, placed by projects-ui.js) matches it —
+   left drawer slides away) floats at the screen position of the header's
+   history button (measured by projects-ui.js pinPaneClose when the
+   drawer opens), so on a phone the same tap spot opens AND closes the
+   drawer. In Introspection / Agent Studio the measurement subtracts the
+   header's mode-tag row, so the chevron pins at the Deep Research height
+   in every mode — the raw rect there would overlap the "Chat history"
+   head text. Styled like the header glass buttons it stands in for. The
+   project panel's chevron (#projectclose) shares the same placement —
    the panel opens from the history drawer, so the close button stays in
    the same spot throughout. */
 #historyclose, #projectclose {

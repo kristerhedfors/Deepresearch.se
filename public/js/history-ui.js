@@ -16,7 +16,7 @@ import {
   saveConversation,
   undecryptableConversations,
 } from "./history-store.js";
-import { renderProjectsList } from "./projects-ui.js";
+import { pinPaneClose, renderProjectsList } from "./projects-ui.js";
 import { loadSettings, settingsLoaded, storageAvailable } from "./settings.js";
 import { applyLoadedConversation, currentConversationId } from "./stream.js";
 import { pullNewer } from "./sync.js";
@@ -479,16 +479,14 @@ export function initHistorySidebar(opts = {}) {
     refresh();
   }
 
-  // Pin the drawer's ✕ to the exact screen rect of the header's history
-  // button, so on a phone the same tap position opens and closes the
-  // drawer (the fixed-position styling lives in app.css).
+  // Pin the drawer's ✕ to the screen rect of the header's history button,
+  // so on a phone the same tap position opens and closes the drawer (the
+  // fixed-position styling lives in app.css). Shared with the project
+  // panel's ✕ — pinPaneClose also corrects for the Introspection / Agent
+  // Studio mode-tag row so the chevron sits at the Deep Research height
+  // in every mode instead of overlapping the "Chat history" head.
   function placeCloseBtn() {
-    const r = btn.getBoundingClientRect();
-    if (!r.width) return; // button hidden/unlaid-out: keep the CSS fallback
-    closeBtn.style.top = r.top + "px";
-    closeBtn.style.left = r.left + "px";
-    closeBtn.style.width = r.width + "px";
-    closeBtn.style.height = r.height + "px";
+    pinPaneClose(closeBtn);
   }
 
   // Slide animation (app.css): .open drives the panel/backdrop transition;
