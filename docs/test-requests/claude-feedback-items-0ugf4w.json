@@ -1,0 +1,34 @@
+{
+  "branch": "claude/feedback-items-0ugf4w",
+  "pr": null,
+  "requested_at": "2026-07-24",
+  "points": [
+    {
+      "label": "Space animation in the chat answer (EN)",
+      "summary": "Feedback #18: a space-visual question now mounts a playable wireframe animation across the response area, above the streamed answer. In the signed-in chat (Deep Research mode) ask: 'show a moonshot from space between earth and moon'. PASS: a dark canvas card appears at the top of the reply — Earth and Moon wireframes with the orbit, drag rotates, the zoom slider works, corner note says sizes/distances are to scale, a caption explains the 384,400 km distance, and a 'More space animations →' link opens /space/. The research answer still streams below the canvas. Reloading the conversation from history must bring the animation back. FAIL: no canvas, a blank black card, or the answer text replaced by the animation.",
+      "target": "/",
+      "actions": [],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Space animation in the chat answer (SV + Se/cure)",
+      "summary": "Swedish parity + the client-side tier: on /cure (any provider configured) ask 'visa jorden och månen'. PASS: the same playable wireframe card mounts above the answer with the SWEDISH caption ('I genomsnitt 384 400 km …'). Also try 'show a rocket launching into space' — the gravity-turn launch scene must mount. FAIL: English caption on a Swedish ask, or no canvas on either tier.",
+      "target": "/cure",
+      "actions": [],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "'feedback' message never boots the sandbox",
+      "summary": "Feedback #18 (second report): with the Linux sandbox knob ON in Settings, send a message starting with the word 'feedback' that mentions commands — e.g. 'feedback the sandbox ran Linux commands when I typed feedback'. PASS: the reply is the warm feedback acknowledgement, and NO 'Booting Linux sandbox…' step appears — no commands run first. A normal shell ask afterwards ('run ls -la in the sandbox') must still boot the VM. FAIL: any sandbox boot or command execution on the feedback message.",
+      "target": "/",
+      "actions": [],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    }
+  ]
+}
