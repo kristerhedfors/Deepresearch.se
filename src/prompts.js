@@ -142,10 +142,10 @@ export const triagePrompt = (maxQueries, { reinforceJsonOnly = false } = {}) =>
 /**
  * @param {string[]} pastQueries
  * @param {number} maxFollowups
- * @param {JsonPromptOpts & { subquestions?: string[] }} [opts]
+ * @param {JsonPromptOpts & { subquestions?: string[], strive?: boolean }} [opts]
  * @returns {string}
  */
-export const gapPrompt = (pastQueries, maxFollowups, { subquestions = [], reinforceJsonOnly = false } = {}) =>
+export const gapPrompt = (pastQueries, maxFollowups, { subquestions = [], reinforceJsonOnly = false, strive = false } = {}) =>
   `You audit research coverage for Deepresearch.se. Today's date: ${today()}.\n` +
   "Given the research question, the conversation it came from, and the sources collected so far, respond ONLY with JSON:\n" +
   '- {"complete":true} if the sources cover the question well enough for a grounded answer.\n' +
@@ -157,6 +157,12 @@ export const gapPrompt = (pastQueries, maxFollowups, { subquestions = [], reinfo
   "If answering depends on a fact that only became known from the collected sources (a name, date, or place the question referred to indirectly — e.g. the question asks about \"X's parent company\" and a source reveals the parent is Y), write the follow-up query using that concrete fact directly (search for Y itself), not the original indirect phrasing.\n" +
   "The latest message may be a generic follow-up (e.g. \"what's the latest\", \"tell me more\"): judge coverage against the user's ORIGINAL question in the conversation, in its full breadth — sources clustering on one narrow thread of a broader question is itself a gap, so aim follow-up queries at the uncovered parts of the original topic instead of digging the already-covered thread deeper.\n" +
   "Treat single-origin dominance as a gap too: check the URLs of the sources collected so far — if most or all share the same domain (especially a company's own site), that is NOT complete even if the content otherwise reads thoroughly; add a follow-up query aimed specifically at independent, third-party coverage instead of another official-source query.\n" +
+  // The gap-strive push (budget.js wantsGapStrive, feedback #16): at a deep
+  // budget a first "complete" verdict gets challenged with a wider aperture
+  // before the pipeline settles.
+  (strive
+    ? "STRIVE HARDER: the user deliberately bought a DEEP research budget, most of it is still unspent, and coverage was already judged sufficient once. Do not settle yet — widen the aperture: enthusiast communities and specialist forums, marketplaces and product/manufacturer catalogs, alternative names and terminology for the same thing, non-English sources, and adjacent comparison points the current sources skirt. Reply {\"complete\":true} ONLY if another follow-up wave would genuinely surface nothing a careful reader would miss; otherwise propose the queries.\n"
+    : "") +
   `Do not repeat or trivially rephrase these already-run queries: ${JSON.stringify(pastQueries)}` +
   sourcePromptNotes() +
   (reinforceJsonOnly ? JSON_ONLY_REINFORCEMENT : "");
