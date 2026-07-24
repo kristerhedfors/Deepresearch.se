@@ -31,6 +31,16 @@ export function sanitizeResearchEvent(s) {
       questions: Array.isArray(s.quiz?.questions) ? s.quiz.questions.length : 0,
     };
   }
+  if (s?.type === "workflow") {
+    // The plan graph carries every agent's full task text — compact it to the
+    // team's shape; the agent names keep the log readable.
+    return {
+      type: s.type,
+      title: s.title || "",
+      agents: (Array.isArray(s.agents) ? s.agents : []).map((a) => `${a?.name || a?.id} (${a?.kind})`),
+      waves: Array.isArray(s.waves) ? s.waves.length : 0,
+    };
+  }
   return s;
 }
 

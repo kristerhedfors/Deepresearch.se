@@ -53,7 +53,7 @@
 
 /** The Se/rver-app chat modes, dropdown order. Mirrors chat-mode.js CHAT_MODES;
  * kept here too so the registry is self-describing. */
-export const CHAT_MODE_IDS = ["normal", "introspection", "sdk"];
+export const CHAT_MODE_IDS = ["normal", "introspection", "sdk", "orchestrator"];
 
 /** The mode descriptors, keyed by id.
  * @type {Record<string, ModeTheme>} */
@@ -110,6 +110,25 @@ export const MODE_THEMES = {
     depthSlider: false, // builds a flavour, no web research — the slider doesn't apply
     symbol: "the plant",
     blurb: "grown — a new flavour distilled and planted live",
+  },
+  orchestrator: {
+    id: "orchestrator",
+    label: "Orchestrator",
+    rootClass: "orch-mode",
+    tag: "orchestrator",
+    accent: "#6d3fc4",
+    bar: "#c3aaf2", // lavender status bar over the violet field
+    check: "#6d3fc4",
+    checkVar: "--check-violet",
+    // The orchestrator wears the balloon spinner recoloured in VIOLET
+    // (mode-spinner.js ORCH_SPINNER — the introspection-recolour pattern);
+    // the KIND stays "balloon", the palette lives in mode-spinner.js.
+    spinner: "balloon",
+    character: "balloon",
+    panel: "history",
+    depthSlider: false, // the plan phase decides the team's shape — the slider doesn't apply
+    symbol: "the baton",
+    blurb: "conducted — a team of sub-agents working in concert",
   },
 };
 

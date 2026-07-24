@@ -7,6 +7,7 @@ import { wireSourcePeek } from "./source-peek.js";
 import { downloadReport } from "./report.js";
 import { renderMapEmbed, renderStreetViewEmbed, renderStreetViewFrames } from "./activity.js";
 import { renderQuiz } from "./quiz.js";
+import { renderWorkflow } from "./workflow-viz.js";
 import { spaceIntentMatch } from "./space-core.js";
 import { mountModeSpinner } from "./mode-spinner.js";
 import { formatByteSize, mimeForName } from "./bash-core.js";
@@ -160,6 +161,10 @@ export function renderStoredConversation(messages, embeds = [], opts = {}) {
           renderStreetViewFrames(turn, { query: e.query || "", frames: e.frames.filter((f) => f?.url) });
         } else if (e.kind === "quiz" && e.quiz) {
           renderQuiz(turn, e.quiz, opts.quizHooks ? opts.quizHooks(e) : { answers: e.answers || [] });
+        } else if (e.kind === "workflow" && e.workflow) {
+          // The Orchestrator workflow view, with the node statuses the run
+          // recorded (a run interrupted mid-flight honestly shows "running").
+          renderWorkflow(turn, e.workflow, e.statuses || {});
         }
       }
     }

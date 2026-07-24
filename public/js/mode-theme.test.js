@@ -47,13 +47,26 @@ test("every descriptor declares all distinguishing axes", () => {
   }
 });
 
-test("depth slider is an optional theme feature: off for Introspection + SDK", () => {
+test("depth slider is an optional theme feature: off for Introspection + SDK + Orchestrator", () => {
   assert.equal(showsDepthSlider("normal"), true);
   assert.equal(showsDepthSlider("introspection"), false);
   assert.equal(showsDepthSlider("sdk"), false);
+  assert.equal(showsDepthSlider("orchestrator"), false);
   assert.equal(MODE_THEMES.introspection.depthSlider, false);
   assert.equal(MODE_THEMES.sdk.depthSlider, false);
+  assert.equal(MODE_THEMES.orchestrator.depthSlider, false);
   assert.equal(showsDepthSlider("nope"), true, "unknown → Normal (shows it)");
+});
+
+test("Orchestrator is the violet baton / balloon-recolour identity", () => {
+  const o = MODE_THEMES.orchestrator;
+  assert.equal(o.rootClass, "orch-mode");
+  assert.equal(o.label, "Orchestrator");
+  assert.equal(o.tag, "orchestrator");
+  assert.equal(o.spinner, "balloon"); // a recolour (mode-spinner.js), not a new figure
+  assert.equal(o.panel, "history");
+  assert.equal(o.checkVar, "--check-violet");
+  assert.equal(barTint("orchestrator"), "#c3aaf2");
 });
 
 test("SDK is the Agent Studio plant / green / showcase identity", () => {
