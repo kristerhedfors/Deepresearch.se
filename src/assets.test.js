@@ -23,6 +23,15 @@ describe("isPublicAsset", () => {
     }
   });
 
+  test("the space-animations showcase and its module graph are public", () => {
+    assert.equal(isPublicAsset(u("/space"), "GET"), true);
+    assert.equal(isPublicAsset(u("/space/"), "GET"), true);
+    assert.equal(isPublicAsset(u("/space/space.js"), "GET"), true);
+    // The page's one shared-core import — the public-module-graph rule.
+    assert.equal(isPublicAsset(u("/js/space-core.js"), "GET"), true);
+    assert.equal(isPublicAsset(u("/space/"), "POST"), false);
+  });
+
   test("DRC /cure files (with extension) are public, but page routes are not", () => {
     assert.equal(isPublicAsset(u("/cure/drc.js"), "GET"), true);
     assert.equal(isPublicAsset(u("/cure/drc.css"), "GET"), true);
