@@ -70,6 +70,7 @@ import {
   extractClaims,
   mergeFanoutQueries,
   notesSection,
+  sdkReplyTail,
   shellReplyMessages,
   subquestionsSection,
   takeSearchBatch,
@@ -121,7 +122,7 @@ import {
   stageBuildFile,
   stripFileBlocks,
 } from "./sdk-tools.js";
-import { publishBuild, replyLinksTo } from "./build-pub.js";
+import { publishBuild } from "./build-pub.js";
 import { feedbackIntent, buildFeedbackContext, feedbackImagesFromParts } from "./feedback.js";
 import { parseUseCaseRef } from "./testpoints.js";
 import { loadSourceSnapshot } from "./introspect.js";
@@ -791,40 +792,8 @@ async function publishSdkFiles(ctx, files, title) {
 /** @param {PipelineCtx} ctx @returns {string} */
 const sdkBuildTitle = (ctx) => ctx.cleanLastUser.replace(/\s+/g, " ").trim().slice(0, 80) || "App";
 
-// The canned iteration question every build turn ends on (feedback #13 asked
-// for exactly this closing). The prompts instruct the model to ask it in the
-// user's own language; this English form is only the deterministic fallback
-// when the reply didn't end by asking one.
-const SDK_ITERATION_QUESTION = "Does the app work as you hoped, or would you like to add or change anything?";
-
-/** @param {string} text */
-const endsWithQuestion = (text) => /[?？][*_`")\]]*$/.test(String(text || "").trim());
-
-/**
- * The reply tail a successful build turn ends on — feedback #13's requested
- * shape: a build summary, the live link (unless the prose already links it),
- * and the iteration question (unless the prose already asked one). Shared by
- * both build paths. With `published` null: the honest no-publish note.
- * @param {string} prose The model-written reply text already emitted ("" when none).
- * @param {Array<{ path: string, content: string }>} files
- * @param {{ slug: string, url: string, files: number, bytes: number } | null} published
- * @returns {string}
- */
-function sdkReplyTail(prose, files, published) {
-  /** @type {string[]} */
-  const parts = [];
-  if (published) {
-    const kb = (published.bytes / 1024).toFixed(1);
-    parts.push(`**Build summary:** ${published.files} file${published.files === 1 ? "" : "s"}, ${kb} KB — ${files.map((f) => f.path).join(" · ")}`);
-    if (!replyLinksTo(prose, published.url)) {
-      parts.push(`**Try it live:** [${published.url}](${published.url})`);
-    }
-    if (!endsWithQuestion(prose)) parts.push(SDK_ITERATION_QUESTION);
-  } else {
-    parts.push("_(Publishing was unavailable this turn — no live URL yet.)_");
-  }
-  return `${prose ? "\n\n" : ""}${parts.join("\n\n")}`;
-}
+// sdkReplyTail (+ SDK_ITERATION_QUESTION / endsWithQuestion) lives in
+// pipeline-inputs.js — the feedback-#13 closing shape both build paths share.
 
 /** @param {PipelineCtx} ctx @param {any} snapshot @param {any} manifest @param {string} secureDigest */
 async function runSdkBuildTools(ctx, snapshot, manifest, secureDigest) {
