@@ -75,6 +75,7 @@ One entry in `sdk/AGENTS.json` (`{ agents: [ … ] }`):
   "theme": { "--agent-accent": "#3b82f6", … },   // CSS custom properties
   "intro":   { "kind": "fade", "durationMs": 400 },
   "loading": { "kind": "pipeline-phases", "messages": ["Triaging…", …] },
+  "backdrop": { "kind": "terminal" },  // agent BACKGROUND: none | terminal | graph
   "controls": [                  // the chat-input pane — ORDER is render order
     { "type": "prompt-input", "placeholder": "Ask…" },
     { "type": "model-select", "providers": "all", "allowLocal": false },
@@ -95,6 +96,13 @@ only use `prompt-input`, `send-button`, `model-select`, `depth-slider`,
 and which **request field it drives** (`depth-slider` → `depth`, a `toggle` →
 the flag named by its `id`, …). Closing the vocabulary is what lets a renderer —
 and the visual proof — know every shape it must draw.
+
+**`backdrop` is a closed axis too** (`BACKDROP_KINDS`: `none` | `terminal` |
+`graph`): the agent's BACKGROUND — the drifting sandbox terminal
+(`agent-backdrop.js`) or the rotating wireframe workflow graph
+(`graph-backdrop.js`). Resolved into `composerModel().backdrop` and rendered
+as `data-backdrop` on the composer; the mode-theme registry declares the same
+axis per chat mode.
 
 ## Build plan (from scratch)
 

@@ -11,6 +11,8 @@
 //   • a waiting-symbol SPINNER (the intro→loop→grow→✓ animation)
 //   • a theme CHARACTER (the ghost / TIN / balloon / plant greeter)
 //   • a side-PANEL flavour (plain history vs the SDK build-idea library)
+//   • an agent BACKDROP (what drifts on the field behind the chat while agents
+//     work: the sandbox terminal text, or the rotating workflow graph)
 //
 // This module is the single place those choices are DECLARED as data, so a
 // mode is described in one descriptor instead of scattered across CSS, the
@@ -39,6 +41,17 @@
  * @property {"balloon"|"plant"} spinner  the waiting-symbol animation
  * @property {"balloon"|"tin"|"plant"} character  the theme character/greeter
  * @property {"history"|"showcase"} panel  the side-panel flavour
+ * @property {"terminal"|"graph"} backdrop  the AGENT BACKGROUND behind the chat
+ *                                  — what drifts on the field while agents
+ *                                  work. "terminal" is the sandbox
+ *                                  terminal-text layer (agent-backdrop.js,
+ *                                  event-driven: it appears when a VM prints);
+ *                                  "graph" is the hovering, slowly rotating
+ *                                  wireframe workflow graph
+ *                                  (graph-backdrop.js, mounted by
+ *                                  mode-backdrop.js). Two implementations of
+ *                                  one axis — an agent declares WHICH
+ *                                  background it works in front of.
  * @property {boolean} depthSlider   whether the composer's research depth/time
  *                                   slider (#budget) applies in this mode — an
  *                                   OPTIONAL theme feature (owner, 2026-07-19):
@@ -70,6 +83,7 @@ export const MODE_THEMES = {
     spinner: "balloon",
     character: "balloon",
     panel: "history",
+    backdrop: "terminal",
     depthSlider: true,
     symbol: "the balloon",
     blurb: "carried — the server lifts the load",
@@ -91,6 +105,7 @@ export const MODE_THEMES = {
     spinner: "balloon",
     character: "tin",
     panel: "history",
+    backdrop: "terminal",
     depthSlider: false, // answers from source — the research depth slider doesn't apply
     symbol: "TIN, the titanium mascot",
     blurb: "shown its own source — the site read from the inside",
@@ -107,6 +122,7 @@ export const MODE_THEMES = {
     spinner: "plant",
     character: "plant",
     panel: "showcase",
+    backdrop: "terminal",
     depthSlider: false, // builds a flavour, no web research — the slider doesn't apply
     symbol: "the plant",
     blurb: "grown — a new flavour distilled and planted live",
@@ -126,6 +142,7 @@ export const MODE_THEMES = {
     spinner: "balloon",
     character: "balloon",
     panel: "history",
+    backdrop: "graph", // the hovering workflow graph IS this mode's background
     depthSlider: false, // the plan phase decides the team's shape — the slider doesn't apply
     symbol: "the baton",
     blurb: "conducted — a team of sub-agents working in concert",
@@ -149,6 +166,7 @@ export const TIER_THEMES = {
     spinner: "balloon", // n/a here — Se/cure mounts the umbrella spinner in its own app
     character: "tin", // n/a — the ghost is Se/cure's character (public/cure/ghostwalk.js)
     panel: "history",
+    backdrop: "terminal",
     depthSlider: true, // Se/cure has its own research depth control in its own app
     symbol: "the umbrella + the ghost",
     blurb: "sheltered — nothing leaves the device",
@@ -165,6 +183,7 @@ export const TIER_THEMES = {
     spinner: "balloon",
     character: "balloon",
     panel: "history",
+    backdrop: "terminal",
     depthSlider: true,
     symbol: "the balloon",
     blurb: "carried — memory, reach and lift on your behalf",
@@ -213,4 +232,11 @@ export function showsDepthSlider(mode) {
 /** The side-panel flavour for a mode. @param {unknown} mode @returns {"history"|"showcase"} */
 export function panelFlavour(mode) {
   return modeTheme(mode).panel;
+}
+
+/** The agent-background flavour behind the chat for a mode — "terminal" (the
+ * sandbox terminal-text layer) or "graph" (the rotating workflow graph). The
+ * DOM dispatch lives in mode-backdrop.js. @param {unknown} mode @returns {"terminal"|"graph"} */
+export function backdropKind(mode) {
+  return modeTheme(mode).backdrop;
 }

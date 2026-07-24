@@ -76,6 +76,7 @@ import {
 import { firstChunks, retrieve } from "./rag.js";
 import { renderQuiz } from "./quiz.js";
 import { renderWorkflow } from "./workflow-viz.js";
+import { setGraphWorkflow, updateGraphAgent } from "./graph-backdrop.js";
 import { createSseParser } from "./sse.js";
 import {
   capEmbedBytes,
@@ -584,11 +585,15 @@ function handleEvent(turn, evt, acc) {
       });
       turn._wfEmbed = embed;
       turn._wfViz = renderWorkflow(turn, embed.workflow, embed.statuses);
+      // The graph BACKDROP behind the chat (Orchestrator mode's agent
+      // background) follows the live team too — same statuses object.
+      setGraphWorkflow(embed.workflow, embed.statuses);
     }
     else if (s.type === "agent_update" && typeof s.id === "string" && turn._wfEmbed) {
       const st = { status: s.status, duration_ms: s.duration_ms, note: s.note };
       if (turn._wfViz) turn._wfViz.update(s.id, st);
       else turn._wfEmbed.statuses[s.id] = { ...turn._wfEmbed.statuses[s.id], ...st };
+      updateGraphAgent(s.id, st);
     }
     else if (s.type === "build" && typeof s.slug === "string" && s.slug) {
       // SDK mode published (or republished) this conversation's app — adopt

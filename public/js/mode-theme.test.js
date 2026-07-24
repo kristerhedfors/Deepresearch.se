@@ -9,6 +9,7 @@ import {
   CHAT_MODE_IDS,
   MODE_THEMES,
   TIER_THEMES,
+  backdropKind,
   barTint,
   checkColor,
   modeCharacter,
@@ -31,6 +32,7 @@ test("every descriptor declares all distinguishing axes", () => {
   const spinners = new Set(["balloon", "plant"]);
   const chars = new Set(["balloon", "tin", "plant"]);
   const panels = new Set(["history", "showcase"]);
+  const backdrops = new Set(["terminal", "graph"]);
   for (const t of Object.values(MODE_THEMES)) {
     assert.ok(typeof t.label === "string" && t.label);
     assert.ok(t.rootClass === null || typeof t.rootClass === "string");
@@ -41,6 +43,7 @@ test("every descriptor declares all distinguishing axes", () => {
     assert.ok(spinners.has(t.spinner), `spinner for ${t.id}`);
     assert.ok(chars.has(t.character), `character for ${t.id}`);
     assert.ok(panels.has(t.panel), `panel for ${t.id}`);
+    assert.ok(backdrops.has(t.backdrop), `backdrop for ${t.id}`);
     assert.ok(typeof t.depthSlider === "boolean", `depthSlider for ${t.id}`);
     assert.ok(typeof t.symbol === "string" && t.symbol);
     assert.ok(typeof t.blurb === "string" && t.blurb);
@@ -67,6 +70,14 @@ test("Orchestrator is the violet baton / balloon-recolour identity", () => {
   assert.equal(o.panel, "history");
   assert.equal(o.checkVar, "--check-violet");
   assert.equal(barTint("orchestrator"), "#c3aaf2");
+});
+
+test("backdrop is a declared axis: graph for Orchestrator, terminal elsewhere", () => {
+  assert.equal(backdropKind("orchestrator"), "graph");
+  assert.equal(backdropKind("normal"), "terminal");
+  assert.equal(backdropKind("introspection"), "terminal");
+  assert.equal(backdropKind("sdk"), "terminal");
+  assert.equal(backdropKind("nope"), "terminal", "unknown → Normal");
 });
 
 test("SDK is the Agent Studio plant / green / showcase identity", () => {

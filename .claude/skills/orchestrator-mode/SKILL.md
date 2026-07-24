@@ -1,6 +1,6 @@
 ---
 name: orchestrator-mode
-description: Load when working on ORCHESTRATOR MODE — the violet entry in the chat-mode dropdown (Deep Research / Introspection / Agent Studio / Orchestrator) that runs a request as a planned team of SUB-AGENTS working in the background, with the workflow shown live — or when touching src/orchestrator.js (runOrchestration), public/js/orchestrator-core.js (the plan schema/waves/prompts pure core), public/js/workflow-viz.js (the sub-agent graph view), the orchestrator_mode chat field, the workflow/agent_update SSE events, or the orch-mode violet theme. Also load when extending the sub-agent KIND vocabulary or debugging a workflow that planned badly, hung, or lost nodes.
+description: Load when working on ORCHESTRATOR MODE — the violet entry in the chat-mode dropdown (Deep Research / Introspection / Agent Studio / Orchestrator) that runs a request as a planned team of SUB-AGENTS working in the background, with the workflow shown live — or when touching src/orchestrator.js (runOrchestration), public/js/orchestrator-core.js (the plan schema/waves/prompts pure core), public/js/workflow-viz.js (the sub-agent graph view), public/js/graph-backdrop.js / mode-backdrop.js (the rotating wireframe workflow-graph BACKGROUND and the backdrop-axis dispatch), the orchestrator_mode chat field, the workflow/agent_update SSE events, or the orch-mode violet theme. Also load when extending the sub-agent KIND vocabulary, adding a new agent-BACKDROP kind (mode-theme.js backdrop axis / AgentSpec backdrop field), or debugging a workflow that planned badly, hung, or lost nodes.
 ---
 
 # Orchestrator mode — sub-agents in the background (2026-07-24)
@@ -59,6 +59,17 @@ workflow itself is a first-class UI element: a live graph of the team.
 - Meta: chat_logs rows carry `orchestrator: 1` +
   `orchestration: {agents, waves, failed, searches}` — grep these when
   debugging (the chat-logs skill).
+- **The graph backdrop** (`public/js/graph-backdrop.js`): Orchestrator's
+  AGENT BACKGROUND — a hovering, slowly rotating wireframe directed graph
+  behind the chat (root baton star + one wireframe symbol per sub-agent:
+  balloon blue = deep_research, TIN slate = introspection, violet diamond =
+  custom), fed the live team by stream.js and showing per-node status
+  (pulse/✓/✕). Built solely on `space-core.js`'s rotY/projectPoint — add no
+  dependencies. It is the "graph" value of the generalized `backdrop` axis
+  (mode-theme.js + the AgentSpec `backdrop` field, `BACKDROP_KINDS` =
+  none/terminal/graph); `mode-backdrop.js` is the dispatch, the sandbox
+  terminal layer (`agent-backdrop.js`) is the "terminal" implementation.
+  Reduced motion → one static frame; hidden tab → the loop skips drawing.
 
 ## Editing rules
 

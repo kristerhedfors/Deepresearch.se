@@ -353,6 +353,9 @@ export function wireModeKnob(ctx) {
     applyChatModeTheme(mode);
     const modeSel = /** @type {HTMLSelectElement | null} */ (document.getElementById("modesel"));
     if (modeSel) modeSel.value = mode;
+    // Swap the agent background too (the mode-theme backdrop axis) — dynamic
+    // import keeps this settings module free of the canvas glue.
+    import("./mode-backdrop.js").then((m) => m.applyModeBackdrop(mode)).catch(() => {});
     sel.disabled = true;
     if (status) status.hidden = false;
     try {

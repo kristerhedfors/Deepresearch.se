@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
+  BACKDROP_KINDS,
   CONTROL_TYPES,
   CONTROL_REGISTRY,
   PLATFORM_TYPES,
@@ -248,4 +249,21 @@ test("rendering helpers produce readable text", () => {
   assert.ok(/drives `depth`/.test(show));
   assert.ok(/quota \(share link\)/.test(show));
   assert.equal(renderAgentShow(reg, "nope"), "unknown agent: nope");
+});
+
+test("backdrop is a closed per-agent axis: validated, resolved, rendered", () => {
+  assert.deepEqual(BACKDROP_KINDS, ["none", "terminal", "graph"]);
+  const base = { id: "x", name: "X", platform: "client", controls: [{ type: "prompt-input" }] };
+  assert.deepEqual(validateAgentSpec({ ...base, backdrop: { kind: "graph" } }), []);
+  assert.ok(validateAgentSpec({ ...base, backdrop: { kind: "disco" } }).some((p) => p.includes("backdrop.kind")));
+  assert.ok(validateAgentSpec({ ...base, backdrop: "graph" }).some((p) => p.includes("backdrop must be an object")));
+  // Resolution: declared kinds pass through; absent/unknown default to none.
+  assert.equal(composerModel({ ...base, backdrop: { kind: "terminal" } }).backdrop.kind, "terminal");
+  assert.equal(composerModel(base).backdrop.kind, "none");
+  // The composer markup carries the axis for renderers (data-backdrop).
+  assert.ok(composerMarkup({ ...base, backdrop: { kind: "graph" } }).includes('data-backdrop="graph"'));
+  // The shipped registry declares its agents' backgrounds.
+  const reg = realRegistry();
+  assert.equal(findAgent(reg, "research").backdrop.kind, "terminal");
+  assert.equal(findAgent(reg, "under-construction").backdrop.kind, "none");
 });

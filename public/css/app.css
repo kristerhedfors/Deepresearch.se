@@ -720,6 +720,22 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
 
 /* Inline, navigable Street View embed (Maps Embed API iframe) rendered beside
    an answer when the Google Maps enrichment resolved a location with coverage. */
+/* The Orchestrator GRAPH BACKDROP (public/js/graph-backdrop.js): the hovering,
+   slowly rotating wireframe workflow graph behind the chat — the "graph" value
+   of the mode-theme backdrop axis, layered like the terminal backdrop
+   (#dr-agent-backdrop) and the drifting waves: fixed, behind everything,
+   never interactive. The canvas draws faint strokes; the layer opacity is the
+   ceiling that keeps it decoration. */
+#graphbackdrop {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  pointer-events: none;
+  opacity: .5;
+}
+
 /* The Orchestrator workflow view (public/js/workflow-viz.js): the sub-agent
    graph rendered beside the answer. Classed SVG, colored here so the mode
    palettes apply; wide teams scroll inside the box (never the page). */

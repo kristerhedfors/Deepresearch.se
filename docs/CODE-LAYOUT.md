@@ -273,7 +273,21 @@ Orchestrator WORKFLOW VIEW: pure column-per-wave layout + XSS-safe SVG string
 assembly (Node-tested), and the small DOM mount that renders the live
 sub-agent graph in the turn body, persists as embeds-registry kind
 `"workflow"` (statuses updated per `agent_update`, replayed from history by
-`turns.js`), and is referenced in the copy-text export via `embedRef`), `sandbox-mode.js` (the SANDBOX counterpart of
+`turns.js`), and is referenced in the copy-text export via `embedRef`),
+`graph-backdrop.js` (the Orchestrator GRAPH BACKDROP — the "graph" value of
+the mode-theme `backdrop` axis: a hovering, slowly rotating wireframe
+DIRECTED GRAPH drifting faintly behind the chat (fixed canvas, z-index -1
+like the terminal layer), root + one node per sub-agent, each drawn as its
+kind's wireframe symbol in its kind's color (balloon blue / TIN slate /
+violet diamond; the root a violet baton star) with live statuses (pulse
+running, ✓ done, ✕ failed); built ONLY on `space-core.js`'s own
+rotY/projectPoint math — no dependencies; pure scene/frame core Node-tested,
+idle scene = the root conducting one ghost node per kind; fed by `stream.js`
+on the workflow/agent_update events), `mode-backdrop.js` (the backdrop
+DISPATCH — the mode-spinner.js sibling for the `backdrop` axis: mounts/
+unmounts the graph layer as the mode changes; "terminal" needs no mount, the
+sandbox layer is event-driven — called from `app.js` boot/reconcile/mode
+switch and the Settings mode pick), `sandbox-mode.js` (the SANDBOX counterpart of
 `dev-mode.js`: a `dr_bash_lite` localStorage mirror of the `bash_lite_mcp` knob
 so the cross-origin-isolation self-heal fires SYNCHRONOUSLY at first paint from
 the cache — closing the 2026-07-13 boot-race where a send before `/api/settings`
