@@ -46,6 +46,16 @@ export function isPublicAsset(url, method) {
     // open it without an account). The dataset is derived from the public
     // git history, so serving it unauthenticated exposes nothing new.
     url.pathname.startsWith("/pulse/") ||
+    // The space-animations showcase (/space/): an archive of playable
+    // wireframe animations answering common space questions. Public like
+    // /pulse/ — a promotional/educational surface with nothing user-specific;
+    // "/space" without the slash rides along so the assets binding's
+    // trailing-slash redirect also serves signed-out visitors. Its one shared
+    // module import (/js/space-core.js) is allowlisted below — the same
+    // public-module-graph rule as the /cure entries.
+    url.pathname === "/space" ||
+    url.pathname.startsWith("/space/") ||
+    url.pathname === "/js/space-core.js" ||
     // DRC — the no-account client-side tier at /cure: the page, its
     // modules, and the vault/SSE primitives it reuses. Only FILES (with
     // an extension) match here: extensionless paths under /cure/ are page

@@ -94,6 +94,7 @@ import {
 import { handleKnowledgeApi, handleKnowledgeKey, handleKnowledgeSubmit } from "./knowledge.js";
 import { getConfig } from "./config.js";
 import { handleSandboxImage, handleSandboxImageConfig } from "./sandbox-image.js";
+import { handleSpaceFeedback } from "./space.js";
 import { recordServerError } from "./server-errors.js";
 import { isPublicAsset, onDeviceIsolationWanted, serveAsset } from "./assets.js";
 import { canonicalRedirect } from "./canonical.js";
@@ -303,6 +304,15 @@ async function route(request, env, url, log, ctx, requestId) {
     return {
       response: jsonResponse({ speed: cfg.anim_speed }, 200, { "cache-control": "public, max-age=60" }),
     };
+  }
+  // The space-animations showcase's gallery feedback (src/space.js) — PUBLIC
+  // because the /space/ archive itself is a public showcase page: no identity
+  // exists there and none is invented. The body is validated against the
+  // scene registry, the verdict enum, and a hard comment clamp; the D1 row
+  // carries scene id + verdict + short comment ONLY. No D1 → 503 (only the
+  // feedback button degrades; the animations keep playing).
+  if (request.method === "POST" && url.pathname === "/api/space/feedback") {
+    return { response: await handleSpaceFeedback(request, env, log) };
   }
   // The self-hosted Linux sandbox image (src/sandbox-image.js) — both PUBLIC
   // because they serve BOTH tiers including the server-in-no-data-path DRC

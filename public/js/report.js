@@ -21,10 +21,44 @@ const ACCENT = [13, 79, 160]; // --accent
 const TEXT = [10, 46, 92]; // --text
 const MUTED = [47, 93, 142]; // --muted
 
-// Inline markers (** ` ) are flattened so the PDF text stays readable.
-function stripInline(s) {
-  return String(s).replace(/\*\*([^*]+)\*\*/g, "$1").replace(/`([^`]+)`/g, "$1");
+// jsPDF's standard Helvetica encodes text as cp1252 (WinAnsi). A character
+// outside that set — an arrow above all — does NOT just render wrong: jsPDF
+// silently switches the WHOLE text() run to a 2-byte encoding, so the entire
+// line comes out wide-spaced mojibake (feedback #17: "Värdnamn: basalt.se →
+// IP …" printed spaced-out with the → as `!'`). The model readily emits such
+// glyphs, so map the common ones to ASCII and drop anything else cp1252 can't
+// hold. Latin-1 (å ä ö é … ≤ 0xFF) and the cp1252 high punctuation that jsPDF
+// DOES support (smart quotes, en/em dash, ellipsis, bullet) are kept as-is.
+const PDF_CP1252_HIGH = new Set(
+  "€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ".split(""),
+);
+const PDF_TRANSLIT = {
+  "→": "->", "⟶": "->", "↦": "->", "⇒": "=>", "⟹": "=>", "➞": "->", "➜": "->",
+  "←": "<-", "⟵": "<-", "↔": "<->", "⇄": "<->", "⇆": "<->", "↑": "^", "↓": "v",
+  "≥": ">=", "≤": "<=", "≠": "!=", "≈": "~", "≡": "=", "∼": "~", "∝": "~",
+  "−": "-", "‑": "-", "‒": "-", "―": "-", "⁃": "-", "∙": "-", "▪": "-", "◦": "-",
+  "±": "+/-", "∓": "-/+", "∞": "inf", "√": "sqrt", "∑": "sum", "∏": "prod",
+  "✓": "[x]", "✔": "[x]", "☑": "[x]", "✗": "[ ]", "✘": "[ ]", "☒": "[ ]",
+  "★": "*", "☆": "*", "▶": ">", "◆": "*", "→": "->",
+};
+function sanitizeForPdf(s) {
+  let out = "";
+  for (const ch of String(s)) {
+    if (ch.codePointAt(0) <= 0xff || PDF_CP1252_HIGH.has(ch)) { out += ch; continue; }
+    out += PDF_TRANSLIT[ch] ?? " ";
+  }
+  return out;
 }
+
+// Inline markers (** ` ) are flattened so the PDF text stays readable; the
+// result is also sanitized to what jsPDF's standard font can encode.
+function stripInline(s) {
+  return sanitizeForPdf(
+    String(s).replace(/\*\*([^*]+)\*\*/g, "$1").replace(/`([^`]+)`/g, "$1"),
+  );
+}
+
+export { sanitizeForPdf };
 
 // Split one GFM table row into trimmed, inline-flattened cells. Leading and
 // trailing pipes are optional; escaped pipes (\|) stay inside a cell.
@@ -143,7 +177,7 @@ export async function downloadReport(turn, meta = {}) {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
     doc.setTextColor(...TEXT);
-    for (const line of doc.splitTextToSize(turn.question, bodyW)) {
+    for (const line of doc.splitTextToSize(sanitizeForPdf(turn.question), bodyW)) {
       ensure(20);
       doc.text(line, M, y);
       y += 19;
@@ -155,7 +189,7 @@ export async function downloadReport(turn, meta = {}) {
     doc.setFontSize(8.5);
     doc.setTextColor(...MUTED);
     ensure(14);
-    doc.text("Model: " + meta.model, M, y);
+    doc.text("Model: " + sanitizeForPdf(meta.model), M, y);
     y += 18;
   }
 

@@ -5,7 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mdToBlocks } from "./report.js";
+import { mdToBlocks, sanitizeForPdf } from "./report.js";
 
 test("a GFM pipe table becomes one table block, not paragraphs", () => {
   const md = [
@@ -60,6 +60,39 @@ test("a lone pipe line without a delimiter row stays a paragraph", () => {
   const blocks = mdToBlocks(md);
   assert.equal(blocks.length, 1);
   assert.equal(blocks[0].kind, "p");
+});
+
+// jsPDF's standard font can only encode cp1252; a stray Unicode glyph (an
+// arrow above all) otherwise corrupts the whole text() run into wide-spaced
+// mojibake — feedback #17.
+test("arrows and other non-cp1252 glyphs are transliterated to ASCII", () => {
+  assert.equal(
+    sanitizeForPdf("Värdnamn: basalt.se → IP 85.24.159.61"),
+    "Värdnamn: basalt.se -> IP 85.24.159.61",
+  );
+  assert.equal(sanitizeForPdf("a ⇒ b ≥ c ≤ d ≠ e"), "a => b >= c <= d != e");
+  assert.equal(sanitizeForPdf("done ✓ / skip ✗"), "done [x] / skip [ ]");
+});
+
+test("Swedish Latin-1 letters and supported cp1252 punctuation are preserved", () => {
+  // å ä ö é ü are ≤ 0xFF; “smart quotes”, en/em dashes, ellipsis and the
+  // bullet are cp1252 high chars jsPDF renders — none of these should change.
+  const s = "Öppna portar — “klartext” … • räknas åäöéü";
+  assert.equal(sanitizeForPdf(s), s);
+});
+
+test("an unmapped exotic glyph falls back to a space, never corrupting the run", () => {
+  assert.equal(sanitizeForPdf("a 𝟙 b"), "a   b"); // math digit -> space
+  assert.equal(sanitizeForPdf("port 中文 open"), "port    open"); // CJK -> spaces
+});
+
+test("sanitize runs through the block/table path so ASCII arrows reach the PDF", () => {
+  const blocks = mdToBlocks("- Värdnamn: basalt.se → IP");
+  assert.equal(blocks[0].kind, "li");
+  assert.equal(blocks[0].text, "Värdnamn: basalt.se -> IP");
+  const [t] = mdToBlocks(["| A | B |", "|---|---|", "| x → y | ≥ 5 |"].join("\n"))
+    .filter((b) => b.kind === "table");
+  assert.deepEqual(t.rows[0], ["x -> y", ">= 5"]);
 });
 
 test("headings, bullets and numbered items are unaffected", () => {
