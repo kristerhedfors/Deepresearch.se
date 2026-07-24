@@ -31,6 +31,7 @@ diverges — cut it and move the row here to the pass ledger.
 | `smooth` / `clamp01` | `public/cure/umbrella.js`, `public/js/balloon.js` | Home | Four-line easing primitives with no existing edge between the two files; `balloon.js` imports only `drc-page-core.js` | 2026-07-24 |
 | `esc` (5-char HTML escape) | `agent-spec-core.js`, `workflow-viz.js` (+ `notifications.js#escapeHtml`) | Home | No edge exists to any shared sink, and `agent-spec-core.js` is deliberately import-free (the server imports it through a façade). New edges for a five-line escape are churn. **Do not** point these at `markdown.js` — that escape covers four characters, not five | 2026-07-24 |
 | `trackedFiles` (`git ls-files -z`) | `bundle-source.mjs`, `bundle-docs.mjs` | Bar | Four lines wrapping one stable git call; no drift risk | 2026-07-24 |
+| `GENERATED` exclusion arrays | `build-pulse.mjs`, `build-pulse-timeline.mjs` | Verbatim | Near-identical under a "kept in sync" comment, but the timeline copy also excludes `public/pulse/timeline.json` and the main one does not. **Sharing them would change what the main dashboard counts as human churn** — a behavior question for the owner, not a refactor. Flagged 2026-07-24 when the CET helpers next to them were de-duped | 2026-07-24 |
 | `safeModels` | `src/pool.js` | Bar | Four lines, single file, internal, un-duplicated | 2026-07-23 |
 | `sumRemaining` | websearch, proxy endpoints | Bar | Tiny and inline in one endpoint each | 2026-07-17 |
 | `nowS` clock one-liners | several | Purity + Bar | Not pure, not byte-identical | 2026-07-23 |
