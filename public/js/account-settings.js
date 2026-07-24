@@ -12,6 +12,8 @@
 
 import { renderConfigKnobs, settingRow, wireModeKnob, wireSandboxKnob, wireSettingPopovers } from "./account-views.js";
 import { loadSettings, setGoogleMaps, setShodanMcp } from "./settings.js";
+import { onDeviceSettingsMarkup, wireOnDeviceSettings } from "./ondevice-drs.js";
+import { refreshOnDeviceModels } from "./models.js";
 import { openBundle } from "./proxy-bundle.js";
 import { buildWorkspacePayload, generateWorkspacePassword, sealWorkspace, workspaceLink } from "./workspace-core.js";
 
@@ -133,6 +135,7 @@ export async function loadSettingsView(ctx) {
     ${googleMapsNote}
     <p id="gmapsstatus" class="muted setting-note" hidden></p>
     ${renderConfigKnobs(ctx.me)}
+    ${onDeviceSettingsMarkup()}
     <p class="muted setting-note">To send the developers feedback, start a chat
       message with the word <b>“feedback”</b> (for example “feedback: the map view
       was cut off”). It's routed straight to the developers — there's no switch to
@@ -142,6 +145,10 @@ export async function loadSettingsView(ctx) {
   wireSettingPopovers(ctx.body);
   wireSandboxKnob(ctx);
   wireModeKnob(ctx);
+  // On-device models (Bonsai): a browser-local knob — the weights live in
+  // THIS device's storage, so it deliberately isn't an /api/settings write.
+  // A download or delete refreshes the composer dropdown's on-device group.
+  wireOnDeviceSettings({ onModelsChanged: () => refreshOnDeviceModels() });
 
   if (shodanUsable) {
     wireSimpleKnob("shodanknob", "shodanstatus", setShodanMcp, {
