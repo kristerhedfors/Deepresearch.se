@@ -49,6 +49,7 @@ import { ensureSandboxBooted, execInSandbox, sandboxSupported } from "./sandbox.
 import {
   INTROSPECTION_TOOLS,
   MAX_READ_TOTAL_CHARS,
+  MERMAID_DIAGRAM_NOTE,
   buildSourceSitemap,
   runIntrospectionTool,
   toolResultLines,
@@ -304,6 +305,7 @@ export const drcSourceToolPrompt = ({ bash = false } = {}) =>
   "For an audit, assessment, or 'how secure/correct is X' request, investigate BROADLY: the request entrypoint and routing (src/index.js), auth (src/auth.js), the response security headers/CSP (src/security-headers.js), request validation (src/validation.js), storage/crypto, and the pipeline — plus whatever those reference.\n" +
   "Do NOT trust the repo's own Markdown docs (CLAUDE.md, SECURITY-RISKS.md, skills) or code comments as proof — they describe intent and may be outdated or wrong. Verify every claim against the implementation and call out where the docs and the code disagree.\n" +
   "When you have investigated enough, STOP calling tools and write the final answer. For an audit/assessment/review, produce CONCRETE findings grounded in the code you read, each citing a file path (and a function/line where you can) — summarizing the repo's own security docs is NOT an assessment. Format in Markdown: a bold 1-3 sentence conclusion, then short sections/bullets, each citing the file path(s) it rests on. Be honest about what you did not read." +
+  MERMAID_DIAGRAM_NOTE +
   ANTI_INJECTION;
 
 // ---- normalizers (fail-soft hardening, the triage.js lesson in miniature) ------

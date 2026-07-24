@@ -23,6 +23,7 @@ export {
   MAX_LINE_CHARS,
   MAX_PATTERN_CHARS,
   MAX_READ_TOTAL_CHARS,
+  MERMAID_DIAGRAM_NOTE,
   grepSource,
   readFileTool,
   listFilesTool,
