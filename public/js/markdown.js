@@ -239,7 +239,30 @@ export const MERMAID_INIT = {
   theme: "default",
   htmlLabels: false,
   flowchart: { htmlLabels: false },
+  // Without this, a parse failure makes mermaid APPEND its bomb-icon error
+  // SVG to document.body — visible junk behind the input pane (feedback #12,
+  // 2026-07-24). The render() rejection is all the caller needs; the catch in
+  // renderMermaidBlocks keeps the fenced code visible instead.
+  suppressErrorRendering: true,
 };
+
+// Models routinely emit flowchart node labels with parentheses unquoted —
+// `B[autogrow() — app.js:591]` — which mermaid rejects (quoting is its
+// documented escape). Wraps such `[…]` labels in quotes so the diagram the
+// user asked for actually renders. Only ever called on a source that ALREADY
+// failed to parse (see renderMermaidBlocks), so a valid diagram is never
+// touched. Labels containing quotes or nested brackets are left alone.
+/**
+ * @param {string} src
+ * @returns {string}
+ */
+export function repairMermaidLabels(src) {
+  if (typeof src !== "string") return src;
+  return src.replace(
+    /([A-Za-z0-9_-]+)\[([^[\]"]*[()][^[\]"]*)\]/g,
+    (_m, id, label) => `${id}["${label}"]`,
+  );
+}
 
 /** @returns {Promise<any>} the mermaid global, or null (fail soft) */
 function ensureMermaid() {
@@ -261,6 +284,29 @@ function ensureMermaid() {
     });
   }
   return mermaidLoad;
+}
+
+/**
+ * One diagram source → its SVG markup, or null (fail soft). A parse failure
+ * gets ONE retry with quote-repaired labels (repairMermaidLabels) — the
+ * common model mistake — before giving up. Each failed render also sweeps
+ * the temp element mermaid leaves in the body (belt and braces on top of
+ * suppressErrorRendering).
+ * @param {any} mermaid @param {string} src
+ * @returns {Promise<string|null>}
+ */
+async function renderMermaidSvg(mermaid, src) {
+  const repaired = repairMermaidLabels(src);
+  for (const attempt of repaired !== src ? [src, repaired] : [src]) {
+    const id = `mmd-${(mmdSeq += 1)}`;
+    try {
+      return (await mermaid.render(id, attempt)).svg;
+    } catch {
+      document.getElementById(id)?.remove();
+      document.getElementById(`d${id}`)?.remove();
+    }
+  }
+  return null;
 }
 
 /**
@@ -286,7 +332,8 @@ async function renderMermaidBlocks(el, text) {
   if (!mermaid || !DOMPurify) return;
   for (const { pre, src } of blocks) {
     try {
-      const { svg } = await mermaid.render(`mmd-${(mmdSeq += 1)}`, src);
+      const svg = await renderMermaidSvg(mermaid, src);
+      if (!svg) continue; // invalid even after repair — the fenced code stays
       if (!pre.isConnected) continue; // the answer re-rendered meanwhile
       const box = document.createElement("div");
       box.className = "mermaid-diagram";
