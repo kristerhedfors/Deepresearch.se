@@ -120,7 +120,7 @@ import {
   stageBuildFile,
 } from "./sdk-tools.js";
 import { publishBuild, replyLinksTo } from "./build-pub.js";
-import { feedbackIntent, buildFeedbackContext } from "./feedback.js";
+import { feedbackIntent, buildFeedbackContext, feedbackImagesFromParts } from "./feedback.js";
 import { parseUseCaseRef } from "./testpoints.js";
 import { loadSourceSnapshot } from "./introspect.js";
 import { DEFAULT_QUIZ_QUESTIONS, normalizeQuiz, quizIntent, quizQuestionCount } from "./quiz.js";
@@ -173,7 +173,7 @@ import {
  *   aux?: Record<string, AuxSourceState>,
  *   failoverModel?: string,
  *   feedbackCapture?: boolean,
- *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string, useCase?: { id: number, tag: string } | null },
+ *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string, images?: { name: string | null, data: string }[], useCase?: { id: number, tag: string } | null },
  * }} PipelineState
  */
 
@@ -444,6 +444,10 @@ async function runFeedbackCapture(ctx) {
       comment: ctx.cleanLastUser,
       model: ctx.model,
     }),
+    // Screenshots attached to the feedback message itself — textOf flattened
+    // them to "[N images attached]" and the bytes never reached the entry
+    // (feedback #12, 2026-07-24). Chat.js forwards these into feedback_images.
+    images: feedbackImagesFromParts(ctx.imageParts),
     useCase: useCase || null,
   };
   const draft = await streamCompletion(ctx, [

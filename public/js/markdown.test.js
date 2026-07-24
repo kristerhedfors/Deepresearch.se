@@ -170,7 +170,7 @@ describe("completeMermaidSources", () => {
 // node box rendered EMPTY while edge labels survived (feedback #8/#9,
 // 2026-07-24). Verified by rendering in Chromium against the vendored
 // library; this locks the config shape so the fix can't silently regress.
-import { MERMAID_INIT } from "./markdown.js";
+import { MERMAID_INIT, repairMermaidLabels } from "./markdown.js";
 
 describe("MERMAID_INIT", () => {
   test("keeps labels as SVG text: top-level htmlLabels false (the key 11.16 reads)", () => {
@@ -184,5 +184,59 @@ describe("MERMAID_INIT", () => {
   test("keeps strict sanitization and no auto-start", () => {
     assert.equal(MERMAID_INIT.securityLevel, "strict");
     assert.equal(MERMAID_INIT.startOnLoad, false);
+  });
+
+  test("never renders the bomb error SVG into the page (feedback #12)", () => {
+    // Without this, a parse failure APPENDS mermaid's error diagram to
+    // document.body — visible junk behind the input pane.
+    assert.equal(MERMAID_INIT.suppressErrorRendering, true);
+  });
+});
+
+// repairMermaidLabels — the one-retry source repair for the model mistake
+// that made feedback #12's diagram unparseable: parentheses in UNQUOTED
+// flowchart node labels. Only ever applied to a source that already failed
+// to render, so these assert the transform alone.
+describe("repairMermaidLabels", () => {
+  test("quotes an unquoted [label] containing parentheses (the feedback #12 shape)", () => {
+    assert.equal(
+      repairMermaidLabels("B[autogrow() — public/js/app.js:591-596]"),
+      'B["autogrow() — public/js/app.js:591-596"]',
+    );
+    // Multiple nodes on one line, each repaired independently.
+    assert.equal(
+      repairMermaidLabels("A[calls f(x)] --> B[then g(y)]"),
+      'A["calls f(x)"] --> B["then g(y)"]',
+    );
+  });
+
+  test("leaves already-quoted, paren-free, and quote-containing labels alone", () => {
+    for (const src of [
+      'E["form submit handler — public/js/app.js:686"]', // already quoted
+      "A[Keystroke in #input textarea]", // no parens — valid as-is
+      'X[mix of "quote" and (paren)]', // contains a quote — unrepairable, untouched
+      "P -->|direct reply| Q[stream answer]", // edge labels untouched
+    ]) {
+      assert.equal(repairMermaidLabels(src), src);
+    }
+  });
+
+  test("repairs the full feedback #12 diagram without touching its quoted labels", () => {
+    const src = [
+      "flowchart TD",
+      '    A[Keystroke in #input textarea] -->|"input" event| B[autogrow() — public/js/app.js:591-596]',
+      '    C --> E["form submit handler — public/js/app.js:686"]',
+      "    E --> F[read input.value, clear + autogrow — app.js:687-700]",
+      "    F --> G[\"sendMessage(text, opts) — public/js/stream.js:1247\"]",
+    ].join("\n");
+    const out = repairMermaidLabels(src);
+    assert.ok(out.includes('B["autogrow() — public/js/app.js:591-596"]'));
+    assert.ok(out.includes('E["form submit handler — public/js/app.js:686"]')); // unchanged
+    assert.ok(out.includes('G["sendMessage(text, opts) — public/js/stream.js:1247"]')); // unchanged
+    assert.ok(out.includes("F[read input.value, clear + autogrow — app.js:687-700]")); // no parens — unchanged
+  });
+
+  test("junk input passes through", () => {
+    assert.equal(repairMermaidLabels(/** @type {any} */ (null)), null);
   });
 });

@@ -116,7 +116,7 @@ import { getDb } from "./db.js";
  *   userId?: string,
  *   buildResult?: { slug: string, url: string, files: number, bytes: number },
  *   feedbackCapture?: boolean,
- *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string, useCase?: { id: number, tag: string } | null },
+ *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string, images?: { name: string | null, data: string }[], useCase?: { id: number, tag: string } | null },
  * }} ChatRequestState
  */
 
@@ -518,6 +518,10 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             answer_excerpt: state.feedback.answer_excerpt,
             model,
             page: useCase ? `usecase ${useCase.tag}` : "chat",
+            // Screenshots from the chat message (pipeline.js
+            // feedbackImagesFromParts) — without these the attached image was
+            // silently lost (feedback #12).
+            images: state.feedback.images || [],
           }, conversation);
           if (cap) log.info("feedback.captured", { user_id: identity.id, feedback_id: cap.id, threaded: cap.threaded, request_id: requestId });
         } catch (err) {
