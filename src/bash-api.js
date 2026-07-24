@@ -113,7 +113,11 @@ export async function handleBashStep(request, env, log, identity) {
       [
         // Developer mode mounts the site's own source at /src in the VM
         // (stream.js provider) — tell the step model so it explores it there.
-        { role: "system", content: bashAgentPrompt({ sourceMounted: developerModeEnabled(env, identity) }) },
+        // sdk_mode (client-declared, prompt-shaping only — no capability
+        // rides on it): the Agent Studio build assistant ships files with its
+        // own direct tools, so the step model must not build the app in the
+        // sandbox (feedback #7).
+        { role: "system", content: bashAgentPrompt({ sourceMounted: developerModeEnabled(env, identity), sdkMode: body?.sdk_mode === true }) },
         { role: "user", content: userContent },
       ],
       { model: DEFAULT_MODEL },
