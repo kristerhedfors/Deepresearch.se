@@ -13,6 +13,7 @@ import {
   FEEDBACK_STATUSES,
   feedbackIntent,
   formatFeedbackText,
+  handleServerTokenFeedback,
   isOpenStatus,
   normalizeStatus,
   projectFeedback,
@@ -20,6 +21,7 @@ import {
   validateFeedbackImages,
   validateFeedbackReply,
 } from "./feedback.js";
+import { mintServerToken } from "./server-token.js";
 
 // ---------------------------------------------------------------------------
 // feedbackIntent — the chat-side gate (EN + SV parity, invariant 6)
@@ -385,4 +387,115 @@ test("formatFeedbackText lists screenshot ids/names/sizes, per message too", () 
   const text = formatFeedbackText([projectFeedback(ROW, MSGS, IMGS)]);
   assert.match(text, /IMAGES: #11 shot\.png \(~31 KB\)/);
   assert.match(text, /USER \(.*\): Thanks!\n {2}IMAGES: #12 image \(~1 KB\)/);
+});
+
+// ---------------------------------------------------------------------------
+// handleServerTokenFeedback — the THIRD bounded exception (Se/cure feedback
+// over the DeepResearch/Se/rver token; write-only, attributed to claims.sub)
+// ---------------------------------------------------------------------------
+
+const ST_SECRET = "test-session-secret-servertoken-feedback";
+
+// A minimal in-memory D1 that recognizes the feedback INSERT (createFeedbackEntry)
+// and image INSERT (insertImages). Enough for the write path; the token is never
+// allowed to READ, so no SELECT surface is offered here.
+function fakeFeedbackDb() {
+  const rows = [];
+  let seq = 0;
+  const stmt = (sql) => ({
+    _binds: [],
+    bind(...b) { this._binds = b; return this; },
+    async run() {
+      if (/^INSERT INTO feedback\b/i.test(sql)) {
+        seq += 1;
+        rows.push({ id: seq, sql, binds: this._binds });
+        return { meta: { last_row_id: seq } };
+      }
+      return { meta: {} };
+    },
+    async first() { return null; },
+    async all() { return { results: [] }; },
+  });
+  return { _rows: rows, prepare: stmt, async batch() { return []; } };
+}
+
+const noopLog = { info() {}, warn() {}, error() {} };
+
+async function stFeedbackToken(env, { perms = ["web"], sub = "user-42", expOffset = 3600 } = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  return mintServerToken(env, {
+    iss: "deepresearch.se",
+    sub,
+    jti: "jti-fb-1",
+    perms,
+    iat: now,
+    exp: now + expOffset,
+  });
+}
+
+function fbRequest(body) {
+  return new Request("https://deepresearch.se/api/server-token/feedback", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+test("handleServerTokenFeedback: a valid token writes a row attributed to claims.sub", async () => {
+  const db = fakeFeedbackDb();
+  const env = { DB: db, SESSION_SECRET: ST_SECRET };
+  const token = await stFeedbackToken(env, { sub: "user-99" });
+  const res = await handleServerTokenFeedback(
+    fbRequest({ token, comment: "feedback: the slash spacing looks off", page: "se/cure", model: "berget::x" }),
+    env,
+    noopLog,
+  );
+  assert.equal(res.status, 201);
+  const json = await res.json();
+  assert.equal(json.ok, true);
+  assert.ok(json.id > 0);
+  // Attribution: the feedback row's user_id bind is the token's sub (write-only,
+  // so the minting account owns it and can read replies back on Se/rver).
+  const inserted = db._rows.find((r) => /^INSERT INTO feedback\b/i.test(r.sql));
+  assert.equal(inserted.binds[0], "user-99");
+});
+
+test("handleServerTokenFeedback: an 'api'-only token qualifies too (any live perm)", async () => {
+  const db = fakeFeedbackDb();
+  const env = { DB: db, SESSION_SECRET: ST_SECRET };
+  const token = await stFeedbackToken(env, { perms: ["api"] });
+  const res = await handleServerTokenFeedback(fbRequest({ token, comment: "nice work" }), env, noopLog);
+  assert.equal(res.status, 201);
+});
+
+test("handleServerTokenFeedback: an invalid/expired/missing token is 403 (never writes)", async () => {
+  const db = fakeFeedbackDb();
+  const env = { DB: db, SESSION_SECRET: ST_SECRET };
+  // garbage token
+  let res = await handleServerTokenFeedback(fbRequest({ token: "not.a.jwt", comment: "hi" }), env, noopLog);
+  assert.equal(res.status, 403);
+  // expired token
+  const expired = await stFeedbackToken(env, { expOffset: -10 });
+  res = await handleServerTokenFeedback(fbRequest({ token: expired, comment: "hi" }), env, noopLog);
+  assert.equal(res.status, 403);
+  // no token at all
+  res = await handleServerTokenFeedback(fbRequest({ comment: "hi" }), env, noopLog);
+  assert.equal(res.status, 403);
+  assert.equal(db._rows.length, 0); // nothing written on any rejected path
+});
+
+test("handleServerTokenFeedback: a valid token but empty comment is 400", async () => {
+  const db = fakeFeedbackDb();
+  const env = { DB: db, SESSION_SECRET: ST_SECRET };
+  const token = await stFeedbackToken(env);
+  const res = await handleServerTokenFeedback(fbRequest({ token, comment: "   " }), env, noopLog);
+  assert.equal(res.status, 400);
+  assert.equal(db._rows.length, 0);
+});
+
+test("handleServerTokenFeedback: no D1 fails soft to 503", async () => {
+  const env = { DB: null, SESSION_SECRET: ST_SECRET };
+  const token = await stFeedbackToken({ SESSION_SECRET: ST_SECRET });
+  const res = await handleServerTokenFeedback(fbRequest({ token, comment: "hi" }), env, noopLog);
+  assert.equal(res.status, 503);
 });

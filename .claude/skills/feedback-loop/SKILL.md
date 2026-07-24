@@ -27,6 +27,23 @@ it comments on). The capture is **double**: the entry lands in the queue AND the
 `scripts/feedback` (the structured queue) and a chatlogs scan. There is no
 per-reply Feedback button and no settings knob any more.
 
+**Se/cure feedback (owner directive, 2026-07-24).** The client-side tier
+sends feedback too, over the SAME gate (the shared `public/js/feedback-core.js`
+`feedbackIntent`, which `src/feedback.js` now re-exports). Because Se/cure keeps
+the server out of its data path, the flow is CONFIRMED, not automatic:
+`public/cure/drc.js` catches the "feedback" keyword, echoes the message, and
+prompts (`#fbconsent`) before anything is sent — then POSTs to
+`POST /api/server-token/feedback` (`handleServerTokenFeedback`) over the
+**DeepResearch (Se/rver) token**, the same token used for LLM / Exa access. This
+is the SERVER-TOKEN GUARANTEE's THIRD bounded, **write-only** exception: any live
+token may create ONE feedback row (never read one back), attributed to the
+token's minting account (`claims.sub`) — so if that user is a signed-in Se/rver
+account, the developers' replies reach them in the account panel exactly like
+Se/rver-filed feedback. In the queue these entries carry `page: "se/cure"`.
+No incognito/chat-logs row exists for them (Se/cure has no server-side chat log);
+the feedback entry is the only record. Requires a live token — a Se/cure visitor
+with none is told to connect one and can't send.
+
 **Use-case reference (owner directive, 2026-07-19).** A feedback message may
 name a try-it **use case** by its tag: `feedback #UC-34 the map was cut off`.
 The feedback case parses it (`parseUseCaseRef`, in `src/testpoints.js`,

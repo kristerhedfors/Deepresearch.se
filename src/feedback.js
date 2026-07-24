@@ -42,6 +42,8 @@ import { getDb } from "./db.js";
 import { jsonResponse, textResponse } from "./http.js";
 import { cleanStr, likePattern } from "./chatlog.js";
 import { previousUserText, textOf } from "./conversation.js";
+import { verifyServerToken } from "./server-token.js";
+import { feedbackIntent } from "../public/js/feedback-core.js";
 
 /** @typedef {import('./conversation.js').Msg} Msg */
 
@@ -99,31 +101,14 @@ const IMAGE_DATA_RE = /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+=
 export const FEEDBACK_STATUSES = ["new", "seen", "in_progress", "resolved", "declined"];
 
 // The feedback intent gate (deterministic, no model call — same posture as
-// quiz.js quizIntent / hf.js hfIntent). A message whose text OPENS with the
-// word "feedback" (case-insensitive — "The word feedback, small or large caps"
-// — the owner's whole trigger) is a report to the developers, not a research
-// question, and the pipeline routes it to the feedback case. English + Swedish
-// (invariant 6, EN/SV parity): "feedback" is used in both languages; the native
-// Swedish terms are "återkoppling" and "synpunkt(er)", definite forms included.
-//
-// "feedback loop(s)" is the ONE excluded collision: it's a ubiquitous fixed
-// phrase (control theory, ML, and this repo's own skill names), so a research
-// question that opens with it must NOT be swallowed by the gate.
-const FEEDBACK_PATTERNS = [
-  /^\s*feedback\b(?!\s+loops?\b)/i, // EN + SV loanword: "feedback", "Feedback:", "feedback – …"
-  /^\s*återkoppling(?:en)?\b/i, // SV: "återkoppling", "återkopplingen"
-  /^\s*synpunkt(?:er|en|erna)?\b/i, // SV: "synpunkt", "synpunkter", "synpunkten"
-];
-
-/**
- * Whether the latest user message is feedback for the developers.
- * @param {unknown} text the user's message text
- * @returns {boolean}
- */
-export function feedbackIntent(text) {
-  const t = typeof text === "string" ? text : "";
-  return FEEDBACK_PATTERNS.some((re) => re.test(t));
-}
+// quiz.js quizIntent / hf.js hfIntent) now lives in the shared pure core
+// public/js/feedback-core.js — the SINGLE source of truth both tiers use, so
+// Se/rver (this module → src/pipeline.js) and Se/cure (public/cure/drc.js) can
+// never diverge on what the word "feedback" triggers. This module is the
+// Se/rver façade: it re-exports the gate; the research pipeline routes a
+// matching message to the feedback case. EN/SV parity (invariant 6) and the
+// "feedback loop(s)" collision carve-out are owned by the core.
+export { feedbackIntent };
 
 /**
  * Derive a feedback entry's captured context from the conversation the user
@@ -792,5 +777,59 @@ export async function handleAdminFeedback(request, env, url, log) {
   }
 
   return jsonResponse({ error: "Not found." }, 404);
+}
+
+// ---------------------------------------------------------------------------
+// Se/cure feedback via the DeepResearch (Se/rver) token — THE THIRD BOUNDED
+// EXCEPTION to the SERVER-TOKEN GUARANTEE (owner directive, 2026-07-24)
+// ---------------------------------------------------------------------------
+//
+// Se/cure (the never-cloud tier) has no signed-in identity and the server is
+// normally in NO Se/cure data path. But users must be able to reach the
+// developers from Se/cure too — so, exactly like the web-search grant and the
+// research-space proxy, feedback is a DELIBERATE, opt-in, per-submission
+// exception: the Se/cure client detects the "feedback" keyword, PROMPTS for
+// confirmation (nothing leaves the browser silently), and only then POSTs here
+// with the SAME DeepResearch token it uses for LLM / Exa access.
+//
+// Why this does NOT breach the guarantee ("a Se/rver token never reaches
+// Se/rver's own data"): this endpoint is WRITE-ONLY. A token can CREATE one
+// feedback row; it can never READ anything back — /api/feedback (GET) sits
+// behind the identity gate, which a Se/rver token can never satisfy (pinned in
+// src/server-token.test.js). No new permission is minted: ANY live token
+// qualifies (verifyServerToken already proves a valid, unexpired signature and
+// ≥1 upstream perm). The row is attributed to the MINTING account
+// (claims.sub), so if that user signs into Se/rver the developers' replies
+// reach them in the account panel and the dialogue closes the normal way.
+//
+// This handler lives HERE, in the feedback (data) module, NOT in
+// src/server-grants.js: that module's import graph is pinned upstream-only (it
+// may never import a data-bearing module — src/server-grants.test.js), so the
+// ONE place a token touches stored data is this write, verified with the pure
+// verifyServerToken leaf. Fail-safe: no D1 → 503.
+/**
+ * POST /api/server-token/feedback — PUBLIC. Body:
+ * { token, comment, question?, answer_excerpt?, model?, page?, images? }.
+ * @param {Request} request
+ * @param {Env} env
+ * @param {Logger} log
+ * @returns {Promise<Response>}
+ */
+export async function handleServerTokenFeedback(request, env, log) {
+  const db = await getDb(env);
+  if (!db) return jsonResponse({ error: "Database not configured." }, 503);
+  const body = await request.json().catch(() => null);
+  const token = body && typeof body === "object" && typeof body.token === "string" ? body.token : "";
+  const claims = await verifyServerToken(env, token);
+  if (!claims) {
+    return jsonResponse({ error: "Invalid or expired DeepResearch token." }, 403);
+  }
+  const v = validateFeedbackCreate(body);
+  if (typeof v.error === "string") return jsonResponse({ error: v.error }, 400);
+  const id = await createFeedbackEntry(db, claims.sub, v.entry);
+  if (!id) return jsonResponse({ error: "Feedback could not be saved." }, 500);
+  await insertImages(db, id, null, v.images);
+  log.info("feedback.servertoken", { sub: claims.sub, jti: claims.jti, feedback_id: id, images: v.images.length });
+  return jsonResponse({ ok: true, id }, 201);
 }
 
