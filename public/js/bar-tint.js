@@ -49,6 +49,50 @@ export function offTint(target) {
 }
 
 /**
+ * Build the two-step nudge for a page's theme-color meta: set the one-off
+ * "changed" shade now, the real color on the next frame. Shared by the boot
+ * wiring (wireBarTint) and the in-page switch nudge (nudgeTint).
+ * @param {*} meta the theme-color meta element
+ * @param {() => string} resolve current target color
+ * @param {*} w window (rAF source)
+ * @returns {() => void}
+ */
+function makeNudge(meta, resolve, w) {
+  return () => {
+    const now = resolve();
+    meta.setAttribute("content", offTint(now));
+    w.requestAnimationFrame(() => meta.setAttribute("content", now));
+  };
+}
+
+/**
+ * One layered re-assertion of the bar tint, for an IN-PAGE theme change (the
+ * chat-mode switch). The 2026-07-24 report (feedback #20, iPhone) showed the
+ * switch path's single direct meta set can leave the status-bar strip on the
+ * previous mode's color — the same swallowing the 2026-07-10/17 navigation
+ * fixes hit — so a switch now gets the proven treatment too: the two-step
+ * changed-then-target flip immediately, then again on the lagged timers.
+ * `target` may be a getter (re-read on every step, so a rapid second switch
+ * repaints its OWN color, never a stale one). Returns the nudge (for tests)
+ * or null when the page has no theme-color meta.
+ * @param {string | (() => string)} target
+ * @param {*} [doc]
+ * @param {*} [win]
+ * @returns {(() => void) | null}
+ */
+export function nudgeTint(target, doc, win) {
+  const d = doc || document;
+  const w = win || window;
+  const meta = d.querySelector('meta[name="theme-color"]');
+  if (!meta) return null;
+  const resolve = () => (typeof target === "function" ? target() : target);
+  const nudge = makeNudge(meta, resolve, w);
+  nudge();
+  for (const ms of BAR_TINT_DELAYS_MS) w.setTimeout(nudge, ms);
+  return nudge;
+}
+
+/**
  * Wire the layered bar-tint re-assertion for `target` onto the page's
  * `theme-color` meta. Safe to call once at boot on any page; returns the
  * nudge function (for tests) or null when the page has no theme-color meta.
@@ -72,11 +116,7 @@ export function wireBarTint(target, doc, win) {
   const meta = d.querySelector('meta[name="theme-color"]');
   if (!meta) return null;
   const resolve = () => (typeof target === "function" ? target() : target);
-  const nudge = () => {
-    const now = resolve();
-    meta.setAttribute("content", offTint(now));
-    w.requestAnimationFrame(() => meta.setAttribute("content", now));
-  };
+  const nudge = makeNudge(meta, resolve, w);
   // The original 2026-07-10 flip: first frame after boot.
   w.requestAnimationFrame(nudge);
   // After the document (images, css) has fully loaded — Safari's chrome has

@@ -39,6 +39,7 @@
 
 import { DEV_MODE_CLASS, cachedDeveloperMode } from "./dev-mode.js";
 import { barTint } from "./mode-theme.js";
+import { nudgeTint } from "./bar-tint.js";
 
 /** The localStorage key holding the picked chat mode. */
 export const CHAT_MODE_KEY = "dr_chat_mode";
@@ -113,15 +114,19 @@ export function applyChatModeTheme(mode, opts) {
   }
   // Repaint the iOS status-bar tint to the new mode's field color, so switching
   // modes moves the chrome above the app too (each mode is a full theme). A
-  // direct set suffices for a switch (the value actually changes, so WebKit
-  // re-evaluates); bar-tint.js owns the layered re-asserts. Guarded separately
-  // so a DOM-less test never loses the class toggles above.
+  // single direct set is NOT enough here: iPhone left the strip behind the
+  // status icons on the previous mode's blue across a switch (feedback #20,
+  // 2026-07-24) — the same swallowing the 2026-07-10/17 navigation fixes hit —
+  // so the switch gets bar-tint.js's layered changed-then-target nudge too.
+  // The getter re-reads the stored mode so a rapid second switch's lagged
+  // timers repaint the CURRENT pick, never a stale one (a non-persisted apply
+  // paints its own mode — boot passes the cached value, so they agree).
+  // Guarded separately so a DOM-less test never loses the class toggles above.
   try {
-    globalThis.document
-      ?.querySelector('meta[name="theme-color"]')
-      ?.setAttribute("content", barTint(m));
+    const persisted = !opts || opts.persist !== false;
+    nudgeTint(() => barTint(persisted ? cachedChatMode() : m));
   } catch {
-    /* no DOM / no meta — bar-tint.js still re-asserts the current mode */
+    /* no DOM / no meta — bar-tint.js's boot wiring still re-asserts */
   }
   return m;
 }

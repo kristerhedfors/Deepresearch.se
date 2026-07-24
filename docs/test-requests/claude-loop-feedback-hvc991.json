@@ -1,0 +1,20 @@
+{
+  "branch": "claude/loop-feedback-hvc991",
+  "pr": null,
+  "requested_at": "2026-07-24",
+  "points": [
+    {
+      "label": "Retest feedback #20: iPhone status-bar strip follows the mode theme",
+      "summary": "FIX for feedback #20 ('top part of background is stuck with this Deep Research blue regardless which agent I select'). Two device classes to confirm on iPhone. (1) Safari browser: open /rver, switch the chat mode between Deep Research / Introspection / Agent Studio / Orchestrator — PASS = the strip behind the clock/battery icons repaints to each mode's field colour (blue / titanium / green / violet) within ~2 s of the switch. (2) Installed home-screen app: REMOVE the old icon and re-add to Home Screen first (the fix changes install-time metas). Relaunch, switch modes the same way — PASS = the strip behind the status icons matches the mode field instead of staying blue. ALSO check readability: the iPhone status icons must stay legible over the themed field in the installed app — if the clock/battery text is hard to read on any of the four fields, that's a FAIL with a note saying which field.",
+      "target": "/rver",
+      "actions": [
+        {
+          "type": "note",
+          "text": "Safari leg: switch modes in the dropdown and watch the strip behind the iPhone status icons. PWA leg: delete + re-add the home-screen app, relaunch, repeat the switches. Please note which leg (Safari vs installed app) any FAIL happens on."
+        }
+      ],
+      "runs": 1,
+      "verdicts": []
+    }
+  ]
+}
