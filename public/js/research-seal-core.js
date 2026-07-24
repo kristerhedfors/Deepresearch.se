@@ -30,7 +30,7 @@
 //
 // Spec + workflow: docs/CROWD-RESEARCH.md. Schema: docs/schemas/drcr-result-1.schema.json.
 
-import { b64urlDecode, b64urlEncode } from "./proxy-bundle.js";
+import { b64urlDecode, b64urlEncode, sha256hex } from "./proxy-bundle.js";
 
 // ---- frozen constants (changing any breaks compatibility with sealed results) ----
 const CURVE = "P-256"; // NIST P-256 / secp256r1 — WebCrypto's baseline ECDH curve
@@ -49,13 +49,8 @@ export const CHUNK_PREFIX = "drcr1"; // QR chunk framing:  drcr1:<i>/<n>:<slice>
 const te = new TextEncoder();
 const td = new TextDecoder();
 
-/** @param {Uint8Array} bytes @returns {Promise<string>} lowercase hex of SHA-256 */
-async function sha256hex(bytes) {
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array(bytes)));
-  let s = "";
-  for (const b of digest) s += b.toString(16).padStart(2, "0");
-  return s;
-}
+// (sha256hex is imported from proxy-bundle.js — the shared WebCrypto leaf both
+// seal cores already sit on; each core keeps its OWN HKDF info / kind binding.)
 
 // ---- the project keypair -------------------------------------------------------
 

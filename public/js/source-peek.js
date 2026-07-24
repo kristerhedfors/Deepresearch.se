@@ -20,7 +20,7 @@
 // textContent-only spans — no answer text or file text ever meets innerHTML.
 
 import { SNAPSHOT_PATH, validateSnapshot } from "./introspect-core.js";
-import { renderMarkdownInto } from "./markdown.js";
+import { escapeHtml, renderMarkdownInto } from "./markdown.js";
 import {
   highlightLines,
   isMarkdownPath,
@@ -329,8 +329,4 @@ function showFileBody() {
   bodyEl.replaceChildren(codeBox);
   if (scrollTarget) scrollTarget.scrollIntoView({ block: "center" });
   else bodyEl.scrollTop = 0;
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] || c));
 }

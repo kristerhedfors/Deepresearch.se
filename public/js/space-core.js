@@ -444,6 +444,11 @@ export function rotZ(p, a) {
   return [p[0] * c - p[1] * s, p[0] * s + p[1] * c, p[2]];
 }
 
+/** The renderer's view rotation: yaw then pitch from the mount state's angles. */
+export function worldRot(v, st) {
+  return rotX(rotY(v, st.rotY), st.rotX);
+}
+
 /**
  * Perspective projection of a (rotated) scene point onto the canvas. The
  * camera sits on +z at cam.dist km looking at the origin; cam.f is the focal

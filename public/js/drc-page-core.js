@@ -331,3 +331,23 @@ export function providerVisibilityNote(providerId, label) {
   const who = label || id;
   return `Your messages go to ${who} — they can read them. This site's server can't: calls go straight from your browser.`;
 }
+
+// The prior research turn the feedback comments on (last question + answer),
+// pulled from the PERSISTED conversation. Feedback is never persisted into the
+// research context, so the last user turn is the question it follows.
+/**
+ * @param {{ messages?: Array<{ role?: string, content?: any }> } | null | undefined} conv
+ * @returns {{ question: string | null, answer_excerpt: string | null }}
+ */
+export function drcFeedbackContext(conv) {
+  const msgs = conv && Array.isArray(conv.messages) ? conv.messages : [];
+  const asText = (/** @type {any} */ c) =>
+    typeof c === "string" ? c : Array.isArray(c) ? c.map((p) => (p && p.text) || "").join(" ").trim() : "";
+  let question = null;
+  let answer = null;
+  for (let i = msgs.length - 1; i >= 0 && (question === null || answer === null); i--) {
+    if (answer === null && msgs[i]?.role === "assistant") answer = asText(msgs[i].content) || null;
+    else if (question === null && msgs[i]?.role === "user") question = asText(msgs[i].content) || null;
+  }
+  return { question, answer_excerpt: answer ? answer.slice(0, 8000) : null };
+}

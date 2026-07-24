@@ -12,6 +12,7 @@
 // re-checking the pipeline's model-input snapshots.
 
 import { notesDigest } from "./notes.js";
+import { replyLinksTo } from "./build-pub.js";
 
 /** @typedef {import('./types.js').Message} Message */
 /**
@@ -188,4 +189,39 @@ export function mergeFanoutQueries(queryLists, cap) {
     }
   }
   return merged;
+}
+
+// The canned iteration question every build turn ends on (feedback #13 asked
+// for exactly this closing). The prompts instruct the model to ask it in the
+// user's own language; this English form is only the deterministic fallback
+// when the reply didn't end by asking one.
+export const SDK_ITERATION_QUESTION = "Does the app work as you hoped, or would you like to add or change anything?";
+
+/** @param {string} text */
+export const endsWithQuestion = (text) => /[?？][*_`")\]]*$/.test(String(text || "").trim());
+
+/**
+ * The reply tail a successful build turn ends on — feedback #13's requested
+ * shape: a build summary, the live link (unless the prose already links it),
+ * and the iteration question (unless the prose already asked one). Shared by
+ * both build paths. With `published` null: the honest no-publish note.
+ * @param {string} prose The model-written reply text already emitted ("" when none).
+ * @param {Array<{ path: string, content: string }>} files
+ * @param {{ slug: string, url: string, files: number, bytes: number } | null} published
+ * @returns {string}
+ */
+export function sdkReplyTail(prose, files, published) {
+  /** @type {string[]} */
+  const parts = [];
+  if (published) {
+    const kb = (published.bytes / 1024).toFixed(1);
+    parts.push(`**Build summary:** ${published.files} file${published.files === 1 ? "" : "s"}, ${kb} KB — ${files.map((f) => f.path).join(" · ")}`);
+    if (!replyLinksTo(prose, published.url)) {
+      parts.push(`**Try it live:** [${published.url}](${published.url})`);
+    }
+    if (!endsWithQuestion(prose)) parts.push(SDK_ITERATION_QUESTION);
+  } else {
+    parts.push("_(Publishing was unavailable this turn — no live URL yet.)_");
+  }
+  return `${prose ? "\n\n" : ""}${parts.join("\n\n")}`;
 }

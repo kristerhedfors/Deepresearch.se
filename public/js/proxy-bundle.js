@@ -41,6 +41,14 @@ export function b64urlDecode(str) {
   return out;
 }
 
+/** @param {Uint8Array} bytes @returns {Promise<string>} lowercase hex of SHA-256 */
+export async function sha256hex(bytes) {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array(bytes)));
+  let s = "";
+  for (const b of digest) s += b.toString(16).padStart(2, "0");
+  return s;
+}
+
 /**
  * Seal an arbitrary JSON-serializable object into an encrypted bundle. Returns
  * `{ blob, key }` — both URL-safe base64: `blob` is `iv || ciphertext` (goes in

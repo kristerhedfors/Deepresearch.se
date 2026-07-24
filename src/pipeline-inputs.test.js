@@ -12,6 +12,9 @@ import {
   extractClaims,
   mergeFanoutQueries,
   takeSearchBatch,
+  sdkReplyTail,
+  endsWithQuestion,
+  SDK_ITERATION_QUESTION,
 } from "./pipeline-inputs.js";
 
 describe("shellReplyMessages", () => {
@@ -153,5 +156,57 @@ describe("mergeFanoutQueries", () => {
 
   test("zero cap → empty wave", () => {
     assert.deepEqual(mergeFanoutQueries([["a"]], 0), []);
+  });
+});
+
+describe("sdkReplyTail (the feedback-#13 closing shape both build paths share)", () => {
+  const files = [
+    { path: "index.html", content: "<h1>hi</h1>" },
+    { path: "app.js", content: "console.log(1)" },
+  ];
+  const published = { slug: "demo", url: "https://deepresearch.se/app/demo/", files: 2, bytes: 2048 };
+
+  test("published build: summary + live link + iteration question", () => {
+    const tail = sdkReplyTail("Built it.", files, published);
+    assert.ok(tail.startsWith("\n\n"), "separates from existing prose");
+    assert.ok(tail.includes("**Build summary:** 2 files, 2.0 KB — index.html · app.js"));
+    assert.ok(tail.includes(`**Try it live:** [${published.url}](${published.url})`));
+    assert.ok(tail.trim().endsWith(SDK_ITERATION_QUESTION));
+  });
+
+  test("singular file count and no leading separator on empty prose", () => {
+    const one = [{ path: "index.html", content: "x" }];
+    const tail = sdkReplyTail("", one, { ...published, files: 1, bytes: 1024 });
+    assert.ok(!tail.startsWith("\n\n"));
+    assert.ok(tail.includes("**Build summary:** 1 file, 1.0 KB — index.html"));
+  });
+
+  test("prose already carrying a real markdown link suppresses the Try-it line", () => {
+    const tail = sdkReplyTail(`Done — [open it](${published.url})?`, files, published);
+    assert.ok(!tail.includes("**Try it live:**"));
+  });
+
+  test("prose already ending on a question suppresses the canned question", () => {
+    const tail = sdkReplyTail("Want any changes?", files, published);
+    assert.ok(!tail.includes(SDK_ITERATION_QUESTION));
+  });
+
+  test("null published → the honest no-publish note, no link, no question", () => {
+    const tail = sdkReplyTail("Tried to build.", files, null);
+    assert.ok(tail.includes("_(Publishing was unavailable this turn — no live URL yet.)_"));
+    assert.ok(!tail.includes("**Build summary:**"));
+    assert.ok(!tail.includes(SDK_ITERATION_QUESTION));
+  });
+});
+
+describe("endsWithQuestion", () => {
+  test("plain and full-width question marks count, trailing markdown tolerated", () => {
+    assert.equal(endsWithQuestion("Ready?"), true);
+    assert.equal(endsWithQuestion("準備はいい？"), true);
+    assert.equal(endsWithQuestion("Ready?**"), true);
+    assert.equal(endsWithQuestion("_Ready?_)"), true);
+    assert.equal(endsWithQuestion("Ready.  "), false);
+    assert.equal(endsWithQuestion(""), false);
+    assert.equal(endsWithQuestion(null), false);
   });
 });

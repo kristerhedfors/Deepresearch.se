@@ -68,7 +68,7 @@ Server (`src/`):
 | `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, per-user in-flight concurrency reservation (`reserveInflight`/`releaseInflight`, P-3), state, SSE scaffold, usage recording (the split-billing totals — `summarizeSpend`/`exaCost` now live in the shared `billing.js`, re-exported here) |
 | `mcp.js` | `POST /mcp`: exposes the deep-research pipeline AS an MCP server — the single `deep_research` tool any MCP client (Claude, Cursor) can call. Hand-rolled Streamable HTTP / JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`, plus the `notifications/initialized` ack) — no dependency; routed AFTER the identity gate so MCP inherits the site's access control. Pure protocol helpers are exported at the top for `mcp.test.js`; the heavy pipeline import is DYNAMIC inside `tools/call`, and it shares `resolveJsonModel` (`model-routing.js`) and the split-billing spend math (`billing.js`) with `chat.js` |
 | `pipeline.js` | The research pipeline's phase FLOW (triage → search → gap → synth → validate); iterates the source registries, never names a source |
-| `pipeline-inputs.js` | The pipeline's PURE input-block builders + output parsers (`shellReplyMessages`, `notesSection`, `subquestionsSection`, `conflictsSection`, `collectConflicts`, `extractClaims`, `takeSearchBatch`) — the byte-identical-input string/data shaping split out of `pipeline.js` so the flow reads as the flow; Node-tested |
+| `pipeline-inputs.js` | The pipeline's PURE input-block builders + output parsers (`shellReplyMessages`, `notesSection`, `subquestionsSection`, `conflictsSection`, `collectConflicts`, `extractClaims`, `takeSearchBatch`, `mergeFanoutQueries`, and the SDK build turns' closing shape `sdkReplyTail` + `endsWithQuestion` — the feedback-#13 summary/link/question tail both build paths share) — the byte-identical-input string/data shaping split out of `pipeline.js` so the flow reads as the flow; Node-tested |
 | `notes.js` | Structured research notes — the pure representation/merge logic behind the budget-gated notes-digest phase (`pipeline.js`'s `maybeDigest`, `prompts.js`'s `notesPrompt`): each note distils one factual claim tied to numbered source ids; normalizes and MERGES notes across search waves (dedupe by claim, union ids/entities) so gap-check and synthesis reason over a compact claim set instead of re-reading every highlight. Pure and never throws — a bad note is dropped, matching the pipeline's fail-soft posture |
 | `triage.js` | The pipeline's JSON-hardening layer: the declared schemas for every JSON planning phase + `hardenJson`, and `normalizeTriage` (the triage-failure fallback) — pure, no I/O |
 | `schema.js` | A tiny, pure, dependency-free schema validator hardening the model-JSON → pipeline boundary: `validate(shape, value)` never throws — it coerces/normalizes where it safely can and returns `{ ok, value, errors }` (combinators: string/boolean/number/stringEnum/arrayOf/object/oneOf). Sits BEHIND the existing fail-soft fallbacks (`normalizeTriage` etc. stay the last-ditch net); the integration pattern is `ok ? value : original`, so a schema miss degrades exactly as before |
@@ -435,7 +435,9 @@ backend config normalizer, one definition for the sealed-state read and
 the settings-form persist), the deep-link path parsers
 `parseProjectPath`/`parsePublicationRef` (with "workspace" a RESERVED slug),
 `wmHtml` (the escape-first
-Se/cure–Se/rver wordmark-slash renderer), and `privacyNoticeLines` (the ℹ
+Se/cure–Se/rver wordmark-slash renderer), `drcFeedbackContext` (the
+prior-turn question/answer excerpt the feedback consent dialog shows and
+sends), and `privacyNoticeLines` (the ℹ
 PRIVACY NOTICE's text, 2026-07-16: what this session's current configuration
 sends where — model route, web-search route, recall, borrowed allowances,
 shared-workspace provenance; the animations are tier identity again — UX-2,
@@ -465,7 +467,7 @@ P-256 → HKDF-SHA-256 → AES-256-GCM (`generateProjectKeypair` /
 `exportProjectPublicKey` / `projectKid`, `sealResult` / `openResult`
 fail-closed, `validateResultEnvelope`), plus the `drcr1:` QR chunk framing
 (`chunkResult` / `reassembleChunks`) for phone-to-phone return. WebCrypto
-only; imports `proxy-bundle.js`'s b64url helpers; spec + full workflow in
+only; imports `proxy-bundle.js`'s b64url + `sha256hex` helpers; spec + full workflow in
 `docs/CROWD-RESEARCH.md`, schema `docs/schemas/drcr-result-1.schema.json`
 — Node-tested).
 `pool-core.js` (SHARED COMPUTE's pure core, 2026-07-23: the strict DRSC/1

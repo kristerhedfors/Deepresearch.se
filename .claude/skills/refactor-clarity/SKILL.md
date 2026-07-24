@@ -518,3 +518,48 @@ behavior; the drc.js Enter-send inline, documented cross-tier separation).
 METHOD NOTE: keep the hash-scan (normalize whitespace, hash function bodies
 ≥4 lines) as a survey step — agents reason about which duplications SHOULD
 exist; the scan finds the ones that DO.
+
+## Ninth worked example (2026-07-24) — the new-subsystems pass
+
+Survey scoped to code merged since the eighth pass (three `Explore` fan-outs:
+server growth incl. pipeline.js +258 and the knowledge/space façades; the new
+client subsystems — space, source-peek, ondevice, pool, the two seal cores;
+the Se/cure tier incl. drc.js +754) plus the hash-scan. The big picture held:
+the new subsystems were AUTHORED to the discipline (knowledge/space are
+textbook class-X façades; ondevice-core is 620 richly-factored lines;
+`feedbackIntent` and `sanitizePoolRequest` were born as class-X de-dups).
+Five cuts survived across four commits:
+- **sdkReplyTail cluster → pipeline-inputs.js**: the feedback-#13 closing
+  shape (`sdkReplyTail` + `endsWithQuestion` + `SDK_ITERATION_QUESTION`) was
+  pure but inline among pipeline.js's build orchestration, untested. The one
+  judgment call: it drags a pure `replyLinksTo` import from build-pub.js into
+  the leaf — accepted (build-pub's top-level graph is only http.js +
+  sdk-tools); the alternative sink sdk-core.js is BLOCKED (client core can't
+  import server modules).
+- **drcFeedbackContext → drc-page-core.js**: the feedback consent's pure
+  prior-turn context builder out of drc.js's DOM wiring. Safe within-graph:
+  BOTH files stay SECURE_SOURCE_REFS/MANIFEST members, so no list edits.
+  Its server twin `buildFeedbackContext` (src/feedback.js) is a DIFFERENT
+  shape — relocation, not unification.
+- **sha256hex → proxy-bundle.js** (hash-scan flagship): byte-identical
+  (JSDoc included) and PRIVATE in both new seal cores (research-seal-core,
+  knowledge-core) — both already import proxy-bundle's b64url helpers, so
+  the export rides an existing edge; each core keeps its OWN frozen HKDF
+  info/kind binding (the two envelope formats still can never cross-open).
+- **escapeHtml (4-char) → markdown.js**: byte-identical in source-peek.js +
+  docs-viewer.js over their existing renderMarkdownInto edge. TRAP LOGGED:
+  notifications.js exports a DIFFERENT 5-char variant (also encodes `'`) —
+  collapsing the two variants would change rendered output; keep both.
+- **worldRot → space-core.js**: the embed renderer's yaw-then-pitch view
+  rotation composes rotX/rotY the core already owns — the last pure fragment
+  in space-embed.js.
+Declined: a report-core.js carve-out (report.js's pure markdown/PDF helpers
+are already exported + Node-tested IN PLACE — the plant-spinner pattern; no
+sibling core exists, so extraction is churn), `scaleNoteFor` (bound to the
+renderer-owned bilingual UI const), `onDeviceModelLabel` (trivial wrapper),
+the src/token-crypto b64url ↔ proxy-bundle b64urlEncode cross-tier pair
+(the f32ToB64 standing decline), and poolShareStatus (the pure branch is
+5 lines, single-use, inside a DOM writer). MECHANICAL LESSON: inserting an
+export above a function whose JSDoc sits above your match point detaches
+that JSDoc from its function — typecheck catches it (TS7006), but match on
+the comment + function together when inserting between neighbors.

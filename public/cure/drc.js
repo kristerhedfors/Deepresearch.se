@@ -116,6 +116,7 @@ import { initSourcePeek, wireSourcePeek } from "/js/source-peek.js";
 import { drcStoreAvailable, getSealedProject, putSealedProject } from "/js/drc-store.js";
 import { BUDGET_MAX_S, BUDGET_MIN_S, budgetTier, fmtBudget, posToSeconds, secondsToPos } from "/js/timescale.js";
 import {
+  drcFeedbackContext,
   grantFlagEnabled,
   grantLive,
   grantMeterLine,
@@ -1698,21 +1699,8 @@ function feedbackTokenLive() {
   return !!(stGrant && stGrant.token) && (serverTokenLive(stGrant, "web") || serverTokenLive(stGrant, "api"));
 }
 
-// The prior research turn the feedback comments on (last question + answer),
-// pulled from the PERSISTED conversation. Feedback is never persisted into the
-// research context, so the last user turn is the question it follows.
-function drcFeedbackContext(conv) {
-  const msgs = conv && Array.isArray(conv.messages) ? conv.messages : [];
-  const asText = (c) =>
-    typeof c === "string" ? c : Array.isArray(c) ? c.map((p) => (p && p.text) || "").join(" ").trim() : "";
-  let question = null;
-  let answer = null;
-  for (let i = msgs.length - 1; i >= 0 && (question === null || answer === null); i--) {
-    if (answer === null && msgs[i]?.role === "assistant") answer = asText(msgs[i].content) || null;
-    else if (question === null && msgs[i]?.role === "user") question = asText(msgs[i].content) || null;
-  }
-  return { question, answer_excerpt: answer ? answer.slice(0, 8000) : null };
-}
+// drcFeedbackContext (the prior-turn question/answer the feedback comments
+// on) lives in drc-page-core.js with the other pure page fragments.
 
 // A transient note bubble — same footing as the canned-help exchange: it echoes
 // in the DOM but never enters conv.messages (feedback is not a research turn).
