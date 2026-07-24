@@ -1,8 +1,11 @@
 // @ts-check
-// AgentSpec — DistillSDK's declarative definition of ONE agent (a "flavour" of
-// the Se/cure + Se/rver pair). This is the shared PURE core both tiers, the
-// sdk/pair-cli.mjs CLI, and the Agent Studio mode use to load, validate, and
-// resolve agent definitions. Same convention as sdk-core.js / bash-core.js /
+// AgentSpec — the DeepResearch AGENTS SDK's declarative definition of ONE
+// agent (a "flavour" of the Se/cure + Se/rver pair). The Agents SDK is the
+// project's second SDK, distinct from the Platform SDK (DistillSDK, sdk/ —
+// which builds a whole platform): it is tailored to Agent Studio and the
+// integrated Linux environment, and this module is its pure core — what both
+// tiers, the sdk/pair-cli.mjs CLI, and the Agent Studio mode use to load,
+// validate, and resolve agent definitions. Same convention as sdk-core.js / bash-core.js /
 // introspect-core.js: it lives under public/ because the browser can only
 // import served modules while the Worker bundler imports from any repo path;
 // src/agent-spec.js is the thin server façade and sdk/pair-cli.mjs re-exports

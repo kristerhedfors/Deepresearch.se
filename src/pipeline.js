@@ -820,7 +820,10 @@ async function runSdkBuildTools(ctx, snapshot, manifest, secureDigest) {
   const userText =
     `Request (latest user message):\n${ctx.cleanLastUser}\n\n` +
     `Conversation context:\n${ctx.cleanConvText}\n\n` +
-    (ctx.shellBlock ? `${ctx.shellBlock}\n\n` : "") +
+    // The sandbox transcript rides with the sdkBuild framing (context only) —
+    // without it the model treats sandbox-heredoc'd files as already shipped
+    // and stages nothing (feedback #7, chat_logs #583).
+    (ctx.shellBlock ? `${shellReplyMessages(ctx.shellBlock, { sdkBuild: true })[0].content}\n\n` : "") +
     buildSdkContextBlock(manifest, { toolMode: true, buildUrl: buildSlug ? `/app/${buildSlug}/` : null, secureDigest }) +
     "\n\nBuild it now: the Se/cure source digest above is your starting material — read_file only for detail it omits, stage every file with write_file, publish_app once, then write the short reply.";
 
@@ -901,7 +904,7 @@ async function runSdkBuildDeterministic(ctx, manifest, secureDigest) {
   ctx.step("synth", "Building the app…");
   const draft = await streamCompletion(ctx, [
     { role: "system", content: sdkBuildPrompt() },
-    ...shellReplyMessages(ctx.shellBlock),
+    ...shellReplyMessages(ctx.shellBlock, { sdkBuild: true }),
     ...withImageNudge(convo),
   ]);
   const files = parseFileBlocks(draft || "");

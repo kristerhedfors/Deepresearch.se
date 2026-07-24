@@ -143,6 +143,26 @@ called a SERVER token so nobody forgets it goes to a server somewhere. The legac
 `wsk1`/`prg1`/`prx1` families keep working unchanged; new grants should be
 Se/rver tokens.
 
+**THE ONE WRITE EXCEPTION — Se/cure feedback (owner directive, 2026-07-24):**
+there is exactly ONE place a Se/rver token touches Se/rver-stored data, and it
+is **WRITE-ONLY**. `POST /api/server-token/feedback` lets a token CREATE one
+feedback row — the confirmed **feedback** path from Se/cure, which has no
+identity of its own — so users can reach the developers from the client-side
+tier too. It can NEVER READ anything back: the readable feedback surface
+(`/api/feedback` GET) sits behind the identity gate a token can never satisfy,
+so the guarantee's substance holds — **a token still cannot read any project,
+chat, history, or account data.** No new permission names a data surface (the
+closed vocabulary is unchanged); **any live token may submit**, and the row is
+attributed to the token's minting account (`sub`) so the developers' replies
+reach that user in their Se/rver account panel. The write is DELIBERATELY not in
+`src/server-grants.js` (whose module graph stays upstream-only, test-pinned) —
+it lives in the feedback data module (`src/feedback.js` `handleServerTokenFeedback`),
+verified with the pure `verifyServerToken` leaf. On the client, Se/cure catches
+the "feedback" keyword (the shared `public/js/feedback-core.js` gate) and PROMPTS
+for confirmation before anything is sent — nothing leaves the browser silently,
+matching the same opt-in, per-use posture as the web-search grant and the
+research-space proxy.
+
 ## Compute sharing — peer-operated upstream (2026-07-23, PROPOSED framing, owner sign-off pending)
 
 `docs/COMPUTE-SHARING.md` designs a capability where a signed-in user LENDS

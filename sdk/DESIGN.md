@@ -1,12 +1,17 @@
 # DistillSDK — design
 
 **DistillSDK is the internal codename for the DeepResearch Platform SDK** — the
-SDK that builds a whole **platform** (a client tier + at most one server tier).
+SDK that builds a whole **platform** (an entire DeepResearch.se-like agent
+platform: a client tier + at most one server tier).
 Its companion, the DeepResearch Agents SDK, builds a single **agent** inside a
-platform.
+platform and is tailored specifically to Agent Studio and the integrated Linux
+environment (the execution sandbox).
 
-**Status: design + skill library only (2026-07-16). Nothing in `sdk/` is wired
-into the running application yet — that is a later task.** This directory is a
+**Status: designed 2026-07-16; WIRED into the running application since
+2026-07-18** — the manifest logic and SDK-mode tool surface live in the shared
+core `public/js/sdk-core.js` (server façade `src/sdk-tools.js`; `sdk/pair-cli.mjs`
+re-exports it), consumed by Agent Studio, the `/mcp` `sdk_*` tools, and the
+sandbox's `/src` mount. This directory is a
 complete, self-contained software development kit for building **platforms**
 like DeepResearch.**Se/cure** + DeepResearch.**Se/rver**: one AI assistant
 product shipped as two tiers of the same capability set, where the platform as a

@@ -22,6 +22,21 @@ shareable `/app/<slug>/` URL. Green is the mode's color (the composer pane + the
 > `docs/AGENT-PLATFORM.md`) — an agent IS its chat-input-pane controls, theme,
 > animations, examples and share-link quota.
 
+> **The TWO-SDK division (owner directive, 2026-07-24).** The project has two
+> distinct SDKs and Agent Studio sits at their seam. The **Agents SDK**
+> (`docs/AGENT-PLATFORM.md`, `sdk/AGENTS.json`, `public/js/agent-spec-core.js`)
+> is tailored specifically to **Agent Studio and the integrated Linux
+> environment**: it owns the AgentSpec definition layer, the direct build
+> tools (`write_file`/`publish_app` — the ONLY pathway that ships files), and
+> the execution sandbox as the place agents run/test code. The **Platform SDK**
+> (DistillSDK, `sdk/` + `docs/DISTILLSDK.md`) builds an entire
+> DeepResearch.se-like platform; Agent Studio consults its module catalog (the
+> `sdk_*` tools) as the METHOD when a request distills a whole platform rather
+> than a single agent. Files created in the sandbox are NEVER published
+> (feedback #7, chat_logs #583) — the bash step prompt, the build prompts, and
+> the transcript framing all say so, and the DRS client skips the sandbox
+> pre-pass on plain build turns (stream.js maybeRunShellLoop).
+
 ## The plant identity + the mode-theme registry (2026-07-19)
 
 SDK mode is not just a green pane — it has its own **symbol** in the site's

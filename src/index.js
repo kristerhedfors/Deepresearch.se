@@ -55,7 +55,7 @@ import {
   handleMessages,
   handleModels,
 } from "./user-api.js";
-import { handleFeedbackApi } from "./feedback.js";
+import { handleFeedbackApi, handleServerTokenFeedback } from "./feedback.js";
 import { handleTryRedirect } from "./testpoints.js";
 import { bashLiteEnabled, handleSettingsGet, handleSettingsPut } from "./settings.js";
 import { handleBashStep } from "./bash-api.js";
@@ -352,11 +352,19 @@ async function route(request, env, url, log, ctx, requestId) {
   // and /api/admin/* stay behind the identity gate's proper sign-in — a
   // Se/rver token cannot satisfy identify(), so the admin interface is out
   // of reach with one by construction. Fail-safe: no D1 → 503.
+  // THE ONE STORED-DATA WRITE (owner directive, 2026-07-24): /feedback is the
+  // guarantee's THIRD bounded exception — a token may WRITE one feedback row
+  // (Se/cure's confirmed "feedback" path) but can NEVER read it back; the
+  // handler lives in the feedback module (src/feedback.js), verified with the
+  // pure verifyServerToken leaf, so server-grants.js stays import-clean.
   if (request.method === "POST" && url.pathname === "/api/server-token/status") {
     return { response: await handleServerTokenStatus(request, env) };
   }
   if (request.method === "POST" && url.pathname === "/api/server-token/web") {
     return { response: await handleServerTokenWeb(request, env, log) };
+  }
+  if (request.method === "POST" && url.pathname === "/api/server-token/feedback") {
+    return { response: await handleServerTokenFeedback(request, env, log) };
   }
   if (url.pathname.startsWith("/api/server-token/llm")) {
     return { response: await handleServerTokenLlm(request, env, log, url) };
