@@ -22,7 +22,21 @@ description: >-
   (`completeMermaidSources`, Node-tested — an unterminated mid-stream fence
   stays a code block), renders with `securityLevel: "strict"` +
   `htmlLabels: false`, re-sanitizes the SVG through DOMPurify, and fails
-  soft to the visible code block on any load/parse error. Mermaid was
+  soft to the visible code block on any load/parse error.
+  **`htmlLabels: false` must sit at the TOP level of the init config**
+  (`MERMAID_INIT`, exported + regression-locked in `markdown.test.js`): the
+  vendored mermaid 11.16 IGNORES the `flowchart`-scoped key, keeps emitting
+  `<foreignObject>` HTML labels, and the DOMPurify pass strips those (its
+  SVG profile excludes foreignObject) — so every flowchart NODE rendered as
+  an empty box while edge labels (`|yes|`/`|no|`, already SVG `<text>`)
+  survived (feedback #8/#9, 2026-07-24). Verify mermaid-config changes by
+  actually rendering in Chromium against the vendored lib (Playwright +
+  `executablePath: "/opt/pw-browsers/chromium"`, serve `public/` over
+  localhost, call `renderMarkdownInto`, screenshot and count
+  `foreignObject`/`text` in the drawn SVG) — the raw SVG can differ from
+  what survives sanitize. With SVG-text labels, `<br/>` in a label renders
+  as a real line break, and quotes/parens/Swedish characters all pass
+  strict mode. Mermaid was
   chosen over lighter libraries (nomnoml, pintora, flowchart.js) because
   answer models emit mermaid syntax natively; the weight is paid only on
   diagram-bearing answers.
