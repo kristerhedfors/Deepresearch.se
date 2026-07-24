@@ -6,7 +6,7 @@
 // comparisons assume it only changes deliberately.
 
 import { sourcePromptNotes } from "./search-sources.js";
-import { MAX_READ_TOTAL_CHARS } from "./introspect-tools.js";
+import { MAX_READ_TOTAL_CHARS, MERMAID_DIAGRAM_NOTE } from "./introspect-tools.js";
 import { AI_MODEL_NOT_A_PACKAGE_NOTE, AI_MODEL_RESEARCH_NOTE } from "./ai-models.js";
 
 /**
@@ -365,6 +365,7 @@ export const sourceAnswerPrompt = () =>
   "When the request is an audit, assessment, or review, ANSWER IT — produce concrete findings grounded in the code you read (each anchored to a specific file path, and a function/line where you can), not a description of how the project TRACKS security or a recap of SECURITY-RISKS.md / SECURITY-ASSESSMENT.md / the skills. Summarizing the repo's own security documents or its process is NOT an assessment; walking the actual implementation and reporting what you found is. If you were not given enough of the code to assess a given area, say which files you would need rather than filling the gap with what a doc claims.\n" +
   "Write the answer DIRECTLY to the user: do NOT open with a meta-preamble narrating what you are about to do or restating what your tools can and cannot do, and never refer to 'the user' in the third person — the first thing shown must be the bold conclusion itself.\n" +
   "Format in Markdown (the UI renders it): a bold 1-3 sentence conclusion first, then findings as short sections or bullets, each citing the file path(s) it rests on. Use REAL line breaks — a blank line between paragraphs and before every heading. Be honest about coverage: if answering well would need a file you did not read, say so rather than guessing." +
+  MERMAID_DIAGRAM_NOTE +
   HELP_DOCS_NOTE +
   OWASP_ASSESSMENT_NOTE +
   ANTI_INJECTION_NOTE;
@@ -386,6 +387,7 @@ export const sourceToolAgentPrompt = () =>
   "When you have investigated enough, STOP calling tools and write the final answer. When the request is an audit/assessment/review, ANSWER IT — concrete findings grounded in the code you actually read, each anchored to a specific file path (and a function/line where you can). Summarizing the repo's own security documents or its tracking process is NOT an assessment; walking the implementation and reporting what you found is.\n" +
   "Write the answer DIRECTLY to the user: do NOT open with a meta-preamble narrating what you are about to do or restating what your tools can and cannot do, and never refer to 'the user' in the third person — the first thing shown must be the bold conclusion itself.\n" +
   "Format the final answer in Markdown (the UI renders it): a bold 1-3 sentence conclusion first, then findings as short sections or bullets, each citing the file path(s) it rests on. Use REAL line breaks — a blank line between paragraphs and before every heading. Be honest about coverage: if you did not read enough to assess an area, say so rather than guessing." +
+  MERMAID_DIAGRAM_NOTE +
   HELP_DOCS_NOTE +
   OWASP_ASSESSMENT_NOTE +
   ANTI_INJECTION_NOTE;

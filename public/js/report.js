@@ -21,12 +21,55 @@ const ACCENT = [13, 79, 160]; // --accent
 const TEXT = [10, 46, 92]; // --text
 const MUTED = [47, 93, 142]; // --muted
 
-// Light markdown -> flow of typed lines for the PDF: headings, bullets,
-// plain paragraphs. Inline markers (** _ ` [n]) are kept readable.
-function mdToBlocks(md) {
+// Inline markers (** ` ) are flattened so the PDF text stays readable.
+function stripInline(s) {
+  return String(s).replace(/\*\*([^*]+)\*\*/g, "$1").replace(/`([^`]+)`/g, "$1");
+}
+
+// Split one GFM table row into trimmed, inline-flattened cells. Leading and
+// trailing pipes are optional; escaped pipes (\|) stay inside a cell.
+function splitTableRow(line) {
+  const cells = String(line).trim().replace(/^\|/, "").replace(/\|$/, "")
+    .split(/(?<!\\)\|/)
+    .map((c) => stripInline(c.replace(/\\\|/g, "|")).trim());
+  return cells;
+}
+
+// A GFM delimiter row is all `---`/`:--:` cells, e.g. `|---|:--:|---|`.
+function isTableDelimiter(line) {
+  if (line == null || line.indexOf("|") === -1) return false;
+  const cells = splitTableRow(line);
+  return cells.length > 0 && cells.every((c) => /^:?-+:?$/.test(c));
+}
+
+// A line that could be a table row: non-blank and carrying a pipe.
+function isTableRow(line) {
+  return line != null && line.indexOf("|") !== -1 && line.trim().length > 0;
+}
+
+// Light markdown -> flow of typed blocks for the PDF: headings, bullets,
+// plain paragraphs, and GFM pipe tables (header + `---` delimiter + rows),
+// rendered as real ruled tables instead of raw ASCII pipes.
+export function mdToBlocks(md) {
   const blocks = [];
-  for (const raw of String(md).split("\n")) {
-    const line = raw.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/`([^`]+)`/g, "$1");
+  const raws = String(md).split("\n");
+  for (let i = 0; i < raws.length; i++) {
+    const raw = raws[i];
+    // A table starts where a pipe row is immediately followed by a
+    // delimiter row. Everything up to the first non-table line is the body.
+    if (isTableRow(raw) && isTableDelimiter(raws[i + 1])) {
+      const header = splitTableRow(raw);
+      const rows = [];
+      i += 2; // consume header + delimiter
+      while (i < raws.length && isTableRow(raws[i]) && !isTableDelimiter(raws[i])) {
+        rows.push(splitTableRow(raws[i]));
+        i++;
+      }
+      i--; // step back so the for-loop's i++ lands on the next line
+      blocks.push({ kind: "table", header, rows });
+      continue;
+    }
+    const line = stripInline(raw);
     const h = line.match(/^(#{1,4})\s+(.*)/);
     if (h) {
       blocks.push({ kind: "h" + h[1].length, text: h[2].trim() });
@@ -138,8 +181,63 @@ export async function downloadReport(turn, meta = {}) {
     y += h + 14;
   }
 
+  // Draws a GFM table as ruled cells with a shaded, repeated header row.
+  const TABLE_BORDER = [198, 210, 226];
+  const TABLE_HEAD_FILL = [223, 232, 245];
+  const drawTable = (header, rows) => {
+    const ncols = Math.max(header.length, ...rows.map((r) => r.length), 1);
+    const colW = bodyW / ncols;
+    const padX = 5, padY = 5, lineH = 12, fontSize = 9;
+    const measure = (cells, style) => {
+      doc.setFont("helvetica", style);
+      doc.setFontSize(fontSize);
+      let maxLines = 1;
+      const arr = [];
+      for (let c = 0; c < ncols; c++) {
+        const txt = cells[c] == null ? "" : String(cells[c]);
+        const wrapped = txt ? doc.splitTextToSize(txt, colW - 2 * padX) : [""];
+        arr.push(wrapped);
+        if (wrapped.length > maxLines) maxLines = wrapped.length;
+      }
+      return { arr, h: maxLines * lineH + 2 * padY };
+    };
+    const paint = (cells, style, fill) => {
+      const { arr, h } = measure(cells, style);
+      if (fill) {
+        doc.setFillColor(...fill);
+        doc.rect(M, y, bodyW, h, "F");
+      }
+      doc.setDrawColor(...TABLE_BORDER);
+      doc.setLineWidth(0.6);
+      doc.setTextColor(...TEXT);
+      doc.setFont("helvetica", style);
+      doc.setFontSize(fontSize);
+      for (let c = 0; c < ncols; c++) {
+        const x = M + c * colW;
+        doc.rect(x, y, colW, h);
+        arr[c].forEach((ln, li) => doc.text(ln, x + padX, y + padY + fontSize + lineH * li));
+      }
+      y += h;
+    };
+    y += 6;
+    if (y + measure(header, "bold").h > H - 48) newPage();
+    paint(header, "bold", TABLE_HEAD_FILL);
+    for (const r of rows) {
+      if (y + measure(r, "normal").h > H - 48) {
+        newPage();
+        paint(header, "bold", TABLE_HEAD_FILL); // repeat header after a break
+      }
+      paint(r, "normal", null);
+    }
+    y += 8;
+  };
+
   // Body.
   for (const b of mdToBlocks(turn.text)) {
+    if (b.kind === "table") {
+      drawTable(b.header, b.rows);
+      continue;
+    }
     if (!b.text.trim()) {
       y += 7;
       continue;

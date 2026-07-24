@@ -761,6 +761,20 @@ export function retrieveSourceChunks(index, snapshot, queryVec, k = 6) {
   return scored.slice(0, Math.max(1, k));
 }
 
+// Diagram guidance (feedback #14, 2026-07-24): a dev-mode "visualize the
+// pipeline" ask was answered with ASCII box art in a plain code fence — which
+// the chat cannot render — even though the model KNEW mermaid fences render
+// in-app (it said so in the same answer). The chat renders complete ```mermaid
+// fences as real diagrams on BOTH tiers (public/js/markdown.js
+// renderMermaidBlocks), so the guidance must be directive: EMIT the fence.
+// One shared wording — spliced into the DRS introspection answer prompts
+// (src/prompts.js sourceAnswerPrompt / sourceToolAgentPrompt via the
+// introspect-tools.js façade), DRC's tool prompt (drc-research.js
+// drcSourceToolPrompt), and the injected introspection block below (which
+// covers the non-tool answer paths of both tiers).
+export const MERMAID_DIAGRAM_NOTE =
+  "\nDIAGRAMS: when the user asks for a diagram, visualization, flowchart, or architecture picture, ANSWER WITH a fenced ```mermaid code block (e.g. flowchart TD, flowchart LR, sequenceDiagram) — this chat renders complete mermaid fences as real diagrams. Do NOT draw ASCII/Unicode box art inside a plain code fence for a diagram request (it stays an unrendered code block), and do not merely point at a mermaid source elsewhere — emit the mermaid fence itself in the answer. Keep node labels plain, or wrap a label containing parentheses or other special characters in double quotes, so the diagram parses.";
+
 /**
  * Build the labeled introspection context block appended to the conversation
  * (the Shodan-block convention: plain text, explicit begin/end markers, and
@@ -788,6 +802,7 @@ export function buildIntrospectionBlock(snapshot, opts = {}) {
       "The complete tree is ALSO mounted at /src inside the Linux sandbox (e.g. /src/src/pipeline.js) — shell commands over it (ls, cat, grep -rn) read anything not shown below.",
     );
   }
+  lines.push(MERMAID_DIAGRAM_NOTE.trim());
 
   // RAG: the source chunks most relevant to THIS question (dense retrieval over
   // the committed source-rag index). This is what makes the mode work for any
