@@ -57,6 +57,12 @@ export const PLATFORM_TYPES = ["client", "server"];
 /** Quota windows a minted share-link token can meter over (mirrors src/quota.js windows). */
 export const QUOTA_WINDOWS = ["minute", "hour", "day", "month"];
 
+/** The agent BACKGROUND kinds — what drifts on the field behind the agent's
+ * chat while it works (the mode-theme.js `backdrop` axis, declared per agent):
+ * "terminal" (the sandbox terminal-text layer, agent-backdrop.js), "graph"
+ * (the rotating wireframe workflow graph, graph-backdrop.js), or "none". */
+export const BACKDROP_KINDS = ["none", "terminal", "graph"];
+
 // ---- validation --------------------------------------------------------------
 
 /**
@@ -107,6 +113,14 @@ export function validateAgentSpec(a) {
   for (const k of ["intro", "loading"]) {
     if (a[k] && typeof a[k] !== "object") problems.push(at(`${k} must be an object`));
     if (a[k] && a[k].kind && typeof a[k].kind !== "string") problems.push(at(`${k}.kind must be a string`));
+  }
+
+  // Backdrop (the agent background — closed vocabulary like the control types)
+  if (a.backdrop != null) {
+    if (typeof a.backdrop !== "object") problems.push(at("backdrop must be an object"));
+    else if (a.backdrop.kind != null && !BACKDROP_KINDS.includes(a.backdrop.kind)) {
+      problems.push(at(`backdrop.kind must be one of ${BACKDROP_KINDS.join("/")}`));
+    }
   }
 
   // Examples
@@ -379,7 +393,7 @@ export function renderAgentList(reg) {
 // Node-run visual proof (scripts/agent-proof.mjs) build from it, so what the
 // proof asserts is exactly what a user sees — the spec defines the composer.
 
-/** @param {any} a @returns {{ id:string, name:string, tagline:string, platform:string, mode:string, controls:any[], theme:Record<string,string>, intro:any, loading:any, examples:{seed:string[],generatable:boolean}, quota:any }} */
+/** @param {any} a @returns {{ id:string, name:string, tagline:string, platform:string, mode:string, controls:any[], theme:Record<string,string>, intro:any, loading:any, backdrop:any, examples:{seed:string[],generatable:boolean}, quota:any }} */
 export function composerModel(a) {
   return {
     id: a?.id || "",
@@ -391,6 +405,7 @@ export function composerModel(a) {
     theme: resolveTheme(a),
     intro: a?.intro || { kind: "none" },
     loading: a?.loading || { kind: "none" },
+    backdrop: a?.backdrop && BACKDROP_KINDS.includes(a.backdrop.kind) ? a.backdrop : { kind: "none" },
     examples: resolveExamples(a),
     quota: resolveQuota(a),
   };
@@ -453,7 +468,7 @@ export function composerMarkup(a) {
   const prompt = m.controls.find((c) => c.type === "prompt-input");
   const send = m.controls.find((c) => c.type === "send-button");
   const examples = m.examples.seed.map((q) => `<button type="button" class="ac-example" data-example>${esc(q)}</button>`).join("\n      ");
-  return `<div class="agent-composer" data-agent="${esc(m.id)}" data-platform="${esc(m.platform)}" data-mode="${esc(m.mode)}" data-intro="${esc(m.intro.kind || "none")}" data-loading="${esc(m.loading.kind || "none")}" style="${styleVars}">
+  return `<div class="agent-composer" data-agent="${esc(m.id)}" data-platform="${esc(m.platform)}" data-mode="${esc(m.mode)}" data-intro="${esc(m.intro.kind || "none")}" data-loading="${esc(m.loading.kind || "none")}" data-backdrop="${esc(m.backdrop.kind || "none")}" style="${styleVars}">
   <div class="ac-head"><strong class="ac-name">${esc(m.name)}</strong><span class="ac-tag">${esc(m.tagline)}</span></div>
   ${examples ? `<div class="ac-examples">\n      ${examples}\n  </div>` : ""}
   <div class="ac-toolbar">\n      ${toolbar}\n  </div>

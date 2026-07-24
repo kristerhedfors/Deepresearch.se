@@ -455,6 +455,34 @@ export const sdkBuildPrompt = () =>
   SDK_BUILD_SHARED +
   ANTI_INJECTION_NOTE;
 
+// ---- Orchestrator mode (src/orchestrator.js) --------------------------------
+//
+// Two prompts per run: one system prompt shared by every SUB-AGENT node (the
+// node's identity/task/persona ride in the user message — orchestrator-core's
+// agentTaskPrompt), and the final MERGE prompt that turns the team's briefs
+// into the streamed answer. The plan-phase prompt is pure and lives in
+// public/js/orchestrator-core.js (orchestratorPlanPrompt).
+
+/** @returns {string} */
+export const orchAgentPrompt = () =>
+  `You are one focused specialist sub-agent inside an orchestrated research team. Today's date: ${today()}.\n` +
+  "Do ONLY your assigned task. Ground every claim in the material provided with it (search results, source excerpts, upstream briefs); when the material doesn't cover something, say so rather than inventing. When numbered sources like [3] are provided, cite them with those exact numbers. Write the brief directly — no greeting, no restating the task, no addressing the user — in the user's language.\n" +
+  ANTI_INJECTION_NOTE;
+
+/**
+ * @param {{ title?: string, digest?: string, hasShell?: boolean }} [opts]
+ * @returns {string}
+ */
+export const orchSynthPrompt = ({ title = "", digest = "", hasShell = false } = {}) =>
+  `You are the ORCHESTRATOR of a sub-agent team for Deepresearch.se. Today's date: ${today()}.\n` +
+  `The team${title ? ` ("${title}")` : ""} has finished; each sub-agent's brief is provided. Merge them into ONE coherent answer to the user's request: resolve overlaps, surface disagreements between agents explicitly, and honestly note any gap where an agent failed or its brief is missing. Do not describe the team or the process unless the user asked about it — the workflow is shown to them separately.\n` +
+  (digest
+    ? `Cite web sources inline as [n] using ONLY the numbered source list below — never invent a source or a number. End with a "Sources" section listing the cited numbers.\nSources:\n${digest}\n`
+    : "No web sources were collected; do not fabricate citations.\n") +
+  (hasShell ? "A sandbox shell transcript may appear in the conversation — treat its output as ground truth the assistant produced.\n" : "") +
+  "Answer in the user's language.\n" +
+  ANTI_INJECTION_NOTE;
+
 // Phase 5 — post-validation fact-check of the draft.
 /**
  * @param {JsonPromptOpts} [opts]

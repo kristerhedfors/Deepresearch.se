@@ -30,6 +30,7 @@
       },
       "intro": { "kind": "fade", "durationMs": 400 },
       "loading": { "kind": "pipeline-phases", "messages": ["Triaging…", "Searching…", "Checking gaps…", "Synthesising…", "Validating…"] },
+      "backdrop": { "kind": "terminal" },
       "controls": [
         { "type": "prompt-input", "placeholder": "Ask a research question…" },
         { "type": "model-select", "providers": "all", "allowLocal": false },
@@ -65,6 +66,7 @@
       },
       "intro": { "kind": "seal", "durationMs": 500 },
       "loading": { "kind": "pipeline-phases", "messages": ["Triaging…", "Searching…", "Synthesising…"] },
+      "backdrop": { "kind": "terminal" },
       "controls": [
         { "type": "prompt-input", "placeholder": "Ask — nothing leaves this device except the model call…" },
         { "type": "model-select", "providers": "cors-capable", "allowLocal": true },
@@ -98,6 +100,7 @@
       },
       "intro": { "kind": "none" },
       "loading": { "kind": "dots" },
+      "backdrop": { "kind": "none" },
       "controls": [
         { "type": "prompt-input", "placeholder": "This agent is under construction…" },
         { "type": "send-button", "label": "Send" }
@@ -125,6 +128,7 @@
       },
       "intro": { "kind": "assemble", "durationMs": 600 },
       "loading": { "kind": "build-steps", "messages": ["Planning modules…", "Reading Se/cure source…", "Writing files…", "Publishing…"] },
+      "backdrop": { "kind": "terminal" },
       "controls": [
         { "type": "prompt-input", "placeholder": "Describe the agent to build…" },
         { "type": "model-select", "providers": "tool-capable", "allowLocal": false },

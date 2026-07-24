@@ -86,6 +86,7 @@ const CHAT_MODE_OPTIONS = [
   { value: "normal", label: "Deep Research" },
   { value: "introspection", label: "Introspection" },
   { value: "sdk", label: "Agent Studio" },
+  { value: "orchestrator", label: "Orchestrator" },
 ];
 
 // The execution-sandbox knob sits in Settings (short note; the
@@ -112,7 +113,10 @@ const MODE_INFO = `<strong>Chat mode</strong><br>
   <b>Agent Studio:</b> the green “lovable” builder — describe an agent to distil
   from this site (above all the client-side Se/cure tier) and get a live,
   self-contained web app at its own link.<br>
-  Introspection and Agent Studio turn on introspection access for this account.`;
+  <b>Orchestrator:</b> the violet workflow mode — your request is decomposed into
+  a small team of sub-agents (Deep Research, Introspection or custom specialists)
+  that work in the background, with the workflow shown live.<br>
+  The non-default modes turn on introspection access for this account.`;
 
 /**
  * The execution-sandbox row + the Chat mode dropdown the Settings view renders
@@ -339,6 +343,7 @@ export function wireModeKnob(ctx) {
     normal: "Deep Research — ordinary web research.",
     introspection: "Introspection — the composer pane turns white titanium, and asking about this site's own source answers from the deployed source.",
     sdk: "SDK — distill this site (above all the Se/cure tier) into a new flavour and get a live, self-contained web app at its own link.",
+    orchestrator: "Orchestrator — the composer pane turns violet, and each request runs as a planned team of sub-agents working in the background.",
   };
   sel.addEventListener("change", async () => {
     const mode = sel.value;
@@ -348,6 +353,9 @@ export function wireModeKnob(ctx) {
     applyChatModeTheme(mode);
     const modeSel = /** @type {HTMLSelectElement | null} */ (document.getElementById("modesel"));
     if (modeSel) modeSel.value = mode;
+    // Swap the agent background too (the mode-theme backdrop axis) — dynamic
+    // import keeps this settings module free of the canvas glue.
+    import("./mode-backdrop.js").then((m) => m.applyModeBackdrop(mode)).catch(() => {});
     sel.disabled = true;
     if (status) status.hidden = false;
     try {

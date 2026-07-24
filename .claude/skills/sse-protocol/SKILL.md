@@ -156,6 +156,24 @@ unknown `status` types (forward compatibility).
   result. Compacted to title + question count in the per-turn research log
   (`sanitizeResearchEvent`). A dropped stream loses the interactive quiz
   (answer recovery returns only the intro text) — accepted fail-soft.
+- `{"status":{"type":"workflow","title":"…","agents":[{"id":"workers","kind":"deep_research","name":"…","task":"…","deps":[]}],"waves":[["workers","deno"],["critic"]]}}`
+  — Orchestrator mode's resolved plan graph (src/orchestrator.js
+  runOrchestration, shapes built in public/js/orchestrator-core.js), emitted
+  ONCE before execution: the sub-agent nodes, their dependency edges, and the
+  parallel waves the executor will run. The client (stream.js) renders the
+  live workflow view (public/js/workflow-viz.js — one node per sub-agent,
+  wave columns, dependency edges) in the turn body and records it in the
+  embeds registry (kind `"workflow"`), so it re-renders on history load and
+  gets an `embedRef` line in the copy-text export; compacted to the team's
+  shape in the per-turn research log (`sanitizeResearchEvent`). Old clients
+  ignore it and still see the run via the ordinary `step_*` events the mode
+  also emits per agent (`agent_<id>` step ids) — forward-compat by redundancy.
+- `{"status":{"type":"agent_update","id":"workers","status":"done","duration_ms":8100,"chars":2400}}`
+  — one Orchestrator sub-agent's lifecycle change (running → done/failed;
+  `note` carries a bounded failure reason). The client updates that node in
+  the workflow view AND the statuses map stored on the workflow embed, so the
+  persisted record always carries the latest node states (an interrupted run
+  honestly re-renders as "running").
 - `{"status":{"type":"discard_text"}}` — clear the answer streamed so far and
   keep waiting (post-validation found problems; the corrected answer follows)
 - `{"status":{"type":"done","model":"mistralai/…","rounds":2,"searches":4,"duration_ms":6400,"prompt_tokens":1234,"completion_tokens":97}}` — stats footer

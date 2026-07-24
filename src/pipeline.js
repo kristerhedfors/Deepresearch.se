@@ -103,6 +103,7 @@ import {
   triagePrompt,
   validatePrompt,
 } from "./prompts.js";
+import { runOrchestration } from "./orchestrator.js";
 import { anthropicConfigured, anthropicToolRun, isAnthropicModel } from "./anthropic.js";
 import { INTROSPECTION_TOOLS, runIntrospectionTool } from "./introspect-tools.js";
 import {
@@ -329,6 +330,17 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // chat.js on the developer_mode capability. Fully fail-soft inside.
   if (/** @type {any} */ (state).sdkMode) {
     return runSdkBuild(ctx);
+  }
+
+  // Orchestrator mode — the sub-agent workflow mode in the mode dropdown: a
+  // JSON plan phase decomposes the request into a small team of sub-agents
+  // (Deep Research / Introspection / custom specialists) the Worker executes
+  // in parallel waves, then one merge streams the answer (src/orchestrator.js).
+  // Takes the whole answer phase like SDK mode (no triage — the plan phase IS
+  // its triage). Gated in chat.js on the developer_mode capability. Fully
+  // fail-soft inside (a dead plan degrades to a single-agent workflow).
+  if (/** @type {any} */ (state).orchestratorMode) {
+    return runOrchestration(ctx);
   }
 
   // Web search (Exa) off is the knob's ONLY effect — NOT "no research". Depth

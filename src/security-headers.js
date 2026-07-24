@@ -41,11 +41,12 @@ const STORY_INLINE_HASH = "'sha256-ATMgXgI8+2fgznyrbCNX5n9ZAqIHL8/YoN64WD6CwlI='
 // The parse-time MODE-theme cue bootstrap in index.html (the
 // `<script data-devtheme>` — carries an attribute so the boot-guard recompute
 // regex above stays unique to the attribute-less boot guard). Adds the
-// `dev-mode` (introspection, white titanium) or `sdk-mode` (SDK, green) class
-// before first paint from the chat-mode cache (public/js/chat-mode.js).
+// `dev-mode` (introspection, white titanium), `sdk-mode` (SDK, green) or
+// `orch-mode` (Orchestrator, violet) class before first paint from the
+// chat-mode cache (public/js/chat-mode.js).
 // Recompute on edit:
 //   node -e 'const c=require("crypto"),h=require("fs").readFileSync("public/index.html","utf8").match(/<script data-devtheme>([\s\S]*?)<\/script>/)[1];console.log("sha256-"+c.createHash("sha256").update(h).digest("base64"))'
-const THEME_BOOT_HASH = "'sha256-xfOnaXRX3erh6t6lD5Wov6P4iqN1GPkFBKWIkEhIBJE='";
+const THEME_BOOT_HASH = "'sha256-n6AmmcyGQKQFe9Mfg+93TKo70Wwx4FGIGnW4vibAess='";
 const CSP = [
   "default-src 'self'",
   "base-uri 'self'",

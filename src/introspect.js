@@ -363,6 +363,27 @@ async function retrieveOwasp(env, log, qvec, query) {
 }
 
 /**
+ * Source-grounded context for ONE standalone query — the Orchestrator mode's
+ * introspection sub-agents (src/orchestrator.js) use this to give a node its
+ * own retrieved-excerpt block without re-running the whole conversation
+ * enrichment. Composes the same embed + retrieve + block pipeline the
+ * enrichment uses. Null (never a throw) when no snapshot is available — the
+ * caller degrades the node rather than failing the request.
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {string} query the sub-agent's task
+ * @param {Snapshot | null} [snapshot] an already-loaded snapshot (state.sourceSnapshot), else fetched here
+ * @returns {Promise<string | null>}
+ */
+export async function retrieveSourceBlockFor(env, log, query, snapshot = null) {
+  const snap = snapshot || (await loadSourceSnapshot(env, log));
+  if (!snap) return null;
+  const qvec = await embedQuery(env, log, query);
+  const retrieved = await retrieveSource(env, log, qvec, snap);
+  return buildIntrospectionBlock(snap, { latestText: query, retrieved, includeIndex: false });
+}
+
+/**
  * The enrichment runner (registered in src/enrichment.js; enabled =
  * state.introspection = developer mode on). Always injects the source in dev
  * mode — retrieval finds the relevant code for the question, plus orientation.

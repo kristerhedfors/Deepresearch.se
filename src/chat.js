@@ -80,6 +80,11 @@ import { getDb } from "./db.js";
  * @property {string} [build_slug] the conversation's already-published build
  *   slug (from a previous reply's build event), so a build-mode iteration
  *   republishes the SAME /app/<slug>/ URL. Validated; ignored outside a build mode
+ * @property {boolean} [orchestrator_mode] Orchestrator mode: route this request
+ *   to the sub-agent workflow flow (src/orchestrator.js runOrchestration) — a
+ *   JSON-planned team of sub-agents executed in parallel waves, then one merged
+ *   answer. Honored only when the caller's developer_mode knob grants the
+ *   capability — the same gate as sdk_mode
  * @property {any} [imageLocations] attached-photo GPS EXIF coords
  * @property {any} [street_view_pov] the user's current panorama view
  * @property {any} [map_view] the user's current interactive-map view
@@ -112,6 +117,8 @@ import { getDb } from "./db.js";
  *   shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }>,
  *   sandboxEnabled?: boolean,
  *   sdkMode?: boolean,
+ *   orchestratorMode?: boolean,
+ *   orchestration?: { agents: number, waves: number, failed: number, searches: number },
  *   buildSlug?: string | null,
  *   userId?: string,
  *   buildResult?: { slug: string, url: string, files: number, bytes: number },
@@ -207,6 +214,10 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // mode the knob doesn't grant; the mode dropdown flips the knob first.
   const sdkOn = body.sdk_mode === true && enrich.developerOn;
   const buildSlug = sdkOn && buildSlugOk(body.build_slug) ? /** @type {string} */ (body.build_slug) : null;
+  // Orchestrator mode: the sub-agent workflow flow. Same capability gate as
+  // SDK mode (a client can't acquire a mode the knob doesn't grant), and the
+  // modes are mutually exclusive client-side — sdk wins if both arrive.
+  const orchOn = body.orchestrator_mode === true && !sdkOn && enrich.developerOn;
   // The experimental bash-lite sandbox transcript: the browser ran an agentic
   // shell loop (public/js/bash-agent.js) before sending, and attached what it
   // ran + the real output. Honored only when this account's knob is on
@@ -286,6 +297,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       shellTranscript,
       sandboxEnabled: bashLiteEnabled(env, identity),
       sdkMode: sdkOn,
+      orchestratorMode: orchOn,
       buildSlug,
       userId: String(identity.id),
     });
@@ -460,6 +472,12 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             // dropped when nothing was published.
             sdk: sdkOn ? 1 : 0,
             build: /** @type {any} */ (state).buildResult,
+            // Orchestrator mode: 1 when this request ran the sub-agent
+            // workflow flow; `orchestration` is the run's shape
+            // ({agents, waves, failed, searches} — orchestrator.js),
+            // dropped (undefined) when the mode didn't run.
+            orchestrator: orchOn ? 1 : 0,
+            orchestration: /** @type {any} */ (state).orchestration,
             // Which maps intent matcher decided (or "none") — the routing
             // trace scripts/chatlogs surfaces (undefined when the knob is
             // off and the enrichment never ran).
@@ -751,7 +769,7 @@ export function resolveJsonModel(catalog, userModel) {
  * @param {boolean} webSearch
  * @param {number} budgetS
  * @param {boolean} shodan
- * @param {Partial<EnrichmentOptions> & { googleMaps?: boolean, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
+ * @param {Partial<EnrichmentOptions> & { googleMaps?: boolean, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
  * @returns {ChatRequestState}
  */
 function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = {}) {
@@ -802,6 +820,10 @@ function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = 
     // keeps the /app/<slug>/ URL stable); userId is the publisher recorded as
     // the build's owner (slug-reuse authorization).
     sdkMode: !!extras.sdkMode,
+    // Orchestrator mode — pipeline.js routes to orchestrator.js
+    // runOrchestration: a JSON-planned sub-agent workflow replaces the
+    // normal research flow for this request.
+    orchestratorMode: !!extras.orchestratorMode,
     buildSlug: extras.buildSlug || null,
     userId: extras.userId || "",
     // This channel renders the interactive inline-quiz event (src/quiz.js;

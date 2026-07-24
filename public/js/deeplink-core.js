@@ -9,7 +9,7 @@
 // app.js does the DOM side effects from what this returns.
 
 /** Canonical chat-mode ids (mirror chat-mode.js). */
-export const DEEPLINK_MODES = ["normal", "introspection", "sdk"];
+export const DEEPLINK_MODES = ["normal", "introspection", "sdk", "orchestrator"];
 
 /** Friendly aliases → canonical mode id, so links can read naturally. */
 const MODE_ALIASES = {
@@ -22,6 +22,10 @@ const MODE_ALIASES = {
   "agent-builder": "sdk",
   builder: "sdk",
   agent: "sdk",
+  orchestrator: "orchestrator",
+  orchestrate: "orchestrator",
+  orch: "orchestrator",
+  workflow: "orchestrator",
 };
 
 /** Cap on a prefilled question — long enough for a real ask, bounded for safety. */

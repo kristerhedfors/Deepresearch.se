@@ -38,6 +38,8 @@
  * @property {string[]} [directions]
  * @property {{title?: string, questions?: unknown[]}} [quiz]
  * @property {boolean} [completed]
+ * @property {{title?: string, agents?: unknown[], waves?: unknown[]}} [workflow] the Orchestrator plan graph
+ * @property {Record<string, {status?: string}>} [statuses] the workflow's node states
  */
 
 // How long a streaming /api/chat connection may go silent before stream.js
@@ -378,6 +380,18 @@ export function embedRef(e) {
       (e.quiz?.title ? ` "${e.quiz.title}"` : "") +
       (n ? ` — ${n} question${n === 1 ? "" : "s"}` : "") +
       (e.completed ? ", completed" : "") +
+      "]"
+    );
+  }
+  if (e?.kind === "workflow") {
+    const n = Array.isArray(e.workflow?.agents) ? e.workflow.agents.length : 0;
+    const w = Array.isArray(e.workflow?.waves) ? e.workflow.waves.length : 0;
+    const failed = Object.values(e.statuses || {}).filter((s) => /** @type {any} */ (s)?.status === "failed").length;
+    return (
+      `[Embedded element #${e.id}: sub-agent workflow` +
+      (e.workflow?.title ? ` "${e.workflow.title}"` : "") +
+      (n ? ` — ${n} agent${n === 1 ? "" : "s"} in ${w} stage${w === 1 ? "" : "s"}` : "") +
+      (failed ? `, ${failed} failed` : "") +
       "]"
     );
   }
