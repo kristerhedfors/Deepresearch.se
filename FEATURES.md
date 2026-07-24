@@ -149,12 +149,14 @@ the DRC app so continuing on the visitor's own keys is just typing
 
 User feedback given straight from the chat — a message opening with the word
 "feedback" (`feedbackIntent`, EN+SV) routes to the feedback case
-(`src/pipeline.js` `runFeedbackCapture`), which answers warmly and records a
-dialogue-thread entry (`src/feedback.js`) the development agent gathers, decides
-on, acts on, and replies into — the third loop-feeding queue. Discovery is
-double: the structured queue plus a `chat_logs` `meta.feedback` tag. Superseded
-the earlier per-reply Feedback button + settings knob (2026-07-18). See the
-**feedback-loop** skill.
+(`src/pipeline.js` `runFeedbackCapture`), which replies with a canned
+acknowledgment (no LLM anywhere in the path — 2026-07-24) and records a
+dialogue-thread entry (`src/feedback.js`) carrying the exact text plus the
+whole conversation and request metadata as debugging context; the development
+agent gathers, decides on, acts on, and replies into it — the third
+loop-feeding queue. Discovery is double: the structured queue plus a
+`chat_logs` `meta.feedback` tag. Superseded the earlier per-reply Feedback
+button + settings knob (2026-07-18). See the **feedback-loop** skill.
 
 ### F-12 · Project pulse dashboard (/pulse) — ✅ SHIPPED (low)
 

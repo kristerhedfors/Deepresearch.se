@@ -43,7 +43,7 @@ import { jsonResponse, textResponse } from "./http.js";
 import { cleanStr, likePattern } from "./chatlog.js";
 import { previousUserText, textOf } from "./conversation.js";
 import { verifyServerToken } from "./server-token.js";
-import { feedbackIntent } from "../public/js/feedback-core.js";
+import { cannedFeedbackAck, feedbackIntent } from "../public/js/feedback-core.js";
 
 /** @typedef {import('./conversation.js').Msg} Msg */
 
@@ -52,7 +52,7 @@ import { feedbackIntent } from "../public/js/feedback-core.js";
 /** @typedef {import('./settings.js').Identity} Identity */
 /**
  * A D1 `feedback` row.
- * @typedef {{ id: number, user_id: string, created_at: number, updated_at: number, status: string, comment: string, question?: string | null, answer_excerpt?: string | null, model?: string | null, page?: string | null }} FeedbackRow
+ * @typedef {{ id: number, user_id: string, created_at: number, updated_at: number, status: string, comment: string, question?: string | null, answer_excerpt?: string | null, model?: string | null, page?: string | null, context?: string | null }} FeedbackRow
  */
 /**
  * A D1 `feedback_messages` row (one turn of an entry's dialogue thread).
@@ -81,6 +81,10 @@ export const FEEDBACK_CAPS = {
   message: 4_000,
   model: 100,
   page: 200,
+  // The full-conversation debugging context (buildFeedbackDebugContext) —
+  // sized for whole chats, well inside D1's per-row limit (images are their
+  // own rows).
+  context: 120_000,
 };
 
 // Screenshot attachments: the client downscales to JPEG data URLs (the same
@@ -107,8 +111,11 @@ export const FEEDBACK_STATUSES = ["new", "seen", "in_progress", "resolved", "dec
 // never diverge on what the word "feedback" triggers. This module is the
 // Se/rver façade: it re-exports the gate; the research pipeline routes a
 // matching message to the feedback case. EN/SV parity (invariant 6) and the
-// "feedback loop(s)" collision carve-out are owned by the core.
-export { feedbackIntent };
+// "feedback loop(s)" collision carve-out are owned by the core. The canned
+// acknowledgment (cannedFeedbackAck — feedback never runs through an LLM,
+// owner directive 2026-07-24) lives in the same core and is re-exported for
+// the pipeline's feedback case.
+export { cannedFeedbackAck, feedbackIntent };
 
 /**
  * Derive a feedback entry's captured context from the conversation the user
@@ -137,6 +144,49 @@ export function buildFeedbackContext(conversation, { comment, model }) {
     answer_excerpt: (textOf(priorAssistant?.content) || "").slice(0, FEEDBACK_CAPS.answer_excerpt) || null,
     model,
   };
+}
+
+// ---- Full-conversation debugging context ----------------------------------
+// Owner directive (2026-07-24): a feedback entry carries the user's exact
+// text AND the entire chat with its request metadata, so the developer
+// debugging it has complete context without hunting through chat_logs (which
+// an incognito conversation doesn't even have). Stored as a readable
+// plain-text block (the queue is READ, not parsed); when a conversation is
+// too long, the OLDEST turns are trimmed — the newest turns are what the
+// feedback comments on.
+
+/**
+ * Render the full conversation + request metadata into the entry's `context`
+ * column. Pure; never throws on junk input; null when there is nothing to
+ * record.
+ * @param {Msg[]} conversation the complete conversation, feedback turn included
+ * @param {Record<string, unknown>} [meta] request metadata (request id, model,
+ *   knobs, client_diag, …) — undefined/null/empty values are skipped
+ * @returns {string | null}
+ */
+export function buildFeedbackDebugContext(conversation, meta = {}) {
+  const metaLines = [];
+  for (const [key, value] of Object.entries(meta && typeof meta === "object" ? meta : {})) {
+    if (value === undefined || value === null || value === "") continue;
+    metaLines.push(`${key}: ${typeof value === "object" ? JSON.stringify(value) : String(value)}`);
+  }
+  const turns = (Array.isArray(conversation) ? conversation : [])
+    .filter((m) => m && typeof m.role === "string")
+    .map((m) => `[${m.role}]\n${textOf(m.content)}`);
+  if (!turns.length && !metaLines.length) return null;
+  const header = (metaLines.length ? metaLines.join("\n") + "\n" : "") +
+    `--- conversation (${turns.length} turns) ---`;
+  let transcript = turns.join("\n\n");
+  // Cap the WHOLE block at FEEDBACK_CAPS.context, trimming the transcript
+  // from the FRONT (oldest turns) — never the tail the feedback is about.
+  const room = FEEDBACK_CAPS.context - header.length - 1;
+  if (transcript.length > room) {
+    /** @param {number} over */
+    const marker = (over) => `[… earlier turns trimmed: ${over} chars …]\n`;
+    const keep = Math.max(0, room - marker(transcript.length).length);
+    transcript = marker(transcript.length - keep) + transcript.slice(transcript.length - keep);
+  }
+  return `${header}\n${transcript}`;
 }
 
 // ---- Same-conversation follow-up threading --------------------------------
@@ -200,7 +250,7 @@ export function followUpFeedbackBody(entry) {
  * Screenshots (`entry.images`, already validated/capped — see
  * feedbackImagesFromParts for the chat path) land as feedback_images rows:
  * entry-level on a fresh entry, message-level on a threaded follow-up.
- * @param {{ comment: string, question?: string | null, answer_excerpt?: string | null, model?: string | null, page?: string | null, images?: FeedbackImageInput[] }} entry
+ * @param {{ comment: string, question?: string | null, answer_excerpt?: string | null, model?: string | null, page?: string | null, context?: string | null, images?: FeedbackImageInput[] }} entry
  * @param {Msg[]} conversation the conversation the feedback arrived in
  * @returns {Promise<{ id: number, threaded: boolean } | null>}
  */
@@ -219,6 +269,13 @@ export async function createOrThreadFeedbackEntry(db, userId, entry, conversatio
     if (row) {
       const messageId = await addMessage(db, row.id, "user", followUpFeedbackBody(entry));
       if (images.length) await insertImages(db, row.id, messageId ?? null, images);
+      // The follow-up's conversation supersedes the original capture (it
+      // contains every earlier turn plus what happened since) — refresh the
+      // entry's debugging context to the latest full transcript.
+      const context = cleanStr(entry.context, FEEDBACK_CAPS.context);
+      if (context) {
+        await db.prepare("UPDATE feedback SET context = ? WHERE id = ?").bind(context, row.id).run();
+      }
       if (!isOpenStatus(row.status)) {
         await db.prepare("UPDATE feedback SET status = 'new' WHERE id = ?").bind(row.id).run();
       }
@@ -347,7 +404,7 @@ export function approxImageBytes(dataChars) {
 // attachments are optional and validated as a unit (all-or-nothing).
 /**
  * @param {any} body
- * @returns {{ error: string } | { error?: undefined, entry: { comment: string, question: string | null, answer_excerpt: string | null, model: string | null, page: string | null }, images: FeedbackImageInput[] }}
+ * @returns {{ error: string } | { error?: undefined, entry: { comment: string, question: string | null, answer_excerpt: string | null, model: string | null, page: string | null, context: string | null }, images: FeedbackImageInput[] }}
  */
 export function validateFeedbackCreate(body) {
   if (!body || typeof body !== "object") return { error: "Request body must be a JSON object." };
@@ -362,6 +419,9 @@ export function validateFeedbackCreate(body) {
       answer_excerpt: cleanStr(body.answer_excerpt, FEEDBACK_CAPS.answer_excerpt),
       model: cleanStr(body.model, FEEDBACK_CAPS.model),
       page: cleanStr(body.page, FEEDBACK_CAPS.page),
+      // The full-conversation debugging context, when the client has one
+      // (the chat path builds it server-side — buildFeedbackDebugContext).
+      context: cleanStr(body.context, FEEDBACK_CAPS.context),
     },
     images: v.images,
   };
@@ -400,9 +460,12 @@ function projectImage(i) {
  * @param {FeedbackRow} row
  * @param {FeedbackMessageRow[]} [messages]
  * @param {FeedbackImageMeta[]} [images]
+ * @param {{ context?: boolean }} [opts] context: true includes the full
+ *   debugging context (the whole-conversation transcript) — the admin
+ *   single-entry read; lists stay light and carry only its size.
  * @returns {any} the API projection
  */
-export function projectFeedback(row, messages = [], images = []) {
+export function projectFeedback(row, messages = [], images = [], opts = {}) {
   return {
     id: row.id,
     user_id: row.user_id,
@@ -416,6 +479,8 @@ export function projectFeedback(row, messages = [], images = []) {
     answer_excerpt: row.answer_excerpt || null,
     model: row.model || null,
     page: row.page || null,
+    context_chars: (row.context || "").length,
+    ...(opts.context ? { context: row.context || null } : {}),
     images: images.filter((i) => !i.message_id).map(projectImage),
     messages: messages.map((m) => ({
       id: m.id,
@@ -467,6 +532,11 @@ export function formatFeedbackText(entries) {
         lines.push(`${m.author === "agent" ? "AGENT" : "USER"} (${m.time}): ${m.body}`);
         if (m.images?.length) lines.push("  " + imagesLine(m.images));
       }
+      // The full-conversation debugging context, last so the thread stays
+      // readable at the top. Lists don't carry it (context_chars says how
+      // much a single-entry fetch would return).
+      if (e.context) lines.push(`DEBUG CONTEXT:\n${e.context}`);
+      else if (e.context_chars) lines.push(`DEBUG CONTEXT: ${e.context_chars} chars (fetch the entry by id to read it)`);
       return lines.join("\n");
     })
     .join("\n\n") + "\n";
@@ -593,8 +663,9 @@ async function getEntry(db, id) {
 /**
  * @param {D1Database} db
  * @param {number} id
+ * @param {{ context?: boolean }} [opts]
  */
-async function projectedEntry(db, id) {
+async function projectedEntry(db, id, opts = {}) {
   const row = await getEntry(db, id);
   const messages = await loadMessages(db, [id]);
   const images = await loadImages(db, [id]);
@@ -602,6 +673,7 @@ async function projectedEntry(db, id) {
     /** @type {FeedbackRow} */ (row),
     messages.get(id) || [],
     images.get(id) || [],
+    opts,
   );
 }
 
@@ -656,7 +728,7 @@ export async function countUnreadFeedbackReplies(env, userId) {
 /**
  * @param {D1Database | null} db
  * @param {string | number} userId
- * @param {{ comment: string, question?: string | null, answer_excerpt?: string | null, model?: string | null, page?: string | null }} entry
+ * @param {{ comment: string, question?: string | null, answer_excerpt?: string | null, model?: string | null, page?: string | null, context?: string | null }} entry
  * @returns {Promise<number | null>}
  */
 export async function createFeedbackEntry(db, userId, entry) {
@@ -666,8 +738,8 @@ export async function createFeedbackEntry(db, userId, entry) {
   const now = Date.now();
   const res = await db
     .prepare(
-      `INSERT INTO feedback (user_id, created_at, updated_at, status, comment, question, answer_excerpt, model, page)
-       VALUES (?, ?, ?, 'new', ?, ?, ?, ?, ?)`,
+      `INSERT INTO feedback (user_id, created_at, updated_at, status, comment, question, answer_excerpt, model, page, context)
+       VALUES (?, ?, ?, 'new', ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       String(userId), now, now,
@@ -676,6 +748,7 @@ export async function createFeedbackEntry(db, userId, entry) {
       cleanStr(entry.answer_excerpt, FEEDBACK_CAPS.answer_excerpt),
       cleanStr(entry.model, FEEDBACK_CAPS.model),
       cleanStr(entry.page, FEEDBACK_CAPS.page),
+      cleanStr(entry.context, FEEDBACK_CAPS.context),
     )
     .run();
   return Number(res.meta?.last_row_id) || null;
@@ -857,7 +930,9 @@ export async function handleAdminFeedback(request, env, url, log) {
   if (imgMatch) return jsonResponse({ error: "Not found." }, 404);
 
   if (!idMatch[2] && method === "GET") {
-    const projected = await projectedEntry(db, entry.id);
+    // The single-entry read is the debugging fetch — it carries the full
+    // conversation context; the list above stays light (context_chars only).
+    const projected = await projectedEntry(db, entry.id, { context: true });
     if (url.searchParams.get("format") === "text") {
       return textResponse(formatFeedbackText([projected]));
     }

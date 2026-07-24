@@ -142,7 +142,8 @@ CREATE TABLE IF NOT EXISTS feedback (
   question TEXT,
   answer_excerpt TEXT,
   model TEXT,
-  page TEXT
+  page TEXT,
+  context TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback(user_id, id DESC);
 CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status, id DESC);
@@ -377,6 +378,10 @@ const ALTERS = [
   // additive so a DB that created the table earlier picks them up.
   "ALTER TABLE websearch_grants ADD COLUMN label TEXT",
   "ALTER TABLE websearch_grants ADD COLUMN source TEXT",
+  // The feedback redesign (owner directive, 2026-07-24): every entry carries
+  // the whole conversation + request metadata as debugging context — additive
+  // so the deployed DB picks it up.
+  "ALTER TABLE feedback ADD COLUMN context TEXT",
 ];
 
 let migrated = false; // per isolate
