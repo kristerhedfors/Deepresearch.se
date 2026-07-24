@@ -3,9 +3,26 @@
 **Build complete agents through the Agents SDK — define them, preview them,
 prove them, and share them.** This is the reference for the **DeepResearch
 Agents SDK**, the project's SDK for building a single **agent** inside a
-platform. (Its companion, the **DeepResearch Platform SDK** — codename
-DistillSDK, [`docs/DISTILLSDK.md`](./DISTILLSDK.md) — builds a whole *platform*;
-this one builds one *agent* that runs on a platform.) This is the top of a
+platform, tailored specifically to the two surfaces where agents live:
+
+- **Agent Studio** — the chat mode that turns a described flavour into a
+  published agent at `/app/<slug>/`. The Agents SDK supplies its definition
+  layer (the AgentSpec), its direct build tools (`write_file` staging +
+  `publish_app` — the ONLY pathway that ships files; see §2), and its
+  publishing surface (`src/build-pub.js`).
+- **The integrated Linux environment** — the in-browser execution sandbox
+  (`public/js/sandbox.js`, `public/js/bash-core.js`): where an agent or a
+  build can actually *run and test* code, with attached files under
+  `/workspace/` and, in developer/SDK mode, the platform's own source mounted
+  at `/src`. The sandbox is for execution only — files created there are
+  never published; shipping always goes through the build tools.
+
+(Its companion, the **DeepResearch Platform SDK** — codename
+DistillSDK, [`docs/DISTILLSDK.md`](./DISTILLSDK.md) — builds a whole *platform*,
+an entire DeepResearch.se-like two-tier product; this one builds one *agent*
+that runs on a platform. Agent Studio consults the Platform SDK's module
+catalog as its *method* when a request distills a whole platform rather than a
+single agent.) This is the top of a
 three-level documentation tree. Read this page for the whole picture; follow the
 links down to the subsystem docs and then to the source; and use the **"ask the
 source"** links (§8) to put any question straight to the introspection agent,

@@ -2,10 +2,12 @@
 
 **The complete documentation of `sdk/` — the DeepResearch Platform SDK
 (internal codename DistillSDK) — as a standalone section of the project's
-documentation.** It is one of the project's two SDKs: this one builds a whole
-**platform**; its companion, the **DeepResearch Agents SDK**
+documentation.** It is one of the project's two distinct SDKs: this one builds a
+whole **platform** — an entire DeepResearch.se-like agent platform; its
+companion, the **DeepResearch Agents SDK**
 ([`docs/AGENT-PLATFORM.md`](./AGENT-PLATFORM.md)), builds a single **agent**
-inside a platform. The Platform SDK is the *constructive* counterpart to the
+inside a platform and is tailored specifically to Agent Studio and the
+integrated Linux environment (the execution sandbox). The Platform SDK is the *constructive* counterpart to the
 repo's operational skills: a design, a 34-module skill library, a
 machine-readable manifest, an implementation-order rationale, and a
 dependency-free CLI for building **platforms** — one AI-assistant product

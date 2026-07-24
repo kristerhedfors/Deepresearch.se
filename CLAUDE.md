@@ -225,16 +225,21 @@ deploy mid-battery): **`docs/TESTING.md`**.
 
 ## The SDKs and interchange standards
 
-Two SDKs, both distilled from this repo. `sdk/` is the **DeepResearch Platform
-SDK** (codename **DistillSDK**, 2026-07-16): the platform abstraction — the
-Se/cure + Se/rver tiers as one distillable two-tier product — as a design
+Two DISTINCT SDKs, both distilled from this repo (division per owner directive,
+2026-07-24). `sdk/` is the **DeepResearch Platform
+SDK** (codename **DistillSDK**, 2026-07-16): building an entire
+DeepResearch.se-LIKE agent platform — the Se/cure + Se/rver tiers as one
+distillable two-tier product — as a design
 (`sdk/DESIGN.md`), a 34-module registry (`sdk/MANIFEST.json`) with one buildable
 skill per module, and a dependency-free CLI (`node sdk/pair-cli.mjs
 list|show|plan|validate|agents|agent`, unit-tested in `npm test`). Its companion
 is the **DeepResearch Agents SDK** (`docs/AGENT-PLATFORM.md`, `sdk/AGENTS.json`,
-`public/js/agent-spec-core.js`): an agent is one flavour of the platform (its
-chat-input-pane controls, theme, animations, examples, share-link quota) — data,
-not code. Since 2026-07-18 the SDK is WIRED into the app: the pure core
+`public/js/agent-spec-core.js`), tailored specifically to **Agent Studio and
+the integrated Linux environment** (the execution sandbox): an agent is one
+flavour of the platform (its chat-input-pane controls, theme, animations,
+examples, share-link quota) — data, not code — and the Agents SDK also owns
+Agent Studio's direct build tools (`write_file`/`publish_app`) and the
+sandbox surface agents run and test code in. Since 2026-07-18 the SDK is WIRED into the app: the pure core
 `public/js/sdk-core.js` (façade `src/sdk-tools.js`; the CLI re-exports it) powers
 **SDK mode** — labeled **Agent Studio** in the UI (2026-07-23; renamed from
 "Agent Builder"; the mode id stays `sdk`, internally still "SDK mode"/DistillSDK)

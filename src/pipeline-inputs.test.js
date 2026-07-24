@@ -26,6 +26,18 @@ describe("shellReplyMessages", () => {
     assert.match(out[0].content, /^\$ ls\nfile\.txt/);
     assert.match(out[0].content, /ground truth/);
   });
+
+  // Feedback #7 (2026-07-24): on an Agent Studio build turn the ground-truth
+  // framing made sandbox-heredoc'd files read as "already built" — the build
+  // variant must frame the transcript as context only, never shipped.
+  test("sdkBuild variant frames the transcript as context only — never shipped", () => {
+    const out = shellReplyMessages("$ cat > index.html << 'EOF'\n…", { sdkBuild: true });
+    assert.equal(out.length, 1);
+    assert.match(out[0].content, /CONTEXT ONLY/);
+    assert.match(out[0].content, /NEVER published/);
+    assert.doesNotMatch(out[0].content, /ground truth/);
+    assert.deepEqual(shellReplyMessages("", { sdkBuild: true }), []);
+  });
 });
 
 describe("notesSection", () => {

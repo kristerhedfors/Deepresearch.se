@@ -16,10 +16,14 @@ distilled *from* it: every module points back at the files that already
 realize it, and carries the incident history that made those files what
 they are.
 
-> **Status (2026-07-16): design + skill library only.** Nothing under
-> `sdk/` is imported by `src/` or `public/`. Wiring the running
-> application to SDK modules is a later, separate task (see
-> `DESIGN.md` §5 and the `pair-generator` skill's adoption mode).
+> **Status: designed 2026-07-16; WIRED into the running application since
+> 2026-07-18.** The manifest logic and the SDK-mode tool surface live in the
+> shared core `public/js/sdk-core.js` (server façade `src/sdk-tools.js`;
+> `pair-cli.mjs` re-exports it), consumed by Agent Studio, the `/mcp` `sdk_*`
+> tools, and the sandbox's `/src` mount. This Platform SDK builds a whole
+> DeepResearch.se-like platform; its companion, the **DeepResearch Agents
+> SDK** (`sdk/AGENTS.json`, `docs/AGENT-PLATFORM.md`), builds a single agent
+> and is tailored to Agent Studio and the integrated Linux environment.
 
 The SDK's complete standalone documentation — the abstraction, capability
 classes, contracts, full module catalog, CLI and implementation order in one

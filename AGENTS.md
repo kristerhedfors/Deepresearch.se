@@ -39,7 +39,11 @@ assumptions.
    - the **DeepResearch Agents SDK** — builds a single **agent** inside a
      platform (a flavour: chat-input-pane controls, animations, theme, examples,
      share-link quota — data, not code: `sdk/AGENTS.json`,
-     `public/js/agent-spec-core.js`). Its reference is **`docs/AGENT-PLATFORM.md`**.
+     `public/js/agent-spec-core.js`). It is tailored to its two home surfaces:
+     **Agent Studio** (the mode that builds and publishes agents at
+     `/app/<slug>/` with the direct build tools) and the **integrated Linux
+     environment** (the in-browser execution sandbox agents run and test code
+     in). Its reference is **`docs/AGENT-PLATFORM.md`**.
 
    Load an SDK skill when building a capability anew (or wiring this app to SDK
    modules); load an operational skill when running or maintaining THIS
