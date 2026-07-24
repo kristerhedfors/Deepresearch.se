@@ -448,3 +448,40 @@ own look per the introspect-ui.js precedent) over the Node-tested pure core
 `public/cure/drc.js` (`messageEl` + the live final render) gated on
 `state.developerMode`. Language-agnostic (path shapes, no text routing), so
 no EN/SV parity applies.
+
+---
+
+## UX-10 — A composer knob's "where does this come from?" answer rides hover (desktop) and long-press (touch); a completed long-press never activates the control
+
+**The rule.** When a composer control has a setup story behind it (the web
+knob: live search needs a search source), that story is a small popover card
+anchored to the control, opened by HOVER INTENT on desktop (~300 ms enter
+delay, ~250 ms leave grace so the pointer can travel into the card) and by
+LONG-PRESS (~500 ms, the settings ⓘ hold duration) on touch. The card links
+the setup page; the control's own tap/click behavior stays untouched — a
+completed long-press swallows the click so the control does not also toggle
+underneath, while a quick tap toggles exactly as before. Dismissal is UX-1
+(any outside interaction). The control's native `title` tooltip is REMOVED
+when the card exists — two overlapping tooltips read as a glitch.
+
+**Why.** The knob is where a user wonders about web search; the answer (run
+your own local browsing agent, one-line setup) belongs at that exact spot,
+not buried in settings. Hover and long-press are the two "tell me more
+without committing" gestures — both must exist because each platform only
+has one of them (owner request, 2026-07-24).
+
+**The event-path trap (verified against headless Chromium with touch):**
+Chrome/Android takes over the touch at the long-press threshold and fires
+`pointercancel` + `contextmenu` — a `setTimeout`-on-`pointerdown` timer gets
+KILLED before it fires. So `contextmenu` (with `preventDefault`) must be
+treated as the long-press signal alongside the timer; iOS never fires it
+(`-webkit-touch-callout: none`) and rides the timer instead. A desktop
+right-click lands in the same handler, which is harmless on a toggle.
+
+**Canonical implementation:** the web knob (`#searchtoggle`) → `#knobpop` →
+`/cure/local-search/`: `public/cure/index.html` (the card), `drc.css` (the
+`#drspop` glass shape anchored right), `drc.js` (the wiring IIFE after the
+`websearch` change handler). Hover binds only under
+`matchMedia("(hover: hover) and (pointer: fine)")` — on touch, synthesized
+mouseenter would fight the toggle. No text routing, so no EN/SV parity
+applies.

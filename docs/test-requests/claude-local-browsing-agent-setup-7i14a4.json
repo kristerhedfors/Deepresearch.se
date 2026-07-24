@@ -1,0 +1,49 @@
+{
+  "branch": "claude/local-browsing-agent-setup-7i14a4",
+  "pr": null,
+  "requested_at": "2026-07-24",
+  "points": [
+    {
+      "label": "Web knob hover opens the local-agent card (desktop)",
+      "summary": "The composer's web-search knob now has a hover card: rest the mouse pointer on the knob (no click) for about half a second. PASS: a small khaki card appears above the knob reading 'Web research' with a link 'Run a local browsing agent — one-line setup →'; moving the mouse into the card keeps it open, clicking the link opens /cure/local-search/, and moving the mouse away closes the card. FAIL if no card appears, if it flickers away before the link can be clicked, or if a native browser tooltip shows on top of it (the old title tooltip was removed on purpose).",
+      "target": "/cure",
+      "actions": [
+        {
+          "type": "note",
+          "text": "Desktop with a mouse. Hover the round web/spiderweb knob at the right end of the composer row — don't click."
+        }
+      ],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Web knob long-press opens the card WITHOUT toggling (touch)",
+      "summary": "On touch, press and hold the web-search knob for about a second, then lift. PASS: the same 'Web research' card appears with the local-agent link, AND the knob's on/off state is exactly what it was before the hold — a completed hold must never flip it. A quick tap must still toggle the knob as before, and tapping anywhere outside the card must close it. Confirm twice: once on iOS (Safari/PWA) and once on Android Chrome — the two reach the gesture by different event paths (timer vs contextmenu). FAIL if the hold flips the knob, if a text-selection/callout menu appears instead of the card, or if a quick tap stops toggling.",
+      "target": "/cure",
+      "actions": [
+        {
+          "type": "note",
+          "text": "Touch device. Note the knob's state, press-and-hold it ~1 s, lift; check the card appeared and the state is unchanged. Then quick-tap to confirm the toggle still works."
+        }
+      ],
+      "runs": 2,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Local browsing agent quick start works end to end (Mac)",
+      "summary": "The card links /cure/local-search/ — one-liner recipes for a local search service. On a Mac with Node 18+: copy the quick-start line (curl … agent.mjs && node agent.mjs), run it in a terminal, then in Se/cure open Settings → Web search service, pick 'Exa-compatible — your service', enter http://localhost:8099, flip the web knob on, and ask a researchable question in Chrome/Edge/Firefox (Safari blocks the localhost call — the page says so). PASS: the agent's terminal logs a '[search] … → N results' line for your question and the research steps cite web sources while the terminal shows the queries went through your machine. FAIL: no [search] line in the terminal (the search silently rode a grant or the offline harvest instead), or the copy button on the page doesn't copy.",
+      "target": "/cure/local-search/",
+      "actions": [
+        {
+          "type": "note",
+          "text": "Needs a Mac (or Linux box) with Node 18+ and a non-Safari browser. Copy buttons on the page should flash 'Copied ✓' then return to 'Copy'."
+        }
+      ],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    }
+  ]
+}

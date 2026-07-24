@@ -5,12 +5,16 @@ description: >-
   "run our own search", "replace Exa", "self-hosted search", "SearXNG",
   "Playwright search service", "point web search at my server" — or when
   touching the pluggable search backend (src/websearch-backends.js, the
-  `search` block in src/config.js, the exa.js backend routing, or the admin
-  "Web search service" panel in public/js/admin.js / public/admin/index.html).
-  Ships ready-to-run recipes (SearXNG, a Playwright crawler exposing an
-  Exa-compatible API, and other alternatives), how to make each drop into the
-  config page, and the privacy rationale (self-hosting keeps search queries off
-  a third party's retention — the project's mission).
+  `search` block in src/config.js, the exa.js backend routing, the admin
+  "Web search service" panel in public/js/admin.js / public/admin/index.html,
+  or the SHIPPED local-browsing-agent surface: the one-liner setup page
+  public/cure/local-search/ + its hosted dependency-free agent.mjs, reached
+  by hovering/long-pressing Se/cure's web knob).
+  Ships ready-to-run recipes (the hosted agent.mjs one-liner, SearXNG, a
+  Playwright crawler exposing an Exa-compatible API, and other alternatives),
+  how to make each drop into the config page, and the privacy rationale
+  (self-hosting keeps search queries off a third party's retention — the
+  project's mission).
 ---
 
 # Run your own web-search service (an Exa alternative)
@@ -95,6 +99,48 @@ way:
     server grant, which wins over nothing (offline harvest). All fail-soft.
   - **Providers must be CORS-capable anyway** in DRC (OpenAI/Groq/Berget), so a
     CORS-enabled search service fits the tier's existing constraint.
+
+---
+
+## Recipe 0 — the SHIPPED one-liner agent (2026-07-24)
+
+The lowest-friction path is now IN THE PRODUCT: hovering or long-pressing
+Se/cure's web knob (UX-10) opens a card linking **`/cure/local-search/`**
+(`public/cure/local-search/index.html`), a khaki setup page of copyable
+one-liners around **`agent.mjs`** (`public/cure/local-search/agent.mjs`) —
+a single-file, dependency-free Node 18+ service the page serves from the
+site itself:
+
+```bash
+curl -fsSL https://deepresearch.se/cure/local-search/agent.mjs -o agent.mjs && node agent.mjs
+```
+
+It speaks the `exa_compatible` wire (`POST /search` →
+`{results:[{title,url,highlights}]}` + `GET /search?q=` + `GET /healthz`),
+sends CORS **and Chrome's `Access-Control-Allow-Private-Network`** preflight
+answer, binds `127.0.0.1:8099`, and has four engines (`ENGINE` env):
+`serp` (DDG titles+snippets), `browse` (default — also fetches the result
+pages and extracts real text excerpts), `playwright` (renders pages in
+headless Chromium; the only one needing an install), and `searxng`
+(`SEARXNG_URL` env — proxies a SearXNG instance, ADDING the CORS + Exa wire
+SearXNG doesn't send, which makes the Docker recipe below browser-direct
+usable). `API_KEY` env gates with `x-api-key`; `ALLOW_ORIGIN` tightens CORS.
+
+Verified while building (2026-07-24, session container): all four engines
+end to end — including `runBackendSearch` from
+`public/js/websearch-backends-core.js` calling the agent exactly as DRC
+does — plus the `curl … | node --input-type=module` pipe form and the
+Windows `iwr` form's syntax. DDG quirk: the HTML endpoint intermittently
+answers with an empty anti-bot shell; the agent retries once after 800 ms,
+which passed in observation. NOT live-verified: the SearXNG Docker
+one-liner itself (no daemon in session containers) — its engine was
+verified against a mock.
+
+Routing: `/cure/local-search` is a RESERVED replay slug (`src/pub.js`) and
+routed like `/cure/help` in `src/index.js` BEFORE the wordplay map;
+`agent.mjs` needs no route (extension ⇒ public asset). Safari caveat on the
+page: it blocks HTTPS-page → `http://localhost` as mixed content; Chrome/
+Edge/Firefox allow it.
 
 ---
 
@@ -323,9 +369,9 @@ plumbing from Recipe 2, minus the browser). Pick by tradeoff:
 - **On-device (DRC/Se·cure tie-in):** the client-side tier already runs the
   research pipeline in the browser on the user's own keys; a self-hosted
   Exa-compatible service (CORS-enabled) is the natural search backend for it
-  too — though wiring the DRC client to a custom search URL is a separate,
-  future change (today DRC's live search rides the server grant path — see the
-  storage-privacy skill).
+  too — wired since the per-user browser-direct backend shipped (the
+  settings drawer's "Web search service" section, and Recipe 0's shipped
+  one-liner agent is exactly this).
 
 ---
 

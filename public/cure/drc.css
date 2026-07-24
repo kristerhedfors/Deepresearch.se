@@ -704,6 +704,21 @@ button:disabled { opacity: .5; cursor: default; }
 #drspop[hidden] { display: none; }
 #drspop a { color: var(--accent); font-weight: 600; }
 
+/* The web-knob popover (UX-10) — the #drspop glass shape, anchored RIGHT
+   above the knob at the composer row's end. Hover or long-press on
+   #searchtoggle opens it (wired in drc.js); it links the
+   local-browsing-agent setup page at /cure/local-search/. */
+#knobpop {
+  position: absolute; bottom: calc(100% + .45rem); right: 1.25rem; z-index: 6;
+  max-width: 340px;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: .7rem .85rem; font-size: .8rem; line-height: 1.5;
+  box-shadow: 0 6px 24px rgba(60, 50, 10, .25);
+}
+#knobpop[hidden] { display: none; }
+#knobpop a { color: var(--accent); font-weight: 600; }
+
 /* The PRIVACY NOTICE popover — the wordmark (i)'s read-up on what this
    session sends where (the #drspop glass shape). Anchored LEFT, under the
    brand + (i) that open it (the marker moved from the icon row to the
