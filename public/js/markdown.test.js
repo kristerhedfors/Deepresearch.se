@@ -162,3 +162,27 @@ describe("completeMermaidSources", () => {
     assert.deepEqual(completeMermaidSources(/** @type {any} */ (undefined)), []);
   });
 });
+
+// The mermaid init config, regression-locked. The vendored mermaid (11.16)
+// only honors the TOP-LEVEL htmlLabels key — with only the flowchart-scoped
+// key set, flowchart node labels come out as <foreignObject> HTML, which the
+// DOMPurify pass strips (its SVG profile excludes foreignObject), so every
+// node box rendered EMPTY while edge labels survived (feedback #8/#9,
+// 2026-07-24). Verified by rendering in Chromium against the vendored
+// library; this locks the config shape so the fix can't silently regress.
+import { MERMAID_INIT } from "./markdown.js";
+
+describe("MERMAID_INIT", () => {
+  test("keeps labels as SVG text: top-level htmlLabels false (the key 11.16 reads)", () => {
+    assert.equal(MERMAID_INIT.htmlLabels, false);
+  });
+
+  test("keeps the flowchart-scoped key too (documented intent, older versions)", () => {
+    assert.equal(MERMAID_INIT.flowchart?.htmlLabels, false);
+  });
+
+  test("keeps strict sanitization and no auto-start", () => {
+    assert.equal(MERMAID_INIT.securityLevel, "strict");
+    assert.equal(MERMAID_INIT.startOnLoad, false);
+  });
+});

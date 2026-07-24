@@ -224,6 +224,23 @@ export function completeMermaidSources(text) {
   return out;
 }
 
+// strict: mermaid sanitizes label text itself; htmlLabels off keeps labels as
+// plain SVG <text> (no foreignObject), which also survives the DOMPurify pass
+// below. htmlLabels must be set at the TOP level: the vendored mermaid (11.16)
+// ignores the flowchart-scoped key and keeps emitting <foreignObject> HTML
+// labels, which DOMPurify's SVG profile strips — every flowchart node rendered
+// as an EMPTY box while edge labels (already SVG text) survived (feedback
+// #8/#9, 2026-07-24; regression-locked in markdown.test.js). The scoped key
+// stays as documented intent for versions that read it. Light theme matches
+// both tiers.
+export const MERMAID_INIT = {
+  startOnLoad: false,
+  securityLevel: "strict",
+  theme: "default",
+  htmlLabels: false,
+  flowchart: { htmlLabels: false },
+};
+
 /** @returns {Promise<any>} the mermaid global, or null (fail soft) */
 function ensureMermaid() {
   if (!mermaidLoad) {
@@ -233,15 +250,7 @@ function ensureMermaid() {
       s.onload = () => {
         const m = /** @type {any} */ (window).mermaid;
         try {
-          // strict: mermaid sanitizes label text itself; htmlLabels off keeps
-          // flowchart labels as plain SVG text (no foreignObject), which also
-          // survives the DOMPurify pass below. Light theme matches both tiers.
-          m?.initialize({
-            startOnLoad: false,
-            securityLevel: "strict",
-            theme: "default",
-            flowchart: { htmlLabels: false },
-          });
+          m?.initialize(MERMAID_INIT);
           resolve(m || null);
         } catch {
           resolve(null);

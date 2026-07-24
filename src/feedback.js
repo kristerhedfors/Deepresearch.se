@@ -139,6 +139,91 @@ export function buildFeedbackContext(conversation, { comment, model }) {
   };
 }
 
+// ---- Same-conversation follow-up threading --------------------------------
+// A user often files SEVERAL "feedback …" messages in ONE conversation — a
+// report, then "still broken" after the assistant's next attempt (entries
+// #8/#9, the mermaid case, 2026-07-24). As separate entries those read as
+// unrelated reports and the thread dialogue splits. So: when the conversation
+// a feedback message arrives in ALREADY CONTAINS an earlier feedback turn,
+// the new message is appended to that earlier entry's thread as a user
+// message (reopening it if closed) instead of opening a disconnected entry.
+// Matching is by the earlier turn's exact text (capped the same way the
+// stored comment was) — no schema change, works for reopened historical
+// chats too, and falls back to a fresh entry when the earlier report was
+// withdrawn or never stored.
+
+/**
+ * The text of the most recent user turn BEFORE the last one that was itself a
+ * feedback message, capped exactly like a stored comment — or null. Pure.
+ * @param {Msg[]} conversation full conversation, ending in the current "feedback…" turn
+ * @returns {string | null}
+ */
+export function priorFeedbackComment(conversation) {
+  const users = (Array.isArray(conversation) ? conversation : []).filter((m) => m?.role === "user");
+  users.pop(); // the current feedback turn
+  for (let i = users.length - 1; i >= 0; i--) {
+    const t = textOf(users[i]?.content);
+    if (feedbackIntent(t)) return cleanStr(t, FEEDBACK_CAPS.comment);
+  }
+  return null;
+}
+
+// Caps for the context quoted inside a follow-up thread message — enough for
+// the developer to see what the follow-up comments on without ballooning the
+// user-visible thread.
+const FOLLOW_UP_QUESTION_CHARS = 300;
+const FOLLOW_UP_EXCERPT_CHARS = 1_500;
+
+/**
+ * The thread-message body for a follow-up feedback capture: the comment plus
+ * a clearly-marked quote of the turn it comments on (the follow-up's own
+ * prior Q&A — context the entry's top-level fields can't carry). Pure.
+ * @param {{ comment: string, question?: string | null, answer_excerpt?: string | null }} entry
+ * @returns {string}
+ */
+export function followUpFeedbackBody(entry) {
+  const parts = [entry.comment];
+  const q = (entry.question || "").trim();
+  const a = (entry.answer_excerpt || "").trim();
+  if (q) parts.push(`— about question: ${q.slice(0, FOLLOW_UP_QUESTION_CHARS)}${q.length > FOLLOW_UP_QUESTION_CHARS ? " […]" : ""}`);
+  if (a) parts.push(`— about reply: ${a.slice(0, FOLLOW_UP_EXCERPT_CHARS)}${a.length > FOLLOW_UP_EXCERPT_CHARS ? " […]" : ""}`);
+  return /** @type {string} */ (cleanStr(parts.join("\n\n"), FEEDBACK_CAPS.message)) || entry.comment;
+}
+
+/**
+ * Create a feedback entry — or, when the conversation already carries an
+ * earlier feedback turn that matches an existing entry by this user, APPEND
+ * to that entry's thread instead (reopening it if it was closed). Fail-soft
+ * like createFeedbackEntry: null on no DB / no usable comment.
+ * @param {D1Database | null} db
+ * @param {string | number} userId
+ * @param {{ comment: string, question?: string | null, answer_excerpt?: string | null, model?: string | null, page?: string | null }} entry
+ * @param {Msg[]} conversation the conversation the feedback arrived in
+ * @returns {Promise<{ id: number, threaded: boolean } | null>}
+ */
+export async function createOrThreadFeedbackEntry(db, userId, entry, conversation) {
+  if (!db) return null;
+  const prior = priorFeedbackComment(conversation);
+  if (prior) {
+    const row = /** @type {{ id: number, status: string } | null} */ (
+      await db
+        .prepare("SELECT id, status FROM feedback WHERE user_id = ? AND comment = ? ORDER BY id DESC LIMIT 1")
+        .bind(String(userId), prior)
+        .first()
+        .catch(() => null)
+    );
+    if (row) {
+      await addMessage(db, row.id, "user", followUpFeedbackBody(entry));
+      if (!isOpenStatus(row.status)) {
+        await db.prepare("UPDATE feedback SET status = 'new' WHERE id = ?").bind(row.id).run();
+      }
+      return { id: row.id, threaded: true };
+    }
+  }
+  const id = await createFeedbackEntry(db, userId, entry);
+  return id ? { id, threaded: false } : null;
+}
+
 // Open = still on the loop's work queue.
 /**
  * @param {string} status

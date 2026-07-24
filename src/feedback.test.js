@@ -7,6 +7,9 @@ import assert from "node:assert/strict";
 import {
   approxImageBytes,
   buildFeedbackContext,
+  createOrThreadFeedbackEntry,
+  followUpFeedbackBody,
+  priorFeedbackComment,
   decodeImageDataUrl,
   FEEDBACK_CAPS,
   FEEDBACK_IMAGE_CAPS,
@@ -387,6 +390,163 @@ test("formatFeedbackText lists screenshot ids/names/sizes, per message too", () 
   const text = formatFeedbackText([projectFeedback(ROW, MSGS, IMGS)]);
   assert.match(text, /IMAGES: #11 shot\.png \(~31 KB\)/);
   assert.match(text, /USER \(.*\): Thanks!\n {2}IMAGES: #12 image \(~1 KB\)/);
+});
+
+// ---------------------------------------------------------------------------
+// Same-conversation follow-up threading (entries #8/#9, the mermaid case):
+// a second "feedback …" message in one conversation must land on the FIRST
+// message's entry as a thread reply, not open a disconnected entry.
+// ---------------------------------------------------------------------------
+
+test("priorFeedbackComment: no earlier feedback turn → null (the current turn never matches itself)", () => {
+  assert.equal(
+    priorFeedbackComment([
+      { role: "user", content: "a question" },
+      { role: "assistant", content: "an answer" },
+      { role: "user", content: "feedback: first report" },
+    ]),
+    null,
+  );
+  assert.equal(priorFeedbackComment([]), null);
+  assert.equal(priorFeedbackComment(/** @type {any} */ (null)), null);
+});
+
+test("priorFeedbackComment: finds the earlier feedback turn, most recent first", () => {
+  const convo = [
+    { role: "user", content: "feedback: oldest report" },
+    { role: "assistant", content: "warm ack" },
+    { role: "user", content: "feedback: the diagrams have no text in the boxes" },
+    { role: "assistant", content: "re-rendered diagrams…" },
+    { role: "user", content: "feedback still no text inside the boxes" },
+  ];
+  assert.equal(priorFeedbackComment(convo), "feedback: the diagrams have no text in the boxes");
+});
+
+test("priorFeedbackComment: Swedish forms are found with the same breadth (parity)", () => {
+  const convo = [
+    { role: "user", content: "Återkoppling: kartan var avklippt" },
+    { role: "assistant", content: "tack!" },
+    { role: "user", content: "synpunkt: fortfarande avklippt" },
+  ];
+  assert.equal(priorFeedbackComment(convo), "Återkoppling: kartan var avklippt");
+});
+
+test("priorFeedbackComment: caps the text exactly like a stored comment", () => {
+  const long = "feedback " + "x".repeat(FEEDBACK_CAPS.comment + 500);
+  const convo = [
+    { role: "user", content: long },
+    { role: "assistant", content: "ack" },
+    { role: "user", content: "feedback: still broken" },
+  ];
+  const prior = priorFeedbackComment(convo);
+  assert.match(prior, /…\[truncated \d+ chars\]$/);
+  // Identical to what createFeedbackEntry would have stored for that turn.
+  assert.equal(prior.length <= FEEDBACK_CAPS.comment + 30, true);
+});
+
+test("followUpFeedbackBody: comment plus clearly-marked context, trimmed with […]", () => {
+  assert.equal(followUpFeedbackBody({ comment: "still broken" }), "still broken");
+  const body = followUpFeedbackBody({
+    comment: "feedback still no text inside the boxes",
+    question: "ok but re-render then",
+    answer_excerpt: "y".repeat(2_000),
+  });
+  assert.match(body, /^feedback still no text inside the boxes/);
+  assert.match(body, /— about question: ok but re-render then/);
+  assert.match(body, /— about reply: y{1500} \[…\]/);
+  assert.equal(body.length <= FEEDBACK_CAPS.message + 30, true);
+});
+
+// A minimal D1 fake: enough surface (prepare/bind/first/run) for the
+// threading decision — same spirit as the quota-grant combined-D1-fake.
+function fakeThreadingDb({ existing = null } = {}) {
+  const calls = { messages: [], statusUpdates: [], inserts: [] };
+  const db = {
+    prepare(sql) {
+      return {
+        args: [],
+        bind(...args) { this.args = args; return this; },
+        async first() {
+          if (/SELECT id, status FROM feedback/.test(sql)) {
+            if (existing && existing.comment === this.args[1]) return { id: existing.id, status: existing.status };
+            return null;
+          }
+          return null;
+        },
+        async run() {
+          if (/INSERT INTO feedback_messages/.test(sql)) calls.messages.push(this.args);
+          else if (/UPDATE feedback SET status = 'new'/.test(sql)) calls.statusUpdates.push(this.args);
+          else if (/INSERT INTO feedback\b/.test(sql)) { calls.inserts.push(this.args); return { meta: { last_row_id: 99 } }; }
+          return { meta: { last_row_id: calls.messages.length } };
+        },
+      };
+    },
+  };
+  return { db: /** @type {any} */ (db), calls };
+}
+
+const FOLLOW_UP_CONVO = [
+  { role: "user", content: "visualise the pipeline with mermaid" },
+  { role: "assistant", content: "three diagrams…" },
+  { role: "user", content: "feedback: the diagrams have no text in the boxes" },
+  { role: "assistant", content: "re-rendered…" },
+  { role: "user", content: "feedback still no text inside the boxes" },
+];
+
+test("createOrThreadFeedbackEntry: a follow-up threads onto the earlier entry as a user message", async () => {
+  const { db, calls } = fakeThreadingDb({
+    existing: { id: 8, status: "in_progress", comment: "feedback: the diagrams have no text in the boxes" },
+  });
+  const res = await createOrThreadFeedbackEntry(db, "1", {
+    comment: "feedback still no text inside the boxes",
+    question: "ok but re-render then",
+    answer_excerpt: "the re-rendered diagrams",
+  }, FOLLOW_UP_CONVO);
+  assert.deepEqual(res, { id: 8, threaded: true });
+  assert.equal(calls.inserts.length, 0); // no new entry
+  assert.equal(calls.messages.length, 1);
+  const [feedbackId, author, body] = calls.messages[0];
+  assert.equal(feedbackId, 8);
+  assert.equal(author, "user");
+  assert.match(body, /^feedback still no text inside the boxes/);
+  assert.match(body, /— about reply: the re-rendered diagrams/);
+  // The entry was already open — no status reset.
+  assert.equal(calls.statusUpdates.length, 0);
+});
+
+test("createOrThreadFeedbackEntry: threading onto a CLOSED entry reopens it", async () => {
+  const { db, calls } = fakeThreadingDb({
+    existing: { id: 8, status: "resolved", comment: "feedback: the diagrams have no text in the boxes" },
+  });
+  const res = await createOrThreadFeedbackEntry(db, "1", { comment: "feedback still broken" }, FOLLOW_UP_CONVO);
+  assert.deepEqual(res, { id: 8, threaded: true });
+  assert.equal(calls.statusUpdates.length, 1);
+  assert.equal(calls.statusUpdates[0][0], 8);
+});
+
+test("createOrThreadFeedbackEntry: first feedback in a conversation creates a fresh entry", async () => {
+  const { db, calls } = fakeThreadingDb({});
+  const res = await createOrThreadFeedbackEntry(db, "1", { comment: "feedback: first report" }, [
+    { role: "user", content: "a question" },
+    { role: "assistant", content: "an answer" },
+    { role: "user", content: "feedback: first report" },
+  ]);
+  assert.deepEqual(res, { id: 99, threaded: false });
+  assert.equal(calls.inserts.length, 1);
+  assert.equal(calls.messages.length, 0);
+});
+
+test("createOrThreadFeedbackEntry: a withdrawn/unmatched earlier report falls back to a fresh entry", async () => {
+  // Conversation carries an earlier feedback turn, but no stored entry
+  // matches (e.g. the user withdrew it) — a fresh entry, never a crash.
+  const { db, calls } = fakeThreadingDb({});
+  const res = await createOrThreadFeedbackEntry(db, "1", { comment: "feedback still broken" }, FOLLOW_UP_CONVO);
+  assert.deepEqual(res, { id: 99, threaded: false });
+  assert.equal(calls.inserts.length, 1);
+});
+
+test("createOrThreadFeedbackEntry: no DB → null (fail-soft)", async () => {
+  assert.equal(await createOrThreadFeedbackEntry(null, "1", { comment: "c" }, FOLLOW_UP_CONVO), null);
 });
 
 // ---------------------------------------------------------------------------
