@@ -360,6 +360,16 @@ body.term-fg .brand {
    panel a touch airier than the -.04em norm, consistently. Every account view
    renders into #account-body, so this covers the drawer whole. */
 #account-body .sl { margin: 0 -.02em; }
+/* The first-visit privacy card (`#privacy`, the "Your data on Deepresearch.se"
+   overlay in public/index.html) wants MORE air around the slash (owner report,
+   2026-07-24): its `.88rem` body prose carries the BOLD `Se/cure` + `Se/rver`
+   wordmarks, the same small-font-plus-bold pattern as the docs pages and the
+   `.setting-note` drawer prose, and the global -.12em reads too tight there.
+   -.02em is the least tightening the slash-gap sweep supports at the 0.06em
+   target (measured bold: worst-case `sans-serif`/`Liberation @ 700` recommends
+   -.023em) — the same airier value the account panel uses, chosen over the
+   floor-safe -.04em because the owner asked specifically for more space. */
+#privacy .sl { margin: 0 -.02em; }
 /* The small "introspection" marker under the wordmark — the quiet label that
    names the mode the white-titanium skin puts you in. Only present while the
    introspection theme is active (root carries `dev-mode`); a no-op otherwise.
