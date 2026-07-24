@@ -1,7 +1,7 @@
 # Space animations — the playable wireframe archive at /space/
 
 A public showcase surface (2026-07-24): an archive of playable 3D
-animations, each answering one common space question, presented as a
+animations, each answering one common space question, shown as a
 scrollable gallery of question→reply cards with a feedback button on every
 card. The page is `/space/`, allowlisted like `/pulse/` — no account, no
 identity, nothing user-specific.
