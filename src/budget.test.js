@@ -16,11 +16,50 @@ import {
   wantsNotes,
   wantsFullContent,
   wantsClaimValidation,
+  wantsGapStrive,
   wantsSubqFanout,
+  GAP_STRIVE_MAX,
   MIN_BUDGET_S,
   MAX_BUDGET_S,
   DEFAULT_BUDGET_S,
 } from "./budget.js";
+
+// The gap-strive gate (feedback #16, chat_logs #609: a 600s budget wrapped in
+// 123s because the gap check's first "complete" verdict ended the loop).
+describe("wantsGapStrive", () => {
+  const planAt = (budgetS) => planResearch("test-model", budgetS);
+
+  test("deep tiers challenge an early 'sufficient' verdict while most budget is unspent", () => {
+    // 600s budget, 123s elapsed — the reported case.
+    assert.equal(wantsGapStrive(planAt(600), 123_000, 0), true);
+    // Extended tier too.
+    assert.equal(wantsGapStrive(planAt(300), 60_000, 0), true);
+  });
+
+  test("standard/brief tiers never strive (default behavior byte-identical)", () => {
+    assert.equal(wantsGapStrive(planAt(60), 10_000, 0), false);
+    assert.equal(wantsGapStrive(planAt(15), 1_000, 0), false);
+  });
+
+  test("half the budget spent → settle for the verdict", () => {
+    assert.equal(wantsGapStrive(planAt(600), 300_000, 0), false);
+    assert.equal(wantsGapStrive(planAt(600), 299_000, 0), true);
+  });
+
+  test("the push budget is bounded by GAP_STRIVE_MAX", () => {
+    assert.equal(wantsGapStrive(planAt(600), 60_000, GAP_STRIVE_MAX - 1), true);
+    assert.equal(wantsGapStrive(planAt(600), 60_000, GAP_STRIVE_MAX), false);
+  });
+
+  test("a simple-clamped plan (tier dropped to standard) never strives", () => {
+    const plan = applyComplexityToPlan(planAt(600), "simple");
+    assert.equal(wantsGapStrive(plan, 60_000, 0), false);
+  });
+
+  test("null plan is safe", () => {
+    assert.equal(wantsGapStrive(null, 0, 0), false);
+  });
+});
 
 describe("clampBudget", () => {
   test("clamps below the floor", () => {
