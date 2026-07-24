@@ -129,6 +129,7 @@ import {
   wmHtml,
 } from "/js/drc-page-core.js";
 import { matchCanned } from "/js/canned-faq.js";
+import { feedbackIntent } from "/js/feedback-core.js";
 import { renderMarkdownInto } from "/js/markdown.js";
 import { mountUmbrellaSpinner } from "/js/umbrella-spinner.js";
 
@@ -1641,6 +1642,142 @@ function renderCannedExchange(userText, reply) {
   el.appendChild(body);
   box.appendChild(el);
   box.scrollTop = box.scrollHeight;
+}
+
+// ---- Se/cure feedback (the "feedback" keyword → confirm → send) ----------------
+//
+// Se/cure normally never contacts the server. But a message opening with the
+// word "feedback" (feedbackIntent, EN+SV — the SAME gate the Se/rver pipeline
+// uses, shared from feedback-core.js) is a report to the developers, not a
+// research question. So instead of researching it we ECHO it, PROMPT for
+// confirmation (UX-4: dismissing a consent dialog is a NO, never a YES), and
+// only on an explicit Send do we POST it to /api/server-token/feedback over the
+// SAME DeepResearch token used for LLM / Exa access (the token's write-only
+// third exception to the SERVER-TOKEN GUARANTEE). No live token → we explain
+// and open Settings. Nothing is ever sent silently.
+
+// Any LIVE permission on the DeepResearch token is enough to send feedback —
+// the per-send confirmation is the consent, so the token's research on/off
+// toggle doesn't gate this separate, explicit action.
+function feedbackTokenLive() {
+  return !!(stGrant && stGrant.token) && (serverTokenLive(stGrant, "web") || serverTokenLive(stGrant, "api"));
+}
+
+// The prior research turn the feedback comments on (last question + answer),
+// pulled from the PERSISTED conversation. Feedback is never persisted into the
+// research context, so the last user turn is the question it follows.
+function drcFeedbackContext(conv) {
+  const msgs = conv && Array.isArray(conv.messages) ? conv.messages : [];
+  const asText = (c) =>
+    typeof c === "string" ? c : Array.isArray(c) ? c.map((p) => (p && p.text) || "").join(" ").trim() : "";
+  let question = null;
+  let answer = null;
+  for (let i = msgs.length - 1; i >= 0 && (question === null || answer === null); i--) {
+    if (answer === null && msgs[i]?.role === "assistant") answer = asText(msgs[i].content) || null;
+    else if (question === null && msgs[i]?.role === "user") question = asText(msgs[i].content) || null;
+  }
+  return { question, answer_excerpt: answer ? answer.slice(0, 8000) : null };
+}
+
+// A transient note bubble — same footing as the canned-help exchange: it echoes
+// in the DOM but never enters conv.messages (feedback is not a research turn).
+function renderFeedbackNote(text) {
+  const box = $("chat");
+  const el = document.createElement("div");
+  el.className = "msg assistant canned";
+  const badge = document.createElement("div");
+  badge.className = "canned-label";
+  badge.textContent = "📨 Feedback";
+  el.appendChild(badge);
+  const body = document.createElement("div");
+  body.textContent = text;
+  el.appendChild(body);
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+}
+
+// The feedback entry point (called from send() before any research routing).
+function startFeedback(text) {
+  const box = $("chat");
+  box.querySelector(".empty")?.remove();
+  box.appendChild(messageEl("user", text));
+  $("input").value = "";
+  box.scrollTop = box.scrollHeight;
+
+  if (!feedbackTokenLive()) {
+    renderFeedbackNote(
+      "To send feedback from Se/cure, connect a DeepResearch token — the same token you use for web search or the LLM API. " +
+        "It's the one deliberate, confirmed exception where Se/cure contacts the server. Opening Settings so you can add one…",
+    );
+    openSettings();
+    $("strow")?.scrollIntoView({ block: "center" });
+    return;
+  }
+  openFeedbackConsent(text, drcFeedbackContext(activeConv()));
+}
+
+// The confirmation dialog (#fbconsent): states EXACTLY what leaves the browser
+// and over which credential; only the labeled Send button transmits.
+function openFeedbackConsent(text, ctx) {
+  const hasContext = !!(ctx.question || ctx.answer_excerpt);
+  $("fbc-body").textContent =
+    "Se/cure normally never contacts the server. Sending feedback is one of the few confirmed exceptions: your message" +
+    (hasContext ? ", plus the previous question and answer for context," : "") +
+    " goes to deepresearch.se over your DeepResearch token (the same token used for web search / LLM access). " +
+    "Nothing else — no other conversation, no files, no identity — is sent.";
+  const yes = $("fbc-yes");
+  const no = $("fbc-no");
+  const close = () => {
+    $("fbconsent").hidden = true;
+    yes.onclick = null;
+    no.onclick = null;
+  };
+  no.onclick = () => {
+    close();
+    renderFeedbackNote("Not sent — nothing left your browser.");
+  };
+  yes.onclick = async () => {
+    close();
+    await submitFeedback(text, ctx);
+  };
+  $("fbconsent").hidden = false;
+}
+
+// The one transmission: POST the confirmed feedback with the DeepResearch token
+// as bearer. Fail-soft — every failure becomes a plain-language note, never an
+// error wall.
+async function submitFeedback(text, ctx) {
+  const model = $("model").value || "";
+  try {
+    const res = await fetch("/api/server-token/feedback", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        token: stGrant.token,
+        comment: text,
+        question: ctx.question || undefined,
+        answer_excerpt: ctx.answer_excerpt || undefined,
+        model: model || undefined,
+        page: "se/cure",
+      }),
+    });
+    if (res.ok) {
+      renderFeedbackNote("✓ Sent to the developers — thank you. They read every one.");
+      return;
+    }
+    if (res.status === 403) {
+      renderFeedbackNote(
+        "Couldn't send: your DeepResearch token is invalid or expired. Reconnect it under Settings and try again.",
+      );
+      return;
+    }
+    const data = await res.json().catch(() => null);
+    renderFeedbackNote(
+      "Couldn't send your feedback" + (data && data.error ? ": " + data.error : " — please try again in a moment."),
+    );
+  } catch {
+    renderFeedbackNote("Couldn't reach the server to send your feedback — check your connection and try again.");
+  }
 }
 
 function newChat() {
@@ -3187,6 +3324,14 @@ async function send(ev) {
   if (sending) return;
   const text = $("input").value.trim();
   if (!text) return;
+
+  // Feedback keyword (EN+SV, the shared gate) → confirm-then-send to the
+  // developers over the DeepResearch token, never researched. Handled BEFORE
+  // provider routing so it works even with no LLM configured.
+  if (feedbackIntent(text)) {
+    startFeedback(text);
+    return;
+  }
 
   // The first-visit path: no key yet → the prepackaged non-LLM helper answers
   // the common get-started questions right in the chat (clearly badged as

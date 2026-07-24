@@ -42,6 +42,19 @@
 //      (cookie, Bearer, Basic), a fact pinned by a unit test
 //      (src/server-token.test.js). Tokens are ADMINISTERED from the admin
 //      interface; they never open it.
+//
+// THE ONE WRITE EXCEPTION — Se/cure feedback (owner directive, 2026-07-24):
+// there is exactly ONE place a Se/rver token touches Se/rver-stored data, and
+// it is WRITE-ONLY. POST /api/server-token/feedback lets a token CREATE one
+// feedback row — the confirmed "feedback" path from Se/cure, which has no
+// identity of its own — but it can NEVER READ anything back: the readable
+// feedback surface (/api/feedback GET) is behind the identity gate a token can
+// never satisfy (enforcement 3). So the guarantee's substance holds — a token
+// still cannot read any project, chat, history, or account data. The write is
+// deliberately NOT in this module's endpoint set nor server-grants.js's (whose
+// import graph stays upstream-only); it lives in the feedback module and
+// verifies the token with verifyServerToken() below. No new permission names a
+// data surface: ANY live token may submit (the closed vocabulary is unchanged).
 // ══════════════════════════════════════════════════════════════════════════
 //
 // Wire format: a STANDARD JWS/JWT (RFC 7519, HS256) — `header.payload.sig`,

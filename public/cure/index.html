@@ -553,6 +553,21 @@
     </div>
   </div>
 
+  <!-- Se/cure feedback confirmation (drc.js openFeedbackConsent): a message
+       opening with "feedback" prompts here BEFORE anything is sent — Se/cure
+       otherwise never contacts the server. Only the Send button transmits, over
+       the DeepResearch token (UX-4: dismissing is a NO). -->
+  <div id="fbconsent" hidden>
+    <div class="odc-card" role="dialog" aria-modal="true" aria-labelledby="fbc-title">
+      <strong id="fbc-title">Send feedback to the developers?</strong>
+      <p id="fbc-body"></p>
+      <div class="row">
+        <button type="button" id="fbc-yes">Send feedback</button>
+        <button type="button" id="fbc-no">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <!-- The account view (right drawer, the person icon): the same menu spot
        the signed-in app's account panel occupies — but Se/cure has no
        accounts, so instead of account specifics it holds the public

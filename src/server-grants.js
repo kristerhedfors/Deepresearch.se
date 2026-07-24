@@ -23,6 +23,13 @@
 // module (storage.js, vault.js, chatlog.js, accounts.js, rag.js, pub.js,
 // answers.js, settings.js, …) — a unit test pins this module graph
 // (src/server-grants.test.js), so adding such an import fails the suite.
+// THE ONE WRITE EXCEPTION lives OUTSIDE this module by design (owner
+// directive, 2026-07-24): POST /api/server-token/feedback lets a token WRITE
+// one feedback row (Se/cure's confirmed feedback path) — write-only, never
+// readable back. It is handled in src/feedback.js (the data module), verified
+// there with the pure verifyServerToken leaf, precisely so this upstream-only
+// module never has to import a data surface. See THE SERVER-TOKEN GUARANTEE
+// in src/server-token.js.
 // AND THE ADMIN INTERFACE IS NEVER REACHABLE WITH A TOKEN (owner directive,
 // 2026-07-16): handleAdminServerToken below manages tokens, but the route
 // that reaches it (/api/admin/server-token*) sits behind the identity gate's
