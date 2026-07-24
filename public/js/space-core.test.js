@@ -28,6 +28,8 @@ import {
   validateScene,
   validateSpaceFeedback,
   FEEDBACK_COMMENT_MAX,
+  rotX,
+  worldRot,
 } from "./space-core.js";
 
 // ---------------------------------------------------------------------------
@@ -309,4 +311,11 @@ test("validateSpaceFeedback: rejects unknown scenes, bad verdicts, junk bodies",
   assert.equal(validateSpaceFeedback(null).ok, false);
   assert.equal(validateSpaceFeedback([]).ok, false);
   assert.equal(validateSpaceFeedback("up").ok, false);
+});
+
+test("worldRot: yaw-then-pitch composition matches rotX(rotY(v)) and leaves zero angles alone", () => {
+  const v = [1000, 2000, 3000];
+  const st = { rotX: 0.35, rotY: 0.5 };
+  assert.deepEqual(worldRot(v, st), rotX(rotY(v, st.rotY), st.rotX));
+  assert.deepEqual(worldRot(v, { rotX: 0, rotY: 0 }), v);
 });

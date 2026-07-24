@@ -1,7 +1,7 @@
 // Node tests for markdown.js's pure table repair (normalizeLlmMarkdown).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeLlmMarkdown } from "./markdown.js";
+import { escapeHtml, normalizeLlmMarkdown } from "./markdown.js";
 
 // The DOM rendering (marked + DOMPurify) is verified live; the pure table
 // repair — the fix for GLM emitting a whole table on one line with rows
@@ -238,5 +238,14 @@ describe("repairMermaidLabels", () => {
 
   test("junk input passes through", () => {
     assert.equal(repairMermaidLabels(/** @type {any} */ (null)), null);
+  });
+});
+
+describe("escapeHtml (the shared 4-char variant — no single-quote encoding)", () => {
+  test("escapes &, <, >, double quote; leaves single quotes alone", () => {
+    assert.equal(escapeHtml(`<a href="x">Q&A</a>`), "&lt;a href=&quot;x&quot;&gt;Q&amp;A&lt;/a&gt;");
+    // The deliberate difference from notifications.js's 5-char variant.
+    assert.equal(escapeHtml("it's"), "it's");
+    assert.equal(escapeHtml(123), "123");
   });
 });

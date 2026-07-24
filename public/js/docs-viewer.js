@@ -3,7 +3,7 @@
 // step wired into the doc pipelines, so there is one authoritative version —
 // no original/candidate variants.
 
-import { renderMarkdownInto } from "/js/markdown.js";
+import { escapeHtml, renderMarkdownInto } from "/js/markdown.js";
 
 const listEl = /** @type {HTMLElement} */ (document.getElementById("list"));
 const docEl = /** @type {HTMLElement} */ (document.getElementById("doc"));
@@ -42,10 +42,6 @@ function buildList(filter = "") {
   section("Overview", root);
   section("Design docs", design);
   listEl.innerHTML = html || '<p class="empty">No matches.</p>';
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] || c));
 }
 
 function render() {

@@ -60,6 +60,15 @@ export function normalizeLlmMarkdown(text) {
 // screenshots. Same-origin static files can't track or exfiltrate anything.
 const SAFE_IMG_PREFIXES = ["/introspect/docs-img/", "/help/img/"];
 
+// The 4-char HTML escaper (no single-quote encoding — notifications.js exports
+// a DIFFERENT 5-char variant; keep them distinct, collapsing them would change
+// rendered output). Shared by the innerHTML-building viewers (source-peek,
+// docs-viewer) over their existing markdown.js edge.
+/** @param {any} s @returns {string} */
+export function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] || c));
+}
+
 /** @param {string} src @returns {boolean} */
 export function isSafeDocImage(src) {
   const s = String(src || "");

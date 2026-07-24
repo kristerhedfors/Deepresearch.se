@@ -25,7 +25,7 @@ import {
   sceneById, zoomToDistance, distanceToZoom, formatKm, clamp,
   sphereMesh, orbitMesh, cylinderMesh, rocketMesh, satelliteMesh,
   astronautMesh, landerMesh, terrainMesh, ringMesh,
-  rotX, rotY, rotZ, projectPoint, mulberry32,
+  rotX, rotY, rotZ, worldRot, projectPoint, mulberry32,
 } from "./space-core.js";
 
 // ---------------------------------------------------------------------------
@@ -93,10 +93,6 @@ const SPHERE_FINE = sphereMesh(1, 9, 16, 32);
 
 // ---------------------------------------------------------------------------
 // Wireframe drawing.
-
-function worldRot(v, st) {
-  return rotX(rotY(v, st.rotY), st.rotX);
-}
 
 /** Draws a mesh: scale + own rotation + position, then world rotation. */
 function drawMesh(ctx, st, cam, mesh, opts) {
