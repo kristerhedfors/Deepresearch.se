@@ -25,6 +25,7 @@ import { initProjectsUi } from "./projects-ui.js";
 import { bashLiteOn, developerModeOn, loadSettings, setDeveloperMode } from "./settings.js";
 import { storeDeveloperMode } from "./dev-mode.js";
 import { applyChatModeTheme, cachedChatMode, reconcileChatMode } from "./chat-mode.js";
+import { applyModeBackdrop } from "./mode-backdrop.js";
 import { barTint } from "./mode-theme.js";
 import { wireBarTint } from "./bar-tint.js";
 import { cachedSandboxMode, clearIsolationGuard, isolateForSandbox, storeSandboxMode } from "./sandbox-mode.js";
@@ -77,6 +78,10 @@ const send = document.getElementById("send");
 // loadSettings() resolves. { persist: false }: this is reading the cache, not
 // making a new decision.
 applyChatModeTheme(cachedChatMode(), { persist: false });
+// The mode's agent BACKGROUND (mode-theme.js `backdrop` axis): mount the
+// rotating workflow graph behind the chat in Orchestrator mode; terminal
+// modes need no mount (the sandbox layer is event-driven).
+applyModeBackdrop(cachedChatMode());
 
 // iOS bar tint — the reverse of /cure's crossing: coming BACK from the khaki
 // tier (or any khaki-tinted page) by same-window navigation or a bfcache
@@ -172,7 +177,9 @@ loadSettings()
     // Introspection/SDK pick to Normal; a knob-on account with no stored pick
     // keeps the legacy introspection default. The dropdown mirrors the result.
     storeDeveloperMode(s?.developer_mode === true);
-    syncModeSelect(reconcileChatMode(s?.developer_mode === true));
+    const reconciled = reconcileChatMode(s?.developer_mode === true);
+    syncModeSelect(reconciled);
+    applyModeBackdrop(reconciled);
     // Reconcile the local sandbox-knob cache with the server's authoritative
     // value (sandbox-mode.js), so the NEXT load's synchronous boot self-heal
     // above reflects a flip made on another device — and so a first-ever enable
@@ -329,6 +336,7 @@ syncModeSelect(cachedChatMode());
 modeSel.addEventListener("change", () => {
   const mode = applyChatModeTheme(modeSel.value);
   modeSel.value = mode;
+  applyModeBackdrop(mode);
   if (mode !== "normal" && !developerModeOn()) {
     setDeveloperMode(true)
       .then(() => storeDeveloperMode(true))

@@ -24,7 +24,7 @@
  * along as extra properties.
  * @typedef {object} EmbedEntry
  * @property {number} id        stable per-conversation number (copy-text references)
- * @property {string} kind      "streetview_embed" | "map_embed" | "streetview_frames" | "quiz"
+ * @property {string} kind      "streetview_embed" | "map_embed" | "streetview_frames" | "quiz" | "workflow"
  * @property {number} msgIndex  index of the assistant message it renders beside
  */
 

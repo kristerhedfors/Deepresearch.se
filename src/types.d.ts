@@ -409,6 +409,31 @@ export interface StatusBuild {
   files: number;
   title: string;
 }
+/**
+ * Orchestrator mode's resolved workflow plan (public/js/orchestrator-core.js
+ * workflowEvent), emitted once before execution: the sub-agent nodes, their
+ * dependency edges, and the resolved parallel waves. The client renders it as
+ * the live workflow view (public/js/workflow-viz.js).
+ */
+export interface StatusWorkflow {
+  type: "workflow";
+  title: string;
+  agents: Array<{ id: string; kind: string; name: string; task: string; deps: string[] }>;
+  waves: string[][];
+}
+/**
+ * One Orchestrator sub-agent's lifecycle change (orchestrator-core.js
+ * agentUpdateEvent): running → done/failed (skipped reserved). `note` carries
+ * a bounded failure reason; `duration_ms`/`chars` ride on completion.
+ */
+export interface StatusAgentUpdate {
+  type: "agent_update";
+  id: string;
+  status: "pending" | "running" | "done" | "failed" | "skipped";
+  note?: string;
+  duration_ms?: number;
+  chars?: number;
+}
 /** Terminal stats footer. */
 export interface StatusDone {
   type: "done";
@@ -431,6 +456,8 @@ export type SseStatus =
   | StatusStreetViewFrames
   | StatusDiscardText
   | StatusBuild
+  | StatusWorkflow
+  | StatusAgentUpdate
   | StatusDone;
 
 /** An OpenAI-style text-delta chunk. */

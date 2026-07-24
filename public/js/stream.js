@@ -75,6 +75,8 @@ import {
 } from "./message-content.js";
 import { firstChunks, retrieve } from "./rag.js";
 import { renderQuiz } from "./quiz.js";
+import { renderWorkflow } from "./workflow-viz.js";
+import { setGraphWorkflow, updateGraphAgent } from "./graph-backdrop.js";
 import { createSseParser } from "./sse.js";
 import {
   capEmbedBytes,
@@ -570,6 +572,29 @@ function handleEvent(turn, evt, acc) {
       const embed = recordEmbed({ kind: "quiz", quiz: s.quiz, answers: [] });
       renderQuiz(turn, s.quiz, quizHooks(embed));
     }
+    else if (s.type === "workflow" && Array.isArray(s.agents) && s.agents.length) {
+      // Orchestrator mode's plan graph (src/orchestrator.js): render the live
+      // workflow view in the turn body and record it in the embeds registry —
+      // `statuses` is the SAME object the view mutates on each agent_update,
+      // so the persisted record always carries the latest node states and a
+      // reopened conversation shows the finished workflow.
+      const embed = recordEmbed({
+        kind: "workflow",
+        workflow: { title: s.title || "", agents: s.agents, waves: Array.isArray(s.waves) ? s.waves : [] },
+        statuses: {},
+      });
+      turn._wfEmbed = embed;
+      turn._wfViz = renderWorkflow(turn, embed.workflow, embed.statuses);
+      // The graph BACKDROP behind the chat (Orchestrator mode's agent
+      // background) follows the live team too — same statuses object.
+      setGraphWorkflow(embed.workflow, embed.statuses);
+    }
+    else if (s.type === "agent_update" && typeof s.id === "string" && turn._wfEmbed) {
+      const st = { status: s.status, duration_ms: s.duration_ms, note: s.note };
+      if (turn._wfViz) turn._wfViz.update(s.id, st);
+      else turn._wfEmbed.statuses[s.id] = { ...turn._wfEmbed.statuses[s.id], ...st };
+      updateGraphAgent(s.id, st);
+    }
     else if (s.type === "build" && typeof s.slug === "string" && s.slug) {
       // SDK mode published (or republished) this conversation's app — adopt
       // the slug so the next send iterates on the same /app/<slug>/ URL. The
@@ -764,6 +789,10 @@ async function buildChatPayload(opts) {
   else if (chatMode === "sdk") {
     payload.sdk_mode = true;
     if (convBuildSlug) payload.build_slug = convBuildSlug;
+  } else if (chatMode === "orchestrator") {
+    // The sub-agent workflow flow (src/orchestrator.js) — same capability
+    // gate as sdk_mode; the server ignores the field when the knob is off.
+    payload.orchestrator_mode = true;
   }
   // Ghost toggle: tells the server to keep this exchange out of the
   // server-side interaction log too (src/chatlog.js) — the same choice

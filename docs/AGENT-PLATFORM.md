@@ -85,6 +85,8 @@ the short version:
   "theme": { "--agent-accent": "#3b82f6", … },
   "intro":   { "kind": "fade" },
   "loading": { "kind": "pipeline-phases", "messages": ["Triaging…", …] },
+  "backdrop": { "kind": "terminal" },  // the agent BACKGROUND behind the chat:
+                                       // none | terminal | graph (closed set)
   "controls": [                       // the chat-input pane — ORDER is render order
     { "type": "prompt-input", "placeholder": "Ask…" },
     { "type": "model-select" },
@@ -104,6 +106,15 @@ type declares its default fields and which **request field it drives** — a
 `depth-slider` drives `depth`, a `toggle` drives the flag named by its `id`.
 Closing the vocabulary is what lets one renderer draw any agent's composer, and
 lets the visual proof (§5) check every declared control actually appears.
+
+**The backdrop is an axis, closed the same way** (`BACKDROP_KINDS`:
+`none` / `terminal` / `graph`): each agent declares which BACKGROUND it works
+in front of — `terminal` is the drifting sandbox shell output
+(`public/js/agent-backdrop.js`), `graph` the hovering, slowly rotating
+wireframe workflow graph (`public/js/graph-backdrop.js`, the Orchestrator
+mode's background). The Se/rver chat modes declare the same axis in
+`public/js/mode-theme.js` (`backdrop`), so modes and agents describe their
+background with one vocabulary.
 
 The one implementation is the pure core
 [`public/js/agent-spec-core.js`](../public/js/agent-spec-core.js) (server

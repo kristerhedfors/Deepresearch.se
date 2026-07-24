@@ -21,6 +21,11 @@
 //                   the Se/cure tier) into a new flavour published at a live
 //                   URL. Same knob gate. Theme: the `sdk-mode` root class (the
 //                   green pane).
+//   orchestrator  → the request carries `orchestrator_mode: true` (chat.js),
+//                   routing to the sub-agent workflow flow (src/orchestrator.js)
+//                   — a planned team of sub-agents runs in the background and
+//                   the workflow is shown live. Same knob gate. Theme: the
+//                   `orch-mode` root class (the violet pane).
 //
 // This module does NOT own the `dr_dev_mode` knob cache — that stays
 // dev-mode.js's mirror of the server knob. It only decides which THEME class
@@ -39,8 +44,10 @@ import { barTint } from "./mode-theme.js";
 export const CHAT_MODE_KEY = "dr_chat_mode";
 /** The root class carrying the green SDK-mode pane tint. */
 export const SDK_MODE_CLASS = "sdk-mode";
-/** The three modes, dropdown order. */
-export const CHAT_MODES = ["normal", "introspection", "sdk"];
+/** The root class carrying the violet Orchestrator-mode pane tint. */
+export const ORCH_MODE_CLASS = "orch-mode";
+/** The modes, dropdown order. */
+export const CHAT_MODES = ["normal", "introspection", "sdk", "orchestrator"];
 
 /**
  * Clamp any value to a known mode.
@@ -100,6 +107,7 @@ export function applyChatModeTheme(mode, opts) {
     const root = globalThis.document?.documentElement;
     root?.classList?.toggle(DEV_MODE_CLASS, m === "introspection");
     root?.classList?.toggle(SDK_MODE_CLASS, m === "sdk");
+    root?.classList?.toggle(ORCH_MODE_CLASS, m === "orchestrator");
   } catch {
     /* no DOM (tests) — persistence above is the durable part */
   }
