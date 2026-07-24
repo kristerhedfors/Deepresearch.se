@@ -58,6 +58,33 @@ export function onDeviceModel(id) {
   return ONDEVICE_MODELS.find((m) => m.id === id) || null;
 }
 
+// ---- the dropdown value convention -----------------------------------------------
+//
+// Both tiers' model dropdowns carry on-device picks as "ondevice::<modelId>"
+// (the DRC "provider::model" routing convention; on DRS the prefix is what
+// tells the send path to run browser-local instead of calling /api/chat).
+// One pair of helpers so the two tiers can never drift on the format.
+export const ONDEVICE_VALUE_PREFIX = "ondevice::";
+
+/** The dropdown option value for a catalog model id. @param {string} id */
+export function onDeviceOptionValue(id) {
+  return ONDEVICE_VALUE_PREFIX + id;
+}
+
+/**
+ * The catalog model id inside a dropdown value, or null when the value is
+ * not an on-device pick (a server model id, "", undefined). Only ids the
+ * catalog actually carries parse — an unknown tail is null, so a stale
+ * stored selection can never route a send to a nonexistent engine model.
+ * @param {?string} [value]
+ * @returns {?string}
+ */
+export function onDeviceIdFromValue(value) {
+  if (typeof value !== "string" || !value.startsWith(ONDEVICE_VALUE_PREFIX)) return null;
+  const id = value.slice(ONDEVICE_VALUE_PREFIX.length);
+  return onDeviceModel(id) ? id : null;
+}
+
 // ---- the never-hang deadline ------------------------------------------------------
 //
 // Every engine call the settings drawer awaits runs under one of these: the

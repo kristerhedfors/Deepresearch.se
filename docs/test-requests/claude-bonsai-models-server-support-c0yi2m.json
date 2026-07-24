@@ -1,0 +1,34 @@
+{
+  "branch": "claude/bonsai-models-server-support-c0yi2m",
+  "pr": null,
+  "requested_at": "2026-07-24",
+  "points": [
+    {
+      "label": "Se/rver: on-device knob + inline consent in the gear panel",
+      "summary": "The on-device Bonsai models now exist on the signed-in tier too. On the main app open the gear icon → Settings: a new 'On-device models (Bonsai)' switch (Experimental badge) sits under the sandbox/chat-mode knobs. PASS: flipping it ON reveals the three Bonsai rows (27B / 8B / 1.7B) with real per-device states — a device without WebGPU must SAY why it can't run in the row; Bonsai 27B must say its browser build isn't published yet. Tapping 'Download…' on 1.7B swaps the row's button for 'Download <exact size>' + 'Not now' with the size/storage/Wi-Fi note — 'Not now' (or leaving the panel) must NOT download anything (watch the network indicator). The switch itself must never start a download. FAIL: any fetch of model bytes before the size-labeled button is tapped.",
+      "target": "/",
+      "actions": [],
+      "runs": 2,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Se/rver: download → dropdown group → browser-local answer",
+      "summary": "On a WebGPU-capable device: gear panel → On-device models ON → Download Bonsai 1.7B (~290 MB, Wi-Fi). PASS: progress percent ticks in the row; when done the row reads 'On this device · <size> — pick it in the composer's model dropdown' with a Delete button, and the composer's model dropdown gains a first group '📱 On-device — runs in this browser' (server models regroup under '☁ Server models'). Pick the Bonsai model and ask a question WITH devtools' network tab open: the answer must stream (slowly is fine — the first token can take a minute while the model compiles) and there must be NO /api/chat request for that send. The finished activity step must say the model ran in this browser. Delete must free the row and remove the dropdown group. FAIL: any /api/chat call while an on-device model is picked, or a silent fallback to a server model.",
+      "target": "/",
+      "actions": [],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Se/rver: on-device chats leave no server trace, history still syncs",
+      "summary": "After an on-device answer on Se/rver: (1) admin chat logs must show NO row for that exchange (there was no server request — same as introspection's private route); (2) the conversation itself must still appear in History and reopen normally (it persists under the tier's usual encrypted cloud storage, and reopening restores the on-device model pick when the weights are still on the device). PASS: both. FAIL: a chat_logs row for the on-device send, or the conversation missing from History.",
+      "target": "/",
+      "actions": [],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    }
+  ]
+}
