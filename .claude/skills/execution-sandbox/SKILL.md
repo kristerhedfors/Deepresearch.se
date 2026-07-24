@@ -355,6 +355,39 @@ run here" check — and it is false on any browser that ignores the COEP mode, s
 verify `SharedArrayBuffer` exists in the target browser. Flipping the DRS knob
 reloads the page so the shell comes back isolated.
 
+## Command performance — what is cheap and what is not
+
+Full measurements, method, and guidance: **`docs/SANDBOX-PERFORMANCE.md`**.
+The harness is `tests/e2e/sandbox-perf.spec.js` (a battery of one-liners timed
+in a real VM, cold vs warm) plus `tests/e2e/sandbox-agent-trace.spec.js` (one
+agent turn with every event timestamped), both run via
+`tests/sandbox-perf.pw.config.js`.
+
+The short version, for anyone choosing commands for the step prompt:
+
+- **Cold block streaming dominates, 10-100x.** The disk is streamed from
+  `wss://disks.webvm.io`; a binary's first run pulls its ELF and libraries.
+  `python3 --version` is 8573 ms cold, 87 ms warm.
+- **Every exec costs ~50-85 ms before doing anything.** Batch several steps
+  into one `execInSandbox` rather than paying the floor per step.
+- **A process spawn costs 6.5 ms minimum** (measured with a fork ladder;
+  ~29 ms for a real binary like `grep`). Builtin `[ -f ]` is ~0.1 ms, so
+  syscalls are not the cost — process creation is. Same finding as the
+  `tar -xf` seed rewrite in `sandbox-files.js`. Prefer `grep -r` (111 ms) over
+  `find -exec grep` (5994 ms).
+- **Cost tracks bytes RETURNED, not bytes read** — ~1.1 MB/s across the VM→JS
+  base64 envelope. `wc -c < 2MB` is 60 ms; `cat 2MB` is 1903 ms. Slice at the
+  source (`head -c`, `wc -l`, `grep -c`).
+- **Hitting the 30 s exec ceiling DESTROYS the VM.** `execInSandbox` calls
+  `resetSandbox("exec_timeout")` on rc 124, so one slow command makes every
+  later command in the turn return `sandbox not ready` and loses the
+  filesystem. `command -v node` for an absent `node` did exactly this — it
+  stats every cold `PATH` dir and took the full 30 s. Wrap anything that might
+  walk a cold tree in a guest-side `timeout 20 …`.
+- **Boot dwarfs commands.** In a traced turn the commands were 290 ms of 44 s;
+  the cold boot was 24.4 s (bare boot 3.6-4.4 s). Pre-warming beats
+  micro-optimising commands.
+
 ## Conventions & caps
 
 - `bashIntent` is a non-authoritative heuristic (EN+SV parity, ONE

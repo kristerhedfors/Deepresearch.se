@@ -50,6 +50,7 @@ const GROUPS = {
   scan: "Scanning/searching a tree",
   interp: "Interpreter and toolchain startup",
   shape: "Same result, different command shape (the avoidable costs)",
+  fork: "Fork-cost ladder — isolating the price of ONE process spawn",
 };
 
 /** Fixture sizes in KB — used to derive a ms-per-KB slope for file reads. */
@@ -136,6 +137,18 @@ const PROBES = [
   { id: "shape-seq-once", group: "shape", cmd: "seq 1 50 | tail -1", note: "SAME result, one process" },
   { id: "shape-batched", group: "shape", cmd: "echo A; echo B; echo C; ls /etc/hostname; cat /etc/hostname", note: "5 logical steps batched into ONE exec round-trip" },
   { id: "shape-stat-many", group: "shape", cmd: "for f in /usr/bin/*; do [ -f \"$f\" ] || true; done; echo done", note: "1500 builtin stats, no forks" },
+
+  // --- 8. fork-cost ladder ------------------------------------------------
+  // Identical loop body, only the SPAWN COUNT varies, so the slope of this
+  // ladder is the marginal cost of one external process. The `shape-*` pair
+  // above gives a rough figure confounded by find's own machinery; this
+  // isolates it.
+  ...[0, 10, 25, 50, 100].map((n) => ({
+    id: `fork-${n}`,
+    group: "fork",
+    cmd: n === 0 ? "echo done" : `for i in $(seq 1 ${n}); do /bin/true; done; echo done`,
+    note: n === 0 ? "baseline: no spawns" : `${n} spawns of /bin/true (the smallest possible ELF)`,
+  })),
 ];
 
 // ---------------------------------------------------------------------------
@@ -357,6 +370,24 @@ test("@live sandbox command performance battery", async ({ page }) => {
       console.log(`  ${String(kb).padStart(5)} KB → ${String(r.warm).padStart(6)} ms  (${(r.warm / kb).toFixed(2)} ms/KB, ${r.bytes}b returned)`);
     }
   }
+  // Fork ladder: least-squares slope over (spawns, warm ms) IS the per-spawn cost.
+  const forks = rows
+    .filter((r) => /^fork-\d+$/.test(r.id))
+    .map((r) => ({ n: Number(r.id.slice(5)), ms: r.warm }))
+    .sort((a, b) => a.n - b.n);
+  if (forks.length >= 2) {
+    console.log("\n## Cost of one process spawn (warm)");
+    for (const f of forks) console.log(`  ${String(f.n).padStart(4)} spawns → ${String(f.ms).padStart(6)} ms`);
+    const n = forks.length;
+    const sx = forks.reduce((a, f) => a + f.n, 0);
+    const sy = forks.reduce((a, f) => a + f.ms, 0);
+    const sxy = forks.reduce((a, f) => a + f.n * f.ms, 0);
+    const sxx = forks.reduce((a, f) => a + f.n * f.n, 0);
+    const slope = (n * sxy - sx * sy) / (n * sxx - sx * sx);
+    const intercept = (sy - slope * sx) / n;
+    console.log(`  → ${slope.toFixed(2)} ms per spawn (intercept ${intercept.toFixed(0)} ms = the exec round-trip floor)`);
+  }
+
   console.log("\n=============================================================\n");
 
   await test.info().attach("sandbox-perf.json", {
