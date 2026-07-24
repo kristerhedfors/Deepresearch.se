@@ -18,6 +18,7 @@ import {
   PLANT_FLEET,
   REPLANT_AT,
   RELEASE_MS,
+  SEED_SCATTER,
   clamp01,
   cycleDesignTime,
   cycleStateAt,
@@ -123,6 +124,24 @@ test("planPlantFinale: grows from the caught position INTO full bloom", () => {
   assert.equal(planPlantFinale(-5).runStart, 0);
   assert.equal(planPlantFinale(FULL_APEX * 2).runStart, FULL_APEX);
   assert.equal(planPlantFinale(Number.NaN).runStart, 0);
+});
+
+test("sunflower look (owner directive 2026-07-24): warm-light fields + no smash", () => {
+  // Every fleet scheme carries the sunflower/warm-light colors.
+  for (const s of PLANT_FLEET) {
+    for (const k of ["leaf", "stem", "tendril", "seed", "flower", "petalDeep", "center", "glow"]) {
+      assert.match(s[k], /^#[0-9a-f]{6}$/i, `${k} is a hex color`);
+    }
+  }
+  // The old single-ball impact squash is gone from the growth state.
+  assert.ok(!("squash" in plantStateAt(DROP_END + 10)), "no smash beat");
+  // The seed handful is deterministic data both fall beats share: each entry
+  // is [landing x offset, fall delay] with sane bounds, delays staggered.
+  assert.ok(SEED_SCATTER.length >= 3, "a handful, not a single ball");
+  for (const [ox, delay] of SEED_SCATTER) {
+    assert.ok(Math.abs(ox) <= 0.2, "lands near the soil center");
+    assert.ok(delay >= 0 && delay < 1, "delay leaves room to land by fall=1");
+  }
 });
 
 test("spinnerStyle: cycles the green fleet so adjacent slots differ", () => {

@@ -4,9 +4,10 @@
 // mode's animation instead of always the balloon. Normal mounts the tier's
 // blue-and-gold balloon; INTROSPECTION mounts the SAME balloon recoloured in
 // TITANIUM (its waiting symbol belongs to the titanium theme like the field,
-// the pane and TIN); SDK mode mounts the PLANT (plant-spinner.js) — a forward
-// life-cycle: a seed lands, gets planted, grows to bloom and re-seeds, folding
-// into a green ✓ when the work completes. Which one is decided
+// the pane and TIN); SDK mode mounts the PLANT (plant-spinner.js) — a
+// sunflower life-cycle in warm afternoon light: black seeds land, get
+// planted, grow to a golden bloom and re-seed, folding into a green ✓ when
+// the work completes. Which one is decided
 // by the mode registry (mode-theme.js spinnerKind) off the cached chat mode
 // (chat-mode.js).
 //

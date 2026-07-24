@@ -249,13 +249,17 @@ As shipped:
   source, so the research **depth slider is hidden** (`depthSlider: false`).
 - **SDK** — the **plant**. SDK mode grows a new flavour of the site, so its
   symbol GROWS: the plant spinner (`public/js/plant-spinner.js`) runs a
-  forward **life-cycle** while work is ongoing — a seed falls, **hits the
-  ground**, **gets planted**, sprouts, grows and **blooms**; the open flower
-  then releases a fresh seed that falls to the soil while the parent withers,
-  and the cycle replants. (Owner directive, 2026-07-23: the earlier boomerang
-  loop rewound through the seed drop and read as a brown bouncing ball — the
-  loop now owns the whole seed→seedling→flower story, and only the ✓ is
-  reserved for "done".) The completion finale catches the plant wherever it
+  forward **life-cycle** while work is ongoing — a handful of small black
+  seeds falls and **gets planted**, the plant sprouts, grows — thin green
+  tendrils curling off the stem — and **blooms** as a **sunflower** in warm
+  afternoon light (golden petals round a dark seed head, a low-sun glow and
+  long shadow); the open head then releases a fresh handful that falls to
+  the soil while the parent withers, and the cycle replants. (Owner
+  directive, 2026-07-23: the earlier boomerang loop rewound through the seed
+  drop and read as a brown bouncing ball — the loop owns the whole
+  seed→seedling→flower story, and only the ✓ is reserved for "done".
+  Amended 2026-07-24: sunflower styling — black seeds instead of the one
+  brown ball, curly tendrils, warm light, far less brown.) The completion finale catches the plant wherever it
   is, grows it out to full bloom and folds it into a **GREEN ✓**
   (`--check-green`). It keeps the umbrella spinner's finale pacing, so the
   three symbols stay siblings by construction. SDK's **character** is **SPROUT** (`public/js/sdk-plant.js`):

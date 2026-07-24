@@ -6,14 +6,17 @@
 // so its symbol GROWS a plant — and unlike its boomerang siblings the loop
 // runs FORWARD, as a generational LIFE-CYCLE (owner directive, 2026-07-23:
 // the old boomerang rewound through the seed drop over and over and read as
-// a brown bouncing ball; the seed→seedling→flower story is the animation):
-// a seed falls, HITS THE GROUND, GETS PLANTED, sprouts, grows — stem, true
-// leaves — and BLOOMS right in the loop; the open flower sways a beat, then
-// RELEASES a fresh seed that falls to the soil while the parent withers
-// away, and the fallen seed replants as the next generation. The beat
-// reserved for "done" is the ✓ itself: the completion finale catches the
-// plant wherever it is, grows it out to full bloom, holds it, and folds it
-// into a GREEN ✓.
+// a brown bouncing ball; the seed→seedling→flower story is the animation;
+// amended 2026-07-24: it is a SUNFLOWER in warm afternoon light — small
+// black seeds, thin curly tendrils, golden petals round a dark seed head,
+// a low-sun glow and long shadow, and far less brown): a handful of black
+// seeds falls and GETS PLANTED, the plant sprouts, grows — stem, true
+// leaves, curling tendrils — and BLOOMS right in the loop; the open head
+// sways a beat, then RELEASES a fresh handful that falls to the soil while
+// the parent withers away, and the fallen seeds replant as the next
+// generation. The beat reserved for "done" is the ✓ itself: the completion
+// finale catches the plant wherever it is, grows it out to full bloom,
+// holds it, and folds it into a GREEN ✓.
 //
 // It keeps the umbrella family's finale pacing (FINALE_* from
 // umbrella-spinner.js) so the three symbols stay siblings by construction;
@@ -74,8 +77,8 @@ function seg(t, a, b) {
 // The growth timeline (design-ms). One monotonic ladder serves both the loop
 // and the finale; past FULL_APEX the cycle beats (hold + release) carry the
 // loop into its next generation:
-//   [0 .. DROP_END)       the seed falls and HITS the ground (gravity + squash)
-//   [DROP_END .. PLANT)   it settles / GETS PLANTED, a soil mound forms
+//   [0 .. DROP_END)       the seed handful falls and settles (gravity-eased)
+//   [DROP_END .. PLANT)   it GETS PLANTED, a small soil hint forms
 //   [PLANT .. LOOP_APEX)  a short sprout with two cotyledon leaves
 //   [LOOP_APEX .. FULL)   stem shoots up, true leaves + the gold-green bloom
 //   [FULL .. +HOLD)       the open flower sways, held
@@ -98,9 +101,6 @@ export const CYCLE_END = FULL_APEX + BLOOM_HOLD_MS + RELEASE_MS;
  * so the sky-fall beat plays only for the first generation. */
 export const REPLANT_AT = DROP_END;
 
-// How long the impact squash lasts after the seed lands (design-ms).
-const SQUASH_MS = 170;
-
 /** Which named beat of the cycle design-time t lands in.
  * @param {number} t @returns {"drop"|"plant"|"sprout"|"grow"|"bloom"|"release"} */
 export function plantPhaseAt(t) {
@@ -119,7 +119,7 @@ export function plantPhaseAt(t) {
  * where growth is (fall, plantDepth, stemH, leafOpen, trueLeaf, bloom never
  * decrease as t advances), so the finale interpolation only ever GROWS.
  * @param {number} t design-ms in [0, FULL_APEX]
- * @returns {{fall:number, squash:number, plantDepth:number, stemH:number,
+ * @returns {{fall:number, plantDepth:number, stemH:number,
  *            leafOpen:number, trueLeaf:number, bloom:number}}
  */
 export function plantStateAt(t) {
@@ -127,12 +127,6 @@ export function plantStateAt(t) {
   const drop = seg(tt, 0, DROP_END);
   // gravity: accelerate into the ground (ease-in), then pinned at 1.
   const fall = tt >= DROP_END ? 1 : drop * drop;
-  // A brief squash pulse right at/after impact (and again on a boomerang
-  // rewind through the landing) — a bell that lives only for SQUASH_MS.
-  const sinceLand = tt - DROP_END;
-  const squash = sinceLand >= 0 && sinceLand < SQUASH_MS
-    ? Math.sin((sinceLand / SQUASH_MS) * Math.PI)
-    : 0;
   const plantDepth = smooth(seg(tt, DROP_END, PLANT_END));
   const sprout = smooth(seg(tt, PLANT_END, LOOP_APEX));
   const grow = smooth(seg(tt, LOOP_APEX, FULL_APEX));
@@ -143,7 +137,7 @@ export function plantStateAt(t) {
   const trueLeaf = grow; // the true leaf pair only unfurls while growing
   // The bloom opens in the last stretch of the grow beat.
   const bloom = smooth(seg(tt, LOOP_APEX + (FULL_APEX - LOOP_APEX) * 0.5, FULL_APEX));
-  return { fall, squash, plantDepth, stemH, leafOpen, trueLeaf, bloom };
+  return { fall, plantDepth, stemH, leafOpen, trueLeaf, bloom };
 }
 
 // ---- the forward cycle (the loop's clock) ------------------------------------------
@@ -152,8 +146,8 @@ export function plantStateAt(t) {
  * The loop's forward clock: elapsed design-ms → cycle-time. The FIRST
  * generation plays the whole story from the sky-fall; every later generation
  * wraps into [REPLANT_AT, CYCLE_END) — its seed already fell during the
- * parent's release, so the landing squash at REPLANT_AT (= DROP_END) is
- * continuous with the released seed touching down. Pure, total, and
+ * parent's release, so the settled handful at REPLANT_AT (= DROP_END) is
+ * continuous with the released seeds touching down. Pure, total, and
  * monotonic within a generation.
  * @param {number} elapsedDesign design-ms since mount
  * @returns {number} cycle-time in [0, CYCLE_END)
@@ -219,16 +213,32 @@ export function planPlantFinale(t0) {
   };
 }
 
-/** @typedef {{ leaf:string, stem:string, seed:string, flower:string,
- *              center:string, dir:number, speed:number }} PlantStyle */
+/** @typedef {{ leaf:string, stem:string, tendril:string, seed:string,
+ *              flower:string, petalDeep:string, center:string, glow:string,
+ *              dir:number, speed:number }} PlantStyle */
 
-/** The plant fleet: a few green-and-gold schemes (SDK's palette), cycled so
- * adjacent loading slots differ — the same "same shape, varied color" rule the
- * balloon fleet follows. @type {PlantStyle[]} */
+/** The plant fleet — SUNFLOWER schemes in warm afternoon light (owner
+ * directive, 2026-07-24: less brown, black seeds, golden petals): warm
+ * greens, two golds per head for petal depth, a dark seed-head center,
+ * near-black seeds, and the low-sun glow color. Cycled so adjacent loading
+ * slots differ — the same "same shape, varied color" rule the balloon fleet
+ * follows. @type {PlantStyle[]} */
 export const PLANT_FLEET = [
-  { leaf: "#3fae63", stem: "#2f8f4e", seed: "#8a6a3a", flower: "#f5c518", center: "#e8a713", dir: 1, speed: 1 },
-  { leaf: "#5cc07d", stem: "#3a9a58", seed: "#7c5f34", flower: "#ffd54a", center: "#f0b31e", dir: -1, speed: 1.08 },
-  { leaf: "#2f9d57", stem: "#277f45", seed: "#96723e", flower: "#f7cf3f", center: "#e6a50f", dir: 1, speed: 0.94 },
+  { leaf: "#4f9e45", stem: "#41823c", tendril: "#6db34f", seed: "#26201a", flower: "#f6b73c", petalDeep: "#e09a26", center: "#4c351f", glow: "#ffcb6e", dir: 1, speed: 1 },
+  { leaf: "#5fae52", stem: "#4a8f42", tendril: "#7cbf5c", seed: "#2e2620", flower: "#ffc84a", petalDeep: "#eaa632", center: "#543b22", glow: "#ffd27f", dir: -1, speed: 1.08 },
+  { leaf: "#468f3e", stem: "#3a7635", tendril: "#63a84a", seed: "#221c16", flower: "#f0a92e", petalDeep: "#d8921f", center: "#452f1b", glow: "#f9c264", dir: 1, speed: 0.94 },
+];
+
+/** The handful of seeds: per-seed [landing x offset (× size), fall delay]
+ * pairs, shared by the planting drop AND the release beat so the released
+ * handful lands exactly where the next generation's settled handful sits
+ * (the wrap stays continuous). Deterministic — no randomness (resume rule). */
+export const SEED_SCATTER = [
+  [-0.11, 0.0],
+  [-0.045, 0.1],
+  [0.0, 0.04],
+  [0.05, 0.14],
+  [0.1, 0.07],
 ];
 
 /** The style for the i-th loading slot (defensive on the index).
@@ -257,17 +267,27 @@ function leafPath(ctx, L, W) {
   ctx.closePath();
 }
 
-/** The soil mound the seed settles into. @param {CanvasRenderingContext2D} ctx
- * @param {PlantGeo} geo @param {number} depth 0..1 @param {number} a */
-function drawSoil(ctx, geo, depth, a) {
+/** The ground: a small, muted soil hint (owner directive, 2026-07-24 — far
+ * less brown than the old mound) plus the LONG SHADOW of a low afternoon sun
+ * stretching to the right, lengthening as the plant grows.
+ * @param {CanvasRenderingContext2D} ctx @param {PlantGeo} geo
+ * @param {number} depth 0..1 @param {number} stemH 0..1 @param {number} a */
+function drawSoil(ctx, geo, depth, stemH, a) {
   if (depth <= 0.001) return;
-  const w = geo.size * (0.14 + 0.08 * depth);
-  const h = geo.size * 0.05 * depth;
+  const { cx, groundY, size } = geo;
   ctx.save();
-  ctx.globalAlpha = a * 0.9;
-  ctx.fillStyle = "#6b4f2a";
+  if (stemH > 0.05) {
+    const len = size * (0.08 + 0.26 * stemH);
+    ctx.globalAlpha = a * 0.16;
+    ctx.fillStyle = "#5a4630";
+    ctx.beginPath();
+    ctx.ellipse(cx + len * 0.6, groundY + size * 0.012, len, size * 0.02, 0.05, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = a * 0.5;
+  ctx.fillStyle = "#7a5c39";
   ctx.beginPath();
-  ctx.ellipse(geo.cx, geo.groundY, w, h, 0, 0, Math.PI * 2);
+  ctx.ellipse(cx, groundY, size * (0.075 + 0.035 * depth), size * 0.026 * depth, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
   ctx.globalAlpha = 1;
@@ -289,22 +309,48 @@ export function drawPlantFigure(ctx, geo, S, sway, a) {
   ctx.save();
   ctx.globalAlpha = a;
 
-  drawSoil(ctx, geo, S.plantDepth, a);
-
-  // The falling / resting seed (before and as it plants). Squash flattens it
-  // on impact. Once well grown it hides under the leaves.
-  if (S.stemH < 0.35) {
-    const sy = topY + S.fall * (groundY - topY);
-    const sx = 1 + 0.5 * S.squash;
-    const syk = 1 - 0.45 * S.squash;
+  // Warm afternoon light: a soft golden radial glow behind the plant that
+  // strengthens as it grows and blooms (owner directive, 2026-07-24).
+  const warmth = 0.35 + 0.4 * S.stemH + 0.25 * S.bloom;
+  const glowA = a * 0.15 * warmth;
+  if (glowA > 0.01) {
+    const gx = cx + size * 0.08;
+    const gy = groundY - maxStem * (0.5 + 0.4 * S.stemH);
+    const gr = size * 0.5;
+    const grad = ctx.createRadialGradient(gx, gy, gr * 0.08, gx, gy, gr);
+    grad.addColorStop(0, style.glow);
+    grad.addColorStop(1, "rgba(255,203,110,0)");
     ctx.save();
-    ctx.translate(cx, sy);
-    ctx.scale(sx, syk);
-    ctx.fillStyle = style.seed;
+    ctx.globalAlpha = glowA;
+    ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.ellipse(0, 0, seedR * 1.15, seedR, 0, 0, Math.PI * 2);
+    ctx.arc(gx, gy, gr, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
+  }
+
+  drawSoil(ctx, geo, S.plantDepth, S.stemH, a);
+
+  // The falling / resting HANDFUL of small black seeds (before and as they
+  // plant) — sunflower seeds, not one big ball, and no impact smash (owner
+  // directive, 2026-07-24). Each seed trails its neighbours a little and
+  // drifts out to its own landing spot. Once the plant is well grown they
+  // hide under the leaves.
+  if (S.stemH < 0.35) {
+    for (let i = 0; i < SEED_SCATTER.length; i++) {
+      const [ox, delay] = SEED_SCATTER[i];
+      const f = clamp01((S.fall - delay) / (1 - delay));
+      const sy = topY + f * (groundY - topY);
+      const sx = cx + ox * size * (0.35 + 0.65 * f);
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(i * 0.9 + f * 0.6);
+      ctx.fillStyle = style.seed;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, seedR * 0.62, seedR * 0.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
   }
 
   // The stem, from the soil upward with a gentle sway bend. Nothing grows
@@ -341,6 +387,33 @@ export function drawPlantFigure(ctx, geo, S, sway, a) {
       }
     }
 
+    // Thin curly tendrils: two fine green curls that unfurl off the stem as
+    // the plant grows (owner directive, 2026-07-24 — the curly green things),
+    // drawn as polylines whose curvature ramps up so the tips coil tight.
+    if (S.trueLeaf > 0.04) {
+      ctx.strokeStyle = style.tendril;
+      ctx.lineWidth = Math.max(1, size * 0.011);
+      ctx.lineCap = "round";
+      for (const [frac, tdir, lag] of [[0.3, -1, 0], [0.52, 1, 0.25]]) {
+        const amt = clamp01((S.trueLeaf - lag) / (1 - lag));
+        if (amt <= 0.02) continue;
+        let tx = cx + Math.sin(sway) * h * frac * 0.2;
+        let ty = groundY - h * frac;
+        let ang = tdir > 0 ? -0.5 : Math.PI + 0.5;
+        ang += sway * 0.4;
+        const step = size * 0.017 * amt;
+        ctx.beginPath();
+        ctx.moveTo(tx, ty);
+        for (let k = 0; k < 13; k++) {
+          ang += tdir * (0.1 + k * k * 0.011);
+          tx += Math.cos(ang) * step;
+          ty += Math.sin(ang) * step;
+          ctx.lineTo(tx, ty);
+        }
+        ctx.stroke();
+      }
+    }
+
     // True leaves: a larger pair mid-stem that unfurl while growing.
     if (S.trueLeaf > 0.02) {
       const ly = groundY - h * 0.7;
@@ -359,26 +432,37 @@ export function drawPlantFigure(ctx, geo, S, sway, a) {
       }
     }
 
-    // The bloom: a gold-green flower that opens at the tip in the last beat.
+    // The bloom: a SUNFLOWER head — a ring of pointed golden petals (two
+    // golds alternating for depth) around a dark seed-filled center — opening
+    // at the tip in the last beat, turned a little toward the low sun.
     if (S.bloom > 0.02) {
-      const petals = 6;
-      const pr = size * 0.052 * S.bloom;
-      const spread = size * 0.048 * smooth(S.bloom);
+      const petals = 13;
+      const bo = smooth(S.bloom);
+      const centerR = size * 0.042 * bo;
+      const petL = size * 0.088 * bo;
+      const petW = size * 0.026 * bo;
       ctx.save();
       ctx.translate(tipX, tipY);
-      ctx.fillStyle = style.flower;
+      ctx.rotate(sway * 0.5);
       for (let i = 0; i < petals; i++) {
-        const ang = (i / petals) * Math.PI * 2 + sway;
+        const ang = (i / petals) * Math.PI * 2;
         ctx.save();
         ctx.rotate(ang);
-        ctx.beginPath();
-        ctx.ellipse(spread, 0, pr, pr * 0.6, 0, 0, Math.PI * 2);
+        ctx.translate(centerR * 0.8, 0);
+        ctx.fillStyle = i % 2 ? style.petalDeep : style.flower;
+        leafPath(ctx, petL, petW);
         ctx.fill();
         ctx.restore();
       }
+      // The seed head: a dark disc with a near-black core — the same seeds
+      // the release beat will shake loose.
       ctx.fillStyle = style.center;
       ctx.beginPath();
-      ctx.arc(0, 0, pr * 0.85, 0, Math.PI * 2);
+      ctx.arc(0, 0, centerR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = style.seed;
+      ctx.beginPath();
+      ctx.arc(0, 0, centerR * 0.55, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }
@@ -601,19 +685,33 @@ export function mountPlantSpinner(host, opts = {}) {
         ctx.restore();
       }
       if (seedDrop >= 0 && aBase > 0.002) {
-        // The released seed: it lets go at the bloom and falls gravity-eased,
-        // drifting to the soil's center so it lands exactly where the next
-        // generation's landed seed sits (the wrap is continuous).
+        // The released handful: small black seeds shake loose from the
+        // sunflower head and fall gravity-eased, each drifting to its own
+        // SEED_SCATTER landing spot — exactly where the next generation's
+        // settled handful sits, so the wrap is continuous.
         const tipX = cx + Math.sin(sway) * maxStem * 0.28;
-        const dropTop = groundY - maxStem + seedR * 2.4; // just under the bloom
-        const sx2 = tipX + (cx - tipX) * seedDrop;
-        const sy2 = dropTop + (groundY - dropTop) * seedDrop * seedDrop;
+        const dropTop = groundY - maxStem + seedR * 2.4; // just under the head
         ctx.save();
         ctx.globalAlpha = aBase;
         ctx.fillStyle = style.seed;
-        ctx.beginPath();
-        ctx.ellipse(sx2, sy2, seedR * 1.15, seedR, 0, 0, Math.PI * 2);
-        ctx.fill();
+        for (let i = 0; i < SEED_SCATTER.length; i++) {
+          const [ox, delay] = SEED_SCATTER[i];
+          // Stronger stagger than the planting drop (×2.2) so the handful
+          // trickles off the head one-by-one instead of clumping midair.
+          const d2 = delay * 2.2;
+          const f = clamp01((seedDrop - d2) / (1 - d2));
+          if (f <= 0) continue; // still held in the head
+          const fromX = tipX + ox * size * 0.75; // spread across the head
+          const sx2 = fromX + (cx + ox * size - fromX) * f;
+          const sy2 = dropTop + (groundY - dropTop) * f * f;
+          ctx.save();
+          ctx.translate(sx2, sy2);
+          ctx.rotate(i * 0.9 + f * 0.6);
+          ctx.beginPath();
+          ctx.ellipse(0, 0, seedR * 0.62, seedR * 0.4, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
         ctx.restore();
         ctx.globalAlpha = 1;
       }
