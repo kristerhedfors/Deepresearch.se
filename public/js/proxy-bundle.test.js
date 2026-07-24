@@ -4,7 +4,7 @@
 // this runs unmodified.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { b64urlDecode, b64urlEncode, openBundle, sealBundle, validateBundle } from "./proxy-bundle.js";
+import { b64urlDecode, b64urlEncode, openBundle, sealBundle, sha256hex, validateBundle } from "./proxy-bundle.js";
 
 test("sealBundle → openBundle round-trips an object", async () => {
   const obj = { v: 1, bundleId: "abc", grants: [{ svc: "web", token: "prg1.x.y" }, { svc: "api", token: "prg1.a.b" }] };
@@ -49,4 +49,13 @@ test("validateBundle accepts a well-formed bundle and rejects malformed ones", (
   assert.equal(validateBundle({ grants: [{ svc: "web" }] }), false); // no token
   assert.equal(validateBundle({ grants: [{ svc: "email", token: "t" }] }), false); // unknown service
   assert.equal(validateBundle({ grants: [{ svc: "web", token: "" }] }), false); // empty token
+});
+
+test("sha256hex: lowercase hex of SHA-256 (the kid-derivation primitive both seal cores share)", async () => {
+  // Known vectors: SHA-256("") and SHA-256("abc").
+  assert.equal(await sha256hex(new Uint8Array(0)), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+  assert.equal(
+    await sha256hex(new TextEncoder().encode("abc")),
+    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+  );
 });

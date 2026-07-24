@@ -30,7 +30,7 @@
 // dependency-free, Node-testable unchanged; src/knowledge.js reaches it via
 // its server façade.
 
-import { b64urlDecode, b64urlEncode } from "./proxy-bundle.js";
+import { b64urlDecode, b64urlEncode, sha256hex } from "./proxy-bundle.js";
 
 export const CONCLUSION_KIND = "drc-conclusion";
 export const CONCLUSION_V = 1;
@@ -250,14 +250,8 @@ export function conclusionToContext(conclusion) {
 }
 
 // ── the sealed envelope (ECIES — DRCR/1's suite with its own frozen binding) ─
-
-/** @param {Uint8Array} bytes @returns {Promise<string>} lowercase hex of SHA-256 */
-async function sha256hex(bytes) {
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array(bytes)));
-  let s = "";
-  for (const b of digest) s += b.toString(16).padStart(2, "0");
-  return s;
-}
+// (sha256hex is imported from proxy-bundle.js — the shared WebCrypto leaf both
+// seal cores already sit on; each core keeps its OWN HKDF info / kind binding.)
 
 /**
  * Generate a recipient keypair. The public half travels as base64url of the
