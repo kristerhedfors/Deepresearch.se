@@ -163,8 +163,15 @@ loop: the **feature-maintenance** skill.
    Secure workspaces add no third exception; the consolidated **Se/rver
    TOKEN** (2026-07-16, one HS256 JWT with a `perms` set over the same two
    upstream services) unifies the grant families going forward and carries
-   THE SERVER-TOKEN GUARANTEE: upstream APIs ONLY — never any Se/rver data —
-   and NEVER a login (the admin surface rejects it everywhere, test-pinned).
+   THE SERVER-TOKEN GUARANTEE. That guarantee exists to protect **Se/cure**,
+   whose posture is pass-through only: a token READS nothing Se/rver stores
+   (no project, chat, history or account contents) and is NEVER a login (the
+   admin surface rejects it everywhere, test-pinned). Its one write is
+   Se/cure feedback (`POST /api/server-token/feedback` — write-only, no read
+   path). It is NOT a rule about the Se/rver tier: there the server is
+   INSIDE the trust boundary (owner directive, 2026-07-24), and agents
+   collaborating and orchestrating over server-side storage is the intended
+   direction, not an exception to be argued down.
    Full model, endpoints, token families, dated directives:
    `docs/PRIVACY-MODEL.md`.
 5. **Minimal dependencies; evidence-driven exceptions.** No build step, no

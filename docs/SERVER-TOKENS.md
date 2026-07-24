@@ -25,14 +25,33 @@ client-side Se/cure posture.
 
 ## THE SERVER-TOKEN GUARANTEE
 
-> **A Se/rver token grants access to the site's UPSTREAM APIs ONLY. It
-> never hands out any of Se/rver's own data: no project contents, no chat
-> contents, no conversation history, no account data. An API call bearing a
-> Se/rver token cannot read anything Se/rver stores — in either direction,
-> the token only opens doors that lead OUT of the site, never doors that
-> lead into its storage.**
+> **A Se/rver token READS nothing Se/rver stores. It hands out no project
+> contents, no chat contents, no conversation history, no account data. What
+> it opens are doors leading OUT of the site — the upstream APIs its `perms`
+> name — and it can never read its way back in.**
 
-And its corollary, stated just as hard:
+**Who this protects, and who it does not** (owner directive, 2026-07-24).
+The guarantee exists for **Se/cure**, whose whole posture is pass-through
+only: a Se/cure session has no account and no server-side state, so a token
+it borrows must be incapable of reaching into Se/rver's stores. It is *not*
+a general rule about the Se/rver tier. On Se/rver the server sits **inside
+the trust boundary**, and agents collaborating and orchestrating through
+server-side storage is the intended direction of the platform — that work is
+not an exception to this guarantee, it is simply outside its scope. Read the
+rule as *what a borrowed Se/cure credential may do*, never as *what the
+platform may build*.
+
+**The one write** (owner directive, 2026-07-24): `POST
+/api/server-token/feedback` lets any live token CREATE a single feedback
+row, so users of the client-side tier can reach the developers at all. It is
+write-only — the readable feedback surface (`GET /api/feedback`) sits behind
+the identity gate no token can satisfy — so the substance above holds: still
+no reading. The route deliberately lives in `src/feedback.js`
+(`handleServerTokenFeedback`) rather than `src/server-grants.js`, verified
+against the pure `verifyServerToken` leaf, so the module-graph pin below
+stays true. See `docs/PRIVACY-MODEL.md`.
+
+And the corollary, stated just as hard:
 
 > **A Se/rver token is never a login. The admin interface — `/admin` and
 > every `/api/admin/*` route, including the token subsystem's own control
@@ -45,7 +64,11 @@ This is enforced structurally, not as a policy note, four ways:
 1. **The permission vocabulary is closed.** `SERVER_TOKEN_SERVICES` in
    `src/server-token.js` names upstream services only (`web` = Exa search on
    the server key, `api` = Berget LLM completions on the server key). No
-   value naming a data surface may ever be added to it. `verifyServerToken`
+   value naming a data surface may be added to it — that closure is what
+   makes the credential safe to lend to a Se/cure session, so agent
+   collaboration over server-side storage must be built as its own
+   Se/rver-side capability rather than by widening this vocabulary.
+   `verifyServerToken`
    drops unknown permissions, so even a token minted with a hypothetical
    future perm authorizes nothing this deploy doesn't explicitly serve.
 2. **The module graph is pinned by a test.** The endpoints live in
