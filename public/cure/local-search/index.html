@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeepResearch.Se/cure — local browsing agent</title>
+  <link rel="icon" href="/favicon.ico?v=4" sizes="48x48">
+  <meta name="theme-color" content="#c3b091">
+  <style>
+    /* Khaki like the tier it serves (public/cure/drc.css) — reaching this page
+       from the /cure web knob must feel like staying on /cure. Self-contained
+       on purpose, same as /cure/help/. */
+    :root {
+      --bg: #c3b091; --panel: #faf6e8; --panel-2: #f0e9d2; --border: #b3a26e;
+      --text: #3d3418; --muted: #75683f; --accent: #7c6a24;
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--text); margin: 0; padding: 1.25rem 1rem 3rem;
+      line-height: 1.55;
+    }
+    main { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+    h1 { font-size: 1.15rem; margin: 0; }
+    a.back {
+      background: rgba(255,255,255,.35); border: 1px solid rgba(255,255,255,.6);
+      color: var(--text); text-decoration: none; font-weight: 600; font-size: .85rem;
+      border-radius: 10px; padding: .45rem .8rem; white-space: nowrap;
+    }
+    section {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 14px; padding: 1rem 1.15rem;
+    }
+    h2 { font-size: 1rem; margin: 0 0 .5rem; }
+    h3 { font-size: .9rem; margin: 1rem 0 .25rem; }
+    p, li { font-size: .92rem; margin: .4rem 0; }
+    ul, ol { padding-left: 1.3rem; margin: .4rem 0; }
+    .privacy-flag {
+      background: var(--panel-2); border-left: 3px solid var(--accent);
+      border-radius: 6px; padding: .5rem .8rem; font-size: .86rem; margin: .5rem 0;
+    }
+    .privacy-flag b { color: var(--accent); }
+    /* Same slash rule as /cure/help/ — identical font stack and comparable
+       sizes, so the help page's MEASURED value carries over (scripts/
+       slash-gap.mjs, the slash-spacing skill): -.04em keeps ≥.04em of ink
+       clearance at weight 400 and 700. Not eyeballed here. */
+    .sl { margin: 0 -.04em; }
+    .wm { white-space: nowrap; }
+    code { background: var(--panel-2); border-radius: 4px; padding: 0 .3rem; font-size: .85em; }
+    .muted { color: var(--muted); }
+    a { color: var(--accent); }
+    /* One-liner blocks: the command + a copy button on a shared card. */
+    .cmd {
+      display: flex; align-items: stretch; gap: .5rem; margin: .5rem 0;
+    }
+    .cmd pre {
+      flex: 1; margin: 0; padding: .55rem .7rem; overflow-x: auto;
+      background: #2f2a15; color: #efe8c8; border-radius: 8px;
+      font-size: .78rem; line-height: 1.45; white-space: pre;
+    }
+    .cmd button {
+      flex: none; align-self: center;
+      background: var(--panel-2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px;
+      font-size: .78rem; font-weight: 600; padding: .45rem .7rem; cursor: pointer;
+      min-width: 4.6rem;
+    }
+    .cmd button:hover { background: #e7dfc2; }
+    table { border-collapse: collapse; width: 100%; font-size: .85rem; }
+    th, td { text-align: left; padding: .3rem .5rem; border-top: 1px dashed var(--border); vertical-align: top; }
+    th { border-top: 0; color: var(--muted); font-weight: 600; }
+    td code { white-space: nowrap; }
+  </style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>Run a local browsing agent</h1>
+    <a class="back" href="/cure">← Back to the app</a>
+  </div>
+
+  <p>A local browsing agent is a small web-search service on <b>your own
+  machine</b>. Once it runs, <span class="wm">Se<span class="sl">/</span>cure</span>
+  routes every live web search through it, straight from your browser: your
+  research queries reach the web from your computer, not from any hosted
+  search provider — and never touch this site's server at all.</p>
+
+  <section>
+    <h2>Quick start — Mac &amp; Linux</h2>
+    <p>Needs <a href="https://nodejs.org">Node 18+</a>
+    (<code>brew install node</code> on a Mac). One line, no dependencies:</p>
+    <div class="cmd">
+      <pre>curl -fsSL https://deepresearch.se/cure/local-search/agent.mjs -o agent.mjs &amp;&amp; node agent.mjs</pre>
+      <button type="button">Copy</button>
+    </div>
+    <p>Then tell <span class="wm">Se<span class="sl">/</span>cure</span> about it
+    — <b>Settings → Web search service</b>:</p>
+    <ol>
+      <li>Backend: <b>Exa-compatible — your service</b></li>
+      <li>Service URL: <code>http://localhost:8099</code></li>
+      <li>Flip the web knob on and ask a research question.</li>
+    </ol>
+    <p class="muted">Prefer not to leave a file behind? Pipe it:</p>
+    <div class="cmd">
+      <pre>curl -fsSL https://deepresearch.se/cure/local-search/agent.mjs | node --input-type=module</pre>
+      <button type="button">Copy</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Windows</h2>
+    <p>Same script, PowerShell fetch (needs <a href="https://nodejs.org">Node 18+</a>):</p>
+    <div class="cmd">
+      <pre>iwr -useb https://deepresearch.se/cure/local-search/agent.mjs -OutFile agent.mjs; node agent.mjs</pre>
+      <button type="button">Copy</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Pick how deep it browses</h2>
+    <p>The default engine (<code>browse</code>) reads the result pages, so
+    your research quotes real page text rather than bare search snippets. Two
+    alternatives:</p>
+
+    <h3>Snippets only — fastest</h3>
+    <p>Titles and search snippets, no page loads:</p>
+    <div class="cmd">
+      <pre>ENGINE=serp node agent.mjs</pre>
+      <button type="button">Copy</button>
+    </div>
+
+    <h3>A real browser — JS-heavy sites</h3>
+    <p>Renders each result page in headless Chromium, so sites that only work
+    with JavaScript still yield text:</p>
+    <div class="cmd">
+      <pre>npm i playwright &amp;&amp; npx playwright install chromium &amp;&amp; ENGINE=playwright node agent.mjs</pre>
+      <button type="button">Copy</button>
+    </div>
+    <p class="muted">On Windows set the variable first:
+    <code>$env:ENGINE="playwright"; node agent.mjs</code></p>
+  </section>
+
+  <section>
+    <h2>SearXNG — your own metasearch (Docker)</h2>
+    <p><a href="https://github.com/searxng/searxng">SearXNG</a> aggregates
+    Google, Bing, Brave, DuckDuckGo and more without tracking you. Start one
+    with its JSON API enabled:</p>
+    <div class="cmd">
+      <pre>mkdir -p searxng &amp;&amp; printf 'use_default_settings: true\nserver:\n  limiter: false\n  secret_key: "%s"\nsearch:\n  formats: [html, json]\n' "$(openssl rand -hex 16)" &gt; searxng/settings.yml &amp;&amp; docker run -d --name searxng -p 8888:8080 -v "$PWD/searxng:/etc/searxng" searxng/searxng</pre>
+      <button type="button">Copy</button>
+    </div>
+    <p>SearXNG doesn't send the CORS headers a browser-direct call needs, so
+    run the agent in front of it as a thin proxy:</p>
+    <div class="cmd">
+      <pre>SEARXNG_URL=http://localhost:8888 node agent.mjs</pre>
+      <button type="button">Copy</button>
+    </div>
+    <p class="muted">Then use the same settings as the quick start
+    (Exa-compatible, <code>http://localhost:8099</code>). If your SearXNG
+    already sits behind a CORS-adding reverse proxy, you can instead pick
+    backend <b>SearXNG — your instance</b> and point it there directly.</p>
+  </section>
+
+  <section>
+    <h2>Options</h2>
+    <p>All configuration is environment variables:</p>
+    <table>
+      <tr><th>Variable</th><th>Default</th><th>What it does</th></tr>
+      <tr><td><code>PORT</code></td><td><code>8099</code></td><td>Listen port.</td></tr>
+      <tr><td><code>HOST</code></td><td><code>127.0.0.1</code></td><td>Bind address — localhost only unless you widen it.</td></tr>
+      <tr><td><code>ENGINE</code></td><td><code>browse</code></td><td><code>serp</code>, <code>browse</code>, <code>playwright</code> or <code>searxng</code> (auto when <code>SEARXNG_URL</code> is set).</td></tr>
+      <tr><td><code>API_KEY</code></td><td><i>none</i></td><td>When set, requests must carry it (<code>x-api-key</code>). Paste the same key into the settings drawer. Recommended if you expose the agent beyond localhost.</td></tr>
+      <tr><td><code>SEARXNG_URL</code></td><td><i>none</i></td><td>Your SearXNG instance to proxy.</td></tr>
+      <tr><td><code>ALLOW_ORIGIN</code></td><td><code>*</code></td><td>CORS origin; tighten to <code>https://deepresearch.se</code> if you like.</td></tr>
+      <tr><td><code>PAGE_FETCH_CONCURRENCY</code></td><td><code>3</code></td><td>How many result pages load at once in <code>browse</code>/<code>playwright</code>.</td></tr>
+    </table>
+    <h3>Check it's alive</h3>
+    <div class="cmd">
+      <pre>curl -s 'http://localhost:8099/search?q=test'</pre>
+      <button type="button">Copy</button>
+    </div>
+    <p class="muted">The service speaks the Exa-compatible wire
+    (<code>POST /search</code> → <code>{results:[{title,url,highlights}]}</code>)
+    plus <code>GET /healthz</code>, so anything else that speaks it drops in
+    the same way.</p>
+  </section>
+
+  <section>
+    <h2>Good to know</h2>
+    <ul>
+      <li><b>Privacy.</b> With the agent configured, a search query goes
+        browser → your machine → the web. deepresearch.se never sees it. The
+        agent's default engines fetch results from DuckDuckGo, so that query
+        (from your IP) is what the outside world observes; the SearXNG route
+        spreads it across engines of your choosing.</li>
+      <li><b>Browsers.</b> Chrome, Edge and Firefox allow an HTTPS page to
+        call <code>http://localhost</code>; the agent also answers Chrome's
+        private-network preflight. <b>Safari blocks it</b> as mixed content —
+        use another browser, or put the agent behind a local HTTPS proxy.</li>
+      <li><b>Fail-soft.</b> If the agent is down or unreachable, research
+        degrades to the offline harvest (or a server grant if you hold one);
+        the answer still arrives.</li>
+      <li><b>Keep it local.</b> The agent binds <code>127.0.0.1</code> by
+        default and logs nothing to disk. If you open it up to a LAN or the
+        internet, set <code>API_KEY</code> and tighten
+        <code>ALLOW_ORIGIN</code>.</li>
+    </ul>
+    <p class="muted">More background on self-hosted search and the two-tier
+    privacy model: the <a href="/cure/help/">Se<span class="sl">/</span>cure
+    documentation</a>.</p>
+  </section>
+</main>
+<script>
+  // Copy buttons: notify briefly, then RETURN to the original label (UX-6).
+  for (const btn of document.querySelectorAll(".cmd button")) {
+    btn.addEventListener("click", async () => {
+      const pre = btn.parentElement.querySelector("pre");
+      try {
+        await navigator.clipboard.writeText(pre.textContent);
+        btn.textContent = "Copied ✓";
+      } catch {
+        btn.textContent = "Select it";
+      }
+      setTimeout(() => (btn.textContent = "Copy"), 1200);
+    });
+  }
+</script>
+</body>
+</html>
