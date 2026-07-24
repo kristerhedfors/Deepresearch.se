@@ -193,7 +193,13 @@ export function crashMessage(everSpoke, detail) {
     ? "The on-device engine crashed"
     : "The on-device engine crashed before it could start — its script failed to load, " +
       "which usually means a stale cached copy of the app: fully close and reopen it (or hard-reload), then try again";
-  return base + (detail ? ": " + detail : ".");
+  // A memory-looking detail carries its own remedy (feedback #19): the next
+  // try starts a fresh engine, and on a phone a shorter conversation is the
+  // lever the user actually has.
+  const hint = detail && isMemoryPressureError(detail)
+    ? " This looks like the device ran out of memory — a fresh engine starts on the next try; a shorter conversation (New chat) helps on phones."
+    : "";
+  return base + (detail ? ": " + detail : ".") + hint;
 }
 
 // ---- the on-screen trace ------------------------------------------------------------
@@ -511,6 +517,82 @@ export function withJsonReminder(messages) {
 // minute wait — the tier trades tail length for a usable turnaround. Applied
 // in the provider entry's params() so every phase inherits it.
 export const ONDEVICE_MAX_TOKENS = 1280;
+
+// ---- the phone-memory prompt budget ------------------------------------------------
+//
+// Prefill memory grows with the SQUARE of prompt length (the attention-score
+// tensors are seq×seq per head), so a long conversation kills the tiny model
+// exactly as dead as the big one — feedback #19 (2026-07-24): a chat whose
+// history carried one full research report crashed BOTH Bonsai 1.7B and 8B
+// with a memory-exhaustion warning. Output was already capped
+// (ONDEVICE_MAX_TOKENS); this is the same contract for the INPUT side,
+// enforced in the worker's generate() so every caller — both tiers, every
+// pipeline phase — inherits it. 12k chars (~3k tokens) matches the client
+// pipeline's CONTEXT_CHARS bound for the planning phases.
+export const ONDEVICE_PROMPT_BUDGET_CHARS = 12_000;
+
+const TRIM_MARK = "\n[… earlier content trimmed to fit this device's memory …]\n";
+
+/**
+ * Middle-out clip: keeps the head (instructions usually lead) and the tail
+ * (the JSON reminder / the actual question usually trail) with a visible
+ * marker between them. Never returns more than `max` chars.
+ * @param {string} text @param {number} max
+ */
+export function clipMiddle(text, max) {
+  if (typeof text !== "string" || text.length <= max) return text;
+  if (max <= TRIM_MARK.length) return text.slice(0, Math.max(0, max));
+  const keep = max - TRIM_MARK.length;
+  const head = Math.ceil((keep * 2) / 3);
+  return text.slice(0, head) + TRIM_MARK + text.slice(text.length - (keep - head));
+}
+
+/**
+ * Fits a chat-message list into the phone-memory prompt budget. Priorities:
+ * the LAST message (the live question, or a phase's whole prompt) gets the
+ * budget it needs, a leading system message keeps up to a quarter, and prior
+ * turns fill the remainder newest-first — whole turns only, stopping at the
+ * first that no longer fits (a mid-history hole would scramble the dialogue).
+ * Oversized survivors are clipped middle-out with a visible marker. Returns
+ * the input array untouched (same reference) when it already fits.
+ * @param {Array<{role: string, content: string}>} messages
+ * @param {number} [budget]
+ */
+export function trimForOnDevice(messages, budget = ONDEVICE_PROMPT_BUDGET_CHARS) {
+  if (!Array.isArray(messages) || messages.length === 0) return [];
+  const size = (m) => (typeof m?.content === "string" ? m.content.length : 0);
+  if (messages.reduce((n, m) => n + size(m), 0) <= budget) return messages;
+  const sys = messages[0]?.role === "system" ? messages[0] : null;
+  const rest = sys ? messages.slice(1) : messages;
+  const last = rest.length ? rest[rest.length - 1] : null;
+  const mid = rest.slice(0, -1);
+  const sysBudget = sys ? Math.min(size(sys), Math.floor(budget / 4)) : 0;
+  const lastBudget = last ? Math.min(size(last), budget - sysBudget) : 0;
+  let left = budget - sysBudget - lastBudget;
+  const kept = [];
+  for (let i = mid.length - 1; i >= 0; i--) {
+    if (size(mid[i]) > left) break;
+    kept.unshift(mid[i]);
+    left -= size(mid[i]);
+  }
+  const out = [];
+  if (sys) out.push(sysBudget < size(sys) ? { ...sys, content: clipMiddle(sys.content, sysBudget) } : sys);
+  out.push(...kept);
+  if (last) out.push(lastBudget < size(last) ? { ...last, content: clipMiddle(last.content, lastBudget) } : last);
+  return out;
+}
+
+/**
+ * Does an engine failure look like memory exhaustion? The signatures cover
+ * the wasm heap ("Cannot enlarge memory", "memory access out of bounds",
+ * plain OOM aborts) and the GPU side (device lost, buffer/allocation
+ * failures). Drives the free-the-model-and-say-so recovery, so the match is
+ * deliberately broad on memory words and test-pinned.
+ * @param {string} [message]
+ */
+export function isMemoryPressureError(message) {
+  return /out of memory|memory access|enlarge memory|memory limit|allocat|\boom\b|device.?lost|buffer size|exceeds the max/i.test(message || "");
+}
 
 // ---- download progress ---------------------------------------------------------------
 
