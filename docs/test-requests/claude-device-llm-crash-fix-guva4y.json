@@ -1,0 +1,34 @@
+{
+  "branch": "claude/device-llm-crash-fix-guva4y",
+  "pr": null,
+  "requested_at": "2026-07-24",
+  "points": [
+    {
+      "label": "On-device: a long chat no longer crashes Bonsai with memory exhaustion",
+      "summary": "The feedback #19 repro, now expected to pass. In a chat that already holds at least one LONG answer (e.g. ask a server model for a full research report first, or reopen the chat where the crash happened), switch the composer's model to Bonsai 1.7B and ask a follow-up question. PASS: the model answers (phone-slow is fine — the first token can take a minute) with no crash and no memory warning; the answer step completes. Repeat once with Bonsai 8B if it is on the device. The engine now trims the conversation it feeds the model to a fixed budget, so a visible '[… earlier content trimmed to fit this device's memory …]' marker influencing the answer's memory of OLD turns is expected behavior, not a bug. FAIL: a crash, a page reload, or a 'memory exhaustion' warning on either model.",
+      "target": "/",
+      "actions": [],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "On-device: switching between Bonsai models frees the first one",
+      "summary": "With both Bonsai 1.7B and 8B downloaded: ask 8B a question, wait for the answer, then switch the dropdown to 1.7B and ask another. PASS: the activity step briefly shows 'Freeing the previous model…' before the 1.7B load, and the 1.7B answer arrives without a crash (before this fix both models stayed resident and the second could die of memory exhaustion even at 278 MB). FAIL: a crash or memory warning on the second model.",
+      "target": "/",
+      "actions": [],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "On-device: an out-of-memory failure now names itself and recovers on retry",
+      "summary": "Hard to force deliberately — verify opportunistically if a memory failure still occurs on a constrained device. PASS: the error message shown in chat says the device ran out of memory, that the model was freed so a retry starts clean, and that a shorter conversation (New chat) helps — and a retry in a NEW chat then works. FAIL: a bare crash message with no memory explanation, or a retry that immediately dies the same way in a fresh short chat.",
+      "target": "/",
+      "actions": [],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    }
+  ]
+}
