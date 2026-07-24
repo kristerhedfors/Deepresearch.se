@@ -52,7 +52,7 @@ import {
 } from "./validation.js";
 import { bashLiteEnabled, developerModeEnabled, shodanEnabled, googleMapsEnabled } from "./settings.js";
 import { buildSlugOk } from "./build-pub.js";
-import { createFeedbackEntry } from "./feedback.js";
+import { createOrThreadFeedbackEntry } from "./feedback.js";
 import { recordUseCaseFeedback } from "./testpoints.js";
 import { getDb } from "./db.js";
 
@@ -507,14 +507,19 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         // runFeedbackCapture) tags the entry with its use case for discovery.
         const useCase = state.feedback.useCase || null;
         try {
-          const id = await createFeedbackEntry(await getDb(env), String(identity.id), {
+          // A follow-up feedback message in a conversation that already holds
+          // an earlier one THREADS onto that entry (feedback.js
+          // createOrThreadFeedbackEntry) instead of opening a disconnected
+          // report — the "connected to a previously existing feedback
+          // message" behavior (entries #8/#9, 2026-07-24).
+          const cap = await createOrThreadFeedbackEntry(await getDb(env), String(identity.id), {
             comment: state.feedback.comment,
             question: state.feedback.question,
             answer_excerpt: state.feedback.answer_excerpt,
             model,
             page: useCase ? `usecase ${useCase.tag}` : "chat",
-          });
-          if (id) log.info("feedback.captured", { user_id: identity.id, feedback_id: id, request_id: requestId });
+          }, conversation);
+          if (cap) log.info("feedback.captured", { user_id: identity.id, feedback_id: cap.id, threaded: cap.threaded, request_id: requestId });
         } catch (err) {
           log.warn("feedback.capture_failed", {
             user_id: identity.id,
