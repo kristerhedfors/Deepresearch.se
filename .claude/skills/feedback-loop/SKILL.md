@@ -34,6 +34,30 @@ show only its size. The capture is **double**: the entry lands in the queue AND 
 `scripts/feedback` (the structured queue) and a chatlogs scan. There is no
 per-reply Feedback button and no settings knob any more.
 
+**Two SCOPES — read the classification before you diagnose (owner directive,
+2026-07-24).** A "feedback …" message that is the **absolute first message** of
+a conversation cannot be feedback about that conversation: there is nothing in
+it yet. It is **generic developer feedback** — a feature suggestion or a
+next-steps note — and the pipeline classifies it as such
+(`feedbackScope` / `feedbackScopeOfPrior` in `public/js/feedback-core.js`):
+
+| | standalone | session |
+|---|---|---|
+| when | feedback opens the chat | feedback arrives mid-conversation |
+| `page` tag | `chat/standalone`, `se/cure/standalone` | `chat`, `se/cure` |
+| queue rendering | a `SCOPE: standalone …` line; `standalone: true` on the JSON | no scope line |
+| `DEBUG CONTEXT:` | request metadata + `--- standalone feedback: … no session to attach ---` | the whole transcript |
+| canned reply | the standalone variant set — no promise of a conversation | the session set |
+
+For a **standalone** note, step 1 below changes: there is no complaint to
+reproduce and no answer to correlate in `chat_logs`. Treat it as a change
+request against the product — evaluate the idea, check it against
+`FEATURES.md` and the invariants, and take it to the operator as a proposal.
+Reading session context into one (hunting for the answer it "must" be about)
+is wasted work on a note that was never about a session. A use-case reference
+(`feedback #UC-34 …`) keeps its own `usecase #UC-34` tag and is never
+standalone — the ref IS its context.
+
 **Se/cure feedback (owner directive, 2026-07-24).** The client-side tier
 sends feedback too, over the SAME gate (the shared `public/js/feedback-core.js`
 `feedbackIntent`, which `src/feedback.js` now re-exports). Because Se/cure keeps
@@ -46,7 +70,10 @@ is the SERVER-TOKEN GUARANTEE's THIRD bounded, **write-only** exception: any liv
 token may create ONE feedback row (never read one back), attributed to the
 token's minting account (`claims.sub`) — so if that user is a signed-in Se/rver
 account, the developers' replies reach them in the account panel exactly like
-Se/rver-filed feedback. In the queue these entries carry `page: "se/cure"`.
+Se/rver-filed feedback. In the queue these entries carry `page: "se/cure"` —
+or `"se/cure/standalone"` when the note was typed into an empty chat (the same
+scope classification, via `feedbackScopeOfPrior` over the conversation's
+messages, since Se/cure never enters the feedback text into the conversation).
 No incognito/chat-logs row exists for them (Se/cure has no server-side chat log);
 the feedback entry is the only record. Requires a live token — a Se/cure visitor
 with none is told to connect one and can't send.
@@ -116,13 +143,15 @@ the single source of truth for what needs attention.
 
 ## The loop, per entry
 
-1. **Gather context.** Read the full thread (`--id N`). The entry carries
-   the question and answer excerpt it was filed on; correlate with the
-   interaction log when you need the research metadata behind that answer
-   (the **chat-logs** skill — `scripts/chatlogs --q "<question snippet>"`).
-   Reproduce the complaint where possible before forming an opinion. Mark
-   the entry `seen` once triaged so the user's status changes from
-   "received".
+1. **Gather context.** Read the full thread (`--id N`). Check the SCOPE first
+   (the table above): a **standalone** entry is a suggestion with no session
+   behind it — evaluate the request itself and skip straight to step 2. For a
+   **session** entry the entry carries the question and answer excerpt it was
+   filed on; correlate with the interaction log when you need the research
+   metadata behind that answer (the **chat-logs** skill — `scripts/chatlogs
+   --q "<question snippet>"`). Reproduce the complaint where possible before
+   forming an opinion. Mark the entry `seen` once triaged so the user's status
+   changes from "received".
 
 2. **Human in the loop — on EVERY entry, before acting.** Present the
    operator with: what the user reported, your diagnosis, the proposed

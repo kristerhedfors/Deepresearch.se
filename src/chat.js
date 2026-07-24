@@ -52,7 +52,7 @@ import {
 } from "./validation.js";
 import { bashLiteEnabled, developerModeEnabled, shodanEnabled, googleMapsEnabled } from "./settings.js";
 import { buildSlugOk } from "./build-pub.js";
-import { buildFeedbackDebugContext, createOrThreadFeedbackEntry } from "./feedback.js";
+import { buildFeedbackDebugContext, createOrThreadFeedbackEntry, feedbackPageTag } from "./feedback.js";
 import { recordUseCaseFeedback } from "./testpoints.js";
 import { getDb } from "./db.js";
 
@@ -116,7 +116,7 @@ import { getDb } from "./db.js";
  *   userId?: string,
  *   buildResult?: { slug: string, url: string, files: number, bytes: number },
  *   feedbackCapture?: boolean,
- *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string, images?: { name: string | null, data: string }[], useCase?: { id: number, tag: string } | null },
+ *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string, images?: { name: string | null, data: string }[], useCase?: { id: number, tag: string } | null, scope?: "standalone" | "session" },
  * }} ChatRequestState
  */
 
@@ -506,6 +506,13 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         // A use-case reference ("feedback #UC-34 …", pipeline.js
         // runFeedbackCapture) tags the entry with its use case for discovery.
         const useCase = state.feedback.useCase || null;
+        // SCOPE (pipeline.js runFeedbackCapture → feedback-core feedbackScope):
+        // a feedback message that OPENED the conversation is generic developer
+        // feedback — a suggestion or next-steps note — not a report about a
+        // research session. Tagged on the entry so the queue reads it as such,
+        // and the debugging context below skips the pointless one-turn
+        // "transcript" (buildFeedbackDebugContext).
+        const scope = state.feedback.scope === "standalone" ? "standalone" : "session";
         try {
           // A follow-up feedback message in a conversation that already holds
           // an earlier one THREADS onto that entry (feedback.js
@@ -517,7 +524,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             question: state.feedback.question,
             answer_excerpt: state.feedback.answer_excerpt,
             model,
-            page: useCase ? `usecase ${useCase.tag}` : "chat",
+            page: useCase ? `usecase ${useCase.tag}` : feedbackPageTag("chat", scope),
             // Screenshots from the chat message (pipeline.js
             // feedbackImagesFromParts) — without these the attached image was
             // silently lost (feedback #12).

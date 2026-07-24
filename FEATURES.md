@@ -155,7 +155,11 @@ dialogue-thread entry (`src/feedback.js`) carrying the exact text plus the
 whole conversation and request metadata as debugging context; the development
 agent gathers, decides on, acts on, and replies into it — the third
 loop-feeding queue. Discovery is double: the structured queue plus a
-`chat_logs` `meta.feedback` tag. Superseded the earlier per-reply Feedback
+`chat_logs` `meta.feedback` tag. Notes are classified by SCOPE (2026-07-24):
+feedback typed as the FIRST message of a chat is generic developer feedback —
+a suggestion, next steps — so it is tagged `chat/standalone`, gets an
+acknowledgment that doesn't promise a conversation, and carries no transcript
+instead of a one-turn fake one. Superseded the earlier per-reply Feedback
 button + settings knob (2026-07-18). See the **feedback-loop** skill.
 
 ### F-12 · Project pulse dashboard (/pulse) — ✅ SHIPPED (low)

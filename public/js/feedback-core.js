@@ -41,6 +41,79 @@ export function feedbackIntent(text) {
 }
 
 // ---------------------------------------------------------------------------
+// SCOPE classification (owner directive, 2026-07-24)
+//
+// A "feedback …" message that is the ABSOLUTE FIRST message of a conversation
+// cannot be feedback ABOUT that conversation — there is nothing in it yet. It
+// is GENERIC developer feedback: a feature suggestion, a next-steps note, a
+// general remark about the product. So the capture must not dress it up as a
+// session report: no prior-turn context to quote, no transcript worth
+// attaching (the "transcript" would be the note itself), and an
+// acknowledgment that doesn't promise the developers a conversation they
+// won't get.
+//
+//   "standalone" — first message of the conversation → generic feedback
+//   "session"    — arrived mid-conversation → about what happened in it
+//
+// Both tiers classify with THESE functions so they can never disagree about
+// which kind of note the developers received. Only user/assistant turns
+// count: a context block injected as some other role is not a session the
+// user had.
+// ---------------------------------------------------------------------------
+
+/** @typedef {"standalone" | "session"} FeedbackScope */
+
+/** @param {unknown} turns */
+const dialogueTurns = (turns) =>
+  (Array.isArray(turns) ? turns : []).filter((m) => m && (m.role === "user" || m.role === "assistant"));
+
+/**
+ * Classify from the turns that came BEFORE the feedback message — the shape
+ * Se/cure has (the feedback text is never entered into its conversation).
+ * @param {unknown} priorTurns the conversation's turns, feedback message excluded
+ * @returns {FeedbackScope}
+ */
+export function feedbackScopeOfPrior(priorTurns) {
+  return dialogueTurns(priorTurns).length ? "session" : "standalone";
+}
+
+/**
+ * Classify from the full conversation ENDING in the feedback turn — the shape
+ * Se/rver has (the pipeline receives the feedback message as the last turn).
+ * @param {unknown} conversation
+ * @returns {FeedbackScope}
+ */
+export function feedbackScope(conversation) {
+  return feedbackScopeOfPrior(dialogueTurns(conversation).slice(0, -1));
+}
+
+// The entry's `page` column carries the SURFACE the note came from ("chat",
+// "se/cure") and — for a standalone note — this suffix, so the queue and the
+// development loop read the classification off the entry itself without a
+// schema change (the same column already carries "usecase #UC-34").
+export const STANDALONE_PAGE_SUFFIX = "/standalone";
+
+/**
+ * The `page` tag for a feedback entry: surface plus the standalone marker.
+ * @param {string} surface e.g. "chat", "se/cure"
+ * @param {FeedbackScope} scope
+ * @returns {string}
+ */
+export function feedbackPageTag(surface, scope) {
+  const s = typeof surface === "string" && surface.trim() ? surface.trim() : "chat";
+  return scope === "standalone" ? s + STANDALONE_PAGE_SUFFIX : s;
+}
+
+/**
+ * Whether a stored `page` marks a standalone (generic) note — for rendering.
+ * @param {unknown} page
+ * @returns {boolean}
+ */
+export function isStandalonePage(page) {
+  return typeof page === "string" && page.endsWith(STANDALONE_PAGE_SUFFIX);
+}
+
+// ---------------------------------------------------------------------------
 // Canned acknowledgments (owner directive, 2026-07-24): user feedback is
 // NEVER run through an LLM. The exact text goes to the developers verbatim
 // (with the whole conversation as debugging context — src/feedback.js
@@ -49,6 +122,11 @@ export function feedbackIntent(text) {
 // no way for feedback text to steer a model (the strongest possible
 // anti-injection posture — there is no model). EN and SV variant lists are
 // kept the same length and say the same things (invariant 6).
+//
+// TWO variant sets, one per SCOPE (above): the session set promises the
+// developers get "this conversation for context", which is simply untrue for
+// a standalone note — so a first-message suggestion gets a set that says what
+// actually happens to it.
 // ---------------------------------------------------------------------------
 
 export const FEEDBACK_ACKS = {
@@ -61,6 +139,21 @@ export const FEEDBACK_ACKS = {
     "Tack — din feedback har skickats vidare till utvecklarna precis som du skrev den, tillsammans med den här konversationen som sammanhang. Varje inskick läses; om ett svar behövs visas det under Feedback i din kontopanel.",
     "Tack för rapporten — den har vidarebefordrats till utvecklarna ord för ord, med den här chatten bifogad så att de ser vad som hände. Eventuella svar från dem visas under Feedback i din kontopanel.",
     "Uppfattat — ditt meddelande ligger nu i utvecklarnas kö, ordagrant, tillsammans med den här konversationen som felsökningsunderlag. Om de svarar visas svaret under Feedback i din kontopanel.",
+  ],
+};
+
+// The standalone set: a first-message note is generic developer feedback, so
+// these promise verbatim delivery WITHOUT claiming a conversation rides along.
+export const FEEDBACK_ACKS_STANDALONE = {
+  en: [
+    "Thank you — your suggestion has been passed on to the developers exactly as you wrote it, filed as general feedback rather than a report about a research session. Every submission is read; if a reply is needed it will appear under Feedback in your account panel.",
+    "Thanks — it has been forwarded to the developers word for word and filed as a general suggestion, since this chat holds nothing else for them to look at. Any reply from them shows up under Feedback in your account panel.",
+    "Got it — your message is now in the developers' queue, verbatim, filed as general feedback rather than a comment on an earlier answer. If they write back, the reply appears under Feedback in your account panel.",
+  ],
+  sv: [
+    "Tack — ditt förslag har skickats vidare till utvecklarna precis som du skrev det, registrerat som allmän feedback och inte som en rapport om en forskningssession. Varje inskick läses; om ett svar behövs visas det under Feedback i din kontopanel.",
+    "Tack — det har vidarebefordrats till utvecklarna ord för ord och registrerats som ett allmänt förslag, eftersom den här chatten inte innehåller något annat att titta på. Eventuella svar från dem visas under Feedback i din kontopanel.",
+    "Uppfattat — ditt meddelande ligger nu i utvecklarnas kö, ordagrant, registrerat som allmän feedback och inte som en kommentar till ett tidigare svar. Om de svarar visas svaret under Feedback i din kontopanel.",
   ],
 };
 
@@ -89,18 +182,19 @@ export function feedbackLangSv(text) {
 }
 
 /**
- * The canned acknowledgment for a feedback message: language-matched
- * (EN/SV), variant picked deterministically from the message text (a stable
- * char-code hash — same message, same reply; different messages vary), with
- * the use-case confirmation appended when the note referenced one.
+ * The canned acknowledgment for a feedback message: scope-matched (standalone
+ * vs session) and language-matched (EN/SV), variant picked deterministically
+ * from the message text (a stable char-code hash — same message, same reply;
+ * different messages vary), with the use-case confirmation appended when the
+ * note referenced one.
  * @param {unknown} comment the user's feedback message text
- * @param {{ useCaseTag?: string | null }} [opts]
+ * @param {{ useCaseTag?: string | null, scope?: FeedbackScope }} [opts]
  * @returns {string}
  */
-export function cannedFeedbackAck(comment, { useCaseTag = null } = {}) {
+export function cannedFeedbackAck(comment, { useCaseTag = null, scope = "session" } = {}) {
   const text = typeof comment === "string" ? comment : "";
   const lang = feedbackLangSv(text) ? "sv" : "en";
-  const variants = FEEDBACK_ACKS[lang];
+  const variants = (scope === "standalone" ? FEEDBACK_ACKS_STANDALONE : FEEDBACK_ACKS)[lang];
   let hash = 0;
   for (let i = 0; i < text.length; i++) hash = (hash + text.charCodeAt(i)) % 0xffff;
   const ack = variants[hash % variants.length];
