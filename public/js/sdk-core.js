@@ -1,7 +1,13 @@
 // @ts-check
-// DistillSDK's shared PURE core — the one implementation both tiers
-// (and the sdk/pair-cli.mjs CLI) use for manifest operations, SDK-mode native
-// tools, and generated-app ("build") file handling. The bash-core.js /
+// The shared PURE core behind BOTH SDKs' tool surfaces — the one
+// implementation both tiers (and the sdk/pair-cli.mjs CLI) use for manifest
+// operations, SDK-mode native tools, and generated-app ("build") file
+// handling. The two-SDK division runs through this file: the manifest
+// operations and sdk_* tool defs belong to the PLATFORM SDK (DistillSDK —
+// builds a whole platform), while the BUILD tools (write_file/publish_app
+// staging — Agent Studio's only shipping pathway) belong to the AGENTS SDK,
+// which is tailored to Agent Studio and the integrated Linux environment
+// (agent-spec-core.js is its definition core). The bash-core.js /
 // introspect-core.js pattern: it lives under public/ because the browser can
 // only import served modules while the Worker bundler imports from any repo
 // path; src/sdk-tools.js is the thin server façade and sdk/pair-cli.mjs
@@ -629,7 +635,7 @@ export function buildSdkContextBlock(manifest, opts = {}) {
   const parts = [
     "SDK mode: DistillSDK — distill this site into a new flavour",
     "=".repeat(66),
-    "The user is in SDK mode: they want you to DESIGN AND BUILD a runnable collection of files, published at a live URL, by DISTILLING this site into a new FLAVOUR. DistillSDK (sdk/ in this repo) is the method: it describes this site's Se/cure + Se/rver pair as 33 buildable modules, each with a skill playbook (sdk/skills/<id>/SKILL.md) you can read for implementation guidance. The site itself — above all the client-side Se/cure tier — is the original you distill from.",
+    "The user is in SDK mode (Agent Studio): they want you to DESIGN AND BUILD a runnable collection of files, published at a live URL, by DISTILLING this site into a new FLAVOUR — a single agent, or an entire platform. The Platform SDK (DistillSDK, sdk/ in this repo) is the method: it describes this site's Se/cure + Se/rver platform as 34 buildable modules, each with a skill playbook (sdk/skills/<id>/SKILL.md) you can read for implementation guidance. The site itself — above all the client-side Se/cure tier — is the original you distill from.",
     "",
     "The Se/cure tier (the original most flavours distill from): a fully client-side research assistant. The server is in NO data path — the browser talks to LLM/search providers DIRECTLY using the user's own API keys, the research pipeline runs in the page, and any state stays browser-local. Its deployed reference source:",
     SECURE_SOURCE_REFS.map((p) => `  - ${p}`).join("\n"),

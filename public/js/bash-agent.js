@@ -48,14 +48,16 @@ export {
  * @param {object[]} messages
  * @param {ShellRun[]} transcript
  * @param {typeof fetch} [fetchImpl]
+ * @param {{ sdk?: boolean }} [opts] - sdk: an Agent Studio (SDK-mode) send; the
+ *   step prompt then steers file creation to the build tools (feedback #7).
  * @returns {Promise<{ commands: string[], done: boolean, reasoning: string }>}
  */
-export async function fetchShellStep(messages, transcript, fetchImpl = fetch) {
+export async function fetchShellStep(messages, transcript, fetchImpl = fetch, opts = {}) {
   try {
     const res = await fetchImpl("/api/bash/step", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ messages, transcript }),
+      body: JSON.stringify({ messages, transcript, ...(opts.sdk ? { sdk_mode: true } : {}) }),
     });
     const data = await res.json().catch(() => null);
     if (!res.ok || !data) return { commands: [], done: true, reasoning: "" };
@@ -85,12 +87,13 @@ export async function fetchShellStep(messages, transcript, fetchImpl = fetch) {
  *   onResult?: (run: ShellRun) => void,
  *   maxRounds?: number,
  *   fetchImpl?: typeof fetch,
+ *   sdk?: boolean,
  * }} params
  * @returns {Promise<ShellRun[]>}
  */
-export function runShellLoop({ messages, exec, ensureReady, onStep, onExec, onResult, maxRounds = MAX_SHELL_ROUNDS, fetchImpl = fetch }) {
+export function runShellLoop({ messages, exec, ensureReady, onStep, onExec, onResult, maxRounds = MAX_SHELL_ROUNDS, fetchImpl = fetch, sdk = false }) {
   return coreRunShellLoop({
-    step: (transcript) => fetchShellStep(messages, transcript, fetchImpl),
+    step: (transcript) => fetchShellStep(messages, transcript, fetchImpl, { sdk }),
     exec,
     ensureReady,
     onStep,
