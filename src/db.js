@@ -112,6 +112,16 @@ CREATE TABLE IF NOT EXISTS tokemon_saves (
   save_json TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
+-- The space-animations showcase's gallery feedback (src/space.js). The /space/
+-- page is public, so rows deliberately carry NO identity column: scene id +
+-- verdict + a clamped short comment is the whole record.
+CREATE TABLE IF NOT EXISTS space_feedback (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts INTEGER NOT NULL,
+  scene TEXT NOT NULL,
+  verdict TEXT NOT NULL,
+  comment TEXT
+);
 CREATE TABLE IF NOT EXISTS user_messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL,

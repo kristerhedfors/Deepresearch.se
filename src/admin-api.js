@@ -55,6 +55,7 @@ import { handleAdminPanels } from "./panels.js";
 import { handleAdminTestpoints } from "./testpoints.js";
 import { handleAdminBoards } from "./admin-boards.js";
 import { handleAdminServerErrors } from "./server-errors.js";
+import { handleAdminSpaceFeedback } from "./space.js";
 import { handleAdminWebSearch } from "./websearch.js";
 import { webSearch } from "./exa.js";
 import { resolveSearchBackend } from "./websearch-backends.js";
@@ -176,6 +177,11 @@ export async function handleAdminApi(request, env, url, log, identity) {
     // work queue.
     if (path === "/errors" || path.startsWith("/errors/")) {
       return handleAdminServerErrors(request, env, url, log);
+    }
+    // The space-animations showcase's gallery feedback (src/space.js):
+    // newest-first entries + per-scene 👍/👎 tallies; ?format=text for loops.
+    if (path === "/space-feedback" && method === "GET") {
+      return handleAdminSpaceFeedback(request, env, url);
     }
     // The admin-BOARDS discovery index (src/admin-boards.js): one call that
     // lists every Claude-fetchable board and how to pull its prioritized
