@@ -93,14 +93,31 @@ test("@live sandbox agent trace: timestamps for every event in one sandbox-backe
               const dataLine = frame.split("\n").find((l) => l.startsWith("data:"));
               if (!dataLine) continue;
               const raw = dataLine.slice(5).trim();
+              if (raw === "[DONE]") {
+                push("sse", { type: "[DONE]" });
+                continue;
+              }
+              // The wire format is OpenAI-style text deltas plus custom
+              // `status` events (see the sse-protocol skill):
+              //   {"choices":[{"delta":{"content":"…"}}]}
+              //   {"status":{"type":"step_start","id":"plan","label":"…"}}
               let type = "(unparsed)";
-              let extra = {};
+              const extra = {};
               try {
                 const j = JSON.parse(raw);
-                type = j.type || j.event || "(no-type)";
-                if (typeof j.step === "string") extra.step = j.step.slice(0, 80);
-                if (typeof j.label === "string") extra.label = j.label.slice(0, 80);
-                if (type === "token" || type === "delta") extra.chars = (j.text || j.delta || "").length;
+                const delta = j.choices?.[0]?.delta?.content;
+                if (typeof delta === "string") {
+                  type = "delta";
+                  extra.chars = delta.length;
+                } else if (j.status && typeof j.status === "object") {
+                  type = j.status.type || "status";
+                  if (j.status.id) extra.id = String(j.status.id).slice(0, 40);
+                  if (j.status.label) extra.label = String(j.status.label).slice(0, 70);
+                  if (j.status.query) extra.label = String(j.status.query).slice(0, 70);
+                  if (typeof j.status.duration_ms === "number") extra.dur = j.status.duration_ms;
+                } else {
+                  type = Object.keys(j).join("+").slice(0, 40) || "(empty)";
+                }
               } catch {
                 type = raw.slice(0, 40);
               }
@@ -171,6 +188,17 @@ test("@live sandbox agent trace: timestamps for every event in one sandbox-backe
   await page.evaluate(() => window.__TRACE.events.push({ kind: "mark", ms: Math.round(performance.now()), label: "turn-complete" }));
 
   const trace = await page.evaluate(() => window.__TRACE);
+  // The sandbox boots LAZILY — only once the loop actually proposes a command —
+  // so the first round's "exec window" is boot + command, not command alone.
+  // sandboxFsSummary().ms is the boot's own measurement, which splits the two.
+  const fsSummary = await page.evaluate(async () => {
+    try {
+      const mod = await import("/js/sandbox.js");
+      return mod.sandboxFsSummary?.() ?? null;
+    } catch {
+      return null;
+    }
+  });
   const answer = (await turn.locator(".content").innerText()).trim();
 
   // ---- render the timeline ------------------------------------------------
@@ -180,17 +208,37 @@ test("@live sandbox agent trace: timestamps for every event in one sandbox-backe
   console.log("\n================ SANDBOX AGENT TURN TIMELINE ================");
   console.log(`prompt: ${PROMPT}`);
   console.log(`crossOriginIsolated=${iso.coi}  settings PUT=${putStatus}\n`);
+  // A streamed answer is hundreds of `delta` frames; printing one line each
+  // buries every meaningful event. Collapse consecutive deltas into one row
+  // carrying the run's frame count, total characters, and elapsed span.
+  const collapsed = [];
+  for (const e of trace.events) {
+    const last = collapsed[collapsed.length - 1];
+    if (e.kind === "sse" && e.type === "delta" && last && last.run) {
+      last.n += 1;
+      last.chars += e.chars || 0;
+      last.endMs = e.ms;
+      continue;
+    }
+    if (e.kind === "sse" && e.type === "delta") {
+      collapsed.push({ ...e, run: true, n: 1, chars: e.chars || 0, endMs: e.ms });
+      continue;
+    }
+    collapsed.push(e);
+  }
+
   console.log("     t(ms)   Δ(ms)  event");
   let prev = t0;
-  for (const e of trace.events) {
+  for (const e of collapsed) {
     const t = rel(e);
     const d = e.ms - prev;
-    prev = e.ms;
-    const desc =
-      e.kind === "mark"
+    prev = e.run ? e.endMs : e.ms;
+    const desc = e.run
+      ? `sse: ${e.n} answer deltas over ${e.endMs - e.ms} ms (${e.chars} chars)`
+      : e.kind === "mark"
         ? `── ${e.label} ──`
         : e.kind === "sse"
-          ? `sse: ${e.type}${e.step ? ` (${e.step})` : ""}${e.label ? ` (${e.label})` : ""}${e.chars ? ` +${e.chars}ch` : ""}`
+          ? `sse: ${e.type}${e.id ? ` [${e.id}]` : ""}${e.label ? ` ${e.label}` : ""}${e.dur ? ` (${e.dur}ms)` : ""}`
           : `${e.kind}: ${e.path || ""}${e.status ? ` ${e.status}` : ""}${e.err ? ` ${e.err}` : ""}`;
     console.log(`  ${String(t).padStart(7)} ${String(d).padStart(7)}  ${desc}`);
   }
@@ -209,12 +257,17 @@ test("@live sandbox agent trace: timestamps for every event in one sandbox-backe
       execWindowMs: nextReq ? nextReq.ms - res.ms : null,
     });
   }
+  const bootMs = fsSummary && typeof fsSummary.ms === "number" ? fsSummary.ms : null;
   console.log("\n## Shell-loop rounds (step = server LLM decision, exec window = in-VM run)");
   for (const r of rounds) {
-    console.log(
+    let line =
       `  round ${r.round}: step ${String(r.stepMs).padStart(6)} ms` +
-        (r.execWindowMs !== null ? `   exec window ${String(r.execWindowMs).padStart(6)} ms` : "   (last round)"),
-    );
+      (r.execWindowMs !== null ? `   exec window ${String(r.execWindowMs).padStart(6)} ms` : "   (last round)");
+    // Round 1 pays the lazy cold boot; attribute it so the command cost is honest.
+    if (r.round === 1 && r.execWindowMs !== null && bootMs !== null) {
+      line += `  = VM boot ${bootMs} ms + commands ~${r.execWindowMs - bootMs} ms`;
+    }
+    console.log(line);
   }
   const totalStep = rounds.reduce((a, r) => a + r.stepMs, 0);
   const totalExec = rounds.reduce((a, r) => a + (r.execWindowMs || 0), 0);
@@ -228,7 +281,7 @@ test("@live sandbox agent trace: timestamps for every event in one sandbox-backe
   console.log("=============================================================\n");
 
   await test.info().attach("sandbox-agent-trace.json", {
-    body: JSON.stringify({ prompt: PROMPT, iso, putStatus, t0, events: trace.events, rounds, answer }, null, 2),
+    body: JSON.stringify({ prompt: PROMPT, iso, putStatus, t0, events: trace.events, rounds, bootMs, fsSummary, answer }, null, 2),
     contentType: "application/json",
   });
 
