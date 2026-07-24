@@ -23,6 +23,7 @@ export {
   buildFilesSummary,
   buildSdkContextBlock,
   buildSecureSourceDigest,
+  makeFileLineScanner,
   manifestFromSnapshot,
   parseFileBlocks,
   renderList,
@@ -34,5 +35,6 @@ export {
   slugify,
   snapshotFileCheck,
   stageBuildFile,
+  stripFileBlocks,
   validateManifest,
 } from "../public/js/sdk-core.js";

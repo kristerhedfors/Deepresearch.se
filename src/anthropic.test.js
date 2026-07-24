@@ -282,6 +282,8 @@ describe("anthropicToolRun over mock HTTP", () => {
     assert.match(result.text, /SESSION_SECRET gates auth/);
     assert.equal(result.toolCalls, 1);
     assert.equal(result.rounds, 2);
+    // The caller can tell a real answer from a max_tokens truncation.
+    assert.equal(result.stopReason, "end_turn");
     // Usage summed across both rounds.
     assert.deepEqual(result.usage, { prompt_tokens: 30, completion_tokens: 12 });
 

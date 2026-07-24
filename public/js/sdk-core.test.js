@@ -16,9 +16,11 @@ import {
   buildFilesSummary,
   buildSdkContextBlock,
   buildSecureSourceDigest,
+  makeFileLineScanner,
   manifestFromSnapshot,
   parseFileBlocks,
   runSdkTool,
+  stripFileBlocks,
   sanitizeBuildPath,
   secureSourceExcerpt,
   sdkToolStepHeadline,
@@ -114,6 +116,34 @@ test("parseFileBlocks: the deterministic FILE-block convention", () => {
   assert.equal(files.find((f) => f.path === "index.html").content, "<h1>v2</h1>");
   assert.equal(files.find((f) => f.path === "css/app.css").content, "body { color: red; }");
   assert.deepEqual(parseFileBlocks("no files here"), []);
+});
+
+test("stripFileBlocks: removes the blocks, keeps the prose around them", () => {
+  const text =
+    "Built **TABLOID WIRE** for you.\n\nFILE: index.html\n```html\n<!doctype html>\n<h1>Hi</h1>\n```\n\n" +
+    "A note between files.\n\nFILE: css/app.css\n```css\nbody { color: red; }\n```\n\nEnjoy the app!";
+  const prose = stripFileBlocks(text);
+  assert.equal(prose, "Built **TABLOID WIRE** for you.\n\nA note between files.\n\nEnjoy the app!");
+  assert.ok(!prose.includes("FILE:"));
+  assert.ok(!prose.includes("doctype"));
+  // No blocks → the text is just trimmed, never mangled.
+  assert.equal(stripFileBlocks("  plain reply\nwith lines  "), "plain reply\nwith lines");
+  assert.equal(stripFileBlocks(""), "");
+  assert.equal(stripFileBlocks(/** @type {any} */ (null)), "");
+});
+
+test("makeFileLineScanner: reports each FILE line once, only when its line is complete", () => {
+  const scan = makeFileLineScanner();
+  let buf = "Intro prose.\nFILE: index.ht";
+  assert.deepEqual(scan.feed(buf), []); // line not complete yet
+  buf += "ml\n```html\n<h1>";
+  assert.deepEqual(scan.feed(buf), ["index.html"]);
+  assert.deepEqual(scan.feed(buf), []); // no re-report without new content
+  buf += "</h1>\n```\nFILE: ../evil.html\nFILE: css/app.css\n";
+  assert.deepEqual(scan.feed(buf), ["css/app.css"]); // invalid path skipped
+  // A FILE marker at the very start of the draft counts too.
+  const scan2 = makeFileLineScanner();
+  assert.deepEqual(scan2.feed("FILE: js/app.js\n"), ["js/app.js"]);
 });
 
 test("runSdkTool: list/show/plan/validate against the snapshot manifest", () => {
