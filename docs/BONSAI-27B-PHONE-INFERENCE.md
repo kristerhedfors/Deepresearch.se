@@ -240,11 +240,33 @@ research, never errors the chat.
 
 The owner asked for the on-device models in Se/rver too, not just Se/cure.
 The §2 placement ("a Se/cure feature, zero new server surface") is
-superseded for SCOPE but kept for MECHANISM: the Se/rver integration still
-adds zero server surface — no new API, no new invariant-4 exception, not
-even new `assets.js` entries (the engine modules and the vendored runtime
-were already public for the /cure graph, and the worker-script COEP serving
-is path-based, not tier-based).
+superseded for SCOPE but kept for MECHANISM: the Se/rver integration adds no
+new API and no new invariant-4 exception (the engine modules and the vendored
+runtime were already public for the /cure graph, and the worker-script COEP
+serving is path-based, not tier-based). It does need ONE server-side follow-up
+(2026-07-24, see below): the DRS app *shell* must become cross-origin isolated
+for on-device devices, which `/cure` already is unconditionally but `/rver`
+was not.
+
+**The cross-origin-isolation fix (the shell, not the worker scripts).** The
+first Se/rver cut shipped the dropdown group, downloads, and the local answer
+route but MISSED that the DRS *page* wasn't isolated: `/cure` is served
+`{coep:true}` always, but `/rver` gets COEP only when the bash_lite SERVER
+setting is on (`src/index.js`). A user who enabled on-device but not the
+sandbox therefore got a NON-isolated shell — `SharedArrayBuffer` absent, so
+the ONNX runtime's nested pthread workers can't start and inference silently
+fails; and on WebKit (which checks COEP across the whole worker graph) the
+engine wouldn't even list cached models, so downloaded weights never surfaced
+in the composer dropdown ("downloads but doesn't show up in the dropdown").
+The knob is per-device localStorage, so it can't ride the bash_lite setting;
+instead `setOnDeviceEnabled` mirrors it into a `dr_ondevice` cookie, and
+`src/assets.js onDeviceIsolationWanted(request)` (the ONE new `assets.js`
+export) ORs it into the shell's COEP decision so `/rver` is served isolated
+for on-device devices too. Enabling the knob reloads into the isolated shell
+(the `isolateForSandbox` self-heal, mirroring `wireSandboxKnob`), and the
+first-paint / bfcache self-heals in `app.js` now fire for `onDeviceEnabled()`
+as well. Same accepted trade as the sandbox: the only casualty of
+`require-corp` is the keyless Street View embed IFRAME.
 
 What ships, per file:
 
@@ -270,8 +292,9 @@ What ships, per file:
   falls through to `/api/chat` — a silent cloud fallback would betray what
   the dropdown group promised. Checked before every other route. Attachment
   text and the dev-mode introspection block ride along; the sandbox loop
-  works when the bash knob is on (the DRS page is COEP-isolated exactly
-  then). Live web search, RAG retrieval, and the server enrichments are OFF
+  works when the bash knob is on (which loads CheerpX — the DRS page is
+  COEP-isolated whenever either the bash OR the on-device knob is on).
+  Live web search, RAG retrieval, and the server enrichments are OFF
   for these sends — each is a server call; the Settings popover says so.
 - Privacy note (`docs/PRIVACY-MODEL.md`): an on-device Se/rver send reaches
   no provider and writes no `chat_logs` row (there is no server request),

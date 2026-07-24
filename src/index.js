@@ -95,7 +95,7 @@ import { handleKnowledgeApi, handleKnowledgeKey, handleKnowledgeSubmit } from ".
 import { getConfig } from "./config.js";
 import { handleSandboxImage, handleSandboxImageConfig } from "./sandbox-image.js";
 import { recordServerError } from "./server-errors.js";
-import { isPublicAsset, serveAsset } from "./assets.js";
+import { isPublicAsset, onDeviceIsolationWanted, serveAsset } from "./assets.js";
 import { canonicalRedirect } from "./canonical.js";
 import { applySecurityHeaders } from "./security-headers.js";
 
@@ -528,8 +528,13 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
   // When this account has the experimental bash-lite sandbox on, the app
   // shell (and its assets) are served cross-origin isolated (COEP) so CheerpX
   // can boot; off (the default) they are served exactly as before, so the
-  // Street View keyless-iframe fallback is untouched for everyone else.
-  const coep = bashLiteEnabled(env, identity);
+  // Street View keyless-iframe fallback is untouched for everyone else. The
+  // on-device inference tier needs the SAME isolation (its ONNX runtime spawns
+  // pthread workers that need SharedArrayBuffer) but its knob is per-device
+  // localStorage, so the client mirrors it into the `dr_ondevice` cookie this
+  // reads — otherwise on-device on Se/rver got a non-isolated shell and the
+  // engine couldn't run (see onDeviceIsolationWanted).
+  const coep = bashLiteEnabled(env, identity) || onDeviceIsolationWanted(request);
   if ((url.pathname === "/rver" || url.pathname === "/rver/") && request.method === "GET") {
     return serveAsset(request, env, url.origin + "/", { coep });
   }

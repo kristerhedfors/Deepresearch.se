@@ -20,6 +20,7 @@
 // called for it.
 
 import { onDeviceModel, onDeviceOptionValue } from "./ondevice-core.js";
+import { isolateForSandbox } from "./sandbox-mode.js";
 
 const KNOB_KEY = "dr_ondevice";
 
@@ -33,12 +34,26 @@ export function onDeviceEnabled() {
   }
 }
 
-/** @param {boolean} on */
+/**
+ * Persist the knob. It lives in localStorage (per-device — the weights are in
+ * THIS device's OPFS), AND is mirrored into a `dr_ondevice` cookie so the SERVER
+ * serves the /rver shell cross-origin isolated for this device: the engine's
+ * ONNX runtime spawns pthread workers that need SharedArrayBuffer, exactly like
+ * the sandbox (src/assets.js onDeviceIsolationWanted). Both writes fail soft.
+ * @param {boolean} on
+ */
 export function setOnDeviceEnabled(on) {
   try {
     localStorage.setItem(KNOB_KEY, on ? "1" : "0");
   } catch {
     /* storage blocked — the knob just won't persist */
+  }
+  try {
+    document.cookie = on
+      ? "dr_ondevice=1; path=/; max-age=31536000; SameSite=Lax"
+      : "dr_ondevice=; path=/; max-age=0; SameSite=Lax";
+  } catch {
+    /* no document/cookie here — the knob still works, just not isolation */
   }
 }
 
@@ -151,8 +166,25 @@ export function wireOnDeviceSettings(opts = {}) {
   };
   knob.addEventListener("change", () => {
     setOnDeviceEnabled(knob.checked);
+    if (knob.checked) {
+      // The engine needs a cross-origin-isolated page (SharedArrayBuffer for the
+      // ONNX pthread workers). setOnDeviceEnabled set the cookie that makes the
+      // SERVER send COEP; reload into the isolated shell so it applies this
+      // session too — mirrors the sandbox knob (account-views.js wireSandboxKnob).
+      // A no-op when the page is already isolated (e.g. the sandbox is also on),
+      // in which case just show the model rows.
+      if (!globalThis.crossOriginIsolated) {
+        setStatus("On-device enabled — reloading so the model engine can run…");
+        setTimeout(() => {
+          if (!isolateForSandbox(true, { resetGuard: true })) renderRows(modelsChanged).catch(() => {});
+        }, 500);
+        return;
+      }
+      renderRows(modelsChanged).catch(() => {});
+      return;
+    }
     renderRows(modelsChanged).catch(() => {});
-    if (!knob.checked) modelsChanged(); // the dropdown group hides with the knob
+    modelsChanged(); // the dropdown group hides with the knob
   });
   renderRows(modelsChanged).catch(() => {});
 }

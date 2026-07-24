@@ -43,6 +43,7 @@ import { onDeckAsk } from "./imagedeck.js";
 import { pullNewer, syncToServer } from "./sync.js";
 import { initHistorySidebar } from "./history-ui.js";
 import { initModels, selectedModelId, selectModel } from "./models.js";
+import { onDeviceEnabled } from "./ondevice-drs.js";
 import { readPending } from "./pending-answer.js";
 import {
   clearHistory,
@@ -103,7 +104,11 @@ wireBarTint(() => barTint(cachedChatMode()));
 // A no-op for everyone who never enabled the sandbox (no cache → want=false).
 // If it navigates, the current boot is abandoned for the fresh isolated load;
 // otherwise clear the guard so a later loss of isolation can self-heal again.
-if (!isolateForSandbox(cachedSandboxMode())) clearIsolationGuard();
+// The on-device inference tier needs the same isolation (SharedArrayBuffer for
+// its ONNX pthread workers) and its per-device knob is synchronously readable
+// here, so a returning on-device user self-heals to the isolated shell at first
+// paint too — before a send can land on a non-isolated page.
+if (!isolateForSandbox(cachedSandboxMode() || onDeviceEnabled())) clearIsolationGuard();
 
 // Reveal the header terminal icon at first paint from the cached knob, so a
 // returning sandbox user sees the "Linux is starting" icon the instant they
@@ -213,7 +218,7 @@ window.addEventListener("pageshow", (e) => {
   // A bfcache restore is a fresh chance to isolate, so reset the one-shot guard
   // first (resetGuard). Use the cache too, not just the live setting: a cold
   // restore may reach here before /api/settings has repopulated bashLiteOn().
-  if (e.persisted) isolateForSandbox(cachedSandboxMode() || bashLiteOn(), { resetGuard: true });
+  if (e.persisted) isolateForSandbox(cachedSandboxMode() || bashLiteOn() || onDeviceEnabled(), { resetGuard: true });
 });
 
 // ---- Research time-target slider ----------------------------------------

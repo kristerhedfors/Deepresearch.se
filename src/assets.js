@@ -308,6 +308,31 @@ export function isWorkerScriptAsset(pathname) {
   );
 }
 
+// The on-device inference tier (Bonsai in-browser) needs the SAME cross-origin
+// isolation the CheerpX sandbox does: its ONNX runtime spawns NESTED pthread
+// workers (`ort-wasm-simd-threaded`) that require `SharedArrayBuffer`, which the
+// browser only exposes on a cross-origin-isolated page. On /cure the shell is
+// isolated ALWAYS (index.js), so on-device runs there; on the DRS (/rver) shell
+// COEP is otherwise gated on the bash_lite SERVER setting alone, so a user who
+// enabled on-device but not the sandbox got a NON-isolated shell — the engine's
+// pthreads couldn't start and inference silently failed (and on WebKit, which
+// checks COEP across the whole worker graph, the engine wouldn't even list, so
+// downloaded models never surfaced in the composer dropdown). The on-device
+// knob is deliberately PER-DEVICE (browser localStorage, not /api/settings — the
+// weights live in THIS device's OPFS), so it can't ride the bash_lite setting;
+// instead ondevice-drs.js mirrors it into a `dr_ondevice` cookie the shell
+// request carries, and this reads it so /rver is served isolated for on-device
+// devices too. Same accepted trade as the sandbox (the only casualty of
+// require-corp is the keyless Street View embed IFRAME).
+/**
+ * @param {Request} request
+ * @returns {boolean}
+ */
+export function onDeviceIsolationWanted(request) {
+  const cookies = request.headers.get("Cookie") || "";
+  return /(?:^|;\s*)dr_ondevice=1(?:\s*;|\s*$)/.test(cookies);
+}
+
 /**
  * Serves a static asset with an explicit browser-caching policy.
  * @param {Request} request

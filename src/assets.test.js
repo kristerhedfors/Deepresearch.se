@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { isPublicAsset, buildAssetRequest, serveAsset } from "./assets.js";
+import { isPublicAsset, buildAssetRequest, onDeviceIsolationWanted, serveAsset } from "./assets.js";
 
 const u = (path) => new URL("https://deepresearch.se" + path);
 
@@ -215,5 +215,30 @@ describe("serveAsset caching policy", () => {
     const wasm = await serveAsset(new Request("https://deepresearch.se/vendor/transformers/ort-wasm-simd-threaded.wasm"), env);
     assert.equal(wasm.headers.get("cross-origin-embedder-policy"), null);
     assert.equal(wasm.headers.get("cache-control"), "public, max-age=3600");
+  });
+});
+
+describe("onDeviceIsolationWanted", () => {
+  const req = (cookie) => new Request("https://deepresearch.se/rver", cookie ? { headers: { Cookie: cookie } } : undefined);
+
+  test("true only when the dr_ondevice=1 cookie is present", () => {
+    assert.equal(onDeviceIsolationWanted(req("dr_ondevice=1")), true);
+    // alongside other cookies, first / middle / last position
+    assert.equal(onDeviceIsolationWanted(req("dr_ondevice=1; s=abc")), true);
+    assert.equal(onDeviceIsolationWanted(req("s=abc; dr_ondevice=1")), true);
+    assert.equal(onDeviceIsolationWanted(req("a=1; dr_ondevice=1; b=2")), true);
+  });
+
+  test("false when absent, cleared, or a lookalike name", () => {
+    assert.equal(onDeviceIsolationWanted(req(null)), false);
+    assert.equal(onDeviceIsolationWanted(req("")), false);
+    assert.equal(onDeviceIsolationWanted(req("dr_ondevice=0")), false);
+    assert.equal(onDeviceIsolationWanted(req("dr_ondevice=")), false); // the max-age=0 clear
+    assert.equal(onDeviceIsolationWanted(req("s=abc")), false);
+    // must not match a value of 1 on a DIFFERENT cookie, or a name that merely
+    // ends with the key
+    assert.equal(onDeviceIsolationWanted(req("xdr_ondevice=1")), false);
+    assert.equal(onDeviceIsolationWanted(req("other_dr_ondevice=1")), false);
+    assert.equal(onDeviceIsolationWanted(req("dr_ondevice=11")), false);
   });
 });
