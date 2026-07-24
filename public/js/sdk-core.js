@@ -335,6 +335,57 @@ export function parseFileBlocks(text) {
   return [...out].map(([path, content]) => ({ path, content }));
 }
 
+/**
+ * Strip the FILE blocks out of a build draft, leaving only the prose the user
+ * should read. The deterministic path publishes the files and shows this
+ * remainder — never the raw file contents (feedback #13: a whole index.html
+ * scrolled through the chat instead of a build).
+ * @param {string} text
+ * @returns {string}
+ */
+export function stripFileBlocks(text) {
+  if (typeof text !== "string" || !text) return "";
+  FILE_BLOCK_RE.lastIndex = 0;
+  return text
+    .replace(FILE_BLOCK_RE, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+// A `FILE: <path>` marker line on its own (the block regex needs the whole
+// fenced body too — the scanner below fires as soon as the LINE is complete,
+// long before the file's content has finished streaming).
+const FILE_LINE_RE = /^FILE:[ \t]*(\S[^\n]*)$/;
+
+/**
+ * Incremental FILE-line scanner for a growing draft buffer: call feed() with
+ * the full text so far and get back the (sanitized) paths of newly completed
+ * `FILE: <path>` lines. Only complete lines are reported, so a path never
+ * fires half-streamed. Powers the deterministic build path's live
+ * "Writing <path>…" progress steps.
+ * @returns {{ feed: (buffer: string) => string[] }}
+ */
+export function makeFileLineScanner() {
+  let seen = 0; // buffer offset up to which complete lines were scanned
+  return {
+    feed(buffer) {
+      const text = String(buffer ?? "");
+      const upTo = text.lastIndexOf("\n") + 1;
+      if (upTo <= seen) return [];
+      /** @type {string[]} */
+      const out = [];
+      for (const line of text.slice(seen, upTo).split("\n")) {
+        const m = FILE_LINE_RE.exec(line);
+        if (!m) continue;
+        const path = sanitizeBuildPath(m[1]);
+        if (path) out.push(path);
+      }
+      seen = upTo;
+      return out;
+    },
+  };
+}
+
 // ---- SDK-mode native tools ----------------------------------------------------
 
 // The provider-neutral tool definitions ({name, description, input_schema} —

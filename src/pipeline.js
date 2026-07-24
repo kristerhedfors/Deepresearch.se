@@ -112,12 +112,14 @@ import {
   buildFilesSummary,
   buildSdkContextBlock,
   buildSecureSourceDigest,
+  makeFileLineScanner,
   manifestFromSnapshot,
   parseFileBlocks,
   runSdkTool,
   sdkToolStepHeadline,
   snapshotFileCheck,
   stageBuildFile,
+  stripFileBlocks,
 } from "./sdk-tools.js";
 import { publishBuild, replyLinksTo } from "./build-pub.js";
 import { feedbackIntent, buildFeedbackContext, feedbackImagesFromParts } from "./feedback.js";
@@ -700,6 +702,8 @@ async function runSourceResearchTools(ctx, snapshot) {
 // honest note, and a tool-path failure falls through to the deterministic one.
 
 const MAX_SDK_TOOL_ROUNDS = 12; // staging many files takes more rounds than reading
+const SDK_BUILD_ROUND_MAX_TOKENS = 16_384; // one write_file must fit a whole real file
+const SDK_BUILD_ROUND_TIMEOUT_MS = 240_000; // non-streaming rounds; scaled to the token budget
 
 // The SDK-mode tool set: the snapshot readers (read the real Se/cure source —
 // only useful with a snapshot to read), the sdk_* planning tools over the
@@ -787,6 +791,41 @@ async function publishSdkFiles(ctx, files, title) {
 /** @param {PipelineCtx} ctx @returns {string} */
 const sdkBuildTitle = (ctx) => ctx.cleanLastUser.replace(/\s+/g, " ").trim().slice(0, 80) || "App";
 
+// The canned iteration question every build turn ends on (feedback #13 asked
+// for exactly this closing). The prompts instruct the model to ask it in the
+// user's own language; this English form is only the deterministic fallback
+// when the reply didn't end by asking one.
+const SDK_ITERATION_QUESTION = "Does the app work as you hoped, or would you like to add or change anything?";
+
+/** @param {string} text */
+const endsWithQuestion = (text) => /[?？][*_`")\]]*$/.test(String(text || "").trim());
+
+/**
+ * The reply tail a successful build turn ends on — feedback #13's requested
+ * shape: a build summary, the live link (unless the prose already links it),
+ * and the iteration question (unless the prose already asked one). Shared by
+ * both build paths. With `published` null: the honest no-publish note.
+ * @param {string} prose The model-written reply text already emitted ("" when none).
+ * @param {Array<{ path: string, content: string }>} files
+ * @param {{ slug: string, url: string, files: number, bytes: number } | null} published
+ * @returns {string}
+ */
+function sdkReplyTail(prose, files, published) {
+  /** @type {string[]} */
+  const parts = [];
+  if (published) {
+    const kb = (published.bytes / 1024).toFixed(1);
+    parts.push(`**Build summary:** ${published.files} file${published.files === 1 ? "" : "s"}, ${kb} KB — ${files.map((f) => f.path).join(" · ")}`);
+    if (!replyLinksTo(prose, published.url)) {
+      parts.push(`**Try it live:** [${published.url}](${published.url})`);
+    }
+    if (!endsWithQuestion(prose)) parts.push(SDK_ITERATION_QUESTION);
+  } else {
+    parts.push("_(Publishing was unavailable this turn — no live URL yet.)_");
+  }
+  return `${prose ? "\n\n" : ""}${parts.join("\n\n")}`;
+}
+
 /** @param {PipelineCtx} ctx @param {any} snapshot @param {any} manifest @param {string} secureDigest */
 async function runSdkBuildTools(ctx, snapshot, manifest, secureDigest) {
   const readBudget = { used: 0 };
@@ -838,6 +877,16 @@ async function runSdkBuildTools(ctx, snapshot, manifest, secureDigest) {
     userContent: userText,
     tools,
     maxRounds: MAX_SDK_TOOL_ROUNDS,
+    // A build round is not a JSON blip: one write_file call for a real-sized
+    // index.html needs several thousand output tokens in a single round. At
+    // the 4096-token default the tool_use truncated (stop_reason max_tokens,
+    // no staged file, often no text either) and the 45s default timeout
+    // couldn't hold the generation — every meaty build fell through to the
+    // deterministic path, which then dumped raw FILE blocks into the chat
+    // (feedback #13, chat_logs #599). Sized for the biggest single file a
+    // build realistically stages, with a timeout to match the token budget.
+    maxTokens: SDK_BUILD_ROUND_MAX_TOKENS,
+    timeoutMs: SDK_BUILD_ROUND_TIMEOUT_MS,
     execTool,
     onToolUse: ({ name, input, result: out }) => {
       calls++;
@@ -876,18 +925,34 @@ async function runSdkBuildTools(ctx, snapshot, manifest, secureDigest) {
   );
 
   const text = (result.text || "").trim();
-  if (!text) throw new Error("SDK tool run produced no answer");
+  if (!text && !published) {
+    // Nothing shipped AND nothing written — only then is a rebuild on the
+    // deterministic path (the runSdkBuild catch) the right recovery.
+    throw new Error(`SDK tool run produced no answer (stop_reason ${result.stopReason || "unknown"})`);
+  }
+  if (!published && !staged.size && result.stopReason === "max_tokens") {
+    // The run truncated before staging a single file: the prose it did write
+    // promises an app that never shipped. Rebuild deterministically instead.
+    throw new Error("SDK tool run truncated (max_tokens) before staging any file");
+  }
   ctx.step("synth", "Writing report…");
-  emitChunked(ctx, text);
-  // Guarantee a CLICKABLE link lands in the reply. The model often writes the
-  // URL as bold/bare prose (`**/app/slug/**`) rather than a markdown link, and
-  // `marked` never autolinks a relative /app/ path — so append unless the reply
-  // already carries a real markdown link to it (replyLinksTo, not a substring
-  // check). This append rides the answer text, so it also survives a
-  // dropped-stream recovery, where only the text is replayed (the `build`
-  // status event is not).
-  if (published && !replyLinksTo(text, published.url)) {
-    emitChunked(ctx, `\n\n**Try it live:** [${published.url}](${published.url})`);
+  const stagedFiles = [...staged].map(([path, content]) => ({ path, content }));
+  if (text) {
+    emitChunked(ctx, text);
+    // sdkReplyTail guarantees the requested closing shape (feedback #13):
+    // a build summary, a CLICKABLE link (the model often writes the URL as
+    // bold/bare prose, and `marked` never autolinks a relative /app/ path —
+    // appended unless the reply already carries a real markdown link,
+    // replyLinksTo, not a substring check), and the iteration question. The
+    // tail rides the answer text, so it also survives a dropped-stream
+    // recovery, where only the text is replayed (the `build` status event
+    // is not).
+    if (published) emitChunked(ctx, sdkReplyTail(text, stagedFiles, published));
+  } else if (published) {
+    // Built and published, but the model never wrote the report (round cap,
+    // or a truncated final call): compose it server-side rather than throw
+    // the finished build away into a full deterministic rebuild.
+    emitChunked(ctx, `Your app is built and live.${sdkReplyTail("", stagedFiles, published)}`);
   }
   ctx.stepDone("synth", "Report drafted");
 }
@@ -906,13 +971,65 @@ async function runSdkBuildDeterministic(ctx, manifest, secureDigest) {
   });
   const convo = /** @type {Conversation} */ (withAppendedText(ctx.conversation, block));
   ctx.step("synth", "Building the app…");
-  const draft = await streamCompletion(ctx, [
-    { role: "system", content: sdkBuildPrompt() },
-    ...shellReplyMessages(ctx.shellBlock, { sdkBuild: true }),
-    ...withImageNudge(convo),
-  ]);
-  const files = parseFileBlocks(draft || "");
+
+  // Feedback #13 (chat_logs #599): this path used to stream its raw draft —
+  // FILE blocks included — straight into the chat, so the user watched a whole
+  // index.html scroll by instead of a build. The draft is BUFFERED now (the
+  // tool path's shape): live per-file progress steps while it streams, then
+  // the reply the user reads is the draft's prose with the FILE blocks
+  // stripped, closed by sdkReplyTail's build summary + link + question.
+  let buf = "";
+  let scanner = makeFileLineScanner();
+  let fileCount = 0;
+  /** @type {{ id: string, path: string } | null} */
+  let openFileStep = null;
+  const closeFileStep = () => {
+    if (openFileStep) ctx.stepDone(openFileStep.id, `Wrote ${openFileStep.path}`);
+    openFileStep = null;
+  };
+  const buffered = /** @type {PipelineCtx} */ ({
+    ...ctx,
+    // SDK mode skips the budget planner, so state.plan is unset and the
+    // completion would fall back to the providers' 4096-token default — a
+    // whole multi-file app draft truncates there (a ~14 KB bundle alone is
+    // ~4k tokens, before any prose). Same budget as a tool-path round; the
+    // totals object is shared by reference, so billing lands unchanged.
+    state: { ...ctx.state, plan: { .../** @type {any} */ (ctx.state.plan), synthMaxTokens: SDK_BUILD_ROUND_MAX_TOKENS } },
+    emitDelta: (/** @type {string} */ t) => {
+      buf += t;
+      for (const path of scanner.feed(buf)) {
+        closeFileStep();
+        fileCount++;
+        openFileStep = { id: `bfile_${fileCount}`, path };
+        ctx.step(openFileStep.id, `Writing ${path}…`);
+        ctx.step("synth", `Building the app — ${fileCount} file${fileCount === 1 ? "" : "s"} so far…`);
+      }
+    },
+    emit: (/** @type {object} */ event) => {
+      // streamCompletion's early-stall retry discards the shown fragment and
+      // starts over — here nothing was shown, so swallow the discard and
+      // reset the buffer/progress so attempt 2 scans from scratch.
+      if (/** @type {any} */ (event)?.status?.type === "discard_text") {
+        buf = "";
+        scanner = makeFileLineScanner();
+        closeFileStep();
+        return;
+      }
+      ctx.emit(event);
+    },
+  });
+  const draft =
+    (await streamCompletion(buffered, [
+      { role: "system", content: sdkBuildPrompt() },
+      ...shellReplyMessages(ctx.shellBlock, { sdkBuild: true }),
+      ...withImageNudge(convo),
+    ])) || "";
+  closeFileStep();
+
+  const files = parseFileBlocks(draft);
   if (!files.length) {
+    // No build in the draft — a plain reply; show it unchanged.
+    emitChunked(ctx, draft);
     ctx.stepDone("synth", "Replied without building files");
     return;
   }
@@ -922,11 +1039,9 @@ async function runSdkBuildDeterministic(ctx, manifest, secureDigest) {
     published ? `Built and published ${published.files} file${published.files === 1 ? "" : "s"} → ${published.url}` : "Build produced files but publishing was unavailable",
     buildFilesSummary(files),
   );
-  if (published) {
-    emitChunked(ctx, `\n\n**Try it live:** [${published.url}](${published.url})`);
-  } else {
-    emitChunked(ctx, "\n\n_(Publishing was unavailable this turn — no live URL yet.)_");
-  }
+  const prose = stripFileBlocks(draft);
+  if (prose) emitChunked(ctx, prose);
+  emitChunked(ctx, sdkReplyTail(prose, files, published));
 }
 
 /** @param {PipelineCtx} ctx */
