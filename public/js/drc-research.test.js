@@ -709,6 +709,16 @@ describe("DRC developer-mode tool loop", () => {
     assert.match(p, /context parameter/);
   });
 
+  // Diagram asks (feedback #14, 2026-07-24): the DRC twin carries the same
+  // mermaid-fence directive as the server prompts — answer a diagram request
+  // with a rendered ```mermaid fence, never ASCII box art in a plain fence.
+  test("drcSourceToolPrompt directs diagram requests to a rendered mermaid fence", () => {
+    const p = drcSourceToolPrompt();
+    assert.match(p, /DIAGRAMS:/);
+    assert.match(p, /```mermaid/);
+    assert.match(p, /Do NOT draw ASCII\/Unicode box art/);
+  });
+
   const SNAP = {
     v: 1,
     digest: "abc123def4567890",
