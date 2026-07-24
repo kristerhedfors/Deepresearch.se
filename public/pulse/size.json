@@ -1,10 +1,10 @@
 {
-  "generated": "2026-07-17T19:59:25.976Z",
+  "generated": "2026-07-24T15:37:49.458Z",
   "totals": {
-    "files": 548,
-    "lines": 137475,
-    "chars": 7125946,
-    "languages": 10,
+    "files": 694,
+    "lines": 169774,
+    "chars": 8738352,
+    "languages": 12,
     "dependencies": 0,
     "devDependencies": 3
   },
@@ -22,51 +22,51 @@
     {
       "ext": "js, mjs",
       "label": "JavaScript",
-      "files": 310,
-      "lines": 92549,
-      "chars": 4110407
+      "files": 405,
+      "lines": 116483,
+      "chars": 5229931
     },
     {
       "ext": "md",
       "label": "Markdown",
-      "files": 118,
-      "lines": 31677,
-      "chars": 1960672
+      "files": 136,
+      "lines": 37503,
+      "chars": 2327836
     },
     {
       "ext": "html",
       "label": "HTML",
-      "files": 13,
-      "lines": 5297,
-      "chars": 295570
+      "files": 18,
+      "lines": 6200,
+      "chars": 346378
     },
     {
       "ext": "css",
       "label": "CSS",
-      "files": 4,
-      "lines": 3599,
-      "chars": 158093
+      "files": 5,
+      "lines": 4158,
+      "chars": 185573
     },
     {
       "ext": "json, webmanifest",
       "label": "JSON",
-      "files": 37,
-      "lines": 1709,
-      "chars": 498482
+      "files": 49,
+      "lines": 2284,
+      "chars": 528352
     },
     {
       "ext": "(none)",
       "label": "Other",
-      "files": 16,
-      "lines": 1517,
-      "chars": 54187
+      "files": 19,
+      "lines": 1834,
+      "chars": 66075
     },
     {
       "ext": "ts",
       "label": "TypeScript",
       "files": 1,
-      "lines": 442,
-      "chars": 16747
+      "lines": 454,
+      "chars": 17046
     },
     {
       "ext": "py",
@@ -85,18 +85,32 @@
     {
       "ext": "toml",
       "label": "TOML",
+      "files": 2,
+      "lines": 149,
+      "chars": 7335
+    },
+    {
+      "ext": "yml",
+      "label": "YAML",
+      "files": 7,
+      "lines": 127,
+      "chars": 3510
+    },
+    {
+      "ext": "ini",
+      "label": "INI",
       "files": 1,
-      "lines": 112,
-      "chars": 5736
+      "lines": 9,
+      "chars": 264
     }
   ],
   "readme": {
     "file": "README.md",
-    "lines": 298,
-    "chars": 15193,
-    "words": 2165
+    "lines": 412,
+    "chars": 22644,
+    "words": 3212
   },
   "excluded": {
-    "generatedArtifacts": 21
+    "generatedArtifacts": 23
   }
 }
