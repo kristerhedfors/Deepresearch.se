@@ -146,6 +146,14 @@ export const SECURITY_RISK_ITEMS = [
     summary:
       "A second admin-gated write path (F-17, 2026-07-18) alongside the pre-existing DELETE on SDK mode's /app/<slug>/ build surface (src/build-pub.js), letting an already-built bundle (execution-sandbox output, a hand-assembled directory) publish without a live model turn. Reuses the UNCHANGED publishBuild (same caps, traversal/extension validation, opaque-origin sandbox CSP serving) and the same admin gate as the existing DELETE — the isolation boundary is untouched. PARTIAL: ownership on a manual publish collapses to the shared break-glass admin identity; owed the same live-verify pass SDK mode's own build-publish flow still owes.",
   },
+  {
+    id: "P-12",
+    title: "Feedback submissions are trusted for authenticity and integrity (owner gate: change before going wider)",
+    severity: "medium",
+    status: "open",
+    summary:
+      "Owner directive (2026-07-24): the feedback pipeline runs on high trust in a submission's authenticity and integrity, and that must change BEFORE the audience widens — the trigger is exposure, not a code smell. Three concrete pieces: (a) Se/cure attribution is the Se/rver token's minting account, but tokens are designed to be shareable, so authorship means 'someone holding a token that account minted' (still write-only — a token can never read a feedback row back); (b) on the direct API paths the client supplies question/answer_excerpt/model/page — including the scope tag — with nothing cross-checking them against what the server served (the CHAT path derives all of them server-side and is unaffected); (c) entry creation sits outside the quota/inflight metering (P-3), so the queue can be flooded. Already-safe and must stay: feedback text never reaches an LLM (canned acks only) and the loop's human-in-the-loop step treats entry text as a request to evaluate, never an instruction — together why a spoofed entry cannot act on its own. Hardening direction is recorded in the register but deliberately not designed yet; it touches a user-facing promise, so owner sign-off first.",
+  },
 ];
 
 // ---------------------------------------------------------------------------

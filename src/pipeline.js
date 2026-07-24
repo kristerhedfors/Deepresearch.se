@@ -124,7 +124,7 @@ import {
   stripFileBlocks,
 } from "./sdk-tools.js";
 import { publishBuild } from "./build-pub.js";
-import { feedbackIntent, buildFeedbackContext, cannedFeedbackAck, feedbackImagesFromParts } from "./feedback.js";
+import { feedbackIntent, buildFeedbackContext, cannedFeedbackAck, feedbackImagesFromParts, feedbackScope } from "./feedback.js";
 import { parseUseCaseRef } from "./testpoints.js";
 import { loadSourceSnapshot } from "./introspect.js";
 import { DEFAULT_QUIZ_QUESTIONS, normalizeQuiz, quizIntent, quizQuestionCount } from "./quiz.js";
@@ -177,7 +177,7 @@ import {
  *   aux?: Record<string, AuxSourceState>,
  *   failoverModel?: string,
  *   feedbackCapture?: boolean,
- *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string, images?: { name: string | null, data: string }[], useCase?: { id: number, tag: string } | null },
+ *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string, images?: { name: string | null, data: string }[], useCase?: { id: number, tag: string } | null, scope?: "standalone" | "session" },
  * }} PipelineState
  */
 
@@ -438,11 +438,20 @@ async function runFeedbackCapture(ctx) {
   // answered in the list of use cases". The step line confirms it
   // deterministically, independent of the model's acknowledgment.
   const useCase = parseUseCaseRef(ctx.cleanLastUser);
+  // SCOPE (feedback-core feedbackScope): a "feedback …" message that OPENS a
+  // conversation cannot be about that conversation — it is generic developer
+  // feedback (a feature suggestion, next steps). The classification decides
+  // the acknowledgment's wording, the entry's page tag (chat/standalone), and
+  // whether a transcript is worth attaching at all (chat.js) — so a
+  // suggestion never reaches the queue disguised as a session report.
+  const scope = feedbackScope(ctx.conversation);
   ctx.stepDone(
     "plan",
     useCase
       ? `Recording your feedback on use case ${useCase.tag}`
-      : "Sending your feedback to the developers",
+      : scope === "standalone"
+        ? "Sending your suggestion to the developers"
+        : "Sending your feedback to the developers",
   );
   // The message IS the comment; the prior turn (the question it followed and
   // the reply it comments on) rides along so the developer sees the context.
@@ -460,8 +469,12 @@ async function runFeedbackCapture(ctx) {
     // (feedback #12, 2026-07-24). Chat.js forwards these into feedback_images.
     images: feedbackImagesFromParts(ctx.imageParts),
     useCase: useCase || null,
+    scope,
   };
-  emitChunked(ctx, cannedFeedbackAck(ctx.cleanLastUser, { useCaseTag: useCase ? useCase.tag : null }));
+  emitChunked(
+    ctx,
+    cannedFeedbackAck(ctx.cleanLastUser, { useCaseTag: useCase ? useCase.tag : null, scope }),
+  );
 }
 
 /** @param {PipelineCtx} ctx */

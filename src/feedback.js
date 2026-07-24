@@ -43,7 +43,14 @@ import { jsonResponse, textResponse } from "./http.js";
 import { cleanStr, likePattern } from "./chatlog.js";
 import { previousUserText, textOf } from "./conversation.js";
 import { verifyServerToken } from "./server-token.js";
-import { cannedFeedbackAck, feedbackIntent } from "../public/js/feedback-core.js";
+import {
+  cannedFeedbackAck,
+  feedbackIntent,
+  feedbackPageTag,
+  feedbackScope,
+  feedbackScopeOfPrior,
+  isStandalonePage,
+} from "../public/js/feedback-core.js";
 
 /** @typedef {import('./conversation.js').Msg} Msg */
 
@@ -114,8 +121,10 @@ export const FEEDBACK_STATUSES = ["new", "seen", "in_progress", "resolved", "dec
 // "feedback loop(s)" collision carve-out are owned by the core. The canned
 // acknowledgment (cannedFeedbackAck — feedback never runs through an LLM,
 // owner directive 2026-07-24) lives in the same core and is re-exported for
-// the pipeline's feedback case.
-export { cannedFeedbackAck, feedbackIntent };
+// the pipeline's feedback case, as does the SCOPE classification
+// (feedbackScope — standalone generic feedback vs feedback about the session
+// it arrived in) and its `page` tagging.
+export { cannedFeedbackAck, feedbackIntent, feedbackPageTag, feedbackScope, feedbackScopeOfPrior, isStandalonePage };
 
 /**
  * Derive a feedback entry's captured context from the conversation the user
@@ -155,10 +164,18 @@ export function buildFeedbackContext(conversation, { comment, model }) {
 // too long, the OLDEST turns are trimmed — the newest turns are what the
 // feedback comments on.
 
+// The marker that replaces the transcript for a STANDALONE note (feedback-core
+// feedbackScope): the conversation is the note itself, so quoting it back as a
+// "transcript" only duplicates the comment and frames a generic suggestion as
+// a session report. The request metadata above it is still the useful half.
+export const STANDALONE_CONTEXT_NOTE =
+  "--- standalone feedback: first message of the conversation, no session to attach ---";
+
 /**
  * Render the full conversation + request metadata into the entry's `context`
  * column. Pure; never throws on junk input; null when there is nothing to
- * record.
+ * record. A STANDALONE note (the feedback message IS the whole conversation)
+ * gets the metadata plus STANDALONE_CONTEXT_NOTE instead of a transcript.
  * @param {Msg[]} conversation the complete conversation, feedback turn included
  * @param {Record<string, unknown>} [meta] request metadata (request id, model,
  *   knobs, client_diag, …) — undefined/null/empty values are skipped
@@ -174,6 +191,9 @@ export function buildFeedbackDebugContext(conversation, meta = {}) {
     .filter((m) => m && typeof m.role === "string")
     .map((m) => `[${m.role}]\n${textOf(m.content)}`);
   if (!turns.length && !metaLines.length) return null;
+  if (turns.length && feedbackScope(conversation) === "standalone") {
+    return (metaLines.length ? metaLines.join("\n") + "\n" : "") + STANDALONE_CONTEXT_NOTE;
+  }
   const header = (metaLines.length ? metaLines.join("\n") + "\n" : "") +
     `--- conversation (${turns.length} turns) ---`;
   let transcript = turns.join("\n\n");
@@ -479,6 +499,11 @@ export function projectFeedback(row, messages = [], images = [], opts = {}) {
     answer_excerpt: row.answer_excerpt || null,
     model: row.model || null,
     page: row.page || null,
+    // The SCOPE classification, read off the page tag (feedback-core
+    // feedbackPageTag): true = generic developer feedback filed as the first
+    // message of a conversation, NOT a report about a research session. The
+    // development loop must not read session context into these.
+    standalone: isStandalonePage(row.page),
     context_chars: (row.context || "").length,
     ...(opts.context ? { context: row.context || null } : {}),
     images: images.filter((i) => !i.message_id).map(projectImage),
@@ -525,6 +550,16 @@ export function formatFeedbackText(entries) {
           (e.page ? ` page=${e.page}` : ""),
         `FEEDBACK: ${e.comment}`,
       ];
+      // Standalone notes are stated OUTRIGHT, not left to be inferred from the
+      // page tag: the loop's first move on a session report is "reproduce the
+      // complaint", and that is the wrong first move on a feature suggestion
+      // that was never about a session at all.
+      if (e.standalone) {
+        lines.push(
+          "SCOPE: standalone — generic developer feedback (first message of the conversation; " +
+            "a suggestion or next-steps note, NOT a report about a research session)",
+        );
+      }
       if (e.images?.length) lines.push(imagesLine(e.images));
       if (e.question) lines.push(`ABOUT QUESTION: ${e.question}`);
       if (e.answer_excerpt) lines.push(`ABOUT REPLY: ${e.answer_excerpt}`);

@@ -131,7 +131,7 @@ import {
   wmHtml,
 } from "/js/drc-page-core.js";
 import { matchCanned } from "/js/canned-faq.js";
-import { feedbackIntent } from "/js/feedback-core.js";
+import { feedbackIntent, feedbackPageTag, feedbackScopeOfPrior } from "/js/feedback-core.js";
 import { spaceIntentMatch } from "/js/space-core.js";
 import { renderMarkdownInto } from "/js/markdown.js";
 import { mountUmbrellaSpinner } from "/js/umbrella-spinner.js";
@@ -1736,18 +1736,29 @@ function startFeedback(text) {
     $("strow")?.scrollIntoView({ block: "center" });
     return;
   }
-  openFeedbackConsent(text, drcFeedbackContext(activeConv()));
+  // SCOPE (feedback-core feedbackScopeOfPrior — the SAME classification the
+  // Se/rver pipeline applies): feedback typed into an empty chat is generic
+  // developer feedback, a suggestion, not a report about a session. Se/cure
+  // never enters the feedback text into the conversation, so the conv's
+  // messages ARE the prior turns.
+  const conv = activeConv();
+  openFeedbackConsent(text, drcFeedbackContext(conv), feedbackScopeOfPrior(conv && conv.messages));
 }
 
 // The confirmation dialog (#fbconsent): states EXACTLY what leaves the browser
 // and over which credential; only the labeled Send button transmits.
-function openFeedbackConsent(text, ctx) {
+function openFeedbackConsent(text, ctx, scope) {
   const hasContext = !!(ctx.question || ctx.answer_excerpt);
   $("fbc-body").textContent =
     "Se/cure normally never contacts the server. Sending feedback is one of the few confirmed exceptions: your message" +
     (hasContext ? ", plus the previous question and answer for context," : "") +
     " goes to deepresearch.se over your DeepResearch token (the same token used for web search / LLM access). " +
-    "Nothing else — no other conversation, no files, no identity — is sent.";
+    "Nothing else — no other conversation, no files, no identity — is sent." +
+    // A first-message note is filed as a general suggestion; say so, since the
+    // developers will read it without any session behind it.
+    (scope === "standalone"
+      ? " This chat is empty, so it goes as a general suggestion — your message and nothing more."
+      : "");
   const yes = $("fbc-yes");
   const no = $("fbc-no");
   const close = () => {
@@ -1761,7 +1772,7 @@ function openFeedbackConsent(text, ctx) {
   };
   yes.onclick = async () => {
     close();
-    await submitFeedback(text, ctx);
+    await submitFeedback(text, ctx, scope);
   };
   $("fbconsent").hidden = false;
 }
@@ -1769,7 +1780,7 @@ function openFeedbackConsent(text, ctx) {
 // The one transmission: POST the confirmed feedback with the DeepResearch token
 // as bearer. Fail-soft — every failure becomes a plain-language note, never an
 // error wall.
-async function submitFeedback(text, ctx) {
+async function submitFeedback(text, ctx, scope) {
   const model = $("model").value || "";
   try {
     const res = await fetch("/api/server-token/feedback", {
@@ -1781,7 +1792,9 @@ async function submitFeedback(text, ctx) {
         question: ctx.question || undefined,
         answer_excerpt: ctx.answer_excerpt || undefined,
         model: model || undefined,
-        page: "se/cure",
+        // "se/cure" or "se/cure/standalone" — the scope tag the Se/rver queue
+        // reads (feedback-core feedbackPageTag).
+        page: feedbackPageTag("se/cure", scope),
       }),
     });
     if (res.ok) {

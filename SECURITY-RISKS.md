@@ -451,6 +451,47 @@ non-admin caller (e.g. a settings toggle letting a Se/rver user publish
 sandbox output themselves), that is a NEW risk needing its own review —
 do not fold it into this item silently.
 
+### P-12 · Feedback is trusted for authenticity and integrity — 🔴 OPEN (owner gate: change BEFORE going wider, 2026-07-24)
+
+**Owner directive.** The feedback pipeline currently runs on **high trust in
+the authenticity and integrity of a feedback submission**, and that posture
+must change **before the site's audience widens**. Recorded here as the gate,
+not as a bug to fix silently — today's small, known audience is what makes the
+trust affordable, so the trigger is *exposure*, not a code smell.
+
+**What "high trust" concretely means today.**
+- *Attribution is soft on the Se/cure path.* `handleServerTokenFeedback`
+  attributes an entry to the Se/rver token's minting account (`claims.sub`),
+  but a token is DESIGNED to be shareable (minted links, sealed workspace
+  bundles), so "user X filed this" really means "someone holding a token X
+  minted filed this". Write-only bounding holds (a token can never read a
+  feedback row back), so the exposure is spoofed *attribution*, not
+  disclosure.
+- *Self-reported fields.* On the direct API paths (`POST /api/feedback`,
+  `POST /api/server-token/feedback`) the client supplies `question`,
+  `answer_excerpt`, `model`, and `page` — including the new scope tag
+  (`chat/standalone`). Nothing cross-checks them against what the server
+  actually served, so an entry can claim a context or a scope it
+  never had. The CHAT path is not affected: `chat.js`/`pipeline.js` derive
+  those server-side from the real request.
+- *No submission metering.* Entry creation sits outside the quota/inflight
+  machinery (P-3), so the queue can be flooded, and the same note can be
+  filed repeatedly. The loop's work order is queue content.
+
+**What is already safe and must stay that way.** Feedback text never reaches
+an LLM (canned acknowledgments only — 2026-07-24), so no submission can steer
+a model; the loop's mandatory human-in-the-loop step treats entry text as a
+*request to evaluate*, never an instruction (the **feedback-loop** skill,
+step 2). Those two are the reason a spoofed or hostile entry cannot currently
+turn into an action on its own — keep both intact, whatever hardening lands.
+
+**Direction when the gate trips** (not yet designed, deliberately): bind
+authorship to something stronger than a shareable token on the Se/cure path;
+mark client-supplied context fields as *unverified* in the queue rendering so
+the loop can see which entries assert their own context; meter creation per
+account/token. Any of those is a behavior change to a user-facing promise —
+owner sign-off first (docs-drift-validation Class C).
+
 ---
 
 ## 4. History log (append-only)
@@ -468,4 +509,5 @@ do not fold it into this item silently.
 | 2026-07-14 | **New surface: temporary web-search grant for Se/cure** (`src/websearch-key.js` + `src/websearch.js`; client glue in `public/cure/drc.js` + `public/js/drc-research.js`). A signed-in Se/rver user crossing to Se/cure via the ghost mints a short-lived, quota-metered token that authorizes the PUBLIC `POST /api/websearch` to run a bounded number of Exa searches on the server key — a deliberate, bounded relaxation of invariant 4 (see CLAUDE.md). **Threat model.** (1) *Capability transport:* the token is HMAC-signed with `SESSION_SECRET` under an independent `websearch.` namespace (can't be forged or cross-used as a session/state HMAC); tampering the payload to raise quota fails the signature — covered by `websearch-key.test.js`. (2) *Abuse ceiling:* the D1 `websearch_grants` row is the meter; a leaked token can burn only the grant's remaining quota (default 25, `WEBSEARCH_GRANT_QUOTA`-tunable), tied to one user, expiring ~24h; `grantWebSearch` reuses the active per-user grant so a user can't stack grants to exceed the per-window ceiling. The reserve is an atomic `UPDATE … WHERE used < quota`, so a concurrent burst can't overrun it. This is the endpoint's built-in rate limit (relates to P-3); it is NOT behind `reserveInflight`. (3) *Fail-safe:* no D1 → grants can't be minted and searches can't be metered (503), so no unmetered server-paid search is reachable. (4) *Data minimization:* only the search QUERY reaches the server/Exa (never the conversation); the query is logged at debug level only (matching `exa.js`), the info log carries counts + `jti` + `uid`. **Residual / owed:** a live-verify pass (grant issuance on the real ghost crossing, the 429 path, the refund-on-empty path) per the live-verify skill; consider whether the public endpoint also warrants an IP/global rate limit beyond the per-grant quota. |
 | 2026-07-14 | **Web-search grant → full MINT subsystem + admin control panel.** Extended the above from the ghost-only path to a mintable-link subsystem: an admin mints `…/cure?ws=<token>` links (`POST /api/admin/websearch`, admin-gated) that ANY follower can open to receive the quota; the follower's browser reads it via public non-consuming `POST /api/websearch/status` and spends it via `POST /api/websearch`. Defaults (quota/TTL), a master `enabled` switch, and a GLOBAL BUDGET ceiling (cap on total outstanding remaining across all live grants) live in `config.js`'s `websearch` block, edited in `/admin` → Web search grants (also where links are minted + revoked). **Added threat considerations.** (a) *Token-in-URL:* a shareable link carries the capability in the query string — deliberately (that's the feature); mitigated by short TTL + quota + instant revoke (deleting the row 403s the token), and DRC strips `?ws=` from the URL via `history.replaceState` after reading it so it isn't retained in history/referrer for onward navigation. The token is shown ONLY at mint time — the admin list never re-exposes a live token. (b) *Blast radius of a broad mint:* an admin can mint a large-quota key; the global `budget` ceiling (0=uncapped by default) is the governance knob, enforced at mint time (`outstanding + quota > budget → 409`). (c) *No new unauth surface:* status/search still require a valid signed token; mint/revoke/list are admin-gated. Quota clamps in `config.js` bound a hostile config patch (quota 1..10000, ttl 1..720h). **Residual:** the live-verify pass now also covers the link flow (mint → open link → status → search → revoke) and the budget-exceeded 409. |
 | 2026-07-15 | **P-2 → FIXED.** Secret-leak prevention completed across all three residuals. (1) NEW `.githooks/pre-commit` runs `scripts/scan-secrets --staged` so a credential is blocked BEFORE it enters history (pre-push stays as the second line); verified end-to-end — a planted fake `sk-…` token blocks `git commit` with redacted output, a clean tree commits normally. (2) Hooks now AUTO-ACTIVATE: `.claude/settings.json`'s SessionStart runs `scripts/install-git-hooks`, so every remote-session clone (where nearly all commits are authored) has both hooks live without manual setup — closing the inert-in-fresh-clones gap. (3) Residual (c) done: full-history scan from an unshallowed clone (`git fetch --unshallow`, 791 commits, `git log --all -p` over the §1 pattern set) — **CLEAN**, no credential-shaped token has ever been committed. (4) Residual (a) resolved as default-on: GitHub secret scanning + push protection are enabled by default on public repos (GitHub default since 2024); the Settings toggle is unreachable from a session — owner to eyeball Settings → Code security once to confirm nothing was manually disabled. Catalog mirror flipped in the same commit; `docs/SECRET-SCANNING.md` updated. |
+| 2026-07-24 | **P-12 opened — feedback authenticity/integrity is a TRUST assumption, gated on audience size.** Owner directive recorded as a register item rather than an immediate fix: the feedback pipeline trusts that a submission is authentic and its self-reported context intact, and that posture must change *before the site goes wider*. Named pieces: Se/cure attribution rides a deliberately-shareable Se/rver token (`claims.sub` of the minter — still write-only, so no read-back exposure); the direct API paths take `question`/`answer_excerpt`/`model`/`page` (scope tag included) from the client with no cross-check against what the server served (the chat path derives them server-side and is unaffected); entry creation is outside the P-3 metering, so the queue can be flooded. The two properties that keep a spoofed entry from acting on its own — no LLM anywhere in the feedback path (canned acks, 2026-07-24) and the loop's mandatory human-in-the-loop treatment of entry text as a request to evaluate — are recorded as invariants to preserve through any hardening. Landed alongside the feedback SCOPE classification (standalone vs session), which is why the trust question surfaced: the new `page` scope tag is one more client-asserted field on the direct paths. |
 | 2026-07-18 | **New write surface + P-11 opened: manual SDK-build publish (`handleBuildManualPublish`, `PUT /api/build/:slug`, F-17).** A second admin-gated write path alongside the pre-existing `DELETE` on SDK mode's `/app/<slug>/` build-publishing surface (`src/build-pub.js`), letting an already-built bundle (execution-sandbox output, a hand-assembled directory) publish without a live model turn — via `scripts/publish-app`. Reuses the UNCHANGED `publishBuild` (same caps, same traversal/extension validation, same opaque-origin `Content-Security-Policy: sandbox allow-scripts …` serving) and the same admin gate as the existing DELETE, so the isolation boundary is untouched. Marked 🟡 PARTIAL: ownership on a manual publish collapses to the shared break-glass admin identity (any admin can republish any manually-published slug), and it's owed the same live-verify pass SDK mode's own build-publish flow still owes. Full model: §3 P-11. |
