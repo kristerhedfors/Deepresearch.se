@@ -11,10 +11,10 @@ learning about yourself by looking outward — at other people's lives, cultures
 and answers — rather than by more self-examination. The engineering version of
 that idea is unglamorous and true: a project that only ever reads its own
 source re-derives its own assumptions forever. Every architectural decision
-here was made against a snapshot of what was possible when it was made, and
-several of them are now wrong for reasons that have nothing to do with this
-repo. You do not find those by grepping. You find them by reading what someone
-else shipped last week.
+here was taken against a snapshot of what was possible that week, and several
+of them are now wrong for reasons that have nothing to do with this repo. You
+do not find those by grepping. You find them by reading what someone else
+shipped last week.
 
 So the feed is deliberately shaped like a tabloid front page rather than a
 research report. Kicker, headline, one line, source. You skim it, and you stop
