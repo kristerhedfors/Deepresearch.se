@@ -25,6 +25,8 @@ import {
   sourceToolAgentPrompt,
   sdkBuildPrompt,
   sdkBuildToolPrompt,
+  orchAgentPrompt,
+  orchSynthPrompt,
 } from "./prompts.js";
 import { MAX_READ_TOTAL_CHARS } from "./introspect-tools.js";
 
@@ -744,5 +746,33 @@ describe("SDK build prompts", () => {
     const p = sdkBuildToolPrompt();
     assert.match(p, /ONLY way files ship/);
     assert.match(p, /never route file creation through a shell/);
+  });
+});
+
+describe("orchestrator prompts — the citation gate (feedback #21)", () => {
+  // Feedback #21 (2026-07-24): an orchestrator run footnoted "[11] … not in
+  // the original source list" for a repo that doesn't resolve — the classic
+  // fabrication signature, shipped as a footnote instead of being dropped.
+  // The gate has two layers: the sub-agent must never mint a number outside
+  // its provided material, and the merge must drop (or mark unverified) any
+  // brief citation that is not in the global numbered registry.
+  test("orchAgentPrompt forbids citing numbers outside the provided material", () => {
+    const p = orchAgentPrompt();
+    assert.match(p, /NEVER cite a number that is not in the provided material/);
+    assert.match(p, /not among the search results/);
+  });
+
+  test("orchSynthPrompt drops outside-registry citations instead of footnoting them", () => {
+    const p = orchSynthPrompt({ digest: "[1] Example — https://example.com" });
+    assert.match(p, /ONLY the numbered source list/);
+    assert.match(p, /do not cite it, do not footnote it/);
+    assert.match(p, /could not be verified against the retrieved sources/);
+    assert.match(p, /only the cited numbers from the list/);
+  });
+
+  test("orchSynthPrompt without a digest strips brief citations rather than keeping them", () => {
+    const p = orchSynthPrompt({});
+    assert.match(p, /do not fabricate citations/);
+    assert.match(p, /strip the citation and present the claim as unverified/);
   });
 });

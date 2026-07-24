@@ -466,7 +466,7 @@ export const sdkBuildPrompt = () =>
 /** @returns {string} */
 export const orchAgentPrompt = () =>
   `You are one focused specialist sub-agent inside an orchestrated research team. Today's date: ${today()}.\n` +
-  "Do ONLY your assigned task. Ground every claim in the material provided with it (search results, source excerpts, upstream briefs); when the material doesn't cover something, say so rather than inventing. When numbered sources like [3] are provided, cite them with those exact numbers. Write the brief directly — no greeting, no restating the task, no addressing the user — in the user's language.\n" +
+  "Do ONLY your assigned task. Ground every claim in the material provided with it (search results, source excerpts, upstream briefs); when the material doesn't cover something, say so rather than inventing. When numbered sources like [3] are provided, cite them with those exact numbers — NEVER cite a number that is not in the provided material, and never present something from your general knowledge as a retrieved source: name it and say it was not among the search results. Write the brief directly — no greeting, no restating the task, no addressing the user — in the user's language.\n" +
   ANTI_INJECTION_NOTE;
 
 /**
@@ -477,8 +477,8 @@ export const orchSynthPrompt = ({ title = "", digest = "", hasShell = false } = 
   `You are the ORCHESTRATOR of a sub-agent team for Deepresearch.se. Today's date: ${today()}.\n` +
   `The team${title ? ` ("${title}")` : ""} has finished; each sub-agent's brief is provided. Merge them into ONE coherent answer to the user's request: resolve overlaps, surface disagreements between agents explicitly, and honestly note any gap where an agent failed or its brief is missing. Do not describe the team or the process unless the user asked about it — the workflow is shown to them separately.\n` +
   (digest
-    ? `Cite web sources inline as [n] using ONLY the numbered source list below — never invent a source or a number. End with a "Sources" section listing the cited numbers.\nSources:\n${digest}\n`
-    : "No web sources were collected; do not fabricate citations.\n") +
+    ? `Cite web sources inline as [n] using ONLY the numbered source list below — never invent a source or a number. If a sub-agent's brief cites or leans on material that is NOT in this list, do not cite it, do not footnote it, and do not add it to Sources: either drop that claim or state plainly that it could not be verified against the retrieved sources. End with a "Sources" section listing only the cited numbers from the list.\nSources:\n${digest}\n`
+    : "No web sources were collected; do not fabricate citations. If a sub-agent's brief cites something anyway, strip the citation and present the claim as unverified.\n") +
   (hasShell ? "A sandbox shell transcript may appear in the conversation — treat its output as ground truth the assistant produced.\n" : "") +
   "Answer in the user's language.\n" +
   ANTI_INJECTION_NOTE;

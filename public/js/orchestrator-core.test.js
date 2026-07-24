@@ -155,6 +155,19 @@ test("plan prompt lists kinds, rules, and Swedish-parity instruction", () => {
   assert.ok(withSource.includes('- "introspection"'));
 });
 
+// Feedback #21 (2026-07-24): a "most deepresearch.se-like project" run
+// compared candidates against the site without ANY agent ever establishing
+// what the site does — the critic flagged it, nothing blocked it. The plan
+// prompt now requires a first-wave grounding agent for reference-object
+// comparisons, introspection-kind when the object is this site itself.
+test("plan prompt requires grounding a comparison's reference object (feedback #21)", () => {
+  const p = orchestratorPlanPrompt({ message: "compare X to this site", hasSource: true });
+  assert.ok(p.includes("GROUND COMPARISONS"));
+  assert.ok(p.includes("first-wave grounding agent"));
+  assert.ok(p.includes('MUST be kind "introspection"'));
+  assert.ok(p.includes('list it in "deps"'));
+});
+
 test("agentTaskPrompt carries persona, task and clamped upstream results", () => {
   const p = agentTaskPrompt(
     { name: "Critic", kind: "custom", task: "Judge.", persona: "Skeptic." },
