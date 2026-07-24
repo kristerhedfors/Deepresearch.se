@@ -21,14 +21,20 @@
      relaunch (the device-cached shell paints before /api/settings answers):
      `sdk-mode` (green — Agent Studio, which distills this site into a new
      flavour) or `dev-mode` (titanium — introspection; also the legacy default
-     when only the dr_dev_mode knob cache exists). This script ONLY sets the
-     class; the complete theme it triggers — the field + drifting waves, the
-     whole palette, the composer pane and the waiting/entry animations — is CSS
-     keyed on that class, so the background paints correctly from frame 1. The
-     status-bar tint is applied per-mode by chat-mode.js/app.js. In-session
-     toggle/reconcile is chat-mode.js. If this script changes, recompute its CSP
-     hash (THEME_BOOT_HASH in src/security-headers.js). */
-try{var m=localStorage.getItem("dr_chat_mode");if(m==="sdk"){document.documentElement.classList.add("sdk-mode");}else if(m==="introspection"||(!m&&localStorage.getItem("dr_dev_mode")==="1")){document.documentElement.classList.add("dev-mode");}}catch(e){}</script>
+     when only the dr_dev_mode knob cache exists). The complete theme it
+     triggers — the field + drifting waves, the whole palette, the composer pane
+     and the waiting/entry animations — is CSS keyed on that class, so the
+     background paints correctly from frame 1. This script ALSO sets the iOS
+     status-bar tint (the theme-color meta) to the mode's field colour at parse
+     time — the barTint values in public/js/mode-theme.js — so the chrome above
+     the app matches --bg from the FIRST frame too. Deferring that to post-load
+     JS left iPhone's status bar painted the default blue in Introspection and
+     Agent Studio (the JS nudge fires inside Safari's navigation-chrome
+     transition and is swallowed); bar-tint.js still re-asserts the current
+     mode's tint on later events. In-session toggle/reconcile is chat-mode.js.
+     If this script changes, recompute its CSP hash (THEME_BOOT_HASH in
+     src/security-headers.js). */
+try{var m=localStorage.getItem("dr_chat_mode");var t="#6fc3fd";if(m==="sdk"){document.documentElement.classList.add("sdk-mode");t="#66cc92";}else if(m==="introspection"||(!m&&localStorage.getItem("dr_dev_mode")==="1")){document.documentElement.classList.add("dev-mode");t="#ccd2d8";}var mc=document.querySelector('meta[name="theme-color"]');if(mc){mc.setAttribute("content",t);}}catch(e){}</script>
 </head>
 <body>
   <header>
