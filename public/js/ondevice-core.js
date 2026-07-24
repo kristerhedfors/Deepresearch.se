@@ -283,6 +283,26 @@ export function hfFileUrl(repo, path) {
   return "https://huggingface.co/" + repo + "/resolve/main/" + path;
 }
 
+// Mapping a failed tree-fetch HTTP status onto the download planner's two
+// user-facing reasons. The distinction MATTERS: "isn't published yet" is a
+// statement about the model, "couldn't reach huggingface.co" is a statement
+// about the connection, and the wrong one sends a user away from a working
+// feature (or, for the headline Bonsai 27B whose ONNX build isn't published,
+// blames the user's network for a model that simply doesn't exist yet).
+//
+// The trap this fixes: Hugging Face returns 401 — NOT 404 — for a repo that
+// doesn't exist OR is gated (it refuses to leak which), so the not-yet-
+// published onnx-community/Bonsai-27B-ONNX answers 401. Mapping only 404 to
+// "unpublished" therefore mislabeled EVERY unpublished/gated repo as a
+// network error (verified live 2026-07-24: the 27B tree endpoint 401s, as
+// does any nonexistent repo). 401/403/404 all mean "not available to
+// download here" → unpublished; a transient 5xx/429 (or a thrown fetch, at
+// the call site) is the genuine network case.
+/** @param {number} status @returns {"unpublished"|"network"} */
+export function planReasonForStatus(status) {
+  return status === 401 || status === 403 || status === 404 ? "unpublished" : "network";
+}
+
 // The tokenizer/config side files a transformers.js text-generation load
 // reads. Optional ones (a repo without chat_template.jinja bakes the template
 // into tokenizer_config.json) are simply absent from the plan when absent

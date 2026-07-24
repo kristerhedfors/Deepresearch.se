@@ -364,6 +364,34 @@ export function fitsDeadline(startedAt, budgetMs, upcomingMs) {
   return Date.now() - startedAt + upcomingMs <= budgetMs * 1.15;
 }
 
+// ---- gap-strive: don't settle for "coverage sufficient" while a deep budget
+// sits unspent (feedback #16, chat_logs #609: a 600s budget wrapped a niche
+// question in 123s because round 3's gap check said complete). The 2026-07-19
+// fix raised the ROUND ceiling; this is its complement on the OTHER binding
+// constraint, the gap check's own judgment: at the deep tiers, the first
+// "complete" verdicts are challenged — runGapChecks re-asks with a wider-
+// aperture prompt (communities, marketplaces, alternate terminology,
+// non-English sources) instead of stopping. Bounded three ways: only
+// extended/full tiers (a simple question never reaches them —
+// applyComplexityToPlan drops its tier to standard), only while less than
+// half the budget is spent, and at most GAP_STRIVE_MAX pushes per request; a
+// strive wave that surfaces no new sources still exits via gap_saturated.
+
+export const GAP_STRIVE_MAX = 2;
+
+/**
+ * Should a "coverage sufficient" gap verdict be challenged with a deeper look?
+ * @param {BudgetPlan | null | undefined} plan
+ * @param {number} elapsedMs time spent so far this request
+ * @param {number} striveCount strive pushes already spent this request
+ * @returns {boolean}
+ */
+export function wantsGapStrive(plan, elapsedMs, striveCount) {
+  if (!plan || (plan.reportTier !== "extended" && plan.reportTier !== "full")) return false;
+  if (striveCount >= GAP_STRIVE_MAX) return false;
+  return elapsedMs < plan.budgetMs * 0.5;
+}
+
 // ---- budget-tier gates for the deep-research phases ------------------------
 //
 // These decide whether the NEW, optional pipeline phases run at all. They are

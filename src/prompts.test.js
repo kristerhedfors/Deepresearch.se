@@ -154,6 +154,17 @@ describe("gapPrompt", () => {
     assert.match(p, /independent, third-party coverage/);
   });
 
+  test("strive flag adds the wider-aperture push, off by default (feedback #16)", () => {
+    const off = gapPrompt([], 2);
+    assert.doesNotMatch(off, /STRIVE HARDER/);
+    const on = gapPrompt([], 2, { strive: true });
+    assert.match(on, /STRIVE HARDER/);
+    assert.match(on, /enthusiast communities/);
+    assert.match(on, /non-English sources/);
+    // The strict complete-only-if rule rides in the strive block.
+    assert.match(on, /genuinely surface nothing/);
+  });
+
   test("audits generic follow-ups against the original question's breadth", () => {
     const p = gapPrompt([], 2);
     assert.match(p, /ORIGINAL question in the conversation/);

@@ -33,6 +33,7 @@ import {
   onDeviceModel,
   opfsUnavailableMessage,
   planModelFiles,
+  planReasonForStatus,
   rejectionDetail,
   sseDeltaLine,
   sseDoneLine,
@@ -127,6 +128,18 @@ test("planModelFiles: an unpublished variant returns null (the 27B-today state)"
   assert.equal(planModelFiles([], "q1f16"), null);
   assert.equal(planModelFiles(null, "q1f16"), null);
   assert.equal(planModelFiles(TREE, ""), null);
+});
+
+test("planReasonForStatus: HF 401/403/404 are 'unpublished', not 'network' (the Bonsai 27B trap)", () => {
+  // HF returns 401 — not 404 — for a repo that doesn't exist yet or is gated,
+  // so the unpublished onnx-community/Bonsai-27B-ONNX must read as unpublished.
+  assert.equal(planReasonForStatus(401), "unpublished");
+  assert.equal(planReasonForStatus(403), "unpublished");
+  assert.equal(planReasonForStatus(404), "unpublished");
+  // A transient server-side failure is the genuine network case.
+  assert.equal(planReasonForStatus(429), "network");
+  assert.equal(planReasonForStatus(500), "network");
+  assert.equal(planReasonForStatus(503), "network");
 });
 
 test("planModelFiles: a malformed lfs oid is dropped, size defaults to 0", () => {

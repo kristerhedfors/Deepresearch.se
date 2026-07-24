@@ -30,6 +30,7 @@ import {
   onDeviceModel,
   opfsUnavailableMessage,
   planModelFiles,
+  planReasonForStatus,
   rejectionDetail,
   wasmPathsFor,
   withJsonReminder,
@@ -199,7 +200,10 @@ const dlAborts = new Map(); // modelId → AbortController
 // statement about the model, "couldn't reach huggingface.co" is a statement
 // about the connection, and telling a user the wrong one sends them away
 // from a working feature (found in the first headless verify run: a blocked
-// fetch read as "isn't published").
+// fetch read as "isn't published"). A thrown fetch is the network case; a
+// bad HTTP status is classified by planReasonForStatus (401/403/404 =
+// unavailable/unpublished, since HF 401s an unpublished repo rather than
+// 404ing it — the Bonsai 27B trap).
 async function planFor(model) {
   let res;
   try {
@@ -207,7 +211,7 @@ async function planFor(model) {
   } catch {
     return { reason: "network" };
   }
-  if (!res.ok) return { reason: res.status === 404 ? "unpublished" : "network" };
+  if (!res.ok) return { reason: planReasonForStatus(res.status) };
   try {
     const files = planModelFiles(await res.json(), model.dtype);
     return files ? { files } : { reason: "unpublished" }; // repo exists, variant doesn't
