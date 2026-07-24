@@ -182,6 +182,12 @@ export function isPublicAsset(url, method) {
     // the promotional landing (/welcome/) so a signed-out visitor can ask the
     // common questions before signing in. Static content, no secrets.
     url.pathname === "/js/canned-faq.js" ||
+    // The shared feedback intent gate (feedback-core.js): a leaf pure module
+    // imported by /cure/drc.js (the public DRC graph) so the "feedback" keyword
+    // is caught client-side. Same public-graph rule — a 401 here would take the
+    // whole /cure tier dark. It's the same deterministic gate the Se/rver
+    // pipeline uses (src/feedback.js re-exports it), no secrets.
+    url.pathname === "/js/feedback-core.js" ||
     url.pathname === "/introspect/source-snapshot.json" ||
     // The OWASP Top 10 reference corpus — public so DRC (Se/cure, server in no
     // data path) can fetch it and ground a security assessment OFFLINE, quoting

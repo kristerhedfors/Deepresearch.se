@@ -329,6 +329,21 @@ describe("bashAgentPrompt", () => {
     assert.match(p, /mkdir -p \/workspace\/outbox/);
     assert.match(p, /attached to the reply as a download/);
   });
+
+  // Feedback #7 (2026-07-24): an Agent Studio build turn heredoc'd the app into
+  // the sandbox and nothing shipped — the step model must know the build
+  // assistant has direct file tools and decline plain build instructions.
+  test("sdkMode steers file creation to the Agents SDK build tools, and only then", () => {
+    const on = bashAgentPrompt({ sdkMode: true });
+    assert.match(on, /AGENT STUDIO/);
+    assert.match(on, /write_file/);
+    assert.match(on, /publish_app/);
+    assert.match(on, /NEVER published/);
+    assert.match(on, /reply SHELL_DONE immediately/);
+    const off = bashAgentPrompt();
+    assert.doesNotMatch(off, /AGENT STUDIO/);
+    assert.doesNotMatch(off, /write_file/);
+  });
 });
 
 describe("sourceAgentPrompt (introspection source-read loop)", () => {
@@ -680,5 +695,21 @@ describe("SDK build prompts", () => {
       assert.match(p, /Se\/cure/);
       assert.match(p, /flavour/i);
     });
+
+    // Feedback #7 (2026-07-24, chat_logs #583): a build wrote its files into
+    // the in-browser sandbox via heredocs; the transcript then read as "work
+    // done" and nothing was staged or published — two turns, no link.
+    test(`${name} says the sandbox never ships and a transcript never counts as built`, () => {
+      const p = build();
+      assert.match(p, /THE SANDBOX NEVER SHIPS/);
+      assert.match(p, /NEVER published/);
+      assert.match(p, /this path's shipping mechanism/);
+    });
   }
+
+  test("the tool prompt names write_file/publish_app as the only shipping path (never a shell)", () => {
+    const p = sdkBuildToolPrompt();
+    assert.match(p, /ONLY way files ship/);
+    assert.match(p, /never route file creation through a shell/);
+  });
 });

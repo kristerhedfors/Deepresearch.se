@@ -1305,13 +1305,13 @@ h1 .tier { display: block; font-size: .8rem; font-weight: 600; color: var(--mute
   background: rgba(40, 36, 18, .06);
   border: 1px dashed var(--border); border-radius: 6px;
 }
-#odconsent {
+#odconsent, #fbconsent {
   position: fixed; inset: 0; z-index: 60;
   display: flex; align-items: center; justify-content: center;
   background: rgba(40, 36, 18, .45); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
   padding: 1rem;
 }
-#odconsent[hidden] { display: none; }
+#odconsent[hidden], #fbconsent[hidden] { display: none; }
 .odc-card {
   max-width: 420px; width: 100%;
   background: var(--panel); color: var(--text);
@@ -1327,8 +1327,8 @@ h1 .tier { display: block; font-size: .8rem; font-weight: 600; color: var(--mute
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
   padding: .45rem .8rem; cursor: pointer;
 }
-.odc-card #odc-yes { background: var(--accent); color: #fff; border-color: var(--accent); }
-.odc-card #odc-yes:disabled { opacity: .55; cursor: default; }
+.odc-card #odc-yes, .odc-card #fbc-yes { background: var(--accent); color: #fff; border-color: var(--accent); }
+.odc-card #odc-yes:disabled, .odc-card #fbc-yes:disabled { opacity: .55; cursor: default; }
 
 /* ---- SHARED COMPUTE + WORKSPACE KNOWLEDGE (compute sharing) ------------------ */
 /* The 👍 action on stored assistant replies (visible while a workspace pool

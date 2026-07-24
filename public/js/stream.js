@@ -901,6 +901,13 @@ async function maybeRunShellLoop(turn, opts) {
     // (AI_MODEL_NOT_A_PACKAGE_NOTE) covers the residual mixed-intent case.
     const latestUser = latestUserText();
     if (latestUser && aiModelIntent(latestUser) && !bashIntent(latestUser)) return [];
+    // Agent Studio (SDK mode): building is the BUILD tools' job (write_file /
+    // publish_app — files created in the sandbox are never published), so a
+    // plain build instruction skips the slow sandbox pre-pass entirely. Only an
+    // explicit shell ask (bashIntent, EN+SV) still runs the loop — and then the
+    // step prompt knows it's an SDK send (feedback #7, chat_logs #583).
+    const sdkSend = cachedChatMode() === "sdk";
+    if (sdkSend && !bashIntent(latestUser || "")) return [];
     // Knob on but the page isn't cross-origin isolated (COEP): the sandbox
     // cannot boot. app.js self-heals by reloading once; if we still land here,
     // tell the user plainly instead of silently answering "I can't run code".
@@ -944,6 +951,7 @@ async function maybeRunShellLoop(turn, opts) {
       messages: stripOldImages(history),
       exec: (command) => execInSandbox(command, { timeoutMs: execTimeoutMs }),
       ensureReady: bootOnce,
+      sdk: sdkSend,
       // Surface WHICH command is running, live — the user asked to see the
       // actual command, not just "executing command". onExec fires just before
       // each command runs (`$ ls -la /workspace`), clipped to one line.

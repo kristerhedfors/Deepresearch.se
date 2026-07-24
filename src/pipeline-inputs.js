@@ -24,18 +24,27 @@ import { notesDigest } from "./notes.js";
 // non-synthesis reply (direct / search-off), framed as ground truth. Empty
 // (and thus omitted) when the sandbox didn't run, so the message array is
 // byte-identical to a run without the feature.
+//
+// `sdkBuild` (feedback #7, 2026-07-24): on an Agent Studio build turn the
+// ground-truth framing backfired — a transcript showing app files heredoc'd
+// into /workspace read as "already built", so the model shipped nothing. The
+// build variant frames the transcript as context ONLY and says outright that
+// sandbox files are never published.
 /**
  * @param {string} shellBlock
+ * @param {{ sdkBuild?: boolean }} [opts]
  * @returns {Message[]}
  */
-export function shellReplyMessages(shellBlock) {
+export function shellReplyMessages(shellBlock, opts = {}) {
   if (!shellBlock) return [];
   return [
     {
       role: "system",
       content:
         shellBlock +
-        "\n\nUse this real sandbox output directly in your reply — it is ground truth you produced by running commands (no citation needed).",
+        (opts.sdkBuild
+          ? "\n\nThis sandbox transcript is CONTEXT ONLY: files created inside the sandbox are NOT part of the build and are NEVER published. Nothing has shipped yet — emit every file of the app through this turn's shipping mechanism yourself."
+          : "\n\nUse this real sandbox output directly in your reply — it is ground truth you produced by running commands (no citation needed)."),
     },
   ];
 }
