@@ -377,6 +377,17 @@ test("buildIntrospectionBlock: sandboxMounted adds the /src pointer", () => {
   assert.doesNotMatch(noSb, /mounted at \/src inside the Linux sandbox/);
 });
 
+// Diagram guidance (feedback #14, 2026-07-24): a dev-mode diagram ask must be
+// answered with a ```mermaid fence (the chat renders it), never ASCII box art
+// in a plain fence. The block carries the note so the non-tool answer paths of
+// BOTH tiers get it — the tool paths get the same note via their prompts.
+test("buildIntrospectionBlock: carries the mermaid diagram guidance", () => {
+  const block = buildIntrospectionBlock(snap(), {});
+  assert.match(block, /DIAGRAMS:/);
+  assert.match(block, /```mermaid/);
+  assert.match(block, /Do NOT draw ASCII\/Unicode box art/);
+});
+
 test("buildIntrospectionBlock: RAG-retrieved chunks are shown as relevant excerpts", () => {
   const block = buildIntrospectionBlock(snap(), {
     latestText: "code examples from site",
