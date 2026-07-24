@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  drcFeedbackContext,
   grantFlagEnabled,
   grantLive,
   grantMeterLine,
@@ -316,4 +317,38 @@ test("grantMeterLine: the one status-line wording both borrowed-capability rows 
   // Absent remaining = not yet spent → the full quota shows.
   assert.equal(grantMeterLine("🤖 LLM API (Berget)", { quota: 40 }, true), "🤖 LLM API (Berget): 40 of 40 left");
   assert.equal(grantMeterLine("🔎 Web search", { quota: 25, remaining: 0 }, false), "🔎 Web search: used up / expired");
+});
+
+test("drcFeedbackContext: last question + answer from the persisted conversation", () => {
+  const conv = {
+    messages: [
+      { role: "user", content: "old question" },
+      { role: "assistant", content: "old answer" },
+      { role: "user", content: "why is the sky blue?" },
+      { role: "assistant", content: [{ text: "Rayleigh" }, { text: "scattering." }] },
+    ],
+  };
+  assert.deepEqual(drcFeedbackContext(conv), {
+    question: "why is the sky blue?",
+    answer_excerpt: "Rayleigh scattering.",
+  });
+});
+
+test("drcFeedbackContext: answer excerpt caps at 8000 chars", () => {
+  const conv = {
+    messages: [
+      { role: "user", content: "q" },
+      { role: "assistant", content: "x".repeat(9000) },
+    ],
+  };
+  assert.equal(drcFeedbackContext(conv).answer_excerpt.length, 8000);
+});
+
+test("drcFeedbackContext: empty, missing, or malformed conversations yield nulls", () => {
+  assert.deepEqual(drcFeedbackContext(null), { question: null, answer_excerpt: null });
+  assert.deepEqual(drcFeedbackContext({}), { question: null, answer_excerpt: null });
+  assert.deepEqual(drcFeedbackContext({ messages: [{ role: "assistant", content: [] }] }), {
+    question: null,
+    answer_excerpt: null,
+  });
 });
