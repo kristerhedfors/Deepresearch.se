@@ -228,17 +228,38 @@ function closePanel() {
   openPanelId = null;
 }
 
-// Pin the panel's ✕ to the screen rect of the header's history button —
-// the same placement history-ui.js gives the history drawer's ✕, so the
-// close button doesn't jump when moving between the two panes.
-function placeCloseBtn() {
+// Pin a pane's floating close chevron to the screen rect of the header's
+// history button, so on a phone the same tap spot opens and closes the
+// pane. Shared by the project panel's ✕ and (via history-ui.js) the
+// history drawer's ✕, so the close button doesn't jump when moving
+// between the two panes. In Introspection / Agent Studio the header's
+// mode-tag row pushes the live button down far enough that a pinned
+// chevron would sit on the pane's "Chat history" head — subtract the
+// visible tag row (its box + the header column's gap) so the chevron
+// lands at the Deep Research position, the same spot in all three modes.
+export function pinPaneClose(closeBtn) {
   const r = document.getElementById("historybtn").getBoundingClientRect();
   if (!r.width) return; // button hidden/unlaid-out: keep the CSS fallback
-  const closeBtn = document.getElementById("projectclose");
-  closeBtn.style.top = r.top + "px";
+  let top = r.top;
+  const tag = [".introspection-tag", ".sdk-tag"]
+    .map((sel) => document.querySelector(sel))
+    .find((el) => el && el.offsetHeight > 0);
+  if (tag) {
+    const cs = getComputedStyle(tag);
+    const gap = parseFloat(getComputedStyle(tag.parentElement).rowGap) || 0;
+    top -= tag.getBoundingClientRect().height
+      + (parseFloat(cs.marginTop) || 0)
+      + (parseFloat(cs.marginBottom) || 0)
+      + gap;
+  }
+  closeBtn.style.top = top + "px";
   closeBtn.style.left = r.left + "px";
   closeBtn.style.width = r.width + "px";
   closeBtn.style.height = r.height + "px";
+}
+
+function placeCloseBtn() {
+  pinPaneClose(document.getElementById("projectclose"));
 }
 
 export async function openProjectPanel(id) {
