@@ -7,6 +7,11 @@ is the per-suite detail: what each unit suite covers, the end-to-end
 eval harnesses. Keep it current in the same commit that adds a test
 suite (the update-docs skill's drift greps target this file).
 
+Its companion is `docs/TESTING-GAP-ANALYSIS.md` (2026-07-24): the same
+surface reviewed as a system — what is automated, what is covered, and
+the ordered list of what is missing. This file says what exists; that
+one says what does not.
+
 ## Unit tests (`src/*.test.js`, `public/js/*.test.js`)
 
 Node's built-in test runner (`node:test` + `node:assert/strict` — no
