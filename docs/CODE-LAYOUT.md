@@ -415,7 +415,15 @@ drcChatStream/drcCompleteJson branch on `provider.engine`, with per-provider
 `jsonTimeoutMs`/`streamIdleMs`/`serialize` overrides for phone-speed
 inference; the pure core (catalog, HF-tree download plan, progress math,
 streaming SHA-256, think-strip filter, capability verdict, wire shapes) is
-Node-tested; the worker is browser-only glue like sandbox.js), and
+Node-tested; the worker is browser-only glue like sandbox.js; since
+2026-07-24 the SAME engine also serves the Se/rver app through
+`ondevice-drs.js` — the DRS glue owning the browser-local `dr_ondevice`
+knob, the gear-panel section (download with the exact-size inline consent,
+cancel/resume, delete, capability verdicts), and the cached-model listing
+behind models.js's "📱 On-device" dropdown group; a pick from that group
+makes stream.js run the whole exchange through the client-side pipeline
+(`runOnDeviceExchange`) instead of `/api/chat`, the "ondevice::" option
+values shared between the tiers via ondevice-core.js), and
 `drc-page-core.js` (the DRC page's import-free PURE core — the small
 fragments the `/cure` DOM-wiring layer (`drc.js`) would otherwise inline
 or duplicate: `grantLive`/`grantFlagEnabled` (the ONE liveness + master-

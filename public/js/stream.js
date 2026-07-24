@@ -28,6 +28,8 @@ import { bashLiteOn, developerModeOn } from "./settings.js";
 import { cachedChatMode } from "./chat-mode.js";
 import { buildIntrospectionBlock, introspectionActive, maybeRepoPathMention, SNAPSHOT_PATH, validateSnapshot } from "./introspect-core.js";
 import { engageIntrospection, introspectionRemoteModel, privateIntrospectionRoute } from "./introspect-ui.js";
+import { onDeviceIdFromValue } from "./ondevice-core.js";
+import { loadOnDeviceEngine, onDeviceModelLabel } from "./ondevice-drs.js";
 import { runDrcResearch } from "./drc-research.js";
 import { runShellLoop, shellCommandLabel } from "./bash-agent.js";
 import { bashIntent, deliverablesRun, execTimeoutForBudget, wantsOutboxCollect } from "./bash-core.js";
@@ -1141,6 +1143,146 @@ async function runPrivateIntrospection(turn, opts, signal, gen, route, snap) {
   }
 }
 
+// ---- on-device models: the phone-local (Bonsai) answer route ------------------
+
+// The friendly phase labels for an on-device run's single activity step.
+const ONDEVICE_PHASE_LABELS = {
+  triage: "Planning (on this device)…",
+  harvest: "Gathering notes (on this device)…",
+  gap: "Auditing coverage (on this device)…",
+  synth: "Writing the answer (on this device)…",
+  validate: "Reviewing the draft (on this device)…",
+  sandbox: "Running in the Linux sandbox…",
+  answer: "Writing the answer (on this device)…",
+  clarify: "Asking for a detail…",
+};
+
+// The ON-DEVICE route: the composer's model pick is one of the downloaded
+// Bonsai models (the "ondevice::" group models.js renders), so the whole
+// exchange runs the client-side pipeline (drc-research.js) against the
+// in-browser engine (ondevice-engine.js, the same one Se/cure uses) —
+// /api/chat is never called, no AI provider is contacted, and there is no
+// server request to watch or recover. Once the pick is on-device EVERY
+// outcome settles here: falling through to the server path would silently
+// betray what the dropdown group promised. Live web search, RAG retrieval,
+// and the server-side enrichments (Shodan/Maps) don't run in this mode —
+// they are all server calls; the model answers from what it knows, the
+// conversation, and the attached text. History still persists under the
+// tier's normal (encrypted) rules.
+async function runOnDeviceExchange(turn, opts, signal, gen, modelId) {
+  let acc = "";
+  let engRef = null; // for the finally: the load-status hook must not outlive this send
+  const label = onDeviceModelLabel(modelId);
+  try {
+    startGenericStep(turn, "ondevice", `On-device model — ${label} runs in this browser…`);
+    recordResearchEvent(turn, { event: "ondevice_answer", model: modelId });
+    // Introspection context rides along when the mode is engaged (developer
+    // mode + an ask about this site) — strictly fail-soft to none.
+    let block = "";
+    try {
+      if (developerModeOn() && (await introspectionEngagedNow())) {
+        const snap = await introspectSnapshot();
+        if (snap) {
+          const texts = userTexts(history);
+          block = buildIntrospectionBlock(snap, {
+            latestText: texts[texts.length - 1] || "",
+            sandboxMounted: bashLiteOn() && sandboxSupported(),
+          });
+        }
+      }
+    } catch {
+      block = "";
+    }
+    const eng = await loadOnDeviceEngine();
+    engRef = eng;
+    // Model-load progress (tokenizer / GPU compile) narrates the step while
+    // the first token can be a minute away — silence there reads as a hang.
+    eng.onLoadStatus((status) => {
+      if (gen === generation && status) updateGenericStep(turn, "ondevice", status);
+    });
+    // The client pipeline works on plain text turns: flatten multimodal
+    // content to its text parts (the engine is text-only).
+    const messages = history.slice(-12).map((m) => ({
+      role: m.role,
+      content:
+        typeof m.content === "string"
+          ? m.content
+          : Array.isArray(m.content)
+            ? m.content.filter((p) => p?.type === "text").map((p) => p.text || "").join("\n")
+            : "",
+    })).filter((m) => m.content);
+    const result = await runDrcResearch({
+      providerId: "ondevice",
+      provider: eng.onDeviceProvider(),
+      apiKey: "",
+      model: modelId,
+      messages,
+      research: opts.webSearch !== false, // the composer knob keeps its meaning: phases on/off
+      budgetS: opts.budgetS || 60,
+      introspection: block,
+      bash: bashLiteOn(),
+      fileProvider: buildSandboxFileProvider(opts),
+      onStatus: (s) => {
+        if (gen !== generation) return;
+        if (s.type === "phase") {
+          updateGenericStep(turn, "ondevice", s.label || ONDEVICE_PHASE_LABELS[s.phase] || "Working (on this device)…");
+          recordResearchEvent(turn, { event: "phase", phase: s.phase });
+        } else if (s.type === "discard_text") {
+          acc = "";
+          resetForRevision(turn);
+        }
+      },
+      onDelta: (chunk) => {
+        if (gen !== generation) return;
+        acc += chunk;
+        setText(turn, acc);
+        scrollDown();
+      },
+      signal,
+    });
+    if (gen !== generation) return; // New chat took the conversation mid-run
+    const answer = result?.answer || acc;
+    if (answer) {
+      setText(turn, answer);
+      history.push({ role: "assistant", content: answer });
+      finishGenericStep(turn, {
+        id: "ondevice",
+        label: `Answered on-device — ${label} ran in this browser; nothing was sent to any AI provider or to this site's research pipeline`,
+      });
+      await persistConversation(opts);
+    } else {
+      finishGenericStep(turn, { id: "ondevice", label: "The on-device model produced no answer" });
+      setError(turn, "No response received.");
+      await abandonUnanswered(opts);
+    }
+  } catch (e) {
+    if (gen !== generation) return;
+    if (e?.name === "AbortError" || /^Aborted\.?$/.test(e?.message || "")) {
+      // The user pressed Stop: keep the partial as context, like the server path.
+      finishGenericStep(turn, { id: "ondevice", label: "Stopped" });
+      if (acc) {
+        const stopped = acc + "\n\n*(Stopped.)*";
+        setText(turn, stopped);
+        history.push({ role: "assistant", content: stopped });
+        await persistConversation(opts);
+      } else {
+        setError(turn, "Stopped before any response arrived.");
+        history.pop();
+        pruneEmbeds();
+      }
+      return;
+    }
+    finishGenericStep(turn, { id: "ondevice", label: "On-device run failed" });
+    setError(turn, (e?.message || "The on-device model failed.") + " (On-device — your question was not sent anywhere.)");
+    history.pop();
+    pruneEmbeds();
+  } finally {
+    engRef?.onLoadStatus(null);
+    inFlight = false;
+    collapseActivity(turn);
+  }
+}
+
 // Build the file provider the sandbox seeds from (design part B): this send's
 // attachments become /workspace files, the active project's files become the
 // project mount. Returns an async fn the sandbox calls once, right before boot
@@ -1258,6 +1400,19 @@ export async function sendMessage(text, opts) {
   const gen = generation;
   controller = new AbortController();
   const signal = controller.signal;
+
+  // ON-DEVICE model pick (the "ondevice::" dropdown group): the exchange runs
+  // entirely in this browser on the local Bonsai engine and settles inside
+  // runOnDeviceExchange — /api/chat, the watchdog, and the recovery machinery
+  // below never engage. This branch is checked FIRST: an explicit on-device
+  // pick outranks every other route, and it must never fall through to a
+  // server call. Stop still works: it aborts the same controller this send
+  // owns.
+  const onDeviceModelId = onDeviceIdFromValue(opts.model);
+  if (onDeviceModelId) {
+    await runOnDeviceExchange(turn, opts, signal, gen, onDeviceModelId);
+    return;
+  }
 
   // INTROSPECTION MODE's private route (developer mode + TIN's picker set to
   // an own-key model + the conversation asking about this site's own

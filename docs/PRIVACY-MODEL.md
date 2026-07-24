@@ -44,6 +44,23 @@ Secrets never appear in any log.
 Outbound requests to third parties carry the minimum (a query, a
 coordinate, a host), never the conversation, filename, or account
 identity.
+
+**Browser-local answer routes on Se/rver.** Two Se/rver sends never
+reach `/api/chat` at all, so they produce no `chat_logs` row and no
+provider call from the server: (1) introspection's PRIVATE route — the
+user picked an own-key model in TIN's panel, and the exchange runs
+browser-direct on that key through the client-side pipeline; (2) the
+ON-DEVICE models (2026-07-24, `public/js/ondevice-drs.js` +
+`stream.js runOnDeviceExchange`) — a downloaded 1-bit Bonsai model runs
+inside the browser on WebGPU (the same engine Se/cure ships,
+`docs/BONSAI-27B-PHONE-INFERENCE.md`), so the question reaches NO
+provider and no server pipeline; live web search, RAG retrieval, and the
+server-side enrichments are off for those sends because each one is a
+server call. Both routes still persist the conversation under the tier's
+normal rule above (ciphertext in the browser and R2) — the tier's
+implicit cloud storage is unchanged; it is the ANSWERING path that stays
+local. The weights are public model files fetched from huggingface.co
+into OPFS — the server is not in that path either.
 **TWO deliberate, bounded exceptions to "the server is in NO DRC data
 path".** Count precisely: two is the number of *exposure classes* — `web`
 (query-only) and `api` (content-bearing) — while the credential FAMILIES

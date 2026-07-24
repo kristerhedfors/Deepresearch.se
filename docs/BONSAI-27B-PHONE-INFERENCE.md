@@ -2,7 +2,9 @@
 
 Status: **PR 2 IMPLEMENTED** (2026-07-16; §11's slicing — the engine, knob,
 consent popup, OPFS download manager, provider seam, and timeout overrides
-are live behind the Se/cure settings knob). One reality-driven refinement vs
+are live behind the Se/cure settings knob). **Se/rver integration ADDED**
+(2026-07-24, owner request — §12: the same engine surfaced in the signed-in
+app). One reality-driven refinement vs
 §6: the catalog is data-driven (`public/js/ondevice-core.js`) because the
 27B's ONNX browser conversion is not yet published — Bonsai 8B (1.11 GiB
 q1f16) and 1.7B (278 MB q1) work today, and the pre-wired 27B entry lights
@@ -233,6 +235,49 @@ research, never errors the chat.
    serialization, prefill keepalive, capability verdict UX, Android/iOS
    verification, test-request file.
 4. **PR 4+ (optional)**: embeddings, vision, ternary.
+
+## 12. Se/rver integration (2026-07-24, owner request)
+
+The owner asked for the on-device models in Se/rver too, not just Se/cure.
+The §2 placement ("a Se/cure feature, zero new server surface") is
+superseded for SCOPE but kept for MECHANISM: the Se/rver integration still
+adds zero server surface — no new API, no new invariant-4 exception, not
+even new `assets.js` entries (the engine modules and the vendored runtime
+were already public for the /cure graph, and the worker-script COEP serving
+is path-based, not tier-based).
+
+What ships, per file:
+
+- `public/js/ondevice-drs.js` — the DRS glue: the browser-local
+  `dr_ondevice` knob (deliberately localStorage, NOT `/api/settings` — the
+  weights live in ONE device's OPFS, so an account-wide flag would light up
+  dropdown groups on devices holding no weights), the gear-panel Settings
+  section (per-model rows with the §6 consent inline in the row — the panel
+  has no modal layer — exact live size in the Download button, "Not now" and
+  navigation are a NO, cancel/resume, delete, capability verdicts), and the
+  cached-model listing for the dropdown.
+- `public/js/models.js` — a "📱 On-device — runs in this browser" optgroup
+  listing ONLY downloaded models (a dropdown pick must never start a
+  multi-GB download); values are `ondevice::<id>` via the shared
+  ondevice-core.js helpers, so the two tiers cannot drift on the format.
+  Server models group under "☁ Server models" only while the on-device
+  group is present. With the catalog unreachable but weights cached, the
+  dropdown now still renders — the offline case the tier exists for. Never
+  auto-picked: without a stored selection the server default applies.
+- `public/js/stream.js` — `runOnDeviceExchange`: an `ondevice::` pick runs
+  the WHOLE exchange through the client-side pipeline (`runDrcResearch` +
+  `onDeviceProvider()`, the maybePrivateIntrospection pattern) and never
+  falls through to `/api/chat` — a silent cloud fallback would betray what
+  the dropdown group promised. Checked before every other route. Attachment
+  text and the dev-mode introspection block ride along; the sandbox loop
+  works when the bash knob is on (the DRS page is COEP-isolated exactly
+  then). Live web search, RAG retrieval, and the server enrichments are OFF
+  for these sends — each is a server call; the Settings popover says so.
+- Privacy note (`docs/PRIVACY-MODEL.md`): an on-device Se/rver send reaches
+  no provider and writes no `chat_logs` row (there is no server request),
+  while the conversation itself still persists under the tier's implicit
+  encrypted cloud storage. The answering path is local; the storage rule is
+  unchanged.
 
 ## Sources
 

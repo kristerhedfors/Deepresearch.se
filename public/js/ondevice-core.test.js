@@ -10,6 +10,9 @@ import {
   ONDEVICE_MODELS,
   ONDEVICE_MAX_TOKENS,
   ONDEVICE_TRACE_MAX,
+  ONDEVICE_VALUE_PREFIX,
+  onDeviceIdFromValue,
+  onDeviceOptionValue,
   capabilityVerdict,
   completionEnvelope,
   crashMessage,
@@ -55,6 +58,27 @@ test("catalog: ids are distinct and dropdown-safe (no ::)", () => {
   const ids = ONDEVICE_MODELS.map((m) => m.id);
   assert.equal(new Set(ids).size, ids.length);
   for (const id of ids) assert.ok(!id.includes("::")); // "provider::model" split safety
+});
+
+// ---- the dropdown value convention -------------------------------------------------
+
+test("option values round-trip for every catalog model", () => {
+  for (const m of ONDEVICE_MODELS) {
+    const value = onDeviceOptionValue(m.id);
+    assert.ok(value.startsWith(ONDEVICE_VALUE_PREFIX));
+    assert.equal(onDeviceIdFromValue(value), m.id);
+  }
+});
+
+test("onDeviceIdFromValue rejects everything that is not a live on-device pick", () => {
+  assert.equal(onDeviceIdFromValue("mistral-small"), null); // a server model id
+  assert.equal(onDeviceIdFromValue(""), null);
+  assert.equal(onDeviceIdFromValue(undefined), null);
+  assert.equal(onDeviceIdFromValue(null), null);
+  // Prefixed but unknown: a stale stored selection (a model since removed
+  // from the catalog) must not route a send to a nonexistent engine model.
+  assert.equal(onDeviceIdFromValue(ONDEVICE_VALUE_PREFIX + "bonsai-99b"), null);
+  assert.equal(onDeviceIdFromValue(ONDEVICE_VALUE_PREFIX), null);
 });
 
 // ---- download plan ----------------------------------------------------------------
