@@ -318,7 +318,7 @@ These run in Node unmodified since `File`, `Blob`,
 — no DOM needed for this subset of client code.
 
 ```bash
-npm test            # from the repo root: node --test src/*.test.js public/js/*.test.js sdk/*.test.mjs
+npm test            # from the repo root: node --test src/*.test.js public/js/*.test.js sdk/*.test.mjs scripts/*.test.mjs
 npm run typecheck   # zero-build-step tsc: src/ (tsconfig.json, Workers types)
                     # + public/ (tsconfig.public.json, DOM lib) — strict,
                     # opt-in per file via // @ts-check; both must stay clean

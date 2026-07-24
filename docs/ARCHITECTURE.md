@@ -39,8 +39,10 @@ Everything runs in **one Cloudflare Worker** (`deepresearch-se`), deployed at
 the edge, git-connected to this repo (push to `main` → build → deploy; also
 deployable via `npx wrangler deploy`). There is no origin server. Server-side
 state lives in Cloudflare bindings: **D1** (accounts, quotas, config, the
-chat interaction log, feedback threads, answer-recovery cache, game saves),
-**R2** (opt-in cloud copies of conversations/files/RAG exports) and
+chat interaction log, feedback threads, answer-recovery cache, game saves —
+plus the grant/token meters, the decision-board review rows, and the
+compute-sharing broker tables listed below), **R2** (opt-in cloud copies of
+conversations/files/RAG exports) and
 **Vectorize** (the document-RAG vector index). Conversation state is still
 client-held and resent with each request; what the server persists, and what
 rests encrypted vs readable, is governed by the privacy split in §9.
@@ -62,7 +64,7 @@ flowchart LR
         PR["src/providers.js<br/>LLM dispatch by model-id namespace"]
     end
 
-    D1[("D1<br/>users · usage_events · config · answers ·<br/>chat_logs · feedback · tokemon_saves · alerts")]
+    D1[("D1<br/>users · usage_events · usage_model_events · config · answers ·<br/>chat_logs · feedback · tokemon_saves · alerts · server_errors ·<br/>websearch_grants · proxy_grants · server_tokens · pool_* ·<br/>knowledge_* · *_reviews · test_points")]
     R2[("R2 · STORAGE<br/>encrypted convos/projects · files · RAG exports")]
     VX[("Vectorize · RAG_INDEX")]
     BG["Berget.ai (primary LLM)"]
@@ -179,8 +181,12 @@ Every request flows through `src/index.js`:
    - **Users**: D1 accounts provisioned by Google sign-in (no passwords —
      Google proves the email). Identified by the session cookie
      `dr_session` = `u.<uid>.<exp>.<hmac(uid.exp)>`, HMAC-SHA-256 keyed by
-     the dedicated `SESSION_SECRET` (falls back to the admin-credential key
-     when unset, verifying against both), **365-day TTL with sliding
+     the dedicated `SESSION_SECRET`, which is the **sole** signing and
+     verification key: there is no admin-credential fallback, and when the
+     secret is unset the entrypoint serves a configuration-error page rather
+     than running any auth flow keyless (`src/auth.js`; the removed fallback
+     left a captured cookie offline-brute-forceable against `ADMIN_PASS`).
+     **365-day TTL with sliding
      renewal** — so an installed PWA never shows a login screen again while
      in use. HttpOnly + server-set also exempts it from Safari ITP's 7-day
      cap. User status is re-checked per request; disabling kills live
@@ -252,6 +258,16 @@ The Worker orchestrates every phase directly — **no function calling**.
 Every planning/validation step is a plain JSON-mode completion, so the flow
 is deterministic and works on any JSON-mode model (this design replaced an
 earlier tool-calling loop after Mistral emitted pseudo tool calls as text).
+
+**The one authorized exception** (CLAUDE.md invariant 1): when Introspection
+or Agent Studio is on *and* the chosen answer model supports real tool use,
+the ANSWER model drives a native tool loop — `runSourceResearchTools` reads
+the site's own source (`grep_source` / `read_file` / `list_files`, plus a
+real `run_bash` over the Se/cure sandbox), and `runSdkBuildTools` adds the
+`sdk_*` planning tools with `write_file` / `publish_app`. Models without
+tool use fall back to the deterministic loops (the source read loop, the
+fenced `FILE:`-block convention). The JSON planning phases below never use
+tools, on any model.
 
 **Split model routing (invariant):** the JSON planning phases — triage, gap
 check, validation, quiz generation — always run on the fixed reliable
@@ -739,17 +755,22 @@ playback — all game *rules* live server-side (§8).
 
 ## 7. `POST /mcp` — the pipeline as an MCP server
 
-`src/mcp.js` exposes the deep-research pipeline as a single MCP tool so
-other agents (Claude, Cursor, any MCP client) can compose with it:
+`src/mcp.js` exposes the deep-research pipeline — and the Platform SDK's
+registry — as MCP tools, so other agents (Claude, Cursor, any MCP client)
+can compose with them:
 
 - **Transport**: modern Streamable HTTP — JSON-RPC 2.0 over a single POST,
   hand-rolled (no dependency; protocol revision `2025-06-18`). Methods:
   `initialize`, `tools/list`, `tools/call`, plus a no-op ack for
   `notifications/initialized`.
-- **One tool**: `deep_research` — question in; cited, validated,
-  source-diverse answer out. The handler mirrors `chat.js`'s per-request
+- **The tools** (`toolsListResult()` = `DEEP_RESEARCH_TOOL` +
+  `SDK_MCP_TOOLS`): `deep_research` — question in; cited, validated,
+  source-diverse answer out; the handler mirrors `chat.js`'s per-request
   setup and runs the same `runPipeline` (quizzes stay off on this
-  channel).
+  channel) — plus the four Platform-SDK registry tools
+  `sdk_list_modules`, `sdk_show_module`, `sdk_plan` and `sdk_validate`,
+  so an agent can plan against `sdk/MANIFEST.json` without shelling into
+  the sandbox (the **sdk-mode** skill).
 - **Auth**: the route is wired *after* the identity gate, so MCP inherits
   the same access control as the rest of the site (break-glass Basic Auth
   header, or a signed-in session). Usage is recorded through the same
@@ -914,9 +935,9 @@ exploration in this research and innovation project.
   authentication-restricted environment (§9's Se/cure section).
 - **Fail closed**: no admin auth secrets configured ⇒ every request denied.
 - **Two auth mechanisms**: Google-provisioned session cookies (HMAC keyed
-  by the dedicated `SESSION_SECRET`, with a legacy fallback to the
-  admin-credential key) and break-glass Basic Auth. Rotating
-  `SESSION_SECRET` is a global logout.
+  by the dedicated `SESSION_SECRET` — the sole key, no fallback; unset ⇒ the
+  site serves a config-error page instead of signing anything) and
+  break-glass Basic Auth. Rotating `SESSION_SECRET` is a global logout.
 - No `WWW-Authenticate` challenge (prevents the PWA black screen); APIs get
   JSON 401s, HTML navigation gets the sign-in page.
 - **Secrets never in the repo**; the Worker reads them from Cloudflare
@@ -925,9 +946,28 @@ exploration in this research and innovation project.
   HTTP-referrer locking, per `wrangler.toml`'s notes.
 - **Sanitized rendering** with `<img>` forbidden (XSS + tracking-pixel
   defense against hostile quoted web content).
-- Public surface without auth: favicon, manifest, `/icons/*`, and the
-  informational pages `/welcome/`, `/help/`, `/build/`, `/story/` (plus
-  their rendering assets) — content only, no APIs.
+- **Public surface without auth** — larger than "content only", and worth
+  reading as the real unauthenticated attack surface. Two halves:
+  - *Assets* (`isPublicAsset`, `src/assets.js`): favicon, manifest,
+    `/icons/*`; the informational pages `/welcome/`, `/help/`, `/build/`,
+    `/story/`, `/architecture/`; the docs viewer `/docs/`; the
+    commit-analytics dashboard `/pulse/`; the space-animation archive
+    `/space/`; and the whole Se/cure tier `/cure/` together with the
+    named `/js/*` modules its import graph needs (a 401 anywhere in a
+    public module graph takes the tier dark — `assets.js` records both
+    live incidents).
+  - *APIs wired BEFORE the identity gate*, because a Se/cure session has
+    no account to authenticate with: the metered grant surfaces
+    (`/api/websearch*`, `/api/proxy/*`, `/api/server-token/*`), the
+    published-replay and published-build readers (`/api/pub*`,
+    `/api/build/*`), the compute-sharing pool (`/api/pool/*`), the
+    workspace-knowledge halves (`/api/knowledge/*`), the sandbox boot
+    image (`/api/sandbox-image`), `/api/space/feedback`, and the
+    write-only Se/cure feedback route (`/api/server-token/feedback`).
+    Each is authorized by its own bearer token and metered in D1 rather
+    than by the session — see §9's Se/cure section and
+    `docs/PRIVACY-MODEL.md`. None of them reads Se/rver account, chat, or
+    project data.
 - **Prompt-injection defenses** in the prompts themselves (§4.3a's
   `ANTI_INJECTION_NOTE`), since synthesis reads raw web content.
 - Timing-safe credential comparison; HMAC-SHA-256 session tokens with
@@ -1031,5 +1071,12 @@ conversation-mode gate, the source-RAG chunker / int8 codec / retrieval,
 and the capped context-block builder — is the one implementation behind
 the server enrichment and both tiers' clients (`public/js/introspect-ui.js`
 is the DRS titanium mascot + the private-vs-remote model picker). With the
-sandbox knob also on, the source tree additionally mounts at `/src`. See
-the **introspection** skill.
+sandbox knob also on, the source tree additionally mounts at `/src`.
+
+Retrieval is the floor, not the ceiling. On an answer model that supports
+real tool use, the retrieved context seeds an **agentic read loop**
+(`runSourceResearchTools`, §4.2's authorized exception): the model itself
+calls `grep_source` / `read_file` / `list_files` until it has the files it
+needs, instead of answering from one injected block. Models without tool
+use keep the deterministic single-pass injection described above. See the
+**introspection** skill.

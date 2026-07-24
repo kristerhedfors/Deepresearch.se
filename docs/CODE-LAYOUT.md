@@ -248,8 +248,9 @@ answers; `app.js` applies the cache synchronously at boot then reconciles with
 the server's authoritative `developer_mode`, and the Settings-panel Chat mode
 dropdown flips it on pick — Node-tested), `chat-mode.js` (the chat MODE
 dropdown's state —
-Deep Research / Introspection / Agent Studio, 2026-07-18 (the khaki SWE build mode was folded
-into SDK 2026-07-19): the `dr_chat_mode` localStorage pick layered over the
+Deep Research / Introspection / Agent Studio / Orchestrator; the first three
+shipped 2026-07-18 (the khaki SWE build mode was folded
+into SDK 2026-07-19), Orchestrator joined them after: the `dr_chat_mode` localStorage pick layered over the
 developer_mode capability; decides which theme class the root carries —
 `dev-mode` titanium for Introspection, `sdk-mode` GREEN for the SDK "lovable
 experience" (distill this site — above all the Se/cure tier — into a new
@@ -631,3 +632,23 @@ deterministic logic lives in the shared pure core
 public-module-graph rule as the /cure entries; `spaceIntentMatch` adds the
 matched language for the embed's caption), which `src/space.js`
 re-exports server-side. See `docs/SPACE-ANIMATIONS.md`.
+
+Client modules not covered by a section above, each one file under
+`public/js/`: `docs.js` (attachment parsing — pdf/docx/md/txt, entirely
+in the browser, so file bytes never reach the server) and `docs-viewer.js`
+(the public `/docs/` viewer, rendering every repo doc out of the committed
+`docs-corpus.json`); `provider-region.js` (the country-of-processing badges
+on the model selector — the conversation goes wherever the chosen model is
+hosted, so the selector says which country that is); `canned-faq.js` (the
+deterministic, non-LLM get-started responder both tiers use before a model
+is configured); `deeplink-core.js` (the pure parser behind shareable
+"open with a question ready to ask" URLs) and `agent-preview.js` (the
+agent-registry preview surface at `public/agents/preview.html`);
+`sandbox-files.js` (the file-mounting pure core for the in-browser Linux
+sandbox — `planSourceMount`, the `/workspace` + `/mnt` layout, the tiered
+ingest; see `docs/SANDBOX-HOST-COMMANDS.md` part B) and `boot-messages.js`
+(the rotating boot-bar quips shown while the CheerpX VM streams and boots);
+`agent-backdrop-core.js` + `agent-backdrop.js` (the agent activity
+backdrop, split pure-core/DOM per the pure-core convention); and
+`umbrella-spinner.js` (the Se/cure intro umbrella, shrunk and looped as a
+waiting spinner).
