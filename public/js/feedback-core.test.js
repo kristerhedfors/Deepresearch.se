@@ -3,7 +3,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { FEEDBACK_PATTERNS, feedbackIntent } from "./feedback-core.js";
+import {
+  FEEDBACK_ACKS,
+  FEEDBACK_PATTERNS,
+  cannedFeedbackAck,
+  feedbackIntent,
+  feedbackLangSv,
+} from "./feedback-core.js";
 import { bashIntent } from "./bash-core.js";
 
 test("feedbackIntent: a message opening with 'feedback' (any case) triggers", () => {
@@ -66,4 +72,54 @@ test("feedbackIntent catches the verbatim sandbox-feedback message (feedback #18
   // Swedish parity: the same shape of report in Swedish routes the same way.
   const sv = "återkoppling: massa Linux-kommandon körs när jag skriver feedback";
   assert.equal(feedbackIntent(sv), true);
+});
+
+// ---------------------------------------------------------------------------
+// Canned acknowledgments — deterministic, no model call (owner directive,
+// 2026-07-24). EN + SV parity (invariant 6).
+// ---------------------------------------------------------------------------
+
+test("FEEDBACK_ACKS: same number of EN and SV variants, several of each, all mention the account panel", () => {
+  assert.equal(FEEDBACK_ACKS.en.length, FEEDBACK_ACKS.sv.length);
+  assert.equal(FEEDBACK_ACKS.en.length >= 3, true);
+  for (const v of FEEDBACK_ACKS.en) assert.match(v, /Feedback.*account panel/);
+  for (const v of FEEDBACK_ACKS.sv) assert.match(v, /Feedback.*kontopanel/);
+});
+
+test("cannedFeedbackAck: English feedback → an English canned variant, deterministically", () => {
+  const comment = "feedback: the map view was cut off";
+  const ack = cannedFeedbackAck(comment);
+  assert.equal(FEEDBACK_ACKS.en.includes(ack), true);
+  assert.equal(cannedFeedbackAck(comment), ack); // same message, same reply
+});
+
+test("cannedFeedbackAck: Swedish feedback → a Swedish canned variant (parity)", () => {
+  for (const comment of [
+    "återkoppling: sökningen är långsam",
+    "feedback: kartan laddar inte",
+    "synpunkt: lägg till mörkt tema",
+    "Feedback — knappen fungerar inte på mobilen",
+  ]) {
+    const ack = cannedFeedbackAck(comment);
+    assert.equal(FEEDBACK_ACKS.sv.includes(ack), true, comment);
+  }
+});
+
+test("feedbackLangSv: English (and junk input) stays English", () => {
+  assert.equal(feedbackLangSv("feedback: the PDF export is broken"), false);
+  assert.equal(feedbackLangSv("feedback please add dark mode"), false);
+  assert.equal(feedbackLangSv(null), false);
+  assert.equal(feedbackLangSv(42), false);
+});
+
+test("cannedFeedbackAck: a use-case reference gets a language-matched confirmation tail", () => {
+  const en = cannedFeedbackAck("feedback #UC-34 the map was cut off", { useCaseTag: "#UC-34" });
+  assert.match(en, /recorded against use case #UC-34\.$/);
+  const sv = cannedFeedbackAck("feedback #UC-34 kartan är avklippt", { useCaseTag: "#UC-34" });
+  assert.match(sv, /registrerats mot användningsfall #UC-34\.$/);
+});
+
+test("cannedFeedbackAck: non-string input never throws, returns a canned English reply", () => {
+  assert.equal(FEEDBACK_ACKS.en.includes(cannedFeedbackAck(null)), true);
+  assert.equal(FEEDBACK_ACKS.en.includes(cannedFeedbackAck(undefined)), true);
 });

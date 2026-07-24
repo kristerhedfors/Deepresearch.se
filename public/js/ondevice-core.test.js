@@ -9,13 +9,17 @@ import { createHash, randomBytes } from "node:crypto";
 import {
   ONDEVICE_MODELS,
   ONDEVICE_MAX_TOKENS,
+  ONDEVICE_PROMPT_BUDGET_CHARS,
   ONDEVICE_TRACE_MAX,
   ONDEVICE_VALUE_PREFIX,
   onDeviceIdFromValue,
   onDeviceOptionValue,
   capabilityVerdict,
+  clipMiddle,
   completionEnvelope,
   crashMessage,
+  isMemoryPressureError,
+  trimForOnDevice,
   createSha256,
   createThinkFilter,
   debugFlagFrom,
@@ -30,6 +34,7 @@ import {
   onDeviceModel,
   opfsUnavailableMessage,
   planModelFiles,
+  planReasonForStatus,
   rejectionDetail,
   sseDeltaLine,
   sseDoneLine,
@@ -124,6 +129,18 @@ test("planModelFiles: an unpublished variant returns null (the 27B-today state)"
   assert.equal(planModelFiles([], "q1f16"), null);
   assert.equal(planModelFiles(null, "q1f16"), null);
   assert.equal(planModelFiles(TREE, ""), null);
+});
+
+test("planReasonForStatus: HF 401/403/404 are 'unpublished', not 'network' (the Bonsai 27B trap)", () => {
+  // HF returns 401 — not 404 — for a repo that doesn't exist yet or is gated,
+  // so the unpublished onnx-community/Bonsai-27B-ONNX must read as unpublished.
+  assert.equal(planReasonForStatus(401), "unpublished");
+  assert.equal(planReasonForStatus(403), "unpublished");
+  assert.equal(planReasonForStatus(404), "unpublished");
+  // A transient server-side failure is the genuine network case.
+  assert.equal(planReasonForStatus(429), "network");
+  assert.equal(planReasonForStatus(500), "network");
+  assert.equal(planReasonForStatus(503), "network");
 });
 
 test("planModelFiles: a malformed lfs oid is dropped, size defaults to 0", () => {
@@ -394,4 +411,101 @@ test("opfsUnavailableMessage: names OPFS, carries the underlying detail, points 
   assert.ok(detailed.includes("Private tab"));
   // A detail-less throw (e.g. a bare string rejection) degrades to the bare form.
   assert.equal(opfsUnavailableMessage({}), bare);
+});
+
+// ---- the phone-memory prompt budget (feedback #19) --------------------------------
+
+test("trimForOnDevice: a list already inside the budget passes through untouched (same reference)", () => {
+  const msgs = [
+    { role: "system", content: "be brief" },
+    { role: "user", content: "hi" },
+    { role: "assistant", content: "hello" },
+    { role: "user", content: "what is 1-bit quantization?" },
+  ];
+  assert.equal(trimForOnDevice(msgs), msgs);
+  assert.equal(trimForOnDevice([]).length, 0);
+  assert.equal(trimForOnDevice(null).length, 0);
+});
+
+test("trimForOnDevice: a long history keeps system + the newest whole turns and stays inside the budget", () => {
+  const big = "x".repeat(4_000);
+  const msgs = [{ role: "system", content: "sys" }];
+  for (let i = 0; i < 10; i++) {
+    msgs.push({ role: "user", content: "q" + i + " " + big });
+    msgs.push({ role: "assistant", content: "a" + i + " " + big });
+  }
+  msgs.push({ role: "user", content: "the live question" });
+  const out = trimForOnDevice(msgs);
+  const total = out.reduce((n, m) => n + m.content.length, 0);
+  assert.ok(total <= ONDEVICE_PROMPT_BUDGET_CHARS, "total " + total + " must fit the budget");
+  // The anchors survive whole: the system prompt and the live question.
+  assert.equal(out[0].content, "sys");
+  assert.equal(out[out.length - 1].content, "the live question");
+  // Recency wins: whatever history survives is the NEWEST turns, contiguous.
+  const kept = out.slice(1, -1);
+  for (const m of kept) assert.ok(!m.content.startsWith("q0") && !m.content.startsWith("a0"), "oldest turns must drop first");
+  const idx = kept.map((m) => msgs.indexOf(m));
+  for (let i = 1; i < idx.length; i++) assert.equal(idx[i], idx[i - 1] + 1, "kept turns stay contiguous");
+});
+
+test("trimForOnDevice: an oversized last message is clipped middle-out, head and tail preserved", () => {
+  const head = "INSTRUCTIONS: answer as JSON. ";
+  const tail = " Respond ONLY with the JSON object.";
+  const last = head + "y".repeat(30_000) + tail;
+  const out = trimForOnDevice([{ role: "user", content: last }]);
+  assert.equal(out.length, 1);
+  assert.ok(out[0].content.length <= ONDEVICE_PROMPT_BUDGET_CHARS);
+  assert.ok(out[0].content.startsWith(head), "the head (leading instructions) survives");
+  assert.ok(out[0].content.endsWith(tail), "the tail (trailing reminder) survives");
+  assert.ok(out[0].content.includes("trimmed to fit this device's memory"), "the clip is visible, not silent");
+  // The input message object is never mutated.
+  assert.equal(last.length, head.length + 30_000 + tail.length);
+});
+
+test("trimForOnDevice: a huge system prompt keeps at most a quarter of the budget", () => {
+  const msgs = [
+    { role: "system", content: "s".repeat(50_000) },
+    { role: "user", content: "q".repeat(50_000) },
+  ];
+  const out = trimForOnDevice(msgs);
+  assert.ok(out[0].content.length <= Math.floor(ONDEVICE_PROMPT_BUDGET_CHARS / 4));
+  const total = out.reduce((n, m) => n + m.content.length, 0);
+  assert.ok(total <= ONDEVICE_PROMPT_BUDGET_CHARS);
+  // The question still gets the lion's share.
+  assert.ok(out[1].content.length > out[0].content.length);
+});
+
+test("clipMiddle: under the cap is identity; over the cap is bounded with the marker", () => {
+  assert.equal(clipMiddle("short", 100), "short");
+  const clipped = clipMiddle("a".repeat(500) + "b".repeat(500), 200);
+  assert.ok(clipped.length <= 200);
+  assert.ok(clipped.startsWith("a"));
+  assert.ok(clipped.endsWith("b"));
+  // A cap too small for the marker still bounds the output.
+  assert.ok(clipMiddle("abcdefghij", 3).length <= 3);
+});
+
+test("isMemoryPressureError: matches the wasm/GPU exhaustion signatures, not ordinary failures", () => {
+  for (const m of [
+    "Out of memory",
+    "RuntimeError: memory access out of bounds",
+    "Cannot enlarge memory arrays",
+    "failed to allocate buffer",
+    "Aborted(OOM)",
+    "WebGPU device lost",
+    "requested buffer size exceeds the max buffer size limit",
+  ]) {
+    assert.equal(isMemoryPressureError(m), true, m);
+  }
+  for (const m of ["HTTP 404 fetching onnx/model_q1.onnx", "checksum verification failed", "", undefined]) {
+    assert.equal(isMemoryPressureError(m), false, String(m));
+  }
+});
+
+test("crashMessage: a memory-looking detail carries the out-of-memory remedy; others stay unchanged", () => {
+  const oom = crashMessage(true, "RuntimeError: memory access out of bounds (ort-wasm:1:2)");
+  assert.ok(oom.includes("ran out of memory"));
+  assert.ok(oom.includes("New chat"));
+  const plain = crashMessage(true, "Script error.");
+  assert.ok(!plain.includes("ran out of memory"));
 });

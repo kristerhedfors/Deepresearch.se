@@ -26,10 +26,13 @@ import {
   errorEventDetail,
   hfFileUrl,
   hfTreeUrl,
+  isMemoryPressureError,
   onDeviceModel,
   opfsUnavailableMessage,
   planModelFiles,
+  planReasonForStatus,
   rejectionDetail,
+  trimForOnDevice,
   wasmPathsFor,
   withJsonReminder,
 } from "/js/ondevice-core.js";
@@ -197,7 +200,10 @@ const dlAborts = new Map(); // modelId → AbortController
 // statement about the model, "couldn't reach huggingface.co" is a statement
 // about the connection, and telling a user the wrong one sends them away
 // from a working feature (found in the first headless verify run: a blocked
-// fetch read as "isn't published").
+// fetch read as "isn't published"). A thrown fetch is the network case; a
+// bad HTTP status is classified by planReasonForStatus (401/403/404 =
+// unavailable/unpublished, since HF 401s an unpublished repo rather than
+// 404ing it — the Bonsai 27B trap).
 async function planFor(model) {
   let res;
   try {
@@ -205,7 +211,7 @@ async function planFor(model) {
   } catch {
     return { reason: "network" };
   }
-  if (!res.ok) return { reason: res.status === 404 ? "unpublished" : "network" };
+  if (!res.ok) return { reason: planReasonForStatus(res.status) };
   try {
     const files = planModelFiles(await res.json(), model.dtype);
     return files ? { files } : { reason: "unpublished" }; // repo exists, variant doesn't
@@ -387,6 +393,19 @@ const opfsCache = {
   },
 };
 
+// Drop the resident model and release its GPU/wasm buffers. Switching models
+// without this kept BOTH loaded (JS GC has no view of GPU pressure), so after
+// an 8B session even the 278 MB 1.7B could die of memory exhaustion.
+async function unloadModel() {
+  const prev = loaded;
+  loaded = null;
+  try {
+    await prev?.model?.dispose?.();
+  } catch {
+    /* a failed dispose must not block the next load */
+  }
+}
+
 async function ensureLoaded(modelId) {
   if (loaded?.modelId === modelId) return loaded;
   if (loadingPromise) await loadingPromise.catch(() => {});
@@ -395,6 +414,10 @@ async function ensureLoaded(modelId) {
   if (!model) throw new Error("Unknown model " + modelId);
   loadingPromise = (async () => {
     const t0 = Date.now();
+    if (loaded) {
+      self.postMessage({ t: "loadstatus", modelId, status: "Freeing the previous model…" });
+      await unloadModel();
+    }
     const { AutoTokenizer, AutoModelForCausalLM } = await importRuntime();
     self.postMessage({ t: "loadstatus", modelId, status: "Loading tokenizer…" });
     const tokenizer = await AutoTokenizer.from_pretrained(model.repo);
@@ -417,7 +440,11 @@ async function ensureLoaded(modelId) {
 async function generate({ id, modelId, messages, maxTokens, json }) {
   const { InterruptableStoppingCriteria, TextStreamer } = await importRuntime();
   const { tokenizer, model } = await ensureLoaded(modelId);
-  const msgs = json ? withJsonReminder(messages) : messages;
+  // The phone-memory prompt budget (feedback #19): prefill memory grows with
+  // the square of prompt length, so an unbounded conversation history kills
+  // 1.7B and 8B alike. Trim FIRST so the JSON reminder is never clipped off.
+  const bounded = trimForOnDevice(messages);
+  const msgs = json ? withJsonReminder(bounded) : bounded;
   const inputs = tokenizer.apply_chat_template(msgs, {
     add_generation_prompt: true,
     return_dict: true,
@@ -486,12 +513,19 @@ self.onmessage = async (e) => {
     } else if (msg.t === "canceldl") {
       dlAborts.get(msg.modelId)?.abort();
     } else if (msg.t === "delete") {
-      if (loaded?.modelId === msg.modelId) loaded = null; // a deleted model must not serve from memory
+      if (loaded?.modelId === msg.modelId) await unloadModel(); // a deleted model must not serve (or occupy) memory
       await deleteModel(msg.modelId);
       self.postMessage({ t: "deleted", modelId: msg.modelId });
     } else if (msg.t === "generate") {
-      await generate(msg).catch((err) => {
-        self.postMessage({ t: "generror", id: msg.id, message: err?.message || String(err) });
+      await generate(msg).catch(async (err) => {
+        let message = err?.message || String(err);
+        if (isMemoryPressureError(message)) {
+          // Free everything the failed run held so a retry starts clean, and
+          // say so — plus the one lever the user actually has on a phone.
+          await unloadModel();
+          message += " — the device ran out of memory; the model was freed so a retry starts clean. A shorter conversation (New chat) helps on phones.";
+        }
+        self.postMessage({ t: "generror", id: msg.id, message });
       });
     } else if (msg.t === "abort") {
       stoppers.get(msg.id)?.interrupt();

@@ -45,6 +45,7 @@ import {
   recordPhase,
   wantsClaimValidation,
   wantsFullContent,
+  wantsGapStrive,
   wantsNotes,
   wantsSubqFanout,
 } from "./budget.js";
@@ -88,7 +89,6 @@ import {
   claimExtractionPrompt,
   claimVerifyPrompt,
   directPrompt,
-  feedbackReplyPrompt,
   gapPrompt,
   notesPrompt,
   quizPrompt,
@@ -123,7 +123,7 @@ import {
   stripFileBlocks,
 } from "./sdk-tools.js";
 import { publishBuild } from "./build-pub.js";
-import { feedbackIntent, buildFeedbackContext, feedbackImagesFromParts } from "./feedback.js";
+import { feedbackIntent, buildFeedbackContext, cannedFeedbackAck, feedbackImagesFromParts } from "./feedback.js";
 import { parseUseCaseRef } from "./testpoints.js";
 import { loadSourceSnapshot } from "./introspect.js";
 import { DEFAULT_QUIZ_QUESTIONS, normalizeQuiz, quizIntent, quizQuestionCount } from "./quiz.js";
@@ -407,19 +407,15 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
 
 // ---- phases ------------------------------------------------------------
 
-// Fail-soft acknowledgment if the feedback reply model produced no text at all
-// (rare). EN only — this is a degraded path; the model handles EN/SV itself on
-// the normal path.
-const FEEDBACK_ACK_FALLBACK =
-  "Thank you — your feedback has been passed on to the developers, who read every submission. If a reply is needed, it will appear under Feedback in your account panel.";
-
 // The feedback case (routed at the top of runPipeline): the user's message is
 // feedback for the developers. Stash the report on the state so chat.js can
 // persist it as a feedback entry (the Claude Code work queue) AND tag the
-// chat-log row, then stream a short, warm acknowledgment. No search, no
-// sources, no validation — the fix is the developers' job, off the site. The
-// report is stashed BEFORE the model call so chat.js still records it even if
-// the acknowledgment stream fails.
+// chat-log row, then emit a CANNED acknowledgment (feedback-core.js
+// cannedFeedbackAck, EN+SV). NO model call anywhere in this case (owner
+// directive, 2026-07-24): feedback is never run through an LLM — the exact
+// text plus the whole conversation goes to the developers verbatim (chat.js
+// buildFeedbackDebugContext), and a deterministic reply can't fail, can't
+// paraphrase, and can't be prompt-injected.
 /** @param {PipelineCtx} ctx */
 async function runFeedbackCapture(ctx) {
   const { state } = ctx;
@@ -453,11 +449,7 @@ async function runFeedbackCapture(ctx) {
     images: feedbackImagesFromParts(ctx.imageParts),
     useCase: useCase || null,
   };
-  const draft = await streamCompletion(ctx, [
-    { role: "system", content: feedbackReplyPrompt(useCase ? useCase.tag : null) },
-    ...withImageNudge(ctx.conversation),
-  ]);
-  if (!(draft || "").trim()) emitChunked(ctx, FEEDBACK_ACK_FALLBACK);
+  emitChunked(ctx, cannedFeedbackAck(ctx.cleanLastUser, { useCaseTag: useCase ? useCase.tag : null }));
 }
 
 /** @param {PipelineCtx} ctx */
@@ -1230,6 +1222,13 @@ async function runGapChecks(ctx) {
   const plan = state.plan;
   const est = plan.estimates;
 
+  // Gap-strive (budget.js wantsGapStrive, feedback #16): at a deep tier with
+  // most of the budget unspent, a "coverage sufficient" verdict is challenged —
+  // the NEXT round's gap prompt gets the wider-aperture strive block instead of
+  // the loop stopping. Bounded by GAP_STRIVE_MAX, the round ceiling, the
+  // deadline check below, and the no-new-sources saturation exit.
+  let strive = false;
+  let strives = 0;
   for (let it = 1; it <= plan.gapIterations; it++) {
     if (state.searchCount >= plan.maxSearches) break;
     // Skip further digging if this round plus the remaining mandatory
@@ -1240,7 +1239,7 @@ async function runGapChecks(ctx) {
       break;
     }
     const stepId = `gap${it}`;
-    ctx.step(stepId, `Checking coverage (round ${it})…`);
+    ctx.step(stepId, strive ? `Checking coverage (round ${it}, digging deeper)…` : `Checking coverage (round ${it})…`);
 
     const gapRaw = await jsonPhase(ctx, {
       label: `gap_check_${it}`,
@@ -1248,7 +1247,7 @@ async function runGapChecks(ctx) {
       recordStat: true,
       maxTokens: 400,
       messages: [
-        { role: "system", content: gapPrompt([...state.ranQueries], plan.followups, { subquestions: state.subquestions || [], reinforceJsonOnly }) },
+        { role: "system", content: gapPrompt([...state.ranQueries], plan.followups, { subquestions: state.subquestions || [], reinforceJsonOnly, strive }) },
         {
           role: "user",
           // convText rides along so a bare follow-up ("what's the latest")
@@ -1272,9 +1271,21 @@ async function runGapChecks(ctx) {
       : gap.queries.filter((/** @type {any} */ q) => typeof q === "string" && q.trim()).slice(0, plan.followups);
 
     if (followups.length === 0) {
+      // Deep budget, mostly unspent, first "sufficient" verdict(s): challenge
+      // the judgment with the strive prompt on the next round instead of
+      // settling (feedback #16). A strive round that ALSO comes back empty
+      // falls through here with the push budget spent and ends the loop.
+      if (wantsGapStrive(plan, Date.now() - state.startedAt, strives)) {
+        strives++;
+        strive = true;
+        ctx.stepDone(stepId, "Coverage looks sufficient — deep budget, challenging that");
+        log.info("chat.gap_strive", { round: it, strives });
+        continue;
+      }
       ctx.stepDone(stepId, "Coverage sufficient");
       break;
     }
+    strive = false;
     ctx.stepDone(
       stepId,
       `Digging deeper: ${followups.length} follow-up search${followups.length === 1 ? "" : "es"}`,
