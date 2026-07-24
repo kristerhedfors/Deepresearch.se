@@ -578,14 +578,25 @@ allowlisted like `/pulse/`): an archive of playable wireframe 3D
 animations answering common space questions, with log-scale zoom spanning
 planet radii to light-years. `index.html` (markup + the dark space
 styling; the one page that is dark by nature — the scene IS the night
-sky) + `space.js` (the canvas renderer and gallery: per-kind scene
-runners — compare/orbits/launch/surface/rings/travel — drag-to-rotate,
-pinch/wheel zoom, play/pause/speed HUD, the EN/SV language toggle, the
-ask-box that routes a typed question to its scene via `spaceIntent`, and
-the per-card 👍/👎 feedback POST). The rendering rule is the page's
-identity: background stars — and only stars (the Sun, Proxima, the light
-pulse) — get real additive glow; every body, craft and figure is unlit
-wireframe. All deterministic logic lives in the shared pure core
+sky) + `space.js` (the gallery chrome: cards, chips, the EN/SV language
+toggle, the ask-box that routes a typed question to its scene via
+`spaceIntent`, and the per-card 👍/👎 feedback POST). The playable canvas
+itself lives in the EMBEDDABLE renderer `public/js/space-embed.js`
+(feedback #18): the stage + play/pause/speed HUD, drag-to-rotate and
+pinch/wheel zoom, the per-kind scene runners —
+compare/orbits/launch/surface/rings/travel — and a shared
+IntersectionObserver-gated play loop, all behind `mountSpaceScene(host,
+sceneId, {lang, caption, moreLink})` with self-injected `sp-` scoped CSS.
+The gallery mounts it per card, and BOTH tiers' chats mount it across the
+response area when an outgoing question matches a scene
+(`public/js/turns.js` `mountSpaceEmbed` on Se/rver — live sends and stored
+renders, by deterministic re-detection, no embeds-registry entry;
+`public/cure/drc.js` `mountDrcSpaceEmbed` on Se/cure), the research answer
+streaming below. The rendering rule is the domain's identity: background
+stars — and only stars (the Sun, Proxima, the light pulse) — get real
+additive glow; every body, craft and figure is unlit wireframe. All
+deterministic logic lives in the shared pure core
 `public/js/space-core.js` (Node-tested; served publicly — the same
-public-module-graph rule as the /cure entries), which `src/space.js`
+public-module-graph rule as the /cure entries; `spaceIntentMatch` adds the
+matched language for the embed's caption), which `src/space.js`
 re-exports server-side. See `docs/SPACE-ANIMATIONS.md`.
