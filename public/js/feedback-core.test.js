@@ -5,10 +5,15 @@ import assert from "node:assert/strict";
 
 import {
   FEEDBACK_ACKS,
+  FEEDBACK_ACKS_STANDALONE,
   FEEDBACK_PATTERNS,
   cannedFeedbackAck,
   feedbackIntent,
   feedbackLangSv,
+  feedbackPageTag,
+  feedbackScope,
+  feedbackScopeOfPrior,
+  isStandalonePage,
 } from "./feedback-core.js";
 import { bashIntent } from "./bash-core.js";
 
@@ -122,4 +127,108 @@ test("cannedFeedbackAck: a use-case reference gets a language-matched confirmati
 test("cannedFeedbackAck: non-string input never throws, returns a canned English reply", () => {
   assert.equal(FEEDBACK_ACKS.en.includes(cannedFeedbackAck(null)), true);
   assert.equal(FEEDBACK_ACKS.en.includes(cannedFeedbackAck(undefined)), true);
+});
+
+// ---------------------------------------------------------------------------
+// SCOPE classification (owner directive, 2026-07-24): a "feedback …" message
+// that is the ABSOLUTE FIRST message of a conversation is generic developer
+// feedback — a feature suggestion, next steps — NOT feedback about the
+// (empty) session it arrived in. Both tiers classify with these functions.
+// ---------------------------------------------------------------------------
+
+test("feedbackScope: the first message of a conversation is STANDALONE", () => {
+  assert.equal(feedbackScope([{ role: "user", content: "feedback: please add a dark theme" }]), "standalone");
+  // Swedish parity — the classification is language-independent by construction.
+  assert.equal(feedbackScope([{ role: "user", content: "synpunkt: lägg till mörkt tema" }]), "standalone");
+});
+
+test("feedbackScope: feedback arriving mid-conversation is SESSION scope", () => {
+  assert.equal(
+    feedbackScope([
+      { role: "user", content: "Tell me about Northvolt" },
+      { role: "assistant", content: "Northvolt is …" },
+      { role: "user", content: "feedback: that answer was outdated" },
+    ]),
+    "session",
+  );
+  // A single prior turn is enough — even with no answer yet, the note follows
+  // something the user asked.
+  assert.equal(
+    feedbackScope([
+      { role: "user", content: "Tell me about Northvolt" },
+      { role: "user", content: "feedback: still waiting" },
+    ]),
+    "session",
+  );
+});
+
+test("feedbackScope: only user/assistant turns count as a session, junk never throws", () => {
+  // A context block injected under some other role is not a conversation the
+  // user had — a first-message note stays standalone.
+  assert.equal(
+    feedbackScope([
+      { role: "system", content: "project context…" },
+      { role: "user", content: "feedback: love the site" },
+    ]),
+    "standalone",
+  );
+  assert.equal(feedbackScope([]), "standalone");
+  assert.equal(feedbackScope(null), "standalone");
+  assert.equal(feedbackScope("junk"), "standalone");
+  assert.equal(feedbackScope([null, undefined]), "standalone");
+});
+
+test("feedbackScopeOfPrior: Se/cure's shape (feedback text never enters the conversation)", () => {
+  // Se/cure keeps the feedback message out of conv.messages, so the messages
+  // ARE the prior turns: empty conversation → standalone, any turn → session.
+  assert.equal(feedbackScopeOfPrior([]), "standalone");
+  assert.equal(feedbackScopeOfPrior(undefined), "standalone");
+  assert.equal(feedbackScopeOfPrior([{ role: "user", content: "hi" }]), "session");
+  assert.equal(feedbackScopeOfPrior([{ role: "assistant", content: "an answer" }]), "session");
+});
+
+test("feedbackPageTag / isStandalonePage: the scope rides the entry's page column", () => {
+  assert.equal(feedbackPageTag("chat", "session"), "chat");
+  assert.equal(feedbackPageTag("chat", "standalone"), "chat/standalone");
+  assert.equal(feedbackPageTag("se/cure", "standalone"), "se/cure/standalone");
+  assert.equal(feedbackPageTag("se/cure", "session"), "se/cure");
+  // Junk surface falls back to "chat" rather than producing an untagged entry.
+  assert.equal(feedbackPageTag(null, "standalone"), "chat/standalone");
+  assert.equal(isStandalonePage("chat/standalone"), true);
+  assert.equal(isStandalonePage("se/cure/standalone"), true);
+  assert.equal(isStandalonePage("chat"), false);
+  assert.equal(isStandalonePage("usecase #UC-34"), false);
+  assert.equal(isStandalonePage(null), false);
+});
+
+test("FEEDBACK_ACKS_STANDALONE: EN/SV parity, and NO promise of a conversation", () => {
+  assert.equal(FEEDBACK_ACKS_STANDALONE.en.length, FEEDBACK_ACKS_STANDALONE.sv.length);
+  assert.equal(FEEDBACK_ACKS_STANDALONE.en.length, FEEDBACK_ACKS.en.length);
+  for (const v of FEEDBACK_ACKS_STANDALONE.en) {
+    assert.match(v, /Feedback.*account panel/);
+    // The session variants promise "this conversation for context" — untrue
+    // for a note that opened the chat, so it must not appear here.
+    assert.doesNotMatch(v, /this conversation|this chat attached/i);
+  }
+  for (const v of FEEDBACK_ACKS_STANDALONE.sv) {
+    assert.match(v, /Feedback.*kontopanel/);
+    assert.doesNotMatch(v, /den här konversationen|chatten bifogad/i);
+  }
+});
+
+test("cannedFeedbackAck: scope picks the variant set; session stays the default", () => {
+  const en = "feedback: please add a dark theme";
+  assert.equal(FEEDBACK_ACKS_STANDALONE.en.includes(cannedFeedbackAck(en, { scope: "standalone" })), true);
+  assert.equal(FEEDBACK_ACKS.en.includes(cannedFeedbackAck(en, { scope: "session" })), true);
+  assert.equal(FEEDBACK_ACKS.en.includes(cannedFeedbackAck(en)), true); // default
+  // Swedish parity, and deterministic (same message + scope → same reply).
+  const sv = "synpunkt: lägg till mörkt tema";
+  const ack = cannedFeedbackAck(sv, { scope: "standalone" });
+  assert.equal(FEEDBACK_ACKS_STANDALONE.sv.includes(ack), true);
+  assert.equal(cannedFeedbackAck(sv, { scope: "standalone" }), ack);
+  // A use-case reference still gets its tail, in either scope.
+  assert.match(
+    cannedFeedbackAck("feedback #UC-34 the map was cut off", { useCaseTag: "#UC-34", scope: "standalone" }),
+    /recorded against use case #UC-34\.$/,
+  );
 });

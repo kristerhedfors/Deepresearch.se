@@ -1,8 +1,7 @@
 # Standing declines
 
 Candidates a refactor pass already examined and ruled out, with the **gate**
-(see the skill's five gates) each one fails. **Read this before surveying.**
-Re-deriving these is the single biggest waste in a whole-repo pass — most of
+(see the skill's five gates) each one fails. **Read this before surveying.** Most of
 them resurface in `node scripts/dup-scan.mjs` output every time, because they
 are genuinely byte-identical code that is genuinely correct to leave alone.
 

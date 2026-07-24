@@ -18,6 +18,7 @@ import {
   FEEDBACK_STATUSES,
   feedbackImagesFromParts,
   feedbackIntent,
+  STANDALONE_CONTEXT_NOTE,
   formatFeedbackText,
   handleServerTokenFeedback,
   isOpenStatus,
@@ -186,6 +187,31 @@ test("buildFeedbackDebugContext: skips empty metadata, flattens multimodal turns
   assert.equal(buildFeedbackDebugContext([], {}), null);
   assert.equal(buildFeedbackDebugContext(/** @type {any} */ (null)), null);
   assert.match(buildFeedbackDebugContext(/** @type {any} */ ("junk"), { a: 1 }), /^a: 1/);
+});
+
+test("buildFeedbackDebugContext: a STANDALONE note gets metadata + the marker, never a fake transcript", () => {
+  // A feedback message that OPENED the conversation has no session to attach:
+  // rendering it as a one-turn "transcript" just repeats the comment and reads
+  // like a report about a research session (owner directive, 2026-07-24).
+  const ctx = buildFeedbackDebugContext(
+    [{ role: "user", content: "feedback: add a way to export a whole project" }],
+    { request_id: "r-7", model: "berget::x", incognito: false },
+  );
+  assert.match(ctx, /^request_id: r-7\nmodel: berget::x\nincognito: false\n/);
+  assert.equal(ctx.endsWith(STANDALONE_CONTEXT_NOTE), true);
+  assert.doesNotMatch(ctx, /--- conversation/);
+  assert.doesNotMatch(ctx, /\[user\]/); // the comment itself is the entry's own field
+  // Session scope is untouched: the full transcript still rides along.
+  const session = buildFeedbackDebugContext(
+    [
+      { role: "user", content: "Tell me about Northvolt" },
+      { role: "assistant", content: "Northvolt is …" },
+      { role: "user", content: "feedback: that answer was outdated" },
+    ],
+    { request_id: "r-8" },
+  );
+  assert.match(session, /--- conversation \(3 turns\) ---/);
+  assert.doesNotMatch(session, /standalone/);
 });
 
 test("buildFeedbackDebugContext: an over-cap conversation trims the OLDEST turns, keeps the newest", () => {
@@ -480,6 +506,26 @@ test("formatFeedbackText: readable blocks with thread; empty list says so", () =
   assert.match(text, /ABOUT REPLY: Here is a summary…/);
   assert.match(text, /AGENT \(.*\): Looking into it\./);
   assert.match(text, /USER \(.*\): Thanks!/);
+});
+
+test("projectFeedback + formatFeedbackText: a standalone entry states its scope outright", () => {
+  // The page tag carries the classification (feedback-core feedbackPageTag);
+  // the queue must SAY it, because "reproduce the complaint" is the wrong
+  // first move on a feature suggestion that was never about a session.
+  const p = projectFeedback({ ...ROW, page: "chat/standalone", question: null, answer_excerpt: null });
+  assert.equal(p.standalone, true);
+  const text = formatFeedbackText([p]);
+  assert.match(text, /page=chat\/standalone/);
+  assert.match(text, /SCOPE: standalone — generic developer feedback/);
+  assert.match(text, /NOT a report about a research session/);
+  // Session-scope entries carry neither the flag nor the line.
+  const session = projectFeedback(ROW, MSGS);
+  assert.equal(session.standalone, false);
+  assert.doesNotMatch(formatFeedbackText([session]), /SCOPE:/);
+  // Se/cure's tag classifies the same way; a use-case tag is not standalone.
+  assert.equal(projectFeedback({ ...ROW, page: "se/cure/standalone" }).standalone, true);
+  assert.equal(projectFeedback({ ...ROW, page: "usecase #UC-34" }).standalone, false);
+  assert.equal(projectFeedback({ ...ROW, page: null }).standalone, false);
 });
 
 test("formatFeedbackText omits absent context lines", () => {

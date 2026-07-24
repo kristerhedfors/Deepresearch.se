@@ -89,10 +89,10 @@ re-argues it.
    two or more copies, or logic that will drift if it diverges. A single-use
    four-liner inside one file is below the bar (`safeModels`); so is an idiom
    duplicated across seven unrelated graphs where every copy is obviously
-   correct forever (`base64ToBytes`, `bucket = (env) => env.STORAGE`). Drift
-   risk, not line count, is the real question: the CET date math cut in pass
-   ten was worth it because a DST fix applied to one copy would silently
-   desynchronize two published datasets.
+   correct forever (`base64ToBytes`, `bucket = (env) => env.STORAGE`). Ask
+   whether the copies will drift, not how long they are: the CET date math cut
+   in pass ten earned its keep because a DST fix applied to one copy would
+   silently desynchronize two published datasets.
 
 ## What to preserve (non-negotiable)
 

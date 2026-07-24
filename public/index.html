@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>DeepResearch.se</title>
   <link rel="icon" href="/favicon.ico?v=4" sizes="48x48">
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=4">
@@ -10,6 +10,18 @@
   <!-- iOS "Add to Home Screen" prefers this meta tag over <title> or the
        manifest for the home-screen label. -->
   <meta name="apple-mobile-web-app-title" content="DeepResearch.se">
+  <!-- Installed (home-screen) app: let the PAGE paint the strip behind the
+       iPhone status icons. iOS pins a standalone app's status bar to the
+       manifest theme_color at launch and ignores runtime theme-color changes,
+       so switching chat mode left that strip Deep Research blue (feedback
+       #20, 2026-07-24). black-translucent + viewport-fit=cover extend the
+       themed field (html background, --bg) under the icons instead — CSS
+       repaints it instantly on a mode switch. Safe-area padding on the fixed
+       chrome (app.css .header-bar / #chat / #composer) keeps content clear
+       of the notch; in browser Safari every env() inset is 0 and nothing
+       changes. Requires a reinstall of the home-screen app to take effect. -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <!-- use-credentials: the site is behind Basic Auth and manifest requests
        are sent without credentials by default (would 401 silently) -->
   <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">

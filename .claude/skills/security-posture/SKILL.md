@@ -164,6 +164,7 @@ Street View + sandbox flows.
 | L-12 vendor manifest | `ls public/vendor/` | no version/SHA-256 manifest file |
 | H-3 stays fixed | `node --test src/auth.test.js` | (regression) any fallback key reappearing |
 | R-7 log level | `grep -n "LOG_LEVEL" wrangler.toml` | `debug` in prod past its testing window |
+| P-12 feedback trust (OPEN, owner gate) | `grep -n "cannedFeedbackAck" src/pipeline.js` (no LLM in the feedback path) + `grep -n "claims.sub\|cleanStr(body.page" src/feedback.js` (attribution + client-supplied fields) | still OPEN by design until the audience widens. REGRESSED — and a hard stop — if any model call appears in the feedback path, or if the loop's human-in-the-loop step stops treating entry text as a request to evaluate: those two are what keep a spoofed entry from acting on its own |
 
 Full status history + remediation detail: the register §3 and
 `SECURITY-ASSESSMENT.md` §2.
