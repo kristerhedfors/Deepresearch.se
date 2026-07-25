@@ -4,562 +4,278 @@ description: >-
   Load when asked to refactor for clarity/modularity, split a large file,
   extract a pure core out of an orchestrator, de-duplicate a copied helper, or
   "clean up" a module — anywhere the goal is structure, not behavior. Covers
-  this repo's specific refactoring method: the pure-core convention it already
-  follows (the `-text.js` / `-core.js` split), what MUST be preserved
-  (byte-identical behavior, the load-bearing invariants, the institutional
-  comments, the module-graph constraints, public import surfaces), what to
-  focus on (residual pure helpers → testable companion modules; verbatim
-  duplicates → leaf modules), the baseline→survey→extract→verify workflow, and
-  the traps (local typedefs, the source-snapshot freshness, client vs server
-  risk). Also how DistillSDK changed the calculus: the pure-core convention is
-  now the SDK's class-X / PA-7 shared-core contract and SDK mode DISTILLS the
-  Se/cure source, so client-side Se/cure core extractions gained value — and
-  moving a file named in `SECURE_SOURCE_REFS` (sdk-core.js) or a
-  `sdk/MANIFEST.json` `reference` list breaks the distiller with NO test
-  catching it. Canonical worked example: the 2026-07-12 clarity pass that added
-  assets.js / security-headers.js / model-routing.js / pipeline-inputs.js /
-  activity-core.js.
+  the FIVE GATES a cut must pass here (purity, verbatim, home, tier, bar), what
+  MUST be preserved (byte-identical behavior, the load-bearing invariants, the
+  institutional comments, module-graph constraints, public import surfaces),
+  where this repo's seams actually are, the survey → extract → verify workflow
+  built on the committed duplicate scanner `scripts/dup-scan.mjs`, and the
+  finishing checklist (docs mirror, `SECURE_SOURCE_REFS` + `sdk/MANIFEST.json`
+  reference lists — both drift SILENTLY — then `npm run bundle` and
+  `bundle:rag`). Also load when moving a file named in either of those two
+  lists, since nothing goes red if you forget them. The decline register
+  (`references/STANDING-DECLINES.md`) and the ten-pass record
+  (`references/PASS-LEDGER.md`) live beside this file — read the register
+  before surveying so you do not re-derive a settled decline.
 ---
 
 # Refactoring for clarity and modularity
 
 **This codebase is already heavily modular. The job is almost never a rewrite —
 it is finishing a split the project's own convention already implies.** Every
-large feature here is meant to be a *pure/testable core* + *orchestration* +
-*block/text builders* (see `googlemaps.js` → `googlemaps-text.js` +
-`googlemaps-blocks.js`; `sse.js` and `message-content.js` extracted out of
-`stream.js`; the `board.js` core behind every admin panel). A good refactor
-extends that pattern to the one place it hasn't reached yet. A bad refactor
-manufactures churn, moves things that aren't pure, or changes behavior.
+large feature here is a *pure/testable core* + *orchestration* + *block/text
+builders* (`googlemaps.js` → `googlemaps-text.js` + `googlemaps-blocks.js`;
+`sse.js` and `message-content.js` out of `stream.js`; the `board.js` core behind
+every admin panel). A good refactor extends that pattern to the one place it
+hasn't reached. A bad refactor manufactures churn, moves things that aren't
+pure, or changes behavior.
 
 If you cannot name the *seam* — the pure function, the self-contained concern,
 the verbatim duplicate — don't cut. Length alone is not a defect: a 1700-line
-registry of small matchers (`googlemaps-text.js`) or a 1000-line runner-per-shape
-file (`maps-enrichment.js`) is inherent complexity, not tangling.
+registry of small matchers (`googlemaps-text.js`) or a 1000-line
+runner-per-shape file (`maps-enrichment.js`) is inherent complexity, not
+tangling.
 
-## What to PRESERVE (non-negotiable)
+**Calibrate your expectations from the record.** Ten whole-repo passes since
+2026-07-12 have yielded between one and six cuts each, and the seventh yielded
+exactly one. New subsystems now arrive already factored, because their authors
+follow this same skill. **A pass that ends with one cut and a page of reasoned
+declines is a successful pass**, not a shortfall — and the declines are the
+durable output, because they are what makes pass N+1 cheap.
 
-1. **Byte-identical behavior.** Every extraction is a *verbatim move* of the
-   function body, re-imported at the original call site. If the diff changes
-   any logic, it is no longer this kind of refactor — stop and treat it as a
-   feature change. The proof is the existing test suite staying green with no
-   test-expectation edits (only import-path edits).
+## The five gates
 
-2. **The load-bearing invariants** (CLAUDE.md "Load-bearing invariants"). Never
-   let a split touch: deterministic orchestration with NO function calling;
-   fail-soft helper phases; split model routing (JSON phases on the fixed
-   reliable model); the privacy split; minimal dependencies; EN+SV intent
-   parity. In practice: **do not restructure `runPipeline`'s flow, `jsonPhase`,
-   or the streaming/validation phases** — extract the *pure builders they call*,
-   not the phases themselves.
+Nine passes' worth of accept/decline reasoning reduces to five tests. **A
+candidate must pass all five.** Anything that fails one goes into
+`references/STANDING-DECLINES.md` with the gate it failed, so no later pass
+re-argues it.
 
-3. **The institutional-knowledge comments.** The `// found live 2026-07-11:
-   …` notes, the DRC `/cure` public-module-graph allowlist rationale, the COEP
-   `require-corp` explanation — these encode bugs that cost real time. Carry
-   them **verbatim** into the new module. They are load-bearing; losing them
-   re-opens the incident.
+1. **Purity gate — is it actually pure?** No `ctx` / `env` / `emit`, no
+   `await`, no DOM, no module-local free variable read at call time. Read the
+   body; do not infer purity from the name. *The trap:* the spinner
+   `finalePhaseBucket` / `spinnerStyle` pair is byte-identical TEXT bound to
+   module-local `MARKS` / `FLEET` constants — same text, different behavior.
 
-4. **Module-graph constraints** (client side especially):
-   - `public/js/vault.js` must NEVER enter the `/cure` (DRC) graph — public
-     modules import `vault-core.js`. If you split a public module, keep its
-     import chain public.
-   - `src/mcp.js` keeps its heavy deps behind a **dynamic** `import()` so
-     `mcp.test.js` can load it without the pipeline. A new shared module you
-     make it import must be a **leaf** (imports nothing heavy), or it goes in
-     the dynamic block, not the top.
-   - Leaf modules (`model-routing.js`) import nothing so neither handler graph
-     is pulled into the other.
-   - **The Se/cure (`/cure`, `drc-*`) class-C boundary is now doubly
-     load-bearing.** It was always a module-graph rule (keep the browser graph
-     off server modules); DistillSDK formalized it as **PA-1's class rule** — a
-     class-C module's graph may not import a class-S module — because SDK mode
-     *distills the Se/cure source into standalone flavours*. A pure core you
-     extract from a `drc-*.js` / `public/cure/*` file must stay class-C-safe
-     (no server import, no DOM-only dependency), or you have quietly made that
-     file harder to distill. Splitting Se/cure toward cleaner pure cores is a
-     GOOD refactor for exactly this reason (see the DistillSDK reframing below).
+2. **Verbatim gate — is the move byte-identical?** An extraction copies the
+   body and its comments unchanged and re-imports it at the original call site.
+   The moment you parameterize a free variable, change a signature, or rewrite
+   an expression to make two near-copies match, it stops being this kind of
+   refactor and becomes a feature change — stop and treat it as one.
+   *Precedents:* `newRequestState` (same shape, different fields — needs
+   base+extend), `normalizeStatus`, `sdkBuildTitle` (not `ctx`-free without a
+   signature change), `posInt` where the sibling open-codes the same clamp
+   inline.
 
-5. **Public import surfaces.** If other modules or tests import a symbol you're
-   moving, **re-export it from the original file** (`export { x } from
-   "./core.js"` or import-then-export) so importers are unchanged — then
-   optionally repoint the test to the new pure module to get a DOM-free target.
-   Grep for every importer before moving (`grep -rn "symbolName"
-   public/js src`).
+3. **Home gate — does a sink already exist, and does the edge already exist?**
+   The best cut moves a symbol to a module that (a) already owns that role, and
+   (b) is already in the importer's graph. A cut that invents a module *and*
+   new edges for a five-line helper is churn. Watch for cycles and for pulling
+   weight into a graph that a test pins: `storage.js` can't host the `bucket`
+   one-liner (it imports `rag.js` — circular), `settings.js` isn't a leaf, and
+   `http.js` is a semantic mismatch for storage. *Positive precedents:*
+   `escapeHtml` → `markdown.js` over the existing `renderMarkdownInto` edge;
+   `hex` / `lerpCol` → `public/cure/umbrella.js`, which the spinner already
+   imported.
 
-## What to FOCUS on (the high-value, low-risk moves)
+4. **Tier gate — does it stay on its side?** The Se/cure (`/cure`, `drc-*`)
+   class-C boundary may not import a class-S module, and the server and browser
+   module graphs do not share code just because two functions look alike
+   (`f32ToB64` / `b64ToF32` exist in both `src/rag.js` and `public/js/rag.js`
+   deliberately; likewise `src/token-crypto.js` ↔ `public/js/proxy-bundle.js`).
+   Cross-tier sharing goes through the class-X façade direction — the server
+   imports the `public/js` core and re-exports it (`agent-spec-core.js`,
+   `testpoints-core.js`) — or it doesn't happen.
 
-In rough priority order (all behavior-preserving, all verified by tests):
+5. **Bar gate — is it big enough to matter?** Roughly: four or more lines, or
+   two or more copies, or logic that will drift if it diverges. A single-use
+   four-liner inside one file is below the bar (`safeModels`); so is an idiom
+   duplicated across seven unrelated graphs where every copy is obviously
+   correct forever (`base64ToBytes`, `bucket = (env) => env.STORAGE`). Ask
+   whether the copies will drift, not how long they are: the CET date math cut
+   in pass ten earned its keep because a DST fix applied to one copy would
+   silently desynchronize two published datasets.
 
-1. **Residual pure helpers → a companion module.** Input-block builders,
-   output parsers, sanitizers, formatters mixed in among orchestration
-   functions. Confirm each is *truly pure* — no `ctx`/`env`/`emit`/`await`, no
-   DOM — then move it. This is the biggest win: it shrinks the orchestrator to
-   its flow AND unlocks direct unit tests for logic that usually had none.
-   *Example:* `pipeline.js` → `pipeline-inputs.js` (shellReplyMessages,
-   notesSection, extractClaims, takeSearchBatch, …).
+## What to preserve (non-negotiable)
 
-2. **Verbatim duplicates → one leaf module.** A function copied into two files
-   (with a comment apologizing for the copy) is drift waiting to happen. Move
-   it to a leaf module both import. *Example:* `resolveJsonModel`, byte-identical
-   in `chat.js` and `mcp.js`, → `model-routing.js`.
+1. **Byte-identical behavior.** The proof is the existing suite staying green
+   with no test-expectation edits — only import-path edits.
 
-3. **Self-contained concerns out of an untested entrypoint.** `src/index.js`
-   has no test and nothing imports it, so anything moved OUT of it into a
-   module becomes testable — a strict improvement. *Example:* asset serving +
-   the public allowlist → `assets.js`; the CSP/security headers →
-   `security-headers.js`.
+2. **The load-bearing invariants** (CLAUDE.md). A split may never touch:
+   deterministic orchestration with no function calling; fail-soft helper
+   phases; split model routing; the privacy split; minimal dependencies; EN+SV
+   intent parity. In practice: **do not restructure `runPipeline`'s flow,
+   `jsonPhase`, or the streaming/validation phases** — extract the *pure
+   builders they call*, never the phases.
 
-4. **Client pure logic → an import-free core**, re-exported by the original.
-   Lower priority (client is live-verified, not just unit-tested), so keep it
-   to a *pure relocation only*. *Example:* `activity.js` → `activity-core.js`
-   (zoomToFov, sanitizeResearchEvent, searchServiceName, buildResearchDebugJson,
-   formatStatsLine). Bonus: the unit target becomes DOM-free (no
-   settings.js/imagedeck.js in its graph), matching `sse.js`.
+3. **The institutional-knowledge comments.** The `// found live 2026-07-11: …`
+   notes, the `/cure` public-module-graph allowlist rationale, the COEP
+   `require-corp` explanation. Each encodes a bug that cost real time; carry
+   them **verbatim** into the new module. Losing one re-opens the incident.
 
-Prefer **server-side splits** (protected by the unit suite) over **client
-splits** (verified live). When you must split client code, do the smallest
-possible pure relocation and confirm the original file still *links* in Node.
+4. **Module-graph constraints.**
+   - `public/js/vault.js` must NEVER enter the `/cure` graph — public modules
+     import `vault-core.js`. A split of a public module keeps its chain public.
+   - `src/mcp.js` keeps heavy deps behind a **dynamic** `import()` so
+     `mcp.test.js` loads without the pipeline. A new shared module it imports
+     must be a leaf, or it belongs in the dynamic block (`billing.js`,
+     `sources.js`).
+   - Leaf modules (`model-routing.js`, `grant-http.js`, `llm-proxy.js`) import
+     nothing heavy, so neither handler graph pulls in the other. The
+     server-token guarantee test pins `llm-proxy.js`'s leafness — check the
+     test before adding an import to it.
 
-## DistillSDK reframing (2026-07-19) — the pure core is now a shipped contract
+5. **Public import surfaces.** If anything imports a symbol you're moving,
+   re-export it from the original file so importers are unchanged, then
+   optionally repoint the test to the new module for a DOM-free target. Grep
+   every importer first: `grep -rn "symbolName" src public/js public/cure sdk`.
+   Use import-then-export (not `export { x } from …`) when the origin also uses
+   `x` internally.
 
-The `-core.js` convention this whole skill extends is no longer just *this
-repo's* taste. **The DeepResearch Platform SDK** (codename DistillSDK, `sdk/`)
-codified it as two of its load-bearing
-contracts — **class X** (shared substrate: "logic needed by both tiers is
-written ONCE as a pure, Node-testable core under the client tree; the server
-imports it through a façade re-export") and **PA-7** (the shared-core rule) —
-and **SDK mode** (the green dropdown entry) now *reads the deployed source and
-distills it into new flavours*. That changes the refactor calculus in three
-concrete ways:
+## Where the seams are
 
-1. **Client-side Se/cure core extractions gained value.** This skill used to
-   rank client splits LAST (priority 4) because the client is live-verified,
-   not just unit-tested — so the payoff (a DOM-free unit target) was modest
-   against the live-verify cost. DistillSDK adds a second payoff: a clean pure
-   core inside a `drc-*.js` / `public/cure/*` file is exactly the class-C
-   boundary SDK mode reshapes into a flavour. A well-factored Se/cure is a
-   more distillable Se/cure. So a *pure relocation* out of a Se/cure file (kept
-   class-C-safe, per the module-graph note above) is now a higher-value move
-   than the old ordering implies — still smallest-possible, still link-checked
-   in Node, but no longer bottom of the list. It does NOT license behavior
-   changes or churn: the byte-identical bar (§"What to PRESERVE" #1) is
-   unchanged.
+In descending value. Each has a worked instance in `references/PASS-LEDGER.md`.
 
-2. **The manifest tells you where the next seam is.** `sdk/MANIFEST.json`
-   already declares, per module, the exact `reference` files that realize it.
-   A module whose `reference` names several files where pure logic is tangled
-   with orchestration is a *pre-surveyed* refactor candidate — extracting the
-   pure core aligns the code with the boundary the SDK already asserts. Read
-   the module's `sdk/skills/<id>/SKILL.md` (its "reference implementation" map)
-   before cutting; the acceptance checklist there is a second, SDK-level
-   statement of the behavior you must preserve.
+1. **Residual pure helpers → a companion module.** Input builders, output
+   parsers, sanitizers, formatters sitting among orchestration functions. The
+   biggest win: the orchestrator shrinks to its flow, and logic that had no
+   tests becomes directly testable. *`pipeline.js` → `pipeline-inputs.js`.*
 
-3. **Two new lists silently couple to file moves** — see the traps below.
+2. **Verbatim duplicates → one leaf.** A body copied into two files — usually
+   with a comment apologizing for the copy, or promising to keep the two "in
+   lockstep" — is drift waiting to happen. Both the comment and the copy go.
+   *`resolveJsonModel` → `model-routing.js`; `useCaseTag` → `testpoints-core.js`.*
 
-None of this adds a step for a *server-side* dedup that touches neither Se/cure
-nor a referenced file: the SDK reframing is a lens on WHICH client seams are
-now worth cutting and a drift hazard when you move referenced files, not a new
-mandate. A whole-repo pass still yields a short list of relocations — that
-remains the correct outcome.
+3. **A helper in an orchestrator that drags a graph.** Single-copy, but a
+   consumer reaches it *through* a heavy module and inherits that module's
+   graph. Moving it to a leaf cuts the dependency, not just the line count.
+   *`forwardLlmCompletion` → `llm-proxy.js`, which tightened the server-token
+   guarantee test's allowlist.*
+
+4. **Self-contained concerns out of an untested entrypoint.** Nothing imports
+   `src/index.js` and it has no test, so anything moved out of it becomes
+   testable — a strict improvement. *`assets.js`, `security-headers.js`,
+   `canonical.js`.*
+
+5. **Client pure logic → an import-free core**, re-exported by the original.
+   This used to rank last because the client is live-verified rather than
+   unit-tested. DistillSDK raised it: **SDK mode distills the deployed Se/cure
+   source into new flavours**, and the `-core.js` convention is now the SDK's
+   own class-X / PA-7 contract, so a clean pure core inside a `drc-*.js` /
+   `public/cure/*` file is the exact boundary the distiller reshapes. A
+   well-factored Se/cure is a more distillable Se/cure. It still buys no
+   licence for behavior changes: smallest-possible relocation, class-C-safe,
+   link-checked in Node. *`activity-core.js`, `drcFeedbackContext` →
+   `drc-page-core.js`.*
+   **Before cutting here, read `sdk/MANIFEST.json`.** Each module declares the
+   `reference` files that realize it; a module whose references mix pure logic
+   with orchestration is a pre-surveyed candidate, and its
+   `sdk/skills/<id>/SKILL.md` acceptance checklist is a second statement of the
+   behavior you must preserve. Spawning a new `-core.js` out of a file in
+   `SECURE_SOURCE_REFS` **hides that code from the distiller** unless you add
+   the new file to the list in the same commit.
 
 ## The workflow
 
-1. **Baseline GREEN first.** `npm test` and `npm run typecheck` must pass
-   before you touch anything (`npm install` once for the dev deps —
-   `typescript` + workers-types). If the baseline is red, fix or note that
-   first; you can't attribute a later failure otherwise.
+1. **Baseline green first.** `npm test` and `npm run typecheck` (one
+   `npm install` for the dev deps). You cannot attribute a later failure
+   otherwise.
 
-2. **Survey, don't guess.** `wc -l src/*.js public/js/*.js | sort -rn`. For the
-   biggest orchestrators, fan out `Explore` agents to map the distinct concerns
-   with line ranges and flag which are *cleanly separable* (pure) vs *coupled*.
-   The agent's job is to find seams; yours is to verify each candidate is
-   actually pure by reading it.
+2. **Read `references/STANDING-DECLINES.md` before surveying.** Every entry is
+   a candidate some pass already ruled out with reasoning. Re-deriving them is
+   the single biggest waste in this job.
 
-3. **Extract, one module at a time.** Create the new module (copy bodies +
-   their comments verbatim); import them back into the origin; re-export the
-   public ones; delete the originals. Update the origin's module-map comment.
+3. **Survey mechanically, then by reasoning — in that order.**
 
-4. **Test as you go.** After each module, run just its tests + the touched
-   files' tests + `npm run typecheck`. Add unit tests for anything newly
-   testable — that's a chunk of the value.
+   ```bash
+   node scripts/dup-scan.mjs                # duplicate bodies across files, ≥4 lines
+   node scripts/dup-scan.mjs --collisions   # + same-name-different-body (never unify blind)
+   git diff --stat <last-pass-sha>..HEAD -- src public/js public/cure sdk
+   wc -l src/*.js public/js/*.js | sort -rn | head -20
+   ```
 
-5. **Full verify.** `npm test` (whole suite) + `npm run typecheck`. For a
-   client split, also `node -e "import('./public/js/<file>.js').then(...)"` to
-   confirm it links.
+   The scan is the high-yield step (pass eight: three reasoning fan-outs
+   returned "nothing left", then the scan found two real cuts) — reasoning
+   predicts which duplications *should* exist, the scan finds the ones that
+   *do*. **Its blind spots are real, so the reading pass still happens:** it
+   sees only function bodies of four-plus lines, so repeated *inline blocks*
+   (the six that became `grant-http.js`), constants, and single-copy
+   helper-in-orchestrator seams (type 3 above) are invisible to it. Read the
+   modules that grew since the last pass, and read every scan hit before
+   believing it.
 
-6. **Regenerate the source snapshot LAST.** `npm run bundle` rebuilds
-   `public/introspect/source-snapshot.json` from every tracked text file — and
-   `CLAUDE.md` IS one of them. A unit test (`src/introspect.test.js`) fails
-   `npm test` if the snapshot is stale. So: make ALL edits (code *and* CLAUDE.md
-   *and* this skill) first, then `npm run bundle`, then the final `npm test`.
-   Running bundle before a doc edit just makes it stale again.
-   **There are TWO freshness tests, not one** — and a refactor is the classic
-   way to trip the second. Besides the snapshot check, `src/introspect.test.js`
-   also enforces that the committed source-RAG index
-   (`public/introspect/source-rag.json`) has no stale chunk refs: removing a
-   file, renaming it, or shrinking one enough to shift its chunk boundaries
-   (i.e. exactly what moving function bodies OUT of an origin file does) makes an
-   indexed `(path, chunk)` stop resolving, and `npm test` goes red. Fix with
-   `npm run bundle:rag` and commit the regenerated index — but note it needs a
-   Berget key or the break-glass creds to re-embed (unlike `npm run bundle`,
-   which needs nothing), so run it after `npm run bundle` as part of the final
-   pass. If you can't re-embed in-session, at minimum surface that the index is
-   stale rather than leaving `npm test` red silently.
+4. **Extract one module at a time, and commit after each.** Create the new
+   module (bodies *and* their comments verbatim), import them back, re-export
+   the public ones, delete the originals, update the origin's module-map
+   comment. A container reset mid-session once destroyed six uncommitted moves.
 
-7. **Document.** Add each new module to the `docs/CODE-LAYOUT.md` **Code
-   layout** table (and the client prose for client modules), and add this
-   skill to the CLAUDE.md skills list if not present. **If any file you moved,
-   renamed, or split is named in `SECURE_SOURCE_REFS` (public/js/sdk-core.js)
-   or a `sdk/MANIFEST.json` `reference` list, fix those in this same commit**
-   (see the two SILENT-drift traps below — nothing goes red if you forget).
-   Then re-bundle (step 6 order).
+5. **Test as you go.** After each module: its own tests, the touched files'
+   tests, `npm run typecheck`. Add unit tests for anything newly testable —
+   that coverage is a large part of the value.
+
+6. **Full verify.** `npm test` + `npm run typecheck`. For a client split, also
+   confirm the file still links:
+   `node -e "import('./public/js/<file>.js').then(()=>console.log('ok'))"` (use
+   `node --check` for files that are deliberately not Node-importable, like
+   `sandbox.js`).
+
+7. **Finish** — the checklist below, in order.
+
+## Finishing checklist
+
+Do all of it in the same commit range, in this order. The first two drift
+**silently**; nothing in the suite goes red if you skip them.
+
+- [ ] **`SECURE_SOURCE_REFS`** (`public/js/sdk-core.js`) — if you renamed,
+      moved, or split a file it names, fix the array. Add a new pure core the
+      distiller should study.
+- [ ] **`sdk/MANIFEST.json` `reference` paths** — `sdk_validate` /
+      `snapshotFileCheck` verify only that SKILL files exist, never the
+      reference paths. Also check `sdk/DESIGN.md` and `docs/DISTILLSDK.md` if
+      the module's file map is described there.
+      Grep both before finishing: `grep -rn "<oldpath>" sdk/ public/js/sdk-core.js`.
+- [ ] **`docs/CODE-LAYOUT.md`** — one row per `src/` module, plus the client
+      prose for client modules. Mirror discipline: same commit.
+- [ ] **`references/STANDING-DECLINES.md`** — add every candidate you declined,
+      with the gate it failed. This is how the next pass stays cheap.
+- [ ] **`references/PASS-LEDGER.md`** — append the pass: what you cut, what you
+      declined, and any method lesson.
+- [ ] **`npm run bundle`** — LAST, after every text edit including CLAUDE.md and
+      this skill, both of which are in the snapshot. Running it before a doc
+      edit just makes it stale again.
+- [ ] **`npm run bundle:rag`** — a refactor is the classic way to trip the
+      *second* freshness test. Moving bodies out of a file shifts its chunk
+      boundaries, so an indexed `(path, chunk)` stops resolving and `npm test`
+      goes red on "source-rag index is consistent with the current snapshot".
+      Re-embedding needs `BERGET_API_KEY` (present in these containers — check
+      with `node -e "console.log(!!process.env.BERGET_API_KEY)"`) or the
+      break-glass creds. If you genuinely cannot re-embed, say so explicitly
+      rather than leaving `npm test` red without comment.
+- [ ] **`npm test` + `npm run typecheck`** one final time.
 
 ## Traps that cost time here
 
-- **Local typedefs aren't in `types.js`.** `PipelineState` is a `@typedef` local
-  to `pipeline.js`, not an export of `types.js` — a moved function that
-  references it throws TS2694. Fix: inline the *minimal structural shape* the
-  moved function needs (e.g. `{ ranQueries: Set<string>, searchCount: number,
-  plan: { maxSearches: number } }`), or `import('./origin.js').Type` if a
-  circular type-only import is acceptable. Don't reach for `types.js`.
-- **The Bash working directory persists between calls.** A `cd public/js` in one
-  call leaves the next call there; `head public/js/x.js` then looks for
-  `public/js/public/js/x.js` and "file not found" lies to you. Use absolute
-  paths or re-`cd` to the repo root.
-- **`export { x } from "./core.js"` vs import-then-export.** Both work; pick
-  import-then-export when the origin also *uses* `x` internally (one local
-  binding, one export), so you don't import and re-export the same name two
-  ways.
-- **Don't hand-edit the snapshot JSON.** It's generated. If `npm test` fails on
-  "source snapshot artifact matches the working tree", the fix is `npm run
-  bundle`, never editing the artifact. If it instead fails on "source-rag index
-  is consistent with the current snapshot", that's the SECOND freshness test —
-  the fix is `npm run bundle:rag` (needs a Berget key / break-glass creds),
-  never hand-editing `source-rag.json` either.
-- **`SECURE_SOURCE_REFS` drift is SILENT — no test guards it.** `export const
-  SECURE_SOURCE_REFS` in `public/js/sdk-core.js` is the explicit allowlist of
-  Se/cure files SDK mode points the distiller at (`public/cure/index.html`,
-  `public/cure/drc.{js,css}`, the `public/js/drc-*.js` cores,
-  `sdk/skills/secure-tier/SKILL.md`). If your refactor **renames, moves, or
-  splits** one of these, the distiller reads a stale or missing ref and NO unit
-  test fails (it only feeds a prompt string). Update the array in the SAME
-  commit — treat it like the `/cure` public-module-graph allowlist. If a split
-  produces a new pure core that the distiller should also study, add it.
-- **`sdk/MANIFEST.json` `reference` paths drift SILENTLY too.** Each module's
-  `reference: [...]` names the exact `src/`/`public/` files that realize it.
-  `sdk_validate` / `snapshotFileCheck` only verify SKILL files exist — NOT the
-  `reference` paths — so moving a referenced file leaves a dangling pointer with
-  a green suite. When a moved/renamed file appears in a `reference` list, fix
-  that list (and `sdk/DESIGN.md` / `docs/DISTILLSDK.md` if the module's file map
-  is described there) alongside `docs/CODE-LAYOUT.md` in step 7's mirror
-  discipline. Grep both before finishing: `grep -rn "<oldpath>" sdk/
-  public/js/sdk-core.js`.
+- **Local typedefs aren't in `types.js`.** `PipelineState` is a `@typedef`
+  local to `pipeline.js`. A moved function referencing it throws TS2694. Inline
+  the *minimal structural shape* the function needs, or use
+  `import('./origin.js').Type` if a type-only circular import is acceptable.
+  Don't reach for `types.js`.
+- **Inserting an export above a function detaches its JSDoc.** If the doc
+  comment sits above your match point, the comment stays with the neighbor and
+  the function loses its types (TS7006 catches it). Match on the comment and
+  the function together.
+- **The Bash working directory persists between calls.** A `cd public/js` in
+  one call leaves the next call there, and "file not found" then lies to you.
+  Use absolute paths.
+- **Don't hand-edit the generated artifacts.** "source snapshot artifact
+  matches the working tree" → `npm run bundle`. "source-rag index is
+  consistent" → `npm run bundle:rag`. Never the JSON.
+- **Two escapes exist on purpose.** `markdown.js` escapes four characters;
+  `notifications.js` escapes five (it also encodes `'`). Collapsing them
+  changes rendered output. The scan will keep offering you this one.
 
-## Canonical worked example (2026-07-12)
+## The record
 
-A single clarity pass, all five moves above, ~1095 unit tests green throughout,
-typecheck clean, no behavior change:
-`index.js` (757→495) → `assets.js` + `security-headers.js`; `chat.js`
-sanitizers → `validation.js`; `resolveJsonModel` dup → `model-routing.js`;
-`pipeline.js` (1148→1031) pure builders → `pipeline-inputs.js`; `activity.js`
-pure fns → import-free `activity-core.js`. Each new module shipped with its own
-test file, adding coverage to logic that previously had none.
-
-## Second worked example (2026-07-12) — the de-dup pass
-
-A follow-up pass after the survey showed `pipeline.js` was already fully
-extracted (no residual pure helpers) and `stream.js` was mostly irreducible
-orchestration. Two clean moves survived that scrutiny — the point being that a
-"run the skill on the whole repo" job often yields **fewer** cuts than expected,
-and that's correct, not a shortfall:
-- **`billing.js`** (server, flagship de-dup): `summarizeSpend` (the
-  three-model-bucket split-billing totals) + `exaCost` (depth-tier + `/contents`
-  surcharge) were defined in `chat.js` and **re-inlined verbatim** in `mcp.js`.
-  Moved both to a new leaf module (imports only `bergetCost`/
-  `CONTENTS_COST_MULTIPLIER`); `chat.js` re-exports `summarizeSpend` so
-  `chat.test.js` is unchanged; `mcp.js` pulls `billing.js` into its **dynamic**
-  import block (not the top) so the pipeline stays out of `mcp.test.js`. New
-  `billing.test.js` adds the `exaCost` coverage that never existed.
-- **`userTexts` → `message-content.js`** (client, smallest-possible relocation):
-  a pure arrow fn moved verbatim into the import-free core `stream.js` already
-  imports from, right next to its consumer `asksDeviceLocation`; a
-  `message-content.test.js` case added.
-The near-duplicate `newRequestState` (chat.js vs mcp.js) was deliberately NOT
-unified — the two objects are different shapes, so sharing them needs a
-base+extend split, which is a feature-shaped change, not a byte-identical move.
-
-## Third worked example (2026-07-13) — the relocate-to-the-owner pass
-
-Another whole-repo survey (three `Explore` fan-outs: pipeline.js, chat.js +
-index.js, and an all-of-`src` duplicate sweep). `pipeline.js` (now 1290, grown
-from the 2026-07-12 pass purely by introspection tool-calling *orchestration*,
-not pure logic) confirmed **nothing left to extract** — the pure-core split is
-complete. Four clean moves survived, all "relocate an already-pure helper to
-the module that should own it," none new-extraction:
-- **`quotaBlockedResponse` (+`PERIOD_NAMES`) → `quota.js`** (flagship): the 429
-  quota-window payload builder lived in `chat.js` but sits naturally next to its
-  sibling `inflightLimitResponse` in `quota.js` (whose comment already named it).
-  `chat.js` imports it back for internal use AND re-exports it (the billing.js
-  pattern) so `chat.test.js` is unchanged; the three handlers that imported ONLY
-  this from `chat.js` (`quiz-api.js`, `bash-api.js`, `rag.js`) were **repointed
-  to `quota.js`, dropping their whole `chat.js` dependency** — the decoupling
-  win, not just tidiness.
-- **`htmlResponse` (index.js) + `textResponse` (×3 verbatim: testpoints.js,
-  chatlog.js, feedback.js) → `http.js`** — completes the response-helper set
-  (`jsonResponse`/`sseResponse`/`htmlResponse`/`textResponse`) in the module
-  whose header comment already claims that role. `htmlResponse` gained a
-  `status = 200` default to match its siblings (behavior-neutral; every caller
-  passed status explicitly).
-- **`cleanStr` (×2 verbatim: testpoints.js, feedback.js) → `chatlog.js`** next to
-  `truncateForLog` (which it wraps and both files already imported) — so the
-  now-unused `truncateForLog` import dropped from both. New `chatlog.test.js`
-  cases cover it directly.
-As before, the point is that a "refactor the whole repo" job on an
-already-modular codebase yields a **short** list of relocations, and that is the
-correct outcome — 1318 logic tests green throughout, typecheck clean, zero
-behavior change.
-
-## Fourth worked example (2026-07-15) — the token-crypto pass
-
-Whole-repo survey again (three `Explore` fan-outs: the new websearch/proxy
-grant subsystems, index.js/chat.js/mcp.js regrowth, and an everything-else
-duplicate sweep). chat.js and mcp.js were byte-unchanged since 2026-07-12 —
-no new seams — and index.js's regrowth was all routing dispatch (correctly
-left alone). Six moves survived:
-- **`token-crypto.js`** (flagship de-dup): `b64url`/`b64urlDecode`/`toHex`/
-  `safeEqual` + the namespaced HMAC `sign` were byte-identical across
-  `websearch-key.js` and `proxy-grant.js` (toHex/safeEqual a THIRD time in
-  `auth.js`) — the proxy subsystem was born by copying the websearch token
-  module. One leaf now owns the primitives; each token family keeps its OWN
-  mint/verify (the `svc` claim differs deliberately — do NOT merge those).
-  Also carried websearch.js's atomic-reserve concurrency comment onto
-  proxy.js's `reserveUnit`, where the generalization had dropped it.
-- **`canonical.js`**: the canonical-origin 301 (pure over `url`) out of the
-  untested entrypoint, with its Firefox Focus/redirect_uri_mismatch comment.
-- **`idOk`**: rag.js ↔ storage.js byte-identical id validator; exported from
-  rag.js (storage.js already imported from it — zero new graph edges).
-- **Tokemon client views + `parseLatLng` → `tokemon.js`**: pure projections
-  in tokemon-api.js (no test file) whose own header says game logic belongs
-  in tokemon.js; now covered by tokemon.test.js (IVs/foe roster never leak).
-- **`formatCount` → `notifications.js`** (client): the K/M abbreviator
-  duplicated in admin.js/account-views.js; notifications.js is exactly the
-  two-views-shared-fragments module and both already import it.
-- **`wmHtml` → `drc-page-core.js`** (client): the one pure fragment the
-  2026-07-13 DRC pass (PR #66) left inlined in drc.js.
-Declined on principle: the Se/cure public route group (dispatch-only glue),
-`rankVisionModels` (a carve-out, not a relocation), the table-name-
-parameterized meter helpers, `normalizeStatus` (needs parameterizing), and
-the cross-tier `b64ToF32` (server/client module graphs must not share).
-OPERATIONAL LESSON: a container reset mid-session destroyed the first,
-uncommitted application of all six moves — commit after EACH extraction,
-not at the end of the pass.
-
-## Fifth worked example (2026-07-15) — the grant-presentation pass
-
-Whole-repo survey again (three `Explore` fan-outs: the websearch/proxy grant
-subsystems incl. the new quota-adjust endpoints, the PR #87 sandbox outbox
-flow, and drc.js/workspace + an everything-else src sweep). Two scopes came
-back essentially "nothing left" — the outbox flow was AUTHORED with the
-pure-core convention already applied, and the src-wide sweep found only
-same-name-different-body pairs (feedback vs testpoints `normalizeStatus`) and
-the intentional per-board façade parallels. Three moves survived:
-- **`src/grant-http.js`** (flagship de-dup): websearch.js and proxy.js (born
-  by generalizing it) carried six byte-identical inline blocks — the
-  budget-exceeded 409 builder (×6!), the adjust-result response ladder (×4,
-  free variable = the not_found wording), the `resolveQuotaPatch` set/±/pause
-  clamp arithmetic (×2), the web-result projections, the token-body parse
-  guard, and three constants. One leaf (imports only `jsonResponse`) now owns
-  them; every moved symbol was PRIVATE, so zero re-exports and zero test
-  edits — the cleanest possible cut. The table-name-parameterized meter set
-  (`outstandingRemaining`, reserve/refund) stays declined per the prior pass,
-  and the token-family mint/verify duplication stays fenced off by the
-  token-crypto.js namespace comment.
-- **Exec bridge codec → `bash-core.js`** (client): the marker+base64 envelope
-  inside `sandbox.js`'s `execInSandbox` — `execEnvelope` (carrying the
-  RC-before-any-pipe exit-code fix comment verbatim, now PINNED by a unit
-  test), `parseExecEnvelope`, `concatChunks`, `base64ToBytes` — plus
-  `exportFile`'s mount-tree guard as `isExportablePath` next to `OUTBOX_PATH`.
-  An "output parser mixed into orchestration" carve-out that earns its keep
-  because it makes the exec protocol testable; sandbox.js keeps only VM glue
-  (verified with `node --check` — the file is deliberately not Node-importable).
-- **`workspacePayloadCarries` → `workspace-core.js`**: drc.js's share-pane
-  guard inlined the which-payload-keys-are-envelope-metadata fact
-  (`v`/`kind`/`name`) that belongs beside `buildWorkspacePayload`.
-Declined on principle: the repo-wide `base64ToBytes` idiom dedup (7 files
-across separate module graphs — churn, not drift risk) and unifying the two
-FNV-1a hashes (`sandbox-files.js` `projHash` vs `sandbox.js` `cacheIdFor` —
-the latter feeds the VM disk-cache identity, where even an
-equivalent-looking rewrite risks invalidating every user's cached VM image).
-
-## Sixth worked example (2026-07-17) — the grant-consolidation pass
-
-Whole-repo survey (four `Explore` fan-outs: drc.js, the new Se/rver-token
-subsystem, the introspection/on-device stack, and an everything-else duplicate
-sweep). Two scopes came back "nothing left" — drc.js's pure fragments had all
-already moved to drc-page-core.js, and the introspection stack was authored
-fully factored. Five moves survived:
-- **`src/llm-proxy.js`** (flagship, a NEW kind of seam: *helper-in-orchestrator*,
-  not a duplicate): `forwardLlmModels`/`forwardLlmCompletion` (+ `bergetBase`,
-  the `LLM_*` bounds) were single-copy in proxy.js but consumed by
-  server-grants.js THROUGH the bundle orchestrator — dragging proxy-grant.js
-  and the bundle crypto into a module graph that THE SERVER-TOKEN GUARANTEE
-  test pins upstream-only. Moved verbatim to a leaf (imports only
-  `jsonResponse`); the guarantee test's allowlist tightened `./proxy.js` →
-  `./llm-proxy.js` AND gained a leaf pin on the new module; new direct tests
-  (key swap, field filter, clamp, refund ladder). Couldn't fold into
-  grant-http.js — that leaf's charter forbids provider code.
-- **`posInt` → grant-http.js**: the byte-identical positive-int config clamp in
-  both defaults resolvers (websearch.js open-codes the same clamp inline — left
-  alone: rewriting expressions isn't a verbatim move).
-- **`projectedBoardItem` → board.js**: the boards' triple-copied single-item
-  re-projection (table/catalog/projector = the three things that identify a
-  board — the `adjustResultResponse` free-variable precedent). Response
-  wrapping stayed in each board so board.js keeps importing nothing.
-- **Client sibling dedups over EXISTING edges only**: `hex()` ×3 → exported
-  from `public/cure/umbrella.js`; `canCanvas`/`reducedMotion` + the three
-  byte-identical `FINALE_*` pacing constants → exported from
-  umbrella-spinner.js into balloon-spinner.js (the boomerang-clock edge). The
-  parameterization-needing trio (`planFinale`/`finalePhaseBucket`/
-  `spinnerStyle` — read module-local MARKS/FLEET/apex) stayed declined per the
-  `normalizeStatus` precedent.
-- **`grantMeterLine` → drc-page-core.js**: the two borrowed-capability Settings
-  rows' status-line wording (Se/rver token + proxy bundle), the client
-  counterpart of grant-http.js's stay-in-lockstep rationale.
-Declined: the DRS/DRC source-tool loop drivers (same shape, different WIRE
-protocols — Anthropic content-blocks vs OpenAI tool_calls — the exact opposite
-of bash-core's one-protocol premise), `buildSourceToolUserContent` (~2 shared
-prompt lines), the dev-mode theme-toggle dedup (deliberate tier divergence +
-/cure allowlist), `sumRemaining` (tiny, inline in one endpoint each), and the
-table-parameterized meter cluster (standing decline, third pass running).
-
-## Seventh worked example (2026-07-19) — the single-move pass
-
-Whole-repo survey again (four `Explore` fan-outs: `pipeline.js` alone,
-`chat.js`/`index.js`/`mcp.js`, an all-of-`src` verbatim-duplicate sweep, and the
-Se/cure client tier `drc.js`/`drc-research.js`/`drc-providers.js`). `pipeline.js`
-had grown 1290→1654 but ENTIRELY from SDK/SWE build-mode + feedback-capture
-*orchestration* whose pure helpers were placed in companions at authoring time
-(`sdk-tools.js`/`build-tools.js`/`introspect-tools.js`/`pipeline-inputs.js`) —
-nothing left to extract. `chat.js`/`mcp.js` were byte-unchanged since prior
-passes; `index.js` regrowth was routing dispatch (left alone). Exactly ONE clean
-move survived, and the pass's real value is the DECLINE reasoning below:
-- **`withSources` → `sources.js`** (the only cut): the numbered-source-list
-  formatter (append a `Sources:` block unless the answer already carries one)
-  was inline in `mcp.js` but is a pure string builder belonging beside its
-  sibling `sourceDigest` in the source-registry module. Verbatim move with its
-  double-print-guard comment; `mcp.js` pulls it via a **dynamic** import at the
-  call site (next to `recordChatLog`) so `mcp.test.js` still loads without the
-  source/search graph (`sources.js` → `search-sources.js` → `hf.js`). New
-  `sources.test.js` cases cover the append / no-sources / no-double-print paths
-  that had no coverage inline.
-Declined this pass (record so the next pass doesn't re-survey them):
-- **`bucket = (env) => (env.STORAGE)` ×5** (storage/build-pub/rag/vault/pub) —
-  byte-identical, but every home is awkward: `storage.js` would be CIRCULAR
-  (it imports `rag.js`), `settings.js` is NOT a leaf (pulls googlemaps/shodan
-  into build-pub/pub), and `http.js` is a semantic mismatch (response helpers,
-  not storage). A one-line `R2Bucket` type-cast with ~zero drift risk — matches
-  the standing `base64ToBytes`-idiom decline ("churn, not drift risk").
-- **`sdkBuildTools` / `sdkBuildTitle`** (pipeline.js one-liners) — the former
-  composes constants from THREE modules (`INTROSPECTION_TOOLS`/`SDK_TOOLS`/
-  `BUILD_TOOLS`) so it belongs where it composes them; the latter isn't
-  `ctx`-free without a signature change (not a verbatim move).
-- **`newRequestState`** (chat.js vs mcp.js) — same RequestState SHAPE, different
-  fields (mcp forces enrichments off, takes `plan`); a base+extend split is a
-  feature-shaped change, not a byte-identical move (standing decline since the
-  2026-07-12 de-dup pass).
-- **The whole Se/cure client tier** — `drc-providers.js` is already import-free
-  with its pure/impure split done in-file (its own `filterAndSortModels`
-  docstring codifies "testable *within* the module, not a spawned `-core.js`");
-  `drc-research.js`'s pure prompts/normalizers are already exported + Node-tested
-  and NO separate consumer imports them (only `runDrcResearch` is imported). NEW
-  HAZARD LOGGED: both files are in `SECURE_SOURCE_REFS` **and** `sdk/MANIFEST.json`
-  `reference` lists, so spawning a `-core.js` that isn't ALSO added to those
-  lists would silently hide those prompts from the SDK distiller — a net negative
-  no test catches. Extraction there carries downside with no consumer/graph win.
-The lesson stands: on this codebase a "refactor the whole repo" job routinely
-converges to a SINGLE relocation (or none), and that is the correct outcome —
-1843 logic tests green throughout, typecheck clean, zero behavior change.
-
-## Eighth worked example (2026-07-23) — the lockstep-mirror pass
-
-Survey scoped to code merged since the seventh pass (three `Explore` fan-outs:
-the new compute-sharing pool subsystem, server-errors.js + the grown src
-modules, and the client changes) PLUS an independent hash-scan for
-byte-identical function bodies across src/ + public/js/ + public/cure/. All
-three fan-outs returned "none" — the new subsystems were AUTHORED to the
-discipline (`pool-token.js` imports token-crypto.js with a test PINNING its
-import list to exactly that; `pool.js` imports all six grant-http.js helpers;
-`server-errors.js` names its status helper `normalizeErrorStatus` to dodge the
-normalizeStatus trap and imports cleanStr/likePattern/textResponse instead of
-copying them). The hash-scan earned its keep: it surfaced two cuts the
-fan-outs missed, both fitting known precedents:
-- **`useCaseTag`/`parseUseCaseRef` → single source in `testpoints-core.js`**
-  (flagship): byte-identical in src/testpoints.js and the client core, held
-  together by a "keep the two in lockstep" comment — the copy-with-apology of
-  §FOCUS 2, resolved by the class-X façade direction (server imports the
-  public/js core and re-exports, the agent-spec.js pattern), so pipeline.js
-  and src/testpoints.test.js kept their import path. The server side's richer
-  comments (invariant-6 note, ref grammar) carried onto the core verbatim.
-- **`lerpCol` → exported from `public/cure/umbrella.js`**: byte-identical
-  (with its `rgb` helper) in umbrella-spinner.js, which ALREADY imports the
-  umbrella geometry/palette — the hex() ×3 precedent again; the spinner's
-  orphaned `hex` import dropped with the copy.
-Declined this pass: `balloon-intro.js`'s lerpCol (different body — inline
-channel rounding, no rgb helper; replacing it is behavior-equivalent but not a
-verbatim move), `plant-spinner.js`'s clampAnimMult (its own comment declares
-the copy deliberate — "kept local so the plant doesn't couple to
-umbrella/balloon"), pool.js's `safeModels` (4 lines, single-file, internal,
-un-duplicated — below the bar), the `nowS` clock one-liners (not pure, not
-byte-identical), and the standing declines re-confirmed by the scan
-(src/rag.js ↔ public/js/rag.js f32ToB64/b64ToF32 cross-tier; drc-store ↔
-vault-core base64 pair; the spinner finale trio — byte-identical TEXT but
-free-variable-bound to module-local MARKS/FLEET, so same text ≠ same
-behavior; the drc.js Enter-send inline, documented cross-tier separation).
-METHOD NOTE: keep the hash-scan (normalize whitespace, hash function bodies
-≥4 lines) as a survey step — agents reason about which duplications SHOULD
-exist; the scan finds the ones that DO.
-
-## Ninth worked example (2026-07-24) — the new-subsystems pass
-
-Survey scoped to code merged since the eighth pass (three `Explore` fan-outs:
-server growth incl. pipeline.js +258 and the knowledge/space façades; the new
-client subsystems — space, source-peek, ondevice, pool, the two seal cores;
-the Se/cure tier incl. drc.js +754) plus the hash-scan. The big picture held:
-the new subsystems were AUTHORED to the discipline (knowledge/space are
-textbook class-X façades; ondevice-core is 620 richly-factored lines;
-`feedbackIntent` and `sanitizePoolRequest` were born as class-X de-dups).
-Five cuts survived across four commits:
-- **sdkReplyTail cluster → pipeline-inputs.js**: the feedback-#13 closing
-  shape (`sdkReplyTail` + `endsWithQuestion` + `SDK_ITERATION_QUESTION`) was
-  pure but inline among pipeline.js's build orchestration, untested. The one
-  judgment call: it drags a pure `replyLinksTo` import from build-pub.js into
-  the leaf — accepted (build-pub's top-level graph is only http.js +
-  sdk-tools); the alternative sink sdk-core.js is BLOCKED (client core can't
-  import server modules).
-- **drcFeedbackContext → drc-page-core.js**: the feedback consent's pure
-  prior-turn context builder out of drc.js's DOM wiring. Safe within-graph:
-  BOTH files stay SECURE_SOURCE_REFS/MANIFEST members, so no list edits.
-  Its server twin `buildFeedbackContext` (src/feedback.js) is a DIFFERENT
-  shape — relocation, not unification.
-- **sha256hex → proxy-bundle.js** (hash-scan flagship): byte-identical
-  (JSDoc included) and PRIVATE in both new seal cores (research-seal-core,
-  knowledge-core) — both already import proxy-bundle's b64url helpers, so
-  the export rides an existing edge; each core keeps its OWN frozen HKDF
-  info/kind binding (the two envelope formats still can never cross-open).
-- **escapeHtml (4-char) → markdown.js**: byte-identical in source-peek.js +
-  docs-viewer.js over their existing renderMarkdownInto edge. TRAP LOGGED:
-  notifications.js exports a DIFFERENT 5-char variant (also encodes `'`) —
-  collapsing the two variants would change rendered output; keep both.
-- **worldRot → space-core.js**: the embed renderer's yaw-then-pitch view
-  rotation composes rotX/rotY the core already owns — the last pure fragment
-  in space-embed.js.
-Declined: a report-core.js carve-out (report.js's pure markdown/PDF helpers
-are already exported + Node-tested IN PLACE — the plant-spinner pattern; no
-sibling core exists, so extraction is churn), `scaleNoteFor` (bound to the
-renderer-owned bilingual UI const), `onDeviceModelLabel` (trivial wrapper),
-the src/token-crypto b64url ↔ proxy-bundle b64urlEncode cross-tier pair
-(the f32ToB64 standing decline), and poolShareStatus (the pure branch is
-5 lines, single-use, inside a DOM writer). MECHANICAL LESSON: inserting an
-export above a function whose JSDoc sits above your match point detaches
-that JSDoc from its function — typecheck catches it (TS7006), but match on
-the comment + function together when inserting between neighbors.
+- **`references/STANDING-DECLINES.md`** — every settled decline, the gate it
+  failed, and the pass that settled it. Read before surveying; append after.
+- **`references/PASS-LEDGER.md`** — the ten passes to date, what each cut, and
+  the method lessons they produced. Read when you want a worked instance of a
+  seam type, or the last pass's SHA to diff from.
