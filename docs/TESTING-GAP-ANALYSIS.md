@@ -21,6 +21,11 @@ entry; the bench gate shipped from it on 2026-07-23).
 | Eval harnesses | 3 (model matrix, rubric bench, HF bench) + the bench gate |
 | **CI runs** | **none — there is no `.github/` directory** |
 
+> **Measured 2026-07-24, before items 1–4 of the remediation below landed.**
+> The numbers are left as measured so the findings stay legible against
+> them; after items 1–4 the suite is 2366 tests in 241 suites, `@ts-check`
+> covers 173 of 194 modules, and CI runs on every push and pull request.
+
 `npm test` and `npm run typecheck` both pass. The suite is fast, dense,
 and genuinely good at what it covers. Every finding below is about the
 edges around it.
@@ -302,15 +307,25 @@ greppability.
 
 Ordered by (signal gained) ÷ (effort), not by section.
 
-1. **Add CI.** One workflow: `npm ci && npm test && npm run typecheck` on push
-   and pull_request. Fixes A1 outright and makes everything below durable.
-   *Hours: 1.*
-2. **Widen the test glob to `tests/*.test.js`** and add an artifact-set
-   existence test. Fixes A2 and A5. *Hours: 1.*
-3. **`@ts-check` the tested `public/js` cores** (B4's twelve). Free signal on
-   code that already has tests. *Hours: 2–4, mostly fixing what it finds.*
-4. **Pin the twelve unpinned façade contracts** (B5). One assertion each.
-   *Hours: 1.*
+1. ~~**Add CI.**~~ **Done 2026-07-25** — `.github/workflows/ci.yml` runs
+   `npm ci && npm test && npm run typecheck` on push, pull_request and
+   workflow_dispatch, with per-branch concurrency. Closes A1, and the `npm ci`
+   step closes A3.
+2. ~~**Widen the test glob**~~ **Done 2026-07-25** — `npm test` now globs
+   `tests/*.test.js` too (+43 tests, closing A2), and `src/artifacts.test.js`
+   asserts the committed-artifact set is present, git-TRACKED, non-trivial,
+   and parses — the half the self-skipping freshness guards could not cover
+   (A5).
+3. ~~**`@ts-check` the tested `public/js` cores.**~~ **Done 2026-07-25** — all
+   twelve opted in, 483 reported errors resolved with real JSDoc (shared
+   `DrcProvider`/`DrcCallOpts` and `Vec3`/`Mesh` typedefs, not blanket `any`).
+   What it caught is in the note below. The 29 remaining DOM-glue modules
+   (`stream.js`, `admin.js`, `app.js`, `sandbox.js`, …) are still open.
+4. ~~**Pin the unpinned façade contracts.**~~ **Done 2026-07-25** —
+   `src/facade-contract.test.js` DISCOVERS the façades by scanning `src/` for
+   `../public/js/*` imports rather than listing them, so a new façade is
+   covered the day it lands. 17 pairs pinned. What it caught is in the note
+   below.
 5. **Shared test helpers** — `d1.js`, `fetch.js`, `env.js` — and migrate the
    twelve fakes onto them (C1, C2). *Days: 1–2, and it unblocks 6 and 7.*
 6. **A `runPipeline` harness** on the DRC-research pattern: mock provider,
@@ -330,5 +345,28 @@ Ordered by (signal gained) ÷ (effort), not by section.
     (A6). Largest payoff of the lot; also the largest build.
     *Days: 3–5.*
 
-Items 1–4 and 8 are a single afternoon between them and would move the
-automation posture further than anything else on the list.
+Item 8 is still an hour's work and worth doing next; it would replace this
+document's import-graph inference with a measured number.
+
+### What items 1–4 turned up (2026-07-25)
+
+Three defects surfaced the moment the checks were switched on, which is the
+argument for the rest of the list:
+
+- **A hand-mirrored `deepLink`.** `src/testpoints.js` carried its own copy of
+  `public/js/testpoints-core.js`'s `deepLink` — byte-equivalent apart from
+  inlining `TRY_PARAM` as the literal `"try"`. Exactly the drift the mirror
+  discipline exists to prevent, invisible until the façade guard compared the
+  function objects. Collapsed onto the core.
+- **A duplicate key in the PDF transliteration map.** `public/js/report.js`
+  listed `"→"` twice in `PDF_TRANSLIT` (both times as `"->"`, so no behaviour
+  change). `@ts-check` reports it as TS1117; nothing else would have.
+- **A projection narrower than its data.** `drc-page-core.js`'s
+  `serverTokenService` promised `remaining?: number|null` while the wire — and
+  `serverTokenLive`, which coerces with `Number()` — allows a string. The
+  types now say what the data actually is.
+
+One legitimate divergence was found and recorded rather than "fixed":
+`websearch-backends.js`'s `runBackendSearch` takes an `env` the core doesn't,
+and delegates. It sits in the guard's `DELIBERATE_OVERRIDES` map, so a *new*
+divergence still fails.

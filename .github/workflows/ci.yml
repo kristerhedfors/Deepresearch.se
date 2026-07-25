@@ -1,0 +1,57 @@
+# Unit tests + type-check on every push and pull request.
+#
+# Closes gap A1 in docs/TESTING-GAP-ANALYSIS.md: before this existed nothing
+# ran the suite but a human (or an agent following the **pr** skill), on a
+# repo that auto-deploys from `main`. The suite is ~20 s and needs no
+# credentials, no D1, and no network — everything that touches a live
+# provider stays in the e2e/eval harnesses, which are deliberately NOT run
+# here (they spend tokens and need break-glass auth; see docs/TESTING.md).
+#
+# `npm ci` also fixes gap A3: the type-check needs the root devDependencies
+# (@cloudflare/workers-types, typescript), and a fresh clone has none, so
+# `npm run typecheck` used to die with a confusing TS2688.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+# A new push to the same branch supersedes an in-flight run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: unit tests + typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 22 matches the container this repo is developed in. The Worker
+      # itself runs on workerd, not Node — this pins only the test runner.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dev dependencies
+        run: npm ci
+
+      # node:test, no framework. Includes the committed-artifact freshness
+      # checks — a failure here usually means `npm run bundle`,
+      # `bundle:rag`, `bundle:docs` or `bundle:docs-rag` needs re-running and
+      # committing, never that the artifact should be hand-edited.
+      - name: Unit tests
+        run: npm test
+
+      # Zero-build-step tsc over both projects (src/ with Workers types,
+      # public/ with DOM lib), strict, opt-in per file via // @ts-check.
+      - name: Type-check
+        run: npm run typecheck

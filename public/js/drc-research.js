@@ -1,3 +1,4 @@
+// @ts-check
 // Free mode's deep-research pipeline, ported to run ENTIRELY in the
 // browser: every phase is a direct cross-origin call from the user's
 // browser to the user's own provider (drc-providers.js — OpenAI, Groq or Berget),
@@ -148,12 +149,15 @@ export const drcHarvestPrompt = () =>
   ANTI_INJECTION +
   JSON_ONLY;
 
+/** @param {string[]} subquestions @param {{maxFollowups?: number}} [opts] */
 export const drcGapPrompt = (subquestions, { maxFollowups = MAX_GAP_FOLLOWUPS } = {}) =>
   "You audit research coverage for DeepResearch.Se/cure — Deepresearch.se's client-side mode.\n" +
   "Given the sub-questions and the notes harvested so far, respond ONLY with JSON:\n" +
   '- {"complete":true} if the notes cover every sub-question well enough for a grounded answer.\n' +
   `- {"complete":false,"missing":["..."]} otherwise, with 1-${maxFollowups} NEW sub-questions targeting the most important gaps.\n` +
-  `Audit against EACH sub-question — one with no supporting notes is a gap even if the others are covered:\n${subquestions.map((s, i) => `${i + 1}. ${s}`).join("\n")}` +
+  `Audit against EACH sub-question — one with no supporting notes is a gap even if the others are covered:\n${subquestions
+    .map((s, i) => `${i + 1}. ${s}`)
+    .join("\n")}` +
   ANTI_INJECTION +
   JSON_ONLY;
 
@@ -165,6 +169,7 @@ export const drcGapPrompt = (subquestions, { maxFollowups = MAX_GAP_FOLLOWUPS } 
 // no invented citations, uncertainty hedges) stays identical across tiers.
 // Each tier keeps the address-EVERY-sub-question rule, which validation
 // audits (its check 4).
+/** @type {Record<string, string>} */
 const DRC_TIER_STRUCTURE = {
   brief:
     "Format in Markdown — REPORT DEPTH — BRIEF: the user chose the quickest research depth, so deliver a compact brief. Start with a 1-2 sentence direct answer in bold, then 3-6 tight bullet points with the key facts from the notes — no headings, roughly 250 words at most. Address every sub-question in those bullets; where the notes leave one unanswered, say so explicitly rather than skipping it.\n",
@@ -199,6 +204,7 @@ export const drcValidatePrompt = () =>
 // 2026-07-18). "standard" (the default 60 s budget) is the empty string, so
 // drcDirectPrompt()/drcDirectPromptWeb() stay byte-identical to the pre-ladder
 // prompts the offline tests pin.
+/** @type {Record<string, string>} */
 const DRC_DIRECT_DEPTH = {
   brief: " Keep it short: a direct answer in a few sentences, no headings.",
   standard: "",
@@ -237,6 +243,7 @@ export const drcWebHarvestPrompt = () =>
 // The web-grounded variants of the tier structure blocks (the CITE rule that
 // follows in drcSynthPromptWeb stays identical across tiers). "standard" is
 // byte-identical to the pre-tier structure line.
+/** @type {Record<string, string>} */
 const DRC_TIER_STRUCTURE_WEB = {
   brief:
     "Format in Markdown — REPORT DEPTH — BRIEF: the user chose the quickest research depth, so deliver a compact brief. Start with a 1-2 sentence direct answer in bold, then 3-6 tight bullet points with the key cited facts — no headings, roughly 250 words at most before the source list — addressing every sub-question.\n",
@@ -276,6 +283,7 @@ export const drcDirectPromptWeb = ({ reportTier = "standard" } = {}) =>
 // the client-side counterpart of src/prompts.js bashAgentPrompt). Mirrors the
 // fenced-block convention: propose the next commands in a ```bash block, or
 // SHELL_DONE when finished. NO function calling.
+/** @param {{sourceMounted?: boolean}} [opts] */
 export const drcBashAgentPrompt = (opts = {}) =>
   `You drive a Linux command-line sandbox for DeepResearch.Se/cure, Deepresearch.se's client-side mode. Today's date: ${today()}.\n` +
   "A minimal Debian Linux runs entirely in the user's browser (a WASM x86 emulator). You are root; common tools are available (coreutils, grep/sed/awk, bash, python3, bc). There is NO network — treat the sandbox as OFFLINE and compute from local tools only.\n" +
@@ -314,6 +322,8 @@ export const drcSourceToolPrompt = ({ bash = false } = {}) =>
  * Lenient triage hardening: returns a usable {action, subquestions[],
  * complexity} or null (callers degrade to a direct answer).
  * `maxSubquestions` is the depth tier's cap (default: the standard cap).
+ * @param {any} value
+ * @param {number} [maxSubquestions]
  */
 export function normalizeDrcTriage(value, maxSubquestions = MAX_SUBQUESTIONS) {
   if (!value || typeof value !== "object") return null;
@@ -323,8 +333,8 @@ export function normalizeDrcTriage(value, maxSubquestions = MAX_SUBQUESTIONS) {
   }
   if (value.action === "research") {
     const subquestions = (Array.isArray(value.subquestions) ? value.subquestions : [])
-      .filter((s) => typeof s === "string" && s.trim())
-      .map((s) => s.trim())
+      .filter((/** @type {any} */ s) => typeof s === "string" && s.trim())
+      .map((/** @type {string} */ s) => s.trim())
       .slice(0, maxSubquestions);
     if (!subquestions.length) return { action: "direct", subquestions: [] };
     return {
@@ -337,25 +347,34 @@ export function normalizeDrcTriage(value, maxSubquestions = MAX_SUBQUESTIONS) {
 }
 
 /** Hardens one harvest result into {facts[], uncertain[]} (never null). */
+/** @param {any} value */
 export function normalizeDrcNotes(value) {
-  const strings = (v) =>
-    (Array.isArray(v) ? v : []).filter((s) => typeof s === "string" && s.trim()).map((s) => s.trim());
+  const strings = (/** @type {any} */ v) =>
+    (Array.isArray(v) ? v : [])
+      .filter((/** @type {any} */ s) => typeof s === "string" && s.trim())
+      .map((/** @type {string} */ s) => s.trim());
   return { facts: strings(value?.facts).slice(0, 12), uncertain: strings(value?.uncertain).slice(0, 8) };
 }
 
 // The compact text block synthesis/validation read the notes from.
+/** @param {any[]} harvest */
 export function renderDrcNotes(harvest) {
   return harvest
     .map(
-      (h, i) =>
+      (/** @type {any} */ h, /** @type {number} */ i) =>
         `Sub-question ${i + 1}: ${h.subquestion}\n` +
-        (h.notes.facts.length ? h.notes.facts.map((f) => `- fact: ${f}`).join("\n") : "- (no confident facts harvested)") +
-        (h.notes.uncertain.length ? "\n" + h.notes.uncertain.map((u) => `- uncertain: ${u}`).join("\n") : ""),
+        (h.notes.facts.length
+          ? h.notes.facts.map((/** @type {string} */ f) => `- fact: ${f}`).join("\n")
+          : "- (no confident facts harvested)") +
+        (h.notes.uncertain.length
+          ? "\n" + h.notes.uncertain.map((/** @type {string} */ u) => `- uncertain: ${u}`).join("\n")
+          : ""),
     )
     .join("\n\n");
 }
 
 // Conversation context for the planning phases — the last turns, bounded.
+/** @param {any[]} messages */
 export function drcContext(messages) {
   let out = "";
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -373,12 +392,15 @@ export function drcContext(messages) {
 // `idleMs` is per-provider: the 90 s default fits hosted APIs, while the
 // on-device engine declares streamIdleMs — phone-speed prompt processing can
 // sit far longer than 90 s before the first token (plan §8).
+/** @param {Response} response @param {(d: string) => void} onDelta @param {number} [idleMs] */
 async function readStream(response, onDelta, idleMs = STREAM_IDLE_MS) {
+  if (!response.body) throw new Error("The model returned no stream.");
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   const parser = createSseParser();
   let text = "";
   while (true) {
+    /** @type {any} */
     let timer;
     const { done, value } = await Promise.race([
       reader.read(),
@@ -388,7 +410,7 @@ async function readStream(response, onDelta, idleMs = STREAM_IDLE_MS) {
     ]).finally(() => clearTimeout(timer));
     if (done) break;
     for (const evt of parser.push(decoder.decode(value, { stream: true }))) {
-      const chunk = evt?.choices?.[0]?.delta?.content;
+      const chunk = /** @type {any} */ (evt)?.choices?.[0]?.delta?.content;
       if (typeof chunk === "string" && chunk) {
         text += chunk;
         onDelta(chunk);
@@ -400,6 +422,7 @@ async function readStream(response, onDelta, idleMs = STREAM_IDLE_MS) {
 
 // Re-emit already-complete text through the delta path (the server's
 // emitChunked convention) — used for clarify questions and revised answers.
+/** @param {string} text @param {(d: string) => void} onDelta */
 function emitChunked(text, onDelta) {
   for (let i = 0; i < text.length; i += 80) onDelta(text.slice(i, i + 80));
 }
@@ -418,6 +441,7 @@ function emitChunked(text, onDelta) {
 // message the model judges not to need a shell pays one cheap model call and
 // never boots the VM. `sandbox` is injectable for tests; defaults to the real
 // public/js/sandbox.js bridge.
+/** @param {any} opts */
 async function runDrcShellPass({ provider, apiKey, jsonModel, question, context, signal, baseUrl, onStatus, sandbox, fileProvider, budgetS }) {
   const sb = sandbox || { supported: sandboxSupported, boot: ensureSandboxBooted, exec: execInSandbox };
   if (!sb.supported()) return [];
@@ -450,7 +474,9 @@ async function runDrcShellPass({ provider, apiKey, jsonModel, question, context,
       // The optional provider mounts files into the VM at boot (introspection
       // mounts the source snapshot at /src — see public/cure/drc.js). The boot
       // is slow, so its rotating quips ride the sandbox phase line as `label`.
-      return sb.boot(fileProvider || null, (msg) => onStatus({ type: "phase", phase: "sandbox", label: msg }));
+      return sb.boot(fileProvider || null, (/** @type {string} */ msg) =>
+        onStatus({ type: "phase", phase: "sandbox", label: msg }),
+      );
     },
     onStep: ({ commands }) => onStatus({ type: "phase", phase: "sandbox", detail: commands.length }),
     // Surface the actual command as it starts (not just a counter), so the
@@ -490,6 +516,7 @@ const RUN_BASH_TOOL = {
  * bash knob is on, then writes the answer. Non-streaming tool rounds; the final
  * answer is emitted chunked. Throws on a hard provider failure so runDrcResearch
  * falls back to the normal flow. Node-tested against a mock provider.
+ * @param {any} opts
  */
 export async function runDrcSourceTools({
   provider,
@@ -512,8 +539,9 @@ export async function runDrcSourceTools({
   const bashOn = bash === true && !!sb.supported();
   const tools = bashOn ? [...INTROSPECTION_TOOLS, RUN_BASH_TOOL] : [...INTROSPECTION_TOOLS];
 
+  /** @type {any} */
   let sbReady = null; // lazy boot on first run_bash
-  const execTool = async (name, input) => {
+  const execTool = async (/** @type {string} */ name, /** @type {any} */ input) => {
     if (name === "run_bash") {
       if (!bashOn) return "run_bash is unavailable here; use grep_source/read_file instead.";
       const cmd = String(input?.command || "").slice(0, 2000);
@@ -521,14 +549,16 @@ export async function runDrcSourceTools({
       if (sbReady === null) {
         onStatus({ type: "phase", phase: "sandbox" });
         // Rotating boot quips ride the sandbox phase line while Linux comes up.
-        sbReady = await sb.boot(fileProvider, (msg) => onStatus({ type: "phase", phase: "sandbox", label: msg }));
+        sbReady = await sb.boot(fileProvider, (/** @type {string} */ msg) =>
+          onStatus({ type: "phase", phase: "sandbox", label: msg }),
+        );
       }
       if (!sbReady) return "Sandbox unavailable; use grep_source/read_file instead.";
       let r;
       try {
         r = await sb.exec(cmd);
       } catch (err) {
-        r = { exitCode: 1, stdout: "", stderr: String(err?.message || err) };
+        r = { exitCode: 1, stdout: "", stderr: String(/** @type {any} */ (err)?.message || err) };
       }
       return formatShellResult(normalizeExecResult(cmd, r));
     }
@@ -587,6 +617,7 @@ export async function runDrcSourceTools({
  * Se/rver finishSearchStep counterpart), and
  * onStatus({type:"discard_text"}) + onDelta(chunk) events; resolves to
  * {answer, action, subquestions, validated}.
+ * @param {any} opts
  */
 export async function runDrcResearch({
   providerId,
@@ -630,7 +661,8 @@ export async function runDrcResearch({
   // phase only starts while its share of the budget remains.
   const plan = drcPlanForBudget(budgetS);
   const startedAt = Date.now();
-  const withinBudget = (fraction) => phaseWithinBudget(startedAt, plan.budgetMs, fraction, Date.now());
+  const withinBudget = (/** @type {number} */ fraction) =>
+    phaseWithinBudget(startedAt, plan.budgetMs, fraction, Date.now());
   const question = messages[messages.length - 1]?.content || "";
   const recall = typeof retrieved === "string" ? retrieved.trim() : "";
   const intro = typeof introspection === "string" ? introspection.trim() : "";
@@ -643,19 +675,21 @@ export async function runDrcResearch({
   // quota, or any error resolves to null, and the caller falls back to the
   // offline path — so the flow degrades exactly to a run without the feature.
   const webOn = typeof webSearch === "function";
+  /** @type {Array<{n: number, title: string, url: string}>} */
   const webSources = []; // { n, title, url }
   let sourceSeq = 0;
-  const numberedResults = (items) =>
+  const numberedResults = (/** @type {any[]} */ items) =>
     items
-      .map((it) => {
+      .map((/** @type {any} */ it) => {
         sourceSeq++;
         webSources.push({ n: sourceSeq, title: it.title || it.url, url: it.url });
         const hi = Array.isArray(it.highlights) ? it.highlights.join(" … ") : "";
         return `[${sourceSeq}] ${it.title || it.url}\n${it.url}${hi ? "\n" + hi : ""}`;
       })
       .join("\n\n");
-  const sourcesList = () => webSources.map((s) => `[${s.n}] ${s.title} — ${s.url}`).join("\n");
-  const webLookup = async (query) => {
+  const sourcesList = () =>
+    webSources.map((/** @type {any} */ s) => `[${s.n}] ${s.title} — ${s.url}`).join("\n");
+  const webLookup = async (/** @type {string} */ query) => {
     if (!webOn) return null;
     try {
       const r = await webSearch(query);
@@ -666,7 +700,7 @@ export async function runDrcResearch({
         onStatus({
           type: "sources",
           query,
-          items: r.items.map((it) => ({ title: it.title || it.url, url: it.url })),
+          items: r.items.map((/** @type {any} */ it) => ({ title: it.title || it.url, url: it.url })),
         });
         return numberedResults(r.items);
       }
@@ -739,7 +773,11 @@ export async function runDrcResearch({
   // and the sandbox transcript — whichever of them exist.
   const directExtra = [recall, intro, shellExtra].filter(Boolean).join("\n\n") || null;
 
-  const streamAnswer = async (system, extraUser = null, maxTokens = undefined) => {
+  const streamAnswer = async (
+    /** @type {string} */ system,
+    /** @type {string|null} */ extraUser = null,
+    /** @type {number|undefined} */ maxTokens = undefined,
+  ) => {
     const convo = [{ role: "system", content: system }, ...messages];
     if (extraUser) convo.push({ role: "user", content: extraUser });
     const res = await drcChatStream(provider, apiKey, model, convo, { signal, baseUrl, maxTokens });
@@ -764,7 +802,7 @@ export async function runDrcResearch({
   // ONLY for the knob-off path (the web-search knob gates web search, not the
   // slider; owner directive 2026-07-18). A triage-DIRECT classification (small
   // talk / trivial) leaves it off so "thanks" never expands into a report.
-  const directReply = async (allowWeb, tiered = false) => {
+  const directReply = async (/** @type {boolean} */ allowWeb, /** @type {boolean} */ tiered = false) => {
     let webBlock = null;
     if (webOn && allowWeb) {
       onStatus({ type: "phase", phase: "search" });
@@ -837,7 +875,7 @@ export async function runDrcResearch({
   // through the server and its results become the source pool the model
   // extracts CITED facts from; otherwise the offline knowledge harvest runs
   // (the model's own knowledge). Fail-soft per angle either way.
-  const harvestOne = async (subquestion) => {
+  const harvestOne = async (/** @type {string} */ subquestion) => {
     if (webOn) {
       const resultsBlock = await webLookup(subquestion);
       if (resultsBlock) {
@@ -882,7 +920,7 @@ export async function runDrcResearch({
   // The harvest fan-out: parallel for hosted providers, SEQUENTIAL when the
   // provider declares serialize (the on-device engine — one GPU serves every
   // call, so concurrent decodes only steal each other's throughput; plan §8).
-  const harvestAll = async (subquestions) => {
+  const harvestAll = async (/** @type {string[]} */ subquestions) => {
     if (!provider.serialize) return Promise.all(subquestions.map(harvestOne));
     const out = [];
     for (const s of subquestions) out.push(await harvestOne(s));
@@ -891,8 +929,8 @@ export async function runDrcResearch({
   // One harvest wave's outcome, on the still-running search/harvest step:
   // the completed label with wave totals, plus a per-angle count line — the
   // step's expandable detail next to any linked source groups (web mode).
-  const harvestDetail = (wave, sourcesBefore) => {
-    const facts = wave.reduce((n, h) => n + h.notes.facts.length, 0);
+  const harvestDetail = (/** @type {any[]} */ wave, /** @type {number} */ sourcesBefore) => {
+    const facts = wave.reduce((/** @type {number} */ n, /** @type {any} */ h) => n + h.notes.facts.length, 0);
     const uncertain = wave.reduce((n, h) => n + h.notes.uncertain.length, 0);
     const gained = webSources.length - sourcesBefore;
     onStatus({
@@ -934,7 +972,7 @@ export async function runDrcResearch({
         { signal, baseUrl },
       );
       const missing = (Array.isArray(gap?.missing) && gap.complete === false ? gap.missing : [])
-        .filter((s) => typeof s === "string" && s.trim())
+        .filter((/** @type {any} */ s) => typeof s === "string" && s.trim())
         .slice(0, plan.maxGapFollowups);
       if (!missing.length) {
         // coverage is complete — no more rounds needed
@@ -1008,7 +1046,7 @@ export async function runDrcResearch({
       validated = verdict?.verdict === "pass";
       if (verdict?.verdict === "revise" && typeof verdict.revised_answer === "string" && verdict.revised_answer.trim()) {
         const issues = (Array.isArray(verdict.issues) ? verdict.issues : [])
-          .filter((s) => typeof s === "string" && s.trim())
+          .filter((/** @type {any} */ s) => typeof s === "string" && s.trim())
           .slice(0, 10);
         onStatus({ type: "discard_text" });
         answer = verdict.revised_answer.trim();

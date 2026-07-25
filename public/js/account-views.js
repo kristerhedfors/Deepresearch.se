@@ -1,3 +1,4 @@
+// @ts-check
 // The account panel's core views + shared building blocks (the panel SHELL —
 // initAccountPanel, PanelCtx, showView — lives in account.js):
 // - "summary" (default): the rolling 5-hour window (the one that actually
@@ -36,6 +37,10 @@ import { isolateForSandbox, storeSandboxMode } from "./sandbox-mode.js";
 // is shown disabled (forced off) when the account can't use it —
 // break-glass identity, or a server missing the feature's backing — rather
 // than hidden, so the state stays explainable.
+/**
+ * @param {{id: string, label: string, checked?: boolean, disabled?: boolean,
+ *   popId?: string, info?: string}} row
+ */
 export function settingRow({ id, label, checked, disabled, popId, info }) {
   // The label may carry markup (the sandbox row's Experimental badge), which
   // is fine inside the visible span but must NOT be interpolated into the
@@ -63,10 +68,17 @@ export function settingRow({ id, label, checked, disabled, popId, info }) {
 // row types line up in the panel. `options` is [{value,label}]; `value` is the
 // selected one. Disabled rows render greyed and un-interactive (break-glass or
 // a missing capability), matching settingRow's disabled treatment.
+/**
+ * @param {{id: string, label: string, options: Array<{value: string, label: string}>,
+ *   value?: string, disabled?: boolean, popId?: string, info?: string}} row
+ */
 export function settingSelectRow({ id, label, options, value, disabled, popId, info }) {
   const plainLabel = escapeHtml(String(label).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim());
   const opts = options
-    .map((o) => `<option value="${escapeHtml(o.value)}"${o.value === value ? " selected" : ""}>${escapeHtml(o.label)}</option>`)
+    .map(
+      (o) =>
+        `<option value="${escapeHtml(o.value)}"${o.value === value ? " selected" : ""}>${escapeHtml(o.label)}</option>`,
+    )
     .join("");
   return `
     <div class="settings-item">
@@ -128,6 +140,7 @@ const MODE_INFO = `<strong>Chat mode</strong><br>
  * @param {object} me  cached /api/me payload
  * @returns {string} HTML
  */
+/** @param {any} me */
 export function renderConfigKnobs(me) {
   // Break-glass admin (no email): can't persist per-account settings — the
   // /api/settings PUT needs a D1 user row — but the two BROWSER-ONLY features
@@ -204,10 +217,13 @@ export function renderNotifBadge(ctx) {
 // Press-and-hold (or click the ⓘ) on a settings row opens its detail
 // popover — the same gesture the composer's web-search knob uses. Only one
 // popover is open at a time; a click anywhere outside closes it.
+/** @param {HTMLElement} root */
 export function wireSettingPopovers(root) {
-  const closeAll = () => root.querySelectorAll(".setting-pop").forEach((p) => (p.hidden = true));
-  root.querySelectorAll(".setting-info").forEach((btn) => {
-    const pop = root.querySelector(`#${btn.dataset.pop}`);
+  const closeAll = () =>
+    root.querySelectorAll(".setting-pop").forEach((p) => (/** @type {HTMLElement} */ (p).hidden = true));
+  root.querySelectorAll(".setting-info").forEach((el) => {
+    const btn = /** @type {HTMLElement} */ (el);
+    const pop = /** @type {HTMLElement|null} */ (root.querySelector(`#${btn.dataset.pop}`));
     if (!pop) return;
     let holdTimer = 0;
     const open = () => {
@@ -215,7 +231,7 @@ export function wireSettingPopovers(root) {
       closeAll();
       pop.hidden = !wasHidden;
     };
-    btn.addEventListener("click", (e) => {
+    btn.addEventListener("click", (/** @type {Event} */ e) => {
       e.stopPropagation();
       open();
     });
@@ -232,11 +248,12 @@ export function wireSettingPopovers(root) {
   // The info-button handlers above are on freshly rendered elements each
   // time, but the outside-click closer lives on the persistent
   // #account-body — bind it once so re-opening Settings doesn't stack it.
-  if (!root._popCloserBound) {
-    root._popCloserBound = true;
-    root.addEventListener("click", (e) => {
-      if (!e.target.closest(".setting-pop") && !e.target.closest(".setting-info")) {
-        root.querySelectorAll(".setting-pop").forEach((p) => (p.hidden = true));
+  if (!(/** @type {any} */ (root)._popCloserBound)) {
+    /** @type {any} */ (root)._popCloserBound = true;
+    root.addEventListener("click", (/** @type {Event} */ e) => {
+      const t = /** @type {HTMLElement} */ (e.target);
+      if (!t.closest(".setting-pop") && !t.closest(".setting-info")) {
+        root.querySelectorAll(".setting-pop").forEach((p) => (/** @type {HTMLElement} */ (p).hidden = true));
       }
     });
   }
@@ -251,13 +268,14 @@ export function wireSettingPopovers(root) {
 // request). A game whose backing is missing on this server is shown
 // disabled with the reason — the same explain-don't-hide posture as the
 // settings rows.
+/** @param {PanelCtx} ctx */
 export async function loadGamesView(ctx) {
-  const shell = (inner) => `
+  const shell = (/** @type {string} */ inner) => `
     <button id="gamesbackbtn" type="button" class="back-link">← Back</button>
     <p class="section-lbl">Games</p>
     ${inner}`;
   const wireBack = () =>
-    document.getElementById("gamesbackbtn").addEventListener("click", () => ctx.show("summary"));
+    document.getElementById("gamesbackbtn")?.addEventListener("click", () => ctx.show("summary"));
   ctx.body.innerHTML = shell('<p class="muted">Loading…</p>');
   wireBack();
   let games = null;
@@ -272,7 +290,7 @@ export async function loadGamesView(ctx) {
   }
   const rows = games.length
     ? games
-        .map((g) =>
+        .map((/** @type {any} */ g) =>
           g.available
             ? `<div class="account-actions">
                  <a href="${escapeHtml(g.path)}" target="_blank" rel="noopener">${escapeHtml(g.emoji)} ${escapeHtml(g.name)} — ${escapeHtml(g.tagline)}</a>
@@ -291,15 +309,22 @@ export async function loadGamesView(ctx) {
 // (bash_lite_mcp). Enabling changes how the PAGE must be served (cross-origin
 // isolation for the in-browser Linux VM), which only takes effect on the next
 // load — so on enable we save then reload; disabling just saves.
+/** @param {PanelCtx} ctx */
 export function wireSandboxKnob(ctx) {
-  const knob = document.getElementById("sbknob");
+  const knob = /** @type {HTMLInputElement|null} */ (document.getElementById("sbknob"));
   if (!knob || knob.disabled) return;
   const status = document.getElementById("sbstatus");
+  // The status line is optional: a missing #sbstatus must not disable the
+  // knob itself (wireModeKnob treats its own status the same way).
+  const say = (/** @type {string} */ text) => {
+    if (!status) return;
+    status.hidden = false;
+    status.textContent = text;
+  };
   knob.addEventListener("change", async () => {
     const on = knob.checked;
     knob.disabled = true;
-    status.hidden = false;
-    status.textContent = "Saving…";
+    say("Saving…");
     try {
       await setBashLiteMcp(on);
       // Seed the local cache so the NEXT load's synchronous boot self-heal
@@ -307,19 +332,19 @@ export function wireSandboxKnob(ctx) {
       // /api/settings.
       storeSandboxMode(on);
       if (on) {
-        status.textContent = "Sandbox enabled — reloading so it can start…";
+        say("Sandbox enabled — reloading so it can start…");
         // NOT location.reload() (re-serves the device-cached non-isolated
         // shell on iOS): navigate to a fresh ?_coep= URL so the now-COEP /rver
         // is really fetched and the page comes back isolated. Guarded + deduped
         // in isolateForSandbox; falls back to a plain reload if it can't.
         setTimeout(() => { if (!isolateForSandbox(true, { resetGuard: true })) location.reload(); }, 800);
       } else {
-        status.textContent = "Sandbox disabled.";
+        say("Sandbox disabled.");
         knob.disabled = false;
       }
     } catch (err) {
       knob.checked = !on;
-      status.textContent = err?.message || "Could not update the setting.";
+      say(/** @type {any} */ (err)?.message || "Could not update the setting.");
       knob.disabled = false;
     }
   });
@@ -339,6 +364,7 @@ export function wireModeKnob(ctx) {
   const sel = /** @type {HTMLSelectElement | null} */ (document.getElementById("modesetting"));
   if (!sel || sel.disabled) return;
   const status = document.getElementById("modestatus");
+  /** @type {Record<string, string>} */
   const STATUS = {
     normal: "Deep Research — ordinary web research.",
     introspection: "Introspection — the composer pane turns white titanium, and asking about this site's own source answers from the deployed source.",
@@ -386,6 +412,7 @@ export function wireModeKnob(ctx) {
  * @param {object} me  cached /api/me payload
  * @returns {string} HTML
  */
+/** @param {any} me */
 export function renderSummary(me) {
   const who = me.email
     ? `${me.name && me.name !== me.email ? me.name + " · " : ""}${me.email}`
@@ -425,6 +452,7 @@ export function renderSummary(me) {
 
 // Drill-down: the three windows that don't gate your next message (today /
 // this week / this month), for when you actually want the full picture.
+/** @param {any} me */
 export function renderFullUsage(me) {
   const periods = [
     ["Today", "day"],
@@ -474,6 +502,7 @@ export function renderDocs() {
 // time in their head. Mirrors src/quota.js formatResetRelative (that runs
 // server-side for the 429; this one runs in the browser off win.reset), sans
 // the "in about" prefix the label already supplies. Computed at render time.
+/** @param {number} ts */
 function relReset(ts) {
   const ms = ts - Date.now();
   if (ms <= 60_000) return "under a minute";
@@ -490,8 +519,9 @@ function relReset(ts) {
 // Users see: an OPAQUE research-budget bar (cost-backed server-side, but
 // only a percentage ever reaches the client — never amounts) and plain
 // search counts. Currency is the admin's concern.
+/** @param {string} label @param {any} win @param {boolean} [rolling] */
 function usageBlock(label, win, rolling) {
-  const track = (pct) =>
+  const track = (/** @type {number} */ pct) =>
     `<div class="usage-track"><div class="usage-fill${pct >= 90 ? " hot" : ""}" style="width:${Math.min(100, pct)}%"></div></div>`;
   const budgetPct = win.budget_pct;
   const budgetBar =

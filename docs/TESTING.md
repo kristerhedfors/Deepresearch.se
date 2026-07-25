@@ -91,6 +91,18 @@ client-view projections — IVs and the foe roster never leak — plus
 incl. the Swedish-parity suite, geodesy round-trips, spawn projection
 geometry).
 
+Two REPO-WIDE guards sit alongside the per-module suites, scanning the tree
+rather than importing one unit (the `sql-injection-guard.js` pattern):
+`artifacts.test.js` (the committed-artifact SET: every `public/introspect/`
+artifact present, git-tracked, over a size floor, and parsing — the existence
+half the self-skipping freshness checks can't cover, plus the doc images the
+corpus references) and `facade-contract.test.js` (the façade-IS-the-core
+contract across all of `src/`: it DISCOVERS façades by scanning for
+`../public/js/*` imports, so a new one is covered the day it lands, and asserts
+every shared export is the same function object — deliberate server-signature
+divergences are recorded in its `DELIBERATE_OVERRIDES` map, so a NEW divergence
+still fails).
+
 Additional server suites cover the request/routing and infra seams:
 `mcp.js` (the PURE JSON-RPC / MCP protocol helpers, asserted to load
 WITHOUT pulling in the pipeline), `model-routing.js` (the shared
@@ -323,7 +335,8 @@ These run in Node unmodified since `File`, `Blob`,
 — no DOM needed for this subset of client code.
 
 ```bash
-npm test            # from the repo root: node --test src/*.test.js public/js/*.test.js sdk/*.test.mjs
+npm test            # from the repo root: node --test src/*.test.js public/js/*.test.js
+                    # sdk/*.test.mjs scripts/*.test.mjs tests/*.test.js
 npm run typecheck   # zero-build-step tsc: src/ (tsconfig.json, Workers types)
                     # + public/ (tsconfig.public.json, DOM lib) — strict,
                     # opt-in per file via // @ts-check; both must stay clean
@@ -338,6 +351,19 @@ exists solely to run this suite and the type-checker — no build step,
 dev-only dependencies (`typescript`, `@cloudflare/workers-types`);
 deploy still reads `src/` and `public/` as plain JS/static assets via
 `npx wrangler deploy`.
+
+## CI (`.github/workflows/ci.yml`)
+
+`npm ci && npm test && npm run typecheck` on every push, every pull request,
+and on demand (`workflow_dispatch`), Node 22, per-branch concurrency so a new
+push supersedes an in-flight run. The whole unit surface needs no credentials,
+no D1, and no network, which is why it runs here; the e2e and eval harnesses
+deliberately do NOT (they spend tokens and need the break-glass creds).
+
+The `npm ci` step matters beyond CI: the root devDependencies
+(`typescript`, `@cloudflare/workers-types`) are never installed automatically,
+so `npm run typecheck` in a fresh clone fails with a confusing `TS2688` until
+someone runs an install.
 
 ## End-to-end tests (`tests/`)
 
