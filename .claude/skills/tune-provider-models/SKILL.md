@@ -83,12 +83,12 @@ Respect **don't deploy/push mid-battery** (model-eval skill).
 ```bash
 cd tests && npm install               # once
 # 1. Targeted qualitative battery — new models only:
-EVAL_MODELS=claude-opus-4-8,claude-sonnet-5,claude-haiku-4-5 npm run eval:models
+EVAL_MODELS=claude-opus-5,claude-sonnet-5,claude-haiku-4-5 npm run eval:models
 # 2. Read the traces; fix anything broken BEFORE scoring (a scored run
 #    of a broken integration wastes budget and pollutes the ledger).
 # 3. Scored benches, same targeting:
-EVAL_MODELS=claude-opus-4-8,claude-sonnet-5,claude-haiku-4-5 npm run eval:bench
-EVAL_MODELS=claude-opus-4-8,claude-sonnet-5,claude-haiku-4-5 npm run eval:hf
+EVAL_MODELS=claude-opus-5,claude-sonnet-5,claude-haiku-4-5 npm run eval:bench
+EVAL_MODELS=claude-opus-5,claude-sonnet-5,claude-haiku-4-5 npm run eval:hf
 # 4. Append findings to the three ledgers (append-only, fixed
 #    seed/judge/budget across any before/after comparison).
 # 5. Only NOW add model-profiles.js overrides for reproduced findings,
@@ -112,6 +112,30 @@ Applied without needing evidence (wire-level, by API contract):
 
 First battery ran 2026-07-09 (round 10, all clean —
 `tests/MODEL-EVAL-FINDINGS.md`); no profile overrides needed.
+
+## Status of the Opus 5 rollout (2026-07-25)
+
+Anthropic released Opus 5; the catalog row bumped in place
+(`claude-opus-4-8` -> `claude-opus-5`, `src/anthropic.js`) rather than
+adding a fourth entry — this project offers one model per tier
+(opus/sonnet/haiku), so a flagship release replaces the prior version.
+Applied without evidence, carried over from the outgoing Opus 4.8 entry:
+- Pricing: UNCHANGED ($5 in / $25 out per 1M) pending an official rate
+  announcement — no invented number.
+- Thinking: still omitted (`thinkingConfigFor` has no `claude-opus-5`
+  branch), i.e. same off-by-default treatment as Opus 4.8/Haiku 4.5. This
+  is NOT yet evidenced for Opus 5 specifically — Anthropic's docs should
+  be checked before the first battery to confirm Opus 5 doesn't run
+  adaptive-by-default thinking like Sonnet 5 does.
+- Vision on, EUR-converted pricing, `model-profiles.js` DEFAULT (no
+  overrides yet).
+
+Pending: the live-probe rung once deployed, then the first-battery run
+order above with `EVAL_MODELS=claude-opus-5,claude-sonnet-5,claude-haiku-4-5`,
+ledger entries in the three findings docs, and an evidence-driven
+thinking-config decision if the battery surfaces one. See the
+**model-catalog-refresh** skill for the recurring "check what's stale"
+process this rollout followed.
 
 ## Status of the OpenAI set (2026-07-09)
 

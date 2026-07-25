@@ -217,7 +217,7 @@ first-shot wires it like this:
   stream. Adapt at the wire per pattern A above so the shared consumer
   stays unchanged.
 - **Models**: the set the reference server client serves is the safe
-  catalog to mirror (`src/anthropic.js`: `claude-opus-4-8`,
+  catalog to mirror (`src/anthropic.js`: `claude-opus-5`,
   `claude-sonnet-5`, `claude-haiku-4-5`), with its wire pins (thinking
   explicitly disabled where the model reasons by default).
 
