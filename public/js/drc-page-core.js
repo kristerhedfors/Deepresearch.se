@@ -1,3 +1,4 @@
+// @ts-check
 // DRC page's PURE core — the import-free helpers behind the /cure wiring
 // (public/cure/drc.js). DRC ("deep research secure", C for CLIENT-side) keeps
 // the page module thin: everything derivable/cryptographic already lives in
@@ -54,13 +55,17 @@ export function grantFlagEnabled(rawValue) {
 /**
  * One permission's live meter view inside a stored Se/rver-token grant, or
  * null when the token never carried (or has been stripped of) that service.
- * @param {{services?: Array<{svc?: string}>}|null|undefined} g
+ * @param {{services?: Array<{svc?: string, quota?: number, used?: number, remaining?: number|string|null}>}|null|undefined} g
  * @param {string} svc
- * @returns {{svc: string, quota?: number, used?: number, remaining?: number|null}|null}
+ * @returns {{svc: string, quota?: number, used?: number, remaining?: number|string|null}|null}
  */
 export function serverTokenService(g, svc) {
   if (!g || !Array.isArray(g.services)) return null;
-  return g.services.find((s) => s && s.svc === svc) || null;
+  // The predicate matched on s.svc === svc, so a hit's svc IS this string —
+  // `find` just doesn't narrow the element type for the checker.
+  return /** @type {{svc: string, quota?: number, used?: number, remaining?: number|string|null}|null} */ (
+    g.services.find((s) => s && s.svc === svc) || null
+  );
 }
 
 /**
@@ -88,7 +93,7 @@ export function serverTokenLive(g, svc, now = Date.now()) {
  * one builder. Absent `remaining` = not yet spent (the grantLive
  * convention). The caller resolves the meter object and liveness.
  * @param {string} label
- * @param {{quota?: number, remaining?: number|null}} meter
+ * @param {{quota?: number, remaining?: number|string|null}} meter
  * @param {boolean} live
  * @returns {string}
  */
@@ -168,7 +173,10 @@ export function parsePublicationRef(pathname, search) {
 /** @param {*} s @returns {string} */
 export function wmHtml(s) {
   return String(s)
-    .replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c])
+    .replace(
+      /[&<>]/g,
+      (c) => /** @type {Record<string, string>} */ ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c],
+    )
     .replace(/(se)\/(cure|rver)/gi, '<span class="wm">$1<span class="sl">/</span>$2</span>');
 }
 

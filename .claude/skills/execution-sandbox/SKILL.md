@@ -381,10 +381,24 @@ The short version, for anyone choosing commands for the step prompt:
   source (`head -c`, `wc -l`, `grep -c`).
 - **Hitting the 30 s exec ceiling DESTROYS the VM.** `execInSandbox` calls
   `resetSandbox("exec_timeout")` on rc 124, so one slow command makes every
-  later command in the turn return `sandbox not ready` and loses the
-  filesystem. `command -v node` for an absent `node` did exactly this — it
-  stats every cold `PATH` dir and took the full 30 s. Wrap anything that might
-  walk a cold tree in a guest-side `timeout 20 …`.
+  later command in the turn return `sandbox not ready` and loses the image's
+  scratch state (`/workspace`, its own IndexedDB volume, normally survives).
+  `command -v node` for an absent `node` did exactly this — it stats every cold
+  `PATH` dir and took the full 30 s.
+  **This is not fixable in the guest, and the obvious fix has already been
+  tried and measured (2026-07-24):** neither `timeout` (SIGTERM or SIGKILL) nor
+  an explicit `kill -9` can stop a running process, though plain `sleep 2`
+  returns fine and coreutils 8.30 is present — signal delivery does not work in
+  CheerpX. Discarding the VM is the only response available. Do NOT add a
+  guest-side `timeout` to the envelope, and do NOT soften `resetSandbox` on
+  rc 124. Prevention lives in `bashAgentPrompt`'s cost guidance.
+- **Output is capped at the guest, opt-in.** `execEnvelope`'s `maxStdoutBytes`
+  (`GUEST_STDOUT_CAP_BYTES` = 8192) makes the guest base64 only the first N+1
+  bytes of stdout, turning a 2 MB `cat` from 1936 ms into 75 ms; the bytes past
+  `MAX_OUTPUT_CHARS` were discarded anyway. Costs one `head` spawn (~14 ms).
+  **Off by default on purpose** — `exportFile` reads WHOLE files back through
+  this envelope, so a default cap would silently truncate downloads. Only the
+  agent-loop call sites (`stream.js`, `drc-research.js` ×2) opt in.
 - **Boot dwarfs commands.** In a traced turn the commands were 290 ms of 44 s;
   the cold boot was 24.4 s (bare boot 3.6-4.4 s). Pre-warming beats
   micro-optimising commands.

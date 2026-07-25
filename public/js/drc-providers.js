@@ -1,3 +1,4 @@
+// @ts-check
 // Free mode's client-side LLM provider registry — the browser counterpart
 // of src/providers.js, for providers whose APIs allow DIRECT cross-origin
 // calls from JavaScript (CORS). That property is the admission ticket:
@@ -37,13 +38,43 @@
 // bge reranker — not picking generations). Shared by the Berget registry entry
 // AND the wire-identical secure-research-space proxy provider below, so the
 // regex has ONE definition and the two can never drift apart.
-export const bergetCatalogFilter = (id) =>
+export const bergetCatalogFilter = (/** @type {string} */ id) =>
   id.includes("/") && !/(whisper|rerank|embed|-e5-|tts|guard)/i.test(id);
 
 // Per-provider wire quirks, mirroring what the server clients learned:
 // OpenAI's GPT-5 family wants max_completion_tokens + reasoning_effort
 // (src/openai.js); Groq and Berget speak plain OpenAI chat completions
 // (Berget: the same wire src/berget.js drives server-side).
+/**
+ * One registry entry. Every field past `id`/`label` is optional because the
+ * entries differ by tier: a keyless local server has no key pattern, an
+ * on-device engine has no wire at all, and only an embeddings-capable
+ * provider carries `embed`.
+ * @typedef {object} DrcProvider
+ * @property {string} id
+ * @property {string} label
+ * @property {string} [base] the chat-completions base URL
+ * @property {boolean} [proxied] routed through one of the server's bounded exceptions
+ * @property {boolean} [whole] answers un-streamed; drcChatWhole adapts it to SSE
+ * @property {boolean} [keyless] send no Authorization header at all
+ * @property {string|null} [jsonModel] the fixed model for the JSON planning phases
+ * @property {string[]} [fallbackModels] shown until (or in place of) a live /models fetch
+ * @property {(id: string) => boolean} [modelFilter] the dropdown curation rule
+ * @property {(maxTokens: number) => Record<string, any>} [params] per-provider wire params
+ * @property {number} [jsonTimeoutMs]
+ * @property {RegExp|null} [keyPattern] null on a keyless entry
+ * @property {string} [hint]
+ * @property {{model: string, dimensions?: number, prefix?: string}} [embed]
+ * @property {any} [engine] the on-device tier's in-browser callable
+ */
+
+/**
+ * The options bag every wire call takes. `baseUrl` overrides the entry's
+ * `base` so tests can point at a mock (the BERGET_URL convention).
+ * @typedef {{signal?: AbortSignal, baseUrl?: string, maxTokens?: number}} DrcCallOpts
+ */
+
+/** @type {DrcProvider[]} */
 export const DRC_PROVIDERS = [
   {
     id: "openai",
@@ -167,6 +198,7 @@ export const DRC_PROVIDERS = [
   },
 ];
 
+/** @param {string} id */
 export function drcProvider(id) {
   return DRC_PROVIDERS.find((p) => p.id === id) || null;
 }
@@ -181,6 +213,7 @@ export function drcProvider(id) {
 // The id `proxy` never collides with a real provider, and its model ids are the
 // Berget catalog the proxy forwards.
 export const PROXY_LLM_PROVIDER_ID = "proxy";
+/** @param {string} origin @returns {DrcProvider} */
 export function proxyLlmProvider(origin) {
   return {
     id: PROXY_LLM_PROVIDER_ID,
@@ -216,6 +249,7 @@ export function proxyLlmProvider(origin) {
 // two-field respin of it. Upstream APIs only, per THE SERVER-TOKEN GUARANTEE:
 // the JWT can never read any Se/rver data, and it is never a login.
 export const SERVER_TOKEN_LLM_PROVIDER_ID = "servertoken";
+/** @param {string} origin @returns {DrcProvider} */
 export function serverTokenLlmProvider(origin) {
   return {
     ...proxyLlmProvider(origin),
@@ -269,6 +303,7 @@ export function foreignDrcKeyHint(key) {
 // DRSC/1 profile — so a pooled session runs without client-side RAG, like a
 // local-only one (fail-soft, never an error).
 export const POOL_LLM_PROVIDER_ID = "pool";
+/** @param {string} origin @returns {DrcProvider} */
 export function poolLlmProvider(origin) {
   return {
     id: POOL_LLM_PROVIDER_ID,
@@ -324,6 +359,7 @@ export function configuredDrcProviders(keys, { localBaseUrl } = {}) {
  * The provider whose key can serve embeddings (client-side RAG), or null —
  * today that means OpenAI; a future embeddings-capable CORS provider joins
  * by declaring an `embed` entry, with no caller change.
+ * @param {Record<string, unknown>|null|undefined} keys
  */
 export function drcEmbedProvider(keys) {
   return DRC_PROVIDERS.find((p) => p.embed && typeof keys?.[p.id] === "string" && keys[p.id]) || null;
@@ -332,6 +368,7 @@ export function drcEmbedProvider(keys) {
 // The wire headers for a call: keyless providers (the local entry) get NO
 // Authorization header at all — "Bearer undefined" makes some servers 401 —
 // while every keyed call keeps the exact header it always sent.
+/** @param {string|undefined} apiKey */
 function wireHeaders(apiKey) {
   return {
     "content-type": "application/json",
@@ -353,7 +390,10 @@ function wireHeaders(apiKey) {
  * `prefix: "e5"`; OpenAI needs no prefix and ignores `kind`. e5 also returns a
  * fixed 1024-dim vector, so the OpenAI-only `dimensions` reduction param is
  * omitted for prefixed models.
- * @param {"passage"|"query"} [opts.kind]
+ * @param {DrcProvider} provider
+ * @param {string} apiKey
+ * @param {string[]} texts
+ * @param {{signal?: AbortSignal, baseUrl?: string, kind?: "passage"|"query"}} [opts]
  */
 export async function drcEmbed(provider, apiKey, texts, { signal, baseUrl, kind = "passage" } = {}) {
   if (!provider?.embed) throw new Error("This provider serves no embeddings.");
@@ -378,9 +418,9 @@ export async function drcEmbed(provider, apiKey, texts, { signal, baseUrl, kind 
   const data = await res.json();
   const vectors = (Array.isArray(data?.data) ? data.data : [])
     .slice()
-    .sort((a, b) => (a?.index ?? 0) - (b?.index ?? 0))
-    .map((d) => d?.embedding)
-    .filter((v) => Array.isArray(v));
+    .sort((/** @type {any} */ a, /** @type {any} */ b) => (a?.index ?? 0) - (b?.index ?? 0))
+    .map((/** @type {any} */ d) => d?.embedding)
+    .filter((/** @type {any} */ v) => Array.isArray(v));
   if (vectors.length !== texts.length) throw new Error(provider.label + " returned a mismatched embedding count.");
   return { vectors, dims: vectors[0]?.length || 0, model: provider.embed.model };
 }
@@ -389,12 +429,19 @@ export async function drcEmbed(provider, apiKey, texts, { signal, baseUrl, kind 
 // (all three providers support response_format json_object — Berget's
 // catalog reports json_mode on every text model — so the pipeline's
 // no-function-calling rule holds here too).
+/**
+ * @param {DrcProvider} provider
+ * @param {string} model
+ * @param {any[]} messages
+ * @param {{stream?: boolean, json?: boolean, maxTokens?: number}} [opts]
+ */
 export function buildDrcPayload(provider, model, messages, { stream = false, json = false, maxTokens = 4096 } = {}) {
+  /** @type {Record<string, any>} */
   const payload = {
     model,
     messages,
     stream,
-    ...provider.params(maxTokens),
+    ...(provider.params ? provider.params(maxTokens) : {}),
   };
   if (json) payload.response_format = { type: "json_object" };
   return payload;
@@ -407,6 +454,11 @@ export function buildDrcPayload(provider, model, messages, { stream = false, jso
  * at all: its callable synthesizes the same OpenAI-SSE Response from the
  * in-browser engine, so every consumer downstream is unchanged (the
  * src/anthropic.js adapt-at-the-wire pattern, client-side).
+ * @param {DrcProvider} provider
+ * @param {string} apiKey
+ * @param {string} model
+ * @param {any[]} messages
+ * @param {DrcCallOpts} [opts]
  */
 export function drcChatStream(provider, apiKey, model, messages, { signal, baseUrl, maxTokens } = {}) {
   if (provider.engine) return provider.engine.chatStream(model, messages, { signal, maxTokens });
@@ -426,6 +478,11 @@ export function drcChatStream(provider, apiKey, model, messages, { signal, baseU
  * Response every downstream consumer already parses — the engine providers'
  * adapt-at-the-wire pattern, for a wire that answers whole. Failed responses
  * return as-is so providerErrorDetail reads them unchanged.
+ * @param {DrcProvider} provider
+ * @param {string} apiKey
+ * @param {string} model
+ * @param {any[]} messages
+ * @param {DrcCallOpts} [opts]
  */
 async function drcChatWhole(provider, apiKey, model, messages, { signal, baseUrl, maxTokens } = {}) {
   const res = await fetch((baseUrl || provider.base) + "/chat/completions", {
@@ -471,6 +528,7 @@ export async function providerErrorDetail(res) {
 // Lenient JSON extraction — models wrap JSON in code fences or prose often
 // enough that strict parsing alone loses good answers (the server's
 // hardenJson lesson, in miniature).
+/** @param {unknown} text @returns {any} */
 export function extractJson(text) {
   if (typeof text !== "string" || !text.trim()) return null;
   const candidates = [text.trim()];
@@ -494,6 +552,11 @@ export function extractJson(text) {
  * The 45 s default deadline is tuned for hosted APIs; a provider can declare
  * its own `jsonTimeoutMs` — the on-device engine does (phone-speed prompt
  * processing alone can pass 45 s; plan §8, the most-likely-breakage row).
+ * @param {DrcProvider} provider
+ * @param {string} apiKey
+ * @param {string} model
+ * @param {any[]} messages
+ * @param {DrcCallOpts} [opts]
  */
 export async function drcCompleteJson(provider, apiKey, model, messages, { signal, baseUrl, maxTokens = 1500 } = {}) {
   const deadlineMs = provider.jsonTimeoutMs || 45_000;
@@ -552,16 +615,24 @@ export function toOpenAiTools(tools) {
  * back as role:"tool" messages, until it stops calling tools and returns text.
  * Bounded by maxRounds (then one tools-off call forces an answer). Throws on a
  * hard HTTP failure (callers fall back to the normal flow).
+ * @param {DrcProvider} provider
+ * @param {string} apiKey
+ * @param {string} model
+ * @param {{system?: string, userContent?: any, tools: any[],
+ *   execTool: (name: string, args: any) => any, maxRounds?: number,
+ *   maxTokens?: number, onToolUse?: (u: any) => void, signal?: AbortSignal,
+ *   baseUrl?: string}} opts
  * @returns {Promise<{ text: string, toolCalls: number, rounds: number }>}
  */
 export async function drcToolRun(
   provider,
   apiKey,
   model,
-  { system, userContent, tools, execTool, maxRounds = 6, maxTokens = 4096, onToolUse, signal, baseUrl } = {},
+  { system, userContent, tools, execTool, maxRounds = 6, maxTokens = 4096, onToolUse, signal, baseUrl },
 ) {
   const url = (baseUrl || provider.base) + "/chat/completions";
   const headers = wireHeaders(apiKey);
+  /** @type {any[]} */
   const messages = [
     ...(system ? [{ role: "system", content: system }] : []),
     { role: "user", content: userContent },
@@ -569,7 +640,7 @@ export async function drcToolRun(
   const oaiTools = toOpenAiTools(tools);
   let toolCalls = 0;
 
-  const call = async (body) => {
+  const call = async (/** @type {Record<string, any>} */ body) => {
     const timeout =
       signal || (typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(60_000) : undefined);
     const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: timeout });
@@ -578,8 +649,13 @@ export async function drcToolRun(
   };
 
   for (let round = 1; round <= maxRounds; round++) {
-    const data = await call({ model, messages, tools: oaiTools, ...provider.params(maxTokens) });
-    const msg = data?.choices?.[0]?.message || {};
+    const data = await call({
+      model,
+      messages,
+      tools: oaiTools,
+      ...(provider.params ? provider.params(maxTokens) : {}),
+    });
+    const msg = /** @type {any} */ (data?.choices?.[0]?.message || {});
     const calls = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
     if (!calls.length) return { text: typeof msg.content === "string" ? msg.content : "", toolCalls, rounds: round };
     // Echo the assistant tool-call turn, then answer each call with a tool msg.
@@ -596,7 +672,7 @@ export async function drcToolRun(
       try {
         result = await execTool(c?.function?.name, args);
       } catch (err) {
-        result = "Tool error: " + (err?.message || String(err));
+        result = "Tool error: " + (/** @type {any} */ (err)?.message || String(err));
       }
       const content = typeof result === "string" ? result : JSON.stringify(result);
       if (onToolUse) onToolUse({ round, name: c?.function?.name, input: args, result: content });
@@ -609,7 +685,11 @@ export async function drcToolRun(
     role: "user",
     content: "You have gathered enough. Do NOT call more tools — write the complete final answer now from what you found.",
   });
-  const finalData = await call({ model, messages, ...provider.params(maxTokens) });
+  const finalData = await call({
+    model,
+    messages,
+    ...(provider.params ? provider.params(maxTokens) : {}),
+  });
   return { text: finalData?.choices?.[0]?.message?.content || "", toolCalls, rounds: maxRounds };
 }
 
@@ -643,6 +723,9 @@ export function filterAndSortModels(data, modelFilter) {
  * The provider's chat-capable model list — live from the user's key, the
  * static fallback when the fetch fails (wrong key still gets a dropdown to
  * try; the send will surface the real error).
+ * @param {DrcProvider} provider
+ * @param {string} apiKey
+ * @param {{baseUrl?: string}} [opts]
  */
 export async function listDrcModels(provider, apiKey, { baseUrl } = {}) {
   try {
@@ -651,10 +734,10 @@ export async function listDrcModels(provider, apiKey, { baseUrl } = {}) {
     });
     if (!res.ok) throw new Error(String(res.status));
     const data = await res.json();
-    const ids = filterAndSortModels(data?.data, provider.modelFilter);
+    const ids = filterAndSortModels(data?.data, provider.modelFilter || (() => true));
     if (ids.length) return ids;
   } catch {
     // fall through to the static list
   }
-  return [...provider.fallbackModels];
+  return [...(provider.fallbackModels || [])];
 }

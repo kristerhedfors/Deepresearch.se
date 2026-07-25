@@ -1,3 +1,4 @@
+// @ts-check
 // DRC's storage adapter — BROWSER-LOCAL ONLY, by product definition: DRC
 // ("deep research secure", C for CLIENT-side) keeps everything on the
 // user's machine. The sealed project state (drc-core.js: AES-256-GCM
@@ -89,14 +90,18 @@ export function listSealedProjects(backend = defaultBackend()) {
 
 // Chunked base64 (multi-hundred-KB states are normal; one big
 // String.fromCharCode overflows the argument list).
+/** @param {Uint8Array} bytes */
 function bytesToB64(bytes) {
   let binary = "";
   for (let i = 0; i < bytes.length; i += 0x8000) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    // `apply` over a typed-array view: the arg list is number-like at
+    // runtime, but its static type is Uint8Array, not number[].
+    binary += String.fromCharCode.apply(null, /** @type {any} */ (bytes.subarray(i, i + 0x8000)));
   }
   return btoa(binary);
 }
 
+/** @param {string} b64 */
 function b64ToBytes(b64) {
   const binary = atob(b64);
   const bytes = new Uint8Array(binary.length);
