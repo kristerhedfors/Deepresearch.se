@@ -33,7 +33,7 @@ import { loadOnDeviceEngine, onDeviceModelLabel } from "./ondevice-drs.js";
 import { runDrcResearch } from "./drc-research.js";
 import { runShellLoop, shellCommandLabel } from "./bash-agent.js";
 import { GUEST_STDOUT_CAP_BYTES, bashIntent, deliverablesRun, execTimeoutForBudget, wantsOutboxCollect } from "./bash-core.js";
-import { feedbackIntent } from "./feedback-core.js";
+import { feedbackForcesServerRoute, feedbackIntent } from "./feedback-core.js";
 import { aiModelIntent } from "./ai-models.js";
 import { collectDeliverables, ensureSandboxBooted, execInSandbox, resetSandboxIfLacking, sandboxFsSummary, sandboxIdle, sandboxSupported, sblog } from "./sandbox.js";
 import { hasPending } from "./attachments.js";
@@ -1432,6 +1432,26 @@ function buildSandboxFileProvider(opts) {
  * @returns {Promise<void>} resolves when the exchange has fully settled
  */
 export async function sendMessage(text, opts) {
+  // A "feedback …" message is a report to the DEVELOPERS, not a research
+  // question, so it has to reach the server's feedback pipeline (chat.js
+  // state.feedbackCapture → pipeline.js runFeedbackCapture) whatever the
+  // composer's model pick is. Both browser-direct routes below settle WITHOUT
+  // calling /api/chat, so an on-device (Bonsai) pick or a private
+  // introspection key used to swallow the report into a local LLM and the
+  // developers never received it — feedback #23 came back as 1.7B filler
+  // instead of the acknowledgment. This is the same hard-left the sandbox
+  // pre-pass already does (shellSteps, feedback #18) and Se/cure's send
+  // (drc.js), lifted to the route decision itself so a FUTURE browser-direct
+  // route can't reopen the hole: the check sits above every branch, not
+  // inside one.
+  //
+  // The on-device model id ("ondevice::…") is not in the server catalog, so
+  // it has to be dropped as well or the fall-through 400s on "Unknown model."
+  // (validation.js resolveModel). Nothing is lost by that: the feedback case
+  // answers with the canned acknowledgment and never calls a model at all, so
+  // the site default is only there to pass validation.
+  const feedbackSend = feedbackForcesServerRoute(text);
+  if (feedbackSend && onDeviceIdFromValue(opts.model)) opts = { ...opts, model: "" };
   const content = await buildOutgoingUserContent(text, opts);
   history.push({ role: "user", content });
   // Captured for out-of-band persistence (a quiz finished after this stream
@@ -1456,8 +1476,9 @@ export async function sendMessage(text, opts) {
   // below never engage. This branch is checked FIRST: an explicit on-device
   // pick outranks every other route, and it must never fall through to a
   // server call. Stop still works: it aborts the same controller this send
-  // owns.
-  const onDeviceModelId = onDeviceIdFromValue(opts.model);
+  // owns. EXCEPT for a feedback report (feedbackSend above), which belongs to
+  // the developers rather than to whichever model happens to be picked.
+  const onDeviceModelId = feedbackSend ? null : onDeviceIdFromValue(opts.model);
   if (onDeviceModelId) {
     await runOnDeviceExchange(turn, opts, signal, gen, onDeviceModelId);
     return;
@@ -1469,8 +1490,10 @@ export async function sendMessage(text, opts) {
   // settles entirely inside runPrivateIntrospection — /api/chat, the
   // watchdog, and the recovery machinery below never engage (there is no
   // server request to watch or recover). Stop still works: it aborts the
-  // same controller this send owns.
-  if (await maybePrivateIntrospection(turn, opts, signal, gen)) return;
+  // same controller this send owns. Skipped for a feedback report (feedbackSend
+  // above) for the same reason the on-device branch is: the note is addressed to
+  // the developers, and this route would answer it with the user's own key.
+  if (!feedbackSend && (await maybePrivateIntrospection(turn, opts, signal, gen))) return;
 
   // iOS suspends network for backgrounded apps/PWAs — the most common cause
   // of mid-stream drops. On return the torn-down socket frequently makes the

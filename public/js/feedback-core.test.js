@@ -8,6 +8,7 @@ import {
   FEEDBACK_ACKS_STANDALONE,
   FEEDBACK_PATTERNS,
   cannedFeedbackAck,
+  feedbackForcesServerRoute,
   feedbackIntent,
   feedbackLangSv,
   feedbackPageTag,
@@ -26,6 +27,7 @@ import {
   isDocPage,
 } from "./feedback-core.js";
 import { bashIntent } from "./bash-core.js";
+import { onDeviceIdFromValue } from "./ondevice-core.js";
 
 test("feedbackIntent: a message opening with 'feedback' (any case) triggers", () => {
   assert.equal(feedbackIntent("feedback: the map view was cut off"), true);
@@ -87,6 +89,75 @@ test("feedbackIntent catches the verbatim sandbox-feedback message (feedback #18
   // Swedish parity: the same shape of report in Swedish routes the same way.
   const sv = "återkoppling: massa Linux-kommandon körs när jag skriver feedback";
   assert.equal(feedbackIntent(sv), true);
+});
+
+// ---------------------------------------------------------------------------
+// Feedback #23 — the browser-direct routes. The Se/rver tier has two send
+// routes that settle entirely in the browser and never call /api/chat: an
+// on-device model pick (the "ondevice::" Bonsai group) and introspection's
+// private own-key route. Both are checked at the very top of stream.js
+// sendMessage, before any pipeline gate can run, so a "feedback …" message
+// was answered by the locally selected model and no feedback entry was ever
+// created — the reported case came back as 1.7B filler.
+//
+// feedbackForcesServerRoute is what both branches now consult, so the rule
+// lives with the gate rather than inside one branch.
+// ---------------------------------------------------------------------------
+
+test("feedbackForcesServerRoute: a feedback report never takes a browser-direct route (feedback #23)", () => {
+  const verbatim = "feedback the first message here missed the feedback pipeline and instead got a reply from the llm";
+  assert.equal(feedbackForcesServerRoute(verbatim), true);
+  // The message that actually went missing — sent while a Bonsai model was
+  // picked, so the on-device branch claimed it.
+  assert.equal(
+    feedbackForcesServerRoute("feedback last chat crashed when running bonsai, did you catch that with logs?"),
+    true,
+  );
+});
+
+test("feedbackForcesServerRoute: agrees with feedbackIntent on every form, EN + SV (parity)", () => {
+  const forced = [
+    "feedback: the map view was cut off",
+    "Feedback - please add a dark theme",
+    "återkoppling: sökningen är långsam",
+    "Återkopplingen: knappen fungerar inte",
+    "synpunkt: lägg till mörkt tema",
+    "Synpunkter på gränssnittet",
+  ];
+  for (const t of forced) assert.equal(feedbackForcesServerRoute(t), true, t);
+});
+
+test("feedbackForcesServerRoute: an ordinary question keeps its browser-direct route", () => {
+  // The whole point of picking an on-device model is that research stays on
+  // the device — so anything that is NOT feedback must be left alone, the
+  // "feedback loop(s)" collision included.
+  const free = [
+    "What is the capital of France?",
+    "Ge mig en sammanfattning av rapporten",
+    "feedback loop design for a controller",
+    "Feedback loops in reinforcement learning",
+    "The feedback loop in the pipeline is slow",
+  ];
+  for (const t of free) assert.equal(feedbackForcesServerRoute(t), false, t);
+});
+
+test("feedbackForcesServerRoute: non-string input never throws, returns false", () => {
+  assert.equal(feedbackForcesServerRoute(null), false);
+  assert.equal(feedbackForcesServerRoute(undefined), false);
+  assert.equal(feedbackForcesServerRoute(42), false);
+});
+
+// The other half of the #23 fix: an on-device model id is not in the server
+// catalog (validation.js resolveModel → 400 "Unknown model."), so routing the
+// report to the server also has to drop the pick. These two pure helpers are
+// what stream.js composes to decide that — pinned together so the pairing
+// can't drift apart.
+test("an on-device pick is recognised as one, so a forced server route can strip it (feedback #23)", () => {
+  assert.equal(onDeviceIdFromValue("ondevice::bonsai-1_7b-1bit"), "bonsai-1_7b-1bit");
+  assert.equal(onDeviceIdFromValue(""), null);
+  // A normal catalog model is not an on-device pick — nothing to strip, and
+  // the server send keeps the user's model.
+  assert.equal(onDeviceIdFromValue("claude-sonnet-5"), null);
 });
 
 // ---------------------------------------------------------------------------
