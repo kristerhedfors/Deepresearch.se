@@ -52,6 +52,8 @@ import {
 } from "./validation.js";
 import { bashLiteEnabled, developerModeEnabled, shodanEnabled, googleMapsEnabled } from "./settings.js";
 import { buildSlugOk } from "./build-pub.js";
+import { loadAgentRegistry, routingNeedsRegistry } from "./agent-registry.js";
+import { resolveRequestAgent } from "./agent-spec.js";
 import { buildFeedbackDebugContext, createOrThreadFeedbackEntry, feedbackPageTag } from "./feedback.js";
 import { recordUseCaseFeedback } from "./testpoints.js";
 import { getDb } from "./db.js";
@@ -215,21 +217,60 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   budgetS = Math.min(budgetS, config.max_time_budget_s);
   const webSearchEnabled = body.web_search !== false; // knob: default on
   const enrich = resolveEnrichmentOptions(body, env, identity, catalog, model);
+  // ---- mode routing -------------------------------------------------------
+  //
+  // Which agent answers this request is DATA: the ordered `defaults` table in
+  // sdk/AGENTS.json maps each chat mode to the agent that is that mode, names
+  // the request flag selecting it, and its array order IS the precedence
+  // (sdk > orchestrator > outrospection). `resolveRequestAgent` walks it and
+  // enforces each agent's declared `capability.requires` — so "a client can't
+  // acquire a capability the knob doesn't grant" is one rule applied uniformly
+  // instead of a condition repeated per mode.
+  //
+  // Two deliberate limits:
+  //  · Only the three EXECUTOR phases (build / workflow / feed) are taken from
+  //    the registry. Whether a knob-on request is introspection or plain
+  //    research stays where it has always been decided — the pipeline's
+  //    hasSource + externalSourceIntent gate — because that is a per-MESSAGE
+  //    decision, not a per-request one.
+  //  · The registry is only loaded when routing could differ from a plain Deep
+  //    Research turn (routingNeedsRegistry). It ships inside the multi-megabyte
+  //    source snapshot; parsing it for a request that can only resolve to
+  //    `normal` would be a regression on the commonest path.
+  //
+  // Fail-soft (invariant 2): an unreadable registry falls back to the
+  // hand-written cascade below, which this table reproduces exactly (pinned in
+  // public/js/agent-capability.test.js).
+  const routed = routingNeedsRegistry(body, enrich.developerOn)
+    ? resolveRequestAgent(await loadAgentRegistry(env), body, {
+      developer_mode: enrich.developerOn,
+      sandbox: bashLiteEnabled(env, identity),
+    })
+    : null;
+  const routedPhase = /** @type {string | null} */ (routed?.capability?.answerPhase ?? null);
+  const byRegistry = routedPhase !== null;
   // SDK ("lovable") mode: the request asks for the DistillSDK build flow.
   // Gated on the SAME capability the introspection enrichment uses — the
   // developer_mode knob (enrich.developerOn) — so a client can't acquire the
   // mode the knob doesn't grant; the mode dropdown flips the knob first.
-  const sdkOn = body.sdk_mode === true && enrich.developerOn;
+  const sdkOn = byRegistry ? routedPhase === "build" : body.sdk_mode === true && enrich.developerOn;
   const buildSlug = sdkOn && buildSlugOk(body.build_slug) ? /** @type {string} */ (body.build_slug) : null;
   // Orchestrator mode: the sub-agent workflow flow. Same capability gate as
   // SDK mode (a client can't acquire a mode the knob doesn't grant), and the
   // modes are mutually exclusive client-side — sdk wins if both arrive.
-  const orchOn = body.orchestrator_mode === true && !sdkOn && enrich.developerOn;
+  const orchOn = byRegistry ? routedPhase === "workflow" : body.orchestrator_mode === true && !sdkOn && enrich.developerOn;
   // Outrospection mode: answer from the outward feed instead of the web or our
   // own source. Same capability gate again, and the modes stay mutually
   // exclusive in the same precedence order the dropdown can only produce one
   // of anyway (sdk > orchestrator > outrospection).
-  const outroOn = body.outrospection_mode === true && !sdkOn && !orchOn && enrich.developerOn;
+  const outroOn = byRegistry
+    ? routedPhase === "feed"
+    : body.outrospection_mode === true && !sdkOn && !orchOn && enrich.developerOn;
+  // The answer phase the pipeline dispatches on, and the agent it came from —
+  // null when the registry was unavailable or not consulted, in which case the
+  // pipeline falls back to the three booleans above.
+  const answerPhase = sdkOn || orchOn || outroOn ? routedPhase : null;
+  const agentId = answerPhase ? String(routed?.agent?.id || "") : null;
   // The experimental bash-lite sandbox transcript: the browser ran an agentic
   // shell loop (public/js/bash-agent.js) before sending, and attached what it
   // ran + the real output. Honored only when this account's knob is on
@@ -311,6 +352,8 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       sdkMode: sdkOn,
       orchestratorMode: orchOn,
       outrospectionMode: outroOn,
+      answerPhase,
+      agentId,
       buildSlug,
       userId: String(identity.id),
     });
@@ -848,6 +891,13 @@ function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = 
     // runOutrospection: the outward feed replaces both the web research and
     // the own-source retrieval for this request.
     outrospectionMode: !!extras.outrospectionMode,
+    // The registry-resolved answer phase and the agent it came from
+    // (sdk/AGENTS.json `defaults` → capability.answerPhase). This is what
+    // pipeline.js dispatches on; the three booleans above are its fail-soft
+    // fallback for a deployment whose registry could not be read, and for the
+    // MCP channel, which builds its state without any of them.
+    answerPhase: extras.answerPhase || null,
+    agentId: extras.agentId || null,
     buildSlug: extras.buildSlug || null,
     userId: extras.userId || "",
     // This channel renders the interactive inline-quiz event (src/quiz.js;

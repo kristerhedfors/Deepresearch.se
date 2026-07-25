@@ -1,20 +1,22 @@
 # Generalizing the default agents into the Agents SDK
 
-**Status: proposal, 2026-07-25. Nothing here is implemented.** It is an
-investigation of what this site's built-in agents actually are, a measurement of
-how much of that the DeepResearch Agents SDK can currently express, and a staged
-plan for closing the distance. Stages 2–4 change what the platform can do and
-therefore need an owner checkmark before any code moves (the Class C rule in the
-**docs-drift-validation** skill).
+**Status: Stages 0–3 SHIPPED, 2026-07-25 (owner go-ahead in-session). Stage 4
+is not built.** This page began as an investigation of what this site's built-in
+agents actually are, a measurement of how much of that the DeepResearch Agents
+SDK could express, and a staged plan for closing the distance. §1–§3 record the
+findings as they stood before the work; §5 marks what landed. The gap those
+sections describe is the reason for the capability layer, not a description of
+today's registry — for that, read [`docs/AGENT-PLATFORM.md`](./AGENT-PLATFORM.md)
+§3.1 and §4.
 
 The premise in the request is right, and worth stating as the thesis:
 
 > The closer the SDK's agent definition sits to the agents we ship by default,
 > the more capable anything built through Agent Studio can be.
 
-Today the distance is large, and it is large in a specific, measurable way: the
-SDK can describe how an agent *looks*, and the platform decides how an agent
-*works*. Everything below follows from that split.
+The distance was large, and large in a specific, measurable way: the SDK could
+describe how an agent *looks*, and the platform decided how an agent *works*.
+Everything below follows from that split.
 
 ---
 
@@ -110,14 +112,15 @@ So the ceiling on "an agent built through Agent Studio" is currently **a static
 single-page app that reimplements a slice of Se/cure from scratch**. It cannot
 reach the pipeline, the tool loop, the source snapshot, the sub-agent executor,
 or the retrieval layers — the parts that make the default agents worth anything.
-Raising that ceiling is the whole point of this proposal.
+Raising that ceiling is the whole point of this work — and it is the part Stage
+4 addresses, which is not built.
 
 ---
 
 ## 3. Drift found along the way
 
-These are defects, not design questions, and they are cheap to fix. Listing them
-here so the fix lands in one commit rather than being rediscovered.
+These were defects, not design questions. All five are fixed (Stage 0/1); they
+are kept here because each one names a rule that now exists to prevent it.
 
 1. **Mode ids disagree.** `sdk/AGENTS.json` uses `"mode": "agent-builder"` and
    `mode-select` offers `["normal","introspection","agent-builder"]`. The real
@@ -204,20 +207,24 @@ machinery, the team composition is agent data.
 
 ---
 
-## 5. Staging
+## 5. Staging — what shipped
 
 Four stages. Each leaves the tree green and shippable; each has an acceptance
-test, in the project's habit of making the claim machine-checkable.
+test, in the project's habit of making the claim machine-checkable. **Stages
+0–3 landed on 2026-07-25**; the per-stage notes below record what each turned
+into.
 
-### Stage 0 — fix the drift (no design decisions)
+### Stage 0 — fix the drift (no design decisions) — SHIPPED
 
 Correct the `mode` values, add the missing mode ids to `mode-select`, refresh
 the stale comment and the "four agents" counts.
 
 *Accept:* a unit test asserts every AgentSpec `mode` is in `CHAT_MODE_IDS`, and
-every `mode-select` entry likewise.
+every `mode-select` entry likewise. **Done** — `validateAgentSpec` now rejects
+both, importing `CHAT_MODE_IDS` from `mode-theme.js` rather than restating it,
+so the two registries cannot drift again.
 
-### Stage 1 — five real specs, zero behaviour change
+### Stage 1 — five real specs, zero behaviour change — SHIPPED
 
 Add `introspection`, `orchestrator` and `outrospection` to `sdk/AGENTS.json`
 with the theme, backdrop, spinner and depth-slider values they already have in
@@ -225,11 +232,14 @@ with the theme, backdrop, spinner and depth-slider values they already have in
 two can never diverge again.
 
 *Accept:* a parity test pins `MODE_THEMES[id]` against the spec for all five;
-`scripts/agent-proof.mjs` renders seven composers instead of four. Nothing about
-a live request changes — this stage is pure reconciliation, and it is worth
-doing on its own even if the owner declines the rest.
+`scripts/agent-proof.mjs` renders seven composers instead of four. **Done** —
+the parity test covers backdrop and depth-slider presence, the two axes that are
+genuinely the same fact in both registries. Colour is deliberately not pinned:
+the mode accents and the spec themes serve different surfaces (the running app
+versus the preview gallery), and forcing them equal would have changed shipped
+visuals for no gain.
 
-### Stage 2 — the capability block, declared but not yet authoritative
+### Stage 2 — the capability block, declared but not yet authoritative — SHIPPED
 
 Add `capability` to the schema, `validateAgentSpec`, and all five specs, filled
 in to describe what the code *already does*. The pipeline keeps its `if`
@@ -238,11 +248,22 @@ branches. A test asserts the declaration matches the constants it describes
 
 *Accept:* declaration-vs-implementation test green; `node sdk/pair-cli.mjs
 validate` covers capability; the invariant-4 and invariant-6 validation rules
-have failing-case tests. This is the checkpoint that proves the vocabulary is
-right before anything depends on it — if an axis cannot be expressed here, the
-vocabulary is wrong and this is the cheap moment to learn it.
+have failing-case tests. **Done, and the vocabulary held.** All fourteen axes
+from §2 are expressible; four constants had to be exported from `src/pipeline.js`
+so the declared bounds could be pinned against the code that enforces them.
+Invariants 1, 3, 4 and 6 each got a passing and a failing case. Two adjustments
+fell out of writing it:
 
-### Stage 3 — the pipeline reads the registry
+- The sketch in §4 had gates carrying their own `en`/`sv` term lists, which
+  would have hand-mirrored the real term sets. A gate now declares an id from a
+  closed vocabulary plus `langs`, so parity is asserted without duplicating what
+  the gate actually matches.
+- `search.web` stayed a plain boolean. Introspection's web search is *gated*
+  rather than off, but adding a third value to model that would have put a
+  conditional in the data; the declared `external-source` gate carries the
+  meaning instead.
+
+### Stage 3 — the pipeline reads the registry — SHIPPED
 
 Replace the mode branches in `src/pipeline.js` with `resolveAgent(state)` and a
 dispatch table keyed on `capability.answerPhase`. `src/chat.js`'s flag/gate
@@ -254,14 +275,34 @@ synthetic sixth agent added only to `AGENTS.json` routes correctly with no code
 change — that last one is the acceptance test that actually proves the
 generalization.
 
-**Write the safety net first.** There is currently no test anywhere that asserts
+**Write the safety net first.** There was no test anywhere asserting that
 `sdk_mode` / `orchestrator_mode` / `outrospection_mode` route to the right
-answer phase — `grep` for those flags across every `*.test.js` hits only
-`src/prompts.test.js`. So Stage 3 opens by adding characterization tests over
-today's `if` branches, on today's code, before the dispatch table replaces them.
-Refactoring an untested dispatch is how this goes wrong.
+answer phase — a `grep` for those flags across every `*.test.js` hit only
+`src/prompts.test.js`. So Stage 3 opened with characterization tests over the
+`if` branches, written against the behaviour they already had.
 
-### Stage 4 — Agent Studio ships capability, not just files
+**How it landed, and the two limits it kept.** `src/chat.js` resolves the
+request through `resolveRequestAgent`; `src/pipeline.js` dispatches through
+`ANSWER_PHASE_RUNNERS`, a table of the three executor phases. Two deliberate
+limits, both narrower than the stage as originally written:
+
+- **Only the executor phases route by registry.** Whether a knob-on request is
+  introspection or plain research is still the pipeline's `hasSource` +
+  `externalSourceIntent` gate, because that is a per-*message* decision and the
+  routing table is per-*request*. Collapsing the two would have changed
+  behaviour, not just its shape.
+- **The registry stays off the hot path.** It ships inside the multi-megabyte
+  source snapshot, so `routingNeedsRegistry` skips loading it for any request
+  that can only resolve to `normal` — which is most of them. The plain Deep
+  Research turn pays nothing.
+
+The three mode booleans survive as the fail-soft fallback for a deployment whose
+registry cannot be read, and for the MCP channel, which builds its state without
+them. The `outrospection` grep is 15 files rather than the ~4 predicted: the
+routing collapsed, but the mode's theme, spinner, feed page and admin surface
+are genuinely its own and were never routing.
+
+### Stage 4 — Agent Studio ships capability, not just files — NOT BUILT
 
 Three unlocks, in value order:
 
@@ -313,21 +354,25 @@ as they are elsewhere.
 
 ---
 
-## 7. Recommendation
+## 7. Where it stands
 
-Stages 0 and 1 are reconciliation with no design risk and should proceed
-regardless — they cost little and they remove a live inconsistency between the
-Agents SDK, the mode registry and the shipped product.
+Stages 0–3 are in the tree. The thesis is now testable rather than argued: a
+sixth agent added only to `sdk/AGENTS.json` routes through `/api/chat` with no
+code change, and that is asserted in `agent-capability.test.js` rather than
+claimed here.
 
-Stage 2 is where the owner decision belongs. It costs one schema, five filled-in
-declarations and a test, and it answers the real question — *can a closed
-vocabulary describe what our default agents do?* — before any dispatch depends on
-the answer.
+What Stage 3 did *not* do is worth stating as plainly as what it did. The
+routing generalized; the modes' prompts, executors, themes and surfaces did not,
+and were never meant to. `src/prompts.js` still holds a hand-written prompt per
+mode, and the capability block names tool sets and context blocks without
+selecting the prompt that goes with them. That is the next honest increment, and
+it is smaller than it looks — a `prompts` axis over the existing builders.
 
-Stages 3 and 4 follow only if Stage 2's vocabulary holds up. They are what turns
-the thesis into product: a default agent and a user-built agent become the same
-kind of thing, and Agent Studio's ceiling rises from "a static page" to "an
-agent that runs on the platform".
+Stage 4 remains the one that changes what a *built* agent can be, and it is
+deliberately not started: it publishes spend-capable links. Its mechanism is
+already in place (`agentLinkPlan` → `mintServerTokenGrant`), so the work is
+wiring plus the quota-grant assessment, not new crypto. It should land as its
+own change with the **quota-grant-assessment** checklist run against it.
 
 ## 8. Where this sits
 

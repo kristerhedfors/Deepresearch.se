@@ -6,8 +6,12 @@ description: >-
   the AgentSpec schema (an agent is DEFINED by its chat-input-pane controls, its
   intro + loading animations, its colour theme, its seed example questions, and
   the default quota a minted share-link token carries), the closed control
-  vocabulary, sdk/AGENTS.json (the four shipped agents research / secure /
-  under-construction / agent-builder), the pure core public/js/agent-spec-core.js
+  vocabulary, the CAPABILITY block (spec 0.2.0 — what an agent DOES: answer phase,
+  tool set, context blocks, search/routing policy, gates, bounds, emitted events,
+  required knob, sub-agent team) and the `defaults` ROUTING TABLE that maps each
+  chat mode to its default agent, sdk/AGENTS.json (the seven shipped agents:
+  the five defaults research / introspection / agent-builder / orchestrator /
+  outrospection, plus secure and under-construction), the pure core public/js/agent-spec-core.js
   (server façade src/agent-spec.js; sdk/pair-cli.mjs re-exports it), the composer
   renderer + the visual proof (scripts/agent-proof.mjs / proveComposer), example
   generation, and share-link token minting. Also the Agent Builder mode (the
@@ -29,8 +33,25 @@ the SDK. An agent is a *flavour* of the Se/cure + Se/rver platform, and it is
 4. its **example questions** (seed + on-demand generation);
 5. the **default quota** a minted share-link **token** carries (credits).
 
+Since spec **0.2.0** it is also defined by what it DOES — the **capability
+block**: `answerPhase`, `tools` + `toolFallback`, `context`, `search`,
+`routing`, `gates`, `bounds`, `emits`, `requires`, `team`. That block is a
+SELECTOR over shipped behaviour, never a definition of new behaviour: every
+value is a member of a closed vocabulary naming existing code, which is what
+keeps invariant 1 true of the routing as well as of the run. Four invariants
+are validation rules there rather than prose — 1 (a tool-bearing mode must name
+a non-tool fallback), 3 (`routing.planModel` is a one-member vocabulary), 4 (a
+`client` platform may select nothing marked `serverOnly`) and 6 (a declared gate
+must carry `langs` with both `en` and `sv`).
+
+The registry's ordered top-level `defaults` table maps each chat mode to the
+agent that IS that mode and names the request flag selecting it; array order is
+precedence. `resolveRequestAgent` walks it in `src/chat.js` and `src/pipeline.js`
+dispatches on the resolved `capability.answerPhase`, so adding a mode is a
+registry edit — plus one dispatch row only if it needs a NEW executor.
+
 Deriving a new agent is **copy one spec, change those fields, validate**. The
-four this project ships are the reference specs; they exist to be copied.
+seven this project ships are the reference specs; they exist to be copied.
 
 ## Capability class & tier story
 
@@ -71,7 +92,8 @@ One entry in `sdk/AGENTS.json` (`{ agents: [ … ] }`):
   "platform": "server",          // "client" | "server"  (the tier / platform type)
   "tier": "Se/rver",             // branding label (display only)
   "derivesFrom": "baseplate",    // which agent/base this was copied from (provenance)
-  "mode": "normal",              // chat mode: normal | introspection | agent-builder
+  "mode": "normal",              // a chat mode id, validated against chat-mode.js:
+                                 // normal | introspection | sdk | orchestrator | outrospection
   "theme": { "--agent-accent": "#3b82f6", … },   // CSS custom properties
   "intro":   { "kind": "fade", "durationMs": 400 },
   "loading": { "kind": "pipeline-phases", "messages": ["Triaging…", …] },
@@ -82,7 +104,7 @@ One entry in `sdk/AGENTS.json` (`{ agents: [ … ] }`):
     { "type": "depth-slider", "min": 0, "max": 3, "default": 1, "ticks": ["Quick","Standard","Deep","Exhaustive"] },
     { "type": "toggle", "id": "web_search", "label": "Web search", "default": true },
     { "type": "attachments", "max": 5 },
-    { "type": "mode-select", "modes": ["normal","introspection","agent-builder"] },
+    { "type": "mode-select", "modes": ["normal","introspection","sdk","orchestrator","outrospection"] },
     { "type": "send-button" }
   ],
   "examples": ["…"], "generateExamples": true,
@@ -138,19 +160,22 @@ axis per chat mode.
 
 | Piece | File |
 |---|---|
-| The four shipped agents | `sdk/AGENTS.json` |
+| The seven shipped agents + the `defaults` routing table | `sdk/AGENTS.json` |
 | Pure core | `public/js/agent-spec-core.js` (+ tests `…test.js`) |
 | Server façade | `src/agent-spec.js` |
 | CLI commands | `sdk/pair-cli.mjs` (`agents`, `agent <id>`) |
 | Live preview | `public/agents/preview.html`, `public/js/agent-preview.js` |
 | Visual proof | `scripts/agent-proof.mjs`, `proveComposer` |
+| Capability + routing | `resolveCapability` / `validateCapability` / `resolveRequestAgent` in the pure core; loader `src/agent-registry.js`; dispatch table in `src/pipeline.js` (`ANSWER_PHASE_RUNNERS`); resolution in `src/chat.js` |
+| Capability tests | `public/js/agent-capability.test.js` (bounds pinned to real constants, one passing + one failing case per invariant, routing characterization) |
 | Share-link mint | `src/agent-link.js` (`POST /api/admin/agent-link`), `agentTokenGrantParams` → `src/server-grants.js` |
 | Full docs | `docs/AGENT-PLATFORM.md` |
 
 ## Acceptance checklist
 
 - [ ] `node sdk/pair-cli.mjs validate` OK (modules **and** agents).
-- [ ] `npm test` green (`agent-spec-core.test.js`), including `proveComposer`
+- [ ] `npm test` green (`agent-spec-core.test.js`, `agent-capability.test.js`,
+      `src/agent-registry.test.js`), including `proveComposer`
       for every shipped agent.
 - [ ] `node scripts/agent-proof.mjs` PASS + writes the composer gallery.
 - [ ] Deriving a new agent = copy one spec, change fields, re-validate — no code

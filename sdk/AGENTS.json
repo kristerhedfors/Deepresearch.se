@@ -1,7 +1,8 @@
 {
   "spec": "distillsdk-agents",
-  "version": "0.1.0",
-  "status": "wired (2026-07-23): AgentSpec logic lives in the shared core public/js/agent-spec-core.js (server façade src/agent-spec.js; sdk/pair-cli.mjs re-exports it); the Agent Studio mode and share-link minting resolve agents from this file via the committed source snapshot. An agent is DEFINED by its chat-input-pane controls, its intro + loading animations, its colour theme, its seed example questions, and the default quota a minted share-link token carries. Derive a new agent by copying one of these and changing those fields.",
+  "version": "0.2.0",
+  "status": "wired (2026-07-23): AgentSpec logic lives in the shared core public/js/agent-spec-core.js (server façade src/agent-spec.js; sdk/pair-cli.mjs re-exports it); the Agent Studio mode and share-link minting resolve agents from this file via the committed source snapshot. An agent is DEFINED by its chat-input-pane controls, its intro + loading animations, its colour theme, its seed example questions, the default quota a minted share-link token carries, and — since 0.2.0 — its CAPABILITY block. Derive a new agent by copying one of these and changing those fields.",
+  "capability_note": "The `capability` block (0.2.0) is a SELECTOR over behaviour the platform already implements, never a place to define new behaviour: every value is a member of a closed vocabulary that names existing code. That is what keeps invariant 1 (deterministic orchestration, no function calling) intact — the dispatch stays code, the spec is data read before the run starts. Validation enforces invariant 3 (planning phases stay on the fixed JSON model), invariant 4 (a client-tier agent may not select anything that puts the server in the data path) and invariant 6 (a declared gate routes Swedish and English alike).",
   "reference_product": "deepresearch.se",
   "control_types": {
     "prompt-input": "the message textarea",
@@ -9,9 +10,17 @@
     "model-select": "choose the answer/synthesis model (provider registry)",
     "depth-slider": "research depth → number of pipeline search rounds",
     "toggle": "a boolean request flag (web search, incognito, …) — id IS the flag",
-    "mode-select": "choose the chat mode (Normal / Introspection / Agent Studio)",
+    "mode-select": "choose the chat mode (Deep Research / Introspection / Agent Studio / Orchestrator / Outrospection)",
     "attachments": "attach files to the turn"
   },
+  "defaults": [
+    { "mode": "sdk", "agent": "agent-builder", "flag": "sdk_mode" },
+    { "mode": "orchestrator", "agent": "orchestrator", "flag": "orchestrator_mode" },
+    { "mode": "outrospection", "agent": "outrospection", "flag": "outrospection_mode" },
+    { "mode": "introspection", "agent": "introspection", "flag": null },
+    { "mode": "normal", "agent": "research", "flag": null }
+  ],
+  "defaults_note": "The Se/rver app's five DEFAULT agents — one per chat mode (public/js/chat-mode.js CHAT_MODES). ARRAY ORDER IS PRECEDENCE, mirroring src/chat.js: a request carrying several mode flags resolves to the first match (sdk > orchestrator > outrospection). `flag` names the /api/chat request field that selects the mode; a null flag means the mode is derived — introspection when the developer_mode capability is granted and no flag is set, normal otherwise. Agents NOT listed here (secure, under-construction) are tier archetypes and templates, not chat modes.",
   "agents": [
     {
       "id": "research",
@@ -38,9 +47,22 @@
         { "type": "toggle", "id": "web_search", "label": "Web search", "default": true },
         { "type": "toggle", "id": "incognito", "label": "Incognito", "default": false },
         { "type": "attachments", "accept": "*/*", "max": 5 },
-        { "type": "mode-select", "modes": ["normal", "introspection", "agent-builder"] },
+        { "type": "mode-select", "modes": ["normal", "introspection", "sdk", "orchestrator", "outrospection"] },
         { "type": "send-button" }
       ],
+      "capability": {
+        "answerPhase": "research",
+        "tools": [],
+        "toolFallback": "none",
+        "context": ["shell-transcript"],
+        "search": { "web": true, "auxSources": true, "maxQueries": null },
+        "routing": { "planModel": "json-default", "answerModel": "user" },
+        "gates": [],
+        "bounds": {},
+        "emits": ["step", "search", "quiz"],
+        "requires": [],
+        "team": null
+      },
       "examples": [
         "What are the trade-offs between HNSW and IVF for vector search at 10M vectors?",
         "Summarise the current evidence on GLP-1 drugs and cardiovascular outcomes.",
@@ -75,6 +97,19 @@
         { "type": "attachments", "accept": "*/*", "max": 5 },
         { "type": "send-button" }
       ],
+      "capability": {
+        "answerPhase": "research",
+        "tools": [],
+        "toolFallback": "none",
+        "context": ["shell-transcript"],
+        "search": { "web": true, "auxSources": false, "maxQueries": null },
+        "routing": { "planModel": "json-default", "answerModel": "user" },
+        "gates": [],
+        "bounds": {},
+        "emits": ["step", "search"],
+        "requires": [],
+        "team": null
+      },
       "examples": [
         "Draft a privacy policy for a browser-only app that never sees my data.",
         "Explain how AES-GCM sealing of local chat history works.",
@@ -105,11 +140,162 @@
         { "type": "prompt-input", "placeholder": "This agent is under construction…" },
         { "type": "send-button", "label": "Send" }
       ],
+      "capability": {
+        "answerPhase": "direct",
+        "tools": [],
+        "toolFallback": "none",
+        "context": [],
+        "search": { "web": false, "auxSources": false, "maxQueries": 0 },
+        "routing": { "planModel": "json-default", "answerModel": "user" },
+        "gates": [],
+        "bounds": {},
+        "emits": ["step"],
+        "requires": [],
+        "team": null
+      },
       "examples": [
         "What will this agent do?"
       ],
       "generateExamples": false,
       "quota": { "window": "day", "requests": 10, "credits": null, "note": "A cautious default for a work-in-progress share link." }
+    },
+    {
+      "id": "introspection",
+      "name": "Introspection",
+      "tagline": "The site read from the inside — answers from its own deployed source and docs.",
+      "description": "The chat mode that investigates THIS site's implementation. The deployed source snapshot and the docs corpus are retrieved into context, then the answer model reads the real files — natively with grep_source / read_file / list_files where the model supports tool use, otherwise through the deterministic JSON read loop. Web search stays off unless the bilingual external-source gate hands the turn back to research.",
+      "platform": "server",
+      "tier": "Se/rver",
+      "derivesFrom": "research",
+      "mode": "introspection",
+      "theme": {
+        "--agent-accent": "#5a6b7a",
+        "--agent-accent-soft": "rgba(90,107,122,0.16)",
+        "--agent-bg": "#0e1114",
+        "--agent-fg": "#e9edf1"
+      },
+      "intro": { "kind": "fade", "durationMs": 400 },
+      "loading": { "kind": "source-steps", "messages": ["Retrieving source…", "Reading files…", "Writing report…"] },
+      "backdrop": { "kind": "terminal" },
+      "controls": [
+        { "type": "prompt-input", "placeholder": "Ask how this site is built…" },
+        { "type": "model-select", "providers": "all", "allowLocal": false },
+        { "type": "toggle", "id": "incognito", "label": "Incognito", "default": false },
+        { "type": "attachments", "accept": "*/*", "max": 5 },
+        { "type": "mode-select", "modes": ["normal", "introspection", "sdk", "orchestrator", "outrospection"] },
+        { "type": "send-button" }
+      ],
+      "capability": {
+        "answerPhase": "source-research",
+        "tools": ["source-read"],
+        "toolFallback": "read-loop",
+        "context": ["source-snapshot", "docs-corpus", "owasp", "shell-transcript"],
+        "search": { "web": false, "auxSources": true, "maxQueries": 0 },
+        "routing": { "planModel": "json-default", "answerModel": "user" },
+        "gates": [{ "id": "external-source", "langs": ["en", "sv"] }],
+        "bounds": { "maxRounds": 6 },
+        "emits": ["step", "quiz"],
+        "requires": ["developer_mode"],
+        "team": null
+      },
+      "examples": [
+        "How does the deterministic research pipeline route models between phases?",
+        "Hur fungerar krypteringen av chatthistoriken i den här appen?",
+        "Assess this project's security posture from its actual source."
+      ],
+      "generateExamples": true,
+      "quota": { "window": "day", "requests": 30, "credits": null, "note": "Reading the snapshot is cheap; the tool loop is not — a moderate default." }
+    },
+    {
+      "id": "orchestrator",
+      "name": "Orchestrator",
+      "tagline": "A team of sub-agents working in concert — planned, run in waves, merged into one answer.",
+      "description": "One JSON plan phase on the fixed planning model decomposes the request into a small DAG of sub-agents; the Worker executes them in parallel waves and streams a single merged answer. The plan is data and the executor is code, so no model decides control flow mid-run. A failed node degrades to an honest gap note.",
+      "platform": "server",
+      "tier": "Se/rver",
+      "derivesFrom": "research",
+      "mode": "orchestrator",
+      "theme": {
+        "--agent-accent": "#6d3fc4",
+        "--agent-accent-soft": "rgba(109,63,196,0.16)",
+        "--agent-bg": "#0d0a16",
+        "--agent-fg": "#ece7f8"
+      },
+      "intro": { "kind": "assemble", "durationMs": 600 },
+      "loading": { "kind": "workflow-waves", "messages": ["Planning the team…", "Running wave 1…", "Merging briefs…"] },
+      "backdrop": { "kind": "graph" },
+      "controls": [
+        { "type": "prompt-input", "placeholder": "Describe a task for a team of agents…" },
+        { "type": "model-select", "providers": "all", "allowLocal": false },
+        { "type": "attachments", "accept": "*/*", "max": 5 },
+        { "type": "mode-select", "modes": ["normal", "introspection", "sdk", "orchestrator", "outrospection"] },
+        { "type": "send-button" }
+      ],
+      "capability": {
+        "answerPhase": "workflow",
+        "tools": [],
+        "toolFallback": "none",
+        "context": ["source-snapshot"],
+        "search": { "web": true, "auxSources": false, "maxQueries": 6 },
+        "routing": { "planModel": "json-default", "answerModel": "user" },
+        "gates": [],
+        "bounds": { "maxTokens": 2048, "timeoutMs": 150000 },
+        "emits": ["step", "search", "workflow", "agent_update"],
+        "requires": ["developer_mode"],
+        "team": { "kinds": ["research", "introspection"], "allowCustom": true, "maxAgents": 6, "maxWaves": 3, "maxQueriesPerAgent": 2 }
+      },
+      "examples": [
+        "Compare three vector databases: one agent per product, then merge the verdict.",
+        "Research the market, the tech and the regulation of home battery storage in Sweden.",
+        "Assess this site's privacy posture from the source and from what competitors claim."
+      ],
+      "generateExamples": true,
+      "quota": { "window": "day", "requests": 15, "credits": null, "note": "One request runs a whole team — a tighter default than single-agent modes." }
+    },
+    {
+      "id": "outrospection",
+      "name": "Outrospection",
+      "tagline": "Introspection's mirror image — what everyone ELSE shipped.",
+      "description": "The outward feed: seven standing lenses, each with its own searches, refreshed offline and on visit. A question is routed to a lens by the bilingual deterministic gate and answered from the feed's collected items. No web search runs on the turn itself, and an empty feed answers honestly rather than inventing an item.",
+      "platform": "server",
+      "tier": "Se/rver",
+      "derivesFrom": "research",
+      "mode": "outrospection",
+      "theme": {
+        "--agent-accent": "#8f1d14",
+        "--agent-accent-soft": "rgba(143,29,20,0.14)",
+        "--agent-bg": "#14100e",
+        "--agent-fg": "#f2eadf"
+      },
+      "intro": { "kind": "fade", "durationMs": 400 },
+      "loading": { "kind": "feed-lenses", "messages": ["Choosing a lens…", "Reading the feed…", "Writing the brief…"] },
+      "backdrop": { "kind": "terminal" },
+      "controls": [
+        { "type": "prompt-input", "placeholder": "Ask what the rest of the field shipped…" },
+        { "type": "model-select", "providers": "all", "allowLocal": false },
+        { "type": "mode-select", "modes": ["normal", "introspection", "sdk", "orchestrator", "outrospection"] },
+        { "type": "send-button" }
+      ],
+      "capability": {
+        "answerPhase": "feed",
+        "tools": [],
+        "toolFallback": "none",
+        "context": ["outward-feed"],
+        "search": { "web": false, "auxSources": false, "maxQueries": 0 },
+        "routing": { "planModel": "json-default", "answerModel": "user" },
+        "gates": [{ "id": "lens", "langs": ["en", "sv"] }],
+        "bounds": {},
+        "emits": ["step"],
+        "requires": ["developer_mode"],
+        "team": null
+      },
+      "examples": [
+        "What did the other deep-research products ship this month?",
+        "Vad har hänt med öppna vikter den senaste tiden?",
+        "Which privacy-first assistants launched recently, and what do they actually promise?"
+      ],
+      "generateExamples": true,
+      "quota": { "window": "day", "requests": 30, "credits": null, "note": "Answering from a pre-collected feed is cheap — no live search on the turn." }
     },
     {
       "id": "agent-builder",
@@ -119,7 +305,7 @@
       "platform": "server",
       "tier": "Se/rver",
       "derivesFrom": "research",
-      "mode": "agent-builder",
+      "mode": "sdk",
       "theme": {
         "--agent-accent": "#22c55e",
         "--agent-accent-soft": "rgba(34,197,94,0.16)",
@@ -132,9 +318,22 @@
       "controls": [
         { "type": "prompt-input", "placeholder": "Describe the agent to build…" },
         { "type": "model-select", "providers": "tool-capable", "allowLocal": false },
-        { "type": "mode-select", "modes": ["normal", "introspection", "agent-builder"] },
+        { "type": "mode-select", "modes": ["normal", "introspection", "sdk", "orchestrator", "outrospection"] },
         { "type": "send-button", "label": "Build" }
       ],
+      "capability": {
+        "answerPhase": "build",
+        "tools": ["source-read", "sdk-plan", "build-publish"],
+        "toolFallback": "file-blocks",
+        "context": ["source-snapshot", "secure-digest", "shell-transcript"],
+        "search": { "web": false, "auxSources": false, "maxQueries": 0 },
+        "routing": { "planModel": "json-default", "answerModel": "user" },
+        "gates": [],
+        "bounds": { "maxRounds": 12, "maxTokens": 16384, "timeoutMs": 240000 },
+        "emits": ["step", "build"],
+        "requires": ["developer_mode"],
+        "team": null
+      },
       "examples": [
         "Build a single-purpose legal-research agent themed in deep blue.",
         "Distil a stripped-down single-file Se/cure client with only a model picker.",

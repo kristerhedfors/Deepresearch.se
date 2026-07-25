@@ -14,34 +14,19 @@
 // exactly like the other shareable mint (POST /api/admin/server-token): tokens
 // are administered FROM the admin interface, never opened by one.
 
-import { agentTokenGrantParams, agentsFromSnapshot, findAgent } from "./agent-spec.js";
+import { agentTokenGrantParams, findAgent } from "./agent-spec.js";
 import { mintServerTokenGrant } from "./server-grants.js";
 import { budgetExceeded409 } from "./grant-http.js";
 import { jsonResponse } from "./http.js";
-import { SNAPSHOT_PATH } from "../public/js/introspect-core.js";
+// The loader moved to src/agent-registry.js when chat routing started reading
+// the same registry — one cached, fail-soft load per isolate for both callers.
+// Re-exported here so the mint's existing import site keeps working.
+import { loadAgentRegistry } from "./agent-registry.js";
+
+export { loadAgentRegistry };
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
-
-/**
- * Load the agent registry (sdk/AGENTS.json) out of the committed source
- * snapshot, read back through the ASSETS binding — by construction the exact
- * definition this deploy runs, the same way introspection loads its snapshot.
- * Null (never a throw) when the binding or the artifact is unavailable.
- * @param {Env} env
- * @returns {Promise<any | null>}
- */
-export async function loadAgentRegistry(env) {
-  try {
-    const assets = /** @type {any} */ (env).ASSETS;
-    if (!assets?.fetch) return null;
-    const res = await assets.fetch(new Request("https://assets.internal" + SNAPSHOT_PATH));
-    if (!res.ok) return null;
-    return agentsFromSnapshot(await res.json());
-  } catch {
-    return null;
-  }
-}
 
 /**
  * POST /api/admin/agent-link — ADMIN. Body: { agent, ttlHours?, quotas? }.

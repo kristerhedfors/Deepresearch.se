@@ -1103,10 +1103,15 @@ as bespoke subsystems:
 - **DeepResearch Agents SDK** (`sdk/AGENTS.json`,
   `public/js/agent-spec-core.js`, `docs/AGENT-PLATFORM.md`) — an agent is a
   *flavour* of the platform expressed as data: its chat-input-pane controls,
-  theme, animations, example questions, share-link quota. Copy a spec,
-  change those, validate. Four agents ship today: `research` (Se/rver),
-  `secure` (Se/cure), `agent-builder` (Agent Studio), and
-  `under-construction`, the template to copy.
+  theme, animations, example questions, share-link quota — and, since spec
+  0.2.0, its **capability block** (what it does: answer phase, tool set,
+  context blocks, search/routing policy, gates, bounds, emitted events,
+  required knob, sub-agent team). Copy a spec, change those, validate. Seven
+  agents ship today: the five DEFAULTS, one per chat mode — `research`
+  (`normal`), `introspection`, `agent-builder` (Agent Studio, mode `sdk`),
+  `orchestrator` and `outrospection` — plus `secure` (the Se/cure archetype)
+  and `under-construction`, the template to copy. The registry's ordered
+  `defaults` table is what `/api/chat` routes on.
 - **DeepResearch Platform SDK** (`sdk/MANIFEST.json`, `docs/DISTILLSDK.md`)
   — 34 modules, one buildable skill each, for distilling a whole
   DeepResearch.se-like platform. Module ids map back to the repo files that
@@ -1116,10 +1121,10 @@ as bespoke subsystems:
 description of finished work. Several surfaces already have their Platform-SDK
 module — `execution-sandbox`, `introspection-help`, `decision-boards`,
 `publish-replays`, `games-shelf`, `mcp-surface`, `grant-bridge`,
-`symbol-language`, `pair-studio`, `agent-platform`. Others are still bespoke
-code with no SDK module and no AgentSpec entry: **Orchestrator mode**
-(`src/orchestrator.js`), **Outrospection mode** (`src/outrospect.js`,
-`docs/OUTROSPECTION.md`), **on-device inference** (`public/js/ondevice-*.js`,
+`symbol-language`, `pair-studio`, `agent-platform`. Orchestrator and Outrospection modes now have their
+AgentSpec entry and route through the registry (2026-07-25), though neither has
+a Platform-SDK module yet. Others are still bespoke code with no SDK module and
+no AgentSpec entry: **on-device inference** (`public/js/ondevice-*.js`,
 `docs/BONSAI-27B-PHONE-INFERENCE.md`), **compute sharing**
 (`src/pool.js`, `src/pool-token.js`, `docs/COMPUTE-SHARING.md`), **workspace
 knowledge** (`src/knowledge.js`) and the **quiz** surface (`src/quiz.js`).
