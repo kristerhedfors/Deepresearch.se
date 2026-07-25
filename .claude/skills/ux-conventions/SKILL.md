@@ -470,6 +470,35 @@ not buried in settings. Hover and long-press are the two "tell me more
 without committing" gestures — both must exist because each platform only
 has one of them (owner request, 2026-07-24).
 
+**Amended 2026-07-25 — the card may also DECIDE, not only explain.** Once a
+control has more than one honest answer to "where does this come from?", the
+card that explains it is also the right place to choose between them: the web
+knob's card carries a radio picker of WHO runs the searches (Exa or this
+site's own Cloudflare Worker — `public/js/search-source.js`, shared by both
+tiers). The rules that keep it from becoming a settings drawer: **at most one
+decision per card**, its options **need no setup** (anything requiring an
+operator or a URL stays in settings, and the card links there instead), each
+option carries a one-line consequence rather than a bare label, the whole row
+is the label so the tap target is the option and not the 14 px radio, and the
+default is preselected — a radio group with nothing checked is a dead
+control. The pick is device-local and the SERVER RE-VALIDATES it; a card
+picker must never be the only thing standing between a user and an
+unvalidated target.
+
+**The dismiss trap (found 2026-07-25, headless Chromium):** the release that
+ENDS a long-press is itself a document click, and the control is not inside
+the card — so a UX-1 dismiss handler written as
+`if (!pop.hidden && !pop.contains(e.target)) hide()` opens the card at 500 ms
+and closes it the instant the finger lifts. The dismiss check must therefore
+exclude the control too (`&& !e.target.closest("#searchtoggle")`). The Se/cure
+twin had this from the start; `public/js/app.js` did not, and the bug was
+invisible for as long as the card was read-only prose — nobody misses a card
+they never see. Once a card carries a CONTROL, the same bug makes it
+unreachable. Both tiers are now
+verified across the same five behaviours: opens on hold, survives the release,
+a pick inside does not dismiss, an outside click does, and the contextmenu
+path opens it.
+
 **The event-path trap (verified against headless Chromium with touch):**
 Chrome/Android takes over the touch at the long-press threshold and fires
 `pointercancel` + `contextmenu` — a `setTimeout`-on-`pointerdown` timer gets
@@ -481,7 +510,10 @@ right-click lands in the same handler, which is harmless on a toggle.
 **Canonical implementation:** the web knob (`#searchtoggle`) → `#knobpop` →
 `/cure/local-search/`: `public/cure/index.html` (the card), `drc.css` (the
 `#drspop` glass shape anchored right), `drc.js` (the wiring IIFE after the
-`websearch` change handler). Hover binds only under
+`websearch` change handler). The picker half is `#knobsrc` / `#searchsrc`
+(Se/cure / Se/rver) rendered from `searchSourcePickerHtml`, with the `.srcpick`
+rules duplicated in `drc.css` and `css/app.css` — the two stylesheets never
+load together. Hover binds only under
 `matchMedia("(hover: hover) and (pointer: fine)")` — on touch, synthesized
 mouseenter would fight the toggle. No text routing, so no EN/SV parity
 applies.

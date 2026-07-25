@@ -59,7 +59,7 @@ import { handleAdminSpaceFeedback } from "./space.js";
 import { handleAdminOutrospect } from "./outrospect.js";
 import { handleAdminWebSearch } from "./websearch.js";
 import { webSearch } from "./exa.js";
-import { resolveSearchBackend } from "./websearch-backends.js";
+import { normalizeSearchSource, resolveSearchBackend } from "./websearch-backends.js";
 import { handleAdminProxy } from "./proxy.js";
 import { handleAdminServerToken } from "./server-grants.js";
 import { handleAdminPool } from "./pool.js";
@@ -204,15 +204,23 @@ export async function handleAdminApi(request, env, url, log, identity) {
     }
     // The web-search BACKEND (src/websearch-backends.js): GET reports the
     // resolved backend + which env secrets are present; POST /test runs one
-    // live search through the currently-configured backend so the admin can
-    // verify a self-hosted service works. The backend SELECTION itself is
-    // edited via PUT /config. See the local-web-search skill.
+    // live search so the admin can verify a backend works — through the
+    // currently-configured one by default, or through an explicitly named
+    // user-selectable source, so the Cloudflare-originating backend can be
+    // proven BEFORE the site is switched over to it. The backend SELECTION
+    // itself is edited via PUT /config. See the local-web-search skill.
     if (path === "/search" && method === "GET") {
       const cfg = await getConfig(env);
       const resolved = resolveSearchBackend(env, cfg.search);
       return jsonResponse({
         config: cfg.search,
-        resolved: { backend: resolved.backend, baseUrl: resolved.baseUrl, results: resolved.results, fallbackExa: resolved.fallbackExa },
+        resolved: {
+          backend: resolved.backend,
+          baseUrl: resolved.baseUrl,
+          results: resolved.results,
+          fallbackExa: resolved.fallbackExa,
+          pages: resolved.pages,
+        },
         env: {
           hasBackendKey: !!resolved.key,
           hasBackendUrlOverride: !!(/** @type {any} */ (env)?.SEARCH_BACKEND_URL),
@@ -224,10 +232,20 @@ export async function handleAdminApi(request, env, url, log, identity) {
       const body = /** @type {any} */ (await request.json().catch(() => ({})));
       const query = typeof body?.query === "string" ? body.query.trim().slice(0, 200) : "";
       if (!query) return jsonResponse({ error: "A test query is required." }, 400);
+      // An explicit source tests THAT backend regardless of what the site is
+      // configured to use (and regardless of allow_user_choice — this is the
+      // admin surface); anything else tests the configured one.
+      const source = normalizeSearchSource(body?.source);
       const cfg = await getConfig(env);
-      const resolved = resolveSearchBackend(env, cfg.search);
+      const resolved = resolveSearchBackend(env, { ...cfg.search, allow_user_choice: true }, source);
       const started = Date.now();
-      const res = await webSearch(env, log, query, { numResults: resolved.results, type: "auto" }).catch((e) => ({
+      const res = await webSearch(
+        env,
+        log,
+        query,
+        { numResults: resolved.results, type: "auto" },
+        { source },
+      ).catch((e) => ({
         content: String(e?.message || e),
         items: [],
         sources: [],

@@ -269,9 +269,14 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
   const src = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
 
   test("runSearches gates the Exa call on state.webSearch", () => {
-    // The Exa leg (webSearch(env,…) + its billing counter) lives behind the
-    // knob; without the gate the knob would still hit Exa when off.
-    assert.match(src, /if \(state\.webSearch\) \{[\s\S]*webSearch\(env, log, query, state\.plan\.searchDepth\)/);
+    // The web leg (webSearch(env,…) + its billing counter) lives behind the
+    // knob; without the gate the knob would still search when off. The call
+    // carries the user's picked SOURCE — which engine runs it — but the gate
+    // is what decides whether it runs at all.
+    assert.match(
+      src,
+      /if \(state\.webSearch\) \{[\s\S]*webSearch\(env, log, query, state\.plan\.searchDepth, \{ source: state\.searchSource \|\| "" \}\)/,
+    );
     assert.match(src, /if \(state\.webSearch\) \{[\s\S]*state\.searchCount \+= batch\.length/);
   });
 
