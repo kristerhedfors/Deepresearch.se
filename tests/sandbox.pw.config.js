@@ -24,6 +24,15 @@ export default defineConfig({
   reporter: [["list"]],
   use: {
     baseURL: process.env.BASE_URL || "https://deepresearch.se",
+    // These ride on EVERY request the context makes, cross-origin ones
+    // included — which silently broke this very spec: with an `authorization`
+    // header attached, the CheerpX runtime's `import(CHEERPX_CDN)` fails with
+    // net::ERR_FAILED, so the VM died at "loading CheerpX…" and only the
+    // fail-soft fallback was ever exercised. The header is still REQUIRED here
+    // (an unauthenticated `/` 302s to the anonymous `/cure` tier, which never
+    // sets `window.__appReady`), so the fix is not to drop it but to strip it
+    // per-origin: call `stripCrossOriginAuth(context)` from e2e/helpers.js in
+    // any spec that boots the sandbox. See that helper for the full rationale.
     extraHTTPHeaders: {
       authorization: "Basic " + Buffer.from(`${user}:${pass}`).toString("base64"),
     },

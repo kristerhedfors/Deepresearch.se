@@ -319,6 +319,7 @@ Debugging & live verification:
 - **bugreport-bugfix** — keyword → chatlogs search → replay through the gates → fix with the verbatim message as a test.
 - **on-device-trace** — remote-debugging device-only bugs (iOS PWA) via build stamp + copyable on-device event trace.
 - **sandbox-debug** — the sandbox boot-hang playbook: debug switches, the `boot_stage` timeline, the stall watchdog.
+- **sandbox-perf-eval** — measuring how long sandbox commands take: the cold/warm battery + agent-turn trace, and the two traps (cross-origin auth kills the boot; the 30 s ceiling destroys the VM).
 
 Feedback, boards & testing loops:
 

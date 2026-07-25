@@ -345,6 +345,16 @@ work). Self-contained npm project of its own (`tests/package.json`) —
 distinct from the root `package.json` above, which only runs the unit
 suite.
 
+> **The header must not reach cross-origin hosts.** `extraHTTPHeaders`
+> attaches it to *every* request the context makes, third parties
+> included. Any spec that boots the execution sandbox must call
+> `stripCrossOriginAuth(context)` (`tests/e2e/helpers.js`) first: with an
+> `authorization` header on it, the CheerpX runtime's
+> `import(CHEERPX_CDN)` fails with `net::ERR_FAILED`, the VM dies at
+> "loading CheerpX…" after ~3.2 s, and the spec silently tests only the
+> fail-soft fallback. It also keeps the break-glass password off
+> third-party hosts.
+
 ```bash
 cd tests && npm install && npm run fixtures   # once
 npm run test:mocked   # 43 tests, free: /api/chat (and /api/embed, /api/settings) intercepted
@@ -377,6 +387,34 @@ npm run test:live     # 5 tests, real Berget tokens + one Exa run
   for the re-signing CA, and `--ssl-version-max=tls1.2` because the
   proxy resets Chromium's TLS 1.3 ClientHello; the browser binary is the
   pre-installed `/opt/pw-browsers/chromium`.
+
+### Sandbox specs (own configs, not in the mocked/live projects)
+
+Three specs drive a real CheerpX VM in Chromium and are matched by their own
+configs, so the default projects do not pick them up:
+
+```bash
+cd tests
+npx playwright test --config=sandbox.pw.config.js                          # the iOS "sandbox not ready" regression
+npx playwright test --config=sandbox-perf.pw.config.js -g "performance"    # command-cost battery (~2 min)
+npx playwright test --config=sandbox-perf.pw.config.js -g "agent trace"    # one turn, every event timestamped
+```
+
+- **`sandbox-perf.spec.js`** times ~45 one-liners in a booted VM, each run
+  several times so the report separates cold (first run, streaming the binary's
+  blocks off the wss disk) from warm (median of the rest). It also fits a
+  fork-cost ladder and a read-size slope. The runner is self-healing: a command
+  that hits the 30 s exec ceiling destroys the VM (`resetSandbox`), so it
+  detects rc 124, re-boots, and re-creates its fixtures rather than losing the
+  rest of the run.
+- **`sandbox-agent-trace.spec.js`** runs one sandbox-backed chat turn and
+  timestamps every `/api/bash/step` round, the exec window between rounds, every
+  SSE frame, and the boot. `execInSandbox` is a module binding, not reachable on
+  `window`, so the step gap is the non-invasive measure of in-VM time.
+
+Results and the guidance drawn from them: **`docs/SANDBOX-PERFORMANCE.md`**.
+These are exploration tools, not gates — they assert only that they produced
+usable data, since the numbers vary with network conditions.
 
 The **model-matrix eval** (`tests/model-eval.mjs`, `npm run eval:models`) is a
 separate data-collection tool — see the **model-eval** skill for its
