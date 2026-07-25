@@ -154,7 +154,7 @@ The brief handed to the merge leads with its provenance:
 agreement 41%. The members did NOT converge — treat this as a weak signal.]
 ```
 
-so the answer model weighs it correctly, and ends with the unresolved
+so the answer model can weigh it correctly. The brief ends with the unresolved
 disagreement rather than dropping it.
 
 ## Bounds
