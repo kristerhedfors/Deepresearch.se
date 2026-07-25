@@ -163,7 +163,8 @@ rest of the document elaborates.
 | **R2** | Cloudflare | workspace records and conversations (ciphertext), file originals and RAG exports (readable), vault blobs (ciphertext the server cannot open), published replays (public) | the operator, per the above | durable storage and cross-device sync |
 | **Vectorize** | Cloudflare | chunk text + vectors | the operator | retrieval over workspace material |
 | **Berget / Anthropic / OpenAI** | third party | whatever a request carries | that provider | the models. Berget is primary and runs every JSON planning phase |
-| **Exa** | third party | the search query | Exa | live web results. Only the query ever leaves — never the conversation |
+| **Exa** | third party | the search query | Exa | live web results, and the DEFAULT search backend. Only the query ever leaves — never the conversation |
+| **Web search from our own Worker** (`src/websearch-cf.js`) | Cloudflare (this Worker) | the search query, to a public results page and the result pages | the operator, plus whoever hosts each page we read | live web results with no search company in the path. Selectable site-wide by an admin, or per request by a user from the web knob's long-press card |
 | **Shodan** (`src/shodan.js`, `shodan_mcp` knob) | third party, **Se/rver only** | one host or IP | Shodan | host intelligence folded into research. Not available on Se/cure: the key is server-side, and a server-side key means a server in the data path |
 | **Google Maps / Street View** (`google_maps` knob) | third party, Se/rver only | a place or coordinate | Google | maps, street imagery, place context |
 | **OSM Nominatim** | third party, Se/rver only | a coordinate | OSM | turning a photo's EXIF GPS into place context |
@@ -260,6 +261,7 @@ flowchart LR
 | Anthropic | `POST https://api.anthropic.com/v1/messages` | `ANTHROPIC_API_KEY` (optional) | Secondary answer/synthesis models (`claude-*`); Anthropic SSE re-emitted as OpenAI-style SSE by an adapter (`src/anthropic.js`) |
 | OpenAI | `POST https://api.openai.com/v1/chat/completions` | `OPENAI_API_KEY` (optional) | Third answer/synthesis provider (bare `gpt-*`); native OpenAI SSE, wire-params only (`src/openai.js`) |
 | Exa | `POST https://api.exa.ai/search`, `POST …/contents` | `x-api-key: EXA_API_KEY` | Web search — `numResults`/`type` scale with the time budget (§4.3b); `/contents` is the (currently disabled, §4.2) full-text fetch |
+| A results-page CASCADE + the result pages themselves | `GET` each configured source in order — DuckDuckGo's no-JS HTML, Marginalia, optionally Bing's RSS output — then a plain `GET` per result page (`src/websearch-cf.js`) | none | The Cloudflare-originating search backend: the Worker IS the search engine. A cascade because no single source answers every caller — DuckDuckGo returns an empty anti-bot shell to datacenter IPs (measured 2026-07-25). Bounded (8 s per source, 8 s per page, ≤5 pages, 3 at a time) and fail-soft — an exhausted cascade returns null and falls back to Exa |
 | Hugging Face Hub | Hub search APIs (`src/hf.js`) | `HUGGINGFACE_API_TOKEN` (optional) | Models/datasets/papers as citable sources when the question targets HF (`hfIntent`), via the search-source registry |
 | Shodan | REST API (`src/shodan.js`) | `SHODAN_API_KEY` (optional) | Opt-in host-intelligence enrichment (`shodan_mcp` knob) — an **extension**, registered in `src/extensions.js` (§4.2a); the core does not depend on it |
 | Google Maps Platform | Places, Street View Static, Static Maps, Embed (`src/googlemaps.js`) | `GOOGLE_MAPS_API_KEY` (+ optional `GOOGLE_MAPS_EMBED_KEY`) | Opt-in maps/street-view enrichment (`google_maps` knob) + Tokemon's street mode — an **extension**, registered in `src/extensions.js` (§4.2a); the core does not depend on it |
@@ -276,6 +278,13 @@ Known provider limits baked into the design:
   `response_format: {type:"json_object"}`.
 - Exa returns HTTP 402 without a key; all Exa failures degrade to an error
   string, never a failed request.
+- DuckDuckGo's no-JS SERP answers a datacenter IP with an empty anti-bot
+  shell — measured across `html.`/`lite.`, GET/POST and both UAs, so no
+  request-shaping fixes it. Hence the whole design of the Cloudflare-originating
+  backend: an ordered cascade of sources, each with a retry → anchor-scan-parse
+  ladder, then `null` → Exa fallback. `search.cf_serp_empty` on one provider is
+  the cascade working; on every provider it is the signal to configure a real
+  backend.
 - Outbound enrichment requests carry the minimum (a query, a coordinate, a
   host) — never the conversation, filenames, or account identity.
 

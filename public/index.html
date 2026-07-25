@@ -104,14 +104,18 @@ try{var m=localStorage.getItem("dr_chat_mode");var t="#6fc3fd";if(m==="sdk"){doc
       <div id="composer">
         <div id="searchpop" hidden>
           <strong>Web search</strong><br>
-          <b>On:</b> your question is researched with live web searches (Exa) and
+          <b>On:</b> your question is researched with live web searches and
           answered with cited sources, within the time target.<br>
-          <b>Off:</b> no query is sent to Exa. This knob gates web search only —
-          the time slider stays active: the assistant still answers within the
-          time target, researching as deep as any other available source allows
-          (e.g. the Hugging Face Hub for model/dataset questions) and otherwise
-          answering from the model's own knowledge, with the depth the slider
-          buys.<br>
+          <b>Off:</b> no search query leaves this site. This knob gates web
+          search only — the time slider stays active: the assistant still
+          answers within the time target, researching as deep as any other
+          available source allows (e.g. the Hugging Face Hub for model/dataset
+          questions) and otherwise answering from the model's own knowledge,
+          with the depth the slider buys.
+          <!-- The search-SOURCE picker (public/js/search-source.js): WHO runs
+               the searches. Rendered and wired in app.js; the pick rides
+               /api/chat as `search_source` and the server re-validates it. -->
+          <div id="searchsrc"></div>
           <b>Note:</b> Exa retains search queries by default. For sensitive
           topics, see "Sensitive topics" in the
           <a href="/help/" target="_blank" rel="noopener">documentation</a>.
@@ -229,7 +233,10 @@ try{var m=localStorage.getItem("dr_chat_mode");var t="#6fc3fd";if(m==="sdk"){doc
       queries derived from your question are sent to
       <a href="https://exa.ai" target="_blank" rel="noopener">Exa</a> to find
       sources — Exa may retain those queries under its own policy (see the
-      documentation for a two-step workflow around this). Attached photos and
+      documentation for a two-step workflow around this). You can change who
+      does the searching: press and hold the web-search knob and pick
+      <b>this site's Worker</b>, and the searches run from our own Cloudflare
+      Worker instead, so no search company receives the query. Attached photos and
       documents are sent along with any embedded metadata they carry (e.g. a
       photo's location, or a Word document's author and edit history) — the
       attachment card shows a badge whenever that's the case, before you send.

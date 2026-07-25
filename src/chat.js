@@ -58,6 +58,7 @@ import { resolvePromptSet, resolveRequestAgent } from "./agent-spec.js";
 import { buildFeedbackDebugContext, createOrThreadFeedbackEntry, feedbackPageTag } from "./feedback.js";
 import { recordUseCaseFeedback } from "./testpoints.js";
 import { getDb } from "./db.js";
+import { normalizeSearchSource } from "./websearch-backends.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -74,6 +75,10 @@ import { getDb } from "./db.js";
  * @property {boolean} [incognito] ghost toggle: suppresses the chat-log row
  * @property {number} [time_budget_s] UI slider value (clamped server-side)
  * @property {boolean} [web_search] knob, default on (only `false` disables)
+ * @property {string} [search_source] WHO runs this request's searches, picked on
+ *   the knob's long-press card: "exa" (default) | "cloudflare" (this Worker
+ *   searches for itself). Anything else — including absent — means the
+ *   site-configured backend; an admin can pin that with search.allow_user_choice
  * @property {boolean} [developer_mode] OFF-ONLY override: `false` disables the introspection enrichment for this request (never enables it)
  * @property {boolean} [sdk_mode] SDK ("lovable") mode: route this request to the
  *   DistillSDK build flow (pipeline.js runSdkBuild) — distill this site (above
@@ -226,6 +231,12 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   let budgetS = clampBudget(body.time_budget_s); // UI slider (src/budget.js)
   budgetS = Math.min(budgetS, config.max_time_budget_s);
   const webSearchEnabled = body.web_search !== false; // knob: default on
+  // …and WHO runs those searches, picked on the knob's long-press card (UX-10):
+  // "exa" (the default), "cloudflare" (this Worker searches for itself), or ""
+  // for the site-wide backend. Coerced to the allowlist here so nothing past
+  // this line can route a search at an unvalidated target; the admin can pin
+  // the site-wide choice with search.allow_user_choice = false.
+  const searchSource = normalizeSearchSource(body.search_source);
   const enrich = resolveEnrichmentOptions(body, env, identity, catalog, model);
   // ---- mode routing -------------------------------------------------------
   //
@@ -363,6 +374,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   async function runChatStream(controller) {
     const encoder = new TextEncoder();
     const state = newRequestState(model, jsonModel, webSearchEnabled, budgetS, {
+      searchSource,
       ext: enrich.ext,
       introspection: enrich.developerOn,
       vision: enrich.modelIsVision,
@@ -539,6 +551,11 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
           duration_ms,
           client_gone: disconnect.gone,
           meta: {
+            // Which search source the user picked ("" = the site default) — a
+            // debugging answer to "why did this research read thin?" now that
+            // more than one thing can run the searches. Undefined when unset,
+            // so JSON.stringify drops it and an ordinary row is unchanged.
+            search_source: searchSource || undefined,
             queries: [...state.ranQueries],
             sources: state.sources.map((s) => ({ n: s.n, title: s.title, url: s.url })),
             complexity: state.complexity,
@@ -846,7 +863,7 @@ export function resolveJsonModel(catalog, userModel) {
  * @param {string} jsonModel
  * @param {boolean} webSearch
  * @param {number} budgetS
- * @param {Partial<EnrichmentOptions> & { vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, swarm?: any, orchWorkflow?: any, swarmResults?: any, outrospectionMode?: boolean, answerPhase?: string | null, agentId?: string | null, promptSet?: string | null, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
+ * @param {Partial<EnrichmentOptions> & { searchSource?: string, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, swarm?: any, orchWorkflow?: any, swarmResults?: any, outrospectionMode?: boolean, answerPhase?: string | null, agentId?: string | null, promptSet?: string | null, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
  * @returns {ChatRequestState}
  */
 function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
@@ -855,6 +872,9 @@ function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
     model,
     jsonModel, // fixed model for the JSON planning phases (see resolveJsonModel)
     webSearch,
+    // WHO runs this request's searches (websearch-backends.js
+    // resolveSearchBackend): "" = the site's configured backend.
+    searchSource: extras.searchSource || "",
     // The EXTENSION state bag: one namespaced slice per registered
     // third-party integration (src/extensions.js), already resolved from the
     // request body. Core reads nothing inside it — an extension's runner and

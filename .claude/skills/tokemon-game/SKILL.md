@@ -90,11 +90,10 @@ power/acc/PP. Don't hand-tune numbers.
   light usage), `js/game.js` (movement, spawn polling every 30 s or 90 m,
   panels), `js/battle.js` (renders the server's event list), `js/api.js`.
 - `src/tokemon-nav.js` — the street-view mode's PURE side: the bilingual
-  text-command grammar (`parseGoCommand` — EN+SV with the invariant-6
-  parity suite in its test file; the `sv` reply-language flag derives from
-  the SAME token sets the grammar matches on, so it can't drift), geodesy,
-  and `projectSpawns` (bearing→x, distance→y/scale placement of spawns
-  inside a Street View frame).
+  text-command grammar (`parseGoCommand`), geodesy (incl. `absoluteBearing`,
+  which resolves an absolute *or* a heading-relative command against the
+  current heading), and `projectSpawns`. See "the grammar" and "the camera"
+  below.
 - Street-view AR mode: `GET …/scene` (free `streetViewMetadata` coverage
   probe → snap the camera to the pano's true position → billed-but-
   edge-cached `runStreetViewPovCapture` frame → overlays projected from the
@@ -102,8 +101,49 @@ power/acc/PP. Don't hand-tune numbers.
   the encounter check enforces) and `POST …/go` (text navigation; move/look
   are pure math and work with Maps off, "go to <place>" resolves via
   `placesTextSearch` and rides the per-user `google_maps` knob, replies
-  follow the command's language). Client: `js/street.js` renders, the
-  command bar in `js/game.js` drives.
+  follow the command's language). Client: `js/street.js` renders over its
+  pure core `js/street-core.js` (compass line, escaped captions, overlay
+  style — Node-tested), the command bar in `js/game.js` drives.
+
+## The grammar (src/tokemon-nav.js)
+
+ONE vocabulary table per word class — directions, relatives, verb classes,
+units, degree words, filler — each declaring `en` and `sv` **side by side**.
+Everything else is derived from those tables: the lookup maps, the `sv`
+reply-language flag (Swedish-only = Swedish tokens minus English ones, so a
+shared spelling like "meter" or "m" marks nothing), and the invariant-6
+parity test, which walks the tables instead of a hand-written example list.
+**Add a word to the table, not to a downstream list** — a Swedish entry with
+no English twin fails `npm test`.
+
+Parsing runs look → goto → move:
+
+- **look** wins whenever the first word is a look verb, and a look-led phrase
+  that says nothing the camera can do returns `null` rather than falling
+  through ("look at the sky" is not a walk).
+- **goto** takes the free-text query after to/till — UNLESS the whole query
+  is nothing but a direction ("go to the north" is a move). The old rule
+  scanned the query for a compass word ANYWHERE and walked players north
+  instead of to the north entrance.
+- **move** has two tiers: strict (every word classifies, so bare "norrut",
+  verb-only "fortsätt", and relative "go left" all route on shape alone) and
+  lenient (an explicit verb + a compass word still routes through unknown
+  vocabulary — "walk northwest past the church").
+
+Moves and looks each carry EITHER `bearing` (absolute) OR `turn` (off the
+current heading); `absoluteBearing(cmd, heading)` resolves both, which is why
+"go left" walks exactly where "turn left" would have looked.
+
+## The camera (projectSpawns)
+
+The frames are square 512×512 rectilinear renders at `SCENE_FOV`, so overlays
+are placed by the SAME pinhole camera, not by a linear sweep: `x` follows
+tan(bearing off heading)/tan(fov/2), `y` puts the spawn's ground point below
+the horizon by camera-height/distance (`CAMERA_HEIGHT_M`, the car's roof),
+and size falls off as 1/distance from `SCALE_REF_M`. The clamps exist for
+playability (a distant spawn stays big enough to tap), not for geometry.
+The client anchors an overlay at its FEET (`translate(-50%, -90%)`), which is
+exactly the ground point `y` describes — don't change one without the other.
 - Entry point: the Games view in `public/js/account.js` (shelf from
   `GET /api/games`).
 
@@ -141,6 +181,14 @@ power/acc/PP. Don't hand-tune numbers.
   different players — `spawnById` must be called with the SAME save's cap.
 - Battle turns are one POST each; the battle lives in the save row, so a
   reload resumes it (`state` returns it and the client reopens the overlay).
-- The mock-D1 smoke pattern for the API lives in the session scratchpad
-  history; the committed tests cover the pure core only, matching the
-  project's unit-test stance (D1/network = live-verify).
+- `parseLatLng` must reject an ABSENT position, not coerce it:
+  `URLSearchParams.get` returns `null` for a missing key and `Number(null)`
+  is 0, so `…/scene?` with no lat/lng once put the player at 0°,0° in the
+  Gulf of Guinea instead of answering 400 (found 2026-07-25 while writing
+  `tokemon-api.test.js`). Empty strings are the same trap.
+- The API layer IS unit-tested now (`src/tokemon-api.test.js`): a ~20-line
+  in-memory D1 fake (one `tokemon_saves` row) plus `globalThis.fetch` stubs
+  for the Street View metadata/image and Places calls. Use it as the pattern
+  for the remaining endpoints (encounter/collect/battle/party) rather than
+  reaching for live verification first; the network-shaped parts (real
+  imagery, real Places answers) still belong to live-verify.

@@ -94,6 +94,7 @@ import { wireBarTint } from "/js/bar-tint.js";
 import { DRC_RECENT_TURNS, ensureDrcRag, indexDrcChatTurns, retrieveDrcContext } from "/js/drc-rag.js";
 import { runDrcResearch } from "/js/drc-research.js";
 import { runBackendSearch as runDirectBackendSearch } from "/js/websearch-backends-core.js";
+import { getSearchSource, searchSourcePickerHtml, wireSearchSourcePicker } from "/js/search-source.js";
 import { ensureSandboxBooted, sandboxIdle, sandboxSupported, setSandboxImage } from "/js/sandbox.js";
 import { hideTerminalIcon, showTerminalIcon } from "/js/agent-backdrop.js";
 import {
@@ -2147,12 +2148,19 @@ async function drcServerWebSearch(query) {
   // secure-research-space WEB proxy, (3) the legacy web-search grant. All
   // fail-soft — any problem returns null and the pipeline uses the offline
   // harvest instead.
+  //
+  // Every one of the three carries `source`: the knob-card pick of WHO runs
+  // the search on the far side — Exa or the site's own Worker. It changes
+  // nothing about this tier's exposure (the query string, and only when a
+  // grant is in play at all — the query-only exception), only which engine
+  // the server points at; the server re-validates and ignores anything else.
+  const source = getSearchSource();
   if (stWebUsable()) {
     try {
       const res = await fetch("/api/server-token/web", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token: stGrant.token, query }),
+        body: JSON.stringify({ token: stGrant.token, query, source }),
       });
       if (res.status === 429) {
         setStRemaining("web", 0);
@@ -2175,7 +2183,7 @@ async function drcServerWebSearch(query) {
       const res = await fetch("/api/proxy/web", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token: proxyGrants.web.token, query }),
+        body: JSON.stringify({ token: proxyGrants.web.token, query, source }),
       });
       if (res.status === 429) {
         proxyGrants.web.remaining = 0;
@@ -2204,7 +2212,7 @@ async function drcServerWebSearch(query) {
     const res = await fetch("/api/websearch", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token: wsGrant.token, query }),
+      body: JSON.stringify({ token: wsGrant.token, query, source }),
     });
     if (res.status === 429) {
       wsGrant.remaining = 0;
@@ -4046,6 +4054,16 @@ $("websearch").addEventListener("change", () => {
 (() => {
   const knob = $("searchtoggle");
   const pop = $("knobpop");
+  // The card also answers WHO runs a grant/token-routed search — Exa or this
+  // site's own Worker (UX-10 amended, 2026-07-25). It is a preference about a
+  // path that only exists when a grant is in play; with a local browsing agent
+  // configured the browser calls that directly and this picker is moot, which
+  // is exactly why the agent's setup link stays right underneath it.
+  const srcBox = $("knobsrc");
+  if (srcBox) {
+    srcBox.innerHTML = searchSourcePickerHtml(getSearchSource(), "drcsrc");
+    wireSearchSourcePicker(srcBox, () => {});
+  }
   let hoverShow = 0;
   let hoverHide = 0;
   let holdTimer = 0;

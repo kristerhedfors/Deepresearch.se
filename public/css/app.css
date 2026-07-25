@@ -1364,6 +1364,23 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 }
 #searchpop[hidden] { display: none; }
 
+/* The search-SOURCE picker inside a knob popover (public/js/search-source.js):
+   WHO runs the searches — Exa or this site's own Worker. Shared shape across
+   both tiers; the Se/cure copy of these rules lives in cure/drc.css because
+   the two stylesheets never load together. Each row is the whole label so the
+   tap target is the option, not the 14 px radio. */
+.srcpick {
+  display: flex; flex-direction: column; gap: .35rem;
+  margin: .55rem 0; padding: .5rem 0;
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+}
+.srcopt {
+  display: flex; gap: .5rem; align-items: flex-start;
+  cursor: pointer; padding: .15rem 0;
+}
+.srcopt input { margin-top: .2rem; flex: 0 0 auto; accent-color: var(--accent, #0d4fa0); }
+.srcnote { opacity: .78; font-size: .95em; }
+
 #budgetval {
   min-width: 3.6rem;
   font-variant-numeric: tabular-nums;

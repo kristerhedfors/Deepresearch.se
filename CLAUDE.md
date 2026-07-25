@@ -245,7 +245,7 @@ skill's drift greps target it).
 ## Tests
 
 ```bash
-npm test            # unit: node --test src/*.test.js public/js/*.test.js sdk/*.test.mjs scripts/*.test.mjs
+npm test            # unit: node --test src/*.test.js public/js/*.test.js public/games/*/js/*.test.js sdk/*.test.mjs scripts/*.test.mjs
 npm run typecheck   # zero-build-step tsc, strict, opt-in per file via // @ts-check
 cd tests && npm install && npm run fixtures   # e2e setup (once)
 npm run test:mocked                           # Playwright vs live site, /api/chat intercepted (free)

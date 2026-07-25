@@ -26,6 +26,7 @@ import {
 import { balloonTaskDone } from "./balloon.js";
 import { bashLiteOn, developerModeOn } from "./settings.js";
 import { cachedChatMode } from "./chat-mode.js";
+import { getSearchSource } from "./search-source.js";
 import { buildIntrospectionBlock, introspectionActive, maybeRepoPathMention, SNAPSHOT_PATH, validateSnapshot } from "./introspect-core.js";
 import { engageIntrospection, introspectionRemoteModel, privateIntrospectionRoute } from "./introspect-ui.js";
 import { onDeviceIdFromValue } from "./ondevice-core.js";
@@ -791,6 +792,11 @@ async function buildChatPayload(opts) {
     messages: stripOldImages(history),
     time_budget_s: opts.budgetS,
     web_search: opts.webSearch,
+    // WHO runs those searches — the knob's long-press pick (search-source.js),
+    // read from device storage at send time rather than threaded through the
+    // send opts, so a resumed/recovered send uses the CURRENT preference
+    // instead of one frozen into an old record. The server re-validates it.
+    search_source: getSearchSource(),
   };
   if (opts.model) payload.model = opts.model;
   // The chat-mode dropdown (chat-mode.js): Normal DECLINES the introspection

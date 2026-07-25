@@ -25,6 +25,7 @@ import { initProjectsUi } from "./projects-ui.js";
 import { bashLiteOn, developerModeOn, loadSettings, setDeveloperMode } from "./settings.js";
 import { storeDeveloperMode } from "./dev-mode.js";
 import { applyChatModeTheme, cachedChatMode, reconcileChatMode } from "./chat-mode.js";
+import { getSearchSource, searchSourcePickerHtml, wireSearchSourcePicker } from "./search-source.js";
 import { applyModeBackdrop } from "./mode-backdrop.js";
 import { barTint } from "./mode-theme.js";
 import { wireBarTint } from "./bar-tint.js";
@@ -265,6 +266,19 @@ webSearchBox.addEventListener("change", () => {
   localStorage.setItem("web_search", webSearchBox.checked ? "on" : "off");
 });
 
+// The knob's long-press card also answers WHO runs the searches (UX-10 amended,
+// 2026-07-25): Exa (the default, a hosted index that retains queries) or this
+// site's own Cloudflare Worker (src/websearch-cf.js — no search company in the
+// path). Rendered once at boot into #searchsrc; the pick is device-local
+// (search-source.js) and rides each /api/chat as `search_source`, which the
+// server re-validates. Fail-soft: a stale cached page without the container
+// just keeps sending its stored pick.
+const searchSrcBox = document.getElementById("searchsrc");
+if (searchSrcBox) {
+  searchSrcBox.innerHTML = searchSourcePickerHtml(getSearchSource(), "srvsrc");
+  wireSearchSourcePicker(searchSrcBox, () => {});
+}
+
 // ---- Introspection / SDK composer-row status chips -------------------------
 // The research-depth slider is hidden in these two modes (mode-theme.js
 // depthSlider:false — neither mode does web research) — the space it leaves
@@ -370,9 +384,27 @@ searchToggle.addEventListener("click", (e) => {
     holdFired = false;
   }
 });
-searchToggle.addEventListener("contextmenu", (e) => e.preventDefault());
+// Chrome/Android take over the touch at the long-press threshold: it fires
+// pointercancel (killing the timer above) and contextmenu, so contextmenu IS
+// the long-press signal there. iOS never fires it and rides the timer. The
+// Se/cure twin (drc.js) has claimed it since UX-10 shipped; here it only
+// suppressed the menu, which left Android unable to open the card at all.
+searchToggle.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  clearTimeout(holdTimer);
+  holdFired = true;
+  searchPop.hidden = false;
+});
 document.addEventListener("click", (e) => {
-  if (!searchPop.hidden && !searchPop.contains(e.target)) searchPop.hidden = true;
+  // The release that ENDS the long-press is itself a document click, and the
+  // knob is not inside the card — so without this guard the card opened at
+  // 500 ms and closed again the instant the finger lifted (verified in
+  // headless Chromium, 2026-07-25). Harmless while the card was read-only
+  // prose; not once it carries the search-source picker. The Se/cure twin has
+  // always had the guard; this is the same rule.
+  if (!searchPop.hidden && !searchPop.contains(e.target) && !e.target.closest("#searchtoggle")) {
+    searchPop.hidden = true;
+  }
 });
 
 // ---- The ghost: the door to DRC (2026-07-10 directive) ----------------------

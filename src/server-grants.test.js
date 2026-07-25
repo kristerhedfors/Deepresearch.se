@@ -454,6 +454,10 @@ test("server-grants.js imports stay inside the upstream-only allowlist (no data-
     "./http.js",
     "./llm-proxy.js",
     "./server-token.js",
+    // Search-BACKEND routing only (which engine runs a query), and already in
+    // this graph transitively via exa.js — it reads no user data and holds no
+    // store, so it does not widen what a token can reach.
+    "./websearch-backends.js",
   ]);
   for (const spec of imports) {
     assert.ok(allowed.has(spec), `unexpected import in server-grants.js: ${spec} — see THE SERVER-TOKEN GUARANTEE`);

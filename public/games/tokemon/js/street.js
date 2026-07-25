@@ -4,8 +4,11 @@
 // imagery at the x/y/scale the server computed (src/tokemon-nav.js).
 // Navigation happens outside this module (text commands, look buttons,
 // walking); this pane only presents and reports taps.
+//
+// Everything that turns the payload into text/markup/style lives in the pure
+// street-core.js, which is Node-tested; what is left here is the DOM.
 
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+import { compassLabel, overlayHtml, overlayStyle } from "./street-core.js";
 
 /**
  * @param {HTMLElement} container  The #tk-street pane.
@@ -33,8 +36,6 @@ export function createStreetView(container, { onTapSpawn, onTurn }) {
   container.querySelector(".tk-sv-left").addEventListener("click", () => onTurn?.(-45));
   container.querySelector(".tk-sv-right").addEventListener("click", () => onTurn?.(45));
 
-  const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
-
   // The pane's self-explaining empty state (loading, no coverage, knob off).
   function showMessage(msg) {
     img.removeAttribute("src");
@@ -55,17 +56,14 @@ export function createStreetView(container, { onTapSpawn, onTurn }) {
     note.hidden = true;
     img.classList.remove("empty");
     img.src = scene.image;
-    compass.textContent =
-      COMPASS[Math.round(scene.heading / 45) % 8] + ` ${scene.heading}°` + (scene.date ? ` · imagery ${scene.date}` : "");
+    compass.textContent = compassLabel(scene.heading, scene.date);
     overlaysEl.innerHTML = "";
     for (const o of scene.overlays || []) {
       const b = document.createElement("button");
       b.type = "button";
       b.className = `tk-sv-spawn${o.near ? " near" : ""}`;
-      b.style.left = `${o.xPct}%`;
-      b.style.top = `${o.yPct}%`;
-      b.style.fontSize = `${Math.round(30 * o.scale)}px`;
-      b.innerHTML = `<span>${o.emoji}</span><i>${esc(o.name || "")}${o.kind === "creature" ? ` Lv ${o.level}` : ""} · ${o.distM} m</i>`;
+      Object.assign(b.style, overlayStyle(o));
+      b.innerHTML = overlayHtml(o);
       b.addEventListener("click", () => onTapSpawn?.(o));
       overlaysEl.appendChild(b);
     }
