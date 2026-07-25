@@ -148,7 +148,7 @@ export function withAppendedText(conversation, extraText) {
   return conversation;
 }
 
-// Appends a server-fetched image (e.g. googlemaps.js's Street View / map) as
+// Appends a server-fetched image (e.g. an enrichment's fetched imagery) as
 // an image_url part on the LAST message, so a vision model can see it exactly
 // like a user-attached image. String content becomes a two-part array (its
 // text plus the image); array content gets the image pushed on the end.

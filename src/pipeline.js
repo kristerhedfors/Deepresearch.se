@@ -31,8 +31,9 @@
 // own are split out: the source registry (dedup, domain-diversity cap,
 // digest) in sources.js, the auxiliary search-source registry (HF Hub &
 // co, iterated by runAuxSearches below) in search-sources.js, the
-// opt-in pre-pipeline context enrichments (Shodan, Google Maps) in
-// enrichment.js, the JSON-phase schemas + triage normalization/fallback
+// opt-in pre-pipeline context enrichments in enrichment.js (whose
+// third-party integrations are registered — and named — only in
+// extensions.js), the JSON-phase schemas + triage normalization/fallback
 // in triage.js, and the answer-streaming internals (retry loop, model
 // failover, chunked emit) in answer-stream.js.
 
@@ -250,9 +251,11 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   const stepDone = (id, label, details = []) =>
     emit({ status: { type: "step_done", id, label, details } });
 
-  // Opt-in context enrichments (src/enrichment.js's ENRICHMENTS registry:
-  // Shodan, Google Maps — each gated by its per-user knob resolved in
-  // chat.js). They run BEFORE any model call — and before the ctx build
+  // Opt-in context enrichments (src/enrichment.js's registry — the site's
+  // own source, plus whichever third-party extensions are registered and
+  // enabled for this caller; this module names none of them and behaves
+  // identically with an empty registry). They run BEFORE any model call —
+  // and before the ctx build
   // below — so their labeled context blocks flow into every downstream
   // phase, triage included (ctx.lastUser / ctx.convText / ctx.imageParts
   // are all read from `convo`). Fully fail-soft — the conversation comes
@@ -260,7 +263,7 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // Feedback pipeline (feedback.js feedbackIntent): a message that opens with
   // "feedback" (EN+SV) is a report to the developers, not research. Detect it
   // BEFORE the enrichments so a feedback note that happens to mention an IP or
-  // address doesn't fire a Shodan/Maps lookup on the way in. Gated on
+  // address doesn't fire an enrichment lookup on the way in. Gated on
   // state.feedbackCapture — set only by the /api/chat channel (chat.js), so the
   // MCP channel keeps researching. The capture itself (entry + chat-log tag) is
   // done by chat.js from state.feedback; runFeedbackCapture below just answers.

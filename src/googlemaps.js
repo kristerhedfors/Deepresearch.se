@@ -47,7 +47,20 @@ import { decodePolyline, movePoint } from "./googlemaps-text.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
-/** @typedef {import('./types.js').StreetViewPov} StreetViewPov */
+/**
+ * A Street View point-of-view: where the camera stands and where it looks.
+ * Defined HERE rather than in the core src/types.d.ts — it is Google Street
+ * View's wire shape, and the core type file must stay free of any individual
+ * integration's vocabulary (the extension cut, 2026-07-25).
+ * @typedef {{
+ *   panoId: string,
+ *   lat: number,
+ *   lng: number,
+ *   heading: number,
+ *   pitch: number,
+ *   fov: number,
+ * }} StreetViewPov
+ */
 /** @typedef {import('./googlemaps-text.js').LatLng} LatLng */
 /** @typedef {import('./googlemaps-text.js').MapView} MapView */
 /** @typedef {import('./googlemaps-text.js').JumpTarget} JumpTarget */
