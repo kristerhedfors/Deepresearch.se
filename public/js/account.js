@@ -37,7 +37,7 @@ import { loadGamesView, renderDocs, renderFullUsage, renderNotifBadge, renderSum
  * @property {HTMLElement} overlay  #account — the full-screen overlay
  * @property {HTMLElement} body     #account-body — every view renders here
  * @property {HTMLElement} badge    #notif-badge — the header's counter
- * @property {?object} me           cached /api/me payload (null until fetched)
+ * @property {any} me              cached /api/me payload (null until fetched)
  * @property {(view: string) => void} show  switches the visible view
  */
 

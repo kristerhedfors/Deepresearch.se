@@ -1,3 +1,4 @@
+// @ts-check
 // Pure, import-free helpers behind the research-activity UI (activity.js) —
 // the DOM-free logic pulled out so it's directly unit-testable without loading
 // settings.js / imagedeck.js (the pattern sse.js and message-content.js follow).
@@ -7,6 +8,7 @@
 // Convert the Street View SDK's zoom to the Static API's fov so a captured
 // frame matches what's on screen (zoom 0 ≈ 180° wide, zoom 1 ≈ 90°, each level
 // halves it; Static accepts 10-120).
+/** @param {number|string} zoom */
 export function zoomToFov(zoom) {
   const z = Number.isFinite(Number(zoom)) ? Number(zoom) : 1;
   return Math.round(Math.min(120, Math.max(10, 180 / Math.pow(2, z))));
@@ -19,10 +21,16 @@ export function zoomToFov(zoom) {
 // several KB already persisted in the conversation's embeds registry — so
 // only its title and question count are. Everything else passes through
 // unchanged.
+/** @param {any} s @returns {any} */
 export function sanitizeResearchEvent(s) {
   if (s?.type === "streetview_frames") {
     const frames = Array.isArray(s.frames) ? s.frames : [];
-    return { type: s.type, query: s.query, frames: frames.length, directions: frames.map((f) => f?.dir || f?.label || "") };
+    return {
+      type: s.type,
+      query: s.query,
+      frames: frames.length,
+      directions: frames.map((/** @type {any} */ f) => f?.dir || f?.label || ""),
+    };
   }
   if (s?.type === "quiz") {
     return {
@@ -37,7 +45,9 @@ export function sanitizeResearchEvent(s) {
     return {
       type: s.type,
       title: s.title || "",
-      agents: (Array.isArray(s.agents) ? s.agents : []).map((a) => `${a?.name || a?.id} (${a?.kind})`),
+      agents: (Array.isArray(s.agents) ? s.agents : []).map(
+        (/** @type {any} */ a) => `${a?.name || a?.id} (${a?.kind})`,
+      ),
       waves: Array.isArray(s.waves) ? s.waves.length : 0,
     };
   }
@@ -49,6 +59,7 @@ export function sanitizeResearchEvent(s) {
 // "Searched ..."): the events carry `source` (slug) + `service` (display
 // name) since 2026-07-08; absent fields (older stored events) fall back to
 // the web wording.
+/** @param {{service?: string}|null|undefined} info */
 export function searchServiceName(info) {
   return (info && info.service) || "Web search";
 }
@@ -59,6 +70,7 @@ export function searchServiceName(info) {
 // stderr (labeled only when BOTH are present), trailing whitespace trimmed, or
 // "(no output)" when the command printed nothing. The exit code is rendered
 // separately (as a badge), so it isn't part of this text. Pure; never throws.
+/** @param {any} run */
 export function shellRunOutputText(run) {
   const r = run && typeof run === "object" ? run : {};
   const out = typeof r.stdout === "string" ? r.stdout.replace(/\s+$/, "") : "";
@@ -71,6 +83,7 @@ export function shellRunOutputText(run) {
 
 // The stats footer text from the `done` event (model, duration, tokens,
 // searches). Pure string builder; renderStats writes it into the DOM.
+/** @param {any} s */
 export function formatStatsLine(s) {
   const parts = [];
   if (s.model) parts.push(String(s.model).split("/").pop());
@@ -97,26 +110,31 @@ export function formatStatsLine(s) {
  * the source for the "Copy research JSON" button. Pure (reads only plain turn
  * fields, no DOM). `timeline` is the raw ordered event log (ResearchLogEntry[]);
  * `steps`/`searches`/`sources` are convenience projections of it.
- * @param {object} turn  the turn object (turns.js addAssistantTurn)
+ * @param {{researchLog?: any[], doneStats?: any, text?: string, question?: string,
+ *   model?: string, errored?: boolean}} turn  the turn object (turns.js addAssistantTurn)
  * @returns {object} the debug record ({question, model, stats, steps,
  *   searches, sources, answer, answerChars, errored, errors, timeline})
  */
 export function buildResearchDebugJson(turn) {
   const log = Array.isArray(turn.researchLog) ? turn.researchLog : [];
   const searches = log
-    .filter((e) => e.type === "search_done")
-    .map((e) => ({
+    .filter((/** @type {any} */ e) => e.type === "search_done")
+    .map((/** @type {any} */ e) => ({
       round: e.round,
       query: e.query,
       source: e.source || "web",
       service: e.service || "Web search",
       results: e.results,
       duration_ms: e.duration_ms,
-      sources: (e.sources || []).map((s) => ({ title: s.title, url: s.url })),
+      sources: (e.sources || []).map((/** @type {any} */ s) => ({ title: s.title, url: s.url })),
     }));
   const steps = log
-    .filter((e) => e.type === "step_done")
-    .map((e) => ({ id: e.id, label: e.label, details: Array.isArray(e.details) ? e.details : [] }));
+    .filter((/** @type {any} */ e) => e.type === "step_done")
+    .map((/** @type {any} */ e) => ({
+      id: e.id,
+      label: e.label,
+      details: Array.isArray(e.details) ? e.details : [],
+    }));
   // Every cited source, deduped by URL across all search rounds.
   const seen = new Set();
   const sources = [];
@@ -145,7 +163,9 @@ export function buildResearchDebugJson(turn) {
   // marker, or an appended "[…error…]" note — so the export is the complete
   // response, not just its metadata.
   const answer = turn.text || "";
-  const errors = log.filter((e) => e.event === "error").map((e) => e.error);
+  const errors = log
+    .filter((/** @type {any} */ e) => e.event === "error")
+    .map((/** @type {any} */ e) => e.error);
   return {
     question: turn.question || "",
     model: turn.model || d?.model || "",

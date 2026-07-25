@@ -1,3 +1,4 @@
+// @ts-check
 // The project vault's PURE CORE: secret generation/normalization, the
 // Crockford base32 codec, HKDF locator/key derivation, archive
 // encrypt/decrypt, the archive-shape check, and the chunked base64 helpers.
@@ -86,7 +87,7 @@ export function encodeCrockford(bytes) {
   return out;
 }
 
-/** @param {string} s normalized base32 @returns {Uint8Array} */
+/** @param {string} s normalized base32 @returns {Uint8Array<ArrayBuffer>} */
 export function decodeCrockford(s) {
   const out = new Uint8Array(Math.floor((s.length * 5) / 8));
   let acc = 0;
@@ -189,11 +190,11 @@ export function validateVaultArchive(a) {
     a.project.id &&
     typeof a.project.name === "string" &&
     Array.isArray(a.conversations) &&
-    a.conversations.every((c) => c && typeof c.id === "string" && c.data && typeof c.data === "object") &&
+    a.conversations.every((/** @type {any} */ c) => c && typeof c.id === "string" && c.data && typeof c.data === "object") &&
     Array.isArray(a.files) &&
-    a.files.every((f) => f && typeof f.id === "string" && typeof f.bytes === "string") &&
+    a.files.every((/** @type {any} */ f) => f && typeof f.id === "string" && typeof f.bytes === "string") &&
     Array.isArray(a.ragDocs) &&
-    a.ragDocs.every((d) => d && typeof d.docId === "string" && Array.isArray(d.chunks) && Array.isArray(d.vectors))
+    a.ragDocs.every((/** @type {any} */ d) => d && typeof d.docId === "string" && Array.isArray(d.chunks) && Array.isArray(d.vectors))
   );
 }
 
@@ -203,7 +204,9 @@ export function validateVaultArchive(a) {
 export function bytesToB64(bytes) {
   let binary = "";
   for (let i = 0; i < bytes.length; i += 0x8000) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    // `apply` over a typed-array view: the arg list is number-like at
+    // runtime, but its static type is Uint8Array, not number[].
+    binary += String.fromCharCode.apply(null, /** @type {any} */ (bytes.subarray(i, i + 0x8000)));
   }
   return btoa(binary);
 }

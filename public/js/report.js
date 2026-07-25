@@ -1,15 +1,22 @@
+// @ts-check
 // PDF report generation for answers — branded DeepResearch.se.
 // jsPDF (vendored, ~360KB) is injected on first use only, so the normal
 // page load never pays for it.
 
+/** @type {Promise<void>|null} */
 let jspdfLoading = null;
+
+// jsPDF is a vendored UMD bundle that attaches itself to window. Read it
+// lazily — this module is imported in Node by its unit suite, where the
+// pure helpers work fine but `window` does not exist.
+const win = () => /** @type {Window & {jspdf?: any}} */ (window);
 function loadJsPdf() {
-  if (window.jspdf) return Promise.resolve();
+  if (win().jspdf) return Promise.resolve();
   if (!jspdfLoading) {
     jspdfLoading = new Promise((resolve, reject) => {
       const s = document.createElement("script");
       s.src = "/vendor/jspdf.umd.min.js";
-      s.onload = resolve;
+      s.onload = () => resolve();
       s.onerror = () => reject(new Error("Could not load the PDF library."));
       document.head.appendChild(s);
     });
@@ -39,19 +46,21 @@ const PDF_TRANSLIT = {
   "−": "-", "‑": "-", "‒": "-", "―": "-", "⁃": "-", "∙": "-", "▪": "-", "◦": "-",
   "±": "+/-", "∓": "-/+", "∞": "inf", "√": "sqrt", "∑": "sum", "∏": "prod",
   "✓": "[x]", "✔": "[x]", "☑": "[x]", "✗": "[ ]", "✘": "[ ]", "☒": "[ ]",
-  "★": "*", "☆": "*", "▶": ">", "◆": "*", "→": "->",
+  "★": "*", "☆": "*", "▶": ">", "◆": "*",
 };
+/** @param {unknown} s */
 function sanitizeForPdf(s) {
   let out = "";
   for (const ch of String(s)) {
-    if (ch.codePointAt(0) <= 0xff || PDF_CP1252_HIGH.has(ch)) { out += ch; continue; }
-    out += PDF_TRANSLIT[ch] ?? " ";
+    if ((ch.codePointAt(0) ?? 0) <= 0xff || PDF_CP1252_HIGH.has(ch)) { out += ch; continue; }
+    out += /** @type {Record<string, string>} */ (PDF_TRANSLIT)[ch] ?? " ";
   }
   return out;
 }
 
 // Inline markers (** ` ) are flattened so the PDF text stays readable; the
 // result is also sanitized to what jsPDF's standard font can encode.
+/** @param {unknown} s */
 function stripInline(s) {
   return sanitizeForPdf(
     String(s).replace(/\*\*([^*]+)\*\*/g, "$1").replace(/`([^`]+)`/g, "$1"),
@@ -62,6 +71,7 @@ export { sanitizeForPdf };
 
 // Split one GFM table row into trimmed, inline-flattened cells. Leading and
 // trailing pipes are optional; escaped pipes (\|) stay inside a cell.
+/** @param {unknown} line */
 function splitTableRow(line) {
   const cells = String(line).trim().replace(/^\|/, "").replace(/\|$/, "")
     .split(/(?<!\\)\|/)
@@ -70,6 +80,7 @@ function splitTableRow(line) {
 }
 
 // A GFM delimiter row is all `---`/`:--:` cells, e.g. `|---|:--:|---|`.
+/** @param {string|null|undefined} line */
 function isTableDelimiter(line) {
   if (line == null || line.indexOf("|") === -1) return false;
   const cells = splitTableRow(line);
@@ -77,6 +88,7 @@ function isTableDelimiter(line) {
 }
 
 // A line that could be a table row: non-blank and carrying a pipe.
+/** @param {string|null|undefined} line */
 function isTableRow(line) {
   return line != null && line.indexOf("|") !== -1 && line.trim().length > 0;
 }
@@ -84,6 +96,7 @@ function isTableRow(line) {
 // Light markdown -> flow of typed blocks for the PDF: headings, bullets,
 // plain paragraphs, and GFM pipe tables (header + `---` delimiter + rows),
 // rendered as real ruled tables instead of raw ASCII pipes.
+/** @param {unknown} md @returns {any[]} */
 export function mdToBlocks(md) {
   const blocks = [];
   const raws = String(md).split("\n");
@@ -121,14 +134,15 @@ export function mdToBlocks(md) {
 
 /**
  * Generates and downloads the report.
- * @param {object} turn  the turn object (turns.js Turn) — .text is the
- *   markdown answer, .question the title, .images the embedded figures
+ * @param {{text?: string, question?: string, images?: string[]}} turn  the turn
+ *   object (turns.js Turn) — .text is the markdown answer, .question the
+ *   title, .images the embedded figures
  * @param {{model?: string}} [meta]  extra metadata printed under the title
  * @returns {Promise<void>} resolves once the share sheet / download started
  */
 export async function downloadReport(turn, meta = {}) {
   await loadJsPdf();
-  const { jsPDF } = window.jspdf;
+  const { jsPDF } = win().jspdf;
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
@@ -166,7 +180,7 @@ export async function downloadReport(turn, meta = {}) {
     doc.addPage();
     header();
   };
-  const ensure = (needed) => {
+  const ensure = (/** @type {number} */ needed) => {
     if (y + needed > H - 48) newPage();
   };
 
@@ -218,11 +232,11 @@ export async function downloadReport(turn, meta = {}) {
   // Draws a GFM table as ruled cells with a shaded, repeated header row.
   const TABLE_BORDER = [198, 210, 226];
   const TABLE_HEAD_FILL = [223, 232, 245];
-  const drawTable = (header, rows) => {
-    const ncols = Math.max(header.length, ...rows.map((r) => r.length), 1);
+  const drawTable = (/** @type {string[]} */ header, /** @type {string[][]} */ rows) => {
+    const ncols = Math.max(header.length, ...rows.map((/** @type {string[]} */ r) => r.length), 1);
     const colW = bodyW / ncols;
     const padX = 5, padY = 5, lineH = 12, fontSize = 9;
-    const measure = (cells, style) => {
+    const measure = (/** @type {string[]} */ cells, /** @type {string} */ style) => {
       doc.setFont("helvetica", style);
       doc.setFontSize(fontSize);
       let maxLines = 1;
@@ -235,7 +249,11 @@ export async function downloadReport(turn, meta = {}) {
       }
       return { arr, h: maxLines * lineH + 2 * padY };
     };
-    const paint = (cells, style, fill) => {
+    const paint = (
+      /** @type {string[]} */ cells,
+      /** @type {string} */ style,
+      /** @type {number[]|null} */ fill,
+    ) => {
       const { arr, h } = measure(cells, style);
       if (fill) {
         doc.setFillColor(...fill);
@@ -249,7 +267,9 @@ export async function downloadReport(turn, meta = {}) {
       for (let c = 0; c < ncols; c++) {
         const x = M + c * colW;
         doc.rect(x, y, colW, h);
-        arr[c].forEach((ln, li) => doc.text(ln, x + padX, y + padY + fontSize + lineH * li));
+        arr[c].forEach((/** @type {string} */ ln, /** @type {number} */ li) =>
+        doc.text(ln, x + padX, y + padY + fontSize + lineH * li),
+      );
       }
       y += h;
     };
@@ -289,7 +309,7 @@ export async function downloadReport(turn, meta = {}) {
     doc.setFontSize(size);
     doc.setTextColor(...TEXT);
     const lines = doc.splitTextToSize(b.text, bodyW - indent - (prefix ? 10 : 0));
-    lines.forEach((line, i) => {
+    lines.forEach((/** @type {string} */ line, /** @type {number} */ i) => {
       ensure(lead + 2);
       doc.text((i === 0 ? prefix : prefix ? "   " : "") + line, M + indent, y);
       y += lead;
@@ -306,6 +326,10 @@ export async function downloadReport(turn, meta = {}) {
 // streaming answer in production). Hand the blob over ourselves instead —
 // the native share sheet on touch devices (no navigation, and the natural
 // way to save/AirDrop/mail a file on a phone), else a plain <a download>.
+/**
+ * @param {any} doc a jsPDF document
+ * @param {string} filename
+ */
 async function savePdf(doc, filename) {
   const blob = doc.output("blob");
   const file = new File([blob], filename, { type: "application/pdf" });
@@ -315,7 +339,7 @@ async function savePdf(doc, filename) {
       await navigator.share({ files: [file] });
       return;
     } catch (err) {
-      if (err?.name === "AbortError") return; // user closed the sheet
+      if (/** @type {any} */ (err)?.name === "AbortError") return; // user closed the sheet
       // Gesture expired or share refused — fall through to the download.
     }
   }

@@ -1,3 +1,4 @@
+// @ts-check
 // DRC's pure core (DRC = "deep research secure", C for CLIENT-side — the
 // public tier at /cure; its remote sibling DRS, "deep research server",
 // is the signed-in app at /rver). The page (public/cure/drc.js) wires
@@ -66,12 +67,15 @@ export const DRC_STATE_V = 5;
 
 // ---- derivation ---------------------------------------------------------------
 
+/** @param {string} secret */
 async function hkdfMaster(secret) {
+  // importKey wants a BufferSource backed by an ArrayBuffer; decodeCrockford
+  // is typed Uint8Array<ArrayBuffer> for exactly this call.
   const ikm = decodeCrockford(normalizeVaultSecret(secret));
   return crypto.subtle.importKey("raw", ikm, "HKDF", false, ["deriveBits", "deriveKey"]);
 }
 
-const HKDF = (info) => ({
+const HKDF = (/** @type {string} */ info) => ({
   name: "HKDF",
   hash: "SHA-256",
   salt: new Uint8Array(32),
@@ -88,7 +92,8 @@ export async function deriveDrcProfile(secret) {
     throw new Error("That doesn't look like a valid secret (DR1-… with 32 characters).");
   }
   const master = await hkdfMaster(secret);
-  const bits = (info, n) => crypto.subtle.deriveBits(HKDF(info), master, n);
+  const bits = (/** @type {string} */ info, /** @type {number} */ n) =>
+    crypto.subtle.deriveBits(HKDF(info), master, n);
   const refHash = encodeCrockford(new Uint8Array(await bits("deepresearch.se free ref v1", 80))).toLowerCase();
   const blobId = encodeCrockford(new Uint8Array(await bits("deepresearch.se free blob id v1", 160)));
   const blobKey = await crypto.subtle.deriveKey(
@@ -173,11 +178,13 @@ export function validateDrcState(s) {
     s.kind === DRC_STATE_KIND &&
     Array.isArray(s.conversations) &&
     s.conversations.every(
-      (c) =>
+      (/** @type {any} */ c) =>
         c &&
         typeof c.id === "string" &&
         Array.isArray(c.messages) &&
-        c.messages.every((m) => m && typeof m.role === "string" && typeof m.content === "string"),
+        c.messages.every(
+          (/** @type {any} */ m) => m && typeof m.role === "string" && typeof m.content === "string",
+        ),
     )
   );
   return (
@@ -191,6 +198,7 @@ export function validateDrcState(s) {
 }
 
 /** Upgrades any accepted stored shape to the current one, in place. */
+/** @param {any} s */
 export function migrateDrcState(s) {
   s.v = DRC_STATE_V;
   if (!s.keys || typeof s.keys !== "object") s.keys = {};
@@ -203,7 +211,10 @@ export function migrateDrcState(s) {
     // The interim depth-tier shape (2026-07-16, lived less than a day) stored
     // a tier ID; map it onto the time scale it stood for. Everything older
     // gets the 60 s default — the pre-slider behavior.
-    s.budgetS = { brief: 30, standard: 60, extended: 240, full: 480 }[s.depth] || 60;
+    s.budgetS =
+      /** @type {Record<string, number>} */ ({ brief: 30, standard: 60, extended: 240, full: 480 })[
+        s.depth
+      ] || 60;
   }
   delete s.depth;
   return s;

@@ -53,7 +53,7 @@
 import { getDb } from "./db.js";
 import { jsonResponse, textResponse } from "./http.js";
 import { cleanStr, likePattern } from "./chatlog.js";
-import { parseUseCaseRef, useCaseTag } from "../public/js/testpoints-core.js";
+import { deepLink, parseUseCaseRef, useCaseTag } from "../public/js/testpoints-core.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -338,18 +338,10 @@ export function tryUrl(id) {
 }
 
 // Merge ?try=<id> into a target path, preserving its own query/hash. Used
-// server-side by the /try redirect and mirrored client-side.
-/**
- * @param {string} target a same-origin path (already cleaned)
- * @param {number|string} id
- * @returns {string}
- */
-export function deepLink(target, id) {
-  const [head, hash = ""] = target.split("#");
-  const sep = head.includes("?") ? "&" : "?";
-  const withTry = `${head}${sep}try=${encodeURIComponent(String(id))}`;
-  return hash ? `${withTry}#${hash}` : withTry;
-}
+// server-side by the /try redirect and client-side by the queue. This was a
+// hand-mirrored copy of the core's implementation until the façade-contract
+// guard (src/facade-contract.test.js) found it; the core is the one
+// definition, and TRY_PARAM keeps the query key from drifting.
 
 /** @param {string | null | undefined} json */
 function parseActions(json) {
@@ -385,7 +377,7 @@ export function isOpenStatus(status) {
 // modules, the Worker bundler can import from anywhere), re-exported here so
 // server callers (pipeline.js, this module) and src/testpoints.test.js keep
 // their import path. Do not reintroduce a copy.
-export { parseUseCaseRef, useCaseTag };
+export { deepLink, parseUseCaseRef, useCaseTag };
 
 // The verdict symbol vocabulary — one glyph per result, used everywhere a
 // verdict is shown (text render here, the banner buttons, PR comments).
