@@ -297,6 +297,13 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
   });
 
   test("runWithoutSearch scales the model answer by the slider's report tier", () => {
-    assert.match(src, /searchOffPrompt\(\{[^}]*reportTier: ctx\.state\.plan\.reportTier/);
+    // The prompt is reached through the prompt-set binding (src/prompt-sets.js)
+    // rather than imported directly, so this pins the ROLE the phase asks for
+    // plus the report tier it threads in. Which builder that role resolves to is
+    // pinned by identity in prompt-sets.test.js.
+    assert.match(
+      src,
+      /phasePrompt\(ctx\.state, "direct", "answer-search-off"\)\(\{[^}]*reportTier: ctx\.state\.plan\.reportTier/,
+    );
   });
 });

@@ -278,7 +278,18 @@ the integrated Linux environment** (the execution sandbox): an agent is one
 flavour of the platform (its chat-input-pane controls, theme, animations,
 examples, share-link quota) — data, not code — and the Agents SDK also owns
 Agent Studio's direct build tools (`write_file`/`publish_app`) and the
-sandbox surface agents run and test code in. Since 2026-07-18 the SDK is WIRED into the app: the pure core
+sandbox surface agents run and test code in. Since **spec 0.2.0**
+(2026-07-25) a spec also declares what the agent DOES — the **capability
+block**: answer phase, prompt set, tool classes, context blocks, search and
+routing policy, gates, bounds, emitted events, required knob, sub-agent
+team. It is a SELECTOR over shipped behaviour, never a definition of new
+behaviour, so the dispatch stays code and the spec stays data (invariant 1
+holds for the routing as for the run); validation enforces invariants 1, 3,
+4 and 6 as rules rather than prose. The five chat modes are the five
+**default agents**, bound to their mode by the registry's ordered
+`defaults` table, which is what `/api/chat` routes on
+(`src/agent-registry.js` → `src/chat.js` → `src/pipeline.js`
+`ANSWER_PHASE_RUNNERS`). Since 2026-07-18 the SDK is WIRED into the app: the pure core
 `public/js/sdk-core.js` (façade `src/sdk-tools.js`; the CLI re-exports it) powers
 **SDK mode** — labeled **Agent Studio** in the UI (2026-07-23; renamed from
 "Agent Builder"; the mode id stays `sdk`, internally still "SDK mode"/DistillSDK)

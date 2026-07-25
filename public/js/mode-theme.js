@@ -1,10 +1,10 @@
 // @ts-check
 // The MODE-THEME REGISTRY — the codified catalog of what makes each mode
-// visually its own. The site now speaks four sibling identities: two TIERS
-// (DeepResearch.Se/cure and DeepResearch.Se/rver — separate served apps) and,
-// WITHIN the Se/rver app, three chat MODES picked from the dropdown (Deep
-// Research / Introspection / SDK — chat-mode.js). Each identity distinguishes itself the
-// same way, along the SAME axes:
+// visually its own. The site speaks two TIERS (DeepResearch.Se/cure and
+// DeepResearch.Se/rver — separate served apps) and, WITHIN the Se/rver app,
+// five chat MODES picked from the dropdown (Deep Research / Introspection /
+// Agent Studio / Orchestrator / Outrospection — chat-mode.js). Each identity
+// distinguishes itself the same way, along the SAME axes:
 //
 //   • a root THEME CLASS (the composer-pane tint + tag)   — chat-mode.js / CSS
 //   • a palette ACCENT + a completion ✓ COLOR              — public/css/app.css
@@ -16,7 +16,10 @@
 //
 // This module is the single place those choices are DECLARED as data, so a
 // mode is described in one descriptor instead of scattered across CSS, the
-// spinner mounts, and the history drawer. It is ALSO the shape SDK mode
+// spinner mounts, and the history drawer. Its CHAT_MODE_IDS is also what
+// agent-spec-core.js validates an AgentSpec's `mode` against, and each mode's
+// default agent must agree with the descriptor here on backdrop and
+// depth-slider (pinned in public/js/agent-capability.test.js). It is ALSO the shape SDK mode
 // distills into: "the goal of the SDK mode itself is to create new themes of
 // this kind" — a generated flavour defines its own MODE_THEME descriptor
 // (color theme + spinner + character + panel), and the same axes light it up.

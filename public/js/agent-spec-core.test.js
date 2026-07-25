@@ -133,13 +133,19 @@ test("sdk/AGENTS.json is a valid registry", () => {
   assert.deepEqual(validateAgentRegistry(reg), []);
 });
 
-test("the four shipped agents are present with the expected identities", () => {
+test("the seven shipped agents are present with the expected identities", () => {
   const reg = realRegistry();
   const ids = reg.agents.map((a) => a.id).sort();
-  assert.deepEqual(ids, ["agent-builder", "research", "secure", "under-construction"]);
+  // Five DEFAULT agents — one per Se/rver chat mode — plus the two client-tier
+  // entries: the Se/cure archetype and the template you copy.
+  assert.deepEqual(ids, [
+    "agent-builder", "introspection", "orchestrator", "outrospection", "research", "secure", "under-construction",
+  ]);
   assert.equal(findAgent(reg, "research").platform, "server");
   assert.equal(findAgent(reg, "secure").platform, "client");
-  assert.equal(findAgent(reg, "agent-builder").mode, "agent-builder");
+  // The mode is the RUNNING app's id: Agent Studio's spec id stays
+  // "agent-builder" (a share-link identifier) while its mode is "sdk".
+  assert.equal(findAgent(reg, "agent-builder").mode, "sdk");
 });
 
 test("every shipped agent resolves controls, theme and quota", () => {

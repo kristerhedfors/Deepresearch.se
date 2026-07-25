@@ -13,16 +13,27 @@
 //
 // I/O-free and Node-tested (agent-spec-core.test.js). An "agent" is DEFINED by
 // its chat-input-pane controls, its intro + loading animations, its colour
-// theme, its seed example questions, and the default quota a minted share-link
-// token carries. The four agents this project ships — research, secure,
-// under-construction, agent-builder — are the reference specs in sdk/AGENTS.json;
-// deriving a new agent is copying one, changing these fields, and validating.
+// theme, its seed example questions, the default quota a minted share-link
+// token carries, and — since spec 0.2.0 — its CAPABILITY block: what it DOES.
+// The seven agents this project ships are the reference specs in
+// sdk/AGENTS.json; deriving a new agent is copying one, changing these fields,
+// and validating.
 //
-// Those four are NOT the chat-mode dropdown (chat-mode.js CHAT_MODES: normal /
+// Those seven are NOT the chat-mode dropdown (chat-mode.js CHAT_MODES: normal /
 // introspection / sdk / orchestrator / outrospection) and NOT the two tiers
-// (Se/cure, Se/rver — an agent declares which one via `platform`). An agent
-// PICKS a tier and a mode; it never adds either. docs/AGENT-PLATFORM.md §2.1
-// lays the three lists side by side.
+// (Se/cure, Se/rver — an agent declares which one via `platform`), though FIVE
+// of them are the default agent OF a mode, bound to it by the registry's
+// `defaults` table. An agent PICKS a tier, a mode and an answer phase; it never
+// adds one. docs/AGENT-PLATFORM.md §2.1 lays the three lists side by side.
+
+// The Se/rver-app chat modes an agent's `mode` field may name. Imported from
+// the mode-theme registry rather than restated here, so a spec can never drift
+// from the dropdown the way `"agent-builder"` did against the real id `"sdk"`
+// (the whole reason nothing caught that: nothing validated `mode`). mode-theme.js
+// is pure and import-free, so this adds no weight to the Worker bundle.
+import { CHAT_MODE_IDS, MODE_THEMES } from "./mode-theme.js";
+
+export { CHAT_MODE_IDS, MODE_THEMES };
 
 // ---- the closed control vocabulary -------------------------------------------
 //
@@ -69,6 +80,392 @@ export const QUOTA_WINDOWS = ["minute", "hour", "day", "month"];
  * (the rotating wireframe workflow graph, graph-backdrop.js), or "none". */
 export const BACKDROP_KINDS = ["none", "terminal", "graph"];
 
+// ---- the CAPABILITY vocabulary (spec 0.2.0) -----------------------------------
+//
+// The five default agents differ far more in what they DO than in how they
+// look, and until 0.2.0 the AgentSpec could express only the looking. The
+// capability block closes that gap — but it is a SELECTOR over behaviour the
+// platform already implements, never a place to define new behaviour. Every
+// value below is a member of a closed vocabulary that names existing code:
+//
+//   answerPhase → which function takes the answer phase (pipeline.js dispatch)
+//   tools       → which already-shipped tool set the answer model may drive
+//   context     → which already-shipped retrieval block is injected
+//   search      → the search plane's knobs, not a new search plane
+//   routing     → which model bucket a phase runs on (invariant 3)
+//   gates       → which deterministic intent gate applies (invariant 6)
+//   emits       → which SSE status events the run can produce
+//   requires    → which server capability knob must be granted
+//   team        → which agents a workflow node may be
+//
+// That constraint is what keeps invariant 1 intact: the dispatch stays CODE and
+// the spec is DATA read before the run starts. A spec can select the
+// owner-authorized tool exception; it cannot invent a new one, and it can never
+// express control flow.
+//
+// `serverOnly: true` marks a member that structurally puts the SERVER in the
+// data path. A `platform: "client"` spec may not select one — that is invariant
+// 4 (the privacy split) expressed as a validation rule instead of as prose in a
+// skill.
+
+/** The PROMPT ROLES a phase can need filled. A role names the JOB a system
+ * prompt does in a run, not the wording — the wording lives in src/prompts.js
+ * (and orchestrator-core / outrospect-core for the two pure ones). */
+export const PROMPT_ROLES = [
+  "plan", // the phase's own JSON planning prompt (not the shared triage/gap/validate)
+  "worker", // one bounded sub-run inside the phase (an orchestrated node)
+  "answer", // the deterministic answer/synthesis prompt
+  "answer-tools", // the variant for a model driving native tools
+  "answer-direct", // the answer when triage decided no sources are needed
+  "answer-search-off", // the answer when there is nothing external to consult
+];
+
+/** Which function takes the answer phase. One member per shipped answer path.
+ * `promptRoles` is what the phase's code actually asks for — the basis of the
+ * compatibility rule in validateCapability (a declared prompt set must fill
+ * every role its phase needs). */
+export const ANSWER_PHASES = {
+  "research": {
+    label: "Deep research",
+    desc: "triage → search → gap → synthesis → validation (pipeline.js)",
+    promptRoles: ["answer", "answer-direct", "answer-search-off"],
+  },
+  "source-research": {
+    label: "Source research",
+    desc: "read this platform's own source and answer from it (runSourceResearch)",
+    promptRoles: ["plan", "answer", "answer-tools"],
+  },
+  "build": {
+    label: "Build",
+    desc: "distil a flavour, stage files, publish it live (runSdkBuild)",
+    serverOnly: true,
+    promptRoles: ["answer", "answer-tools"],
+  },
+  "workflow": {
+    label: "Workflow",
+    desc: "plan a sub-agent team and run it in waves (runOrchestration)",
+    serverOnly: true,
+    promptRoles: ["plan", "worker", "answer"],
+  },
+  "feed": {
+    label: "Feed",
+    desc: "answer from the standing outward feed (runOutrospection)",
+    serverOnly: true,
+    promptRoles: ["answer"],
+  },
+  "direct": {
+    label: "Direct",
+    desc: "answer from the model with no research phase (runWithoutSearch)",
+    promptRoles: ["answer-search-off"],
+  },
+};
+
+/** The PROMPT SETS — the last axis on which the default agents differ and the
+ * spec was silent. A set is a named group of system prompts covering some of
+ * the roles above; `src/prompt-sets.js` binds each (set, role) pair to the real
+ * builder, and a test pins that binding against the code that calls it.
+ *
+ * Like every other capability axis this is a SELECTOR: a spec names a set that
+ * exists, it does not author prompt text. What it buys is that prompt set and
+ * answer phase become INDEPENDENT choices — an agent can run the research phase
+ * in the source-research voice, which was not expressible before. */
+export const PROMPT_SETS = {
+  "research": { label: "Research", desc: "the deep-research synthesis voice: cited, hedged, report-tiered", roles: ["answer", "answer-direct", "answer-search-off"] },
+  "source-research": { label: "Source research", desc: "answers about this platform from its own source, with the read loop's planner", roles: ["plan", "answer", "answer-tools"] },
+  "build": { label: "Build", desc: "the Agent Studio build voice: ship the app this turn, state the privacy posture", roles: ["answer", "answer-tools"] },
+  "workflow": { label: "Workflow", desc: "the sub-agent team: a plan prompt, one node's persona, and the merge", roles: ["plan", "worker", "answer"] },
+  "feed": { label: "Feed", desc: "answers from the outward feed, never inventing an item", roles: ["answer"] },
+};
+
+/** The prompt set a phase uses when a spec names none. `direct` borrows the
+ * research set, whose answer-search-off role is the prompt runWithoutSearch
+ * has always used. */
+export const DEFAULT_PROMPT_SET = {
+  "research": "research",
+  "source-research": "source-research",
+  "build": "build",
+  "workflow": "workflow",
+  "feed": "feed",
+  "direct": "research",
+};
+
+/** Tool CLASSES — a class names a shipped tool set, never an individual tool,
+ * so a spec cannot assemble a novel toolbox. */
+export const TOOL_CLASSES = {
+  "source-read": { label: "Source read", desc: "grep_source / read_file / list_files over the source snapshot (INTROSPECTION_TOOLS)" },
+  "sdk-plan": { label: "SDK plan", desc: "sdk_list_modules / sdk_show_module / sdk_plan / sdk_validate over the Platform SDK manifest (SDK_TOOLS)" },
+  "build-publish": { label: "Build + publish", desc: "write_file / publish_app (BUILD_TOOLS)", serverOnly: true },
+  "shell": { label: "Shell", desc: "the in-browser Linux sandbox's bash-lite loop (bash-core.js)" },
+};
+
+/** What a model WITHOUT native tool use does instead. A tool-bearing agent must
+ * name one that is not "none" — invariant 1's requirement that every mode works
+ * across the whole catalog, not only on tool-capable models. */
+export const TOOL_FALLBACKS = ["read-loop", "file-blocks", "none"];
+
+/** Retrieval blocks the platform can inject into a turn's context. */
+export const CONTEXT_BLOCKS = {
+  "source-snapshot": { label: "Source snapshot", desc: "the committed deployed-source artifact (introspect-core SNAPSHOT_PATH)" },
+  "docs-corpus": { label: "Docs corpus", desc: "the committed documentation corpus + its dense index (help mode)" },
+  "secure-digest": { label: "Se/cure digest", desc: "a bounded digest of the real Se/cure reference source (buildSecureSourceDigest)" },
+  "shell-transcript": { label: "Shell transcript", desc: "what the in-browser sandbox actually ran, as ground truth" },
+  "outward-feed": { label: "Outward feed", desc: "the stored lens feed of what everyone else shipped (src/outrospect.js)", serverOnly: true },
+  "owasp": { label: "OWASP reference", desc: "the OWASP Top 10 block retrieved for a security-assessment ask" },
+};
+
+/** The model buckets a phase may run on. `json-default` is the fixed reliable
+ * planning model; `user` is the model the user chose. Invariant 3 (split
+ * routing) is enforced by making `planModel` a one-member vocabulary. */
+export const PLAN_MODELS = ["json-default"];
+export const ANSWER_MODELS = ["user", "json-default"];
+
+/** Deterministic intent gates an agent may declare. Each names a shipped gate;
+ * `langs` must carry EN and SV alike (invariant 6). */
+export const GATE_IDS = {
+  "external-source": { label: "External source", desc: "does the ask want outside material? — hands a source-research turn back to research (externalSourceIntent)" },
+  "lens": { label: "Lens", desc: "which standing lens does this ask belong under? (outrospect-core lensMatch)" },
+  "quiz": { label: "Quiz", desc: "is this an ask for a quiz? (src/quiz.js quizIntent)" },
+  "feedback": { label: "Feedback", desc: "is this a report to the developers? (src/feedback.js feedbackIntent)" },
+};
+
+/** The mode-DISTINGUISHING SSE status events (docs: the sse-protocol skill).
+ * `step` and `search` collapse the _start/_done pairs; the universal `done` and
+ * `discard_text` events are not declared because every agent emits them. */
+export const CAPABILITY_EVENTS = {
+  "step": { label: "Activity step", desc: "step_start / step_done" },
+  "search": { label: "Search", desc: "search_start / search_done" },
+  "quiz": { label: "Quiz", desc: "the inline interactive quiz" },
+  "workflow": { label: "Workflow", desc: "the planned sub-agent DAG", serverOnly: true },
+  "agent_update": { label: "Agent update", desc: "one workflow node's lifecycle", serverOnly: true },
+  "build": { label: "Build", desc: "the published app's slug + URL", serverOnly: true },
+};
+
+/** Server capability knobs a mode may require before it is honored. */
+export const CAPABILITY_REQUIREMENTS = {
+  "developer_mode": { label: "Developer mode", desc: "the introspection/agent-mode capability knob", serverOnly: true },
+  "sandbox": { label: "Sandbox", desc: "the bash-lite in-browser Linux sandbox knob" },
+};
+
+/**
+ * One resolved capability. Declared explicitly rather than inferred from
+ * BASE_CAPABILITY, whose empty arrays and null `team` would otherwise infer as
+ * `never[]`/`null` and make every consumer a type error.
+ * @typedef {Object} AgentCapability
+ * @property {string} answerPhase
+ * @property {string|null} prompts
+ * @property {string[]} tools
+ * @property {string} toolFallback
+ * @property {string[]} context
+ * @property {{ web: boolean, auxSources: boolean, maxQueries: number|null }} search
+ * @property {{ planModel: string, answerModel: string }} routing
+ * @property {Array<{ id: string, langs?: string[] }>} gates
+ * @property {Record<string, number>} bounds
+ * @property {string[]} emits
+ * @property {string[]} requires
+ * @property {{ kinds?: string[], allowCustom?: boolean, maxAgents?: number, maxWaves?: number, maxQueriesPerAgent?: number }|null} team
+ */
+
+/** What an agent inherits when it declares no capability block at all: the
+ * plain deep-research turn, which is what every pre-0.2.0 spec meant.
+ * @type {AgentCapability} */
+export const BASE_CAPABILITY = {
+  answerPhase: "research",
+  prompts: null, // null = the answer phase's default set (DEFAULT_PROMPT_SET)
+  tools: [],
+  toolFallback: "none",
+  context: [],
+  search: { web: true, auxSources: true, maxQueries: null },
+  routing: { planModel: "json-default", answerModel: "user" },
+  gates: [],
+  bounds: {},
+  emits: ["step"],
+  requires: [],
+  team: null,
+};
+
+/** The bound keys a capability may declare, each a non-negative number. */
+export const BOUND_KEYS = ["maxRounds", "maxTokens", "timeoutMs"];
+
+/**
+ * The resolved capability for an agent: BASE_CAPABILITY overlaid with the
+ * spec's declaration, sub-objects merged rather than replaced so a spec can
+ * name one bound without restating the rest.
+ * @param {any} a
+ * @returns {AgentCapability}
+ */
+export function resolveCapability(a) {
+  const c = (a && a.capability && typeof a.capability === "object") ? a.capability : {};
+  return /** @type {AgentCapability} */ ({
+    ...BASE_CAPABILITY,
+    ...c,
+    search: { ...BASE_CAPABILITY.search, ...(c.search && typeof c.search === "object" ? c.search : {}) },
+    routing: { ...BASE_CAPABILITY.routing, ...(c.routing && typeof c.routing === "object" ? c.routing : {}) },
+    bounds: { ...BASE_CAPABILITY.bounds, ...(c.bounds && typeof c.bounds === "object" ? c.bounds : {}) },
+    tools: Array.isArray(c.tools) ? c.tools : BASE_CAPABILITY.tools,
+    context: Array.isArray(c.context) ? c.context : BASE_CAPABILITY.context,
+    gates: Array.isArray(c.gates) ? c.gates : BASE_CAPABILITY.gates,
+    emits: Array.isArray(c.emits) ? c.emits : BASE_CAPABILITY.emits,
+    requires: Array.isArray(c.requires) ? c.requires : BASE_CAPABILITY.requires,
+    team: (c.team && typeof c.team === "object") ? c.team : null,
+  });
+}
+
+/**
+ * The prompt set an agent runs on: its declared `capability.prompts`, else the
+ * default for its answer phase. Always a key of PROMPT_SETS for a valid spec.
+ * @param {any} a
+ * @returns {string}
+ */
+export function resolvePromptSet(a) {
+  const cap = resolveCapability(a);
+  if (cap.prompts && Object.prototype.hasOwnProperty.call(PROMPT_SETS, cap.prompts)) return cap.prompts;
+  return /** @type {Record<string,string>} */ (DEFAULT_PROMPT_SET)[cap.answerPhase] || DEFAULT_PROMPT_SET.research;
+}
+
+/**
+ * The prompt roles a phase needs that its resolved set does not fill. Empty for
+ * a valid spec — this is the compatibility rule behind validateCapability, kept
+ * separate so the failing case can be inspected directly.
+ * @param {any} a
+ * @returns {string[]}
+ */
+export function missingPromptRoles(a) {
+  const phase = /** @type {any} */ (ANSWER_PHASES)[resolveCapability(a).answerPhase];
+  if (!phase) return [];
+  const filled = new Set(/** @type {any} */ (PROMPT_SETS)[resolvePromptSet(a)]?.roles || []);
+  return (phase.promptRoles || []).filter((/** @type {string} */ r) => !filled.has(r));
+}
+
+/**
+ * Every SERVER-ONLY member a capability selects, as `axis:member` strings. The
+ * privacy split (invariant 4) is exactly "this list must be empty for a
+ * client-tier agent" — computed here so the rule has one implementation and the
+ * failing case can be inspected directly.
+ * @param {any} a
+ * @returns {string[]}
+ */
+export function serverOnlySelections(a) {
+  const cap = resolveCapability(a);
+  const hits = [];
+  /** @param {string} axis @param {Record<string,any>} reg @param {unknown} member */
+  const check = (axis, reg, member) => {
+    const entry = typeof member === "string" ? reg[member] : null;
+    if (entry && entry.serverOnly) hits.push(`${axis}:${member}`);
+  };
+  check("answerPhase", ANSWER_PHASES, cap.answerPhase);
+  for (const t of cap.tools) check("tools", TOOL_CLASSES, t);
+  for (const b of cap.context) check("context", CONTEXT_BLOCKS, b);
+  for (const e of cap.emits) check("emits", CAPABILITY_EVENTS, e);
+  for (const r of cap.requires) check("requires", CAPABILITY_REQUIREMENTS, r);
+  // A sub-agent team is executed by the Worker, whatever its member kinds are.
+  if (cap.team) hits.push("team:workflow");
+  return hits;
+}
+
+/**
+ * Structural validation of one capability block. Returns problem strings —
+ * empty means valid. Never throws (the validateAgentSpec convention).
+ * @param {any} a
+ * @returns {string[]}
+ */
+export function validateCapability(a) {
+  const problems = [];
+  const at = (/** @type {string} */ msg) => `${a && a.id ? a.id : "(no id)"}: capability.${msg}`;
+  if (a?.capability != null && typeof a.capability !== "object") return [at("must be an object")];
+  const cap = resolveCapability(a);
+
+  if (!Object.prototype.hasOwnProperty.call(ANSWER_PHASES, cap.answerPhase)) {
+    problems.push(at(`answerPhase must be one of ${Object.keys(ANSWER_PHASES).join("/")}`));
+  }
+  // Prompts: a named set that exists, and one that fills every role the
+  // declared answer phase asks for. Prompt set and phase are independent
+  // choices, but not arbitrary ones — a phase that calls for a plan prompt
+  // cannot run on a set that has none.
+  if (cap.prompts != null) {
+    if (!Object.prototype.hasOwnProperty.call(PROMPT_SETS, cap.prompts)) {
+      problems.push(at(`prompts must be one of ${Object.keys(PROMPT_SETS).join("/")}`));
+    } else {
+      const missing = missingPromptRoles(a);
+      if (missing.length) {
+        problems.push(at(`prompt set "${cap.prompts}" does not fill the ${cap.answerPhase} phase's ${missing.join(", ")} role(s)`));
+      }
+    }
+  }
+  for (const t of cap.tools) {
+    if (!Object.prototype.hasOwnProperty.call(TOOL_CLASSES, t)) problems.push(at(`unknown tool class "${t}"`));
+  }
+  if (!TOOL_FALLBACKS.includes(cap.toolFallback)) {
+    problems.push(at(`toolFallback must be one of ${TOOL_FALLBACKS.join("/")}`));
+  }
+  // Invariant 1: a mode that uses tools must still work on a model without
+  // native tool use, so it has to name the deterministic path it falls back to.
+  if (cap.tools.length && cap.toolFallback === "none") {
+    problems.push(at('declares tools but no toolFallback — every mode must work on models without native tool use'));
+  }
+  for (const b of cap.context) {
+    if (!Object.prototype.hasOwnProperty.call(CONTEXT_BLOCKS, b)) problems.push(at(`unknown context block "${b}"`));
+  }
+  for (const e of cap.emits) {
+    if (!Object.prototype.hasOwnProperty.call(CAPABILITY_EVENTS, e)) problems.push(at(`unknown emitted event "${e}"`));
+  }
+  for (const r of cap.requires) {
+    if (!Object.prototype.hasOwnProperty.call(CAPABILITY_REQUIREMENTS, r)) problems.push(at(`unknown requirement "${r}"`));
+  }
+
+  // Invariant 3: the JSON planning phases stay on the fixed reliable model.
+  if (!PLAN_MODELS.includes(cap.routing.planModel)) {
+    problems.push(at(`routing.planModel must be "${PLAN_MODELS[0]}" — the planning phases never move off the fixed model (invariant 3)`));
+  }
+  if (!ANSWER_MODELS.includes(cap.routing.answerModel)) {
+    problems.push(at(`routing.answerModel must be one of ${ANSWER_MODELS.join("/")}`));
+  }
+
+  // Search plane
+  if (typeof cap.search.web !== "boolean") problems.push(at("search.web must be a boolean"));
+  if (typeof cap.search.auxSources !== "boolean") problems.push(at("search.auxSources must be a boolean"));
+  if (cap.search.maxQueries != null && !(Number.isInteger(cap.search.maxQueries) && cap.search.maxQueries >= 0)) {
+    problems.push(at("search.maxQueries must be null or a non-negative integer"));
+  }
+
+  // Invariant 6: a declared deterministic gate routes Swedish and English alike.
+  for (const g of cap.gates) {
+    if (!g || typeof g !== "object") { problems.push(at("a gate is not an object")); continue; }
+    if (!Object.prototype.hasOwnProperty.call(GATE_IDS, g.id)) { problems.push(at(`unknown gate "${g.id}"`)); continue; }
+    const langs = Array.isArray(g.langs) ? g.langs : [];
+    if (!langs.includes("en") || !langs.includes("sv")) {
+      problems.push(at(`gate "${g.id}" must declare langs including "en" and "sv" (invariant 6 — language parity)`));
+    }
+  }
+
+  // Bounds
+  for (const [k, v] of Object.entries(cap.bounds)) {
+    if (!BOUND_KEYS.includes(k)) problems.push(at(`unknown bound "${k}"`));
+    else if (!(Number.isFinite(v) && /** @type {number} */ (v) >= 0)) problems.push(at(`bounds.${k} must be a non-negative number`));
+  }
+
+  // Team (sub-agent composition)
+  if (cap.team) {
+    if (!Array.isArray(cap.team.kinds) || !cap.team.kinds.length) {
+      problems.push(at("team.kinds must be a non-empty array of agent ids"));
+    }
+    for (const k of ["maxAgents", "maxWaves", "maxQueriesPerAgent"]) {
+      const v = /** @type {any} */ (cap.team)[k];
+      if (v != null && !(Number.isInteger(v) && v > 0)) problems.push(at(`team.${k} must be a positive integer`));
+    }
+    if (cap.answerPhase !== "workflow") problems.push(at('team is only meaningful with answerPhase "workflow"'));
+  }
+
+  // Invariant 4 — the privacy split, as a rule rather than as prose: a
+  // client-tier agent may not select anything that puts the server in the data
+  // path. The platform type IS the boundary.
+  if (a?.platform === "client") {
+    for (const hit of serverOnlySelections(a)) {
+      problems.push(at(`"${hit}" puts the server in the data path — a client-platform agent may not select it (invariant 4)`));
+    }
+  }
+  return problems;
+}
+
 // ---- validation --------------------------------------------------------------
 
 /**
@@ -87,6 +484,11 @@ export function validateAgentSpec(a) {
   }
   if (!a.name || typeof a.name !== "string") problems.push(at("name is required"));
   if (!PLATFORM_TYPES.includes(a.platform)) problems.push(at(`platform must be one of ${PLATFORM_TYPES.join("/")}`));
+  // The mode must name a real chat mode. Unvalidated until 0.2.0, which is how
+  // `"agent-builder"` sat in the registry while the running app's id was `"sdk"`.
+  if (a.mode != null && !CHAT_MODE_IDS.includes(a.mode)) {
+    problems.push(at(`mode "${a.mode}" is not a chat mode (${CHAT_MODE_IDS.join("/")})`));
+  }
 
   // Controls
   if (!Array.isArray(a.controls) || !a.controls.length) {
@@ -100,6 +502,11 @@ export function validateAgentSpec(a) {
       if (seen.has(key)) problems.push(at(`duplicate control "${key}"`));
       seen.add(key);
       if (c.type === "toggle" && !c.id) problems.push(at('a "toggle" control needs an id (the flag it drives)'));
+      if (c.type === "mode-select") {
+        for (const m of Array.isArray(c.modes) ? c.modes : []) {
+          if (!CHAT_MODE_IDS.includes(m)) problems.push(at(`mode-select offers "${m}", which is not a chat mode`));
+        }
+      }
       if (c.type === "depth-slider") {
         const min = c.min ?? CONTROL_REGISTRY["depth-slider"].defaults.min;
         const max = c.max ?? CONTROL_REGISTRY["depth-slider"].defaults.max;
@@ -143,6 +550,10 @@ export function validateAgentSpec(a) {
       }
     }
   }
+
+  // Capability (spec 0.2.0) — what the agent DOES, as a selection over shipped
+  // behaviour. Absent means BASE_CAPABILITY: a plain deep-research turn.
+  for (const p of validateCapability(a)) problems.push(p);
   return problems;
 }
 
@@ -163,7 +574,84 @@ export function validateAgentRegistry(reg) {
       ids.add(a.id);
     }
   }
+  // Cross-agent: a workflow's team may only name agents that exist.
+  for (const a of reg.agents) {
+    for (const k of resolveCapability(a).team?.kinds || []) {
+      if (!ids.has(k)) problems.push(`${a?.id}: capability.team.kinds names unknown agent "${k}"`);
+    }
+  }
+  // The defaults routing table: one entry per chat mode, naming a real agent.
+  const rows = Array.isArray(reg.defaults) ? reg.defaults : null;
+  if (rows) {
+    const seen = new Set();
+    for (const r of rows) {
+      if (!r || typeof r !== "object") { problems.push("a defaults row is not an object"); continue; }
+      if (!CHAT_MODE_IDS.includes(r.mode)) problems.push(`defaults: "${r.mode}" is not a chat mode`);
+      if (seen.has(r.mode)) problems.push(`defaults: duplicate mode "${r.mode}"`);
+      seen.add(r.mode);
+      if (!ids.has(r.agent)) problems.push(`defaults: mode "${r.mode}" names unknown agent "${r.agent}"`);
+      if (r.flag != null && typeof r.flag !== "string") problems.push(`defaults: mode "${r.mode}" flag must be a string or null`);
+    }
+    for (const m of CHAT_MODE_IDS) {
+      if (!seen.has(m)) problems.push(`defaults: chat mode "${m}" has no default agent`);
+    }
+  }
   return problems;
+}
+
+// ---- request routing (the defaults table) ------------------------------------
+//
+// `reg.defaults` is an ORDERED table — array order IS precedence — mapping each
+// Se/rver chat mode to the agent that IS that mode, and naming the /api/chat
+// request flag that selects it. Resolving a request against it replaces the
+// hand-written flag cascade in src/chat.js, so adding a sixth mode is a
+// registry edit rather than an edit in every file that mentions a mode.
+
+/**
+ * The agent a request resolves to. Walks `reg.defaults` in precedence order and
+ * takes the first row whose `flag` is literally `true` in the request body AND
+ * whose agent's `capability.requires` are all granted. A row with a null flag is
+ * a derived default, taken only when no flagged row matched and its
+ * requirements hold — which is exactly how introspection (developer_mode, no
+ * flag) sits ahead of normal today.
+ *
+ * Returns null when the registry is unusable, so the caller keeps its built-in
+ * behaviour rather than failing the request (invariant 2).
+ * @param {any} reg
+ * @param {Record<string, any>} body the /api/chat request body
+ * @param {Record<string, boolean>} granted capability knob → granted?
+ * @returns {{ mode: string, agent: any, capability: typeof BASE_CAPABILITY } | null}
+ */
+export function resolveRequestAgent(reg, body, granted = {}) {
+  const rows = Array.isArray(reg?.defaults) ? reg.defaults : null;
+  if (!rows || !rows.length) return null;
+  /** @param {any} row */
+  const usable = (row) => {
+    const agent = findAgent(reg, row?.agent);
+    if (!agent) return null;
+    const cap = resolveCapability(agent);
+    for (const req of cap.requires) if (granted[req] !== true) return null;
+    return { mode: row.mode, agent, capability: cap };
+  };
+  for (const row of rows) {
+    if (!row?.flag) continue;
+    if (body?.[row.flag] !== true) continue;
+    const hit = usable(row);
+    if (hit) return hit;
+  }
+  for (const row of rows) {
+    if (row?.flag) continue;
+    const hit = usable(row);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/** The default agent for a chat mode, straight from the routing table.
+ * @param {any} reg @param {string} mode @returns {any | null} */
+export function defaultAgentForMode(reg, mode) {
+  const row = (Array.isArray(reg?.defaults) ? reg.defaults : []).find((/** @type {any} */ r) => r?.mode === mode);
+  return row ? findAgent(reg, row.agent) : null;
 }
 
 // ---- resolution --------------------------------------------------------------
@@ -399,7 +887,7 @@ export function renderAgentList(reg) {
 // Node-run visual proof (scripts/agent-proof.mjs) build from it, so what the
 // proof asserts is exactly what a user sees — the spec defines the composer.
 
-/** @param {any} a @returns {{ id:string, name:string, tagline:string, platform:string, mode:string, controls:any[], theme:Record<string,string>, intro:any, loading:any, backdrop:any, examples:{seed:string[],generatable:boolean}, quota:any }} */
+/** @param {any} a @returns {{ id:string, name:string, tagline:string, platform:string, mode:string, controls:any[], theme:Record<string,string>, intro:any, loading:any, backdrop:any, examples:{seed:string[],generatable:boolean}, quota:any, capability:any }} */
 export function composerModel(a) {
   return {
     id: a?.id || "",
@@ -414,6 +902,7 @@ export function composerModel(a) {
     backdrop: a?.backdrop && BACKDROP_KINDS.includes(a.backdrop.kind) ? a.backdrop : { kind: "none" },
     examples: resolveExamples(a),
     quota: resolveQuota(a),
+    capability: resolveCapability(a),
   };
 }
 
@@ -512,6 +1001,7 @@ export function renderAgentShow(reg, id) {
   const q = resolveQuota(a);
   const theme = resolveTheme(a);
   const ex = resolveExamples(a);
+  const cap = resolveCapability(a);
   const lines = [
     `${a.id} — ${a.name}  (${a.platform}-tier)`,
     a.tagline ? `  ${a.tagline}` : "",
@@ -519,6 +1009,17 @@ export function renderAgentShow(reg, id) {
     `  mode: ${a.mode || "normal"}`,
     "  controls:",
     ...resolveControls(a).map((c) => `    - ${c.id} (${c.type})${c.drives ? ` → drives \`${c.drives}\`` : ""}`),
+    "  capability:",
+    `    answer phase: ${cap.answerPhase}${cap.requires.length ? `   requires: ${cap.requires.join(", ")}` : ""}`,
+    `    prompts: ${resolvePromptSet(a)}${cap.prompts ? "" : " (its phase's default)"}`,
+    `    tools: ${cap.tools.length ? `${cap.tools.join(", ")} (fallback: ${cap.toolFallback})` : "(none)"}`,
+    `    context: ${cap.context.length ? cap.context.join(", ") : "(none)"}`,
+    `    search: web ${cap.search.web ? "on" : "off"}, aux sources ${cap.search.auxSources ? "on" : "off"}${cap.search.maxQueries != null ? `, max ${cap.search.maxQueries} queries` : ""}`,
+    `    routing: plan on ${cap.routing.planModel}, answer on ${cap.routing.answerModel}`,
+    cap.gates.length ? `    gates: ${cap.gates.map((/** @type {any} */ g) => `${g.id} [${(g.langs || []).join("+")}]`).join(", ")}` : "",
+    Object.keys(cap.bounds).length ? `    bounds: ${Object.entries(cap.bounds).map(([k, v]) => `${k}=${v}`).join("  ")}` : "",
+    `    emits: ${cap.emits.join(", ")}`,
+    cap.team ? `    team: ${(cap.team.kinds || []).join(", ")}${cap.team.allowCustom ? " (+custom)" : ""} — max ${cap.team.maxAgents} agents in ${cap.team.maxWaves} waves` : "",
     `  intro: ${a.intro?.kind || "(none)"}   loading: ${a.loading?.kind || "(none)"}`,
     `  theme: ${Object.entries(theme).map(([k, v]) => `${k}=${v}`).join("  ")}`,
     `  quota (share link): ${q.requests} req / ${q.window}${q.credits != null ? `, ${q.credits} credits` : ""}`,
