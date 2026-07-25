@@ -34,20 +34,52 @@ show only its size. The capture is **double**: the entry lands in the queue AND 
 `scripts/feedback` (the structured queue) and a chatlogs scan. There is no
 per-reply Feedback button and no settings knob any more.
 
-**Two SCOPES — read the classification before you diagnose (owner directive,
-2026-07-24).** A "feedback …" message that is the **absolute first message** of
-a conversation cannot be feedback about that conversation: there is nothing in
-it yet. It is **generic developer feedback** — a feature suggestion or a
-next-steps note — and the pipeline classifies it as such
-(`feedbackScope` / `feedbackScopeOfPrior` in `public/js/feedback-core.js`):
+**This is the ONLY pipeline that takes free-form human instructions.** The
+boards (`security`, `features`, `panels`) are curated lists an agent produces
+and the admin orders; they are not an inbox. Anything a person *writes* at the
+project — from the chat, from Se/cure, from the outrospection feed, from the
+documentation reader — arrives here. What varies is the **scope**, and the
+scope decides what the right first move is. Read it before you diagnose.
+Classification lives in `public/js/feedback-core.js` (`feedbackScope` /
+`feedbackScopeOfPrior` infer it from the conversation; `strategy` and `doc` are
+DECLARED by the surface that submits) and is stated outright in the queue's
+text rendering.
 
-| | standalone | session |
-|---|---|---|
-| when | feedback opens the chat | feedback arrives mid-conversation |
-| `page` tag | `chat/standalone`, `se/cure/standalone` | `chat`, `se/cure` |
-| queue rendering | a `SCOPE: standalone …` line; `standalone: true` on the JSON | no scope line |
-| `DEBUG CONTEXT:` | request metadata + `--- standalone feedback: … no session to attach ---` | the whole transcript |
-| canned reply | the standalone variant set — no promise of a conversation | the session set |
+| Scope | Where it is written | `page` tag | What it is | Wrong first move |
+|---|---|---|---|---|
+| `session` | mid-conversation | `chat`, `se/cure` | a report about the answer above it | — |
+| `standalone` | the first message of a chat | `chat/standalone`, `se/cure/standalone` | a generic suggestion; no session behind it | reproducing a complaint |
+| `strategy` | the outrospection feed | `outrospect:<lens>/strategy` | direction for where the project goes | triaging it as a defect |
+| `doc` | the `/docs` reader's comment mode | `docs:<path>/doc` | a passage comment: the doc **and** the code | rewording the paragraph |
+
+Each non-session scope also gets its own `SCOPE: …` block in the text view, a
+matching flag on the JSON (`standalone` / `strategy` / `doc` + `doc_path`), and
+its own canned acknowledgment set — the session set promises "this conversation
+for context", which is false for all three.
+
+**The `doc` scope — the doc⇄code contract (owner directive, 2026-07-25).** In
+the documentation reader an admin switches from read-only to comment mode,
+marks a passage, and writes a note against it. The obvious reading — "edit that
+paragraph" — is the wrong one and leaves half the instruction undone. This repo
+keeps documentation and implementation describing the same system, so a comment
+on a documented claim is an instruction about the system:
+
+- **Reconcile both sides in the same change.** Fix the passage *and* the code it
+  describes — or state explicitly, on the thread, that the code was right and
+  the document was wrong.
+- **A module-level document binds tightly.** A comment on `docs/ENCRYPTION.md`
+  is about the module that implements it; the named code must match.
+- **A high-level document binds as direction.** An architectural remark on
+  `docs/ARCHITECTURE.md` asks you to move the architecture that way, weighed
+  against the invariants — not executed literally. Validate it, don't
+  rubber-stamp it, and record the reasoning.
+- **Reply on the thread with what you changed.** The admin reads your reply
+  beside the passage in `/docs`, and sees the anchor go stale when you rewrite
+  the text it quoted — that staleness IS the "your comment landed" signal.
+
+The comment body carries the document, the section heading and the exact quoted
+passage (`public/js/docs-comments-core.js` `buildDocCommentBody`), so
+`scripts/feedback` shows you what was marked without opening the reader.
 
 For a **standalone** note, step 1 below changes: there is no complaint to
 reproduce and no answer to correlate in `chat_logs`. Treat it as a change
@@ -145,7 +177,10 @@ the single source of truth for what needs attention.
 
 1. **Gather context.** Read the full thread (`--id N`). Check the SCOPE first
    (the table above): a **standalone** entry is a suggestion with no session
-   behind it — evaluate the request itself and skip straight to step 2. For a
+   behind it — evaluate the request itself and skip straight to step 2. A
+   **doc** entry names the document and quotes the passage: open that document
+   AND the code it describes (`docs/CODE-LAYOUT.md` maps document to module),
+   and work out which of the two is wrong before proposing anything. For a
    **session** entry the entry carries the question and answer excerpt it was
    filed on; correlate with the interaction log when you need the research
    metadata behind that answer (the **chat-logs** skill — `scripts/chatlogs
