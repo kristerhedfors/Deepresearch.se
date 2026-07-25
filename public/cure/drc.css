@@ -719,6 +719,22 @@ button:disabled { opacity: .5; cursor: default; }
 #knobpop[hidden] { display: none; }
 #knobpop a { color: var(--accent); font-weight: 600; }
 
+/* The search-SOURCE picker inside the card (public/js/search-source.js): WHO
+   runs a search that goes through a grant/token. The same shape the Se/rver
+   tier uses (css/app.css) — duplicated rather than shared because the two
+   stylesheets never load on the same page. */
+.srcpick {
+  display: flex; flex-direction: column; gap: .35rem;
+  margin: .55rem 0; padding: .5rem 0;
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+}
+.srcopt {
+  display: flex; gap: .5rem; align-items: flex-start;
+  cursor: pointer; padding: .15rem 0;
+}
+.srcopt input { margin-top: .2rem; flex: 0 0 auto; accent-color: var(--accent); }
+.srcnote { opacity: .78; font-size: .95em; }
+
 /* The PRIVACY NOTICE popover — the wordmark (i)'s read-up on what this
    session sends where (the #drspop glass shape). Anchored LEFT, under the
    brand + (i) that open it (the marker moved from the icon row to the

@@ -142,7 +142,12 @@
         <div id="knobpop" hidden>
           <strong>Web research</strong><br>
           <span>Off answers in one pass. Live web search needs a search source:
-          your own local browsing agent, or a server grant/token.</span><br>
+          your own local browsing agent, or a server grant/token.</span>
+          <!-- The search-SOURCE picker (public/js/search-source.js): WHO runs a
+               search that goes through a grant/token. A configured local agent
+               outranks both — the browser calls it directly and no query
+               reaches this server at all. Rendered and wired in drc.js. -->
+          <div id="knobsrc"></div>
           <a href="/cure/local-search/">Run a local browsing agent — one-line setup →</a>
         </div>
         <form id="form">

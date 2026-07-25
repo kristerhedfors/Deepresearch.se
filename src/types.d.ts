@@ -245,6 +245,14 @@ export interface RequestState {
   /** The fixed reliable model the JSON planning phases run on. */
   jsonModel: string;
   webSearch: boolean;
+  /**
+   * The user's picked web-search SOURCE for this request — who actually runs
+   * the searches (the web knob's long-press card, UX-10): "exa", "cloudflare"
+   * (this Worker does the searching itself), or "" for the site default.
+   * Validated against websearch-backends.js USER_SEARCH_SOURCES before it gets
+   * here, and ignored when the admin pinned the site-wide backend.
+   */
+  searchSource?: string;
   /** Per-extension state (src/extensions.js) — opaque to core. */
   ext: ExtensionState;
   /** Developer-mode gate for the introspection enrichment (src/introspect.js). */

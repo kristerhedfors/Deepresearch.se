@@ -85,11 +85,18 @@ GRANT subsystem**
 A short-lived, quota-metered token (HMAC-signed with `SESSION_SECRET` under
 an independent `websearch.` namespace; the quota is a D1
 `websearch_grants` row keyed by the token's `jti`) authorizes a fixed
-number of live web searches routed through the server's Exa key — so a
+number of live web searches run on the server's side — so a
 Se/cure session keeps the strong posture (own/local model, browser-local
 storage) while still getting fresh web results. It stays inside the
-minimal-outbound rule: only the search QUERY reaches the server and Exa,
-never the conversation. **TWO ways to receive a grant:** (1) the GHOST
+minimal-outbound rule: only the search QUERY reaches the server, never the
+conversation. Since 2026-07-25 the grant call carries a `source` naming WHICH
+engine the server should point at — Exa, or the server's own Worker-native
+backend (`src/websearch-cf.js`), picked on the web knob's long-press card.
+That is a routing choice INSIDE the existing exception, not a new one: the
+same single query crosses, the far side simply may be Cloudflare's edge
+rather than Exa's index. The stronger option remains unchanged and still
+outranks it — a browser-direct search backend configured in the Se/cure
+settings drawer means no query touches this server at all. **TWO ways to receive a grant:** (1) the GHOST
 CROSSOVER — a signed-in Se/rver user crossing to Se/cure mints/reuses their
 own grant (authed `POST /api/websearch/grant`, offered only when the ghost
 set the intent marker, so a plain visitor never pings the server); (2) a

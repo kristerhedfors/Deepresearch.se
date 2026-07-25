@@ -34,6 +34,7 @@
 import { getConfig } from "./config.js";
 import { getDb } from "./db.js";
 import { webSearch } from "./exa.js";
+import { normalizeSearchSource } from "./websearch-backends.js";
 import {
   GRANT_DEPTH,
   GRANTS_LIST_MAX,
@@ -402,10 +403,16 @@ export async function handleWebSearchStatus(request, env) {
 }
 
 /**
- * POST /api/websearch — PUBLIC. Body: { token, query }. Verifies the token,
- * reserves one search from its D1 grant row atomically, runs Exa on the
- * server's key, and returns the results. A failed/empty search refunds the
- * reservation so quota only pays for usable results.
+ * POST /api/websearch — PUBLIC. Body: { token, query, source? }. Verifies the
+ * token, reserves one search from its D1 grant row atomically, runs the search
+ * on the server's side, and returns the results. A failed/empty search refunds
+ * the reservation so quota only pays for usable results.
+ *
+ * `source` is the Se/cure caller's pick from the web knob's long-press card —
+ * "exa" (the default) or "cloudflare" (this Worker searches for itself). It
+ * changes only WHICH backend the server runs; the exposure is unchanged either
+ * way (the query string, nothing else — CLAUDE.md invariant 4's query-only
+ * grant exception), and an unknown value degrades to the site default.
  * @param {Request} request
  * @param {Env} env
  * @param {Logger} log
@@ -415,6 +422,7 @@ export async function handleWebSearch(request, env, log) {
   const body = await request.json().catch(() => ({}));
   const token = typeof body?.token === "string" ? body.token : "";
   const query = typeof body?.query === "string" ? body.query.trim().slice(0, QUERY_MAX) : "";
+  const source = normalizeSearchSource(body?.source);
   if (!token || !query) return jsonResponse({ error: "token and query are required." }, 400);
 
   const cfg = await grantDefaults(env);
@@ -448,7 +456,7 @@ export async function handleWebSearch(request, env, log) {
     );
   }
 
-  const result = await webSearch(env, log, query, GRANT_DEPTH).catch(() => null);
+  const result = await webSearch(env, log, query, GRANT_DEPTH, { source }).catch(() => null);
   const usable = !!result && Number(result.resultCount) > 0;
 
   if (!usable) {

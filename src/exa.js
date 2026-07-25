@@ -91,9 +91,12 @@ export function searchCacheKey(query, type, numResults, backend = "exa") {
  * @param {import('./types.js').Logger} log
  * @param {string} query
  * @param {{ numResults?: number, type?: string }} [depth] the budget's search-depth tier
+ * @param {{ source?: string }} [opts] the request's user-picked search SOURCE
+ *   (the web knob's long-press card — "exa" | "cloudflare" | ""), which
+ *   outranks the site-wide backend unless the admin pinned it
  * @returns {Promise<SearchResult>}
  */
-export async function webSearch(env, log, query, depth = {}) {
+export async function webSearch(env, log, query, depth = {}, opts = {}) {
   const numResults = depth.numResults || 5;
   const type = depth.type || "auto";
   const startedAt = Date.now();
@@ -111,16 +114,18 @@ export async function webSearch(env, log, query, depth = {}) {
     return failure("No search query was provided.");
   }
 
-  // Resolve the configured web-search BACKEND. Defaults to Exa, so an
-  // unconfigured site is unchanged; a self-hosted SearXNG / Exa-compatible
-  // service (src/websearch-backends.js) routes here instead. Fail-soft: a
-  // config read failure degrades to the Exa default.
+  // Resolve the web-search BACKEND: the caller's user-picked source first (the
+  // web knob's long-press card), then the site-wide admin selection, then Exa —
+  // so an unconfigured site with no pick is unchanged. The Worker-native
+  // "cloudflare" backend and a self-hosted SearXNG / Exa-compatible service
+  // (src/websearch-backends.js) both route through the alt path below.
+  // Fail-soft: a config read failure degrades to the Exa default.
   const searchCfg = await getConfig(env).then((c) => c.search).catch(() => null);
-  const backend = resolveSearchBackend(env, searchCfg || {});
-  const usingSelfHosted = backend.backend !== "exa";
+  const backend = resolveSearchBackend(env, searchCfg || {}, opts.source || "");
+  const usingAlt = backend.backend !== "exa";
 
-  // Without Exa AND without a self-hosted backend, there is nothing to search.
-  if (!usingSelfHosted && !env.EXA_API_KEY) {
+  // Without Exa AND without an alternative backend, there is nothing to search.
+  if (!usingAlt && !env.EXA_API_KEY) {
     log.error("exa.misconfigured", { missing: "EXA_API_KEY" });
     return failure("Web search is unavailable: EXA_API_KEY is not configured.");
   }
@@ -145,9 +150,10 @@ export async function webSearch(env, log, query, depth = {}) {
     return { ...cached, durationMs: Date.now() - startedAt, cached: true };
   }
 
-  // Self-hosted backend path: run it, and on any failure fall through to Exa
-  // (when allowed and a key exists) rather than erroring the search wave.
-  if (usingSelfHosted) {
+  // Alternative-backend path (Worker-native or self-hosted): run it, and on any
+  // failure fall through to Exa (when allowed and a key exists) rather than
+  // erroring the search wave.
+  if (usingAlt) {
     const alt = await runBackendSearch(env, log, backend, query, { numResults, type }).catch(() => null);
     if (alt) {
       const durationMs = Date.now() - startedAt;
@@ -169,8 +175,8 @@ export async function webSearch(env, log, query, depth = {}) {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        // Reaching here guarantees a key: either not self-hosted (checked
-        // above) or self-hosted fell back with a key present.
+        // Reaching here guarantees a key: either the Exa backend (checked
+        // above) or an alternative that fell back with a key present.
         "x-api-key": /** @type {string} */ (env.EXA_API_KEY),
       },
       body: JSON.stringify({
