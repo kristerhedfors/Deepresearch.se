@@ -488,6 +488,20 @@
           (model + messages only); the sharer meters, and can block or revoke, your access. Turn it off to
           stay entirely on your own providers.</div>
         <span id="poolstatus" class="muted setting-note"></span>
+        <!-- MUTUAL CONSENT, the consumer's half (docs/COMPUTE-SHARING.md §8b).
+             A token is capacity, not consent: before ANY prompt leaves for the
+             sharer's machine you are shown who they are — as the platform
+             resolved them, not as they described themselves — and asked. The
+             answer is remembered server-side per (you, pool), so this appears
+             once. The sharer is asked the mirror-image question about you. -->
+        <div id="poolconsent" class="pool-consent" hidden>
+          <p id="poolconsent-title" class="pool-consent-title"></p>
+          <div id="poolconsent-detail" class="muted setting-note"></div>
+          <div class="pool-consent-actions">
+            <button type="button" id="poolconsent-allow">Allow</button>
+            <button type="button" id="poolconsent-deny">Not now</button>
+          </div>
+        </div>
       </div>
 
       <!-- Secure workspace — EVERY session has one: this browser's whole

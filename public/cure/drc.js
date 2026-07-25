@@ -2750,6 +2750,7 @@ async function connectPoolGrant(token) {
     const v = await res.json(); // { jti, pool, quota, used, remaining, expiresAt }
     poolGrant = { token, pool: v.pool, quota: v.quota, used: v.used, remaining: v.remaining, expiresAt: v.expiresAt };
     persistPoolGrant();
+    await refreshPoolPeer(); // both halves of consent, before any prompt can leave
     try {
       localStorage.setItem(POOL_ENABLED_KEY, "1");
     } catch {
@@ -2806,6 +2807,77 @@ function renderPoolRow() {
   $("poolstatus").textContent =
     (poolEnabled() ? (live ? "Connected — " : "Expired/used up — ") : "Off — ") +
     "🤝 another user's machine · " + meter;
+  renderPoolConsent();
+}
+
+// ---- MUTUAL CONSENT, the consumer's half ---------------------------------------
+//
+// docs/COMPUTE-SHARING.md §8b. Holding a workspace's pool token means the
+// capacity is available to you — it does NOT mean you agreed to send your
+// prompts to the machine behind it, and it does not mean its owner agreed to
+// take yours. /api/pool/peer answers both halves at once (and parks the
+// question on the sharer's dashboard just by being asked), so this pane shows
+// exactly the state the broker will enforce. Decisions are remembered
+// server-side per (you, pool); the pane disappears once both sides said yes.
+let poolPeer = null; // { pool, owner, you, ingress, egress, ready, … }
+
+async function refreshPoolPeer() {
+  if (!(poolGrant && poolGrant.token)) {
+    poolPeer = null;
+    return null;
+  }
+  try {
+    const res = await fetch("/api/pool/peer", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: poolGrant.token }),
+    });
+    poolPeer = res.ok ? await res.json() : null;
+  } catch {
+    poolPeer = null; // fail soft: no pane rather than a broken one
+  }
+  return poolPeer;
+}
+
+function renderPoolConsent() {
+  const box = $("poolconsent");
+  if (!box) return;
+  const p = poolPeer;
+  if (!p || p.ready) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  const waitingOnMe = p.egress !== "allowed";
+  // Two different situations, two different asks. When it is MY answer that
+  // is missing, ask me. When I have already said yes and the sharer has not,
+  // say so plainly instead of showing buttons that would do nothing.
+  const q = waitingOnMe ? p.egressQuestion : p.ingressQuestion;
+  $("poolconsent-title").textContent = waitingOnMe
+    ? q.title
+    : p.ingress === "blocked"
+      ? "The owner of this shared model declined your access."
+      : "Waiting for the owner of this shared model to allow you.";
+  $("poolconsent-detail").innerHTML = (waitingOnMe ? q.detail : [q.detail[0], "They decide on their side, in Settings → LLM sharing. Nothing of yours is sent until they do."])
+    .map((line) => "<p>" + wmHtml(line) + "</p>")
+    .join("");
+  $("poolconsent-allow").hidden = !waitingOnMe;
+  $("poolconsent-deny").hidden = !waitingOnMe;
+}
+
+async function decidePoolEgress(decision) {
+  if (!(poolGrant && poolGrant.token)) return;
+  try {
+    await fetch("/api/pool/egress", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: poolGrant.token, decision }),
+    });
+  } catch {
+    /* fail soft — the pane re-renders from the server's state below */
+  }
+  await refreshPoolPeer();
+  renderPoolConsent();
 }
 
 // ---- the sharer's side: "Share my compute" on the local-model row ----------------------
@@ -4097,7 +4169,16 @@ maybeRequestServerToken().then(() => {
 });
 // Shared compute joins the arrival chain independently: a ?pt= pool-token
 // link connects it (fail-soft), and the settings row reflects any stored one.
-maybeOpenPoolToken().catch(() => false).then(() => renderPoolRow());
+maybeOpenPoolToken()
+  .catch(() => false)
+  // MUTUAL CONSENT: ask the broker where both halves stand before anything is
+  // sent. Asking is also what puts YOU on the sharer's dashboard, so a peer
+  // who opens a workspace link shows up as a request without having to fire a
+  // prompt at someone's machine first.
+  .then(() => refreshPoolPeer().catch(() => null))
+  .then(() => renderPoolRow());
+$("poolconsent-allow")?.addEventListener("click", () => decidePoolEgress("allow"));
+$("poolconsent-deny")?.addEventListener("click", () => decidePoolEgress("deny"));
 // The consumer master toggle: shared compute on/off (the provider group
 // appears/disappears in the dropdown).
 $("poolenabled")?.addEventListener("change", () => {
