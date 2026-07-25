@@ -34,6 +34,31 @@ visit and that stores into D1. Both halves import the SAME pure core
 façade, the browser directly, the script in Node. The delta is the product; the
 merge decides what is new.
 
+## Outrospection MODE — the fifth chat mode (2026-07-25)
+
+The feed is also an ANSWERING surface: the `outrospection` entry in the chat
+dropdown (newsprint theme, `outro-mode`). It is introspection's mirror in
+mechanism as well as name — retrieve deterministically, build ONE context
+block, stream ONE answer — except the retrieval is the outward feed instead of
+the committed source snapshot.
+
+- `outrospectionBlock` / `outrospectionAnswerPrompt` live in the pure core with
+  everything else; `runOutrospection` + `retrieveOutwardFeed` are the server
+  half in `src/outrospect.js`; `src/pipeline.js` dispatches on
+  `state.outrospectionMode`, gated in `chat.js` on the same `developer_mode`
+  capability as SDK and Orchestrator (precedence sdk > orchestrator >
+  outrospection).
+- **No model chooses what to retrieve.** `lensMatch` routes the question, so
+  invariant 1 holds end to end and the outbound traffic stays the committed
+  literal queries. An unmatched question falls back to the newest items across
+  every lens rather than guessing a lens.
+- **The no-fabrication rule is now prompt-enforced.** With an empty feed the
+  prompt says so and forbids inventing articles, headlines or links — the same
+  rule the scan obeys, moved to where a model could otherwise be tempted.
+- **Fail-soft:** no D1, a throwing query, or an empty feed all still answer.
+  `chat_logs` carries `outrospection_mode: 1` and `outrospection:
+  {lens, items, live}` — grep `items: 0` for "the feed had nothing to say".
+
 ## Rules that are load-bearing
 
 **Never fabricate a feed item.** The committed artifact ships empty and stays

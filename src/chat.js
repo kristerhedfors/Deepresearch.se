@@ -85,6 +85,11 @@ import { getDb } from "./db.js";
  *   JSON-planned team of sub-agents executed in parallel waves, then one merged
  *   answer. Honored only when the caller's developer_mode knob grants the
  *   capability — the same gate as sdk_mode
+ * @property {boolean} [outrospection_mode] Outrospection mode: route this request
+ *   to the outward feed (src/outrospect.js runOutrospection) — introspection's
+ *   mirror image, answering from what everyone ELSE shipped rather than from
+ *   this site's own source. Honored only when the caller's developer_mode knob
+ *   grants the capability — the same gate as sdk_mode
  * @property {any} [imageLocations] attached-photo GPS EXIF coords
  * @property {any} [street_view_pov] the user's current panorama view
  * @property {any} [map_view] the user's current interactive-map view
@@ -119,6 +124,8 @@ import { getDb } from "./db.js";
  *   sdkMode?: boolean,
  *   orchestratorMode?: boolean,
  *   orchestration?: { agents: number, waves: number, failed: number, searches: number },
+ *   outrospectionMode?: boolean,
+ *   outrospection?: { lens: string | null, items: number, live: boolean },
  *   buildSlug?: string | null,
  *   userId?: string,
  *   buildResult?: { slug: string, url: string, files: number, bytes: number },
@@ -218,6 +225,11 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // SDK mode (a client can't acquire a mode the knob doesn't grant), and the
   // modes are mutually exclusive client-side — sdk wins if both arrive.
   const orchOn = body.orchestrator_mode === true && !sdkOn && enrich.developerOn;
+  // Outrospection mode: answer from the outward feed instead of the web or our
+  // own source. Same capability gate again, and the modes stay mutually
+  // exclusive in the same precedence order the dropdown can only produce one
+  // of anyway (sdk > orchestrator > outrospection).
+  const outroOn = body.outrospection_mode === true && !sdkOn && !orchOn && enrich.developerOn;
   // The experimental bash-lite sandbox transcript: the browser ran an agentic
   // shell loop (public/js/bash-agent.js) before sending, and attached what it
   // ran + the real output. Honored only when this account's knob is on
@@ -298,6 +310,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       sandboxEnabled: bashLiteEnabled(env, identity),
       sdkMode: sdkOn,
       orchestratorMode: orchOn,
+      outrospectionMode: outroOn,
       buildSlug,
       userId: String(identity.id),
     });
@@ -478,6 +491,13 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             // dropped (undefined) when the mode didn't run.
             orchestrator: orchOn ? 1 : 0,
             orchestration: /** @type {any} */ (state).orchestration,
+            // Outrospection mode: 1 when this request answered from the
+            // outward feed; `outrospection` is what it retrieved
+            // ({lens, items, live} — outrospect.js), dropped (undefined) when
+            // the mode didn't run. `items: 0` is the signal worth grepping —
+            // the feed had nothing to answer from.
+            outrospection_mode: outroOn ? 1 : 0,
+            outrospection: /** @type {any} */ (state).outrospection,
             // Which maps intent matcher decided (or "none") — the routing
             // trace scripts/chatlogs surfaces (undefined when the knob is
             // off and the enrichment never ran).
@@ -769,7 +789,7 @@ export function resolveJsonModel(catalog, userModel) {
  * @param {boolean} webSearch
  * @param {number} budgetS
  * @param {boolean} shodan
- * @param {Partial<EnrichmentOptions> & { googleMaps?: boolean, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
+ * @param {Partial<EnrichmentOptions> & { googleMaps?: boolean, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, outrospectionMode?: boolean, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
  * @returns {ChatRequestState}
  */
 function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = {}) {
@@ -824,6 +844,10 @@ function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = 
     // runOrchestration: a JSON-planned sub-agent workflow replaces the
     // normal research flow for this request.
     orchestratorMode: !!extras.orchestratorMode,
+    // Outrospection mode — pipeline.js routes to outrospect.js
+    // runOutrospection: the outward feed replaces both the web research and
+    // the own-source retrieval for this request.
+    outrospectionMode: !!extras.outrospectionMode,
     buildSlug: extras.buildSlug || null,
     userId: extras.userId || "",
     // This channel renders the interactive inline-quiz event (src/quiz.js;

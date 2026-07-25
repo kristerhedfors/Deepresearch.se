@@ -21,7 +21,8 @@ DeepResearch.**Se/cure** + DeepResearch.**Se/rver**.
 > and three application surfaces consume the SDK:
 >
 > - **SDK mode** — the green "lovable experience" entry in the chat-mode
->   dropdown (Deep Research / Introspection / Agent Studio / Orchestrator — see
+>   dropdown (Deep Research / Introspection / Agent Studio / Orchestrator /
+>   Outrospection — see
 >   the sdk-mode skill): the user
 >   describes a FLAVOUR to distill from this site (above all the client-side
 >   Se/cure tier), the model plans with `sdk_plan`, reads the module skills and

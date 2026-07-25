@@ -18,6 +18,8 @@ import {
   mergeFeed,
   normalizeItemUrl,
   normalizeLens,
+  outrospectionAnswerPrompt,
+  outrospectionBlock,
   refreshQueries,
   stalestLens,
   validateFeedItem,
@@ -365,4 +367,75 @@ test("formatFeedText renders the tally, marks NEW, and says so when empty", () =
   assert.match(text, /NEW .*Fresh thing/);
   assert.match(text, /https:\/\/a\.example\/x/);
   assert.match(formatFeedText([], { now }), /no items yet/);
+});
+
+// ---------------------------------------------------------------------------
+// OUTROSPECTION MODE — the answer block and prompt (the fifth chat mode)
+// ---------------------------------------------------------------------------
+
+const item = (over = {}) => ({
+  key: over.url || "https://a.example/x",
+  lens: "edge-rag",
+  title: "A thing someone shipped",
+  url: "https://a.example/x",
+  teaser: "One paragraph about it.",
+  source: "a.example",
+  first_seen: 1_800_000_000_000,
+  ...over,
+});
+
+test("outrospectionBlock numbers items newest-first and names the lens", () => {
+  const block = outrospectionBlock([
+    item({ title: "Newest", url: "https://a.example/1" }),
+    item({ title: "Older", url: "https://a.example/2" }),
+  ]);
+  assert.match(block, /\[1\] Newest/);
+  assert.match(block, /\[2\] Older/);
+  // The lens TITLE, not the raw id — the answer model reads prose.
+  assert.match(block, new RegExp(lensById("edge-rag").title));
+  assert.match(block, /https:\/\/a\.example\/1/);
+  assert.match(block, /2 items/);
+});
+
+test("outrospectionBlock is empty for no items, and marks fresh ones NEW", () => {
+  assert.equal(outrospectionBlock([]), "");
+  assert.equal(outrospectionBlock(null), "");
+  assert.match(outrospectionBlock([item({ fresh: true })]), /· NEW/);
+});
+
+test("outrospectionBlock honors the item and character caps", () => {
+  const many = Array.from({ length: 60 }, (_, i) => item({ title: `T${i}`, url: `https://a.example/${i}` }));
+  const capped = outrospectionBlock(many);
+  assert.ok(!capped.includes("[25]"), "item cap not applied");
+  // A tight char budget truncates further rather than overflowing.
+  const tiny = outrospectionBlock(many, { chars: 500 });
+  assert.ok(tiny.length < capped.length);
+  assert.match(tiny, /\[1\]/);
+});
+
+test("outrospectionAnswerPrompt: grounded when there are items, honest when not", () => {
+  const withItems = outrospectionAnswerPrompt({ lens: lensById("edge-rag"), hasItems: true });
+  assert.match(withItems, /ONLY from the feed items/);
+  assert.match(withItems, /\[1\], \[2\]/);
+  assert.match(withItems, new RegExp(lensById("edge-rag").question.slice(0, 30)));
+
+  const empty = outrospectionAnswerPrompt({ hasItems: false });
+  assert.match(empty, /holds nothing on this yet/);
+  // The load-bearing rule: never fabricate a feed item (the scan's rule, now
+  // enforced where a model could be tempted to invent one).
+  assert.match(empty, /NEVER invent articles/);
+  assert.match(empty, /\/outrospect\//);
+});
+
+test("outrospectionAnswerPrompt has Swedish parity (invariant 6)", () => {
+  // The DEFAULT prompt is bilingual, so a Swedish question gets a Swedish
+  // answer without a second language detector (the orchestrator convention).
+  assert.match(outrospectionAnswerPrompt({ hasItems: true }), /svara på svenska/i);
+  // And the explicit Swedish leg is a full instruction, not a translated tail.
+  const sv = outrospectionAnswerPrompt({ lens: lensById("edge-rag"), hasItems: true, swedish: true });
+  assert.match(sv, /Svara på svenska\./);
+  assert.match(sv, /ENBART utifrån flödesposterna/);
+  assert.match(sv, new RegExp(lensById("edge-rag").questionSv.slice(0, 20)));
+  const svEmpty = outrospectionAnswerPrompt({ hasItems: false, swedish: true });
+  assert.match(svEmpty, /hitta ALDRIG på artiklar/);
 });

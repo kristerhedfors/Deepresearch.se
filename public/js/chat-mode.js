@@ -21,6 +21,11 @@
 //                   the Se/cure tier) into a new flavour published at a live
 //                   URL. Same knob gate. Theme: the `sdk-mode` root class (the
 //                   green pane).
+//   outrospection → the request carries `outrospection_mode: true` (chat.js),
+//                   routing to the outward feed (src/outrospect.js) —
+//                   introspection's mirror image, answering from what everyone
+//                   ELSE shipped. Same knob gate. Theme: the `outro-mode` root
+//                   class (the newsprint pane).
 //   orchestrator  → the request carries `orchestrator_mode: true` (chat.js),
 //                   routing to the sub-agent workflow flow (src/orchestrator.js)
 //                   — a planned team of sub-agents runs in the background and
@@ -47,8 +52,10 @@ export const CHAT_MODE_KEY = "dr_chat_mode";
 export const SDK_MODE_CLASS = "sdk-mode";
 /** The root class carrying the violet Orchestrator-mode pane tint. */
 export const ORCH_MODE_CLASS = "orch-mode";
+/** The root class carrying the newsprint Outrospection-mode pane tint. */
+export const OUTRO_MODE_CLASS = "outro-mode";
 /** The modes, dropdown order. */
-export const CHAT_MODES = ["normal", "introspection", "sdk", "orchestrator"];
+export const CHAT_MODES = ["normal", "introspection", "sdk", "orchestrator", "outrospection"];
 
 /**
  * Clamp any value to a known mode.
@@ -109,6 +116,7 @@ export function applyChatModeTheme(mode, opts) {
     root?.classList?.toggle(DEV_MODE_CLASS, m === "introspection");
     root?.classList?.toggle(SDK_MODE_CLASS, m === "sdk");
     root?.classList?.toggle(ORCH_MODE_CLASS, m === "orchestrator");
+    root?.classList?.toggle(OUTRO_MODE_CLASS, m === "outrospection");
   } catch {
     /* no DOM (tests) — persistence above is the durable part */
   }

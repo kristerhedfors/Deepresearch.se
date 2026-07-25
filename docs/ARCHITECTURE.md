@@ -3,7 +3,8 @@
 Complete technical architecture of the **platform** — the Worker, the
 pipeline, the tiers, and the storage/identity/security model everything else
 stands on. The feature surfaces layered over it (Orchestrator, Agent Studio,
-the games, the space archive, on-device inference, compute sharing) are not
+Outrospection, the games, the space archive, on-device inference, compute
+sharing) are not
 separate architecture: they are **examples and pre-bundled agents**, and the
 goal is to express them through the two SDKs rather than as bespoke
 subsystems — §15 gives that framing and the honest current state. One
@@ -1091,8 +1092,8 @@ use keep the deterministic single-pass injection described above. See the
 ## 15. Feature surfaces — examples and pre-bundled agents
 
 The sections above describe the platform. Almost everything a visitor
-actually *sees* sits on top of it: Orchestrator mode, Agent Studio, the
-Se/cure tier itself, published replays, the games shelf, the space
+actually *sees* sits on top of it: Orchestrator and Outrospection modes, Agent
+Studio, the Se/cure tier itself, published replays, the games shelf, the space
 animations, on-device inference, compute sharing. Read those as **examples
 and pre-bundled agents**, not as architecture — demonstrations of what the
 platform can carry, shipped in the box (owner directive, 2026-07-24). The
@@ -1117,7 +1118,8 @@ module — `execution-sandbox`, `introspection-help`, `decision-boards`,
 `publish-replays`, `games-shelf`, `mcp-surface`, `grant-bridge`,
 `symbol-language`, `pair-studio`, `agent-platform`. Others are still bespoke
 code with no SDK module and no AgentSpec entry: **Orchestrator mode**
-(`src/orchestrator.js`), **on-device inference** (`public/js/ondevice-*.js`,
+(`src/orchestrator.js`), **Outrospection mode** (`src/outrospect.js`,
+`docs/OUTROSPECTION.md`), **on-device inference** (`public/js/ondevice-*.js`,
 `docs/BONSAI-27B-PHONE-INFERENCE.md`), **compute sharing**
 (`src/pool.js`, `src/pool-token.js`, `docs/COMPUTE-SHARING.md`), **workspace
 knowledge** (`src/knowledge.js`) and the **quiz** surface (`src/quiz.js`).

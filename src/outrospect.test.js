@@ -18,6 +18,7 @@ import {
   lensesOnCooldown,
   loadItems,
   projectItem,
+  retrieveOutwardFeed,
   storeItems,
   validateRefreshBody,
 } from "./outrospect.js";
@@ -403,4 +404,81 @@ test("stored rows merge with artifact-shaped items without duplicating", async (
   const live = await loadItems(/** @type {any} */ (db), {});
   const artifact = [{ lens: "edge-rag", title: "Headline", url: "http://www.a.example/x/", first_seen: 1 }];
   assert.equal(mergeFeed([artifact, live]).length, 1);
+});
+
+// ---------------------------------------------------------------------------
+// OUTROSPECTION MODE — the retrieval half of the fifth chat mode.
+// The prompt/block half is tested in the core; this covers what only exists
+// on the server: routing a question to a lens, the fallback, and fail-soft.
+// ---------------------------------------------------------------------------
+
+const seed = async (db, rows) =>
+  storeItems(
+    db,
+    rows.map((r) => ({
+      key: r.url,
+      lens: r.lens,
+      title: r.title,
+      url: r.url,
+      teaser: "",
+      source: "a.example",
+      first_seen: r.first_seen ?? 1_800_000_000_000,
+      query: "",
+    })),
+  );
+
+test("retrieveOutwardFeed routes a question to its lens (EN and SV alike)", async () => {
+  const db = fakeDb();
+  await seed(db, [
+    { lens: "edge-rag", title: "Edge retrieval piece", url: "https://a.example/rag" },
+    { lens: "browser-models", title: "Browser model piece", url: "https://a.example/model" },
+  ]);
+  const env = { DB: db };
+  const en = await retrieveOutwardFeed(env, "what is happening with the vector database at the edge?");
+  assert.equal(en.lens.id, "edge-rag");
+  assert.deepEqual(en.items.map((i) => i.title), ["Edge retrieval piece"]);
+  assert.equal(en.live, true);
+
+  // Invariant 6: the Swedish question must route exactly as well.
+  const sv = await retrieveOutwardFeed(env, "vad händer med vektordatabasen?");
+  assert.equal(sv.lens.id, "edge-rag");
+  assert.deepEqual(sv.items.map((i) => i.title), ["Edge retrieval piece"]);
+});
+
+test("retrieveOutwardFeed falls back to the whole feed when the lens is empty", async () => {
+  const db = fakeDb();
+  // Nothing filed under edge-rag; the outward world is not empty, though.
+  await seed(db, [{ lens: "browser-models", title: "Something else", url: "https://a.example/x" }]);
+  const got = await retrieveOutwardFeed({ DB: db }, "vector database at the edge");
+  assert.equal(got.lens.id, "edge-rag"); // the routing still reports the lens
+  assert.deepEqual(got.items.map((i) => i.title), ["Something else"]);
+});
+
+test("retrieveOutwardFeed is fail-soft without D1 and on a throwing query", async () => {
+  // No D1 binding at all — the mode must still answer, honestly.
+  const none = await retrieveOutwardFeed({}, "vector database at the edge");
+  assert.deepEqual(none.items, []);
+  assert.equal(none.live, false);
+  assert.equal(none.lens.id, "edge-rag");
+
+  const warned = [];
+  const angry = {
+    prepare() {
+      return { bind() { return this; }, async all() { throw new Error("D1 down"); } };
+    },
+  };
+  const got = await retrieveOutwardFeed({ DB: angry }, "vector database at the edge", {
+    warn: (e) => warned.push(e),
+  });
+  assert.deepEqual(got.items, []);
+  assert.equal(got.live, false);
+  assert.deepEqual(warned, ["outrospect.retrieve_failed"]);
+});
+
+test("retrieveOutwardFeed returns no lens when nothing matched, but still the newest items", async () => {
+  const db = fakeDb();
+  await seed(db, [{ lens: "browser-models", title: "Newest thing", url: "https://a.example/n" }]);
+  const got = await retrieveOutwardFeed({ DB: db }, "zzzz qqqq");
+  assert.equal(got.lens, null);
+  assert.deepEqual(got.items.map((i) => i.title), ["Newest thing"]);
 });

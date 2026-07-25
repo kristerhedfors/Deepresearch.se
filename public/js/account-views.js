@@ -87,6 +87,7 @@ const CHAT_MODE_OPTIONS = [
   { value: "introspection", label: "Introspection" },
   { value: "sdk", label: "Agent Studio" },
   { value: "orchestrator", label: "Orchestrator" },
+  { value: "outrospection", label: "Outrospection" },
 ];
 
 // The execution-sandbox knob sits in Settings (short note; the
@@ -344,6 +345,7 @@ export function wireModeKnob(ctx) {
     introspection: "Introspection — the composer pane turns white titanium, and asking about this site's own source answers from the deployed source.",
     sdk: "SDK — distill this site (above all the Se/cure tier) into a new flavour and get a live, self-contained web app at its own link.",
     orchestrator: "Orchestrator — the composer pane turns violet, and each request runs as a planned team of sub-agents working in the background.",
+    outrospection: "Outrospection — the composer pane turns newsprint, and questions are answered from the outward feed of what everyone else shipped, never from invented articles.",
   };
   sel.addEventListener("change", async () => {
     const mode = sel.value;

@@ -66,7 +66,7 @@
 
 /** The Se/rver-app chat modes, dropdown order. Mirrors chat-mode.js CHAT_MODES;
  * kept here too so the registry is self-describing. */
-export const CHAT_MODE_IDS = ["normal", "introspection", "sdk", "orchestrator"];
+export const CHAT_MODE_IDS = ["normal", "introspection", "sdk", "orchestrator", "outrospection"];
 
 /** The mode descriptors, keyed by id.
  * @type {Record<string, ModeTheme>} */
@@ -146,6 +146,26 @@ export const MODE_THEMES = {
     depthSlider: false, // the plan phase decides the team's shape — the slider doesn't apply
     symbol: "the baton",
     blurb: "conducted — a team of sub-agents working in concert",
+  },
+  outrospection: {
+    id: "outrospection",
+    label: "Outrospection",
+    rootClass: "outro-mode",
+    tag: "outrospection",
+    accent: "#8f1d14",
+    bar: "#e5ddcb", // newsprint status bar over the paper field
+    check: "#8f1d14",
+    checkVar: "--check-red",
+    // Outrospection wears the balloon recoloured in NEWSPRINT (mode-spinner.js
+    // NEWSPRINT_SPINNER) — the introspection/orchestrator recolour pattern; the
+    // KIND stays "balloon", the palette lives in mode-spinner.js.
+    spinner: "balloon",
+    character: "balloon",
+    panel: "history",
+    backdrop: "terminal",
+    depthSlider: false, // answers from the feed, not from web research — the slider doesn't apply
+    symbol: "the front page",
+    blurb: "looked outward — what everyone else shipped",
   },
 };
 

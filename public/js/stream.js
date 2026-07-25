@@ -793,6 +793,10 @@ async function buildChatPayload(opts) {
     // The sub-agent workflow flow (src/orchestrator.js) — same capability
     // gate as sdk_mode; the server ignores the field when the knob is off.
     payload.orchestrator_mode = true;
+  } else if (chatMode === "outrospection") {
+    // The outward feed (src/outrospect.js) — introspection's mirror image,
+    // same capability gate; the server ignores the field when the knob is off.
+    payload.outrospection_mode = true;
   }
   // Ghost toggle: tells the server to keep this exchange out of the
   // server-side interaction log too (src/chatlog.js) — the same choice

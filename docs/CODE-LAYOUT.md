@@ -249,16 +249,18 @@ answers; `app.js` applies the cache synchronously at boot then reconciles with
 the server's authoritative `developer_mode`, and the Settings-panel Chat mode
 dropdown flips it on pick — Node-tested), `chat-mode.js` (the chat MODE
 dropdown's state —
-Deep Research / Introspection / Agent Studio / Orchestrator; the first three
-shipped 2026-07-18 (the khaki SWE build mode was folded
-into SDK 2026-07-19), Orchestrator joined them after: the `dr_chat_mode` localStorage pick layered over the
+Deep Research / Introspection / Agent Studio / Orchestrator / Outrospection; the
+first three shipped 2026-07-18 (the khaki SWE build mode was folded
+into SDK 2026-07-19), Orchestrator and then Outrospection joined them after: the `dr_chat_mode` localStorage pick layered over the
 developer_mode capability; decides which theme class the root carries —
 `dev-mode` titanium for Introspection, `sdk-mode` GREEN for the SDK "lovable
 experience" (distill this site — above all the Se/cure tier — into a new
-flavour), `orch-mode` VIOLET for the Orchestrator sub-agent workflow mode —
+flavour), `orch-mode` VIOLET for the Orchestrator sub-agent workflow mode, `outro-mode`
+NEWSPRINT for Outrospection's outward feed —
 and which per-send fields `stream.js` declares
 (`developer_mode:false` for Deep Research, `sdk_mode:true` + `build_slug` for
-SDK, `orchestrator_mode:true` for Orchestrator);
+SDK, `orchestrator_mode:true` for Orchestrator, `outrospection_mode:true` for
+Outrospection);
 `reconcileChatMode` downgrades a stored pick when the knob is off; Node-tested),
 `sdk-core.js` (the shared PURE core behind BOTH SDKs' tool surfaces —
 Platform-SDK manifest ops + the Agents SDK's build tools; see the

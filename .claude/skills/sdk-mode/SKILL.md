@@ -1,6 +1,6 @@
 ---
 name: sdk-mode
-description: Load when working on SDK MODE — the green "lovable experience" entry in the chat-mode dropdown (Deep Research / Introspection / Agent Studio) that DISTILLS this site (above all the client-side Se/cure tier) into either a new individual agent OR an entire new platform, self-contained web app, with the DeepResearch Platform SDK (codename DistillSDK) and publishes it live at /app/<slug>/ — or when touching public/js/sdk-core.js (buildSdkContextBlock / SECURE_SOURCE_REFS), src/sdk-tools.js, src/build-pub.js, pipeline.js runSdkBuild, the sdk_mode/build_slug chat fields, the /mcp sdk_* tools, public/js/chat-mode.js, the mode dropdown (#modesel), or the green sdk-mode theme. Also load when a published /app/<slug>/ build misbehaves or the mode dropdown/theming regresses.
+description: Load when working on SDK MODE — the green "lovable experience" entry in the chat-mode dropdown (Deep Research / Introspection / Agent Studio / Orchestrator / Outrospection) that DISTILLS this site (above all the client-side Se/cure tier) into either a new individual agent OR an entire new platform, self-contained web app, with the DeepResearch Platform SDK (codename DistillSDK) and publishes it live at /app/<slug>/ — or when touching public/js/sdk-core.js (buildSdkContextBlock / SECURE_SOURCE_REFS), src/sdk-tools.js, src/build-pub.js, pipeline.js runSdkBuild, the sdk_mode/build_slug chat fields, the /mcp sdk_* tools, public/js/chat-mode.js, the mode dropdown (#modesel), or the green sdk-mode theme. Also load when a published /app/<slug>/ build misbehaves or the mode dropdown/theming regresses.
 ---
 
 # SDK mode — the "lovable distiller" (2026-07-18; SWE folded in 2026-07-19)
@@ -130,7 +130,8 @@ show live signatures/`:root` vars.
   `#modesel` (index.html, wired in app.js) AND the **Settings-panel Chat mode
   dropdown** (`account-views.js` `settingSelectRow` / `wireModeKnob`, which
   REPLACED the old Introspection on/off switch — owner directive 2026-07-18).
-  Both pick from Deep Research / Introspection / Agent Studio; picking
+  Both pick from Deep Research / Introspection / Agent Studio / Orchestrator /
+  Outrospection; picking
   Introspection or Agent Studio flips the `developer_mode` knob on via PUT
   /api/settings (Deep Research flips it off), fail-soft — break-glass has it
   implicitly and its PUT refuses; theme applies anyway. `loadSettings().then`

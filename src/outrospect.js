@@ -45,6 +45,7 @@
 import { getDb } from "./db.js";
 import { jsonResponse, textResponse } from "./http.js";
 import { webSearch } from "./exa.js";
+import { streamCompletion } from "./answer-stream.js";
 import {
   FRESH_WINDOW_MS,
   LENS_IDS,
@@ -59,6 +60,8 @@ import {
   mergeFeed,
   normalizeItemUrl,
   normalizeLens,
+  outrospectionAnswerPrompt,
+  outrospectionBlock,
   refreshQueries,
   stalestLens,
   validateFeedItem,
@@ -78,6 +81,8 @@ export {
   mergeFeed,
   normalizeItemUrl,
   normalizeLens,
+  outrospectionAnswerPrompt,
+  outrospectionBlock,
   refreshQueries,
   stalestLens,
   validateFeedItem,
@@ -414,4 +419,80 @@ export async function handleAdminOutrospect(env, url) {
     return textResponse(head + lines.join("\n") + "\n");
   }
   return jsonResponse({ items, tally: lensTally(items), runs, lenses: OUTROSPECT_LENSES });
+}
+
+// ---------------------------------------------------------------------------
+// OUTROSPECTION MODE — the answer phase (owner directive, 2026-07-25)
+//
+// The fifth chat mode. Structurally it is introspection's mirror: retrieve
+// deterministically, build ONE context block, stream ONE answer. Introspection
+// retrieves from the committed snapshot of our own source; this retrieves from
+// the outward feed. Nothing between the question and the answer calls a model
+// to decide anything (invariant 1) — `lensMatch` is the same EN+SV gate the
+// strategy lane uses, so the routing is auditable and identical in both
+// languages.
+//
+// Fail-soft throughout (invariant 2): no D1, an empty feed, or a lens that
+// matched nothing all degrade to an HONEST answer that says the feed holds
+// nothing on this yet. They never error the chat, and the prompt forbids
+// inventing an item — the same "never fabricate a feed item" rule the scan
+// obeys, enforced where a model could otherwise be tempted.
+//
+// Billing/routing (invariant 3): there is no JSON planning phase here at all,
+// so nothing runs on the fixed json model; the single streamed answer runs on
+// the user's chosen model like any synthesis.
+// ---------------------------------------------------------------------------
+
+/** How many feed items the answer may cite. */
+export const OUTRO_ANSWER_ITEMS = 24;
+
+/**
+ * Retrieve the feed slice this question should be answered from. Prefers the
+ * matched lens; falls back to the whole feed when nothing matched, so a
+ * general "what's new out there" still gets the newest items.
+ * @param {Env} env
+ * @param {string} question
+ * @param {Logger} [log]
+ * @returns {Promise<{ lens: object | null, items: FeedItem[], live: boolean }>}
+ */
+export async function retrieveOutwardFeed(env, question, log) {
+  const lensId = lensMatch(question);
+  const lens = lensId ? lensById(lensId) : null;
+  try {
+    const db = await getDb(env);
+    if (!db) return { lens, items: [], live: false };
+    let items = await loadItems(db, { lens: lensId, limit: OUTRO_ANSWER_ITEMS });
+    // A lens with nothing filed yet still deserves an answer: fall back to the
+    // whole feed rather than pretending the outward world is empty.
+    if (!items.length && lensId) items = await loadItems(db, { limit: OUTRO_ANSWER_ITEMS });
+    return { lens, items: mergeFeed([items], { limit: OUTRO_ANSWER_ITEMS }), live: true };
+  } catch (err) {
+    log?.warn?.("outrospect.retrieve_failed", { error: String(err) });
+    return { lens, items: [], live: false };
+  }
+}
+
+/**
+ * Outrospection mode's whole answer phase. Called by src/pipeline.js when the
+ * request carries `outrospection_mode` and the capability gate passed.
+ * @param {import('./pipeline.js').PipelineCtx} ctx
+ * @returns {Promise<void>}
+ */
+export async function runOutrospection(ctx) {
+  const { env, log } = ctx;
+  ctx.step("outrospect", "Reading the outward feed…");
+  const { lens, items, live } = await retrieveOutwardFeed(env, ctx.cleanLastUser || ctx.lastUser, log);
+  const block = outrospectionBlock(items, { limit: OUTRO_ANSWER_ITEMS });
+  const label =
+    items.length ?
+      `${items.length} item${items.length === 1 ? "" : "s"}${lens ? ` · ${lens.title}` : ""}`
+    : live ? "The feed is empty so far"
+    : "The outward feed is unavailable";
+  ctx.stepDone("outrospect", label);
+  ctx.state.outrospection = { lens: lens ? lens.id : null, items: items.length, live };
+  await streamCompletion(ctx, [
+    { role: "system", content: outrospectionAnswerPrompt({ lens, hasItems: !!block }) },
+    ...(block ? [{ role: "system", content: block }] : []),
+    ...ctx.conversation,
+  ]);
 }
