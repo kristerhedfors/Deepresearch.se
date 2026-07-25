@@ -440,8 +440,9 @@ npm run test:live     # 5 tests, real Berget tokens + one Exa run
 >
 > These specs write real rows (pool tokens, consent decisions) into the
 > deployed D1, so they revoke every token and unregister every provider in
-> a `finally`. The inert `runas:*` roster rows they leave behind are
-> deliberate: they are what "remembered" means.
+> a `finally`. They do leave `runas:*` roster and consent rows behind:
+> those persist by design (a consent decision is remembered), and without a
+> live token or provider they grant nothing.
 - **Sandbox quirks** (encoded in `playwright.config.js`): Chromium must
   be pointed at the env's `HTTPS_PROXY` explicitly, `ignoreHTTPSErrors`
   for the re-signing CA, and `--ssl-version-max=tls1.2` because the

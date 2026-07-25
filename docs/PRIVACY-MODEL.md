@@ -235,8 +235,8 @@ platform-verified identity: the sharer to this consumer reaching their machine
 and reversible at any time; and each side is shown who the other is as the
 SERVER resolved them from a session, never as the peer described themselves —
 where the platform cannot verify (an anonymous workspace consumer) the surface
-says "unverified" rather than dressing a token up as a person. This is what
-makes the disclosure a decision instead of a notice: the unmissable line at the
-point of use is now a question with an answer the person has to give.
+says "unverified" rather than dressing a token up as a person. The unmissable
+line at the point of use is therefore a question the person has to answer, not
+a notice they can scroll past.
 `docs/COMPUTE-SHARING.md` §8b; enforced in `src/pool.js`, worded once in
 `public/js/pool-core.js`, verified live by `tests/e2e/llm-sharing.live.spec.js`.
