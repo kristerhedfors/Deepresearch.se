@@ -140,9 +140,14 @@ fail-soft, `addSources`) and is identical for every source. Consequences:
   `platformDiversityKey()` generically.
 - Per-request state lives under `state.aux[<id>]` (created by the
   orchestrator) — never new top-level `state` fields.
-- Pre-pipeline ENRICHMENTS (Shodan/Maps shape) have the same seam in
-  `src/enrichment.js`'s `ENRICHMENTS` registry: one runner + one entry
-  there; `pipeline.js` calls `runEnrichments()` once.
+- Pre-pipeline ENRICHMENTS (the knob-gated, third-party shape — Shodan,
+  Google Maps) are a DIFFERENT seam and, since 2026-07-25, an **extension**,
+  not core (CLAUDE.md invariant 7): one descriptor in `src/extensions.js`
+  plus the service's own runner module. `enrichment.js` names no service and
+  `pipeline.js` calls `runEnrichments()` once. Per-request state goes in that
+  extension's own slice of `state.ext` — never new top-level `state` fields,
+  and never a field in `validation.js` or `types.d.ts`. See
+  `docs/ARCHITECTURE.md` §4.2a and the **integrations** skill.
 - `src/search-sources.test.js` pins the entry contract — a mis-shaped
   entry fails CI instead of silently never firing in production.
 

@@ -1,17 +1,19 @@
 // Unit tests for validation.js: message/image caps, model + vision
-// resolution, and the image-location / Street View POV / map-view sanitizers.
+// resolution, and the image-location sanitizer. The Street View POV and
+// map-view sanitizers moved to src/maps-enrichment.js with the extension cut
+// (2026-07-25) — they are Google Maps vocabulary, not core request
+// validation — so they are exercised here through that module.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   validateMessages,
   resolveModel,
   validateImageLocations,
-  validateMapView,
-  validateStreetViewPov,
   resolveShellTranscript,
   sanitizeClientDiag,
   sanitizeFsSummary,
 } from "./validation.js";
+import { validateMapView, validateStreetViewPov } from "./maps-enrichment.js";
 import { DEFAULT_MODEL } from "./berget.js";
 
 const noopLog = { warn: () => {} };

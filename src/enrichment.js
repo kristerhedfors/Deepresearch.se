@@ -1,21 +1,27 @@
 // @ts-check
-// Pre-pipeline context enrichments: the opt-in Shodan and Google Maps
-// phases that resolve things the latest message NAMES (a host/IP, a street
-// address, an attached photo's GPS) into labeled context blocks appended to
-// the conversation before any model call — so triage, search, and synthesis
-// all see the data. Extracted from pipeline.js so the phase orchestrator
-// stays about the research flow itself; both enrichments follow the same
-// contract: silent (no step, no conversation change) when the message names
-// nothing to look up, a visible activity step naming the external service
-// when it does, and fail-soft in every branch — the conversation comes back
-// unchanged rather than ever blocking a chat. The Google Maps runners
-// live in src/maps-enrichment.js (split 2026-07-09 with the maps
-// subsystem refactor); this module owns the registry and Shodan.
+// The pre-pipeline enrichment RUNNER — core, and deliberately ignorant of
+// which services exist.
+//
+// An enrichment resolves something the latest message NAMES (a host/IP, a
+// street address, an attached photo's GPS, a path in this site's own source)
+// into a labeled context block appended to the conversation before any model
+// call — so triage, search, and synthesis all see the data. This module owns
+// the CONTRACT and the ordering, nothing else: every runner is silent (no
+// step, no conversation change) when the message names nothing to look up,
+// emits a visible activity step naming the service when it does, and is
+// fail-soft in every branch — the conversation comes back unchanged rather
+// than ever blocking a chat.
+//
+// The third-party example integrations (Google Maps, Shodan) are NOT named
+// here. They register themselves in src/extensions.js and arrive through
+// extensionEnrichments(); this file could not tell you which ones exist, and
+// with an empty registry the pipeline behaves exactly as it does today with
+// every knob off. What stays in CORE_ENRICHMENTS below is the site's own
+// capability — introspection reads THIS repo's committed source snapshot, so
+// there is no third party, no secret, and no external connection involved.
 
-import { lastUserMessage, textOf, withAppendedText } from "./conversation.js";
+import { extensionEnrichments } from "./extensions.js";
 import { runIntrospectionEnrichment } from "./introspect.js";
-import { runGoogleMapsEnrichment } from "./maps-enrichment.js";
-import { extractTargets, runShodanLookup } from "./shodan.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -37,9 +43,9 @@ import { extractTargets, runShodanLookup } from "./shodan.js";
  */
 
 /**
- * One registry entry: `id` is the log/step slug, `enabled` the per-user
- * knob gate (resolved onto the state in chat.js), and `run` returns the
- * (possibly augmented) conversation.
+ * One registry entry: `id` is the log/step slug, `enabled` the per-request
+ * gate (a knob resolved in chat.js, or an extension's own slice of
+ * `state.ext`), and `run` returns the (possibly augmented) conversation.
  * @typedef {{
  *   id: string,
  *   enabled: (state: RequestState) => boolean,
@@ -47,36 +53,9 @@ import { extractTargets, runShodanLookup } from "./shodan.js";
  * }} Enrichment
  */
 
-// The enrichment registry — the pre-pipeline counterpart of the
-// search-source registry (src/search-sources.js), and for the same
-// parallel-work reason: a new enrichment is ONE runner in this file plus
-// ONE entry here; pipeline.js calls runEnrichments() once and never names
-// an individual enrichment. Order matters and is deliberate: each runner
-// sees the conversation as left by the previous one. Every runner must
-// keep the standing contract: silent when the message names nothing to
-// look up, a visible step naming the external service when it does,
-// fail-soft in every branch.
+// Core enrichments: the ones that reach nothing outside this deployment.
 /** @type {Enrichment[]} */
-const ENRICHMENTS = [
-  {
-    id: "shodan",
-    enabled: (state) => !!state.shodan,
-    run: (c) => runShodanEnrichment(c.env, c.log, c.step, c.stepDone, c.conversation, c.state),
-  },
-  {
-    id: "maps",
-    enabled: (state) => !!state.googleMaps,
-    // Casts: the maps runner reads its own state extension (mapView,
-    // userLocation — set by chat.js when the knob is on) that this
-    // enrichment-agnostic registry deliberately doesn't model, and hands
-    // back conversation.js's looser Msg shape (appending blocks/images
-    // can't loosen the roles the Conversation arrived with).
-    run: (c) =>
-      /** @type {Promise<Conversation>} */ (
-        runGoogleMapsEnrichment(c.env, c.log, c.emit, c.step, c.stepDone, c.conversation,
-          /** @type {import('./maps-enrichment.js').MapsState} */ (c.state))
-      ),
-  },
+const CORE_ENRICHMENTS = [
   {
     // Introspection (developer mode): a conversation asking about THIS
     // SITE's own implementation gets the deployed source snapshot appended
@@ -88,10 +67,19 @@ const ENRICHMENTS = [
   },
 ];
 
-// Runs every knob-enabled enrichment in registry order. A throwing runner
-// is contained here (the conversation passes through unchanged) so a buggy
-// enrichment can never take down the chat — same fail-soft rule its
-// internals already follow.
+// The effective registry — the pre-pipeline counterpart of the search-source
+// registry (src/search-sources.js), and for the same parallel-work reason:
+// pipeline.js calls runEnrichments() once and never names an individual
+// enrichment. Order matters and is deliberate: each runner sees the
+// conversation as left by the previous one, and the extensions run BEFORE
+// the core ones so an appended source snapshot is the last thing added.
+/** @type {Enrichment[]} */
+const ENRICHMENTS = [...extensionEnrichments(), ...CORE_ENRICHMENTS];
+
+// Runs every enabled enrichment in registry order. A throwing runner is
+// contained here (the conversation passes through unchanged) so a buggy
+// enrichment — and an extension above all — can never take down the chat;
+// same fail-soft rule its internals already follow.
 /**
  * @param {Env} env
  * @param {Logger} log
@@ -113,45 +101,4 @@ export async function runEnrichments(env, log, emit, step, stepDone, conversatio
     }
   }
   return convo;
-}
-
-// Shodan enrichment: resolve any host/IP the latest message names into
-// live infrastructure data and append it as a labeled context block —
-// an ordinary question with the knob left on costs nothing and shows no
-// spurious step. Otherwise it emits a visible activity step whose
-// expandable details list each host, and returns the augmented
-// conversation.
-/**
- * @param {Env} env
- * @param {Logger} log
- * @param {EnrichmentCtx['step']} step
- * @param {EnrichmentCtx['stepDone']} stepDone
- * @param {Conversation} conversation
- * @param {RequestState} state
- * @returns {Promise<Conversation>}
- */
-export async function runShodanEnrichment(env, log, step, stepDone, conversation, state) {
-  const lastUser = textOf(lastUserMessage(conversation)?.content);
-  const { ips, hostnames } = extractTargets(lastUser);
-  if (!ips.length && !hostnames.length) return conversation;
-
-  step("shodan", "Querying Shodan…");
-  let result = null;
-  try {
-    result = await runShodanLookup(env, log, conversation);
-  } catch (/** @type {any} */ err) {
-    log.warn("shodan.phase_failed", { error: err?.message || String(err) });
-  }
-  if (!result) {
-    stepDone("shodan", "Shodan lookup unavailable — continuing without it");
-    return conversation;
-  }
-  state.shodanCount = result.count;
-  const label = result.count
-    ? `Shodan: ${result.count} host${result.count === 1 ? "" : "s"} found`
-    : "Shodan: no records for the host(s) named";
-  stepDone("shodan", label, result.details);
-  // Cast: conversation.js works on its looser local Msg shape; appending a
-  // text block can't loosen the roles this Conversation arrived with.
-  return /** @type {Conversation} */ (withAppendedText(conversation, result.block));
 }

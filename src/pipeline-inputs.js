@@ -4,7 +4,7 @@
 // from) the model, with zero ctx/env/emit/await. Split out of pipeline.js so
 // the orchestration flow there reads as the flow, and these behavior-defining
 // pure helpers get their own home and direct unit coverage. Mirrors the
-// project's `-text.js` convention (googlemaps-text.js).
+// project's `-text.js` convention.
 //
 // Byte-identical-input discipline: every builder here returns "" (or []) in
 // the default-budget / no-decomposition case, so the message arrays are

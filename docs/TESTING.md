@@ -42,7 +42,13 @@ predicates + the catalog merge/degrade path),
 `triage.js`'s `normalizeTriage` (the triage-failure fallback),
 `sources.js` (the source registry: `hostnameOf`, `addSources`,
 `backfillOverflowSources`, `sourceDigest` — the domain-diversity logic),
-`settings.js` (`parseSettings` coercion, `storageAvailability`),
+`settings.js` (`parseSettings` coercion, `storageAvailability`, the
+generic `extensionEnabled`/`extensionEnabledMap` knob gates),
+`extensions.js` (the extension registry — the five seams core consumes
+generically, the shipped knob/meta wire names, and the CORE-PURITY GUARD:
+it fails the build when a core module names a third-party service in code
+or imports an integration module directly, which is what keeps CLAUDE.md
+invariant 7 from rotting; see `docs/ARCHITECTURE.md` §4.2a),
 `rag.js` (`validateRagIndexPayload`, the base64⇄Float32 vector codec,
 the `idOk` key-path id validator shared with `storage.js`),
 `vault.js` (the project-vault endpoints against a mocked R2 bucket:

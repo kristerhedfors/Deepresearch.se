@@ -8,10 +8,47 @@ description: >-
   Nominatim reverse geocoding (src/geocode.js), Shodan host intelligence
   (src/shodan.js), Google Maps / Street View (src/googlemaps.js), or
   Hugging Face Hub search (src/hf.js) — or adding a new enrichment in the
-  same deterministic no-function-calling pattern.
+  same deterministic no-function-calling pattern. ALSO the go-to for the
+  EXTENSION BOUNDARY (src/extensions.js, CLAUDE.md invariant 7): the
+  knob-gated third-party integrations are extensions, not core, so wiring
+  one is a descriptor in the registry plus its own modules — never an edit
+  to chat.js / settings.js / validation.js / prompts.js / types.d.ts.
 ---
 
 # External providers & the enrichment pattern
+
+## First: extensions vs. core (read this before wiring anything)
+
+Since 2026-07-25 the third-party integrations that a user can switch on —
+today **Shodan** and **Google Maps / Street View** — are **EXTENSIONS**, not
+core (CLAUDE.md invariant 7, `docs/ARCHITECTURE.md` §4.2a). They are example
+integrations: the platform core is about the agent logic, and must read as if
+no external service existed.
+
+`src/extensions.js` is the ONLY `src/` module that may name an individual
+service at the architectural seam, and the only one core imports. One
+descriptor per extension owns five seams core consumes generically:
+
+| Seam | Field | Who calls it |
+|---|---|---|
+| Per-account knob | `setting` | `settings.js` |
+| Per-request state | `resolveState(body, on)` → `state.ext.<id>` | `chat.js`, `mcp.js` |
+| Enrichment | `enabled` / `run` | `enrichment.js` |
+| Log meta | `logMeta(slice)` | `chat.js` |
+| Capability line | `capability {order, text}` | `prompts.js` |
+
+So when this skill's per-service sections below say "wire it into the
+pipeline", the wiring is **one descriptor in `src/extensions.js` plus the
+service's own modules**. Do not edit `chat.js`, `settings.js`,
+`validation.js`, `prompts.js`, `mcp.js` or `types.d.ts` to add a service —
+`src/extensions.test.js`'s core-purity guard will fail the build, and it is
+right to.
+
+Two outbound integrations are deliberately NOT extensions, because the test
+is *coupling*, not *outboundness*: **OSM Nominatim** reverse-geocoding runs
+unconditionally as part of reading an attached photo's metadata (no knob, no
+service-specific request state), and **Exa** web search is the pipeline's own
+search phase behind its own backend seam (`websearch-backends.js`).
 
 ## LLM provider — Berget.ai (primary)
 
@@ -309,6 +346,10 @@ both something concrete to reason and search with.
 
 ## Shodan host intelligence — the opt-in `shodan_mcp` knob (default OFF)
 
+> Registered as the `shodan` EXTENSION in `src/extensions.js`; the runner is
+> `src/shodan-enrichment.js`, the REST client `src/shodan.js`, and its
+> per-request slice is `state.ext.shodan` (`{on, count}`).
+
 An opt-in per-user setting (surfaced in the account panel's **Settings**
 sub-view as "Shodan host intelligence", disclosed as the "Shodan MCP" the
 task asked for) that enriches a research question with live
@@ -372,6 +413,14 @@ context every phase can use.
   the key never reaches the browser.
 
 ## Google Maps — the opt-in `google_maps` knob (default OFF)
+
+> Registered as the `maps` EXTENSION in `src/extensions.js`. Everything
+> Maps-shaped lives behind that descriptor: the runners and the
+> `state.ext.maps` slice (`MapsSlice`) in `src/maps-enrichment.js`, which
+> also owns the client-view sanitizers `validateStreetViewPov` /
+> `validateMapView` and this integration's `streetview_embed` /
+> `streetview_frames` / `map_embed` SSE status types; `StreetViewPov` lives
+> in `src/googlemaps.js`. None of it is in a core module any more.
 
 An opt-in per-user setting (account panel's **Settings** sub-view, "Google
 Maps & Street View") that enriches a research question with Google Maps

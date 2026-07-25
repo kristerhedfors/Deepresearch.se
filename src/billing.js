@@ -4,7 +4,7 @@
 // POST /mcp in src/mcp.js), which used to re-inline it verbatim. A request
 // can run up to three models at three different catalog rates (the synthesis/
 // direct answer on the user's model, the JSON planning phases on the fixed
-// reliable jsonModel, and the Street View vision-describe helper on its own
+// reliable jsonModel, and the vision-describe helper on its own
 // model), so tokens alone can't cap spend — each bucket is priced at its own
 // rate. Pure (state + catalog/config in, totals/number out); a leaf module
 // (only the pure cost primitives bergetCost/CONTENTS_COST_MULTIPLIER) so
@@ -20,7 +20,7 @@ import { CONTENTS_COST_MULTIPLIER } from "./budget.js";
 /**
  * Sums the request's token totals and Berget cost across the up-to-three
  * models that ran: synthesis/direct on the user's model, the JSON planning
- * phases on jsonModel (Mistral), and the Street View vision-describe helper
+ * phases on jsonModel (Mistral), and the vision-describe helper
  * on its own model — the split-billing design, each bucket priced at its own
  * catalog rate (tokens alone can't cap spend when models price differently).
  * Pure (state + catalog in, totals out).
@@ -54,7 +54,7 @@ export function summarizeSpend(state, catalog) {
  * quota-enforcement ledger needs — a cost cap doesn't care which model spent
  * it), this KEEPS them apart so a user's spend stays attributable to the model
  * that actually drove it: the answer model the user chose, the fixed JSON
- * planning model (Mistral), or the Street View vision helper. Without this the
+ * planning model (Mistral), or the vision helper. Without this the
  * whole request's Berget cost is folded onto the single answer model, and you
  * can no longer tell an expensive answer model from a search-heavy run that
  * pounded the cheap JSON phases. Feeds the usage_model_events attribution
