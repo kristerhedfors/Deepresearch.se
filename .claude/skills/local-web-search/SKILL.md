@@ -130,10 +130,10 @@ header records the full reasoning. Short version: Browser Rendering
 (`@cloudflare/puppeteer`) is a paid binding whose per-session concurrency
 ceiling is below what a search WAVE needs; Workers AI / AutoRAG answers over
 a corpus you maintain, not the live web; a separate Worker + service binding
-is a second deployable for ~200 stateless lines. Plain `fetch` + pure string
-parsing inside the existing Worker wins on all of that AND keeps the parsers
-unit-testable under `node --test` — which HTMLRewriter, the idiomatic Workers
-parser, would not (workerd-only).
+is a second deployable for a few hundred stateless lines. Plain `fetch` + pure
+string parsing inside the existing Worker avoids all of that and keeps the
+parsers unit-testable under `node --test` — which HTMLRewriter, the idiomatic
+Workers parser, would not (workerd-only).
 
 **The SERP is a CASCADE, and that is a measured decision (2026-07-25).** The
 first cut lifted the local agent's `browse` engine straight into the Worker —
@@ -147,7 +147,7 @@ backend tries an ORDERED LIST of sources until one answers
 
 | id | source | measured from a datacenter IP | default |
 |---|---|---|---|
-| `ddg` | DuckDuckGo no-JS HTML | 202 anti-bot shell, 0 results | on (free where egress is accepted) |
+| `ddg` | DuckDuckGo no-JS HTML | 202 anti-bot shell, 0 results | on (works where egress is accepted) |
 | `marginalia` | Marginalia, an independent index | 200, clean card markup, real results | on |
 | `bing_rss` | Bing's `&format=rss` output | 200, well-formed feed, good results | **off — see below** |
 

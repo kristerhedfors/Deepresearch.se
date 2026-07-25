@@ -20,7 +20,7 @@
 //   2. Workers AI / AutoRAG — an index we would have to build and keep fresh.
 //      Rejected for live web research: it answers over a corpus, not the web.
 //   3. A separate Worker service + service binding. Rejected: a second
-//      deployable for code that is ~300 lines and has no state.
+//      deployable for a few hundred stateless lines.
 //   4. Plain `fetch` + pure string parsing, INSIDE the existing Worker.
 //      Chosen. It is the only option with no binding, no key, no dependency
 //      and no extra deploy, and — the deciding factor — the parsers stay

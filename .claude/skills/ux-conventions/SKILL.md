@@ -493,7 +493,8 @@ and closes it the instant the finger lifts. The dismiss check must therefore
 exclude the control too (`&& !e.target.closest("#searchtoggle")`). The Se/cure
 twin had this from the start; `public/js/app.js` did not, and the bug was
 invisible for as long as the card was read-only prose — nobody misses a card
-they never see. Once a card carries a CONTROL it is total. Both tiers are now
+they never see. Once a card carries a CONTROL, the same bug makes it
+unreachable. Both tiers are now
 verified across the same five behaviours: opens on hold, survives the release,
 a pick inside does not dismiss, an outside click does, and the contextmenu
 path opens it.
