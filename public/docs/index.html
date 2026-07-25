@@ -76,6 +76,12 @@
 
     /* ---- comment mode (admin only; docs-comments.js mounts into it) ---- */
     #mode { display: flex; align-items: center; gap: .3rem; }
+    /* An author `display` beats the UA's `[hidden] { display: none }`, so the
+       hidden attribute has to be honoured explicitly or the empty slot still
+       takes layout before the mode state is known. */
+    #mode[hidden] { display: none; }
+    #mode .mode-note { font-size: .78rem; color: var(--muted); }
+    #mode .mode-note a { color: var(--accent); }
     #mode .mode-label {
       font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
       margin-right: .2rem;
