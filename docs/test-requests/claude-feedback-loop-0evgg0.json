@@ -1,0 +1,43 @@
+{
+  "branch": "claude/feedback-loop-0evgg0",
+  "pr": null,
+  "requested_at": "2026-07-25",
+  "points": [
+    {
+      "label": "Feedback reaches the developers while an on-device model is picked",
+      "summary": "The feedback #23 repro, now expected to pass. Needs a device with a Bonsai model downloaded. Pick a Bonsai model in the composer's model dropdown, then send a message starting with the word 'feedback' (e.g. 'feedback testing the on-device route'). PASS: the reply is the short canned acknowledgment from the developers, NOT an answer written by the local model, and the note appears in the feedback queue. The activity step should show the ordinary server send, not 'On-device model — … runs in this browser'. FAIL: a model-written answer (on a 1.7B this reads as repetitive filler), or an error saying the model is unknown, or no entry in the queue afterwards.",
+      "target": "/",
+      "actions": [],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "An ordinary question still stays on the device",
+      "summary": "The other side of the same fix — feedback is the ONLY thing pulled back to the server. With a Bonsai model still picked, ask a normal question ('what is the capital of France'). PASS: the answer runs on-device as before, the step reads 'On-device model — … runs in this browser' and finishes with 'nothing was sent to any AI provider or to this site's research pipeline'. Also try a question that merely CONTAINS the word: 'feedback loops in reinforcement learning' must stay on-device too, since that phrase is the deliberate exclusion. FAIL: either question going to the server.",
+      "target": "/",
+      "actions": [],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Feedback reaches the developers on the private introspection route",
+      "summary": "The second browser-direct route. Needs developer mode on and TIN's picker set to an own-key (private) model with a key saved. Ask something about this site's own implementation first, to confirm the private route engages ('🔒 <provider>' on the composer row). Then send a message starting with 'feedback'. PASS: the canned acknowledgment, and the note in the feedback queue — the private route must not answer it on your own key. FAIL: an answer written by the private model, or no queue entry.",
+      "target": "/",
+      "actions": [],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Swedish feedback routes the same way (parity)",
+      "summary": "Invariant 6 — the Swedish forms must behave identically. With a Bonsai model picked, send 'återkoppling: testar' (and, separately, 'synpunkt: testar'). PASS: both get the Swedish canned acknowledgment and land in the queue, exactly as the English form does. FAIL: either one answered by the local model.",
+      "target": "/",
+      "actions": [],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    }
+  ]
+}

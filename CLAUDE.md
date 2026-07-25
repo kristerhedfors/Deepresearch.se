@@ -151,7 +151,7 @@ loop: the **feature-maintenance** skill.
    and the JSON planning phases (invariant 3) never use tools. See the
    **introspection** and **sdk-mode** skills.
 2. **Helper phases fail soft, never break the request.** Search, gap check,
-   validation, and every enrichment (geocode/Shodan/Maps) degrade to a lesser
+   validation, and every enrichment (geocode + every extension) degrade to a lesser
    result (fewer searches, accepted draft, conversation unchanged) rather
    than erroring the chat. Both Berget calls are time-bounded so a hung
    backend can't defeat that.
@@ -203,6 +203,20 @@ loop: the **feature-maintenance** skill.
    test in the same change — never English-only with Swedish "later". The
    "Swedish language parity" suite in `src/googlemaps.test.js` is the
    enforcement pattern.
+7. **Third-party integrations are EXTENSIONS, never core** (owner directive,
+   2026-07-25). Google Maps / Street View and Shodan are *example*
+   integrations woven into research; the platform core is about the agent
+   logic and how agents integrate, and must read as if no external service
+   existed. `src/extensions.js` is the ONLY `src/` module that may name an
+   individual service at the architectural seam, and the only one core
+   imports: one descriptor owns its knob, its slice of `state.ext`, its
+   enrichment runner, its log-meta keys, and its capability line — core
+   consumes all five generically. Adding or removing an integration touches
+   NO core file. `src/extensions.test.js`'s core-purity guard fails the build
+   when a core module names a service in code or imports an integration
+   module. Do NOT "simplify" this back by wiring a service straight into
+   `chat.js`, `settings.js`, `validation.js`, `prompts.js` or `types.d.ts`.
+   Full boundary: `docs/ARCHITECTURE.md` §4.2a.
 
 > **Plan status (current): this Cloudflare account is on Workers PAID** —
 > `wrangler.toml` sets `[limits] cpu_ms = 300_000` (5 min CPU/request). Do
@@ -215,7 +229,8 @@ loop: the **feature-maintenance** skill.
 `src/` is the Worker: entrypoint `index.js` (routing + identity gate),
 pipeline `pipeline.js` + phase helpers, the provider registry
 `providers.js` (Berget/Anthropic/OpenAI), the grant/token subsystems, the
-admin decision boards, and one module per integration. `public/` is the
+admin decision boards, and — behind the `extensions.js` registry (invariant
+7) — one module per third-party integration. `public/` is the
 client: the Se/rver app (`index.html` + `public/js/`), the Se/cure tier
 (`public/cure/` + the `drc-*.js` modules), the admin UI, games, and vendored
 libs. Shared pure cores live under `public/js/` (`bash-core.js`,

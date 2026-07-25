@@ -40,6 +40,37 @@ export function feedbackIntent(text) {
   return FEEDBACK_PATTERNS.some((re) => re.test(t));
 }
 
+/**
+ * Whether this send must reach the SERVER even though some browser-direct
+ * route would otherwise claim it (feedback #23).
+ *
+ * The Se/rver tier has routes that settle a send entirely in the browser and
+ * never call /api/chat: an on-device model pick (the "ondevice::" Bonsai
+ * group) and introspection's private own-key route. Both are checked before
+ * anything else in public/js/stream.js sendMessage, and both used to swallow a
+ * "feedback …" message — the user's report to the developers was answered by
+ * whatever local model happened to be selected (in the reported case a 1.7B
+ * producing filler) and no feedback entry was ever created. The developers
+ * received nothing, and the user had no way to tell.
+ *
+ * So the feedback gate does not just decide what the PIPELINE does with a
+ * message; it decides which route may claim it at all. That belongs here, with
+ * the gate, rather than inside any one branch — a browser-direct route added
+ * later inherits the rule instead of quietly reopening the hole.
+ *
+ * NOT a privacy regression: the word "feedback" is an explicit, disclosed act
+ * of addressing the developers (the same reason a feedback entry is recorded
+ * even in incognito). It applies to the Se/rver tier only. Se/cure keeps its
+ * own stricter contract — it never sends without the #fbconsent confirmation
+ * (public/cure/drc.js) — because there the server is in no data path at all.
+ *
+ * @param {unknown} text the user's message text
+ * @returns {boolean}
+ */
+export function feedbackForcesServerRoute(text) {
+  return feedbackIntent(text);
+}
+
 // ---------------------------------------------------------------------------
 // SCOPE classification (owner directive, 2026-07-24)
 //

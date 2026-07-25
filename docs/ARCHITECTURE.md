@@ -261,8 +261,8 @@ flowchart LR
 | OpenAI | `POST https://api.openai.com/v1/chat/completions` | `OPENAI_API_KEY` (optional) | Third answer/synthesis provider (bare `gpt-*`); native OpenAI SSE, wire-params only (`src/openai.js`) |
 | Exa | `POST https://api.exa.ai/search`, `POST …/contents` | `x-api-key: EXA_API_KEY` | Web search — `numResults`/`type` scale with the time budget (§4.3b); `/contents` is the (currently disabled, §4.2) full-text fetch |
 | Hugging Face Hub | Hub search APIs (`src/hf.js`) | `HUGGINGFACE_API_TOKEN` (optional) | Models/datasets/papers as citable sources when the question targets HF (`hfIntent`), via the search-source registry |
-| Shodan | REST API (`src/shodan.js`) | `SHODAN_API_KEY` (optional) | Opt-in host-intelligence enrichment (`shodan_mcp` knob) |
-| Google Maps Platform | Places, Street View Static, Static Maps, Embed (`src/googlemaps.js`) | `GOOGLE_MAPS_API_KEY` (+ optional `GOOGLE_MAPS_EMBED_KEY`) | Opt-in maps/street-view enrichment (`google_maps` knob) + Tokemon's street mode |
+| Shodan | REST API (`src/shodan.js`) | `SHODAN_API_KEY` (optional) | Opt-in host-intelligence enrichment (`shodan_mcp` knob) — an **extension**, registered in `src/extensions.js` (§4.2a); the core does not depend on it |
+| Google Maps Platform | Places, Street View Static, Static Maps, Embed (`src/googlemaps.js`) | `GOOGLE_MAPS_API_KEY` (+ optional `GOOGLE_MAPS_EMBED_KEY`) | Opt-in maps/street-view enrichment (`google_maps` knob) + Tokemon's street mode — an **extension**, registered in `src/extensions.js` (§4.2a); the core does not depend on it |
 | OpenStreetMap Nominatim | reverse geocoding (`src/geocode.js`) | none (generic UA) | Turning attached photos' EXIF GPS into place context before the pipeline |
 
 Known provider limits baked into the design:
@@ -392,9 +392,9 @@ A thin shell around the pipeline:
 
 - Parse JSON body → `validateMessages` (`src/validation.js`): roles, 60
   messages max, 32K chars/message, image caps (4/message, 8/request, 300K
-  chars/image, 750K total — sized under Berget's ~1 MB body limit); also
-  validates the optional Street View POV / map-view anchors and image GPS
-  locations the maps integration sends.
+  chars/image, 750K total — sized under Berget's ~1 MB body limit) and the
+  attached photos' GPS locations. Anything an EXTENSION reads off the body
+  is validated by that extension, not here (§4.2a).
 - `resolveModel`: validates a requested model against the **merged**
   provider catalog (400 on unknown or down models), enforces vision
   capability when images are attached, and degrades to the default model if
@@ -404,9 +404,14 @@ A thin shell around the pipeline:
   suppresses the `chat_logs` row (§9) — the anonymous-chat API contract.
   (The ghost BUTTON no longer sets this: since 2026-07-10 it navigates to
   `/cure` instead; the flag stays honored for any client that sends it.)
-- Resolves the per-user enrichment knobs (`shodan_mcp`, `google_maps`) and
-  reverse-geocodes attached photos' EXIF GPS (`augmentWithLocations`,
-  OSM Nominatim, fail-soft) before the pipeline starts.
+- Asks `settings.js` which EXTENSIONS are enabled for this identity and
+  hands the body to the registry (`resolveExtensionState`), which returns
+  the whole `state.ext` bag — one namespaced slice per extension, each
+  already carrying whatever that extension validated off the body. The
+  handler never looks inside a slice and names no service (§4.2a). It also
+  reverse-geocodes attached photos' EXIF GPS (`augmentWithLocations`, OSM
+  Nominatim, fail-soft) before the pipeline starts — that one is
+  unconditional, so it is core, not an extension.
 - Builds the per-request `state`: the budget plan, dedupe set of ran
   queries, the **numbered source registry** (`src/sources.js`), and split
   usage totals (answer model vs JSON model vs vision).
@@ -442,7 +447,7 @@ accounting and budgeting are split the same way.
 
 ```mermaid
 flowchart TD
-    IN([POST /api/chat]) --> EN["Enrichments (opt-in, fail-soft)<br/>Shodan · Google Maps/Street View<br/>labeled context blocks appended"]
+    IN([POST /api/chat]) --> EN["Enrichments (opt-in, fail-soft)<br/>core + registered extensions<br/>labeled context blocks appended"]
     EN --> WS{web_search on?}
     WS -- off --> SO["Single completion<br/>(searchOffPrompt)"] --> DONE
     WS -- on --> QZ{"quiz intent?<br/>(deterministic gate)"}
@@ -473,13 +478,11 @@ Phase details:
    gated on its per-user settings knob and follows one contract: silent
    when the latest message names nothing to look up; a visible activity
    step naming the external service when it does; fail-soft in every
-   branch. Today: **Shodan** (host/IP intelligence, `src/shodan.js`) and
-   **Google Maps** (address/place lookups, Street View POV & map captures
-   with a vision-describe helper, nearby searches, journeys —
-   `src/maps-enrichment.js` + `src/googlemaps.js`, with all deterministic
-   intent gates in the pure `src/googlemaps-text.js`, Swedish/English
-   parity enforced). Results are appended as labeled context blocks so
-   triage, search and synthesis all see them.
+   branch. Results are appended as labeled context blocks so triage,
+   search and synthesis all see them. `enrichment.js` itself names no
+   service — the third-party ones arrive from the extension registry
+   (§4.2a); the only enrichment declared in core is introspection, which
+   reads this repo's own committed snapshot.
 1. **Triage** (JSON, ≤500 tokens): sees the formatted conversation + latest
    message; returns `direct` | `clarify` (one question) | `research` with
    multi-angle queries (count from the budget plan) — plus a `complexity`
@@ -553,6 +556,65 @@ overflow, and `chat.js` converts the throw into an emitted error event
 carrying a `(ref …)` plus the one-shot model failover. So the precise
 rule is: helpers degrade *silently* to a lesser result; the answer
 degrades to an *honest, correlatable error* — never to silence.
+
+### 4.2a The extension boundary (`src/extensions.js`)
+
+Google Maps / Street View and Shodan are **example integrations**, not
+architecture. They show that a research turn can fold outside data in;
+nothing about the agent architecture depends on them, and the core must
+keep working — and keep reading — as if they did not exist (owner
+directive, 2026-07-25).
+
+So `src/extensions.js` is the **one** module in `src/` allowed to name an
+individual third-party service at the architectural seam, and the only one
+the core imports. Everything upstream of it — `pipeline.js`,
+`enrichment.js`, `chat.js`, `settings.js`, `validation.js`, `prompts.js`,
+`mcp.js`, `types.d.ts` — talks to the registry generically. Everything
+downstream (`shodan.js`, `shodan-enrichment.js`, `googlemaps*.js`,
+`maps-enrichment.js`) is as service-specific as it likes.
+
+One descriptor per extension owns five seams, each consumed generically:
+
+| Seam | Descriptor field | Core consumer |
+|---|---|---|
+| Per-account knob | `setting` (wire key, availability key, backing secret, the 503 when unconfigured) | `settings.js` — `DEFAULTS`, `parseSettings`, `featureAvailability`, `GET/PUT /api/settings` |
+| Per-request state | `resolveState(body, on)` → this extension's slice of `state.ext` | `chat.js` `resolveEnrichmentOptions`; `mcp.js` `emptyExtensionState()` |
+| Enrichment | `enabled` / `run` | `enrichment.js` `runEnrichments` |
+| Logging | `logMeta(slice)` | `chat.js` — `chat.complete` and the `chat_logs` meta |
+| Capabilities | `capability {order, text}` | `prompts.js` — the numbered grounded list |
+
+**The state bag.** `RequestState.ext` is a namespaced record: `state.ext.shodan`,
+`state.ext.maps`. Each extension declares and owns its slice's shape next to its
+runner (`MapsSlice` in `maps-enrichment.js`, `ShodanState` in
+`shodan-enrichment.js`); the core type file declares only
+`ExtensionState = Record<string, any>` and never reads inside. That is why
+`shodanCount`, `mapsCount`, `mapsIntent`, `streetViewPov`, `mapView` and
+`userLocation` are gone from `RequestState`, `validateStreetViewPov` /
+`validateMapView` are gone from `validation.js`, `StreetViewPov` is gone from
+`types.d.ts` (it lives in `googlemaps.js`), and the Maps SSE status types are
+gone from the core `SseStatus` union (they live in `maps-enrichment.js`;
+clients ignore unknown `status` types anyway, so the wire is unchanged).
+
+**What is *not* an extension.** Introspection reads this repo's own committed
+snapshot — no third party, no secret — so it stays a core enrichment. OSM
+Nominatim reverse-geocoding runs unconditionally as part of reading an
+attached photo's metadata: no knob, no service-specific request state, so it
+stays in `chat.js`. The test is *coupling*, not *outboundness*.
+
+**Adding an integration** is one descriptor here plus its own modules. No core
+file is edited. Removing one is deleting the descriptor and its modules: the
+knob disappears from `/api/settings`, its capability line disappears and the
+list renumbers itself, its meta keys stop being written, and its enrichment
+stops being registered — all without a core edit.
+
+**The guard.** `src/extensions.test.js` fails the build if a core module names
+a service in *code* (prose signposts are allowed on purpose — comments are how
+people find where something went) or imports an integration module directly.
+The import-graph half is the load-bearing one: if no core module imports
+`shodan*.js` / `googlemaps*.js` / `maps-enrichment.js`, then deleting an
+integration cannot break the core, whatever the comments say. Wire names
+(`shodan_mcp`, `google_maps`, `shodan_hosts`, `maps_intent`, `maps_embed_key`)
+are pinned by the same suite — the cut moved code, never shipped contracts.
 
 ### 4.3 Time-budget planner (`src/budget.js`)
 
@@ -1292,3 +1354,9 @@ Each is a candidate for the same treatment — an SDK module, an AgentSpec, or
 both — and until that happens `docs/CODE-LAYOUT.md` is their per-module map.
 Adding a feature surface means asking which of the two SDKs should carry it
 before reaching for a new subsystem.
+
+The same reading applies one layer down, to the outside services the pipeline
+can reach: **Google Maps and Shodan are example integrations, not
+architecture** (owner directive, 2026-07-25). A feature surface is data over
+the SDKs; a third-party service is one descriptor over the extension registry.
+§4.2a has the boundary and the test that enforces it.

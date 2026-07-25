@@ -28,8 +28,12 @@
 
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
-import { shodanAvailable } from "./shodan.js";
-import { googleMapsAvailable, googleMapsEmbedKey } from "./googlemaps.js";
+import {
+  extensionAvailability,
+  extensionPayloadExtras,
+  extensionSettingDefaults,
+  extensionSettingSpecs,
+} from "./extensions.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -46,27 +50,30 @@ import { googleMapsAvailable, googleMapsEmbedKey } from "./googlemaps.js";
  * @typedef {{ id: string, role: "admin" | "user", email: string | null, name: string | null, pending?: boolean, isSecretAdmin?: boolean, user?: UserRow | null }} Identity
  */
 /**
- * The effective per-account knob state parseSettings coerces to.
- * @typedef {{ shodan_mcp: boolean, google_maps: boolean, bash_lite_mcp: boolean, developer_mode: boolean }} Settings
+ * The effective per-account knob state parseSettings coerces to: the two
+ * core knobs below plus one boolean per registered extension (today
+ * `shodan_mcp` and `google_maps` — src/extensions.js).
+ * @typedef {{ bash_lite_mcp: boolean, developer_mode: boolean } & Record<string, boolean>} Settings
  */
 /**
- * What the server can offer this identity right now (see featureAvailability).
- * @typedef {{ storage: boolean, rag: boolean, shodan: boolean, google_maps: boolean, bash_lite: boolean, developer: boolean }} FeatureAvailability
+ * What the server can offer this identity right now (see featureAvailability):
+ * the core entries plus one per registered extension (today `shodan` and
+ * `google_maps`).
+ * @typedef {{ storage: boolean, rag: boolean, bash_lite: boolean, developer: boolean } & Record<string, boolean>} FeatureAvailability
  */
 
-// Four knobs today (cloud storage is deliberately NOT among them — see the
+// The CORE knobs. Cloud storage is deliberately NOT among them (see the
 // header note; it is implicit whenever storage is available). Feedback is NOT
 // a knob either (as of 2026-07-18): feedback is given straight from the chat —
 // a message that opens with "feedback" is routed to the feedback pipeline
 // (src/feedback.js feedbackIntent, src/pipeline.js runFeedbackCapture) — so
 // there is nothing per-account to switch.
-//  - shodan_mcp:     default OFF (opt-in — enriching a query with Shodan
-//    sends the host/IP to a third party, so it stays off until asked for;
-//    only an explicit stored `true` enables it).
-//  - google_maps:    default OFF (opt-in — a named address / photo location is
-//    sent to Google Maps Platform (Places + Street View + Static Maps) and the
-//    imagery fetches are billed, so it stays off until asked for; only an
-//    explicit stored `true` enables it).
+//
+// Every knob backed by a THIRD-PARTY service is an extension and is declared
+// in src/extensions.js instead — this module never names one. Extensions
+// default OFF by construction (an extension reaches outside, so it is opt-in;
+// only an explicit stored `true` enables it), which is why the registry's
+// defaults are merged in below rather than listed here.
 //  - bash_lite_mcp:  default OFF (opt-in, EXPERIMENTAL — enables the
 //    in-browser Linux execution sandbox (CheerpX) and the agentic bash tool
 //    (src/bash-agent.js): when a task "wants a shell" the model proposes
@@ -81,7 +88,11 @@ import { googleMapsAvailable, googleMapsEmbedKey } from "./googlemaps.js";
 //    source is public on GitHub anyway; the knob keeps the mode out of
 //    ordinary users' way, not out of reach. No server secret; only an
 //    explicit stored `true` enables it).
-const DEFAULTS = { shodan_mcp: false, google_maps: false, bash_lite_mcp: false, developer_mode: false };
+const CORE_DEFAULTS = { bash_lite_mcp: false, developer_mode: false };
+/** @type {Settings} */
+const DEFAULTS = { ...extensionSettingDefaults(), ...CORE_DEFAULTS };
+/** Every knob key this server understands — core plus registered extensions. */
+const KNOB_KEYS = Object.keys(DEFAULTS);
 
 // Tolerant parse of a stored settings_json value: unknown keys are dropped
 // (a legacy stored server_history flag simply falls away), known keys are
@@ -101,12 +112,9 @@ export function parseSettings(json) {
   } catch {
     raw = {};
   }
-  return {
-    shodan_mcp: raw.shodan_mcp === true,
-    google_maps: raw.google_maps === true,
-    bash_lite_mcp: raw.bash_lite_mcp === true,
-    developer_mode: raw.developer_mode === true,
-  };
+  return /** @type {Settings} */ (
+    Object.fromEntries(KNOB_KEYS.map((key) => [key, raw[key] === true]))
+  );
 }
 
 // What the server can actually offer this identity right now. `storage`
@@ -123,10 +131,12 @@ export function storageAvailability(env, identity) {
   return { storage, rag: !!(storage && env.RAG_INDEX) };
 }
 
-// The full availability map reported to the client: storage/rag plus the
-// Shodan and Google Maps features. Each third-party feature needs its secret
-// (SHODAN_API_KEY / GOOGLE_MAPS_API_KEY) and — like every per-user setting —
-// a D1 user row to persist the knob against (break-glass has none). Kept
+// The full availability map reported to the client: storage/rag, the core
+// browser capabilities, and one entry per registered EXTENSION — each of
+// which needs its own backing secret and, like every per-user setting, a D1
+// user row to persist the knob against (break-glass has none). Which
+// extensions exist and what each needs is entirely src/extensions.js's
+// business; this function just merges what the registry reports. Kept
 // separate from storageAvailability so that function's tested shape stays
 // stable.
 /**
@@ -137,8 +147,7 @@ export function storageAvailability(env, identity) {
 export function featureAvailability(env, identity) {
   return {
     ...storageAvailability(env, identity),
-    shodan: !!(shodanAvailable(env) && identity.user),
-    google_maps: !!(googleMapsAvailable(env) && identity.user),
+    ...extensionAvailability(env, !!identity.user),
     // The bash-lite sandbox is a pure BROWSER capability (CheerpX runs
     // client-side; the server only remembers the knob and, when it's on,
     // serves the app shell cross-origin-isolated so SharedArrayBuffer works).
@@ -180,29 +189,37 @@ export function cloudStorageEnabled(env, identity) {
   return storageAvailability(env, identity).storage;
 }
 
-// The effective Shodan-MCP state for a request: the knob must be on AND the
-// server must actually be able to run it (SHODAN_API_KEY set, real user
-// row). A knob left on in D1 after the secret was removed reads as off, so
-// the pipeline never attempts a lookup it can't perform.
+// The effective state of ONE extension for a request, by registry id: the
+// knob must be on AND the server must actually be able to run it (backing
+// secret set, real user row). A knob left on in D1 after the secret was
+// removed reads as off, so the pipeline never attempts a lookup it can't
+// perform. Generic on purpose — this module resolves knobs; it does not know
+// which services back them (src/extensions.js does).
 /**
  * @param {Env} env
  * @param {Identity} identity
+ * @param {string} id an extension id from src/extensions.js
  * @returns {boolean}
  */
-export function shodanEnabled(env, identity) {
-  return featureAvailability(env, identity).shodan && getSettings(identity).shodan_mcp;
+export function extensionEnabled(env, identity, id) {
+  const spec = extensionSettingSpecs().find((s) => s.id === id);
+  if (!spec) return false;
+  return !!(featureAvailability(env, identity)[spec.availability] && getSettings(identity)[spec.key]);
 }
 
-// The effective Google Maps state for a request: the knob on AND the server
-// able to run it (GOOGLE_MAPS_API_KEY set, real user row). A knob left on in
-// D1 after the secret was removed reads as off.
+// Every extension's effective state at once, keyed by registry id — what
+// chat.js hands to resolveExtensionState to build the request's `state.ext`.
 /**
  * @param {Env} env
  * @param {Identity} identity
- * @returns {boolean}
+ * @returns {Record<string, boolean>}
  */
-export function googleMapsEnabled(env, identity) {
-  return featureAvailability(env, identity).google_maps && getSettings(identity).google_maps;
+export function extensionEnabledMap(env, identity) {
+  const available = featureAvailability(env, identity);
+  const settings = getSettings(identity);
+  return Object.fromEntries(
+    extensionSettingSpecs().map((s) => [s.id, !!(available[s.availability] && settings[s.key])]),
+  );
 }
 
 // The effective bash-lite sandbox state. Read by index.js to decide whether
@@ -264,17 +281,20 @@ async function saveSettings(env, userId, settings) {
  */
 function settingsPayload(env, identity, settings) {
   const available = featureAvailability(env, identity);
+  /** @type {Record<string, any>} */
+  const knobs = {};
+  // Extensions: the knob is reported on only when the registry says the
+  // server can actually back it.
+  for (const spec of extensionSettingSpecs()) {
+    knobs[spec.key] = !!(available[spec.availability] && settings[spec.key]);
+  }
   return {
-    shodan_mcp: available.shodan && settings.shodan_mcp,
-    google_maps: available.google_maps && settings.google_maps,
+    ...knobs,
     bash_lite_mcp: available.bash_lite && (identity.user ? settings.bash_lite_mcp : true),
     developer_mode: available.developer && (identity.user ? settings.developer_mode : true),
-    // Browser key for the interactive Street View embed — public by design,
-    // safe because the key is HTTP-referrer-locked to the site. Prefers a
-    // dedicated GOOGLE_MAPS_EMBED_KEY, else falls back to GOOGLE_MAPS_API_KEY
-    // (see googleMapsEmbedKey). Sent only when the caller can use Maps; empty
-    // string otherwise (client then shows the keyless link only).
-    maps_embed_key: available.google_maps ? googleMapsEmbedKey(env) : "",
+    // Whatever extra fields the extensions contribute to this payload (today
+    // the Maps embed key — see src/extensions.js payloadExtras).
+    ...extensionPayloadExtras(env, available),
     available,
   };
 }
@@ -289,11 +309,13 @@ export async function handleSettingsGet(env, identity) {
   return jsonResponse(settingsPayload(env, identity, getSettings(identity)));
 }
 
-// PUT /api/settings — body may carry any knob (partial updates allowed):
-// {shodan_mcp?, google_maps?, bash_lite_mcp?, developer_mode?}. Turning a knob
-// ON requires its backing to actually exist — Shodan needs the SHODAN_API_KEY
-// secret — so a knob can't be switched on with nothing behind it (which would
-// silently do nothing). Cloud storage is not a knob and cannot be switched here
+// PUT /api/settings — body may carry any knob (partial updates allowed): the
+// two core ones plus one per registered extension (today {shodan_mcp?,
+// google_maps?, bash_lite_mcp?, developer_mode?}). Turning a knob ON requires
+// its backing to actually exist — an extension needs its secret — so a knob
+// can't be switched on with nothing behind it (which would silently do
+// nothing); the 503 message comes from the registry, so this handler never
+// names a service. Cloud storage is not a knob and cannot be switched here
 // (see the header note); feedback is no longer a knob either (given from the
 // chat — see the DEFAULTS note).
 /**
@@ -314,47 +336,29 @@ export async function handleSettingsPut(request, env, log, identity) {
   } catch {
     return jsonResponse({ error: "Request body must be valid JSON." }, 400);
   }
-  const hasShodan = body?.shodan_mcp !== undefined;
-  const hasGoogleMaps = body?.google_maps !== undefined;
-  const hasBashLite = body?.bash_lite_mcp !== undefined;
-  const hasDeveloper = body?.developer_mode !== undefined;
-  if (!hasShodan && !hasGoogleMaps && !hasBashLite && !hasDeveloper) {
+  const present = KNOB_KEYS.filter((key) => body?.[key] !== undefined);
+  if (!present.length) {
     return jsonResponse(
-      {
-        error:
-          "Expected {shodan_mcp?: boolean, google_maps?: boolean, bash_lite_mcp?: boolean, developer_mode?: boolean}.",
-      },
+      { error: `Expected {${KNOB_KEYS.map((k) => `${k}?: boolean`).join(", ")}}.` },
       400,
     );
   }
-  if (hasShodan && typeof body.shodan_mcp !== "boolean") {
-    return jsonResponse({ error: "shodan_mcp must be a boolean." }, 400);
-  }
-  if (hasGoogleMaps && typeof body.google_maps !== "boolean") {
-    return jsonResponse({ error: "google_maps must be a boolean." }, 400);
-  }
-  if (hasBashLite && typeof body.bash_lite_mcp !== "boolean") {
-    return jsonResponse({ error: "bash_lite_mcp must be a boolean." }, 400);
-  }
-  if (hasDeveloper && typeof body.developer_mode !== "boolean") {
-    return jsonResponse({ error: "developer_mode must be a boolean." }, 400);
+  for (const key of present) {
+    if (typeof body[key] !== "boolean") {
+      return jsonResponse({ error: `${key} must be a boolean.` }, 400);
+    }
   }
   const available = featureAvailability(env, identity);
-  if (hasShodan && body.shodan_mcp && !available.shodan) {
-    return jsonResponse(
-      { error: "Shodan is not configured on this server (SHODAN_API_KEY missing)." },
-      503,
-    );
-  }
-  if (hasGoogleMaps && body.google_maps && !available.google_maps) {
-    return jsonResponse(
-      { error: "Google Maps is not configured on this server (GOOGLE_MAPS_API_KEY missing)." },
-      503,
-    );
+  // An extension knob can only be switched on when the registry says its
+  // backing exists; the message is the registry's, not this handler's.
+  for (const spec of extensionSettingSpecs()) {
+    if (present.includes(spec.key) && body[spec.key] && !available[spec.availability]) {
+      return jsonResponse({ error: spec.unavailableError }, 503);
+    }
   }
   // bash_lite needs only a user row (it's a browser capability) — available
   // is false only for break-glass, which can't reach this handler anyway.
-  if (hasBashLite && body.bash_lite_mcp && !available.bash_lite) {
+  if (present.includes("bash_lite_mcp") && body.bash_lite_mcp && !available.bash_lite) {
     return jsonResponse(
       { error: "The execution sandbox needs a signed-in account." },
       503,
@@ -362,24 +366,15 @@ export async function handleSettingsPut(request, env, log, identity) {
   }
   // developer_mode needs only a user row (the snapshot is a public artifact)
   // — available is false only for break-glass, which can't reach this handler.
-  if (hasDeveloper && body.developer_mode && !available.developer) {
+  if (present.includes("developer_mode") && body.developer_mode && !available.developer) {
     return jsonResponse(
       { error: "Developer mode needs a signed-in account." },
       503,
     );
   }
   const settings = { ...getSettings(identity) };
-  if (hasShodan) settings.shodan_mcp = body.shodan_mcp;
-  if (hasGoogleMaps) settings.google_maps = body.google_maps;
-  if (hasBashLite) settings.bash_lite_mcp = body.bash_lite_mcp;
-  if (hasDeveloper) settings.developer_mode = body.developer_mode;
+  for (const key of present) settings[key] = body[key];
   await saveSettings(env, identity.user.id, settings);
-  log.info("settings.updated", {
-    user_id: identity.id,
-    shodan_mcp: settings.shodan_mcp,
-    google_maps: settings.google_maps,
-    bash_lite_mcp: settings.bash_lite_mcp,
-    developer_mode: settings.developer_mode,
-  });
+  log.info("settings.updated", { user_id: identity.id, ...settings });
   return jsonResponse(settingsPayload(env, identity, settings));
 }

@@ -7,10 +7,10 @@ import {
   bashLiteEnabled,
   cloudStorageEnabled,
   developerModeEnabled,
+  extensionEnabled,
+  extensionEnabledMap,
   featureAvailability,
-  googleMapsEnabled,
   parseSettings,
-  shodanEnabled,
   storageAvailability,
 } from "./settings.js";
 
@@ -113,14 +113,17 @@ test("bashLiteEnabled: a user row + the knob on, OR the break-glass admin", () =
   assert.equal(bashLiteEnabled({}, { isSecretAdmin: true }), true);
 });
 
-test("shodanEnabled: needs the key, a user row, AND the knob on", () => {
+// The knob gate is generic now (extensionEnabled by registry id) — settings.js
+// no longer has a per-service helper. The rule it enforces is unchanged.
+test("extensionEnabled: needs the backing secret, a user row, AND the knob on", () => {
   const env = { SHODAN_API_KEY: "k" };
   const on = { user: { id: 1, settings_json: '{"shodan_mcp":true}' } };
   const off = { user: { id: 2, settings_json: null } }; // default off
-  assert.equal(shodanEnabled(env, on), true);
-  assert.equal(shodanEnabled(env, off), false); // default off
-  assert.equal(shodanEnabled({}, on), false); // no SHODAN_API_KEY
-  assert.equal(shodanEnabled(env, {}), false); // break-glass: no user row
+  assert.equal(extensionEnabled(env, on, "shodan"), true);
+  assert.equal(extensionEnabled(env, off, "shodan"), false); // default off
+  assert.equal(extensionEnabled({}, on, "shodan"), false); // no SHODAN_API_KEY
+  assert.equal(extensionEnabled(env, {}, "shodan"), false); // break-glass: no user row
+  assert.equal(extensionEnabled(env, on, "nope"), false); // unknown id is simply off
 });
 
 test("featureAvailability reports storage, rag, shodan, and google_maps independently", () => {
@@ -173,14 +176,21 @@ test("featureAvailability reports storage, rag, shodan, and google_maps independ
   });
 });
 
-test("googleMapsEnabled: needs the key, a user row, AND the knob on", () => {
+test("extensionEnabledMap resolves every registered extension at once", () => {
   const env = { GOOGLE_MAPS_API_KEY: "k" };
   const on = { user: { id: 1, settings_json: '{"google_maps":true}' } };
   const off = { user: { id: 2, settings_json: null } }; // default off
-  assert.equal(googleMapsEnabled(env, on), true);
-  assert.equal(googleMapsEnabled(env, off), false); // default off
-  assert.equal(googleMapsEnabled({}, on), false); // no GOOGLE_MAPS_API_KEY
-  assert.equal(googleMapsEnabled(env, {}), false); // break-glass: no user row
+  assert.deepEqual(extensionEnabledMap(env, on), { shodan: false, maps: true });
+  assert.deepEqual(extensionEnabledMap(env, off), { shodan: false, maps: false });
+  assert.deepEqual(extensionEnabledMap({}, on), { shodan: false, maps: false }); // no key
+  assert.deepEqual(extensionEnabledMap(env, {}), { shodan: false, maps: false }); // no user row
+  assert.deepEqual(
+    extensionEnabledMap(
+      { SHODAN_API_KEY: "k", GOOGLE_MAPS_API_KEY: "k" },
+      { user: { id: 3, settings_json: '{"shodan_mcp":true,"google_maps":true}' } },
+    ),
+    { shodan: true, maps: true },
+  );
 });
 
 test("storageAvailability needs both the binding and a user row", () => {

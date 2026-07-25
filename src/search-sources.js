@@ -3,7 +3,7 @@
 // runs ALONGSIDE Exa in the search waves plugs in HERE, and only here.
 //
 // WHY A REGISTRY: parallel sessions routinely work on different sources at
-// the same time (observed 2026-07-08: an HF Hub session and a Street View
+// the same time (observed 2026-07-08: an HF Hub session and an imagery
 // session pushing to `main` within minutes of each other). Before this
 // existed, one source's integration touched FOUR shared files —
 // pipeline.js (imports + a bespoke maybeXxxSearch), prompts.js (planner
