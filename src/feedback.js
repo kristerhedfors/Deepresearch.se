@@ -45,10 +45,13 @@ import { previousUserText, textOf } from "./conversation.js";
 import { verifyServerToken } from "./server-token.js";
 import {
   cannedFeedbackAck,
+  docPageTag,
+  docPathOfPage,
   feedbackIntent,
   feedbackPageTag,
   feedbackScope,
   feedbackScopeOfPrior,
+  isDocPage,
   isStandalonePage,
   isStrategyPage,
 } from "../public/js/feedback-core.js";
@@ -125,7 +128,17 @@ export const FEEDBACK_STATUSES = ["new", "seen", "in_progress", "resolved", "dec
 // the pipeline's feedback case, as does the SCOPE classification
 // (feedbackScope — standalone generic feedback vs feedback about the session
 // it arrived in) and its `page` tagging.
-export { cannedFeedbackAck, feedbackIntent, feedbackPageTag, feedbackScope, feedbackScopeOfPrior, isStandalonePage };
+export {
+  cannedFeedbackAck,
+  docPageTag,
+  docPathOfPage,
+  feedbackIntent,
+  feedbackPageTag,
+  feedbackScope,
+  feedbackScopeOfPrior,
+  isDocPage,
+  isStandalonePage,
+};
 
 /**
  * Derive a feedback entry's captured context from the conversation the user
@@ -509,6 +522,11 @@ export function projectFeedback(row, messages = [], images = [], opts = {}) {
     // feed is an operative/strategic idea about where the project should go,
     // filed against a lens — direction, not a defect to reproduce.
     strategy: isStrategyPage(row.page),
+    // The documentation lane: a comment marked against a passage in the /docs
+    // reader. `doc_path` is the document it was written in, so the loop knows
+    // which file — and which slice of the implementation — the note governs.
+    doc: isDocPage(row.page),
+    doc_path: docPathOfPage(row.page),
     context_chars: (row.context || "").length,
     ...(opts.context ? { context: row.context || null } : {}),
     images: images.filter((i) => !i.message_id).map(projectImage),
@@ -563,6 +581,23 @@ export function formatFeedbackText(entries) {
         lines.push(
           "SCOPE: standalone — generic developer feedback (first message of the conversation; " +
             "a suggestion or next-steps note, NOT a report about a research session)",
+        );
+      }
+      // The documentation lane states its CONTRACT outright, because the
+      // obvious reading of a comment on a document — "edit the paragraph" —
+      // is the wrong one, and half the work would silently go undone. A doc
+      // comment is an instruction about the system the document describes.
+      if (e.doc) {
+        lines.push(
+          `SCOPE: doc — a passage comment written in the documentation reader against ` +
+            `${e.doc_path || "a document"} (the quoted text is in the comment above).\n` +
+            "  CONTRACT: documentation and implementation describe the SAME system here, so this is\n" +
+            "  an instruction for BOTH. Do not stop at rewording the passage — reconcile the code the\n" +
+            "  passage describes with what the comment says, in the same change, or say explicitly why\n" +
+            "  the code is already right and the document was wrong. A module-level document binds\n" +
+            "  tightly (the named module must match); a high-level or architectural one binds as\n" +
+            "  DIRECTION — move the architecture that way, and record the reasoning. Reply on the\n" +
+            "  thread with what you changed: the admin reads your reply beside the passage in /docs.",
         );
       }
       // Same reasoning for the outward lane: "reproduce the complaint" is the
@@ -842,10 +877,20 @@ export async function handleFeedbackApi(request, env, url, log, identity) {
   // GET /api/feedback — the user's own entries, newest first, threads
   // inline. Opening the list marks the agent's replies read (same one-shot
   // pattern as the message center).
+  //
+  // ?page=<tag> narrows to one surface. The documentation reader uses it
+  // (page=docs:<path>/doc) so a document's margin shows EVERY comment on it —
+  // the unfiltered list is capped at 100 entries, and a comment silently
+  // missing from the margin would read as "the developers dropped it".
   if (path === "" && method === "GET") {
+    const pageFilter = cleanStr(url.searchParams.get("page"), FEEDBACK_CAPS.page);
     const { results } = await db
-      .prepare("SELECT * FROM feedback WHERE user_id = ? ORDER BY id DESC LIMIT 100")
-      .bind(userId)
+      .prepare(
+        "SELECT * FROM feedback WHERE user_id = ?" +
+          (pageFilter ? " AND page = ?" : "") +
+          " ORDER BY id DESC LIMIT 100",
+      )
+      .bind(...(pageFilter ? [userId, pageFilter] : [userId]))
       .all();
     const rows = /** @type {FeedbackRow[]} */ (results || []);
     const messages = await loadMessages(db, rows.map((r) => r.id));
@@ -853,13 +898,18 @@ export async function handleFeedbackApi(request, env, url, log, identity) {
     const entries = rows.map((r) =>
       projectFeedback(r, messages.get(r.id) || [], images.get(r.id) || []),
     );
+    // Only the replies actually returned are marked read. A filtered read
+    // (the documentation reader's per-document fetch) must not clear the
+    // account badge for threads the user never saw.
     await db
       .prepare(
         `UPDATE feedback_messages SET read_at = ?
          WHERE author = 'agent' AND read_at IS NULL
-           AND feedback_id IN (SELECT id FROM feedback WHERE user_id = ?)`,
+           AND feedback_id IN (SELECT id FROM feedback WHERE user_id = ?` +
+          (pageFilter ? " AND page = ?" : "") +
+          ")",
       )
-      .bind(Date.now(), userId)
+      .bind(...(pageFilter ? [Date.now(), userId, pageFilter] : [Date.now(), userId]))
       .run()
       .catch(() => {});
     return jsonResponse({ feedback: entries });

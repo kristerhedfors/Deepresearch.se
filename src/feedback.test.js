@@ -27,8 +27,12 @@ import {
   validateFeedbackCreate,
   validateFeedbackImages,
   validateFeedbackReply,
+  docPageTag,
+  docPathOfPage,
+  isDocPage,
 } from "./feedback.js";
 import { mintServerToken } from "./server-token.js";
+import { buildDocCommentBody } from "../public/js/docs-comments-core.js";
 
 // ---------------------------------------------------------------------------
 // feedbackIntent — the chat-side gate (EN + SV parity, invariant 6)
@@ -907,4 +911,57 @@ test("handleServerTokenFeedback: no D1 fails soft to 503", async () => {
   const token = await stFeedbackToken({ SESSION_SECRET: ST_SECRET });
   const res = await handleServerTokenFeedback(fbRequest({ token, comment: "hi" }), env, noopLog);
   assert.equal(res.status, 503);
+});
+
+// ---------------------------------------------------------------------------
+// The DOC lane (owner directive, 2026-07-25): the documentation reader's
+// comment mode files a passage comment into THIS pipeline, marked so the loop
+// reads it as a doc⇄code coherence instruction.
+// ---------------------------------------------------------------------------
+
+test("projectFeedback: a doc comment carries its scope flag and the document it governs", () => {
+  const p = projectFeedback({ ...ROW, page: docPageTag("docs/ENCRYPTION.md") });
+  assert.equal(p.doc, true);
+  assert.equal(p.doc_path, "docs/ENCRYPTION.md");
+  // The lanes stay disjoint — a doc comment is not a standalone note.
+  assert.equal(p.standalone, false);
+  assert.equal(p.strategy, false);
+  // And an ordinary entry is not a doc comment.
+  const session = projectFeedback(ROW, MSGS);
+  assert.equal(session.doc, false);
+  assert.equal(session.doc_path, null);
+});
+
+test("formatFeedbackText: a doc comment states the doc⇄code CONTRACT outright", () => {
+  // The obvious reading of a comment on a document — "edit the paragraph" —
+  // is the wrong one and would leave half the instruction undone, so the
+  // queue spells out that the implementation is in scope too.
+  const body = buildDocCommentBody({
+    path: "docs/ENCRYPTION.md",
+    section: "The key hierarchy",
+    quote: "the history key is derived per user",
+    note: "Per device now. Reconcile the module too.",
+  });
+  const p = projectFeedback({ ...ROW, page: docPageTag("docs/ENCRYPTION.md"), comment: body });
+  const text = formatFeedbackText([p]);
+  assert.match(text, /SCOPE: doc — a passage comment/);
+  assert.match(text, /docs\/ENCRYPTION\.md/);
+  assert.match(text, /CONTRACT: documentation and implementation describe the SAME system/);
+  assert.match(text, /Do not stop at rewording the passage/);
+  assert.match(text, /binds as\n\s*DIRECTION/);
+  // The quoted passage and the instruction ride in the comment itself.
+  assert.match(text, /FEEDBACK: DOC COMMENT — docs\/ENCRYPTION\.md/);
+  assert.match(text, /> the history key is derived per user/);
+  // Ordinary entries are untouched by this lane.
+  assert.doesNotMatch(formatFeedbackText([projectFeedback(ROW, MSGS)]), /SCOPE: doc/);
+});
+
+test("the doc lane round-trips through the façade's re-exports", () => {
+  // src/feedback.js is the Se/rver façade over the shared core — the reader
+  // and the Worker must agree on the tag grammar or comments file into a lane
+  // the loop never reads.
+  const tag = docPageTag("docs/ARCHITECTURE.md");
+  assert.equal(isDocPage(tag), true);
+  assert.equal(docPathOfPage(tag), "docs/ARCHITECTURE.md");
+  assert.equal(isDocPage("chat"), false);
 });

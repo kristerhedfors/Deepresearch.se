@@ -2,6 +2,13 @@
 // corpus (docs-corpus.json). The docs are de-smelled in place by the Clean
 // step wired into the doc pipelines, so there is one authoritative version —
 // no original/candidate variants.
+//
+// Two modes, the Word convention: read only, and — for an admin — COMMENT,
+// where a marked passage gets a note that enters the feedback pipeline as a
+// doc⇄code coherence instruction (docs-comments.js + its pure core). The
+// comment layer is loaded DYNAMICALLY and only after /api/me answers with an
+// admin identity: /docs is a public page, and a signed-out visitor must not
+// fetch a module that would 401 on them.
 
 import { escapeHtml, renderMarkdownInto } from "/js/markdown.js";
 
@@ -9,6 +16,11 @@ const listEl = /** @type {HTMLElement} */ (document.getElementById("list"));
 const docEl = /** @type {HTMLElement} */ (document.getElementById("doc"));
 const statusEl = /** @type {HTMLElement} */ (document.getElementById("status"));
 const filterEl = /** @type {HTMLInputElement} */ (document.getElementById("filter"));
+const railEl = /** @type {HTMLElement} */ (document.getElementById("rail"));
+const modeEl = /** @type {HTMLElement} */ (document.getElementById("mode"));
+
+/** @type {{ onDocRendered: () => void } | null} */
+let commentLayer = null;
 
 /** @type {Map<string, string>} doc text by path */
 const docs = new Map();
@@ -59,6 +71,30 @@ function render() {
   }
   document.title = `${titleFor(current)} — DeepResearch.se docs`;
   docEl.scrollIntoView({ block: "start" });
+  commentLayer?.onDocRendered();
+}
+
+// Comment mode is administrative: the switch exists only for an admin
+// identity. /api/me is behind the identity gate, so a signed-out visitor gets
+// a 401 here and reads the docs exactly as before.
+async function maybeMountComments() {
+  try {
+    const res = await fetch("/api/me");
+    if (!res.ok) return;
+    const me = await res.json();
+    if (me?.role !== "admin") return;
+    const { mountDocComments } = await import("/js/docs-comments.js");
+    commentLayer = mountDocComments({
+      docEl,
+      railEl,
+      toggleEl: modeEl,
+      currentPath: () => current,
+      currentText: () => docs.get(current) || "",
+    });
+    commentLayer.onDocRendered();
+  } catch {
+    // No identity, no network, no comment mode — the reader still reads.
+  }
 }
 
 function selectFromHash() {
@@ -86,6 +122,7 @@ async function load() {
   }
   buildList();
   selectFromHash();
+  maybeMountComments();
 }
 
 listEl.addEventListener("click", (e) => {
