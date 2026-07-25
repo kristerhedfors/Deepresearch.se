@@ -559,8 +559,13 @@ export function haversineM(lat1, lng1, lat2, lng2) {
  * @returns {{lat: number, lng: number} | null}
  */
 export function parseLatLng(source) {
-  const lat = Number(source?.lat);
-  const lng = Number(source?.lng);
+  // Number(null) and Number("") are 0, so a MISSING query param would read as
+  // a perfectly valid position off the coast of Africa — URLSearchParams.get
+  // returns null for an absent key. Absent means absent.
+  /** @type {(v: unknown) => number} */
+  const num = (v) => (v === null || v === undefined || v === "" ? NaN : Number(v));
+  const lat = num(source?.lat);
+  const lng = num(source?.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 85 || Math.abs(lng) > 180) return null;
   return { lat, lng };
 }

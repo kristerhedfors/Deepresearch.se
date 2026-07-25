@@ -568,4 +568,10 @@ test("parseLatLng accepts Web Mercator-usable positions, rejects the rest", () =
   assert.equal(parseLatLng({ lat: "abc", lng: 0 }), null);
   assert.equal(parseLatLng(null), null);
   assert.equal(parseLatLng({}), null);
+  // A MISSING position must never read as 0,0: URLSearchParams.get returns
+  // null for an absent key and "" for an empty one, and Number() calls both 0.
+  assert.equal(parseLatLng({ lat: null, lng: null }), null);
+  assert.equal(parseLatLng({ lat: "", lng: "" }), null);
+  assert.equal(parseLatLng({ lat: 0, lng: "" }), null);
+  assert.deepEqual(parseLatLng({ lat: 0, lng: 0 }), { lat: 0, lng: 0 }, "…but a real 0,0 still parses");
 });

@@ -12,7 +12,7 @@ surface reviewed as a system — what is automated, what is covered, and
 the ordered list of what is missing. This file says what exists; that
 one says what does not.
 
-## Unit tests (`src/*.test.js`, `public/js/*.test.js`)
+## Unit tests (`src/*.test.js`, `public/js/*.test.js`, `public/games/*/js/*.test.js`)
 
 Node's built-in test runner (`node:test` + `node:assert/strict` — no
 dependency added, matching the project's minimal-dependency stance),
@@ -113,8 +113,15 @@ villain rewards, XP/level-up/evolution, save normalization, and the
 client-view projections — IVs and the foe roster never leak — plus
 `parseLatLng`), and
 `tokemon-nav.js` (the street-mode pure side: the bilingual command grammar
-incl. the Swedish-parity suite, geodesy round-trips, spawn projection
-geometry).
+incl. the Swedish-parity suite — which is STRUCTURAL, walking the exported
+vocabulary tables so a Swedish word added without an English twin fails the
+build — geodesy round-trips, and the pinhole-camera spawn projection checked
+against its closed form), and `tokemon-api.js` (the street-view HANDLERS over
+an in-memory D1 fake with the two Google calls stubbed at `globalThis.fetch`:
+`…/go` validation, absolute vs heading-relative moves, bilingual replies, the
+Maps-knob gate on place lookups, `…/scene`'s four fail-soft `available:false`
+reasons, and the overlay decoration — `near` measured from the PLAYER while
+the camera sits at the PANO).
 
 Two REPO-WIDE guards sit alongside the per-module suites, scanning the tree
 rather than importing one unit (the `sql-injection-guard.test.js` pattern):
@@ -360,12 +367,21 @@ the rag index's every chunk ref must still resolve against the snapshot
 façade: the re-export contract pinning that its surface IS
 `public/js/introspect-core.js`, not a mirror, and the tool schemas/executors
 load without pulling in the pipeline).
+
+The games' client cores are tested the same way, one directory over
+(`public/games/*/js/*.test.js`): `street-core.js` — the Tokemon street-view
+pane's presentation logic (the compass line's wrap past north, the spawn
+captions incl. escaping, since the pane writes them with `innerHTML`, and the
+overlay placement style clamped against hostile numbers). The DOM wiring in
+`street.js` / `map.js` / `game.js` stays browser-only and is verified live.
+
 These run in Node unmodified since `File`, `Blob`,
 `DecompressionStream`, and `TextDecoder` are all standard Node globals
 — no DOM needed for this subset of client code.
 
 ```bash
 npm test            # from the repo root: node --test src/*.test.js public/js/*.test.js
+                    #                     public/games/*/js/*.test.js
                     #                     sdk/*.test.mjs scripts/*.test.mjs
                     #                     tests/*.test.js
 npm run typecheck   # zero-build-step tsc: src/ (tsconfig.json, Workers types)
