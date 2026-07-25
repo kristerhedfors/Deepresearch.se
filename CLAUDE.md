@@ -274,6 +274,16 @@ tooling `sdk/drpl.mjs`); the vision is `docs/STACKLESS-RESEARCH.md`. The
 standards deliberately LEAD the code (spec-first); the deployed workspace
 feature is their reference implementation.
 
+**Feature surfaces are examples, not architecture (owner directive,
+2026-07-24).** Orchestrator, Agent Studio, the games, the space archive,
+on-device inference, compute sharing — read these as **examples and
+pre-bundled agents** demonstrating what the platform carries, and build them
+on the two SDKs as far as possible rather than as bespoke subsystems. When
+adding a surface, ask which SDK should carry it FIRST. Several already have
+their Platform-SDK module; Orchestrator, on-device inference, compute
+sharing, workspace knowledge and quiz are still bespoke and owe one
+(`docs/ARCHITECTURE.md` §15).
+
 ## Skills
 
 Detailed guidance is split into on-demand skills under `.claude/skills/` —

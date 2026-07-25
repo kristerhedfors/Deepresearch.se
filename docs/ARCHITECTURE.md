@@ -1,6 +1,13 @@
 # Architecture — Deepresearch.se
 
-Complete technical architecture of the site. One Cloudflare Worker serves a
+Complete technical architecture of the **platform** — the Worker, the
+pipeline, the tiers, and the storage/identity/security model everything else
+stands on. The feature surfaces layered over it (Orchestrator, Agent Studio,
+the games, the space archive, on-device inference, compute sharing) are not
+separate architecture: they are **examples and pre-bundled agents**, and the
+goal is to express them through the two SDKs rather than as bespoke
+subsystems — §15 gives that framing and the honest current state. One
+Cloudflare Worker serves a
 static chat UI and orchestrates a deterministic, time-budgeted deep research
 pipeline over Berget.ai (primary LLM), Anthropic and OpenAI (secondary,
 key-gated answer-model providers), Exa (web search), and the Hugging Face Hub
@@ -1080,3 +1087,41 @@ calls `grep_source` / `read_file` / `list_files` until it has the files it
 needs, instead of answering from one injected block. Models without tool
 use keep the deterministic single-pass injection described above. See the
 **introspection** skill.
+
+## 15. Feature surfaces — examples and pre-bundled agents
+
+The sections above describe the platform. Almost everything a visitor
+actually *sees* sits on top of it: Orchestrator mode, Agent Studio, the
+Se/cure tier itself, published replays, the games shelf, the space
+animations, on-device inference, compute sharing. Read those as **examples
+and pre-bundled agents**, not as architecture — demonstrations of what the
+platform can carry, shipped in the box (owner directive, 2026-07-24). The
+direction is to build them, as far as possible, on the two SDKs rather than
+as bespoke subsystems:
+
+- **DeepResearch Agents SDK** (`sdk/AGENTS.json`,
+  `public/js/agent-spec-core.js`, `docs/AGENT-PLATFORM.md`) — an agent is a
+  *flavour* of the platform expressed as data: its chat-input-pane controls,
+  theme, animations, example questions, share-link quota. Copy a spec,
+  change those, validate. Four agents ship today: `research` (Se/rver),
+  `secure` (Se/cure), `agent-builder` (Agent Studio), and
+  `under-construction`, the template to copy.
+- **DeepResearch Platform SDK** (`sdk/MANIFEST.json`, `docs/DISTILLSDK.md`)
+  — 34 modules, one buildable skill each, for distilling a whole
+  DeepResearch.se-like platform. Module ids map back to the repo files that
+  realize them.
+
+**Where this stands, stated plainly.** The framing is the target, not a
+description of finished work. Several surfaces already have their Platform-SDK
+module — `execution-sandbox`, `introspection-help`, `decision-boards`,
+`publish-replays`, `games-shelf`, `mcp-surface`, `grant-bridge`,
+`symbol-language`, `pair-studio`, `agent-platform`. Others are still bespoke
+code with no SDK module and no AgentSpec entry: **Orchestrator mode**
+(`src/orchestrator.js`), **on-device inference** (`public/js/ondevice-*.js`,
+`docs/BONSAI-27B-PHONE-INFERENCE.md`), **compute sharing**
+(`src/pool.js`, `src/pool-token.js`, `docs/COMPUTE-SHARING.md`), **workspace
+knowledge** (`src/knowledge.js`) and the **quiz** surface (`src/quiz.js`).
+Each is a candidate for the same treatment — an SDK module, an AgentSpec, or
+both — and until that happens `docs/CODE-LAYOUT.md` is their per-module map.
+Adding a feature surface means asking which of the two SDKs should carry it
+before reaching for a new subsystem.
