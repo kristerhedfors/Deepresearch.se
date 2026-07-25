@@ -32,7 +32,7 @@ import { onDeviceIdFromValue } from "./ondevice-core.js";
 import { loadOnDeviceEngine, onDeviceModelLabel } from "./ondevice-drs.js";
 import { runDrcResearch } from "./drc-research.js";
 import { runShellLoop, shellCommandLabel } from "./bash-agent.js";
-import { bashIntent, deliverablesRun, execTimeoutForBudget, wantsOutboxCollect } from "./bash-core.js";
+import { GUEST_STDOUT_CAP_BYTES, bashIntent, deliverablesRun, execTimeoutForBudget, wantsOutboxCollect } from "./bash-core.js";
 import { feedbackIntent } from "./feedback-core.js";
 import { aiModelIntent } from "./ai-models.js";
 import { collectDeliverables, ensureSandboxBooted, execInSandbox, resetSandboxIfLacking, sandboxFsSummary, sandboxIdle, sandboxSupported, sblog } from "./sandbox.js";
@@ -989,7 +989,10 @@ async function maybeRunShellLoop(turn, opts) {
     const execTimeoutMs = execTimeoutForBudget(opts?.budgetS);
     const transcript = await runShellLoop({
       messages: stripOldImages(history),
-      exec: (command) => execInSandbox(command, { timeoutMs: execTimeoutMs }),
+      // The transcript keeps only MAX_OUTPUT_CHARS per command, so ask the guest
+      // for a bounded slice instead of hauling a whole file across the VM→JS
+      // boundary to throw it away (docs/SANDBOX-PERFORMANCE.md).
+      exec: (command) => execInSandbox(command, { timeoutMs: execTimeoutMs, maxStdoutBytes: GUEST_STDOUT_CAP_BYTES }),
       ensureReady: bootOnce,
       sdk: sdkSend,
       // Surface WHICH command is running, live — the user asked to see the

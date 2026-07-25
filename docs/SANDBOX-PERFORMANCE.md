@@ -139,8 +139,12 @@ On timeout it returns rc 124 *and calls* `resetSandbox("exec_timeout")`, which
 discards the CheerpX instance — CheerpX cannot abort a running guest process, so
 throwing the VM away is the only way to avoid running the next command on a
 wedged one. Every later command then returns `sandbox not ready` until something
-re-boots, and a re-boot gets a fresh overlay, so anything written to the
-filesystem is gone.
+re-boots, and a re-boot gets a fresh overlay, so scratch work under `/tmp`,
+`/root`, or anywhere else on the image is gone. `/workspace` is the exception:
+it is its own persistent IndexedDB volume and survives an ordinary reset, so
+attached and generated user files are not lost — unless the wedged command was
+itself touching `/workspace`, which is the corrupt-volume signature that makes
+`resetSandbox` wipe that volume deliberately (`resetWorkspaceStorage`).
 
 Observed twice while building this battery:
 
@@ -150,8 +154,45 @@ Observed twice while building this battery:
   command written specifically to be safe when `node` is missing — took the full
   30 s cold and destroyed the VM.
 
-So a single unlucky command ends the sandbox for the rest of the turn. Two
-mitigations, both cheap:
+So a single unlucky command ends the sandbox for the rest of the turn.
+
+### Why this cannot be fixed in the guest (measured 2026-07-24)
+
+The obvious repair is to have the guest stop its own runaway before the JS
+ceiling fires — `timeout 20 <command>` — so the VM survives. **It does not
+work: nothing in the guest can terminate a running process.** Probed directly,
+each command given a 2 s guest budget against a 5 s JS ceiling:
+
+| probe | result |
+|---|---|
+| `sleep 2; echo done` | 2321 ms, rc 0 — time itself passes correctly |
+| `timeout 2 sleep 60` | 5004 ms, rc 124 — JS ceiling fired, VM destroyed |
+| `timeout -s KILL 2 sleep 60` | 5004 ms, rc 124 — SIGKILL no better |
+| `timeout -s KILL 2 sh -c 'while :; do :; done'` | 5004 ms, rc 124 — CPU-bound, same |
+| `sleep 60 & P=$!; kill -9 $P; wait $P` | 5005 ms, rc 124 — an explicit kill fails too |
+
+`timeout` is present (GNU coreutils 8.30 at `/usr/bin/timeout`) and `sleep`
+proves the clock works, so this is not a missing tool or a stuck scheduler:
+**signal delivery and process termination are not functional in the CheerpX
+guest.** That is the same limitation `sandbox.js` records from the JS side
+("CheerpX has no abort"), and it means discarding the VM is not a heavy-handed
+choice — it is the only available response to a command that will not stop.
+
+Two consequences worth stating plainly, because both invite a "fix" that cannot
+work:
+
+- Do not add a guest-side `timeout` wrapper to the exec envelope. It costs a
+  process spawn on every command and buys nothing.
+- Do not make `resetSandbox` on rc 124 conditional or "gentler". The wedged
+  guest process keeps running on the single-threaded CPU; reusing that instance
+  is what wedges the *next* command.
+
+Prevention is therefore the only lever, which is why the cost guidance lives in
+the step prompt (`bashAgentPrompt` in `src/prompts.js`) rather than in code.
+`timeout` is still suggested there — it is harmless and helps in the cases
+where the command would have exited on its own — but it is not load-bearing.
+
+Two mitigations for an evaluation harness, both cheap:
 
 - Wrap anything that might walk a cold tree in a guest-side `timeout 20 …`, so
   the command fails inside its own budget and the VM survives. The battery does
@@ -188,6 +229,44 @@ cold VM boot (24.4 s here, with the `/src` source mount; a bare boot measures
 paying a cold boot**, which argues for pre-warming the VM and for keeping it
 alive rather than shaving milliseconds off individual commands.
 
+## Shipped: the guest-side stdout cap
+
+The transcript keeps only `MAX_OUTPUT_CHARS` (4000) per command, so every byte
+a command returns beyond that was already being thrown away — after paying full
+price to move it. `execEnvelope` now takes an opt-in `maxStdoutBytes`
+(`GUEST_STDOUT_CAP_BYTES`, 8192) which makes the guest base64 only the first
+N+1 bytes of stdout:
+
+```
+uncapped:  O=$(base64 -w0 /tmp/_o<id> 2>/dev/null)
+capped:    O=$(head -c 8193 /tmp/_o<id> 2>/dev/null | base64 -w0 2>/dev/null)
+```
+
+Measured on a 2 MB file in a live VM:
+
+| | warm |
+|---|---|
+| `cat` the file (what the model does today) | 1936 ms |
+| the same read, capped | 75 ms |
+| guest-side base64 of the whole file | 150 ms |
+| guest-side `head -c 8193 \| base64` | 85 ms |
+
+The split is informative: base64-ing 2 MB inside the guest is only 150 ms, so
+almost all of the 1936 ms is the emulated console carrying 2.8 MB of base64 text
+to JS. The cap removes that transport.
+
+The extra `head` spawn costs about **14 ms** on a small output (80 ms → 94 ms),
+paid by every capped command. That is the honest trade: a fixed ~14 ms against
+up to ~1.9 s, on bytes that were discarded either way. The N+1 request lets
+`markGuestTruncation` tell "exactly N bytes" from "cut off at N" without a
+second `wc -c` spawn.
+
+It is **opt-in and off by default**, because `exportFile` round-trips whole
+files out of the VM through this same envelope — capping by default would
+silently truncate every download. Only the three agent-loop call sites opt in
+(`stream.js`, and `drc-research.js`'s loop and `run_bash` tool), where the
+output is bound for a transcript that clamps to 4000 chars anyway.
+
 ## On short-circuiting `cat`
 
 An obvious idea is to intercept `cat <path>` in `execInSandbox` and serve it
@@ -211,10 +290,21 @@ correctness condition is the hard part: the guest may have rewritten the file,
 so the shortcut needs either a modification check or a restriction to paths the
 agent has not written to in this session.
 
-The larger win is upstream of any of this: teach the step prompt to slice at
-the source. `head -c 2000 file` costs 63 ms against `cat file`'s 1903 ms on a
-2 MB file, and for a model that is about to read the content anyway, the sliced
-version is usually what it actually needed.
+Both of those are now moot for the agent loop, and it is worth being explicit
+about why. The stdout cap above captures the same saving generically — 1936 ms
+down to 75 ms on a 2 MB read — without inspecting the command, without a path
+allow-list, and without needing to know whether the guest has rewritten the
+file. A `cat` interceptor would add a parser and a correctness condition to buy
+what a `head -c` in the envelope already buys for every command, including the
+ones nobody thought to special-case (`ls -R`, `grep` over a large tree,
+`tar -tvf`). It is the worse version of a fix already shipped.
+
+The host-copy shortcut remains genuinely attractive for one narrow case — a
+large host-seeded file the agent has provably not written to — but it is not
+worth building now: the cap already bounds what the agent can pull back, so the
+remaining saving is the round-trip floor (~50–85 ms), not seconds. Revisit only
+if a future caller needs whole large files back at speed, and note that
+`exportFile` is exactly that caller and is deliberately left uncapped.
 
 ## Auth must not reach the CheerpX CDN
 
