@@ -71,6 +71,34 @@ The **Agent Studio** is where the platform folds back on itself — it is the
 [`pair-studio`](../sdk/skills/pair-studio/SKILL.md) module made real: prompt →
 generate in the VM → preview → publish at `/app/<slug>/`.
 
+### 2.1 Agents are not chat modes, and not tiers
+
+Three different lists get confused for one another, so here they are side by
+side. Nothing above is the chat-mode dropdown.
+
+| The list | Where it lives | What it is | Its entries |
+|---|---|---|---|
+| **Tiers** | the product | The two halves of the platform, split by where the data goes | Se/cure (client, server in no data path), Se/rver (signed-in, cloud) |
+| **Chat modes** | `public/js/chat-mode.js` `CHAT_MODES`, mirrored in `public/js/mode-theme.js` | What the pipeline *does* with a turn — picked in the dropdown | `normal` (Deep Research), `introspection`, `sdk` (Agent Studio), `orchestrator`, `outrospection` |
+| **Agents** | `sdk/AGENTS.json` | Reference AgentSpecs — templates to copy | Research, Secure, Under Construction, Agent Studio |
+
+The relationships, in one line each:
+
+- **An agent picks a tier**, via `platform` (`"client"` = Se/cure,
+  `"server"` = Se/rver). The specs named *Research* and *Secure* are just the
+  reference agent for each tier — the tier is the platform half, the agent is
+  one flavour running on it. Se/cure is **not** an agent under Se/rver: its
+  defining property is structural (the server is in no data path), and a
+  client-platform spec cannot opt into a server data path (PA-4).
+- **An agent picks modes**, via the `mode` field and the `mode-select`
+  control. It cannot add one: a mode's execution semantics are hand-written
+  server code (`src/pipeline.js` dispatch), not anything an AgentSpec
+  generates. All five ids are selectable.
+- **"Agent Studio" appears in both lists** because the mode that builds agents
+  is itself shipped as a reference agent. Its spec id is `agent-builder`, a
+  historical alias for the canonical mode id `sdk`; `public/js/deeplink-core.js`
+  resolves it.
+
 ## 3. The AgentSpec
 
 One agent, as JSON. The full field reference and the closed control vocabulary
@@ -81,7 +109,8 @@ the short version:
 {
   "id": "research", "name": "Research", "tagline": "…",
   "platform": "server",              // "client" | "server" — the tier
-  "mode": "normal",                  // normal | introspection | agent-builder
+  "mode": "normal",                  // normal | introspection | sdk (a.k.a.
+                                     // agent-builder) | orchestrator | outrospection
   "theme": { "--agent-accent": "#3b82f6", … },
   "intro":   { "kind": "fade" },
   "loading": { "kind": "pipeline-phases", "messages": ["Triaging…", …] },
@@ -93,7 +122,7 @@ the short version:
     { "type": "depth-slider", "min": 0, "max": 3, "default": 1, "ticks": ["Quick","Standard","Deep","Exhaustive"] },
     { "type": "toggle", "id": "web_search", "label": "Web search", "default": true },
     { "type": "attachments" },
-    { "type": "mode-select", "modes": ["normal","introspection","agent-builder"] }
+    { "type": "mode-select", "modes": ["normal","introspection","sdk","orchestrator","outrospection"] }
   ],
   "examples": ["…"], "generateExamples": true,
   "quota": { "window": "day", "requests": 50, "credits": null }

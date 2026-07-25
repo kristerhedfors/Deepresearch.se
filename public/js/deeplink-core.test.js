@@ -10,6 +10,11 @@ import {
   DEEPLINK_MODES,
   MAX_ASK_CHARS,
 } from "./deeplink-core.js";
+import { CHAT_MODE_IDS } from "./mode-theme.js";
+
+test("DEEPLINK_MODES mirrors the canonical chat-mode registry", () => {
+  assert.deepEqual([...DEEPLINK_MODES].sort(), [...CHAT_MODE_IDS].sort());
+});
 
 test("parses mode aliases to canonical ids", () => {
   assert.equal(parseComposerDeepLink("?mode=introspection").mode, "introspection");
@@ -18,8 +23,21 @@ test("parses mode aliases to canonical ids", () => {
   assert.equal(parseComposerDeepLink("?mode=agent-builder").mode, "sdk");
   assert.equal(parseComposerDeepLink("?mode=builder").mode, "sdk");
   assert.equal(parseComposerDeepLink("?mode=research").mode, "normal");
+  assert.equal(parseComposerDeepLink("?mode=orchestrator").mode, "orchestrator");
+  assert.equal(parseComposerDeepLink("?mode=outrospection").mode, "outrospection");
+  assert.equal(parseComposerDeepLink("?mode=outrospect").mode, "outrospection");
   assert.equal(parseComposerDeepLink("?mode=bogus").mode, null);
   assert.equal(parseComposerDeepLink("").mode, null);
+});
+
+// The drift this pins (feedback #22): outrospection shipped as the fifth chat
+// mode while DEEPLINK_MODES still listed four, so `?mode=outrospection` parsed
+// to null and the link silently opened in Deep Research. Every canonical mode
+// must be reachable by its own id.
+test("every canonical chat mode is reachable by its own id", () => {
+  for (const id of DEEPLINK_MODES) {
+    assert.equal(parseComposerDeepLink(`?mode=${id}`).mode, id, `mode=${id} must parse to itself`);
+  }
 });
 
 test("resolves ask, then q as an alias, trimmed and bounded", () => {
@@ -53,5 +71,5 @@ test("build → parse round-trips", () => {
   // an invalid mode is dropped, ask still set
   const u2 = buildComposerDeepLink({ mode: "nope", ask: "x" });
   assert.ok(!u2.includes("mode="));
-  assert.deepEqual(DEEPLINK_MODES, ["normal", "introspection", "sdk", "orchestrator"]);
+  assert.deepEqual(DEEPLINK_MODES, ["normal", "introspection", "sdk", "orchestrator", "outrospection"]);
 });
