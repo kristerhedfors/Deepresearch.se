@@ -306,10 +306,10 @@ description: >-
   CTA. The two data-path diagrams in the architecture block are NOT
   copied: they are the shared standalone files
   `public/architecture/path-secure.svg` / `path-server.svg`, referenced
-  as `<img>` by BOTH this page and `/architecture/`, so the short and
-  long versions cannot drift. Edit the SVG once; both surfaces follow.
-  (Those files set their own `font-family` on the root — a standalone SVG
-  loaded through `<img>` cannot inherit the page's.)
+  as `<img>` by BOTH this page and `/architecture/`, so editing one SVG
+  updates the short and the long version together. Those files set their
+  own `font-family` on the root, because an SVG loaded through `<img>`
+  cannot inherit the page's.
 - **First-visit onboarding animations (2026-07-12):** both tiers greet a
   first-time visitor once, gated by plain localStorage UI flags and
   replayable with `?anim=1`; both respect `prefers-reduced-motion` and
