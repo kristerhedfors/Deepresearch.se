@@ -35,6 +35,10 @@ export const GRAPH_STYLES = {
   root: { color: "#6d3fc4", glyph: "baton" },
   deep_research: { color: "#0d4fa0", glyph: "balloon" },
   introspection: { color: "#5f6b78", glyph: "tin" },
+  // The local swarm: a cluster of small satellites around a hollow centre —
+  // the one kind that is MANY models, drawn as many points. Green because it
+  // is the only node running on the user's own device, nowhere else.
+  swarm: { color: "#2f8f5b", glyph: "swarm" },
   custom: { color: "#6d3fc4", glyph: "diamond" },
 };
 export const FAILED_COLOR = "#b3455c";
@@ -328,6 +332,18 @@ function drawGlyph(ctx, glyph, x, y, r) {
     ctx.arc(x - r * 0.32, y - r * 0.05, r * 0.06, 0, Math.PI * 2);
     ctx.moveTo(x + r * 0.36, y - r * 0.05);
     ctx.arc(x + r * 0.32, y - r * 0.05, r * 0.06, 0, Math.PI * 2);
+  } else if (glyph === "swarm") {
+    // The swarm: six small satellites on a ring around a dashed hollow centre
+    // — many tiny models, one task.
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI * i) / 3;
+      const cx = x + r * 0.7 * Math.cos(a);
+      const cy = y + r * 0.7 * Math.sin(a);
+      ctx.moveTo(cx + r * 0.2, cy);
+      ctx.arc(cx, cy, r * 0.2, 0, Math.PI * 2);
+    }
+    ctx.moveTo(x + r * 0.28, y);
+    ctx.arc(x, y, r * 0.28, 0, Math.PI * 2);
   } else if (glyph === "baton") {
     // The conductor's baton star: six rays from the center.
     for (let i = 0; i < 6; i++) {

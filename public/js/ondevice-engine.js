@@ -390,6 +390,102 @@ function generateSerialized({ modelId, messages, maxTokens, json, signal, onToke
   return next;
 }
 
+// ---- swarm members: ISOLATED workers alongside the singleton --------------------------
+//
+// Everything above shares ONE worker on purpose (one GPU, one loaded model,
+// one decode at a time — the phone contract). Swarm reasoning (swarm-core.js)
+// wants the opposite: N independent model instances answering the same task at
+// once, each with its own context, so their disagreement carries signal. That
+// is what a separate worker buys — a fresh module graph, its own tokenizer and
+// its own KV cache — and it is why the swarm cannot just call generate() N
+// times (the mutex above would run them one after another, and they would
+// share the same loaded session).
+//
+// Deliberately NOT wired into the singleton's state: a member has its own
+// handler map, its own onerror, and its own terminate(). Nothing a member does
+// can fail the settings drawer's pending calls, and a swarm that is abandoned
+// mid-run leaves no worker behind (the pool always terminates in a finally).
+// The weights are read from the SAME OPFS cache the singleton downloaded — a
+// member never fetches anything.
+
+/**
+ * Spawn one isolated inference member. `label` only rides the debug trace.
+ * @param {string} [label]
+ * @returns {{ generate: (args: { modelId: string, messages: any[], maxTokens?: number, json?: boolean, onToken?: (t: string) => void }) => Promise<string>, terminate: () => void }}
+ */
+export function spawnSwarmMember(label = "member") {
+  let w = /** @type {Worker | null} */ (null);
+  let seq = 0;
+  /** @type {Map<number, {resolve: (t: string) => void, reject: (e: Error) => void, onToken: (t: string) => void}>} */
+  const pending = new Map();
+  let spoke = false;
+
+  const failAll = (/** @type {string} */ message) => {
+    const err = new Error(message);
+    for (const [, h] of pending) h.reject(err);
+    pending.clear();
+  };
+
+  const ensure = () => {
+    if (w) return w;
+    w = new Worker("/js/ondevice-worker.js" + (_odDebug ? "?oddebug=1" : ""), { type: "module" });
+    spoke = false;
+    dbg("swarm member spawned", label);
+    w.onmessage = (e) => {
+      spoke = true;
+      const m = e.data || {};
+      if (m.t === "token") pending.get(m.id)?.onToken(m.text);
+      else if (m.t === "gendone") {
+        pending.get(m.id)?.resolve(m.text);
+        pending.delete(m.id);
+      } else if (m.t === "generror") {
+        pending.get(m.id)?.reject(new Error(m.message));
+        pending.delete(m.id);
+      } else if (m.t === "workererror") failAll(m.message || "The on-device engine failed.");
+      else if (m.t === "workerdiag" && m.message) trace("swarm member error:", label, m.message);
+    };
+    w.onerror = (e) => {
+      trace("swarm member crashed", label, spoke ? "(mid-run)" : "(never started)", errorEventDetail(e));
+      failAll(crashMessage(spoke, errorEventDetail(e)));
+      try {
+        w?.terminate();
+      } catch {
+        /* already gone */
+      }
+      w = null; // the next generate() respawns — one crashed member must not end the swarm
+    };
+    w.onmessageerror = () => failAll("The on-device engine sent an unreadable message.");
+    return w;
+  };
+
+  return {
+    generate({ modelId, messages, maxTokens, json, onToken }) {
+      return new Promise((resolve, reject) => {
+        const id = ++seq;
+        pending.set(id, { resolve, reject, onToken: onToken || (() => {}) });
+        ensure().postMessage({
+          t: "generate",
+          id,
+          modelId,
+          messages,
+          maxTokens: Math.min(maxTokens || ONDEVICE_MAX_TOKENS, ONDEVICE_MAX_TOKENS),
+          json: !!json,
+        });
+      });
+    },
+    terminate() {
+      failAll("The swarm was stopped.");
+      try {
+        w?.terminate();
+      } catch {
+        /* already gone */
+      }
+      w = null;
+      dbg("swarm member terminated", label);
+    },
+  };
+}
+
 // ---- the provider entry ----------------------------------------------------------------
 
 /**

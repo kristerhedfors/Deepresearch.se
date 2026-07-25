@@ -237,6 +237,10 @@ export const CAPABILITY_EVENTS = {
   "quiz": { label: "Quiz", desc: "the inline interactive quiz" },
   "workflow": { label: "Workflow", desc: "the planned sub-agent DAG", serverOnly: true },
   "agent_update": { label: "Agent update", desc: "one workflow node's lifecycle", serverOnly: true },
+  // Client-emitted (the swarm runs in the user's browser — swarm-core.js
+  // swarmUpdateEvent), so deliberately NOT serverOnly: a Se/cure-side agent
+  // could emit it without a server in the path at all.
+  "swarm_update": { label: "Swarm update", desc: "a local-swarm node's members, round and agreement" },
   "build": { label: "Build", desc: "the published app's slug + URL", serverOnly: true },
 };
 

@@ -31,6 +31,7 @@ import {
   MAX_ORCH_SEARCHES,
   agentTaskPrompt,
   agentUpdateEvent,
+  clampResult,
   findWorkflowAgent,
   mergeAgentResults,
   normalizeWorkflow,
@@ -58,23 +59,48 @@ export async function runOrchestration(ctx) {
   const { state, emit } = ctx;
   const anyState = /** @type {any} */ (state);
   const hasSource = !!anyState.sourceSnapshot;
+  // The client's SWARM capability (chat.js `swarm`): this browser can host
+  // on-device models, so the plan phase may use the `swarm` kind and the
+  // pre-pass may already have run those nodes here.
+  const swarm = anyState.swarm || null;
+  const swarmResults = anyState.swarmResults || {};
 
   // ---- Phase 1: plan (JSON mode, fixed jsonModel) -------------------------
-  ctx.step("plan", "Planning the sub-agent team…");
+  //
+  // TWO WAYS IN. Normally this phase plans the team. But a swarm node runs in
+  // the USER'S BROWSER, and one streamed request has no channel back to it —
+  // so when the client can host a swarm it asks /api/orchestrator/plan FIRST
+  // (src/orchestrator-api.js, the same JSON call on the same model), runs the
+  // swarm nodes locally, and sends the finished plan plus their briefs with
+  // this request. The plan still arrives as untrusted JSON and goes through
+  // the same normalizeWorkflow gate — the client chose nothing the plan model
+  // could not have chosen on its own.
+  const preplanned = anyState.orchWorkflow ? normalizeWorkflow(anyState.orchWorkflow, { hasSource, hasSwarm: !!swarm }) : null;
+  ctx.step("plan", preplanned ? "Assembling the sub-agent team…" : "Planning the sub-agent team…");
   let raw = null;
-  try {
-    const r = await completeJson(
-      ctx.env,
-      [{ role: "user", content: phasePrompt(state, "workflow", "plan")({ message: /** @type {any} */ (ctx).cleanLastUser || ctx.lastUser, hasSource }) }],
-      { model: ctx.jsonModel, maxTokens: ORCH_PLAN_MAX_TOKENS },
-    );
-    addUsage(state.jsonTotals, r.usage);
-    ctx.log.info("chat.json_diag", { phase: "orch_plan", model: ctx.jsonModel, ...r.diagnostics });
-    raw = r.value;
-  } catch (/** @type {any} */ err) {
-    ctx.log.warn("chat.phase_failed", { phase: "orch_plan", model: ctx.jsonModel, error: err?.message || String(err) });
+  if (!preplanned) {
+    try {
+      const r = await completeJson(
+        ctx.env,
+        [{
+          role: "user",
+          content: phasePrompt(state, "workflow", "plan")({
+            message: /** @type {any} */ (ctx).cleanLastUser || ctx.lastUser,
+            hasSource,
+            hasSwarm: !!swarm,
+            swarmModel: swarm?.modelLabel || "",
+          }),
+        }],
+        { model: ctx.jsonModel, maxTokens: ORCH_PLAN_MAX_TOKENS },
+      );
+      addUsage(state.jsonTotals, r.usage);
+      ctx.log.info("chat.json_diag", { phase: "orch_plan", model: ctx.jsonModel, ...r.diagnostics });
+      raw = r.value;
+    } catch (/** @type {any} */ err) {
+      ctx.log.warn("chat.phase_failed", { phase: "orch_plan", model: ctx.jsonModel, error: err?.message || String(err) });
+    }
   }
-  let plan = normalizeWorkflow(raw, { hasSource });
+  let plan = preplanned || normalizeWorkflow(raw, { hasSource, hasSwarm: !!swarm });
   if (!plan) plan = fallbackPlan(ctx);
   const { waves } = workflowWaves(plan);
   emit({ status: /** @type {any} */ (workflowEvent(plan)) });
@@ -87,6 +113,25 @@ export async function runOrchestration(ctx) {
   // ---- Phase 2: execute the workflow, wave by wave ------------------------
   /** @type {Record<string, { status: string, text?: string, note?: string }>} */
   const results = {};
+  // Nodes the BROWSER already ran (swarm) enter as finished work — their
+  // status is announced so a client that missed the local run (a reopened
+  // conversation, a second tab replaying the stream) still sees the node done.
+  let swarmNodes = 0;
+  for (const agent of plan.agents) {
+    if (agent.kind !== "swarm") continue;
+    const done = swarmResults[agent.id];
+    if (!done?.text) continue;
+    swarmNodes++;
+    results[agent.id] = { status: "done", text: clampResult(done.text) };
+    emit({
+      status: /** @type {any} */ (agentUpdateEvent(agent.id, "done", { chars: String(done.text).length })),
+    });
+    ctx.step(`agent_${agent.id}`, `${agent.name} ran in your browser`);
+    ctx.stepDone(
+      `agent_${agent.id}`,
+      `${agent.name} — ${done.members || "?"} on-device members, ${Math.round((done.agreement || 0) * 100)}% agreement`,
+    );
+  }
   const searchBudget = { used: 0 };
   let failed = 0;
   for (const wave of waves) {
@@ -97,6 +142,7 @@ export async function runOrchestration(ctx) {
       wave.map(async (id) => {
         const agent = findWorkflowAgent(plan, id);
         if (!agent) return;
+        if (results[id]) return; // already done in the browser (a swarm node)
         const stepId = `agent_${id}`;
         emit({ status: /** @type {any} */ (agentUpdateEvent(id, "running")) });
         ctx.step(stepId, `${agent.name} working…`);
@@ -119,6 +165,20 @@ export async function runOrchestration(ctx) {
   }
   // Meta for the chat log (the chat-logs skill greps on this).
   anyState.orchestration = { agents: plan.agents.length, waves: waves.length, failed, searches: searchBudget.used };
+  if (swarm || swarmNodes) {
+    // What the browser actually did — the only trace of a client-hosted swarm
+    // the server can log (the reasoning itself never leaves the device).
+    anyState.orchestration.swarm = {
+      nodes: swarmNodes,
+      members: Object.values(swarmResults).reduce((n, r) => n + (Number(/** @type {any} */ (r)?.members) || 0), 0),
+      agreement: swarmNodes
+        ? Math.round(
+            (Object.values(swarmResults).reduce((n, r) => n + (Number(/** @type {any} */ (r)?.agreement) || 0), 0) / swarmNodes) * 100,
+          ) / 100
+        : 0,
+      model: swarm?.modelId || "",
+    };
+  }
 
   // ---- Phase 3: merge (streamed on the user's model) ----------------------
   ctx.step("synth", "Merging the team's briefs…");
@@ -181,6 +241,16 @@ async function runAgentNode(ctx, plan, agent, results, searchBudget) {
 
   let grounding = "";
   if (agent.kind === "deep_research") grounding = await runNodeSearches(ctx, agent, searchBudget);
+  if (agent.kind === "swarm") {
+    // A swarm node the browser did NOT deliver (the device dropped out, every
+    // member failed, or the client never ran the pre-pass). It is still a
+    // task that needs answering: run it here as an ordinary specialist and
+    // say so, rather than handing the merge a hole. The reverse case — a
+    // delivered swarm — never reaches this function.
+    grounding =
+      "Note: this task was meant to be answered by a swarm of small models in the user's browser, which did not deliver. " +
+      "Answer it yourself, and keep the answer appropriately hedged.";
+  }
   if (agent.kind === "introspection") {
     const block = await retrieveSourceBlockFor(ctx.env, ctx.log, agent.task, /** @type {any} */ (ctx.state).sourceSnapshot || null);
     grounding = block || "";

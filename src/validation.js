@@ -211,6 +211,43 @@ export function resolveShellTranscript(raw) {
 }
 
 /**
+ * Coerces the client's `swarm_results` — the briefs the browser's on-device
+ * SWARM produced for the workflow's swarm nodes (public/js/swarm-runtime.js)
+ * before the request was sent. Untrusted like every other client block: keys
+ * must look like agent ids, the brief is clamped to one node's result budget,
+ * and the reported member/agreement figures are coerced to numbers used for
+ * nothing but the activity line and the chat-log meta. Junk degrades to `{}`,
+ * which makes the request identical to one where no swarm ran.
+ * @param {any} raw
+ * @returns {Record<string, { text: string, agreement: number, members: number, rounds: number, failed: number }>}
+ */
+export function resolveSwarmResults(raw) {
+  /** @type {Record<string, any>} */
+  const out = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const [id, v] of Object.entries(raw)) {
+    if (!/^[a-z][a-z0-9-]{0,23}$/.test(id)) continue;
+    const rec = /** @type {any} */ (v);
+    const text = rec && typeof rec.text === "string" ? rec.text.trim() : "";
+    if (!text) continue;
+    const num = (/** @type {any} */ n, /** @type {number} */ hi) =>
+      Math.max(0, Math.min(hi, Number.isFinite(Number(n)) ? Number(n) : 0));
+    out[id] = {
+      text: text.slice(0, MAX_SWARM_RESULT_CHARS),
+      agreement: num(rec.agreement, 1),
+      members: Math.round(num(rec.members, 64)),
+      rounds: Math.round(num(rec.rounds, 8)),
+      failed: Math.round(num(rec.failed, 64)),
+    };
+    if (Object.keys(out).length >= 4) break; // a plan may carry at most a couple
+  }
+  return out;
+}
+
+/** One swarm brief's ceiling — the orchestrator clamps again at MAX_RESULT_CHARS. */
+const MAX_SWARM_RESULT_CHARS = 8000;
+
+/**
  * Coerces the client's diagnostic block (public/js/stream.js client_diag) to a
  * small, whitelisted shape for the chat log — untrusted, so every field is
  * typed and bounded. Undefined (dropped by JSON.stringify) when absent.

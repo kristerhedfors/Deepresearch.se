@@ -44,6 +44,7 @@ export { quotaBlockedResponse } from "./quota.js";
 import {
   resolveModel,
   resolveShellTranscript,
+  resolveSwarmResults,
   sanitizeClientDiag,
   validateImageLocations,
   validateMessages,
@@ -51,6 +52,7 @@ import {
 import { extensionLogMeta, resolveExtensionState } from "./extensions.js";
 import { bashLiteEnabled, developerModeEnabled, extensionEnabledMap } from "./settings.js";
 import { buildSlugOk } from "./build-pub.js";
+import { normalizeSwarmCapability } from "./orchestrator-api.js";
 import { loadAgentRegistry, routingNeedsRegistry } from "./agent-registry.js";
 import { resolvePromptSet, resolveRequestAgent } from "./agent-spec.js";
 import { buildFeedbackDebugContext, createOrThreadFeedbackEntry, feedbackPageTag } from "./feedback.js";
@@ -91,6 +93,15 @@ import { normalizeSearchSource } from "./websearch-backends.js";
  *   JSON-planned team of sub-agents executed in parallel waves, then one merged
  *   answer. Honored only when the caller's developer_mode knob grants the
  *   capability — the same gate as sdk_mode
+ * @property {any} [swarm] what the caller's BROWSER can host for the Orchestrator's
+ *   `swarm` node kind ({modelId, modelLabel} — public/js/swarm-runtime.js
+ *   detectSwarmCapability). Its presence is what allows a plan to use the kind
+ * @property {any} [workflow] a sub-agent plan the client already fetched from
+ *   /api/orchestrator/plan (so it could run the swarm nodes locally first).
+ *   Re-normalized before use; ignored outside orchestrator mode
+ * @property {any} [swarm_results] agent id → the brief that node's on-device swarm
+ *   produced in the browser ({text, agreement, members, rounds, failed}).
+ *   Clamped by resolveSwarmResults; ignored outside orchestrator mode
  * @property {boolean} [outrospection_mode] Outrospection mode: route this request
  *   to the outward feed (src/outrospect.js runOutrospection) — introspection's
  *   mirror image, answering from what everyone ELSE shipped rather than from
@@ -129,7 +140,10 @@ import { normalizeSearchSource } from "./websearch-backends.js";
  *   promptSet?: string | null,
  *   sdkMode?: boolean,
  *   orchestratorMode?: boolean,
- *   orchestration?: { agents: number, waves: number, failed: number, searches: number },
+ *   orchestration?: { agents: number, waves: number, failed: number, searches: number, swarm?: { nodes: number, members: number, agreement: number, model: string } },
+ *   swarm?: { modelId: string, modelLabel: string } | null,
+ *   orchWorkflow?: any,
+ *   swarmResults?: Record<string, { text: string, agreement: number, members: number, rounds: number, failed: number }>,
  *   outrospectionMode?: boolean,
  *   outrospection?: { lens: string | null, items: number, live: boolean },
  *   buildSlug?: string | null,
@@ -289,6 +303,16 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // (defense: a client can't smuggle a transcript in with the feature off);
   // folded into the answer as ground truth by the pipeline (ctx.shellBlock).
   const shellTranscript = bashLiteEnabled(env, identity) ? resolveShellTranscript(body.shell_transcript) : [];
+  // The Orchestrator's client-hosted SWARM (public/js/swarm-runtime.js): this
+  // browser can run tiny on-device models, so it asked /api/orchestrator/plan
+  // for the team first, ran the `swarm` nodes locally, and attached the plan
+  // plus their briefs here. Honored only in orchestrator mode (a client can't
+  // smuggle a pre-made workflow into an ordinary request), and re-normalized
+  // by the executor — the plan is model output that took a detour through the
+  // browser, not a client instruction.
+  const swarm = orchOn ? normalizeSwarmCapability(body.swarm) : null;
+  const orchWorkflow = orchOn && body.workflow && typeof body.workflow === "object" ? body.workflow : null;
+  const swarmResults = orchOn ? resolveSwarmResults(body.swarm_results) : {};
 
   // Stale-client auto-heal. A knob-on account whose request carries NO
   // client_diag (public/js/stream.js has attached it since the sandbox fixes)
@@ -361,6 +385,9 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       sandboxEnabled: bashLiteEnabled(env, identity),
       sdkMode: sdkOn,
       orchestratorMode: orchOn,
+      swarm,
+      orchWorkflow,
+      swarmResults,
       outrospectionMode: outroOn,
       answerPhase,
       agentId,
@@ -836,7 +863,7 @@ export function resolveJsonModel(catalog, userModel) {
  * @param {string} jsonModel
  * @param {boolean} webSearch
  * @param {number} budgetS
- * @param {Partial<EnrichmentOptions> & { searchSource?: string, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, outrospectionMode?: boolean, answerPhase?: string | null, agentId?: string | null, promptSet?: string | null, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
+ * @param {Partial<EnrichmentOptions> & { searchSource?: string, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, swarm?: any, orchWorkflow?: any, swarmResults?: any, outrospectionMode?: boolean, answerPhase?: string | null, agentId?: string | null, promptSet?: string | null, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
  * @returns {ChatRequestState}
  */
 function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
@@ -887,6 +914,15 @@ function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
     // runOrchestration: a JSON-planned sub-agent workflow replaces the
     // normal research flow for this request.
     orchestratorMode: !!extras.orchestratorMode,
+    // The client-hosted SWARM (orchestrator mode only): `swarm` is what this
+    // browser can run on-device (presence enables the `swarm` node kind),
+    // `orchWorkflow` is the plan it already fetched from
+    // /api/orchestrator/plan (re-normalized by the executor before use), and
+    // `swarmResults` holds the briefs its on-device members produced. All
+    // three absent = the ordinary server-planned orchestration.
+    swarm: extras.swarm || null,
+    orchWorkflow: extras.orchWorkflow || null,
+    swarmResults: extras.swarmResults || {},
     // Outrospection mode — pipeline.js routes to outrospect.js
     // runOutrospection: the outward feed replaces both the web research and
     // the own-source retrieval for this request.

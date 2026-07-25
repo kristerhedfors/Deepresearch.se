@@ -174,6 +174,15 @@ unknown `status` types (forward compatibility).
   the workflow view AND the statuses map stored on the workflow embed, so the
   persisted record always carries the latest node states (an interrupted run
   honestly re-renders as "running").
+- `{"status":{"type":"swarm_update","id":"weigh","round":2,"rounds":3,"agreement":0.62,"members":["done","running","loading","failed"],"model":"Bonsai 1.7B · 1-bit","phase":"critique"}}`
+  — one `swarm` node's live state: per-member status, the round counter and the
+  measured peer agreement (public/js/swarm-core.js `swarmUpdateEvent`;
+  `docs/SWARM-REASONING.md`). Today it is produced CLIENT-SIDE — the swarm runs
+  in the user's own browser before the request is sent — and dispatched through
+  the same stream.js branch a wire event would take, so a future server-hosted
+  swarm needs no client change. The client updates the node's member strip in
+  the workflow view and the statuses map on the embed; old clients ignore it
+  and still see the node's ordinary `agent_update` transitions.
 - `{"status":{"type":"discard_text"}}` — clear the answer streamed so far and
   keep waiting (post-validation found problems; the corrected answer follows)
 - `{"status":{"type":"done","model":"mistralai/…","rounds":2,"searches":4,"duration_ms":6400,"prompt_tokens":1234,"completion_tokens":97}}` — stats footer

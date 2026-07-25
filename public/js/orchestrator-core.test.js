@@ -212,11 +212,79 @@ test("agentUpdateEvent normalizes status and bounds the note", () => {
 });
 
 test("kind registry is closed and self-describing", () => {
-  assert.deepEqual(AGENT_KIND_IDS.sort(), ["custom", "deep_research", "introspection"]);
+  assert.deepEqual(AGENT_KIND_IDS.slice().sort(), ["custom", "deep_research", "introspection", "swarm"]);
   for (const k of AGENT_KIND_IDS) {
     assert.ok(AGENT_KINDS[k].label && AGENT_KINDS[k].desc);
     assert.equal(typeof AGENT_KINDS[k].needsSource, "boolean");
+    assert.equal(typeof AGENT_KINDS[k].needsSwarm, "boolean");
   }
+});
+
+// ---- the swarm kind (client-hosted: public/js/swarm-runtime.js) --------------
+
+test("swarm nodes need a capable device — no capability downgrades to custom", () => {
+  const raw = { agents: [{ id: "s", kind: "swarm", task: "Weigh the options.", swarmSize: 8, rounds: 3 }] };
+  assert.equal(normalizeWorkflow(raw, { hasSwarm: true }).agents[0].kind, "swarm");
+  // Knob off / no cached weights / an older client that never announced it:
+  // the task still runs, as an ordinary specialist on the answer model.
+  const plain = normalizeWorkflow(raw).agents[0];
+  assert.equal(plain.kind, "custom");
+  assert.equal(plain.swarmSize, undefined);
+});
+
+test("swarm nodes carry clamped member/round counts", () => {
+  const plan = normalizeWorkflow(
+    {
+      agents: [
+        { id: "big", kind: "swarm", task: "A.", swarmSize: 99, rounds: 9 },
+        { id: "small", kind: "swarm", task: "B.", swarmSize: 1, rounds: 0 },
+        { id: "bare", kind: "swarm", task: "C." },
+      ],
+    },
+    { hasSwarm: true },
+  );
+  assert.deepEqual(plan.agents.map((a) => a.swarmSize), [12, 2, 4]);
+  assert.deepEqual(plan.agents.map((a) => a.rounds), [3, 1, 2]);
+});
+
+test("a swarm node can never depend on another agent (it runs before the request)", () => {
+  const plan = normalizeWorkflow(
+    {
+      agents: [
+        { id: "res", kind: "deep_research", task: "Look it up.", queries: ["q"] },
+        { id: "sw", kind: "swarm", task: "Judge it.", deps: ["res"] },
+        { id: "critic", kind: "custom", task: "Combine.", deps: ["sw", "res"] },
+      ],
+    },
+    { hasSwarm: true },
+  );
+  assert.deepEqual(plan.agents[1].deps, [], "the invented dependency is dropped");
+  assert.deepEqual(plan.agents[2].deps, ["sw", "res"], "depending ON a swarm is fine");
+  assert.deepEqual(workflowWaves(plan).waves, [["res", "sw"], ["critic"]]);
+  // And validateWorkflow reports the same rule on a hand-written plan.
+  assert.ok(
+    validateWorkflow({ agents: [{ id: "a", kind: "custom", task: "t" }, { id: "sw", kind: "swarm", task: "t", deps: ["a"] }] })
+      .some((p) => p.includes("cannot depend")),
+  );
+});
+
+test("the plan prompt offers the swarm kind only when the device can host one", () => {
+  const without = orchestratorPlanPrompt({ message: "Rank these three options." });
+  assert.ok(!without.includes('"swarm"'));
+  const with_ = orchestratorPlanPrompt({ message: "Rank these three options.", hasSwarm: true, swarmModel: "Bonsai 1.7B · 1-bit" });
+  assert.ok(with_.includes('"swarm"'));
+  assert.ok(with_.includes("Bonsai 1.7B · 1-bit"));
+  assert.ok(with_.includes("swarmSize"));
+  assert.ok(/CANNOT have "deps"/.test(with_));
+});
+
+test("workflowEvent carries the swarm's shape so the graph can draw its members", () => {
+  const plan = normalizeWorkflow({ agents: [{ id: "s", kind: "swarm", task: "Judge.", swarmSize: 6 }] }, { hasSwarm: true });
+  const ev = workflowEvent(plan);
+  assert.equal(ev.agents[0].swarmSize, 6);
+  assert.equal(ev.agents[0].rounds, 2);
+  // Non-swarm nodes stay exactly as they were.
+  assert.equal(workflowEvent(goodPlan).agents[0].swarmSize, undefined);
 });
 
 test("findWorkflowAgent looks up by id", () => {
