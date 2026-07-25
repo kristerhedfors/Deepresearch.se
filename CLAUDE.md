@@ -206,7 +206,7 @@ skill's drift greps target it).
 ## Tests
 
 ```bash
-npm test            # unit: node --test src/*.test.js public/js/*.test.js sdk/*.test.mjs
+npm test            # unit: node --test src/*.test.js public/js/*.test.js sdk/*.test.mjs scripts/*.test.mjs
 npm run typecheck   # zero-build-step tsc, strict, opt-in per file via // @ts-check
 cd tests && npm install && npm run fixtures   # e2e setup (once)
 npm run test:mocked                           # Playwright vs live site, /api/chat intercepted (free)
@@ -286,7 +286,7 @@ Workflow & docs:
 - **merge-branches** — reconciling unmerged feature branches; the merged-branch ledger `docs/MERGED-BRANCHES.md` + push guard.
 - **pr** — the one-word trigger that PREPARES the branch: rebase, regenerate artifacts, test gate, push, open a focused PR.
 - **deploy** — how code reaches production; branch preview URLs; the commit-signing / Verified-badge remediation.
-- **refactor-clarity** — refactoring for clarity here without breaking anything: the pure-core convention, what to preserve.
+- **refactor-clarity** — refactoring for clarity here without breaking anything: the five gates a cut must pass, the pure-core convention, what to preserve, the `scripts/dup-scan.mjs` survey, and the standing-decline register so a pass never re-argues a settled candidate.
 - **update-docs** — reconciling the whole documentation surface with the code: the inventory, drift greps, regenerate rules.
 - **docs-drift-validation** — bottom-up docs⇄code validation: the doc-age drift scan, layer walk, and the OWNER-checkmark loop for capability/posture drift (ledger `docs/DOC-DRIFT-LOG.md`).
 - **anti-ai-smell** — removing AI smell (LLM writing tells) from documentation prose: the tell taxonomy, the two de-smell modes, the fact-preservation contract, and the runnable Vale style. The one place rewriting docs for STYLE is the goal (update-docs deliberately does not); docs files only, never code. It is ALSO the **Clean step** wired into every doc pipeline (owner directive, 2026-07-23): any doc updated or changed — via update-docs, docs-drift-validation, pr, or a hand edit — leaves the pass **Cleaned** (the anti-ai-smell tail applied in place to the touched prose). We keep only that.
@@ -319,6 +319,7 @@ Debugging & live verification:
 - **bugreport-bugfix** — keyword → chatlogs search → replay through the gates → fix with the verbatim message as a test.
 - **on-device-trace** — remote-debugging device-only bugs (iOS PWA) via build stamp + copyable on-device event trace.
 - **sandbox-debug** — the sandbox boot-hang playbook: debug switches, the `boot_stage` timeline, the stall watchdog.
+- **sandbox-perf-eval** — measuring how long sandbox commands take: the cold/warm battery + agent-turn trace, and the two traps (cross-origin auth kills the boot; the 30 s ceiling destroys the VM).
 
 Feedback, boards & testing loops:
 
@@ -335,6 +336,7 @@ Features & surfaces:
 
 - **execution-sandbox** — the in-browser Linux sandbox + bash-lite agent: COEP isolation, the fenced-block loop, file mounts.
 - **introspection** — introspection mode / `developer_mode`: the committed snapshot + rag artifacts, both tiers' wiring.
+- **outrospection** — introspection's mirror image, the outward feed at `/outrospect/`: the seven-lens registry, the offline scan + per-visit refresh that fill it, and the feedback STRATEGY lane.
 - **sdk-mode** — the green Agent Studio "lovable experience" mode: the chat-mode dropdown (Deep Research / Introspection / Agent Studio), the Platform-SDK (DistillSDK) build flow that distils an individual agent OR a whole platform, `/app/<slug>/` publishing, the MCP `sdk_*` tools.
 - **orchestrator-mode** — the violet sub-agent workflow mode: one JSON plan phase decomposes a request into a team of sub-agents (Deep Research / Introspection / custom) the Worker runs in parallel waves, the `workflow`/`agent_update` SSE events, the live workflow graph view.
 - **publish-app** — the admin/CLI bridge (`scripts/publish-app`, `PUT /api/build/:slug`) that publishes an already-built bundle (sandbox outbox, hand-assembled files) into sdk-mode's `/app/<slug>/` without a chat/tool loop.

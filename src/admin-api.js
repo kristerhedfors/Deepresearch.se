@@ -56,6 +56,7 @@ import { handleAdminTestpoints } from "./testpoints.js";
 import { handleAdminBoards } from "./admin-boards.js";
 import { handleAdminServerErrors } from "./server-errors.js";
 import { handleAdminSpaceFeedback } from "./space.js";
+import { handleAdminOutrospect } from "./outrospect.js";
 import { handleAdminWebSearch } from "./websearch.js";
 import { webSearch } from "./exa.js";
 import { resolveSearchBackend } from "./websearch-backends.js";
@@ -182,6 +183,12 @@ export async function handleAdminApi(request, env, url, log, identity) {
     // newest-first entries + per-scene 👍/👎 tallies; ?format=text for loops.
     if (path === "/space-feedback" && method === "GET") {
       return handleAdminSpaceFeedback(request, env, url);
+    }
+    // The outrospection feed (src/outrospect.js): the live outward-looking
+    // stream plus its refresh-run log; ?format=text for the agent loop, which
+    // reads it to see what the world did that the project should answer.
+    if (path === "/outrospect" && method === "GET") {
+      return handleAdminOutrospect(env, url);
     }
     // The admin-BOARDS discovery index (src/admin-boards.js): one call that
     // lists every Claude-fetchable board and how to pull its prioritized

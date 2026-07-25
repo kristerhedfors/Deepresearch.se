@@ -22,6 +22,7 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { SUBJECTS, tagCommit, subjectRegistry } from "./pulse-themes.mjs";
+import { toCetIso } from "./pulse-time.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = join(ROOT, "public", "pulse", "timeline.json");
@@ -41,31 +42,6 @@ const GENERATED = [
   /\.lock$/,
 ];
 const isGenerated = (path) => GENERATED.some((re) => re.test(path));
-
-// --- CET/CEST (Europe/Stockholm) normalisation, mirrored from build-pulse.mjs
-// so both pages bucket the same instant onto the same calendar day. ----------
-const CET_TZ = "Europe/Stockholm";
-const CET_PARTS = new Intl.DateTimeFormat("en-GB", {
-  timeZone: CET_TZ, hourCycle: "h23",
-  year: "numeric", month: "2-digit", day: "2-digit",
-  hour: "2-digit", minute: "2-digit", second: "2-digit",
-});
-function cetOffsetMinutes(instant) {
-  const asUTC = new Date(instant.toLocaleString("en-US", { timeZone: "UTC" }));
-  const asCET = new Date(instant.toLocaleString("en-US", { timeZone: CET_TZ }));
-  return Math.round((asCET.getTime() - asUTC.getTime()) / 60000);
-}
-function toCetIso(gitIso) {
-  if (!gitIso) return "";
-  const instant = new Date(gitIso);
-  if (Number.isNaN(instant.getTime())) return gitIso;
-  const p = Object.fromEntries(CET_PARTS.formatToParts(instant).map((x) => [x.type, x.value]));
-  const off = cetOffsetMinutes(instant);
-  const sign = off >= 0 ? "+" : "-";
-  const oh = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
-  const om = String(Math.abs(off) % 60).padStart(2, "0");
-  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}${sign}${oh}:${om}`;
-}
 
 function readCommits() {
   const raw = execFileSync(

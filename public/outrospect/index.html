@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeepResearch.se — outrospection</title>
+  <link rel="icon" href="/favicon.ico?v=4" sizes="48x48">
+  <meta name="theme-color" content="#141414">
+  <meta name="description" content="The outward-looking feed: libraries, browser-runnable models, edge RAG, LLM application architecture, privacy, agent standards, and other deep-research systems — everything outside this repo that bears on what it should become.">
+  <style>
+    /* A newsprint surface on purpose. Introspection's window into the source
+       is titanium-white and clinical; this one is a front page — condensed
+       headlines, hairline rules, a red flash on what's new. The mode themes
+       (dev-mode titanium, sdk green, orch violet) are the CHAT's vocabulary;
+       this is a separate page and reads as a separate object. */
+    :root {
+      --bg: #f4f1ea; --panel: #fffdf8; --rule: #d8d2c4; --rule-strong: #1b1a17;
+      --ink: #16150f; --muted: #5d584c; --accent: #8f1d14; --flash: #c62612;
+      --chip: #eae5da; --chip-on: #16150f; --chip-on-ink: #fffdf8;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #131211; --panel: #1b1a18; --rule: #322f2a; --rule-strong: #cfc9ba;
+        --ink: #ece7db; --muted: #a09884; --accent: #e8705f; --flash: #ff5a41;
+        --chip: #262421; --chip-on: #ece7db; --chip-on-ink: #131211;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      margin: 0; padding: 1.1rem 1rem 4rem; color: var(--ink); line-height: 1.5;
+      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      background: var(--bg);
+    }
+    main { max-width: 860px; margin: 0 auto; }
+
+    /* Masthead */
+    .masthead { border-bottom: 3px double var(--rule-strong); padding-bottom: .7rem; }
+    .toprow { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+    h1 {
+      margin: 0; font-size: clamp(1.7rem, 6vw, 2.6rem); letter-spacing: -.02em;
+      font-weight: 800; text-transform: uppercase;
+    }
+    h1 .out { color: var(--accent); }
+    a.back {
+      font-family: system-ui, sans-serif; font-size: .78rem; font-weight: 600;
+      text-decoration: none; color: var(--muted); border: 1px solid var(--rule);
+      border-radius: 999px; padding: .3rem .7rem; white-space: nowrap;
+    }
+    a.back:hover { color: var(--ink); border-color: var(--rule-strong); }
+    .standfirst { margin: .5rem 0 0; font-size: .95rem; color: var(--muted); max-width: 62ch; }
+    .standfirst b { color: var(--ink); }
+
+    /* Lens strip */
+    .lenses { display: flex; flex-wrap: wrap; gap: .35rem; margin: .9rem 0 .3rem; }
+    .chip {
+      font-family: system-ui, sans-serif; font-size: .74rem; font-weight: 600;
+      display: inline-flex; align-items: center; gap: .35rem; cursor: pointer;
+      background: var(--chip); color: var(--ink); border: 1px solid transparent;
+      border-radius: 999px; padding: .32rem .68rem;
+    }
+    .chip:hover { border-color: var(--rule-strong); }
+    .chip.on { background: var(--chip-on); color: var(--chip-on-ink); }
+    .chip-n { opacity: .6; font-variant-numeric: tabular-nums; }
+    .chip-new { color: var(--flash); font-weight: 800; }
+    .chip.on .chip-new { color: #ff9b8a; }
+    .lensquestion {
+      font-size: .88rem; color: var(--muted); font-style: italic;
+      margin: .35rem 0 0; border-left: 2px solid var(--rule); padding-left: .7rem;
+    }
+
+    /* Control bar */
+    .controls {
+      display: flex; align-items: center; gap: .7rem; flex-wrap: wrap;
+      margin: .9rem 0 0; padding: .7rem 0; border-top: 1px solid var(--rule);
+      border-bottom: 1px solid var(--rule);
+    }
+    button.look {
+      font-family: system-ui, sans-serif; font-size: .82rem; font-weight: 700;
+      background: var(--accent); color: #fffdf8; border: 0; border-radius: 8px;
+      padding: .5rem .9rem; cursor: pointer;
+    }
+    button.look:disabled { opacity: .5; cursor: progress; }
+    #status { font-family: system-ui, sans-serif; font-size: .8rem; color: var(--muted); }
+
+    /* The feed */
+    #feed { margin-top: 1.2rem; }
+    .item { padding: 1rem 0; border-bottom: 1px solid var(--rule); }
+    .item.fresh { border-left: 3px solid var(--flash); padding-left: .85rem; margin-left: -.85rem; }
+    .kicker {
+      margin: 0 0 .2rem; font-family: system-ui, sans-serif; font-size: .68rem;
+      font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--muted);
+      display: flex; align-items: center; gap: .55rem; flex-wrap: wrap;
+    }
+    .flash {
+      background: var(--flash); color: #fff; border-radius: 3px;
+      padding: .06rem .34rem; letter-spacing: .06em;
+    }
+    .headline { margin: 0 0 .3rem; font-size: 1.22rem; line-height: 1.22; font-weight: 700; }
+    .headline a { color: var(--ink); text-decoration: none; }
+    .headline a:hover { color: var(--accent); text-decoration: underline; }
+    .teaser { margin: 0 0 .35rem; font-size: .94rem; color: var(--muted); }
+    .byline {
+      margin: 0; font-family: system-ui, sans-serif; font-size: .72rem; color: var(--muted);
+      display: flex; gap: .4rem;
+    }
+    .byline .src { font-weight: 600; }
+    .empty { color: var(--muted); font-style: italic; padding: 2rem 0; }
+
+    /* The shortcut back */
+    .note-box {
+      margin-top: 2rem; background: var(--panel); border: 1px solid var(--rule);
+      border-radius: 12px; padding: 1rem 1.1rem;
+    }
+    .note-box h2 {
+      margin: 0 0 .3rem; font-size: .8rem; text-transform: uppercase;
+      letter-spacing: .09em; font-family: system-ui, sans-serif; color: var(--muted);
+    }
+    .note-box p { margin: 0 0 .6rem; font-size: .88rem; color: var(--muted); }
+    textarea {
+      width: 100%; min-height: 5.5rem; resize: vertical; font: inherit; font-size: .92rem;
+      background: var(--bg); color: var(--ink); border: 1px solid var(--rule);
+      border-radius: 8px; padding: .6rem .7rem;
+    }
+    .note-actions { display: flex; align-items: center; gap: .7rem; margin-top: .6rem; flex-wrap: wrap; }
+    button.send {
+      font-family: system-ui, sans-serif; font-size: .82rem; font-weight: 700;
+      background: var(--chip-on); color: var(--chip-on-ink); border: 0;
+      border-radius: 8px; padding: .5rem .9rem; cursor: pointer;
+    }
+    #notestatus { font-family: system-ui, sans-serif; font-size: .78rem; color: var(--muted); }
+    footer {
+      margin-top: 2rem; padding-top: .8rem; border-top: 1px solid var(--rule);
+      font-family: system-ui, sans-serif; font-size: .76rem; color: var(--muted);
+    }
+    footer a { color: var(--muted); }
+  </style>
+</head>
+<body>
+<main>
+  <header class="masthead">
+    <div class="toprow">
+      <h1><span class="out">Out</span>rospection</h1>
+      <a class="back" href="/rver">← Back to the app</a>
+    </div>
+    <p class="standfirst">
+      Introspection reads this site's own source. This reads everyone
+      <b>else's</b> — libraries big enough to become our one dependency, models that
+      finally run in a browser tab, retrieval tricks that need no cloud, other people's
+      LLM architectures, and the other deep-research systems we are measured against.
+      You learn what a thing is by looking outward at what it isn't.
+    </p>
+  </header>
+
+  <div id="lensstrip"></div>
+  <p class="lensquestion" id="lensquestion"></p>
+
+  <div class="controls">
+    <button class="look" id="lookbtn" type="button">Look outward now</button>
+    <span id="status">Loading the feed…</span>
+  </div>
+
+  <section id="feed"></section>
+
+  <section class="note-box">
+    <h2>Shortcut back</h2>
+    <p>
+      Something here change what this project should do? Write it down. A note sent from
+      this page is filed as an <b>operative or strategic idea</b> — direction for the
+      project, filed against the lens you are reading — not as a bug report.
+    </p>
+    <textarea id="note" placeholder="e.g. “This library is small enough and stable enough to be the one dependency — it would replace the hand-rolled retrieval layer.”"></textarea>
+    <div class="note-actions">
+      <button class="send" id="notebtn" type="button">Send as a strategic note</button>
+      <span id="notestatus"></span>
+    </div>
+  </section>
+
+  <footer>
+    The feed is search results, ranked and deduped — no model decides what appears here.
+    Its queries are the literal strings committed in the lens registry
+    (<code>public/js/outrospect-core.js</code>), so what leaves this site is auditable in git;
+    the stored rows carry the article and never the reader.
+    Bulk-fill it with <code>npm run outrospect</code>.
+    · <a href="/pulse/">Project pulse</a>
+    · <a href="/help/">Documentation</a>
+  </footer>
+</main>
+<script type="module" src="/js/outrospect-view.js"></script>
+</body>
+</html>

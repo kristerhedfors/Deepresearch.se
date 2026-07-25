@@ -229,6 +229,7 @@ export function orchestratorPlanPrompt(args) {
 - Each agent gets ONE focused task (max ~2 sentences). A "custom" agent also gets a one-line persona.
 - "deps" lists agent ids whose results the agent needs; agents without deps run concurrently. At most ${MAX_WAVES} sequential stages; a final reviewer/critic depending on the others is often worth one stage.
 - A "deep_research" agent also gets "queries": up to ${MAX_NODE_QUERIES} web-search queries covering its task.
+- GROUND COMPARISONS: when the request compares candidates against, or judges something relative to, a REFERENCE OBJECT (a named product, project, company — above all this site, deepresearch.se, itself), the plan MUST include a first-wave grounding agent whose sole task is to establish what that object actually is and does, and every comparing/judging agent must list it in "deps". When the reference object is this site and the "introspection" kind is available, the grounding agent MUST be kind "introspection" — it reads the site's real source instead of guessing.
 - Write names, tasks and queries in the user's language (svara på svenska om användaren skriver svenska).`,
     'Return ONLY JSON: {"title": "...", "agents": [{"id": "slug", "kind": "...", "name": "...", "task": "...", "persona": "...", "queries": ["..."], "deps": ["..."]}]}',
     `User request:\n${args.message}`,

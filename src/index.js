@@ -56,6 +56,7 @@ import {
   handleModels,
 } from "./user-api.js";
 import { handleFeedbackApi, handleServerTokenFeedback } from "./feedback.js";
+import { handleOutrospectFeed, handleOutrospectRefresh } from "./outrospect.js";
 import { handleTryRedirect } from "./testpoints.js";
 import { bashLiteEnabled, handleSettingsGet, handleSettingsPut } from "./settings.js";
 import { handleBashStep } from "./bash-api.js";
@@ -703,6 +704,17 @@ async function routeApi(request, env, url, log, identity, ctx, requestId) {
   // from the chat — feedbackIntent/runFeedbackCapture — or via POST here).
   if (url.pathname === "/api/feedback" || url.pathname.startsWith("/api/feedback/")) {
     return handleFeedbackApi(request, env, url, log, identity);
+  }
+  // Outrospection (src/outrospect.js) — introspection's mirror image: the
+  // live feed of what everyone ELSE is building, through the fixed lens
+  // registry. GET reads the stored stream; POST runs one lens's searches on
+  // behalf of the visitor and returns the delta. Signed-in: a refresh spends
+  // real search budget, and the rate limit needs an identity to key on.
+  if (url.pathname === "/api/outrospect/feed" && request.method === "GET") {
+    return handleOutrospectFeed(env, url);
+  }
+  if (url.pathname === "/api/outrospect/refresh" && request.method === "POST") {
+    return handleOutrospectRefresh(request, env, log, identity);
   }
   // Free-text quiz-answer grading (the inline-quiz capability —
   // src/quiz-api.js; multiple-choice picks grade client-side).
