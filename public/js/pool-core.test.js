@@ -11,7 +11,12 @@ import {
   POOL_MAX_MESSAGES,
   POOL_ROLES,
   POOL_WIRE_V,
+  normalizeApproval,
+  poolConsumerKey,
   poolDataFlowNotice,
+  poolEgressQuestion,
+  poolIdentityLabel,
+  poolIngressQuestion,
   poolRequestToOpenAiBody,
   sanitizePoolRequest,
 } from "./pool-core.js";
@@ -125,4 +130,46 @@ describe("poolDataFlowNotice", () => {
     const all = poolDataFlowNotice().join("\n");
     assert.ok(all.includes("the pool owner"));
   });
+});
+
+describe("mutual consent vocabulary", () => {
+// ── MUTUAL CONSENT vocabulary ────────────────────────────────────────────────
+// The states, the key derivation, and the two questions live in the pure core
+// so the sharer's screen, the consumer's prompt and the broker all say the
+// same thing. These pin the parts a UI is allowed to depend on.
+
+it("normalizeApproval maps every stored spelling onto the three states", () => {
+  assert.equal(normalizeApproval("allowed"), "allowed");
+  assert.equal(normalizeApproval("active"), "allowed", "rows written before consent shipped mean allowed");
+  assert.equal(normalizeApproval("blocked"), "blocked");
+  assert.equal(normalizeApproval("denied"), "blocked");
+  assert.equal(normalizeApproval("pending"), "pending");
+  // Unknown/absent is PENDING, never allowed — consent is never implied.
+  assert.equal(normalizeApproval(""), "pending");
+  assert.equal(normalizeApproval(null), "pending");
+  assert.equal(normalizeApproval("something-else"), "pending");
+});
+
+it("poolConsumerKey: a signed-in consumer keys on the account, an anonymous one on the token", () => {
+  assert.equal(poolConsumerKey({ identityId: "7", jti: "abc" }), "u:7");
+  assert.equal(poolConsumerKey({ identityId: null, jti: "abc" }), "t:abc");
+  assert.equal(poolConsumerKey({ jti: "abc" }), "t:abc");
+});
+
+it("poolIdentityLabel is honest about what the platform actually verified", () => {
+  assert.equal(poolIdentityLabel({ display: "bob@x.se", verified: true }), "bob@x.se");
+  assert.match(poolIdentityLabel({ display: "token abc", verified: false }), /unverified/);
+  assert.match(poolIdentityLabel({ display: "alice", verified: true, synthetic: true }), /test persona/);
+});
+
+it("both questions name the other party and promise the answer is remembered", () => {
+  const ingress = poolIngressQuestion({ display: "bob@x.se", verified: true });
+  assert.match(ingress.title, /bob@x\.se/);
+  assert.ok(ingress.detail.some((d) => /remembered/i.test(d)));
+  assert.ok(ingress.detail.some((d) => /Settings → LLM sharing/.test(d)));
+  const egress = poolEgressQuestion({ display: "alice@x.se", verified: true });
+  assert.match(egress.title, /alice@x\.se/);
+  assert.ok(egress.detail.some((d) => /can read everything you send/i.test(d)));
+  assert.ok(egress.detail.some((d) => /remembered/i.test(d)));
+});
 });

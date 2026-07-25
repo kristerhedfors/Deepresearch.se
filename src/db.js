@@ -372,6 +372,22 @@ CREATE TABLE IF NOT EXISTS pool_tokens (
 );
 CREATE INDEX IF NOT EXISTS idx_pool_tokens_pool ON pool_tokens(pool_id, expires_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pool_tokens_exp ON pool_tokens(expires_at);
+-- MUTUAL CONSENT, the consumer's half (owner directive, 2026-07-25). The
+-- sharer's half lives in pool_consumers.state (pending|allowed|blocked); this
+-- is the mirror image: one row per (consumer, pool) recording whether THIS
+-- consumer agreed to let their prompts leave for THAT pool owner's machine.
+-- Remembered, so the question is asked once per identity pair.
+CREATE TABLE IF NOT EXISTS pool_egress (
+  consumer_key TEXT NOT NULL,
+  pool_id TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'pending',
+  owner_display TEXT,
+  consumer_display TEXT,
+  first_at INTEGER NOT NULL,
+  decided_at INTEGER,
+  PRIMARY KEY (consumer_key, pool_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pool_egress_pool ON pool_egress(pool_id, first_at DESC);
 
 -- Workspace knowledge (src/knowledge.js, docs/COMPUTE-SHARING.md §9b).
 -- knowledge_agent = the site's ONE import-agent ECDH keypair (generated on
@@ -415,6 +431,15 @@ const ALTERS = [
   // the whole conversation + request metadata as debugging context — additive
   // so the deployed DB picks it up.
   "ALTER TABLE feedback ADD COLUMN context TEXT",
+  // Compute sharing gained MUTUAL CONSENT (2026-07-25): both parties are
+  // shown the OTHER party's platform-verified identity, so both sides of the
+  // relay now carry a display string, and an ingress decision records when
+  // and by whom it was made. Additive — the deployed pool tables predate it.
+  "ALTER TABLE pool_consumers ADD COLUMN identity TEXT",
+  "ALTER TABLE pool_consumers ADD COLUMN verified INTEGER",
+  "ALTER TABLE pool_consumers ADD COLUMN decided_at INTEGER",
+  "ALTER TABLE pool_tokens ADD COLUMN owner TEXT",
+  "ALTER TABLE pool_providers ADD COLUMN owner TEXT",
 ];
 
 let migrated = false; // per isolate

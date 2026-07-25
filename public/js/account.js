@@ -13,6 +13,9 @@
 // - "settings" (the cloud-storage / Shodan / Google Maps knobs that govern
 //   YOUR OWN research) and "share" (the DEDICATED Se/cure-workspace share
 //   view — only what a link can lend to someone else): account-settings.js.
+// - "llmsharing" (one level below Settings): the compute-sharing dashboard
+//   and both halves of mutual consent — who may use your model, and whose
+//   model you use: account-pool.js.
 // - "feedback" (the user's feedback dialogue threads): account-feedback.js.
 // - "articles" (the admin-only article collection — the planned article
 //   series about this project): account-articles.js.
@@ -26,6 +29,7 @@ import { loadArticlesView } from "./account-articles.js";
 import { loadFeedbackView } from "./account-feedback.js";
 import { loadKnowledgeView } from "./account-knowledge.js";
 import { loadMessagesView } from "./account-messages.js";
+import { loadPoolView } from "./account-pool.js";
 import { loadSettingsView, loadShareView } from "./account-settings.js";
 import { loadGamesView, renderDocs, renderFullUsage, renderNotifBadge, renderSummary } from "./account-views.js";
 
@@ -114,14 +118,19 @@ export function initAccountPanel() {
 // doesn't read as the generic "Account & usage" screen (the share icon lands
 // on its own "Share a Se/cure workspace" view; the gear icon on "Settings").
 // Anything unlisted falls back to "Account & usage".
-const VIEW_TITLES = { settings: "Settings", share: "Share a Se/cure workspace", articles: "Article collection" };
+const VIEW_TITLES = {
+  settings: "Settings",
+  share: "Share a Se/cure workspace",
+  articles: "Article collection",
+  llmsharing: "LLM sharing",
+};
 
 /**
  * View dispatcher: renders the named view into the panel body and wires
  * its controls. The summary/full views render synchronously from the
  * cached /api/me; the rest fetch their own data.
  * @param {PanelCtx} ctx
- * @param {"summary"|"full"|"messages"|"settings"|"share"|"feedback"|"games"|"docs"|"articles"} view
+ * @param {"summary"|"full"|"messages"|"settings"|"llmsharing"|"share"|"feedback"|"games"|"docs"|"articles"} view
  */
 function showView(ctx, view) {
   if (ctx.title) ctx.title.textContent = VIEW_TITLES[view] || "Account & usage";
@@ -135,6 +144,13 @@ function showView(ctx, view) {
   }
   if (view === "settings") {
     loadSettingsView(ctx);
+    return;
+  }
+  // One level below Settings (owner directive, 2026-07-25): compute sharing
+  // and both halves of its mutual consent. Its back-link returns to Settings,
+  // not the summary, because that is where it hangs.
+  if (view === "llmsharing") {
+    loadPoolView(ctx);
     return;
   }
   if (view === "share") {

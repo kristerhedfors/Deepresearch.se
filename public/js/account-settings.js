@@ -136,12 +136,25 @@ export async function loadSettingsView(ctx) {
     <p id="gmapsstatus" class="muted setting-note" hidden></p>
     ${renderConfigKnobs(ctx.me)}
     ${onDeviceSettingsMarkup()}
+    <!-- One level below Settings (owner directive, 2026-07-25): compute
+         sharing is a whole screen of its own — who may run prompts on your
+         model, and whose model yours go to — so it gets a door here rather
+         than a knob. -->
+    <div class="settings-item">
+      <div class="settings-row">
+        <span class="settings-label">LLM sharing</span>
+        <button id="llmsharingbtn" type="button">Open</button>
+      </div>
+      <p class="muted setting-note">Share your own local model with other people, or use
+        someone else's. Both directions ask you first, once per person, and remember the answer.</p>
+    </div>
     <p class="muted setting-note">To send the developers feedback, start a chat
       message with the word <b>“feedback”</b> (for example “feedback: the map view
       was cut off”). It's routed straight to the developers — there's no switch to
       flip — and any reply shows up under <b>Feedback</b> in this panel.</p>
     ${note ? `<p class="muted setting-note">${note}</p>` : ""}`;
   document.getElementById("settingsbackbtn").addEventListener("click", () => ctx.show("summary"));
+  document.getElementById("llmsharingbtn")?.addEventListener("click", () => ctx.show("llmsharing"));
   wireSettingPopovers(ctx.body);
   wireSandboxKnob(ctx);
   wireModeKnob(ctx);
