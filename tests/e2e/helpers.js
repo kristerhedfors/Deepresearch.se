@@ -23,15 +23,60 @@ export const SENTINEL = {
 // Open the app signed in (Basic Auth rides on every request via the
 // context), privacy notice pre-acknowledged, web-search knob and time
 // budget in a known state, and dialogs auto-accepted + recorded.
-export async function openApp(page, { webSearch = false, budgetS = 15 } = {}) {
+//
+// PINNED KNOBS — do not "simplify" these away. The suite authenticates as
+// BREAK-GLASS, and src/settings.js hard-codes the per-account knobs ON for an
+// identity with no user row (`identity.user ? settings.x : true`) — so
+// /api/settings answers `bash_lite_mcp: true, developer_mode: true` for this
+// suite no matter what any account has configured. Left inherited, that meant:
+//
+//   - every send with a DOCUMENT attached mounted it into a CheerpX Linux VM
+//     and ran a bash-lite shell loop over it before the turn could finish, so
+//     `waitForDone`'s 30 s expired with an empty `.stats` — the whole
+//     parsing/limits/metadata failure class (image-only sends passed, because
+//     they mount nothing: that clean split is what identified this);
+//   - with no stored `dr_chat_mode`, a developer-mode account defaults to
+//     INTROSPECTION (chat-mode.js cachedChatMode), so specs asserting the
+//     ordinary chat surface were silently driving a different mode.
+//
+// These specs assert CLIENT-SIDE parsing against the mocked /api/chat payload;
+// booting a Linux VM is neither what they test nor something they can afford.
+// Pin what we depend on instead of inheriting whatever the deployment's
+// identity happens to resolve to. `sandbox: true` opts back in.
+// `pinSettings: false` — for a spec that mocks /api/settings ITSELF. Playwright
+// matches routes last-registered-first, so the handler below would otherwise
+// shadow the spec's own and answer from the real server instead. Such a spec
+// owns the pinning: a mock that simply omits `bash_lite_mcp`/`developer_mode`
+// already reads as both-off, which is the state these specs want.
+export async function openApp(page, { webSearch = false, budgetS = 15, sandbox = false, developerMode = false, chatMode = "normal", pinSettings = true } = {}) {
   const base = process.env.BASE_URL || "https://deepresearch.se";
+  // The break-glass header must never reach a third party (see
+  // stripCrossOriginAuth): the app pre-warms the sandbox on load now, so every
+  // spec pulls cross-origin resources, not just the sandbox ones.
+  await stripCrossOriginAuth(page.context(), base);
   await page.context().addCookies([{ name: "dr_privacy_ack", value: "1", url: base }]);
+  // Patch the real response rather than inventing one, so `available.*` (which
+  // several specs branch on) stays truthful. The whole handler is fail-soft:
+  // the app polls /api/settings on a timer, so a callback can still be in
+  // flight when the test ends, and a rejected route there fails the RUN with
+  // an error that has nothing to do with the assertions.
+  if (pinSettings) await page.route("**/api/settings", async (route) => {
+    try {
+      if (route.request().method() !== "GET") return await route.continue();
+      const res = await route.fetch();
+      const body = await res.json().catch(() => ({}));
+      await route.fulfill({ response: res, json: { ...body, bash_lite_mcp: sandbox, developer_mode: developerMode } });
+    } catch {
+      /* page closed mid-flight, or the fetch failed — nothing to assert on */
+    }
+  });
   await page.addInitScript(
-    ([ws, budget]) => {
+    ([ws, budget, mode]) => {
       localStorage.setItem("web_search", ws);
       localStorage.setItem("budget_s", budget);
+      localStorage.setItem("dr_chat_mode", mode);
     },
-    [webSearch ? "on" : "off", String(budgetS)],
+    [webSearch ? "on" : "off", String(budgetS), chatMode],
   );
   const dialogs = [];
   page.on("dialog", (d) => {

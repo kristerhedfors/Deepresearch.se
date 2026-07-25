@@ -158,7 +158,9 @@ test("projects mirror to the cloud implicitly — and there is no per-project sw
     if (m === "GET") return r.fulfill(json({ error: "nf" }, 404));
     return r.fulfill({ status: 204 });
   });
-  await openApp(page);
+  // This spec mocks /api/settings itself, so it owns the knob pinning (its
+  // mock omits bash_lite_mcp/developer_mode = both off).
+  await openApp(page, { pinSettings: false });
   await mockEmbed(page);
 
   await createProject(page, "CloudProj");
