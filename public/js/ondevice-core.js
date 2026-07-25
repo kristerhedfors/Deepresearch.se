@@ -1,3 +1,4 @@
+// @ts-check
 // The ON-DEVICE inference tier's PURE core (import-free, Node-tested) — the
 // phone-local Bonsai models (docs/BONSAI-27B-PHONE-INFERENCE.md): everything
 // the engine glue (ondevice-engine.js), the worker (ondevice-worker.js), and
@@ -299,7 +300,7 @@ const SIDE_FILES = [
  */
 export function planModelFiles(tree, dtype) {
   if (!Array.isArray(tree) || !dtype) return null;
-  const entry = (f) => ({
+  const entry = (/** @type {any} */ f) => ({
     path: String(f.path),
     size: typeof f.size === "number" && f.size >= 0 ? f.size : 0,
     sha256: typeof f?.lfs?.oid === "string" && /^[0-9a-f]{64}$/.test(f.lfs.oid) ? f.lfs.oid : null,
@@ -438,7 +439,7 @@ export function createThinkFilter() {
   const CLOSE = "</think>";
   let inside = false;
   let buf = ""; // the tail that might be a partial tag
-  const longestTagPrefixAt = (s) => {
+  const longestTagPrefixAt = (/** @type {string} */ s) => {
     // The longest suffix of s that is a proper prefix of the tag we're
     // scanning for — what must be held back until the next chunk decides.
     const tag = inside ? CLOSE : OPEN;
@@ -560,7 +561,7 @@ export function clipMiddle(text, max) {
  */
 export function trimForOnDevice(messages, budget = ONDEVICE_PROMPT_BUDGET_CHARS) {
   if (!Array.isArray(messages) || messages.length === 0) return [];
-  const size = (m) => (typeof m?.content === "string" ? m.content.length : 0);
+  const size = (/** @type {any} */ m) => (typeof m?.content === "string" ? m.content.length : 0);
   if (messages.reduce((n, m) => n + size(m), 0) <= budget) return messages;
   const sys = messages[0]?.role === "system" ? messages[0] : null;
   const rest = sys ? messages.slice(1) : messages;
@@ -644,6 +645,10 @@ export function createSha256() {
   let bytesLo = 0; // total length as two 32-bit halves (files exceed 2^32 bits)
   let bytesHi = 0;
 
+  /**
+   * @param {Uint8Array} bytes
+   * @param {number} off
+   */
   function compress(bytes, off) {
     for (let i = 0; i < 16; i++) {
       W[i] = (bytes[off] << 24) | (bytes[off + 1] << 16) | (bytes[off + 2] << 8) | bytes[off + 3];

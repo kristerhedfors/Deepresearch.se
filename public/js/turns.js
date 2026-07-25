@@ -1,3 +1,4 @@
+// @ts-check
 // Chat turn rendering: user bubbles and assistant turns (activity wrapper +
 // streamed content + Raw/Copy/PDF tools + stats footer). Initialize once
 // with the chat container and a scroll callback.
@@ -37,7 +38,9 @@ export function shouldShowFeedbackHint(messages) {
   return Array.isArray(messages) && messages.some((m) => m?.role === "assistant");
 }
 
+/** @type {HTMLElement} */
 let chat;
+/** @type {(force?: boolean) => void} */
 let scrollDown;
 let isBusy = () => false;
 
@@ -111,13 +114,16 @@ export function mountSpaceEmbed(turn, questionText) {
 // sendMessage), so it simply shows as part of the message text on reload.
 // (message-content.js exports a hardened twin used on the send path; this
 // local copy only ever sees records this app itself wrote.)
+/** @param {string|any[]} content */
 function splitUserContent(content) {
   if (typeof content === "string") return { text: content, imageUrls: [] };
   const text = content
-    .filter((p) => p.type === "text")
-    .map((p) => p.text)
+    .filter((/** @type {any} */ p) => p.type === "text")
+    .map((/** @type {any} */ p) => p.text)
     .join("\n");
-  const imageUrls = content.filter((p) => p.type === "image_url").map((p) => p.image_url.url);
+  const imageUrls = content
+    .filter((/** @type {any} */ p) => p.type === "image_url")
+    .map((/** @type {any} */ p) => p.image_url.url);
   return { text, imageUrls };
 }
 
@@ -135,11 +141,12 @@ function splitUserContent(content) {
 // their answers/completion back into the registry and history.
 /**
  * @param {Array<{role: string, content: string|object[]}>} messages  the stored conversation
- * @param {object[]} [embeds]  the record's embeds registry (stream.js EmbedEntry[])
- * @param {{quizHooks?: (embed: object) => object}} [opts]
+ * @param {any[]} [embeds]  the record's embeds registry (stream.js EmbedEntry[])
+ * @param {{quizHooks?: (embed: any) => any}} [opts]
  */
 export function renderStoredConversation(messages, embeds = [], opts = {}) {
   clearChatDom();
+  /** @type {{text: string, imageUrls: string[]}} */
   let lastUser = { text: "", imageUrls: [] };
   messages.forEach((m, i) => {
     if (m.role === "user") {
@@ -157,8 +164,11 @@ export function renderStoredConversation(messages, embeds = [], opts = {}) {
           renderStreetViewEmbed(turn, { lat: e.lat, lng: e.lng, heading: e.heading, pitch: e.pitch });
         } else if (e.kind === "map_embed") {
           renderMapEmbed(turn, { lat: e.lat, lng: e.lng, zoom: e.zoom, q: e.q || "" });
-        } else if (e.kind === "streetview_frames" && e.frames?.some((f) => f?.url)) {
-          renderStreetViewFrames(turn, { query: e.query || "", frames: e.frames.filter((f) => f?.url) });
+        } else if (e.kind === "streetview_frames" && e.frames?.some((/** @type {any} */ f) => f?.url)) {
+          renderStreetViewFrames(turn, {
+            query: e.query || "",
+            frames: e.frames.filter((/** @type {any} */ f) => f?.url),
+          });
         } else if (e.kind === "quiz" && e.quiz) {
           renderQuiz(turn, e.quiz, opts.quizHooks ? opts.quizHooks(e) : { answers: e.answers || [] });
         } else if (e.kind === "workflow" && e.workflow) {
@@ -234,6 +244,7 @@ export function addUserBubble(text, imageUrls = [], docNames = []) {
  * @property {number} startedAt          anchors researchLog's relative timestamps
  * @property {object[]} researchLog      ordered research events (activity.js ResearchLogEntry)
  * @property {?object} doneStats         the final `done` event payload
+ * @property {HTMLElement} [_spaceEmbed]  the mounted /space scene host, if any
  */
 
 /**
@@ -312,6 +323,7 @@ export function renderDeliverables(turn, files) {
   scrollDown();
 }
 
+/** @param {any} f */
 function makeDeliverableChip(f) {
   const chip = document.createElement("div");
   chip.className = "dl-chip";
@@ -346,6 +358,7 @@ function makeDeliverableChip(f) {
 
 // Downloads wait while an answer is streaming, same as the PDF button: on iOS
 // a download can navigate the page, which aborts the in-flight fetch.
+/** @param {any} f @param {HTMLElement} btn */
 function downloadDeliverable(f, btn) {
   if (isBusy()) {
     const prev = btn.querySelector(".dl-size")?.textContent;
@@ -369,6 +382,7 @@ function downloadDeliverable(f, btn) {
 // The chip's dropdown. One menu at a time; dismisses on any outside
 // interaction (UX-1 — the shared popover-dismissal convention) while items
 // inside stay clickable.
+/** @type {{el: HTMLElement, chip: HTMLElement, onOutside: (e: Event) => void}|null} */
 let openDlMenu = null;
 function closeDeliverableMenu() {
   if (openDlMenu) {
@@ -378,6 +392,7 @@ function closeDeliverableMenu() {
   }
 }
 
+/** @param {HTMLElement} chip @param {any} f @param {HTMLElement} mainBtn */
 async function toggleDeliverableMenu(chip, f, mainBtn) {
   if (openDlMenu?.chip === chip) {
     closeDeliverableMenu();
@@ -397,8 +412,8 @@ async function toggleDeliverableMenu(chip, f, mainBtn) {
   });
   menu.appendChild(dl);
 
-  const onOutside = (e) => {
-    if (!menu.contains(e.target)) closeDeliverableMenu();
+  const onOutside = (/** @type {Event} */ e) => {
+    if (!menu.contains(/** @type {Node} */ (e.target))) closeDeliverableMenu();
   };
   chip.appendChild(menu);
   document.addEventListener("pointerdown", onOutside, true);
@@ -433,7 +448,7 @@ async function toggleDeliverableMenu(chip, f, mainBtn) {
         setTimeout(closeDeliverableMenu, 1200);
       } catch (err) {
         item.disabled = false;
-        item.textContent = "Failed: " + (err?.message || "could not add");
+        item.textContent = "Failed: " + (/** @type {any} */ (err)?.message || "could not add");
       }
     });
     menu.appendChild(item);
@@ -447,6 +462,7 @@ async function toggleDeliverableMenu(chip, f, mainBtn) {
 // still surface as threads under Feedback in the account panel
 // (account-feedback.js).
 
+/** @param {Turn} turn */
 function makeRawButton(turn) {
   const rawBtn = document.createElement("button");
   rawBtn.type = "button";
@@ -461,6 +477,7 @@ function makeRawButton(turn) {
   return rawBtn;
 }
 
+/** @param {Turn} turn */
 function makePdfButton(turn) {
   const btn = document.createElement("button");
   btn.type = "button";
@@ -489,6 +506,7 @@ function makePdfButton(turn) {
   return btn;
 }
 
+/** @param {Turn} turn */
 function makeCopyButton(turn) {
   const copyBtn = document.createElement("button");
   copyBtn.type = "button";
@@ -508,6 +526,7 @@ function makeCopyButton(turn) {
 }
 
 // Default view is rendered markdown (sanitized); Raw toggles plain text.
+/** @param {Turn} turn */
 function renderContent(turn) {
   const c = turn.content;
   if (turn.errored) {
@@ -534,6 +553,7 @@ function renderContent(turn) {
 // the small step spinners do before the answer is revealed.
 const TYPING_FINALE_MIN_MS = 1500;
 
+/** @param {HTMLElement} content */
 function showTyping(content) {
   content.className = "content typing";
   content.replaceChildren();
@@ -548,15 +568,16 @@ function showTyping(content) {
   // The handle + wait-start are stashed on the content element so setText can
   // play the colored-symbol→✓ FINISH FINALE (the same one the step spinners
   // got) when a research-length wait resolves into an answer.
-  content.__typingSpinner = mountModeSpinner(icon, { style: 0, size: 72 });
-  content.__typingStart = Date.now();
+  /** @type {any} */ (content).__typingSpinner = mountModeSpinner(icon, { style: 0, size: 72 });
+  /** @type {any} */ (content).__typingStart = Date.now();
 }
 
 // Reveal the streamed answer where the typing indicator was: drop the typing
 // state and expose the Raw/Copy tools. (Split out of setText so both the
 // finale's completion callback and the no-finale path share one implementation.)
+/** @param {Turn} turn */
 function revealTyping(turn) {
-  turn.content.__typingSpinner = null;
+  /** @type {any} */ (turn.content).__typingSpinner = null;
   turn.content.classList.remove("typing");
   turn.content.replaceChildren();
   turn.el.classList.add("has-text");
@@ -586,8 +607,8 @@ export function setText(turn, text) {
       return;
     }
     const content = turn.content;
-    const handle = content.__typingSpinner;
-    const waited = Date.now() - (content.__typingStart || Date.now());
+    const handle = /** @type {any} */ (content).__typingSpinner;
+    const waited = Date.now() - (/** @type {any} */ (content).__typingStart || Date.now());
     // A research-length wait resolving into a real (non-error) answer earns the
     // big balloon's COMPLETION FINALE: it speed-runs from wherever its boomerang
     // is into the fully-colored BLUE-AND-GOLD balloon and folds into the blue ✓ — exactly
@@ -635,6 +656,7 @@ export function setError(turn, message) {
 
 // Post-validation replaced the draft: clear the bubble back to the typing
 // indicator and wait for the corrected answer to stream.
+/** @param {Turn} turn */
 export function resetForRevision(turn) {
   turn.text = "";
   turn.errored = false;

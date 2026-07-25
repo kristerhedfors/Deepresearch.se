@@ -1,3 +1,4 @@
+// @ts-check
 // The SPACE-ANIMATIONS domain's shared pure core (Node-tested, import-free).
 // One module owns everything deterministic about the archive of playable
 // wireframe space animations at /space/: the scene registry (each entry is
@@ -186,6 +187,7 @@ export const SPACE_SCENES = [
 /**
  * Looks a scene up by id. Returns null for anything unknown.
  */
+/** @param {unknown} id */
 export function sceneById(id) {
   if (typeof id !== "string") return null;
   return SPACE_SCENES.find((s) => s.id === id) || null;
@@ -367,6 +369,7 @@ export const SPACE_MATCHERS = [
  * Deterministic EN+SV gate: does this question have a tailored animation?
  * Returns the scene id or null. Pure and never throws.
  */
+/** @param {unknown} text */
 export function spaceIntent(text) {
   return spaceIntentMatch(text)?.id || null;
 }
@@ -376,6 +379,7 @@ export function spaceIntent(text) {
  * caption language from which pattern set fired ("visa jorden och månen" gets
  * the Swedish reply). Returns { id, lang: "en"|"sv" } or null.
  */
+/** @param {unknown} text @returns {any} */
 export function spaceIntentMatch(text) {
   if (typeof text !== "string" || !text) return null;
   const t = text.toLowerCase().replace(/\s+/g, " ").trim();
@@ -393,17 +397,20 @@ export function spaceIntentMatch(text) {
 // usable across the size gulf between a moon (1,700 km) and a light-year
 // (9.5 trillion km).
 
+/** @param {number} v @param {number} lo @param {number} hi */
 export function clamp(v, lo, hi) {
   return v < lo ? lo : v > hi ? hi : v;
 }
 
 /** Slider position t (0..1) → camera distance in km, log-interpolated. */
+/** @param {number|string} t @param {number} minKm @param {number} maxKm */
 export function zoomToDistance(t, minKm, maxKm) {
   const tt = clamp(Number(t) || 0, 0, 1);
   return minKm * Math.pow(maxKm / minKm, tt);
 }
 
 /** Camera distance in km → slider position t (0..1). Inverse of the above. */
+/** @param {number|string} distKm @param {number} minKm @param {number} maxKm */
 export function distanceToZoom(distKm, minKm, maxKm) {
   const d = clamp(Number(distKm) || minKm, minKm, maxKm);
   return Math.log(d / minKm) / Math.log(maxKm / minKm);
@@ -413,6 +420,7 @@ export function distanceToZoom(distKm, minKm, maxKm) {
  * Human-readable distance readout, unit chosen by magnitude and language-
  * neutral (km / Mkm / AU / ly), so one string serves both EN and SV copy.
  */
+/** @param {number|string} km */
 export function formatKm(km) {
   const v = Math.abs(Number(km) || 0);
   if (v < 1e6) {
@@ -429,22 +437,33 @@ export function formatKm(km) {
 // y up, centered on the origin unless stated. All builders are pure and
 // deterministic (terrain takes an explicit seed), so tests can pin them.
 
+// ---- geometry types ----------------------------------------------------------
+// One shared shape for every builder below: a wireframe is a vertex list plus
+// an index-pair edge list. Declaring it once keeps the empty `verts: []` /
+// `edges: []` accumulators from inferring never[].
+/** @typedef {[number, number, number]} Vec3 */
+/** @typedef {{verts: Vec3[], edges: [number, number][]}} Mesh */
+
+/** @param {Vec3} p @param {number} a @returns {Vec3} */
 export function rotX(p, a) {
   const c = Math.cos(a), s = Math.sin(a);
   return [p[0], p[1] * c - p[2] * s, p[1] * s + p[2] * c];
 }
 
+/** @param {Vec3} p @param {number} a @returns {Vec3} */
 export function rotY(p, a) {
   const c = Math.cos(a), s = Math.sin(a);
   return [p[0] * c + p[2] * s, p[1], -p[0] * s + p[2] * c];
 }
 
+/** @param {Vec3} p @param {number} a @returns {Vec3} */
 export function rotZ(p, a) {
   const c = Math.cos(a), s = Math.sin(a);
   return [p[0] * c - p[1] * s, p[0] * s + p[1] * c, p[2]];
 }
 
 /** The renderer's view rotation: yaw then pitch from the mount state's angles. */
+/** @param {Vec3} v @param {{rotX: number, rotY: number}} st @returns {Vec3} */
 export function worldRot(v, st) {
   return rotX(rotY(v, st.rotY), st.rotX);
 }
@@ -455,6 +474,8 @@ export function worldRot(v, st) {
  * length in px, cam.cx/cy the canvas center. Returns null when the point is
  * behind the near plane. `s` is the px-per-km scale at the point's depth —
  * multiply a radius in km by it to get screen px.
+ * @param {Vec3} p
+ * @param {{dist: number, f: number, cx: number, cy: number}} cam
  */
 export function projectPoint(p, cam) {
   const pz = cam.dist - p[2];
@@ -464,6 +485,7 @@ export function projectPoint(p, cam) {
 }
 
 /** Deterministic 32-bit PRNG (mulberry32) — seeds the terrain and stars. */
+/** @param {number} seed */
 export function mulberry32(seed) {
   let a = seed >>> 0;
   return function () {
@@ -479,10 +501,13 @@ export function mulberry32(seed) {
  * `meridians` vertical arcs, `segs` points per circle. segs is rounded up to
  * a multiple of meridians so meridian columns land on ring vertices.
  */
+/** @param {number} r @returns {Mesh} */
 export function sphereMesh(r, rings = 7, meridians = 12, segs = 24) {
   const step = Math.max(1, Math.round(segs / meridians));
   const n = step * meridians;
+  /** @type {Vec3[]} */
   const verts = [];
+  /** @type {[number, number][]} */
   const edges = [];
   for (let i = 1; i <= rings; i++) {
     const phi = (Math.PI * i) / (rings + 1);
@@ -509,8 +534,11 @@ export function sphereMesh(r, rings = 7, meridians = 12, segs = 24) {
 }
 
 /** A circle of radius r in the xz plane — an orbit path. */
+/** @param {number} r @returns {Mesh} */
 export function orbitMesh(r, segs = 96) {
+  /** @type {Vec3[]} */
   const verts = [];
+  /** @type {[number, number][]} */
   const edges = [];
   for (let j = 0; j < segs; j++) {
     const th = (2 * Math.PI * j) / segs;
@@ -521,8 +549,11 @@ export function orbitMesh(r, segs = 96) {
 }
 
 /** An open-ended wireframe cylinder along y, base at y=0. */
+/** @param {number} r @param {number} h @returns {Mesh} */
 export function cylinderMesh(r, h, segs = 8) {
+  /** @type {Vec3[]} */
   const verts = [];
+  /** @type {[number, number][]} */
   const edges = [];
   for (let ring = 0; ring < 2; ring++) {
     const y = ring * h;
@@ -537,12 +568,14 @@ export function cylinderMesh(r, h, segs = 8) {
   return { verts, edges };
 }
 
+/** @param {Mesh} into @param {Mesh} mesh @param {Vec3} [offset] */
 function pushMesh(into, mesh, offset = [0, 0, 0]) {
   const base = into.verts.length;
   for (const v of mesh.verts) into.verts.push([v[0] + offset[0], v[1] + offset[1], v[2] + offset[2]]);
   for (const e of mesh.edges) into.edges.push([base + e[0], base + e[1]]);
 }
 
+/** @param {number} w @param {number} h @param {number} d @returns {Mesh} */
 function cuboid(w, h, d, cy = 0) {
   const x = w / 2, z = d / 2, y0 = cy - h / 2, y1 = cy + h / 2;
   return {
@@ -562,8 +595,10 @@ function cuboid(w, h, d, cy = 0) {
  * A wireframe rocket pointing +y, base at y=0, total height h: engine bell,
  * cylindrical body, nose cone, four fins.
  */
+/** @param {number} h @returns {Mesh} */
 export function rocketMesh(h) {
   const r = h * 0.09;
+  /** @type {Mesh} */
   const out = { verts: [], edges: [] };
   // Body: two rings + verticals.
   pushMesh(out, cylinderMesh(r, h * 0.62, 8));
@@ -598,7 +633,9 @@ export function rocketMesh(h) {
  * A wireframe satellite: cuboid bus, two panelled solar wings along ±x, an
  * antenna mast with a small dish ring on +y. `s` is the wingspan.
  */
+/** @param {number} s @returns {Mesh} */
 export function satelliteMesh(s) {
+  /** @type {Mesh} */
   const out = { verts: [], edges: [] };
   const bw = s * 0.18;
   pushMesh(out, cuboid(bw, bw * 1.2, bw));
@@ -634,7 +671,9 @@ export function satelliteMesh(s) {
  * A stylized wireframe astronaut, feet at y=0, height s: two crossed head
  * rings (the helmet), a torso box with backpack, jointed arms and legs.
  */
+/** @param {number} s @returns {Mesh} */
 export function astronautMesh(s) {
+  /** @type {Mesh} */
   const out = { verts: [], edges: [] };
   // Torso + backpack.
   pushMesh(out, cuboid(s * 0.3, s * 0.35, s * 0.18, s * 0.625));
@@ -655,7 +694,7 @@ export function astronautMesh(s) {
   out.verts.push([0, s * 0.8, 0], [0, hc - hr, 0]);
   out.edges.push([neck, neck + 1]);
   // Arms and legs: two-segment limbs.
-  const limb = (pts) => {
+  const limb = (/** @type {Vec3[]} */ pts) => {
     const a = out.verts.length;
     for (const p of pts) out.verts.push(p);
     for (let i = 0; i < pts.length - 1; i++) out.edges.push([a + i, a + i + 1]);
@@ -670,7 +709,9 @@ export function astronautMesh(s) {
 /**
  * A wireframe lunar-lander: octagonal cabin on four splayed legs with pads.
  */
+/** @param {number} s @returns {Mesh} */
 export function landerMesh(s) {
+  /** @type {Mesh} */
   const out = { verts: [], edges: [] };
   const cabinR = s * 0.32, cabinY = s * 0.45;
   const base = out.verts.length;
@@ -703,15 +744,17 @@ export function landerMesh(s) {
  * heights from seeded two-octave value noise minus a few crater bowls with
  * raised rims. Deterministic for a given seed.
  */
+/** @param {number} size @returns {Mesh} */
 export function terrainMesh(size, n = 40, seed = 7, amp = 0.035) {
   const rnd = mulberry32(seed);
   const g = 7;
+  /** @type {number[][]} */
   const grid = [];
   for (let i = 0; i <= g; i++) {
     grid.push([]);
     for (let j = 0; j <= g; j++) grid[i].push(rnd());
   }
-  const noise = (u, v) => {
+  const noise = (/** @type {number} */ u, /** @type {number} */ v) => {
     const x = u * g, y = v * g;
     const i = Math.min(g - 1, Math.floor(x)), j = Math.min(g - 1, Math.floor(y));
     const fx = x - i, fy = y - j;
@@ -725,7 +768,9 @@ export function terrainMesh(size, n = 40, seed = 7, amp = 0.035) {
     craters.push({ u: rnd(), v: rnd(), r: 0.05 + rnd() * 0.12, d: 0.3 + rnd() * 0.7 });
   }
   const ampKm = size * amp;
+  /** @type {Vec3[]} */
   const verts = [];
+  /** @type {[number, number][]} */
   const edges = [];
   for (let i = 0; i <= n; i++) {
     for (let j = 0; j <= n; j++) {
@@ -744,7 +789,7 @@ export function terrainMesh(size, n = 40, seed = 7, amp = 0.035) {
       verts.push([(u - 0.5) * size, h, (v - 0.5) * size]);
     }
   }
-  const idx = (i, j) => i * (n + 1) + j;
+  const idx = (/** @type {number} */ i, /** @type {number} */ j) => i * (n + 1) + j;
   for (let i = 0; i <= n; i++) {
     for (let j = 0; j < n; j++) {
       edges.push([idx(i, j), idx(i, j + 1)]);
@@ -758,7 +803,9 @@ export function terrainMesh(size, n = 40, seed = 7, amp = 0.035) {
  * Planetary rings in the xz plane: `count` concentric circles between rIn
  * and rOut. Particles are the renderer's job (they move); this is the frame.
  */
+/** @param {number} rIn @param {number} rOut @returns {Mesh} */
 export function ringMesh(rIn, rOut, count = 5, segs = 96) {
+  /** @type {Mesh} */
   const out = { verts: [], edges: [] };
   for (let k = 0; k < count; k++) {
     const r = rIn + ((rOut - rIn) * k) / (count - 1);
@@ -775,6 +822,7 @@ export function ringMesh(rIn, rOut, count = 5, segs = 96) {
 
 export const FEEDBACK_COMMENT_MAX = 500;
 
+/** @param {any} body @returns {any} */
 export function validateSpaceFeedback(body) {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return { ok: false, error: "Invalid feedback body." };
@@ -793,6 +841,7 @@ export function validateSpaceFeedback(body) {
  * (empty = sound). Checks bilingual completeness, zoom sanity, matcher
  * coverage in BOTH languages for every scene (invariant 6 structurally).
  */
+/** @param {any} scene @returns {any} */
 export function validateScene(scene) {
   const errs = [];
   if (!scene || typeof scene !== "object") return ["not an object"];
