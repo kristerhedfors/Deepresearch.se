@@ -224,3 +224,19 @@ the consumer chose to send (no identity, filename, or account data);
 **SHARING** (being a provider) is a Se/rver-tier, signed-in action that exposes
 none of the provider's own data and adds no Se/cure exception. See
 `docs/COMPUTE-SHARING.md` §7 for the full analysis.
+
+**MUTUAL CONSENT (2026-07-25, owner directive — shipped).** Whichever framing
+the exception count ends up with, the crossing is no longer authorized by a
+token alone. A relayed completion is refused — before its body is parsed,
+parked or metered — unless BOTH parties have said yes to each OTHER's
+platform-verified identity: the sharer to this consumer reaching their machine
+(**ingress**), and the consumer to their prompts leaving for that machine
+(**egress**). Neither implies the other; both are remembered per identity pair
+and reversible at any time; and each side is shown who the other is as the
+SERVER resolved them from a session, never as the peer described themselves —
+where the platform cannot verify (an anonymous workspace consumer) the surface
+says "unverified" rather than dressing a token up as a person. The unmissable
+line at the point of use is therefore a question the person has to answer, not
+a notice they can scroll past.
+`docs/COMPUTE-SHARING.md` §8b; enforced in `src/pool.js`, worded once in
+`public/js/pool-core.js`, verified live by `tests/e2e/llm-sharing.live.spec.js`.

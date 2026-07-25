@@ -85,6 +85,41 @@ The **Agent Studio** is where the platform folds back on itself — it is the
 [`pair-studio`](../sdk/skills/pair-studio/SKILL.md) module made real: prompt →
 generate in the VM → preview → publish at `/app/<slug>/`.
 
+### 2.1 Agents are not chat modes, and not tiers
+
+Three different lists get confused for one another, so here they are side by
+side. The agent list is not the chat-mode dropdown and not the tier split, even
+though five of its entries are now bound to a mode (§4).
+
+| The list | Where it lives | What it is | Its entries |
+|---|---|---|---|
+| **Tiers** | the product | The two halves of the platform, split by where the data goes | Se/cure (client, server in no data path), Se/rver (signed-in, cloud) |
+| **Chat modes** | `public/js/chat-mode.js` `CHAT_MODES`, mirrored in `public/js/mode-theme.js` | What the pipeline *does* with a turn — picked in the dropdown | `normal` (Deep Research), `introspection`, `sdk` (Agent Studio), `orchestrator`, `outrospection` |
+| **Agents** | `sdk/AGENTS.json` | Reference AgentSpecs — templates to copy | Research, Introspection, Agent Studio, Orchestrator, Outrospection, Secure, Under Construction |
+
+The relationships, in one line each:
+
+- **An agent picks a tier**, via `platform` (`"client"` = Se/cure,
+  `"server"` = Se/rver). The specs named *Research* and *Secure* are just the
+  reference agent for each tier — the tier is the platform half, the agent is
+  one flavour running on it. Se/cure is **not** an agent under Se/rver: its
+  defining property is structural (the server is in no data path), and a
+  client-platform spec cannot opt into a server data path (PA-4).
+- **An agent picks a mode**, via the `mode` field and the `mode-select`
+  control; all five ids are selectable. Since spec 0.2.0 it also picks an
+  **answer phase**, via `capability.answerPhase` (§3.1) — so a spec can reach
+  any execution semantics the platform already implements, and the `defaults`
+  table (§4) is what binds a mode to the agent that IS it. What a spec still
+  cannot do is *invent* execution semantics: a genuinely new executor is a row
+  in `src/pipeline.js` `ANSWER_PHASE_RUNNERS`, written by hand. The dispatch is
+  code; only the selection is data.
+- **"Agent Studio" appears in both lists** because the mode that builds agents
+  is itself shipped as a reference agent. Its spec **id** is `agent-builder` and
+  its **mode** is the canonical `sdk`. The two are not interchangeable:
+  `validateAgentSpec` rejects `"mode": "agent-builder"`, and the name survives
+  only as that spec id and as a deep-link alias
+  (`public/js/deeplink-core.js`).
+
 ## 3. The AgentSpec
 
 One agent, as JSON. The full field reference and the closed control vocabulary
@@ -95,9 +130,11 @@ the short version:
 {
   "id": "research", "name": "Research", "tagline": "…",
   "platform": "server",              // "client" | "server" — the tier
-  "mode": "normal",                  // a real chat mode id, validated against
-                                     // chat-mode.js: normal | introspection |
-                                     // sdk | orchestrator | outrospection
+  "mode": "normal",                  // a CANONICAL chat mode id, validated against
+                                     // chat-mode.js: normal | introspection | sdk |
+                                     // orchestrator | outrospection. "agent-builder"
+                                     // is NOT accepted here — it survives only as the
+                                     // Agent Studio spec's `id` and as a deep-link alias
   "theme": { "--agent-accent": "#3b82f6", … },
   "intro":   { "kind": "fade" },
   "loading": { "kind": "pipeline-phases", "messages": ["Triaging…", …] },

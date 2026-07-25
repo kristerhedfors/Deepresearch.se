@@ -91,6 +91,31 @@ Worker; setup reference: `docs/GOOGLE-AUTH.md`).
   user `admin`). The Worker **fails closed** if these secrets are unset
   (they back break-glass Basic Auth and, when `SESSION_SECRET` is unset,
   the legacy HMAC key). No `WWW-Authenticate` challenge is ever emitted.
+- **Run-as — the break-glass identity picker** (`src/run-as.js`, 2026-07-25):
+  break-glass is ONE shared principal, which cannot exercise anything
+  multi-user (compute sharing's mutual consent is the case that forced
+  this). A break-glass request may declare who it is ACTING AS, via the
+  `X-Run-As` header, or `POST /api/admin/run-as {as}` which mints a normal
+  session cookie for that identity — that cookie is what lets a whole
+  BROWSER context be a persona for an end-to-end run.
+
+  | Spec | Resolves to |
+  |---|---|
+  | `admin` | break-glass unchanged |
+  | `user` | the same principal at ordinary privilege ("run as a regular user") |
+  | `<email>` / `#<id>` | a real D1 account |
+  | `test:<name>` | a synthetic persona `runas:<name>` — no D1 row, own pool, own consent decisions |
+
+  **It adds no privilege.** Honored only on a request that already presented
+  the break-glass secrets; every form is equal or lesser privilege; an
+  unrecognized spec resolves to NOTHING (falls back to plain break-glass)
+  rather than to a surprise identity; and a run-as identity is not
+  `isSecretAdmin`, so the header cannot be laundered through a session and
+  `/api/admin/run-as` refuses it. Synthetic personas have no `user` row, so
+  they are exempt from the terms/approval gates exactly as break-glass is,
+  and carry `synthetic: true` so no roster presents a test identity as a
+  signed-in human. Pinned by `src/run-as.test.js`; used for real in
+  `tests/e2e/llm-sharing.live.spec.js`.
 - `GOOGLE_AUTH_URL` / `GOOGLE_TOKEN_URL` env overrides exist solely so
   local tests can point the flow at a mock; production uses the defaults.
 

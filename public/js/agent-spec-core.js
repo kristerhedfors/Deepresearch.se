@@ -13,10 +13,18 @@
 //
 // I/O-free and Node-tested (agent-spec-core.test.js). An "agent" is DEFINED by
 // its chat-input-pane controls, its intro + loading animations, its colour
-// theme, its seed example questions, and the default quota a minted share-link
-// token carries. The four agents this project ships — research, secure,
-// under-construction, agent-builder — are the reference specs in sdk/AGENTS.json;
-// deriving a new agent is copying one, changing these fields, and validating.
+// theme, its seed example questions, the default quota a minted share-link
+// token carries, and — since spec 0.2.0 — its CAPABILITY block: what it DOES.
+// The seven agents this project ships are the reference specs in
+// sdk/AGENTS.json; deriving a new agent is copying one, changing these fields,
+// and validating.
+//
+// Those seven are NOT the chat-mode dropdown (chat-mode.js CHAT_MODES: normal /
+// introspection / sdk / orchestrator / outrospection) and NOT the two tiers
+// (Se/cure, Se/rver — an agent declares which one via `platform`), though FIVE
+// of them are the default agent OF a mode, bound to it by the registry's
+// `defaults` table. An agent PICKS a tier, a mode and an answer phase; it never
+// adds one. docs/AGENT-PLATFORM.md §2.1 lays the three lists side by side.
 
 // The Se/rver-app chat modes an agent's `mode` field may name. Imported from
 // the mode-theme registry rather than restated here, so a spec can never drift

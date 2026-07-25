@@ -92,8 +92,11 @@ One entry in `sdk/AGENTS.json` (`{ agents: [ … ] }`):
   "platform": "server",          // "client" | "server"  (the tier / platform type)
   "tier": "Se/rver",             // branding label (display only)
   "derivesFrom": "baseplate",    // which agent/base this was copied from (provenance)
-  "mode": "normal",              // a chat mode id, validated against chat-mode.js:
-                                 // normal | introspection | sdk | orchestrator | outrospection
+  "mode": "normal",              // a CANONICAL chat mode id, validated against
+                                 // chat-mode.js: normal | introspection | sdk |
+                                 // orchestrator | outrospection. "agent-builder"
+                                 // is NOT accepted here — it survives only as the
+                                 // Agent Studio spec's `id` and as a deep-link alias
   "theme": { "--agent-accent": "#3b82f6", … },   // CSS custom properties
   "intro":   { "kind": "fade", "durationMs": 400 },
   "loading": { "kind": "pipeline-phases", "messages": ["Triaging…", …] },

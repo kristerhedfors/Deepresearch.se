@@ -29,7 +29,8 @@
 // with a weaker key. Rotating SESSION_SECRET invalidates all sessions. The
 // admin break-glass Basic Auth (below) is independent of this key.
 
-import { getUserById } from "./accounts.js";
+import { getUserByEmail, getUserById } from "./accounts.js";
+import { RUN_AS_HEADER, applyLocalRunAs, parseRunAs, runAsSpecFromUid } from "./run-as.js";
 import { safeEqual, toHex } from "./token-crypto.js";
 
 /** @typedef {import('./types.js').Env} Env */
@@ -47,6 +48,10 @@ import { safeEqual, toHex } from "./token-crypto.js";
  * @property {boolean} [pending] awaiting-approval user (index.js parks them)
  * @property {User} [user] the D1 row (absent for break-glass)
  * @property {boolean} [refreshCookie] cookie passed its half-life — reissue it
+ * @property {string} [runAs] the run-as spec this identity was resolved from
+ *   (src/run-as.js) — break-glass acting as someone else
+ * @property {boolean} [synthetic] a `test:<name>` persona with no D1 row: a
+ *   real, distinct identity for multi-user testing, honestly labelled as one
  */
 
 const COOKIE_NAME = "dr_session";
@@ -101,7 +106,12 @@ export async function identify(request, env) {
   const basic = parseBasicHeader(request);
   if (basic) {
     if (safeEqual(basic.user, creds.user) && safeEqual(basic.pass, creds.pass)) {
-      return adminIdentity();
+      // RUN-AS: break-glass may declare WHICH identity it is acting as
+      // (src/run-as.js). Never an escalation — every form it resolves to is
+      // equal or lesser privilege — and honored only here, on a request that
+      // presented the break-glass secrets.
+      const runAs = await resolveRunAs(env, request.headers.get(RUN_AS_HEADER));
+      return runAs || adminIdentity();
     }
     return null; // explicit bad credentials — don't fall through to cookie
   }
@@ -110,12 +120,44 @@ export async function identify(request, env) {
   if (!session) return null;
   const refreshCookie = session.exp * 1000 - Date.now() < REFRESH_BELOW_S * 1000;
 
+  // A run-as SESSION: the cookie POST /api/admin/run-as minted, carrying the
+  // spec inside the signed uid. This is what lets a browser context BE a
+  // persona for a whole end-to-end run (the header form only reaches API
+  // calls that can spare their Authorization header).
+  const raSpec = runAsSpecFromUid(session.uid);
+  if (raSpec) {
+    const ident = await resolveRunAs(env, raSpec);
+    return ident ? { ...ident, refreshCookie } : null;
+  }
+
   if (session.uid === ADMIN_ID) return { ...adminIdentity(), refreshCookie };
   const user = await getUserById(env, Number(session.uid)).catch(() => null);
   if (user && (user.status === "active" || user.status === "pending")) {
     return { ...userIdentity(user), refreshCookie };
   }
   return null;
+}
+
+/**
+ * Resolve a run-as spec to the identity it names, or null when the spec is
+ * absent/invalid/unresolvable (the caller falls back to plain break-glass, so
+ * a typo never silently becomes a surprise identity). The `account` forms hit
+ * D1; everything else is pure (src/run-as.js).
+ * @param {Env} env
+ * @param {string | null | undefined} raw the header value or cookie spec
+ * @returns {Promise<Identity | null>}
+ */
+export async function resolveRunAs(env, raw) {
+  const spec = parseRunAs(raw);
+  if (!spec) return null;
+  const local = applyLocalRunAs(spec, adminIdentity());
+  if (local) return local;
+  if (spec.kind !== "account") return null;
+  const user = spec.byId
+    ? await getUserById(env, Number(spec.ref)).catch(() => null)
+    : await getUserByEmail(env, spec.ref).catch(() => null);
+  if (!user) return null;
+  return { ...userIdentity(user), runAs: spec.byId ? "#" + spec.ref : spec.ref };
 }
 
 /**

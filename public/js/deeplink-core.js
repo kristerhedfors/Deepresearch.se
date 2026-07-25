@@ -8,10 +8,12 @@
 // from the project itself. Kept I/O-free and Node-tested (deeplink-core.test.js);
 // app.js does the DOM side effects from what this returns.
 
-/** Canonical chat-mode ids (mirror chat-mode.js). */
-export const DEEPLINK_MODES = ["normal", "introspection", "sdk", "orchestrator"];
+/** Canonical chat-mode ids (mirror chat-mode.js CHAT_MODES — all five). */
+export const DEEPLINK_MODES = ["normal", "introspection", "sdk", "orchestrator", "outrospection"];
 
-/** Friendly aliases → canonical mode id, so links can read naturally. */
+/** Friendly aliases → canonical mode id, so links can read naturally. The
+ * `agent-builder` entry is the AgentSpec's name for the `sdk` mode
+ * (sdk/AGENTS.json) — the spec vocabulary and the app's mode ids meet here. */
 const MODE_ALIASES = {
   normal: "normal",
   research: "normal",
@@ -26,6 +28,10 @@ const MODE_ALIASES = {
   orchestrate: "orchestrator",
   orch: "orchestrator",
   workflow: "orchestrator",
+  outrospection: "outrospection",
+  outrospect: "outrospection",
+  outro: "outrospection",
+  feed: "outrospection",
 };
 
 /** Cap on a prefilled question — long enough for a real ask, bounded for safety. */

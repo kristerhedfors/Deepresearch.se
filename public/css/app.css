@@ -2377,3 +2377,38 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   0% { box-shadow: 0 0 0 0 rgba(13, 79, 160, .5); }
   100% { box-shadow: 0 0 0 10px rgba(13, 79, 160, 0); }
 }
+
+/* The account panel's LLM sharing view (account-pool.js): compute sharing's
+   dashboard and both halves of mutual consent. A row is one identity — a
+   person asking to use your model, or a pool owner yours would go to — so
+   the row's job is to say WHO, how sure the platform is about that, and what
+   you decided. `waiting` is the only state that needs your attention, and it
+   is the only one that gets a colour. */
+.pool-row {
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: .5rem .7rem; margin: .4rem 0; background: var(--panel);
+  display: flex; flex-direction: column; gap: .3rem;
+}
+.pool-row.waiting { border-color: var(--accent); background: var(--panel-2); }
+.pool-who { font-size: .85rem; display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.pool-meta { font-size: .78rem; }
+.pool-actions { display: flex; gap: .4rem; flex-wrap: wrap; }
+.pool-actions button {
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: .22rem .7rem; font-size: .78rem; cursor: pointer;
+  background: var(--panel-2); color: var(--text);
+}
+.pool-actions .pool-allow:hover { border-color: var(--ok); color: var(--ok); }
+.pool-actions .pool-deny:hover { border-color: #c0392b; color: #c0392b; }
+.pool-badge {
+  font-size: .68rem; border-radius: 999px; padding: .05rem .5rem;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--muted);
+}
+.pool-badge.verified { border-color: #9ed4b5; color: var(--ok); }
+.pool-badge.unverified { border-color: #e3c576; color: #7a5c12; }
+.pool-state { font-size: .72rem; color: var(--muted); }
+.pool-state.pending { color: var(--accent); font-weight: 600; }
+.pool-mint { display: flex; gap: .4rem; flex-wrap: wrap; margin: .35rem 0; }
+.pool-mint input { flex: 1 1 12rem; min-width: 0; }
+.pool-link { word-break: break-all; font-size: .72rem; }
+.pool-flow { margin-top: .8rem; }
