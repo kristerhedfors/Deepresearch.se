@@ -28,8 +28,10 @@
 //        position with spawns PROJECTED INTO the imagery (src/tokemon-nav.js)
 //        — gated on the per-user Google Maps knob, fail-soft without it
 //   POST …/go {command, lat, lng, heading} → text-command navigation
-//        ("go north 200 m", "gå till Kungsgatan 1", "look right"); moves and
-//        turns are pure math, "go to <place>" resolves via Places (knob-gated)
+//        ("go north 200 m", "continue 50 m", "gå till Kungsgatan 1",
+//        "look right"); moves and turns are pure math — absolute or relative
+//        to the current heading — and "go to <place>" resolves via Places
+//        (knob-gated)
 
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
@@ -57,6 +59,7 @@ import {
   statsFor,
 } from "./tokemon.js";
 import {
+  absoluteBearing,
   destinationPoint,
   normalizeHeading,
   parseGoCommand,
@@ -176,14 +179,25 @@ async function postStarter(request, db, log, identity) {
   return jsonResponse({ save: publicSave(save) });
 }
 
+/**
+ * The spawns still in play around a point: deterministically re-derived for
+ * this cell + time bucket, minus the ones this save has already consumed.
+ * Shared by the map (…/spawns) and the street-view frame (…/scene), so both
+ * panes always show the same world.
+ * @param {Save} save
+ * @param {{lat: number, lng: number}} at
+ * @returns {Spawn[]}
+ */
+function liveSpawns(save, at) {
+  return spawnsAround(at.lat, at.lng, Date.now(), levelCapFor(save)).filter((s) => !save.usedSpawns[s.id]);
+}
+
 /** @param {D1Database} db @param {URL} url @param {Identity} identity */
 async function getSpawns(db, url, identity) {
   const pos = parseLatLng({ lat: url.searchParams.get("lat"), lng: url.searchParams.get("lng") });
   if (!pos) return jsonResponse({ error: "lat and lng query params are required." }, 400);
   const save = await loadSave(db, identity.id);
-  const now = Date.now();
-  const spawns = spawnsAround(pos.lat, pos.lng, now, levelCapFor(save)).filter((s) => !save.usedSpawns[s.id]);
-  return jsonResponse({ spawns, now, encounterRadiusM: ENCOUNTER_RADIUS_M });
+  return jsonResponse({ spawns: liveSpawns(save, pos), now: Date.now(), encounterRadiusM: ENCOUNTER_RADIUS_M });
 }
 
 /**
@@ -378,17 +392,16 @@ function sceneUnavailable(reason, message) {
 }
 
 /**
- * Project the live spawns into a captured frame and decorate each overlay
- * with what the client renders. Camera = the PANO's true position; `near`
- * (tappable) is measured from the PLAYER's position — the same 80 m check
- * …/encounter enforces.
- * @param {Save} save
+ * Project spawns into a captured frame and decorate each overlay with what
+ * the client renders. Camera = the PANO's true position; `near` (tappable) is
+ * measured from the PLAYER's position — the same 80 m check …/encounter
+ * enforces. Pure, so the framing rules are unit-tested (tokemon-api.test.js).
+ * @param {Spawn[]} spawns  The live spawns around the camera.
  * @param {{lat: number, lng: number}} cam  The panorama position.
  * @param {number} heading
  * @param {{lat: number, lng: number}} playerPos
  */
-function sceneOverlays(save, cam, heading, playerPos) {
-  const spawns = spawnsAround(cam.lat, cam.lng, Date.now(), levelCapFor(save)).filter((s) => !save.usedSpawns[s.id]);
+export function decorateOverlays(spawns, cam, heading, playerPos) {
   return projectSpawns(cam.lat, cam.lng, heading, spawns).map((o) => {
     const s = /** @type {Spawn} */ (spawns.find((x) => x.id === o.id)); // o came from projecting spawns
     return {
@@ -433,7 +446,7 @@ async function getScene(db, env, url, log, identity) {
     return sceneUnavailable("capture_failed", "Couldn't fetch the imagery right now — try again in a moment.");
   }
   const save = await loadSave(db, identity.id);
-  const overlays = sceneOverlays(save, cam, heading, pos);
+  const overlays = decorateOverlays(liveSpawns(save, cam), cam, heading, pos);
   log.info("tokemon.scene", { user_id: identity.id, overlays: overlays.length, heading: Math.round(heading) });
   return jsonResponse({
     available: true,
@@ -465,7 +478,7 @@ const GO_SAY = {
       ? "Att resa till en plats kräver Google Maps-inställningen (Konto → Inställningar)."
       : "Traveling to a place needs the Google Maps setting (Account → Settings).",
   help: () =>
-    'Try: "go north 200 m" · "gå till Kungsgatan 1" · "look right" · "titta västerut"',
+    'Try: "go north 200 m" · "continue 50 m" · "gå till Kungsgatan 1" · "look right" · "titta västerut"',
 };
 
 /** Cardinal bearings → [English, Swedish] words. @type {Record<number, [string, string]>} */
@@ -482,18 +495,22 @@ async function postGo(request, env, log, identity) {
   const cmd = parseGoCommand(body?.command);
   if (!cmd) return jsonResponse({ error: GO_SAY.help() }, 400);
 
+  // Both moves and looks come back as either an absolute compass bearing or a
+  // turn off the current heading; absoluteBearing resolves the two the same
+  // way, so "go left" walks where "turn left" would have looked.
   if (cmd.kind === "move") {
-    const to = destinationPoint(pos.lat, pos.lng, cmd.bearing, cmd.distanceM);
+    const bearing = absoluteBearing(cmd, heading);
+    const to = destinationPoint(pos.lat, pos.lng, bearing, cmd.distanceM);
     log.info("tokemon.go", { user_id: identity.id, kind: "move", dist: cmd.distanceM });
     return jsonResponse({
       pos: to,
-      heading: cmd.bearing,
+      heading: bearing,
       moved: true,
-      say: GO_SAY.moved(cmd.sv, cmd.distanceM, dirWord(cmd.bearing, cmd.sv)),
+      say: GO_SAY.moved(cmd.sv, cmd.distanceM, dirWord(bearing, cmd.sv)),
     });
   }
   if (cmd.kind === "look") {
-    const next = cmd.bearing !== undefined ? cmd.bearing : normalizeHeading(heading + cmd.turn);
+    const next = absoluteBearing(cmd, heading);
     log.info("tokemon.go", { user_id: identity.id, kind: "look" });
     return jsonResponse({ pos, heading: next, moved: false, say: GO_SAY.turned(cmd.sv, next) });
   }
