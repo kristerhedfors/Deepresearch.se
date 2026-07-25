@@ -177,7 +177,7 @@ import {
  *   aux?: Record<string, AuxSourceState>,
  *   failoverModel?: string,
  *   feedbackCapture?: boolean,
- *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string, images?: { name: string | null, data: string }[], useCase?: { id: number, tag: string } | null, scope?: "standalone" | "session" },
+ *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string, images?: { name: string | null, data: string }[], useCase?: { id: number, tag: string } | null, scope?: import("../public/js/feedback-core.js").FeedbackScope },
  * }} PipelineState
  */
 

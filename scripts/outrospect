@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# The OUTROSPECTION feed on the LIVE site — what the outward-looking lenses
+# have picked up, plus the log of refresh runs. Wraps /api/admin/outrospect
+# (src/outrospect.js) using the break-glass Basic Auth credentials, the same
+# BASIC_AUTH_USER / BASIC_AUTH_PASS env vars scripts/features and
+# scripts/feedback use.
+#
+# This is the READ side — the agent loop's "what did the world do that we
+# should answer". The WRITE side is scripts/outrospect-scan.mjs
+# (`npm run outrospect`), which runs the searches offline and commits the
+# result, and the site's own per-visit refresh.
+#
+# Usage:
+#   scripts/outrospect                       the whole feed, readable text
+#   scripts/outrospect --lens browser-models one lens only
+#   scripts/outrospect --limit 50            cap the items
+#   scripts/outrospect --json                JSON instead of text
+#
+# BASE_URL overrides the target (default https://deepresearch.se).
+set -euo pipefail
+
+: "${BASIC_AUTH_USER:?Set BASIC_AUTH_USER (break-glass credentials)}"
+: "${BASIC_AUTH_PASS:?Set BASIC_AUTH_PASS (break-glass credentials)}"
+BASE_URL="${BASE_URL:-https://deepresearch.se}"
+
+format="text"
+lens=""
+limit=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json) format="json" ;;
+    --lens) lens="$2"; shift ;;
+    --limit) limit="$2"; shift ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+qs=""
+[ -n "$lens" ] && qs="lens=$lens"
+[ -n "$limit" ] && qs="${qs:+$qs&}limit=$limit"
+[ "$format" = "text" ] && qs="${qs:+$qs&}format=text"
+
+curl -sS -u "$BASIC_AUTH_USER:$BASIC_AUTH_PASS" "$BASE_URL/api/admin/outrospect${qs:+?$qs}"

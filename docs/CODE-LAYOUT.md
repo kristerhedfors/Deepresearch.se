@@ -86,6 +86,7 @@ Server (`src/`):
 | `tokemon-api.js` | The first registered game: `/api/games/tokemon/*` (dispatched via `games.js`) — save persistence (D1 `tokemon_saves`), spawn re-derivation + proximity validation, server-side battle resolution; 503s without D1. Also the street-view AR mode: `…/scene` (a Street View frame at the player's position with spawns projected INTO the imagery, via `googlemaps.js`'s edge-cached POV capture, gated on the per-user `google_maps` knob) and `…/go` (text navigation) |
 | `tokemon-nav.js` | The street-view mode's PURE side (Node-tested): the bilingual text-command grammar (`parseGoCommand` — "go north 200 m" / "gå till Kungsgatan 1" / "look right", EN+SV parity per invariant 6), spherical geodesy (`destinationPoint`/`bearingBetween`), and `projectSpawns` (bearing→x, distance→y/size placement of spawns inside a Street View frame) |
 | `space.js` | The SPACE-ANIMATIONS domain's server FAÇADE: a pure re-export of the ONE shared core `public/js/space-core.js` (the scene registry — one "animation skill" per common space question, EN+SV — the deterministic `spaceIntent` matcher, zoom math, wireframe mesh builders, feedback validation) plus the domain's two endpoints: PUBLIC `POST /api/space/feedback` (the /space/ showcase gallery's 👍/👎 + short comment; validated against the registry, comment clamped, D1 `space_feedback` rows carry NO identity — the page is public) and admin `GET /api/admin/space-feedback` (newest-first entries + per-scene tallies, `?format=text` for loops). No D1 → 503, only the feedback button degrades — the animations are static assets and keep playing. See the **space-animations** skill and `docs/SPACE-ANIMATIONS.md` |
+| `outrospect.js` | OUTROSPECTION — introspection's mirror image (the outward-looking feed at `/outrospect/`): a pure re-export of the ONE shared core `public/js/outrospect-core.js` (the seven-LENS registry — one standing strategic question each: the one big dependency / browser-runnable models / edge RAG / LLM app architecture / provable privacy / agent standards / other deep-research systems, each carrying its own literal Exa queries and EN+SV routing terms per invariant 6 — plus item normalization, `deltaItems`, `mergeFeed`, `stalestLens`, the `?format=text` render) plus the domain's three endpoints: `GET /api/outrospect/feed` (the live D1 stream), `POST /api/outrospect/refresh` (runs ONE lens's searches on behalf of the visiting user, stores the delta, returns what is genuinely new — per-lens cooldown + per-user hourly cap off D1 `outrospect_runs`), and admin `GET /api/admin/outrospect` (feed + run log, `?format=text` for the agent loop). Fail-soft throughout (invariant 2: a dead search backend degrades to zero new items, never a 500); no D1 → the live half reports `live:false` and the page runs on the committed artifact alone. The stored `outrospect_items` rows carry the ARTICLE and never the reader (invariant 4). Offline bulk half: `scripts/outrospect-scan.mjs` (`npm run outrospect`) → `public/outrospect/feed.json`; read CLI `scripts/outrospect`. See the **outrospection** skill and `docs/OUTROSPECTION.md` |
 | `prompts.js` | All LLM prompt builders |
 | `validation.js` | Request validation (messages, images) + model/vision resolution, plus the untrusted-client-input sanitizers (`resolveShellTranscript`, `sanitizeClientDiag`, `sanitizeFsSummary`) shared with `chat.js` |
 | `model-routing.js` | The shared split-model-routing decision (`resolveJsonModel` — JSON planning phases stay on the fixed reliable model): a leaf module (imports nothing) so `chat.js` and `mcp.js` share ONE implementation instead of a verbatim copy |
@@ -603,6 +604,30 @@ event list), `js/api.js` (fetch wrappers), `tokemon.css`. All game RULES
 live server-side (`src/tokemon.js`, `src/tokemon-nav.js`); the page only
 presents. The
 site-wide `Permissions-Policy` grants `geolocation=(self)` for this page.
+
+Outrospection (`public/outrospect/` — the outward-looking control view at
+`/outrospect/`, signed-in like the rest of the app): `index.html` (the
+newsprint front-page styling — introspection's titanium is clinical, this is
+a tabloid on purpose) + the page module `public/js/outrospect-view.js`, which
+does three things in order. It RENDERS the merge of both halves of the feed —
+the committed artifact `/outrospect/feed.json` (bulk-filled offline by
+`scripts/outrospect-scan.mjs`) and the live rows from
+`GET /api/outrospect/feed` — through the core's `mergeFeed`, so the page works
+even signed out of one half or the other. It LOOKS: shortly after the first
+paint it fires `POST /api/outrospect/refresh` on the visitor's behalf, the
+server picks whichever lens has gone stalest, and anything new streams in at
+the top with the NEW flash without a reload — visiting the page is what keeps
+it current. And it offers the SHORTCUT back: a note written here posts to the
+ordinary `/api/feedback` queue tagged with feedback-core's `strategy` scope
+and the lens it was written under (`strategyPageTag`), so the development loop
+reads it as an operative/strategic idea rather than triaging it as a defect.
+Every item's title and teaser come from the open web, so the whole feed is
+built with `createElement`/`textContent` — nothing on this page goes through
+`innerHTML`. Deterministic logic lives in the shared pure core
+`public/js/outrospect-core.js` (Node-tested), which `src/outrospect.js`
+re-exports server-side and `scripts/outrospect-scan.mjs` imports in Node — one
+implementation, three faces, so a scan and a visit can never disagree about
+what counts as new. See `docs/OUTROSPECTION.md`.
 
 Space animations (`public/space/` — the PUBLIC showcase at `/space/`,
 allowlisted like `/pulse/`): an archive of playable wireframe 3D
