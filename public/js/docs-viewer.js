@@ -75,14 +75,40 @@ function render() {
 }
 
 // Comment mode is administrative: the switch exists only for an admin
-// identity. /api/me is behind the identity gate, so a signed-out visitor gets
-// a 401 here and reads the docs exactly as before.
+// identity, and /api/me is behind the identity gate.
+//
+// EVERY outcome here is VISIBLE (2026-07-25). The first cut returned silently
+// on each failure path — no identity, no admin, import error — which made a
+// missing switch indistinguishable from a broken feature: /docs is a PUBLIC
+// page, so the ordinary way to arrive is signed out, and the reader then
+// looked exactly as if comment mode had never shipped. Silence is the wrong
+// default for a feature someone is looking for. Now the mode slot always says
+// which of the three it is, and anything unexpected also reaches the console.
 async function maybeMountComments() {
+  if (!modeEl || !railEl) {
+    // Old cached HTML against new JS: mounting would throw on a null element.
+    console.warn("[docs] comment mode: #mode / #rail missing from the page — stale cached HTML?");
+    return;
+  }
+  let me = null;
   try {
     const res = await fetch("/api/me");
-    if (!res.ok) return;
-    const me = await res.json();
-    if (me?.role !== "admin") return;
+    if (res.ok) me = await res.json();
+  } catch (e) {
+    console.warn("[docs] comment mode: could not read the identity:", e);
+  }
+  if (me?.role !== "admin") {
+    // Signed out is the common case on a public page and the one worth
+    // explaining; a signed-in non-admin is told plainly rather than left
+    // wondering. Neither is an error.
+    showModeNote(
+      me
+        ? "Comment mode is for administrators."
+        : '<a href="/rver">Sign in as an administrator</a> to comment on this documentation.',
+    );
+    return;
+  }
+  try {
     const { mountDocComments } = await import("/js/docs-comments.js");
     commentLayer = mountDocComments({
       docEl,
@@ -92,9 +118,19 @@ async function maybeMountComments() {
       currentText: () => docs.get(current) || "",
     });
     commentLayer.onDocRendered();
-  } catch {
-    // No identity, no network, no comment mode — the reader still reads.
+  } catch (e) {
+    console.error("[docs] comment mode failed to load:", e);
+    showModeNote("Comment mode failed to load — details in the browser console.");
   }
+}
+
+/**
+ * Render the mode slot as a quiet note instead of the Read/Comment switch.
+ * @param {string} html trusted, built here — never user or document content
+ */
+function showModeNote(html) {
+  modeEl.hidden = false;
+  modeEl.innerHTML = `<span class="mode-note">${html}</span>`;
 }
 
 function selectFromHash() {

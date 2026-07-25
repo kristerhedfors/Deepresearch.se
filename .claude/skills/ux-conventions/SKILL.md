@@ -503,6 +503,17 @@ replaced rather than silently losing the comment. Comment
 mode is administrative: the switch appears only for an admin identity, and the
 rail claims layout space only when there is something in it.
 
+**Every outcome is visible (amended 2026-07-25).** The mode slot always says
+which state the reader is in — the switch for an admin, "Comment mode is for
+administrators." for a signed-in non-admin, and a sign-in link when signed out.
+The first cut returned silently on each of those paths, and since `/docs` is a
+PUBLIC page the ordinary way to arrive is signed out: the reader then looked
+exactly as though the feature had never shipped, and the owner reasonably asked
+whether it was live at all. A gated feature must state that it is gated.
+Unexpected failures (missing markup from stale cached HTML, a failed dynamic
+import) say so in the slot AND reach the console — a `catch {}` that swallows
+them makes "not for you" and "broken" indistinguishable.
+
 **Why.** The point of commenting on a document here is not proofreading. This
 project keeps documentation and implementation describing the same system, so a
 comment on a documented claim is an instruction about the system — the loop

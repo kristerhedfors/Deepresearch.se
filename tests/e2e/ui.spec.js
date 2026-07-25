@@ -85,7 +85,9 @@ test("settings panel: cloud storage renders as an always-on disclosure row", asy
     })),
   );
 
-  await openApp(page, { webSearch: false, budgetS: 15 });
+  // This spec mocks /api/settings itself, so it owns the knob pinning
+  // (its mock omits bash_lite_mcp/developer_mode = both off).
+  await openApp(page, { webSearch: false, budgetS: 15, pinSettings: false });
   await page.click("#accountbtn");
   await page.click("#settingsbtn");
   await expect(page.locator("#account-body")).toContainText("History is stored in the cloud");
