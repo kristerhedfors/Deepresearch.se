@@ -1,0 +1,14 @@
+{
+  "generated": null,
+  "note": "The committed half of the outrospection feed. It is EMPTY on purpose: items here are real search results or nothing at all, never placeholder headlines. Populate it with `EXA_API_KEY=… npm run outrospect` (scripts/outrospect-scan.mjs) and commit the result; until then the page runs entirely on the live half, which fills itself from the first visit onward (POST /api/outrospect/refresh).",
+  "lenses": [
+    "one-dependency",
+    "browser-models",
+    "edge-rag",
+    "llm-architecture",
+    "privacy-llm",
+    "agent-standards",
+    "deep-research"
+  ],
+  "items": []
+}
