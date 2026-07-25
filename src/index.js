@@ -256,10 +256,12 @@ async function route(request, env, url, log, ctx, requestId) {
   //       pipeline, web search, accounts, and cloud storage (handled in
   //       routeAuthed; unauthenticated visitors get the login page).
   // /free and /free/project-… are legacy aliases from DRC's free-mode era.
-  // The root is the FRONT DOOR for visitors: it forwards to the client-side
-  // Se/cure tier (/cure — the umbrella intro + chat), NOT the old promotional
-  // landing (public/welcome/, retired as the front door but still reachable by
-  // direct URL). Signed-in arrivals are forwarded to DRS (/rver) below.
+  // The root is the FRONT DOOR for visitors: it serves the LANDING page
+  // (public/welcome/ — purpose, the architecture in short, the capabilities,
+  // the source) in place at `/`, without a redirect, so deepresearch.se is
+  // itself the introduction; the landing's own links and its ghost button are
+  // the doors onward to the two tiers. Signed-in arrivals are forwarded to
+  // DRS (/rver) below.
   if (
     (request.method === "GET" || request.method === "HEAD") &&
     (url.pathname === "/cure" ||
@@ -447,14 +449,14 @@ async function route(request, env, url, log, ctx, requestId) {
   // ---- everything else requires an identity ------------------------------
   const identity = await identify(request, env);
   if (!identity) {
-    // Visitors hitting the root land on the client-side Se/cure tier — the
-    // umbrella intro + chat — the front door for everyone not signed in.
-    // (The old promotional landing at /welcome is retired as the front door
-    // but still reachable by direct URL.)
-    if (url.pathname === "/" && request.method === "GET") {
-      return {
-        response: new Response(null, { status: 302, headers: { Location: "/cure" } }),
-      };
+    // Visitors hitting the root get the promotional LANDING page — what the
+    // project is for, the architecture in short with its two data-path
+    // diagrams, the capabilities, and the source — served in place so the URL
+    // stays deepresearch.se. It is also reachable directly at /welcome/; both
+    // tiers are one tap away from it (the ghost button → /cure, sign in →
+    // /rver).
+    if (url.pathname === "/" && (request.method === "GET" || request.method === "HEAD")) {
+      return { response: await serveAsset(request, env, url.origin + "/welcome/") };
     }
     log.warn("auth.denied", { reason: "unauthenticated" });
     if (url.pathname.startsWith("/api/")) {

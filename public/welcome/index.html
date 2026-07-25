@@ -76,6 +76,31 @@
       display: block; width: 100%; border-radius: 12px;
       background: #0a2e5c; box-shadow: 0 4px 18px rgba(4, 30, 60, .2);
     }
+    /* ---- the short architecture block. The two data-path diagrams are the
+       SAME files the full story at /architecture/ renders
+       (architecture/path-secure.svg / path-server.svg), referenced rather
+       than copied so the landing can never drift from it. Se/cure is always
+       the left/first column (the secure-first naming rule). ---- */
+    .pair { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; margin: .7rem 0 .2rem; }
+    @media (max-width: 620px) { .pair { grid-template-columns: 1fr; } }
+    .pair figure { margin: 0; }
+    .pair .diagram {
+      display: block; background: #fff; border: 1px solid var(--border);
+      border-radius: 12px; padding: .4rem;
+    }
+    .pair img { width: 100%; height: auto; display: block; }
+    .pair figcaption { font-size: .76rem; color: var(--muted); margin-top: .35rem; }
+    /* The diagrams carry a lot of 9–10px type inside a 420-unit viewBox, so
+       in the 680px column they render around 7px — too small to read. Where
+       there is room, this one card steps outside the column (main is a flex
+       COLUMN, so align-self overrides the stretch) and the diagrams roughly
+       double. Capped at the viewport minus the body padding, so the page
+       never scrolls sideways. */
+    @media (min-width: 900px) {
+      .card.wide { align-self: center; width: min(1000px, calc(100vw - 2rem)); }
+    }
+    .feat { margin: .5rem 0 0; padding-left: 1.15rem; }
+    .feat li { font-size: .89rem; margin: .4rem 0; }
     .cta { text-align: center; padding: 1.1rem 1.15rem; }
     .cta a.signin {
       display: inline-block; background: var(--accent); color: #fff;
@@ -328,38 +353,118 @@
   </div>
 
   <div class="card">
-    <h2>Research into LLM privacy capabilities</h2>
-    <p>DeepResearch.se is an innovation-and-research project into the
-    privacy capabilities of LLM applications. It asks how far a real, useful
-    research assistant can be pushed toward <em>provable</em> privacy, and
-    where that trades against capability. The site itself is the proof, and
-    the goal is to take that proof as far as possible: a fully open-sourced,
-    independently verifiable pair.
+    <h2>What this project is for</h2>
+    <p>DeepResearch.se is innovation and research on the <b>privacy
+    capabilities of LLM applications</b>: how far a real, useful research
+    assistant can be pushed toward <em>provable</em> privacy, and where that
+    trades against capability. Stated more precisely, it is a
+    <b>deep-research security architecture</b> — how research is distributed
+    outward to people and machines the originator doesn't control, how insight
+    is aggregated back, and what every hop actually exposes, written down
+    instead of assumed.</p>
+    <p>The proof is the site itself, in two tiers.
     DeepResearch.<b class="tail">Se<span class="sl">/</span>cure</b> runs the
-    research entirely in your browser, with the server absent from every
-    data path.
+    research entirely in your browser, on your own API key, with the server
+    absent from every data path.
     DeepResearch.<b class="tail">Se<span class="sl">/</span>rver</b> is the
     signed-in tier, where a server buys capability and protects what it
     handles with encryption and policy. It's still experimental and nowhere
-    near production-ready. The code is open (MIT), so every privacy claim is
-    yours to verify, and to reuse. It began as a weekend build through the
-    Claude Code iPhone app, kept in <a href="/story/">the build story</a>.</p>
+    near production-ready. It began as a weekend build through the Claude Code
+    iPhone app, kept in <a href="/story/">the build story</a>.</p>
+  </div>
+
+  <div class="card wide">
+    <h2>The architecture, in short</h2>
+    <p>One question, two data paths. A research run is the same five
+    deterministic phases either way — triage → search → gap check → synthesis
+    → validation — with no function calling anywhere in the pipeline, so it
+    works on any model in the catalog. What differs is <em>where</em> those
+    phases execute, and therefore what anyone but you can see.</p>
+    <div class="pair">
+      <figure>
+        <a class="diagram" href="/architecture/">
+          <img src="/architecture/path-secure.svg" alt="The Se/cure data path: the browser calls providers directly on the user's own keys; the server only serves static files and is not in the data path">
+        </a>
+        <figcaption>DeepResearch.<b class="tail">Se<span class="sl">/</span>cure</b>
+        — the browser orchestrates. The server's absence from the path IS the
+        privacy guarantee.</figcaption>
+      </figure>
+      <figure>
+        <a class="diagram" href="/architecture/">
+          <img src="/architecture/path-server.svg" alt="The Se/rver data path: browser to Cloudflare Worker to providers, with D1 and R2 stores beside the Worker">
+        </a>
+        <figcaption>DeepResearch.<b class="tail">Se<span class="sl">/</span>rver</b>
+        — the Worker orchestrates. What the server handles rests encrypted, and
+        policy governs how it is handled.</figcaption>
+      </figure>
+    </div>
+    <p>The full version — the serving chain, privacy and capabilities compared
+    side by side, workspaces, and the Linux VM that boots inside the tab — is
+    <a href="/architecture/">the architecture story</a>.</p>
   </div>
 
   <div class="card">
+    <h2>Some of what it does</h2>
+    <ul class="feat">
+      <li><b>Deep research with citations</b> — it plans its own web searches,
+        checks that they cover the question, and answers with numbered sources
+        inside a time budget you set.</li>
+      <li><b>Workspaces that travel</b> — a named collection of chats and
+        material. In Se<span class="sl">/</span>cure the share link <em>is</em>
+        the workspace: it carries the content, with no record on any
+        server.</li>
+      <li><b>A real Linux in the browser tab</b> — a WebAssembly VM the agent
+        runs and tests code in, streaming only the disk blocks it reads.</li>
+      <li><b>Introspection</b> — ask the site how it works and it answers from
+        its own deployed source, committed alongside it.</li>
+      <li><b>Agent Studio</b> — distils this site into a new agent, or into a
+        whole new platform, and publishes it live at its own URL.</li>
+      <li><b>Orchestrator</b> — decomposes one request into a team of
+        sub-agents the Worker runs in parallel waves, drawn as a live
+        graph.</li>
+      <li><b>Usable as a tool</b> — the site is itself an MCP server, so
+        Claude, Cursor or any MCP client can call its deep research.</li>
+      <li><b>Open interchange standards</b> — workspace bundles (DRSW/1) and
+        the pipeline itself (DRPL/1) are specified, not merely
+        implemented.</li>
+      <li><b>Integrations as extensions</b> — maps and street view, host
+        intelligence, model-hub search: examples behind one registry seam,
+        never wired into the core.</li>
+      <li><b>Swedish and English</b> — every deterministic intent gate takes
+        both, with parity tests to keep it that way.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Open source, MIT</h2>
+    <p>All of it is on
+    <a href="https://github.com/kristerhedfors/Deepresearch.se" rel="noopener">GitHub</a>
+    under the <b>MIT licence</b> — the Worker, both clients, the tests, the
+    documentation. It's an <b>80&nbsp;% project</b> exploring capabilities
+    rather than a product being shipped, and the repository is what makes the
+    claims on this page checkable: the site is deployed straight from it, so
+    what you read is what production serves. Take it and reuse it.</p>
+  </div>
+
+  <!-- The ids here are load-bearing: both the stylesheet above and the
+       module script at the foot of the page address these five nodes by id
+       (#askdemo, #askchips, #askmsgs, #askform, #askinput). Dropping them
+       leaves the block unstyled AND throws on the first getElementById,
+       which kills the rest of that script. -->
+  <div class="card" id="askdemo">
     <h2>Questions before you sign in?</h2>
     <p class="askhint">These are quick <b>prepackaged answers</b> (not the AI
       model, which needs sign-in), here to help you get your bearings.</p>
-    <div class="askchips">
+    <div class="askchips" id="askchips">
       <button type="button" class="askchip">What is this?</button>
       <button type="button" class="askchip">Is it private?</button>
       <button type="button" class="askchip">How is it built?</button>
       <button type="button" class="askchip">What does it cost?</button>
       <button type="button" class="askchip">How do I sign in?</button>
     </div>
-    <div class="askmsgs" aria-live="polite"></div>
-    <form class="askform" autocomplete="off">
-      <input class="askinput" type="text" placeholder="Ask a question…" aria-label="Ask a question">
+    <div class="askmsgs" id="askmsgs" aria-live="polite"></div>
+    <form class="askform" id="askform" autocomplete="off">
+      <input class="askinput" id="askinput" type="text" placeholder="Ask a question…" aria-label="Ask a question">
       <button type="submit">Ask</button>
     </form>
   </div>
@@ -372,7 +477,7 @@
     <a href="/build/"><b>About this project</b><span>Purpose &amp; EU AI Act use restrictions</span></a>
     <a href="/cure/help/"><b>Se<span class="sl">/</span>cure documentation</b><span>The client-side tier: your own keys, with chats stored in the browser only</span></a>
     <a href="/help/"><b>Se<span class="sl">/</span>rver documentation</b><span>The signed-in tier: every control, and its privacy meaning</span></a>
-    <a href="https://github.com/kristerhedfors/Deepresearch.se" rel="noopener"><b>Source code</b><span>MIT-licensed, on GitHub</span></a>
+    <a href="https://github.com/kristerhedfors/Deepresearch.se" rel="noopener"><b>Source code</b><span>MIT-licensed, on GitHub — read it, run it, reuse it</span></a>
   </div>
 
   <div class="card cta">
