@@ -88,21 +88,14 @@ import {
 import {
   claimExtractionPrompt,
   claimVerifyPrompt,
-  directPrompt,
   gapPrompt,
   notesPrompt,
   quizPrompt,
   revisePrompt,
-  sdkBuildPrompt,
-  sdkBuildToolPrompt,
-  searchOffPrompt,
-  sourceAgentPrompt,
-  sourceAnswerPrompt,
-  sourceToolAgentPrompt,
-  synthPrompt,
   triagePrompt,
   validatePrompt,
 } from "./prompts.js";
+import { phasePrompt } from "./prompt-sets.js";
 import { runOrchestration } from "./orchestrator.js";
 import { runOutrospection } from "./outrospect.js";
 import { anthropicConfigured, anthropicToolRun, isAnthropicModel } from "./anthropic.js";
@@ -533,7 +526,7 @@ async function runWithoutSearch(ctx) {
   // (searchOffPrompt's sourceless depth ladder; default "standard" is the
   // long-standing byte-identical prompt).
   await streamCompletion(ctx, [
-    { role: "system", content: searchOffPrompt({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: ctx.state.plan.reportTier }) },
+    { role: "system", content: phasePrompt(ctx.state, "direct", "answer-search-off")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: ctx.state.plan.reportTier }) },
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
@@ -641,7 +634,7 @@ async function runQuizGeneration(ctx, quizReq) {
 /** @param {PipelineCtx} ctx */
 async function runDirectReply(ctx) {
   await streamCompletion(ctx, [
-    { role: "system", content: directPrompt({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource }) },
+    { role: "system", content: phasePrompt(ctx.state, "research", "answer-direct")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource }) },
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
@@ -710,7 +703,7 @@ async function runSourceResearchTools(ctx, snapshot) {
   const startedAt = Date.now();
   const result = await anthropicToolRun(ctx.env, {
     model: ctx.model,
-    system: sourceToolAgentPrompt(),
+    system: phasePrompt(ctx.state, "source-research", "answer-tools")(),
     userContent: userText,
     tools: INTROSPECTION_TOOLS,
     maxRounds: MAX_SOURCE_TOOL_ROUNDS,
@@ -906,7 +899,7 @@ async function runSdkBuildTools(ctx, snapshot, manifest, secureDigest) {
   const startedAt = Date.now();
   const result = await anthropicToolRun(ctx.env, {
     model: ctx.model,
-    system: sdkBuildToolPrompt(),
+    system: phasePrompt(ctx.state, "build", "answer-tools")(),
     userContent: userText,
     tools,
     maxRounds: MAX_SDK_TOOL_ROUNDS,
@@ -1053,7 +1046,7 @@ async function runSdkBuildDeterministic(ctx, manifest, secureDigest) {
   });
   const draft =
     (await streamCompletion(buffered, [
-      { role: "system", content: sdkBuildPrompt() },
+      { role: "system", content: phasePrompt(ctx.state, "build", "answer")() },
       ...shellReplyMessages(ctx.shellBlock, { sdkBuild: true }),
       ...withImageNudge(convo),
     ])) || "";
@@ -1144,7 +1137,7 @@ async function runSourceResearch(ctx) {
         statKey: "triage",
         maxTokens: 500,
         messages: [
-          { role: "system", content: sourceAgentPrompt({ reinforceJsonOnly: ctx.reinforceJsonOnly }) },
+          { role: "system", content: phasePrompt(ctx.state, "source-research", "plan")({ reinforceJsonOnly: ctx.reinforceJsonOnly }) },
           {
             role: "user",
             // CLEAN question/context (not the excerpt-appended lastUser/convText):
@@ -1193,7 +1186,7 @@ async function runSourceResearch(ctx) {
   ctx.step("synth", "Writing report…");
   const synthStartedAt = Date.now();
   await streamCompletion(ctx, [
-    { role: "system", content: sourceAnswerPrompt() },
+    { role: "system", content: phasePrompt(ctx.state, "source-research", "answer")() },
     {
       role: "user",
       content: ctx.imageParts.length ? [{ type: "text", text: synthText }, ...ctx.imageParts] : synthText,
@@ -1526,7 +1519,7 @@ async function runSynthesis(ctx) {
     // reportTier scales the OUTPUT's structure/comprehensiveness with the
     // slider (brief → standard → extended → full) — see budget.js
     // reportTierFor and prompts.js REPORT_TIER_STRUCTURE.
-    { role: "system", content: synthPrompt({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: plan.reportTier }) },
+    { role: "system", content: phasePrompt(ctx.state, "research", "answer")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: plan.reportTier }) },
     {
       role: "user",
       content: imageParts.length ? [{ type: "text", text: synthText }, ...imageParts] : synthText,

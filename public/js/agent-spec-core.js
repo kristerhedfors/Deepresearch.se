@@ -108,14 +108,85 @@ export const BACKDROP_KINDS = ["none", "terminal", "graph"];
 // 4 (the privacy split) expressed as a validation rule instead of as prose in a
 // skill.
 
-/** Which function takes the answer phase. One member per shipped answer path. */
+/** The PROMPT ROLES a phase can need filled. A role names the JOB a system
+ * prompt does in a run, not the wording — the wording lives in src/prompts.js
+ * (and orchestrator-core / outrospect-core for the two pure ones). */
+export const PROMPT_ROLES = [
+  "plan", // the phase's own JSON planning prompt (not the shared triage/gap/validate)
+  "worker", // one bounded sub-run inside the phase (an orchestrated node)
+  "answer", // the deterministic answer/synthesis prompt
+  "answer-tools", // the variant for a model driving native tools
+  "answer-direct", // the answer when triage decided no sources are needed
+  "answer-search-off", // the answer when there is nothing external to consult
+];
+
+/** Which function takes the answer phase. One member per shipped answer path.
+ * `promptRoles` is what the phase's code actually asks for — the basis of the
+ * compatibility rule in validateCapability (a declared prompt set must fill
+ * every role its phase needs). */
 export const ANSWER_PHASES = {
-  "research": { label: "Deep research", desc: "triage → search → gap → synthesis → validation (pipeline.js)" },
-  "source-research": { label: "Source research", desc: "read this platform's own source and answer from it (runSourceResearch)" },
-  "build": { label: "Build", desc: "distil a flavour, stage files, publish it live (runSdkBuild)", serverOnly: true },
-  "workflow": { label: "Workflow", desc: "plan a sub-agent team and run it in waves (runOrchestration)", serverOnly: true },
-  "feed": { label: "Feed", desc: "answer from the standing outward feed (runOutrospection)", serverOnly: true },
-  "direct": { label: "Direct", desc: "answer from the model with no research phase (runWithoutSearch)" },
+  "research": {
+    label: "Deep research",
+    desc: "triage → search → gap → synthesis → validation (pipeline.js)",
+    promptRoles: ["answer", "answer-direct", "answer-search-off"],
+  },
+  "source-research": {
+    label: "Source research",
+    desc: "read this platform's own source and answer from it (runSourceResearch)",
+    promptRoles: ["plan", "answer", "answer-tools"],
+  },
+  "build": {
+    label: "Build",
+    desc: "distil a flavour, stage files, publish it live (runSdkBuild)",
+    serverOnly: true,
+    promptRoles: ["answer", "answer-tools"],
+  },
+  "workflow": {
+    label: "Workflow",
+    desc: "plan a sub-agent team and run it in waves (runOrchestration)",
+    serverOnly: true,
+    promptRoles: ["plan", "worker", "answer"],
+  },
+  "feed": {
+    label: "Feed",
+    desc: "answer from the standing outward feed (runOutrospection)",
+    serverOnly: true,
+    promptRoles: ["answer"],
+  },
+  "direct": {
+    label: "Direct",
+    desc: "answer from the model with no research phase (runWithoutSearch)",
+    promptRoles: ["answer-search-off"],
+  },
+};
+
+/** The PROMPT SETS — the last axis on which the default agents differ and the
+ * spec was silent. A set is a named group of system prompts covering some of
+ * the roles above; `src/prompt-sets.js` binds each (set, role) pair to the real
+ * builder, and a test pins that binding against the code that calls it.
+ *
+ * Like every other capability axis this is a SELECTOR: a spec names a set that
+ * exists, it does not author prompt text. What it buys is that prompt set and
+ * answer phase become INDEPENDENT choices — an agent can run the research phase
+ * in the source-research voice, which was not expressible before. */
+export const PROMPT_SETS = {
+  "research": { label: "Research", desc: "the deep-research synthesis voice: cited, hedged, report-tiered", roles: ["answer", "answer-direct", "answer-search-off"] },
+  "source-research": { label: "Source research", desc: "answers about this platform from its own source, with the read loop's planner", roles: ["plan", "answer", "answer-tools"] },
+  "build": { label: "Build", desc: "the Agent Studio build voice: ship the app this turn, state the privacy posture", roles: ["answer", "answer-tools"] },
+  "workflow": { label: "Workflow", desc: "the sub-agent team: a plan prompt, one node's persona, and the merge", roles: ["plan", "worker", "answer"] },
+  "feed": { label: "Feed", desc: "answers from the outward feed, never inventing an item", roles: ["answer"] },
+};
+
+/** The prompt set a phase uses when a spec names none. `direct` borrows the
+ * research set, whose answer-search-off role is the prompt runWithoutSearch
+ * has always used. */
+export const DEFAULT_PROMPT_SET = {
+  "research": "research",
+  "source-research": "source-research",
+  "build": "build",
+  "workflow": "workflow",
+  "feed": "feed",
+  "direct": "research",
 };
 
 /** Tool CLASSES — a class names a shipped tool set, never an individual tool,
@@ -179,6 +250,7 @@ export const CAPABILITY_REQUIREMENTS = {
  * plain deep-research turn, which is what every pre-0.2.0 spec meant. */
 export const BASE_CAPABILITY = {
   answerPhase: "research",
+  prompts: null, // null = the answer phase's default set (DEFAULT_PROMPT_SET)
   tools: [],
   toolFallback: "none",
   context: [],
@@ -226,6 +298,32 @@ export function resolveCapability(a) {
  * @param {any} a
  * @returns {string[]}
  */
+/**
+ * The prompt set an agent runs on: its declared `capability.prompts`, else the
+ * default for its answer phase. Always a key of PROMPT_SETS for a valid spec.
+ * @param {any} a
+ * @returns {string}
+ */
+export function resolvePromptSet(a) {
+  const cap = resolveCapability(a);
+  if (cap.prompts && Object.prototype.hasOwnProperty.call(PROMPT_SETS, cap.prompts)) return cap.prompts;
+  return DEFAULT_PROMPT_SET[cap.answerPhase] || DEFAULT_PROMPT_SET.research;
+}
+
+/**
+ * The prompt roles a phase needs that its resolved set does not fill. Empty for
+ * a valid spec — this is the compatibility rule behind validateCapability, kept
+ * separate so the failing case can be inspected directly.
+ * @param {any} a
+ * @returns {string[]}
+ */
+export function missingPromptRoles(a) {
+  const phase = /** @type {any} */ (ANSWER_PHASES)[resolveCapability(a).answerPhase];
+  if (!phase) return [];
+  const filled = new Set(/** @type {any} */ (PROMPT_SETS)[resolvePromptSet(a)]?.roles || []);
+  return (phase.promptRoles || []).filter((/** @type {string} */ r) => !filled.has(r));
+}
+
 export function serverOnlySelections(a) {
   const cap = resolveCapability(a);
   const hits = [];
@@ -258,6 +356,20 @@ export function validateCapability(a) {
 
   if (!Object.prototype.hasOwnProperty.call(ANSWER_PHASES, cap.answerPhase)) {
     problems.push(at(`answerPhase must be one of ${Object.keys(ANSWER_PHASES).join("/")}`));
+  }
+  // Prompts: a named set that exists, and one that fills every role the
+  // declared answer phase asks for. Prompt set and phase are independent
+  // choices, but not arbitrary ones — a phase that calls for a plan prompt
+  // cannot run on a set that has none.
+  if (cap.prompts != null) {
+    if (!Object.prototype.hasOwnProperty.call(PROMPT_SETS, cap.prompts)) {
+      problems.push(at(`prompts must be one of ${Object.keys(PROMPT_SETS).join("/")}`));
+    } else {
+      const missing = missingPromptRoles(a);
+      if (missing.length) {
+        problems.push(at(`prompt set "${cap.prompts}" does not fill the ${cap.answerPhase} phase's ${missing.join(", ")} role(s)`));
+      }
+    }
   }
   for (const t of cap.tools) {
     if (!Object.prototype.hasOwnProperty.call(TOOL_CLASSES, t)) problems.push(at(`unknown tool class "${t}"`));
@@ -879,6 +991,7 @@ export function renderAgentShow(reg, id) {
     ...resolveControls(a).map((c) => `    - ${c.id} (${c.type})${c.drives ? ` → drives \`${c.drives}\`` : ""}`),
     "  capability:",
     `    answer phase: ${cap.answerPhase}${cap.requires.length ? `   requires: ${cap.requires.join(", ")}` : ""}`,
+    `    prompts: ${resolvePromptSet(a)}${cap.prompts ? "" : " (its phase's default)"}`,
     `    tools: ${cap.tools.length ? `${cap.tools.join(", ")} (fallback: ${cap.toolFallback})` : "(none)"}`,
     `    context: ${cap.context.length ? cap.context.join(", ") : "(none)"}`,
     `    search: web ${cap.search.web ? "on" : "off"}, aux sources ${cap.search.auxSources ? "on" : "off"}${cap.search.maxQueries != null ? `, max ${cap.search.maxQueries} queries` : ""}`,

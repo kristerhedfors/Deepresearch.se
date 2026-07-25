@@ -5,7 +5,6 @@
   "capability_note": "The `capability` block (0.2.0) is a SELECTOR over behaviour the platform already implements, never a place to define new behaviour: every value is a member of a closed vocabulary that names existing code. That is what keeps invariant 1 (deterministic orchestration, no function calling) intact — the dispatch stays code, the spec is data read before the run starts. Validation enforces invariant 3 (planning phases stay on the fixed JSON model), invariant 4 (a client-tier agent may not select anything that puts the server in the data path) and invariant 6 (a declared gate routes Swedish and English alike).",
   "reference_product": "deepresearch.se",
   "agents_are_not_chat_modes": "The entries below are reference AgentSpecs — templates you copy to define a new agent. They are not themselves the chat-mode dropdown, and they are not the tiers. FIVE of them are the DEFAULT agent of a chat mode, bound to it by the `defaults` table above, and two (secure, under-construction) are tier archetypes bound to no mode. An agent PICKS a tier via `platform` (client = Se/cure, server = Se/rver) and a mode via `mode`; the specs named Research and Secure are simply the reference agent for each tier, not the tiers themselves. Since spec 0.2.0 an agent also picks an ANSWER PHASE via `capability.answerPhase` — one of the phases the platform already implements. A spec can therefore reach any shipped execution semantics, but it still cannot invent new ones: a genuinely new executor is a row in src/pipeline.js ANSWER_PHASE_RUNNERS, written by hand.",
-  "agents_are_not_chat_modes": "The four entries below are reference AgentSpecs — templates you copy to define a new agent. They are NOT the chat-mode dropdown, which is a separate list of five: Deep Research (normal), Introspection, Agent Studio (sdk), Orchestrator, Outrospection. An agent PICKS a mode (the `mode` field and the mode-select control); it does not add one. Nor are 'Research' and 'Secure' the tiers themselves: Se/cure and Se/rver are the two TIERS of the platform, and an agent declares which one it runs on via `platform` (client|server) — the specs named Research and Secure are simply the reference agent for each tier.",
   "control_types": {
     "prompt-input": "the message textarea",
     "send-button": "submit the turn",
@@ -54,6 +53,7 @@
       ],
       "capability": {
         "answerPhase": "research",
+        "prompts": "research",
         "tools": [],
         "toolFallback": "none",
         "context": ["shell-transcript"],
@@ -101,6 +101,7 @@
       ],
       "capability": {
         "answerPhase": "research",
+        "prompts": "research",
         "tools": [],
         "toolFallback": "none",
         "context": ["shell-transcript"],
@@ -144,6 +145,7 @@
       ],
       "capability": {
         "answerPhase": "direct",
+        "prompts": "research",
         "tools": [],
         "toolFallback": "none",
         "context": [],
@@ -189,6 +191,7 @@
       ],
       "capability": {
         "answerPhase": "source-research",
+        "prompts": "source-research",
         "tools": ["source-read"],
         "toolFallback": "read-loop",
         "context": ["source-snapshot", "docs-corpus", "owasp", "shell-transcript"],
@@ -235,6 +238,7 @@
       ],
       "capability": {
         "answerPhase": "workflow",
+        "prompts": "workflow",
         "tools": [],
         "toolFallback": "none",
         "context": ["source-snapshot"],
@@ -280,6 +284,7 @@
       ],
       "capability": {
         "answerPhase": "feed",
+        "prompts": "feed",
         "tools": [],
         "toolFallback": "none",
         "context": ["outward-feed"],
@@ -325,6 +330,7 @@
       ],
       "capability": {
         "answerPhase": "build",
+        "prompts": "build",
         "tools": ["source-read", "sdk-plan", "build-publish"],
         "toolFallback": "file-blocks",
         "context": ["source-snapshot", "secure-digest", "shell-transcript"],

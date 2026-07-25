@@ -34,7 +34,8 @@ which answers from the project's own code.
 > The mint reuses the existing Se/rver-token subsystem verbatim (no new crypto,
 > no new meter — §8). New in 0.2.0: the **capability block** (§3.1) and the
 > **routing table** (§4) — the site's five default chat modes are now
-> registry entries, and `/api/chat` dispatches on the phase a spec declares.
+> registry entries, `/api/chat` dispatches on the phase a spec declares, and
+> every phase speaks in the prompt set its agent names.
 > The project is experimental research into how far a useful assistant can be
 > pushed toward *provable* privacy, not a finished product.
 
@@ -56,10 +57,10 @@ tiers. It is defined by what you can see and change about it, on two levels.
 5. the **default quota** a minted share-link **token** carries (its credits).
 
 **What it does** — its **capability block** (§3.1): which answer phase takes the
-turn, which tool set the model may drive, which retrieval blocks are injected,
-the search and model-routing policy, the deterministic gates, the bounds, the
-events it emits, the knob it requires, and — for a workflow — which agents its
-team may draw from.
+turn, which prompt set it speaks in, which tool set the model may drive, which
+retrieval blocks are injected, the search and model-routing policy, the
+deterministic gates, the bounds, the events it emits, the knob it requires, and
+— for a workflow — which agents its team may draw from.
 
 Both levels are **data**. Deriving a new agent is: copy one spec, change those
 fields, validate. No code change — including for what it does, as long as it
@@ -186,6 +187,9 @@ does, and it is what makes a default agent expressible as a spec at all:
 "capability": {
   "answerPhase": "workflow",         // research | source-research | build
                                      // | workflow | feed | direct
+  "prompts": "workflow",             // the PROMPT SET it speaks in — research |
+                                     // source-research | build | workflow | feed
+                                     // (null = the answer phase's own set)
   "tools": [],                       // source-read | sdk-plan | build-publish | shell
   "toolFallback": "none",            // read-loop | file-blocks | none
   "context": ["source-snapshot"],    // which retrieval block is injected
@@ -213,6 +217,16 @@ Four invariants stop being prose and become validation rules:
 | **Inv. 3** — split model routing | `routing.planModel` is a one-member vocabulary (`json-default`) |
 | **Inv. 4** — the privacy split | a `platform: "client"` spec may not select any `serverOnly` member; the platform type IS the boundary |
 | **Inv. 6** — language parity | a declared gate must carry `langs` including both `en` and `sv` |
+
+**Prompt set and answer phase are independent choices.** A set is a named group
+of system prompts covering some of six closed ROLES (`plan`, `worker`, `answer`,
+`answer-tools`, `answer-direct`, `answer-search-off`);
+[`src/prompt-sets.js`](../src/prompt-sets.js) binds each (set, role) pair to the
+shipped builder, and each phase declares the roles it needs. So an agent can run
+the research phase in the source-research voice — a combination that was not
+expressible at any price before — while a set that cannot fill its phase's roles
+is rejected at validation. The binding is pinned by identity against
+`src/prompts.js`, so a re-pointed prompt fails `npm test` rather than a request.
 
 Each rule has a passing *and* a failing case in
 [`agent-capability.test.js`](../public/js/agent-capability.test.js), and every

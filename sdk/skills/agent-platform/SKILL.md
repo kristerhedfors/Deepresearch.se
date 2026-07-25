@@ -34,8 +34,8 @@ the SDK. An agent is a *flavour* of the Se/cure + Se/rver platform, and it is
 5. the **default quota** a minted share-link **token** carries (credits).
 
 Since spec **0.2.0** it is also defined by what it DOES — the **capability
-block**: `answerPhase`, `tools` + `toolFallback`, `context`, `search`,
-`routing`, `gates`, `bounds`, `emits`, `requires`, `team`. That block is a
+block**: `answerPhase`, `prompts`, `tools` + `toolFallback`, `context`,
+`search`, `routing`, `gates`, `bounds`, `emits`, `requires`, `team`. That block is a
 SELECTOR over shipped behaviour, never a definition of new behaviour: every
 value is a member of a closed vocabulary naming existing code, which is what
 keeps invariant 1 true of the routing as well as of the run. Four invariants
@@ -49,6 +49,13 @@ agent that IS that mode and names the request flag selecting it; array order is
 precedence. `resolveRequestAgent` walks it in `src/chat.js` and `src/pipeline.js`
 dispatches on the resolved `capability.answerPhase`, so adding a mode is a
 registry edit — plus one dispatch row only if it needs a NEW executor.
+
+`prompts` names a PROMPT SET — a group of system prompts covering some of six
+closed roles (`plan`, `worker`, `answer`, `answer-tools`, `answer-direct`,
+`answer-search-off`). `src/prompt-sets.js` binds each (set, role) to the shipped
+builder and every answer phase reaches its prompt through `phasePrompt`, so
+prompt set and answer phase are INDEPENDENT choices — bounded by the rule that a
+set must fill every role its phase asks for.
 
 Deriving a new agent is **copy one spec, change those fields, validate**. The
 seven this project ships are the reference specs; they exist to be copied.
@@ -170,6 +177,7 @@ axis per chat mode.
 | Live preview | `public/agents/preview.html`, `public/js/agent-preview.js` |
 | Visual proof | `scripts/agent-proof.mjs`, `proveComposer` |
 | Capability + routing | `resolveCapability` / `validateCapability` / `resolveRequestAgent` in the pure core; loader `src/agent-registry.js`; dispatch table in `src/pipeline.js` (`ANSWER_PHASE_RUNNERS`); resolution in `src/chat.js` |
+| Prompt sets | `src/prompt-sets.js` (binding + `phasePrompt`), pinned by identity in `src/prompt-sets.test.js` |
 | Capability tests | `public/js/agent-capability.test.js` (bounds pinned to real constants, one passing + one failing case per invariant, routing characterization) |
 | Share-link mint | `src/agent-link.js` (`POST /api/admin/agent-link`), `agentTokenGrantParams` → `src/server-grants.js` |
 | Full docs | `docs/AGENT-PLATFORM.md` |
@@ -178,7 +186,7 @@ axis per chat mode.
 
 - [ ] `node sdk/pair-cli.mjs validate` OK (modules **and** agents).
 - [ ] `npm test` green (`agent-spec-core.test.js`, `agent-capability.test.js`,
-      `src/agent-registry.test.js`), including `proveComposer`
+      `src/agent-registry.test.js`, `src/prompt-sets.test.js`), including `proveComposer`
       for every shipped agent.
 - [ ] `node scripts/agent-proof.mjs` PASS + writes the composer gallery.
 - [ ] Deriving a new agent = copy one spec, change fields, re-validate — no code

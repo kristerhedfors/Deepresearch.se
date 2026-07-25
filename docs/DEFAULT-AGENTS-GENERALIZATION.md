@@ -1,7 +1,7 @@
 # Generalizing the default agents into the Agents SDK
 
-**Status: Stages 0–3 SHIPPED, 2026-07-25 (owner go-ahead in-session). Stage 4
-is not built.** This page began as an investigation of what this site's built-in
+**Status: Stages 0–3 SHIPPED plus the prompts axis, 2026-07-25 (owner go-ahead
+in-session). Stage 4 is not built.** This page began as an investigation of what this site's built-in
 agents actually are, a measurement of how much of that the DeepResearch Agents
 SDK could express, and a staged plan for closing the distance. §1–§3 record the
 findings as they stood before the work; §5 marks what landed. The gap those
@@ -361,12 +361,40 @@ sixth agent added only to `sdk/AGENTS.json` routes through `/api/chat` with no
 code change, and that is asserted in `agent-capability.test.js` rather than
 claimed here.
 
-What Stage 3 did *not* do is worth stating as plainly as what it did. The
-routing generalized; the modes' prompts, executors, themes and surfaces did not,
-and were never meant to. `src/prompts.js` still holds a hand-written prompt per
-mode, and the capability block names tool sets and context blocks without
-selecting the prompt that goes with them. That is the next honest increment, and
-it is smaller than it looks — a `prompts` axis over the existing builders.
+### The prompts axis (the increment after Stage 3)
+
+Stage 3 generalized the routing and left the *voices* behind: `src/prompts.js`
+held a hand-written prompt per mode, and the capability block named tool sets
+and context blocks while saying nothing about the prompt that went with them —
+so a spec was still an incomplete description of its agent, on exactly the axis
+most able to drift unnoticed.
+
+`capability.prompts` closes it. A **prompt set** is a named group covering some
+of six closed ROLES (`plan`, `worker`, `answer`, `answer-tools`,
+`answer-direct`, `answer-search-off`); `src/prompt-sets.js` binds each (set,
+role) pair to the shipped builder, each answer phase declares the roles it
+needs, and every phase now reaches its prompt through `phasePrompt(state, phase,
+role)` rather than importing one.
+
+Two things this buys beyond tidiness:
+
+- **Prompt set and answer phase became independent.** Running the research phase
+  in the source-research voice was not expressible before at any price; it is a
+  one-field edit now. The freedom is bounded by validation: a set that cannot
+  fill its phase's roles is rejected.
+- **The binding is identity-pinned.** `prompt-sets.test.js` asserts each (set,
+  role) resolves to the exact builder in `src/prompts.js`, so a renamed or
+  re-pointed prompt fails `npm test` instead of a request.
+
+It landed as a no-op by construction: every shipped agent declares the set its
+phase already used, which is itself asserted. One existing test had to change —
+`pipeline.test.js` grepped the source for a literal `searchOffPrompt({…})` call;
+it now pins the ROLE the phase asks for, with the builder identity pinned in the
+new suite.
+
+What is still hand-written per mode: the executors themselves, the themes, and
+the surfaces (feed page, workflow view, admin columns). Those are genuinely
+per-mode work, not routing wearing a disguise.
 
 Stage 4 remains the one that changes what a *built* agent can be, and it is
 deliberately not started: it publishes spend-capable links. Its mechanism is

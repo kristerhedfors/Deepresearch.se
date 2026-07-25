@@ -53,7 +53,7 @@ import {
 import { bashLiteEnabled, developerModeEnabled, shodanEnabled, googleMapsEnabled } from "./settings.js";
 import { buildSlugOk } from "./build-pub.js";
 import { loadAgentRegistry, routingNeedsRegistry } from "./agent-registry.js";
-import { resolveRequestAgent } from "./agent-spec.js";
+import { resolvePromptSet, resolveRequestAgent } from "./agent-spec.js";
 import { buildFeedbackDebugContext, createOrThreadFeedbackEntry, feedbackPageTag } from "./feedback.js";
 import { recordUseCaseFeedback } from "./testpoints.js";
 import { getDb } from "./db.js";
@@ -271,6 +271,11 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // pipeline falls back to the three booleans above.
   const answerPhase = sdkOn || orchOn || outroOn ? routedPhase : null;
   const agentId = answerPhase ? String(routed?.agent?.id || "") : null;
+  // The resolved agent's PROMPT SET (capability.prompts, else its phase's
+  // default). Carried for every routed request — not only the executor phases —
+  // because introspection and research choose their phase per message, and
+  // whichever they choose should speak in the voice its agent declared.
+  const promptSet = routed ? resolvePromptSet(routed.agent) : null;
   // The experimental bash-lite sandbox transcript: the browser ran an agentic
   // shell loop (public/js/bash-agent.js) before sending, and attached what it
   // ran + the real output. Honored only when this account's knob is on
@@ -354,6 +359,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       outrospectionMode: outroOn,
       answerPhase,
       agentId,
+      promptSet,
       buildSlug,
       userId: String(identity.id),
     });
@@ -898,6 +904,10 @@ function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = 
     // MCP channel, which builds its state without any of them.
     answerPhase: extras.answerPhase || null,
     agentId: extras.agentId || null,
+    // The prompt set every phase of this request speaks in (src/prompt-sets.js
+    // phasePrompt). Null falls back to the executing phase's default set, which
+    // is what every shipped agent declares anyway.
+    promptSet: extras.promptSet || null,
     buildSlug: extras.buildSlug || null,
     userId: extras.userId || "",
     // This channel renders the interactive inline-quiz event (src/quiz.js;

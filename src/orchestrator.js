@@ -26,7 +26,7 @@ import { webSearch } from "./exa.js";
 import { addUsage } from "./quota.js";
 import { addSources, sourceDigest } from "./sources.js";
 import { retrieveSourceBlockFor } from "./introspect.js";
-import { orchAgentPrompt, orchSynthPrompt } from "./prompts.js";
+import { phasePrompt } from "./prompt-sets.js";
 import {
   MAX_ORCH_SEARCHES,
   agentTaskPrompt,
@@ -34,7 +34,6 @@ import {
   findWorkflowAgent,
   mergeAgentResults,
   normalizeWorkflow,
-  orchestratorPlanPrompt,
   workflowEvent,
   workflowWaves,
 } from "../public/js/orchestrator-core.js";
@@ -66,7 +65,7 @@ export async function runOrchestration(ctx) {
   try {
     const r = await completeJson(
       ctx.env,
-      [{ role: "user", content: orchestratorPlanPrompt({ message: /** @type {any} */ (ctx).cleanLastUser || ctx.lastUser, hasSource }) }],
+      [{ role: "user", content: phasePrompt(state, "workflow", "plan")({ message: /** @type {any} */ (ctx).cleanLastUser || ctx.lastUser, hasSource }) }],
       { model: ctx.jsonModel, maxTokens: ORCH_PLAN_MAX_TOKENS },
     );
     addUsage(state.jsonTotals, r.usage);
@@ -130,7 +129,7 @@ export async function runOrchestration(ctx) {
     `Sub-agent briefs:\n\n${merged}`,
   ].join("\n\n");
   await streamCompletion(ctx, [
-    { role: "system", content: orchSynthPrompt({ title: plan.title, digest, hasShell: !!(/** @type {any} */ (ctx).shellBlock) }) },
+    { role: "system", content: phasePrompt(ctx.state, "workflow", "answer")({ title: plan.title, digest, hasShell: !!(/** @type {any} */ (ctx).shellBlock) }) },
     {
       role: "user",
       content: ctx.imageParts.length ? [{ type: "text", text: synthText }, ...ctx.imageParts] : synthText,
@@ -208,7 +207,7 @@ async function runAgentNode(ctx, plan, agent, results, searchBudget) {
     },
   });
   const text = await streamCompletion(buffered, [
-    { role: "system", content: orchAgentPrompt() },
+    { role: "system", content: phasePrompt(ctx.state, "workflow", "worker")() },
     { role: "user", content: userMsg },
   ]);
   return (text || buf || "").trim();
