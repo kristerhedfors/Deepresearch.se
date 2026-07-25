@@ -669,7 +669,7 @@ export function outrospectionBlock(items, opts = {}) {
  *
  * Swedish parity (invariant 6): the Swedish leg is a full instruction, not a
  * translated tail, exactly as the orchestrator plan prompt does it.
- * @param {{ lens?: object | null, hasItems?: boolean, swedish?: boolean }} [opts]
+ * @param {{ lens?: Lens | null, hasItems?: boolean, swedish?: boolean }} [opts]
  * @returns {string}
  */
 export function outrospectionAnswerPrompt(opts = {}) {

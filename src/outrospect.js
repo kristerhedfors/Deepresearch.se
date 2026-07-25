@@ -92,6 +92,7 @@ export {
 /** @typedef {import('./types.js').Logger} Logger */
 /** @typedef {import('./settings.js').Identity} Identity */
 /** @typedef {import('../public/js/outrospect-core.js').FeedItem} FeedItem */
+/** @typedef {import('../public/js/outrospect-core.js').Lens} Lens */
 /**
  * A D1 `outrospect_items` row. Deliberately identity-free.
  * @typedef {{ id: number, key: string, lens: string, title: string, url: string, teaser?: string | null, source?: string | null, first_seen: number, query?: string | null }} ItemRow
@@ -453,7 +454,7 @@ export const OUTRO_ANSWER_ITEMS = 24;
  * @param {Env} env
  * @param {string} question
  * @param {Logger} [log]
- * @returns {Promise<{ lens: object | null, items: FeedItem[], live: boolean }>}
+ * @returns {Promise<{ lens: Lens | null, items: FeedItem[], live: boolean }>}
  */
 export async function retrieveOutwardFeed(env, question, log) {
   const lensId = lensMatch(question);
