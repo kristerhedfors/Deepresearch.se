@@ -92,7 +92,7 @@ incl. the Swedish-parity suite, geodesy round-trips, spawn projection
 geometry).
 
 Two REPO-WIDE guards sit alongside the per-module suites, scanning the tree
-rather than importing one unit (the `sql-injection-guard.js` pattern):
+rather than importing one unit (the `sql-injection-guard.test.js` pattern):
 `artifacts.test.js` (the committed-artifact SET: every `public/introspect/`
 artifact present, git-tracked, over a size floor, and parsing — the existence
 half the self-skipping freshness checks can't cover, plus the doc images the

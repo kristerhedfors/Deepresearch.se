@@ -23,12 +23,13 @@ entry; the bench gate shipped from it on 2026-07-23).
 
 > **Measured 2026-07-24, before items 1–4 of the remediation below landed.**
 > The numbers are left as measured so the findings stay legible against
-> them; after items 1–4 the suite is 2366 tests in 241 suites, `@ts-check`
-> covers 173 of 194 modules, and CI runs on every push and pull request.
+> them. After items 1–4, and after merging the outrospection work from
+> `main`, the suite is 2473 tests in 242 suites, `@ts-check` covers 169 of
+> 200 modules, and CI runs on every push and pull request.
 
-`npm test` and `npm run typecheck` both pass. The suite is fast, dense,
-and genuinely good at what it covers. Every finding below is about the
-edges around it.
+`npm test` and `npm run typecheck` both pass. What the suite covers, it
+covers well, and it covers it in 18 seconds. Every finding below is about
+the edges around that.
 
 ---
 
@@ -43,9 +44,9 @@ set up signing, and install the git hooks — no test step. The only thing that
 runs the suite is the **pr** skill telling an agent to.
 
 That means a 2299-test suite that finishes in 18 seconds gates nothing. A
-branch can merge into `main` — and auto-deploy — red. This is the single
-highest-leverage fix on the list, and it is cheap: one workflow running
-`npm ci && npm test && npm run typecheck` on push and pull_request.
+branch can merge into `main` — and auto-deploy — red. Fixing it is one
+workflow running `npm ci && npm test && npm run typecheck` on push and
+pull_request, and nothing else on this list matters as much.
 
 ### A2 — Two test files are outside the runner
 
@@ -319,7 +320,7 @@ Ordered by (signal gained) ÷ (effort), not by section.
 3. ~~**`@ts-check` the tested `public/js` cores.**~~ **Done 2026-07-25** — all
    twelve opted in, 483 reported errors resolved with real JSDoc (shared
    `DrcProvider`/`DrcCallOpts` and `Vec3`/`Mesh` typedefs, not blanket `any`).
-   What it caught is in the note below. The 29 remaining DOM-glue modules
+   What it caught is in the note below. The 30 remaining DOM-glue modules
    (`stream.js`, `admin.js`, `app.js`, `sandbox.js`, …) are still open.
 4. ~~**Pin the unpinned façade contracts.**~~ **Done 2026-07-25** —
    `src/facade-contract.test.js` DISCOVERS the façades by scanning `src/` for
@@ -350,8 +351,7 @@ document's import-graph inference with a measured number.
 
 ### What items 1–4 turned up (2026-07-25)
 
-Three defects surfaced the moment the checks were switched on, which is the
-argument for the rest of the list:
+Three defects surfaced the moment the checks were switched on:
 
 - **A hand-mirrored `deepLink`.** `src/testpoints.js` carried its own copy of
   `public/js/testpoints-core.js`'s `deepLink` — byte-equivalent apart from
