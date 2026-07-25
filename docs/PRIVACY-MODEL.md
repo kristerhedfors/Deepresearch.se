@@ -70,6 +70,21 @@ normal rule above (ciphertext in the browser and R2) — the tier's
 implicit cloud storage is unchanged; it is the ANSWERING path that stays
 local. The weights are public model files fetched from huggingface.co
 into OPFS — the server is not in that path either.
+
+**A PARTIAL browser-local route: the Orchestrator's swarm node**
+(2026-07-25, `docs/SWARM-REASONING.md`). Not a third exception and not a
+private route — a hybrid worth stating plainly. When a `swarm` sub-agent
+runs, its whole reasoning loop happens on the device (many tiny Bonsai
+models drafting, reviewing each other and converging), so the drafts, the
+critiques and the discarded candidates never exist anywhere but this
+browser. What DOES reach the server is the node's finished brief,
+attached to the ordinary `/api/chat` request and merged into the answer
+like any other sub-agent's — normal Se/rver traffic, logged in
+`chat_logs` with the rest of the turn (unless the request is incognito).
+The plan call that precedes it (`POST /api/orchestrator/plan`) carries
+the conversation exactly as `/api/chat` would, plus the model id this
+device can host. Se/cure is not wired for this at all: it has no chat
+modes.
 **TWO deliberate, bounded exceptions to "the server is in NO DRC data
 path".** Count precisely: two is the number of *exposure classes* — `web`
 (query-only) and `api` (content-bearing) — while the credential FAMILIES

@@ -3,7 +3,7 @@
 // and returns null in Node — asserted too.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { NODE_W, layoutWorkflow, renderWorkflow, statusGlyph, workflowSvg } from "./workflow-viz.js";
+import { NODE_H, NODE_W, SWARM_NODE_H, layoutWorkflow, nodeHeight, renderWorkflow, statusGlyph, workflowSvg } from "./workflow-viz.js";
 
 const wf = {
   title: "Compare runtimes",
@@ -55,6 +55,61 @@ test("workflowSvg shows a failed node's note and is XSS-safe", () => {
   assert.ok(!svg.includes('"quoted"</svg>'));
   assert.ok(svg.includes("wf-failed"));
   assert.ok(svg.includes("timed out"));
+});
+
+// ---- the local-swarm node (many on-device models in one box) -----------------
+
+const swarmWf = {
+  agents: [
+    { id: "sw", kind: "swarm", name: "Local swarm", task: "Weigh the options.", swarmSize: 5, deps: [] },
+    { id: "critic", kind: "custom", name: "Critic", task: "Combine.", deps: ["sw"] },
+  ],
+  waves: [["sw"], ["critic"]],
+};
+
+test("a swarm node is taller and the layout measures columns instead of multiplying", () => {
+  assert.equal(nodeHeight("swarm"), SWARM_NODE_H);
+  assert.equal(nodeHeight("custom"), NODE_H);
+  const l = layoutWorkflow(swarmWf);
+  const sw = l.nodes.find((n) => n.id === "sw");
+  const critic = l.nodes.find((n) => n.id === "critic");
+  assert.equal(sw.h, SWARM_NODE_H);
+  assert.equal(critic.h, NODE_H);
+  assert.equal(sw.swarmSize, 5);
+  assert.ok(l.height >= SWARM_NODE_H, "the tall node fits");
+  // Edges leave and arrive at each node's OWN mid-height.
+  assert.equal(l.edges[0].y1, sw.y + SWARM_NODE_H / 2);
+  assert.equal(l.edges[0].y2, critic.y + NODE_H / 2);
+  // Mixed heights stack without overlapping.
+  const stacked = layoutWorkflow({
+    agents: [swarmWf.agents[0], { id: "c2", kind: "custom", name: "C", deps: [] }],
+    waves: [["sw", "c2"]],
+  });
+  const [a, b] = ["sw", "c2"].map((id) => stacked.nodes.find((n) => n.id === id));
+  assert.ok(b.y >= a.y + a.h, "the second node clears the tall one");
+});
+
+test("a swarm node renders one dot per member plus the round/agreement readout", () => {
+  // Before any update: the planned member count, no round yet.
+  const planned = workflowSvg(swarmWf, {});
+  assert.equal((planned.match(/class="wfmember/g) || []).length, 5);
+  assert.ok(planned.includes(">×5<"));
+  assert.ok(planned.includes("wf-swarm"));
+  assert.ok(planned.includes("5 in-browser members"));
+
+  // Live: the members' own states and the swarm's convergence so far.
+  const live = workflowSvg(swarmWf, {
+    sw: {
+      status: "running",
+      swarm: { round: 2, rounds: 3, agreement: 0.62, members: ["done", "running", "loading", "failed", "pending"], phase: "diverge" },
+    },
+  });
+  assert.ok(live.includes("wm-done") && live.includes("wm-running") && live.includes("wm-loading") && live.includes("wm-failed"));
+  assert.ok(live.includes(">R2/3 · 62%<"));
+});
+
+test("non-swarm nodes carry no member strip", () => {
+  assert.ok(!workflowSvg(wf, {}).includes("wfmember"));
 });
 
 test("statusGlyph covers the lifecycle", () => {

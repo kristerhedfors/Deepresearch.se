@@ -10,6 +10,7 @@ import {
   resolveModel,
   validateImageLocations,
   resolveShellTranscript,
+  resolveSwarmResults,
   sanitizeClientDiag,
   sanitizeFsSummary,
 } from "./validation.js";
@@ -335,6 +336,29 @@ describe("resolveShellTranscript", () => {
     const many = Array.from({ length: 500 }, () => ({ command: "x", exitCode: 0, stdout: "", stderr: "" }));
     // MAX_SHELL_ROUNDS * 8 is the cap; whatever it is, the output is bounded well below 500.
     assert.ok(resolveShellTranscript(many).length < 500);
+  });
+});
+
+describe("resolveSwarmResults", () => {
+  test("non-object or junk degrades to no swarm results at all", () => {
+    assert.deepEqual(resolveSwarmResults(undefined), {});
+    assert.deepEqual(resolveSwarmResults([{ text: "x" }]), {});
+    assert.deepEqual(resolveSwarmResults({ ok: null, "Bad Id": { text: "x" }, empty: { text: "  " } }), {});
+  });
+
+  test("keeps well-formed briefs, coercing the reported figures", () => {
+    const out = resolveSwarmResults({
+      sw: { text: "  the brief  ", agreement: "0.62", members: 6.4, rounds: 2, failed: "1" },
+    });
+    assert.deepEqual(out, { sw: { text: "the brief", agreement: 0.62, members: 6, rounds: 2, failed: 1 } });
+  });
+
+  test("bounds the brief and the node count (untrusted client block)", () => {
+    const long = resolveSwarmResults({ sw: { text: "x".repeat(20000), agreement: 99 } });
+    assert.ok(long.sw.text.length < 20000);
+    assert.equal(long.sw.agreement, 1, "a claimed agreement above 1 is clamped");
+    const many = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`n${i}`, { text: "t" }]));
+    assert.ok(Object.keys(resolveSwarmResults(many)).length <= 4);
   });
 });
 

@@ -38,6 +38,7 @@ Server (`src/`):
 | `introspect-tools.js` | The native source-investigation tools' server FAÇADE: a pure re-export of the ONE shared core `public/js/introspect-core.js` — the tool schemas (`INTROSPECTION_TOOLS`) and the pure snapshot executors `grepSource`/`readFileTool`/`listFilesTool` + `runIntrospectionTool` (the `grep_source`/`read_file`/`list_files` loop DRS drives server-side via `src/anthropic.js`'s tool run and `pipeline.js`'s `runSourceResearchTools`, DRC drives browser-side). The owner-authorized invariant-1 exception (developer mode + tool-capable answer models); the core lives under `public/` for the same reason `bash-agent.js` re-exports `bash-core.js` — see the **introspection** skill |
 | `sdk-tools.js` | The SDKs' server FAÇADE: a pure re-export of the ONE shared core `public/js/sdk-core.js` — the manifest operations (validate/close/order/render, shared with the `sdk/pair-cli.mjs` CLI), the SDK-mode native tool schemas + executors (`SDK_TOOLS` sdk_list_modules/sdk_show_module/sdk_plan/sdk_validate over the snapshot's `sdk/MANIFEST.json` — the PLATFORM SDK/DistillSDK side; `BUILD_TOOLS` write_file/publish_app — the AGENTS SDK's shipping tools, Agent Studio's only file pathway), the generated-app staging rules (`sanitizeBuildPath`/`stageBuildFile` caps), the deterministic `FILE:` fenced-block convention (`parseFileBlocks` — the no-function-calling path), and the SDK context block. Consumed by `pipeline.js` `runSdkBuild` and `mcp.js`'s sdk_* tools — see the **sdk-mode** skill |
 | `orchestrator.js` | ORCHESTRATOR MODE's executor (`orchestrator_mode`, the violet dropdown entry — same `developer_mode` capability gate as SDK mode): `runOrchestration(ctx)`, routed from `pipeline.js` before triage. One JSON plan phase on the fixed jsonModel (invariant 3) turns the request into a validated sub-agent workflow (the DAG lives in the shared core `public/js/orchestrator-core.js` — kinds `deep_research`/`introspection`/`custom`, wave resolution, caps); the Worker executes the nodes in parallel waves (each a buffered `streamCompletion` on the user's model — deep_research nodes run their PLANNED Exa queries through the shared source registry, introspection nodes get `retrieveSourceBlockFor` excerpts), emits the `workflow` + `agent_update` SSE events the client's workflow view renders, then streams one merged answer (`orchSynthPrompt`). Invariant 1 holds — the plan is DATA, no function calling; every node fails soft to an honest gap note (invariant 2) — see the **orchestrator-mode** skill |
+| `orchestrator-api.js` | `POST /api/orchestrator/plan` — the sub-agent team planned BEFORE the chat request, so the browser can run the workflow's `swarm` nodes on its own on-device models first (`docs/SWARM-REASONING.md`). Same shape as `bash-api.js`, and for the same reason (the other client-orchestrated loop): one JSON call on the fixed `DEFAULT_MODEL`, `developer_mode`-gated, quota-gated, spend recorded, fail-soft to `{plan: null}` so the client just sends an ordinary orchestrator request. Also owns `normalizeSwarmCapability` — the untrusted client descriptor whose presence is what lets a plan use the `swarm` kind at all (`chat.js` imports it for the same gate on the follow-up request) |
 | `agent-link.js` | Agent SHARE-LINK minting: the thin adapter that mints a **standard Se/rver token** (`server-token.js`) for an AgentSpec — loads the agent from the source snapshot, maps it with `agentTokenGrantParams`, and calls `mintServerTokenGrant` (`server-grants.js`). NO new crypto, NO new meter; the SERVER-TOKEN GUARANTEE holds unchanged (upstream APIs only, never Se/rver data, never a login). Admin-gated at `POST /api/admin/agent-link` like the other shareable mint — `handleAgentLink`; see `docs/AGENT-PLATFORM.md` §7 |
 | `agent-spec.js` | The AGENTS SDK's server FAÇADE (the SDK tailored to Agent Studio + the integrated Linux environment): a pure re-export of the ONE shared core `public/js/agent-spec-core.js` — the AgentSpec schema helpers (`validateAgentSpec`/`validateAgentRegistry`, `resolveControls`/`resolveTheme`/`resolveQuota`/`resolveExamples`, `composerMarkup`/`proveComposer`, `agentLinkPlan`, `agentsFromSnapshot`, and the text renderers). Also the CAPABILITY layer (spec 0.2.0 — `resolveCapability`/`validateCapability`, the closed `ANSWER_PHASES`/`TOOL_CLASSES`/`CONTEXT_BLOCKS`/`GATE_IDS` vocabularies, `serverOnlySelections`) and the request router `resolveRequestAgent` over the registry's `defaults` table. Loads the seven shipped agents from `sdk/AGENTS.json` (via the source snapshot, like the manifest); the CLI (`sdk/pair-cli.mjs agents`/`agent`) re-exports the same core. Full docs: `docs/AGENT-PLATFORM.md`, the **agent-platform** SDK module skill |
 | `agent-registry.js` | The AGENT REGISTRY loading seam: one cached, fail-soft load of `sdk/AGENTS.json` per ASSETS binding (out of the committed source snapshot — by construction the definition THIS deploy runs), plus `routingNeedsRegistry`, the guard that keeps the plain Deep Research turn off the load path. This is what lets `chat.js` route a request by DATA (the registry's ordered `defaults` table → `capability.answerPhase`) instead of by a hand-written flag cascade; `agent-link.js` re-exports the loader for the mint. Every failure returns null and the caller keeps its built-in behaviour (invariant 2) |
@@ -278,7 +279,9 @@ Platform-SDK manifest ops + the Agents SDK's build tools; see the
 convention, imported by the
 Worker, the `sdk/pair-cli.mjs` CLI, and Node tests — Node-tested),
 `orchestrator-core.js` (ORCHESTRATOR MODE's shared PURE core — the closed
-sub-agent kind vocabulary (`deep_research`/`introspection`/`custom`), the
+sub-agent kind vocabulary (`deep_research`/`introspection`/`swarm`/`custom`,
+the last two downgrading to `custom` when the request carries no source
+snapshot / no swarm-capable device), the
 workflow plan schema with its never-throw validator + salvage normalizer,
 dependency→wave resolution, the plan/node prompt builders (EN+SV parity in
 the plan instruction), and the `workflow`/`agent_update` SSE event shapes;
@@ -287,7 +290,9 @@ Orchestrator WORKFLOW VIEW: pure column-per-wave layout + XSS-safe SVG string
 assembly (Node-tested), and the small DOM mount that renders the live
 sub-agent graph in the turn body, persists as embeds-registry kind
 `"workflow"` (statuses updated per `agent_update`, replayed from history by
-`turns.js`), and is referenced in the copy-text export via `embedRef`),
+`turns.js`), and is referenced in the copy-text export via `embedRef`; a
+`swarm` node is drawn taller, with one dot per on-device member and the
+round/agreement readout the `swarm_update` events drive),
 `graph-backdrop.js` (the Orchestrator GRAPH BACKDROP — the "graph" value of
 the mode-theme `backdrop` axis: a hovering, slowly rotating wireframe
 DIRECTED GRAPH drifting faintly behind the chat (fixed canvas, z-index -1
@@ -297,7 +302,19 @@ violet diamond; the root a violet baton star) with live statuses (pulse
 running, ✓ done, ✕ failed); built ONLY on `space-core.js`'s own
 rotY/projectPoint math — no dependencies; pure scene/frame core Node-tested,
 idle scene = the root conducting one ghost node per kind; fed by `stream.js`
-on the workflow/agent_update events), `mode-backdrop.js` (the backdrop
+on the workflow/agent_update events; the `swarm` kind is a green satellite
+cluster — the only node running on the user's own device), `swarm-core.js` +
+`swarm-runtime.js` (SWARM REASONING, 2026-07-25 — `docs/SWARM-REASONING.md`:
+the Orchestrator's `swarm` node answered by N tiny Bonsai models running at
+once in this browser. The core is the pure algorithm (diverge → ring critique
+→ deterministic converge: manufactured member stances, three-line parsed
+critiques, centrality-plus-vote scoring, the EN+SV agreement metric, the stop
+condition, the provenance-led brief, the `swarm_update` event shape) and the
+runtime is the loop over a worker pool of `ondevice-engine.js`
+`spawnSwarmMember` handles — one isolated Worker with its own model instance
+per member, `spawn` injected so the whole loop is Node-tested against a fake;
+both fail soft to `null`, which degrades the node to a server-side `custom`
+run), `mode-backdrop.js` (the backdrop
 DISPATCH — the mode-spinner.js sibling for the `backdrop` axis: mounts/
 unmounts the graph layer as the mode changes; "terminal" needs no mount, the
 sandbox layer is event-driven — called from `app.js` boot/reconcile/mode

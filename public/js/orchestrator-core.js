@@ -22,30 +22,55 @@
 // know every shape. `custom` is the escape hatch — a persona + instructions
 // node for task types the fixed kinds don't cover.
 
-/** @typedef {"deep_research"|"introspection"|"custom"} AgentKind */
+/** @typedef {"deep_research"|"introspection"|"swarm"|"custom"} AgentKind */
 
 /**
  * Kind → what the executor runs and what the plan prompt / viz legend say.
  * `needsSource` marks kinds that only work when the introspection snapshot is
- * available (the executor downgrades them to `custom` otherwise — fail-soft).
+ * available; `needsSwarm` marks kinds that need the caller's browser to be able
+ * to host on-device models. Either requirement unmet downgrades the node to
+ * `custom` (fail-soft) rather than dropping it.
  */
 export const AGENT_KINDS = {
   deep_research: {
     label: "Deep Research",
     desc: "researches its task with live web searches, then writes a sourced brief",
     needsSource: false,
+    needsSwarm: false,
   },
   introspection: {
     label: "Introspection",
     desc: "answers its task from this site's own deployed source code and docs",
     needsSource: true,
+    needsSwarm: false,
+  },
+  swarm: {
+    label: "Local swarm",
+    desc:
+      "answers its task by SWARM REASONING: many tiny models run at once in the user's own browser, " +
+      "each drafting an answer, reviewing a peer's, and converging on a consensus with a measured agreement score. " +
+      "Best for judgement calls, brainstorming, weighing options and sanity checks — never for facts that need lookups, " +
+      "and it runs entirely on the user's device (nothing about it is sent anywhere)",
+    needsSource: false,
+    needsSwarm: true,
   },
   custom: {
     label: "Custom",
     desc: "a fully customized specialist: a persona plus instructions, no external lookups",
     needsSource: false,
+    needsSwarm: false,
   },
 };
+
+// ---- swarm bounds (the client-hosted kind) -----------------------------------
+//
+// The member count a plan may request. The real ceiling is the DEVICE's (see
+// swarm-core.js planSwarmCapacity — members queue over a small worker pool), so
+// this cap only keeps a runaway plan from asking for a hundred.
+export const MAX_SWARM_MEMBERS = 12;
+export const MAX_SWARM_ROUNDS = 3;
+export const DEFAULT_SWARM_MEMBERS = 4;
+export const DEFAULT_SWARM_ROUNDS = 2;
 
 /** @type {AgentKind[]} */
 export const AGENT_KIND_IDS = /** @type {AgentKind[]} */ (Object.keys(AGENT_KINDS));
@@ -89,6 +114,10 @@ export function validateWorkflow(plan) {
     if (!AGENT_KIND_IDS.includes(a.kind)) problems.push(at(`unknown kind "${a.kind}"`));
     if (!a.task || typeof a.task !== "string") problems.push(at("task is required"));
     if (a.deps != null && !Array.isArray(a.deps)) problems.push(at("deps must be an array"));
+    // A swarm node runs in the USER'S BROWSER before the server executes the
+    // rest of the workflow (src/orchestrator.js), so it can never read another
+    // node's result — it is a first-wave node by construction.
+    if (a.kind === "swarm" && Array.isArray(a.deps) && a.deps.length) problems.push(at("a swarm agent cannot depend on other agents"));
     for (const d of Array.isArray(a.deps) ? a.deps : []) {
       if (typeof d !== "string") problems.push(at("deps must be agent ids"));
     }
@@ -101,6 +130,13 @@ export function validateWorkflow(plan) {
 }
 
 // ---- normalization -----------------------------------------------------------
+
+/** @param {unknown} v @param {number} lo @param {number} hi @param {number} dflt @returns {number} */
+function clampInt(v, lo, hi, dflt) {
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n)) return dflt;
+  return Math.min(hi, Math.max(lo, n));
+}
 
 /** @param {unknown} s @returns {string} */
 function slugify(s) {
@@ -120,8 +156,8 @@ function slugify(s) {
  * caps the agent count, and breaks cycles by dropping the offending deps.
  * Returns null only when nothing salvageable remains (no agent with a task).
  * @param {any} raw
- * @param {{ hasSource?: boolean }} [opts]
- * @returns {{ title: string, agents: Array<{id:string,kind:AgentKind,name:string,task:string,persona:string,queries:string[],deps:string[]}> } | null}
+ * @param {{ hasSource?: boolean, hasSwarm?: boolean }} [opts]
+ * @returns {{ title: string, agents: Array<{id:string,kind:AgentKind,name:string,task:string,persona:string,queries:string[],deps:string[],swarmSize?:number,rounds?:number}> } | null}
  */
 export function normalizeWorkflow(raw, opts = {}) {
   const list = Array.isArray(raw?.agents) ? raw.agents : Array.isArray(raw) ? raw : [];
@@ -134,6 +170,10 @@ export function normalizeWorkflow(raw, opts = {}) {
     if (!task) continue;
     let kind = AGENT_KIND_IDS.includes(a.kind) ? a.kind : "custom";
     if (AGENT_KINDS[/** @type {AgentKind} */ (kind)].needsSource && !opts.hasSource) kind = "custom";
+    // No device to host the swarm (knob off, no cached weights, or an older
+    // client that never announced the capability): the node still runs — as an
+    // ordinary specialist on the answer model.
+    if (AGENT_KINDS[/** @type {AgentKind} */ (kind)].needsSwarm && !opts.hasSwarm) kind = "custom";
     let id = slugify(a.id || a.name);
     if (!id) id = `agent-${agents.length + 1}`;
     while (ids.has(id)) id += "x";
@@ -147,15 +187,25 @@ export function normalizeWorkflow(raw, opts = {}) {
           .filter(Boolean)
           .slice(0, MAX_NODE_QUERIES)
       : [];
-    agents.push({
+    /** @type {any} */
+    const node = {
       id,
       kind: /** @type {AgentKind} */ (kind),
       name: typeof a.name === "string" && a.name.trim() ? a.name.trim().slice(0, 60) : AGENT_KINDS[/** @type {AgentKind} */ (kind)].label,
       task,
       persona: typeof a.persona === "string" ? a.persona.trim().slice(0, MAX_TASK_CHARS) : "",
       queries,
-      deps: Array.isArray(a.deps) ? a.deps.map((/** @type {any} */ d) => slugify(d)).filter(Boolean) : [],
-    });
+      // Swarm nodes are first-wave by construction (validateWorkflow explains
+      // why): the browser runs them before the request reaches the server, so
+      // any dependency the plan invented is dropped here rather than silently
+      // producing a node that reads an empty upstream.
+      deps: kind === "swarm" || !Array.isArray(a.deps) ? [] : a.deps.map((/** @type {any} */ d) => slugify(d)).filter(Boolean),
+    };
+    if (kind === "swarm") {
+      node.swarmSize = clampInt(a.swarmSize ?? a.members ?? a.size, 2, MAX_SWARM_MEMBERS, DEFAULT_SWARM_MEMBERS);
+      node.rounds = clampInt(a.rounds, 1, MAX_SWARM_ROUNDS, DEFAULT_SWARM_ROUNDS);
+    }
+    agents.push(node);
   }
   if (!agents.length) return null;
   // Drop deps that don't name a kept agent, and self-deps.
@@ -213,14 +263,17 @@ export function findWorkflowAgent(plan, id) {
  * The planning instruction the fixed JSON model gets. Answer-language parity
  * (invariant 6's spirit): names and tasks follow the user's language, so a
  * Swedish request gets Swedish sub-agent names in the workflow view.
- * @param {{ message: string, hasSource?: boolean }} args
+ * @param {{ message: string, hasSource?: boolean, hasSwarm?: boolean, swarmModel?: string }} args
  * @returns {string}
  */
 export function orchestratorPlanPrompt(args) {
   const kinds = AGENT_KIND_IDS
-    .filter((k) => !AGENT_KINDS[k].needsSource || args.hasSource)
+    .filter((k) => (!AGENT_KINDS[k].needsSource || args.hasSource) && (!AGENT_KINDS[k].needsSwarm || args.hasSwarm))
     .map((k) => `- "${k}": ${AGENT_KINDS[k].desc}`)
     .join("\n");
+  const swarmRule = args.hasSwarm
+    ? `\n- A "swarm" agent also gets "swarmSize" (${DEFAULT_SWARM_MEMBERS}-${MAX_SWARM_MEMBERS} members — more members for open-ended judgement calls, fewer for narrow ones) and "rounds" (1-${MAX_SWARM_ROUNDS}). It runs on ${args.swarmModel || "a tiny on-device model"} in the user's browser, so it is CHEAP and PRIVATE but weak on facts: give it reasoning, opinion-weighing, option-ranking or brainstorming tasks, never lookups. It runs before the other agents and CANNOT have "deps" (other agents may depend on IT). At most one swarm agent per plan.`
+    : "";
   return [
     "You are the ORCHESTRATOR planner. Decompose the user's request into a small team of sub-agents that work in parallel where possible.",
     `Available sub-agent kinds:\n${kinds}`,
@@ -228,10 +281,10 @@ export function orchestratorPlanPrompt(args) {
 - 2 to ${MAX_AGENTS} agents; prefer the fewest that genuinely divide the work.
 - Each agent gets ONE focused task (max ~2 sentences). A "custom" agent also gets a one-line persona.
 - "deps" lists agent ids whose results the agent needs; agents without deps run concurrently. At most ${MAX_WAVES} sequential stages; a final reviewer/critic depending on the others is often worth one stage.
-- A "deep_research" agent also gets "queries": up to ${MAX_NODE_QUERIES} web-search queries covering its task.
+- A "deep_research" agent also gets "queries": up to ${MAX_NODE_QUERIES} web-search queries covering its task.${swarmRule}
 - GROUND COMPARISONS: when the request compares candidates against, or judges something relative to, a REFERENCE OBJECT (a named product, project, company — above all this site, deepresearch.se, itself), the plan MUST include a first-wave grounding agent whose sole task is to establish what that object actually is and does, and every comparing/judging agent must list it in "deps". When the reference object is this site and the "introspection" kind is available, the grounding agent MUST be kind "introspection" — it reads the site's real source instead of guessing.
 - Write names, tasks and queries in the user's language (svara på svenska om användaren skriver svenska).`,
-    'Return ONLY JSON: {"title": "...", "agents": [{"id": "slug", "kind": "...", "name": "...", "task": "...", "persona": "...", "queries": ["..."], "deps": ["..."]}]}',
+    `Return ONLY JSON: {"title": "...", "agents": [{"id": "slug", "kind": "...", "name": "...", "task": "...", "persona": "...", "queries": ["..."]${args.hasSwarm ? ', "swarmSize": 4, "rounds": 2' : ""}, "deps": ["..."]}]}`,
     `User request:\n${args.message}`,
   ].join("\n\n");
 }
@@ -305,15 +358,23 @@ export function mergeAgentResults(plan, results) {
 
 /**
  * @param {any} plan
- * @returns {{ type: "workflow", title: string, agents: Array<{id:string,kind:string,name:string,task:string,deps:string[]}>, waves: string[][] }}
+ * @returns {{ type: "workflow", title: string, agents: Array<{id:string,kind:string,name:string,task:string,deps:string[],swarmSize?:number,rounds?:number}>, waves: string[][] }}
  */
 export function workflowEvent(plan) {
   return {
     type: "workflow",
     title: plan?.title || "",
-    agents: (plan?.agents || []).map((/** @type {any} */ a) => ({
-      id: a.id, kind: a.kind, name: a.name, task: a.task, deps: a.deps || [],
-    })),
+    agents: (plan?.agents || []).map((/** @type {any} */ a) => {
+      const node = { id: a.id, kind: a.kind, name: a.name, task: a.task, deps: a.deps || [] };
+      // The swarm's shape rides in the plan event so the graph can draw the
+      // member dots the moment the team appears — before the first member has
+      // reported anything.
+      if (a.kind === "swarm") {
+        /** @type {any} */ (node).swarmSize = a.swarmSize || DEFAULT_SWARM_MEMBERS;
+        /** @type {any} */ (node).rounds = a.rounds || DEFAULT_SWARM_ROUNDS;
+      }
+      return node;
+    }),
     waves: workflowWaves(plan).waves,
   };
 }

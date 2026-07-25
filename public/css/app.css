@@ -801,8 +801,20 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
 .workflow-svg .wf-failed .wfglyph, .workflow-svg .wf-failed .wfkind { fill: #b3455c; }
 .workflow-svg .wf-running .wfglyph { animation: wf-pulse 1.2s ease-in-out infinite; }
 @keyframes wf-pulse { 50% { opacity: .3; } }
+/* The local-swarm node: one dot per on-device member below the kind line, in
+   the on-device green (this is the only node running in the user's browser),
+   plus the round/agreement readout at its right. A member lights up as it
+   loads and pulses while it decodes, so the box shows the swarm thinking. */
+.workflow-svg .wfnode.wf-swarm rect { stroke-dasharray: 3 2; }
+.workflow-svg .wfmember { fill: none; stroke: var(--muted); stroke-width: 1.2; }
+.workflow-svg .wfmember.wm-loading { stroke: #2f8f5b; }
+.workflow-svg .wfmember.wm-running { fill: #2f8f5b; stroke: #2f8f5b; animation: wf-pulse 1s ease-in-out infinite; }
+.workflow-svg .wfmember.wm-done { fill: #2f8f5b; stroke: #2f8f5b; }
+.workflow-svg .wfmember.wm-failed { stroke: #b3455c; }
+.workflow-svg .wfswarm { font-weight: 400; font-size: .6rem; fill: #2f8f5b; }
 @media (prefers-reduced-motion: reduce) {
-  .workflow-svg .wf-running .wfglyph { animation: none; }
+  .workflow-svg .wf-running .wfglyph,
+  .workflow-svg .wfmember.wm-running { animation: none; }
 }
 .streetview-embed { margin: .6rem 0 .2rem; }
 .streetview-embed-label { font-size: .75rem; color: var(--muted); margin-bottom: .3rem; }

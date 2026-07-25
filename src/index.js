@@ -60,6 +60,7 @@ import { handleOutrospectFeed, handleOutrospectRefresh } from "./outrospect.js";
 import { handleTryRedirect } from "./testpoints.js";
 import { bashLiteEnabled, handleSettingsGet, handleSettingsPut } from "./settings.js";
 import { handleBashStep } from "./bash-api.js";
+import { handleOrchestratorPlan } from "./orchestrator-api.js";
 import { handleStorage } from "./storage.js";
 import { handleVault } from "./vault.js";
 import { handleEmbed, handleRag } from "./rag.js";
@@ -759,6 +760,13 @@ async function routeApi(request, env, url, log, identity, ctx, requestId) {
   // next. Knob-gated inside the handler (bash_lite_mcp).
   if (url.pathname === "/api/bash/step" && request.method === "POST") {
     return handleBashStep(request, env, log, identity);
+  }
+  // The Orchestrator's sub-agent team, planned before the chat request
+  // (src/orchestrator-api.js) — the other client-orchestrated loop: the
+  // browser needs the plan in hand to run `swarm` nodes on its own on-device
+  // models. Capability-gated inside the handler (developer mode).
+  if (url.pathname === "/api/orchestrator/plan" && request.method === "POST") {
+    return handleOrchestratorPlan(request, env, log, identity);
   }
   // Document-RAG embedding proxy (used in BOTH storage modes) + the
   // server-side index endpoints (knob-gated inside src/rag.js).

@@ -1,0 +1,178 @@
+// @ts-check
+// POST /api/orchestrator/plan — the sub-agent team, planned BEFORE the chat
+// request. Orchestrator mode normally plans inside /api/chat (src/
+// orchestrator.js phase 1); this endpoint exists for exactly one reason: the
+// `swarm` sub-agent kind runs in the USER'S BROWSER (public/js/
+// swarm-runtime.js — N tiny on-device models reasoning in parallel), and a
+// single streamed chat request has no channel back to the browser mid-run. So
+// the client asks for the plan here, runs any swarm nodes locally while the
+// workflow graph fills in, and then sends the finished plan plus those briefs
+// with the /api/chat request (chat.js `workflow` + `swarm_results`).
+//
+// Same shape as /api/bash/step, and for the same reason — it is the other
+// client-orchestrated loop in this codebase: the reliable jsonModel decides,
+// the browser executes, the server never trusts what comes back (chat.js
+// re-normalizes the plan through the identical normalizeWorkflow gate).
+//
+// Invariant 1: ONE JSON-mode call, no function calling. Invariant 3: on the
+// fixed DEFAULT_MODEL like every other planning phase — the plan must not
+// change quality with the user's answer-model pick. Fail-soft throughout: any
+// problem returns `{ plan: null }` with 200, and the client simply sends an
+// ordinary orchestrator request that plans server-side without a swarm.
+
+import { completeJson } from "./providers.js";
+import { DEFAULT_MODEL, listModels } from "./berget.js";
+import { getConfig } from "./config.js";
+import { jsonResponse } from "./http.js";
+import { lastUserMessage, textOf } from "./conversation.js";
+import {
+  bergetCost,
+  effectiveQuota,
+  getUsage,
+  inflightLimitResponse,
+  quotaBlockedResponse,
+  quotaExceeded,
+  recordUsage,
+  releaseInflight,
+  reserveInflight,
+} from "./quota.js";
+import { developerModeEnabled } from "./settings.js";
+import { validateMessages } from "./validation.js";
+import { normalizeWorkflow, orchestratorPlanPrompt, workflowWaves } from "../public/js/orchestrator-core.js";
+
+/** @typedef {import('./types.js').Env} Env */
+/** @typedef {import('./types.js').Logger} Logger */
+/** @typedef {import('./settings.js').Identity} Identity */
+
+const PLAN_MAX_TOKENS = 900;
+
+/**
+ * @param {Request} request
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @returns {Promise<Response>}
+ */
+export async function handleOrchestratorPlan(request, env, log, identity) {
+  if (!env.BERGET_API_TOKEN) {
+    return jsonResponse({ error: "Server not configured: BERGET_API_TOKEN secret is missing." }, 500);
+  }
+  // The SAME capability gate as orchestrator_mode in chat.js (developer mode).
+  // A client without it gets a clean null plan, not an error — it falls back to
+  // the ordinary request, which the server will route by its own rules anyway.
+  if (!developerModeEnabled(env, identity)) {
+    return jsonResponse({ plan: null, reason: "capability" }, 403);
+  }
+
+  /** @type {any} */
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse({ error: "Request body must be valid JSON." }, 400);
+  }
+  const invalid = validateMessages(body?.messages);
+  if (invalid) return jsonResponse({ error: invalid }, 400);
+
+  // What the caller's DEVICE can host. Only its presence and the model's label
+  // reach the prompt — the plan model decides whether the request has work a
+  // swarm suits, exactly as it decides everything else about the team.
+  const swarm = normalizeSwarmCapability(body?.swarm);
+
+  // Same quota gate as /api/chat and /api/bash/step (admins never blocked).
+  const config = await getConfig(env);
+  const usage = await getUsage(env, identity.id, Date.now(), identity.user?.quota_reset_at);
+  const quota = identity.isSecretAdmin || identity.role === "admin" ? null : effectiveQuota(config, identity.user);
+  const blocked = quota ? quotaExceeded(usage, quota) : null;
+  if (blocked) return jsonResponse(quotaBlockedResponse(blocked), 429);
+
+  const reqId = crypto.randomUUID();
+  const reserved = await reserveInflight(env, identity.id, reqId);
+  if (!reserved.ok) return jsonResponse(inflightLimitResponse(reserved), 429);
+
+  const startedAt = Date.now();
+  try {
+    const message = textOf(lastUserMessage(body.messages)?.content);
+    const r = await completeJson(
+      env,
+      [{
+        role: "user",
+        content: orchestratorPlanPrompt({
+          message,
+          hasSource: body?.has_source === true,
+          hasSwarm: !!swarm,
+          swarmModel: swarm?.modelLabel || "",
+        }),
+      }],
+      { model: DEFAULT_MODEL, maxTokens: PLAN_MAX_TOKENS },
+    );
+    await recordPlanUsage(env, log, identity, r.usage, Date.now() - startedAt);
+    const plan = normalizeWorkflow(r.value, { hasSource: body?.has_source === true, hasSwarm: !!swarm });
+    if (!plan) {
+      // Nothing salvageable: let the chat request plan again server-side
+      // rather than shipping a degenerate team the user would watch run.
+      log.info("orch.plan_empty", { user_id: identity.id });
+      return jsonResponse({ plan: null, reason: "unusable" });
+    }
+    const waves = workflowWaves(plan).waves;
+    const swarmNodes = plan.agents.filter((a) => a.kind === "swarm").length;
+    log.info("orch.plan", {
+      user_id: identity.id,
+      agents: plan.agents.length,
+      waves: waves.length,
+      swarm_nodes: swarmNodes,
+      swarm_model: swarm?.modelId || "",
+    });
+    return jsonResponse({ plan, waves });
+  } catch (err) {
+    log.warn("orch.plan_failed", { user_id: identity.id, error: (/** @type {any} */ (err))?.message || String(err) });
+    return jsonResponse({ plan: null, reason: "error" });
+  } finally {
+    await releaseInflight(env, reqId);
+  }
+}
+
+/**
+ * The client's swarm descriptor, clamped. Nothing here is trusted for
+ * anything but prompt shaping and the kind gate — the actual member count is
+ * the DEVICE's call at run time (swarm-core.js planSwarmCapacity).
+ * @param {any} raw
+ * @returns {{ modelId: string, modelLabel: string } | null}
+ */
+export function normalizeSwarmCapability(raw) {
+  if (!raw || typeof raw !== "object" || raw.available === false) return null;
+  const modelId = typeof raw.modelId === "string" ? raw.modelId.slice(0, 60) : "";
+  if (!modelId) return null;
+  return { modelId, modelLabel: (typeof raw.modelLabel === "string" ? raw.modelLabel : modelId).slice(0, 60) };
+}
+
+// The plan spends real (small) Berget money on DEFAULT_MODEL — recorded like
+// every other spend, priced from the catalog (fail-soft: an unreachable
+// catalog records the tokens at zero cost rather than failing the plan).
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @param {{ prompt_tokens?: number, completion_tokens?: number } | null | undefined} usage
+ * @param {number} durationMs
+ */
+async function recordPlanUsage(env, log, identity, usage, durationMs) {
+  let entry = null;
+  try {
+    entry = (await listModels(env))?.find((m) => m.id === DEFAULT_MODEL) || null;
+  } catch {
+    entry = null;
+  }
+  const prompt_tokens = usage?.prompt_tokens || 0;
+  const completion_tokens = usage?.completion_tokens || 0;
+  await recordUsage(env, log, {
+    user_id: identity.id,
+    model: DEFAULT_MODEL,
+    prompt_tokens,
+    completion_tokens,
+    searches: 0,
+    berget_cost: bergetCost(entry, prompt_tokens, completion_tokens),
+    exa_cost: 0,
+    duration_ms: durationMs,
+  });
+}

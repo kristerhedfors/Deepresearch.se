@@ -246,7 +246,7 @@
         "routing": { "planModel": "json-default", "answerModel": "user" },
         "gates": [],
         "bounds": { "maxTokens": 2048, "timeoutMs": 150000 },
-        "emits": ["step", "search", "workflow", "agent_update"],
+        "emits": ["step", "search", "workflow", "agent_update", "swarm_update"],
         "requires": ["developer_mode"],
         "team": { "kinds": ["research", "introspection"], "allowCustom": true, "maxAgents": 6, "maxWaves": 3, "maxQueriesPerAgent": 2 }
       },

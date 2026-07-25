@@ -77,7 +77,7 @@ mode; the other two are the client-tier archetype and the template.
 | **Research** | `normal` | Se/rver | The full signed-in deep-research assistant. The whole pipeline, the full model catalog, cloud storage, quotas. |
 | **Introspection** | `introspection` | Se/rver | The site read from the inside — answers from its own deployed source and docs, natively with tools or through the deterministic read loop. |
 | **Agent Studio** | `sdk` | Se/rver | The mode that *builds* agents (spec id `agent-builder`): describe a flavour, it distils this site into it and publishes it live. |
-| **Orchestrator** | `orchestrator` | Se/rver | A planned team of sub-agents run in parallel waves, merged into one answer. |
+| **Orchestrator** | `orchestrator` | Se/rver | A planned team of sub-agents run in parallel waves, merged into one answer. One kind runs *outside* the server: a `swarm` node reasons with many tiny Bonsai models at once in the user's own browser ([`SWARM-REASONING.md`](SWARM-REASONING.md)). |
 | **Outrospection** | `outrospection` | Se/rver | Introspection's mirror image — answers from the standing outward feed of what everyone else shipped. |
 | **Secure** | — | Se/cure | The never-cloud tier — runs wholly in your browser, server in no data path, sealed local state. |
 | **Under Construction** | — | Se/cure | A placeholder — the minimal viable agent (composer + send + an honest notice). The template you copy to start a new one. |

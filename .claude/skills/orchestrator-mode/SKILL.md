@@ -35,7 +35,9 @@ workflow itself is a first-class UI element: a live graph of the team.
 
 - `public/js/orchestrator-core.js` — the shared PURE core (Node-tested):
   `AGENT_KINDS` (closed vocabulary — `deep_research`, `introspection`
-  (`needsSource`, downgraded to custom without a snapshot), `custom`),
+  (`needsSource`, downgraded to custom without a snapshot), `swarm`
+  (`needsSwarm`, downgraded the same way without a swarm-capable browser),
+  `custom`),
   `validateWorkflow`/`normalizeWorkflow` (never-throw; slugs ids, breaks
   cycles, caps at `MAX_AGENTS`=6 / `MAX_WAVES`=3), `workflowWaves`,
   `orchestratorPlanPrompt` (EN+SV: "svara på svenska…"), `agentTaskPrompt`,
@@ -56,6 +58,22 @@ workflow itself is a first-class UI element: a live graph of the team.
   palette/pane/tag/waves, ORCH_SPINNER balloon recolour in mode-spinner.js,
   `--check-violet`), both dropdowns, deeplink aliases
   (`orchestrator|orchestrate|orch|workflow`).
+- **The `swarm` kind — the one node that runs OUTSIDE the server**
+  (2026-07-25, `docs/SWARM-REASONING.md`): N tiny Bonsai models reasoning at
+  once in the user's browser (`public/js/swarm-core.js` = the algorithm:
+  diverge → ring critique → deterministic converge with a measured agreement
+  score; `swarm-runtime.js` = the worker pool over `ondevice-engine.js`
+  `spawnSwarmMember`). Because a streamed request has no channel back to the
+  page, an orchestrator send from a swarm-capable device is TWO calls: the
+  client asks `POST /api/orchestrator/plan` (`src/orchestrator-api.js` — the
+  same JSON phase on the same fixed model), runs the swarm nodes locally
+  (`stream.js maybeRunSwarmPrepass`, the sandbox pre-pass's shape), then sends
+  `/api/chat` with `workflow` + `swarm_results`. The executor skips its plan
+  phase, seeds those nodes done, and runs the rest. Swarm nodes are FIRST-WAVE
+  by construction (they predate the request) — `normalizeWorkflow` drops any
+  dep the plan invents; other nodes may depend on them. Nothing is trusted: the
+  plan re-normalizes and `resolveSwarmResults` clamps the briefs. A swarm node
+  that arrives without a brief runs server-side as a `custom` specialist.
 - Meta: chat_logs rows carry `orchestrator: 1` +
   `orchestration: {agents, waves, failed, searches}` — grep these when
   debugging (the chat-logs skill).
@@ -87,8 +105,15 @@ workflow itself is a first-class UI element: a live graph of the team.
 ## Verification
 
 - Unit: `orchestrator-core.test.js` (plan salvage, waves, cycle-break,
-  prompts, event shapes), `workflow-viz.test.js` (layout, SVG, XSS),
+  prompts, event shapes, the swarm kind's downgrade/dep rules),
+  `workflow-viz.test.js` (layout, SVG, XSS, the swarm member strip),
+  `swarm-core.test.js` (the algorithm — scoring, the EN+SV agreement metric,
+  the stop condition), `swarm-runtime.test.js` (the loop against a FAKE
+  member — `spawn` is injected for exactly this), `orchestrator-api.test.js`,
   mode/deeplink suites.
+- STILL OWED for the SWARM: a device with cached Bonsai weights — member dots
+  animating, the agreement readout moving, `orchestration.swarm` in the
+  chat log, a Swedish run, and a knob-off device getting no swarm kind at all.
 - STILL OWED (live-verify discipline): a real Orchestrator round trip on the
   deployed site — pick Orchestrator (violet pane + `orchestrator` tag), ask a
   decomposable question, confirm the plan step lists the team, the workflow

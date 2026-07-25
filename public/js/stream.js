@@ -77,6 +77,10 @@ import { firstChunks, retrieve } from "./rag.js";
 import { renderQuiz } from "./quiz.js";
 import { renderWorkflow } from "./workflow-viz.js";
 import { setGraphWorkflow, updateGraphAgent } from "./graph-backdrop.js";
+import { workflowEvent, workflowWaves } from "./orchestrator-core.js";
+// The on-device swarm pre-pass (maybeRunSwarmPrepass): both entry points are
+// lazy inside — nothing here loads the inference engine until a swarm runs.
+import { detectSwarmCapability, engineSpawner, runSwarmNodes } from "./swarm-runtime.js";
 import { createSseParser } from "./sse.js";
 import {
   capEmbedBytes,
@@ -578,22 +582,34 @@ function handleEvent(turn, evt, acc) {
       // `statuses` is the SAME object the view mutates on each agent_update,
       // so the persisted record always carries the latest node states and a
       // reopened conversation shows the finished workflow.
-      const embed = recordEmbed({
-        kind: "workflow",
-        workflow: { title: s.title || "", agents: s.agents, waves: Array.isArray(s.waves) ? s.waves : [] },
-        statuses: {},
-      });
-      turn._wfEmbed = embed;
-      turn._wfViz = renderWorkflow(turn, embed.workflow, embed.statuses);
-      // The graph BACKDROP behind the chat (Orchestrator mode's agent
-      // background) follows the live team too — same statuses object.
-      setGraphWorkflow(embed.workflow, embed.statuses);
+      //
+      // ALREADY DRAWN is the normal case with an on-device swarm: the pre-pass
+      // (maybeRunSwarmPrepass) rendered this exact plan minutes ago and its
+      // swarm nodes are already done. Re-recording would duplicate the embed
+      // and throw away those states, so adopt the existing one.
+      if (turn._wfEmbed) {
+        turn._wfEmbed.workflow.title = s.title || turn._wfEmbed.workflow.title;
+      } else {
+        const embed = recordEmbed({
+          kind: "workflow",
+          workflow: { title: s.title || "", agents: s.agents, waves: Array.isArray(s.waves) ? s.waves : [] },
+          statuses: {},
+        });
+        turn._wfEmbed = embed;
+        turn._wfViz = renderWorkflow(turn, embed.workflow, embed.statuses);
+        // The graph BACKDROP behind the chat (Orchestrator mode's agent
+        // background) follows the live team too — same statuses object.
+        setGraphWorkflow(embed.workflow, embed.statuses);
+      }
     }
     else if (s.type === "agent_update" && typeof s.id === "string" && turn._wfEmbed) {
-      const st = { status: s.status, duration_ms: s.duration_ms, note: s.note };
-      if (turn._wfViz) turn._wfViz.update(s.id, st);
-      else turn._wfEmbed.statuses[s.id] = { ...turn._wfEmbed.statuses[s.id], ...st };
-      updateGraphAgent(s.id, st);
+      applyAgentUpdate(turn, s.id, { status: s.status, duration_ms: s.duration_ms, note: s.note });
+    }
+    else if (s.type === "swarm_update" && typeof s.id === "string" && turn._wfEmbed) {
+      // A swarm node's live member states. Emitted locally today (the swarm
+      // runs in this browser); the branch exists for the wire too, so a
+      // server-hosted swarm needs no client change (sse-protocol skill).
+      applyAgentUpdate(turn, s.id, { status: s.phase === "done" ? "done" : "running", swarm: s });
     }
     else if (s.type === "build" && typeof s.slug === "string" && s.slug) {
       // SDK mode published (or republished) this conversation's app — adopt
@@ -1034,6 +1050,141 @@ async function maybeRunShellLoop(turn, opts) {
     try { finishGenericStep(turn, { id: "sandbox", label: "Sandbox error — answering normally" }); } catch {}
     return [];
   }
+}
+
+// ---- orchestrator mode: the on-device SWARM pre-pass -------------------------
+//
+// The Orchestrator's `swarm` sub-agent kind reasons with MANY tiny models at
+// once — and those models run HERE, in this browser (public/js/swarm-runtime.js
+// over ondevice-engine.js). One streamed /api/chat request has no channel back
+// to the page mid-run, so the swarm happens BEFORE the send, in the same shape
+// as the sandbox pre-pass above: ask the server for the plan
+// (/api/orchestrator/plan — the identical JSON phase on the identical model),
+// run the swarm nodes locally while the workflow graph fills in, then attach
+// the plan and the finished briefs to the chat request. The server executes
+// the rest of the team and merges.
+//
+// Entirely fail-soft: no capability, no plan, a failed fetch or a dead engine
+// all return quietly, and the request goes out as an ordinary orchestrator
+// send that the server plans (without a swarm) on its own.
+/**
+ * @param {any} turn
+ * @param {any} payload the chat payload being assembled — mutated in place
+ */
+async function maybeRunSwarmPrepass(turn, payload) {
+  try {
+    if (cachedChatMode() !== "orchestrator") return;
+    // Capability = the on-device knob is on AND weights are already cached
+    // here. Never triggers a download (the consent rule lives in Settings).
+    const cap = await detectSwarmCapability();
+    if (!cap) return;
+    // Announced to the PLAN endpoint now; announced to /api/chat only once a
+    // plan actually comes back, so a failed pre-pass never leaves the server
+    // planning a swarm node no browser is going to run.
+    const descriptor = { available: true, modelId: cap.modelId, modelLabel: cap.modelLabel };
+    updateGenericStep(turn, "swarm", "Planning the sub-agent team…");
+    const res = await fetch("/api/orchestrator/plan", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ messages: payload.messages, swarm: descriptor, has_source: developerModeOn() }),
+    });
+    const data = await res.json().catch(() => null);
+    const plan = data?.plan;
+    if (!plan?.agents?.length) {
+      // No usable plan: say nothing and let the server plan the team itself in
+      // the request that follows (without a swarm — nothing was announced).
+      finishGenericStep(turn, { id: "swarm", label: "Planning the team server-side" });
+      return;
+    }
+    // The plan is reused server-side either way — re-planning there would
+    // produce a DIFFERENT team than the graph the user is already watching.
+    payload.workflow = plan;
+    payload.swarm = descriptor;
+    const swarmNodes = plan.agents.filter((/** @type {any} */ a) => a.kind === "swarm");
+    if (!swarmNodes.length) {
+      finishGenericStep(turn, { id: "swarm", label: `Team of ${plan.agents.length} — no on-device work` });
+      return;
+    }
+
+    // Draw the team NOW: the local swarm is the slowest part of the run, and
+    // it happens before the stream exists. Same embeds-registry record the
+    // `workflow` SSE event would create (the server re-emits it for the same
+    // plan; handleEvent adopts the existing embed instead of duplicating it).
+    const embed = recordEmbed({
+      kind: "workflow",
+      workflow: { title: plan.title || "", agents: workflowEvent(plan).agents, waves: workflowWaves(plan).waves },
+      statuses: {},
+    });
+    turn._wfEmbed = embed;
+    turn._wfViz = renderWorkflow(turn, embed.workflow, embed.statuses);
+    setGraphWorkflow(embed.workflow, embed.statuses);
+
+    const total = swarmNodes.reduce((/** @type {number} */ n, /** @type {any} */ a) => n + (a.swarmSize || 4), 0);
+    updateGenericStep(turn, "swarm", `Swarm: ${total} × ${cap.modelLabel} in this browser…`);
+    for (const a of swarmNodes) applyAgentUpdate(turn, a.id, { status: "running" });
+
+    const spawn = await engineSpawner();
+    const results = await runSwarmNodes(plan, {
+      spawn,
+      modelId: cap.modelId,
+      modelLabel: cap.modelLabel,
+      userRequest: latestUserText() || "",
+      device: cap,
+      emit: (ev) => {
+        // The live member states the graph renders, plus a readable activity
+        // line for clients (and users) not watching the graph.
+        applyAgentUpdate(turn, ev.id, { status: ev.phase === "done" ? "done" : "running", swarm: ev });
+        const runningNow = ev.members.filter((/** @type {string} */ m) => m === "running" || m === "loading").length;
+        updateGenericStep(
+          turn,
+          "swarm",
+          ev.phase === "critique"
+            ? `Swarm round ${ev.round}: members reviewing each other…`
+            : ev.phase === "converge" || ev.phase === "synthesis"
+              ? `Swarm round ${ev.round}: ${Math.round(ev.agreement * 100)}% agreement`
+              : `Swarm round ${ev.round}: ${runningNow} of ${ev.members.length} members thinking…`,
+        );
+      },
+    });
+    payload.swarm_results = results;
+    for (const a of swarmNodes) {
+      const r = results[a.id];
+      applyAgentUpdate(turn, a.id, r ? { status: "done" } : { status: "failed", note: "no members finished" });
+    }
+    const ran = Object.keys(results).length;
+    finishGenericStep(turn, {
+      id: "swarm",
+      label: ran
+        ? `Swarm finished on this device — ${total} members, ${Math.round(
+            (Object.values(results).reduce((/** @type {number} */ n, /** @type {any} */ r) => n + (r.agreement || 0), 0) / ran) * 100,
+          )}% agreement`
+        : "Swarm produced nothing — the team continues without it",
+    });
+  } catch {
+    // Any failure: the request still goes out. Whatever survived on the
+    // payload (a plan without results) is valid on its own.
+    try {
+      finishGenericStep(turn, { id: "swarm", label: "Swarm unavailable — answering normally" });
+    } catch {
+      /* the step UI is decoration */
+    }
+  }
+}
+
+/**
+ * Apply one node state change to both graph surfaces (the turn's workflow view
+ * and the backdrop) plus the persisted embed. The one place that knows a node
+ * update has three destinations — used by the SSE branch and by the local
+ * swarm run alike.
+ * @param {any} turn
+ * @param {string} id
+ * @param {{ status?: string, duration_ms?: number, note?: string, swarm?: any }} st
+ */
+function applyAgentUpdate(turn, id, st) {
+  if (!turn?._wfEmbed || !id) return;
+  if (turn._wfViz) turn._wfViz.update(id, st);
+  else turn._wfEmbed.statuses[id] = { ...turn._wfEmbed.statuses[id], ...st };
+  updateGraphAgent(id, st);
 }
 
 // ---- introspection mode: the private (browser-direct) answer route -----------
@@ -1548,6 +1699,10 @@ export async function sendMessage(text, opts) {
     // knob is on and the sandbox can run — see maybeRunShellLoop.
     const shellTranscript = await maybeRunShellLoop(turn, opts);
     if (shellTranscript.length) payload.shell_transcript = shellTranscript;
+    // Orchestrator mode with on-device models here: plan the team, run its
+    // swarm nodes in this browser, and attach both. No-op in every other mode
+    // and on every device without cached weights (maybeRunSwarmPrepass).
+    await maybeRunSwarmPrepass(turn, payload);
     // Diagnostic: report the client's sandbox-readiness so a not-running
     // sandbox can be diagnosed from the chat log (src/chatlog.js meta) —
     // crossOriginIsolated is the gate the loop needs, and it can only be

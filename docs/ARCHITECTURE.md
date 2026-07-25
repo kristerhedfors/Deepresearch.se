@@ -1286,6 +1286,18 @@ CheerpX device mounts (`public/js/sandbox-files.js`): tiered ingest
 device-API facts: `docs/SANDBOX-HOST-COMMANDS.md` and the
 **execution-sandbox** skill.
 
+**The same two-call shape, one surface over:** Orchestrator's `swarm`
+sub-agent kind (2026-07-25) reasons with many tiny Bonsai models running at
+once in the user's browser, so it too must be driven from the client.
+`POST /api/orchestrator/plan` (`src/orchestrator-api.js`) returns the
+sub-agent team as data — the identical JSON plan phase on the identical fixed
+model — the browser runs the swarm nodes locally while the workflow graph
+fills in, and `/api/chat` then carries the plan plus the finished briefs
+(`workflow` + `swarm_results`) so the server executes the rest of the team and
+merges. The algorithm (diverge → ring critique → deterministic converge, with
+a measured agreement score) is `public/js/swarm-core.js`; full spec in
+`docs/SWARM-REASONING.md`.
+
 ## 14. Introspection mode (`developer_mode`)
 
 An opt-in per-user knob (`developer_mode`, default OFF, both tiers) that
@@ -1352,7 +1364,10 @@ module — `execution-sandbox`, `introspection-help`, `decision-boards`,
 AgentSpec entry and route through the registry (2026-07-25), though neither has
 a Platform-SDK module yet. Others are still bespoke code with no SDK module and
 no AgentSpec entry: **on-device inference** (`public/js/ondevice-*.js`,
-`docs/BONSAI-27B-PHONE-INFERENCE.md`), **compute sharing**
+`docs/BONSAI-27B-PHONE-INFERENCE.md` — since 2026-07-25 it also powers
+Orchestrator's `swarm` node kind, `docs/SWARM-REASONING.md`: N tiny Bonsai
+models reasoning in parallel browser workers, planned through
+`POST /api/orchestrator/plan` and merged server-side), **compute sharing**
 (`src/pool.js`, `src/pool-token.js`, `docs/COMPUTE-SHARING.md`), **workspace
 knowledge** (`src/knowledge.js`) and the **quiz** surface (`src/quiz.js`).
 Each is a candidate for the same treatment — an SDK module, an AgentSpec, or
