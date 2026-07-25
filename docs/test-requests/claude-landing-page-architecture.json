@@ -1,0 +1,52 @@
+{
+  "branch": "claude/landing-page-architecture",
+  "pr": null,
+  "requested_at": "2026-07-25",
+  "points": [
+    {
+      "label": "Landing page is back at the root",
+      "summary": "deepresearch.se serves the landing page again instead of forwarding visitors to /cure. This point opens /welcome/ (the same page by direct URL) because a SIGNED-IN visit to / still goes to the app at /rver by design. PASS: the page shows, in this order — the round logo + 'DeepResearch.se' + tagline, the promo video, 'What this project is for', 'The architecture, in short' with TWO diagrams, 'Some of what it does', 'Open source, MIT', the ask-a-question card, the link cards, and the Sign in button. ALSO check the real front door in a PRIVATE/incognito window: open deepresearch.se and confirm the same page renders AND the address bar still reads deepresearch.se (no redirect to /cure). FAIL: a redirect to /cure or /login from the root in a private window, a missing section, or the old page without the architecture and capability blocks.",
+      "target": "/welcome/",
+      "actions": [],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Promo video plays on the landing",
+      "summary": "The original promo video (llm-assiterad-utveckling.mp4) is kept, directly under the hero. PASS: the video element appears below the tagline and PLAYS — it autostarts muted and loops; tapping it with sound on also plays. Please confirm on the PHONE, not only on desktop: iOS Safari needs byte-range requests to serve it. FAIL: a black box, a broken-media icon, an endless spinner, or a video that never starts on the phone. Note in your verdict which device and browser you used.",
+      "target": "/welcome/",
+      "actions": [],
+      "runs": 2,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Architecture diagrams read correctly on the landing",
+      "summary": "The 'The architecture, in short' block carries the two data-path diagrams from /architecture/, referenced as shared files rather than copied. PASS: on a phone they STACK with Se/cure (the olive 'Your browser' diagram) ON TOP and Se/rver (the blue 'Cloudflare Worker' diagram) below; on a wide screen they sit side by side with Se/cure on the LEFT, and the card is wider than the rest of the page so the small labels inside stay readable. Every text line sits INSIDE its box — in particular 'serves the static page + public research replays — nothing else.' must not spill past the dashed 'The server (not in the data path)' border. Tapping either diagram opens the full architecture story. The page must never scroll sideways. FAIL: Se/rver shown first, text spilling out of a box, unreadable labels, or a horizontal scrollbar.",
+      "target": "/welcome/",
+      "actions": [],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Ask-a-question card on the landing works",
+      "summary": "The prepackaged (non-LLM) FAQ block on the landing was addressed by class where its stylesheet and script expect ids, so it was unstyled and threw on load. PASS: the 'Questions before you sign in?' card shows five rounded chips and a text field with an Ask button; tapping the chip 'Is it private?' appends a question bubble and a prepackaged answer badged with a robot emoji and a label, and typing a question into the field and pressing Ask does the same. FAIL: square/unstyled chips, a chip that does nothing, or no answer bubble.",
+      "target": "/welcome/",
+      "actions": [],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "The full architecture story still renders",
+      "summary": "Both data-path diagrams moved out of the /architecture/ page into standalone shared SVG files, so this page now loads them rather than inlining them. PASS: under 'The two data paths' both diagrams render exactly as before (Se/cure left, Se/rver right; stacked on a phone with Se/cure first), with normal sans-serif text inside them, and the rest of the page is unchanged. FAIL: an empty box or broken-image icon where a diagram was, text inside a diagram rendered in a serif font, or the two captions no longer matching the pictures above them.",
+      "target": "/architecture/",
+      "actions": [],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    }
+  ]
+}

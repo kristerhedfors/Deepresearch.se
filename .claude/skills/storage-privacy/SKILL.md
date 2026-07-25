@@ -8,7 +8,8 @@ description: >-
   implicit always-on cloud storage (no knob since 2026-07-16), RAG document indexing,
   projects, the secret-keyed project vault (store/load a project with a
   DR1-… secret), DRC — "deep research secure", the client-side public tier
-  at /cure (the root redirects there; /my/project-<hash>; public/cure/,
+  at /cure (the root serves the landing page, which links here;
+  /my/project-<hash>; public/cure/,
   public/js/drc-core.js, drc-providers.js, drc-rag.js, drc-research.js, drc-store.js:
   no-account deep research with DIRECT browser→provider calls on user keys
   — OpenAI + Groq + Berget, the CORS-capable providers — and BROWSER-LOCAL sealed

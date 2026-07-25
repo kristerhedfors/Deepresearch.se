@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Shared diagram: inlined nowhere, referenced as an <img> by BOTH
+     /architecture/ (the full story) and the landing page at / (the short
+     version) so the two can never drift. Self-contained: the font-family is
+     set on the root because a standalone SVG cannot inherit the page font.
+     Colors are the tier tokens (see public/architecture/index.html). -->
+<svg xmlns="http://www.w3.org/2000/svg" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" viewBox="0 0 420 470">
+  <title>The Se/rver data path</title>
+  <desc>The Se/rver data path: browser to Cloudflare Worker to providers, with D1 and R2 stores beside the Worker</desc>
+  <!-- Browser -->
+  <rect x="90" y="10" width="240" height="62" rx="10" fill="#e2f1ff" stroke="#0d4fa0" stroke-width="1.5"/>
+  <text x="210" y="34" text-anchor="middle" font-size="14" font-weight="700" fill="#0a2e5c">Your browser</text>
+  <text x="210" y="52" text-anchor="middle" font-size="10.5" fill="#2f5d8e">UI · encrypted local history · files in OPFS</text>
+  <!-- arrows browser <-> worker -->
+  <line x1="185" y1="72" x2="185" y2="112" stroke="#0d4fa0" stroke-width="1.5"/>
+  <polygon points="185,118 181,109 189,109" fill="#0d4fa0"/>
+  <line x1="235" y1="118" x2="235" y2="78" stroke="#0d4fa0" stroke-width="1.5"/>
+  <polygon points="235,72 231,81 239,81" fill="#0d4fa0"/>
+  <text x="120" y="99" text-anchor="middle" font-size="9.5" fill="#2f5d8e">question ↓</text>
+  <text x="302" y="99" text-anchor="middle" font-size="9.5" fill="#2f5d8e">↑ SSE stream</text>
+  <!-- Worker -->
+  <rect x="60" y="118" width="300" height="86" rx="10" fill="#0d4fa0"/>
+  <text x="210" y="144" text-anchor="middle" font-size="14" font-weight="700" fill="#ffffff">Cloudflare Worker</text>
+  <text x="210" y="163" text-anchor="middle" font-size="10.5" fill="#cfe4ff">the pipeline runs HERE</text>
+  <text x="210" y="181" text-anchor="middle" font-size="10" fill="#cfe4ff">triage → search → gap → synthesis → validation</text>
+  <!-- stores -->
+  <line x1="60" y1="161" x2="34" y2="161" stroke="#0d4fa0" stroke-width="1.2"/>
+  <rect x="4" y="216" width="150" height="66" rx="8" fill="#f4faff" stroke="#8ec4ec"/>
+  <line x1="79" y1="204" x2="79" y2="216" stroke="#0d4fa0" stroke-width="1.2"/>
+  <text x="79" y="234" text-anchor="middle" font-size="11" font-weight="700" fill="#0a2e5c">D1 database</text>
+  <text x="79" y="250" text-anchor="middle" font-size="9.5" fill="#2f5d8e">accounts · quotas · chat log</text>
+  <text x="79" y="264" text-anchor="middle" font-size="9.5" fill="#2f5d8e">(full Q&amp;A — unless ghost)</text>
+  <rect x="266" y="216" width="150" height="66" rx="8" fill="#f4faff" stroke="#8ec4ec"/>
+  <line x1="341" y1="204" x2="341" y2="216" stroke="#0d4fa0" stroke-width="1.2"/>
+  <text x="341" y="234" text-anchor="middle" font-size="11" font-weight="700" fill="#0a2e5c">R2 storage</text>
+  <text x="341" y="250" text-anchor="middle" font-size="9.5" fill="#2f5d8e">ciphertext only: chats,</text>
+  <text x="341" y="264" text-anchor="middle" font-size="9.5" fill="#2f5d8e">files, project vault</text>
+  <!-- providers -->
+  <line x1="210" y1="204" x2="210" y2="300" stroke="#0d4fa0" stroke-width="1.5"/>
+  <polygon points="210,306 206,297 214,297" fill="#0d4fa0"/>
+  <text x="210" y="296" text-anchor="middle" font-size="9.5" fill="#2f5d8e">server-held keys</text>
+  <rect x="8" y="306" width="128" height="60" rx="8" fill="#e2f1ff" stroke="#8ec4ec"/>
+  <text x="72" y="328" text-anchor="middle" font-size="10.5" font-weight="700" fill="#0a2e5c">Berget.ai</text>
+  <text x="72" y="343" text-anchor="middle" font-size="9" fill="#2f5d8e">primary · every JSON</text>
+  <text x="72" y="355" text-anchor="middle" font-size="9" fill="#2f5d8e">phase + answers</text>
+  <rect x="146" y="306" width="128" height="60" rx="8" fill="#e2f1ff" stroke="#8ec4ec"/>
+  <text x="210" y="328" text-anchor="middle" font-size="10.5" font-weight="700" fill="#0a2e5c">Claude · GPT</text>
+  <text x="210" y="343" text-anchor="middle" font-size="9" fill="#2f5d8e">key-gated answer</text>
+  <text x="210" y="355" text-anchor="middle" font-size="9" fill="#2f5d8e">models</text>
+  <rect x="284" y="306" width="128" height="60" rx="8" fill="#e2f1ff" stroke="#8ec4ec"/>
+  <text x="348" y="328" text-anchor="middle" font-size="10.5" font-weight="700" fill="#0a2e5c">Exa search</text>
+  <text x="348" y="343" text-anchor="middle" font-size="9" fill="#2f5d8e">live web sources,</text>
+  <text x="348" y="355" text-anchor="middle" font-size="9" fill="#2f5d8e">query only</text>
+  <rect x="8" y="376" width="404" height="42" rx="8" fill="#e2f1ff" stroke="#8ec4ec"/>
+  <text x="210" y="394" text-anchor="middle" font-size="10.5" font-weight="700" fill="#0a2e5c">Enrichments (opt-in knobs)</text>
+  <text x="210" y="409" text-anchor="middle" font-size="9" fill="#2f5d8e">Google Maps / Street View · Shodan · geocoding · Hugging Face Hub</text>
+  <text x="210" y="444" text-anchor="middle" font-size="9.5" fill="#2f5d8e">third parties receive the minimum — a query, a coordinate, a host —</text>
+  <text x="210" y="458" text-anchor="middle" font-size="9.5" fill="#2f5d8e">never the conversation, a filename, or who asked</text>
+</svg>

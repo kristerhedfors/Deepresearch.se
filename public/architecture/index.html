@@ -83,7 +83,9 @@
     .pair { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
     @media (max-width: 700px) { .pair { grid-template-columns: 1fr; } }
     figure { margin: 0; }
-    figure svg { width: 100%; height: auto; display: block; }
+    /* The diagrams are standalone files (path-secure.svg / path-server.svg),
+       shared with the landing page so the two surfaces cannot drift. */
+    figure svg, figure img { width: 100%; height: auto; display: block; }
     figcaption { font-size: .78rem; color: var(--muted); margin-top: .3rem; }
     .diagram {
       border-radius: 12px; border: 1px solid var(--border); background: #fff;
@@ -142,44 +144,7 @@
     <div class="pair">
       <figure>
         <div class="diagram">
-        <svg viewBox="0 0 420 470" role="img" aria-label="The Se/cure data path: browser calls providers directly on the user's own keys; the server only serves static files and is not in the data path">
-          <!-- Browser: the engine -->
-          <rect x="40" y="10" width="340" height="150" rx="10" fill="#7c6a24"/>
-          <text x="210" y="38" text-anchor="middle" font-size="14" font-weight="700" fill="#ffffff">Your browser</text>
-          <text x="210" y="57" text-anchor="middle" font-size="10.5" fill="#f0e9d2">the pipeline runs HERE</text>
-          <text x="210" y="75" text-anchor="middle" font-size="10" fill="#f0e9d2">triage → knowledge harvest → gap → synthesis → validation</text>
-          <rect x="60" y="90" width="300" height="54" rx="8" fill="#8d7a33" stroke="#f0e9d2" stroke-width="0.8"/>
-          <text x="210" y="110" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">sealed project state (browser-local storage)</text>
-          <text x="210" y="125" text-anchor="middle" font-size="9" fill="#f0e9d2">chats · RAG index · YOUR provider API keys — AES-256-GCM</text>
-          <text x="210" y="137" text-anchor="middle" font-size="9" fill="#f0e9d2">under a secret only you hold</text>
-          <!-- direct provider arrows -->
-          <line x1="110" y1="160" x2="72" y2="236" stroke="#7c6a24" stroke-width="1.5"/>
-          <polygon points="69,242 68,232 76,236" fill="#7c6a24"/>
-          <line x1="210" y1="160" x2="210" y2="236" stroke="#7c6a24" stroke-width="1.5"/>
-          <polygon points="210,242 206,233 214,233" fill="#7c6a24"/>
-          <line x1="310" y1="160" x2="348" y2="236" stroke="#7c6a24" stroke-width="1.5"/>
-          <polygon points="351,242 344,236 352,232" fill="#7c6a24"/>
-          <text x="210" y="222" text-anchor="middle" font-size="9.5" fill="#75683f">direct CORS calls, on YOUR keys</text>
-          <rect x="8" y="242" width="128" height="60" rx="8" fill="#f0e9d2" stroke="#b3a06e"/>
-          <text x="72" y="264" text-anchor="middle" font-size="10.5" font-weight="700" fill="#3d3418">OpenAI</text>
-          <text x="72" y="279" text-anchor="middle" font-size="9" fill="#75683f">answers · JSON phases</text>
-          <text x="72" y="291" text-anchor="middle" font-size="9" fill="#75683f">· embeddings (RAG)</text>
-          <rect x="146" y="242" width="128" height="60" rx="8" fill="#f0e9d2" stroke="#b3a06e"/>
-          <text x="210" y="264" text-anchor="middle" font-size="10.5" font-weight="700" fill="#3d3418">Groq</text>
-          <text x="210" y="279" text-anchor="middle" font-size="9" fill="#75683f">answers · JSON phases</text>
-          <text x="210" y="291" text-anchor="middle" font-size="9" fill="#75683f">(no embeddings → no RAG)</text>
-          <rect x="284" y="242" width="128" height="60" rx="8" fill="#f0e9d2" stroke="#b3a06e"/>
-          <text x="348" y="264" text-anchor="middle" font-size="10.5" font-weight="700" fill="#3d3418">Berget.ai</text>
-          <text x="348" y="279" text-anchor="middle" font-size="9" fill="#75683f">answers · JSON phases</text>
-          <text x="348" y="291" text-anchor="middle" font-size="9" fill="#75683f">· embeddings (RAG)</text>
-          <!-- the absent server -->
-          <rect x="60" y="330" width="300" height="72" rx="10" fill="none" stroke="#b3a06e" stroke-width="1.5" stroke-dasharray="6 4"/>
-          <text x="210" y="354" text-anchor="middle" font-size="12" font-weight="700" fill="#75683f">The server (not in the data path)</text>
-          <text x="210" y="372" text-anchor="middle" font-size="9.5" fill="#75683f">serves the static page + public research replays — nothing else.</text>
-          <text x="210" y="386" text-anchor="middle" font-size="9.5" fill="#75683f">No accounts. It could not log content or keys even in principle.</text>
-          <text x="210" y="434" text-anchor="middle" font-size="9.5" fill="#75683f">no web search either: the "harvest" phase draws on the model's own</text>
-          <text x="210" y="448" text-anchor="middle" font-size="9.5" fill="#75683f">knowledge, and the prompts force it to be honest about that</text>
-        </svg>
+        <img src="/architecture/path-secure.svg" alt="The Se/cure data path: browser calls providers directly on the user's own keys; the server only serves static files and is not in the data path">
         </div>
         <figcaption><span class="wm cure">DeepResearch.<b>Se<span class="sl">/</span>cure</b></span> —
         the browser orchestrates.
@@ -187,57 +152,7 @@
       </figure>
       <figure>
         <div class="diagram">
-        <svg viewBox="0 0 420 470" role="img" aria-label="The Se/rver data path: browser to Cloudflare Worker to providers, with D1 and R2 stores beside the Worker">
-          <!-- Browser -->
-          <rect x="90" y="10" width="240" height="62" rx="10" fill="#e2f1ff" stroke="#0d4fa0" stroke-width="1.5"/>
-          <text x="210" y="34" text-anchor="middle" font-size="14" font-weight="700" fill="#0a2e5c">Your browser</text>
-          <text x="210" y="52" text-anchor="middle" font-size="10.5" fill="#2f5d8e">UI · encrypted local history · files in OPFS</text>
-          <!-- arrows browser <-> worker -->
-          <line x1="185" y1="72" x2="185" y2="112" stroke="#0d4fa0" stroke-width="1.5"/>
-          <polygon points="185,118 181,109 189,109" fill="#0d4fa0"/>
-          <line x1="235" y1="118" x2="235" y2="78" stroke="#0d4fa0" stroke-width="1.5"/>
-          <polygon points="235,72 231,81 239,81" fill="#0d4fa0"/>
-          <text x="120" y="99" text-anchor="middle" font-size="9.5" fill="#2f5d8e">question ↓</text>
-          <text x="302" y="99" text-anchor="middle" font-size="9.5" fill="#2f5d8e">↑ SSE stream</text>
-          <!-- Worker -->
-          <rect x="60" y="118" width="300" height="86" rx="10" fill="#0d4fa0"/>
-          <text x="210" y="144" text-anchor="middle" font-size="14" font-weight="700" fill="#ffffff">Cloudflare Worker</text>
-          <text x="210" y="163" text-anchor="middle" font-size="10.5" fill="#cfe4ff">the pipeline runs HERE</text>
-          <text x="210" y="181" text-anchor="middle" font-size="10" fill="#cfe4ff">triage → search → gap → synthesis → validation</text>
-          <!-- stores -->
-          <line x1="60" y1="161" x2="34" y2="161" stroke="#0d4fa0" stroke-width="1.2"/>
-          <rect x="4" y="216" width="150" height="66" rx="8" fill="#f4faff" stroke="#8ec4ec"/>
-          <line x1="79" y1="204" x2="79" y2="216" stroke="#0d4fa0" stroke-width="1.2"/>
-          <text x="79" y="234" text-anchor="middle" font-size="11" font-weight="700" fill="#0a2e5c">D1 database</text>
-          <text x="79" y="250" text-anchor="middle" font-size="9.5" fill="#2f5d8e">accounts · quotas · chat log</text>
-          <text x="79" y="264" text-anchor="middle" font-size="9.5" fill="#2f5d8e">(full Q&amp;A — unless ghost)</text>
-          <rect x="266" y="216" width="150" height="66" rx="8" fill="#f4faff" stroke="#8ec4ec"/>
-          <line x1="341" y1="204" x2="341" y2="216" stroke="#0d4fa0" stroke-width="1.2"/>
-          <text x="341" y="234" text-anchor="middle" font-size="11" font-weight="700" fill="#0a2e5c">R2 storage</text>
-          <text x="341" y="250" text-anchor="middle" font-size="9.5" fill="#2f5d8e">ciphertext only: chats,</text>
-          <text x="341" y="264" text-anchor="middle" font-size="9.5" fill="#2f5d8e">files, project vault</text>
-          <!-- providers -->
-          <line x1="210" y1="204" x2="210" y2="300" stroke="#0d4fa0" stroke-width="1.5"/>
-          <polygon points="210,306 206,297 214,297" fill="#0d4fa0"/>
-          <text x="210" y="296" text-anchor="middle" font-size="9.5" fill="#2f5d8e">server-held keys</text>
-          <rect x="8" y="306" width="128" height="60" rx="8" fill="#e2f1ff" stroke="#8ec4ec"/>
-          <text x="72" y="328" text-anchor="middle" font-size="10.5" font-weight="700" fill="#0a2e5c">Berget.ai</text>
-          <text x="72" y="343" text-anchor="middle" font-size="9" fill="#2f5d8e">primary · every JSON</text>
-          <text x="72" y="355" text-anchor="middle" font-size="9" fill="#2f5d8e">phase + answers</text>
-          <rect x="146" y="306" width="128" height="60" rx="8" fill="#e2f1ff" stroke="#8ec4ec"/>
-          <text x="210" y="328" text-anchor="middle" font-size="10.5" font-weight="700" fill="#0a2e5c">Claude · GPT</text>
-          <text x="210" y="343" text-anchor="middle" font-size="9" fill="#2f5d8e">key-gated answer</text>
-          <text x="210" y="355" text-anchor="middle" font-size="9" fill="#2f5d8e">models</text>
-          <rect x="284" y="306" width="128" height="60" rx="8" fill="#e2f1ff" stroke="#8ec4ec"/>
-          <text x="348" y="328" text-anchor="middle" font-size="10.5" font-weight="700" fill="#0a2e5c">Exa search</text>
-          <text x="348" y="343" text-anchor="middle" font-size="9" fill="#2f5d8e">live web sources,</text>
-          <text x="348" y="355" text-anchor="middle" font-size="9" fill="#2f5d8e">query only</text>
-          <rect x="8" y="376" width="404" height="42" rx="8" fill="#e2f1ff" stroke="#8ec4ec"/>
-          <text x="210" y="394" text-anchor="middle" font-size="10.5" font-weight="700" fill="#0a2e5c">Enrichments (opt-in knobs)</text>
-          <text x="210" y="409" text-anchor="middle" font-size="9" fill="#2f5d8e">Google Maps / Street View · Shodan · geocoding · Hugging Face Hub</text>
-          <text x="210" y="444" text-anchor="middle" font-size="9.5" fill="#2f5d8e">third parties receive the minimum — a query, a coordinate, a host —</text>
-          <text x="210" y="458" text-anchor="middle" font-size="9.5" fill="#2f5d8e">never the conversation, a filename, or who asked</text>
-        </svg>
+        <img src="/architecture/path-server.svg" alt="The Se/rver data path: browser to Cloudflare Worker to providers, with D1 and R2 stores beside the Worker">
         </div>
         <figcaption><span class="wm rver">DeepResearch.<b>Se<span class="sl">/</span>rver</b></span> —
         the Worker orchestrates.

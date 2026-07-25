@@ -296,11 +296,20 @@ description: >-
   render with (`/js/markdown.js`, vendored `marked`/`DOMPurify` — all
   public on GitHub anyway). The app itself and every `/api/*` stay gated.
 - **Landing page** (`public/welcome/index.html`): signed-out visitors
-  hitting `/` get this promotional page (hero, the promo video, cards to
-  story/about/docs/GitHub, a sign-in CTA noting invite-only approval)
-  instead of a bare login form; `/login` remains the explicit sign-in
-  page and the target for auth bounces on other paths. Signed-in users
-  at `/` get the app, as always.
+  hitting `/` get this promotional page — served IN PLACE at `/` (no
+  redirect, so the URL stays `deepresearch.se`) — instead of a bare login
+  form; `/login` remains the explicit sign-in page and the target for
+  auth bounces on other paths. Signed-in users at `/` get the app, as
+  always. Its running order is: hero + tagline → the promo video → the
+  stated purpose → **the architecture in short** → the capability bullets
+  → open source / MIT → the canned-FAQ demo → the link cards → sign-in
+  CTA. The two data-path diagrams in the architecture block are NOT
+  copied: they are the shared standalone files
+  `public/architecture/path-secure.svg` / `path-server.svg`, referenced
+  as `<img>` by BOTH this page and `/architecture/`, so editing one SVG
+  updates the short and the long version together. Those files set their
+  own `font-family` on the root, because an SVG loaded through `<img>`
+  cannot inherit the page's.
 - **First-visit onboarding animations (2026-07-12):** both tiers greet a
   first-time visitor once, gated by plain localStorage UI flags and
   replayable with `?anim=1`; both respect `prefers-reduced-motion` and
