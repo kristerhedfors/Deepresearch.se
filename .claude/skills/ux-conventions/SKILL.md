@@ -485,3 +485,44 @@ right-click lands in the same handler, which is harmless on a toggle.
 `matchMedia("(hover: hover) and (pointer: fine)")` — on touch, synthesized
 mouseenter would fight the toggle. No text routing, so no EN/SV parity
 applies.
+
+---
+
+## UX-11 — A document reader has two modes; in comment mode a marked passage gets a comment that reaches the code, not just the prose
+
+**The rule.** The documentation reader (`/docs`) carries a Word-style mode
+switch in its header: **Read only** (the default, and exactly what the page was
+before) and **Comment**. In comment mode, selecting a passage opens a composer
+anchored to that selection; the comment is stored with the document path, the
+section heading, and the exact quoted text. Every comment on the open document
+sits in a right-hand rail, its passage highlighted in the prose, and clicking a
+card scrolls to and flashes the highlight. Each card shows the entry's STATUS
+(what the agent did), the THREAD (what it said), and whether the quoted passage
+still exists in the document — when it does not, the card says the text was
+replaced rather than silently losing the comment. Comment
+mode is administrative: the switch appears only for an admin identity, and the
+rail claims layout space only when there is something in it.
+
+**Why.** The point of commenting on a document here is not proofreading. This
+project keeps documentation and implementation describing the same system, so a
+comment on a documented claim is an instruction about the system — the loop
+reconciles the passage and the code behind it in one change. So the reader is
+where the instruction is given, and where the result comes back: status, reply
+and staleness land in the margin, not only in the account panel (owner
+directive, 2026-07-25).
+
+**No second queue.** The comment is a `feedback` entry with the `doc` scope —
+one pipeline for free-form human instructions, four scope tags on it
+(`docs/DECISION-BOARD-LOOPS.md` §1a). Anchoring is by QUOTING the passage, not
+by ids written into the Markdown: the doc pipelines rewrite these files, so an
+id-bearing marker would not survive, and a quote that stops matching is the
+"this text was replaced" signal the rail needs.
+
+**Canonical implementation:** `public/js/docs-comments.js` (the mode switch,
+selection composer, rail, and passage highlighting; scoped `dc-` styles in
+`public/docs/index.html`) over the Node-tested pure core
+`public/js/docs-comments-core.js` (body grammar, quote anchoring, stale
+detection), mounted by `public/js/docs-viewer.js` only after `/api/me` returns
+an admin role. Storage is `POST /api/feedback` with feedback-core's
+`docPageTag`; the rail reads `GET /api/feedback?page=<tag>`. Selection-driven,
+no text routing, so no EN/SV parity applies.

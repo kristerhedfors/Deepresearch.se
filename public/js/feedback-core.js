@@ -75,7 +75,23 @@ export function feedbackIntent(text) {
 // Unlike standalone/session it is never INFERRED from the conversation — the
 // outward view declares it, because the surface is what makes the note
 // strategic.
-/** @typedef {"standalone" | "session" | "strategy"} FeedbackScope */
+//
+// A FOURTH scope arrives from the documentation reader (owner directive,
+// 2026-07-25). The /docs viewer has a Word-style COMMENT MODE: an admin marks
+// a passage and writes a note against it. That note is NOT primarily a
+// complaint about prose. This repo's whole discipline is that documentation
+// and implementation describe the SAME system, so a comment on a documented
+// claim is an instruction about the system: bring the doc AND the code it
+// describes into agreement with what the comment says. A clarification of how
+// the crypto works applies to `docs/ENCRYPTION.md` and to the module that
+// implements it; an architectural remark against an architecture doc is a
+// request to move the architecture. High-level docs bind more loosely than a
+// module-level one, but the direction is the same.
+//
+// Like "strategy" it is DECLARED by the surface, never inferred — and the
+// doc's path rides in the page tag so the loop knows which file (and therefore
+// which part of the codebase) the comment governs.
+/** @typedef {"standalone" | "session" | "strategy" | "doc"} FeedbackScope */
 
 /** @param {unknown} turns */
 const dialogueTurns = (turns) =>
@@ -108,8 +124,12 @@ export function feedbackScope(conversation) {
 export const STANDALONE_PAGE_SUFFIX = "/standalone";
 /** The same marker for a strategic idea sent from the outrospection view. */
 export const STRATEGY_PAGE_SUFFIX = "/strategy";
+/** The same marker for a passage comment written in the documentation reader. */
+export const DOC_PAGE_SUFFIX = "/doc";
 /** The surface name the outrospection view submits under. */
 export const OUTROSPECT_SURFACE = "outrospect";
+/** The surface name the documentation reader submits under. */
+export const DOCS_SURFACE = "docs";
 
 /**
  * The `page` tag for a feedback entry: surface plus the scope marker.
@@ -121,6 +141,7 @@ export function feedbackPageTag(surface, scope) {
   const s = typeof surface === "string" && surface.trim() ? surface.trim() : "chat";
   if (scope === "standalone") return s + STANDALONE_PAGE_SUFFIX;
   if (scope === "strategy") return s + STRATEGY_PAGE_SUFFIX;
+  if (scope === "doc") return s + DOC_PAGE_SUFFIX;
   return s;
 }
 
@@ -143,6 +164,16 @@ export function isStrategyPage(page) {
 }
 
 /**
+ * Whether a stored `page` marks a passage comment from the documentation
+ * reader.
+ * @param {unknown} page
+ * @returns {boolean}
+ */
+export function isDocPage(page) {
+  return typeof page === "string" && page.endsWith(DOC_PAGE_SUFFIX);
+}
+
+/**
  * The scope a stored `page` tag encodes. The inverse of feedbackPageTag, for
  * the read side (projection, rendering, the loop's text view).
  * @param {unknown} page
@@ -150,6 +181,7 @@ export function isStrategyPage(page) {
  */
 export function scopeOfPage(page) {
   if (isStrategyPage(page)) return "strategy";
+  if (isDocPage(page)) return "doc";
   if (isStandalonePage(page)) return "standalone";
   return "session";
 }
@@ -165,6 +197,38 @@ export function strategyPageTag(lens) {
   return feedbackPageTag(l ? `${OUTROSPECT_SURFACE}:${l}` : OUTROSPECT_SURFACE, "strategy");
 }
 
+// How long a repo-relative doc path may be inside the tag. FEEDBACK_CAPS.page
+// is 200; "docs:" + path + "/doc" has to fit with room to spare.
+const DOC_PATH_MAX = 150;
+
+/**
+ * The documentation reader's `page` tag, carrying the repo-relative path of
+ * the document the passage lives in so the development loop knows which file
+ * — and therefore which slice of the implementation — the comment governs.
+ * Path characters are restricted to what a repo path can hold, so the tag can
+ * never smuggle the suffix grammar (`/doc`, `:`) into the middle of a path.
+ * @param {unknown} path e.g. "docs/PRIVACY-MODEL.md"
+ * @returns {string} e.g. "docs:docs/PRIVACY-MODEL.md/doc"
+ */
+export function docPageTag(path) {
+  const p = typeof path === "string" ? path.trim().replace(/[^A-Za-z0-9._/-]/g, "").replace(/^\/+/, "").slice(0, DOC_PATH_MAX) : "";
+  return feedbackPageTag(p ? `${DOCS_SURFACE}:${p}` : DOCS_SURFACE, "doc");
+}
+
+/**
+ * The document path a doc-scope `page` tag carries — the inverse of
+ * docPageTag, for the read side. null when the tag is not a doc tag or
+ * carries no path.
+ * @param {unknown} page
+ * @returns {string | null}
+ */
+export function docPathOfPage(page) {
+  if (!isDocPage(page)) return null;
+  const body = String(page).slice(0, -DOC_PAGE_SUFFIX.length);
+  const path = body.startsWith(`${DOCS_SURFACE}:`) ? body.slice(DOCS_SURFACE.length + 1) : "";
+  return path || null;
+}
+
 // ---------------------------------------------------------------------------
 // Canned acknowledgments (owner directive, 2026-07-24): user feedback is
 // NEVER run through an LLM. The exact text goes to the developers verbatim
@@ -175,10 +239,11 @@ export function strategyPageTag(lens) {
 // anti-injection posture — there is no model). EN and SV variant lists are
 // kept the same length and say the same things (invariant 6).
 //
-// TWO variant sets, one per SCOPE (above): the session set promises the
-// developers get "this conversation for context", which is simply untrue for
-// a standalone note — so a first-message suggestion gets a set that says what
-// actually happens to it.
+// ONE variant set per SCOPE (above): the session set promises the developers
+// get "this conversation for context", which is simply untrue for a
+// standalone note — so a first-message suggestion gets a set that says what
+// actually happens to it, and the same reasoning gives strategy notes and doc
+// passage comments their own.
 // ---------------------------------------------------------------------------
 
 export const FEEDBACK_ACKS = {
@@ -226,6 +291,23 @@ export const FEEDBACK_ACKS_STRATEGY = {
   ],
 };
 
+// The doc set: a passage comment written in the documentation reader. These
+// say what actually happens to it — the note is read as an instruction about
+// the SYSTEM (doc plus the implementation the doc describes), not as a
+// copy-edit request against the prose.
+export const FEEDBACK_ACKS_DOC = {
+  en: [
+    "Thank you — your comment has been passed on to the developers exactly as you wrote it, filed against the passage you marked. Documentation and implementation are kept in agreement here, so it is read as an instruction for both. Any reply appears under Feedback in your account panel, and beside the passage in the documentation reader.",
+    "Thanks — it has been forwarded to the developers word for word, attached to the text you selected and the document it lives in. They will reconcile the documentation and the code it describes. Any reply from them shows up under Feedback in your account panel and next to the passage.",
+    "Got it — your comment is now in the developers' queue, verbatim, anchored to the passage you marked. It is treated as direction for the documented behaviour as well as the prose. If they write back, the reply appears under Feedback in your account panel and beside the passage.",
+  ],
+  sv: [
+    "Tack — din kommentar har skickats vidare till utvecklarna precis som du skrev den, registrerad mot stycket du markerade. Dokumentation och implementation hålls i samklang här, så den läses som en instruktion för båda. Eventuella svar visas under Feedback i din kontopanel och bredvid stycket i dokumentationsläsaren.",
+    "Tack — den har vidarebefordrats till utvecklarna ord för ord, kopplad till texten du markerade och dokumentet den står i. De stämmer av dokumentationen mot koden den beskriver. Eventuella svar från dem visas under Feedback i din kontopanel och intill stycket.",
+    "Uppfattat — din kommentar ligger nu i utvecklarnas kö, ordagrant, förankrad i stycket du markerade. Den behandlas som riktning för det dokumenterade beteendet och inte bara för texten. Om de svarar visas svaret under Feedback i din kontopanel och bredvid stycket.",
+  ],
+};
+
 // The use-case confirmation tail ("feedback #UC-34 …" — testpoints-core.js
 // parseUseCaseRef), appended in the reply's language.
 export const FEEDBACK_ACK_USECASE = {
@@ -266,6 +348,7 @@ export function cannedFeedbackAck(comment, { useCaseTag = null, scope = "session
   const sets = {
     standalone: FEEDBACK_ACKS_STANDALONE,
     strategy: FEEDBACK_ACKS_STRATEGY,
+    doc: FEEDBACK_ACKS_DOC,
     session: FEEDBACK_ACKS,
   };
   const variants = (sets[scope] || FEEDBACK_ACKS)[lang];

@@ -114,6 +114,54 @@ describe("isPublicAsset", () => {
     }
   });
 
+  test("every module STATICALLY reachable from the /docs page is public", () => {
+    // /docs is a public page, so the same breakage class as /cure applies: a
+    // static import added without an allowlist entry 401s for a signed-out
+    // visitor and the whole documentation reader goes inert. Derived from the
+    // real files, static imports only — comment mode is loaded dynamically on
+    // purpose (see the test below).
+    const pub = fileURLToPath(new URL("../public", import.meta.url));
+    const html = readFileSync(join(pub, "docs/index.html"), "utf8");
+    const queue = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)].map((m) => m[1]);
+    assert.ok(queue.length >= 1, "found no <script src> entries in /docs/index.html");
+    const seen = new Set();
+    while (queue.length) {
+      const p = queue.shift();
+      if (seen.has(p) || p.startsWith("http")) continue;
+      seen.add(p);
+      assert.equal(
+        isPublicAsset(u(p), "GET"),
+        true,
+        `${p} is statically imported by the /docs module graph but NOT on the public allowlist — ` +
+          "an unauthenticated visitor gets a 401 and the documentation reader goes inert. " +
+          "Add it to isPublicAsset (src/assets.js).",
+      );
+      let src;
+      try {
+        src = readFileSync(join(pub, p), "utf8");
+      } catch {
+        assert.fail(`${p} is referenced from the /docs graph but missing on disk`);
+      }
+      for (const m of src.matchAll(/^\s*import\s+(?:[^"']*?from\s+)?["']([^"']+)["']/gm)) {
+        const spec = m[1];
+        if (spec.startsWith("http") || !spec.endsWith(".js")) continue;
+        queue.push(spec.startsWith("/") ? spec : posix.normalize(posix.join(posix.dirname(p), spec)));
+      }
+    }
+  });
+
+  test("the docs comment layer is NOT public — comment mode is administrative", () => {
+    // Comment mode files instructions into the feedback pipeline, so it exists
+    // only for an admin identity. docs-viewer.js dynamic-imports it AFTER
+    // /api/me confirms the role; a signed-out visitor never requests it, and
+    // the gate stays real rather than cosmetic.
+    assert.equal(isPublicAsset(u("/js/docs-comments.js"), "GET"), false);
+    assert.equal(isPublicAsset(u("/js/docs-comments-core.js"), "GET"), false);
+    // The reader itself stays public.
+    assert.equal(isPublicAsset(u("/js/docs-viewer.js"), "GET"), true);
+    assert.equal(isPublicAsset(u("/docs/"), "GET"), true);
+  });
+
   test("vault.js (DRS store/load) is NOT public — only the pure core is", () => {
     // vault.js statically imports the DRS storage stack; a 401 inside the
     // public /cure graph would kill the whole tier, so it must stay gated.
