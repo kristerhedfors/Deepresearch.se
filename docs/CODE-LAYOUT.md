@@ -8,6 +8,11 @@ adds or moves a module (the update-docs skill's drift greps target this
 file). Architecture rationale lives in `docs/ARCHITECTURE.md`; the
 load-bearing invariants stay in `CLAUDE.md`.
 
+**Naming note (2026-07-25):** the `project*` identifiers below are the
+Se/rver **workspace** in user-facing language. The code names deliberately do
+not move (`docs/BRANDING.md`), so this map keeps them verbatim — that is the
+point of the mirror. What a workspace is, in either tier: `docs/WORKSPACES.md`.
+
 Server (`src/`):
 
 | File | Responsibility |

@@ -57,6 +57,26 @@
        measured font at weight 400 AND 700, so one rule covers both. */
     .sl { margin: 0 -.04em; }
     code { background: var(--panel-2); border-radius: 4px; padding: 0 .3rem; font-size: .85em; }
+    /* Tier comparison rows (UX-12): a question label plus one answer per
+       tier, stacked on a phone and three columns from 620px up. Each answer
+       is DIRECT-LABELED with its tier name — identity is never colour alone
+       — and Se/cure always comes first (secure-first, docs/BRANDING.md). */
+    .cmp { margin: .6rem 0; }
+    .cmp-row {
+      display: grid; grid-template-columns: 1fr; gap: .3rem;
+      padding: .6rem 0; border-top: 1px solid var(--border);
+    }
+    .cmp-row:first-child { border-top: 0; }
+    .cmp-q { font-weight: 700; font-size: .9rem; }
+    .cmp-a { font-size: .9rem; border-left: 3px solid transparent; padding-left: .55rem; }
+    .cmp-a.cure { border-left-color: #7c6a24; }
+    .cmp-a.rver { border-left-color: #0d4fa0; }
+    .cmp-a .who { font-weight: 700; white-space: nowrap; }
+    .cmp-a.cure .who { color: #6b5b1f; }
+    .cmp-a.rver .who { color: #0d4fa0; }
+    @media (min-width: 620px) {
+      .cmp-row { grid-template-columns: 9.5rem 1fr 1fr; gap: .6rem; align-items: start; }
+    }
     .muted { color: var(--muted); }
   </style>
 </head>
@@ -98,6 +118,169 @@
     (upper right) opens ghost mode: DeepResearch.<b>Se<span class="sl">/</span>cure</b>,
     the client-side twin of this app where the server is never in the data
     path (your own API key, browser-local storage).</div>
+  </section>
+
+  <section>
+    <h2>Se<span class="sl">/</span>cure or Se<span class="sl">/</span>rver: which workspace?</h2>
+    <p>A <b>workspace</b> is a named place holding your chats, files and
+    notes. There are two kinds, and picking the right one is the most
+    consequential choice on this site — so here it is point by point.
+    (The app's buttons still say "project" for the signed-in kind until they
+    are relabelled.)</p>
+    <p><b>The short answer:</b> use a
+    <b>Se<span class="sl">/</span>cure workspace</b> when the material must
+    not be readable by anyone running a server, including us. Use a
+    <b>Se<span class="sl">/</span>rver workspace</b> when you want the site to
+    do the heavy lifting and keep your work for you. One question decides it:
+    <em>would it be a problem if the operator of this site could read
+    this?</em></p>
+
+    <div class="cmp">
+      <div class="cmp-row">
+        <div class="cmp-q">What you need to start</div>
+        <div class="cmp-a cure"><span class="who">Se<span class="sl">/</span>cure:</span>
+          a browser, plus your own AI provider key, your own local model
+          server, a model downloaded to the device, or a link someone lent
+          you that carries borrowed access. No account.</div>
+        <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
+          a Google sign-in and an approved account here.</div>
+      </div>
+      <div class="cmp-row">
+        <div class="cmp-q">Where your work lives</div>
+        <div class="cmp-a cure"><span class="who">Se<span class="sl">/</span>cure:</span>
+          in this browser, and in the share link if you make one. Clearing
+          browser data erases it.</div>
+        <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
+          in your account — encrypted in this browser <b>and</b> in the
+          cloud, so it follows you.</div>
+      </div>
+      <div class="cmp-row">
+        <div class="cmp-q">Who can read it</div>
+        <div class="cmp-a cure"><span class="who">Se<span class="sl">/</span>cure:</span>
+          you, and anyone you give both the link and its password. Not this
+          server: the part of the link holding the workspace is never sent to
+          it.</div>
+        <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
+          you, and whoever operates this site. Chats and records rest
+          encrypted, but the server can re-derive the key — and indexed files
+          and a workspace's own chats rest <b>readable</b>, because search
+          needs readable text.</div>
+      </div>
+      <div class="cmp-row">
+        <div class="cmp-q">Who pays for the AI</div>
+        <div class="cmp-a cure"><span class="who">Se<span class="sl">/</span>cure:</span>
+          you do — your key, your machine, or your device. Or whoever lent
+          you the workspace, for as long as they leave the allowance
+          open.</div>
+        <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
+          the account, against this site's quotas.</div>
+      </div>
+      <div class="cmp-row">
+        <div class="cmp-q">Web search</div>
+        <div class="cmp-a cure"><span class="who">Se<span class="sl">/</span>cure:</span>
+          off unless you run your own search service or use a lent search
+          allowance — and then only the search <em>query</em> leaves your
+          browser, never the conversation.</div>
+        <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
+          on, with numbered, domain-diverse sources.</div>
+      </div>
+      <div class="cmp-row">
+        <div class="cmp-q">Maps, Street View, host intelligence, photo geocoding</div>
+        <div class="cmp-a cure"><span class="who">Se<span class="sl">/</span>cure:</span>
+          not available. They need keys a server holds, and a server-held key
+          means a server in the data path.</div>
+        <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
+          available as opt-in switches.</div>
+      </div>
+      <div class="cmp-row">
+        <div class="cmp-q">Files and documents</div>
+        <div class="cmp-a cure"><span class="who">Se<span class="sl">/</span>cure:</span>
+          stay in the browser; searchable locally and mountable into the
+          Linux sandbox.</div>
+        <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
+          uploaded, text-extracted and indexed so answers can draw on them.
+          The originals rest readable in the cloud.</div>
+      </div>
+      <div class="cmp-row">
+        <div class="cmp-q">Across devices</div>
+        <div class="cmp-a cure"><span class="who">Se<span class="sl">/</span>cure:</span>
+          carry the link, or seal a new one. There is no sync, by
+          design.</div>
+        <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
+          automatic — the account syncs.</div>
+      </div>
+      <div class="cmp-row">
+        <div class="cmp-q">Sharing</div>
+        <div class="cmp-a cure"><span class="who">Se<span class="sl">/</span>cure:</span>
+          send the link, and the password by a different channel. Nothing is
+          registered anywhere.</div>
+        <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
+          invite people by workspace link or campaign, and import the sealed
+          conclusions they send back.</div>
+      </div>
+      <div class="cmp-row">
+        <div class="cmp-q">If you lose the password or the link</div>
+        <div class="cmp-a cure"><span class="who">Se<span class="sl">/</span>cure:</span>
+          that workspace is unrecoverable. Nobody can reset it — the same
+          property that makes it private.</div>
+        <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
+          sign in again through Google; nothing is lost.</div>
+      </div>
+      <div class="cmp-row">
+        <div class="cmp-q">Taking it back</div>
+        <div class="cmp-a cure"><span class="who">Se<span class="sl">/</span>cure:</span>
+          a shared link cannot be recalled — but any allowance inside it can
+          be cut to zero instantly, without touching the link.</div>
+        <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
+          delete the workspace, or wipe the account's cloud copies from
+          Settings.</div>
+      </div>
+    </div>
+
+    <h3>Use Se<span class="sl">/</span>cure when</h3>
+    <ul>
+      <li>the material is confidential or belongs to someone who never agreed
+        to it being stored anywhere — a source, a client, a patient, an
+        investigation;</li>
+      <li>you want the privacy to be <b>structural</b> rather than promised: a
+        server cannot log, leak, or be compelled to reveal what never reaches
+        it;</li>
+      <li>you are handing a colleague a ready-to-use research session with no
+        account, no invite, and no record of the handover;</li>
+      <li>you want to lend a <em>bounded</em> capability — someone else's
+        research, paid from your allowance, cut off whenever you like;</li>
+      <li>you are contributing to someone else's research and want to decide,
+        answer by answer, what goes back.</li>
+    </ul>
+
+    <h3>Use Se<span class="sl">/</span>rver when</h3>
+    <ul>
+      <li>the work is useful but not sensitive, and convenience is worth
+        more;</li>
+      <li>you want live web search, maps, Street View, host intelligence or
+        photo geocoding without configuring anything;</li>
+      <li>you have a real document collection and want retrieval across all of
+        it;</li>
+      <li>you want it on your phone and your laptop without carrying links
+        around;</li>
+      <li>you are the one <b>collecting</b> — running a campaign, importing
+        what comes back, merging it.</li>
+    </ul>
+
+    <div class="privacy-flag"><b>The honest trade.</b>
+    Se<span class="sl">/</span>cure costs capability: no hosted search, no
+    maps or host intelligence, no sync, and no recovery if you lose the
+    password. Se<span class="sl">/</span>rver costs exposure: your work sits
+    in a cloud account, indexed material rests readable, and completed
+    exchanges are kept in the site's research log unless you use ghost mode.
+    What makes that checkable rather than a promise is how little there is to
+    trust — one provider, one Worker, and source anyone can read. The
+    research pipeline, the in-browser Linux sandbox, on-device models, and
+    your ability to walk away with your data are the same on both.</div>
+
+    <p class="muted">Full written specification of both kinds, including the
+    exposure tables behind these rows: <code>docs/WORKSPACES.md</code> in the
+    repository, readable in-app at <a href="/docs/">/docs/</a>.</p>
   </section>
 
   <section>
@@ -197,6 +380,13 @@
         follow the account.</li>
     </ul>
     <h3>The exception: chats inside a project</h3>
+    <p class="muted">A <b>project</b> here is a <b>workspace</b> — a named
+    place holding your chats, files and notes. That is the word the
+    documentation now uses for both tiers: a <b>Se<span class="sl">/</span>rver
+    workspace</b> is this one, stored in your account; a
+    <b>Se<span class="sl">/</span>cure workspace</b> is the same idea sealed
+    into a single shareable link, with no server record at all. The buttons in
+    this app still say "project" until they are relabelled.</p>
     <p>A chat that belongs to a project is <b>indexed for retrieval</b>, the
     same way project documents and notes are, so your other chats in that
     project can automatically draw on what was worked out in it. The index

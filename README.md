@@ -53,7 +53,35 @@ browser / PWA / MCP client ── Google OIDC session ──> Worker (src/index.
     └── R2 + Vectorize (opt-in encrypted cloud history + document RAG)
 ```
 
-See `docs/ARCHITECTURE.md` for the full design, `CLAUDE.md` for the code
+## Workspaces — where research is distributed and findings come back
+
+Stated crisply, the mission is a **security architecture for distributed deep
+research**: how work goes *out* to people and machines you do not control, and
+how insight comes *back*, with the exposure of every hop written down instead
+of assumed. The unit that travels is a **workspace** — a named place holding
+material, conversations, configuration, and capabilities. Two kinds:
+
+- a **Se/cure workspace** is one link. The whole thing rides the URL fragment,
+  which browsers never send, so no server record of it exists anywhere.
+  Opening it needs the link plus a password sent by another channel.
+- a **Se/rver workspace** is account-scoped and cloud-first. Records and
+  conversations rest encrypted in the browser and in R2; indexed material and
+  the workspace's own chats rest readable, because retrieval needs plaintext.
+  What makes that bargain checkable is how little you have to trust: one
+  service provider, one Worker, one deterministic pipeline with no function
+  calling.
+
+Research is distributed by workspace link, campaign invite, or pooled compute;
+findings come back as curated conclusions — sealed to the site's import agent,
+carried as a file, or sealed to an organizer's own key, which is the one
+channel the server cannot read. `docs/WORKSPACES.md` is the complete
+specification of both kinds, with per-channel exposure tables; its **§2 is the
+end-user chooser** — point by point, when and why to use which — mirrored
+in-app on both help pages (`/help/`, `/cure/help/`).
+
+See `docs/ARCHITECTURE.md` **§0 (the board)** for the whiteboard view of every
+component — what data each holds, who can read it, what each makes possible —
+and the rest of that document for the full design, `CLAUDE.md` for the code
 layout and load-bearing invariants, and `.claude/skills/` for the per-area
 working guides. The complete prompt-by-prompt build history lives in
 `public/build/history.md`, rendered in-app at `/story/`. It is the origin story

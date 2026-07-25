@@ -7,6 +7,13 @@ source file that implements it, so the document can be independently
 validated against the code; §13 gives the validation protocol. The whole
 codebase is public, so nothing here relies on secrecy of design.*
 
+*Vocabulary (2026-07-25): where this document says **project** — the record,
+its chats, its files, the vault archive — the user-facing name is now
+**Se/rver workspace**. The identifiers quoted here (`/api/projects*`, R2
+`projects/{uid}/…`, `/api/vault/:id`) are unchanged and stay quoted verbatim,
+since claim IDs anchor to the code. The workspace concept across both tiers is
+`docs/WORKSPACES.md`; the naming rule is `docs/BRANDING.md`.*
+
 ---
 
 ## Contents

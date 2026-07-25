@@ -8,6 +8,15 @@ and dated owner directives. Companions: `docs/ENCRYPTION.md`,
 **storage-privacy** / **secure-workspaces** / **quota-grant-assessment**
 skills.
 
+**This model applied per workspace: `docs/WORKSPACES.md`.** The rules below
+are stated per subsystem; the workspace document restates them per *place a
+user works* — a Se/cure workspace and a Se/rver workspace, each with an
+exposure ledger ("an attacker who has X gets Y"), plus the channels that
+distribute research outward and aggregate findings back. Where this file says
+*project*, read **Se/rver workspace**: the noun changed in user-facing copy on
+2026-07-25 while the code identifiers (`/api/projects*`, R2
+`projects/{uid}/…`) deliberately did not (`docs/BRANDING.md`).
+
 **The rule.** Cloud storage is IMPLICIT on the Se/rver tier
 (2026-07-16 owner directive — the TIER is the choice, not a switch):
 every conversation and project is always stored in the cloud, with NO

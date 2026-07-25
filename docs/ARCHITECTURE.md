@@ -7,7 +7,11 @@ Outrospection, the games, the space archive, on-device inference, compute
 sharing) are not
 separate architecture: they are **examples and pre-bundled agents**, and the
 goal is to express them through the two SDKs rather than as bespoke
-subsystems — §15 gives that framing and the honest current state. One
+subsystems — §15 gives that framing and the honest current state. **Start
+with §0, the board**: one picture of every component, where its data rests,
+and what it makes possible. The unit that travels through all of it — the
+**workspace**, in both its Se/cure and Se/rver kind — has its own complete
+specification in [`docs/WORKSPACES.md`](./WORKSPACES.md). One
 Cloudflare Worker serves a
 static chat UI and orchestrates a deterministic, time-budgeted deep research
 pipeline over Berget.ai (primary LLM), Anthropic and OpenAI (secondary,
@@ -20,8 +24,10 @@ subsystem.
 **Diagrams:** the editable data-flow diagrams live in
 [`architecture.drawio`](./architecture.drawio) (open with
 [diagrams.net](https://app.diagrams.net) or the VS Code Draw.io extension).
-Four pages:
+Five pages:
 
+0. **The board** — every component, where its data rests, and what it makes possible
+   (the whiteboard view; §0 below is the same board as Mermaid)
 1. **System context & deployment** — clients, Worker modules, external APIs,
    secrets, deploy path
 2. **Request routing & auth** — the decision tree every request goes through
@@ -30,14 +36,165 @@ Four pages:
 4. **SSE stream sequence** — the event choreography between client, Worker,
    Berget, and Exa
 
-<!-- NOTE: architecture.drawio predates the multi-provider registry, the D1
-     storage layer (chat_logs/feedback/tokemon_saves), R2/Vectorize, the
-     enrichments, /mcp, and the games seam — treat its pages as the
-     original Berget+Exa-only design, not the current system. The Mermaid
-     diagrams below ARE current. -->
+<!-- NOTE: pages 1–4 of architecture.drawio predate the multi-provider
+     registry, the D1 storage layer (chat_logs/feedback/tokemon_saves),
+     R2/Vectorize, the enrichments, /mcp, and the games seam — treat them as
+     the original Berget+Exa-only design, not the current system. Page 0 (the
+     board) and the Mermaid diagrams below ARE current. -->
 
 Inline [Mermaid](https://mermaid.js.org) versions of the key flows are
 embedded below so GitHub renders them directly.
+
+---
+
+## 0. The board — components, data, capabilities
+
+Start here. This section is the whiteboard: every component that exists,
+which side of the trust boundary it sits on, what data it holds, and what it
+lets a user do. The sections after it zoom in.
+
+**The mission, stated as an architecture.** This project is research on the
+privacy capabilities of LLM applications, and the shape that research takes is
+a **security architecture for distributed deep research**: how work is
+*distributed outward* — to people and machines the originator does not control
+— and how insight is *aggregated back*, with the data exposure of every hop
+written down rather than assumed. The unit that travels is a **workspace**.
+Everything else on this board is machinery a workspace uses.
+
+### 0.1 The board
+
+```mermaid
+flowchart TB
+    subgraph BROWSER["🖥️ THE BROWSER — the user's own machine"]
+        direction LR
+        subgraph SEC["DeepResearch.Se/cure · /cure — no account, no server in the data path"]
+            direction TB
+            SECAPP["Se/cure app<br/>client-side pipeline<br/>drc-research.js"]
+            SECWS["Se/cure WORKSPACE<br/>the link IS the workspace<br/>URL fragment · never sent"]
+            SECST["sealed browser store<br/>chats + API keys<br/>user-held master secret"]
+            SECRAG["browser RAG index<br/>IndexedDB · cosine top-k"]
+        end
+        subgraph SRV["DeepResearch.Se/rver · / — signed in"]
+            direction TB
+            SRVAPP["Se/rver app<br/>chat · modes · panels"]
+            SRVWS["Se/rver WORKSPACE<br/>record + chats + material<br/>(code identifier: project)"]
+            SRVST["encrypted local history<br/>IndexedDB ciphertext"]
+        end
+        subgraph SHARED["shared engine room — both tiers"]
+            direction TB
+            CX["CheerpX JS Linux VM<br/>real x86 Linux, WASM<br/>files mounted from the browser"]
+            ODV["on-device model<br/>WebGPU · OPFS weights"]
+        end
+    end
+
+    subgraph EDGE["☁️ THE EDGE — one Cloudflare Worker, no origin server"]
+        direction TB
+        IX["src/index.js<br/>routing · identity gate · request id"]
+        PIPE["src/pipeline.js<br/>deterministic 5-phase research<br/>no function calling"]
+        PROV["src/providers.js<br/>LLM dispatch by model namespace"]
+        GRANT["grants & tokens<br/>websearch · proxy · Se/rver token · pool"]
+        KNOW["src/knowledge.js<br/>sealed-conclusion INBOX"]
+        MCPX["src/mcp.js · /mcp<br/>the pipeline as a tool"]
+    end
+
+    subgraph STORE["🗄️ STORAGE — same provider, same account"]
+        direction LR
+        D1[("D1<br/>accounts · quotas · config<br/>chat_logs · grant meters<br/>knowledge_inbox")]
+        R2[("R2<br/>workspace records · convos<br/>file originals · vault<br/>published replays")]
+        VX[("Vectorize<br/>RAG vectors + chunk text")]
+    end
+
+    subgraph UP["🌍 UPSTREAM — third parties"]
+        direction LR
+        LLM["Berget · Anthropic · OpenAI"]
+        EXA["Exa · web search"]
+        SHO["Shodan<br/>host intelligence"]
+        MAPS["Google Maps / Street View"]
+        NOM["OSM Nominatim<br/>reverse geocoding"]
+        HF["Hugging Face Hub<br/>sources + model weights"]
+    end
+
+    SECAPP -->|"own key · own local server"| LLM
+    SECAPP -->|"borrowed, metered:<br/>query only"| GRANT
+    SECWS --> SECAPP
+    SECAPP --- SECST & SECRAG
+    SECAPP --- CX & ODV
+
+    SRVAPP --> IX
+    SRVWS --> SRVAPP
+    SRVAPP --- SRVST
+    SRVAPP --- CX & ODV
+    IX --> PIPE --> PROV --> LLM
+    PIPE --> EXA & SHO & MAPS & NOM & HF
+    IX --> GRANT --> EXA & LLM
+    IX --> KNOW
+    MCPX --> PIPE
+    EDGE --- STORE
+
+    SECAPP -.->|"👍 sealed conclusion"| KNOW
+    KNOW -.->|"admin imports"| SRVAPP
+```
+
+Read the edges, not just the boxes. The two solid arrows leaving the Se/cure
+lane are the whole privacy story: one goes **straight to a provider on the
+user's own key** (or to their own local server, or nowhere at all when the
+model runs on-device), and the other goes to the Worker only through a
+**bounded, metered grant**. The dotted arrows are the return path — the
+aggregation loop of §0.3.
+
+### 0.2 Component ledger
+
+Every component, what it holds, and who can read it. This is the table the
+rest of the document elaborates.
+
+| Component | Runs | Holds | Readable by | What it makes possible |
+|---|---|---|---|---|
+| **Se/cure workspace** (`docs/WORKSPACES.md` §3) | the link + the browser | settings, chats, optionally the minter's API keys and metered grants | whoever holds link **and** password | a whole configured research session, handed to someone else, with no server record of it |
+| **Se/rver workspace** (`docs/WORKSPACES.md` §4) | account + cloud | record, chats, files, notes, RAG index | the account; the server by key re-derivation, and *readably* for indexed material and workspace chats | cloud storage, vector retrieval at scale, orchestration, the server-side enrichments |
+| **Se/cure app** (`public/cure/`) | browser | nothing server-side | the user | the full research pipeline with the server in no data path |
+| **Se/rver app** (`public/`, `public/js/`) | browser + Worker | the signed-in session | the account | the full platform: modes, panels, projects-as-workspaces, admin |
+| **CheerpX JS Linux VM** (§13) | browser, WASM | a real x86 Linux filesystem in IndexedDB; mounted workspace files; `/src` in developer mode | the browser only — the VM never talks to the Worker | running code, inspecting data, testing what an agent builds — offline, in the tab |
+| **On-device model** | browser, WebGPU | downloaded weights in OPFS | the browser only | answers with no provider and no server in the path |
+| **Worker** (`src/index.js`) | Cloudflare edge | request state only | the operator | routing, the identity gate, every server capability |
+| **Research pipeline** (`src/pipeline.js`) | Worker | the request while it runs | the operator (`chat_logs` unless incognito) | triage → search → gap → synthesis → validation, deterministic, no function calling |
+| **Grants & tokens** (`src/websearch.js`, `src/proxy*.js`, `src/server-token.js`, `src/pool-token.js`) | Worker + D1 | a `jti`, a quota, a counter — **no content** | the operator; the minting account | lending a Se/cure session bounded capability without giving it an account |
+| **Knowledge inbox** (`src/knowledge.js`) | Worker + D1 | sealed conclusion envelopes | the workspace admin at import; **the server can decrypt** (agent key in D1) | aggregating findings from many participants into one place |
+| **D1** | Cloudflare | accounts, quotas, config, `chat_logs`, meters, boards, game saves | the operator | identity, quotas, logging, every metered surface |
+| **R2** | Cloudflare | workspace records and conversations (ciphertext), file originals and RAG exports (readable), vault blobs (ciphertext the server cannot open), published replays (public) | the operator, per the above | durable storage and cross-device sync |
+| **Vectorize** | Cloudflare | chunk text + vectors | the operator | retrieval over workspace material |
+| **Berget / Anthropic / OpenAI** | third party | whatever a request carries | that provider | the models. Berget is primary and runs every JSON planning phase |
+| **Exa** | third party | the search query | Exa | live web results. Only the query ever leaves — never the conversation |
+| **Shodan** (`src/shodan.js`, `shodan_mcp` knob) | third party, **Se/rver only** | one host or IP | Shodan | host intelligence folded into research. Not available on Se/cure: the key is server-side, and a server-side key means a server in the data path |
+| **Google Maps / Street View** (`google_maps` knob) | third party, Se/rver only | a place or coordinate | Google | maps, street imagery, place context |
+| **OSM Nominatim** | third party, Se/rver only | a coordinate | OSM | turning a photo's EXIF GPS into place context |
+| **Hugging Face Hub** | third party | a search query; weight downloads go browser-direct | HF | models/datasets/papers as citable sources; on-device model weights |
+
+### 0.3 The loop this architecture exists for
+
+```mermaid
+flowchart LR
+    ADM["Workspace admin"] -->|"distribute<br/>workspace link · campaign invite · pooled compute"| P["Participants<br/>own browsers, own keys"]
+    P -->|"research<br/>client-side pipeline · sandbox · own material"| P
+    P -->|"curate<br/>👍 include · 👎 forget"| S["Sealed conclusion"]
+    S -->|"aggregate<br/>server inbox · .drskn file · sealed to the organizer"| ADM
+```
+
+Three outbound channels, three inbound ones, each with a different answer to
+"who can read this". The full table is `docs/WORKSPACES.md` §5; the short
+version is that the **campaign** channel (DRCR/1) is the only one where the
+server cannot read the returned finding, and the participant is told which
+channel they are on before they contribute anything (`docs/WORKSPACES.md` §6).
+
+### 0.4 Where to go next
+
+| Question | Section |
+|---|---|
+| What is a workspace, exactly — either kind? | `docs/WORKSPACES.md` |
+| How does one request flow through the Worker? | §3, §4 |
+| What rests where, encrypted or not? | §9, `docs/PRIVACY-MODEL.md` |
+| What can a lent token do? | `docs/SERVER-TOKENS.md`, §9 |
+| How does the in-browser Linux work? | §13, the **execution-sandbox** skill |
+| How do the feature surfaces relate to the platform? | §15 |
 
 ---
 
@@ -869,6 +1026,14 @@ navigated by a bilingual text-command grammar (`src/tokemon-nav.js`,
 EN+SV parity). See the **tokemon-game** skill.
 
 ## 9. Storage & privacy model
+
+> **Vocabulary (2026-07-25):** what this section calls a *project* is a
+> **Se/rver workspace**. User-facing copy says workspace; the code
+> identifiers and wire paths (`/api/projects*`, R2 `projects/{uid}/…`,
+> `public/js/projects.js`) keep their names, exactly as DRC/DRS stay internal
+> names. The complete specification of both workspace kinds — what they hold,
+> what each exposes, and how findings aggregate back — is
+> [`docs/WORKSPACES.md`](./WORKSPACES.md).
 
 The load-bearing rule (**the privacy split**, CLAUDE.md invariant 4):
 
