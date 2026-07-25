@@ -75,7 +75,9 @@ Research is distributed by workspace link, campaign invite, or pooled compute;
 findings come back as curated conclusions — sealed to the site's import agent,
 carried as a file, or sealed to an organizer's own key, which is the one
 channel the server cannot read. `docs/WORKSPACES.md` is the complete
-specification of both kinds, with per-channel exposure tables.
+specification of both kinds, with per-channel exposure tables; its **§2 is the
+end-user chooser** — point by point, when and why to use which — mirrored
+in-app on both help pages (`/help/`, `/cure/help/`).
 
 See `docs/ARCHITECTURE.md` **§0 (the board)** for the whiteboard view of every
 component — what data each holds, who can read it, what it unlocks — and the

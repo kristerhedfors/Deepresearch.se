@@ -100,7 +100,129 @@ vendor mesh to audit. §4.7 states that bargain in full.
 
 ---
 
-## 2. The two kinds at a glance
+## 2. Which one should I use? — the end-user comparison
+
+Written for the person deciding, not for the person implementing. §2.8 is the
+same comparison in system terms.
+
+This section is the SOURCE for the in-app chooser: both help pages carry a
+compressed version of it ("Se/cure or Se/rver: which workspace?" in
+`public/help/index.html` and `public/cure/help/index.html`, pattern UX-12).
+Change them in the same commit.
+
+### 2.1 The short answer
+
+**Use a Se/cure workspace when the material must not be readable by anyone
+running a server — including us. Use a Se/rver workspace when you want the
+site to do the heavy lifting and keep your work for you.**
+
+A one-question version: *would it be a problem if the operator of this site
+could read this?* If yes, Se/cure. If no, Se/rver, and you get more
+capability for it.
+
+### 2.2 Point by point
+
+| | **Se/cure workspace** | **Se/rver workspace** |
+|---|---|---|
+| **What you need to start** | nothing but a browser — plus one of: your own provider API key, your own local model server, a model downloaded to the device, or a link someone lent you that carries borrowed access | a Google sign-in, and an approved account on this instance |
+| **Where your work lives** | in this browser, and in the link if you make one. Close the tab and it is still here; clear browser data and it is gone | in your account: encrypted in this browser **and** in the cloud, so it follows you |
+| **Who can read it** | you, and anyone you give both the link and its password. The server cannot: the part of the link that holds the workspace is never sent to it | you, and the operator of this site. Records and conversations rest encrypted, but the server can re-derive the key. Indexed files and this workspace's own chats rest readable, because search needs readable text |
+| **Who pays for the model** | you do — it is your key, your local machine, or your device. Or the person who lent you the workspace, for as long as they leave the allowance open | the account owner, against the site's quotas |
+| **Web search** | off by default. Either run your own search service, or use a search allowance someone lent you — in which case only the search query leaves your browser, never the conversation | on. Live web search with numbered, domain-diverse sources |
+| **Maps, Street View, host intelligence (Shodan), geocoding** | not available. These need keys the server holds, and a server-held key means a server in the data path | available as opt-in knobs |
+| **Files and documents** | stay in the browser. They can be searched locally and mounted into the Linux sandbox | uploaded to your account, text-extracted and indexed, so the assistant can retrieve across them. Originals rest readable in the cloud |
+| **Retrieval over your material** | a local index in this browser | a real vector index, scoped to that one workspace |
+| **In-browser Linux, on-device models** | yes — identical on both tiers. Neither ever leaves the browser | yes — identical |
+| **Sharing with someone else** | send the link, and the password by a different channel. Nothing is registered anywhere | invite by workspace link or campaign, or lend your own machine's model as pooled compute |
+| **Working across devices** | carry the link, or re-seal a new one. There is no sync, by design | automatic — the account syncs |
+| **If you lose the password** | the work in that link is unrecoverable. Nobody can reset it. That is the same property that makes it private | your account is recovered through Google; nothing is lost |
+| **Taking it back after sharing** | the link itself cannot be recalled. What you *can* withdraw instantly is any allowance inside it — set it to zero and the link still opens but stops spending | delete the workspace, or wipe the account's cloud copies |
+| **Deleting** | clear it in the browser; there is nothing server-side to delete | delete the workspace, or use the account's data-deletion tool |
+| **Getting findings back from others** | you seal a conclusion and hand it over; you are usually the contributor here | you are usually the admin here: sealed conclusions arrive in an inbox you import from |
+| **Quotas and limits** | none from us if you use your own key. A lent allowance is metered and can run out | the account's usage windows apply |
+| **If this site disappeared tomorrow** | your link still opens, on any deployment of this open-source code — that is what the interchange standard is for | you would need the cloud copy back; export or the vault archive is the answer |
+
+### 2.3 Choose Se/cure when…
+
+- The material is confidential, regulated, or belongs to someone who did not
+  agree to it being stored anywhere — a source, a client, a patient, an
+  investigation.
+- You want the privacy property to be **structural** rather than promised. A
+  server cannot log, leak, or be compelled to hand over what never reaches it.
+- You already have a provider key, a local model, or you are happy to run one
+  on the device.
+- You are handing a colleague a ready-to-use research session and want no
+  account, no invite, no record of the handover.
+- You want to hand out a *bounded* capability — someone else's research, paid
+  from your allowance, which you can cut off at any moment without touching
+  the link.
+- You are contributing to somebody else's research and want to decide, per
+  answer, exactly what goes back.
+
+### 2.4 Choose Se/rver when…
+
+- The work is ordinary — useful, not sensitive — and convenience is worth more
+  than structural privacy.
+- You want live web search, maps and Street View, host intelligence, or photo
+  geocoding without configuring anything.
+- You are working with a real document collection and want retrieval across
+  all of it, indexed and scoped to the workspace.
+- You want it on your phone and your laptop without carrying links around.
+- You are the one **collecting**: running a campaign, distributing invites,
+  importing what comes back, and merging it.
+- You want the long-running record — history, usage, quotas, feedback
+  threads — kept for you.
+
+### 2.5 Worked examples
+
+| Situation | Pick | Why |
+|---|---|---|
+| Reporter working with a leaked document set | **Se/cure** | the documents never leave the browser; there is no server-side copy to subpoena or breach |
+| Security review of a client's estate, under NDA | **Se/cure**, own key | no third party holds the material. Note the trade: no Shodan or Maps enrichment, since those need server-held keys |
+| Weekly market research you will re-read for months | **Se/rver** | it syncs, it is indexed, and history is the point |
+| A class of 20 students each researching one sub-question | **Se/rver** admin, **Se/cure** participants | one campaign of invite links; each student works client-side; conclusions come back sealed |
+| Giving a colleague a working setup for an afternoon | **Se/cure** link with a metered allowance | they need no account and no key; you close the allowance when the afternoon ends |
+| Personal notes, receipts, travel photos with GPS | **Se/rver** | geocoding and image metadata are server-side capabilities, and the material is not sensitive |
+| Anything you would not put in someone else's cloud | **Se/cure** | that is the whole point of the tier |
+
+### 2.6 What each one costs you — stated honestly
+
+**Se/cure costs capability.** No web search unless you bring or borrow it. No
+maps, no Street View, no host intelligence, no automatic geocoding — those
+exist only because a server holds a key. No account, so no sync and no
+recovery: lose the password and the work is gone. Retrieval is a local index,
+not a datacentre one. Only providers your browser can call directly are
+available.
+
+**Se/rver costs exposure.** Your workspaces sit in a cloud account. Records
+and conversations are encrypted there, but the server can re-derive the key,
+and indexed material — documents, notes, and the workspace's own chats — rests
+readable because retrieval needs readable text. Completed exchanges are kept
+in the site's interaction log for debugging unless the request is marked
+incognito. What makes that bargain checkable rather than a promise: one
+service provider, one Worker, one deterministic pipeline, and source you can
+read (§4.7).
+
+**What you never give up on either tier**: the research pipeline shape, the
+in-browser Linux sandbox, on-device models, and the ability to walk away with
+your data.
+
+### 2.7 Moving between them
+
+- **Se/rver → Se/cure**: mint a workspace link from the account. You choose
+  what travels — settings, chats, and optionally allowances so the recipient
+  can work without a key of their own. Sealing happens in the browser; the
+  server never sees the password or the assembled link.
+- **Se/cure → Se/rver**: hand findings over as sealed conclusions (§5.2), or
+  open the link while signed in and save what you want to keep. There is no
+  automatic upload — nothing leaves a Se/cure session without an explicit act.
+- **Se/cure → another Se/cure**: re-seal the link with a new password. The
+  interchange standard (DRSW/1) exists so this also works between *different
+  deployments* of this code, not only between browsers on this one.
+- **Se/rver → offline archive**: the vault packs a whole workspace into one
+  blob the server cannot open, keyed by a secret only you hold (§4.6).
+
+### 2.8 The same comparison, in system terms
 
 | Property | Se/cure workspace | Se/rver workspace |
 |---|---|---|
