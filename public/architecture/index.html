@@ -386,6 +386,63 @@
   </section>
 
   <section>
+    <h2>Workspaces: the unit that travels</h2>
+    <p class="lead">Stated crisply, this project is a <strong>security
+    architecture for distributed deep research</strong>: how work goes
+    <em>out</em> to people and machines you do not control, and how insight
+    comes <em>back</em>, with the exposure of every hop written down instead of
+    assumed. The thing that travels is a <strong>workspace</strong> — a named
+    place holding material, conversations, configuration, and capabilities.
+    Everything else on this page is machinery a workspace uses.</p>
+    <table>
+      <colgroup><col class="concern"><col><col></colgroup>
+      <thead>
+        <tr>
+          <th></th>
+          <th class="drc-h">Se<span class="sl">/</span>cure workspace</th>
+          <th class="drs-h">Se<span class="sl">/</span>rver workspace</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th>What it is</th>
+          <td class="drc-c">One link. The whole workspace — settings, chats, optionally your keys and borrowed allowances — rides the URL fragment, which browsers never send to any server.</td>
+          <td class="drs-c">An account-scoped place (the UI still labels it <em>Project</em> today): a record, its chats, its files and notes, and a vector index over them.</td>
+        </tr>
+        <tr>
+          <th>Where it rests</th>
+          <td class="drc-c">In the link, and in your browser under a secret only you hold. There is no server-side record to seize, log, or leak.</td>
+          <td class="drs-c">Encrypted in the browser <em>and</em> in R2. Indexed material and the workspace's own chats rest readable, because retrieval over ciphertext retrieves nothing.</td>
+        </tr>
+        <tr>
+          <th>Who can read it</th>
+          <td class="drc-c">Whoever holds the link <strong>and</strong> the password — which travel by different channels, and are worth 8192 hash rounds per guess to an attacker.</td>
+          <td class="drs-c">You, and the operator of one Cloudflare account. That is the honest cost, and the smallness of it is the point: one provider, one Worker, one deterministic pipeline.</td>
+        </tr>
+        <tr>
+          <th>What it can do</th>
+          <td class="drc-c">The full client-side pipeline on your own or local model, the Linux sandbox, browser-side retrieval — plus any capability the sender chose to lend, bounded and metered.</td>
+          <td class="drs-c">All of that, plus live web search, maps and host intelligence, retrieval at scale, sub-agent orchestration, and the pipeline as an MCP tool.</td>
+        </tr>
+        <tr>
+          <th>Handing it on</th>
+          <td class="drc-c">Send the link. Nothing is registered anywhere. What the sender can still withdraw is every borrowed capability inside it — set a quota to zero and the link keeps opening but stops spending.</td>
+          <td class="drs-c">Invite by workspace link or campaign, or lend your own machine's model as pooled compute. Findings come back as sealed conclusions you import.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>The return path is where the trade gets sharpest. Contributors mark an
+    answer with 👍 to include it — the question, the answer, and the tool
+    results behind it — and 👎 to forget one, which drops it from what is sent
+    <em>and</em> from the context of everything else. A sealed conclusion sent
+    to the site's inbox can be decrypted when the workspace admin imports it;
+    a conclusion sealed to a campaign organizer's own key cannot be read by
+    the site at all. Which of those you are in gets said plainly, in a popover,
+    before you contribute anything. The full specification of both workspace
+    kinds is <code>docs/WORKSPACES.md</code> in the repository.</p>
+  </section>
+
+  <section>
     <h2>The shared engine room: a real Linux inside the browser tab</h2>
     <p>The experimental execution sandbox (the bash-lite agent, default off)
     is the clearest expression of the whole architecture: even on the

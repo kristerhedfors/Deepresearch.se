@@ -31,6 +31,18 @@ origin is kept in FULL only on `/story/`, with brief non-leading pointers on
 `/build/`, the landing, and the README — it is the origin, not the identity,
 so don't lead with it elsewhere.
 
+**The crisper formulation (2026-07-25 owner directive): this mission is a
+DeepResearch SECURITY ARCHITECTURE** — how research is *distributed outward*
+to people and machines the originator doesn't control, and how insight is
+*aggregated back*, with the data exposure of every hop written down rather
+than assumed. **The unit that travels is a WORKSPACE, and workspaces are the
+centrepiece**: everything else (pipeline, sandbox, grants, SDKs) is machinery
+a workspace uses. There are exactly two kinds — a **Se/cure workspace** (the
+link IS the workspace; no server record) and a **Se/rver workspace** (account-
+scoped, cloud-first). Complete spec of both, the exposure ledgers, and the
+distribute→aggregate channels: **`docs/WORKSPACES.md`**; the whiteboard view
+of every component is `docs/ARCHITECTURE.md` **§0 (the board)**.
+
 **Branding rule (2026-07-10, amended 2026-07-12 and 2026-07-13):** the two
 product tiers are ALWAYS written as their full URL without the scheme, in
 CamelCase, with the wordplay tail in bold: DeepResearch.**Se/cure** (the
@@ -44,7 +56,12 @@ paths, publish slugs, and host strings stay lowercase (`/cure`, `/rver`,
 identifiers, CLAUDE.md, skills, commit messages) and must not appear in
 user-facing copy. In rendered UI the slash's spacing (the `.sl` span) is
 font-dependent and gets MEASURED, never eyeballed — the **slash-spacing**
-skill. Full rule + rationale: `docs/BRANDING.md`.
+skill. **WORKSPACE, not "project" (2026-07-25):** user-facing copy calls a
+named collection of chats + material a **workspace** in both tiers; the code
+identifiers and wire paths (`/api/projects*`, R2 `projects/{uid}/…`,
+`public/js/projects.js`, the project vault endpoints) keep their names, the
+same internal/display split as DRC/DRS. Full rule + rationale:
+`docs/BRANDING.md`.
 
 ## Git workflow
 
@@ -324,7 +341,7 @@ Pipeline & models:
 Privacy, storage & grants:
 
 - **storage-privacy** — chat-history encryption + key hierarchy, implicit cloud storage, RAG, projects, the vault.
-- **secure-workspaces** — offline workspace links (`/cure/workspace#w=…`), the hacka.re-cloned crypto, quota-adjust surfaces.
+- **secure-workspaces** — offline workspace links (`/cure/workspace#w=…`), the hacka.re-cloned crypto, quota-adjust surfaces. The workspace CONCEPT across both tiers — the two kinds, their exposure ledgers, the distribute→aggregate channels, and the specified-ahead arrival disclosure + 👍/👎 curation — is `docs/WORKSPACES.md`.
 - **quota-grant-assessment** — testing/auditing the grant tokens: the invariant checklist + the combined-D1-fake technique.
 - **access-control** — Google sign-in, terms/approval gates, quotas, break-glass Basic Auth, the admin interface, D1 setup.
 - **security-posture** — the living risk register `SECURITY-RISKS.md`: re-check procedures, scans, and the security board.

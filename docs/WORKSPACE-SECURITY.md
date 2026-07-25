@@ -1,5 +1,13 @@
 # Secure workspaces — security architecture
 
+> **Scope note (2026-07-25).** This document is the security architecture of
+> the **Se/cure workspace LINK** — its envelope, its crypto lineage, its
+> threat model. The workspace *concept* across both tiers — the two kinds,
+> what each holds and exposes, the distribute→aggregate channels, and the
+> two surfaces specified ahead of the code (the arrival disclosure and 👍/👎
+> message curation) — is **`docs/WORKSPACES.md`**. Read that first for the
+> whole picture; read this one for the link's cryptography.
+
 *(2026-07-15, owner directive. The feature: shareable, completely OFFLINE
 Se/cure workspaces contained ONLY in the link that opens them, with the
 mechanism cloned as closely as possible from

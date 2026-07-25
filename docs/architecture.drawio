@@ -1,4 +1,181 @@
 <mxfile host="app.diagrams.net" agent="deepresearch-architecture">
+  <diagram id="page-board" name="0 The board — components, data &amp; capabilities">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="b_title" value="DeepResearch security architecture — distribute research outward, aggregate insight back. The unit that travels is a WORKSPACE." style="text;html=1;align=left;verticalAlign=middle;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="20" y="10" width="1000" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b_browser" value="THE BROWSER — the user&#39;s own machine" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;verticalAlign=top;fontStyle=1;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="20" y="50" width="640" height="600" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b_sec" value="DeepResearch.Se/cure  ·  /cure  —  no account, server in NO data path" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0e9d2;strokeColor=#b3a06e;verticalAlign=top;fontStyle=1;fontColor=#3d3418;" vertex="1" parent="1">
+          <mxGeometry x="40" y="90" width="290" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="b_secws" value="Se/cure WORKSPACE&#10;the link IS the workspace&#10;#w= fragment — never sent to any server&#10;sections: keys · settings · chats · grants · campaign" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6dab4;strokeColor=#b3a06e;fontColor=#3d3418;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="55" y="125" width="260" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="b_secapp" value="Se/cure app — client-side pipeline&#10;drc-research.js: triage → harvest → gap → synthesis → validation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f7f2e0;strokeColor=#b3a06e;fontColor=#3d3418;" vertex="1" parent="1">
+          <mxGeometry x="55" y="220" width="260" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="b_secst" value="sealed browser store&#10;chats + API keys&#10;user-held master secret" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f7f2e0;strokeColor=#b3a06e;fontColor=#3d3418;" vertex="1" parent="1">
+          <mxGeometry x="55" y="295" width="125" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="b_secrag" value="browser RAG index&#10;IndexedDB · cosine top-k&#10;(plaintext chunks)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f7f2e0;strokeColor=#b3a06e;fontColor=#3d3418;" vertex="1" parent="1">
+          <mxGeometry x="190" y="295" width="125" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="b_secnote" value="Storage: browser only. Exposure: link + password reveals the ticked sections. No server-side record exists." style="shape=note;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;size=12;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="55" y="365" width="260" height="45" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b_srv" value="DeepResearch.Se/rver  ·  /  —  signed in, cloud-first" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e2f1ff;strokeColor=#8ec4ec;verticalAlign=top;fontStyle=1;fontColor=#0a2e5c;" vertex="1" parent="1">
+          <mxGeometry x="350" y="90" width="290" height="330" as="geometry" />
+        </mxCell>
+        <mxCell id="b_srvws" value="Se/rver WORKSPACE&#10;record + chats + files + notes + RAG index&#10;(code identifier: &quot;project&quot;)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfe4f7;strokeColor=#8ec4ec;fontColor=#0a2e5c;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="365" y="125" width="260" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="b_srvapp" value="Se/rver app — chat · modes · panels · admin&#10;Deep Research / Introspection / Agent Studio / Orchestrator / Outrospection" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef7ff;strokeColor=#8ec4ec;fontColor=#0a2e5c;" vertex="1" parent="1">
+          <mxGeometry x="365" y="220" width="260" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="b_srvst" value="encrypted local history&#10;IndexedDB ciphertext&#10;key served by /api/history-key" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef7ff;strokeColor=#8ec4ec;fontColor=#0a2e5c;" vertex="1" parent="1">
+          <mxGeometry x="365" y="295" width="260" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="b_srvnote" value="Storage: cloud, implicit — no opt-out knob. Ciphertext for records/convos; READABLE for indexed material, workspace chats, file originals." style="shape=note;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;size=12;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="365" y="365" width="260" height="45" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b_shared" value="shared engine room — BOTH tiers, browser-only, never talks to the Worker" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#9673a6;verticalAlign=top;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="440" width="600" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="b_cx" value="CheerpX JS Linux VM&#10;a real x86 Linux in the tab (WASM)&#10;workspace files mounted at /workspace and /mnt/&lt;name&gt;&#10;overlay persists in IndexedDB · needs COEP require-corp" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="60" y="480" width="290" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="b_odv" value="on-device model&#10;WebGPU · 1-bit weights in OPFS&#10;fetched browser-direct from huggingface.co&#10;no provider, no server in the answer path" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="370" y="480" width="250" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="b_sharednote" value="Both are capabilities of the BROWSER, offered identically to either workspace kind — the sandbox is offline, the on-device model needs no key." style="shape=note;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;size=12;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="580" width="560" height="35" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b_edge" value="THE EDGE — one Cloudflare Worker, no origin server" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#6c8ebf;verticalAlign=top;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="700" y="50" width="330" height="440" as="geometry" />
+        </mxCell>
+        <mxCell id="b_ix" value="src/index.js — routing · identity gate · request id" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="715" y="85" width="300" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="b_pipe" value="src/pipeline.js — deterministic 5-phase research&#10;NO function calling · helper phases fail soft&#10;split routing: planning on DEFAULT_MODEL, synthesis on the chosen model" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="715" y="140" width="300" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="b_grant" value="grants &amp; tokens — websearch (wsk1) · proxy (prg1/prx1)&#10;Se/rver token (JWT) · pool token (pt1)&#10;a jti, a quota, a counter — NO content" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="715" y="230" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="b_know" value="src/knowledge.js — sealed-conclusion INBOX&#10;drskn envelopes rest as ciphertext&#10;the import agent key lives in D1 → the server CAN decrypt at import" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="715" y="315" width="300" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="b_mcp" value="src/mcp.js — POST /mcp: deep_research + sdk_* tools" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="715" y="405" width="300" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b_store" value="STORAGE — same provider, same account (Cloudflare)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#82b366;verticalAlign=top;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="700" y="510" width="330" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="b_d1" value="D1 — accounts · quotas · config · chat_logs (full text unless incognito)&#10;grant meters · knowledge_inbox · boards" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;size=8;" vertex="1" parent="1">
+          <mxGeometry x="715" y="545" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="b_r2" value="R2 — workspace records + convos (ciphertext) · file originals + RAG exports (READABLE) · vault (server cannot open) · published replays (public)" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;size=8;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="715" y="615" width="300" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="b_vx" value="Vectorize — chunk text + vectors (necessarily readable)" style="shape=cylinder3;boundedLbl=1;backgroundOutline=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;size=8;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="715" y="678" width="300" height="28" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b_up" value="UPSTREAM — third parties" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#b85450;verticalAlign=top;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1070" y="50" width="310" height="660" as="geometry" />
+        </mxCell>
+        <mxCell id="b_llm" value="Berget (primary — every JSON planning phase)&#10;Anthropic (claude-*) · OpenAI (gpt-*)&#10;secondary answer models, key-gated" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="1085" y="85" width="280" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="b_exa" value="Exa — web search&#10;receives the QUERY only, never the conversation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="1085" y="170" width="280" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="b_sho" value="Shodan — host intelligence (shodan_mcp knob)&#10;Se/rver ONLY: a server-side key means a server in the data path&#10;receives one host or IP" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="1085" y="240" width="280" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="b_maps" value="Google Maps / Street View (google_maps knob)&#10;Se/rver only · receives a place or coordinate" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="1085" y="330" width="280" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="b_nom" value="OSM Nominatim — reverse geocoding&#10;Se/rver only · receives a coordinate" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="1085" y="400" width="280" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="b_hf" value="Hugging Face Hub — models/datasets/papers as sources&#10;also the browser-direct source of on-device model weights" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="1085" y="470" width="280" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="b_peer" value="A PEER&#39;s machine (compute sharing)&#10;pool token pt1 · the pool owner can read everything sent" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="1085" y="540" width="280" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="b_upnote" value="Outbound requests carry the MINIMUM: a query, a coordinate, a host — never the conversation, filename, or identity." style="shape=note;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;size=12;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1085" y="610" width="280" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b_e1" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=1;strokeColor=#7c6a24;strokeWidth=2;" edge="1" parent="1" source="b_secapp" target="b_llm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="b_e1l" value="own key / own local server — server NOT in the path" style="text;html=1;fontSize=10;fontColor=#7c6a24;align=center;" vertex="1" parent="1">
+          <mxGeometry x="330" y="30" width="330" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="b_e2" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=1;dashed=1;strokeColor=#7c6a24;strokeWidth=2;" edge="1" parent="1" source="b_secapp" target="b_grant">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="b_e2l" value="the ONLY two Se/cure↔server paths: web (query only) · api (content, disclosed)" style="text;html=1;fontSize=10;fontColor=#7c6a24;align=center;" vertex="1" parent="1">
+          <mxGeometry x="330" y="252" width="380" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="b_e3" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=1;strokeColor=#0d4fa0;strokeWidth=2;" edge="1" parent="1" source="b_srvapp" target="b_ix">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="b_e4" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=1;" edge="1" parent="1" source="b_ix" target="b_pipe">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="b_e5" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=1;" edge="1" parent="1" source="b_pipe" target="b_llm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="b_e6" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=1;" edge="1" parent="1" source="b_pipe" target="b_exa">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="b_e7" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=1;" edge="1" parent="1" source="b_pipe" target="b_sho">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="b_e8" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=1;" edge="1" parent="1" source="b_grant" target="b_peer">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="b_e9" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=1;dashed=1;strokeColor=#b85450;strokeWidth=2;" edge="1" parent="1" source="b_secapp" target="b_know">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="b_e9l" value="👍 sealed conclusion — aggregation back to the workspace admin" style="text;html=1;fontSize=10;fontColor=#b85450;align=center;" vertex="1" parent="1">
+          <mxGeometry x="330" y="430" width="380" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="b_e10" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=1;dashed=1;strokeColor=#b85450;strokeWidth=2;" edge="1" parent="1" source="b_know" target="b_srvapp">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="b_e11" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=1;" edge="1" parent="1" source="b_ix" target="b_d1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="b_e12" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=1;" edge="1" parent="1" source="b_ix" target="b_r2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="b_e13" style="edgeStyle=orthogonalEdgeStyle;html=1;rounded=1;" edge="1" parent="1" source="b_pipe" target="b_vx">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b_legend" value="LEGEND   khaki = Se/cure (client-side tier)   ·   blue = Se/rver (signed-in tier)   ·   violet = browser engine room, both tiers   ·   green = storage   ·   red = third party / server-readable&#10;Every element is direct-labeled — identity is never colour alone. Secure-first ordering per docs/BRANDING.md. Full component ledger: docs/ARCHITECTURE.md §0.2; workspace specs: docs/WORKSPACES.md." style="shape=note;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;size=14;fontSize=10;align=left;" vertex="1" parent="1">
+          <mxGeometry x="20" y="660" width="640" height="60" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
   <diagram id="page-system" name="1 System context &amp; deployment">
     <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="780" math="0" shadow="0">
       <root>
