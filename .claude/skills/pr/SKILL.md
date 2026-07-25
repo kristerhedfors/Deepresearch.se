@@ -56,6 +56,15 @@ git log --oneline origin/main..HEAD    # what this PR will actually contain
 > artifacts below, so the Clean edits are captured in the same snapshot and
 > commit. A branch that touched no doc prose skips this.
 
+> **`git add` any NEW file BEFORE you bundle.** `git ls-files` reads the INDEX,
+> so a brand-new file (a new module, a `docs/test-requests/<branch>.json`) is
+> invisible to the bundler while it is untracked. Bundle first and the snapshot
+> silently omits it, Step 2 passes locally, and CI fails on the freshness check
+> the moment your commit makes the file tracked — the exact failure seen on
+> PR #267. Staging is enough (no commit needed): `git add -A && npm run bundle`.
+> When a Step 1 rebuild leaves the digest and file count unchanged after you
+> added a file, that is the symptom, not a no-op.
+
 The introspection snapshot walks **every git-tracked text file** (`bundle-source.mjs`
 runs `git ls-files`), not just `src/`/`public/` — so a change to `CLAUDE.md`,
 a `.claude/skills/*` file, or a `docs/*` file makes it stale just as a code
