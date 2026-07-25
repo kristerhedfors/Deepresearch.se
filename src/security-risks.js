@@ -154,6 +154,14 @@ export const SECURITY_RISK_ITEMS = [
     summary:
       "Owner directive (2026-07-24): the feedback pipeline runs on high trust in a submission's authenticity and integrity, and that must change BEFORE the audience widens — the trigger is exposure, not a code smell. Three concrete pieces: (a) Se/cure attribution is the Se/rver token's minting account, but tokens are designed to be shareable, so authorship means 'someone holding a token that account minted' (still write-only — a token can never read a feedback row back); (b) on the direct API paths the client supplies question/answer_excerpt/model/page — including the scope tag — with nothing cross-checking them against what the server served (the CHAT path derives all of them server-side and is unaffected); (c) entry creation sits outside the quota/inflight metering (P-3), so the queue can be flooded. Already-safe and must stay: feedback text never reaches an LLM (canned acks only) and the loop's human-in-the-loop step treats entry text as a request to evaluate, never an instruction — together why a spoofed entry cannot act on its own. Hardening direction is recorded in the register but deliberately not designed yet; it touches a user-facing promise, so owner sign-off first.",
   },
+  {
+    id: "P-13",
+    title: "Break-glass can act as another identity (run-as)",
+    severity: "low",
+    status: "accepted",
+    summary:
+      "src/run-as.js (2026-07-25) lets a break-glass caller declare who it is ACTING AS — `user`, a real account by email/id, or a synthetic `test:<name>` persona — via the X-Run-As header or a session cookie minted by POST /api/admin/run-as. Accepted, not open, because it adds NO privilege: it is honored only for a request that already presented the break-glass secrets (which can already read and write everything through the admin API), every form it resolves to is equal or lesser privilege, an unrecognized spec resolves to nothing rather than to a surprise identity, and a run-as identity is not isSecretAdmin, so the header cannot be laundered through a session and the mint endpoint refuses it. What it genuinely widens: impersonating a real account produces that account's view of their own data under an ordinary session, and the audit trail is a run_as.session log line plus the runAs marker on the identity rather than a distinct principal — so a compromised break-glass credential is no more powerful, but its actions are one step harder to attribute. It exists because features whose whole point is that two DIFFERENT people approve each other (compute sharing's mutual consent) are otherwise untestable from a harness; pinned by src/run-as.test.js and used by tests/e2e/llm-sharing.live.spec.js. Re-check if break-glass ever stops being operator-only.",
+  },
 ];
 
 // ---------------------------------------------------------------------------

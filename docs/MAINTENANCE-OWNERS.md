@@ -163,3 +163,21 @@ feature maintenance*, and the **feature-maintenance** skill):
 > (The same #526 session's SWE "no clickable link" was a SEPARATE pipeline bug,
 > also fixed on this branch — `build-pub.js` `replyLinksTo` + recovered-answer
 > slug re-derivation.)
+
+> **2026-07-25 — the 07-21 `/src` seed regression is CLOSED green; the cold-seed
+> window is the surviving residual (reported to #131, comment 5077966785).**
+> Feedback entry #2 (`seed_wedged`, chat_logs #534) was routed to #131 on 07-21.
+> It has not recurred: a chatlogs scan for `seeding never finished` returns only
+> #534, and the same device (iPhone, iOS 18.7) ran `cat /src/src/pipeline.js`
+> **exit 0** with `fs.ms 516` on 07-24 (**#607**, and **#611** the same hour) —
+> the stamp skip working as designed. #620 the same afternoon soft-failed with
+> `exec_seed_busy` ("still preparing"), which is #131's intended behavior, not
+> the wedge. Entry #2 resolved; the reporter was told the retry-after-an-update
+> behavior is expected.
+> **Residual, trending worse:** #620's cold re-seed was **155 157 ms** for an
+> **8.63 MB** `/src` payload against `SEED_WAIT_MS` = 60 s, so the first
+> dev-mode command after every deploy is now *guaranteed* to soft-fail
+> (6.8 MB/80 s on 07-18 → 7.44 MB on 07-21 → 8.63 MB/155 s on 07-24). Raising
+> the constant only buys time; shrinking the mounted payload or stamping
+> per-path so a deploy re-seeds only what changed is the real fix. Open with
+> #131 as the `/src` mount owner.

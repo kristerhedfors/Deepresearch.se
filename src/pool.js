@@ -13,6 +13,20 @@
 //   CONSUMER  — holds a pool token; submits jobs (POST /api/pool/llm/*).
 //   BROKER    — this module + the pool_* tables.
 //
+// MUTUAL CONSENT (owner directive, 2026-07-25): holding a token is capacity,
+// not consent. A pooled completion crosses a trust boundary twice and BOTH
+// crossings are gated on a remembered, per-identity decision —
+//   INGRESS  the SHARER allows this consumer identity onto their machine
+//            (pool_consumers.state),
+//   EGRESS   the CONSUMER allows their prompts to leave for this pool owner
+//            (pool_egress.state).
+// Each side is shown the other's PLATFORM-VERIFIED identity (resolved from a
+// session by the router — never a self-asserted string in the request), the
+// first job from an unknown pair parks both questions as `pending` and is
+// refused, and once answered the answer sticks. The vocabulary is in the
+// shared pure core (public/js/pool-core.js) so client and server ask exactly
+// the same question.
+//
 // THE POOL-TOKEN GUARANTEE (src/pool-token.js): a pool token authorizes ONLY
 // submitting completion jobs to the ONE pool it names; it is never a login and
 // unlocks no Se/rver data. Its ONE disclosed difference from a Se/rver token is
@@ -33,7 +47,13 @@ import {
 } from "./grant-http.js";
 import { jsonResponse } from "./http.js";
 import { mintPoolToken, verifyPoolToken } from "./pool-token.js";
-import { sanitizePoolRequest } from "../public/js/pool-core.js";
+import {
+  normalizeApproval,
+  poolConsumerKey,
+  poolEgressQuestion,
+  poolIngressQuestion,
+  sanitizePoolRequest,
+} from "../public/js/pool-core.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -85,7 +105,7 @@ const sleep = (ms, signal) =>
  * Register (or refresh) an online provider tab for a pool. Returns the
  * provider_id the browser then polls with.
  * @param {D1Database} db
- * @param {{ poolId: string, userId: string, label?: string|null, models?: string[], concurrency?: number }} opts
+ * @param {{ poolId: string, userId: string, label?: string|null, owner?: string|null, models?: string[], concurrency?: number }} opts
  * @returns {Promise<string>}
  */
 export async function registerProvider(db, opts) {
@@ -95,10 +115,22 @@ export async function registerProvider(db, opts) {
   const concurrency = Math.min(8, Math.max(1, Math.floor(Number(opts.concurrency) || 1)));
   await db
     .prepare(
-      "INSERT INTO pool_providers (provider_id, pool_id, user_id, label, models_json, concurrency, created_at, last_seen_at) " +
-        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+      "INSERT INTO pool_providers (provider_id, pool_id, user_id, label, owner, models_json, concurrency, created_at, last_seen_at) " +
+        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
     )
-    .bind(providerId, String(opts.poolId), String(opts.userId), opts.label ? String(opts.label).slice(0, 80) : null, models, concurrency, t)
+    .bind(
+      providerId,
+      String(opts.poolId),
+      String(opts.userId),
+      opts.label ? String(opts.label).slice(0, 80) : null,
+      // The sharer's platform-verified identity, captured from the session at
+      // registration — this is what a consumer is shown when asked to approve
+      // egress, so it can never be a string the consumer's side made up.
+      opts.owner ? String(opts.owner).slice(0, 120) : null,
+      models,
+      concurrency,
+      t,
+    )
     .run();
   return providerId;
 }
@@ -287,10 +319,13 @@ export async function bumpConsumer(db, opts) {
     .run()
     .catch(() => null);
   if (upd && Number(upd?.meta?.changes || 0) >= 1) return;
+  // A job only ever runs after ingress was ALLOWED (handlePoolLlm), so this
+  // insert is the belt-and-braces path for a row deleted mid-flight — it must
+  // record the state the decision actually was, never re-open consent.
   await db
     .prepare(
       "INSERT INTO pool_consumers (pool_id, consumer_key, token_jti, display, state, jobs, prompt_tokens, completion_tokens, first_at, last_at) " +
-        "VALUES (?1, ?2, ?3, ?4, 'active', 1, ?5, ?6, ?7, ?7)",
+        "VALUES (?1, ?2, ?3, ?4, 'allowed', 1, ?5, ?6, ?7, ?7)",
     )
     .bind(String(opts.poolId), String(opts.consumerKey), String(opts.tokenJti), display, pt, ct, t)
     .run()
@@ -300,35 +335,174 @@ export async function bumpConsumer(db, opts) {
 /** Is a consumer blocked from a pool? Unknown consumer ⇒ not blocked.
  * @param {D1Database} db @param {string} poolId @param {string} consumerKey */
 export async function consumerBlocked(db, poolId, consumerKey) {
-  const r = await db
-    .prepare("SELECT state FROM pool_consumers WHERE pool_id = ?1 AND consumer_key = ?2")
-    .bind(String(poolId), String(consumerKey))
-    .first()
-    .catch(() => null);
-  return !!r && String(r.state) === "blocked";
+  return (await ingressState(db, poolId, consumerKey)) === "blocked";
 }
 
 /** Set a consumer's state (block/unblock) — the dashboard "remove user" action.
  * Upserts so a sharer can pre-block a key that hasn't used the pool yet.
  * @param {D1Database} db @param {string} poolId @param {string} consumerKey @param {boolean} blocked */
 export async function setConsumerState(db, poolId, consumerKey, blocked) {
-  const state = blocked ? "blocked" : "active";
+  return setIngressDecision(db, poolId, consumerKey, blocked ? "blocked" : "allowed");
+}
+
+// ── MUTUAL CONSENT — INGRESS (the sharer's side) ─────────────────────────────
+
+/**
+ * The sharer's decision about a consumer identity. An unknown consumer is
+ * `pending` (NOT allowed): consent is never implied by holding a token.
+ * @param {D1Database} db @param {string} poolId @param {string} consumerKey
+ * @returns {Promise<"pending"|"allowed"|"blocked">}
+ */
+export async function ingressState(db, poolId, consumerKey) {
+  const r = await db
+    .prepare("SELECT state FROM pool_consumers WHERE pool_id = ?1 AND consumer_key = ?2")
+    .bind(String(poolId), String(consumerKey))
+    .first()
+    .catch(() => null);
+  return r ? normalizeApproval(String(r.state)) : "pending";
+}
+
+/**
+ * Park an ingress REQUEST: the first time an identity reaches a pool, a
+ * `pending` row appears in the sharer's dashboard carrying who is asking.
+ * Never downgrades an existing decision — this only creates the question.
+ * @param {D1Database} db
+ * @param {{ poolId: string, consumerKey: string, tokenJti: string, display?: string|null, verified?: boolean }} opts
+ * @returns {Promise<"pending"|"allowed"|"blocked">} the state after the touch
+ */
+export async function touchIngressRequest(db, opts) {
+  const t = nowS();
+  const display = opts.display ? String(opts.display).slice(0, 120) : String(opts.consumerKey).slice(0, 32);
+  // Refresh the identity we show the sharer, but never the state.
+  const upd = await db
+    .prepare("UPDATE pool_consumers SET display = ?3, identity = ?3, verified = ?4, token_jti = ?5 WHERE pool_id = ?1 AND consumer_key = ?2")
+    .bind(String(opts.poolId), String(opts.consumerKey), display, opts.verified ? 1 : 0, String(opts.tokenJti))
+    .run()
+    .catch(() => null);
+  if (upd && Number(upd?.meta?.changes || 0) >= 1) {
+    return ingressState(db, opts.poolId, opts.consumerKey);
+  }
+  await db
+    .prepare(
+      "INSERT INTO pool_consumers (pool_id, consumer_key, token_jti, display, identity, verified, state, jobs, prompt_tokens, completion_tokens, first_at, last_at) " +
+        "VALUES (?1, ?2, ?3, ?4, ?4, ?5, 'pending', 0, 0, 0, ?6, ?6)",
+    )
+    .bind(String(opts.poolId), String(opts.consumerKey), String(opts.tokenJti), display, opts.verified ? 1 : 0, t)
+    .run()
+    .catch(() => {});
+  return "pending";
+}
+
+/**
+ * Record the sharer's answer. Remembered: the row persists, so the question
+ * is never asked about this identity again (and a block survives re-mints,
+ * because the key is the identity, not the token).
+ * @param {D1Database} db @param {string} poolId @param {string} consumerKey
+ * @param {"allowed"|"blocked"|"pending"} decision
+ */
+export async function setIngressDecision(db, poolId, consumerKey, decision) {
+  const state = normalizeApproval(decision === "pending" ? "pending" : decision);
   const t = nowS();
   const upd = await db
-    .prepare("UPDATE pool_consumers SET state = ?3, last_at = ?4 WHERE pool_id = ?1 AND consumer_key = ?2")
+    .prepare("UPDATE pool_consumers SET state = ?3, decided_at = ?4, last_at = ?4 WHERE pool_id = ?1 AND consumer_key = ?2")
     .bind(String(poolId), String(consumerKey), state, t)
     .run()
     .catch(() => null);
   if (upd && Number(upd?.meta?.changes || 0) >= 1) return true;
   await db
     .prepare(
-      "INSERT INTO pool_consumers (pool_id, consumer_key, token_jti, display, state, jobs, prompt_tokens, completion_tokens, first_at, last_at) " +
-        "VALUES (?1, ?2, NULL, ?3, ?4, 0, 0, 0, ?5, ?5)",
+      "INSERT INTO pool_consumers (pool_id, consumer_key, token_jti, display, identity, verified, state, jobs, prompt_tokens, completion_tokens, first_at, last_at, decided_at) " +
+        "VALUES (?1, ?2, NULL, ?3, ?3, 0, ?4, 0, 0, 0, ?5, ?5, ?5)",
     )
-    .bind(String(poolId), String(consumerKey), String(consumerKey).slice(0, 16), state, t)
+    .bind(String(poolId), String(consumerKey), String(consumerKey).slice(0, 32), state, t)
     .run()
     .catch(() => {});
   return true;
+}
+
+// ── MUTUAL CONSENT — EGRESS (the consumer's side) ────────────────────────────
+
+/**
+ * This consumer's decision about letting their prompts leave for a pool.
+ * Unknown ⇒ `pending`, same rule as ingress.
+ * @param {D1Database} db @param {string} consumerKey @param {string} poolId
+ * @returns {Promise<"pending"|"allowed"|"blocked">}
+ */
+export async function egressState(db, consumerKey, poolId) {
+  const r = await db
+    .prepare("SELECT state FROM pool_egress WHERE consumer_key = ?1 AND pool_id = ?2")
+    .bind(String(consumerKey), String(poolId))
+    .first()
+    .catch(() => null);
+  return r ? normalizeApproval(String(r.state)) : "pending";
+}
+
+/**
+ * Park an egress REQUEST: the consumer's client sees this as "you are about
+ * to send prompts to <owner> — allow?". Never downgrades an existing answer.
+ * @param {D1Database} db
+ * @param {{ consumerKey: string, poolId: string, ownerDisplay?: string|null, consumerDisplay?: string|null }} opts
+ * @returns {Promise<"pending"|"allowed"|"blocked">}
+ */
+export async function touchEgressRequest(db, opts) {
+  const t = nowS();
+  const owner = opts.ownerDisplay ? String(opts.ownerDisplay).slice(0, 120) : null;
+  const consumer = opts.consumerDisplay ? String(opts.consumerDisplay).slice(0, 120) : null;
+  const upd = await db
+    .prepare("UPDATE pool_egress SET owner_display = COALESCE(?3, owner_display), consumer_display = COALESCE(?4, consumer_display) WHERE consumer_key = ?1 AND pool_id = ?2")
+    .bind(String(opts.consumerKey), String(opts.poolId), owner, consumer)
+    .run()
+    .catch(() => null);
+  if (upd && Number(upd?.meta?.changes || 0) >= 1) {
+    return egressState(db, opts.consumerKey, opts.poolId);
+  }
+  await db
+    .prepare(
+      "INSERT INTO pool_egress (consumer_key, pool_id, state, owner_display, consumer_display, first_at) VALUES (?1, ?2, 'pending', ?3, ?4, ?5)",
+    )
+    .bind(String(opts.consumerKey), String(opts.poolId), owner, consumer, t)
+    .run()
+    .catch(() => {});
+  return "pending";
+}
+
+/**
+ * Record the consumer's answer about a pool. Remembered per (consumer, pool).
+ * @param {D1Database} db @param {string} consumerKey @param {string} poolId
+ * @param {"allowed"|"blocked"|"pending"} decision
+ */
+export async function setEgressDecision(db, consumerKey, poolId, decision) {
+  const state = normalizeApproval(decision === "pending" ? "pending" : decision);
+  const t = nowS();
+  const upd = await db
+    .prepare("UPDATE pool_egress SET state = ?3, decided_at = ?4 WHERE consumer_key = ?1 AND pool_id = ?2")
+    .bind(String(consumerKey), String(poolId), state, t)
+    .run()
+    .catch(() => null);
+  if (upd && Number(upd?.meta?.changes || 0) >= 1) return true;
+  await db
+    .prepare("INSERT INTO pool_egress (consumer_key, pool_id, state, first_at, decided_at) VALUES (?1, ?2, ?3, ?4, ?4)")
+    .bind(String(consumerKey), String(poolId), state, t)
+    .run()
+    .catch(() => {});
+  return true;
+}
+
+/** The egress decisions a consumer has made (their "who may compute for me" list).
+ * @param {D1Database} db @param {string} consumerKey */
+export async function listEgress(db, consumerKey) {
+  const res = await db
+    .prepare("SELECT pool_id, state, owner_display, first_at, decided_at FROM pool_egress WHERE consumer_key = ?1 ORDER BY first_at DESC LIMIT ?2")
+    .bind(String(consumerKey), GRANTS_LIST_MAX)
+    .all()
+    .catch(() => ({ results: [] }));
+  return (res.results || []).map((r) => ({
+    poolId: String(r.pool_id),
+    state: normalizeApproval(String(r.state)),
+    ownerDisplay: r.owner_display ? String(r.owner_display) : null,
+    firstAt: Number(r.first_at) * 1000,
+    decidedAt: r.decided_at ? Number(r.decided_at) * 1000 : null,
+  }));
 }
 
 // ── the pool-token meter (mirrors src/server-grants.js) ──────────────────────
@@ -383,8 +557,8 @@ export async function refundPoolUnit(db, jti) {
 /**
  * Mint a pool token for a sharer's own pool (pool_id == their account id).
  * @param {Env} env @param {Logger} log
- * @param {{ userId: string, quota?: number, ttlHours?: number, label?: string|null, source?: string, defaults?: PoolDefaults }} opts
- * @returns {Promise<{ token: string, jti: string, quota: number, expiresAt: number, label: string|null, source: string } | { error: string, outstanding?: number, budget?: number } | null>}
+ * @param {{ userId: string, quota?: number, ttlHours?: number, label?: string|null, owner?: string|null, source?: string, defaults?: PoolDefaults }} opts
+ * @returns {Promise<{ token: string, jti: string, quota: number, expiresAt: number, label: string|null, source: string, owner: string|null } | { error: string, outstanding?: number, budget?: number } | null>}
  */
 export async function mintPoolTokenGrant(env, log, opts) {
   const db = await getDb(env);
@@ -408,12 +582,16 @@ export async function mintPoolTokenGrant(env, log, opts) {
   const jti = crypto.randomUUID();
   const t = nowS();
   const exp = t + Math.floor(ttlHours * 3600);
+  // The minter's verified identity travels with the token row: the consumer's
+  // egress question must name the pool owner even before a provider tab is
+  // online, and the name must come from the SERVER's view of the session.
+  const owner = opts.owner ? String(opts.owner).slice(0, 120) : null;
   const ok = await db
     .prepare(
-      "INSERT INTO pool_tokens (jti, pool_id, user_id, quota, used, created_at, expires_at, label, source) " +
-        "VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7, ?8)",
+      "INSERT INTO pool_tokens (jti, pool_id, user_id, quota, used, created_at, expires_at, label, source, owner) " +
+        "VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7, ?8, ?9)",
     )
-    .bind(jti, uid, uid, quota, t, exp, label, source)
+    .bind(jti, uid, uid, quota, t, exp, label, source, owner)
     .run()
     .then(() => true)
     .catch((e) => {
@@ -423,7 +601,30 @@ export async function mintPoolTokenGrant(env, log, opts) {
   if (!ok) return null;
   const token = await mintPoolToken(env, { jti, pool: uid, sub: uid, iat: t, exp });
   log.info("pool.token_minted", { jti, pool: uid, source });
-  return { token, jti, quota, expiresAt: exp * 1000, label, source };
+  return { token, jti, quota, expiresAt: exp * 1000, label, source, owner };
+}
+
+/**
+ * The pool-owner identity a consumer is shown: the token row's captured
+ * `owner`, falling back to the newest provider registration's, then the raw
+ * pool id. Server-sourced in every branch.
+ * @param {D1Database} db @param {string} poolId @param {string} jti
+ * @returns {Promise<{ display: string, verified: boolean }>}
+ */
+export async function poolOwnerIdentity(db, poolId, jti) {
+  const tok = await db
+    .prepare("SELECT owner FROM pool_tokens WHERE jti = ?1")
+    .bind(String(jti))
+    .first()
+    .catch(() => null);
+  if (tok && tok.owner) return { display: String(tok.owner), verified: true };
+  const prov = await db
+    .prepare("SELECT owner FROM pool_providers WHERE pool_id = ?1 AND owner IS NOT NULL ORDER BY last_seen_at DESC LIMIT 1")
+    .bind(String(poolId))
+    .first()
+    .catch(() => null);
+  if (prov && prov.owner) return { display: String(prov.owner), verified: true };
+  return { display: String(poolId), verified: false };
 }
 
 /**
@@ -516,8 +717,12 @@ export async function listPool(db, poolId, providerStaleS) {
       .bind(String(poolId)).all().catch(() => ({ results: [] })),
     db.prepare("SELECT jti, quota, used, created_at, expires_at, label, source FROM pool_tokens WHERE pool_id = ?1 AND expires_at > ?2 ORDER BY created_at DESC LIMIT ?3")
       .bind(String(poolId), t, GRANTS_LIST_MAX).all().catch(() => ({ results: [] })),
-    db.prepare("SELECT consumer_key, display, state, jobs, prompt_tokens, completion_tokens, first_at, last_at FROM pool_consumers WHERE pool_id = ?1 ORDER BY last_at DESC LIMIT ?2")
-      .bind(String(poolId), GRANTS_LIST_MAX).all().catch(() => ({ results: [] })),
+    // Pending ingress FIRST: an unanswered question is the one thing on this
+    // screen that needs the sharer, so it must never sort below usage rows.
+    db.prepare(
+      "SELECT consumer_key, display, state, verified, decided_at, jobs, prompt_tokens, completion_tokens, first_at, last_at FROM pool_consumers " +
+        "WHERE pool_id = ?1 ORDER BY (state = 'pending') DESC, last_at DESC LIMIT ?2",
+    ).bind(String(poolId), GRANTS_LIST_MAX).all().catch(() => ({ results: [] })),
   ]);
   const cutoff = t - providerStaleS;
   return {
@@ -543,7 +748,13 @@ export async function listPool(db, poolId, providerStaleS) {
     consumers: (cons.results || []).map((r) => ({
       consumerKey: String(r.consumer_key),
       display: r.display ? String(r.display) : null,
-      state: String(r.state),
+      // The INGRESS decision, in the shared vocabulary (legacy `active` rows
+      // normalize to `allowed`), plus whether the platform actually resolved
+      // this consumer from a session — the sharer must be able to tell a
+      // named account from a bare token holder before allowing them in.
+      state: normalizeApproval(String(r.state)),
+      verified: Number(r.verified) === 1,
+      decidedAt: r.decided_at ? Number(r.decided_at) * 1000 : null,
       jobs: Number(r.jobs),
       promptTokens: Number(r.prompt_tokens),
       completionTokens: Number(r.completion_tokens),
@@ -589,6 +800,7 @@ export async function handlePoolRegister(request, env, log, identity) {
     poolId,
     userId: poolId,
     label: typeof body.label === "string" ? body.label : null,
+    owner: identity.email || identity.name || poolId,
     models: Array.isArray(body.models) ? body.models : [],
     concurrency: body.concurrency,
   });
@@ -674,9 +886,17 @@ export async function handlePoolUnregister(request, env, _log, identity) {
  * entry drives it unchanged (parallel to /api/server-token/llm/*).
  *   GET  /api/pool/llm/models           → the union of online providers' models
  *   POST /api/pool/llm/chat/completions → park a job, wait, return the completion
+ *
+ * `viewer` is the consumer's PLATFORM-VERIFIED identity when the request also
+ * carries a session (the router resolves it; this module never parses auth
+ * headers for identity). It is what makes mutual consent about PEOPLE: with a
+ * session the consumer is keyed by account and shown to the sharer by their
+ * verified address; without one they are only ever as accountable as the
+ * token they hold.
  * @param {Request} request @param {Env} env @param {Logger} log @param {URL} url
+ * @param {Identity | null} [viewer]
  */
-export async function handlePoolLlm(request, env, log, url) {
+export async function handlePoolLlm(request, env, log, url, viewer = null) {
   const defaults = await poolDefaults(env);
   if (!defaults.enabled) return jsonResponse({ error: "Compute sharing is disabled." }, 503);
   const suffix = url.pathname.replace(/^\/api\/pool\/llm/, "");
@@ -687,19 +907,73 @@ export async function handlePoolLlm(request, env, log, url) {
   const db = await getDb(env);
   if (!db) return jsonResponse({ error: "Compute sharing is unavailable." }, 503);
   const poolId = claims.pool;
-  const consumerKey = claims.sub && claims.sub !== poolId ? claims.sub : claims.jti;
-
-  if (await consumerBlocked(db, poolId, consumerKey)) {
-    return jsonResponse({ error: "Access to this pool was revoked." }, 403);
-  }
+  const you = consumerView(viewer, claims.jti);
+  const consumerKey = you.key;
 
   if (suffix === "/models" && request.method === "GET") {
+    // Discovery only (no prompt content leaves) — deliberately available
+    // before consent, so a consumer can see what they would be choosing.
     const models = await advertisedModels(db, poolId, defaults.providerStaleS);
     return jsonResponse({ object: "list", data: models.map((id) => ({ id, object: "model", owned_by: "pool" })) });
   }
 
   if (suffix !== "/chat/completions" || request.method !== "POST") {
     return jsonResponse({ error: "Not found." }, 404);
+  }
+
+  // ── MUTUAL CONSENT, both gates, BEFORE the body is read ────────────────
+  // Refusing here means an unapproved prompt is never parked, never relayed,
+  // and never sits in a job row. Each refusal names the identity the other
+  // side must approve so the client can render the exact question.
+  const owner = await poolOwnerIdentity(db, poolId, claims.jti);
+  const ingress = await touchIngressRequest(db, {
+    poolId,
+    consumerKey,
+    tokenJti: claims.jti,
+    display: you.display,
+    verified: you.verified,
+  });
+  if (ingress !== "allowed") {
+    const q = poolIngressQuestion(you);
+    log.info("pool.ingress_" + ingress, { pool: poolId, consumer: consumerKey });
+    return jsonResponse(
+      {
+        error:
+          ingress === "blocked"
+            ? "The owner of this shared model has blocked your access."
+            : "Waiting for the owner of this shared model to approve you.",
+        code: ingress === "blocked" ? "ingress_blocked" : "ingress_pending",
+        pool: poolId,
+        owner,
+        you,
+        question: q,
+      },
+      403,
+    );
+  }
+  const egress = await touchEgressRequest(db, {
+    consumerKey,
+    poolId,
+    ownerDisplay: owner.display,
+    consumerDisplay: you.display,
+  });
+  if (egress !== "allowed") {
+    const q = poolEgressQuestion(owner);
+    log.info("pool.egress_" + egress, { pool: poolId, consumer: consumerKey });
+    return jsonResponse(
+      {
+        error:
+          egress === "blocked"
+            ? "You declined to send prompts to this shared model."
+            : "Approve sending your prompts to this shared model first.",
+        code: egress === "blocked" ? "egress_blocked" : "egress_pending",
+        pool: poolId,
+        owner,
+        you,
+        question: q,
+      },
+      403,
+    );
   }
 
   const raw = await request.text().catch(() => "");
@@ -751,7 +1025,7 @@ export async function handlePoolLlm(request, env, log, url) {
     poolId,
     consumerKey,
     tokenJti: claims.jti,
-    display: consumerKey === claims.jti ? null : consumerKey,
+    display: you.display,
     promptTokens: Number(final.prompt_tokens) || 0,
     completionTokens: Number(final.completion_tokens) || 0,
   });
@@ -759,6 +1033,24 @@ export async function handlePoolLlm(request, env, log, url) {
   try { response = JSON.parse(String(final.response_json)); } catch { response = null; }
   log.info("pool.job_done", { pool: poolId, jobId });
   return jsonResponse(response ?? { error: "Malformed provider response." }, response ? 200 : 502);
+}
+
+/**
+ * How a CONSUMER is identified to the sharer. A session makes them a person
+ * (`u:<id>`, verified, shown by address); without one they are the token
+ * (`t:<jti>`, unverified). `synthetic` marks a run-as test persona so no
+ * surface ever presents a test identity as a signed-in human.
+ * @param {Identity | null | undefined} viewer @param {string} jti
+ * @returns {{ key: string, display: string, verified: boolean, synthetic: boolean }}
+ */
+export function consumerView(viewer, jti) {
+  const id = viewer && viewer.id != null ? String(viewer.id) : null;
+  return {
+    key: poolConsumerKey({ identityId: id, jti }),
+    display: id ? String(viewer?.email || viewer?.name || id) : "token " + String(jti).slice(0, 8),
+    verified: !!id,
+    synthetic: !!(viewer && viewer.synthetic),
+  };
 }
 
 /**
@@ -772,6 +1064,107 @@ export async function handlePoolStatus(request, env) {
   const view = await poolTokenStatus(env, token);
   if (!view) return jsonResponse({ error: "Invalid, expired, or revoked pool token." }, 403);
   return jsonResponse(view);
+}
+
+/**
+ * POST /api/pool/peer — PUBLIC (the token is the authority; a session, when
+ * present, names the caller). The MUTUAL-CONSENT status read: who owns this
+ * pool, who the platform says you are, and where both approvals stand. Both
+ * clients render their question from this one answer, so the two sides can
+ * never disagree about what is being asked.
+ *
+ * Calling it PARKS the questions (a pending row on each side) — that is how a
+ * sharer learns someone is waiting without the consumer having to send a
+ * prompt first.
+ * @param {Request} request @param {Env} env @param {Identity | null} [viewer]
+ */
+export async function handlePoolPeer(request, env, viewer = null) {
+  const body = /** @type {any} */ (await request.json().catch(() => ({})));
+  const token = typeof body.token === "string" ? body.token : "";
+  if (!token) return jsonResponse({ error: "token is required." }, 400);
+  const claims = await verifyPoolToken(env, token);
+  if (!claims) return jsonResponse({ error: "Invalid or expired pool token." }, 403);
+  const db = await getDb(env);
+  if (!db) return jsonResponse({ error: "Compute sharing is unavailable." }, 503);
+  const poolId = claims.pool;
+  const you = consumerView(viewer, claims.jti);
+  const owner = await poolOwnerIdentity(db, poolId, claims.jti);
+  const ingress = await touchIngressRequest(db, {
+    poolId,
+    consumerKey: you.key,
+    tokenJti: claims.jti,
+    display: you.display,
+    verified: you.verified,
+  });
+  const egress = await touchEgressRequest(db, {
+    consumerKey: you.key,
+    poolId,
+    ownerDisplay: owner.display,
+    consumerDisplay: you.display,
+  });
+  return jsonResponse({
+    pool: poolId,
+    owner,
+    you,
+    ingress,
+    egress,
+    ready: ingress === "allowed" && egress === "allowed",
+    ingressQuestion: poolIngressQuestion(you),
+    egressQuestion: poolEgressQuestion(owner),
+  });
+}
+
+/**
+ * POST /api/pool/egress — PUBLIC (token-authorized). The CONSUMER's half of
+ * mutual consent: "yes, my prompts may leave for this person's machine", or
+ * no. Remembered per (consumer, pool) and reversible at any time.
+ *
+ * Deliberately NOT authed-only: a Se/cure consumer holding a workspace pool
+ * token has no Se/rver account, and their consent still has to be theirs to
+ * give. Holding the token is what proves they are the party being asked.
+ * @param {Request} request @param {Env} env @param {Logger} log @param {Identity | null} [viewer]
+ */
+export async function handlePoolEgress(request, env, log, viewer = null) {
+  const body = /** @type {any} */ (await request.json().catch(() => ({})));
+  const token = typeof body.token === "string" ? body.token : "";
+  const db = await getDb(env);
+  if (!db) return jsonResponse({ error: "Compute sharing is unavailable." }, 503);
+  const decision = decisionFrom(body.decision);
+  if (!decision) return jsonResponse({ error: "decision must be allow, deny, or reset." }, 400);
+
+  // Two ways to prove you are the party being asked, because the same answer
+  // is given from two places. A TOKEN proves it for a Se/cure consumer who
+  // has no account; a SESSION proves it for a signed-in one revisiting the
+  // decision in Settings → LLM sharing, where the token lives in another
+  // browser entirely. Either way the row written is the caller's OWN.
+  let poolId = "";
+  let jti = "";
+  if (token) {
+    const claims = await verifyPoolToken(env, token);
+    if (!claims) return jsonResponse({ error: "Invalid or expired pool token." }, 403);
+    poolId = claims.pool;
+    jti = claims.jti;
+  } else if (viewer && viewer.id != null && typeof body.pool === "string" && body.pool) {
+    poolId = String(body.pool);
+  } else {
+    return jsonResponse({ error: "token is required." }, 400);
+  }
+  const you = consumerView(viewer, jti);
+  const owner = await poolOwnerIdentity(db, poolId, jti);
+  await touchEgressRequest(db, { consumerKey: you.key, poolId, ownerDisplay: owner.display, consumerDisplay: you.display });
+  await setEgressDecision(db, you.key, poolId, decision);
+  log.info("pool.egress_decision", { pool: poolId, consumer: you.key, decision });
+  return jsonResponse({ ok: true, pool: poolId, owner, you, egress: decision });
+}
+
+/** allow|deny|reset → the stored state, or null when the word isn't one of them.
+ * @param {any} raw @returns {"allowed"|"blocked"|"pending"|null} */
+export function decisionFrom(raw) {
+  const d = String(raw || "").toLowerCase();
+  if (d === "allow" || d === "allowed" || d === "yes") return "allowed";
+  if (d === "deny" || d === "blocked" || d === "block" || d === "no") return "blocked";
+  if (d === "reset" || d === "pending") return "pending";
+  return null;
 }
 
 // ── endpoints: SHARER DASHBOARD (authed) ─────────────────────────────────────
@@ -796,7 +1189,34 @@ export async function handlePoolDashboard(request, env, url, log, identity) {
 
   if (sub === "" && method === "GET") {
     const view = await listPool(db, poolId, defaults.providerStaleS);
-    return jsonResponse({ ...view, config: { enabled: defaults.enabled, quota: defaults.quota, ttlHours: defaults.ttlHours } });
+    // BOTH halves of mutual consent on one screen: the ingress questions
+    // waiting on you (inside `consumers`), and the egress decisions YOU made
+    // about other people's pools — the same account is routinely both a
+    // sharer and a consumer, and "LLM sharing" is one surface for both.
+    const egress = await listEgress(db, poolConsumerKey({ identityId: poolId, jti: "" }));
+    const me = { key: poolConsumerKey({ identityId: poolId, jti: "" }), display: identity.email || identity.name || poolId, verified: true, synthetic: !!identity.synthetic };
+    return jsonResponse({
+      ...view,
+      me,
+      egress,
+      pendingIngress: view.consumers.filter((c) => c.state === "pending").length,
+      pendingEgress: egress.filter((e) => e.state === "pending").length,
+      config: { enabled: defaults.enabled, quota: defaults.quota, ttlHours: defaults.ttlHours },
+    });
+  }
+
+  // The SHARER's half of mutual consent: answer an ingress question. The
+  // answer is remembered against the consumer IDENTITY, so it survives token
+  // re-mints and a denied peer cannot come back with a fresh link.
+  if (sub === "/ingress" && method === "POST") {
+    const body = /** @type {any} */ (await request.json().catch(() => ({})));
+    const key = typeof body.consumerKey === "string" ? body.consumerKey : "";
+    const decision = decisionFrom(body.decision);
+    if (!key) return jsonResponse({ error: "consumerKey is required." }, 400);
+    if (!decision) return jsonResponse({ error: "decision must be allow, deny, or reset." }, 400);
+    await setIngressDecision(db, poolId, key, decision);
+    log.info("pool.ingress_decision", { pool: poolId, consumer: key, decision });
+    return jsonResponse({ ok: true, consumerKey: key, state: decision });
   }
 
   if (sub === "/token" && method === "POST") {
@@ -807,6 +1227,9 @@ export async function handlePoolDashboard(request, env, url, log, identity) {
       quota: body.quota,
       ttlHours: body.ttlHours,
       label: typeof body.label === "string" ? body.label : null,
+      // Captured from the SESSION, never from the request body — this is the
+      // string a consumer's egress question will name.
+      owner: identity.email || identity.name || poolId,
       source: body.source === "workspace" ? "workspace" : "self",
       defaults,
     });

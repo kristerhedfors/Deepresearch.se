@@ -1385,3 +1385,21 @@ h1 .tier { display: block; font-size: .8rem; font-weight: 600; color: var(--mute
 .curate-acts button { padding: .2rem .45rem; font-size: .8rem; }
 /* The pool's appended lines in the privacy notice. */
 .privacy-pool { border-left: 3px solid var(--accent); padding-left: .5rem; }
+/* Se/cure's mutual-consent pane (public/cure/index.html #poolconsent): the
+   question asked before ANY prompt leaves for another user's machine. It sits
+   inside the shared-compute settings row and disappears once both sides have
+   said yes. Deliberately loud — this is the one moment the tier's "never
+   cloud" posture is being traded away, knowingly, by the person doing it. */
+.pool-consent {
+  border: 1px solid var(--accent); border-radius: 10px;
+  padding: .55rem .7rem; margin: .45rem 0 .2rem; background: var(--panel-2);
+}
+.pool-consent-title { font-size: .85rem; font-weight: 600; margin: 0 0 .25rem; }
+.pool-consent-actions { display: flex; gap: .4rem; margin-top: .45rem; }
+.pool-consent-actions button {
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: .22rem .8rem; font-size: .78rem; cursor: pointer;
+  background: var(--panel); color: var(--text);
+}
+.pool-consent-actions #poolconsent-allow:hover { border-color: var(--ok); color: var(--ok); }
+.pool-consent-actions #poolconsent-deny:hover { border-color: #c0392b; color: #c0392b; }

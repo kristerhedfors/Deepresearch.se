@@ -27,8 +27,13 @@ directly.
 > invariant text is NOT changed by this document. §9b's knowledge submit is
 > framed the same way (an explicit, disclosed, user-initiated share — like
 > filing feedback — not a pipeline data path) and awaits the same sign-off.
-> Not yet built: the sharer's full account-panel dashboard UI (the endpoints
-> exist; today oversight runs through `/api/pool` + the admin panel).
+> **Update (2026-07-25):** MUTUAL CONSENT (§8b) and the sharer's account-panel
+> dashboard both shipped. The dashboard is the **LLM sharing** screen, one
+> level below Settings (`public/js/account-pool.js`), and it carries BOTH
+> halves of consent: who may use your model, and whose model you use. The
+> whole flow is verified end to end against a live deploy by
+> `tests/e2e/llm-sharing.live.spec.js`, which drives four distinct platform
+> identities out of one break-glass credential (§8c).
 
 ---
 
@@ -427,6 +432,91 @@ user surface. It slots into the account panel beside "Share a workspace"
 uncapped and only *counted*, never blocked. The dashboard is where the sharer
 watches those counts and decides to block. Quotas are the opt-in cap for the
 "transactional, metered" case the owner described.
+
+### 8b. Mutual consent — ingress and egress (owner directive, 2026-07-25)
+
+Holding a pool token is **capacity, not consent**. A relayed completion crosses
+a trust boundary twice, and each crossing is a different person's decision:
+
+| | Question | Who answers | Stored in |
+|---|---|---|---|
+| **Ingress** | "Do I let this identity run prompts on my machine?" | the SHARER | `pool_consumers.state` |
+| **Egress** | "Do I let my prompts leave for this identity's machine?" | the CONSUMER | `pool_egress.state` |
+
+Both start at `pending`. Neither is implied by the other, and neither is
+implied by the token. A completion from a pair that has not answered is
+refused with a stable code — `ingress_pending`, `ingress_blocked`,
+`egress_pending`, `egress_blocked` — **before the body is parsed, parked or
+metered**, so an unapproved prompt never reaches a job row.
+
+**The identity is the platform's, not the peer's.** Each side is shown who
+the other is as the SERVER resolved them:
+
+- The consumer's identity comes from their session (`consumerView` in
+  `pool.js`, fed by `identify()` in the router). Signed in ⇒ keyed `u:<id>`
+  and shown by verified address. No session ⇒ keyed `t:<jti>` and shown as
+  "token holder — unverified", because that is all we honestly know. A
+  `test:<name>` run-as persona is verified but flagged `synthetic`, so no
+  roster presents a test identity as a signed-in human.
+- The pool owner's identity is captured from the SHARER's session when they
+  register a provider or mint a token (`pool_providers.owner`,
+  `pool_tokens.owner`) and read back by `poolOwnerIdentity`. A consumer can
+  never influence the name they are shown.
+
+**Decisions are remembered**, keyed by identity rather than by token — so a
+denied peer cannot come back with a fresh link, and an allowed peer is never
+asked twice. Either side can change their mind at any time and it takes
+effect on the next request.
+
+**Endpoints.**
+
+- `POST /api/pool/peer` — PUBLIC (token-authorized; a session, when present,
+  names the caller). Returns `{ pool, owner, you, ingress, egress, ready,
+  ingressQuestion, egressQuestion }`. Both clients render their question from
+  this ONE answer, so the two sides can never disagree about what is being
+  asked. Calling it PARKS the questions, which is how a sharer learns someone
+  is waiting without that person having to fire a prompt at their machine.
+- `POST /api/pool/egress` — the consumer's answer (`allow` / `deny` /
+  `reset`). Two ways to prove you are the party being asked, because the
+  answer is given from two places: the **token** (a Se/cure consumer with no
+  account) or a **session** plus `{ pool }` (a signed-in consumer revisiting
+  the decision in Settings → LLM sharing, where the token lives in another
+  browser). Either way the row written is the caller's own.
+- `POST /api/pool/ingress` — the sharer's answer, on their dashboard.
+  `/api/pool/block` stays as its back-compatible alias.
+
+**The question text lives in the pure core** (`poolIngressQuestion` /
+`poolEgressQuestion` in `public/js/pool-core.js`), like the DRSC/1 sanitizer,
+so the Se/cure pane, the Se/rver screen and the broker's refusal all say the
+same thing. `normalizeApproval` maps rows written before this shipped
+(`state = 'active'`) onto `allowed`, so an existing consumer survived the
+deploy.
+
+### 8c. Testing it: run-as, the break-glass identity picker
+
+Mutual consent is *about* there being two different people, which made it
+untestable with a single break-glass credential. `src/run-as.js` +
+`POST /api/admin/run-as` (break-glass only) mint a normal session cookie for
+the identity a caller wants to ACT AS:
+
+| Spec | Resolves to |
+|---|---|
+| `admin` | the break-glass identity, unchanged |
+| `user` | the same principal at ordinary privilege ("operate as a regular user") |
+| `<email>` / `#<id>` | a real D1 account |
+| `test:<name>` | a SYNTHETIC persona `runas:<name>` — no D1 row, its own pool, its own consent decisions |
+
+It **adds no privilege**: it is honored only for a request that already
+presented the break-glass secrets, every form is equal or lesser privilege, an
+unrecognized spec resolves to nothing, and a run-as identity is not itself
+`isSecretAdmin`, so the header cannot be laundered through a session. An
+`X-Run-As` header covers API calls; the minted cookie is what lets a whole
+BROWSER context be a persona for an end-to-end run.
+
+`tests/e2e/llm-sharing.live.spec.js` uses it for the flow this document set
+out to build: four identities, one lending a model, a sealed workspace link
+carrying the pool token, both sides approving each other, the relay
+answering, the answers remembered, and a denied participant staying out.
 
 ---
 

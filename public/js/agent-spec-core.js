@@ -17,6 +17,12 @@
 // token carries. The four agents this project ships — research, secure,
 // under-construction, agent-builder — are the reference specs in sdk/AGENTS.json;
 // deriving a new agent is copying one, changing these fields, and validating.
+//
+// Those four are NOT the chat-mode dropdown (chat-mode.js CHAT_MODES: normal /
+// introspection / sdk / orchestrator / outrospection) and NOT the two tiers
+// (Se/cure, Se/rver — an agent declares which one via `platform`). An agent
+// PICKS a tier and a mode; it never adds either. docs/AGENT-PLATFORM.md §2.1
+// lays the three lists side by side.
 
 // ---- the closed control vocabulary -------------------------------------------
 //

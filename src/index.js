@@ -39,7 +39,7 @@
 
 import { handleAdminApi } from "./admin-api.js";
 import { handleAnswerAck, handleAnswerGet } from "./answers.js";
-import { clearSessionCookie, createSessionCookie, identify } from "./auth.js";
+import { clearSessionCookie, createSessionCookie, identify, resolveRunAs } from "./auth.js";
 import { handleChat } from "./chat.js";
 import { handleMcp } from "./mcp.js";
 import { handleGoogleCallback, handleGoogleStart } from "./google.js";
@@ -85,7 +85,9 @@ import {
 } from "./server-grants.js";
 import {
   handlePoolDashboard,
+  handlePoolEgress,
   handlePoolLlm,
+  handlePoolPeer,
   handlePoolPoll,
   handlePoolRegister,
   handlePoolResult,
@@ -100,6 +102,7 @@ import { recordServerError } from "./server-errors.js";
 import { isPublicAsset, serveAsset } from "./assets.js";
 import { canonicalRedirect } from "./canonical.js";
 import { applySecurityHeaders } from "./security-headers.js";
+import { runAsUid, runAsView } from "./run-as.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -402,8 +405,21 @@ async function route(request, env, url, log, ctx, requestId) {
   if (request.method === "POST" && url.pathname === "/api/pool/status") {
     return { response: await handlePoolStatus(request, env) };
   }
+  // MUTUAL CONSENT (docs/COMPUTE-SHARING.md §8b) — the consumer's half. These
+  // three are token-authorized like the rest of the public pool surface, but
+  // they ALSO resolve the caller's session when one is present: consent is
+  // about people, so the sharer must be shown a platform-verified identity
+  // rather than whatever the request claims to be. identify() here is
+  // read-only and optional — no session just means "token holder", which is
+  // exactly how a Se/cure workspace consumer is (and should be) presented.
+  if (url.pathname === "/api/pool/peer" && request.method === "POST") {
+    return { response: await handlePoolPeer(request, env, await identify(request, env)) };
+  }
+  if (url.pathname === "/api/pool/egress" && request.method === "POST") {
+    return { response: await handlePoolEgress(request, env, log, await identify(request, env)) };
+  }
   if (url.pathname.startsWith("/api/pool/llm")) {
-    return { response: await handlePoolLlm(request, env, log, url) };
+    return { response: await handlePoolLlm(request, env, log, url, await identify(request, env)) };
   }
 
   // Workspace knowledge — PUBLIC halves (src/knowledge.js): the import-agent
@@ -493,6 +509,21 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
   // ---- admin-only: the JSON API and the admin UI assets ------------------
   if (url.pathname.startsWith("/api/admin/")) {
     if (identity.role !== "admin") return jsonResponse({ error: "Admin access required." }, 403);
+    // RUN-AS (src/run-as.js): mint a session cookie for the identity the
+    // break-glass caller wants to ACT AS, so a browser context can be a
+    // distinct persona for a whole multi-user run. BREAK-GLASS ONLY — an
+    // ordinary admin account (and any already-run-as identity) is refused,
+    // which is what keeps the header from being laundered through a session.
+    if (url.pathname === "/api/admin/run-as" && request.method === "POST") {
+      if (!identity.isSecretAdmin) return jsonResponse({ error: "Break-glass credentials required." }, 403);
+      const body = /** @type {any} */ (await request.json().catch(() => ({})));
+      const spec = typeof body.as === "string" ? body.as : "";
+      const target = await resolveRunAs(env, spec);
+      if (!target) return jsonResponse({ error: "Unknown or invalid run-as target.", spec }, 400);
+      const cookie = await createSessionCookie(env, runAsUid(spec));
+      log.info("run_as.session", { spec, id: target.id, role: target.role });
+      return jsonResponse({ identity: runAsView(target), cookie }, 200, { "set-cookie": cookie });
+    }
     return handleAdminApi(request, env, url, log, identity);
   }
   if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) {
