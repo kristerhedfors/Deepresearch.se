@@ -160,6 +160,20 @@ called a SERVER token so nobody forgets it goes to a server somewhere. The legac
 `wsk1`/`prg1`/`prx1` families keep working unchanged; new grants should be
 Se/rver tokens.
 
+**WHAT THE TOKEN GUARANTEE IS FOR (owner directive, 2026-07-24).** Read the
+guarantee as a rule about **Se/cure**, not about the platform. Se/cure has no
+account and no server-side state, so a credential it borrows must be
+pass-through only — that is the whole reason the guarantee is worded as hard
+as it is. On **Se/rver** the server is INSIDE the trust boundary: agents
+collaborating and orchestrating through server-side storage is the intended
+direction of the platform, and such work does not need to argue itself past
+this rule, because the rule was never about it. Two things stay fixed
+regardless: a Se/rver token still READS nothing Se/rver stores, and it is
+still never a login. Building the collaboration surfaces means building
+Se/rver-side capabilities behind the identity gate — not widening the
+token's closed permission vocabulary, whose closure is what keeps it safe to
+lend outward (`docs/SERVER-TOKENS.md`).
+
 **THE ONE WRITE EXCEPTION — Se/cure feedback (owner directive, 2026-07-24):**
 there is exactly ONE place a Se/rver token touches Se/rver-stored data, and it
 is **WRITE-ONLY**. `POST /api/server-token/feedback` lets a token CREATE one

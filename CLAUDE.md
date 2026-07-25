@@ -163,8 +163,15 @@ loop: the **feature-maintenance** skill.
    Secure workspaces add no third exception; the consolidated **Se/rver
    TOKEN** (2026-07-16, one HS256 JWT with a `perms` set over the same two
    upstream services) unifies the grant families going forward and carries
-   THE SERVER-TOKEN GUARANTEE: upstream APIs ONLY — never any Se/rver data —
-   and NEVER a login (the admin surface rejects it everywhere, test-pinned).
+   THE SERVER-TOKEN GUARANTEE. That guarantee exists to protect **Se/cure**,
+   whose posture is pass-through only: a token READS nothing Se/rver stores
+   (no project, chat, history or account contents) and is NEVER a login (the
+   admin surface rejects it everywhere, test-pinned). Its one write is
+   Se/cure feedback (`POST /api/server-token/feedback` — write-only, no read
+   path). It is NOT a rule about the Se/rver tier: there the server is
+   INSIDE the trust boundary (owner directive, 2026-07-24), and agents
+   collaborating and orchestrating over server-side storage is the intended
+   direction, not an exception to be argued down.
    Full model, endpoints, token families, dated directives:
    `docs/PRIVACY-MODEL.md`.
 5. **Minimal dependencies; evidence-driven exceptions.** No build step, no
@@ -267,6 +274,16 @@ tooling `sdk/drpl.mjs`); the vision is `docs/STACKLESS-RESEARCH.md`. The
 standards deliberately LEAD the code (spec-first); the deployed workspace
 feature is their reference implementation.
 
+**Feature surfaces are examples, not architecture (owner directive,
+2026-07-24).** Orchestrator, Agent Studio, the games, the space archive,
+on-device inference, compute sharing — read these as **examples and
+pre-bundled agents** demonstrating what the platform carries, and build them
+on the two SDKs as far as possible rather than as bespoke subsystems. When
+adding a surface, ask which SDK should carry it FIRST. Several already have
+their Platform-SDK module; Orchestrator, on-device inference, compute
+sharing, workspace knowledge and quiz are still bespoke and owe one
+(`docs/ARCHITECTURE.md` §15).
+
 ## Skills
 
 Detailed guidance is split into on-demand skills under `.claude/skills/` —
@@ -336,8 +353,8 @@ Features & surfaces:
 
 - **execution-sandbox** — the in-browser Linux sandbox + bash-lite agent: COEP isolation, the fenced-block loop, file mounts.
 - **introspection** — introspection mode / `developer_mode`: the committed snapshot + rag artifacts, both tiers' wiring.
-- **outrospection** — introspection's mirror image, the outward feed at `/outrospect/`: the seven-lens registry, the offline scan + per-visit refresh that fill it, and the feedback STRATEGY lane.
-- **sdk-mode** — the green Agent Studio "lovable experience" mode: the chat-mode dropdown (Deep Research / Introspection / Agent Studio), the Platform-SDK (DistillSDK) build flow that distils an individual agent OR a whole platform, `/app/<slug>/` publishing, the MCP `sdk_*` tools.
+- **outrospection** — introspection's mirror image: the FIFTH chat mode (answers from the outward feed) and the feed page at `/outrospect/`: the seven-lens registry, the offline scan + per-visit refresh that fill it, and the feedback STRATEGY lane.
+- **sdk-mode** — the green Agent Studio "lovable experience" mode: the chat-mode dropdown (Deep Research / Introspection / Agent Studio / Orchestrator / Outrospection), the Platform-SDK (DistillSDK) build flow that distils an individual agent OR a whole platform, `/app/<slug>/` publishing, the MCP `sdk_*` tools.
 - **orchestrator-mode** — the violet sub-agent workflow mode: one JSON plan phase decomposes a request into a team of sub-agents (Deep Research / Introspection / custom) the Worker runs in parallel waves, the `workflow`/`agent_update` SSE events, the live workflow graph view.
 - **publish-app** — the admin/CLI bridge (`scripts/publish-app`, `PUT /api/build/:slug`) that publishes an already-built bundle (sandbox outbox, hand-assembled files) into sdk-mode's `/app/<slug>/` without a chat/tool loop.
 - **help-docs** — help mode, the documentation-first layer of introspection: the docs corpus/index, docs-first routing.

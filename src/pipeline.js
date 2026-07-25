@@ -104,6 +104,7 @@ import {
   validatePrompt,
 } from "./prompts.js";
 import { runOrchestration } from "./orchestrator.js";
+import { runOutrospection } from "./outrospect.js";
 import { anthropicConfigured, anthropicToolRun, isAnthropicModel } from "./anthropic.js";
 import { INTROSPECTION_TOOLS, runIntrospectionTool } from "./introspect-tools.js";
 import {
@@ -177,6 +178,8 @@ import {
  *   aux?: Record<string, AuxSourceState>,
  *   failoverModel?: string,
  *   feedbackCapture?: boolean,
+ *   outrospectionMode?: boolean,
+ *   outrospection?: { lens: string | null, items: number, live: boolean },
  *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string, images?: { name: string | null, data: string }[], useCase?: { id: number, tag: string } | null, scope?: import("../public/js/feedback-core.js").FeedbackScope },
  * }} PipelineState
  */
@@ -341,6 +344,18 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // fail-soft inside (a dead plan degrades to a single-agent workflow).
   if (/** @type {any} */ (state).orchestratorMode) {
     return runOrchestration(ctx);
+  }
+
+  // Outrospection mode — introspection's mirror image in the mode dropdown:
+  // the question is routed to a standing LENS by the deterministic EN+SV gate
+  // and answered from the outward feed of what everyone ELSE shipped
+  // (src/outrospect.js). Takes the whole answer phase like the modes above —
+  // the retrieval IS its triage, and no web search runs (the feed's own
+  // refresh is what fills it). Gated in chat.js on the developer_mode
+  // capability. Fail-soft inside: an empty or unavailable feed still answers,
+  // honestly, and never invents an item.
+  if (/** @type {any} */ (state).outrospectionMode) {
+    return runOutrospection(ctx);
   }
 
   // Web search (Exa) off is the knob's ONLY effect — NOT "no research". Depth

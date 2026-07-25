@@ -151,11 +151,53 @@ Unlike the other two scopes, `strategy` is never inferred from the
 conversation — the outward view declares it, because the surface is what makes
 the note strategic.
 
+## Outrospection mode — the feed as an answering surface
+
+*(Owner directive, 2026-07-25: the chat-mode lineup is Deep Research,
+Introspection, Agent Studio, Orchestrator and Outrospection.)*
+
+The feed is also the **fifth chat mode**, and the symmetry with introspection
+is the whole design. Introspection retrieves from a committed snapshot of this
+site's own source and answers from that. Outrospection retrieves from the feed
+of what everyone else shipped and answers from that. Same three steps —
+deterministic retrieval, one context block, one streamed answer — pointed the
+other way.
+
+What a send does:
+
+1. `lensMatch` routes the question to a standing lens, by its own words, in
+   English or Swedish alike. **No model picks anything** — invariant 1 holds
+   for the whole path, and there is no JSON planning phase at all, so nothing
+   runs on the fixed json model (invariant 3).
+2. `retrieveOutwardFeed` loads that lens's newest items from D1. A lens with
+   nothing filed yet falls back to the newest items across every lens, so an
+   empty corner of the feed never reads as an empty world.
+3. `outrospectionBlock` numbers them, and the answer cites them `[1]`, `[2]`
+   like any research answer. The prompt closes every answer with what the
+   material means for *this* project — the comparison is the point of looking
+   outward.
+
+**The no-fabrication rule is enforced here too.** With nothing to cite, the
+prompt says the feed holds nothing on this yet and forbids inventing an
+article, headline or link. That is the same rule the scan obeys, moved to the
+one place a model could otherwise be tempted to fill a gap.
+
+Fail-soft like everything else (invariant 2): no D1, a failing query, or an
+empty feed all still produce an answer. `chat_logs` rows carry
+`outrospection_mode: 1` and `outrospection: {lens, items, live}` — grep for
+`items: 0` to find questions the feed could not answer.
+
+The mode is gated on the same `developer_mode` capability as Agent Studio and
+Orchestrator, and wears the newsprint theme (`outro-mode`): a paper field, the
+masthead red as the accent, and the composer as a printed sheet rather than a
+metal pane.
+
 ## Surfaces
 
 | Where | What |
 |---|---|
 | `/outrospect/` | The view. Linked from the account panel's documentation list. |
+| Chat mode **Outrospection** | The feed as an answering surface (above); `outrospection_mode: true` on `/api/chat` |
 | `GET /api/outrospect/feed` | The live stream. `?lens=` `?since=` `?limit=` `?format=text` |
 | `POST /api/outrospect/refresh` | One lens, on the visitor's behalf. `{lens?, known?}` |
 | `GET /api/admin/outrospect` | Feed plus run log, `?format=text` for the agent loop |
@@ -166,8 +208,8 @@ the note strategic.
 
 | Path | Role |
 |---|---|
-| `public/js/outrospect-core.js` | The pure core: lens registry, item identity, delta, merge, text render |
-| `src/outrospect.js` | Worker façade + the three endpoints + D1 storage |
+| `public/js/outrospect-core.js` | The pure core: lens registry, item identity, delta, merge, text render, and the mode's `outrospectionBlock` / `outrospectionAnswerPrompt` |
+| `src/outrospect.js` | Worker façade + the three endpoints + D1 storage + the mode's `runOutrospection` / `retrieveOutwardFeed` |
 | `public/js/outrospect-view.js` | The page module: render, look, and the shortcut back |
 | `public/outrospect/index.html` | The page |
 | `public/outrospect/feed.json` | The committed artifact (empty until a scan runs) |

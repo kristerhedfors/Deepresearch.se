@@ -40,6 +40,12 @@
      violet where Normal folds to --check-blue. Applied to the real .check span
      under :root.orch-mode so the canvas ✓ and the swapped-in span agree. */
   --check-violet: #6d3fc4;
+  /* Outrospection's ✓ — the newsprint-recoloured waiting balloon
+     (public/js/mode-spinner.js NEWSPRINT_SPINNER.check must match) folds into
+     this masthead red where Normal folds to --check-blue. Applied to the real
+     .check span under :root.outro-mode so the canvas ✓ and the swapped-in span
+     agree. */
+  --check-red: #8f1d14;
   --user: #d8edff;
 }
 /* COMPLETE per-mode themes (owner directive, 2026-07-23). Each chat mode is a
@@ -88,6 +94,19 @@
   --muted: #5c4a80;
   --accent: #6d3fc4;      /* the baton violet — links, buttons, focus */
   --user: #e7ddf8;
+}
+/* Outrospection: newsprint. The mode reads like a front page, so its field is
+   paper and its accent is the masthead red — the same palette the /outrospect/
+   page already wears, brought into the app. */
+:root.outro-mode {
+  --bg: #e5ddcb;          /* newsprint — the outward field */
+  --panel: #fffdf8;
+  --panel-2: #f4f1ea;
+  --border: #d8d2c4;
+  --text: #16150f;        /* ink near-black */
+  --muted: #5d584c;
+  --accent: #8f1d14;      /* masthead red — links, buttons, focus */
+  --user: #f0ebdd;
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; overflow-x: hidden; }
@@ -450,6 +469,23 @@ body.term-fg .brand {
   pointer-events: none;
 }
 :root.orch-mode .orch-tag { display: block; }
+/* Outrospection's header tag — the outward feed mode (chat-mode.js toggles
+   `outro-mode`). Same treatment, in ink over newsprint rather than a light
+   tag over a saturated field: this theme's field is PAPER, so a pale tag
+   would vanish. */
+.outro-tag {
+  display: none;
+  align-self: center;
+  margin-top: -.1rem;
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .16em;
+  text-transform: lowercase;
+  color: #6d3228;
+  text-shadow: 0 1px 1px rgba(255, 253, 248, .8);
+  pointer-events: none;
+}
+:root.outro-mode .outro-tag { display: block; }
 .header-right, #composer { pointer-events: auto; }
 #chat {
   flex: 1;
@@ -641,6 +677,7 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
 /* Orchestrator: the ✓ is VIOLET — matching the violet waiting balloon's fold
    (mode-spinner.js ORCH_SPINNER), so the canvas ✓ and this span agree. */
 :root.orch-mode .step .check { color: var(--check-violet); }
+:root.outro-mode .step .check { color: var(--check-red); }
 /* A step settled by run-end (e.g. one still mid-flight when the stream
    dropped and the answer was recovered): finished, but muted — no green
    ✓, since its own result wasn't captured. */
@@ -999,6 +1036,22 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
     inset 0 14px 26px rgba(251, 248, 255, .4),
     inset 0 -10px 20px rgba(150, 120, 200, .16);
 }
+/* Outrospection: the composer becomes a NEWSPRINT pane — the outward feed
+   mode's cue (root carries `outro-mode`, chat-mode.js). Not metal like the
+   panes above: paper. A warm off-white crown, a faint tea-stained waist, and
+   a soft rather than specular shadow, so it reads as a printed sheet resting
+   on the field. */
+:root.outro-mode #composer {
+  background:
+    linear-gradient(180deg, rgba(255, 253, 248, .94) 0%, rgba(244, 241, 234, .93) 55%, rgba(250, 247, 240, .92) 100%),
+    rgba(250, 247, 240, .75);
+  border: 1px solid rgba(216, 210, 196, .95);
+  box-shadow:
+    0 6px 20px rgba(90, 80, 60, .18),
+    inset 0 1px 0 rgba(255, 255, 252, .95),
+    inset 0 14px 26px rgba(255, 253, 248, .5),
+    inset 0 -10px 20px rgba(180, 170, 145, .12);
+}
 /* The research depth/time slider (#budget + its #budgetval readout) is an
    OPTIONAL theme feature (mode-theme.js `depthSlider`; owner 2026-07-19):
    Introspection answers from the site's own source and SDK builds a flavour —
@@ -1008,9 +1061,10 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
    the lone web-search toggle sit at the row's end where the slider left it. */
 :root.dev-mode #budget, :root.dev-mode #budgetval,
 :root.sdk-mode #budget, :root.sdk-mode #budgetval,
-:root.orch-mode #budget, :root.orch-mode #budgetval { display: none; }
+:root.orch-mode #budget, :root.orch-mode #budgetval,
+:root.outro-mode #budget, :root.outro-mode #budgetval { display: none; }
 :root.dev-mode #search-row, :root.sdk-mode #search-row,
-:root.orch-mode #search-row { justify-content: space-between; }
+:root.orch-mode #search-row, :root.outro-mode #search-row { justify-content: space-between; }
 
 /* The two mode-specific composer-row chips filling the space the slider left
    (owner directive 2026-07-20): Introspection's answer-route chip and SDK's

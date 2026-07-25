@@ -45,6 +45,19 @@ export const ORCH_SPINNER = {
   check: "#6d3fc4",
 };
 
+/** Outrospection's balloon palette: newsprint crown, warm grey alt, masthead-red
+ * border, folding into the red ✓. `check` MUST match app.css --check-red (the
+ * introspection-recolour pattern). */
+export const NEWSPRINT_SPINNER = {
+  palette: {
+    col: "#f0ebdd",
+    alt: "#cfc6b0",
+    border: "#8f1d14",
+    fill: { a: "#e6dfcb", b: "#c2b69c" },
+  },
+  check: "#8f1d14",
+};
+
 /**
  * Mount the current mode's waiting spinner on a loading slot. Same signature
  * and return contract as the underlying mounts; fail-soft (a bad mode or a
@@ -67,12 +80,14 @@ export function mountModeSpinner(host, opts = {}) {
     /* registry unavailable — balloon is the safe default */
   }
   if (kind === "plant") return mountPlantSpinner(host, opts);
-  // Introspection wears the titanium balloon, Orchestrator the violet one;
+  // Introspection wears the titanium balloon, Orchestrator the violet one,
+  // Outrospection the newsprint one;
   // every other balloon mode keeps the tier's blue-and-gold (caller opts win
   // if they ever pass a palette/check).
   const balloonOpts =
     mode === "introspection" ? { ...TITANIUM_SPINNER, ...opts }
     : mode === "orchestrator" ? { ...ORCH_SPINNER, ...opts }
+    : mode === "outrospection" ? { ...NEWSPRINT_SPINNER, ...opts }
     : opts;
   return mountBalloonSpinner(host, balloonOpts);
 }

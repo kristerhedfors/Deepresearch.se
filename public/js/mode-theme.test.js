@@ -58,6 +58,8 @@ test("depth slider is an optional theme feature: off for Introspection + SDK + O
   assert.equal(MODE_THEMES.introspection.depthSlider, false);
   assert.equal(MODE_THEMES.sdk.depthSlider, false);
   assert.equal(MODE_THEMES.orchestrator.depthSlider, false);
+  // Outrospection answers from the outward feed, not from web research.
+  assert.equal(MODE_THEMES.outrospection.depthSlider, false);
   assert.equal(showsDepthSlider("nope"), true, "unknown → Normal (shows it)");
 });
 

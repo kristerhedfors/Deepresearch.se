@@ -602,3 +602,107 @@ export function formatFeedText(items, { title = "OUTROSPECTION FEED (newest firs
   lines.push("", `generated ${new Date(now).toISOString()}`);
   return lines.join("\n") + "\n";
 }
+
+// ---------------------------------------------------------------------------
+// OUTROSPECTION MODE — answering a question from the outward feed
+//
+// The fifth chat mode (owner directive, 2026-07-25) is this feed turned into
+// an answering surface, and it is introspection's mirror in mechanism as well
+// as in name. Introspection retrieves from a committed snapshot of our OWN
+// source and answers from that; outrospection retrieves from the feed of what
+// everyone ELSE shipped and answers from that. Same shape — deterministic
+// retrieval, one context block, one streamed answer — pointed outward.
+//
+// No model picks what to retrieve: `lensMatch` is the same deterministic
+// EN+SV gate the strategy lane uses, so a question routes to a standing lens
+// by its own words or to nothing at all. That keeps invariant 1 intact (no
+// function calling anywhere in the path) and keeps the mode honest — it can
+// only answer with articles the feed actually holds.
+// ---------------------------------------------------------------------------
+
+/** Caps for the answer context block — a block of headlines, never documents. */
+export const OUTROSPECT_BLOCK_CAPS = { items: 24, teaser: 320, chars: 12000 };
+
+/**
+ * Build the numbered context block an outrospection answer cites from. Items
+ * arrive newest-first (mergeFeed's order) and are numbered in that order, so
+ * "[1]" is always the most recent thing the feed knows.
+ * @param {FeedItem[]} items
+ * @param {{ limit?: number, teaser?: number, chars?: number }} [opts]
+ * @returns {string} "" when there is nothing to cite
+ */
+export function outrospectionBlock(items, opts = {}) {
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) return "";
+  const limit = Math.max(1, Math.min(OUTROSPECT_BLOCK_CAPS.items, opts.limit ?? OUTROSPECT_BLOCK_CAPS.items));
+  const teaserCap = Math.max(40, opts.teaser ?? OUTROSPECT_BLOCK_CAPS.teaser);
+  const charCap = Math.max(500, opts.chars ?? OUTROSPECT_BLOCK_CAPS.chars);
+  const lines = [];
+  let used = 0;
+  let n = 0;
+  for (const i of list.slice(0, limit)) {
+    const lens = lensById(i.lens);
+    const when = Number.isFinite(i.first_seen) ? new Date(i.first_seen).toISOString().slice(0, 10) : "";
+    const entry = [
+      `[${n + 1}] ${i.title}`,
+      `    source: ${i.source || itemSource(i.url)}${when ? ` · first seen ${when}` : ""}${i.fresh ? " · NEW" : ""}`,
+      `    lens: ${lens ? lens.title : i.lens}`,
+      `    url: ${i.url}`,
+      i.teaser ? `    ${i.teaser.slice(0, teaserCap)}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    if (used + entry.length > charCap) break;
+    lines.push(entry);
+    used += entry.length;
+    n++;
+  }
+  if (!n) return "";
+  return `OUTWARD FEED — what other people shipped (${n} item${n === 1 ? "" : "s"}, newest first):\n\n${lines.join("\n\n")}`;
+}
+
+/**
+ * The outrospection answer prompt. Mirrors the introspection prompt's contract
+ * — answer from the retrieved material, say so plainly when it does not cover
+ * the question — but the material is other people's work, so the standing
+ * instruction is comparative: what does this mean for THIS project.
+ *
+ * Swedish parity (invariant 6): the Swedish leg is a full instruction, not a
+ * translated tail, exactly as the orchestrator plan prompt does it.
+ * @param {{ lens?: Lens | null, hasItems?: boolean, swedish?: boolean }} [opts]
+ * @returns {string}
+ */
+export function outrospectionAnswerPrompt(opts = {}) {
+  const { lens = null, hasItems = false, swedish = false } = opts;
+  const question = lens ? (swedish ? lens.questionSv : lens.question) : "";
+  const lensLine =
+    lens ?
+      swedish ?
+        `\n\nFrågan lyser genom linsen "${swedish ? lens.titleSv : lens.title}", vars stående fråga är: ${question}`
+      : `\n\nThe question falls under the "${lens.title}" lens, whose standing question is: ${question}`
+    : "";
+  const empty =
+    swedish ?
+      "Flödet innehåller inget om detta ännu. Säg det rakt ut, gissa inte, och hitta ALDRIG på artiklar, rubriker eller länkar. Berätta vilka linser som finns och föreslå att användaren uppdaterar flödet på /outrospect/."
+    : "The feed holds nothing on this yet. Say so plainly, do not guess, and NEVER invent articles, headlines or links. Name the lenses that exist and suggest refreshing the feed at /outrospect/.";
+  const grounded =
+    swedish ?
+      "Svara ENBART utifrån flödesposterna ovan. Citera dem som [1], [2] … precis som forskningssvaren gör. Om posterna inte täcker frågan, säg vad de faktiskt visar och vad som saknas — hitta aldrig på en post."
+    : "Answer ONLY from the feed items above. Cite them as [1], [2] … exactly as the research answers do. If the items do not cover the question, say what they DO show and what is missing — never invent an item.";
+  const head =
+    swedish ?
+      "Du är utrospektionsläget för DeepResearch.se: introspektionens spegelbild. Introspektion svarar utifrån den här sajtens egen källkod; du svarar utifrån vad ALLA ANDRA bygger."
+    : "You are DeepResearch.se's outrospection mode: introspection's mirror image. Introspection answers from this site's own source; you answer from what EVERYONE ELSE is building.";
+  const compare =
+    swedish ?
+      "Avsluta alltid med vad det betyder för DET HÄR projektet — bekräftar det ett antagande, motsäger det ett, eller pekar det på något vi borde ompröva? Var konkret och kort; inga artighetsfraser."
+    : "Always close with what it means for THIS project — does it confirm an assumption, contradict one, or point at something worth reconsidering? Be concrete and short; no pleasantries.";
+  // Language parity follows the orchestrator plan-prompt convention: the
+  // default instruction is bilingual, so a Swedish question gets a Swedish
+  // answer without this module having to own a second language detector.
+  const language =
+    swedish ?
+      "Svara på svenska."
+    : "Answer in the language the user wrote in (svara på svenska om användaren skriver svenska).";
+  return `${head}${lensLine}\n\n${hasItems ? grounded : empty}\n\n${compare}\n\n${language}`;
+}
