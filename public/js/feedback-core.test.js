@@ -19,6 +19,11 @@ import {
   isStrategyPage,
   scopeOfPage,
   strategyPageTag,
+  DOC_PAGE_SUFFIX,
+  FEEDBACK_ACKS_DOC,
+  docPageTag,
+  docPathOfPage,
+  isDocPage,
 } from "./feedback-core.js";
 import { bashIntent } from "./bash-core.js";
 
@@ -265,14 +270,15 @@ test("strategyPageTag sanitizes a hostile lens value into the page column", () =
   assert.ok(tag.length < 80);
 });
 
-test("feedbackPageTag routes all three scopes, and session stays bare", () => {
+test("feedbackPageTag routes all four scopes, and session stays bare", () => {
   assert.equal(feedbackPageTag("chat", "session"), "chat");
   assert.equal(feedbackPageTag("chat", "standalone"), "chat/standalone");
   assert.equal(feedbackPageTag("chat", "strategy"), "chat/strategy");
+  assert.equal(feedbackPageTag("chat", "doc"), "chat/doc");
 });
 
 test("scopeOfPage is the inverse of feedbackPageTag", () => {
-  for (const scope of ["session", "standalone", "strategy"]) {
+  for (const scope of ["session", "standalone", "strategy", "doc"]) {
     assert.equal(scopeOfPage(feedbackPageTag("chat", scope)), scope);
   }
   assert.equal(scopeOfPage(null), "session");
@@ -302,4 +308,69 @@ test("cannedFeedbackAck: the strategy scope picks the strategy set, EN and SV", 
   assert.equal(cannedFeedbackAck(sv, { scope: "strategy" }), ack);
   // An unknown scope must never crash the ack; it falls back to the session set.
   assert.equal(FEEDBACK_ACKS.en.includes(cannedFeedbackAck(en, { scope: "nonsense" })), true);
+});
+
+// ---------------------------------------------------------------------------
+// The DOC lane (owner directive, 2026-07-25): a passage comment written in the
+// documentation reader's comment mode — an instruction about the documented
+// system, doc and implementation together, not a copy-edit of the prose.
+// ---------------------------------------------------------------------------
+
+test("docPageTag carries the surface, the document path, and the doc marker", () => {
+  const tag = docPageTag("docs/ENCRYPTION.md");
+  assert.equal(tag, "docs:docs/ENCRYPTION.md" + DOC_PAGE_SUFFIX);
+  assert.equal(isDocPage(tag), true);
+  assert.equal(isStandalonePage(tag), false, "the lanes must not collide");
+  assert.equal(isStrategyPage(tag), false, "the lanes must not collide");
+});
+
+test("docPathOfPage recovers the document the comment governs", () => {
+  assert.equal(docPathOfPage(docPageTag("docs/ARCHITECTURE.md")), "docs/ARCHITECTURE.md");
+  assert.equal(docPathOfPage(docPageTag("README.md")), "README.md");
+  // Not a doc tag, or a doc tag with no path — null, never a bogus path.
+  assert.equal(docPathOfPage("chat"), null);
+  assert.equal(docPathOfPage("outrospect:browser-models/strategy"), null);
+  assert.equal(docPathOfPage(docPageTag("")), null);
+  assert.equal(docPathOfPage(null), null);
+});
+
+test("docPageTag sanitizes a hostile path into the page column", () => {
+  // The path reaches the server from the client, so it is untrusted input to a
+  // column the loop reads back. Nothing may smuggle the tag grammar.
+  const tag = docPageTag("docs/x.md'; DROP TABLE feedback; --/doc");
+  assert.match(tag, /^docs:[A-Za-z0-9._/-]*\/doc$/);
+  assert.ok(tag.length < 200, "must fit FEEDBACK_CAPS.page");
+  // A leading slash would make the path read as absolute in the loop's output.
+  assert.equal(docPathOfPage(docPageTag("/docs/TESTING.md")), "docs/TESTING.md");
+});
+
+test("docPageTag: an over-long path is capped, and still round-trips as a doc tag", () => {
+  const tag = docPageTag("docs/" + "a".repeat(400) + ".md");
+  assert.equal(isDocPage(tag), true);
+  assert.ok(tag.length <= 200);
+  assert.ok((docPathOfPage(tag) || "").length <= 150);
+});
+
+test("FEEDBACK_ACKS_DOC: EN/SV parity, and it says the code is in scope too", () => {
+  assert.equal(FEEDBACK_ACKS_DOC.en.length, FEEDBACK_ACKS_DOC.sv.length);
+  assert.equal(FEEDBACK_ACKS_DOC.en.length, FEEDBACK_ACKS.en.length);
+  for (const v of FEEDBACK_ACKS_DOC.en) {
+    assert.match(v, /Feedback.*account panel/);
+    assert.match(v, /implementation|code|documented behaviour/i);
+    assert.doesNotMatch(v, /this conversation|this chat attached/i);
+  }
+  for (const v of FEEDBACK_ACKS_DOC.sv) {
+    assert.match(v, /Feedback.*kontopanel/);
+    assert.match(v, /implementation|koden|dokumenterade/i);
+    assert.doesNotMatch(v, /den här konversationen|chatten bifogad/i);
+  }
+});
+
+test("cannedFeedbackAck: the doc scope picks the doc set, EN and SV", () => {
+  const en = "the key hierarchy paragraph is wrong — it is per device now";
+  assert.equal(FEEDBACK_ACKS_DOC.en.includes(cannedFeedbackAck(en, { scope: "doc" })), true);
+  const sv = "nyckelhierarkin stämmer inte, den är per enhet nu och koden borde visa det";
+  const ack = cannedFeedbackAck(sv, { scope: "doc" });
+  assert.equal(FEEDBACK_ACKS_DOC.sv.includes(ack), true);
+  assert.equal(cannedFeedbackAck(sv, { scope: "doc" }), ack, "deterministic");
 });

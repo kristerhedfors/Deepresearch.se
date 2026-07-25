@@ -43,6 +43,70 @@ All of them are discoverable in one call — `scripts/boards` /
 
 ---
 
+## 1a. Which pipeline takes an instruction (there is only one)
+
+The boards above are **curated lists**: an agent produces the items, and the
+admin orders them. They are not where a human writes a new instruction. For
+that there is exactly **one** pipeline — the **feedback pipeline**
+(`src/feedback.js`, the **feedback-loop** skill). Anything a person writes to
+the project lands there, from any surface, as an entry with a dialogue thread
+and a status.
+
+What differs per surface is the **scope tag**, carried in the entry's `page`
+column (`public/js/feedback-core.js` — `feedbackPageTag` and its inverse
+`scopeOfPage`) and stated outright in `scripts/feedback`'s text output. The
+scope tells the loop what kind of note it has, because the wrong first move
+differs for each:
+
+| Scope | Written where | What it is | Wrong first move |
+|---|---|---|---|
+| `session` | mid-chat, `feedback …` | a report about the answer above it | — |
+| `standalone` | first message of a chat | a generic suggestion, no session behind it | "reproduce the complaint" |
+| `strategy` | the outrospection feed (`/outrospect/`) | direction: where the project should go | triaging it as a defect |
+| `doc` | the documentation reader (`/docs/`) | a passage comment: doc **and** code | rewording the paragraph |
+
+So marking a passage does **not** open a second pipeline. The comment is a
+feedback entry tagged `doc`, carrying the document path so the loop knows which
+slice of the implementation it governs.
+
+**Why the doc scope exists.** This repo keeps documentation and implementation
+describing the same system on purpose — `docs/CODE-LAYOUT.md` mirrors `src/`
+row by row, the **docs-drift-validation** loop exists to catch the two
+disagreeing. That correspondence is why a comment on a document can be acted
+on as code: a clarification of how the key hierarchy works applies to
+`docs/ENCRYPTION.md` *and* to the module implementing it; an architectural
+remark on `docs/ARCHITECTURE.md` is a request to move the architecture. A
+module-level document binds tightly — the named module has to match. A
+high-level one binds as **direction**, weighed rather than executed literally.
+Either way the loop reconciles both sides in one change, or says explicitly why
+the code was right and the document was wrong.
+
+```mermaid
+flowchart LR
+    subgraph write["Admin, reading /docs"]
+      SEL["mark a passage<br/>write a comment"]
+    end
+    subgraph store["The one pipeline"]
+      FB["feedback entry<br/>page = docs:&lt;path&gt;/doc<br/>quote + section + note"]
+    end
+    subgraph act["Claude Code loop"]
+      DO["reconcile the DOC<br/>and the CODE it describes"]
+      REPLY["reply on the thread"]
+    end
+    SEL --> FB --> DO --> REPLY
+    REPLY -.->|"status + reply shown<br/>beside the passage"| SEL
+    DO -.->|"the passage is rewritten →<br/>the anchor goes stale, and the<br/>card says so"| SEL
+```
+
+The answer comes back where the comment was made: each card shows the entry's
+status (what the agent did), the thread (what it said), and whether the quoted
+text still exists in the document (whether the passage was replaced).
+Anchoring is by **quoting** the passage, not by ids written into the Markdown —
+the doc pipelines rewrite these files, and an id-bearing marker would not
+survive. Format and anchoring: `public/js/docs-comments-core.js`.
+
+---
+
 ## 2. The generic board ⇄ loop cycle
 
 Every priority board is the same machine over a different catalog. The cycle:

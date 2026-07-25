@@ -11,7 +11,7 @@ import { isAnthropicModel, isOpenAiModel, listChatModels, providerName } from ".
 
 describe("providers routing", () => {
   test("providerName follows the model-id namespace", () => {
-    assert.equal(providerName("claude-opus-4-8"), "Anthropic");
+    assert.equal(providerName("claude-opus-5"), "Anthropic");
     assert.equal(providerName("claude-haiku-4-5"), "Anthropic");
     assert.equal(providerName("gpt-5.6-sol"), "OpenAI");
     assert.equal(providerName("gpt-5.4-mini"), "OpenAI");

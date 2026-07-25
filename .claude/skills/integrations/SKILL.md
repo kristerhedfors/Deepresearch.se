@@ -72,7 +72,7 @@ skill; per-model tuning and the first eval battery: the
 - **Endpoint:** `POST https://api.anthropic.com/v1/messages` (raw fetch, no
   SDK — no build step / no runtime deps). `ANTHROPIC_URL` is the test-only
   mock override, mirroring `BERGET_URL`.
-- **Models (static catalog, a product choice):** `claude-opus-4-8`,
+- **Models (static catalog, a product choice):** `claude-opus-5`,
   `claude-sonnet-5`, `claude-haiku-4-5` — all vision-capable, priced in
   the catalog as EUR-per-token (converted from USD at the fixed rate
   documented in anthropic.js) so quota cost accounting works unchanged.
@@ -90,8 +90,9 @@ skill; per-model tuning and the first eval battery: the
   unchanged. Stop reasons map end_turn→stop, max_tokens→length.
 - **Thinking:** Sonnet 5 runs adaptive thinking when the param is omitted —
   explicitly disabled in the payload builder (hidden token spend inside
-  max_tokens + a silent pre-answer pause vs the 60s idle guard). Opus 4.8 /
-  Haiku 4.5 default to no thinking (param omitted). Revisit with a bench A/B.
+  max_tokens + a silent pre-answer pause vs the 60s idle guard). Opus 5 /
+  Haiku 4.5 default to no thinking (param omitted, unevidenced for Opus 5 —
+  see model-catalog-refresh). Revisit with a bench A/B.
 - **Privacy note:** like Berget, Anthropic is an LLM provider — the
   conversation itself goes there when a Claude model is selected. This is
   the user's explicit model choice in the dropdown, not an enrichment.

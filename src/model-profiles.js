@@ -122,10 +122,11 @@ const OVERRIDES = {
     maxImages: 2,
   },
 
-  // The Anthropic trio (claude-opus-4-8 / claude-sonnet-5 / claude-haiku-4-5,
-  // added 2026-07-09) deliberately has NO entries here: new models start at
-  // DEFAULT until a reproduced finding says otherwise (the rule at the top of
-  // this file). Their one model-specific adaptation so far is WIRE-level, not
+  // The Anthropic trio (claude-opus-5 / claude-sonnet-5 / claude-haiku-4-5 —
+  // Opus bumped 4.8 -> 5 on 2026-07-25, trio first added 2026-07-09)
+  // deliberately has NO entries here: new models start at DEFAULT until a
+  // reproduced finding says otherwise (the rule at the top of this file).
+  // Their one model-specific adaptation so far is WIRE-level, not
   // behavioral, so it lives in the provider client instead: Sonnet 5's
   // adaptive-by-default thinking is explicitly disabled in src/anthropic.js.
   // First-battery run order + which knob belongs where: the

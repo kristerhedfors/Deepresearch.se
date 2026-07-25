@@ -39,7 +39,7 @@ const messageDelta = (stop = "end_turn", output = 7) => ({
 
 describe("isAnthropicModel", () => {
   test("claude-* ids route to Anthropic; Berget paths and junk do not", () => {
-    assert.equal(isAnthropicModel("claude-opus-4-8"), true);
+    assert.equal(isAnthropicModel("claude-opus-5"), true);
     assert.equal(isAnthropicModel("claude-sonnet-5"), true);
     assert.equal(isAnthropicModel("mistralai/Mistral-Small-3.2-24B-Instruct-2506"), false);
     assert.equal(isAnthropicModel(undefined), false);
@@ -54,7 +54,7 @@ describe("anthropicModels", () => {
 
   test("with the key: opus/sonnet/haiku in ModelCatalogEntry shape, EUR-priced, vision, up", () => {
     const models = anthropicModels({ ANTHROPIC_API_KEY: "k" });
-    assert.deepEqual(models.map((m) => m.id), ["claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5"]);
+    assert.deepEqual(models.map((m) => m.id), ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"]);
     for (const m of models) {
       assert.equal(m.up, true);
       assert.equal(m.vision, true);
@@ -77,9 +77,9 @@ describe("toAnthropicPayload", () => {
         { role: "assistant", content: "hello" },
         { role: "user", content: "again" },
       ],
-      { model: "claude-opus-4-8" },
+      { model: "claude-opus-5" },
     );
-    assert.equal(p.model, "claude-opus-4-8");
+    assert.equal(p.model, "claude-opus-5");
     assert.equal(p.system, "You are helpful.");
     assert.deepEqual(
       p.messages.map((m) => m.role),
@@ -112,7 +112,7 @@ describe("toAnthropicPayload", () => {
           ],
         },
       ],
-      { model: "claude-opus-4-8" },
+      { model: "claude-opus-5" },
     );
     assert.deepEqual(p.messages[0].content, [
       { type: "text", text: "what is this?" },
@@ -126,7 +126,7 @@ describe("toAnthropicPayload", () => {
     // first delta, both bad for the budget planner and the idle guard.
     const sonnet = toAnthropicPayload([{ role: "user", content: "q" }], { model: "claude-sonnet-5" });
     assert.deepEqual(sonnet.thinking, { type: "disabled" });
-    const opus = toAnthropicPayload([{ role: "user", content: "q" }], { model: "claude-opus-4-8" });
+    const opus = toAnthropicPayload([{ role: "user", content: "q" }], { model: "claude-opus-5" });
     assert.equal("thinking" in opus, false);
     const haiku = toAnthropicPayload([{ role: "user", content: "q" }], { model: "claude-haiku-4-5" });
     assert.equal("thinking" in haiku, false);
@@ -134,7 +134,7 @@ describe("toAnthropicPayload", () => {
 
   test("stream flag and max_tokens ride through", () => {
     const p = toAnthropicPayload([{ role: "user", content: "q" }], {
-      model: "claude-opus-4-8",
+      model: "claude-opus-5",
       stream: true,
       maxTokens: 900,
     });

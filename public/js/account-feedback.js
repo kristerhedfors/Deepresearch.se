@@ -127,9 +127,14 @@ function renderMsgImages(entryId, images) {
 // text is escaped — same posture as the message center.
 function renderFeedbackEntry(e) {
   const [statusLabel, statusClass] = FB_STATUS[e.status] || [e.status, "new"];
-  const about = e.question
-    ? `<div class="muted fb-about">About: “${escapeHtml(e.question.length > 120 ? e.question.slice(0, 120) + "…" : e.question)}”</div>`
-    : "";
+  // A doc comment was written against a passage in the documentation reader,
+  // not about a chat answer — say which document, and link back to it so the
+  // thread can be read beside the text it comments on.
+  const about = e.doc
+    ? `<div class="muted fb-about">Comment on <a href="/docs/#${encodeURIComponent(e.doc_path || "")}">${escapeHtml(e.doc_path || "a document")}</a></div>`
+    : e.question
+      ? `<div class="muted fb-about">About: “${escapeHtml(e.question.length > 120 ? e.question.slice(0, 120) + "…" : e.question)}”</div>`
+      : "";
   const thread = [
     { author: "user", body: e.comment, created_at: e.created_at, images: e.images || [] },
     ...e.messages,
