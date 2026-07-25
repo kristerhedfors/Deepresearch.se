@@ -14,6 +14,11 @@ import {
   feedbackScope,
   feedbackScopeOfPrior,
   isStandalonePage,
+  FEEDBACK_ACKS_STRATEGY,
+  STRATEGY_PAGE_SUFFIX,
+  isStrategyPage,
+  scopeOfPage,
+  strategyPageTag,
 } from "./feedback-core.js";
 import { bashIntent } from "./bash-core.js";
 
@@ -231,4 +236,70 @@ test("cannedFeedbackAck: scope picks the variant set; session stays the default"
     cannedFeedbackAck("feedback #UC-34 the map was cut off", { useCaseTag: "#UC-34", scope: "standalone" }),
     /recorded against use case #UC-34\.$/,
   );
+});
+
+// ---------------------------------------------------------------------------
+// The STRATEGY lane (owner directive, 2026-07-24): a note written from the
+// outrospection view is an operative/strategic idea filed against a lens —
+// direction for the project, not a defect to reproduce.
+// ---------------------------------------------------------------------------
+
+test("strategyPageTag carries the surface, the lens, and the strategy marker", () => {
+  const tag = strategyPageTag("browser-models");
+  assert.equal(tag, "outrospect:browser-models" + STRATEGY_PAGE_SUFFIX);
+  assert.equal(isStrategyPage(tag), true);
+  assert.equal(isStandalonePage(tag), false, "the two lanes must not collide");
+});
+
+test("strategyPageTag without a lens still marks the lane", () => {
+  const tag = strategyPageTag(null);
+  assert.equal(tag, "outrospect" + STRATEGY_PAGE_SUFFIX);
+  assert.equal(isStrategyPage(tag), true);
+});
+
+test("strategyPageTag sanitizes a hostile lens value into the page column", () => {
+  // The lens reaches the server from the client, so it is untrusted input to a
+  // column the loop reads back — it must never carry punctuation or length.
+  const tag = strategyPageTag("../../etc/passwd; DROP TABLE feedback");
+  assert.match(tag, /^outrospect:[a-zA-Z0-9-]*\/strategy$/);
+  assert.ok(tag.length < 80);
+});
+
+test("feedbackPageTag routes all three scopes, and session stays bare", () => {
+  assert.equal(feedbackPageTag("chat", "session"), "chat");
+  assert.equal(feedbackPageTag("chat", "standalone"), "chat/standalone");
+  assert.equal(feedbackPageTag("chat", "strategy"), "chat/strategy");
+});
+
+test("scopeOfPage is the inverse of feedbackPageTag", () => {
+  for (const scope of ["session", "standalone", "strategy"]) {
+    assert.equal(scopeOfPage(feedbackPageTag("chat", scope)), scope);
+  }
+  assert.equal(scopeOfPage(null), "session");
+  assert.equal(scopeOfPage("se/cure"), "session");
+});
+
+test("FEEDBACK_ACKS_STRATEGY: EN/SV parity, and no promise of a conversation", () => {
+  assert.equal(FEEDBACK_ACKS_STRATEGY.en.length, FEEDBACK_ACKS_STRATEGY.sv.length);
+  assert.equal(FEEDBACK_ACKS_STRATEGY.en.length, FEEDBACK_ACKS.en.length);
+  for (const v of FEEDBACK_ACKS_STRATEGY.en) {
+    assert.match(v, /Feedback.*account panel/);
+    assert.doesNotMatch(v, /this conversation|this chat attached/i);
+  }
+  for (const v of FEEDBACK_ACKS_STRATEGY.sv) {
+    assert.match(v, /Feedback.*kontopanel/);
+    assert.doesNotMatch(v, /den här konversationen|chatten bifogad/i);
+  }
+});
+
+test("cannedFeedbackAck: the strategy scope picks the strategy set, EN and SV", () => {
+  const en = "feedback: this library should be our one dependency";
+  assert.equal(FEEDBACK_ACKS_STRATEGY.en.includes(cannedFeedbackAck(en, { scope: "strategy" })), true);
+  const sv = "synpunkt: det här biblioteket borde bli vårt enda beroende";
+  const ack = cannedFeedbackAck(sv, { scope: "strategy" });
+  assert.equal(FEEDBACK_ACKS_STRATEGY.sv.includes(ack), true);
+  // Deterministic — same message + scope, same reply.
+  assert.equal(cannedFeedbackAck(sv, { scope: "strategy" }), ack);
+  // An unknown scope must never crash the ack; it falls back to the session set.
+  assert.equal(FEEDBACK_ACKS.en.includes(cannedFeedbackAck(en, { scope: "nonsense" })), true);
 });
