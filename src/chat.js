@@ -119,6 +119,9 @@ import { getDb } from "./db.js";
  *   failoverModel?: string,
  *   shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }>,
  *   sandboxEnabled?: boolean,
+ *   answerPhase?: string | null,
+ *   agentId?: string | null,
+ *   promptSet?: string | null,
  *   sdkMode?: boolean,
  *   orchestratorMode?: boolean,
  *   orchestration?: { agents: number, waves: number, failed: number, searches: number },
@@ -816,7 +819,7 @@ export function resolveJsonModel(catalog, userModel) {
  * @param {string} jsonModel
  * @param {boolean} webSearch
  * @param {number} budgetS
- * @param {Partial<EnrichmentOptions> & { vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, outrospectionMode?: boolean, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
+ * @param {Partial<EnrichmentOptions> & { vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, outrospectionMode?: boolean, answerPhase?: string | null, agentId?: string | null, promptSet?: string | null, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
  * @returns {ChatRequestState}
  */
 function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {

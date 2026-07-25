@@ -264,6 +264,11 @@ Four invariants stop being prose and become validation rules:
 | **Inv. 4** — the privacy split | a `platform: "client"` spec may not select any `serverOnly` member; the platform type IS the boundary |
 | **Inv. 6** — language parity | a declared gate must carry `langs` including both `en` and `sv` |
 
+Each rule has a passing *and* a failing case in
+[`agent-capability.test.js`](../public/js/agent-capability.test.js), and every
+declared bound is pinned against the constant that enforces it — so a spec
+describing behaviour the code does not have fails `npm test`.
+
 **Prompt set and answer phase are independent choices.** A set is a named group
 of system prompts covering some of six closed ROLES (`plan`, `worker`, `answer`,
 `answer-tools`, `answer-direct`, `answer-search-off`);
@@ -273,11 +278,6 @@ the research phase in the source-research voice — a combination that was not
 expressible at any price before — while a set that cannot fill its phase's roles
 is rejected at validation. The binding is pinned by identity against
 `src/prompts.js`, so a re-pointed prompt fails `npm test` rather than a request.
-
-Each rule has a passing *and* a failing case in
-[`agent-capability.test.js`](../public/js/agent-capability.test.js), and every
-declared bound is pinned against the constant that enforces it — so a spec
-describing behaviour the code does not have fails `npm test`.
 
 ## 4. The routing table — how a request finds its agent
 

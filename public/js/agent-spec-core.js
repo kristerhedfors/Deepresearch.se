@@ -246,8 +246,28 @@ export const CAPABILITY_REQUIREMENTS = {
   "sandbox": { label: "Sandbox", desc: "the bash-lite in-browser Linux sandbox knob" },
 };
 
+/**
+ * One resolved capability. Declared explicitly rather than inferred from
+ * BASE_CAPABILITY, whose empty arrays and null `team` would otherwise infer as
+ * `never[]`/`null` and make every consumer a type error.
+ * @typedef {Object} AgentCapability
+ * @property {string} answerPhase
+ * @property {string|null} prompts
+ * @property {string[]} tools
+ * @property {string} toolFallback
+ * @property {string[]} context
+ * @property {{ web: boolean, auxSources: boolean, maxQueries: number|null }} search
+ * @property {{ planModel: string, answerModel: string }} routing
+ * @property {Array<{ id: string, langs?: string[] }>} gates
+ * @property {Record<string, number>} bounds
+ * @property {string[]} emits
+ * @property {string[]} requires
+ * @property {{ kinds?: string[], allowCustom?: boolean, maxAgents?: number, maxWaves?: number, maxQueriesPerAgent?: number }|null} team
+ */
+
 /** What an agent inherits when it declares no capability block at all: the
- * plain deep-research turn, which is what every pre-0.2.0 spec meant. */
+ * plain deep-research turn, which is what every pre-0.2.0 spec meant.
+ * @type {AgentCapability} */
 export const BASE_CAPABILITY = {
   answerPhase: "research",
   prompts: null, // null = the answer phase's default set (DEFAULT_PROMPT_SET)
@@ -271,11 +291,11 @@ export const BOUND_KEYS = ["maxRounds", "maxTokens", "timeoutMs"];
  * spec's declaration, sub-objects merged rather than replaced so a spec can
  * name one bound without restating the rest.
  * @param {any} a
- * @returns {typeof BASE_CAPABILITY}
+ * @returns {AgentCapability}
  */
 export function resolveCapability(a) {
   const c = (a && a.capability && typeof a.capability === "object") ? a.capability : {};
-  return {
+  return /** @type {AgentCapability} */ ({
     ...BASE_CAPABILITY,
     ...c,
     search: { ...BASE_CAPABILITY.search, ...(c.search && typeof c.search === "object" ? c.search : {}) },
@@ -287,17 +307,9 @@ export function resolveCapability(a) {
     emits: Array.isArray(c.emits) ? c.emits : BASE_CAPABILITY.emits,
     requires: Array.isArray(c.requires) ? c.requires : BASE_CAPABILITY.requires,
     team: (c.team && typeof c.team === "object") ? c.team : null,
-  };
+  });
 }
 
-/**
- * Every SERVER-ONLY member a capability selects, as `axis:member` strings. The
- * privacy split (invariant 4) is exactly "this list must be empty for a
- * client-tier agent" — computed here so the rule has one implementation and the
- * failing case can be tested directly.
- * @param {any} a
- * @returns {string[]}
- */
 /**
  * The prompt set an agent runs on: its declared `capability.prompts`, else the
  * default for its answer phase. Always a key of PROMPT_SETS for a valid spec.
@@ -307,7 +319,7 @@ export function resolveCapability(a) {
 export function resolvePromptSet(a) {
   const cap = resolveCapability(a);
   if (cap.prompts && Object.prototype.hasOwnProperty.call(PROMPT_SETS, cap.prompts)) return cap.prompts;
-  return DEFAULT_PROMPT_SET[cap.answerPhase] || DEFAULT_PROMPT_SET.research;
+  return /** @type {Record<string,string>} */ (DEFAULT_PROMPT_SET)[cap.answerPhase] || DEFAULT_PROMPT_SET.research;
 }
 
 /**
@@ -324,6 +336,14 @@ export function missingPromptRoles(a) {
   return (phase.promptRoles || []).filter((/** @type {string} */ r) => !filled.has(r));
 }
 
+/**
+ * Every SERVER-ONLY member a capability selects, as `axis:member` strings. The
+ * privacy split (invariant 4) is exactly "this list must be empty for a
+ * client-tier agent" — computed here so the rule has one implementation and the
+ * failing case can be inspected directly.
+ * @param {any} a
+ * @returns {string[]}
+ */
 export function serverOnlySelections(a) {
   const cap = resolveCapability(a);
   const hits = [];

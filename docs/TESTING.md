@@ -58,6 +58,25 @@ namespacing, and the works-with-the-knob-OFF guarantee),
 asset-collision guard, `validatePublication`, the publish → public read
 → index → unpublish round-trip against a mocked R2, storage-missing
 503s),
+`agent-spec-core.js` (the AgentSpec pure core: the closed control
+vocabulary, spec/registry validation, control/theme/quota/example
+resolution, the composer renderer + `proveComposer`), plus its capability
+suite `agent-capability.test.js` — which pins every DECLARED bound against
+the constant that enforces it (so a spec describing behaviour the code
+lacks fails here), gives each of the four invariant rules a passing AND a
+failing case (a tool-bearing agent must name a non-tool fallback; a
+planning phase may not leave the fixed JSON model; a client-platform agent
+may select nothing server-only; a declared gate must carry EN and SV), and
+CHARACTERIZES the mode routing, including the acceptance test that a sixth
+agent added only as registry data routes with no code change —
+`agent-registry.js` (the per-binding registry cache, every failure path
+degrading to null, and the guard that keeps the snapshot off the plain
+Deep Research turn's hot path), `prompt-sets.js` (the prompt-set binding,
+identity-checked against the shipped builders so a re-pointed prompt fails
+the suite rather than a request, plus totality: no state can leave a phase
+without a prompt), `agent-link.js` (the share-link mint against a mocked
+D1 + ASSETS: the JWT verifies through the real verifier and the meter rows
+carry the spec's quota),
 `edge-cache.js` (the fail-soft Workers Cache get/put helpers, against a
 mocked Cache API), `googlemaps.js` + `googlemaps-text.js` (block/link
 builders; address/place extraction, intent gates, `pickLookup`), and

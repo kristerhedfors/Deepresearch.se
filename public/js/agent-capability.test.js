@@ -48,13 +48,6 @@ import {
 } from "./agent-spec-core.js";
 import { showsDepthSlider, backdropKind } from "./mode-theme.js";
 import { MAX_AGENTS, MAX_WAVES, MAX_NODE_QUERIES, MAX_ORCH_SEARCHES } from "./orchestrator-core.js";
-import { ORCH_NODE_MAX_TOKENS, ORCH_NODE_TIMEOUT_MS } from "../../src/orchestrator.js";
-import {
-  MAX_SDK_TOOL_ROUNDS,
-  MAX_SOURCE_TOOL_ROUNDS,
-  SDK_BUILD_ROUND_MAX_TOKENS,
-  SDK_BUILD_ROUND_TIMEOUT_MS,
-} from "../../src/pipeline.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..");
@@ -151,22 +144,12 @@ test("an absent capability block resolves to the plain deep-research turn", () =
   assert.equal(partial.search.auxSources, true, "unnamed search fields keep their base value");
 });
 
-test("declared bounds match the constants the code enforces", () => {
-  const reg = realRegistry();
-  const cap = (id) => resolveCapability(findAgent(reg, id));
-
-  // Introspection: the native tool loop's round cap (src/pipeline.js).
-  assert.equal(cap("introspection").bounds.maxRounds, MAX_SOURCE_TOOL_ROUNDS);
-
-  // Agent Studio: rounds, per-round completion budget, per-round wall-clock.
-  assert.equal(cap("agent-builder").bounds.maxRounds, MAX_SDK_TOOL_ROUNDS);
-  assert.equal(cap("agent-builder").bounds.maxTokens, SDK_BUILD_ROUND_MAX_TOKENS);
-  assert.equal(cap("agent-builder").bounds.timeoutMs, SDK_BUILD_ROUND_TIMEOUT_MS);
-
-  // Orchestrator: the per-node bounds and the whole workflow's shape.
-  const orch = cap("orchestrator");
-  assert.equal(orch.bounds.maxTokens, ORCH_NODE_MAX_TOKENS);
-  assert.equal(orch.bounds.timeoutMs, ORCH_NODE_TIMEOUT_MS);
+test("the workflow team's declared shape matches the executor's own caps", () => {
+  // The bounds that live in a PURE core are pinned here; the ones that live in
+  // the Worker (src/pipeline.js, src/orchestrator.js) are pinned in
+  // src/agent-bounds.test.js — this suite stays inside the client module graph
+  // so the public typecheck never pulls the Worker in.
+  const orch = resolveCapability(findAgent(realRegistry(), "orchestrator"));
   assert.equal(orch.team.maxAgents, MAX_AGENTS);
   assert.equal(orch.team.maxWaves, MAX_WAVES);
   assert.equal(orch.team.maxQueriesPerAgent, MAX_NODE_QUERIES);

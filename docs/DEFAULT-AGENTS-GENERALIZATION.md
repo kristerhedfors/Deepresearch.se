@@ -188,6 +188,11 @@ invariants intact:
 }
 ```
 
+> This is the shape as **proposed**, kept for the record. Two fields changed on
+> contact with the implementation — `gates` carries an id plus `langs` rather
+> than its own term lists, and a `prompts` field was added later (§5). The
+> shipped shape is [`docs/AGENT-PLATFORM.md`](./AGENT-PLATFORM.md) §3.1.
+
 Every vocabulary above is closed, for the same reason the control types are
 closed: one dispatcher must be able to draw any agent, and one validator must be
 able to reject anything it cannot serve.
