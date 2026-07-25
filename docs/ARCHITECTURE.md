@@ -1192,6 +1192,6 @@ before reaching for a new subsystem.
 
 The same reading applies one layer down, to the outside services the pipeline
 can reach: **Google Maps and Shodan are example integrations, not
-architecture** (owner directive, 2026-07-25). Where a feature surface is data
-over the SDKs, a third-party service is a descriptor over the extension
-registry — see §4.2a for the boundary and the guard that holds it.
+architecture** (owner directive, 2026-07-25). A feature surface is data over
+the SDKs; a third-party service is one descriptor over the extension registry.
+§4.2a has the boundary and the test that enforces it.
