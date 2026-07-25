@@ -9,7 +9,7 @@ separate architecture: they are **examples and pre-bundled agents**, and the
 goal is to express them through the two SDKs rather than as bespoke
 subsystems — §15 gives that framing and the honest current state. **Start
 with §0, the board**: one picture of every component, where its data rests,
-and what it unlocks. The unit that travels through all of it — the
+and what it makes possible. The unit that travels through all of it — the
 **workspace**, in both its Se/cure and Se/rver kind — has its own complete
 specification in [`docs/WORKSPACES.md`](./WORKSPACES.md). One
 Cloudflare Worker serves a
@@ -26,7 +26,7 @@ subsystem.
 [diagrams.net](https://app.diagrams.net) or the VS Code Draw.io extension).
 Five pages:
 
-0. **The board** — every component, where its data rests, and what it unlocks
+0. **The board** — every component, where its data rests, and what it makes possible
    (the whiteboard view; §0 below is the same board as Mermaid)
 1. **System context & deployment** — clients, Worker modules, external APIs,
    secrets, deploy path
@@ -147,7 +147,7 @@ aggregation loop of §0.3.
 Every component, what it holds, and who can read it. This is the table the
 rest of the document elaborates.
 
-| Component | Runs | Holds | Readable by | Unlocks |
+| Component | Runs | Holds | Readable by | What it makes possible |
 |---|---|---|---|---|
 | **Se/cure workspace** (`docs/WORKSPACES.md` §3) | the link + the browser | settings, chats, optionally the minter's API keys and metered grants | whoever holds link **and** password | a whole configured research session, handed to someone else, with no server record of it |
 | **Se/rver workspace** (`docs/WORKSPACES.md` §4) | account + cloud | record, chats, files, notes, RAG index | the account; the server by key re-derivation, and *readably* for indexed material and workspace chats | cloud storage, vector retrieval at scale, orchestration, the server-side enrichments |

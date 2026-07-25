@@ -185,7 +185,7 @@ capability for it.
 | Personal notes, receipts, travel photos with GPS | **Se/rver** | geocoding and image metadata are server-side capabilities, and the material is not sensitive |
 | Anything you would not put in someone else's cloud | **Se/cure** | that is the whole point of the tier |
 
-### 2.6 What each one costs you — stated honestly
+### 2.6 What each one costs you
 
 **Se/cure costs capability.** No web search unless you bring or borrow it. No
 maps, no Street View, no host intelligence, no automatic geocoding — those

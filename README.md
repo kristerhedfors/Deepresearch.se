@@ -80,8 +80,8 @@ end-user chooser** — point by point, when and why to use which — mirrored
 in-app on both help pages (`/help/`, `/cure/help/`).
 
 See `docs/ARCHITECTURE.md` **§0 (the board)** for the whiteboard view of every
-component — what data each holds, who can read it, what it unlocks — and the
-rest of that document for the full design, `CLAUDE.md` for the code
+component — what data each holds, who can read it, what each makes possible —
+and the rest of that document for the full design, `CLAUDE.md` for the code
 layout and load-bearing invariants, and `.claude/skills/` for the per-area
 working guides. The complete prompt-by-prompt build history lives in
 `public/build/history.md`, rendered in-app at `/story/`. It is the origin story
