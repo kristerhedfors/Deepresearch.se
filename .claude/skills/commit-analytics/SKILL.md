@@ -37,6 +37,7 @@ per-day summary. It is a static page fed by a committed JSON dataset:
 | File | Role |
 |---|---|
 | `scripts/build-pulse.mjs` | Reads `git log --numstat`, writes the dataset. `npm run pulse`. |
+| `scripts/pulse-time.mjs` | The CET/CEST (Europe/Stockholm) normalisation `toCetIso`/`cetOffsetMinutes`, shared by BOTH builders so the two pages can never bucket the same instant onto different calendar days (de-duped 2026-07-24; it was mirrored by hand before). Pure; unit-tested in `scripts/pulse-time.test.mjs`. |
 | `public/pulse/data.json` | The committed dataset: `commits[]` (one `{t,a,r,f}` per commit — the charting source) + `days[]` (per-day aggregates + a `summary`) + `totals`. |
 | `public/pulse/index.html` | The self-contained page (inline CSS+JS). Fetches `data.json` and buckets the per-commit records by hour/day/week client-side, draws the SVG charts. |
 | `src/assets.js` | `/pulse/` is on the public (no-auth) allowlist so both tiers can open it. |
