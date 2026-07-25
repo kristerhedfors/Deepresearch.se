@@ -1,12 +1,28 @@
 ---
 name: secure-workspaces
-description: Load when working on SECURE WORKSPACES — the shareable, completely offline Se/cure workspaces contained only in a link (/cure/workspace#w=<ciphertext>) — or anything touching public/js/workspace-core.js (the hacka.re-cloned link crypto), the /cure/workspace pane in public/cure/drc.js, the Se/rver share row in public/js/account-settings.js, the per-token quota-adjust endpoints (POST /api/websearch/adjust, POST /api/proxy/adjust, PATCH /api/admin/websearch/:jti, PATCH /api/admin/proxy/:jti), or the reserved "workspace" publication slug. Also load for "share a workspace", "offline link", "workspace link", or hacka.re-mechanism questions.
+description: Load when working on WORKSPACES in either tier — the shareable, completely offline Se/cure workspaces contained only in a link (/cure/workspace#w=<ciphertext>), or the account-scoped Se/rver workspaces the code still calls "projects" — or anything touching public/js/workspace-core.js (the hacka.re-cloned link crypto), the /cure/workspace pane in public/cure/drc.js, the Se/rver share row in public/js/account-settings.js, the per-token quota-adjust endpoints (POST /api/websearch/adjust, POST /api/proxy/adjust, PATCH /api/admin/websearch/:jti, PATCH /api/admin/proxy/:jti), or the reserved "workspace" publication slug. Also load for "share a workspace", "offline link", "workspace link", "workspace vs project" naming questions, the arrival popover that discloses a workspace's kind and its aggregation path, message-level 👍/👎 curation, or hacka.re-mechanism questions.
 ---
 
 # Secure workspaces
 
-The full security architecture lives in **`docs/WORKSPACE-SECURITY.md`** —
-read it first for anything non-mechanical. This skill is the working map.
+Two documents sit above this skill, and they answer different questions:
+
+- **`docs/WORKSPACES.md`** — the workspace CONCEPT across both tiers: one
+  noun, two kinds (Se/cure and Se/rver), what each holds and exposes, the
+  three outbound and three inbound channels of the distribute→aggregate loop,
+  and the two surfaces specified ahead of the code — the arrival disclosure
+  (kind + aggregation path, popover + animation) and message-level 👍/👎
+  curation. Read this for "what is a workspace" and for anything touching the
+  Se/rver side.
+- **`docs/WORKSPACE-SECURITY.md`** — the LINK's security architecture: the
+  envelope, the hacka.re lineage, the threat model. Read it first for
+  anything non-mechanical about the crypto.
+
+**Naming (2026-07-25):** user-facing copy says *workspace* in both tiers; the
+code identifiers (`/api/projects*`, R2 `projects/{uid}/…`,
+`public/js/projects.js`) deliberately keep "project" — `docs/BRANDING.md`.
+
+This skill is the working map.
 
 ## What it is
 

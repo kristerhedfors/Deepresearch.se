@@ -14,7 +14,10 @@ that updates as results arrive. Think of it as **Mentimeter for deep
 research**: the pipeline merges the returned conclusions into one answer.*
 
 *This builds on the secure-workspace machinery (`docs/WORKSPACE-SECURITY.md`)
-and the DRSW/1 interchange protocol (`docs/WORKSPACE-PROTOCOL.md`). It adds
+and the DRSW/1 interchange protocol (`docs/WORKSPACE-PROTOCOL.md`), and is one
+of the three return channels catalogued in `docs/WORKSPACES.md` §5 — the only
+one where **the server cannot read the returned finding**, because the
+recipient key stays in the organizer's browser. It adds
 three things DRSW/1 does not have. First, an **asymmetric** result-sealing
 envelope: every crypto path today is symmetric password-KDF, and sealing a
 result **to** the organizer without letting the recipient read other

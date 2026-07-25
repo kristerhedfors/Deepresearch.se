@@ -18,8 +18,8 @@
 // The `env` object Cloudflare hands every request. Bindings (ASSETS, DB,
 // STORAGE, RAG_INDEX) are declared by wrangler.toml; the rest are dashboard
 // secrets/vars read as `env.NAME`. Optional because several are feature gates
-// whose absence disables a feature (see src/settings.js, src/shodan.js,
-// src/googlemaps.js) rather than breaking the request.
+// whose absence disables a feature (see src/settings.js and the extension
+// registry src/extensions.js) rather than breaking the request.
 export interface Env {
   /** Static-assets binding (public/) — always present. */
   ASSETS: Fetcher;
@@ -70,11 +70,11 @@ export interface Env {
   /** Plaintext dashboard var: the account that is granted the admin role. */
   ADMIN_EMAIL?: string;
 
-  // Enrichment secrets — see src/shodan.js, src/googlemaps.js.
-  SHODAN_API_KEY?: string;
-  GOOGLE_MAPS_API_KEY?: string;
-  /** Optional browser-exposed Embed-API key; defaults to GOOGLE_MAPS_API_KEY. */
-  GOOGLE_MAPS_EMBED_KEY?: string;
+  // EXTENSION secrets are NOT declared here. Which third-party services this
+  // deployment can reach — and which secret each needs — is entirely
+  // src/extensions.js's business (each descriptor names its own `secret`),
+  // and the index signature below already admits any var, so an extension
+  // can be added or dropped without touching the core Env shape.
 
   /** debug|info|warn|error (default info) — see src/log.js. */
   LOG_LEVEL?: string;
@@ -223,27 +223,20 @@ export interface ImageLocation {
   lon: number;
 }
 /**
- * A validated Street View point-of-view (src/validation.js) — where the user
- * has panned/moved the inline panorama to (body.street_view_pov), so a
- * follow-up can capture exactly the frame on their screen.
+ * The EXTENSION state bag: one namespaced slice per registered third-party
+ * integration (src/extensions.js), keyed by extension id. Core code carries
+ * it and never looks inside — each extension declares and owns the shape of
+ * its own slice next to its runner (e.g. maps-enrichment.js `MapsSlice`,
+ * shodan-enrichment.js `ShodanState`). That is the whole point of the cut:
+ * this file describes the agent architecture, so no individual service's
+ * vocabulary may appear in it.
  */
-export interface StreetViewPov {
-  /** The panorama the user is standing in ("" when unknown). */
-  panoId: string;
-  lat: number;
-  lng: number;
-  /** Degrees clockwise from north, wrapped into [0, 360). */
-  heading: number;
-  /** Degrees up/down, clamped to [-90, 90]. */
-  pitch: number;
-  /** Field of view in degrees, clamped to Street View Static's [10, 120]. */
-  fov: number;
-}
+export type ExtensionState = Record<string, any>;
 /**
  * The mutable per-request object threaded through chat.js and pipeline.js.
  * Token usage is split three ways — `totals` (user's answer model),
- * `jsonTotals` (the fixed JSON model), `visionTotals` (the Street View
- * describe helper) — each billed at its own model's catalog rate.
+ * `jsonTotals` (the fixed JSON model), `visionTotals` (the image-describe
+ * helper) — each billed at its own model's catalog rate.
  */
 export interface RequestState {
   startedAt: number;
@@ -252,9 +245,8 @@ export interface RequestState {
   /** The fixed reliable model the JSON planning phases run on. */
   jsonModel: string;
   webSearch: boolean;
-  shodan: boolean;
-  /** Hosts Shodan returned data for. */
-  shodanCount: number;
+  /** Per-extension state (src/extensions.js) — opaque to core. */
+  ext: ExtensionState;
   /** Developer-mode gate for the introspection enrichment (src/introspect.js). */
   introspection: boolean;
   /** 1 when the source snapshot was actually folded into the conversation. */
@@ -266,18 +258,15 @@ export interface RequestState {
    * the snapshot was unavailable.
    */
   sourceSnapshot?: import("../public/js/introspect-core.js").Snapshot | null;
-  googleMaps: boolean;
-  /** 1 when Google Maps data was folded in. */
-  mapsCount: number;
+  /** The chosen answer model can receive images. */
   vision: boolean;
-  /** Helper model to describe Street View for a non-vision answer model. */
+  /** Helper model that describes imagery for a non-vision answer model. */
   visionModel: string | null;
   /** Ranked describe-helper candidates (first = visionModel) for failover. */
   visionModels: string[];
   visionTotals: TokenTotals;
+  /** Validated GPS coordinates carried by the attached photos. */
   imageLocations: ImageLocation[];
-  /** The user's current panorama view, for the capture-what-they-see path. */
-  streetViewPov: StreetViewPov | null;
   plan: BudgetPlan;
   searchCount: number;
   /** Searches served from the Exa result cache (not billed). */
@@ -320,16 +309,19 @@ export interface PipelineCtx {
 }
 
 // ---- Per-user settings (src/settings.js parseSettings) ---------------------
-/** The effective per-account knob state parseSettings coerces to. */
+/**
+ * The effective per-account knob state parseSettings coerces to: the two core
+ * knobs below, plus one boolean per registered EXTENSION whose key the
+ * registry owns (src/extensions.js) — which is why the index signature is
+ * open and no service is named here.
+ */
 export interface Settings {
-  /** Shodan host-intelligence enrichment (default OFF — opt-in). */
-  shodan_mcp: boolean;
-  /** Google Maps / Street View enrichment (default OFF — opt-in). */
-  google_maps: boolean;
   /** The in-browser Linux execution sandbox + bash-lite agent (default OFF — opt-in). */
   bash_lite_mcp: boolean;
   /** Developer mode: unlocks introspection mode (default OFF — opt-in). */
   developer_mode: boolean;
+  /** One per registered extension, e.g. `shodan_mcp`, `google_maps`. */
+  [key: string]: boolean;
 }
 
 // ---- SSE protocol (/api/chat) ----------------------------------------------
@@ -346,7 +338,8 @@ export interface SseSource {
 /** Pipeline step spinner turned on. */
 export interface StatusStepStart {
   type: "step_start";
-  /** Names the phase/service: plan|gap1…|synth|validate|geocode|shodan|maps. */
+  /** Names the phase or service: plan|gap1…|synth|validate|geocode, or a
+   * registered extension's id (src/extensions.js). */
   id: string;
   label: string;
 }
@@ -373,24 +366,6 @@ export interface StatusSearchDone {
   sources: SseSource[];
   /** True when served from the Exa result cache (not billed). */
   cached?: boolean;
-}
-/** Google Maps resolved a Street-View-covered location for an inline embed. */
-export interface StatusStreetViewEmbed {
-  type: "streetview_embed";
-  lat: number;
-  lng: number;
-}
-/**
- * The snapped Street View frames the vision helper reasoned about, for the
- * client to render beside the answer (direction-labeled JPEG data URLs).
- * Bulky by design — the client strips the data URLs out of its research log.
- */
-export interface StatusStreetViewFrames {
-  type: "streetview_frames";
-  query: string;
-  /** Each frame carries a cardinal `dir` ("north") OR a free-form `label`
-   * ("your current view" — the POV capture path). */
-  frames: Array<{ dir: string; label?: string; url: string }>;
 }
 /** Post-validation rejected the draft: clear streamed text and keep waiting. */
 export interface StatusDiscardText {
@@ -446,14 +421,24 @@ export interface StatusDone {
   /** Additional fields may ride along; clients ignore unknown ones. */
   [key: string]: unknown;
 }
-/** The discriminated union of every `status` event payload. */
+/**
+ * The discriminated union of every CORE `status` event payload.
+ *
+ * EXTENSIONS emit their own status types too (the Maps runner's
+ * `streetview_embed` / `streetview_frames` / `map_embed`, declared next to it
+ * in src/maps-enrichment.js). Those are deliberately NOT in this union: the
+ * core has no business knowing an integration's wire vocabulary, and an
+ * extension's runner types its own `emit` as an open record for exactly that
+ * reason. Clients must ignore unknown `status` types anyway (the
+ * forward-compatibility rule), so the wire stays additive either way — see
+ * docs/ARCHITECTURE.md §4.4 and the sse-protocol skill for the full,
+ * extensions-included vocabulary.
+ */
 export type SseStatus =
   | StatusStepStart
   | StatusStepDone
   | StatusSearchStart
   | StatusSearchDone
-  | StatusStreetViewEmbed
-  | StatusStreetViewFrames
   | StatusDiscardText
   | StatusBuild
   | StatusWorkflow

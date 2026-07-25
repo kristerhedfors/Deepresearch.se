@@ -32,3 +32,29 @@ slugs, and host strings stay lowercase (`/cure`, `/rver`,
 The acronyms DRC/DRS are INTERNAL names (code identifiers, CLAUDE.md,
 skills, commit messages) and must not appear in user-facing copy
 (2026-07-12 directive: having a third name pair confuses readers).
+
+## Workspace, not "project" (2026-07-25 directive)
+
+**A named place where research happens is a WORKSPACE, in both tiers.** The
+Se/rver tier's "project" and the Se/cure tier's link-sealed session are the
+same concept in two forms — a **Se/rver workspace** and a **Se/cure
+workspace** — and user-facing copy says so. One noun, two kinds; secure-first
+ordering applies to the pair like any other.
+
+This is a DISPLAY rule with the same internal/external split as DRC/DRS:
+
+- **Say workspace** in UI labels, help text, notices, prompts, docs, and
+  reader-facing prose.
+- **Do not rename code.** `/api/projects*`, R2 `projects/{uid}/…`,
+  `public/js/projects.js`, `project-context.js`, the `projects` IndexedDB
+  store, and the `project` fields inside stored records keep their names.
+  Renaming a live route or a stored record's shape buys nothing and breaks
+  existing data.
+- When a doc must name the stored artifact, write **workspace record** and
+  give the identifier once: *the workspace record (`projects/{uid}/{id}`)*.
+- "Project" survives for the repository itself ("this research and innovation
+  project") and in the endpoint-bound compound **project vault**
+  (`/api/vault/:id`); prefer **workspace vault** where the prose isn't naming
+  the endpoint.
+
+The complete specification of both kinds is `docs/WORKSPACES.md`.

@@ -64,7 +64,7 @@ import {
   SCENE_FOV,
   SCENE_VIEW_DIST_M,
 } from "./tokemon-nav.js";
-import { googleMapsEnabled } from "./settings.js";
+import { extensionEnabled } from "./settings.js";
 import { placesTextSearch, runStreetViewPovCapture, streetViewMetadata } from "./googlemaps.js";
 
 /** @typedef {import('./types.js').Env} Env */
@@ -408,7 +408,7 @@ async function getScene(db, env, url, log, identity) {
   const pos = parseLatLng({ lat: url.searchParams.get("lat"), lng: url.searchParams.get("lng") });
   if (!pos) return jsonResponse({ error: "lat and lng query params are required." }, 400);
   const heading = normalizeHeading(Number(url.searchParams.get("heading")) || 0);
-  if (!googleMapsEnabled(env, identity)) {
+  if (!extensionEnabled(env, identity, "maps")) {
     return sceneUnavailable(
       "disabled",
       "Street view mode needs the Google Maps & Street View setting — turn it on under Account → Settings. The map keeps working without it.",
@@ -499,7 +499,7 @@ async function postGo(request, env, log, identity) {
   }
   // goto — resolving a free-text place sends the query to Google Places,
   // so it rides the same per-user knob as every Maps feature.
-  if (!googleMapsEnabled(env, identity)) {
+  if (!extensionEnabled(env, identity, "maps")) {
     return jsonResponse({ error: GO_SAY.needMaps(cmd.sv) }, 403);
   }
   const place = await placesTextSearch(env, log, cmd.query);

@@ -12,7 +12,7 @@
 import { CROSS_MAX_M, STREETVIEW_HEADINGS } from "./googlemaps.js";
 import { distanceMeters } from "./googlemaps-text.js";
 
-/** @typedef {import('./types.js').StreetViewPov} StreetViewPov */
+/** @typedef {import('./googlemaps.js').StreetViewPov} StreetViewPov */
 /** @typedef {import('./googlemaps-text.js').LatLng} LatLng */
 /** @typedef {import('./googlemaps-text.js').MapView} MapView */
 /** @typedef {import('./googlemaps-text.js').JumpTarget} JumpTarget */

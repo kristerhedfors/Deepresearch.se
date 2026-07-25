@@ -10,9 +10,15 @@
 // (frames/embeds), and the appended block. One runner per target shape —
 // address/place lookup, POV capture, map-view capture, jumps, nearby/
 // relocation searches, barrier crossings, the journey view — dispatched by
-// runGoogleMapsEnrichment (the only export); every runner keeps the standing
-// enrichment contract — silent when there is nothing to look up, a visible
-// step naming the service when there is, fail-soft in every branch.
+// runGoogleMapsEnrichment; every runner keeps the standing enrichment
+// contract — silent when there is nothing to look up, a visible step naming
+// the service when there is, fail-soft in every branch.
+//
+// Maps is an EXTENSION, not core: it is registered — and named — only in
+// src/extensions.js, and this module owns everything Maps-shaped that used
+// to sit in core files, including the `state.ext.maps` slice (MapsSlice
+// below) and the two client-view sanitizers moved out of src/validation.js
+// on 2026-07-25.
 
 import { consumeChatStream } from "./berget.js";
 import { chatCompletion } from "./providers.js";
@@ -57,7 +63,7 @@ import { addUsage } from "./quota.js";
 /** @typedef {import('./types.js').Conversation} Conversation */
 /** The loose message shape conversation.js's helpers return. */
 /** @typedef {import('./conversation.js').Msg} Msg */
-/** @typedef {import('./types.js').StreetViewPov} StreetViewPov */
+/** @typedef {import('./googlemaps.js').StreetViewPov} StreetViewPov */
 /** @typedef {import('./googlemaps-text.js').LookupTarget} LookupTarget */
 /** @typedef {import('./googlemaps-text.js').MapView} MapView */
 /** @typedef {import('./googlemaps-text.js').JumpTarget} JumpTarget */
@@ -66,19 +72,56 @@ import { addUsage } from "./quota.js";
 /** @typedef {import('./googlemaps-text.js').JourneyTarget} JourneyTarget */
 /** @typedef {import('./googlemaps-text.js').LatLng} LatLng */
 /**
- * The per-request state the runners read/write: the shared RequestState
- * plus the live-view inputs and the routing diagnostic this module owns.
- * @typedef {import('./types.js').RequestState & {
- *   mapView: MapView | null,
+ * This extension's own slice of the per-request state bag
+ * (`state.ext.maps` — see src/extensions.js). The core RequestState
+ * deliberately does not model any of it: every field is Maps vocabulary.
+ * `pov`/`view`/`userLocation` are the sanitized live-view inputs the client
+ * forwarded; `count` is how much Maps data was folded in; `intent` is the
+ * routing diagnostic that rides into the chat_logs meta.
+ * @typedef {{
+ *   on: boolean,
+ *   count: number,
+ *   intent?: string,
+ *   pov: StreetViewPov | null,
+ *   view: MapView | null,
  *   userLocation: LatLng | null,
- *   mapsIntent?: string,
+ * }} MapsSlice
+ */
+/**
+ * The per-request state the runners read/write: the shared RequestState (for
+ * the CORE fields they legitimately use — the vision describe-helper model,
+ * its token totals, the attached photos' GPS) with this extension's slice
+ * guaranteed present.
+ * @typedef {import('./types.js').RequestState & {
+ *   ext: { maps: MapsSlice },
  * }} MapsState
  */
 /**
- * One SSE writer (chat.js's emit). Typed as an open record — the Maps
- * events carry forward-compatible extra fields (heading/pitch/kind/path…)
- * beyond the base SseEvent union (see the sse-protocol skill).
+ * One SSE writer (chat.js's emit). Typed as an open record — this
+ * extension's status events are not in the core SseStatus union (types.d.ts:
+ * the core has no business knowing an integration's wire vocabulary) and they
+ * carry forward-compatible extra fields (heading/pitch/kind/path…) on top.
+ * Clients ignore unknown `status` types, so the wire stays additive.
  * @typedef {(event: Record<string, any>) => void} EmitFn
+ */
+/**
+ * Street View coverage was found at a location: render the inline
+ * drag-to-navigate panorama. Extra fields (`heading`, `pitch`) ride along on
+ * the POV/jump paths.
+ * @typedef {{ type: "streetview_embed", lat: number, lng: number, heading?: number, pitch?: number }} StatusStreetViewEmbed
+ */
+/**
+ * No Street View coverage (or a journey/route view): render an interactive
+ * road map instead. `path`/`route` carry the journey polylines.
+ * @typedef {{ type: "map_embed", lat: number, lng: number, zoom?: number, q?: string, path?: LatLng[], route?: object }} StatusMapEmbed
+ */
+/**
+ * The snapped Street View frames the vision helper reasoned about, for the
+ * client to render beside the answer (direction-labeled JPEG data URLs).
+ * Bulky by design — the client strips the data URLs out of its research log.
+ * Each frame carries a cardinal `dir` ("north") OR a free-form `label`
+ * ("your current view" — the POV capture path).
+ * @typedef {{ type: "streetview_frames", query: string, frames: DeckFrame[] }} StatusStreetViewFrames
  */
 /** @typedef {(id: string, label: string) => void} StepFn */
 /** @typedef {(id: string, label: string, details?: string[]) => void} StepDoneFn */
@@ -114,6 +157,66 @@ function mapEmbedRoute(route) {
   };
 }
 
+// ---- client-view inputs -----------------------------------------------------
+// The two sanitizers for what the client forwards about the view currently on
+// screen. They live HERE, next to the runners that consume them, and not in
+// the core src/validation.js: a Street View point-of-view and a Google map
+// viewport are Maps vocabulary, and the core request validator must not grow
+// a field per integration (the extension cut, 2026-07-25).
+
+// Sanitizes the client-reported Street View point-of-view (from the inline
+// StreetViewPanorama the user can pan/move — public/js/activity.js, forwarded
+// as body.street_view_pov) before the server captures that exact frame.
+// Untrusted input, arbitrary shape: anything unusable returns null (the
+// enrichment then falls back to the address walk-back), never a blocked chat.
+// Heading wraps into [0,360), pitch clamps to [-90,90], fov to Street View
+// Static's [10,120]; the pano id is kept only when it looks like one.
+/**
+ * @param {any} raw untrusted client-reported Street View POV
+ * @returns {StreetViewPov | null}
+ */
+export function validateStreetViewPov(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const lat = Number(raw.lat);
+  const lng = Number(raw.lng);
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90) return null;
+  if (!Number.isFinite(lng) || lng < -180 || lng > 180) return null;
+  const heading = Number(raw.heading);
+  const pitch = Number(raw.pitch);
+  const fov = Number(raw.fov);
+  const panoId = typeof raw.panoId === "string" && /^[\w-]{1,64}$/.test(raw.panoId) ? raw.panoId : "";
+  return {
+    panoId,
+    lat,
+    lng,
+    heading: Number.isFinite(heading) ? ((Math.round(heading) % 360) + 360) % 360 : 0,
+    pitch: Number.isFinite(pitch) ? Math.max(-90, Math.min(90, Math.round(pitch))) : 0,
+    fov: Number.isFinite(fov) ? Math.max(10, Math.min(120, Math.round(fov))) : 90,
+  };
+}
+
+// Sanitizes the client-reported interactive-map view (from the inline
+// google.maps.Map the user can pan/zoom — public/js/activity.js, forwarded
+// as body.map_view) before the server captures a road-map image of that
+// exact area. Untrusted input, arbitrary shape: anything unusable returns
+// null (the enrichment then falls back to the address walk-back), never a
+// blocked chat. Zoom clamps to the Static Maps API's [0,21]. Also applied to
+// body.user_location, which arrives in the same lat/lng shape (zoom ignored).
+/** @param {any} raw */
+export function validateMapView(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const lat = Number(raw.lat);
+  const lng = Number(raw.lng);
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90) return null;
+  if (!Number.isFinite(lng) || lng < -180 || lng > 180) return null;
+  const zoom = Number(raw.zoom);
+  return {
+    lat,
+    lng,
+    zoom: Number.isFinite(zoom) ? Math.max(0, Math.min(21, Math.round(zoom))) : 17,
+  };
+}
+
 // ---- dispatch ---------------------------------------------------------------
 
 // Google Maps enrichment: resolve a location the message is about (a street
@@ -136,15 +239,16 @@ function mapEmbedRoute(route) {
  * @returns {Promise<Msg[]>} the conversation, possibly with one appended block
  */
 export async function runGoogleMapsEnrichment(env, log, emit, step, stepDone, conversation, state) {
-  const target = pickLookup(conversation, state.imageLocations, state.streetViewPov, state.mapView, state.userLocation);
+  const maps = state.ext.maps;
+  const target = pickLookup(conversation, state.imageLocations, maps.pov, maps.view, maps.userLocation);
   // How routing went, made visible (requested 2026-07-09 after a run of
   // silent intent misses): which matcher decided — or "none" /
   // "anchor-missing" — lands in Workers Logs here and rides into the
-  // chat_logs meta via state.mapsIntent, so scripts/chatlogs shows the
-  // routing per exchange.
+  // chat_logs meta via the slice's `intent` (extensions.js logMeta), so
+  // scripts/chatlogs shows the routing per exchange.
   const anchorMissing = !target && needsAnchorAsk(conversation);
-  state.mapsIntent = target ? target.intent || "matched" : anchorMissing ? "anchor-missing" : "none";
-  log.info("maps.intent", { intent: state.mapsIntent, mode: target?.nearby?.mode });
+  maps.intent = target ? target.intent || "matched" : anchorMissing ? "anchor-missing" : "none";
+  log.info("maps.intent", { intent: maps.intent, mode: target?.nearby?.mode });
   if (!target) {
     // An EXPLICIT street-view ask that resolved to nothing still needs an
     // honest note: with no block at all the model invents "enable Google
@@ -270,7 +374,7 @@ async function runPlaceLookupEnrichment(env, log, emit, step, stepDone, conversa
     );
   }
 
-  state.mapsCount = result.count;
+  state.ext.maps.count = result.count;
   // Cap the images handed to the vision helper to what THIS vision model's
   // one request reliably accepts: the client's own per-message cap (4) as
   // the ceiling, tightened by the model's reproduced per-request image
@@ -421,7 +525,7 @@ async function runPovEnrichment(env, log, emit, step, stepDone, conversation, st
     );
   }
 
-  state.mapsCount = 1;
+  state.ext.maps.count = 1;
   let description = "";
   if (state.visionModel) {
     description = await describeStreetView(
@@ -511,7 +615,7 @@ async function runJumpEnrichment(env, log, emit, step, stepDone, conversation, s
     return withAppendedText(conversation, buildJumpBlock(jump, { found: false, mapShown: embedKeyOk, place }));
   }
 
-  state.mapsCount = 1;
+  state.ext.maps.count = 1;
   const at = { ...jump, lat: found.lat, lng: found.lng };
   let description = "";
   if (state.visionModel && found.image) {
@@ -593,7 +697,7 @@ async function runNearbyPlaceEnrichment(env, log, emit, step, stepDone, conversa
     stepDone("maps", `Google Places: nothing found for "${nearby.query}" nearby`);
     return withAppendedText(conversation, buildNearbyPlacesBlock(nearby.query, anchor, []));
   }
-  state.mapsCount = places.length;
+  state.ext.maps.count = places.length;
   const top = places[0];
   // The user's refined semantics (2026-07-09): "instant" (teleport) just
   // DROPS at the destination — no route map, no start narrative, no
@@ -735,7 +839,7 @@ async function runCrossBarrierEnrichment(env, log, emit, step, stepDone, convers
     if (embedKeyOk) emit({ status: { type: "map_embed", lat: ask.lat, lng: ask.lng, zoom: 16 } });
     return withAppendedText(conversation, buildCrossBarrierBlock(ask.barrier, ask, { found: false, mapShown: embedKeyOk }));
   }
-  state.mapsCount = 1;
+  state.ext.maps.count = 1;
   const { bearing, before, after } = crossing;
 
   // The photo series: start, the last covered spot before the barrier, and
@@ -844,7 +948,7 @@ async function runJourneyEnrichment(env, log, emit, step, stepDone, conversation
     reverseGeocode(env, log, points[0].lat, points[0].lng),
     reverseGeocode(env, log, points[points.length - 1].lat, points[points.length - 1].lng),
   ]);
-  state.mapsCount = 1;
+  state.ext.maps.count = 1;
   if (image) {
     const mid = points[Math.floor(points.length / 2)];
     emit({
@@ -923,7 +1027,7 @@ async function runMapViewEnrichment(env, log, emit, step, stepDone, conversation
     );
   }
 
-  state.mapsCount = 1;
+  state.ext.maps.count = 1;
   let description = "";
   if (state.visionModel) {
     description = await describeStreetView(

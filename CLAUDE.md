@@ -31,6 +31,18 @@ origin is kept in FULL only on `/story/`, with brief non-leading pointers on
 `/build/`, the landing, and the README — it is the origin, not the identity,
 so don't lead with it elsewhere.
 
+**The crisper formulation (2026-07-25 owner directive): this mission is a
+DeepResearch SECURITY ARCHITECTURE** — how research is *distributed outward*
+to people and machines the originator doesn't control, and how insight is
+*aggregated back*, with the data exposure of every hop written down rather
+than assumed. **The unit that travels is a WORKSPACE, and workspaces are the
+centrepiece**: everything else (pipeline, sandbox, grants, SDKs) is machinery
+a workspace uses. There are exactly two kinds — a **Se/cure workspace** (the
+link IS the workspace; no server record) and a **Se/rver workspace** (account-
+scoped, cloud-first). Complete spec of both, the exposure ledgers, and the
+distribute→aggregate channels: **`docs/WORKSPACES.md`**; the whiteboard view
+of every component is `docs/ARCHITECTURE.md` **§0 (the board)**.
+
 **Branding rule (2026-07-10, amended 2026-07-12 and 2026-07-13):** the two
 product tiers are ALWAYS written as their full URL without the scheme, in
 CamelCase, with the wordplay tail in bold: DeepResearch.**Se/cure** (the
@@ -44,7 +56,12 @@ paths, publish slugs, and host strings stay lowercase (`/cure`, `/rver`,
 identifiers, CLAUDE.md, skills, commit messages) and must not appear in
 user-facing copy. In rendered UI the slash's spacing (the `.sl` span) is
 font-dependent and gets MEASURED, never eyeballed — the **slash-spacing**
-skill. Full rule + rationale: `docs/BRANDING.md`.
+skill. **WORKSPACE, not "project" (2026-07-25):** user-facing copy calls a
+named collection of chats + material a **workspace** in both tiers; the code
+identifiers and wire paths (`/api/projects*`, R2 `projects/{uid}/…`,
+`public/js/projects.js`, the project vault endpoints) keep their names, the
+same internal/display split as DRC/DRS. Full rule + rationale:
+`docs/BRANDING.md`.
 
 ## Git workflow
 
@@ -134,7 +151,7 @@ loop: the **feature-maintenance** skill.
    and the JSON planning phases (invariant 3) never use tools. See the
    **introspection** and **sdk-mode** skills.
 2. **Helper phases fail soft, never break the request.** Search, gap check,
-   validation, and every enrichment (geocode/Shodan/Maps) degrade to a lesser
+   validation, and every enrichment (geocode + every extension) degrade to a lesser
    result (fewer searches, accepted draft, conversation unchanged) rather
    than erroring the chat. Both Berget calls are time-bounded so a hung
    backend can't defeat that.
@@ -186,6 +203,20 @@ loop: the **feature-maintenance** skill.
    test in the same change — never English-only with Swedish "later". The
    "Swedish language parity" suite in `src/googlemaps.test.js` is the
    enforcement pattern.
+7. **Third-party integrations are EXTENSIONS, never core** (owner directive,
+   2026-07-25). Google Maps / Street View and Shodan are *example*
+   integrations woven into research; the platform core is about the agent
+   logic and how agents integrate, and must read as if no external service
+   existed. `src/extensions.js` is the ONLY `src/` module that may name an
+   individual service at the architectural seam, and the only one core
+   imports: one descriptor owns its knob, its slice of `state.ext`, its
+   enrichment runner, its log-meta keys, and its capability line — core
+   consumes all five generically. Adding or removing an integration touches
+   NO core file. `src/extensions.test.js`'s core-purity guard fails the build
+   when a core module names a service in code or imports an integration
+   module. Do NOT "simplify" this back by wiring a service straight into
+   `chat.js`, `settings.js`, `validation.js`, `prompts.js` or `types.d.ts`.
+   Full boundary: `docs/ARCHITECTURE.md` §4.2a.
 
 > **Plan status (current): this Cloudflare account is on Workers PAID** —
 > `wrangler.toml` sets `[limits] cpu_ms = 300_000` (5 min CPU/request). Do
@@ -198,7 +229,8 @@ loop: the **feature-maintenance** skill.
 `src/` is the Worker: entrypoint `index.js` (routing + identity gate),
 pipeline `pipeline.js` + phase helpers, the provider registry
 `providers.js` (Berget/Anthropic/OpenAI), the grant/token subsystems, the
-admin decision boards, and one module per integration. `public/` is the
+admin decision boards, and — behind the `extensions.js` registry (invariant
+7) — one module per third-party integration. `public/` is the
 client: the Se/rver app (`index.html` + `public/js/`), the Se/cure tier
 (`public/cure/` + the `drc-*.js` modules), the admin UI, games, and vendored
 libs. Shared pure cores live under `public/js/` (`bash-core.js`,
@@ -324,7 +356,7 @@ Pipeline & models:
 Privacy, storage & grants:
 
 - **storage-privacy** — chat-history encryption + key hierarchy, implicit cloud storage, RAG, projects, the vault.
-- **secure-workspaces** — offline workspace links (`/cure/workspace#w=…`), the hacka.re-cloned crypto, quota-adjust surfaces.
+- **secure-workspaces** — offline workspace links (`/cure/workspace#w=…`), the hacka.re-cloned crypto, quota-adjust surfaces. The workspace CONCEPT across both tiers — the two kinds, their exposure ledgers, the distribute→aggregate channels, and the specified-ahead arrival disclosure + 👍/👎 curation — is `docs/WORKSPACES.md`.
 - **quota-grant-assessment** — testing/auditing the grant tokens: the invariant checklist + the combined-D1-fake technique.
 - **access-control** — Google sign-in, terms/approval gates, quotas, break-glass Basic Auth, the admin interface, D1 setup.
 - **security-posture** — the living risk register `SECURITY-RISKS.md`: re-check procedures, scans, and the security board.

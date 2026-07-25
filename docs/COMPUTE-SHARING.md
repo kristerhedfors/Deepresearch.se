@@ -552,6 +552,17 @@ you pass along are sealed before they leave the browser.
 
 ### 9b. Workspace knowledge — 👍-curated conclusions back to the owner
 
+> **Where this sits (2026-07-25):** this is the *built* half of the
+> aggregation loop. `docs/WORKSPACES.md` §5 places it beside the other two
+> return channels (the `.drskn` file and DRCR/1's server-blind campaign
+> seal) with a "who can read this" table, §7 specifies the same curation one
+> level up — **message-level 👍/👎 marks** and the exact context closure a
+> 👍 pulls in — and §6 specifies the arrival popover that tells a
+> participant, before they contribute anything, how what they mark travels
+> back. The block-level model below is unchanged by that work; the
+> message-level marks compose with it (the message decides *whether* it
+> travels, the blocks decide *what of it* travels).
+
 The return path: shared compute pushes the owner's models OUT to the
 workspace; workspace knowledge passes curated CONCLUSIONS back IN. Pure core
 `public/js/knowledge-core.js`, server half `src/knowledge.js`, curation pane

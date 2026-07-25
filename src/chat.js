@@ -46,11 +46,10 @@ import {
   resolveShellTranscript,
   sanitizeClientDiag,
   validateImageLocations,
-  validateMapView,
   validateMessages,
-  validateStreetViewPov,
 } from "./validation.js";
-import { bashLiteEnabled, developerModeEnabled, shodanEnabled, googleMapsEnabled } from "./settings.js";
+import { extensionLogMeta, resolveExtensionState } from "./extensions.js";
+import { bashLiteEnabled, developerModeEnabled, extensionEnabledMap } from "./settings.js";
 import { buildSlugOk } from "./build-pub.js";
 import { loadAgentRegistry, routingNeedsRegistry } from "./agent-registry.js";
 import { resolvePromptSet, resolveRequestAgent } from "./agent-spec.js";
@@ -108,8 +107,6 @@ import { getDb } from "./db.js";
  * RequestState) plus the fields this channel adds in newRequestState and the
  * ones the pipeline writes back for the chat log.
  * @typedef {import('./types.js').RequestState & {
- *   mapView: any,
- *   userLocation: any,
  *   quizzes: boolean,
  *   quiz: any,
  *   complexity: string | null,
@@ -119,7 +116,6 @@ import { getDb } from "./db.js";
  *   notes: any[],
  *   notesCursor: number,
  *   fetchedUrls: Set<string>,
- *   mapsIntent?: string,
  *   failoverModel?: string,
  *   shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }>,
  *   sandboxEnabled?: boolean,
@@ -138,18 +134,15 @@ import { getDb } from "./db.js";
 
 /**
  * The opt-in enrichment context resolved per request (see
- * resolveEnrichmentOptions).
+ * resolveEnrichmentOptions). `ext` is the whole extension state bag, built
+ * by the registry (src/extensions.js) — this handler never looks inside it.
  * @typedef {Object} EnrichmentOptions
- * @property {boolean} shodanOn
- * @property {boolean} googleMapsOn
+ * @property {Record<string, any>} ext
  * @property {boolean} developerOn
  * @property {boolean} modelIsVision
  * @property {string | null} visionModel
  * @property {string[]} visionModels
  * @property {import('./types.js').ImageLocation[]} imageLocations
- * @property {import('./types.js').StreetViewPov | null} streetViewPov
- * @property {any} mapView
- * @property {any} userLocation
  */
 
 /**
@@ -342,16 +335,13 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   /** @param {ReadableStreamDefaultController} controller */
   async function runChatStream(controller) {
     const encoder = new TextEncoder();
-    const state = newRequestState(model, jsonModel, webSearchEnabled, budgetS, enrich.shodanOn, {
-      googleMaps: enrich.googleMapsOn,
+    const state = newRequestState(model, jsonModel, webSearchEnabled, budgetS, {
+      ext: enrich.ext,
       introspection: enrich.developerOn,
       vision: enrich.modelIsVision,
       visionModel: enrich.visionModel,
       visionModels: enrich.visionModels,
       imageLocations: enrich.imageLocations,
-      streetViewPov: enrich.streetViewPov,
-      mapView: enrich.mapView,
-      userLocation: enrich.userLocation,
       shellTranscript,
       sandboxEnabled: bashLiteEnabled(env, identity),
       sdkMode: sdkOn,
@@ -465,8 +455,9 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
         searches: state.searchCount,
         cached_searches: state.cachedSearchCount || 0,
         sources: state.sources.length,
-        shodan_hosts: state.shodanCount,
-        google_maps: state.mapsCount,
+        // Whatever the registered extensions contributed this request — the
+        // keys are theirs, not this handler's (src/extensions.js logMeta).
+        ...extensionLogMeta(state),
         introspection: state.introspectionCount,
         sdk: sdkOn,
         duration_ms,
@@ -523,8 +514,11 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             complexity: state.complexity,
             subquestions: state.subquestions,
             conflicts: state.conflicts,
-            shodan_hosts: state.shodanCount,
-            google_maps: state.mapsCount,
+            // The registered extensions' own meta (counters, routing traces).
+            // Keys with an undefined value are dropped by JSON.stringify —
+            // that is how an extension that never ran stays absent from the
+            // row rather than logging a zero it can't vouch for.
+            ...extensionLogMeta(state),
             // 1 when developer mode's introspection enrichment folded the
             // source snapshot into this exchange (src/introspect.js).
             introspection: state.introspectionCount,
@@ -547,10 +541,6 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             // the feed had nothing to answer from.
             outrospection_mode: outroOn ? 1 : 0,
             outrospection: /** @type {any} */ (state).outrospection,
-            // Which maps intent matcher decided (or "none") — the routing
-            // trace scripts/chatlogs surfaces (undefined when the knob is
-            // off and the enrichment never ran).
-            maps_intent: state.mapsIntent,
             cached_searches: state.cachedSearchCount || 0,
             // Present only when the chosen model was unavailable and the
             // answer was written by the reliable fallback (pipeline.js's
@@ -751,27 +741,22 @@ async function enforceQuotaGate(env, log, config, identity) {
 /**
  * Resolves the opt-in enrichment context for one request:
  *
- * - Shodan host intelligence and Google Maps (Places + Street View + Static
- *   Maps) are per-user settings knobs (src/settings.js), not request flags —
- *   gated here so the pipeline only ever attempts them when both the knob is
- *   on and the key is present.
+ * - EXTENSIONS (the registered third-party integrations — src/extensions.js)
+ *   are per-user settings knobs, not request flags. This handler asks
+ *   settings.js which of them are on for this identity and hands the body to
+ *   the registry, which returns the whole `state.ext` bag: one namespaced
+ *   slice per extension, each already holding whatever that extension needs
+ *   to read off the body (its own validated fields — this module has no
+ *   opinion on what those are, and does not know which extensions exist).
  * - Vision capability of the CHOSEN answer model decides whether fetched
  *   imagery is attached for the model to describe (only vision models can
  *   receive it). For a non-vision answer model, a RANKED list of vision
- *   helper models describes Street View instead — a list, not a single pick,
+ *   helper models describes the imagery instead — a list, not a single pick,
  *   because the describe call was observed (2026-07-08, describe_failed "The
  *   operation was aborted") timing out on a loaded Mistral Medium while
  *   other vision models answered instantly; a one-model helper goes blind
  *   exactly when the backend is busiest. This is why "describe this street
  *   view" works regardless of model choice.
- * - The client's view/location fields (all validated, all maps-knob-gated):
- *   street_view_pov = the user's CURRENT inline-panorama view (they may have
- *   panned/moved it), so a follow-up captures exactly what's on screen
- *   instead of four generic cardinal frames; map_view = the same idea for
- *   the interactive map (the no-coverage stand-in); user_location = browser
- *   geolocation, sent ONLY for explicit "street view here" asks with no live
- *   view on screen (same shape as a map view — zoom is ignored — so the same
- *   validator applies).
  * @param {ChatRequestBody} body
  * @param {Env} env
  * @param {Identity} identity
@@ -780,8 +765,6 @@ async function enforceQuotaGate(env, log, config, identity) {
  * @returns {EnrichmentOptions}
  */
 function resolveEnrichmentOptions(body, env, identity, catalog, model) {
-  const shodanOn = shodanEnabled(env, identity);
-  const googleMapsOn = googleMapsEnabled(env, identity);
   // OFF-ONLY request override (the incognito pattern — a client may DECLINE
   // a capability it holds, never acquire one it doesn't): `developer_mode:
   // false` in the body skips the introspection enrichment for THIS request,
@@ -799,16 +782,12 @@ function resolveEnrichmentOptions(body, env, identity, catalog, model) {
     : visionCandidates
   ).slice(0, 3);
   return {
-    shodanOn,
-    googleMapsOn,
+    ext: resolveExtensionState(body, extensionEnabledMap(env, identity)),
     developerOn,
     modelIsVision,
     visionModels,
     visionModel: visionModels[0] || null,
     imageLocations: validateImageLocations(body.imageLocations),
-    streetViewPov: googleMapsOn ? validateStreetViewPov(body.street_view_pov) : null,
-    mapView: googleMapsOn ? validateMapView(body.map_view) : null,
-    userLocation: googleMapsOn ? validateMapView(body.user_location) : null,
   };
 }
 
@@ -837,43 +816,35 @@ export function resolveJsonModel(catalog, userModel) {
  * @param {string} jsonModel
  * @param {boolean} webSearch
  * @param {number} budgetS
- * @param {boolean} shodan
- * @param {Partial<EnrichmentOptions> & { googleMaps?: boolean, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, outrospectionMode?: boolean, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
+ * @param {Partial<EnrichmentOptions> & { vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, outrospectionMode?: boolean, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
  * @returns {ChatRequestState}
  */
-function newRequestState(model, jsonModel, webSearch, budgetS, shodan, extras = {}) {
+function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
   return {
     startedAt: Date.now(),
     model,
     jsonModel, // fixed model for the JSON planning phases (see resolveJsonModel)
     webSearch,
-    shodan, // opt-in Shodan host-intelligence enrichment (src/settings.js)
-    shodanCount: 0, // hosts Shodan actually returned data for
+    // The EXTENSION state bag: one namespaced slice per registered
+    // third-party integration (src/extensions.js), already resolved from the
+    // request body. Core reads nothing inside it — an extension's runner and
+    // its logMeta hook are the only code that does, which is what keeps the
+    // pipeline's state free of any individual service's vocabulary.
+    ext: extras.ext || resolveExtensionState({}),
     // Developer mode's introspection enrichment (src/introspect.js): the gate
     // is the knob; whether the conversation actually engages the mode is the
     // enrichment's own (deterministic) decision.
     introspection: !!extras.introspection,
     introspectionCount: 0, // 1 when the source snapshot was folded in
-    googleMaps: !!extras.googleMaps, // opt-in Google Maps enrichment (src/settings.js)
-    mapsCount: 0, // 1 when Google Maps data was found & folded in
     vision: !!extras.vision, // chosen answer model supports image input
-    visionModel: extras.visionModel || null, // helper model to describe Street View for a non-vision answer model
+    visionModel: extras.visionModel || null, // helper model to describe imagery for a non-vision answer model
     // Ranked describe-helper candidates (first = visionModel); the describe
     // fails over down this list when a model times out under load.
     visionModels: extras.visionModels || (extras.visionModel ? [extras.visionModel] : []),
-    // Tokens for the Street View vision-describe helper — its own model, so
+    // Tokens for the vision-describe helper — its own model, so
     // billed at its own catalog rate (like jsonTotals), summed for the counters.
     visionTotals: { prompt_tokens: 0, completion_tokens: 0 },
     imageLocations: extras.imageLocations || [], // validated attached-photo GPS coords
-    // The user's current panorama view (validated), for the follow-up
-    // capture-what-they-see Street View path (src/enrichment.js).
-    streetViewPov: extras.streetViewPov || null,
-    // The user's current interactive-map view (validated), for the follow-up
-    // capture-what-they-see map path (src/enrichment.js).
-    mapView: extras.mapView || null,
-    // The device's reported location (validated) — the anchor for explicit
-    // "street view here" asks when no live view is on screen.
-    userLocation: extras.userLocation || null,
     // The bash-lite sandbox transcript (resolveShellTranscript): commands the
     // browser ran client-side and their real output, folded into the answer
     // as ground truth (pipeline.js ctx.shellBlock). Empty unless the

@@ -537,3 +537,40 @@ detection), mounted by `public/js/docs-viewer.js` only after `/api/me` returns
 an admin role. Storage is `POST /api/feedback` with feedback-core's
 `docPageTag`; the rail reads `GET /api/feedback?page=<tag>`. Selection-driven,
 no text routing, so no EN/SV parity applies.
+
+## UX-12 — A tier comparison is one question per row, both answers direct-labeled, stacked on a phone
+
+**When** a surface compares Se/cure and Se/rver — the workspace chooser on
+both help pages is the canonical case — **then** it renders as one row per
+QUESTION the reader actually has ("who can read it", "who pays for the AI",
+"if you lose the password"), with each tier's answer in its own cell carrying
+the tier's NAME as a bold prefix, Se/cure first. On a phone the row stacks to
+a single column; from 620px up it becomes label + two answers.
+
+**Why.** A three-column table on a 390px screen either scrolls sideways or
+shrinks to unreadable, and this is the most consequential choice a user makes
+on this site — it has to read on the device most people arrive with. Naming
+the tier inside every cell means the comparison survives being read one cell
+at a time, which is exactly how it is read once stacked. (2026-07-25 owner
+directive: *"a very clear comparison for end users … point by point, when and
+why to use which"*.)
+
+1. **Direct-label, never colour alone.** The 3px tier-coloured left border is
+   decoration; the `<span class="who">Se/cure:</span>` prefix is the
+   identification. Same rule as the tier badges elsewhere.
+2. **Secure-first** in every row, per `docs/BRANDING.md`.
+3. **Questions, not properties.** Row labels are what a user would ask, not
+   the system's vocabulary ("Where your work lives", not "Persistence
+   model").
+4. **Pair the table with a decision.** A comparison alone doesn't decide
+   anything: it is followed by "Use Se/cure when …" / "Use Se/rver when …"
+   lists and one honest paragraph on what each costs.
+5. **Slash spacing is measured, not eyeballed** — the bold `.who` prefix is a
+   new `.sl` context. Both help pages' scoped `-.04em` was re-measured at
+   weight 700 (`node scripts/slash-gap.mjs --weights 700 --margin -0.04`:
+   every font row ok, worst side +0.043em vs the 0.03em floor).
+
+**Canonical implementation:** the `.cmp` / `.cmp-row` / `.cmp-q` / `.cmp-a`
+block in `public/help/index.html` and `public/cure/help/index.html` ("Se/cure
+or Se/rver: which workspace?"). The written source both pages compress is
+`docs/WORKSPACES.md` §2 — update that section and the two pages together.

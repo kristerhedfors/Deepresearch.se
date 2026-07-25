@@ -18,6 +18,7 @@
 // import() INSIDE the tools/call handler, so importing this module (as the
 // test does) never pulls in pipeline.js/berget.js/etc.
 
+import { emptyExtensionState } from "./extensions.js";
 import { jsonResponse } from "./http.js";
 // A leaf module (imports nothing), so this static import does NOT pull the
 // pipeline graph in — the file-layout rule above (heavy deps stay dynamic) is
@@ -509,9 +510,11 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
 }
 
 // Per-request pipeline state — the same shape src/chat.js's newRequestState
-// builds. The opt-in enrichments (Shodan / Google Maps / vision) are left off
-// for this v1 MCP surface (no per-user knobs are applied), which the pipeline
-// treats exactly as a request with those knobs disabled.
+// builds. This v1 MCP surface applies no per-user knobs, so every registered
+// EXTENSION is off (emptyExtensionState — the registry's own "nothing
+// enabled" bag, so this channel never needs updating when an extension is
+// added or removed) and so is vision, which the pipeline treats exactly as a
+// request with those knobs disabled.
 /**
  * @param {string} model
  * @param {string} jsonModel
@@ -526,20 +529,16 @@ function newRequestState(model, jsonModel, webSearch, budgetS, plan) {
     model,
     jsonModel,
     webSearch,
-    shodan: false,
-    shodanCount: 0,
+    ext: emptyExtensionState(),
     // The MCP channel never enters introspection mode (no developer knob on
     // this channel) — the flag exists for the shared RequestState shape.
     introspection: false,
     introspectionCount: 0,
-    googleMaps: false,
-    mapsCount: 0,
     vision: false,
     visionModel: null,
     visionModels: [],
     visionTotals: { prompt_tokens: 0, completion_tokens: 0 },
     imageLocations: [],
-    streetViewPov: null,
     // types.d.ts's RequestState documents `plan` against its own BudgetPlan
     // sketch; the live object is budget.js's richer one (see PipelineState).
     plan: /** @type {any} */ (plan),

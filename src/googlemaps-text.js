@@ -17,7 +17,7 @@ import { textOf } from "./conversation.js";
 /** @typedef {import('./types.js').Conversation} Conversation */
 /** @typedef {import('./types.js').Message} Message */
 /** @typedef {import('./types.js').ImageLocation} ImageLocation */
-/** @typedef {import('./types.js').StreetViewPov} StreetViewPov */
+/** @typedef {import('./googlemaps.js').StreetViewPov} StreetViewPov */
 /** A plain coordinate pair (extra fields ride along structurally). */
 /** @typedef {{ lat: number, lng: number }} LatLng */
 /** The user's live interactive-map view (validated body.map_view). */

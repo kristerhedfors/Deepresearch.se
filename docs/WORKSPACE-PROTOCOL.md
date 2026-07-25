@@ -12,7 +12,9 @@ language declaring the structure of the pipelines a workspace's research runs
 under) and `docs/STACKLESS-RESEARCH.md` (the vision the two standards serve).
 Machine-readable payload schema: `docs/schemas/drsw-payload-1.schema.json`.
 Security architecture of the deployed reference implementation:
-`docs/WORKSPACE-SECURITY.md`. Like everything in this project, the standard
+`docs/WORKSPACE-SECURITY.md`; the workspace concept across both product tiers
+(the two kinds, their exposure ledgers, and the distribute→aggregate
+channels): `docs/WORKSPACES.md`. Like everything in this project, the standard
 is EXPERIMENTAL: a research artifact into the privacy capabilities of LLM
 applications, not a ratified industry spec.)*
 
