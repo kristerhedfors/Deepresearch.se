@@ -71,7 +71,8 @@ One entry in `sdk/AGENTS.json` (`{ agents: [ … ] }`):
   "platform": "server",          // "client" | "server"  (the tier / platform type)
   "tier": "Se/rver",             // branding label (display only)
   "derivesFrom": "baseplate",    // which agent/base this was copied from (provenance)
-  "mode": "normal",              // chat mode: normal | introspection | agent-builder
+  "mode": "normal",              // chat mode: normal | introspection | sdk
+                                 // (alias agent-builder) | orchestrator | outrospection
   "theme": { "--agent-accent": "#3b82f6", … },   // CSS custom properties
   "intro":   { "kind": "fade", "durationMs": 400 },
   "loading": { "kind": "pipeline-phases", "messages": ["Triaging…", …] },
@@ -82,7 +83,7 @@ One entry in `sdk/AGENTS.json` (`{ agents: [ … ] }`):
     { "type": "depth-slider", "min": 0, "max": 3, "default": 1, "ticks": ["Quick","Standard","Deep","Exhaustive"] },
     { "type": "toggle", "id": "web_search", "label": "Web search", "default": true },
     { "type": "attachments", "max": 5 },
-    { "type": "mode-select", "modes": ["normal","introspection","agent-builder"] },
+    { "type": "mode-select", "modes": ["normal","introspection","sdk","orchestrator","outrospection"] },
     { "type": "send-button" }
   ],
   "examples": ["…"], "generateExamples": true,
