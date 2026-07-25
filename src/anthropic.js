@@ -46,8 +46,15 @@ const MAX_TOKENS = 4096;
 // live fetch would add a failure mode without adding information. Prices
 // are the standard (non-introductory) USD per-1M rates as of 2026-07.
 // All three models accept image input (vision) and stream.
+//
+// 2026-07-25: Opus row bumped 4.8 -> 5 (Anthropic's new flagship release).
+// Pricing carried over unchanged pending an official rate announcement —
+// see model-catalog-refresh skill's "no invented numbers" rule. Revisit
+// thinkingConfigFor() below once Opus 5's default-thinking behavior is
+// confirmed against Anthropic's current API docs (it currently gets the
+// same "omitted = off" treatment as the outgoing 4.8, not evidenced yet).
 const MODELS = [
-  { id: "claude-opus-4-8", name: "Claude Opus 4.8", usd_in: 5, usd_out: 25 },
+  { id: "claude-opus-5", name: "Claude Opus 5", usd_in: 5, usd_out: 25 },
   { id: "claude-sonnet-5", name: "Claude Sonnet 5", usd_in: 3, usd_out: 15 },
   { id: "claude-haiku-4-5", name: "Claude Haiku 4.5", usd_in: 1, usd_out: 5 },
 ];
@@ -97,7 +104,7 @@ function headers(env) {
 }
 
 // Claude Sonnet 5 runs ADAPTIVE thinking when the `thinking` param is
-// omitted (a silent default — unlike Opus 4.8 / Haiku 4.5, where omission
+// omitted (a silent default — unlike Opus 5 / Haiku 4.5, where omission
 // means no thinking). Thinking spends output tokens inside max_tokens and
 // adds a long silent pause before the first text delta — both bad fits for
 // this pipeline's time-budget planning and its 60s idle guard — so it is

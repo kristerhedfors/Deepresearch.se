@@ -313,6 +313,7 @@ Pipeline & models:
 - **pipeline-architecture** — the research pipeline engine: the 5 phases, split routing, the budget planner, incident history.
 - **model-eval** — the model-matrix eval harness, `QUERY_SETS` discipline, the findings ledger, evidence-driven profiles.
 - **add-llm-provider** — adding a new LLM provider or models: the registry seam, catalog contract, validation ladder.
+- **model-catalog-refresh** — checking which model menus need updating when a provider ships a new release (e.g. Opus 5): the replace-vs-add decision, never-invent-a-price rule, and following an id bump through every echo.
 - **tune-provider-models** — tuning new models per codified use case and running their first eval battery.
 - **add-research-source** — integrating a new deep-research source end to end (intent, registry, SSE visibility, validation).
 - **local-web-search** — running your own web-search service as an Exa alternative, configurable in both tiers.
