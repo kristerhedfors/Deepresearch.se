@@ -89,21 +89,14 @@ import {
 import {
   claimExtractionPrompt,
   claimVerifyPrompt,
-  directPrompt,
   gapPrompt,
   notesPrompt,
   quizPrompt,
   revisePrompt,
-  sdkBuildPrompt,
-  sdkBuildToolPrompt,
-  searchOffPrompt,
-  sourceAgentPrompt,
-  sourceAnswerPrompt,
-  sourceToolAgentPrompt,
-  synthPrompt,
   triagePrompt,
   validatePrompt,
 } from "./prompts.js";
+import { phasePrompt } from "./prompt-sets.js";
 import { runOrchestration } from "./orchestrator.js";
 import { runOutrospection } from "./outrospect.js";
 import { anthropicConfigured, anthropicToolRun, isAnthropicModel } from "./anthropic.js";
@@ -225,6 +218,52 @@ import {
  * @typedef {import('./triage.js').TriageDecision} TriageDecision
  */
 
+// The EXECUTOR answer phases — the AgentSpec `capability.answerPhase` members
+// that take over the whole answer instead of running the research flow. One row
+// per shipped executor; the vocabulary is closed in agent-spec-core.js
+// (ANSWER_PHASES) and validated there, so a spec can only ever name a key that
+// exists here.
+//
+//   build    — the DistillSDK build flow: distil a flavour from this site
+//              (above all the Se/cure tier) and publish it at /app/<slug>/.
+//              No web search, no triage — the deliverable is a published app.
+//   workflow — a JSON plan phase decomposes the request into a small team of
+//              sub-agents the Worker runs in parallel waves, then one merge
+//              streams the answer. The plan phase IS its triage.
+//   feed     — the question is routed to a standing LENS by the deterministic
+//              EN+SV gate and answered from the outward feed of what everyone
+//              ELSE shipped. The retrieval IS its triage; no web search runs.
+//
+// The remaining phases (`research`, `source-research`, `direct`) are NOT here:
+// they are decided per MESSAGE further down, by the hasSource +
+// externalSourceIntent gate and by triage, not per request.
+//
+// Every one is gated in chat.js on the developer_mode capability and is fully
+// fail-soft inside — a dead plan degrades to a single-agent workflow, an empty
+// feed answers honestly, a failed publish degrades to the answer text.
+/** @type {Record<string, (ctx: PipelineCtx) => Promise<any>>} */
+const ANSWER_PHASE_RUNNERS = {
+  build: runSdkBuild,
+  workflow: runOrchestration,
+  feed: runOutrospection,
+};
+
+/**
+ * The executor phase for a request. The registry-resolved `state.answerPhase`
+ * wins; the per-mode booleans are the fail-soft fallback for a deployment whose
+ * agent registry could not be read, and for the MCP channel, which builds its
+ * state without either (and so always answers null → the research flow).
+ * @param {any} state
+ * @returns {string | null}
+ */
+function answerPhaseFor(state) {
+  if (state.answerPhase && ANSWER_PHASE_RUNNERS[state.answerPhase]) return state.answerPhase;
+  if (state.sdkMode) return "build";
+  if (state.orchestratorMode) return "workflow";
+  if (state.outrospectionMode) return "feed";
+  return null;
+}
+
 /**
  * Entry point (called by chat.js and mcp.js): runs the whole research
  * pipeline for one request, streaming everything through `emit`.
@@ -329,36 +368,22 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
 
   let quizReq = state.quizzes ? quizIntent(ctx.cleanLastUser) : null;
 
-  // SDK mode — the green "lovable" build mode in the mode dropdown: the user
-  // describes a flavour to distill from this site (above all the Se/cure tier)
-  // and the request asks for a build flow, so it takes the whole answer phase
-  // (no web search, no triage — the deliverable is a published app). Gated in
-  // chat.js on the developer_mode capability. Fully fail-soft inside.
-  if (/** @type {any} */ (state).sdkMode) {
-    return runSdkBuild(ctx);
-  }
-
-  // Orchestrator mode — the sub-agent workflow mode in the mode dropdown: a
-  // JSON plan phase decomposes the request into a small team of sub-agents
-  // (Deep Research / Introspection / custom specialists) the Worker executes
-  // in parallel waves, then one merge streams the answer (src/orchestrator.js).
-  // Takes the whole answer phase like SDK mode (no triage — the plan phase IS
-  // its triage). Gated in chat.js on the developer_mode capability. Fully
-  // fail-soft inside (a dead plan degrades to a single-agent workflow).
-  if (/** @type {any} */ (state).orchestratorMode) {
-    return runOrchestration(ctx);
-  }
-
-  // Outrospection mode — introspection's mirror image in the mode dropdown:
-  // the question is routed to a standing LENS by the deterministic EN+SV gate
-  // and answered from the outward feed of what everyone ELSE shipped
-  // (src/outrospect.js). Takes the whole answer phase like the modes above —
-  // the retrieval IS its triage, and no web search runs (the feed's own
-  // refresh is what fills it). Gated in chat.js on the developer_mode
-  // capability. Fail-soft inside: an empty or unavailable feed still answers,
-  // honestly, and never invents an item.
-  if (/** @type {any} */ (state).outrospectionMode) {
-    return runOutrospection(ctx);
+  // ---- executor answer phases (the registry dispatch) --------------------
+  //
+  // Three chat modes replace the whole research flow with an executor of their
+  // own, and WHICH one is data: chat.js resolved the request against
+  // sdk/AGENTS.json's `defaults` table and put the resolved
+  // `capability.answerPhase` on the state. The table below is the one place a
+  // phase name becomes code — the dispatch stays code and the selection stays
+  // data, which is what keeps invariant 1 (no model decides control flow) true
+  // of the routing as well as of the run.
+  //
+  // Adding a mode is therefore a registry edit plus, only if it needs a NEW
+  // executor, one row here. An agent that reuses a shipped phase needs no code
+  // at all (pinned by the "a sixth agent is data" test).
+  const phase = answerPhaseFor(state);
+  if (phase && ANSWER_PHASE_RUNNERS[phase]) {
+    return ANSWER_PHASE_RUNNERS[phase](ctx);
   }
 
   // Web search (Exa) off is the knob's ONLY effect — NOT "no research". Depth
@@ -504,7 +529,7 @@ async function runWithoutSearch(ctx) {
   // (searchOffPrompt's sourceless depth ladder; default "standard" is the
   // long-standing byte-identical prompt).
   await streamCompletion(ctx, [
-    { role: "system", content: searchOffPrompt({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: ctx.state.plan.reportTier }) },
+    { role: "system", content: phasePrompt(ctx.state, "direct", "answer-search-off")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: ctx.state.plan.reportTier }) },
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
@@ -612,7 +637,7 @@ async function runQuizGeneration(ctx, quizReq) {
 /** @param {PipelineCtx} ctx */
 async function runDirectReply(ctx) {
   await streamCompletion(ctx, [
-    { role: "system", content: directPrompt({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource }) },
+    { role: "system", content: phasePrompt(ctx.state, "research", "answer-direct")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource }) },
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
@@ -646,7 +671,7 @@ function introspectionToolsAvailable(ctx) {
   return isAnthropicModel(ctx.model) && anthropicConfigured(ctx.env) && !ctx.imageParts.length;
 }
 
-const MAX_SOURCE_TOOL_ROUNDS = 6; // native tool rounds before we force an answer
+export const MAX_SOURCE_TOOL_ROUNDS = 6; // native tool rounds before we force an answer
 
 // Native tool-use source research (owner-authorized invariant-1 exception): the
 // ANSWER model itself drives grep_source/read_file/list_files against the
@@ -681,7 +706,7 @@ async function runSourceResearchTools(ctx, snapshot) {
   const startedAt = Date.now();
   const result = await anthropicToolRun(ctx.env, {
     model: ctx.model,
-    system: sourceToolAgentPrompt(),
+    system: phasePrompt(ctx.state, "source-research", "answer-tools")(),
     userContent: userText,
     tools: INTROSPECTION_TOOLS,
     maxRounds: MAX_SOURCE_TOOL_ROUNDS,
@@ -737,9 +762,9 @@ async function runSourceResearchTools(ctx, snapshot) {
 // model still builds), a publish failure degrades to the answer text with an
 // honest note, and a tool-path failure falls through to the deterministic one.
 
-const MAX_SDK_TOOL_ROUNDS = 12; // staging many files takes more rounds than reading
-const SDK_BUILD_ROUND_MAX_TOKENS = 16_384; // one write_file must fit a whole real file
-const SDK_BUILD_ROUND_TIMEOUT_MS = 240_000; // non-streaming rounds; scaled to the token budget
+export const MAX_SDK_TOOL_ROUNDS = 12; // staging many files takes more rounds than reading
+export const SDK_BUILD_ROUND_MAX_TOKENS = 16_384; // one write_file must fit a whole real file
+export const SDK_BUILD_ROUND_TIMEOUT_MS = 240_000; // non-streaming rounds; scaled to the token budget
 
 // The SDK-mode tool set: the snapshot readers (read the real Se/cure source —
 // only useful with a snapshot to read), the sdk_* planning tools over the
@@ -877,7 +902,7 @@ async function runSdkBuildTools(ctx, snapshot, manifest, secureDigest) {
   const startedAt = Date.now();
   const result = await anthropicToolRun(ctx.env, {
     model: ctx.model,
-    system: sdkBuildToolPrompt(),
+    system: phasePrompt(ctx.state, "build", "answer-tools")(),
     userContent: userText,
     tools,
     maxRounds: MAX_SDK_TOOL_ROUNDS,
@@ -1024,7 +1049,7 @@ async function runSdkBuildDeterministic(ctx, manifest, secureDigest) {
   });
   const draft =
     (await streamCompletion(buffered, [
-      { role: "system", content: sdkBuildPrompt() },
+      { role: "system", content: phasePrompt(ctx.state, "build", "answer")() },
       ...shellReplyMessages(ctx.shellBlock, { sdkBuild: true }),
       ...withImageNudge(convo),
     ])) || "";
@@ -1115,7 +1140,7 @@ async function runSourceResearch(ctx) {
         statKey: "triage",
         maxTokens: 500,
         messages: [
-          { role: "system", content: sourceAgentPrompt({ reinforceJsonOnly: ctx.reinforceJsonOnly }) },
+          { role: "system", content: phasePrompt(ctx.state, "source-research", "plan")({ reinforceJsonOnly: ctx.reinforceJsonOnly }) },
           {
             role: "user",
             // CLEAN question/context (not the excerpt-appended lastUser/convText):
@@ -1164,7 +1189,7 @@ async function runSourceResearch(ctx) {
   ctx.step("synth", "Writing report…");
   const synthStartedAt = Date.now();
   await streamCompletion(ctx, [
-    { role: "system", content: sourceAnswerPrompt() },
+    { role: "system", content: phasePrompt(ctx.state, "source-research", "answer")() },
     {
       role: "user",
       content: ctx.imageParts.length ? [{ type: "text", text: synthText }, ...ctx.imageParts] : synthText,
@@ -1497,7 +1522,7 @@ async function runSynthesis(ctx) {
     // reportTier scales the OUTPUT's structure/comprehensiveness with the
     // slider (brief → standard → extended → full) — see budget.js
     // reportTierFor and prompts.js REPORT_TIER_STRUCTURE.
-    { role: "system", content: synthPrompt({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: plan.reportTier }) },
+    { role: "system", content: phasePrompt(ctx.state, "research", "answer")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: plan.reportTier }) },
     {
       role: "user",
       content: imageParts.length ? [{ type: "text", text: synthText }, ...imageParts] : synthText,

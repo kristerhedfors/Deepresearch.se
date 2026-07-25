@@ -66,6 +66,7 @@ import {
   stalestLens,
   validateFeedItem,
 } from "../public/js/outrospect-core.js";
+import { phasePrompt } from "./prompt-sets.js";
 
 export {
   FRESH_WINDOW_MS,
@@ -492,7 +493,7 @@ export async function runOutrospection(ctx) {
   ctx.stepDone("outrospect", label);
   ctx.state.outrospection = { lens: lens ? lens.id : null, items: items.length, live };
   await streamCompletion(ctx, [
-    { role: "system", content: outrospectionAnswerPrompt({ lens, hasItems: !!block }) },
+    { role: "system", content: phasePrompt(ctx.state, "feed", "answer")({ lens, hasItems: !!block }) },
     ...(block ? [{ role: "system", content: block }] : []),
     ...ctx.conversation,
   ]);
