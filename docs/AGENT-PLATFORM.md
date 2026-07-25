@@ -73,7 +73,7 @@ generate in the VM → preview → publish at `/app/<slug>/`.
 
 ### 2.1 Agents are not chat modes, and not tiers
 
-Three different lists get confused for one another, so here they are side by
+Four different lists get confused for one another, so here they are side by
 side. Nothing above is the chat-mode dropdown.
 
 | The list | Where it lives | What it is | Its entries |
@@ -81,6 +81,14 @@ side. Nothing above is the chat-mode dropdown.
 | **Tiers** | the product | The two halves of the platform, split by where the data goes | Se/cure (client, server in no data path), Se/rver (signed-in, cloud) |
 | **Chat modes** | `public/js/chat-mode.js` `CHAT_MODES`, mirrored in `public/js/mode-theme.js` | What the pipeline *does* with a turn — picked in the dropdown | `normal` (Deep Research), `introspection`, `sdk` (Agent Studio), `orchestrator`, `outrospection` |
 | **Agents** | `sdk/AGENTS.json` | Reference AgentSpecs — templates to copy | Research, Secure, Under Construction, Agent Studio |
+| **Routes** | `public/js/stream.js` `sendMessage` | Where a send is *computed* — not chosen directly, inferred from the model pick and the knobs | server pipeline (`/api/chat`), on-device (`ondevice::` Bonsai), private introspection (own key, browser-direct) |
+
+The fourth row is the one with no user-facing name, and the omission caused a
+real bug. A route is not something the user picks; it is inferred. Choosing a
+Bonsai model from the model dropdown looks like choosing a model, but it moves
+the whole exchange into the browser, and choosing an own-key model for
+introspection does the same. Neither calls `/api/chat` at all, so every gate
+that lives in the server pipeline is absent — see §2.2.
 
 The relationships, in one line each:
 
@@ -98,6 +106,43 @@ The relationships, in one line each:
   is itself shipped as a reference agent. Its spec id is `agent-builder`, a
   historical alias for the canonical mode id `sdk`; `public/js/deeplink-core.js`
   resolves it.
+- **A route is orthogonal to all three.** It is not a tier (an on-device send
+  on Se/rver keeps the account, the encrypted history and the quota — only the
+  computation moves), not a mode (every mode can be sent over any route the
+  pick allows), and not an agent (no AgentSpec field selects one).
+
+### 2.2 A route may not swallow a message addressed to the developers
+
+A browser-direct route skips the server pipeline entirely, which means it also
+skips the pipeline's deterministic gates. That is correct for research — the
+whole point of an on-device pick is that the question stays on the phone — but
+it is wrong for the one message type that is not research.
+
+A message opening with the word "feedback" (EN + SV) is a report *to the
+developers*, not a question for a model. In the Se/rver tier the on-device and
+private-introspection routes were checked before anything else, so a report
+sent while a Bonsai model was picked was answered by that local model and no
+feedback entry was ever created: the developers received nothing and the user
+had no way to tell. The reported case came back as filler from a 1.7B model
+(feedback #23).
+
+The rule, and where it lives:
+
+- `feedbackForcesServerRoute` (`public/js/feedback-core.js`) sits with the
+  intent gate, not inside any branch. `sendMessage` consults it **above** every
+  route decision, so a browser-direct route added later inherits the rule
+  instead of quietly reopening the hole.
+- The forced server send also drops an `ondevice::` model id, which is not in
+  the server catalog and would otherwise fail validation as an unknown model
+  (`src/validation.js` `resolveModel`). Nothing is lost: the feedback case
+  answers with a canned acknowledgment and never calls a model at all.
+- This is not a privacy regression. Typing "feedback" is an explicit, disclosed
+  act of addressing the developers — the same reason a feedback entry is
+  recorded even in incognito.
+- Se/cure was never affected: its `send` (`public/cure/drc.js`) puts the gate
+  first, before provider routing, and still requires an explicit confirmation
+  before anything leaves the browser. The two tiers had simply diverged on
+  ordering.
 
 ## 3. The AgentSpec
 
