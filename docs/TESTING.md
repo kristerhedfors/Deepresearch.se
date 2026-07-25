@@ -412,7 +412,36 @@ npm run test:live     # 5 tests, real Berget tokens + one Exa run
 - **live project**: serial, retried once (LLM wording varies): sentinel
   echo from parsed docs, vision reading an uploaded image + live report
   embed, one budget-capped web-search run combining Exa with a doc +
-  image attachment, and a stop-mid-stream check.
+  image attachment, and a stop-mid-stream check. Plus two multi-actor
+  specs that need no LLM spend at all:
+  - `workspace.live.spec.js` — a Se/rver-minted workspace link with
+    borrowed proxy grants, unlocked in a fresh browser, answering on the
+    default model.
+  - `llm-sharing.live.spec.js` — **compute sharing, multi-user**: four
+    distinct platform identities minted from ONE break-glass credential
+    via run-as (`POST /api/admin/run-as`, `src/run-as.js`), one of them
+    lending a model, a sealed workspace link carrying `grants.pool`, and
+    both halves of mutual consent — the sharer allowing an identity in
+    (ingress), the consumer allowing their prompts out (egress) — asserted
+    at every step, including that decisions are remembered and that a
+    denied participant stays out. The sharer's "local model" is stood in
+    for by the test process running the provider loop (poll → answer →
+    result); everything between the consumer and that answer is the real
+    deployed broker. See `docs/COMPUTE-SHARING.md` §8b–8c.
+
+> **Multi-user testing needs run-as.** Break-glass is ONE shared identity,
+> which cannot exercise a feature whose whole point is that two different
+> people approve each other. `X-Run-As: test:<name>` on a break-glass
+> request — or the session cookie `POST /api/admin/run-as` mints, which is
+> what lets a whole browser context be a persona — resolves to a synthetic
+> `runas:<name>` identity with its own pool and its own consent decisions.
+> It never escalates (see `src/run-as.test.js`), and only a break-glass
+> caller may mint one.
+>
+> These specs write real rows (pool tokens, consent decisions) into the
+> deployed D1, so they revoke every token and unregister every provider in
+> a `finally`. The inert `runas:*` roster rows they leave behind are
+> deliberate: they are what "remembered" means.
 - **Sandbox quirks** (encoded in `playwright.config.js`): Chromium must
   be pointed at the env's `HTTPS_PROXY` explicitly, `ignoreHTTPSErrors`
   for the re-signing CA, and `--ssl-version-max=tls1.2` because the

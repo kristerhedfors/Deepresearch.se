@@ -300,7 +300,13 @@ test("@live the LLM sharing screen sits one level below Settings and answers the
   const value = String(cookie).split(";")[0].split("=").slice(1).join("=");
 
   const context = await browser.newContext({ extraHTTPHeaders: {} });
-  await context.addCookies([{ name: "dr_session", value, domain: new URL(BASE).hostname, path: "/", httpOnly: true, secure: true, sameSite: "Lax" }]);
+  await context.addCookies([
+    { name: "dr_session", value, domain: new URL(BASE).hostname, path: "/", httpOnly: true, secure: true, sameSite: "Lax" },
+    // Pre-acknowledge the privacy notice (helpers.js openApp does the same):
+    // its overlay covers the header, so without this the gear click waits on
+    // actionability until the test times out.
+    { name: "dr_privacy_ack", value: "1", url: BASE },
+  ]);
   const page = await context.newPage();
   try {
     // A pending ingress request to answer on screen: mint a token for this
@@ -311,6 +317,7 @@ test("@live the LLM sharing screen sits one level below Settings and answers the
     await anon.dispose();
 
     await page.goto("/rver");
+    await expect(page.locator("#form")).toBeVisible({ timeout: 60_000 });
     await page.click("#gearbtn");
     await expect(page.locator("#account")).toBeVisible();
     // The door: one level below Settings.
