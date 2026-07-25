@@ -36,10 +36,10 @@ per-reply Feedback button and no settings knob any more.
 
 **This is the ONLY pipeline that takes free-form human instructions.** The
 boards (`security`, `features`, `panels`) are curated lists an agent produces
-and the admin orders; they are not an inbox. Anything a person *writes* at the
-project — from the chat, from Se/cure, from the outrospection feed, from the
-documentation reader — arrives here. What varies is the **scope**, and the
-scope decides what the right first move is. Read it before you diagnose.
+and the admin orders; they are not an inbox. Anything a person *writes* to the
+project — chat, Se/cure, the outrospection feed, the documentation reader —
+arrives here. What varies is the **scope**, and the scope decides what the
+right first move is. Read it before you diagnose.
 Classification lives in `public/js/feedback-core.js` (`feedbackScope` /
 `feedbackScopeOfPrior` infer it from the conversation; `strategy` and `doc` are
 DECLARED by the surface that submits) and is stated outright in the queue's
