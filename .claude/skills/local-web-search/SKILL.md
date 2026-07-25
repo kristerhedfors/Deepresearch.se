@@ -25,6 +25,13 @@ point the site at their OWN self-hosted search service on the **Web search
 service** panel (`/admin`). This skill is the playbook for standing that
 service up.
 
+**Start with Recipe −1 (2026-07-25): there is now a backend that needs no
+service at all** — `"cloudflare"`, where this Worker does the searching
+itself. It is the zero-setup answer to "get our searches off a third party",
+and it is the one alternative a USER can pick per request rather than an
+operator configuring it site-wide. Everything below it still applies when you
+want a real index, your own ranking, or JS-rendered pages.
+
 **Why self-host.** Exa is not zero-data-retention on the standard plan (see the
 integrations skill / `/help` "Sensitive topics"). The project's mission is
 pushing a real research assistant toward *provable* privacy; a self-hosted
@@ -35,16 +42,23 @@ the third party entirely.
 
 ## How the backend seam works
 
-- **`src/websearch-backends.js`** — the adapters. Two self-hosted shapes:
+- **`src/websearch-backends.js`** — the dispatch + resolution. Three non-Exa
+  backends:
+  - `"cloudflare"` — this Worker searches for itself (`src/websearch-cf.js`;
+    Recipe −1). Server-only, no configuration.
   - `"searxng"` — a SearXNG instance's JSON API (`GET {base}/search?q=…&format=json`).
   - `"exa_compatible"` — anything speaking Exa's own wire
     (`POST {base}/search`, `x-api-key`, `{results:[{title,url,highlights}]}`).
-  Both are **fail-soft**: a misconfigured/unreachable backend returns `null`.
+  All are **fail-soft**: a misconfigured/unreachable backend returns `null`.
+  The last two are adapters in the shared core; the first is server-only.
 - **`src/config.js`** — the `search` block: `{ backend, base_url, results,
-  fallback_exa }`. Default `backend:"exa"`, so an unconfigured site is
-  unchanged. Edited via `PUT /api/admin/config` from the admin panel.
-- **`src/exa.js`** `webSearch()` — resolves the backend, runs it, and on any
-  failure falls back to Exa when `fallback_exa` is on AND `EXA_API_KEY` exists.
+  fallback_exa, cf_pages, allow_user_choice }`. Default `backend:"exa"`, so an
+  unconfigured site is unchanged. Edited via `PUT /api/admin/config` from the
+  admin panel.
+- **`src/exa.js`** `webSearch(env, log, query, depth, { source })` — resolves
+  the backend (the caller's user-picked `source` first, then the site config,
+  then Exa), runs it, and on any failure falls back to Exa when `fallback_exa`
+  is on AND `EXA_API_KEY` exists.
   The result shape (`content`/`items`/`sources`/`resultCount`) is identical for
   every backend, so the pipeline and synthesis read them the same way.
 - **Secrets, not config:** the auth token comes from the `SEARCH_BACKEND_KEY`
@@ -99,6 +113,115 @@ way:
     server grant, which wins over nothing (offline harvest). All fail-soft.
   - **Providers must be CORS-capable anyway** in DRC (OpenAI/Groq/Berget), so a
     CORS-enabled search service fits the tier's existing constraint.
+
+---
+
+## Recipe −1 — the CLOUDFLARE-ORIGINATING backend (2026-07-25, no setup)
+
+`src/websearch-cf.js`. No service, no key, no deploy, no dependency: the
+Worker fetches a results page, unwraps the result links, and (by default)
+fetches the top result pages to extract real text excerpts — all from
+Cloudflare's edge. Turn it on site-wide at `/admin` → **Web search service** →
+*Cloudflare-originating*, or leave the site on Exa and let people pick it per
+request from the web knob's long-press card.
+
+**Why this shape.** Four Cloudflare-native options were weighed; the module
+header records the full reasoning. Short version: Browser Rendering
+(`@cloudflare/puppeteer`) is a paid binding whose per-session concurrency
+ceiling is below what a search WAVE needs; Workers AI / AutoRAG answers over
+a corpus you maintain, not the live web; a separate Worker + service binding
+is a second deployable for a few hundred stateless lines. Plain `fetch` + pure
+string parsing inside the existing Worker avoids all of that and keeps the
+parsers unit-testable under `node --test` — which HTMLRewriter, the idiomatic
+Workers parser, would not (workerd-only).
+
+**The SERP is a CASCADE, and that is a measured decision (2026-07-25).** The
+first cut lifted the local agent's `browse` engine straight into the Worker —
+same technique, other side of the trust boundary. It does not transfer. From a
+datacenter IP, DuckDuckGo's no-JS endpoint answers **HTTP 202 with an empty
+anti-bot shell**: verified from a session container against `html.` and
+`lite.`, GET and POST, bot UA and browser UA — every combination, zero
+results. The agent works because it runs on a person's own machine. So the
+backend tries an ORDERED LIST of sources until one answers
+(`SERP_PROVIDERS` + `search.cf_serp`):
+
+| id | source | measured from a datacenter IP | default |
+|---|---|---|---|
+| `ddg` | DuckDuckGo no-JS HTML | 202 anti-bot shell, 0 results | on (works where egress is accepted) |
+| `marginalia` | Marginalia, an independent index | 200, clean card markup, real results | on |
+| `bing_rss` | Bing's `&format=rss` output | 200, well-formed feed, good results | **off — see below** |
+
+Also probed and rejected: Mojeek (403), Qwant's API (403), Startpage (an
+Anubis proof-of-work challenge), Bing's HTML SERP (200 but no parseable
+organic anchors), DuckDuckGo's Instant Answer API (no organic results).
+
+**`bing_rss` ships OFF on purpose.** Every RSS response carries a Microsoft
+copyright notice restricting the results to "rendering Bing results within an
+RSS aggregator for your personal, non-commercial use" — which a research
+assistant is not. The parser and the option exist; whether a given deployment
+may use them is the operator's call, and the admin panel quotes the restriction
+next to the checkbox. Do not quietly promote it to a default.
+
+Adding a source is one entry in `SERP_PROVIDERS` (`{id, label, url, parse}`,
+optional `fallbackParse`/`retryEmpty`/`restricted`) plus a pure parser test.
+
+It is otherwise the same technique as the local browsing agent's `browse`
+engine (Recipe 0). Compare honestly when recommending one:
+
+| | `cloudflare` | local agent (Recipe 0) |
+|---|---|---|
+| Setup | none | one command on the user's machine |
+| Who sees the query | Cloudflare + the SERP host | the SERP host only |
+| Se/cure exposure | needs a grant/token (query-only) | none — browser-direct |
+| Ranking | a public SERP | same |
+
+**Knobs** (`config.js`'s `search` block): `cf_serp` (the ordered source list
+above), `cf_pages` (default true — off serves SERP snippets alone: faster, and
+noticeably thinner than Exa highlights) and `allow_user_choice` (default true —
+off pins the site-wide backend and takes the picker away). `fallback_exa` still
+applies: an exhausted cascade falls through to Exa when a key exists.
+
+**Reading the logs.** `search.cf_serp_empty {provider}` on `ddg` for every
+search is EXPECTED on Cloudflare — that is the cascade doing its job, and
+`search.cf_serp {provider}` names whoever actually answered. The real alarm is
+`search.cf_serp_empty` for every configured provider plus a rising
+`search.backend_fallback_exa`: at that point the cascade is decorative and the
+answer is a real backend (Recipe 1/2), not another retry.
+`search.cf_serp_fallback_parse` means a source changed its markup and the
+class-free anchor scan is carrying it — results without snippets, so fix the
+parser before it degrades further.
+
+**Verify it without switching the site over:** `/admin` → Web search service →
+*Test search* → **Against: Cloudflare-originating**. That runs one real search
+through this backend whatever the site is configured to use.
+
+**Verified 2026-07-25** (session container, `node -e` against the real module):
+the `ddg → marginalia` cascade end to end — DDG empty, Marginalia answering
+with 6 results, 5 of which upgraded from snippet to a full 1200-char page
+excerpt, in ~4.4 s cold (≈0.5 s when DDG's dead leg is skipped). `bing_rss`
+verified separately as a parse + fetch. NOT verified: behaviour from
+Cloudflare's own egress IPs, which differ from this container's — expect the
+cascade to matter there too, and check `search.cf_serp` after the first
+deploy.
+
+---
+
+## The user-facing choice (the web knob's long-press card)
+
+Since 2026-07-25 the backend is not only an operator decision. Long-pressing
+(or hovering) the web knob opens the card that explains it — UX-10 — and that
+card now carries a **source picker**: **Exa** (the default) or **this site's
+Worker**. The pick is device-local (`public/js/search-source.js`,
+localStorage), rides `/api/chat` as `search_source` on Se/rver and the
+grant/token calls as `source` on Se/cure, and the server RE-VALIDATES it
+against `USER_SEARCH_SOURCES` — so the client is a preference, never a trust
+boundary.
+
+Self-hosted backends are deliberately NOT in the picker: they name an
+operator's own service. On Se/cure that decision already lives in the settings
+drawer (browser-direct, no query touches this server at all), and a configured
+local agent outranks the grant path entirely — which is why the card keeps the
+agent's setup link directly under the picker.
 
 ---
 
@@ -392,12 +515,22 @@ plumbing from Recipe 2, minus the browser). Pick by tradeoff:
 
 ## Adding a NEW backend shape (checklist)
 
+0. Decide whether it is a self-hosted SHAPE (adapters in the shared core,
+   `public/js/websearch-backends-core.js` — both tiers can call it) or a
+   SERVER-ONLY backend (its own `src/` module, dispatched in the façade — the
+   `cloudflare` one is server-only because a browser cannot fetch a SERP
+   cross-origin).
 1. Add the id to `SEARCH_BACKENDS` in `src/websearch-backends.js`.
 2. Write a pure `parse<Name>Results(data, limit) → SearchItem[]` and a
    fail-soft `async <name>Search(cfg, log, query, limit) → SearchItem[]|null`.
 3. Branch it in `runBackendSearch`.
 4. Add the option to `BACKEND_OPTIONS` in `public/js/admin.js` and any
-   backend-specific fields to the panel form.
+   backend-specific fields to the panel form (note the three nesting levels
+   there: every non-Exa backend gets results + Exa-fallback,
+   `SELF_HOSTED_OPTIONS` additionally get the base URL + key note, and a
+   backend with its own knobs gets its own block — `#wssvc-cf` is the example).
+   Do NOT add it to `USER_SEARCH_SOURCES` unless it needs no operator setup at
+   all; that list is what the web knob's card offers every user.
 5. Unit-test the parser + a mocked-fetch dispatch case.
 6. Keep it fail-soft: every non-happy path returns `null` so Exa fallback
    still protects the request.

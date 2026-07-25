@@ -7,6 +7,8 @@ import assert from "node:assert/strict";
 
 import {
   SEARCH_BACKENDS,
+  USER_SEARCH_SOURCES,
+  normalizeSearchSource,
   resolveSearchBackend,
   itemsDigest,
   resultFromItems,
@@ -49,7 +51,7 @@ test("resolveSearchBackend honors fallback_exa=false", () => {
 });
 
 test("SEARCH_BACKENDS is the stable allowlist", () => {
-  assert.deepEqual(SEARCH_BACKENDS, ["exa", "searxng", "exa_compatible"]);
+  assert.deepEqual(SEARCH_BACKENDS, ["exa", "cloudflare", "searxng", "exa_compatible"]);
 });
 
 test("itemsDigest matches the numbered Exa-style shape", () => {
@@ -189,6 +191,77 @@ test("exa_compatible sends x-api-key and Exa-shaped body", async () => {
     assert.equal(body.numResults, 4);
     assert.equal(body.query, "q");
     assert.ok(body.contents.highlights);
+  } finally {
+    globalThis.fetch = orig;
+  }
+});
+
+// ---- the Cloudflare-originating backend + the per-request user choice --------
+
+test("the Worker-native backend is in the config allowlist and the user-pickable set", () => {
+  assert.ok(SEARCH_BACKENDS.includes("cloudflare"));
+  assert.deepEqual(USER_SEARCH_SOURCES, ["exa", "cloudflare"]);
+});
+
+test("normalizeSearchSource keeps only user-pickable ids", () => {
+  assert.equal(normalizeSearchSource("exa"), "exa");
+  assert.equal(normalizeSearchSource(" Cloudflare "), "cloudflare");
+  // A self-hosted backend names an operator's service — never a user's choice.
+  assert.equal(normalizeSearchSource("searxng"), "");
+  assert.equal(normalizeSearchSource("exa_compatible"), "");
+  for (const bad of ["", "nope", null, undefined, 7, {}]) assert.equal(normalizeSearchSource(bad), "");
+});
+
+test("a user's pick outranks the site backend; an admin can pin it away", () => {
+  // No pick → the configured backend stands.
+  assert.equal(resolveSearchBackend({}, { backend: "searxng", base_url: "https://s.example" }, "").backend, "searxng");
+  // A pick wins over the site-wide selection…
+  assert.equal(resolveSearchBackend({}, { backend: "exa" }, "cloudflare").backend, "cloudflare");
+  assert.equal(resolveSearchBackend({}, { backend: "searxng" }, "exa").backend, "exa");
+  // …unless the admin pinned the site-wide backend.
+  assert.equal(
+    resolveSearchBackend({}, { backend: "searxng", allow_user_choice: false }, "cloudflare").backend,
+    "searxng",
+  );
+  // An unvalidated source can never select a backend.
+  assert.equal(resolveSearchBackend({}, { backend: "exa" }, "searxng").backend, "exa");
+});
+
+test("cf_pages defaults on and rides the resolution", () => {
+  assert.equal(resolveSearchBackend({}, {}).pages, true);
+  assert.equal(resolveSearchBackend({}, { cf_pages: false }).pages, false);
+});
+
+test("runBackendSearch dispatches the cloudflare backend and shapes it like every other", async () => {
+  const orig = globalThis.fetch;
+  const href = "//duckduckgo.com/l/?uddg=" + encodeURIComponent("https://example.com/a");
+  globalThis.fetch = async (u) => {
+    if (String(u).includes("duckduckgo.com/html")) {
+      return new Response(
+        `<div class="result"><a class="result__a" href="${href}">Title A</a>` +
+          `<a class="result__snippet">A snippet</a></div>`,
+        { status: 200, headers: { "content-type": "text/html" } },
+      );
+    }
+    return new Response("<body>page</body>", { status: 200, headers: { "content-type": "text/html" } });
+  };
+  try {
+    const resolved = resolveSearchBackend({}, { backend: "cloudflare", cf_pages: false });
+    const r = await runBackendSearch({}, noopLog, resolved, "a query", { numResults: 3 });
+    assert.equal(r.resultCount, 1);
+    assert.deepEqual(r.sources, [{ title: "Title A", url: "https://example.com/a" }]);
+    assert.match(r.content, /\[1\] Title A\nhttps:\/\/example\.com\/a\nA snippet/);
+  } finally {
+    globalThis.fetch = orig;
+  }
+});
+
+test("the cloudflare backend is fail-soft: a blocked SERP returns null, not a throw", async () => {
+  const orig = globalThis.fetch;
+  globalThis.fetch = async () => new Response("blocked", { status: 403 });
+  try {
+    const resolved = resolveSearchBackend({}, { backend: "cloudflare" });
+    assert.equal(await runBackendSearch({}, noopLog, resolved, "q", {}), null);
   } finally {
     globalThis.fetch = orig;
   }

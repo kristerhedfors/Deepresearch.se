@@ -782,8 +782,27 @@ function renderUsers() {
 
 const BACKEND_OPTIONS = [
   { id: "exa", label: "Exa (built-in, hosted)" },
+  { id: "cloudflare", label: "Cloudflare-originating (this Worker searches)" },
   { id: "searxng", label: "SearXNG (self-hosted, JSON API)" },
   { id: "exa_compatible", label: "Exa-compatible endpoint (self-hosted)" },
+];
+// The two backends that need a base URL + the SEARCH_BACKEND_KEY secret. The
+// Cloudflare one is neither hosted-third-party nor self-hosted: it runs inside
+// this Worker, so it has no service to point at.
+const SELF_HOSTED_OPTIONS = ["searxng", "exa_compatible"];
+// The results-page sources the Cloudflare-originating backend can cascade over
+// (src/websearch-cf.js SERP_PROVIDERS, same ids and order). `restricted` is
+// shown as a warning and is why a source ships off by default — the operator,
+// not this project, decides whether their deployment may use it.
+const SERP_OPTIONS = [
+  { id: "ddg", label: "DuckDuckGo (no-JS HTML)", note: "Blocks datacenter IPs outright in testing — keep it first for deployments whose egress it accepts, but expect the next source to do the work." },
+  { id: "marginalia", label: "Marginalia (independent index)", note: "An independent, scraper-tolerant index. Smaller and more long-tail than a major engine." },
+  {
+    id: "bing_rss",
+    label: "Bing (RSS output)",
+    note: "Clean structured results that do answer datacenter traffic.",
+    restricted: "Microsoft's copyright notice restricts these results to an RSS aggregator, personal and non-commercial. Enable only if you have permission for your deployment.",
+  },
 ];
 
 async function loadWebsearchService() {
@@ -798,7 +817,8 @@ async function loadWebsearchService() {
   const s = data.config || {};
   const e = data.env || {};
   const box = $("wssvc");
-  const selfHosted = s.backend && s.backend !== "exa";
+  const nonExa = !!s.backend && s.backend !== "exa";
+  const selfHosted = SELF_HOSTED_OPTIONS.includes(s.backend);
   const envLine = [
     `EXA_API_KEY ${e.hasExaKey ? "✓ set" : "✗ missing"}`,
     `SEARCH_BACKEND_KEY ${e.hasBackendKey ? "✓ set" : "— unset"}`,
@@ -815,47 +835,90 @@ async function loadWebsearchService() {
           ).join("")}
         </select>
       </label>
-      <div id="wssvc-selfhosted" ${selfHosted ? "" : "hidden"} style="display:flex;flex-direction:column;gap:.7rem;padding:.6rem 0">
-        <label>Service base URL
-          <input name="base_url" id="wssvc-url" value="${escapeHtml(s.base_url || "")}"
-            placeholder="https://search.example.com" style="min-width:24rem"
-            ${e.hasBackendUrlOverride ? "disabled" : ""}>
-          ${e.hasBackendUrlOverride ? '<span class="muted">Set by the SEARCH_BACKEND_URL secret.</span>' : ""}
-        </label>
+      <div id="wssvc-nonexa" ${nonExa ? "" : "hidden"} style="display:flex;flex-direction:column;gap:.7rem;padding:.6rem 0">
+        <div id="wssvc-selfhosted" ${selfHosted ? "" : "hidden"} style="display:flex;flex-direction:column;gap:.7rem">
+          <label>Service base URL
+            <input name="base_url" id="wssvc-url" value="${escapeHtml(s.base_url || "")}"
+              placeholder="https://search.example.com" style="min-width:24rem"
+              ${e.hasBackendUrlOverride ? "disabled" : ""}>
+            ${e.hasBackendUrlOverride ? '<span class="muted">Set by the SEARCH_BACKEND_URL secret.</span>' : ""}
+          </label>
+          <p class="muted">Auth for the self-hosted service comes from the
+            <code>SEARCH_BACKEND_KEY</code> Worker secret (sent as an
+            <code>x-api-key</code> for the Exa-compatible backend, or a
+            <code>Bearer</code> token for SearXNG behind an auth proxy) — never
+            stored in config.</p>
+        </div>
         <label>Results per search
           <input type="number" name="results" id="wssvc-results" min="1" max="20" step="1" value="${s.results ?? 6}" style="width:6rem"></label>
         <label><input type="checkbox" name="fallback_exa" id="wssvc-fallback" ${s.fallback_exa !== false ? "checked" : ""}>
-          Fall back to Exa when the self-hosted service fails (needs EXA_API_KEY)</label>
-        <p class="muted">Auth for the self-hosted service comes from the
-          <code>SEARCH_BACKEND_KEY</code> Worker secret (sent as an
-          <code>x-api-key</code> for the Exa-compatible backend, or a
-          <code>Bearer</code> token for SearXNG behind an auth proxy) — never
-          stored in config.</p>
+          Fall back to Exa when this backend fails (needs EXA_API_KEY)</label>
       </div>
+      <div id="wssvc-cf" ${s.backend === "cloudflare" ? "" : "hidden"} style="padding:.2rem 0">
+        <label><input type="checkbox" name="cf_pages" id="wssvc-cfpages" ${s.cf_pages !== false ? "checked" : ""}>
+          Fetch the top result pages for real text excerpts (off = results-page snippets only)</label>
+        <p class="muted">No service and no key: the Worker fetches a public
+          results page and the result pages itself, from Cloudflare's edge.
+          Snippet-only searches are faster but read noticeably thinner than
+          Exa's highlights.</p>
+        <fieldset style="border:1px solid var(--border);border-radius:8px;padding:.5rem .7rem">
+          <legend>Results-page sources</legend>
+          <p class="muted">Tried in this order until one answers — no single
+            source answers every deployment.</p>
+          ${SERP_OPTIONS.map(
+            (o) => `<label style="display:block;margin:.3rem 0">
+              <input type="checkbox" class="wssvc-serp" value="${o.id}" ${(s.cf_serp || []).includes(o.id) ? "checked" : ""}>
+              ${escapeHtml(o.label)}
+              <span class="muted">— ${escapeHtml(o.note)}</span>
+              ${o.restricted ? `<br><span class="muted"><b>Terms:</b> ${escapeHtml(o.restricted)}</span>` : ""}
+            </label>`,
+          ).join("")}
+        </fieldset>
+      </div>
+      <label><input type="checkbox" name="allow_user_choice" id="wssvc-userchoice" ${s.allow_user_choice !== false ? "checked" : ""}>
+        Let users pick Exa or the Cloudflare-originating backend per request (the web knob's long-press card)</label>
       <p class="muted">Env: ${escapeHtml(envLine)}</p>
       <div class="group"><button type="submit">Save backend</button><span class="muted" id="wssvc-msg"></span></div>
     </form>
     <div class="group" style="margin-top:.6rem">
       <label style="flex:1">Test search
         <input id="wssvc-testq" placeholder="e.g. latest on CRISPR gene editing" style="width:100%"></label>
+      <label>Against
+        <select id="wssvc-testsrc">
+          <option value="">the configured backend</option>
+          <option value="exa">Exa</option>
+          <option value="cloudflare">Cloudflare-originating</option>
+        </select></label>
       <button type="button" id="wssvc-test">Run test</button>
     </div>
     <div id="wssvc-testout" class="muted"></div>`;
 
   const backendSel = box.querySelector("#wssvc-backend");
+  const nonExaBox = box.querySelector("#wssvc-nonexa");
   const selfBox = box.querySelector("#wssvc-selfhosted");
+  const cfBox = box.querySelector("#wssvc-cf");
   backendSel.addEventListener("change", () => {
-    selfBox.hidden = backendSel.value === "exa";
+    nonExaBox.hidden = backendSel.value === "exa";
+    selfBox.hidden = !SELF_HOSTED_OPTIONS.includes(backendSel.value);
+    cfBox.hidden = backendSel.value !== "cloudflare";
   });
 
   box.querySelector("#wssvc-form").onsubmit = async (ev) => {
     ev.preventDefault();
     const backend = backendSel.value;
-    const patch = { backend };
+    const patch = { backend, allow_user_choice: box.querySelector("#wssvc-userchoice").checked };
     if (backend !== "exa") {
-      if (!e.hasBackendUrlOverride) patch.base_url = box.querySelector("#wssvc-url").value.trim();
       patch.results = Number(box.querySelector("#wssvc-results").value) || 6;
       patch.fallback_exa = box.querySelector("#wssvc-fallback").checked;
+    }
+    if (SELF_HOSTED_OPTIONS.includes(backend) && !e.hasBackendUrlOverride) {
+      patch.base_url = box.querySelector("#wssvc-url").value.trim();
+    }
+    if (backend === "cloudflare") {
+      patch.cf_pages = box.querySelector("#wssvc-cfpages").checked;
+      // Canonical order, not click order — the checkbox list IS the cascade
+      // order, and the server normalizes an empty list back to the default.
+      patch.cf_serp = [...box.querySelectorAll(".wssvc-serp")].filter((c) => c.checked).map((c) => c.value);
     }
     try {
       await api("/config", { method: "PUT", body: { search: patch } });
@@ -875,7 +938,10 @@ async function loadWebsearchService() {
     }
     out.textContent = "Searching…";
     try {
-      const r = await api("/search/test", { method: "POST", body: { query: q } });
+      const r = await api("/search/test", {
+        method: "POST",
+        body: { query: q, source: box.querySelector("#wssvc-testsrc").value },
+      });
       const head = `${r.backend} · ${r.resultCount} result(s) · ${r.durationMs} ms${r.cached ? " · cached" : ""}`;
       const list = (r.sources || [])
         .map((sc) => `<li><a href="${escapeHtml(sc.url)}" target="_blank" rel="noopener">${escapeHtml(sc.title || sc.url)}</a></li>`)

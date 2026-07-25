@@ -563,6 +563,14 @@
     enterprise arrangement, which this site does not currently have. The
     queries are short and AI-derived, never your full conversation, but on
     a sensitive subject even a short query reveals the topic.</p>
+    <p><b>You can also change who does the searching.</b> Press and hold (or
+    hover) the web-search knob: the card that opens carries a source picker.
+    Pick <b>this site's Worker</b> and searches run from our own Cloudflare
+    Worker instead — it reads a public results page and the result pages
+    directly, so no search company receives the query at all. The tradeoff is
+    ranking: a public results page is weaker than Exa's research index, and the
+    pages it reads still see a request from us. The pick is stored on this
+    device and applies from the next question onward.</p>
     <p>If that matters for your question, split the work in two:</p>
     <ol>
       <li><b>Fetch generically.</b> With web search <b>on</b>, ask a broad,

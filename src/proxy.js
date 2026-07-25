@@ -43,6 +43,7 @@
 import { getConfig } from "./config.js";
 import { getDb } from "./db.js";
 import { webSearch } from "./exa.js";
+import { normalizeSearchSource } from "./websearch-backends.js";
 import {
   GRANT_DEPTH,
   GRANTS_LIST_MAX,
@@ -480,6 +481,10 @@ export async function handleProxyWeb(request, env, log) {
   const body = await request.json().catch(() => ({}));
   const token = typeof body?.token === "string" ? body.token : "";
   const query = typeof body?.query === "string" ? body.query.trim().slice(0, QUERY_MAX) : "";
+  // The caller's web-knob pick of WHO runs the search ("exa" | "cloudflare");
+  // unknown values degrade to the site default. Exposure is unchanged either
+  // way — the query string and nothing else.
+  const source = normalizeSearchSource(body?.source);
   if (!token || !query) return jsonResponse({ error: "token and query are required." }, 400);
 
   const defaults = await proxyDefaults(env);
@@ -493,7 +498,7 @@ export async function handleProxyWeb(request, env, log) {
   if (reserved === "error") return jsonResponse({ error: "Grant not found." }, 403);
   if (reserved === "exhausted") return jsonResponse({ error: "Web-search quota is used up.", remaining: 0 }, 429);
 
-  const result = await webSearch(env, log, query, GRANT_DEPTH).catch(() => null);
+  const result = await webSearch(env, log, query, GRANT_DEPTH, { source }).catch(() => null);
   const usable = !!result && Number(result.resultCount) > 0;
   if (!usable) {
     await refundUnit(db, claims.jti);

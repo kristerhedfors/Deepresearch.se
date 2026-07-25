@@ -11,6 +11,7 @@
 import { getDb } from "./db.js";
 import { PERIODS } from "./quota.js";
 import { SEARCH_BACKENDS } from "./websearch-backends.js";
+import { DEFAULT_SERP_PROVIDERS, normalizeSerpProviders } from "./websearch-cf.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./quota.js').QuotaMap} QuotaMap */
@@ -70,13 +71,27 @@ import { SEARCH_BACKENDS } from "./websearch-backends.js";
  * `SEARCH_BACKEND_KEY` / `SEARCH_BACKEND_URL` env, never stored here.
  * @typedef {Object} SearchBackendConfig
  * @property {string} backend one of src/websearch-backends.js SEARCH_BACKENDS
- *   ("exa" | "searxng" | "exa_compatible"); anything else falls back to Exa
+ *   ("exa" | "cloudflare" | "searxng" | "exa_compatible"); anything else falls
+ *   back to Exa
  * @property {string} base_url the self-hosted service's base URL (ignored for
- *   the "exa" backend; a `SEARCH_BACKEND_URL` env var overrides it)
- * @property {number} results default results per search for a self-hosted
+ *   the "exa" and "cloudflare" backends; a `SEARCH_BACKEND_URL` env var
+ *   overrides it)
+ * @property {number} results default results per search for a non-Exa
  *   backend (1..20)
- * @property {boolean} fallback_exa on a self-hosted-backend failure, fall back
+ * @property {boolean} fallback_exa on a non-Exa-backend failure, fall back
  *   to Exa when the EXA_API_KEY is present (default true)
+ * @property {boolean} cf_pages the "cloudflare" backend also fetches the top
+ *   result PAGES for real text excerpts, rather than SERP snippets alone
+ *   (default true — snippets alone read noticeably thinner than Exa highlights)
+ * @property {string[]} cf_serp the ORDERED results-page sources the "cloudflare"
+ *   backend tries until one answers (src/websearch-cf.js SERP_PROVIDERS). A
+ *   cascade because no single source answers every caller: DuckDuckGo blocks
+ *   datacenter IPs outright. An empty or unrecognised list falls back to the
+ *   default pair rather than searching nothing
+ * @property {boolean} allow_user_choice users may override the site-wide
+ *   backend per request from the web knob's long-press card, choosing between
+ *   Exa and the Cloudflare-originating backend (default true). Turn off to pin
+ *   the site-wide selection for everyone.
  */
 /**
  * The mintable-web-search-grant defaults + budget governance.
@@ -163,14 +178,19 @@ export const DEFAULT_CONFIG = {
   },
   // Web-search BACKEND (src/websearch-backends.js): which provider actually
   // runs the pipeline's searches. Defaults to Exa (the built-in), so an
-  // unconfigured site behaves exactly as before. Point it at a self-hosted
-  // SearXNG or Exa-compatible service to keep search queries off a third
-  // party — see the local-web-search skill.
+  // unconfigured site behaves exactly as before. Point it at the
+  // Cloudflare-originating backend (this Worker does the searching itself —
+  // src/websearch-cf.js) or at a self-hosted SearXNG / Exa-compatible service
+  // to keep search queries off a third party — see the local-web-search skill.
+  // Users can override the choice per request unless allow_user_choice is off.
   search: {
     backend: "exa",
     base_url: "",
     results: 6,
     fallback_exa: true,
+    cf_pages: true,
+    cf_serp: [...DEFAULT_SERP_PROVIDERS],
+    allow_user_choice: true,
   },
   // The SECURE-RESEARCH-SPACE proxy bundle (src/proxy.js): the admin defaults +
   // governance for the account-connected grants a ghost crossover (or a
@@ -325,6 +345,12 @@ export function mergeConfig(base, patch) {
     }
     if (Number.isFinite(s.results)) out.search.results = Math.min(20, Math.max(1, Math.round(s.results)));
     if (typeof s.fallback_exa === "boolean") out.search.fallback_exa = s.fallback_exa;
+    if (typeof s.cf_pages === "boolean") out.search.cf_pages = s.cf_pages;
+    // Only known provider ids survive, in the admin's order; an empty or junk
+    // list normalizes back to the default pair, so a malformed patch can never
+    // leave the backend with nothing to search.
+    if (Array.isArray(s.cf_serp)) out.search.cf_serp = normalizeSerpProviders(s.cf_serp);
+    if (typeof s.allow_user_choice === "boolean") out.search.allow_user_choice = s.allow_user_choice;
   }
   const px = patch.proxy;
   if (px && typeof px === "object") {

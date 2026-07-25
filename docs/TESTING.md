@@ -174,10 +174,19 @@ ghost reuse-per-user, `mintWebSearchGrant` + the global budget ceiling,
 `grantStatus`/`revokeGrant`, the atomic reserve/refund, the admin
 list/mint-link/revoke surface, the 400/403/429/503 status codes),
 `websearch-backends.js` (the pluggable search backends' SERVER façade:
-`resolveSearchBackend` env/config resolution + clamping, and the re-exported
-core parsers/dispatch over a mocked fetch — its client-core sibling
-`public/js/websearch-backends-core.js` covers the browser-facing
-`(log, resolved, query, depth)` contract directly),
+`resolveSearchBackend` env/config resolution + clamping, the user-pick
+precedence — an allowed `search_source` outranks the site backend, an admin
+pins it away with `allow_user_choice`, an unvalidated id selects nothing —
+and the re-exported core parsers/dispatch over a mocked fetch; its client-core
+sibling `public/js/websearch-backends-core.js` covers the browser-facing
+`(log, resolved, query, depth)` contract directly), `websearch-cf.js` (the
+Cloudflare-originating backend: the pure SERP/entity/page-text parsers, the
+class-free anchor fallback, the anti-bot-shell retry, and the whole
+SERP→page-excerpt flow over an INJECTED fetch — including every fail-soft
+path, since "degrades instead of erroring the search wave" is the contract
+that matters), `public/js/search-source.js` (the shared user pick: the
+normalizer, the picker markup, and the storage helpers under a fake
+localStorage AND with storage missing entirely),
 `proxy-grant.js` (the secure-research-space two-tier tokens: grant→proxy
 mint/verify, the namespace separation that keeps the tiers/websearch/session
 tokens distinct, and the secret/expiry/tamper rejections) and `proxy.js`
