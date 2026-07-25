@@ -23,6 +23,8 @@ import {
   deliverablesRun,
   execEnvelope,
   formatByteSize,
+  markGuestTruncation,
+  GUEST_STDOUT_CAP_BYTES,
   formatShellResult,
   heredocDelimiters,
   isExportablePath,
@@ -800,6 +802,65 @@ describe("execEnvelope + parseExecEnvelope", () => {
     const { marker } = execEnvelope("true", "g1");
     const parsed = parseExecEnvelope(marker + "!!notb64!!:" + btoa("kept") + ":0###", marker);
     assert.deepEqual(parsed, { exitCode: 0, stdout: "", stderr: "kept" });
+  });
+
+  // ---- the opt-in guest-side stdout cap ------------------------------------
+  // exportFile reads WHOLE files back through this envelope, so the uncapped
+  // form must stay the default and stay byte-identical.
+  test("no cap by default — the wrapper is unchanged and reads the whole file", () => {
+    const { wrapped } = execEnvelope("cat big.txt", "u1");
+    assert.ok(wrapped.includes("O=$(base64 -w0 /tmp/_ou1 2>/dev/null)"), wrapped);
+    assert.ok(!wrapped.includes("head -c"), "default must not spawn head");
+    for (const opts of [{}, { maxStdoutBytes: 0 }, { maxStdoutBytes: -5 }, { maxStdoutBytes: NaN }]) {
+      assert.equal(execEnvelope("cat big.txt", "u1", opts).wrapped, wrapped);
+    }
+  });
+
+  test("a cap asks the guest for exactly cap+1 bytes of stdout, stderr uncapped", () => {
+    const { wrapped } = execEnvelope("cat big.txt", "c1", { maxStdoutBytes: 8192 });
+    assert.ok(wrapped.includes("O=$(head -c 8193 /tmp/_oc1 2>/dev/null | base64 -w0 2>/dev/null)"), wrapped);
+    // stderr keeps the plain read — a second head spawn would cost more than
+    // the bytes it saves.
+    assert.ok(wrapped.includes("E=$(base64 -w0 /tmp/_ec1 2>/dev/null)"), wrapped);
+    // the RC-before-any-pipe guarantee must survive the added pipe
+    assert.ok(wrapped.indexOf("RC=$?") < wrapped.indexOf("head -c"));
+    assert.match(wrapped, /\n\) >\/tmp\/_oc1 2>\/tmp\/_ec1; RC=\$\?; /);
+  });
+});
+
+describe("markGuestTruncation", () => {
+  const res = (stdout) => ({ exitCode: 0, stdout, stderr: "e" });
+
+  test("output at or under the cap is returned untouched", () => {
+    for (const n of [0, 1, 10, 8191, 8192]) {
+      const r = res("x".repeat(n));
+      assert.equal(markGuestTruncation(r, 8192), r, `len ${n} must pass through by reference`);
+    }
+  });
+
+  test("the cap+1 overshoot is trimmed back and labelled", () => {
+    const out = markGuestTruncation(res("x".repeat(8193)), 8192);
+    assert.ok(out.stdout.startsWith("x".repeat(8192)));
+    assert.ok(/cut off in the sandbox at 8192 bytes/.test(out.stdout), out.stdout.slice(-120));
+    // the notice must not silently claim an original size it never measured
+    assert.ok(!/of \d+ bytes/.test(out.stdout));
+    assert.equal(out.exitCode, 0);
+    assert.equal(out.stderr, "e");
+  });
+
+  test("no cap (or a bogus one) is a no-op, so the uncapped path is untouched", () => {
+    const r = res("x".repeat(50000));
+    for (const cap of [0, -1, NaN, undefined, null]) {
+      assert.equal(markGuestTruncation(r, cap), r);
+    }
+    assert.equal(markGuestTruncation(null, 100), null);
+  });
+
+  test("the cap sits above MAX_OUTPUT_CHARS, so it only drops discarded bytes", () => {
+    assert.ok(
+      GUEST_STDOUT_CAP_BYTES > MAX_OUTPUT_CHARS,
+      "capping below the transcript clamp would hide output the model would have seen",
+    );
   });
 });
 

@@ -292,7 +292,20 @@ export const bashAgentPrompt = (opts = {}) =>
   "Each turn, respond in ONE of these two ways:\n" +
   "1. To run commands: write a short (one sentence) plan, then a single fenced ```bash code block containing the commands to run this turn — one command per line, no prose inside the block. A here-document (e.g. `cat > file << 'EOF'` … lines … `EOF`) is the way to write a multi-line file and counts as ONE command; keep its whole body, including the closing terminator on its own line, inside the block. Keep each turn small (1-3 commands) and use the output shown to you before deciding the next turn.\n" +
   "2. When you have everything the answer needs (or the task cannot be done in an offline shell): reply with the single line SHELL_DONE and no code block.\n" +
-  "Rules: commands must be non-interactive (no editors, pagers, or prompts — add flags like -y, pipe to cat, or use printf/heredocs). Do not attempt network access. Never fabricate output — rely only on the real results shown to you. Stop (SHELL_DONE) as soon as further commands would not improve the answer; do not loop." +
+  "Rules: commands must be non-interactive (no editors, pagers, or prompts — add flags like -y, pipe to cat, or use printf/heredocs). Do not attempt network access. Never fabricate output — rely only on the real results shown to you. Stop (SHELL_DONE) as soon as further commands would not improve the answer; do not loop.\n" +
+  // Cost guidance, from measurements in docs/SANDBOX-PERFORMANCE.md. This is a
+  // WASM x86 emulator on a network-streamed disk, so the cost model is nothing
+  // like a real machine's: process spawns and returned bytes dominate, and a
+  // command that runs too long cannot be interrupted — the VM is discarded and
+  // the rest of the turn loses its shell. Prevention is the only lever there,
+  // which is why it is stated to the model rather than enforced in code.
+  "SPEED (this emulator is slow in specific ways — these choices matter a lot):\n" +
+  "- Put several steps in ONE command line (`a; b; c`) rather than spreading them over turns: each round-trip has a fixed overhead far larger than a simple command.\n" +
+  "- Prefer ONE process over many. `grep -rl pat dir/` instead of `find dir/ -exec grep -l pat {} \\;` (same answer, ~50x faster); `seq 1 50` instead of a loop calling an external command 50 times. Shell builtins (echo, test/[, pwd, arithmetic) are effectively free; every external binary you spawn is not.\n" +
+  "- Return only what you need. Reading a file is cheap; sending it back is not. Use `head -c`, `head -n`, `tail`, `grep`, `wc -l`, `cut`, `sort -u` to reduce IN the sandbox rather than dumping a whole file and reading it yourself. Output beyond a few KB is cut off anyway.\n" +
+  "- The FIRST use of any binary is much slower than later uses (it streams off a remote disk), so a heavyweight tool for a small job is a bad trade: awk/sed/grep beat starting python3 for simple text work. Reuse what you have already run.\n" +
+  "- Never run an open-ended search over the whole filesystem (`grep -r` / `find` from `/`, `/usr`, or `/usr/share`). Point it at the specific directory you care about. If a command may be slow, bound it: `timeout 20 <command>` (it cannot be relied on to stop a runaway, but it helps).\n" +
+  "- Do not probe for tools you do not need; checking for a command that is absent is one of the slowest things you can do. Just run the tool you intend to use and handle failure.\n" +
   AI_MODEL_NOT_A_PACKAGE_NOTE +
   ANTI_INJECTION_NOTE;
 

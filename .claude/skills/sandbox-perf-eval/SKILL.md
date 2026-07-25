@@ -134,10 +134,21 @@ the next command off a wedged one.
 Consequences for any evaluation, and for production alike:
 
 - Every later command returns `sandbox not ready` until something re-boots.
-- A re-boot gets a **fresh overlay**, so fixtures and anything else written to
-  the filesystem are gone. A recovery that does not re-seed measures a different
-  machine than the one before the timeout.
+- A re-boot gets a **fresh overlay**, so fixtures and any other scratch work on
+  the image are gone. A recovery that does not re-seed measures a different
+  machine than the one before the timeout. (`/workspace` is its own persistent
+  IndexedDB volume and normally survives — but it is wiped deliberately when the
+  wedged command was touching it, the corrupt-volume signature.)
 - One unlucky command therefore ends the sandbox for the rest of the turn.
+
+**Do not try to fix this with a guest-side `timeout`** — it was measured and it
+does not work. Nothing in the guest can terminate a running process: `timeout`
+(SIGTERM and SIGKILL alike), and an explicit `kill -9` from the shell, all fail
+to stop a `sleep` or a busy loop, while plain `sleep 2` returns correctly, so
+the clock works and the tool is present (coreutils 8.30). Signal delivery is not
+functional in CheerpX. Discarding the VM is the only available response, and
+prevention — the cost guidance in `bashAgentPrompt` — is the only lever. The
+full probe table is in `docs/SANDBOX-PERFORMANCE.md`.
 
 The battery's runner handles this: it treats rc 124 or `not ready` as "the VM is
 gone", re-boots, re-runs the fixture setup, and records `killedVm` /`recovered`
@@ -199,7 +210,12 @@ turn the commands were 290 ms of a 44 s turn, so the ranked levers are:
 3. **One process, not many** — spawns cost 6.5 ms minimum, ~29 ms for a real
    binary; builtins are ~0.1 ms.
 4. **Return less** — cost tracks bytes handed back (~1.1 MB/s), not bytes read.
-   Slice in the guest with `head -c` / `wc -l` / `grep -c`.
+   Slice in the guest with `head -c` / `wc -l` / `grep -c`. The envelope now
+   does a generic version of this itself: `execEnvelope`'s opt-in
+   `maxStdoutBytes` (`GUEST_STDOUT_CAP_BYTES`) caps what the guest base64s, so
+   a 2 MB `cat` costs 75 ms instead of 1936 ms. It is OFF by default because
+   `exportFile` reads whole files back through the same envelope; only the
+   agent-loop call sites opt in.
 
 Micro-optimising individual commands sits below all of these. Before proposing
 an optimisation (the recurring "short-circuit `cat`" idea, for example), check

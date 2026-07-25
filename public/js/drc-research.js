@@ -34,6 +34,7 @@ import { createSseParser } from "./sse.js";
 import { BUDGET_MAX_S, BUDGET_MIN_S, budgetTier } from "./timescale.js";
 import { drcChatStream, drcCompleteJson, drcProvider, drcToolRun, providerErrorDetail } from "./drc-providers.js";
 import {
+  GUEST_STDOUT_CAP_BYTES,
   bashIntent,
   buildShellTranscript,
   buildStepUserMessage,
@@ -444,7 +445,10 @@ async function runDrcShellPass({ provider, apiKey, jsonModel, question, context,
       if (!res.ok || !res.body) return { commands: [], done: true, reasoning: "" };
       return parseShellRequest(await readStream(res, () => {}, provider.streamIdleMs));
     },
-    exec: (command) => sb.exec(command, { timeoutMs: execTimeoutMs }),
+    // Bounded stdout: the transcript keeps only MAX_OUTPUT_CHARS anyway, so
+    // there is nothing to gain from moving a whole file across the VM→JS
+    // boundary first (docs/SANDBOX-PERFORMANCE.md).
+    exec: (command) => sb.exec(command, { timeoutMs: execTimeoutMs, maxStdoutBytes: GUEST_STDOUT_CAP_BYTES }),
     ensureReady: async () => {
       onStatus({ type: "phase", phase: "sandbox" });
       // The optional provider mounts files into the VM at boot (introspection
@@ -526,7 +530,7 @@ export async function runDrcSourceTools({
       if (!sbReady) return "Sandbox unavailable; use grep_source/read_file instead.";
       let r;
       try {
-        r = await sb.exec(cmd);
+        r = await sb.exec(cmd, { maxStdoutBytes: GUEST_STDOUT_CAP_BYTES });
       } catch (err) {
         r = { exitCode: 1, stdout: "", stderr: String(err?.message || err) };
       }

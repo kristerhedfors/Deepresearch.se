@@ -49,6 +49,7 @@ import {
   concatChunks,
   execEnvelope,
   isExportablePath,
+  markGuestTruncation,
   outboxListCommand,
   parseExecEnvelope,
   parseOutboxListing,
@@ -1199,6 +1200,11 @@ export function execInSandbox(command, opts = {}) {
   const timeoutMs = Number.isFinite(requested) && requested > 0
     ? Math.max(MIN_EXEC_TIMEOUT_MS, Math.min(EXEC_TIMEOUT_MS, Math.round(requested)))
     : EXEC_TIMEOUT_MS;
+  // Opt-in guest-side stdout cap. Absent ⇒ uncapped, byte-identical to the
+  // pre-2026-07-24 behavior — exportFile round-trips WHOLE files through this
+  // function, so capping by default would silently truncate every download.
+  const capReq = Number(opts && opts.maxStdoutBytes);
+  const capBytes = Number.isFinite(capReq) && capReq > 0 ? Math.round(capReq) : 0;
   const run = async () => {
     if (vmState !== "ready" || !cx) {
       // The VM isn't live when a command tries to run. This should no longer
@@ -1277,7 +1283,7 @@ export function execInSandbox(command, opts = {}) {
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     // The marker+base64 envelope (incl. the RC-before-any-pipe fix) is the
     // pure codec in bash-core.js — this side only owns the VM/console plumbing.
-    const { marker, wrapped } = execEnvelope(command, id);
+    const { marker, wrapped } = execEnvelope(command, id, { maxStdoutBytes: capBytes });
     const env = {
       env: ["HOME=/root", "TERM=dumb", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
       cwd: "/root",
@@ -1324,8 +1330,11 @@ export function execInSandbox(command, opts = {}) {
       return timeoutRes;
     }
     const raw = new TextDecoder().decode(concatChunks(chunks));
-    const result = parseExecEnvelope(raw, marker);
-    if (!result) return { exitCode: 1, stdout: "", stderr: "exec: marker not found" };
+    const parsed = parseExecEnvelope(raw, marker);
+    if (!parsed) return { exitCode: 1, stdout: "", stderr: "exec: marker not found" };
+    // The envelope asked the guest for capBytes+1; trim the overshoot back and
+    // say so, so a capped read never looks like complete output.
+    const result = markGuestTruncation(parsed, capBytes);
     feedResult("shell", result); // mirror the raw output to the background layer
     return result;
   };

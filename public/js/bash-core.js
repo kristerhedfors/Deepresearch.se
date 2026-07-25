@@ -48,6 +48,16 @@
 export const MAX_SHELL_ROUNDS = 6; // agentic iterations before we synthesize regardless
 export const MAX_COMMANDS_PER_ROUND = 6; // commands accepted from one model turn
 export const MAX_OUTPUT_CHARS = 4000; // per-command stdout/stderr kept in the transcript
+// How many bytes of stdout the GUEST is asked for when a caller opts into the
+// cap (execEnvelope's maxStdoutBytes / execInSandbox's option). Everything past
+// MAX_OUTPUT_CHARS is discarded by clampStream anyway, so returning megabytes
+// only to throw them away is pure cost: output crosses the VM→JS boundary as
+// base64 through the emulated console at roughly 1.1 MB/s, which measured
+// `cat` of a 2 MB file at 1903 ms against 60 ms for `wc -c` on the same file
+// (docs/SANDBOX-PERFORMANCE.md). Sized comfortably above MAX_OUTPUT_CHARS so
+// anything the model would actually have seen is unaffected — the cap only
+// ever removes bytes clampStream was going to drop.
+export const GUEST_STDOUT_CAP_BYTES = 8192;
 export const MAX_COMMAND_CHARS = 8000; // one command clamped to this (heredoc file writes need room; a mid-body truncation would leave the doc unterminated)
 // Total wall-clock budget for the WHOLE loop (the lazy first boot — a ~25 s cold
 // Debian stream, slower still on iOS where the persistent /workspace IndexedDB
@@ -592,20 +602,68 @@ export function deliverablesRun(files) {
  * `) >/tmp/…` on the same line as `EOF` and break the heredoc (the file write
  * would swallow the rest of the wrapper as body). The leading/trailing
  * newlines are transparent to every ordinary one-line command too.
+ * `maxStdoutBytes` asks the guest to base64 only the first N bytes of stdout
+ * instead of all of it, which is what makes a runaway `cat` cheap (the bytes
+ * past MAX_OUTPUT_CHARS were always discarded — see GUEST_STDOUT_CAP_BYTES).
+ * It costs one extra process spawn (`head`), so it is OPT-IN: absent or 0
+ * produces the byte-identical uncapped wrapper the file-export round trip
+ * depends on (sandbox.js exportFile reads a WHOLE file back through this
+ * envelope — capping it by default would silently truncate downloads).
+ *
+ * N+1 bytes are requested so the caller can tell "exactly N bytes of output"
+ * from "cut off at N" without a second `wc -c` spawn; markGuestTruncation
+ * turns that extra byte back into an honest notice.
+ *
  * @param {string} command
  * @param {string} id a unique run id (uniqueness is the caller's job)
+ * @param {{ maxStdoutBytes?: number }} [opts]
  * @returns {{ marker: string, wrapped: string }}
  */
-export function execEnvelope(command, id) {
+export function execEnvelope(command, id, opts = {}) {
   const marker = "###EXEC" + id + ":";
   const of = "/tmp/_o" + id;
   const ef = "/tmp/_e" + id;
+  const capReq = Number(opts && opts.maxStdoutBytes);
+  const capped = Number.isFinite(capReq) && capReq > 0;
+  // stderr is never capped: it is small in practice, and a second `head` spawn
+  // would cost more than the bytes it saves.
+  const readOut = capped
+    ? "head -c " + (Math.round(capReq) + 1) + " " + of + " 2>/dev/null | base64 -w0 2>/dev/null"
+    : "base64 -w0 " + of + " 2>/dev/null";
   const wrapped =
     "(\n" + command + "\n) >" + of + " 2>" + ef + "; RC=$?; " +
-    "O=$(base64 -w0 " + of + " 2>/dev/null); E=$(base64 -w0 " + ef + " 2>/dev/null); " +
+    "O=$(" + readOut + "); E=$(base64 -w0 " + ef + " 2>/dev/null); " +
     "rm -f " + of + " " + ef + "; " +
     'printf "' + marker + '%s:%s:%d###\\n" "$O" "$E" "$RC"';
   return { marker, wrapped };
+}
+
+/**
+ * Turn the envelope's N+1-byte overshoot into an honest truncation notice.
+ * The guest was asked for `maxStdoutBytes + 1`; getting all of them means the
+ * real output was at least that long, so trim back to the cap and say so. Any
+ * shorter result is the complete output and is returned untouched.
+ *
+ * The notice deliberately does NOT claim an original size — learning it would
+ * need a `wc -c` spawn on every command, and a spawn costs more than the
+ * honesty is worth here (clampStream's own notice still reports the chars it
+ * drops from what did arrive).
+ *
+ * @param {{ exitCode: number, stdout: string, stderr: string }} result
+ * @param {number} maxStdoutBytes the cap passed to execEnvelope (0 = uncapped)
+ * @returns {{ exitCode: number, stdout: string, stderr: string }}
+ */
+export function markGuestTruncation(result, maxStdoutBytes) {
+  const cap = Math.round(Number(maxStdoutBytes));
+  if (!result || !Number.isFinite(cap) || cap <= 0) return result;
+  const out = String(result.stdout || "");
+  if (out.length <= cap) return result;
+  return {
+    ...result,
+    stdout:
+      out.slice(0, cap) +
+      `\n…[output cut off in the sandbox at ${cap} bytes — re-run with head/grep/wc to select what you need]`,
+  };
 }
 
 /**
