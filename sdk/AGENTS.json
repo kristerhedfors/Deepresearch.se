@@ -3,13 +3,14 @@
   "version": "0.1.0",
   "status": "wired (2026-07-23): AgentSpec logic lives in the shared core public/js/agent-spec-core.js (server façade src/agent-spec.js; sdk/pair-cli.mjs re-exports it); the Agent Studio mode and share-link minting resolve agents from this file via the committed source snapshot. An agent is DEFINED by its chat-input-pane controls, its intro + loading animations, its colour theme, its seed example questions, and the default quota a minted share-link token carries. Derive a new agent by copying one of these and changing those fields.",
   "reference_product": "deepresearch.se",
+  "agents_are_not_chat_modes": "The four entries below are reference AgentSpecs — templates you copy to define a new agent. They are NOT the chat-mode dropdown, which is a separate list of five: Deep Research (normal), Introspection, Agent Studio (sdk), Orchestrator, Outrospection. An agent PICKS a mode (the `mode` field and the mode-select control); it does not add one. Nor are 'Research' and 'Secure' the tiers themselves: Se/rver and Se/cure are the two TIERS of the platform, and an agent declares which one it runs on via `platform` (server|client) — the specs named Research and Secure are simply the reference agent for each tier.",
   "control_types": {
     "prompt-input": "the message textarea",
     "send-button": "submit the turn",
     "model-select": "choose the answer/synthesis model (provider registry)",
     "depth-slider": "research depth → number of pipeline search rounds",
     "toggle": "a boolean request flag (web search, incognito, …) — id IS the flag",
-    "mode-select": "choose the chat mode (Normal / Introspection / Agent Studio)",
+    "mode-select": "choose the chat mode — the app's five canonical ids: normal (Deep Research) / introspection / sdk (Agent Studio; the spec's historical alias agent-builder still resolves to it) / orchestrator / outrospection",
     "attachments": "attach files to the turn"
   },
   "agents": [
@@ -38,7 +39,7 @@
         { "type": "toggle", "id": "web_search", "label": "Web search", "default": true },
         { "type": "toggle", "id": "incognito", "label": "Incognito", "default": false },
         { "type": "attachments", "accept": "*/*", "max": 5 },
-        { "type": "mode-select", "modes": ["normal", "introspection", "agent-builder"] },
+        { "type": "mode-select", "modes": ["normal", "introspection", "sdk", "orchestrator", "outrospection"] },
         { "type": "send-button" }
       ],
       "examples": [
@@ -132,7 +133,7 @@
       "controls": [
         { "type": "prompt-input", "placeholder": "Describe the agent to build…" },
         { "type": "model-select", "providers": "tool-capable", "allowLocal": false },
-        { "type": "mode-select", "modes": ["normal", "introspection", "agent-builder"] },
+        { "type": "mode-select", "modes": ["normal", "introspection", "sdk", "orchestrator", "outrospection"] },
         { "type": "send-button", "label": "Build" }
       ],
       "examples": [
