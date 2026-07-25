@@ -18,6 +18,7 @@ import {
   RESULT_KIND,
   RESULT_V,
 } from "./research-seal-core.js";
+import { b64urlDecode, b64urlEncode } from "./proxy-bundle.js";
 
 const SAMPLE = {
   v: 1,
@@ -90,8 +91,16 @@ describe("fail-closed", () => {
     const kp = await generateProjectKeypair();
     const pub = await exportProjectPublicKey(kp.publicKey);
     const env = await sealResult(SAMPLE, pub);
-    const flipped = env.ct.slice(0, -2) + (env.ct.endsWith("A") ? "B" : "A") + env.ct.slice(-1);
-    assert.equal(await openResult({ ...env, ct: flipped }, kp.privateKey), null);
+    // Flip a bit in the DECODED ciphertext rather than substituting a
+    // character in its base64url rendering. The old form picked its
+    // replacement by looking at the last character but rewrote the
+    // second-to-last one, so whenever that character already held the
+    // replacement value the "tampered" ciphertext was byte-identical, opened
+    // cleanly, and the assertion failed — ~1 run in 63. Flipping a byte is
+    // always a real tamper, and it is what the test says it does.
+    const ct = b64urlDecode(env.ct);
+    ct[0] ^= 0x01;
+    assert.equal(await openResult({ ...env, ct: b64urlEncode(ct) }, kp.privateKey), null);
   });
 
   it("returns null for malformed / wrong-kind envelopes", async () => {
