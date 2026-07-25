@@ -12,15 +12,21 @@
 # `npm run typecheck` used to die with a confusing TS2688.
 name: CI
 
+# `push: branches: [main]` + `pull_request`, NOT `push: ["**"]`: a branch with
+# an open PR fires both events on the same SHA, so every PR push ran the whole
+# suite twice for one bit of signal (observed on PR #255's own first pushes).
+# Feature-branch pushes are covered by the PR run; `main` is covered by push,
+# which is what the auto-deploy actually follows.
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
-# A new push to the same branch supersedes an in-flight run.
+# A new push to the same branch supersedes an in-flight run. Keyed by workflow
+# AND ref so the push-on-main and pull_request runs never cancel each other.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
