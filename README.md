@@ -76,8 +76,10 @@ findings come back as curated conclusions — sealed to the site's import agent,
 carried as a file, or sealed to an organizer's own key, which is the one
 channel the server cannot read. `docs/WORKSPACES.md` is the complete
 specification of both kinds, with per-channel exposure tables; its **§2 is the
-end-user chooser** — point by point, when and why to use which — mirrored
-in-app on both help pages (`/help/`, `/cure/help/`).
+end-user chooser** — point by point, when and why to use which. In-app that
+comparison lives in two places and only two: `/architecture/` pairs the tiers
+row by row, and `/cure/help/` carries the point-by-point chooser. `/help/` is
+the signed-in app's overview and links to both.
 
 See `docs/ARCHITECTURE.md` **§0 (the board)** for the whiteboard view of every
 component — what data each holds, who can read it, what each makes possible —

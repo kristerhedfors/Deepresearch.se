@@ -521,7 +521,8 @@ applies.
 ## UX-11 — A document reader has two modes; in comment mode a marked passage gets a comment that reaches the code, not just the prose
 
 **The rule.** Every documentation page carries a Word-style mode **dropdown**
-(fixed, top right): **Read only** (the default, and exactly what the page was
+(fixed, **bottom** right — see "Not the top-right corner" below): **Read
+only** (the default, and exactly what the page was
 before) and **Comment**. It is a dropdown, not a pair of buttons — it matches
 the chat mode selector's shape and a native `<select>` is the one control that
 is comfortable on a phone. In comment mode, selecting a passage opens a composer
@@ -553,6 +554,23 @@ reconciles the passage and the code behind it in one change. So the reader is
 where the instruction is given, and where the result comes back: status, reply
 and staleness land in the margin, not only in the account panel (owner
 directive, 2026-07-25).
+
+**Not the top-right corner (fixed 2026-07-26).** The slot shipped at
+`top: .5rem; right: .6rem` and collided with the host page's own header on
+every documentation page and at every width — measured with a real viewport:
+267×29px at 390, 366×13px at 820, 136×13px at 1280, where it covered `/help/`'s
+"← Back to the app" outright. That is the cost of the layer's own promise (a
+page needs no markup, no CSS and **no layout cooperation**): it cannot know
+what the page already put in that corner, so it must not claim a corner pages
+conventionally use for their title and back link. It lives at
+`bottom: .6rem; right: .6rem` now — free on every page, and a mode switch that
+stays reachable while scrolling belongs there anyway. Two things must move
+together: `.dc-slot` in `public/js/docs-comments.js`, the inline style in
+`showNote()` in `public/js/doc-comment-gate.js` (an inline style cannot carry a
+media query, so it duplicates the position on purpose), and the `.dc-rail`
+padding, which is generous on whichever end the slot floats over. The fallback
+badge also needs enough background alpha to read as chrome — at `.14` wash with
+`opacity: .75` the prose behind it showed through its own label.
 
 **No second queue.** The comment is a `feedback` entry with the `doc` scope —
 one pipeline for free-form human instructions, four scope tags on it
@@ -590,7 +608,7 @@ Selection-driven, no text routing, so no EN/SV parity applies.
 ## UX-12 — A tier comparison is one question per row, both answers direct-labeled, stacked on a phone
 
 **When** a surface compares Se/cure and Se/rver — the workspace chooser on
-both help pages is the canonical case — **then** it renders as one row per
+`/cure/help/` is the canonical case — **then** it renders as one row per
 QUESTION the reader actually has ("who can read it", "who pays for the AI",
 "if you lose the password"), with each tier's answer in its own cell carrying
 the tier's NAME as a bold prefix, Se/cure first. On a phone the row stacks to
@@ -618,11 +636,17 @@ why to use which"*.)
    new `.sl` context. Both help pages' scoped `-.04em` was re-measured at
    weight 700 (`node scripts/slash-gap.mjs --weights 700 --margin -0.04`:
    every font row ok, worst side +0.043em vs the 0.03em floor).
+6. **One copy of the comparison per audience** (owner directive, 2026-07-26).
+   The paired tables belong to `/architecture/` (the design audience) and the
+   point-by-point chooser to `/cure/help/` (the deciding audience). `/help/`
+   is the signed-in app's OVERVIEW — it opens from the absolute starting
+   point and links onward — so it carries no `.cmp` block at all. Do not
+   "restore" one there; a third copy is what drifts.
 
 **Canonical implementation:** the `.cmp` / `.cmp-row` / `.cmp-q` / `.cmp-a`
-block in `public/help/index.html` and `public/cure/help/index.html` ("Se/cure
-or Se/rver: which workspace?"). The written source both pages compress is
-`docs/WORKSPACES.md` §2 — update that section and the two pages together.
+block in `public/cure/help/index.html` ("Se/cure or Se/rver: which
+workspace?"). The written source it compresses is `docs/WORKSPACES.md` §2 —
+update that section, this page, and `/architecture/`'s paired tables together.
 
 ---
 

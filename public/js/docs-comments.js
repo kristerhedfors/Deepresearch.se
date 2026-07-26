@@ -40,7 +40,16 @@ const STATUS_LABEL = {
 };
 
 const STYLES = `
-.dc-slot { position: fixed; top: .5rem; right: .6rem; z-index: 40;
+/* BOTTOM right, not top right (fixed 2026-07-26). The top-right corner is
+   already taken on every documentation page that mounts this layer — /help/ and
+   /cure/help/ put their title and "← Back to the app" there, /docs/ its header
+   bar — and since the layer deliberately requires no layout cooperation from
+   the page, it cannot know to dodge. Measured at a real viewport, the slot
+   overlapped the page header at EVERY width: 267×29px at 390, 366×13px at 820,
+   136×13px at 1280 (covering the back button). The bottom-right corner is free
+   on both pages, and a mode switch that stays reachable while scrolling wants
+   to be there anyway. Keep the rail's bottom padding below in step with it. */
+.dc-slot { position: fixed; bottom: .6rem; right: .6rem; z-index: 40;
   font: 400 .78rem/1.4 system-ui, -apple-system, sans-serif;
   display: flex; align-items: center; gap: .35rem;
   background: rgba(127,127,127,.14); border-radius: 999px; padding: .2rem .5rem .2rem .7rem;
@@ -59,8 +68,10 @@ body.dc-commenting .dc-root a { pointer-events: none; }
   border-bottom: 2px solid #f0ad4e; border-radius: 2px; padding: 0 1px; cursor: pointer; }
 .dc-root mark.dc-mark.dc-flash { background: rgba(240,173,78,.85); transition: background .3s; }
 
+/* Padding clears the floating slot, which now sits at the BOTTOM of this
+   column rather than the top — so the generous end goes last. */
 .dc-rail { position: fixed; top: 0; right: 0; bottom: 0; width: min(340px, 88vw); z-index: 39;
-  overflow-y: auto; padding: 3rem .7rem 2rem; box-sizing: border-box;
+  overflow-y: auto; padding: 1rem .7rem 3.5rem; box-sizing: border-box;
   background: rgba(248,249,251,.97); border-left: 1px solid rgba(127,127,127,.3);
   font: 400 .82rem/1.5 system-ui, -apple-system, sans-serif; color: #16202c; }
 .dc-rail[hidden] { display: none; }
