@@ -106,6 +106,38 @@ describe("isPublicAsset", () => {
     assert.ok(seen.size >= 25, `suspiciously small /cure module graph (${seen.size} modules) — walker broken?`);
   });
 
+  // The same breakage class as /cure, on two pages that carry their module
+  // code INLINE (`<script type="module">`) rather than via `<script src>`, so
+  // the graph walker above cannot see them. Both are signed-out surfaces: the
+  // landing is the front door, and /pulse/timeline.html is linked from both
+  // tiers. An import added here without its allowlist entry 401s and the chart
+  // silently blanks for exactly the visitors these pages exist for.
+  for (const page of ["welcome/index.html", "pulse/timeline.html"]) {
+    test(`every module imported inline by /${page.replace("/index.html", "/")} is public`, () => {
+      const pub = fileURLToPath(new URL("../public", import.meta.url));
+      const html = readFileSync(join(pub, page), "utf8");
+      const specs = new Set();
+      for (const block of html.matchAll(/<script[^>]*type="module"[^>]*>([\s\S]*?)<\/script>/g)) {
+        for (const m of block[1].matchAll(/^\s*import\s+(?:[\s\S]*?from\s+)?["']([^"']+)["']/gm)) specs.add(m[1]);
+        for (const m of block[1].matchAll(/import\(\s*["']([^"']+)["']\s*\)/g)) specs.add(m[1]);
+      }
+      assert.ok(specs.size >= 1, `found no inline module imports in ${page} — walker broken?`);
+      for (const spec of specs) {
+        if (spec.startsWith("http")) continue;
+        assert.equal(
+          isPublicAsset(u(spec), "GET"),
+          true,
+          `${spec} is imported by ${page} but NOT on the public allowlist — a signed-out ` +
+            "visitor gets a 401 and the module graph fails to link. Add it to isPublicAsset (src/assets.js).",
+        );
+        assert.ok(
+          readFileSync(join(pub, spec), "utf8").length > 0,
+          `${spec} is imported by ${page} but missing on disk`,
+        );
+      }
+    });
+  }
+
   test("the vendored xterm files are public (sandbox.js loads them same-origin, /cure included)", () => {
     // These load via <script>/<link> injection (loadScript/loadCSS), not ES
     // imports, so the graph walker above can't derive them — pin them here.
