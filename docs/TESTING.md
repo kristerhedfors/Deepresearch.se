@@ -284,8 +284,11 @@ CORS-capable registry: per-provider wire quirks, JSON-mode payloads,
 lenient JSON extraction, model filters, the `bergetCatalogFilter` shared
 by the Berget entry AND the proxy provider, `filterAndSortModels`'s
 curate-and-order-newest-first shaping, live-vs-fallback catalog over
-mock HTTP, the embed config — small model, 512 dims, Groq has none —
-and `drcEmbed`'s wire shape/index-ordering over mock HTTP),
+mock HTTP, the embed config — small model, 512 dims, Anthropic has none —
+`drcEmbed`'s wire shape/index-ordering over mock HTTP, and the ANTHROPIC
+WIRE adapter: payload translation (system hoisting, image blocks, same-role
+merging), the SSE event mapping including the drain-past-empty-events pull
+loop, and the /messages + x-api-key call shape end to end),
 `drc-rag.js` (DRC's client-side RAG: incremental chat indexing with
 srcMsgs advance-on-success-only, embedder-mismatch wipe, the
 recent-window exclusion for the current chat vs siblings-in-full,

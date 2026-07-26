@@ -46,8 +46,8 @@ export function detectLang(text) {
 // to actually researching. Reused across several answers and the fallback.
 const START = {
   drc: {
-    en: "**To research for real:** add your own OpenAI, Groq or Berget API key under the gear (Settings). DeepResearch.Se/cure runs entirely in your browser on your key — this site's server never sees it, or your messages.",
-    sv: "**För att forska på riktigt:** lägg in din egen OpenAI-, Groq- eller Berget-API-nyckel under kugghjulet (Inställningar). DeepResearch.Se/cure körs helt i din webbläsare med din nyckel — den här sajtens server ser aldrig nyckeln eller dina meddelanden.",
+    en: "**To research for real:** add your own OpenAI, Anthropic or Berget API key under the gear (Settings) — or point it at any other OpenAI-compatible endpoint. DeepResearch.Se/cure runs entirely in your browser on your key — this site's server never sees it, or your messages.",
+    sv: "**För att forska på riktigt:** lägg in din egen OpenAI-, Anthropic- eller Berget-API-nyckel under kugghjulet (Inställningar) — eller peka den mot valfri annan OpenAI-kompatibel endpoint. DeepResearch.Se/cure körs helt i din webbläsare med din nyckel — den här sajtens server ser aldrig nyckeln eller dina meddelanden.",
   },
   drs: {
     en: "**To use the assistant:** sign in with the account button (top right). It's an invite-only research project, so new accounts wait for the operator's approval after signing in with Google.",
@@ -136,10 +136,10 @@ const ENTRIES = [
     answer: (tier, lang) =>
       lang === "sv"
         ? tier === "drc"
-          ? "Här (DeepResearch.Se/cure) finns **inget att logga** — servern är inte i något dataflöde. Dina meddelanden och din API-nyckel skickas direkt från din webbläsare till din leverantör (OpenAI/Groq/Berget); projektets tillstånd ligger krypterat i din egen webbläsare. \"Ingen loggning\" är inte en policy här — det finns bokstavligen inget att logga."
+          ? "Här (DeepResearch.Se/cure) finns **inget att logga** — servern är inte i något dataflöde. Dina meddelanden och din API-nyckel skickas direkt från din webbläsare till din leverantör (OpenAI/Anthropic/Berget eller den endpoint du valt); projektets tillstånd ligger krypterat i din egen webbläsare. \"Ingen loggning\" är inte en policy här — det finns bokstavligen inget att logga."
           : "Integriteten är delad. På DeepResearch.Se/cure är servern inte i dataflödet alls — det finns inget att logga. På DeepResearch.Se/rver processas frågor av EU-hostade modeller; samtal lagras inte på servern bortom en ≤15 min svarsbuffert, och loggar innehåller endast metadata. Vill du ha den strukturellt starkaste anonymiteten, använd DeepResearch.Se/cure (spökknappen leder dit)."
         : tier === "drc"
-          ? "Here (DeepResearch.Se/cure) there is **nothing to log** — the server is in no data path. Your messages and your API key go straight from your browser to your provider (OpenAI/Groq/Berget); the project state rests encrypted in your own browser. \"No logging\" isn't a policy here — there is literally nothing to log."
+          ? "Here (DeepResearch.Se/cure) there is **nothing to log** — the server is in no data path. Your messages and your API key go straight from your browser to your provider (OpenAI/Anthropic/Berget, or whichever endpoint you chose); the project state rests encrypted in your own browser. \"No logging\" isn't a policy here — there is literally nothing to log."
           : "Privacy is split. On DeepResearch.Se/cure the server is in no data path at all — nothing to log. On DeepResearch.Se/rver, questions are processed by EU-hosted models; conversations aren't stored server-side beyond a ≤15-minute answer-recovery buffer, and logs carry metadata only. For the structurally strongest anonymity, use DeepResearch.Se/cure (the ghost button is the door to it).",
   },
   {
@@ -191,8 +191,8 @@ const ENTRIES = [
     ],
     answer: (tier, lang) =>
       lang === "sv"
-        ? `DeepResearch.Se/cure är **gratis att använda** — du betalar bara din egen leverantör (OpenAI/Groq/Berget) för det du kör, direkt. Groq har en gratisnivå. DeepResearch.Se/rver är inbjudningsbaserat och inte kommersiellt; de hostade extrafunktionerna körs på kostnadsbärande API:er, ideellt.\n\n${startTail(tier, lang)}`
-        : `DeepResearch.Se/cure is **free to use** — you only pay your own provider (OpenAI/Groq/Berget) for what you run, directly. Groq has a free tier. DeepResearch.Se/rver is invite-only and not commercial; the hosted extras run on cost-bearing APIs, not-for-profit.\n\n${startTail(tier, lang)}`,
+        ? `DeepResearch.Se/cure är **gratis att använda** — du betalar bara din egen leverantör (OpenAI/Anthropic/Berget) för det du kör, direkt. Kör du en egen modell via en OpenAI-kompatibel endpoint kostar det ingenting alls. DeepResearch.Se/rver är inbjudningsbaserat och inte kommersiellt; de hostade extrafunktionerna körs på kostnadsbärande API:er, ideellt.\n\n${startTail(tier, lang)}`
+        : `DeepResearch.Se/cure is **free to use** — you only pay your own provider (OpenAI/Anthropic/Berget) for what you run, directly. Run your own model behind an OpenAI-compatible endpoint and it costs nothing at all. DeepResearch.Se/rver is invite-only and not commercial; the hosted extras run on cost-bearing APIs, not-for-profit.\n\n${startTail(tier, lang)}`,
   },
   {
     id: "access",
@@ -223,11 +223,11 @@ const ENTRIES = [
     answer: (tier, lang) =>
       lang === "sv"
         ? tier === "drc"
-          ? "DeepResearch.Se/cure kör på **din egen** API-nyckel, skickad direkt från webbläsaren till leverantören. Stödda (CORS-dugliga): **OpenAI, Groq och Berget**. Öppna kugghjulet (Inställningar), klistra in nyckeln — leverantören känns igen automatiskt på prefixet (sk-… OpenAI, gsk_… Groq, sk_ber_… Berget) — och tryck Spara. Groq har en gratisnivå (console.groq.com); Berget är EU-hostat."
-          : "På den inloggade nivån (DeepResearch.Se/rver) behöver du **ingen egen nyckel** — modellerna körs på serverns sida. Logga in med kontoknappen för att komma åt dem. Vill du använda din egen nyckel i stället, gör det i webbläsaren via DeepResearch.Se/cure (OpenAI, Groq eller Berget)."
+          ? "DeepResearch.Se/cure kör på **din egen** API-nyckel, skickad direkt från webbläsaren till leverantören. Inbyggda genvägar (CORS-dugliga): **OpenAI, Anthropic och Berget**. Öppna kugghjulet (Inställningar), klistra in nyckeln — leverantören känns igen automatiskt på prefixet (sk-… OpenAI, sk-ant-… Anthropic, sk_ber_… Berget) — och tryck Spara. De tre är genvägar, inte gränsen: du kan lika gärna peka mot **valfri annan OpenAI-kompatibel endpoint**, inklusive en modell du kör själv. Berget är EU-hostat."
+          : "På den inloggade nivån (DeepResearch.Se/rver) behöver du **ingen egen nyckel** — modellerna körs på serverns sida. Logga in med kontoknappen för att komma åt dem. Vill du använda din egen nyckel i stället, gör det i webbläsaren via DeepResearch.Se/cure (OpenAI, Anthropic, Berget — eller valfri annan OpenAI-kompatibel endpoint)."
         : tier === "drc"
-          ? "DeepResearch.Se/cure runs on **your own** API key, sent straight from the browser to the provider. Supported (CORS-capable): **OpenAI, Groq and Berget**. Open the gear (Settings), paste your key — the provider is auto-detected from the prefix (sk-… OpenAI, gsk_… Groq, sk_ber_… Berget) — and press Save. Groq has a free tier (console.groq.com); Berget is EU-hosted."
-          : "On the signed-in tier (DeepResearch.Se/rver) you don't need your own key — the models run server-side. Sign in with the account button to reach them. If you'd rather use your own key, do it in the browser via DeepResearch.Se/cure (OpenAI, Groq or Berget).",
+          ? "DeepResearch.Se/cure runs on **your own** API key, sent straight from the browser to the provider. Built-in shortcuts (CORS-capable): **OpenAI, Anthropic and Berget**. Open the gear (Settings), paste your key — the provider is auto-detected from the prefix (sk-… OpenAI, sk-ant-… Anthropic, sk_ber_… Berget) — and press Save. Those three are shortcuts, not the boundary: you can point it at **any other OpenAI-compatible endpoint** just as well, a model you run yourself included. Berget is EU-hosted."
+          : "On the signed-in tier (DeepResearch.Se/rver) you don't need your own key — the models run server-side. Sign in with the account button to reach them. If you'd rather use your own key, do it in the browser via DeepResearch.Se/cure (OpenAI, Anthropic, Berget — or any other OpenAI-compatible endpoint).",
   },
   {
     id: "tiers",

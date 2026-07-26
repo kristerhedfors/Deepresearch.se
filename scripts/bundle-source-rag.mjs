@@ -46,6 +46,7 @@ import {
   chunkSourceText,
   int8ToB64,
   quantizeInt8,
+  truncateForEmbedding,
   validateRagIndex,
   validateSnapshot,
 } from "../public/js/introspect-core.js";
@@ -179,7 +180,7 @@ async function main() {
     } else {
       const vecs = new Array(pieces.length).fill(null);
       plan.push({ p: f.p, vecs, reused: false });
-      pieces.forEach((text, ci) => toEmbed.push({ p: f.p, ci, text: text.slice(0, MAX_CHUNK_CHARS) }));
+      pieces.forEach((text, ci) => toEmbed.push({ p: f.p, ci, text: truncateForEmbedding(text, MAX_CHUNK_CHARS) }));
     }
   }
   const totalChunks = plan.reduce((n, e) => n + e.vecs.length, 0);

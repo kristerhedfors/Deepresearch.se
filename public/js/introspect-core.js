@@ -625,6 +625,29 @@ export function snapshotChunks(snapshot) {
   return out;
 }
 
+// Truncate a chunk to a CHARACTER budget before embedding, without splitting a
+// surrogate pair. A plain `.slice(0, n)` can cut an astral character (an emoji)
+// in half and leave a lone high surrogate, which the embedding model's
+// tokenizer rejects outright — Berget answers `400 TextEncodeInput must be
+// Union[TextInputSequence, …]`, the whole batch fails, and the bundle aborts.
+// It is offset-dependent, so it appears and disappears as unrelated doc edits
+// shift the chunk boundaries (first seen 2026-07-26: a 👍 in docs/WORKSPACES.md
+// landed on the 1200-char cut). Dropping the orphan costs one character.
+/**
+ * @param {string} text
+ * @param {number} max maximum length in UTF-16 code units
+ * @returns {string}
+ */
+export function truncateForEmbedding(text, max) {
+  const s = typeof text === "string" ? text : "";
+  if (!(max > 0)) return "";
+  if (s.length <= max) return s;
+  const cut = s.slice(0, max);
+  const last = cut.charCodeAt(cut.length - 1);
+  // A high surrogate in final position had its pair sliced off.
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
+}
+
 // int8 quantization. Cosine similarity is scale-invariant, so we quantize each
 // embedding by its own max-abs to int8 (÷ that scalar) and DON'T store the
 // scale — it cancels in the cosine. A 1024-d vector loses ~1/127 relative
@@ -1538,7 +1561,7 @@ export const MAX_GREP_CONTEXT = 5; // context lines each side of a match (grep -
 
 // The provider-neutral tool definitions (name / description / JSON input
 // schema). The DRS loop maps these onto Anthropic's `tools` shape and DRC onto
-// the OpenAI/Groq `tools` shape — the fields line up with both. read_file /
+// the OpenAI `tools` shape — the fields line up with both. read_file /
 // grep_source / list_files are source-only; DRC ADDS a run_bash entry at its
 // call site (the sandbox is browser-only), so it is not declared here.
 export const INTROSPECTION_TOOLS = [

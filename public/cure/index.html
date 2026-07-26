@@ -125,7 +125,8 @@
   </div>
 
   <div id="chat"><div class="empty">Hi — I'm an AI research assistant that runs right here in your
-    browser, on your own OpenAI, Groq or Berget API key (or a local model you run yourself). My replies
+    browser, on your own OpenAI, Anthropic or Berget API key — or any OpenAI-compatible endpoint, a model
+    you run yourself included. My replies
     are model-generated, so verify anything critical. Ask a research question to get started — the first
     send helps you set a key up. Type “/” for the commands: “/feedback” reaches the developers,
     “/help” answers from the documentation.</div></div>
@@ -283,11 +284,11 @@
           your sealed blob, in this browser.</p>
         <label for="key-input">API key</label>
         <input id="key-input" type="password" autocomplete="off"
-               placeholder="sk-… (OpenAI) · gsk_… (Groq) · sk_ber_… (Berget)">
+               placeholder="sk-… (OpenAI) · sk-ant-… (Anthropic) · sk_ber_… (Berget)">
         <label for="key-provider">Provider <span id="keydetect" class="muted"></span></label>
         <select id="key-provider">
           <option value="openai">🇺🇸 OpenAI (platform.openai.com)</option>
-          <option value="groq">🇺🇸 Groq (console.groq.com — free tier available)</option>
+          <option value="anthropic">🇺🇸 Anthropic (console.anthropic.com — Claude)</option>
           <option value="berget">🇸🇪 Berget (berget.ai — EU-hosted models)</option>
         </select>
         <div class="row">
@@ -297,18 +298,23 @@
         <div id="savedkeys"></div>
       </details>
 
-      <!-- LOCAL model server — the keyless provider: an OpenAI-compatible
-           server the user runs (Ollama / LM Studio / llama.cpp). Setting a
-           URL is what puts "Local" in the model dropdown; with it, research
-           runs with NO third party in the path at all. Wired by drc.js. -->
+      <!-- ANY OpenAI-compatible endpoint — the keyless provider, and the
+           reason the three named ones above are shortcuts rather than the
+           boundary. Usually a server the user runs (Ollama / LM Studio /
+           llama.cpp), but any service speaking that wire works. Setting a
+           URL is what puts it in the model dropdown; pointed at your own
+           machine, research runs with NO third party in the path at all.
+           Wired by drc.js. -->
       <div class="settings-item" id="localrow">
         <div class="settings-row">
-          <span class="settings-label">Local model server
-            <button type="button" class="setting-info" data-pop="localpop" aria-label="More about local models">ⓘ</button>
+          <span class="settings-label">Any OpenAI-compatible endpoint
+            <button type="button" class="setting-info" data-pop="localpop" aria-label="More about custom endpoints">ⓘ</button>
           </span>
         </div>
-        <div class="setting-pop" id="localpop" hidden>Run the model YOURSELF and point <span class="wm">Se<span class="sl">/</span>cure</span>
-          at it — any OpenAI-compatible server works: <b>Ollama</b> (<code>http://localhost:11434/v1</code>),
+        <div class="setting-pop" id="localpop" hidden>The three providers above are shortcuts, not the limit:
+          point <span class="wm">Se<span class="sl">/</span>cure</span> at <b>any</b> endpoint speaking the
+          OpenAI wire by its base URL. Best of all, run the model YOURSELF — <b>Ollama</b>
+          (<code>http://localhost:11434/v1</code>),
           <b>LM Studio</b> (<code>http://localhost:1234/v1</code>), <b>llama.cpp</b>
           (<code>http://localhost:8080/v1</code>). No API key, no account — and <b>nothing leaves your
           device</b>: every research phase runs on your own machine. Ollama must allow this page's origin:
@@ -837,7 +843,8 @@
            session's truth, and drc.js rewrites it when this session's config
            says otherwise (securePostureBrief) — feedback #31. -->
       <p class="lead" id="intro-lead">Deep research that runs <b>client-side, in your browser</b>: bring
-        your own OpenAI, Groq or Berget API key and every model call goes straight from this
+        your own OpenAI, Anthropic or Berget API key — or point it at any other OpenAI-compatible
+        endpoint — and every model call goes straight from this
         page to the provider — this site's server is never in the path, so it could not
         read or log your messages even if it wanted to.</p>
       <ul class="intro-points">

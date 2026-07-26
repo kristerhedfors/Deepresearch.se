@@ -34,6 +34,7 @@ import {
   chunkSourceText,
   int8ToB64,
   quantizeInt8,
+  truncateForEmbedding,
   validateSnapshot,
 } from "../public/js/introspect-core.js";
 
@@ -81,7 +82,7 @@ async function embedBatchShrinking(texts) {
     } catch (/** @type {any} */ err) {
       const tooLong = err.status === 400 && /maximum context length|reduce the length/i.test(err.message);
       if (!tooLong || attempt >= 6) throw err;
-      batch = batch.map((t) => t.slice(0, Math.max(200, Math.floor(t.length * 0.8))));
+      batch = batch.map((t) => truncateForEmbedding(t, Math.max(200, Math.floor(t.length * 0.8))));
     }
   }
 }
@@ -96,7 +97,7 @@ async function main() {
   for (const f of corpus.files) {
     hashes[f.p] = fileHash(f.t);
     const pieces = chunkSourceText(f.t);
-    pieces.forEach((text, ci) => toEmbed.push({ p: f.p, ci, text: text.slice(0, MAX_CHUNK_CHARS) }));
+    pieces.forEach((text, ci) => toEmbed.push({ p: f.p, ci, text: truncateForEmbedding(text, MAX_CHUNK_CHARS) }));
   }
   console.log(`${corpus.files.length} docs, ${toEmbed.length} chunks — embedding via Berget (batch ${BATCH}) …`);
 

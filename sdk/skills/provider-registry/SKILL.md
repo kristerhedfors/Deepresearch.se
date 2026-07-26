@@ -184,9 +184,9 @@ The prefix table (mirror of the reference's `FOREIGN_KEY_SHAPES` +
 
 | Prefix | Provider | In the reference client registry? |
 |---|---|---|
-| `sk-ant-` | Anthropic | No (wire adapter needed — see below) |
+| `sk-ant-` | Anthropic | Yes (via a wire adapter — see below) |
 | `sk_ber_` | Berget (underscore) | Yes |
-| `gsk_` | Groq | Yes |
+| `gsk_` | Groq | No (reachable as a custom OpenAI-compatible endpoint) |
 | `sk-` minus `sk-ant-` (incl. `sk-proj-`, `sk-svcacct-`) | OpenAI | Yes |
 | `hf_` | Hugging Face token (not a chat key here) | No |
 
@@ -195,11 +195,11 @@ The prefix table (mirror of the reference's `FOREIGN_KEY_SHAPES` +
 Anthropic's API DOES serve browser CORS — re-probed live 2026-07-23
 (`Access-Control-Allow-Origin: *`; earlier notes claiming no CORS are
 stale) — gated on an explicit opt-in header acknowledging the key is
-exposed in a browser. What keeps it out of the reference client registry
-is only the WIRE: the Messages API is not OpenAI chat completions, so an
-entry needs a client-side foreign-wire adapter (the browser mirror of
-`src/anthropic.js`). A distilled flavour that wants Anthropic keys to work
-first-shot wires it like this:
+exposed in a browser. What kept it out of the reference client registry was
+only the WIRE: the Messages API is not OpenAI chat completions. That adapter
+now exists (`public/js/drc-providers.js`, `wire: "anthropic"` — the browser
+mirror of `src/anthropic.js`), and Anthropic took Groq's registry slot on
+2026-07-26. A distilled flavour wires it like this:
 
 - **Endpoint**: `POST https://api.anthropic.com/v1/messages` (no
   `/chat/completions`).
@@ -230,7 +230,8 @@ first-shot wires it like this:
 | Foreign-wire adapter (Messages API → OpenAI SSE) | `src/anthropic.js` (`openAiStreamFromAnthropic`) |
 | Native-wire params-only client | `src/openai.js` (`toOpenAiPayload`) |
 | Hardened answer loop, failover, `emitChunked`, transient-status predicate | `src/answer-stream.js` |
-| Client CORS registry, keyless local, key detection, embeddings, JSON mode | `public/js/drc-providers.js` |
+| Client CORS registry, keyless custom endpoint, key detection, embeddings, JSON mode | `public/js/drc-providers.js` |
+| Client-side foreign-wire adapter (the browser mirror of the server one) | `public/js/drc-providers.js` (`toDrcAnthropicPayload`, `openAiStreamFromAnthropic`) |
 | Model dropdown consuming the merged catalog | `public/js/models.js`, `src/user-api.js` (`/api/models`) |
 | Per-model retry/JSON overrides consulted by the loop | `src/model-profiles.js` |
 | Validation-ladder worked examples | `src/anthropic.test.js`, `src/openai.test.js` ("over mock HTTP"), `.claude/skills/add-llm-provider` |
@@ -303,7 +304,7 @@ first-shot wires it like this:
 - **Body-size ceilings**: the reference's primary rejects bodies over
   ~1 MB (measured), which is why the client downscales images and strips
   them from history resends. Probe the limit; don't discover it in prod.
-- **Groq serves no `/embeddings` endpoint** — a client-tier session on
+- **Anthropic serves no `/embeddings` endpoint** — a client-tier session on
   that provider alone runs without RAG; the embed entry is per-provider
   and its absence must degrade fail-soft, never error a send.
 - **Error wording**: use `providerName(model)` in every failure message —

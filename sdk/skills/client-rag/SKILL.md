@@ -196,8 +196,8 @@ that session simply runs without RAG — fail-soft, never a broken send.
   compares mismatched vectors. The embedder record's `dims` is the
   tripwire; validate it on every append.
 - **One provider serving no embeddings is normal, not exceptional.** The
-  reference's second client-tier provider (Groq) has no embeddings API at
-  all. Design the "no embedder" path as a first-class mode with a test, or
+  reference's second client-tier provider (Anthropic) has no embeddings API
+  at all. Design the "no embedder" path as a first-class mode with a test, or
   it becomes an error toast written by accident.
 - **Vector stores don't belong in the request path's CPU budget.** The
   reference keeps similarity search out of the server worker (vector index

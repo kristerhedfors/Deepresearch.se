@@ -129,9 +129,15 @@ this one.
    - `public/js/provider-region.js` — the country flag is keyed by
      `provider` ("anthropic"/"openai"), not model id.
    - `public/js/drc-providers.js` (the `/cure` tier's client-side registry)
-     — only wires CORS-capable providers (OpenAI, Groq, Berget, a keyless
-     `local` entry). Anthropic has no CORS support and is intentionally
-     absent there regardless of catalog changes on the server side.
+     — only wires CORS-capable providers: OpenAI, Anthropic, Berget, plus the
+     keyless `local` entry that takes any OpenAI-compatible base URL. Since
+     2026-07-26 Anthropic IS wired here (it replaced Groq), so a Claude
+     catalog bump has to follow into this file too: `fallbackModels` and
+     `modelFilter` mirror `src/anthropic.js`'s `MODELS`, and `jsonModel` is
+     the cheap planning model. The earlier note that Anthropic "has no CORS
+     support" was wrong — it serves `Access-Control-Allow-Origin: *` with the
+     `anthropic-dangerous-direct-browser-access` opt-in; what kept it out was
+     its non-OpenAI wire, now adapted in-module.
    - `public/js/ai-models.js`'s chat-mention recognizer — its
      `VERSIONED_FAMILIES` regex already matches any version suffix on an
      existing family root (`opus|sonnet|haiku`), so "opus 5" is

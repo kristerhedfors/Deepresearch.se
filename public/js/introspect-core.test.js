@@ -35,6 +35,7 @@ import {
   chunkSourceText,
   snapshotChunks,
   quantizeInt8,
+  truncateForEmbedding,
   int8ToB64,
   b64ToInt8,
   cosineF32Int8,
@@ -549,7 +550,7 @@ test("groupIntrospectionModels: private first + recommended, remote labeled as r
   const { groups, recommended } = groupIntrospectionModels(
     [
       { id: "openai", label: "OpenAI", models: ["gpt-5.6-sol", "gpt-5.4-mini"] },
-      { id: "groq", label: "Groq", models: ["llama-4"] },
+      { id: "anthropic", label: "Anthropic", models: ["claude-opus-5"] },
     ],
     [
       { id: "mistral-small", name: "Mistral Small", up: true },
@@ -1185,4 +1186,28 @@ test("lexicalRetrieveCorpus: generic per-doc diversity over a docs-shaped corpus
   assert.equal(hits[0].p, "docs/VAULT.md");
   // Doc paths carry no space, so the diversity key is the whole path → per-DOC cap.
   assert.ok(hits.filter((h) => h.p === "docs/VAULT.md").length <= 2);
+});
+
+test("truncateForEmbedding never leaves a lone surrogate at the cut", () => {
+  // A plain slice can halve an astral character; the embedding model's
+  // tokenizer then 400s and takes the whole batch (and the bundle) with it.
+  // Offset-dependent, so unrelated doc edits make it appear and disappear —
+  // first hit 2026-07-26 by a 👍 landing on the 1200-char boundary.
+  const emoji = "\u{1F44D}"; // 👍 — one astral char, two UTF-16 code units
+  const text = "abc" + emoji + "def";
+  assert.equal(text.slice(0, 4).length, 4); // the naive cut splits the pair…
+  assert.equal(truncateForEmbedding(text, 4), "abc"); // …this one drops it whole
+  // A cut that lands AFTER the full pair keeps it.
+  assert.equal(truncateForEmbedding(text, 5), "abc" + emoji);
+  // Everything else is a plain slice.
+  assert.equal(truncateForEmbedding("hello", 3), "hel");
+  assert.equal(truncateForEmbedding("hi", 99), "hi"); // shorter than the budget
+  assert.equal(truncateForEmbedding("hi", 0), "");
+  assert.equal(truncateForEmbedding(null, 5), "");
+  // No lone surrogate survives, wherever the budget falls.
+  const dense = "x" + emoji.repeat(20);
+  for (let n = 0; n <= dense.length; n++) {
+    const out = truncateForEmbedding(dense, n);
+    assert.equal(out, [...out].join(""), "budget " + n + " split a pair");
+  }
 });

@@ -298,7 +298,7 @@ function renderKeysRow() {
     ${saved.length ? `<div class="iui-managed">${managed}</div>` : ""}
     <div class="iui-keyrow">
       <input id="iui-key" type="password" autocomplete="off"
-             placeholder="sk-… (OpenAI) · gsk_… (Groq) · sk_ber_… (Berget)" aria-label="Provider API key">
+             placeholder="sk-… (OpenAI) · sk-ant-… (Anthropic) · sk_ber_… (Berget)" aria-label="Provider API key">
       <button type="button" id="iui-savekey">Save</button>
     </div>
     <p class="iui-dim" style="margin:.3rem 0 0">Stored only in this browser; used only for

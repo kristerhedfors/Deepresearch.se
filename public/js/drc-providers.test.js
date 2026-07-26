@@ -17,24 +17,30 @@ import {
   filterAndSortModels,
   foreignDrcKeyHint,
   listDrcModels,
+  oaiChunksFromAnthropicEvent,
+  openAiStreamFromAnthropic,
   POOL_LLM_PROVIDER_ID,
   poolLlmProvider,
   providerErrorDetail,
   proxyLlmProvider,
   SERVER_TOKEN_LLM_PROVIDER_ID,
   serverTokenLlmProvider,
+  toDrcAnthropicPayload,
   toOpenAiTools,
 } from "./drc-providers.js";
 
-test("the registry holds the CORS-capable providers plus the keyless local entry", () => {
-  assert.deepEqual(DRC_PROVIDERS.map((p) => p.id), ["openai", "groq", "berget", "local"]);
+test("the registry holds the CORS-capable providers plus the keyless custom entry", () => {
+  assert.deepEqual(DRC_PROVIDERS.map((p) => p.id), ["openai", "anthropic", "berget", "local"]);
   assert.equal(drcProvider("openai").label, "OpenAI");
-  assert.equal(drcProvider("groq").label, "Groq");
+  assert.equal(drcProvider("anthropic").label, "Anthropic"); // took Groq's slot 2026-07-26
   assert.equal(drcProvider("berget").label, "Berget"); // CORS confirmed live 2026-07-11
-  // Anthropic: still outside the registry — its CORS exists (probed live
-  // 2026-07-23, with the anthropic-dangerous-direct-browser-access opt-in)
-  // but its Messages-API wire needs a client-side adapter first.
-  assert.equal(drcProvider("anthropic"), null);
+  // Only Anthropic speaks a foreign wire; the rest are OpenAI chat completions.
+  assert.equal(drcProvider("anthropic").wire, "anthropic");
+  for (const id of ["openai", "berget", "local"]) assert.equal(drcProvider(id).wire, undefined);
+  // The keyless entry is the "arbitrary OpenAI-compatible endpoint" escape
+  // hatch — the three named providers are shortcuts, not the boundary.
+  assert.equal(drcProvider("local").keyless, true);
+  assert.match(drcProvider("local").label, /OpenAI-compatible/);
   for (const p of DRC_PROVIDERS) {
     if (p.keyless) continue; // the local entry: no key, no fixed catalog (below)
     assert.ok(p.jsonModel, p.id + " needs a JSON-phase default model");
@@ -64,8 +70,8 @@ test("detectDrcProvider identifies a pasted key by its prefix", () => {
   assert.equal(detectDrcProvider("sk-abc123").id, "openai");
   assert.equal(detectDrcProvider("sk-proj-abc123").id, "openai");
   assert.equal(detectDrcProvider("sk-svcacct-abc123").id, "openai");
-  // Groq: gsk_…
-  assert.equal(detectDrcProvider("gsk_abc123").id, "groq");
+  // Anthropic: sk-ant-… — the most specific sk- prefix.
+  assert.equal(detectDrcProvider("sk-ant-abc123").id, "anthropic");
   // Berget: sk_ber_… (underscore — never collides with OpenAI's sk-).
   assert.equal(detectDrcProvider("sk_ber_abc123").id, "berget");
   // Whitespace from a paste is forgiven.
@@ -73,6 +79,7 @@ test("detectDrcProvider identifies a pasted key by its prefix", () => {
   // Unknown shapes stay the user's call — no guess.
   assert.equal(detectDrcProvider("sk_abc123"), null); // underscore but not Berget's
   assert.equal(detectDrcProvider("hf_abc123"), null);
+  assert.equal(detectDrcProvider("gsk_abc123"), null); // Groq left the registry 2026-07-26
   assert.equal(detectDrcProvider(""), null);
   assert.equal(detectDrcProvider(null), null);
 });
@@ -80,28 +87,32 @@ test("detectDrcProvider identifies a pasted key by its prefix", () => {
 test("an Anthropic sk-ant-… key is NEVER claimed by OpenAI's sk- pattern", () => {
   // The feedback-#6 regression (2026-07-23): sk-ant-… matched /^sk-/ and
   // was routed to OpenAI's wire, which 401s. The most specific prefix owns
-  // the key; a foreign shape detects as null, not as the wrong provider.
-  assert.equal(detectDrcProvider("sk-ant-api03-abc123"), null);
-  assert.equal(detectDrcProvider("  sk-ant-api03-abc123\n"), null);
+  // the key — now that Anthropic is a real entry, sk-ant-… must land on IT
+  // and never on OpenAI.
+  assert.equal(detectDrcProvider("sk-ant-api03-abc123").id, "anthropic");
+  assert.equal(detectDrcProvider("  sk-ant-api03-abc123\n").id, "anthropic");
   // …and the patterns stay mutually exclusive by construction, so no
   // future reordering of DRC_PROVIDERS can bring the collision back.
   const key = "sk-ant-api03-abc123";
   const claimants = DRC_PROVIDERS.filter((p) => p.keyPattern && p.keyPattern.test(key));
-  assert.deepEqual(claimants, []);
+  assert.deepEqual(claimants.map((p) => p.id), ["anthropic"]);
   // OpenAI's own variants are untouched by the exclusion.
   assert.equal(detectDrcProvider("sk-abc123").id, "openai");
   assert.equal(detectDrcProvider("sk-proj-abc123").id, "openai");
 });
 
-test("foreignDrcKeyHint names a recognized-but-unsupported key shape", () => {
-  // Anthropic: recognized so the key panel can say WHY it won't work here.
-  assert.match(foreignDrcKeyHint("sk-ant-api03-abc123"), /Anthropic/);
-  assert.match(foreignDrcKeyHint("  sk-ant-api03-abc123\n"), /Anthropic/);
+test("foreignDrcKeyHint names a recognized-but-not-built-in key shape", () => {
+  // Groq: no longer a registry entry, but it speaks the OpenAI wire — the
+  // hint has to point at the custom endpoint rather than say "impossible".
+  assert.match(foreignDrcKeyHint("gsk_abc123"), /Groq/);
+  assert.match(foreignDrcKeyHint("gsk_abc123"), /OpenAI-compatible/);
+  assert.match(foreignDrcKeyHint("  gsk_abc123\n"), /Groq/);
   assert.match(foreignDrcKeyHint("hf_abc123"), /Hugging Face/);
-  // Supported and unknown shapes get NO foreign hint.
+  // Supported and unknown shapes get NO foreign hint — Anthropic is a real
+  // provider now, so its key must NOT be waved off as foreign.
+  assert.equal(foreignDrcKeyHint("sk-ant-api03-abc123"), null);
   assert.equal(foreignDrcKeyHint("sk-abc123"), null);
   assert.equal(foreignDrcKeyHint("sk_ber_abc123"), null);
-  assert.equal(foreignDrcKeyHint("gsk_abc123"), null);
   assert.equal(foreignDrcKeyHint("something-else"), null);
   assert.equal(foreignDrcKeyHint(""), null);
   assert.equal(foreignDrcKeyHint(null), null);
@@ -119,7 +130,7 @@ test("the embedding config is the SMALL, dimension-reduced choice", () => {
   const openai = drcProvider("openai");
   assert.equal(openai.embed.model, "text-embedding-3-small");
   assert.equal(openai.embed.dimensions, 512);
-  assert.equal(drcProvider("groq").embed, undefined); // Groq serves no /embeddings
+  assert.equal(drcProvider("anthropic").embed, undefined); // Anthropic serves no /embeddings
   // Berget serves /embeddings (e5) but joining RAG needs the passage:/query:
   // prefix convention + 1024-dim storage — deliberately not declared yet.
   assert.equal(drcProvider("berget").embed, undefined);
@@ -127,20 +138,20 @@ test("the embedding config is the SMALL, dimension-reduced choice", () => {
 
 test("drcEmbedProvider: the first embeddings-capable provider with a key", () => {
   assert.equal(drcEmbedProvider({}), null);
-  assert.equal(drcEmbedProvider({ groq: "gsk" }), null); // a Groq-only session has no RAG
+  assert.equal(drcEmbedProvider({ anthropic: "sk-ant" }), null); // an Anthropic-only session has no RAG
   assert.equal(drcEmbedProvider({ berget: "bk" }), null); // a Berget-only session too (no embed entry yet)
   assert.equal(drcEmbedProvider({ openai: "sk" }).id, "openai");
-  assert.equal(drcEmbedProvider({ openai: "sk", groq: "gsk" }).id, "openai");
+  assert.equal(drcEmbedProvider({ openai: "sk", anthropic: "sk-ant" }).id, "openai");
   assert.equal(drcEmbedProvider({ openai: "" }), null);
 });
 
 test("configuredDrcProviders follows the stored keys", () => {
   assert.deepEqual(configuredDrcProviders({}).map((p) => p.id), []);
-  assert.deepEqual(configuredDrcProviders({ groq: "gsk" }).map((p) => p.id), ["groq"]);
-  assert.deepEqual(configuredDrcProviders({ openai: "sk", groq: "gsk" }).map((p) => p.id), ["openai", "groq"]);
+  assert.deepEqual(configuredDrcProviders({ anthropic: "sk-ant" }).map((p) => p.id), ["anthropic"]);
+  assert.deepEqual(configuredDrcProviders({ openai: "sk", anthropic: "sk-ant" }).map((p) => p.id), ["openai", "anthropic"]);
   assert.deepEqual(
-    configuredDrcProviders({ openai: "sk", groq: "gsk", berget: "bk" }).map((p) => p.id),
-    ["openai", "groq", "berget"],
+    configuredDrcProviders({ openai: "sk", anthropic: "sk-ant", berget: "bk" }).map((p) => p.id),
+    ["openai", "anthropic", "berget"],
   );
   assert.deepEqual(configuredDrcProviders({ berget: "bk" }).map((p) => p.id), ["berget"]);
   assert.deepEqual(configuredDrcProviders({ openai: "" }).map((p) => p.id), []);
@@ -170,11 +181,6 @@ test("buildDrcPayload carries each provider's wire quirks", () => {
   assert.deepEqual(openai.response_format, { type: "json_object" });
   assert.equal(openai.stream, false);
 
-  const groq = buildDrcPayload(drcProvider("groq"), "llama-3.3-70b-versatile", msgs, { stream: true });
-  assert.equal(groq.max_tokens, 4096);
-  assert.equal(groq.max_completion_tokens, undefined);
-  assert.equal(groq.response_format, undefined);
-  assert.equal(groq.stream, true);
 
   // Berget: the plain OpenAI wire, same params src/berget.js sends.
   const berget = buildDrcPayload(drcProvider("berget"), "mistralai/Mistral-Small-3.2-24B-Instruct-2506", msgs, {
@@ -185,6 +191,117 @@ test("buildDrcPayload carries each provider's wire quirks", () => {
   assert.equal(berget.max_completion_tokens, undefined);
   assert.equal(berget.reasoning_effort, undefined);
   assert.deepEqual(berget.response_format, { type: "json_object" });
+});
+
+test("toDrcAnthropicPayload bridges the three shape differences", () => {
+  const payload = toDrcAnthropicPayload(
+    [
+      { role: "system", content: "rule one" },
+      { role: "system", content: "rule two" },
+      { role: "user", content: "first" },
+      { role: "user", content: [{ type: "text", text: "second" }] },
+      { role: "assistant", content: "ok" },
+      {
+        role: "user",
+        content: [{ type: "image_url", image_url: { url: "data:image/png;base64,QUJD" } }],
+      },
+    ],
+    { model: "claude-opus-5", maxTokens: 900 },
+  );
+  // 1. system turns are hoisted to a top-level field and joined.
+  assert.equal(payload.system, "rule one\n\nrule two");
+  // 2. consecutive same-role turns are merged (the pipeline appends context
+  //    blocks that routinely produce them).
+  assert.deepEqual(payload.messages[0], {
+    role: "user",
+    content: [{ type: "text", text: "first" }, { type: "text", text: "second" }],
+  });
+  assert.deepEqual(payload.messages[1], { role: "assistant", content: [{ type: "text", text: "ok" }] });
+  // 3. data-URL image parts become base64 source blocks.
+  assert.deepEqual(payload.messages[2].content[0], {
+    type: "image",
+    source: { type: "base64", media_type: "image/png", data: "QUJD" },
+  });
+  assert.equal(payload.max_tokens, 900);
+  assert.equal(payload.stream, false);
+  assert.equal(payload.tools, undefined);
+  // A malformed image part is skipped, never thrown on — and an empty turn
+  // is dropped rather than sent as an empty content array.
+  const junk = toDrcAnthropicPayload([
+    { role: "user", content: [{ type: "image_url", image_url: { url: "https://example.com/x.png" } }] },
+    { role: "user", content: "real" },
+  ]);
+  assert.deepEqual(junk.messages, [{ role: "user", content: [{ type: "text", text: "real" }] }]);
+  assert.equal(junk.system, undefined);
+});
+
+test("oaiChunksFromAnthropicEvent re-emits the Anthropic vocabulary as OpenAI chunks", () => {
+  const usage = { prompt_tokens: 0, completion_tokens: 0 };
+  // message_start carries usage but emits nothing.
+  assert.deepEqual(oaiChunksFromAnthropicEvent({ type: "message_start", message: { usage: { input_tokens: 11 } } }, usage), []);
+  assert.equal(usage.prompt_tokens, 11);
+  // text deltas become choices[0].delta.content.
+  assert.deepEqual(
+    oaiChunksFromAnthropicEvent({ type: "content_block_delta", delta: { type: "text_delta", text: "hi" } }, usage).map(JSON.parse),
+    [{ choices: [{ delta: { content: "hi" } }] }],
+  );
+  // thinking deltas are dropped — text only.
+  assert.deepEqual(
+    oaiChunksFromAnthropicEvent({ type: "content_block_delta", delta: { type: "thinking_delta", thinking: "…" } }, usage),
+    [],
+  );
+  // message_delta maps stop_reason and merges the usage totals.
+  const [final] = oaiChunksFromAnthropicEvent(
+    { type: "message_delta", delta: { stop_reason: "max_tokens" }, usage: { output_tokens: 4 } },
+    usage,
+  );
+  assert.deepEqual(JSON.parse(final), {
+    choices: [{ delta: {}, finish_reason: "length" }],
+    usage: { prompt_tokens: 11, completion_tokens: 4, total_tokens: 15 },
+  });
+  assert.deepEqual(oaiChunksFromAnthropicEvent({ type: "message_stop" }, usage), ["[DONE]"]);
+  // ping and unknown future events are ignored, never fatal.
+  assert.deepEqual(oaiChunksFromAnthropicEvent({ type: "ping" }, usage), []);
+  assert.deepEqual(oaiChunksFromAnthropicEvent({ type: "content_block_start" }, usage), []);
+  assert.deepEqual(oaiChunksFromAnthropicEvent(null, usage), []);
+});
+
+test("openAiStreamFromAnthropic drains events that map to zero output", async () => {
+  // The pull loop must keep reading past message_start/ping/block events —
+  // a pull that enqueues nothing is not re-invoked, so a naive adapter
+  // deadlocks on exactly this sequence.
+  const source = new ReadableStream({
+    start(c) {
+      const enc = new TextEncoder();
+      for (const line of [
+        '{"type":"message_start","message":{"usage":{"input_tokens":2}}}',
+        '{"type":"ping"}',
+        '{"type":"content_block_start"}',
+        '{"type":"content_block_delta","delta":{"type":"text_delta","text":"one "}}',
+        '{"type":"content_block_delta","delta":{"type":"text_delta","text":"two"}}',
+        '{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}',
+        '{"type":"message_stop"}',
+      ]) {
+        c.enqueue(enc.encode("data: " + line + "\n\n"));
+      }
+      c.close();
+    },
+  });
+  const text = await new Response(openAiStreamFromAnthropic(source)).text();
+  assert.match(text, /"content":"one "/);
+  assert.match(text, /"content":"two"/);
+  assert.match(text, /"finish_reason":"stop"/);
+  assert.ok(text.trim().endsWith("data: [DONE]"));
+});
+
+test("openAiStreamFromAnthropic surfaces an error event as a stream error", async () => {
+  const source = new ReadableStream({
+    start(c) {
+      c.enqueue(new TextEncoder().encode('data: {"type":"error","error":{"message":"overloaded"}}\n\n'));
+      c.close();
+    },
+  });
+  await assert.rejects(new Response(openAiStreamFromAnthropic(source)).text(), /overloaded/);
 });
 
 test("extractJson forgives fences and prose, rejects garbage", () => {
@@ -208,15 +325,17 @@ test("model filters are CURATED: recent language models only", () => {
   assert.equal(openai.modelFilter("o3-mini"), false);
   assert.equal(openai.modelFilter("gpt-5.5-audio-preview"), false);
   assert.equal(openai.modelFilter("text-embedding-3-large"), false);
-  const groq = drcProvider("groq");
-  assert.equal(groq.modelFilter("llama-3.3-70b-versatile"), true);
-  assert.equal(groq.modelFilter("llama-3.1-8b-instant"), true);
-  assert.equal(groq.modelFilter("openai/gpt-oss-120b"), true);
-  assert.equal(groq.modelFilter("moonshotai/kimi-k2-instruct"), true);
-  assert.equal(groq.modelFilter("llama-3.1-70b-versatile"), false); // superseded generation
-  assert.equal(groq.modelFilter("whisper-large-v3"), false);
-  assert.equal(groq.modelFilter("llama-guard-3-8b"), false);
-  assert.equal(groq.modelFilter("gemma2-9b-it"), false);
+  // Anthropic's /v1/models returns dated ids for the current generation and
+  // every legacy family beside them — only the current generation shows.
+  const anthropic = drcProvider("anthropic");
+  assert.equal(anthropic.modelFilter("claude-opus-5"), true);
+  assert.equal(anthropic.modelFilter("claude-sonnet-5"), true);
+  assert.equal(anthropic.modelFilter("claude-haiku-4-5"), true);
+  assert.equal(anthropic.modelFilter("claude-haiku-4-5-20251001"), true); // dated id
+  assert.equal(anthropic.modelFilter("claude-opus-4-1-20250805"), false); // superseded
+  assert.equal(anthropic.modelFilter("claude-sonnet-4-5"), false);
+  assert.equal(anthropic.modelFilter("claude-3-5-sonnet-20241022"), false);
+  assert.equal(anthropic.modelFilter("gpt-5.6-terra"), false);
 
   // Berget's catalog is small and already curated — the filter's job is
   // excluding its non-chat modalities (ids from the live catalog 2026-07-11).
@@ -295,7 +414,7 @@ test("filterAndSortModels drops models the catalog marks DOWN (status.up false)"
     "zai-org/GLM-4.7-FP8",
     "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
   ]);
-  // Fail-OPEN when the field is absent — OpenAI/Groq entries carry no status.
+  // Fail-OPEN when the field is absent — OpenAI/Anthropic entries carry no status.
   assert.deepEqual(
     filterAndSortModels([{ id: "gpt-5.6-sol" }, { id: "gpt-5.6-terra", status: {} }], drcProvider("openai").modelFilter),
     ["gpt-5.6-terra", "gpt-5.6-sol"],
@@ -325,13 +444,15 @@ test("providerErrorDetail reads both failure wire shapes (direct + proxied)", as
 
 describe("provider calls over mock HTTP", () => {
   const requests = [];
+  let toolRoundDone = false;
   const server = http.createServer((req, res) => {
     let raw = "";
     req.on("data", (d) => (raw += d));
     req.on("end", () => {
       requests.push({ url: req.url, headers: req.headers, body: raw ? JSON.parse(raw) : null });
       if (req.url.endsWith("/models")) {
-        if (req.headers.authorization !== "Bearer good-key") {
+        // Both auth shapes: Bearer for the OpenAI wire, x-api-key for Anthropic's.
+        if (req.headers.authorization !== "Bearer good-key" && req.headers["x-api-key"] !== "good-key") {
           res.writeHead(401, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "bad key" }));
           return;
@@ -339,7 +460,49 @@ describe("provider calls over mock HTTP", () => {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(
           JSON.stringify({
-            data: [{ id: "llama-3.3-70b-versatile" }, { id: "whisper-large-v3" }, { id: "llama-3.1-8b-instant" }],
+            data: [
+              { id: "gpt-5.6-terra" },
+              { id: "gpt-5.4-mini" },
+              { id: "text-embedding-3-small" },
+              { id: "claude-opus-5" },
+              { id: "claude-haiku-4-5-20251001" },
+              { id: "claude-3-5-sonnet-20241022" },
+            ],
+          }),
+        );
+        return;
+      }
+      // The Anthropic Messages API: a different path, a different request and
+      // response shape — everything the wire adapter has to bridge.
+      if (req.url.endsWith("/messages")) {
+        const body = JSON.parse(raw);
+        if (body.tools && !toolRoundDone) {
+          toolRoundDone = true;
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(
+            JSON.stringify({
+              stop_reason: "tool_use",
+              content: [{ type: "tool_use", id: "tu_1", name: "grep_source", input: { pattern: "x" } }],
+            }),
+          );
+          return;
+        }
+        if (body.stream) {
+          res.writeHead(200, { "content-type": "text/event-stream" });
+          res.end(
+            'data: {"type":"message_start","message":{"usage":{"input_tokens":7}}}\n\n' +
+              'data: {"type":"ping"}\n\n' +
+              'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"streamed"}}\n\n' +
+              'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}\n\n' +
+              'data: {"type":"message_stop"}\n\n',
+          );
+          return;
+        }
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            stop_reason: "end_turn",
+            content: [{ type: "text", text: '```json\n{"ok":true}\n```' }],
           }),
         );
         return;
@@ -375,11 +538,24 @@ describe("provider calls over mock HTTP", () => {
   after(() => server.close());
 
   test("listDrcModels: live list filtered; fallback catalog on a rejected key", async () => {
-    const groq = drcProvider("groq");
-    const live = await listDrcModels(groq, "good-key", { baseUrl });
-    assert.deepEqual(live, ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]); // whisper filtered, newest first
-    const fallback = await listDrcModels(groq, "bad-key", { baseUrl });
-    assert.deepEqual(fallback, groq.fallbackModels);
+    const openai = drcProvider("openai");
+    const live = await listDrcModels(openai, "good-key", { baseUrl });
+    assert.deepEqual(live, ["gpt-5.6-terra", "gpt-5.4-mini"]); // embeddings filtered, newest first
+    const fallback = await listDrcModels(openai, "bad-key", { baseUrl });
+    assert.deepEqual(fallback, openai.fallbackModels);
+  });
+
+  test("listDrcModels: Anthropic lists over x-api-key, curated to the current generation", async () => {
+    const anthropic = drcProvider("anthropic");
+    const live = await listDrcModels(anthropic, "good-key", { baseUrl });
+    assert.deepEqual(live, ["claude-opus-5", "claude-haiku-4-5-20251001"]); // claude-3-5 filtered out
+    // The listing carried Anthropic's auth headers, never a Bearer.
+    const req = requests.at(-1);
+    assert.equal(req.headers["x-api-key"], "good-key");
+    assert.equal(req.headers.authorization, undefined);
+    assert.equal(req.headers["anthropic-version"], "2023-06-01");
+    const fallback = await listDrcModels(anthropic, "bad-key", { baseUrl });
+    assert.deepEqual(fallback, anthropic.fallbackModels);
   });
 
   test("the pool provider sends stream:false and gets back a synthesized SSE Response", async () => {
@@ -400,13 +576,33 @@ describe("provider calls over mock HTTP", () => {
   });
 
   test("drcCompleteJson: bearer auth, JSON mode requested, fenced JSON parsed", async () => {
-    const groq = drcProvider("groq");
-    const value = await drcCompleteJson(groq, "good-key", "llama-3.1-8b-instant", [{ role: "user", content: "x" }], { baseUrl });
+    const berget = drcProvider("berget");
+    const value = await drcCompleteJson(berget, "good-key", berget.jsonModel, [{ role: "user", content: "x" }], { baseUrl });
     assert.deepEqual(value, { ok: true });
     const req = requests.at(-1);
+    assert.equal(req.url, "/v1/chat/completions");
     assert.equal(req.headers.authorization, "Bearer good-key");
     assert.deepEqual(req.body.response_format, { type: "json_object" });
-    assert.equal(req.body.model, "llama-3.1-8b-instant");
+    assert.equal(req.body.model, berget.jsonModel);
+  });
+
+  test("drcCompleteJson on the Anthropic wire: /messages, no response_format, text blocks parsed", async () => {
+    const anthropic = drcProvider("anthropic");
+    const value = await drcCompleteJson(anthropic, "good-key", anthropic.jsonModel, [
+      { role: "system", content: "be terse" },
+      { role: "user", content: "x" },
+    ], { baseUrl });
+    assert.deepEqual(value, { ok: true }); // fenced JSON out of a content block
+    const req = requests.at(-1);
+    assert.equal(req.url, "/v1/messages");
+    assert.equal(req.headers["x-api-key"], "good-key");
+    // The browser opt-in header — without it the preflight fails and Se/cure's
+    // browser-direct promise cannot hold on Claude.
+    assert.equal(req.headers["anthropic-dangerous-direct-browser-access"], "true");
+    assert.equal(req.body.system, "be terse"); // hoisted out of messages
+    assert.equal(req.body.response_format, undefined); // Anthropic has no such param
+    assert.equal(req.body.stream, false);
+    assert.equal(req.body.max_tokens, 1500);
   });
 
   test("drcEmbed: small model + dimensions on the wire, vectors back in input order", async () => {
@@ -424,7 +620,7 @@ describe("provider calls over mock HTTP", () => {
     assert.equal(req.body.encoding_format, "float");
     assert.deepEqual(req.body.input, ["one", "two", "three"]);
     // a provider without an embed entry refuses up front
-    await assert.rejects(drcEmbed(drcProvider("groq"), "k", ["x"], { baseUrl }), /no embeddings/);
+    await assert.rejects(drcEmbed(drcProvider("anthropic"), "k", ["x"], { baseUrl }), /no embeddings/);
   });
 
   test("drcEmbed: the proxy provider embeds on Berget e5 — passage:/query: prefix, no dimensions param", async () => {
@@ -446,11 +642,58 @@ describe("provider calls over mock HTTP", () => {
   });
 
   test("drcChatStream: returns the provider's SSE response as-is", async () => {
-    const groq = drcProvider("groq");
-    const res = await drcChatStream(groq, "good-key", "llama-3.3-70b-versatile", [{ role: "user", content: "x" }], { baseUrl });
+    const berget = drcProvider("berget");
+    const res = await drcChatStream(berget, "good-key", "moonshotai/Kimi-K2.6", [{ role: "user", content: "x" }], { baseUrl });
     assert.equal(res.ok, true);
     assert.match(await res.text(), /"content":"streamed"/);
     assert.equal(requests.at(-1).body.stream, true);
+  });
+
+  test("drcChatStream on the Anthropic wire: Messages in, OpenAI-shaped SSE out", async () => {
+    const anthropic = drcProvider("anthropic");
+    const res = await drcChatStream(anthropic, "good-key", "claude-opus-5", [
+      { role: "system", content: "be terse" },
+      { role: "user", content: "x" },
+    ], { baseUrl });
+    assert.equal(res.ok, true);
+    const body = await res.text();
+    // Downstream consumers only ever see the OpenAI shape — that is the whole
+    // point of adapting at the wire instead of forking the pipeline.
+    assert.match(body, /"content":"streamed"/);
+    assert.match(body, /"finish_reason":"stop"/);
+    assert.ok(body.trim().endsWith("data: [DONE]"));
+    const req = requests.at(-1);
+    assert.equal(req.url, "/v1/messages");
+    assert.equal(req.body.stream, true);
+    assert.equal(req.body.system, "be terse");
+    assert.deepEqual(req.body.messages, [{ role: "user", content: [{ type: "text", text: "x" }] }]);
+  });
+
+  test("drcToolRun on the Anthropic wire: tool_use round, then the answer", async () => {
+    const anthropic = drcProvider("anthropic");
+    const seen = [];
+    const out = await drcToolRun(anthropic, "good-key", "claude-opus-5", {
+      system: "investigate",
+      userContent: "what does X do?",
+      tools: [{ name: "grep_source", description: "search", input_schema: { type: "object" } }],
+      execTool: (name, args) => {
+        seen.push([name, args]);
+        return "match at line 4";
+      },
+      baseUrl,
+    });
+    assert.equal(out.toolCalls, 1);
+    assert.equal(out.rounds, 2);
+    assert.deepEqual(seen, [["grep_source", { pattern: "x" }]]);
+    // The provider-neutral tool defs go out UNMAPPED — they are already the
+    // Anthropic shape (unlike the OpenAI wire, which wraps them).
+    const first = requests.find((r) => r.body?.tools);
+    assert.equal(first.body.tools[0].name, "grep_source");
+    assert.deepEqual(first.body.tools[0].input_schema, { type: "object" });
+    // The result came back as a paired tool_result block.
+    const second = requests.at(-1);
+    assert.equal(second.body.messages.at(-1).content[0].type, "tool_result");
+    assert.equal(second.body.messages.at(-1).content[0].tool_use_id, "tu_1");
   });
 
   test("the keyless local provider sends NO Authorization header", async () => {
