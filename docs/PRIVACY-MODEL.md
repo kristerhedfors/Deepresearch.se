@@ -226,6 +226,43 @@ for confirmation before anything is sent — nothing leaves the browser silently
 matching the same opt-in, per-use posture as the web-search grant and the
 research-space proxy.
 
+## Where shell commands run — the third execution environment (2026-07-26)
+
+The execution sandbox has three environments (`docs/EXECUTION-ENVIRONMENTS.md`)
+and only two of them are silent about this model. The in-browser CheerpX VM and a
+DREE/1 runner on the user's own machine are **browser-direct**: no command, no
+output and no mounted file passes through this server, in either tier, which is
+why the local runner needed no exception when it shipped — it is a different
+endpoint for the same browser-side call.
+
+The third, an ephemeral Cloudflare Container this platform starts per
+conversation (`src/exec-container.js`), **does** put the server in the path: it
+runs the commands. That is stated, not smoothed over, and it is bounded by
+tier rather than by policy:
+
+- **Se/rver: admissible, and not an exception.** The server is inside the trust
+  boundary on this tier (owner directive, 2026-07-24), and the conversation, its
+  attachments and its project are already stored there (cloud storage is implicit).
+  A container that runs `grep` over those same files does not widen the boundary
+  already drawn — so this is not a new crossing to count, it is work done inside
+  an existing one. The commands, their output and the pushed mount archive are
+  server-visible while the container lives; the container's disk is ephemeral and
+  destroyed with it (idle reaper, session lifetime, or `DELETE` on New chat).
+- **Se/cure: refused, in code, twice.** `selectRunner`
+  (`public/js/exec-backends-core.js`) requires an explicit `tier:"server"`, so a
+  Se/cure caller — or any caller that forgets to say — lands on the browser VM;
+  and `/api/exec/*` sits behind the identity gate, which Se/cure never passes.
+  **The count of Se/cure's deliberate server-touching exceptions is therefore
+  UNCHANGED at two** (the web-search grant and the research-space proxy bundle).
+  A hand-edited sealed state naming the backend gets the browser VM, not a third
+  channel. Pinned by `public/js/exec-backends-core.test.js`.
+
+The container starts with `enableInternet:false` — no internet, no LAN, matching
+the browser VM — and on EU-jurisdiction infrastructure. What each environment
+hands to whom is tabulated in `docs/EXECUTION-ENVIRONMENTS.md` §5; the option is
+absent entirely on a deploy without the (optional, off-by-default) container
+binding.
+
 ## Compute sharing — peer-operated upstream (2026-07-23, PROPOSED framing, owner sign-off pending)
 
 `docs/COMPUTE-SHARING.md` designs a capability where a signed-in user LENDS

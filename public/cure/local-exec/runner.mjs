@@ -18,6 +18,11 @@
 //   GET  /healthz  → {ok, protocol:"dree/1", backend, image, ephemeral, network}
 //   POST /exec     {command, session?, timeoutMs?, maxStdoutBytes?}
 //                  → {exitCode, stdout, stderr, truncated?}
+//   POST /mount?session=<id>        → {ok:true}
+//                  A ustar archive (application/x-tar) on the request body,
+//                  extracted at / in that session's machine — how the page's
+//                  attachments, project files and INDEX.txt get in. Optional in
+//                  DREE/1, advertised as mount:true.
 //   DELETE /session/<id>            → {ok:true}     (drop a machine early)
 //   GET  /sessions                  → {sessions:[…]} (what is alive right now)
 //
@@ -322,6 +327,86 @@ async function execCommand(backend, { command, session, timeoutMs, maxStdoutByte
   return res.truncated ? { ...out, truncated: true } : out;
 }
 
+// ---- mount ------------------------------------------------------------------
+//
+// DREE/1's OPTIONAL mount endpoint (advertised as `mount:true` by /healthz): the
+// page streams ONE ustar archive of the send's files — this chat's attachments,
+// the active project, the INDEX.txt manifest — and it is extracted at / inside
+// the session's machine, so a remote environment holds what the in-browser VM
+// holds (/workspace/…, /mnt/<project>-<hash>/…).
+//
+// Member paths in the archive are RELATIVE (`workspace/notes.pdf`), and `tar`
+// refuses `..` members by default, so an archive cannot write outside the
+// machine's filesystem — and that filesystem is a throwaway container either
+// way. Nothing is buffered here: the request body is piped straight into `tar`.
+async function mountArchive(backend, id, req) {
+  let s;
+  try {
+    s = await ensureSession(backend, String(id || "default"));
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err) };
+  }
+  s.lastUsed = Date.now();
+  const script = "mkdir -p /workspace /workspace/outbox && tar -xf - -C / --no-same-owner";
+  const args =
+    backend === "host"
+      ? null
+      : [
+          "exec",
+          "--interactive",
+          "--workdir",
+          "/workspace",
+          s.name,
+          "/bin/sh",
+          "-c",
+          script,
+        ];
+  return await new Promise((resolve) => {
+    let child;
+    try {
+      child =
+        args === null
+          ? // host mode: extract into the session's temp directory instead, so
+            // "everything the page mounts" still arrives without a container.
+            spawn("/bin/sh", ["-c", "mkdir -p workspace workspace/outbox && tar -xf - --no-same-owner"], {
+              cwd: s.dir,
+              stdio: ["pipe", "pipe", "pipe"],
+            })
+          : spawn(backend, args, { stdio: ["pipe", "pipe", "pipe"] });
+    } catch (err) {
+      return resolve({ ok: false, error: String(err?.message || err) });
+    }
+    const errOut = [];
+    child.stderr.on("data", (b) => errOut.push(b));
+    child.stdout.resume();
+    const timer = setTimeout(() => {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        /* already gone */
+      }
+    }, 120_000);
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      resolve({ ok: false, error: String(err?.message || err) });
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      const stderr = Buffer.concat(errOut).toString("utf8").trim().slice(0, 500);
+      console.log(`[mount] ${s.id} → tar exit ${code}`);
+      resolve(code === 0 ? { ok: true } : { ok: false, error: stderr || "tar exited " + code });
+    });
+    req.on("error", () => {
+      try {
+        child.stdin.destroy();
+      } catch {
+        /* the close handler reports it */
+      }
+    });
+    req.pipe(child.stdin);
+  });
+}
+
 function runHost(cmd, dir, timeoutMs, maxBytes) {
   return new Promise((resolve) => {
     const shell = process.platform === "win32" ? process.env.COMSPEC || "cmd.exe" : "/bin/sh";
@@ -471,6 +556,11 @@ async function main() {
         network: backend === "host" ? "host" : NETWORK,
         sessions: sessions.size,
         requiresKey: !!API_KEY,
+        // DREE/1's optional capabilities: this runner takes a pushed tar of the
+        // send's files (POST /mount). It does NOT seed /src from a server copy
+        // of the site's source — only the platform's own container backend can
+        // do that — so `source` stays absent and the page skips asking.
+        mount: true,
       });
     }
     if (!authed(req)) return send(res, 403, { error: "bad or missing API key" });
@@ -483,6 +573,16 @@ async function main() {
     if (req.method === "DELETE" && url.pathname.startsWith("/session/")) {
       const id = decodeURIComponent(url.pathname.slice("/session/".length));
       return send(res, 200, { ok: await dropSession(backend, id, "requested") });
+    }
+    // The MOUNT bridge (optional in DREE/1): a ustar archive of the send's
+    // files, extracted into the session's machine. Streamed, never buffered.
+    if (req.method === "POST" && url.pathname === "/mount") {
+      const id = url.searchParams.get("session") || "default";
+      try {
+        return send(res, 200, await mountArchive(backend, id, req));
+      } catch (err) {
+        return send(res, 200, { ok: false, error: String(err?.message || err) });
+      }
     }
     if (req.method === "POST" && url.pathname === "/exec") {
       let body;
@@ -499,7 +599,9 @@ async function main() {
         return send(res, 200, { exitCode: 1, stdout: "", stderr: String(err?.message || err) });
       }
     }
-    send(res, 404, { error: "not found — POST /exec, GET /healthz, GET /sessions, DELETE /session/<id>" });
+    send(res, 404, {
+      error: "not found — POST /exec, POST /mount, GET /healthz, GET /sessions, DELETE /session/<id>",
+    });
   });
 
   const shutdown = async () => {

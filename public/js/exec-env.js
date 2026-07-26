@@ -25,14 +25,20 @@
 
 import {
   DEFAULT_RUNNER_URL,
-  EXEC_BACKENDS,
+  SERVER_EXEC_BASE,
+  execBackendsFor,
+  newExecSession,
   normalizeExecBackend,
   probeRunner,
   runnerStatusLine,
   usesLocalRunner,
+  usesRemoteRunner,
 } from "./exec-backends-core.js";
+import { execContainerAvailable } from "./settings.js";
 
 const CFG_KEY = "dr_exec_env";
+/** The per-tab session id that keeps one conversation on ONE machine (below). */
+const SESSION_KEY = "dr_exec_session";
 
 // ---- the browser-local config ------------------------------------------------
 
@@ -71,6 +77,69 @@ export function localRunnerActive() {
   return usesLocalRunner(execEnvCfg());
 }
 
+/**
+ * Whether this send's commands run somewhere OTHER than the in-browser VM —
+ * a local runner OR this platform's server-side container. The send path asks
+ * exactly this: it decides whether to skip the COEP gate, the VM pre-warm and
+ * the CheerpX mount reset, and which environment collects the deliverables.
+ */
+export function remoteRunnerActive() {
+  return usesRemoteRunner(execEnvCfg(), "server");
+}
+
+/** Whether this device is set up to run commands in the server-side container. */
+export function serverContainerActive() {
+  return execEnvCfg().backend === "cloudflare" && execContainerAvailable();
+}
+
+/**
+ * The execution session id — the thing that keeps ONE conversation's commands on
+ * ONE machine. Held in sessionStorage, so:
+ *   - consecutive sends in this tab reach the same container: the agent's `cd`,
+ *     its installed files and the ~11 MB /src seed survive from send to send
+ *     (the stamp guard in src/exec-container.js then makes the re-mount free),
+ *   - a new tab is a new machine, and closing the tab abandons the old one to
+ *     the runner's idle reaper — ephemeral by construction, not by promise.
+ * Falls back to a fresh id per call when storage is blocked (private mode),
+ * which costs a cold container per send but never an error.
+ * @returns {string}
+ */
+export function execSessionId() {
+  try {
+    const existing = sessionStorage.getItem(SESSION_KEY);
+    if (existing) return existing;
+    const made = newExecSession();
+    sessionStorage.setItem(SESSION_KEY, made);
+    return made;
+  } catch {
+    return newExecSession();
+  }
+}
+
+/**
+ * Ask the server-side container to go away now — the polite end of "ephemeral".
+ * Called when the user starts a new chat, so the machine that held the previous
+ * conversation's files does not sit idle waiting for its reaper. Best-effort by
+ * design: the idle alarm is the real guarantee.
+ */
+export function releaseExecSession() {
+  try {
+    if (!serverContainerActive()) return;
+    const session = execSessionId();
+    try {
+      sessionStorage.removeItem(SESSION_KEY);
+    } catch {
+      /* storage blocked — the id was per-call anyway */
+    }
+    void fetch(SERVER_EXEC_BASE + "/session?session=" + encodeURIComponent(session), {
+      method: "DELETE",
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    /* releasing a container is housekeeping — never let it break a new chat */
+  }
+}
+
 // ---- the Settings section ----------------------------------------------------
 //
 // Rendered by account-settings.js inside the gear panel. Markup mirrors the
@@ -91,20 +160,33 @@ const EXEC_INFO = `<strong>Execution environment</strong><br>
   browser calls it directly on <code>localhost</code>: no command, no output and
   no file passes through this site's server, and the runner prints every command
   it runs so you can watch.<br>
-  <b>Per device.</b> A runner exists on one machine, so this setting is stored in
-  <b>this browser</b> only — it is never sent to the server and doesn't follow
-  your account to your phone.<br>
-  <b>Setup:</b> one line to start it —
-  <a href="/cure/local-exec/" target="_blank" rel="noopener">the setup page</a>
-  has the recipes for macOS, Linux and Windows, plus the DREE/1 wire if you would
-  rather point at your own.`;
+  <b>Cloud container</b> runs the commands on <b>this platform</b>: an ephemeral
+  Linux container, one per conversation, started in about a second and thrown
+  away when you are done — native speed, no setup, and it carries the same things
+  the browser VM does (your attached files and the active project under
+  <code>/workspace</code>, and in developer mode this site's own source tree,
+  <code>sdk/</code> included, at <code>/src</code>). It has <b>no network
+  access</b>, like the browser VM. The trade is stated plainly: your commands,
+  their output and the files you mount <b>do pass through this server</b>, which
+  is why this option exists on the signed-in tier only and never in
+  DeepResearch.<b>Se/cure</b>.<br>
+  <b>Per device.</b> A local runner exists on one machine, so this setting is
+  stored in <b>this browser</b> only — it is never sent to the server and doesn't
+  follow your account to your phone.<br>
+  <b>Setup:</b> the cloud container needs none. For your own machine, one line
+  starts it — <a href="/cure/local-exec/" target="_blank" rel="noopener">the setup
+  page</a> has the recipes for macOS, Linux and Windows, plus the DREE/1 wire if
+  you would rather point at your own.`;
 
 /** The section markup account-settings.js drops into the panel. */
 export function execEnvSettingsMarkup() {
   const cfg = execEnvCfg();
-  const options = EXEC_BACKENDS.map(
-    (b) => `<option value="${b.id}"${b.id === cfg.backend ? " selected" : ""}>${b.label}</option>`,
-  ).join("");
+  // The cloud container is offered only when this deploy actually carries the
+  // container binding (/api/settings `available.exec_container`) — the same
+  // hide-when-unavailable discipline as the key-gated extension knobs.
+  const options = execBackendsFor("server", { container: execContainerAvailable() })
+    .map((b) => `<option value="${b.id}"${b.id === cfg.backend ? " selected" : ""}>${b.label}</option>`)
+    .join("");
   return `
     <div class="settings-item" id="execenvrow">
       <div class="settings-row">
@@ -121,8 +203,8 @@ export function execEnvSettingsMarkup() {
           <input id="execenvurl" type="url" placeholder="${DEFAULT_RUNNER_URL}" value="${escapeAttr(cfg.baseUrl)}" style="width:100%;margin-top:.2rem"></label>
         <label class="setting-note">API key <span class="muted">(optional)</span>
           <input id="execenvkey" type="password" autocomplete="off" placeholder="only if your runner needs one" value="${escapeAttr(cfg.key)}" style="width:100%;margin-top:.2rem"></label>
-        <button type="button" id="execenvtest" style="align-self:flex-start">Test connection</button>
       </div>
+      <button type="button" id="execenvtest"${cfg.backend === "browser" ? " hidden" : ""} style="align-self:flex-start;margin-top:.4rem">Test connection</button>
       <p id="execenvstatus" class="muted setting-note"></p>
     </div>`;
 }
@@ -143,6 +225,12 @@ function escapeAttr(s) {
  * @returns {string}
  */
 export function execEnvStatusText(cfg) {
+  if (cfg.backend === "cloudflare") {
+    return (
+      "Commands will run in an ephemeral Linux container this platform starts for your conversation — " +
+      "no network, thrown away when you are done, and they pass through this server."
+    );
+  }
   if (cfg.backend !== "local") {
     return "Commands run in the Linux VM inside this browser.";
   }
@@ -170,6 +258,11 @@ export function wireExecEnvSettings() {
   const persist = () => {
     const cfg = setExecEnvCfg({ backend: sel.value, baseUrl: urlEl?.value, key: keyEl?.value });
     if (direct) direct.hidden = cfg.backend !== "local";
+    // The cloud container has nothing to configure — it is this site — but it
+    // still gets the connection test, because "is a container actually
+    // available to me right now" is the same question with a different answer
+    // (no binding on this deploy / the sandbox knob is off / yes).
+    if (testBtn) /** @type {HTMLElement} */ (testBtn).hidden = cfg.backend === "browser";
     // Write the fields back from the NORMALIZED config, so a pasted URL with a
     // trailing slash visibly becomes the one that will actually be called.
     if (urlEl) urlEl.value = cfg.baseUrl;
@@ -182,12 +275,14 @@ export function wireExecEnvSettings() {
   keyEl?.addEventListener("change", persist);
   // "Test connection" answers the one question the user has — is anything
   // there? — and names the cause when not (runner down / CORS / Safari's
-  // mixed-content block), which a bare "Failed to fetch" never does.
+  // mixed-content block, or — for the cloud container — an unconfigured deploy
+  // or the sandbox knob still off), which a bare "Failed to fetch" never does.
   testBtn?.addEventListener("click", async () => {
     const cfg = persist();
-    if (!cfg.baseUrl) return;
-    show("Checking " + cfg.baseUrl + " …");
-    show(runnerStatusLine(await probeRunner(cfg)));
+    const probeCfg = cfg.backend === "cloudflare" ? { baseUrl: SERVER_EXEC_BASE, key: "" } : cfg;
+    if (!probeCfg.baseUrl) return;
+    show("Checking " + (cfg.backend === "cloudflare" ? "this platform's container service" : probeCfg.baseUrl) + " …");
+    show(runnerStatusLine(await probeRunner(probeCfg)));
   });
   show(execEnvStatusText(execEnvCfg()));
 }

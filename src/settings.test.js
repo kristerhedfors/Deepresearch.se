@@ -137,6 +137,7 @@ test("featureAvailability reports storage, rag, shodan, and google_maps independ
     google_maps: false,
     bash_lite: true,
     developer: true,
+    exec_container: false,
   });
   assert.deepEqual(featureAvailability({ SHODAN_API_KEY: "k" }, { user }), {
     storage: false,
@@ -145,6 +146,7 @@ test("featureAvailability reports storage, rag, shodan, and google_maps independ
     google_maps: false,
     bash_lite: true,
     developer: true,
+    exec_container: false,
   });
   assert.deepEqual(featureAvailability({ GOOGLE_MAPS_API_KEY: "k" }, { user }), {
     storage: false,
@@ -153,6 +155,7 @@ test("featureAvailability reports storage, rag, shodan, and google_maps independ
     google_maps: true,
     bash_lite: true,
     developer: true,
+    exec_container: false,
   });
   // An empty identity (no user row, not the admin) has nothing available.
   assert.deepEqual(featureAvailability({ SHODAN_API_KEY: "k", GOOGLE_MAPS_API_KEY: "k", DB: {} }, {}), {
@@ -162,6 +165,7 @@ test("featureAvailability reports storage, rag, shodan, and google_maps independ
     google_maps: false,
     bash_lite: false,
     developer: false,
+    exec_container: false,
   });
   // The break-glass admin (isSecretAdmin, no user row) gets bash_lite and
   // developer — the features with no D1/secret dependency — but not the
@@ -173,7 +177,21 @@ test("featureAvailability reports storage, rag, shodan, and google_maps independ
     google_maps: false,
     bash_lite: true,
     developer: true,
+    exec_container: false,
   });
+});
+
+test("exec_container follows the OPTIONAL container binding, not a secret", () => {
+  const user = { id: 1 };
+  // The server-side execution environment is the one availability entry backed
+  // by a BINDING rather than a key: absent (the shipped default), the Settings
+  // picker omits the option entirely.
+  assert.equal(featureAvailability({}, { user }).exec_container, false);
+  assert.equal(featureAvailability({ EXEC_SANDBOX: {} }, { user }).exec_container, true);
+  // Break-glass admin gets it too, which keeps it testable with those creds.
+  assert.equal(featureAvailability({ EXEC_SANDBOX: {} }, { isSecretAdmin: true }).exec_container, true);
+  // No identity at all: nothing.
+  assert.equal(featureAvailability({ EXEC_SANDBOX: {} }, {}).exec_container, false);
 });
 
 test("extensionEnabledMap resolves every registered extension at once", () => {

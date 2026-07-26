@@ -69,6 +69,7 @@ import {
   handleModelVerify,
 } from "./models-api.js";
 import { handleBashStep } from "./bash-api.js";
+import { handleExecApi } from "./exec-container.js";
 import { handleOrchestratorPlan } from "./orchestrator-api.js";
 import { handleStorage } from "./storage.js";
 import { handleVault } from "./vault.js";
@@ -122,6 +123,14 @@ import { runAsUid, runAsView } from "./run-as.js";
  * identity (when there is one) so the session cookie can slide.
  * @typedef {{ response: Response, identity?: Identity }} RouteResult
  */
+
+// The Durable Object class behind the SERVER-SIDE execution environment. A
+// Durable Object must be exported from the Worker's ENTRYPOINT to be bindable,
+// which is the only reason this line is here rather than staying inside
+// src/exec-container.js. It is inert unless wrangler.toml's (commented-out by
+// default) container + durable_objects block is enabled — an unbound class
+// costs nothing.
+export { ExecSandbox } from "./exec-container.js";
 
 export default {
   /**
@@ -799,6 +808,15 @@ async function routeApi(request, env, url, log, identity, ctx, requestId) {
   // next. Knob-gated inside the handler (bash_lite_mcp).
   if (url.pathname === "/api/bash/step" && request.method === "POST") {
     return handleBashStep(request, env, log, identity);
+  }
+  // WHERE those commands run, when the user picked this platform's own
+  // ephemeral container instead of the in-browser VM (src/exec-container.js):
+  // the DREE/1 endpoints the browser's runner client speaks. Se/rver only by
+  // construction — it sits behind the identity gate, and Se/cure has no
+  // identity. Availability-gated inside the handler (the optional EXEC_SANDBOX
+  // container binding plus the account's sandbox knob).
+  if (url.pathname.startsWith("/api/exec/")) {
+    return handleExecApi(request, env, url, log, identity);
   }
   // The Orchestrator's sub-agent team, planned before the chat request
   // (src/orchestrator-api.js) — the other client-orchestrated loop: the

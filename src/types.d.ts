@@ -29,6 +29,17 @@ export interface Env {
   STORAGE?: R2Bucket;
   /** Vectorize index for server-side RAG retrieval. */
   RAG_INDEX?: VectorizeIndex;
+  /**
+   * Durable Object namespace for the SERVER-SIDE execution environment — one
+   * ephemeral Cloudflare Container per research session (src/exec-container.js).
+   * OPTIONAL and absent by default: wrangler.toml ships the container + DO
+   * block commented out, because a binding whose resource doesn't exist fails
+   * every deploy. Absent means the environment reports itself unavailable and
+   * the Settings picker omits it.
+   */
+  EXEC_SANDBOX?: DurableObjectNamespace;
+  /** Display-only: the instance type the health body reports, when set. */
+  EXEC_INSTANCE_TYPE?: string;
 
   // Primary LLM provider (Berget) — see src/berget.js.
   BERGET_API_TOKEN?: string;

@@ -258,11 +258,12 @@
   <section>
     <h2>Bring your own runner</h2>
     <p>The script above is a reference implementation, not the interface. The
-    interface is <b>DREE/1</b>, two endpoints:</p>
+    interface is <b>DREE/1</b> — two required endpoints, plus one optional:</p>
     <table>
       <tr><th>Endpoint</th><th>Shape</th></tr>
       <tr><td><code>GET /healthz</code></td><td><code>{ok, protocol:"dree/1", backend, image, ephemeral, network}</code></td></tr>
       <tr><td><code>POST /exec</code></td><td><code>{command, session?, timeoutMs?, maxStdoutBytes?}</code> → <code>{exitCode, stdout, stderr, truncated?}</code></td></tr>
+      <tr><td><code>POST /mount?session=…</code></td><td>optional. A <code>tar</code> archive on the body, extracted at <code>/</code> in that session's machine — this is how the page's attachments and project files reach <code>/workspace</code>. Advertise it with <code>mount:true</code> in <code>/healthz</code>; leave it out and nothing is mounted.</td></tr>
     </table>
     <p>Anything answering those drops straight in: a Firecracker or Cloud
     Hypervisor pool, a gVisor sandbox, a remote build box over a tunnel, your
