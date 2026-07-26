@@ -83,7 +83,18 @@ hint), so "I lost it" is answered by minting again, not by reading it back.
 
 Production also serves the endpoint on **`mcp.deepresearch.se`** (a
 `custom_domain` route in `wrangler.toml`, provisioned through the Workers
-custom-domains API). Same Worker, same code path. On that host the BARE
+custom-domains API — `PUT /accounts/<id>/workers/domains` with
+`{environment, hostname, service, zone_id}`, which creates the DNS record and
+the certificate; the host answered within ~20 s).
+
+> **Declare it in `wrangler.toml` or lose it.** Observed 2026-07-26: the
+> domain was created by API, an unrelated merge to `main` auto-deployed from
+> a `wrangler.toml` that did not list it, and **the deploy removed the
+> domain** — the host went unreachable until it was re-created. The API call
+> and the config entry are not alternatives; a domain missing from `routes`
+> does not survive the next deploy.
+
+Same Worker, same code path. On that host the BARE
 ORIGIN answers too — clients disagree about whether the configured URL
 includes the path, and a wrong-URL 404 is the commonest way an MCP setup
 fails — and a `GET` serves the public setup page `public/connect/`

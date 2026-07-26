@@ -24,8 +24,15 @@ routes = [
   # host alone: it only rewrites http → https and strips `www.`.
   #
   # Provisioned 2026-07-26 through the Workers custom-domains API with the
-  # account API token (Cloudflare created the DNS record and the certificate);
-  # this entry keeps it declared in config so a later deploy does not drop it.
+  # account API token (`PUT /accounts/<id>/workers/domains` with
+  # {environment, hostname, service, zone_id}); Cloudflare creates the DNS
+  # record and the certificate, and the host answered within ~20 s.
+  #
+  # THIS LINE IS LOAD-BEARING, observed the hard way the same day: the domain
+  # was provisioned by API, an UNRELATED merge to main auto-deployed from a
+  # wrangler.toml that did not declare it, and the deploy REMOVED it — the host
+  # went unreachable until it was re-created. A custom domain that is not in
+  # this list does not survive the next deploy.
   { pattern = "mcp.deepresearch.se", custom_domain = true },
 ]
 
