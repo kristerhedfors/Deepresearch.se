@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 
 import {
   arxivAttempts,
+  arxivCacheKey,
   arxivDistinctiveness,
   arxivDiversityKey,
   arxivId,
@@ -386,6 +387,108 @@ test("arxivDiversityKey keys by PAPER, not by the whole archive", async (t) => {
   await t.test("falls back to the host on anything unparseable", () => {
     assert.equal(arxivDiversityKey("https://arxiv.org/list/cs.AI/recent"), "arxiv.org");
     assert.equal(arxivDiversityKey("not a url"), "arxiv.org");
+  });
+});
+
+test("arxivSearch result caching", async (t) => {
+  const realFetch = globalThis.fetch;
+  const realCaches = /** @type {any} */ (globalThis).caches;
+  t.afterEach(() => {
+    globalThis.fetch = realFetch;
+    /** @type {any} */ (globalThis).caches = realCaches;
+  });
+
+  // A minimal stand-in for caches.default: enough of match/put for the
+  // edge-cache.js helpers, which otherwise no-op in Node.
+  function fakeCache() {
+    /** @type {Map<string, string>} */
+    const store = new Map();
+    /** @type {any} */ (globalThis).caches = {
+      default: {
+        async match(req) {
+          const body = store.get(req.url);
+          return body === undefined ? undefined : new Response(body);
+        },
+        async put(req, res) {
+          store.set(req.url, await res.text());
+        },
+      },
+    };
+    return store;
+  }
+
+  await t.test("cacheKey namespaces on the params, not the prose", () => {
+    const k = arxivCacheKey(new URLSearchParams({ search_query: 'abs:"graphene"' }));
+    assert.ok(k.startsWith("https://arxiv.cache.internal/query?"));
+    assert.ok(k.includes("graphene"));
+  });
+
+  await t.test("a second identical search makes no outbound call", async () => {
+    fakeCache();
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      return new Response(FEED, { status: 200 });
+    };
+    const a = await arxivSearch({}, log, "llm swarm reasoning");
+    const b = await arxivSearch({}, log, "llm swarm reasoning");
+    assert.equal(calls, 1, "the second search re-fetched");
+    assert.deepEqual(a.items, b.items);
+    assert.equal(b.items.length, 2);
+  });
+
+  await t.test("differently worded questions reducing to the same rung share the entry", async () => {
+    fakeCache();
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      return new Response(FEED, { status: 200 });
+    };
+    await arxivSearch({}, log, "what do the latest papers say about llm swarm reasoning");
+    await arxivSearch({}, log, "recent research on llm swarm reasoning");
+    assert.equal(calls, 1);
+  });
+
+  await t.test("a remembered empty rung broadens without asking arXiv again", async () => {
+    fakeCache();
+    /** @type {string[]} */
+    const seen = [];
+    globalThis.fetch = async (url) => {
+      const q = new URL(String(url)).searchParams.get("search_query") || "";
+      seen.push(q);
+      return new Response(q.split(" AND ").length > 3 ? "<feed></feed>" : FEED, { status: 200 });
+    };
+    await arxivSearch({}, log, "llm swarm reasoning agents");
+    assert.equal(seen.length, 2); // wide rung empty, next rung hit
+    await arxivSearch({}, log, "llm swarm reasoning agents");
+    assert.equal(seen.length, 2, "a cached run re-fetched something");
+  });
+
+  await t.test("a throttled response is NOT cached", async () => {
+    fakeCache();
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      return calls === 1 ? new Response("slow down", { status: 429 }) : new Response(FEED, { status: 200 });
+    };
+    const first = await arxivSearch({}, log, "llm swarm reasoning");
+    assert.deepEqual(first.items, []);
+    // The retry must reach arXiv — an hour-long cached "nothing" from a
+    // transient rate limit would be the worst possible entry.
+    const second = await arxivSearch({}, log, "llm swarm reasoning");
+    assert.equal(second.items.length, 2);
+  });
+
+  await t.test("a timeout is NOT cached either", async () => {
+    fakeCache();
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      if (calls === 1) throw new Error("The operation was aborted due to timeout");
+      return new Response(FEED, { status: 200 });
+    };
+    assert.deepEqual((await arxivSearch({}, log, "graphene superconductivity")).items, []);
+    assert.equal((await arxivSearch({}, log, "graphene superconductivity")).items.length, 2);
   });
 });
 

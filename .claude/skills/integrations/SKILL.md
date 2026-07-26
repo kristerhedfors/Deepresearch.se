@@ -1093,6 +1093,21 @@ work in the repo was the offline CLI RAG database (`docs/ARXIV-RAG.md`), whose
   still per-rung), and the ladder carries a TOTAL time budget of 9 s, because
   three rungs at the per-request timeout is 21 s inside a search wave —
   invariant 2's fail-soft has to hold on the clock too, not just on errors.
+- **Cached through `edge-cache.js` for an hour**, the same Workers Cache
+  mechanics `exa.js` and `googlemaps.js` use, and the main structural defence
+  against that 429: one turn can make 3 searches × up to 3 rungs, all from
+  Cloudflare's shared egress IPs. A hit means no outbound call at all, and
+  because the key is the request PARAMS rather than the user's prose, two
+  differently worded questions that reduce to the same rung share one entry.
+  arXiv metadata is stable (the archive publishes about daily), so an hour is
+  safe where Exa uses 10 minutes. Only a SUCCESSFUL, parsed response is
+  written — a throttle or a timeout takes another path — so a transient failure
+  can never pin an empty answer for an hour, while a genuinely empty rung IS
+  remembered (deterministic for that query, and skipping it is how the ladder
+  broadens without asking arXiv again). This is the ONE cross-module import in
+  the source: the registry's "no imports from other `src/` modules" rule is
+  about not colliding in shared ORCHESTRATOR files, and a stable leaf utility
+  is not that.
 - **Parsing:** Workers have no `DOMParser`, so the Atom feed is cut up by regex
   (`arxivParseFeed`). `&amp;` is decoded LAST, or `&amp;lt;` would become `<`.
   Junk in → `null` out (`arxivMapEntry`), never a throw.

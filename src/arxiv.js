@@ -73,6 +73,16 @@
 //   inside a search wave. arXiv asks for ~3 s between requests; one wave makes
 //   at most a few, and never retries through a throttle.
 
+// One import, deliberately: `edge-cache.js` is the shared fail-soft Workers
+// Cache mechanics exa.js and googlemaps.js already use. The registry's
+// "no imports from other src/ modules" rule (see search-sources.js) exists so
+// two source sessions can't collide in shared ORCHESTRATOR files; a stable
+// leaf utility is not that, and duplicating the mechanics here would be worse.
+// Caching matters more for this source than for most: a turn can make 3
+// searches × up to 3 ladder rungs, all from Cloudflare's shared egress IPs,
+// and arXiv answers too much traffic with 429 (observed — see the header).
+import { cacheGet, cachePut } from "./edge-cache.js";
+
 /**
  * One source-registry item (same shape Exa results carry).
  * @typedef {{ url: string, title: string, highlights: string[] }} ArxivItem
@@ -91,6 +101,14 @@ const MAX_ATTEMPTS = 3; // bounded ladder, same discipline as hfAttempts
 const SLICE = 8; // fetched per attempt; MAX_ITEMS survive the cut
 const MAX_ITEMS = 5; // registry items contributed per search
 const MAX_ABSTRACT_CHARS = 420; // abstract excerpt carried as a highlight
+// 1 h: arXiv metadata is stable (the archive publishes about once a day), so a
+// far longer TTL than exa.js's 10 min is safe, and the point is to cut
+// outbound calls hard — repeated rungs, gap-round follow-ups that reduce to the
+// same terms, and concurrent users on a trending topic all collapse to one
+// request. Only a SUCCESSFUL, parsed response is cached, so a throttle or a
+// timeout can never pin an empty answer; a genuinely empty feed is
+// deterministic for that query and worth remembering.
+const CACHE_TTL_S = 3600;
 
 // ---- intent ----------------------------------------------------------------
 // An arXiv id anywhere in the message, or the site/word itself. "Preprint"
@@ -502,6 +520,18 @@ export function arxivMapEntry(e) {
 
 // ---- the client ------------------------------------------------------------
 /**
+ * The synthetic cache key for one request's parameters. A `.internal` URL that
+ * namespaces the entry and never leaves the isolate (the edge-cache.js
+ * convention). Keyed on the PARAMS, not the user's prose, so two differently
+ * worded questions that reduce to the same rung share one entry.
+ * @param {URLSearchParams} params
+ */
+export function arxivCacheKey(params) {
+  return `https://arxiv.cache.internal/query?${params}`;
+}
+
+
+/**
  * Search arXiv for one planned query. Fail-soft in every branch: a dead API,
  * a timeout, a malformed feed or zero hits all resolve to an empty item list
  * with the attempts recorded, never a throw.
@@ -541,6 +571,18 @@ export async function arxivSearch(env, log, query, { skipKeys } = {}) {
       params.set("search_query", arxivSearchQuery(rung.terms));
       params.set("sortBy", "relevance");
     }
+    // Cross-request result cache (same pattern as exa.js): a hit means no
+    // outbound call at all, which is the main defence against the 429 above.
+    const cacheKey = arxivCacheKey(params);
+    const cached = await cacheGet(log, "arxiv.cache", cacheKey);
+    if (Array.isArray(cached)) {
+      log.info("arxiv.cache_hit", { terms: rung.terms.length, results: cached.length });
+      if (cached.length) {
+        items = cached;
+        break;
+      }
+      continue; // a remembered empty rung — broaden without asking arXiv again
+    }
     try {
       const res = await fetch(`${ARXIV_ENDPOINT}?${params}`, {
         headers: { accept: "application/atom+xml" },
@@ -569,6 +611,10 @@ export async function arxivSearch(env, log, query, { skipKeys } = {}) {
         .map(arxivMapEntry)
         .filter(/** @returns {i is ArxivItem} */ (i) => Boolean(i))
         .slice(0, MAX_ITEMS);
+      // Only a successful, parsed response is remembered — a throttle or a
+      // timeout takes the paths above/below and never writes, so a transient
+      // failure can't pin an empty answer for an hour.
+      await cachePut(log, "arxiv.cache", cacheKey, mapped, CACHE_TTL_S);
       if (mapped.length) {
         items = mapped;
         break;
