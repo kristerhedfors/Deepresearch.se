@@ -1597,7 +1597,8 @@ function renderMessages() {
     empty.textContent =
       "Hi — I'm an AI research assistant that runs right here in your browser, on your own OpenAI, Groq " +
       "or Berget API key (or a local model you run yourself). My replies are model-generated, so verify " +
-      "anything critical. Ask a research question to get started.";
+      "anything critical. Ask a research question to get started, or type “/” for the commands — " +
+      "“/feedback” reaches the developers, “/help” answers from the documentation.";
     box.appendChild(empty);
     return;
   }

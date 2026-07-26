@@ -332,7 +332,12 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // default). Carried for every routed request — not only the executor phases —
   // because introspection and research choose their phase per message, and
   // whichever they choose should speak in the voice its agent declared.
-  const promptSet = routed ? resolvePromptSet(routed.agent) : null;
+  // …and NOT for a slash command, for the same reason its executor phase is
+  // cleared: the turn is no longer that agent's. Carrying the set would answer
+  // a `/help` typed in Orchestrator with the workflow set's planner and merge
+  // prompts (or Agent Studio's build prompt), since phasePrompt prefers the
+  // request's set over the phase's default whenever it fills the role.
+  const promptSet = routed && !slashCmd ? resolvePromptSet(routed.agent) : null;
   // The experimental bash-lite sandbox transcript: the browser ran an agentic
   // shell loop (public/js/bash-agent.js) before sending, and attached what it
   // ran + the real output. Honored only when this account's knob is on

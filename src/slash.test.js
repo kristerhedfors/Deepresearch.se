@@ -159,6 +159,13 @@ describe("the request side: a command outranks the picked mode (src/chat.js)", (
     assert.match(chatSrc, /introspection: enrich\.developerOn \|\| helpCommand/);
     assert.match(chatSrc, /state\.helpCommand = helpCommand/);
   });
+
+  test("the routed agent's PROMPT SET is cleared too — the turn is no longer that agent's", () => {
+    // phasePrompt prefers the request's set over the phase's default whenever
+    // it fills the role, so a carried "workflow" set would answer a /help with
+    // the orchestrator's planner and merge prompts.
+    assert.match(chatSrc, /const promptSet = routed && !slashCmd \? resolvePromptSet/);
+  });
 });
 
 describe("the pipeline order that makes the commands baseline", () => {
