@@ -792,7 +792,7 @@ async function buildChatPayload(opts) {
     messages: stripOldImages(history),
     time_budget_s: opts.budgetS,
     web_search: opts.webSearch,
-    // WHO runs those searches — the knob's long-press pick (search-source.js),
+    // WHO runs those searches — the "Exa web search" setting (search-source.js),
     // read from device storage at send time rather than threaded through the
     // send opts, so a resumed/recovered send uses the CURRENT preference
     // instead of one frozen into an old record. The server re-validates it.

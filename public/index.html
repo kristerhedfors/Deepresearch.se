@@ -111,13 +111,15 @@ try{var m=localStorage.getItem("dr_chat_mode");var t="#6fc3fd";if(m==="sdk"){doc
           answers within the time target, researching as deep as any other
           available source allows (e.g. the Hugging Face Hub for model/dataset
           questions) and otherwise answering from the model's own knowledge,
-          with the depth the slider buys.
-          <!-- The search-SOURCE picker (public/js/search-source.js): WHO runs
-               the searches. Rendered and wired in app.js; the pick rides
+          with the depth the slider buys.<br>
+          <!-- The knob is ON/OFF only (owner directive, 2026-07-26). WHO runs
+               the searches is the "Exa web search" knob in Account & usage →
+               Settings (public/js/search-source.js); the resulting source rides
                /api/chat as `search_source` and the server re-validates it. -->
-          <div id="searchsrc"></div>
-          <b>Note:</b> Exa retains search queries by default. For sensitive
-          topics, see "Sensitive topics" in the
+          <b>Note:</b> searches run on Exa, which retains search queries by
+          default. You can switch Exa off in Account &amp; usage → Settings —
+          this site's own Worker then does the searching. For sensitive topics,
+          see "Sensitive topics" in the
           <a href="/help/" target="_blank" rel="noopener">documentation</a>.
         </div>
         <form id="form">

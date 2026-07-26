@@ -123,7 +123,7 @@ Worker fetches a results page, unwraps the result links, and (by default)
 fetches the top result pages to extract real text excerpts — all from
 Cloudflare's edge. Turn it on site-wide at `/admin` → **Web search service** →
 *Cloudflare-originating*, or leave the site on Exa and let people pick it per
-request from the web knob's long-press card.
+request by switching **Exa web search** off in their settings.
 
 **Why this shape.** Four Cloudflare-native options were weighed; the module
 header records the full reasoning. Short version: Browser Rendering
@@ -178,7 +178,7 @@ engine (Recipe 0). Compare honestly when recommending one:
 **Knobs** (`config.js`'s `search` block): `cf_serp` (the ordered source list
 above), `cf_pages` (default true — off serves SERP snippets alone: faster, and
 noticeably thinner than Exa highlights) and `allow_user_choice` (default true —
-off pins the site-wide backend and takes the picker away). `fallback_exa` still
+off pins the site-wide backend and takes the user knob away). `fallback_exa` still
 applies: an exhausted cascade falls through to Exa when a key exists.
 
 **Reading the logs.** `search.cf_serp_empty {provider}` on `ddg` for every
@@ -206,22 +206,30 @@ deploy.
 
 ---
 
-## The user-facing choice (the web knob's long-press card)
+## The user-facing choice (the **Exa web search** settings knob)
 
-Since 2026-07-25 the backend is not only an operator decision. Long-pressing
-(or hovering) the web knob opens the card that explains it — UX-10 — and that
-card now carries a **source picker**: **Exa** (the default) or **this site's
-Worker**. The pick is device-local (`public/js/search-source.js`,
-localStorage), rides `/api/chat` as `search_source` on Se/rver and the
+Since 2026-07-25 the backend is not only an operator decision. The user-facing
+control is a single settings knob — **Exa web search**, ON by default; switch
+it OFF and searches run from this site's own Worker instead. It lives in the
+Settings view on Se/rver (`public/js/account-settings.js`) and the settings
+drawer on Se/cure (`#exarow`, wired in `drc.js`), both over the shared
+device-local preference `public/js/search-source.js` (localStorage). The
+resulting source rides `/api/chat` as `search_source` on Se/rver and the
 grant/token calls as `source` on Se/cure, and the server RE-VALIDATES it
 against `USER_SEARCH_SOURCES` — so the client is a preference, never a trust
 boundary.
 
-Self-hosted backends are deliberately NOT in the picker: they name an
-operator's own service. On Se/cure that decision already lives in the settings
-drawer (browser-direct, no query touches this server at all), and a configured
-local agent outranks the grant path entirely — which is why the card keeps the
-agent's setup link directly under the picker.
+It briefly (2026-07-25 → 07-26) sat as a radio picker on the web knob's
+long-press card. The owner reversed that: **the composer knob is on/off only**,
+and this belongs in settings. See UX-10 in the **ux-conventions** skill — the
+card still EXPLAINS the knob and links the local-agent setup page, it just no
+longer decides.
+
+Self-hosted backends are deliberately NOT part of that knob: they name an
+operator's own service. On Se/cure that decision already lives further down the
+same settings drawer (browser-direct, no query touches this server at all), and
+a configured local agent outranks the grant path entirely — which is why the
+Se/cure knob's status line says so when one is configured.
 
 ---
 
