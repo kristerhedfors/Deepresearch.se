@@ -521,7 +521,8 @@ applies.
 ## UX-11 — A document reader has two modes; in comment mode a marked passage gets a comment that reaches the code, not just the prose
 
 **The rule.** Every documentation page carries a Word-style mode **dropdown**
-(fixed, top right): **Read only** (the default, and exactly what the page was
+(fixed, **bottom** right — see "Not the top-right corner" below): **Read
+only** (the default, and exactly what the page was
 before) and **Comment**. It is a dropdown, not a pair of buttons — it matches
 the chat mode selector's shape and a native `<select>` is the one control that
 is comfortable on a phone. In comment mode, selecting a passage opens a composer
@@ -553,6 +554,23 @@ reconciles the passage and the code behind it in one change. So the reader is
 where the instruction is given, and where the result comes back: status, reply
 and staleness land in the margin, not only in the account panel (owner
 directive, 2026-07-25).
+
+**Not the top-right corner (fixed 2026-07-26).** The slot shipped at
+`top: .5rem; right: .6rem` and collided with the host page's own header on
+every documentation page and at every width — measured with a real viewport:
+267×29px at 390, 366×13px at 820, 136×13px at 1280, where it covered `/help/`'s
+"← Back to the app" outright. That is the cost of the layer's own promise (a
+page needs no markup, no CSS and **no layout cooperation**): it cannot know
+what the page already put in that corner, so it must not claim a corner pages
+conventionally use for their title and back link. It lives at
+`bottom: .6rem; right: .6rem` now — free on every page, and a mode switch that
+stays reachable while scrolling belongs there anyway. Two things must move
+together: `.dc-slot` in `public/js/docs-comments.js`, the inline style in
+`showNote()` in `public/js/doc-comment-gate.js` (an inline style cannot carry a
+media query, so it duplicates the position on purpose), and the `.dc-rail`
+padding, which is generous on whichever end the slot floats over. The fallback
+badge also needs enough background alpha to read as chrome — at `.14` wash with
+`opacity: .75` the prose behind it showed through its own label.
 
 **No second queue.** The comment is a `feedback` entry with the `doc` scope —
 one pipeline for free-form human instructions, four scope tags on it

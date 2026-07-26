@@ -82,6 +82,98 @@
   documentation</a> instead. Its storage and privacy story is deliberately
   different: everything stays in the browser.</p>
 
+  <section id="why">
+    <h2>First, what this project is for</h2>
+    <p>DeepResearch.se is <b>innovation and research into the privacy
+    capabilities of LLM applications</b>. The question it exists to answer:
+    how far can a real, useful research assistant be pushed toward
+    <em>provable</em> privacy — privacy you can check rather than take on
+    trust — and where does that start costing capability? The proof is not a
+    white paper. <b>It is this site</b>, open-sourced whole, so every claim
+    below is one you can verify yourself. It is genuinely experimental and
+    nowhere near production-ready; treat it as a working research instrument,
+    not a product.</p>
+
+    <h3>What it brings you</h3>
+    <ul>
+      <li><b>Deep research that shows its work</b> — searches planned, run and
+        cited, on a time budget you set, with the reasoning steps visible as
+        they happen instead of a spinner and a wall of text.</li>
+      <li><b>Two tiers, so privacy is a choice you make rather than a promise
+        you accept</b> — one where the server is never in the data path at
+        all, one where it is and earns its place with capability.</li>
+      <li><b>Research that travels</b> — a workspace can be handed to someone
+        as a single link, with a bounded, revocable allowance inside it, and
+        their findings can come back sealed.</li>
+      <li><b>A real Linux machine in the browser tab</b> — the assistant runs
+        code and reads actual output, and the execution never leaves your
+        device on either tier.</li>
+      <li><b>Models on your terms</b> — EU-hosted by default, US providers if
+        you choose them, your own local server, or a model running on your own
+        device with no prompt leaving it at all.</li>
+      <li><b>More than one kind of agent</b> — a research agent, one that
+        answers from this site's own source, one that builds and publishes
+        small apps, one that plans a team of sub-agents, one that reads the
+        outward feed of what everyone else shipped.</li>
+      <li><b>It is also a tool for your agents</b> — the same pipeline is an
+        MCP endpoint, so Claude, Cursor or anything else that speaks MCP can
+        call it.</li>
+    </ul>
+
+    <h3>See something you like? Take it</h3>
+    <p><b>Adaptability is a primary design goal, not an afterthought.</b> The
+    point of open-sourcing this is that you fork the architecture and run it
+    for <em>your</em> domain and <em>your</em> requirements — ideally into an
+    environment already network- and authentication-restricted, so the whole
+    serving chain is yours. What makes that realistic:</p>
+    <ul>
+      <li><b>Zero runtime dependencies.</b> <code>package.json</code> has no
+        <code>dependencies</code> block at all; the Worker imports nothing but
+        <code>node:</code> builtins and its own files. No build step, no
+        bundler, so there is no transitive tree to audit and nothing to
+        break between you and a deploy. The browser libraries that are needed
+        are vendored and served from our own origin — a first visit costs
+        69.7 KiB, everything heavier is gated behind a feature you reach
+        for.</li>
+      <li><b>Frequent refactoring for modularity</b>, as standing practice —
+        ten recorded passes so far. Every large feature is a pure, testable
+        core plus thin orchestration, which is what makes a piece liftable:
+        take the crypto core, the pipeline, the sandbox or the retrieval layer
+        without taking the rest.</li>
+      <li><b>Third-party services are extensions, never core.</b> Adding or
+        removing an integration is one descriptor in a registry and touches no
+        core file — enforced by a test that fails the build if a core module
+        so much as names a service.</li>
+      <li><b>Swap the platform underneath.</b> Every Cloudflare binding is
+        documented with what it is used for and what substitutes for it —
+        static assets, SQLite, an S3-compatible store, any vector database.
+        The README's install walkthrough and its "running outside Cloudflare"
+        section are the map.</li>
+      <li><b>Deterministic by design, so it runs on the models you have.</b>
+        Every planning phase is a plain JSON call — no function calling
+        anywhere in the pipeline — so the whole thing works on models with
+        unreliable tool support, including small ones you host yourself.</li>
+      <li><b>Distil it instead of reading it.</b> Two SDKs ship with the
+        project: 34 modules for building a platform like this one, and an
+        agent specification for building agents on it. Agent Studio, in the
+        app, turns a description into either a new agent or a whole new
+        platform and publishes it live.</li>
+      <li><b>Open interchange standards.</b> The workspace bundle
+        (<b>DRSW/1</b>) and the pipeline structure (<b>DRPL/1</b>) are written
+        as specifications, with this site as their reference implementation —
+        so a workspace or a pipeline you build is not locked to this
+        codebase.</li>
+      <li><b>MIT-licensed, and checkable end to end.</b> The live site is
+        served straight from the public repository, git-connected, so what
+        production runs is what you can read.</li>
+    </ul>
+    <p class="muted">The design in full is
+    <a href="/architecture/">the architecture story</a>; the complete
+    dependency inventory, the privacy model and every other design document
+    are at <a href="/docs/">/docs/</a>. What follows here is the practical
+    manual for the signed-in app.</p>
+  </section>
+
   <section id="start">
     <h2>Start here: what this site is</h2>
     <p><b>It is a research assistant that works from sources, not from
@@ -202,6 +294,11 @@
     <p>The rest of this page is the manual for the signed-in app, control by
     control:</p>
     <ul>
+      <li><a href="#why">What this project is for</a> — the research question,
+        what the site brings you, and what to do if you want to take it and
+        adapt it.</li>
+      <li><a href="#start">Start here</a> — what the site is and your first
+        question, end to end.</li>
       <li><a href="#header">The header</a> — history, new chat, ghost, share,
         settings, account.</li>
       <li><a href="#history">Chat history</a> — where conversations live, how
