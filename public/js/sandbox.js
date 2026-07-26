@@ -30,7 +30,7 @@
 // testable logic lives in public/js/bash-core.js instead.
 
 import { buildSeedScript, planMounts, shellEscape } from "./sandbox-files.js";
-import { feedCommand, feedResult, feedTerminal, setTerminalInputSink } from "./agent-backdrop.js";
+import { feedCommand, feedResult, feedStatus, feedTerminal, setTerminalInputSink } from "./agent-backdrop.js";
 import { createBootMessageRotator, formatBootProgress } from "./boot-messages.js";
 import {
   DEFAULT_EXEC_TIMEOUT_MS,
@@ -163,11 +163,18 @@ function startBootQuips() {
   let n = 0;
   const tick = () => {
     try {
-      if (typeof _bootOnMessage !== "function") return; // no sink yet — skip
       if (n > 0 && n % 3 === 0) quip = rotator.next();
       n += 1;
       const elapsed = _bootT0 ? Date.now() - _bootT0 : 0;
-      _bootOnMessage(`${formatBootProgress(_bootStage, elapsed)} — ${quip}`);
+      const line = `${formatBootProgress(_bootStage, elapsed)} — ${quip}`;
+      // The chat activity label — absent on a bare pre-warm, and adopted
+      // mid-boot when a real send joins an in-flight boot (see above).
+      if (typeof _bootOnMessage === "function") _bootOnMessage(line);
+      // The TERMINAL PANE gets the same progress. The header terminal icon is
+      // on screen from the moment the sandbox is enabled, so without this the
+      // pane is a black void for the whole cold boot — feedback #38. Runs
+      // regardless of the activity sink: the auto-start-on-open boot has none.
+      feedStatus(line);
     } catch { /* decoration — never break the boot */ }
   };
   tick(); // paint immediately, don't wait a full second
@@ -184,6 +191,11 @@ function startBootQuips() {
  * it on a full teardown. */
 function stopBootQuips() {
   if (bootQuipTimer) { clearInterval(bootQuipTimer); bootQuipTimer = null; }
+  // Drop the terminal pane's boot-progress line: the boot is over (ready,
+  // failed, timed out or torn down) and the VM's own output — or nothing at
+  // all — is the truth from here. Safe on the startBootQuips path too, which
+  // calls this first and then paints a fresh tick immediately.
+  try { feedStatus(""); } catch { /* decoration — never break the boot */ }
 }
 
 // ---- client telemetry (reaches Workers Logs via /api/client-log) -----------
