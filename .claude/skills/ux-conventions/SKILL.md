@@ -522,9 +522,11 @@ applies.
 
 ## UX-11 — A document reader has two modes; in comment mode a marked passage gets a comment that reaches the code, not just the prose
 
-**The rule.** The documentation reader (`/docs`) carries a Word-style mode
-switch in its header: **Read only** (the default, and exactly what the page was
-before) and **Comment**. In comment mode, selecting a passage opens a composer
+**The rule.** Every documentation page carries a Word-style mode **dropdown**
+(fixed, top right): **Read only** (the default, and exactly what the page was
+before) and **Comment**. It is a dropdown, not a pair of buttons — it matches
+the chat mode selector's shape and a native `<select>` is the one control that
+is comfortable on a phone. In comment mode, selecting a passage opens a composer
 anchored to that selection; the comment is stored with the document path, the
 section heading, and the exact quoted text. Every comment on the open document
 sits in a right-hand rail, its passage highlighted in the prose, and clicking a
@@ -561,14 +563,31 @@ by ids written into the Markdown: the doc pipelines rewrite these files, so an
 id-bearing marker would not survive, and a quote that stops matching is the
 "this text was replaced" signal the rail needs.
 
-**Canonical implementation:** `public/js/docs-comments.js` (the mode switch,
-selection composer, rail, and passage highlighting; scoped `dc-` styles in
-`public/docs/index.html`) over the Node-tested pure core
+**It mounts on ANY documentation page (amended 2026-07-25).** The layer injects
+its own dropdown, rail and styles as fixed-position chrome, so a page opts in
+with one script tag and provides no markup, no CSS and no layout slot:
+
+```html
+<script type="module">
+  import { mountCommentMode } from "/js/doc-comment-gate.js";
+  mountCommentMode({ path: "public/help/index.html" });
+</script>
+```
+
+The first cut wired itself into ONE page's CSS grid (`/docs/`, the repo-corpus
+viewer), which made every other documentation page a porting job — and the page
+the app actually links as "documentation" (`/help/`) went without it while the
+feature looked shipped. Pick the surface the USER means, and make the mechanism
+surface-independent so the question stops mattering.
+
+**Canonical implementation:** `public/js/doc-comment-gate.js` (PUBLIC — the
+one-line opt-in, the admin check, the visible fallback note) →
+`public/js/docs-comments.js` (GATED — dropdown, selection composer, rail,
+passage highlighting, injected `dc-` styles) over the Node-tested pure core
 `public/js/docs-comments-core.js` (body grammar, quote anchoring, stale
-detection), mounted by `public/js/docs-viewer.js` only after `/api/me` returns
-an admin role. Storage is `POST /api/feedback` with feedback-core's
-`docPageTag`; the rail reads `GET /api/feedback?page=<tag>`. Selection-driven,
-no text routing, so no EN/SV parity applies.
+detection). Live on `/help/` and `/docs/`. Storage is `POST /api/feedback` with
+feedback-core's `docPageTag`; the rail reads `GET /api/feedback?page=<tag>`.
+Selection-driven, no text routing, so no EN/SV parity applies.
 
 ## UX-12 — A tier comparison is one question per row, both answers direct-labeled, stacked on a phone
 
