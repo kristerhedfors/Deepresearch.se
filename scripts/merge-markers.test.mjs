@@ -63,3 +63,30 @@ test("the landing page declares exactly one #chat element", () => {
     assert.equal(count, 1, `${page} declares ${count} id="chat" elements, expected 1`);
   }
 });
+
+test("no public test file opts into // @ts-check", () => {
+  // tsconfig.public.json sets `"types": []` on purpose — public/** is checked
+  // as BROWSER code, so Node globals must not be visible. A test file there
+  // imports node:test and node:assert, which under that config cannot resolve:
+  // opting one in fails `npm run typecheck` with errors nothing can fix short
+  // of pulling @types/node into every browser module.
+  //
+  // This broke main twice on 2026-07-26, both times from the same branch, and
+  // both times it was invisible locally because the container had no
+  // node_modules so typecheck could not run at all. The convention is already
+  // unanimous the other way — the modules opt in, their tests do not.
+  const offenders = execFileSync("git", ["ls-files", "-z", "public/**/*.test.js"], {
+    cwd: REPO,
+    maxBuffer: 16 * 1024 * 1024,
+  })
+    .toString("utf8")
+    .split("\0")
+    .filter(Boolean)
+    .filter((f) => /^\s*\/\/\s*@ts-check\b/m.test(readFileSync(join(REPO, f), "utf8").split("\n")[0] ?? ""));
+
+  assert.deepEqual(
+    offenders,
+    [],
+    `these public test files carry // @ts-check, which tsconfig.public.json cannot satisfy:\n${offenders.join("\n")}`,
+  );
+});
