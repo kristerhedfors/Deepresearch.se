@@ -215,6 +215,35 @@ which swallows the child's prose into the parent AND loses the child. Split on
 the opening tag instead (what `htmlSections` does), the same shape as
 `latexSections`.
 
+**Two extractors, on purpose (2026-07-26).** `scripts/arxiv-html.mjs`
+(`htmlSectionsDom`, cheerio over LaTeXML's `ltx_*` classes) is what the
+full-text warm path uses; `htmlSections` in the core stays regex-only so the
+ingestion path remains runnable inside a Worker (§9.9) and is the fallback.
+Adding cheerio breaks no invariant because **no `src/` module imports
+`arxiv-rag-core.js`** — `scripts/` is its only consumer, so it is a
+devDependency, not a Worker runtime dep. Measured over 9 real papers:
+
+- **Mathematics survives.** LaTeXML puts the original LaTeX in
+  `<math alttext="…">`; the regex core strips the element. Math was present in
+  3 of 9 papers' output there vs **9 of 9** with the DOM. On a corpus where the
+  answer is often the formula, this is the reason to bother.
+- **+11% prose** (451,621 vs 406,703 chars) *while also discarding* 66,235 chars
+  of bibliography, so genuine-prose gain is nearer +27%.
+- **The bibliography leak was a real bug in shipped code** — a citation list
+  indexed as prose yields chunks that can only match author surnames, and it was
+  16% of the core's output. Now dropped in BOTH extractors.
+- Cost ~100 ms/paper vs ~4 ms, irrelevant against ~5 s of embedding.
+
+**There is no mature arXiv-HTML-specific parser to take off the shelf** — worth
+knowing before someone goes looking. `ar5iv` *produces* this HTML (a LaTeXML
+service), it does not parse it. The mature general options are Python:
+Trafilatura drops mathematical formulas entirely (disqualifying), Docling brings
+models and a heavy install. A battle-tested DOM library aimed at the `ltx_*`
+contract is the real answer. When extending it, add to `UNIT_SELECTOR` rather
+than special-casing: a first version selected only
+section/subsection/subsubsection and silently dropped `.ltx_appendix`, which
+read as a regression on papers carrying appendices.
+
 Two LaTeX-assembly traps, both found by breaking a real paper:
 
 - A submission is often a thin wrapper plus `\input` fragments. Concatenating
