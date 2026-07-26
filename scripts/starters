@@ -12,6 +12,8 @@
 //   scripts/starters --strip <agent> [--cursor N] [--lang sv]
 //                                             the four chips a visitor would see
 //   scripts/starters --shortlist [<agent>]    the best-known-good openers
+//   scripts/starters --batch [--cursor N]     an evaluation-mode batch (what the knob serves)
+//   scripts/starters --coverage               what is still untested, per agent and band
 //   scripts/starters --aspects <agent>        the aspect taxonomy + coverage
 //   scripts/starters --validate               every rule the registry must satisfy
 //   scripts/starters --modes                  which agent each chat mode opens
@@ -24,10 +26,11 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  SLOT_COUNT, QUEUE_MIN, SHORTLIST_FLOOR, MODE_AGENTS,
+  SLOT_COUNT, QUEUE_MIN, SHORTLIST_FLOOR, MODE_AGENTS, EVAL_BANDS,
   agentIds, resolveQueue, selectStarters, shortlistFor, validateStarters, registryReport,
+  evalPool, selectEvalBatch, coverageReport,
 } from "../src/starters.js";
-import { STARTERS, STARTERS_VERSION, ASPECTS } from "../src/starters.js";
+import { STARTERS, STARTERS_VERSION, ASPECTS, CANDIDATES } from "../src/starters.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const AGENTS = JSON.parse(readFileSync(join(ROOT, "sdk", "AGENTS.json"), "utf8"));
@@ -158,6 +161,45 @@ if (has("--shortlist")) {
       console.log("");
     }
     console.log(`Shortlist floor: ${SHORTLIST_FLOOR}. A rank without an eval run behind it fails --validate.`);
+  });
+  process.exit(0);
+}
+
+// ---- --batch (evaluation mode) ----------------------------------------------
+
+if (has("--batch")) {
+  const cursor = Number(flag("--cursor") || 0);
+  const platform = flag("--platform") || undefined;
+  const pool = evalPool(STARTERS, { candidates: CANDIDATES, platform });
+  const batch = selectEvalBatch(pool, { cursor, count: SLOT_COUNT });
+  out({ cursor, platform: platform || null, batch }, () => {
+    console.log(`── evaluation batch ${cursor}${platform ? ` (${platform})` : ""} — one per band, across agents ──\n`);
+    batch.forEach((e, i) => {
+      console.log(`${i + 1}. [${e.band}] ${e.agent}${e.rank != null ? ` · scored ${e.rank}` : ""}`);
+      console.log(`   ${e.text}`);
+      if (e.note) console.log(`   testing: ${e.note}`);
+      console.log("");
+    });
+    console.log("Advance --cursor for the next batch. This is what the Settings knob serves.");
+  });
+  process.exit(0);
+}
+
+// ---- --coverage -------------------------------------------------------------
+
+if (has("--coverage")) {
+  const rows = coverageReport(STARTERS, { candidates: CANDIDATES });
+  out(rows, () => {
+    console.log("What is still untested, per agent:\n");
+    console.log("agent                total  proven  weak  untried  candidates");
+    for (const r of rows) {
+      console.log(
+        `${r.agent.padEnd(20)} ${String(r.total).padStart(5)}  ${String(r.proven).padStart(6)}  ` +
+        `${String(r.weak).padStart(4)}  ${String(r.untried).padStart(7)}  ${String(r.candidates).padStart(10)}`,
+      );
+    }
+    const t = rows.reduce((a, r) => ({ untried: a.untried + r.untried, total: a.total + r.total }), { untried: 0, total: 0 });
+    console.log(`\n${t.untried} of ${t.total} starters have never been evaluated (bands: ${EVAL_BANDS.join(", ")}).`);
   });
   process.exit(0);
 }

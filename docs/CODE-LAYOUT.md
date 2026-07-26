@@ -138,7 +138,13 @@ reaches into `app.js` internals — see the
 state, drawn from the active chat mode's agent queue over the pure
 `starters-core.js`/`starters-data.js`, re-rendered on a new chat and on
 a mode switch, with the rotation cursor and pick counts kept in
-`localStorage` and sent nowhere — see the **starter-prompts** skill), `stream.js` (conversation history + `/api/chat`
+`localStorage` and sent nowhere. With the Settings knob *Starter prompt
+evaluation* on (browser-local, `dr_starter_eval`) the same module renders a
+cross-agent REVIEW BATCH instead — one starter per band (proven / weak /
+untried / candidate, the last from `starters-data.js`'s `CANDIDATES` trial
+pool), each labelled, each carrying a 👍/👎 whose verdicts stay local and leave
+via a *Copy report* button; a chip switches the chat mode to its own agent
+before sending — see the **starter-prompts** skill), `stream.js` (conversation history + `/api/chat`
 SSE send loop, autosaves to encrypted local history after every turn;
 `currentBuildSlug`/`resetBuildSlug` expose the SDK-mode build-status chip's
 state — the conversation's remembered `/app/<slug>/`, and the chip's ↺ action

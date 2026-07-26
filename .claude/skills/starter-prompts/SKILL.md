@@ -12,7 +12,11 @@ description: >-
   tests/STARTER-EVAL-FINDINGS.md. Covers the queue model (4 shown, 20+ deep,
   exploit/explore rotation), the provenance rule (starters are synthetic —
   never lifted from chat_logs), the three judged dimensions and the dead-end
-  cap, how to run a battery, and how a rank gets promoted with evidence.
+  cap, how to run a battery, and how a rank gets promoted with evidence. ALSO
+  EVALUATION MODE — the Settings knob "Starter prompt evaluation" that turns the
+  strip into a cross-agent review batch (the proven / weak / untried / candidate
+  bands, 👍👎 verdicts, Copy report) — and the CANDIDATES trial pool that new
+  questions are promoted into a queue from.
 ---
 
 # Starter prompts — the queue and its evaluation
@@ -41,7 +45,7 @@ inadequate.
 | `public/js/starters.js` | The DOM half — renders the strip, holds the local cursor + click signal. |
 | `src/starters.js` | Server/CLI façade (re-export only; the agent-spec.js pattern). |
 | `public/js/starters-core.test.js` | Unit tests + the validator run over the real registry. |
-| `scripts/starters` | Offline CLI: report, queue, strip preview, aspects, shortlist, validate. |
+| `scripts/starters` | Offline CLI: report, queue, strip preview, aspects, shortlist, batch, coverage, validate. |
 | `tests/starter-eval.mjs` | The live cross-agent battery. |
 | `tests/STARTER-EVAL-FINDINGS.md` | Append-only ledger. A `rank` cites a run id here. |
 
@@ -177,3 +181,63 @@ that silently covered 5 of 7 agents would read as full coverage:
 A starter that scores badly is not deleted on one run. Either rewrite the text
 (it was a bad opener) or leave it unranked — the explore slots will surface it
 again for a second reading.
+
+## Evaluation mode (the Settings knob)
+
+`Settings → Starter prompt evaluation` is a **browser-local** knob (like the
+on-device models row; unlike the `/api/settings` capability knobs — it grants
+nothing and is never sent anywhere). Same-origin, so flipping it covers both
+tiers.
+
+When on, the visitor strip is replaced by a **review batch**: four chips drawn
+across *every* agent, one per band.
+
+| Band | What it means | Why it is in the batch |
+| --- | --- | --- |
+| `proven` | rank ≥ 3.8 | Does it still hold? |
+| `weak` | rank < 3.8 | Is it really bad, or was the run wrong? |
+| `untried` | no rank | Most of the registry lives here. |
+| `candidate` | not in a queue | A question we are considering **adding**. |
+
+Each chip is labelled with its agent and band, carries 👍/👎, and — on
+Se/rver — **switches the chat mode to its agent before sending**, because a
+cross-agent batch that ran everything as Deep Research would measure the wrong
+thing. On Se/cure the pool is restricted to the `secure` agent, since no mode
+switch exists there.
+
+Two behaviours differ from the visitor strip on purpose:
+
+- **The batch is sticky until something is rated.** A reviewer has not finished
+  with a chip until they have run it and judged the answer — a whole round trip
+  — so the cursor advances on a *rating*, not on a render.
+- **Rated entries sink** within their band, so batches spend their slots on
+  what is still unknown. Rating as you go covers the whole 175-entry pool in
+  ~146 batches (unit-tested; a schedule that stranded material would be a bug).
+
+Verdicts live in `localStorage` (`dr_starter_verdicts`). **Copy report** puts a
+grouped plain-text summary on the clipboard — text rather than a beacon,
+because on Se/cure there is no endpoint this could post to without breaking the
+tier's promise, and a reviewer pasting their own findings is more honest than a
+silent upload.
+
+Offline equivalents:
+
+```bash
+scripts/starters --batch --cursor 3      # exactly what the knob would serve
+scripts/starters --coverage              # what is still untested, per agent and band
+```
+
+## The CANDIDATES pool
+
+`CANDIDATES` in `starters-data.js` holds questions we are **considering
+adding**. They carry no rank, are not validated as queue entries, and are never
+shown to ordinary visitors — evaluation mode is their only surface. Each has a
+`note` saying what it is *testing*; read that before judging the answer.
+
+- A candidate that reviews well **moves into its agent's queue** with evidence.
+- One that reviews badly is **deleted**, and the reason goes in the ledger.
+
+Aim candidates at gaps, not at variety for its own sake. The current set exists
+because the first battery left `secure` at zero coverage (no server endpoint
+can drive that tier — a human is the only instrument that reaches it),
+`outrospection` below the floor, and several declared aspects unfilled.

@@ -166,11 +166,20 @@ export function starterStanding(entry, signal = {}) {
   return base + nudge;
 }
 
-/** True when an eval run has scored this starter (it can fill an exploit slot).
+/**
+ * True when this starter is known GOOD — an eval run scored it at or above the
+ * shortlist floor. Only these fill an exploit slot.
+ *
+ * Note the floor, not merely "has a rank". A starter the battery scored 2.10
+ * carries a rank too, and treating that as proven would promote a known-bad
+ * opener into the two slots reserved for the first impression — the exact
+ * opposite of what they are for. A sub-floor rank means "we tested this and it
+ * was weak", which is more damning than never having tested it.
  * @param {any} entry
- * @returns {boolean} */
+ * @returns {boolean}
+ */
 export function isProven(entry) {
-  return typeof entry?.rank === "number" && entry.rank >= RANK_MIN;
+  return typeof entry?.rank === "number" && entry.rank >= SHORTLIST_FLOOR;
 }
 
 /**
@@ -576,6 +585,289 @@ export function registryReport(reg) {
       sv: q.filter((e) => e.lang === "sv").length,
       aspects: new Set(q.map((e) => e.aspect).filter(Boolean)).size,
       best: proven.length ? Math.max(...proven.map((e) => e.rank ?? 0)) : null,
+    };
+  });
+}
+
+// ---- evaluation mode ---------------------------------------------------------
+//
+// The strip above serves a VISITOR: two proven openers and two explores, drawn
+// from whichever agent the current mode runs. Evaluation mode serves a
+// REVIEWER instead, and wants the opposite balance — the point is not to make
+// a good first impression, it is to find out what we do not know yet.
+//
+// So when the knob is on, the strip is replaced by a BATCH drawn across every
+// agent at once, one chip per band:
+//
+//   proven    — a starter an eval run scored above the floor. Does it hold?
+//   weak      — a starter that scored BELOW the floor. Is it really bad, or
+//               was the run wrong? (The first battery scored two outrospection
+//               starters 1.35 for a harness bug, so this band is not academic.)
+//   untried   — no rank at all. The bulk of the registry lives here.
+//   candidate — not in a queue yet: a question we are considering ADDING.
+//
+// One from each band, every batch, rotating within the band so the reviewer is
+// never asked the same thing twice while anything unrated remains. That is the
+// "schedule": coverage by construction rather than by remembering to vary it.
+
+/** The four bands an evaluation batch draws one chip from, in slot order. */
+export const EVAL_BANDS = ["proven", "weak", "untried", "candidate"];
+
+/**
+ * Which band a starter belongs to. `candidate` is not derivable from the entry
+ * — it comes from which pool the entry was read out of — so it is passed in.
+ * @param {{rank?:number}} entry
+ * @returns {"proven"|"weak"|"untried"}
+ */
+export function bandOf(entry) {
+  if (typeof entry?.rank !== "number") return "untried";
+  return entry.rank >= SHORTLIST_FLOOR ? "proven" : "weak";
+}
+
+/**
+ * Every starter in the registry, flattened and tagged with its agent and band
+ * — the pool an evaluation batch draws from. Candidates are appended from a
+ * separate list and carry `band: "candidate"` plus the agent they are proposed
+ * FOR, so a reviewer knows which queue a good verdict would add them to.
+ *
+ * `platform: "client"` restricts the pool to what can actually run in the
+ * Se/cure tier: its own queue, plus candidates proposed for it. Serving an
+ * Agent Studio starter there would test nothing except the reviewer's patience.
+ *
+ * @param {any} reg
+ * @param {{platform?:string, candidates?:Array<any>}} [opts]
+ * @returns {Array<any>}
+ */
+export function evalPool(reg, opts = {}) {
+  const clientOnly = opts.platform === "client";
+  const pool = [];
+  for (const agent of agentIds(reg)) {
+    if (clientOnly && agent !== "secure") continue;
+    for (const e of resolveQueue(reg, agent)) pool.push({ ...e, agent, band: bandOf(e) });
+  }
+  for (const c of Array.isArray(opts.candidates) ? opts.candidates : []) {
+    const id = typeof c?.id === "string" ? c.id.trim() : "";
+    const text = typeof c?.text === "string" ? c.text.trim() : "";
+    if (!id || !text) continue;
+    const agent = typeof c.agent === "string" ? c.agent : "research";
+    if (clientOnly && agent !== "secure") continue;
+    pool.push({
+      id,
+      text,
+      agent,
+      aspect: typeof c.aspect === "string" ? c.aspect : "",
+      lang: c.lang === "sv" ? "sv" : "en",
+      band: "candidate",
+      note: typeof c.note === "string" ? c.note : "",
+    });
+  }
+  return pool;
+}
+
+/**
+ * One evaluation batch: `count` starters, one per band in EVAL_BANDS order,
+ * drawn across every agent.
+ *
+ * Within a band, entries the reviewer has ALREADY rated go to the back — a
+ * batch should spend its four slots on things we do not know yet. When a band
+ * is empty (nothing weak, say, because nothing has been scored below the floor
+ * yet) its slot is backfilled from the band with the most unrated material
+ * left, so the reviewer always gets four chips rather than a short strip that
+ * silently means "no data here".
+ *
+ * Deterministic in (pool, cursor, rated): the same inputs give the same batch,
+ * so a reviewer can be handed the exact batch they saw.
+ *
+ * @param {Array<any>} pool  from evalPool()
+ * @param {{cursor?:number, count?:number, rated?:Set<string>|Record<string,any>}} [opts]
+ * @returns {Array<any>}
+ */
+export function selectEvalBatch(pool, opts = {}) {
+  const count = Math.max(0, Math.trunc(opts.count ?? SLOT_COUNT));
+  const list = Array.isArray(pool) ? pool : [];
+  if (!count || !list.length) return [];
+  const cursor = Math.trunc(opts.cursor ?? 0) || 0;
+  const ratedRaw = opts.rated;
+  const rated = ratedRaw instanceof Set
+    ? ratedRaw
+    : new Set(Object.keys(ratedRaw && typeof ratedRaw === "object" ? ratedRaw : {}));
+
+  const rot = (/** @type {Array<any>} */ arr) => {
+    if (!arr.length) return arr;
+    const s = ((cursor % arr.length) + arr.length) % arr.length;
+    return arr.slice(s).concat(arr.slice(0, s));
+  };
+
+  /**
+   * Order a set of entries so consecutive cursors genuinely move.
+   *
+   * A plain rotation is not enough here. The untried band holds most of the
+   * registry, so rotating 140 entries by one lands the reader on almost the
+   * same place, and the agent-spread pick below then returns the SAME entry
+   * batch after batch. Grouping by agent first, rotating the agent ORDER by
+   * the cursor, rotating within each agent, and then interleaving gives a
+   * batch that moves on both axes at once.
+   */
+  const interleaveByAgent = (/** @type {Array<any>} */ arr) => {
+    if (arr.length < 2) return arr;
+    const byAgent = new Map();
+    for (const e of arr) {
+      if (!byAgent.has(e.agent)) byAgent.set(e.agent, []);
+      byAgent.get(e.agent).push(e);
+    }
+    const agents = [...byAgent.keys()];
+    const s = ((cursor % agents.length) + agents.length) % agents.length;
+    const lists = agents.slice(s).concat(agents.slice(0, s)).map((a) => rot(byAgent.get(a)));
+    const out = [];
+    for (let i = 0; out.length < arr.length; i++) {
+      for (const l of lists) if (l[i]) out.push(l[i]);
+    }
+    return out;
+  };
+
+  /** A band's entries: unrated first (a batch should spend its slots on what
+   * we do not know), each half spread across agents and advanced by cursor. */
+  const bandQueue = (/** @type {string} */ band) => {
+    const all = list.filter((e) => e.band === band);
+    return interleaveByAgent(all.filter((e) => !rated.has(e.id)))
+      .concat(interleaveByAgent(all.filter((e) => rated.has(e.id))));
+  };
+
+  const queues = new Map(EVAL_BANDS.map((b) => [b, bandQueue(b)]));
+  const picked = [];
+  const used = new Set();
+  const usedAgents = new Set();
+
+  // Spread across agents as well as bands. Without this the untried band —
+  // which is most of the registry — hands back whichever agent happens to sit
+  // first in registry order, and a reviewer gets four research questions in a
+  // batch meant to survey seven agents. Falls back to repeating an agent
+  // rather than returning a short batch.
+  const takeFrom = (/** @type {string} */ band) => {
+    const q = queues.get(band) || [];
+    const free = q.filter((x) => !used.has(x.id));
+    const e = free.find((x) => !usedAgents.has(x.agent)) || free[0];
+    if (!e) return false;
+    used.add(e.id);
+    usedAgents.add(e.agent);
+    picked.push(e);
+    return true;
+  };
+
+  for (const band of EVAL_BANDS) {
+    if (picked.length >= count) break;
+    takeFrom(band);
+  }
+
+  // Backfill from whichever band still has the most unrated material — an
+  // empty band must not shorten the batch.
+  while (picked.length < count) {
+    const best = EVAL_BANDS
+      .map((b) => ({ b, left: (queues.get(b) || []).filter((x) => !used.has(x.id) && !rated.has(x.id)).length }))
+      .sort((a, b) => b.left - a.left)[0];
+    if (best && best.left > 0 && takeFrom(best.b)) continue;
+    // Nothing unrated anywhere: fall back to anything at all, then give up.
+    const any = list.find((x) => !used.has(x.id));
+    if (!any) break;
+    used.add(any.id);
+    picked.push(any);
+  }
+
+  return picked;
+}
+
+/**
+ * Record a reviewer's verdict on a starter. Pure — returns a new map.
+ * `verdict` is "good" | "bad" | "unclear"; anything else clears the entry, so
+ * a mis-tap can be undone by tapping the same button again at the call site.
+ * @param {Record<string, {v:string, at?:number, note?:string}>} verdicts
+ * @param {string} id
+ * @param {string} verdict
+ * @param {{at?:number, note?:string}} [meta]
+ * @returns {Record<string, {v:string, at?:number, note?:string}>}
+ */
+export function recordVerdict(verdicts, id, verdict, meta = {}) {
+  const next = { ...(verdicts || {}) };
+  if (typeof id !== "string" || !id) return next;
+  if (verdict !== "good" && verdict !== "bad" && verdict !== "unclear") {
+    delete next[id];
+    return next;
+  }
+  next[id] = {
+    v: verdict,
+    ...(Number.isFinite(meta.at) ? { at: meta.at } : {}),
+    ...(typeof meta.note === "string" && meta.note ? { note: meta.note.slice(0, 400) } : {}),
+  };
+  return next;
+}
+
+/**
+ * Turn a verdict map into the plain-text report a reviewer hands back (the
+ * "Copy report" action). Text rather than a beacon: on Se/cure there is no
+ * endpoint this could post to without breaking the tier's promise, and on
+ * Se/rver a reviewer pasting their own findings is both simpler and more
+ * honest than a silent upload.
+ *
+ * @param {Array<any>} pool  from evalPool()
+ * @param {Record<string, {v:string, note?:string}>} verdicts
+ * @returns {string}
+ */
+export function verdictReport(pool, verdicts) {
+  const byId = new Map((Array.isArray(pool) ? pool : []).map((e) => [e.id, e]));
+  const rows = Object.entries(verdicts || {});
+  if (!rows.length) return "Starter evaluation: nothing rated yet.";
+  /** @type {Record<string,string>} */
+  const mark = { good: "GOOD", bad: "BAD", unclear: "UNCLEAR" };
+  const lines = ["Starter evaluation — human verdicts", ""];
+  /** @type {Map<string, Array<{id:string, e:any, v:any}>>} */
+  const byAgent = new Map();
+  for (const [id, v] of rows) {
+    const e = byId.get(id);
+    const agent = e?.agent || "(unknown)";
+    if (!byAgent.has(agent)) byAgent.set(agent, []);
+    (byAgent.get(agent) || []).push({ id, e, v });
+  }
+  for (const [agent, items] of [...byAgent.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0])))) {
+    lines.push(`## ${agent}`);
+    for (const { id, e, v } of items.sort((a, b) => a.id.localeCompare(b.id))) {
+      lines.push(`- [${mark[v.v] || v.v}] ${id} (${e?.band || "?"})`);
+      if (e?.text) lines.push(`      ${e.text}`);
+      if (v.note) lines.push(`      note: ${v.note}`);
+    }
+    lines.push("");
+  }
+  const counts = rows.reduce((/** @type {Record<string,number>} */ a, [, v]) => ({ ...a, [v.v]: (a[v.v] || 0) + 1 }), {});
+  lines.push(`Totals: ${Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(", ")}`);
+  return lines.join("\n");
+}
+
+/**
+ * Where the evaluation actually stands, per agent and per band — the answer to
+ * "what have we still not covered". Machine ranks and human verdicts are kept
+ * SEPARATE columns rather than blended: they measure different things, and a
+ * disagreement between them is a finding, not noise to average away.
+ *
+ * @param {any} reg
+ * @param {{candidates?:Array<any>, verdicts?:Record<string,{v:string}>}} [opts]
+ * @returns {Array<{agent:string,total:number,proven:number,weak:number,untried:number,candidates:number,rated:number,good:number,bad:number}>}
+ */
+export function coverageReport(reg, opts = {}) {
+  const pool = evalPool(reg, { candidates: opts.candidates });
+  const verdicts = opts.verdicts || {};
+  const agents = [...new Set(pool.map((e) => e.agent))];
+  return agents.map((agent) => {
+    const mine = pool.filter((e) => e.agent === agent);
+    const rated = mine.filter((e) => verdicts[e.id]);
+    return {
+      agent,
+      total: mine.filter((e) => e.band !== "candidate").length,
+      proven: mine.filter((e) => e.band === "proven").length,
+      weak: mine.filter((e) => e.band === "weak").length,
+      untried: mine.filter((e) => e.band === "untried").length,
+      candidates: mine.filter((e) => e.band === "candidate").length,
+      rated: rated.length,
+      good: rated.filter((e) => verdicts[e.id].v === "good").length,
+      bad: rated.filter((e) => verdicts[e.id].v === "bad").length,
     };
   });
 }

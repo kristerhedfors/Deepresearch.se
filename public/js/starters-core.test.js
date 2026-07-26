@@ -16,8 +16,9 @@ import {
   MODE_AGENTS, agentForMode, resolveQueue, agentIds, starterStanding, isProven,
   selectStarters, nextCursor, recordStarterUse, shortlistFor, starterScore, rankStarters,
   starterJudgePrompt, parseJudgeReply, validateStarters, registryReport,
+  EVAL_BANDS, bandOf, evalPool, selectEvalBatch, recordVerdict, verdictReport, coverageReport,
 } from "./starters-core.js";
-import { STARTERS, ASPECTS } from "./starters-data.js";
+import { STARTERS, ASPECTS, CANDIDATES } from "./starters-data.js";
 
 const AGENTS = JSON.parse(readFileSync(new URL("../../sdk/AGENTS.json", import.meta.url), "utf8"));
 
@@ -355,4 +356,146 @@ test("registryReport summarises every agent", () => {
   const rows = registryReport(STARTERS);
   assert.equal(rows.length, AGENTS.agents.length);
   assert.ok(rows.every((r) => r.total >= QUEUE_MIN && r.sv >= 6 && r.aspects >= 8));
+});
+
+// ---- evaluation mode ---------------------------------------------------------
+
+test("bandOf splits on the shortlist floor, not on 'has a rank'", () => {
+  assert.equal(bandOf({}), "untried");
+  assert.equal(bandOf({ rank: SHORTLIST_FLOOR }), "proven");
+  assert.equal(bandOf({ rank: SHORTLIST_FLOOR - 0.1 }), "weak");
+  assert.equal(bandOf({ rank: 1 }), "weak");
+});
+
+test("isProven means CLEARED THE FLOOR — a low-scored starter is not proven", () => {
+  // The bug this pins: isProven once meant "has any rank", which would have
+  // promoted a starter the battery scored 2.10 into an exploit slot — the two
+  // slots reserved for a newcomer's first impression.
+  assert.equal(isProven({ rank: 5 }), true);
+  assert.equal(isProven({ rank: 2.1 }), false);
+  assert.equal(isProven({ rank: 3.7 }), false);
+  assert.equal(isProven({}), false);
+  const q = [
+    { id: "bad", text: "a low-scored starter here", aspect: "a", lang: "en", rank: 2.1 },
+    ...fixture(10).slice(1),
+  ];
+  assert.ok(!selectStarters(q).some((e) => e.id === "bad" && isProven(e)));
+});
+
+test("evalPool spans every agent and tags band + agent; candidates come in tagged", () => {
+  const pool = evalPool(STARTERS, { candidates: CANDIDATES });
+  assert.ok(pool.length > 150);
+  assert.equal(new Set(pool.map((e) => e.agent)).size, agentIds(STARTERS).length);
+  assert.ok(pool.every((e) => e.agent && e.band));
+  assert.equal(pool.filter((e) => e.band === "candidate").length, CANDIDATES.length);
+  // Every band the scheduler draws from must actually exist in the shipped
+  // registry, or evaluation mode quietly stops serving one kind of question.
+  for (const band of EVAL_BANDS) {
+    assert.ok(pool.some((e) => e.band === band), `no starters in band "${band}"`);
+  }
+});
+
+test("evalPool on the client tier serves only what the client tier can run", () => {
+  const pool = evalPool(STARTERS, { candidates: CANDIDATES, platform: "client" });
+  assert.ok(pool.length > 0);
+  assert.ok(pool.every((e) => e.agent === "secure"), "Se/cure must not be offered another agent's starters");
+});
+
+test("an eval batch draws one per band and spreads across agents", () => {
+  const pool = evalPool(STARTERS, { candidates: CANDIDATES });
+  const batch = selectEvalBatch(pool, { cursor: 0 });
+  assert.equal(batch.length, SLOT_COUNT);
+  assert.deepEqual(batch.map((e) => e.band), EVAL_BANDS);
+  assert.equal(new Set(batch.map((e) => e.agent)).size, SLOT_COUNT, "four slots should survey four agents");
+});
+
+test("consecutive eval batches actually move", () => {
+  // The regression this pins: rotating a 140-entry band by one left the
+  // agent-spread pick returning the SAME untried entry batch after batch.
+  const pool = evalPool(STARTERS, { candidates: CANDIDATES });
+  const seen = new Set();
+  for (let c = 0; c < 5; c++) selectEvalBatch(pool, { cursor: c }).forEach((e) => seen.add(e.id));
+  assert.ok(seen.size >= 16, `5 batches surfaced only ${seen.size} distinct starters`);
+});
+
+test("rating sinks an entry so a reviewer is not asked twice", () => {
+  const pool = evalPool(STARTERS, { candidates: CANDIDATES });
+  const first = selectEvalBatch(pool, { cursor: 0 });
+  let verdicts = {};
+  for (const e of first) verdicts = recordVerdict(verdicts, e.id, "good");
+  const second = selectEvalBatch(pool, { cursor: 1, rated: verdicts });
+  assert.equal(second.filter((e) => verdicts[e.id]).length, 0, "a rated starter should not come back while unrated ones remain");
+  // Rating as you go must eventually cover the pool, or the schedule strands
+  // material a reviewer can never reach.
+  let seen = new Set(); let v = {}; let c = 0;
+  while (seen.size < pool.length && c < 400) {
+    for (const e of selectEvalBatch(pool, { cursor: c, rated: v })) { seen.add(e.id); v = recordVerdict(v, e.id, "good"); }
+    c++;
+  }
+  assert.equal(seen.size, pool.length, `the schedule stranded ${pool.length - seen.size} starters`);
+});
+
+test("an eval batch stays full even when a band is empty", () => {
+  // Before the first battery nothing was ranked at all, so `proven` and `weak`
+  // were both empty; the batch must still hand back four.
+  const bare = { queues: { research: fixture(20), secure: fixture(20).map((e) => ({ ...e, id: e.id + "b" })) } };
+  const pool = evalPool(bare, {});
+  assert.ok(!pool.some((e) => e.band === "proven"));
+  assert.equal(selectEvalBatch(pool, { cursor: 0 }).length, SLOT_COUNT);
+  assert.deepEqual(selectEvalBatch([], { cursor: 0 }), []);
+});
+
+test("recordVerdict is pure, and re-tapping the same verdict clears it", () => {
+  const a = recordVerdict({}, "x", "good", { at: 5 });
+  assert.equal(a.x.v, "good");
+  assert.equal(a.x.at, 5);
+  const b = recordVerdict(a, "x", "bad");
+  assert.equal(b.x.v, "bad");
+  assert.deepEqual(a.x.v, "good", "must not mutate the input");
+  assert.equal(recordVerdict(b, "x", "").x, undefined, "an empty verdict clears the entry");
+  assert.deepEqual(recordVerdict({}, "", "good"), {}, "a junk id changes nothing");
+});
+
+test("verdictReport groups by agent and states the totals", () => {
+  const pool = evalPool(STARTERS, { candidates: CANDIDATES });
+  assert.match(verdictReport(pool, {}), /nothing rated yet/);
+  const v = { "int-pipeline": { v: "good" }, "out-edge-rag": { v: "bad", note: "listy" } };
+  const r = verdictReport(pool, v);
+  assert.match(r, /## introspection/);
+  assert.match(r, /## outrospection/);
+  assert.match(r, /\[GOOD\] int-pipeline \(proven\)/);
+  assert.match(r, /\[BAD\] out-edge-rag \(weak\)/);
+  assert.match(r, /note: listy/);
+  assert.match(r, /Totals: /);
+});
+
+test("coverageReport keeps machine ranks and human verdicts in separate columns", () => {
+  const rows = coverageReport(STARTERS, {
+    candidates: CANDIDATES,
+    verdicts: { "int-pipeline": { v: "good" }, "int-diagram": { v: "bad" } },
+  });
+  const intro = rows.find((r) => r.agent === "introspection");
+  assert.equal(intro.rated, 2);
+  assert.equal(intro.good, 1);
+  assert.equal(intro.bad, 1);
+  assert.ok(intro.proven >= 1 && intro.weak >= 1 && intro.untried > 0);
+  // Every agent must be reachable by evaluation mode, or a queue can never be
+  // reviewed at all.
+  assert.equal(rows.length, agentIds(STARTERS).length);
+  assert.ok(rows.every((r) => r.total >= QUEUE_MIN));
+});
+
+test("every candidate is well-formed and names a real agent", () => {
+  const known = new Set(agentIds(STARTERS));
+  const ids = new Set();
+  for (const c of CANDIDATES) {
+    assert.ok(known.has(c.agent), `candidate ${c.id} names unknown agent "${c.agent}"`);
+    assert.ok(!ids.has(c.id), `duplicate candidate id ${c.id}`);
+    ids.add(c.id);
+    assert.ok(c.note && c.note.length > 20, `candidate ${c.id} must say what it is testing`);
+    assert.ok(c.text.split(/\s+/).length >= 8, `candidate ${c.id} is too thin to act on`);
+    // Candidates must not collide with shipped starters — the band is the
+    // whole point, and a duplicate id would silently reclassify one of them.
+    assert.equal(resolveQueue(STARTERS, c.agent).some((e) => e.id === c.id), false);
+  }
 });

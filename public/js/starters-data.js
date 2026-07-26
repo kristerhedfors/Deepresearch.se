@@ -238,7 +238,7 @@ export const STARTERS = {
     introspection: [
       { id: "int-pipeline", lang: "en", aspect: "pipeline-walkthrough", rank: 4.65, evidence: "2026-07-26T07-34-22-617Z",
         text: "Walk me through what happens to my message from the moment I press send until the first word of the answer appears, phase by phase." },
-      { id: "int-diagram", lang: "en", aspect: "diagram",
+      { id: "int-diagram", lang: "en", aspect: "diagram", rank: 3.7, evidence: "2026-07-26T07-34-22-617Z",
         text: "Draw the request pipeline as a diagram: every phase, what runs where, and which steps can fail without breaking the answer." },
       { id: "int-sv-visualisera", lang: "sv", aspect: "diagram", rank: 4.3, evidence: "2026-07-26T07-34-22-617Z",
         text: "Visualisera hur användarens text tolkas steg för steg, från inskickat meddelande till färdigt svar, med ett diagram och en kort förklaring." },
@@ -351,11 +351,11 @@ export const STARTERS = {
     outrospection: [
       { id: "out-deep-research", lang: "en", aspect: "deep-research", rank: 3.8, evidence: "2026-07-26T07-34-22-617Z",
         text: "What have the other deep-research assistants shipped recently, and what do they do that this one does not?" },
-      { id: "out-privacy", lang: "en", aspect: "privacy-llm",
+      { id: "out-privacy", lang: "en", aspect: "privacy-llm", rank: 3.45, evidence: "2026-07-26T07-34-22-617Z",
         text: "Who else is trying to make privacy a structural property of an AI product rather than a policy promise, and how far have they got?" },
-      { id: "out-browser-models", lang: "en", aspect: "browser-models",
+      { id: "out-browser-models", lang: "en", aspect: "browser-models", rank: 2.35, evidence: "2026-07-26T07-34-22-617Z",
         text: "What is the current state of language models that run entirely in a browser tab — which ones are usable, and at what size?" },
-      { id: "out-edge-rag", lang: "en", aspect: "edge-rag",
+      { id: "out-edge-rag", lang: "en", aspect: "edge-rag", rank: 2.35, evidence: "2026-07-26T07-34-22-617Z",
         text: "Which retrieval approaches now work without a vector database in someone else's cloud, and has anyone made edge RAG genuinely practical?" },
       { id: "out-architecture", lang: "en", aspect: "llm-architecture",
         text: "How are other teams structuring LLM applications now, and does any of it actually beat a deterministic pipeline with no function calling?" },
@@ -404,7 +404,7 @@ export const STARTERS = {
     // behaviour, and enough of a look to render.
     // =====================================================================
     "agent-builder": [
-      { id: "agb-legal", lang: "en", aspect: "single-purpose",
+      { id: "agb-legal", lang: "en", aspect: "single-purpose", rank: 3.25, evidence: "2026-07-26T07-34-22-617Z",
         text: "Build a single-purpose legal-research agent in deep blue: it takes a question, cites statute and case law, and always flags when it is out of date." },
       { id: "agb-tutor", lang: "en", aspect: "tutor", rank: 4.65, evidence: "2026-07-26T07-34-22-617Z",
         text: "Build a Socratic tutor: the user names a subject and it teaches by asking one guiding question at a time, never giving the answer outright." },
@@ -510,5 +510,94 @@ export const STARTERS = {
     ],
   },
 };
+
+
+// ---------------------------------------------------------------------------
+// CANDIDATES — questions we are CONSIDERING adding to a queue, but have not.
+//
+// Evaluation mode serves one of these per batch (the `candidate` band). They
+// are not shown to ordinary visitors, carry no rank, and are not counted by
+// validateStarters — that is the point: this is the trial pool. A candidate
+// that reviews well gets moved into the named agent's queue with its evidence;
+// one that reviews badly is deleted, and the reason goes in the ledger.
+//
+// The current set was chosen to attack the gaps the first machine battery
+// left, rather than to be a grab-bag of nice questions:
+//
+//   · `secure` had ZERO evaluated starters — the harness cannot drive a tier
+//     whose whole design keeps the server out of the data path, so a human is
+//     the only instrument that reaches it. It gets the largest share here.
+//   · `outrospection` was the one agent below the shortlist floor (mean 2.99),
+//     and main has since merged a retrieval fix (PR #271). These candidates
+//     are shaped to re-probe it from angles the existing queue does not.
+//   · Several aspects are declared in ASPECTS but had no starter yet; those
+//     are filled here first so a bad idea never reaches a visitor's strip.
+//
+// Shape: { id, text, agent, aspect, lang, note }. `note` says what this
+// candidate is TESTING — read it before judging the answer.
+// ---------------------------------------------------------------------------
+
+/** @type {Array<{id:string,text:string,agent:string,aspect:string,lang:string,note:string}>} */
+export const CANDIDATES = [
+  // --- secure: the tier no machine battery can reach -----------------------
+  { id: "cand-sec-proof", agent: "secure", aspect: "verify-claims", lang: "en",
+    text: "Prove to me, using something I can check myself right now in this browser, that this conversation is not reaching your server.",
+    note: "Can the client tier substantiate its central claim on demand, or does it just restate it?" },
+  { id: "cand-sec-compare", agent: "secure", aspect: "tier-compare", lang: "en",
+    text: "I am choosing between the browser-only version and the signed-in one for confidential work. Walk me through the actual trade-off, not the marketing.",
+    note: "Tests whether the tier can argue against itself honestly — the answer should name what Se/cure gives up." },
+  { id: "cand-sec-sv-nyckel", agent: "secure", aspect: "key-handling", lang: "sv",
+    text: "Jag har klistrat in min API-nyckel men får ett fel när jag ställer en fråga. Hjälp mig felsöka steg för steg.",
+    note: "The most common real Se/cure failure (chat_logs #573-#579 are all key/provider trouble). A first message that is a support request." },
+  { id: "cand-sec-leave", agent: "secure", aspect: "data-exposure", lang: "en",
+    text: "List every network request this page makes during one of my questions, and what each one carries.",
+    note: "The hardest honest question for this tier. A vague answer here is a real product gap." },
+
+  // --- outrospection: re-probe after the PR #271 retrieval fix -------------
+  { id: "cand-out-lens", agent: "outrospection", aspect: "feed-state", lang: "en",
+    text: "Go through the feed lens by lens and tell me, for each one, the single most interesting thing in it right now.",
+    note: "Forces every lens to be touched. Re-probe after PR #271; the old queue asked about one lens at a time." },
+  { id: "cand-out-disagree", agent: "outrospection", aspect: "contrast-self", lang: "en",
+    text: "Find something in the feed that suggests a choice this project made is wrong, and make the strongest case for the other side.",
+    note: "Tests whether outrospection can be genuinely adversarial about its own product rather than flattering it." },
+  { id: "cand-out-sv-lage", agent: "outrospection", aspect: "sv-outward", lang: "sv",
+    text: "Sammanfatta vad som hänt utanför det här projektet den senaste tiden som faktiskt borde påverka vår färdplan.",
+    note: "Swedish + a demand for consequence rather than a list. The 2.35-scoring starters both produced lists." },
+
+  // --- research: aspects declared but unfilled, and shapes the battery missed
+  { id: "cand-res-followup", agent: "research", aspect: "multihop", lang: "en",
+    text: "I am buying a used electric car in Sweden. Tell me what actually determines battery health, how to check it before buying, and what it costs to replace.",
+    note: "A real purchase decision with three chained sub-questions — the shape chat_logs shows people actually bring." },
+  { id: "cand-res-sv-myndighet", agent: "research", aspect: "sv-civic", lang: "sv",
+    text: "Vad gäller för att överklaga ett kommunalt beslut i Sverige, vilka tidsfrister finns, och vart skickar man överklagandet?",
+    note: "Swedish civic procedure — the aspect that scored best (4.4/4.25) but has only two starters." },
+  { id: "cand-res-conflict", agent: "research", aspect: "contested", lang: "en",
+    text: "Give me the strongest evidence on both sides of whether ultra-processed food causes harm beyond calories, and say which side is currently better supported.",
+    note: "Tests whether the pipeline will commit to a verdict after presenting a genuine conflict, or hedge." },
+
+  // --- introspection: the diagram case scored lowest (3.70) ----------------
+  { id: "cand-int-draw-privacy", agent: "introspection", aspect: "diagram", lang: "en",
+    text: "Draw me the privacy boundary: what crosses it, what never does, and where the two deliberate exceptions sit.",
+    note: "int-diagram scored 3.70, the weakest introspection starter. Is the diagram weakness general, or specific to the pipeline diagram?" },
+  { id: "cand-int-worst", agent: "introspection", aspect: "security-assessment", lang: "en",
+    text: "What is the single worst piece of code in this project, and what would you do about it?",
+    note: "Tests whether introspection will be critical of its own source rather than describing it approvingly." },
+
+  // --- orchestrator: the strongest agent, so probe where it might break ----
+  { id: "cand-orc-thin", agent: "orchestrator", aspect: "parallel-drill", lang: "en",
+    text: "Is it worth learning a second programming language this year? Decompose that properly and give me a real answer.",
+    note: "A question that does NOT obviously decompose. Does the orchestrator over-apply its machinery to a simple ask?" },
+  { id: "cand-orc-sv-jamfor", agent: "orchestrator", aspect: "option-scoring", lang: "sv",
+    text: "Jämför tre sätt att värma ett hus i Sverige — bergvärme, luft-vatten och fjärrvärme — med en agent per alternativ, och rangordna dem.",
+    note: "Swedish + a domestic decision. The orchestrator's Swedish coverage is thin and untested." },
+
+  // --- agent-builder: agb-legal (3.25) stopped short of shipping -----------
+  { id: "cand-agb-ship", agent: "agent-builder", aspect: "tool-app", lang: "en",
+    text: "Build and publish a working pomodoro timer with a start button, a countdown and a sound at zero. I want the link, not the code.",
+    note: "agb-legal scored 3.25 for producing files but no live link. Does saying 'I want the link' change the outcome?" },
+  { id: "cand-agb-sv-verktyg", agent: "agent-builder", aspect: "sv-agent", lang: "sv",
+    text: "Bygg och publicera en enkel svensk stavnings- och grammatikhjälp där jag klistrar in text och får rättelser med förklaring.",
+    note: "Swedish build request end to end. Agent Studio's Swedish path has never been evaluated." },
+];
 
 export default STARTERS;
