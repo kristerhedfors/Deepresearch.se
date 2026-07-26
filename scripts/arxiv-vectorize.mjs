@@ -188,12 +188,33 @@ async function main() {
   try {
     // Carry a checkpoint written by the earlier JSON format across, so an
     // in-flight build does not re-push everything it already paid to embed.
-    for (const id of JSON.parse(await readFile(legacyPath, "utf8")).ids || []) pushed.add(id);
-    await appendFile(statePath, [...pushed].join("\n") + "\n");
-    await writeFile(legacyPath, JSON.stringify({ migrated: true, ids: [] }));
-    console.log(`migrated ${pushed.size} ids from the old checkpoint format`);
+    //
+    // GUARDED ON THERE BEING IDS TO MIGRATE. The first version ran this block
+    // whenever the legacy file merely PARSED — and the marker it writes after
+    // migrating (`{"migrated":true,"ids":[]}`) parses perfectly well. So every
+    // subsequent run appended the entire id set again: 33,632 ids became
+    // 369,952 lines over 11 catch-up rounds, growing without bound. Dedup via
+    // the Set kept it correct, which is precisely why it was invisible until
+    // someone looked at the file. Exactly the O(corpus) growth this format was
+    // introduced to remove.
+    const legacyIds = JSON.parse(await readFile(legacyPath, "utf8"))?.ids || [];
+    if (legacyIds.length) {
+      const before = pushed.size;
+      for (const id of legacyIds) pushed.add(id);
+      await appendFile(statePath, legacyIds.join("\n") + "\n");
+      await writeFile(legacyPath, JSON.stringify({ migrated: true, ids: [] }));
+      console.log(`migrated ${pushed.size - before} ids from the old checkpoint format`);
+    }
   } catch {
-    /* no legacy checkpoint, or already migrated */
+    /* no legacy checkpoint */
+  }
+  // Compact a checkpoint that the bug above (or an interrupted run) left with
+  // duplicate lines. Cheap, and it keeps the resume read proportional to the
+  // corpus rather than to how many times the script has been run.
+  const lines = await readFile(statePath, "utf8").catch(() => "");
+  if (lines && lines.split("\n").filter(Boolean).length > pushed.size) {
+    await writeFile(statePath, [...pushed].join("\n") + "\n");
+    console.log(`compacted checkpoint to ${pushed.size} unique ids`);
   }
   if (pushed.size) console.log(`resuming — ${pushed.size} ids already in the index`);
 
