@@ -95,6 +95,22 @@ These override the heuristic in the inventory table.
 > vehicle out. This is an exemption from the tagging rule, not from the rule
 > against building on a branch whose *content* has landed.
 
+### 1a. Live branches — do NOT tag, do NOT merge
+
+Branches with recent commits and **no open PR**. The absent PR is a signal
+that the work is still in progress, not an oversight for a merge loop to
+correct. Confirmed the hard way on 2026-07-26: `arxiv-search-integration`
+was merged from a branch survey, and its author pushed a replacement
+approach hours later — see its row above.
+
+Verdict stays **Review** so `check-merged-branches.mjs` does not watch them;
+tagging a live branch makes the guard blame its author for the tag.
+
+| Branch | tip seen | Unmerged work | Why it is not being landed |
+|---|---|---|---|
+| `claude/arxiv-search-integration-9w2we0` | `8ce870e3` | Serves arXiv from a hosted Vectorize index instead of polling the rate-limited API, replacing the draft in `main`; plus a cosine-vs-rerank measurement and an append-only checkpoint | Actively being committed to — the tip moved three times within minutes on 2026-07-26. Its `[[vectorize]]` binding also needs the index to exist before it can deploy at all. Owner decision 2026-07-26: leave `main`'s draft in place and let the author land the replacement. |
+| `claude/outrospection-agent-feedback-s14uzy` (= `claude/outrospection-feedback-parallel-subtasks`, same tip) | `7c0103ab` | "Bind a system prompt to every agent" — ~1000 new lines across `agent-spec-core.js`, `outrospect.js`, `outrospect-core.js`, `prompt-sets.js`, `sdk/AGENTS.json`. The sibling "quote the articles" work is already in `main`. | No PR, and its base is PR #273, so integrating needs 10 hand-resolved semantic conflicts in a subsystem `main` has changed since. Owner decision 2026-07-26: leave it for its author to submit. |
+
 ## 2. Reconciliation pass 2026-07-13 (mass merge)
 
 Integrated into `main` this pass (both verified, tests green):
