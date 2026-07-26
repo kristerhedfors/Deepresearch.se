@@ -19,21 +19,11 @@
 
 import { chatCompletion, listChatModels } from "./providers.js";
 import { consumeChatStream, DEFAULT_MODEL } from "./berget.js";
-import { quotaBlockedResponse } from "./quota.js";
 import { formatConversation, lastUserMessage, textOf } from "./conversation.js";
-import { getConfig } from "./config.js";
+import { enforceQuotaAndReserve } from "./endpoint-gate.js";
 import { jsonResponse } from "./http.js";
 import { bashAgentPrompt } from "./prompts.js";
-import {
-  bergetCost,
-  effectiveQuota,
-  getUsage,
-  inflightLimitResponse,
-  quotaExceeded,
-  recordUsage,
-  releaseInflight,
-  reserveInflight,
-} from "./quota.js";
+import { bergetCost, recordUsage, releaseInflight } from "./quota.js";
 import { bashLiteEnabled, developerModeEnabled } from "./settings.js";
 import {
   MAX_SHELL_ROUNDS,
@@ -84,19 +74,12 @@ export async function handleBashStep(request, env, log, identity) {
     .filter((/** @type {any} */ r) => r && typeof r === "object" && typeof r.command === "string" && r.command.trim())
     .map((/** @type {any} */ r) => normalizeExecResult(r.command, r));
 
-  // Same quota gate as /api/chat and /api/quiz/grade (admins never blocked).
-  const config = await getConfig(env);
-  const usage = await getUsage(env, identity.id, Date.now(), identity.user?.quota_reset_at);
-  const quota =
-    identity.isSecretAdmin || identity.role === "admin" ? null : effectiveQuota(config, identity.user);
-  const blocked = quota ? quotaExceeded(usage, quota) : null;
-  if (blocked) return jsonResponse(quotaBlockedResponse(blocked), 429);
-
-  // Per-user concurrency reservation (M-1/M-2), released in the finally below
-  // on every exit path. reqId minted locally; fail-soft on any D1 trouble.
-  const reqId = crypto.randomUUID();
-  const reserved = await reserveInflight(env, identity.id, reqId);
-  if (!reserved.ok) return jsonResponse(inflightLimitResponse(reserved), 429);
+  // The shared side-endpoint admission preamble (endpoint-gate.js): the same
+  // quota gate /api/chat applies, then this request's concurrency slot —
+  // released in the finally below on every exit path.
+  const gate = await enforceQuotaAndReserve(env, identity);
+  if (gate.response) return gate.response;
+  const reqId = gate.reqId;
 
   // The per-round user message is the shared builder (bash-core.js), so DRS
   // and DRC ask the model the exact same step question.

@@ -12,21 +12,11 @@
 // response, and the client marks the answer "ungraded" (excluded from the
 // score with a visible note) rather than breaking the quiz.
 
-import { completeJson, DEFAULT_MODEL, listModels } from "./berget.js";
-import { quotaBlockedResponse } from "./quota.js";
-import { getConfig } from "./config.js";
+import { completeJson, DEFAULT_MODEL } from "./berget.js";
+import { enforceQuotaAndReserve } from "./endpoint-gate.js";
 import { jsonResponse } from "./http.js";
 import { quizGradePrompt } from "./prompts.js";
-import {
-  bergetCost,
-  effectiveQuota,
-  getUsage,
-  inflightLimitResponse,
-  quotaExceeded,
-  recordUsage,
-  releaseInflight,
-  reserveInflight,
-} from "./quota.js";
+import { recordDefaultModelUsage, releaseInflight } from "./quota.js";
 import { normalizeGradeResults, validateGradeItems } from "./quiz.js";
 
 /** @typedef {import('./types.js').Env} Env */
@@ -53,22 +43,12 @@ export async function handleQuizGrade(request, env, log, identity) {
   const { items, error } = validateGradeItems(body);
   if (typeof error === "string" || !items) return jsonResponse({ error }, 400);
 
-  // Same quota gate as /api/chat and /api/embed (admins never blocked).
-  const config = await getConfig(env);
-  const usage = await getUsage(env, identity.id, Date.now(), identity.user?.quota_reset_at);
-  const quota =
-    identity.isSecretAdmin || identity.role === "admin"
-      ? null
-      : effectiveQuota(config, identity.user);
-  const blocked = quota ? quotaExceeded(usage, quota) : null;
-  if (blocked) return jsonResponse(quotaBlockedResponse(blocked), 429);
-
-  // Per-user concurrency reservation (M-1/M-2), released in the finally below
-  // on every exit path. reqId minted locally (this endpoint isn't threaded a
-  // request id). Fail-soft: reserve returns ok on any D1 trouble.
-  const reqId = crypto.randomUUID();
-  const reserved = await reserveInflight(env, identity.id, reqId);
-  if (!reserved.ok) return jsonResponse(inflightLimitResponse(reserved), 429);
+  // The shared side-endpoint admission preamble (endpoint-gate.js): the same
+  // quota gate /api/chat applies, then this request's concurrency slot —
+  // released in the finally below on every exit path.
+  const gate = await enforceQuotaAndReserve(env, identity);
+  if (gate.response) return gate.response;
+  const reqId = gate.reqId;
 
   const startedAt = Date.now();
   try {
@@ -88,7 +68,7 @@ export async function handleQuizGrade(request, env, log, identity) {
       ],
       { model: DEFAULT_MODEL, maxTokens: 150 * items.length + 200 },
     );
-    await recordGradeUsage(env, log, identity, r.usage, Date.now() - startedAt);
+    await recordDefaultModelUsage(env, log, identity, r.usage, Date.now() - startedAt);
     const results = normalizeGradeResults(r.value, items.length);
     if (!results) {
       log.warn("quiz.grade_unparseable", { user_id: identity.id, items: items.length, ...r.diagnostics });
@@ -104,33 +84,3 @@ export async function handleQuizGrade(request, env, log, identity) {
   }
 }
 
-// Grading spends real (tiny) Berget money on DEFAULT_MODEL — record it like
-// every other spend, priced from the catalog (fail-soft: an unreachable
-// catalog records the tokens at zero cost rather than failing the grade).
-/**
- * @param {Env} env
- * @param {Logger} log
- * @param {Identity} identity
- * @param {{ prompt_tokens?: number, completion_tokens?: number } | null | undefined} usage
- * @param {number} durationMs
- */
-async function recordGradeUsage(env, log, identity, usage, durationMs) {
-  let entry = null;
-  try {
-    entry = (await listModels(env))?.find((m) => m.id === DEFAULT_MODEL) || null;
-  } catch {
-    entry = null;
-  }
-  const prompt_tokens = usage?.prompt_tokens || 0;
-  const completion_tokens = usage?.completion_tokens || 0;
-  await recordUsage(env, log, {
-    user_id: identity.id,
-    model: DEFAULT_MODEL,
-    prompt_tokens,
-    completion_tokens,
-    searches: 0,
-    berget_cost: bergetCost(entry, prompt_tokens, completion_tokens),
-    exa_cost: 0,
-    duration_ms: durationMs,
-  });
-}

@@ -16,6 +16,7 @@ import {
   reserveInflight,
   releaseInflight,
   recordModelUsage,
+  recordDefaultModelUsage,
   getUsageByModelForUser,
   INFLIGHT_CAP,
   INFLIGHT_TTL_MS,
@@ -508,5 +509,117 @@ describe("getUsageByModelForUser", () => {
   test("returns [] when no database is configured (fail-soft)", async () => {
     const rows = await getUsageByModelForUser(/** @type {any} */ ({}), 3);
     assert.deepEqual(rows, []);
+  });
+});
+
+// recordDefaultModelUsage was private and untested in orchestrator-api.js and
+// quiz-api.js before it was shared here. These cases MUST stay at the end of
+// the file: berget.js caches its catalog in a module-level variable for
+// MODELS_TTL_MS, so the priced case below warms a cache no test can reset, and
+// an unreachable-catalog case running after it would read the warm entry
+// instead of degrading.
+describe("recordDefaultModelUsage (a one-off spend on the fixed JSON model)", () => {
+  // captureDb above records only batch()ed usage_model_events rows;
+  // recordUsage writes a single usage_events row through prepare/bind/run.
+  function captureRunDb() {
+    /** @type {any[][]} */
+    const inserts = [];
+    const stmt = (sql, args = []) => ({
+      sql,
+      args,
+      bind: (...a) => stmt(sql, a),
+      async run() {
+        if (sql.includes("INSERT INTO usage_events")) inserts.push(args);
+        return { success: true };
+      },
+      async first() {
+        return null;
+      },
+      async all() {
+        return { results: [] };
+      },
+    });
+    return { _inserts: inserts, prepare: (sql) => stmt(sql), async batch() { return []; } };
+  }
+
+  /** Runs fn with global fetch replaced; restores afterwards. */
+  async function withFetch(impl, fn) {
+    const real = globalThis.fetch;
+    globalThis.fetch = /** @type {any} */ (impl);
+    try {
+      return await fn();
+    } finally {
+      globalThis.fetch = real;
+    }
+  }
+
+  const unreachable = () => {
+    throw new Error("catalog down");
+  };
+
+  test("fail-soft: an unreachable catalog records the tokens at zero cost, never throws", async () => {
+    const db = captureRunDb();
+    await withFetch(unreachable, () =>
+      recordDefaultModelUsage(
+        /** @type {any} */ ({ DB: db }),
+        silentLog,
+        { id: "7" },
+        { prompt_tokens: 400, completion_tokens: 120 },
+        1500,
+      ),
+    );
+    assert.equal(db._inserts.length, 1);
+    // Column order: user_id, ts, model, prompt, completion, searches, berget, exa, duration.
+    const [userId, ts, model, pt, ct, searches, berget, exa, duration] = db._inserts[0];
+    assert.equal(userId, "7");
+    assert.equal(typeof ts, "number");
+    assert.equal(model, "mistralai/Mistral-Small-3.2-24B-Instruct-2506");
+    assert.equal(pt, 400);
+    assert.equal(ct, 120);
+    // A side call runs no searches and spends nothing at Exa.
+    assert.equal(searches, 0);
+    assert.equal(exa, 0);
+    assert.equal(berget, 0); // the degraded price
+    assert.equal(duration, 1500);
+  });
+
+  test("a missing usage object counts as zero tokens", async () => {
+    const db = captureRunDb();
+    await withFetch(unreachable, () =>
+      recordDefaultModelUsage(/** @type {any} */ ({ DB: db }), silentLog, { id: "7" }, null, 10),
+    );
+    const [, , , pt, ct] = db._inserts[0];
+    assert.equal(pt, 0);
+    assert.equal(ct, 0);
+  });
+
+  test("prices the spend from the catalog entry for DEFAULT_MODEL", async () => {
+    const db = captureRunDb();
+    const catalog = () =>
+      Promise.resolve({
+        ok: true,
+        json: async () => ({
+          data: [
+            {
+              id: "mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+              model_type: "text",
+              capabilities: { streaming: true, json_mode: true },
+              // EUR per MILLION tokens — berget.js normalizes to per-token.
+              pricing: { input: 2, output: 6, unit: "€ / M Token" },
+            },
+          ],
+        }),
+      });
+    await withFetch(catalog, () =>
+      recordDefaultModelUsage(
+        /** @type {any} */ ({ DB: db, BERGET_API_TOKEN: "t" }),
+        silentLog,
+        { id: "7" },
+        { prompt_tokens: 1_000_000, completion_tokens: 1_000_000 },
+        20,
+      ),
+    );
+    const berget = db._inserts[0][6];
+    assert.equal(berget, 8); // 1M in at €2/M + 1M out at €6/M
   });
 });

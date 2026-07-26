@@ -266,3 +266,71 @@ verdict. Unit-tested in `scripts/dup-scan.test.mjs`, which runs in `npm test`.
 `trackedFiles`, `fallbackPlan`, plus the standing rows the scan re-surfaced.
 Orchestrator mode itself needed nothing — `orchestrator-core.js` is a textbook
 class-X core, and `src/orchestrator.js` is wave orchestration around it.
+
+## 11 — 2026-07-26, the merge-queue pass
+
+Scope: everything merged since pass 10 — PRs #291–#303, about 37k inserted
+lines across 218 files, including six new subsystems (the Models agent,
+Outrospection, DREE/1 local execution, the swarm runtime, the arXiv RAG core,
+Cloudflare-native web search). Survey: the hash scan, then a reading pass over
+the 17 new `src/` modules, the six most-grown ones, and the new non-core client
+modules. **Two cuts.**
+
+The new subsystems were, again, authored to this discipline — `websearch-cf.js`
+is pure parsers with tests, `model-catalog.js` / `model-checks.js` /
+`user-models.js` are already split, and the new client work arrived with its
+`-core.js` already carved (`swarm-core.js`, `outrospect-core.js`,
+`starters-core.js`, `pipeline-map-core.js`, `arxiv-rag-core.js`). Both cuts came
+from the same place: the three side LLM endpoints, which grew up in parallel and
+each re-inlined what the others had.
+
+- **`recordDefaultModelUsage` → `quota.js`** (scan flagship, 20 lines): the
+  fail-soft catalog lookup feeding a `usage_events` row for a one-off spend on
+  the fixed JSON model, byte-identical as `recordPlanUsage`
+  (`orchestrator-api.js`) and `recordGradeUsage` (`quiz-api.js`). `quota.js`
+  already owned both primitives the body composes (`recordUsage` +
+  `bergetCost`) and both callers already imported it, so the call sites gained
+  no new edge at all; the single new edge in the change is `quota.js` →
+  `berget.js`, which imports nothing. `billing.js` was the semantic sink and is
+  BLOCKED — its header pins it pure and leaf so `mcp.js` can dynamic-import it.
+- **`enforceQuotaAndReserve` → a new leaf `endpoint-gate.js`** (the reading
+  pass; invisible to the scan because it is an inline BLOCK, not a function):
+  nine lines — config, usage, admin bypass, 429, mint reqId, reserve the
+  concurrency slot — inlined in `orchestrator-api.js`, `quiz-api.js` and
+  `bash-api.js`, each under the same apologetic comment naming the others
+  ("Same quota gate as /api/chat and …"). Worth a NEW module (the `grant-http.js`
+  precedent) because every existing sink is blocked: `quota.js` cannot reach
+  `getConfig` (`config.js` imports `quota.js` — circular) and deliberately
+  returns plain objects rather than Responses; `billing.js` is pinned pure;
+  `grant-http.js` is explicitly fenced to the two grant subsystems and would
+  lose its leafness. This one is drift control on a cost-control invariant, not
+  tidying — a change to who bypasses the gate, applied to one copy, would leave
+  two endpoints silently unenforced.
+
+Both cuts made previously-private, previously-untested logic testable, which is
+where most of the value landed: `endpoint-gate.test.js` (6 cases) and three
+`quota.test.js` cases now cover the admit path, the withheld EUR amount, both
+admin bypasses, the concurrency cap, the degraded price, and the absent-database
+path.
+
+**A finding, pinned rather than fixed.** The gate's fail-soft story is
+ASYMMETRIC: an ABSENT database admits, but a database that THROWS propagates out
+of the usage read, because `getUsage` has no catch where `reserveInflight`
+explicitly fails open. That was equally true of all three inlined copies, so the
+test asserts the real behaviour and says why. Whether the quota read should fail
+open like the reservation does is an owner question, not something to change
+under a refactor — the first draft of that test asserted the tidier behaviour
+and was wrong, which is how it was found.
+
+**Method lessons.** Two worth keeping:
+
+- The scan found cut 1 and could not have found cut 2. Its stated blind spot —
+  inline blocks are not function bodies — is exactly where the higher-value cut
+  was, and the tell was in prose the scan cannot read: a comment in each copy
+  naming its siblings. **Grep the apology, not just the code**
+  (`grep -rn "Same .* as /api" src/`).
+- A `// @ts-check` test file pays a real cost: `assert.ok(x)` does not narrow a
+  discriminated union's property under this tsconfig, so pinning a
+  `Response | null` return needs casts or locals. Only 13 of 96 `src/*.test.js`
+  opt in, and the closest analogues (`billing.test.js`, `llm-proxy.test.js`) do
+  not. Leave a new endpoint test unchecked unless it tests types.
