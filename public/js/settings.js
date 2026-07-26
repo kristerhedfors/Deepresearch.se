@@ -22,7 +22,7 @@
  * @property {boolean} [bash_lite_mcp]
  * @property {boolean} [developer_mode]
  * @property {string} [maps_embed_key]
- * @property {{storage?: boolean, rag?: boolean, shodan?: boolean, google_maps?: boolean, bash_lite?: boolean, developer?: boolean}} [available]
+ * @property {{storage?: boolean, rag?: boolean, shodan?: boolean, google_maps?: boolean, bash_lite?: boolean, developer?: boolean, exec_container?: boolean}} [available]
  */
 
 /** @type {Settings | null} */
@@ -163,6 +163,17 @@ export function setDeveloperMode(on) {
 
 export function bashLiteAvailable() {
   return settings?.available?.bash_lite === true;
+}
+
+// Whether this deploy can run the sandbox's commands SERVER-SIDE, in an
+// ephemeral Cloudflare container (src/exec-container.js) — the third execution
+// environment, offered in the Settings picker next to the in-browser VM and a
+// local runner. False unless the optional container binding exists on this
+// deploy, so the option is simply absent from an unconfigured one (the same
+// hide-when-unavailable discipline as the key-gated extension knobs). Se/rver
+// only: it puts the server in the command path, which Se/cure does not allow.
+export function execContainerAvailable() {
+  return settings?.available?.exec_container === true;
 }
 
 /** @param {boolean} on */

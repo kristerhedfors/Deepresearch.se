@@ -163,6 +163,15 @@ export function featureAvailability(env, identity) {
     // row) gets it, which keeps introspection end-to-end testable with the
     // break-glass credentials.
     developer: !!(identity.user || identity.isSecretAdmin),
+    // WHERE the sandbox's commands may run. The two shipped environments (the
+    // in-browser VM, a runner on the user's own machine) need nothing from the
+    // server, but the third — an ephemeral container this platform starts
+    // (src/exec-container.js) — needs the optional EXEC_SANDBOX binding, which
+    // wrangler.toml deliberately does not declare by default. False on an
+    // unconfigured deploy, and the client then omits the option entirely.
+    // Se/rver only by construction: this endpoint lives behind the identity
+    // gate, and Se/cure has no identity.
+    exec_container: !!(/** @type {any} */ (env).EXEC_SANDBOX && (identity.user || identity.isSecretAdmin)),
   };
 }
 

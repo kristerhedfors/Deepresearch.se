@@ -39,7 +39,7 @@ import { slashEffect } from "./slash-core.js";
 import { aiModelIntent } from "./ai-models.js";
 import { collectDeliverables, ensureSandboxBooted, execInSandbox, resetSandboxIfLacking, sandboxFsSummary, sandboxIdle, sandboxSupported, sblog } from "./sandbox.js";
 import { selectRunner } from "./exec-backends-core.js";
-import { execEnvCfg, localRunnerActive } from "./exec-env.js";
+import { execEnvCfg, execSessionId, remoteRunnerActive } from "./exec-env.js";
 import { hasPending } from "./attachments.js";
 import {
   addAssistantTurn,
@@ -977,10 +977,11 @@ const BROWSER_RUNNER = { supported: sandboxSupported, boot: ensureSandboxBooted,
 export function prewarmSandbox() {
   try {
     if (!bashLiteOn() || !sandboxSupported()) return;
-    // This device runs commands on a local runner — don't stream a Debian image
-    // into a VM that will never execute anything. The runner needs no pre-warm:
-    // its first container starts in well under a second.
-    if (localRunnerActive()) return;
+    // This device runs commands somewhere else — a local runner, or the
+    // server-side container — so don't stream a Debian image into a VM that
+    // will never execute anything. Neither needs a pre-warm: a container starts
+    // in about a second, against the browser VM's ~25 s.
+    if (remoteRunnerActive()) return;
     if (!sandboxIdle()) return; // already booting or booted — nothing to do
     if (hasPending() || activeProject()) return; // would need real per-send mounts
     const withSource = developerModeOn();
@@ -1054,8 +1055,16 @@ async function maybeRunShellLoop(turn, opts) {
     // local runner configured — the default for everyone who never opens the
     // setting — `runner` IS the browser-VM bridge and every line below behaves
     // exactly as it did before this seam existed.
-    const localExec = localRunnerActive();
+    const remoteExec = remoteRunnerActive();
+    const containerExec = execEnvCfg().backend === "cloudflare";
     const runner = selectRunner(execEnvCfg(), BROWSER_RUNNER, {
+      // Se/rver's tier: the server-side container is selectable HERE and
+      // nowhere else (exec-backends-core.js selectRunner, invariant 4).
+      tier: "server",
+      // One machine per conversation, not per send: the agent's working
+      // directory, its files and the mounted source tree survive from send to
+      // send (public/js/exec-env.js execSessionId).
+      session: execSessionId(),
       onLog: (event, fields) => sblog("info", event, fields),
     });
 
@@ -1064,7 +1073,7 @@ async function maybeRunShellLoop(turn, opts) {
     // tell the user plainly instead of silently answering "I can't run code".
     // Isolation is a requirement of the in-browser VM (SharedArrayBuffer), not
     // of execution as such — a local runner is a plain fetch and needs none.
-    if (!localExec && !sandboxSupported()) {
+    if (!remoteExec && !sandboxSupported()) {
       startGenericStep(turn, "sandbox", "Starting sandbox…");
       finishGenericStep(turn, {
         id: "sandbox",
@@ -1081,7 +1090,7 @@ async function maybeRunShellLoop(turn, opts) {
     // to settle first; a no-op when the live VM already has what's needed
     // (notably: a dev-mode pre-warm already carries /src and is kept).
     // Meaningless for a local runner — there is no VM here to hold mounts.
-    if (!localExec) await resetSandboxIfLacking(sendNeedsMounts(opts));
+    if (!remoteExec) await resetSandboxIfLacking(sendNeedsMounts(opts));
 
     let booted = false;
     let ran = 0;
@@ -1089,9 +1098,19 @@ async function maybeRunShellLoop(turn, opts) {
     // something — surfaced as a turn step so the user sees the (slow) first
     // boot. Returns whether the sandbox is usable. For a local runner "booting"
     // is one health probe, so the step is honest about the difference.
-    const fileProvider = buildSandboxFileProvider(opts);
+    // The container seeds /src from the server's own copy of the snapshot, so
+    // this page is never asked to fetch it (see buildSandboxFileProvider).
+    const fileProvider = buildSandboxFileProvider(opts, { sourceMode: containerExec ? "server" : "bytes" });
     const bootOnce = async () => {
-      startGenericStep(turn, "sandbox", localExec ? "Connecting to your local runner…" : "Booting Linux sandbox…");
+      startGenericStep(
+        turn,
+        "sandbox",
+        containerExec
+          ? "Starting your Linux container…"
+          : remoteExec
+            ? "Connecting to your local runner…"
+            : "Booting Linux sandbox…",
+      );
       // The first boot is slow (a whole Debian streams in), so entertain the
       // step label with rotating quips (public/js/boot-messages.js) until ready.
       booted = await runner.boot(fileProvider, (msg) => updateGenericStep(turn, "sandbox", msg));
@@ -1100,9 +1119,11 @@ async function maybeRunShellLoop(turn, opts) {
           id: "sandbox",
           // Name the environment that failed: "unavailable" sends someone
           // hunting the browser VM when the real fix is `node runner.mjs`.
-          label: localExec
-            ? "Your local runner isn't reachable — answering without a shell. Check it's running, then Test connection in Settings."
-            : "Sandbox unavailable — answering normally",
+          label: containerExec
+            ? "The Linux container couldn't be started — answering without a shell. Test connection in Settings says why."
+            : remoteExec
+              ? "Your local runner isn't reachable — answering without a shell. Check it's running, then Test connection in Settings."
+              : "Sandbox unavailable — answering normally",
         });
       }
       return booted;
@@ -1143,7 +1164,7 @@ async function maybeRunShellLoop(turn, opts) {
         try {
           // Collect from whichever environment actually ran the loop — the
           // outbox convention is the runner's, not the browser VM's.
-          const files = await collectDeliverables(localExec ? (cmd) => runner.exec(cmd) : null);
+          const files = await collectDeliverables(remoteExec ? (cmd) => runner.exec(cmd) : null);
           if (files.length) {
             renderDeliverables(turn, files);
             transcript.push(deliverablesRun(files));
@@ -1625,7 +1646,7 @@ async function runOnDeviceExchange(turn, opts, signal, gen, modelId) {
  * @param {{ docs?: any[], images?: any[] }} opts the send options (attachments)
  * @returns {() => Promise<{ session: any[], project: any }>}
  */
-function buildSandboxFileProvider(opts) {
+function buildSandboxFileProvider(opts, fsOpts = {}) {
   return async () => {
     let meta = [];
     try { meta = await listOriginals(); } catch { meta = [] }
@@ -1693,11 +1714,20 @@ function buildSandboxFileProvider(opts) {
     // the (multi-MB) fetch only happens once the model actually proposes a
     // command — and the page-lifetime cache means a dev-mode pre-warm has
     // usually paid it already. Fail-soft.
+    //
+    // An environment that can seed /src ITSELF (the platform container reads the
+    // snapshot through the ASSETS binding) is handed a marker instead of the
+    // bytes: fetching multiple MB into this page so the server can be told to
+    // read its own asset would be pure waste.
     let source = null;
     try {
       if (developerModeOn()) {
-        const snap = await introspectSnapshot(); // page-lifetime cache
-        if (snap) source = { files: snap.files };
+        if (fsOpts.sourceMode === "server") {
+          source = { server: true };
+        } else {
+          const snap = await introspectSnapshot(); // page-lifetime cache
+          if (snap) source = { files: snap.files };
+        }
       }
     } catch { /* snapshot unavailable — mount without it */ }
 
@@ -1705,7 +1735,8 @@ function buildSandboxFileProvider(opts) {
       session_files: session.length,
       project: project ? project.name : null,
       project_files: project ? project.files.length : 0,
-      source_files: source ? source.files.length : 0,
+      source_files: source?.files?.length || 0,
+      source_server: source?.server === true,
     });
     return { session, project, source };
   };

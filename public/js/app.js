@@ -25,6 +25,7 @@ import { refreshProjects, setActiveProject } from "./projects.js";
 import { initProjectsUi } from "./projects-ui.js";
 import { bashLiteOn, developerModeOn, loadSettings, setDeveloperMode } from "./settings.js";
 import { storeDeveloperMode } from "./dev-mode.js";
+import { releaseExecSession } from "./exec-env.js";
 import { applyChatModeTheme, cachedChatMode, reconcileChatMode } from "./chat-mode.js";
 import { applyModeBackdrop } from "./mode-backdrop.js";
 import { barTint } from "./mode-theme.js";
@@ -604,6 +605,11 @@ function newChat(keepProject = false) {
   // A new chat in outrospection mode is a new FEED session, not a blank one.
   clearOutrospectionFeed();
   openOutrospectionFeed(cachedChatMode());
+  // A new conversation abandons the machine the previous one was using: when
+  // commands run in this platform's ephemeral container, ask for it to be
+  // destroyed NOW rather than leaving it to the idle reaper. Best-effort, and a
+  // no-op in every other execution environment (public/js/exec-env.js).
+  releaseExecSession();
   input.focus();
 }
 document.getElementById("clearbtn").addEventListener("click", () => newChat());
