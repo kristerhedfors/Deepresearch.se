@@ -135,7 +135,7 @@ bucket_name = "deepresearch-se-storage"
 #
 # TO ENABLE (owner):
 #
-#   ./scripts/build-exec-image.sh all     # build → verify (37 checks) → push
+#   ./scripts/build-exec-image.sh all     # build → verify (40 checks) → push
 #   # then uncomment below, set `image` to the pushed URI, and deploy:
 #   npx wrangler deploy
 #
