@@ -27,6 +27,10 @@
 // single-file kernel bundle), so the entry sits pre-wired behind the runtime
 // availability probe and lights up the day onnx-community ships it, exactly
 // like 1.7B–8B did. The smaller sizes are published and work today.
+//
+// `browserBuild: "unpublished"` is what the rows READ to gray such an entry
+// out up front (see the availability section below) — a declared starting
+// point, not a permanent verdict.
 export const ONDEVICE_MODELS = [
   {
     id: "bonsai-27b-1bit",
@@ -35,6 +39,7 @@ export const ONDEVICE_MODELS = [
     dtype: "q1f16",
     approxBytes: 4_200_000_000,
     minDeviceMemoryGb: 6, // PrismML's guidance: 6 GB RAM minimum incl. KV cache
+    browserBuild: "unpublished", // onnx-community/Bonsai-27B-ONNX not shipped as of 2026-07-26
   },
   {
     id: "bonsai-8b-1bit",
@@ -399,6 +404,131 @@ export function planReasonForStatus(status) {
   return status === 401 || status === 403 || status === 404 ? "unpublished" : "network";
 }
 
+// ---- browser-build availability ------------------------------------------------
+//
+// A catalog entry whose upstream ONNX conversion has not shipped cannot be
+// downloaded, so its row must say so and offer NOTHING to tap — feedback #36:
+// "the 27b model doesn't run in browser so gray it out in the gui so we can't
+// select it for on-device models". Before this the only way to find out was to
+// tap Download and read the failure, which is a dead end dressed up as an
+// action.
+//
+// The declared `browserBuild: "unpublished"` is the STARTING point, not the
+// verdict — hard-coding the verdict would strand the entry grayed out forever
+// after onnx-community ships the conversion, breaking the "lights up the day
+// it ships" property the catalog comment promises. So the rows probe the same
+// tree listing the download planner uses (probeModelPublished — a plain fetch
+// from the page, no engine worker, no weights), cache the answer per device
+// for a day, and un-gray themselves the moment the variant appears. A probe
+// that can't reach huggingface.co returns null and changes nothing: an
+// offline phone must not "discover" that a model shipped, nor claim one
+// vanished.
+
+/** localStorage key holding this device's cached availability answers. */
+export const PUBLISHED_CACHE_KEY = "dr_ondevice_published";
+/** How long a cached answer is trusted. A day: the upstream event we're
+ * waiting for is a repo publication, not a live metric. */
+export const PUBLISHED_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** Whether the catalog itself declares this entry's browser build unshipped.
+ * @param {{browserBuild?: string}} model */
+export function declaredUnpublished(model) {
+  return model?.browserBuild === "unpublished";
+}
+
+/**
+ * The cached availability answers, stale and malformed entries dropped.
+ * @param {?string} stored localStorage.getItem(PUBLISHED_CACHE_KEY)
+ * @param {number} nowMs
+ * @returns {Record<string, boolean>}
+ */
+export function readPublishedCache(stored, nowMs) {
+  /** @type {Record<string, boolean>} */
+  const out = {};
+  let parsed;
+  try {
+    parsed = JSON.parse(stored || "{}");
+  } catch {
+    return out;
+  }
+  if (!parsed || typeof parsed !== "object") return out;
+  for (const [id, rec] of Object.entries(parsed)) {
+    const r = /** @type {any} */ (rec);
+    if (!r || typeof r.published !== "boolean" || typeof r.at !== "number") continue;
+    if (nowMs - r.at > PUBLISHED_TTL_MS || r.at > nowMs) continue; // stale, or a clock that moved
+    out[id] = r.published;
+  }
+  return out;
+}
+
+/**
+ * The serialized cache with one answer recorded. Stale entries are dropped on
+ * the way through, so the key can never grow past the catalog.
+ * @param {?string} stored
+ * @param {string} id
+ * @param {boolean} published
+ * @param {number} nowMs
+ * @returns {string}
+ */
+export function writePublishedCache(stored, id, published, nowMs) {
+  /** @type {Record<string, {published: boolean, at: number}>} */
+  const next = {};
+  for (const [k, v] of Object.entries(readPublishedCache(stored, nowMs))) next[k] = { published: v, at: nowMs };
+  next[id] = { published, at: nowMs };
+  return JSON.stringify(next);
+}
+
+/**
+ * Is this model's browser build available to download — the catalog's
+ * declaration, overridden by anything this device has actually probed.
+ * @param {{id: string, browserBuild?: string}} model
+ * @param {Record<string, boolean>} [cache] readPublishedCache output
+ * @returns {boolean}
+ */
+export function modelPublished(model, cache = {}) {
+  const known = cache?.[model?.id];
+  if (typeof known === "boolean") return known;
+  return !declaredUnpublished(model);
+}
+
+/**
+ * Ask huggingface.co whether the model's weight variant exists yet. Plain
+ * fetch, no worker and no bytes — the tree listing only. Returns null when the
+ * answer is INCONCLUSIVE (network/parse failure), which callers must treat as
+ * "leave the current state alone".
+ * @param {{repo: string, dtype: string}} model
+ * @param {typeof fetch} [fetchImpl]
+ * @returns {Promise<?boolean>}
+ */
+export async function probeModelPublished(model, fetchImpl = fetch) {
+  if (!model?.repo || !model?.dtype) return null;
+  let res;
+  try {
+    res = await fetchImpl(hfTreeUrl(model.repo));
+  } catch {
+    return null;
+  }
+  if (!res?.ok) return planReasonForStatus(res?.status ?? 0) === "unpublished" ? false : null;
+  try {
+    return !!planModelFiles(await res.json(), model.dtype);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The row's one-line explanation for an entry whose browser build hasn't
+ * shipped. Pure so both tiers phrase it identically (the consent card appends
+ * its own "Nothing was downloaded." — there, the user did tap something).
+ * @param {{label: string}} model
+ */
+export function unpublishedNote(model) {
+  return (
+    model?.label +
+    "'s browser build isn't published yet — this entry lights up the moment onnx-community ships it."
+  );
+}
+
 // The tokenizer/config side files a transformers.js text-generation load
 // reads. Optional ones (a repo without chat_template.jinja bakes the template
 // into tokenizer_config.json) are simply absent from the plan when absent
@@ -755,11 +885,13 @@ export function downloadProgress(files, doneFiles, current = {}) {
 /**
  * The collapsed disclosure's summary text. The fields: `total` the catalog
  * size, `cached` models whose weights are on this device, `unsupported`
- * models this device can't run (the capability verdict), `downloading` the
+ * models this device can't run (the capability verdict), `unavailable` models
+ * whose browser build hasn't shipped upstream yet (grayed out — nothing to
+ * download anywhere), `downloading` the
  * label of the model downloading right now with its `pct` when known,
  * `failed` models whose last download attempt failed, `checking` the device
  * probe is still running, `error` the probe failed (the rows carry why).
- * @param {{total?: number, cached?: number, unsupported?: number, downloading?: ?string, pct?: ?number, failed?: number, checking?: boolean, error?: boolean}} [s]
+ * @param {{total?: number, cached?: number, unsupported?: number, unavailable?: number, downloading?: ?string, pct?: ?number, failed?: number, checking?: boolean, error?: boolean}} [s]
  */
 export function onDeviceSummaryLine(s = {}) {
   const total = Math.max(0, s.total || 0);
@@ -777,9 +909,12 @@ export function onDeviceSummaryLine(s = {}) {
   if (!total) return "Models" + tail;
   if (cached) return "Models — " + cached + " of " + total + " on this device" + tail;
   // "Available" must mean available TO THIS DEVICE: the expanded rows say
-  // "this browser has no WebGPU", so the folded line may not advertise a
-  // download the user can't use. All unsupported → say that instead of a count.
-  const runnable = Math.max(0, total - Math.max(0, Math.min(s.unsupported || 0, total)));
+  // "this browser has no WebGPU" (or "isn't published yet"), so the folded
+  // line may not advertise a download the user can't use — a grayed-out row
+  // counted as "available" is the same lie the row itself stopped telling.
+  // Nothing runnable → say that instead of a count.
+  const blocked = Math.max(0, s.unsupported || 0) + Math.max(0, s.unavailable || 0);
+  const runnable = Math.max(0, total - Math.min(blocked, total));
   if (!runnable) return "Models — none can run on this device" + tail;
   return "Models — none on this device yet, " + runnable + " available" + tail;
 }

@@ -426,6 +426,25 @@ describe("sourceAnswerPrompt (introspection synthesis)", () => {
     assert.match(p, /Do NOT draw ASCII\/Unicode box art/);
     assert.match(p, /emit the mermaid fence itself/);
   });
+
+  // feedback #36: with a forced auxiliary source (the Models agent's hub
+  // search) the pipeline puts numbered external sources in front of this
+  // prompt. The default's flat "there are no external sources to cite" would
+  // tell the model to ignore them, so the clause is conditional — and the
+  // default must stay unchanged for an ordinary introspection turn.
+  test("names the external sources only when the turn actually carries them", () => {
+    const plain = sourceAnswerPrompt();
+    assert.match(plain, /there are no external sources to cite/);
+    assert.doesNotMatch(plain, /EXTERNAL SOURCES/);
+
+    const withExternal = sourceAnswerPrompt({ externalSources: true });
+    assert.doesNotMatch(withExternal, /there are no external sources to cite/);
+    assert.match(withExternal, /EXTERNAL SOURCES/);
+    assert.match(withExternal, /cite those as \[n\]/);
+    // The division of labour that keeps introspection honest: outside facts
+    // from the sources, this site's behaviour from this site's code.
+    assert.match(withExternal, /anything about how this site behaves must still come from the code/);
+  });
 });
 
 describe("sourceToolAgentPrompt (native tool-use investigation)", () => {
@@ -448,6 +467,16 @@ describe("sourceToolAgentPrompt (native tool-use investigation)", () => {
     assert.match(p, new RegExp(String(MAX_READ_TOTAL_CHARS)));
     assert.match(p, /offset\/limit/);
     assert.match(p, /context parameter/);
+  });
+
+  // The tool path's half of feedback #36's forced-source fix — same rule, and
+  // the same requirement that an ordinary introspection turn is untouched.
+  test("names the external sources only when the turn actually carries them", () => {
+    assert.doesNotMatch(sourceToolAgentPrompt(), /EXTERNAL SOURCES/);
+    const withExternal = sourceToolAgentPrompt({ externalSources: true });
+    assert.match(withExternal, /EXTERNAL SOURCES/);
+    assert.match(withExternal, /cite them as \[n\]/);
+    assert.match(withExternal, /must still come from the code you read with the tools/);
   });
 
   test("carries the audit-breadth, distrust-docs, and concrete-findings guidance + anti-injection", () => {

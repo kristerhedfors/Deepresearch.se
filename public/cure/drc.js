@@ -1284,6 +1284,55 @@ const odDownloading = new Set(); // modelIds with a download in flight (UI state
 // (the 2026-07-17 iPhone report). Cleared on the next attempt.
 const odErrors = new Map();
 
+// ---- browser-build availability (ondevice-core.js) --------------------------
+//
+// A model whose upstream ONNX conversion hasn't shipped is rendered GRAYED OUT
+// with no button (feedback #36) — the catalog declares the starting state so
+// the first paint never offers a tappable Download, and the live tree probe
+// then confirms or lifts it, so the row un-grays itself the day the conversion
+// ships. Reached through the LAZY engine façade like everything else here, so
+// the knob-off bandwidth guarantee still holds.
+
+function odPublishedCache(eng) {
+  try {
+    return eng.readPublishedCache(localStorage.getItem(eng.PUBLISHED_CACHE_KEY), Date.now());
+  } catch {
+    return {}; // storage blocked — the catalog declaration alone decides
+  }
+}
+
+/** @param {any} eng @param {string} id @param {boolean} published */
+function odRememberPublished(eng, id, published) {
+  try {
+    localStorage.setItem(
+      eng.PUBLISHED_CACHE_KEY,
+      eng.writePublishedCache(localStorage.getItem(eng.PUBLISHED_CACHE_KEY), id, published, Date.now()),
+    );
+  } catch {
+    /* storage blocked — re-probed next render */
+  }
+}
+
+/**
+ * Probe every declared-unpublished model with no fresh answer on this device
+ * and re-render if a verdict changed. Fire-and-forget; an unreachable hub
+ * (null) leaves the row exactly as it was.
+ */
+async function odRefreshPublished(eng, cache) {
+  const pending = eng.ONDEVICE_MODELS.filter(
+    (/** @type {any} */ m) => eng.declaredUnpublished(m) && typeof cache[m.id] !== "boolean",
+  );
+  if (!pending.length) return;
+  let changed = false;
+  for (const m of pending) {
+    const published = await eng.probeModelPublished(m).catch(() => null);
+    if (typeof published !== "boolean") continue;
+    odRememberPublished(eng, m.id, published);
+    if (published !== eng.modelPublished(m, cache)) changed = true;
+  }
+  if (changed) await renderOnDeviceRows().catch(() => {});
+}
+
 /**
  * The collapsed disclosure's one line (UX-14). The shared phrasing lives in
  * the pure core, which rides the LAZY engine import (the bandwidth
@@ -1328,12 +1377,15 @@ async function renderOnDeviceRows() {
     const probe = await eng.probeOnDevice();
     const cached = await eng.listCachedModels();
     wrap.innerHTML = "";
+    const publishedCache = odPublishedCache(eng);
     let onDeviceCount = 0;
     let unsupportedCount = 0;
+    let unavailableCount = 0;
     let downloadingLabel = "";
     for (const m of eng.ONDEVICE_MODELS) {
       const entry = cached.find((c) => c.id === m.id);
       const verdict = eng.capabilityVerdict(probe, m);
+      const published = eng.modelPublished(m, publishedCache);
       const row = document.createElement("div");
       row.className = "od-model";
       row.dataset.od = m.id;
@@ -1346,12 +1398,23 @@ async function renderOnDeviceRows() {
       btn.type = "button";
       btn.className = "btnlike od-btn";
       if (entry?.cachedBytes) onDeviceCount++;
-      if (verdict.verdict === "unsupported") unsupportedCount++;
+      else if (!published) unavailableCount++;
+      else if (verdict.verdict === "unsupported") unsupportedCount++;
       if (odDownloading.has(m.id)) downloadingLabel = m.label;
       if (odDownloading.has(m.id)) {
         note.textContent = "Downloading…";
         btn.textContent = "Cancel";
         btn.onclick = async () => (await odEngine()).cancelDownload(m.id);
+      } else if (!published && !entry?.cachedBytes) {
+        // Nothing to download anywhere yet: gray the row out and drop the
+        // button rather than offering a tap whose only outcome is this same
+        // sentence (feedback #36). Ranked ABOVE the capability verdict — an
+        // unshipped build is a fact about the model, so a WebGPU-less phone
+        // must not be blamed for it.
+        row.classList.add("od-unavailable");
+        row.setAttribute("aria-disabled", "true");
+        note.textContent = eng.unpublishedNote(m);
+        btn.hidden = true;
       } else if (entry?.cachedBytes) {
         note.textContent = "On this device · " + eng.fmtBytes(entry.cachedBytes) + " — pick it in the model dropdown.";
         btn.textContent = "Delete";
@@ -1386,9 +1449,11 @@ async function renderOnDeviceRows() {
       total: eng.ONDEVICE_MODELS.length,
       cached: onDeviceCount,
       unsupported: unsupportedCount,
+      unavailable: unavailableCount,
       downloading: downloadingLabel || null,
       failed: [...odErrors.keys()].length,
     });
+    odRefreshPublished(eng, publishedCache).catch(() => {});
   } catch (err) {
     // The engine's deadline errors NAME the failing stage (the on-device-
     // trace convention: this line is the remote debugger on a real phone) —
@@ -1469,7 +1534,10 @@ async function odOpenConsent(m) {
         ? "Couldn't reach huggingface.co to compute the download size — check your connection and try again. Nothing was downloaded."
         : plan?.reason === "engine"
           ? (plan.message || "The on-device engine failed.") + " Nothing was downloaded."
-          : m.label + "'s browser build isn't published yet — this entry lights up the moment onnx-community ships it. Nothing was downloaded.";
+          : eng.unpublishedNote(m) + " Nothing was downloaded.";
+    // The row offered a download the hub says doesn't exist — record it so the
+    // next render grays the row out instead of offering it again.
+    if (plan?.reason === "unpublished") odRememberPublished(eng, m.id, false);
     return;
   }
   const size = eng.fmtBytes(plan.totalBytes);

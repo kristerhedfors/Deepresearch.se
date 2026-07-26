@@ -22,11 +22,16 @@
 // landscape cold — so what this module contributes is a pre-pipeline enrichment
 // (src/enrichment.js) and one forced search source:
 //
-//   1. Hub search is FORCED on for every turn (state.forceAux), so the agent
-//      always has huggingface.co model cards, datasets and papers in front of
-//      it instead of waiting for hfIntent to notice a hub question. That is a
-//      research-source choice, not a provider one: the Hub is where models are
-//      DOCUMENTED, whoever ends up serving them.
+//   1. Hub search is FORCED on for every turn (state.forceAux) and gets a
+//      RAISED per-request ceiling (state.auxMaxPerRequest), so the agent always
+//      has huggingface.co model cards, datasets and papers in front of it —
+//      several angles' worth — instead of waiting for hfIntent to notice a hub
+//      question. That is a research-source choice, not a provider one: the Hub
+//      is where models are DOCUMENTED, whoever ends up serving them. Both
+//      travel with the turn into the developer-mode source-research path too
+//      (pipeline.js runForcedAuxSearches): dev mode answers from this repo's
+//      own files, and before that the two modes together produced answers about
+//      models that had never asked the hub anything (feedback #36).
 //   2. When the message is about CHOOSING, PRICING, EVALUATING or RUNNING a
 //      model (modelIntent — English and Swedish alike, invariant 6), the live
 //      cross-provider catalog is ranked against it and folded into the
@@ -64,6 +69,12 @@ const SHOWN = 8;
 /** Rows folded into the model's context. Fewer than SHOWN: the UI can afford a
  * scroll list, a synthesis prompt cannot. */
 const IN_CONTEXT = 6;
+
+/** Hub searches this mode may spend per request — double the registry's own
+ * default (src/search-sources.js `maxPerRequest: 3`), which is calibrated for a
+ * source that fires on an incidental mention rather than one the whole mode is
+ * built around. */
+export const HUB_SEARCHES_PER_REQUEST = 6;
 
 // Model-shopping intent. English and Swedish get the SAME breadth (invariant
 // 6): definite forms ("modellen", "modeller"), the cost vocabulary people
@@ -132,6 +143,14 @@ export async function runModelsAgentEnrichment(c) {
   // other modes. Core reads this generically (pipeline.js runAuxSearch), so
   // nothing about the pipeline learns which source it is.
   /** @type {any} */ (state).forceAux = ["hf"];
+  // …and it leans on the hub HARDER than any other mode: the ceiling on hub
+  // searches per request goes up so the gap rounds' follow-up angles reach the
+  // Hub too, instead of the first wave spending the whole allowance (feedback
+  // #36 — "the Models pipeline should be even more inclined to search hf for
+  // answers and in particular anything regarding models"). Core reads this
+  // generically (pipeline.js runAuxSearch); the cross-wave dedup means a higher
+  // ceiling buys DISTINCT searches, never a repeat of one already run.
+  /** @type {any} */ (state).auxMaxPerRequest = { hf: HUB_SEARCHES_PER_REQUEST };
 
   const lastUser = lastUserText(conversation);
   if (!modelIntent(lastUser)) return conversation;
