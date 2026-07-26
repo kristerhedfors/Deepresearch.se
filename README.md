@@ -148,6 +148,13 @@ Everything below reproduces the production setup end-to-end. You need:
 - A **Google Cloud project** for the OAuth sign-in client.
 - Node.js with `npx` for wrangler (CLI deploys and local dev).
 
+There is nothing to `npm install` for the site itself: zero runtime
+dependencies, no build step, and the seven third-party JavaScript libraries
+are vendored into `public/vendor/` and served same-origin. The full
+inventory — libraries with sizes and licenses, network services, platform
+bindings, dev tooling, the external loads that are still flagged, and the
+SHA-256 manifest — is **`docs/DEPENDENCIES.md`**.
+
 ### 1. Clone and adapt `wrangler.toml`
 
 ```bash
