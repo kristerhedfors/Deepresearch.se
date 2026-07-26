@@ -41,6 +41,33 @@ invariant 6, Node-tested) never decides WHETHER, only the EMPHASIS (a
 help-shaped ask widens retrieval k 4→8 and labels the step "documentation
 (help)").
 
+**The `/help` slash command (2026-07-26) is the SECOND way in, and it is not
+gated on the knob.** The owner's directive was that `/help` works in every
+agent, so a message opening with the command turns the help layer on for THAT
+request whatever mode is picked and whatever the account's `developer_mode` knob
+says — the capability only has to be AVAILABLE (a real account or break-glass;
+`featureAvailability(env, identity).developer`). Nothing new is exposed: the
+docs corpus and the source snapshot are committed public artifacts, already
+served unauthenticated (`src/assets.js`). The wiring is three lines and reuses
+everything above:
+
+- `src/chat.js` — `slashEffect(...) === "help"` sets `helpCommand`, which turns
+  the introspection enrichment on (`introspection: enrich.developerOn ||
+  helpCommand`) and clears every executor phase, so Orchestrator/Agent Studio/
+  Outrospection cannot claim the turn.
+- `src/pipeline.js` — `state.helpCommand` also OVERRIDES `externalSourceIntent`
+  in the source-research gate, so a help question phrased as a comparison is
+  still answered from the documentation rather than handed to the search wave.
+- `public/cure/drc.js` — `helpCommandTurn` injects `helpDocsBlockFor` alone (no
+  snapshot, no OWASP, no file provider) with the toggle off. Se/cure retrieves
+  the corpus lexically in the browser from a same-origin static file, so the
+  server stays out of the data path exactly as before.
+
+No new gate: `helpIntent` already matches `/help …` (the word is right there),
+so the emphasis widening happens for free. The command registry itself is
+`public/js/slash-core.js` — see the **ux-conventions** skill's UX-13 for the
+composer side.
+
 ## The two committed artifacts (the owasp-corpus pattern)
 
 - **`public/introspect/docs-corpus.json`** (`scripts/bundle-docs.mjs`,

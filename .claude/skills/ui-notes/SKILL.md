@@ -172,6 +172,18 @@ description: >-
   it does NOT delete the conversation from encrypted local history (see
   "Chat history" above); the previous conversation stays listed in the
   history panel until explicitly deleted there.
+- **Slash commands in the composer** (2026-07-26): typing `/` as the first
+  character opens the command list above the pane — `/feedback` and `/help`,
+  the two commands that work in every chat mode and on both tiers. The DOM is
+  one `<div class="slash-menu">` appended to `#composer` (the `#searchpop`
+  glass-popover shape, `bottom: calc(100% + .45rem)`), rows are
+  `<button type="button">` so they never submit the form they live in, and the
+  markup/CSS is mirrored in `public/css/app.css` and `public/cure/drc.css`
+  because the two stylesheets never load together. The behaviour rules — what
+  opens it, what closes it, why Enter can pick without sending — are UX-13 in
+  the **ux-conventions** skill. Both `/js/slash-core.js` and `/js/slash-menu.js`
+  must stay in `isPublicAsset` (`src/assets.js`) or the /cure module graph goes
+  dark.
 - **User documentation is split PER TIER** (2026-07-16 directive — the
   shared page misled Se/cure users with Se/rver's storage story and the
   blue palette): `/help/` documents **Se/rver** (blue palette; its history

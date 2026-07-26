@@ -205,6 +205,7 @@ let currentRun = 0;
  * @param {{ keepBreadcrumb?: boolean }} [opts]
  */
 export function stopSwarms(opts = {}) {
+  const hadLive = livePools.size > 0;
   currentRun = 0;
   for (const pool of [...livePools]) {
     try {
@@ -215,8 +216,10 @@ export function stopSwarms(opts = {}) {
   }
   livePools.clear();
   // A deliberate stop is not a crash: drop the breadcrumb so a reload does not
-  // report the user's own Stop as "your last run died".
-  if (!opts.keepBreadcrumb) clearBreadcrumb();
+  // report the user's own Stop as "your last run died". Only OUR run's crumb,
+  // though — a crumb left by an earlier page (the case this whole mechanism
+  // exists for) is somebody else's to report.
+  if (hadLive && !opts.keepBreadcrumb) clearBreadcrumb();
 }
 
 /** Are any swarm workers alive in this page right now? */
@@ -280,6 +283,7 @@ let breadcrumbStore = (() => {
  */
 export function setBreadcrumbStore(store) {
   breadcrumbStore = store;
+  pendingDiag = null; // a different store is a different session's evidence
 }
 
 /** @param {Parameters<typeof runBreadcrumb>[0]} rec */
@@ -299,6 +303,36 @@ function clearBreadcrumb() {
   }
 }
 
+/** The stored crumb, without consuming it. @returns {any} */
+function peekBreadcrumb() {
+  try {
+    const raw = breadcrumbStore.getItem(ONDEVICE_CRASH_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A diagnostic captured but not yet handed to a request. A new run overwrites
+ * the stored crumb with its own, so the previous one is lifted out first —
+ * otherwise the very act of retrying would erase the evidence of the crash the
+ * retry is about to repeat.
+ * @type {any}
+ */
+let pendingDiag = null;
+
+/**
+ * What the LAST run says about this device, without consuming it: a run that
+ * ended in a dead tab or a memory failure is the strongest evidence available
+ * that this device cannot host the swarm it just tried. Non-destructive —
+ * swarmCrashDiag() is what reports and clears.
+ * @param {number} [now]
+ */
+export function lastRunHint(now = Date.now()) {
+  return pendingDiag || crashDiag(peekBreadcrumb(), now) || null;
+}
+
 /**
  * The diagnostics block for a run that never finished — read ONCE (the record
  * is consumed) so the same death is reported on one request, not every one.
@@ -309,15 +343,15 @@ function clearBreadcrumb() {
  */
 export function swarmCrashDiag(now = Date.now()) {
   if (swarmRunning()) return undefined;
-  try {
-    const raw = breadcrumbStore.getItem(ONDEVICE_CRASH_KEY);
-    if (!raw) return undefined;
-    clearBreadcrumb();
-    return crashDiag(JSON.parse(raw), now);
-  } catch {
-    clearBreadcrumb();
-    return undefined;
+  if (pendingDiag) {
+    const held = pendingDiag;
+    pendingDiag = null;
+    return held;
   }
+  const rec = peekBreadcrumb();
+  if (!rec) return undefined;
+  clearBreadcrumb();
+  return crashDiag(rec, now);
 }
 
 /**
@@ -362,9 +396,13 @@ function currentHeapRatio() {
 // ---- the node runner ----------------------------------------------------------
 
 /**
- * The capacity THIS device will give a node, heap pressure included.
+ * The capacity THIS device will give a node, heap pressure included. The heap
+ * reading may arrive three ways — explicitly, inside the capability descriptor
+ * the send path passes as `device` (detectSwarmCapability measures it), or
+ * measured here — because the caller that has it must never be the reason it is
+ * ignored.
  * @param {{ swarmSize?: number, rounds?: number }} node
- * @param {{ device?: { hardwareConcurrency?: ?number, deviceMemoryGb?: ?number, modelBytes?: ?number, maxWorkers?: ?number }, heapUsedRatio?: ?number }} opts
+ * @param {{ device?: { hardwareConcurrency?: ?number, deviceMemoryGb?: ?number, modelBytes?: ?number, maxWorkers?: ?number, heapUsedRatio?: ?number }, heapUsedRatio?: ?number }} opts
  */
 export function capacityFor(node, opts = {}) {
   return planSwarmCapacity({
@@ -374,7 +412,7 @@ export function capacityFor(node, opts = {}) {
     deviceMemoryGb: opts.device?.deviceMemoryGb ?? null,
     modelBytes: opts.device?.modelBytes ?? null,
     maxWorkers: opts.device?.maxWorkers ?? null,
-    heapUsedRatio: opts.heapUsedRatio ?? currentHeapRatio(),
+    heapUsedRatio: opts.heapUsedRatio ?? opts.device?.heapUsedRatio ?? currentHeapRatio(),
   });
 }
 
@@ -388,7 +426,7 @@ export function capacityFor(node, opts = {}) {
  *   modelLabel?: string,
  *   userRequest?: string,
  *   upstream?: string,
- *   device?: { hardwareConcurrency?: ?number, deviceMemoryGb?: ?number, modelBytes?: ?number, maxWorkers?: ?number },
+ *   device?: { hardwareConcurrency?: ?number, deviceMemoryGb?: ?number, modelBytes?: ?number, maxWorkers?: ?number, heapUsedRatio?: ?number },
  *   emit?: (ev: ReturnType<typeof swarmUpdateEvent>) => void,
  *   signal?: { aborted?: boolean },
  *   deadlineMs?: number,
@@ -663,6 +701,9 @@ export async function runSwarmNodes(plan, opts) {
   const nodes = (plan?.agents || []).filter((a) => a && a.kind === "swarm");
   if (!nodes.length || opts.signal?.aborted) return out;
 
+  // Lift any unreported crash out of storage BEFORE this run overwrites it —
+  // retrying must not erase the evidence of the crash it may be repeating.
+  pendingDiag = pendingDiag || crashDiag(peekBreadcrumb()) || null;
   // A new send supersedes whatever the previous one left running.
   stopSwarms();
   const myRun = ++runSeq;
@@ -670,7 +711,7 @@ export async function runSwarmNodes(plan, opts) {
   const signal = runSignal(myRun, opts.signal);
 
   // ONE pool for the whole run, sized for the widest node this device allows.
-  const heap = opts.heapUsedRatio ?? currentHeapRatio();
+  const heap = opts.heapUsedRatio ?? opts.device?.heapUsedRatio ?? currentHeapRatio();
   const caps = nodes.map((n) => capacityFor(n, { device: opts.device, heapUsedRatio: heap }));
   const size = Math.max(1, ...caps.map((c) => c.concurrency));
   const members = Math.max(0, ...caps.map((c) => c.members));
@@ -767,11 +808,17 @@ export async function detectSwarmCapability() {
     if (!cached.length) return null;
     const pick = cached.slice().sort((a, b) => a.cachedBytes - b.cachedBytes)[0];
     const nav = /** @type {any} */ (globalThis.navigator) || {};
+    // THE DEVICE'S OWN VERDICT. If the previous swarm on this device died
+    // mid-run or hit a memory failure, the honest read is that its pool was too
+    // big — so the next one runs one member at a time. Fail soft, not fast:
+    // degrading beats offering the same swarm that just killed the tab, and a
+    // clean run clears the crumb so the cap lifts by itself.
+    const hurt = lastRunHint();
     return {
       modelId: pick.id,
       modelLabel: pick.label,
       modelBytes: pick.cachedBytes,
-      maxWorkers: 4,
+      maxWorkers: hurt ? 1 : 4,
       hardwareConcurrency: typeof nav.hardwareConcurrency === "number" ? nav.hardwareConcurrency : null,
       deviceMemoryGb: typeof nav.deviceMemory === "number" ? nav.deviceMemory : null,
       // Live pressure at the moment of the decision (Chrome only; null

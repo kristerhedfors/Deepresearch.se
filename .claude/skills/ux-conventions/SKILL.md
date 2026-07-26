@@ -606,3 +606,58 @@ why to use which"*.)
 block in `public/help/index.html` and `public/cure/help/index.html` ("Se/cure
 or Se/rver: which workspace?"). The written source both pages compress is
 `docs/WORKSPACES.md` §2 — update that section and the two pages together.
+
+---
+
+## UX-13 — A slash typed first opens the command list; picking a command leaves the caret ready for its argument
+
+**When** the user types **`/` as the first character** of the chat composer,
+**then** the command list opens above the pane — one row per available command,
+each showing the command, its argument hint and a one-line description. Typing
+filters the list by prefix. **↑/↓** move the highlight (wrapping at both ends),
+**Enter** or **Tab** picks the highlighted command, a **click/tap** picks a row,
+**Escape** closes. Picking puts `/<command> ` in the composer with the caret
+after the space — the list is now closed, so the next Enter **sends** (UX-8).
+The list also closes the moment the text stops being a bare command token: an
+argument is being typed, the prefix matches nothing, or the slash isn't at
+position 0 ("what does /help do?" is a research question).
+
+**Why.** This is the interaction every chat product with commands already has
+(Slack, Discord, Claude Code), so it needs no explanation — but only if it
+behaves identically, above all in never trapping Enter. The rule that makes it
+safe is that **picking a command is not sending it**: there is exactly one state
+where Enter doesn't send, it is visible on screen, and Escape or one more
+keystroke leaves it. The commands are the same in every chat mode and on both
+tiers because they belong to the platform, not to an agent (owner directive,
+2026-07-26: *"those shall be available in every agent"*).
+
+**The mechanics (match all of these):**
+
+1. **One shared module, both tiers** — `public/js/slash-menu.js`, mounted by
+   `public/js/app.js` (Se/rver) and `public/cure/drc.js` (Se/cure). Se/cure
+   imports it from `/js/` like the other shared client modules, so a new command
+   appears in both composers at once. Both paths are in `isPublicAsset`
+   (`src/assets.js`) — the /cure module graph goes dark without that.
+2. **All the deciding lives in the pure core** (`public/js/slash-core.js`):
+   which rows, in which order, in which language, and where the highlight
+   moves. The DOM module only draws and listens, so the behaviour is
+   Node-tested without a DOM (`slash-core.test.js`).
+3. **The keydown listener is on `document`, capture phase**, and stops
+   propagation only for the keys an OPEN list consumes (↑ ↓ Enter Tab Escape).
+   That is what makes it out-rank the composer's own Enter-sends handler
+   regardless of module load order — a listener on the textarea itself would
+   depend on registration order.
+4. **Rows are `<button type="button">`** inside the form (never a submit) and
+   are chosen on **`pointerdown`, not click**, so the textarea doesn't blur and
+   close the list out from under the finger.
+5. **Language follows the deterministic EN-default convention** (`detectLang`,
+   canned-faq.js) applied to what is being typed and — while that is still just
+   a slash — to the last thing the user wrote. Command NAMES are never
+   translated; the label, argument hint and description always are (invariant 6).
+6. **Dismissal is UX-1**: a pointerdown anywhere outside the list closes it.
+
+**Canonical implementations:** `public/js/slash-menu.js` (the mount), the
+`.slash-menu` / `.slash-item` block in `public/css/app.css` and its mirror in
+`public/cure/drc.css`, and `public/js/slash-core.js` for the pure half. The
+routing the commands trigger is `src/chat.js` (resolved before mode routing) and
+`src/pipeline.js` (the feedback gate above the executor dispatch).

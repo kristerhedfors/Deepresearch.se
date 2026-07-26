@@ -7,6 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   createSwarmPool,
+  lastRunHint,
   runSwarmNode,
   runSwarmNodes,
   setBreadcrumbStore,
@@ -346,4 +347,24 @@ test("a member's memory failure ends the swarm early and is kept for the report"
   assert.ok(diag, "the pressure survives the run for the next request's diagnostics");
   assert.equal(diag.cls, "oom");
   assert.equal(diag.died, 0, "the run finished — this device is at its limit, not dead");
+});
+
+test("a retry does not erase the crash it may be repeating", async () => {
+  const store = fakeStore();
+  // A previous page died mid-swarm and nothing has reported it yet.
+  store.setItem(
+    "dr_ondevice_run",
+    JSON.stringify({ v: 1, t: Date.now() - 5000, kind: "swarm", nodes: 1, members: 4, conc: 4, rounds: 2, round: 1, phase: "diverge", mb: 300, cls: "" }),
+  );
+  assert.ok(lastRunHint(), "the device's own verdict is readable without consuming it");
+  const { spawn } = fakeSpawner();
+  await runSwarmNodes(
+    { agents: [{ id: "sw", kind: "swarm", task: "t", swarmSize: 2, rounds: 1 }] },
+    { spawn, modelId: "m", device },
+  );
+  const diag = swarmCrashDiag();
+  assert.ok(diag, "the older death still gets reported after a clean retry");
+  assert.equal(diag.died, 1);
+  assert.equal(diag.phase, "diverge");
+  assert.equal(swarmCrashDiag(), undefined);
 });

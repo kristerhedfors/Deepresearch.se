@@ -167,6 +167,35 @@ The rule, and where it lives:
   ordering.
 
 
+### 2.3 Slash commands are platform baseline, not an agent capability
+
+The same argument, one level up. `/feedback` and `/help` (`public/js/slash-core.js`)
+are available in **every** agent, on both tiers, in every chat mode — the
+2026-07-26 owner directive that created them says so in as many words. The
+question this raised for the Agents SDK was whether to model them as a new
+member of the closed control vocabulary.
+
+They are not. A control is something a spec *chooses*, and a chooseable command
+is a command some agent ships without — the exact outcome the directive rules
+out. So the commands are composer **baseline** instead:
+
+- every `prompt-input` control carries the typeahead (`public/js/slash-menu.js`,
+  UX-13), mounted once per composer rather than once per agent;
+- `src/chat.js` resolves the command from the message text **before** the
+  routing table below runs, and clears every executor phase for it;
+- `src/pipeline.js` evaluates the feedback gate **above** the
+  `ANSWER_PHASE_RUNNERS` dispatch.
+
+An agent therefore cannot opt in, opt out, or redefine them — there is nothing
+in the spec to set. `GATE_IDS` still lists the `feedback` gate for
+completeness, and no shipped spec declares it, for the same reason.
+
+The regression guard is `src/slash.test.js`, which discovers the executor
+phases from the dispatch table and the mode booleans from `chat.js` rather than
+listing them: a seventh agent, a fourth answer phase or a sixth mode that ships
+without the commands fails a test that names it.
+
+
 ## 3. The AgentSpec
 
 One agent, as JSON. The full field reference and the closed control vocabulary
