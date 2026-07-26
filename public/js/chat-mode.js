@@ -26,6 +26,14 @@
 //                   introspection's mirror image, answering from what everyone
 //                   ELSE shipped. Same knob gate. Theme: the `outro-mode` root
 //                   class (the newsprint pane).
+//   models        → the request carries `models_mode: true` (chat.js), routing
+//                   to the MODEL-LIFECYCLE agent (src/models-agent.js) — Hub
+//                   search forced on every turn, and a message about models
+//                   answered against the live cross-provider catalog, priced and
+//                   annotated with what has been verified. It replaces no flow
+//                   (its answer phase is the ordinary research one), so it is the
+//                   lowest-precedence flagged mode. Same knob gate. Theme: the
+//                   `models-mode` root class (the warm amber pane).
 //   orchestrator  → the request carries `orchestrator_mode: true` (chat.js),
 //                   routing to the sub-agent workflow flow (src/orchestrator.js)
 //                   — a planned team of sub-agents runs in the background and
@@ -54,8 +62,10 @@ export const SDK_MODE_CLASS = "sdk-mode";
 export const ORCH_MODE_CLASS = "orch-mode";
 /** The root class carrying the newsprint Outrospection-mode pane tint. */
 export const OUTRO_MODE_CLASS = "outro-mode";
+/** The root class carrying the amber Models-mode pane tint. */
+export const MODELS_MODE_CLASS = "models-mode";
 /** The modes, dropdown order. */
-export const CHAT_MODES = ["normal", "introspection", "sdk", "orchestrator", "outrospection"];
+export const CHAT_MODES = ["normal", "introspection", "sdk", "orchestrator", "outrospection", "models"];
 
 /**
  * Clamp any value to a known mode.
@@ -117,6 +127,7 @@ export function applyChatModeTheme(mode, opts) {
     root?.classList?.toggle(SDK_MODE_CLASS, m === "sdk");
     root?.classList?.toggle(ORCH_MODE_CLASS, m === "orchestrator");
     root?.classList?.toggle(OUTRO_MODE_CLASS, m === "outrospection");
+    root?.classList?.toggle(MODELS_MODE_CLASS, m === "models");
   } catch {
     /* no DOM (tests) — persistence above is the durable part */
   }

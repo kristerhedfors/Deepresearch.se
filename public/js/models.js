@@ -73,6 +73,18 @@ export function selectModel(id) {
 }
 
 /**
+ * Re-fetch the whole server catalog. Called after a model is enabled or
+ * disabled in the Models agent's lifecycle board (public/js/models-panel.js):
+ * enabling is precisely what puts a model in THIS dropdown, so the promotion
+ * has to be visible without a reload — that is the pipeline the Models agent
+ * advertises.
+ */
+export async function reloadModels() {
+  if (!sel) return;
+  await loadModels();
+}
+
+/**
  * Re-list the on-device group (the Settings section calls this after a
  * download or delete) — the rest of the dropdown, and the current selection
  * where it survives, stay as they are.
@@ -130,7 +142,16 @@ function render() {
   const serverHost = onDeviceEntries.length && knownModels.length
     ? sel.appendChild(Object.assign(document.createElement("optgroup"), { label: "☁ Server models" }))
     : sel;
-  for (const m of knownModels) {
+  // The models this account ENABLED out of an open provider catalog get their
+  // own group. They are catalog entries like any other — same pricing, same
+  // routing — but they arrived by a decision the user made in the Models
+  // agent, and grouping them is what makes that promotion legible here.
+  // Keyed on the provider slug rather than on a name, so a second open
+  // marketplace joins the same group without a change here.
+  const OPEN_PROVIDERS = new Set(["huggingface"]);
+  const hfModels = knownModels.filter((m) => OPEN_PROVIDERS.has(m.provider));
+  const rest = knownModels.filter((m) => !OPEN_PROVIDERS.has(m.provider));
+  const addOption = (host, m) => {
     const opt = document.createElement("option");
     opt.value = m.id;
     const region = regionForModelEntry(m);
@@ -139,7 +160,14 @@ function render() {
     if (m.up === false) opt.disabled = true;
     opt.title = [m.pricing, region ? "Processed in " + region.country : ""]
       .filter(Boolean).join(" · ");
-    serverHost.appendChild(opt);
+    host.appendChild(opt);
+  };
+  for (const m of rest) addOption(serverHost, m);
+  if (hfModels.length) {
+    const og = document.createElement("optgroup");
+    og.label = "⚖ Enabled by you";
+    for (const m of hfModels) addOption(og, m);
+    sel.appendChild(og);
   }
   const selectable = (id) => [...sel.options].some((o) => o.value === id && !o.disabled);
   const saved = localStorage.getItem("model");
