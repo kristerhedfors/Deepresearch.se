@@ -122,6 +122,11 @@ export function validateWorkflow(plan) {
       if (typeof d !== "string") problems.push(at("deps must be agent ids"));
     }
   }
+  // At most ONE swarm node: every swarm node spawns in-browser model
+  // instances, so a plan with several is a memory multiplier, not a bigger
+  // team (normalizeWorkflow downgrades the extras).
+  const swarms = plan.agents.filter((/** @type {any} */ a) => a?.kind === "swarm").length;
+  if (swarms > 1) problems.push(`at most one swarm agent per plan (${swarms})`);
   // Unknown deps and cycles are validated on the resolved graph:
   const waves = workflowWaves(plan);
   if (waves.unresolved.length) problems.push(`dependency cycle or unknown dep: ${waves.unresolved.join(", ")}`);
@@ -161,6 +166,7 @@ function slugify(s) {
  */
 export function normalizeWorkflow(raw, opts = {}) {
   const list = Array.isArray(raw?.agents) ? raw.agents : Array.isArray(raw) ? raw : [];
+  /** @type {any[]} */
   const agents = [];
   const ids = new Set();
   for (const a of list) {
@@ -174,6 +180,13 @@ export function normalizeWorkflow(raw, opts = {}) {
     // client that never announced the capability): the node still runs — as an
     // ordinary specialist on the answer model.
     if (AGENT_KINDS[/** @type {AgentKind} */ (kind)].needsSwarm && !opts.hasSwarm) kind = "custom";
+    // AT MOST ONE swarm node per plan. The plan prompt says so, but a prompt is
+    // not a bound: a model that returned three swarm nodes used to get three
+    // sets of in-browser model instances, one after another, each paying its
+    // own compile — the single most expensive thing this app allocates,
+    // multiplied by a number no one checked (feedback #26: two Safari tab
+    // crashes). The second and later swarm nodes run as ordinary specialists.
+    if (kind === "swarm" && agents.some((/** @type {any} */ x) => x.kind === "swarm")) kind = "custom";
     let id = slugify(a.id || a.name);
     if (!id) id = `agent-${agents.length + 1}`;
     while (ids.has(id)) id += "x";

@@ -8,6 +8,19 @@
 // bug-fix task. This is the "type loop and get the next bug to fix" surface
 // for server-side crashes.
 //
+// SECOND SOURCE (2026-07-26): SUBSYSTEM failures that invariant 2 makes
+// FAIL-SOFT. A helper phase that degrades instead of erroring the chat is the
+// right behaviour — but until now it left nothing durable behind: an
+// Orchestrator sub-agent that timed out wrote one `ctx.log.warn` into Workers
+// Logs (retention-bounded, unqueryable after the fact) and a counter in the
+// chat_logs row, and a run that died BEFORE its chat_logs row was written left
+// no trace at all. `recordSubsystemFailure` gives those swallowed failures the
+// same durable, deduped, findable home as a 500 — a fail-soft failure is still
+// a bug someone should see. Rows from this path are content-free by
+// construction (see the posture note below): the human-readable half — which
+// sub-agent, its task — belongs in the chat_logs row, which is the surface that
+// honours the incognito promise.
+//
 // This is a dynamic-queue decision board (the feedback.js / chatlog.js family,
 // NOT the code-catalog security/features boards): rows are created at RUNTIME
 // by the crash itself, not authored in code. Recording is DEDUPED by a stable
@@ -27,7 +40,11 @@
 // Content posture: a recorded error carries NO user content — only the request
 // method, the URL PATH (never the query string or body), the exception message
 // and stack, and the request id (which already ships to the client in the 500
-// body). Nothing here is conversation, identity, or a secret.
+// body). Nothing here is conversation, identity, or a secret. Subsystem rows
+// hold to the SAME line: the pseudo-path and message carry only closed-
+// vocabulary tokens (subsystem, operation, sub-agent KIND, wave index, failure
+// class) — never a model-invented agent id or name, which is derived from the
+// user's request and therefore belongs only in the incognito-gated chat log.
 //
 // API surfaces (admin-gated in index.js, dispatched from admin-api.js):
 //   GET    /api/admin/errors        the queue, newest-failure first
@@ -132,6 +149,127 @@ export function normalizeMessage(message) {
 export function errorSignature({ method, path, message } = {}) {
   const m = (typeof method === "string" ? method : "").toUpperCase().slice(0, SERVER_ERROR_CAPS.method) || "?";
   return `${m} ${normalizePath(path)} :: ${normalizeMessage(message)}`.slice(0, SERVER_ERROR_CAPS.signature);
+}
+
+// ---- Failure classification (shared by every fail-soft subsystem) ----------
+//
+// "It failed" is not actionable; "it TIMED OUT" vs "the upstream 400'd on
+// context length" vs "the client went away" are three different bugs with
+// three different fixes. The classes are a closed vocabulary so they group in
+// the queue and can be counted in a chat_logs row:
+//
+//   timeout   a deadline we set fired (our bound, not the upstream's)
+//   abort     the work was cancelled — a client disconnect, an AbortSignal
+//   oversized the payload/context/generation blew a size ceiling
+//   quota     a rate limit or quota refusal
+//   upstream  a provider/service answered with an error status
+//   throw     anything else — an ordinary exception
+export const FAILURE_CLASSES = ["timeout", "abort", "oversized", "quota", "upstream", "throw"];
+
+/**
+ * Classify a swallowed failure. Pure and total: any input yields a class.
+ * Order matters — an upstream 400 whose body says "maximum context length" is
+ * an OVERSIZED bug, not a generic upstream one, so the size test runs first.
+ * @param {unknown} err the thrown value (or its message)
+ * @param {{ timedOut?: boolean }} [opts] `timedOut` when OUR deadline fired —
+ *   authoritative, because a wall-clock abort is indistinguishable by message
+ * @returns {string} one of FAILURE_CLASSES
+ */
+export function classifyFailure(err, opts = {}) {
+  if (opts.timedOut) return "timeout";
+  const msg = String(
+    err && typeof err === "object" && "message" in /** @type {any} */ (err)
+      ? /** @type {any} */ (err).message ?? ""
+      : err ?? "",
+  );
+  if (/\btimed?\s?out\b|\btimeout\b|deadline exceeded/i.test(msg)) return "timeout";
+  if (/context length|too (?:large|long|many tokens)|safety cap|payload too|maximum length|exceeds? the maximum/i.test(msg)) {
+    return "oversized";
+  }
+  if (/\bquota\b|rate limit|too many requests|\b429\b/i.test(msg)) return "quota";
+  if (/abort|cancell?ed|client (?:gone|disconnected)|stream closed/i.test(msg)) return "abort";
+  if (/API error \(\d+\)|\bHTTP \d{3}\b|fetch failed|network error|\b5\d{2}\b error/i.test(msg)) return "upstream";
+  return "throw";
+}
+
+/**
+ * @param {unknown} value
+ * @returns {string} the class when valid, else "throw"
+ */
+export function normalizeFailureClass(value) {
+  return typeof value === "string" && FAILURE_CLASSES.includes(value) ? value : "throw";
+}
+
+// The pseudo-path a subsystem failure is filed under. It is NOT a route — the
+// leading `_subsystem` segment marks it as such, so it can never collide with
+// a real path in the queue and `scripts/errors --q _subsystem` pulls exactly
+// this family. Segments are hard-sanitized to the closed-vocabulary shape
+// (lowercase word chars) so nothing user-derived can ride in on a caller's
+// mistake, and empty segments are dropped.
+/**
+ * @param {string} subsystem
+ * @param {...unknown} parts
+ * @returns {string}
+ */
+export function subsystemPath(subsystem, ...parts) {
+  const seg = (/** @type {unknown} */ v) =>
+    String(v ?? "")
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40);
+  const tail = [seg(subsystem) || "unknown", ...parts.map(seg)].filter(Boolean);
+  return `/_subsystem/${tail.join("/")}`;
+}
+
+/**
+ * Record ONE fail-soft subsystem failure into the queue. Same dedup, same
+ * lifecycle, same `scripts/errors` surface as a top-level 500 — but filed
+ * under a `/_subsystem/...` pseudo-path and tagged with its failure class, so
+ * a recurring "Orchestrator deep_research nodes time out" shows up as one row
+ * with a rising count instead of vanishing into Workers Logs.
+ *
+ * Fail-soft like `recordServerError` and for the stronger reason: the caller
+ * is ALREADY on a degraded path that must not break the request. Never throws.
+ * @param {Env} env
+ * @param {Logger | null | undefined} log
+ * @param {{
+ *   subsystem: string,
+ *   op: string,
+ *   failureClass?: string,
+ *   detail?: unknown,
+ *   requestId?: string | null,
+ *   context?: Record<string, string | number | null | undefined>,
+ *   stack?: unknown,
+ * }} fields
+ * @returns {Promise<number | null>}
+ */
+export async function recordSubsystemFailure(env, log, fields) {
+  try {
+    const cls = normalizeFailureClass(fields.failureClass);
+    // Context pairs join the MESSAGE (not the path) so the signature stays
+    // coarse enough to dedup across waves while the row still says which one.
+    const ctxPairs = Object.entries(fields.context || {})
+      .filter(([, v]) => v !== undefined && v !== null && v !== "")
+      .map(([k, v]) => `${k}=${String(v).slice(0, 60)}`);
+    const detail = String(fields.detail ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
+    const message =
+      `${fields.subsystem}.${fields.op} failed [${cls}]` +
+      (ctxPairs.length ? ` (${ctxPairs.join(", ")})` : "") +
+      (detail ? `: ${detail}` : "");
+    return await recordServerError(env, log, {
+      requestId: fields.requestId || null,
+      method: "SUB",
+      path: subsystemPath(fields.subsystem, fields.op, cls),
+      message,
+      stack: fields.stack == null ? null : fields.stack,
+    });
+  } catch (err) {
+    log?.warn?.("server_error.subsystem_record_failed", {
+      error: (/** @type {any} */ (err))?.message || String(err),
+    });
+    return null;
+  }
 }
 
 // DB row → API object.

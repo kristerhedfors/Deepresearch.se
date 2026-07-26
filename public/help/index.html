@@ -107,17 +107,18 @@
     model you pick resides</b>; the model selector flags each choice with
     its provider's country so you can tell at a glance. Web searches go
     through <a href="https://exa.ai" target="_blank" rel="noopener">Exa</a>.</p>
-    <div class="privacy-flag"><b>Privacy in one line:</b> your chat history
-    is encrypted in your browser, and an encrypted copy is <b>always</b>
-    kept in this site's storage. That is what a signed-in tier is for, so it
-    follows your account across devices
-    (see "Chat history" below). To improve
-    the service, the server keeps a log of completed research interactions:
-    the question, the answer, and the research steps. For chats that should
-    leave <b>no trace on this server at all</b>, the <b>ghost button</b>
-    (upper right) opens ghost mode: DeepResearch.<b>Se<span class="sl">/</span>cure</b>,
-    the client-side twin of this app where the server is never in the data
-    path (your own API key, browser-local storage).</div>
+    <div class="privacy-flag"><b>Privacy in one line:</b> what matters is
+    <b>where your data goes</b>. Your conversation is processed wherever the
+    model you pick lives — Berget in the EU (🇸🇪) by default, Anthropic or
+    OpenAI in the US (🇺🇸) if you choose one of theirs — and your history
+    rests in this site's storage, held by whoever operates this site. The
+    server also logs completed exchanges to improve the service. Encryption
+    is applied throughout as ordinary good practice; residency is the part
+    that decides who can read what. For chats that should leave <b>no trace
+    on this server at all</b>, the <b>ghost button</b> (upper right) opens
+    ghost mode: DeepResearch.<b>Se<span class="sl">/</span>cure</b>, the
+    client-side twin of this app where the server is never in the data path
+    (your own API key, browser-local storage).</div>
   </section>
 
   <section>
@@ -151,8 +152,8 @@
           in this browser, and in the share link if you make one. Clearing
           browser data erases it.</div>
         <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
-          in your account — encrypted in this browser <b>and</b> in the
-          cloud, so it follows you.</div>
+          in your account — in this browser <b>and</b> in this site's cloud
+          storage, always, so it follows you.</div>
       </div>
       <div class="cmp-row">
         <div class="cmp-q">Who can read it</div>
@@ -313,8 +314,8 @@
     conversation is on screen.</p>
   </section>
 
-  <section>
-    <h2>Chat history — encrypted, and yours alone</h2>
+  <section id="history">
+    <h2>Chat history — where it lives</h2>
     <p>Every conversation you have is saved automatically, right here in
     your browser, so you can pick it back up later. The History panel
     (list icon in the header) lists them by their first question, most
@@ -335,35 +336,26 @@
     server is never in the data path at all, that is the client-side tier,
     DeepResearch.<b>Se<span class="sl">/</span>cure</b>: see
     <a href="/cure/help/">its documentation</a>.</p>
-    <h3>How the encryption works</h3>
-    <p>Every conversation is encrypted (AES-256-GCM) before it touches your
-    browser's storage. The key comes from the server, derived per-account
-    from a secret it holds, but that key is fetched fresh each time you
-    open the app and kept only in memory for that page load; it is never
-    written to <code>localStorage</code>, <code>IndexedDB</code>, or any
-    other disk-backed storage. This split is deliberate, and gives two
-    separate guarantees instead of one:</p>
-    <ul>
-      <li><b>If your browser's storage is examined at rest</b> (a stolen
-        or cloned device, a forensic disk image), the attacker finds only
-        ciphertext. The key that would unlock it was never written down in
-        that browser to begin with.</li>
-      <li><b>The key is never stored beside the ciphertext.</b> It is
-        derived on the server, fetched fresh each page load, and held only
-        in memory, so neither storage location ever contains both halves
-        at rest.</li>
-    </ul>
-    <div class="privacy-flag"><b>Honest limitation:</b> this tier stores
-    your history in the cloud <i>by design</i>, and the server holds both
-    the encrypted copies and the secret your key derives from, so a full
-    server compromise could decrypt them. The encryption is a real barrier
-    against storage examined at rest (a disk image, a leaked bucket, where
-    the key isn't there), not against a fully compromised live server. If a
-    conversation must not carry that trade-off, that is exactly what
-    DeepResearch.<b>Se<span class="sl">/</span>cure</b> is for
-    (<a href="/cure/help/">its documentation</a>): there the server never
-    sees ciphertext <i>or</i> key, because it is never in the data path at
-    all.</div>
+    <h3>Encryption, briefly</h3>
+    <p>Conversations are encrypted (AES-256-GCM) before they touch storage,
+    in this browser and in the cloud copy alike. The key is derived per
+    account on the server, fetched fresh each page load and held in memory
+    only — never written to <code>localStorage</code>,
+    <code>IndexedDB</code>, or any other disk-backed storage — so a browser
+    examined at rest yields ciphertext without the key beside it.</p>
+    <p>That is worth having, and it is also the limit of what it buys you
+    here. The server holds the ciphertext and the secret your key
+    is derived from, so a compromised live server could decrypt your
+    history, and some material is stored readable on purpose because
+    retrieval needs plain text (see "The exception" below). Encryption
+    protects storage at rest — a stolen device, a leaked bucket. It cannot
+    mean the operator of this site is unable to read your work.
+    <b>The tier you are on is what decides that.</b> If a conversation must
+    not be readable by anyone running a server, it belongs on
+    DeepResearch.<b>Se<span class="sl">/</span>cure</b>
+    (<a href="/cure/help/">its documentation</a>), where the server sees
+    neither ciphertext nor key because it is never in the data path at
+    all.</p>
     <h3>What this means day to day</h3>
     <ul>
       <li><b>History follows your account.</b> Sign in on your phone and
@@ -688,11 +680,10 @@
       <li><b>Conversations</b>: processed by your chosen model's provider to
         generate answers: Berget in the EU (🇸🇪, the default), or, if you
         pick a Claude or GPT model, Anthropic or OpenAI in the US (🇺🇸). The
-        model selector flags each model's country. Saved locally in your browser,
-        encrypted, plus an encrypted cloud copy while the cloud-storage
-        switch is on (see "Chat history" above); erased when you delete a
-        conversation, and the cloud copies when you switch cloud storage
-        off. Chats inside
+        model selector flags each model's country. Saved locally in your browser
+        and, always, as a cloud copy in this site's storage — the tier is the
+        choice, there is no switch (see "Chat history" above). Both copies are
+        encrypted, and both are erased when you delete a conversation. Chats inside
         a <b>project</b> are the exception: they're indexed for retrieval and
         stored readable, like the project's documents (see "The exception"
         above).</li>
@@ -708,9 +699,8 @@
       <li><b>Project vault copies</b>: made only when you press <b>Store</b>
         on a project's "Encrypted copy, keyed by a secret". The archive is
         encrypted in your browser under a secret only you hold; the server
-        stores unreadable bytes it has no key for (not even derivable), and
-        switching cloud storage off never touches these copies. Load one
-        back with 🔑 Load project from secret in the History panel.</li>
+        stores unreadable bytes it has no key for, not even derivable. Load
+        one back with 🔑 Load project from secret in the History panel.</li>
       <li><b>Search queries</b>: sent to Exa only while web search is ON,
         and only as short queries the AI derives from your question.
         <b>Exa retains queries by default</b> (zero data retention is an
@@ -758,5 +748,15 @@
   <p class="muted">Questions or something unclear? Ask the site owner.</p>
 
 </main>
+<!-- Documentation COMMENT MODE (owner directive, 2026-07-25): an admin gets a
+     Read only / Comment dropdown and can mark a passage and write a note
+     against it. The note enters the feedback pipeline tagged with this file's
+     path, so the development loop reconciles the documentation AND the code it
+     describes. The layer injects its own chrome — this page needs no markup
+     and no styles. Non-admins see a one-line explanation; nothing is silent. -->
+<script type="module">
+  import { mountCommentMode } from "/js/doc-comment-gate.js";
+  mountCommentMode({ path: "public/help/index.html" });
+</script>
 </body>
 </html>

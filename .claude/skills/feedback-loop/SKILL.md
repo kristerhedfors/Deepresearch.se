@@ -17,9 +17,16 @@ description: >-
 
 Users of deepresearch.se give feedback **straight from the chat**: a message
 whose text opens with the word "feedback" (`feedbackIntent`, EN+SV — e.g.
-"feedback: the map view was cut off") is routed by the research pipeline into
+"feedback: the map view was cut off") **or with the `/feedback` slash command**
+(2026-07-26 — `/feedback the map view was cut off`; both behind
+`feedbackRequested`, and `feedbackComment` strips the command token so the queue
+shows the user's own words) is routed by the research pipeline into
 the **feedback case** (`src/pipeline.js` `runFeedbackCapture`) instead of being
-researched. That replies with a **canned acknowledgment** (owner directive,
+researched. The gate is evaluated ABOVE the executor-phase dispatch, so it works
+in every chat mode — Deep Research, Introspection, Agent Studio, Orchestrator,
+Outrospection — which is what feedback #26 asked for after Orchestrator visibly
+planned a sub-agent team over a report. `src/slash.test.js` keeps it that way by
+discovering the modes rather than listing them. That replies with a **canned acknowledgment** (owner directive,
 2026-07-24: user feedback is NEVER run through an LLM — the deterministic
 EN+SV variants live in `public/js/feedback-core.js` `cannedFeedbackAck`) and
 records the message as a `feedback` entry (D1, `src/feedback.js`
@@ -50,7 +57,7 @@ text rendering.
 | `session` | mid-conversation | `chat`, `se/cure` | a report about the answer above it | — |
 | `standalone` | the first message of a chat | `chat/standalone`, `se/cure/standalone` | a generic suggestion; no session behind it | reproducing a complaint |
 | `strategy` | the outrospection feed | `outrospect:<lens>/strategy` | direction for where the project goes | triaging it as a defect |
-| `doc` | the `/docs` reader's comment mode | `docs:<path>/doc` | a passage comment: the doc **and** the code | rewording the paragraph |
+| `doc` | comment mode on a documentation page (`/help/`, `/docs/`) | `docs:<path>/doc` | a passage comment: the doc **and** the code | rewording the paragraph |
 
 Each non-session scope also gets its own `SCOPE: …` block in the text view, a
 matching flag on the JSON (`standalone` / `strategy` / `doc` + `doc_path`), and
@@ -74,8 +81,10 @@ on a documented claim is an instruction about the system:
   against the invariants — not executed literally. Validate it, don't
   rubber-stamp it, and record the reasoning.
 - **Reply on the thread with what you changed.** The admin reads your reply
-  beside the passage in `/docs`, and sees the anchor go stale when you rewrite
-  the text it quoted — that staleness IS the "your comment landed" signal.
+  beside the passage on the page they wrote it on, and sees the anchor go stale
+  when you rewrite the text it quoted — that staleness IS the "your comment
+  landed" signal. The tagged path is a real repo file (`docs/ENCRYPTION.md`,
+  `public/help/index.html`) — edit that file, not a rendered copy.
 
 The comment body carries the document, the section heading and the exact quoted
 passage (`public/js/docs-comments-core.js` `buildDocCommentBody`), so
@@ -92,9 +101,10 @@ standalone — the ref IS its context.
 
 **Se/cure feedback (owner directive, 2026-07-24).** The client-side tier
 sends feedback too, over the SAME gate (the shared `public/js/feedback-core.js`
-`feedbackIntent`, which `src/feedback.js` now re-exports). Because Se/cure keeps
+`feedbackRequested`, which `src/feedback.js` now re-exports — the keyword AND
+the `/feedback` command). Because Se/cure keeps
 the server out of its data path, the flow is CONFIRMED, not automatic:
-`public/cure/drc.js` catches the "feedback" keyword, echoes the message, and
+`public/cure/drc.js` catches either form, echoes the message, and
 prompts (`#fbconsent`) before anything is sent — then POSTs to
 `POST /api/server-token/feedback` (`handleServerTokenFeedback`) over the
 **DeepResearch (Se/rver) token**, the same token used for LLM / Exa access. This

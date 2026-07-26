@@ -8,6 +8,9 @@ import {
   LENS_IDS,
   OUTROSPECT_CAPS,
   OUTROSPECT_LENSES,
+  OUTROSPECT_QUOTE_CAPS,
+  QUOTE_STOPWORDS_EN,
+  QUOTE_STOPWORDS_SV,
   deltaItems,
   feedItemFromSearch,
   formatFeedText,
@@ -20,7 +23,13 @@ import {
   normalizeLens,
   outrospectionAnswerPrompt,
   outrospectionBlock,
+  outrospectionLensCatalog,
+  outrospectionQuoteBlock,
+  quoteTerms,
   refreshQueries,
+  scorePassage,
+  selectQuotes,
+  splitPassages,
   stalestLens,
   validateFeedItem,
 } from "./outrospect-core.js";
@@ -397,10 +406,39 @@ test("outrospectionBlock numbers items newest-first and names the lens", () => {
   assert.match(block, /2 items/);
 });
 
-test("outrospectionBlock is empty for no items, and marks fresh ones NEW", () => {
-  assert.equal(outrospectionBlock([]), "");
-  assert.equal(outrospectionBlock(null), "");
-  assert.match(outrospectionBlock([item({ fresh: true })]), /· NEW/);
+// The empty-feed prompt orders the model to "name the lenses that exist". It
+// could not: the block returned "" with no items, so nothing in context listed
+// them, and the answer said "plus fyra till — jag har inte den fullständiga
+// listan" (feedback #25, 2026-07-26). A prompt may not order what the context
+// cannot supply, so the catalog is now unconditional.
+test("outrospectionBlock ALWAYS carries the lens catalog, even with no items", () => {
+  for (const empty of [[], null, undefined]) {
+    const block = outrospectionBlock(empty);
+    assert.ok(block, "an empty feed must still give the model the lenses to name");
+    for (const lens of OUTROSPECT_LENSES) {
+      assert.ok(block.includes(lens.title), `${lens.id} missing from the empty-feed block`);
+      assert.ok(block.includes(lens.question), `${lens.id}'s standing question missing`);
+    }
+  }
+});
+
+test("outrospectionBlock: with items, the catalog AND the feed section are present", () => {
+  const block = outrospectionBlock([item({ fresh: true })]);
+  assert.match(block, /THE LENSES/);
+  assert.match(block, /OUTWARD FEED/);
+  assert.match(block, /· NEW/);
+});
+
+test("outrospectionLensCatalog: every lens, EN and SV (parity)", () => {
+  const en = outrospectionLensCatalog(false);
+  const sv = outrospectionLensCatalog(true);
+  for (const lens of OUTROSPECT_LENSES) {
+    assert.ok(en.includes(lens.title) && en.includes(lens.question), `${lens.id} missing from EN catalog`);
+    assert.ok(sv.includes(lens.titleSv) && sv.includes(lens.questionSv), `${lens.id} missing from SV catalog`);
+  }
+  // The count is stated so the model never has to infer how many there are.
+  assert.ok(en.includes(String(OUTROSPECT_LENSES.length)));
+  assert.ok(sv.includes(String(OUTROSPECT_LENSES.length)));
 });
 
 test("outrospectionBlock honors the item and character caps", () => {
@@ -438,4 +476,216 @@ test("outrospectionAnswerPrompt has Swedish parity (invariant 6)", () => {
   assert.match(sv, new RegExp(lensById("edge-rag").questionSv.slice(0, 20)));
   const svEmpty = outrospectionAnswerPrompt({ hasItems: false, swedish: true });
   assert.match(svEmpty, /hitta ALDRIG på artiklar/);
+});
+
+// ---------------------------------------------------------------------------
+// QUOTATION — the indexed article text and the passage scorer (feedback #28)
+//
+// The feed could list what other people shipped but never quote it. These
+// cover the pure half of the fix: which words of a question count, how a
+// document is cut into quotable passages, how a passage is scored, and the
+// three rules that must hold no matter what — a quote is verbatim, a quote
+// carries its own URL, and "nothing relevant" is a valid answer rather than a
+// reason to invent one.
+// ---------------------------------------------------------------------------
+
+// Invariant 6 again, one level down: the passage scorer is a deterministic
+// routing gate, and an English-only stop list would let Swedish function words
+// ("och", "vilken", "hur") dominate the score of a Swedish question.
+test("quote stop words: the Swedish set is as broad as the English one (parity)", () => {
+  assert.ok(
+    QUOTE_STOPWORDS_SV.length >= QUOTE_STOPWORDS_EN.length,
+    `${QUOTE_STOPWORDS_SV.length} SV stop words vs ${QUOTE_STOPWORDS_EN.length} EN — Swedish must not be thinner`,
+  );
+  for (const list of [QUOTE_STOPWORDS_EN, QUOTE_STOPWORDS_SV]) {
+    assert.equal(new Set(list).size, list.length, "stop words should not repeat");
+    for (const w of list) assert.equal(w, w.toLowerCase());
+  }
+});
+
+test("quoteTerms keeps the content words and drops the scaffolding, EN and SV alike", () => {
+  const en = quoteTerms("How are the other deep research systems handling citations?");
+  assert.deepEqual(en, ["deep", "research", "systems", "handling", "citations"]);
+  // The Swedish question must reduce to its content words just as cleanly —
+  // if it did not, every Swedish question would score on "vilka"/"hur".
+  const sv = quoteTerms("Hur hanterar de andra deep research-systemen källhänvisningar?");
+  assert.deepEqual(sv, ["hanterar", "deep", "research", "systemen", "källhänvisningar"]);
+});
+
+test("quoteTerms keeps short acronyms, dedupes, and caps", () => {
+  assert.deepEqual(quoteTerms("AI and RAG and AI again"), ["ai", "rag", "again"]);
+  assert.deepEqual(quoteTerms(""), []);
+  assert.deepEqual(quoteTerms(null), []);
+  const many = quoteTerms(Array.from({ length: 80 }, (_, i) => `term${i}`).join(" "));
+  assert.equal(many.length, OUTROSPECT_QUOTE_CAPS.terms);
+});
+
+test("splitPassages cuts on paragraphs first and never exceeds the cap", () => {
+  const text = "First paragraph about retrieval.\n\nSecond paragraph about vector search.";
+  assert.deepEqual(splitPassages(text, { min: 0 }), [
+    "First paragraph about retrieval.",
+    "Second paragraph about vector search.",
+  ]);
+  const long = `${"Sentence about retrieval. ".repeat(60)}`;
+  for (const p of splitPassages(long, { max: 200 })) assert.ok(p.length <= 200, `${p.length} > 200`);
+});
+
+test("splitPassages returns verbatim text — collapsed whitespace, no other edits", () => {
+  const [p] = splitPassages("The   model  runs\n  in the browser, they said.", { min: 0 });
+  assert.equal(p, "The model runs in the browser, they said.");
+});
+
+test("splitPassages: an unbroken wall of characters is hard-sliced, not dropped", () => {
+  const wall = "x".repeat(1000);
+  const parts = splitPassages(wall, { max: 300 });
+  assert.ok(parts.length >= 3);
+  for (const p of parts) assert.ok(p.length <= 300);
+});
+
+test("splitPassages: a page of only short lines still yields its best line", () => {
+  const parts = splitPassages("Home\n\nAbout\n\nContact us today", { min: 200 });
+  assert.deepEqual(parts, ["Contact us today"]);
+  assert.deepEqual(splitPassages("", {}), []);
+  assert.deepEqual(splitPassages(null, {}), []);
+});
+
+test("scorePassage: distinct coverage beats repetition", () => {
+  const terms = ["retrieval", "browser", "embedding"];
+  const broad = scorePassage("Retrieval in the browser with an embedding index.", terms);
+  const narrow = scorePassage("retrieval retrieval retrieval retrieval retrieval", terms);
+  assert.ok(broad > narrow, `${broad} should beat ${narrow}`);
+  assert.equal(scorePassage("Nothing to do with any of it.", terms), 0);
+  assert.equal(scorePassage("anything", []), 0);
+});
+
+test("scorePassage matches whole words, so 'rag' does not fire on 'fragment'", () => {
+  assert.equal(scorePassage("a fragmented storage layer", ["rag"]), 0);
+  assert.ok(scorePassage("a RAG pipeline", ["rag"]) > 0);
+});
+
+// A realistic stored body: paragraphs long enough to be worth quoting (the
+// minimum passage length exists to keep navigation chrome — "Home", "About",
+// "Subscribe" — out of an answer's quotation marks).
+const INTRO =
+  "An introductory paragraph that sets the scene at some length without ever saying anything much about the actual mechanism involved.";
+const CORE =
+  "The embedding index runs entirely in the browser, so retrieval never leaves the tab and no vector database is involved anywhere in the path.";
+const OUTRO =
+  "A closing note about the licence and where to file issues, which is not the reason anybody opened the page in the first place.";
+
+const doc = (over = {}) => ({
+  url: "https://a.example/x",
+  title: "A thing someone shipped",
+  source: "a.example",
+  lens: "edge-rag",
+  text: `${INTRO}\n\n${CORE}\n\n${OUTRO}`,
+  ...over,
+});
+
+test("selectQuotes picks the passage that answers the question and carries its URL", () => {
+  const quotes = selectQuotes("does the embedding index run in the browser?", [doc()]);
+  assert.equal(quotes.length, 1);
+  assert.equal(quotes[0].text, CORE);
+  assert.equal(quotes[0].url, "https://a.example/x", "a quote without its source link is useless");
+  assert.equal(quotes[0].n, 1);
+  assert.ok(quotes[0].score > 0);
+});
+
+test("selectQuotes routes a Swedish question to the same passage (invariant 6)", () => {
+  const sv = selectQuotes("kör embedding-indexet i browser?", [doc()]);
+  assert.equal(sv.length, 1);
+  assert.match(sv[0].text, /embedding index runs entirely in the browser/);
+});
+
+test("selectQuotes returns NOTHING when the stored text is irrelevant — it never invents", () => {
+  assert.deepEqual(selectQuotes("what happened at the zoo yesterday", [doc()]), []);
+  assert.deepEqual(selectQuotes("anything", []), []);
+  assert.deepEqual(selectQuotes("anything", null), []);
+});
+
+test("selectQuotes: a question of pure scaffolding falls back to each article's opening", () => {
+  // "what is new out there?" reduces to no scorable terms at all. Leading with
+  // the opening passage is still REAL, attributable text — the alternative
+  // (nothing) would make the commonest question in this mode the one that
+  // never quotes.
+  const quotes = selectQuotes("what is out there?", [doc(), doc({ url: "https://b.example/y" })]);
+  assert.equal(quotes.length, 2);
+  assert.equal(quotes[0].text, INTRO);
+  assert.deepEqual(quotes.map((q) => q.url), ["https://a.example/x", "https://b.example/y"]);
+});
+
+test("selectQuotes honours the per-source, count and character caps", () => {
+  const fat = doc({
+    text: Array.from(
+      { length: 12 },
+      (_, i) => `Paragraph ${i}: the browser embedding index is described here in enough detail to be worth quoting back at somebody.`,
+    ).join("\n\n"),
+  });
+  const one = selectQuotes("browser embedding index", [fat]);
+  assert.equal(one.length, OUTROSPECT_QUOTE_CAPS.perSource, "one article may not fill the whole block");
+
+  const many = Array.from({ length: 10 }, (_, i) => doc({ url: `https://a.example/${i}` }));
+  assert.ok(selectQuotes("browser embedding index", many).length <= OUTROSPECT_QUOTE_CAPS.quotes);
+  const tight = selectQuotes("browser embedding index", many, { chars: 60, perSource: 1 });
+  assert.equal(tight.length, 1, "the char budget stops the block, but never below one quote");
+});
+
+test("selectQuotes drops a document with no usable URL rather than quoting it unattributably", () => {
+  assert.deepEqual(selectQuotes("browser embedding index", [doc({ url: "javascript:alert(1)" })]), []);
+  assert.deepEqual(selectQuotes("browser embedding index", [doc({ url: "" })]), []);
+});
+
+test("selectQuotes is deterministic — same question, same documents, same quotes", () => {
+  const docs = [doc(), doc({ url: "https://b.example/y", title: "Another" })];
+  assert.deepEqual(selectQuotes("browser embedding index", docs), selectQuotes("browser embedding index", docs));
+});
+
+test("outrospectionQuoteBlock renders every passage with its url, EN and SV", () => {
+  const quotes = selectQuotes("browser embedding index", [doc()]);
+  const en = outrospectionQuoteBlock(quotes);
+  assert.match(en, /QUOTABLE PASSAGES/);
+  assert.match(en, /\[Q1\]/);
+  assert.match(en, /url: https:\/\/a\.example\/x/);
+  assert.match(en, /a\.example/);
+  const sv = outrospectionQuoteBlock(quotes, { swedish: true });
+  assert.match(sv, /CITERBARA STYCKEN/);
+  assert.match(sv, /url: https:\/\/a\.example\/x/);
+  // Nothing to quote renders as nothing, not as an empty heading.
+  assert.equal(outrospectionQuoteBlock([]), "");
+  assert.equal(outrospectionQuoteBlock(null), "");
+});
+
+test("outrospectionBlock carries the quotes alongside the headlines", () => {
+  const quotes = selectQuotes("browser embedding index", [doc()]);
+  const block = outrospectionBlock([item()], { quotes });
+  assert.match(block, /THE LENSES/);
+  assert.match(block, /OUTWARD FEED/);
+  assert.match(block, /QUOTABLE PASSAGES/);
+  // Without quotes the block is exactly what it always was.
+  assert.ok(!outrospectionBlock([item()]).includes("QUOTABLE PASSAGES"));
+});
+
+test("outrospectionAnswerPrompt: quoting is permitted only when passages are in context", () => {
+  const withQuotes = outrospectionAnswerPrompt({ hasItems: true, hasQuotes: true });
+  assert.match(withQuotes, /QUOTABLE PASSAGES/);
+  assert.match(withQuotes, /WORD FOR WORD/);
+  assert.match(withQuotes, /source link/);
+  assert.match(withQuotes, /NEVER invent a quotation/);
+
+  // The load-bearing half: with no stored text, quoting is forbidden outright.
+  // This is where a model would otherwise write a plausible sentence and
+  // attribute it to a real URL, which is the same fabrication the item rule
+  // forbids one level up.
+  const noQuotes = outrospectionAnswerPrompt({ hasItems: true, hasQuotes: false });
+  assert.match(noQuotes, /do NOT quote verbatim/);
+  assert.match(noQuotes, /Never invent a quotation/);
+});
+
+test("outrospectionAnswerPrompt: the quoting rule has Swedish parity (invariant 6)", () => {
+  const sv = outrospectionAnswerPrompt({ hasItems: true, hasQuotes: true, swedish: true });
+  assert.match(sv, /CITERBARA STYCKEN/);
+  assert.match(sv, /ORDAGRANT/);
+  assert.match(sv, /hitta ALDRIG på ett citat/);
+  const svNone = outrospectionAnswerPrompt({ hasItems: true, hasQuotes: false, swedish: true });
+  assert.match(svNone, /citera INGENTING ordagrant/);
 });

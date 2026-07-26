@@ -78,20 +78,40 @@
     .brush-h { fill: var(--accent); fill-opacity: .55; cursor: ew-resize; }
     .ov-label { fill: var(--ink-muted); font-size: 10px; }
 
-    /* Legend — the identity channel; click a chip to show/hide its line. */
-    .legend { display: flex; flex-wrap: wrap; gap: .35rem .4rem; margin: .7rem 0 .1rem; }
+    /* The curve picker — legend and control in one. Tapping a chip turns its
+       curve on or off; holding one shows only that curve. State is carried by
+       the ✓/○ mark AND the swatch, never by colour or opacity alone. */
+    .pickhead { display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap; margin: .8rem 0 0; }
+    .pickhead h3 { font-size: .82rem; margin: 0; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-muted); }
+    .pickhead .count { font-size: .78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .legend { display: flex; flex-wrap: wrap; gap: .35rem .4rem; margin: .5rem 0 .1rem; }
     .legchip {
       display: inline-flex; align-items: center; gap: .4rem; border: 1px solid var(--border);
       background: var(--panel-2); border-radius: 999px; padding: .28rem .6rem .28rem .5rem;
-      font-size: .78rem; font-weight: 600; cursor: pointer; user-select: none; color: var(--text);
+      font: inherit; font-size: .78rem; font-weight: 600; cursor: pointer; user-select: none;
+      color: var(--text); touch-action: manipulation; -webkit-touch-callout: none;
     }
-    .legchip .sw { width: 12px; height: 12px; border-radius: 3px; flex: 0 0 auto; box-shadow: 0 0 0 1px rgba(0,0,0,.12) inset; }
+    .legchip .mk { width: 13px; text-align: center; color: var(--ink-muted); flex: 0 0 auto; font-size: .8em; }
+    .legchip .sw { width: 12px; height: 12px; border-radius: 3px; flex: 0 0 auto; background: var(--c); box-shadow: 0 0 0 1px rgba(0,0,0,.12) inset; }
     .legchip .ct { color: var(--ink-muted); font-weight: 600; font-variant-numeric: tabular-nums; }
-    .legchip[aria-pressed="false"] { opacity: .42; }
-    .legchip[aria-pressed="false"] .sw { background: var(--ink-muted) !important; }
+    .legchip[aria-pressed="true"] { border-color: var(--accent); }
+    .legchip[aria-pressed="true"] .mk { color: var(--accent); }
+    .legchip[aria-pressed="false"] { opacity: .55; }
+    /* An off curve keeps its HUE as a hollow ring — a picker you have to
+       decode before you can find the subject you want is not a picker. */
+    .legchip[aria-pressed="false"] .sw { background: transparent; box-shadow: 0 0 0 2px var(--c) inset; }
+    .legchip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    /* Touch: a chip is a finger target, not a mouse target. */
+    @media (pointer: coarse) {
+      .legchip { min-height: 44px; padding: .5rem .85rem .5rem .7rem; font-size: .84rem; gap: .5rem; }
+      .legchip .sw { width: 14px; height: 14px; }
+      .legtools .ghostbtn { min-height: 40px; }
+    }
     .legtools { display: flex; gap: .35rem; margin: .55rem 0 0; flex-wrap: wrap; }
     .legtools .ghostbtn { font-size: .74rem; padding: .28rem .55rem; }
-
+    .series-hit { fill: none; stroke: transparent; stroke-width: 22; cursor: pointer; }
+    .series-line, .series-area { pointer-events: none; }
+    
     /* Tooltip */
     #tip {
       position: fixed; z-index: 20; pointer-events: none; opacity: 0; transition: opacity .1s;
@@ -153,14 +173,20 @@
       <div id="chart"><p class="loading">Loading timeline…</p></div>
       <svg class="overview" id="overview" viewBox="0 0 1000 60" preserveAspectRatio="none" aria-hidden="true"></svg>
     </div>
-    <p class="hint" id="hint">Scroll / pinch to zoom · drag the plot to pan · drag the strip below to frame a window · click a subject to toggle its line.</p>
+    <p class="hint" id="hint">Scroll / pinch to zoom · drag the plot to pan · drag the strip below to frame a window · tap a curve to show only that one.</p>
 
+    <div class="pickhead">
+      <h3 id="pickLabel">Curves</h3>
+      <span class="count" id="pickCount"></span>
+    </div>
     <div class="legtools">
       <button type="button" class="ghostbtn" id="legTop">Top 6</button>
       <button type="button" class="ghostbtn" id="legAll">All</button>
       <button type="button" class="ghostbtn" id="legNone">None</button>
+      <button type="button" class="ghostbtn" id="legInvert">Invert</button>
     </div>
-    <div class="legend" id="legend"></div>
+    <div class="legend" id="legend" role="group" aria-labelledby="pickLabel"></div>
+    <p class="hint" id="pickHint">Tap a subject to add or remove its curve · press and hold (or right-click) to show only that one · hold it again to bring the others back. Your selection is remembered on this device.</p>
 
     <div id="tableView" hidden style="margin-top:.8rem"></div>
   </section>
@@ -175,6 +201,14 @@
       <b>commits</b>, or by <b>lines changed</b> as a rough proxy for how much work — and how many
       tokens — a theme absorbed. It's a keyword heuristic over commit subjects, so read it as the
       shape of attention, not an exact ledger.
+    </p>
+    <p class="muted" style="margin:.1rem 0 .5rem">
+      <b>Choosing curves.</b> Twenty-five subjects at once is unreadable, so the chart starts on
+      the busiest six. Tap any subject under <b>Curves</b> to add or drop its curve, or tap the
+      curve in the chart itself to zoom in on that one subject alone; press and hold either to do
+      the same, and hold again to bring the rest back. <b>Top 6</b>, <b>All</b>, <b>None</b> and
+      <b>Invert</b> reset the whole set. What you pick is kept in this browser, so the page opens
+      on your curves next time.
     </p>
   </section>
 
@@ -215,8 +249,23 @@
   let metric = "commits";
   let mode = "lines";
   let visible = new Set();      // subject keys currently drawn
+  let soloed = null;            // key currently isolated by a hold, or null
+  let preSolo = null;           // the selection a solo replaced, to restore it
   let showTable = false;
   let curBuckets = null;        // last-rendered buckets (for the tooltip)
+
+  // The chosen curves are the whole point of the page, so they survive a
+  // reload on this device. Storage is best-effort: a locked-down browser
+  // (private mode, blocked storage) must still get a working picker.
+  const PREF_KEY = "dr.pulse.timeline.v1";
+  function loadPrefs() {
+    try { return JSON.parse(localStorage.getItem(PREF_KEY)) || null; } catch { return null; }
+  }
+  function savePrefs() {
+    try {
+      localStorage.setItem(PREF_KEY, JSON.stringify({ curves: [...visible], metric, mode }));
+    } catch { /* storage unavailable — the picker still works, it just forgets */ }
+  }
 
   // Wall-clock ms from an ISO that already carries the CET offset: read the
   // local components straight off the string so bucketing matches /pulse.
@@ -362,6 +411,9 @@
           started = true; lastPt = { x, y };
         });
         g += `<path class="series-line" d="${d}" stroke="${col}" data-k="${k}"/>`;
+        // A 2px stroke is not a tap target — pair every line with a fat
+        // invisible one so a finger can grab the curve itself.
+        g += `<path class="series-hit" d="${d}" data-k="${k}"/>`;
         if (lastPt) endLabels.push({ y: lastPt.y, k, col, weight: lastV });
       }
     } else {
@@ -383,6 +435,7 @@
           cum[i] = y1;
         });
         g += `<path class="series-area" d="${top}${bot}Z" fill="${col}" fill-opacity="0.9" data-k="${k}"/>`;
+        g += `<path class="series-hit" d="${top}${bot}Z" style="fill:transparent;stroke:none" data-k="${k}"/>`;
         // end label at the vertical middle of the last column's band
         const i = buckets.length - 1;
         const band = buckets[i].per[k] || 0;
@@ -404,9 +457,10 @@
       g += `<text class="end-lbl" x="${VW - RP + 9}" y="${y.toFixed(1)}" fill="${lab.col}">${svgTag(trunc(SUBJ.get(lab.k).label))}</text>`;
     }
 
-    // crosshair + hit layer
-    g += `<line class="crosshair" id="xhair" x1="0" y1="${plotTop}" x2="0" y2="${plotBottom}"/>`;
-    g += `<rect id="hit" x="${LP}" y="${plotTop}" width="${plotW}" height="${PLOT_H}" fill="transparent"/>`;
+    // crosshair + hit layer. The hit rect only backs the pan gesture; it must
+    // not eat taps aimed at a curve, so the curve hit strokes sit above it.
+    g += `<line class="crosshair" id="xhair" x1="0" y1="${plotTop}" x2="0" y2="${plotBottom}" pointer-events="none"/>`;
+    g += `<rect id="hit" x="${LP}" y="${plotTop}" width="${plotW}" height="${PLOT_H}" fill="transparent" pointer-events="none"/>`;
 
     const h = plotBottom + 24;
     el("chart").innerHTML = `<svg class="chart" id="mainsvg" viewBox="0 0 ${VW} ${h}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Feature focus over time">${g}</svg>`;
@@ -464,40 +518,83 @@
     view = [ms - (ms - a) * factor, ms + (b - ms) * factor];
     clampView(); redraw();
   }
+  // Pan/zoom state lives outside wirePlot: the SVG is replaced on every
+  // redraw, but the window-level listeners must be registered exactly ONCE.
+  // (Re-adding them per render used to stack a fresh mousemove handler on
+  // every frame of a drag, so the tooltip work multiplied without bound.)
+  const drag = { on: false, lastPx: 0, moved: false, startKey: null };
+  const svgPx = (svg, e) => {
+    const r = svg.getBoundingClientRect();
+    return ((e.clientX - r.left) / r.width) * VW;
+  };
+  const seriesKeyAt = (target) => {
+    const hit = target && target.closest && target.closest(".series-hit");
+    return hit ? hit.dataset.k : null;
+  };
+  function panMove(e) {
+    const svg = el("mainsvg"); if (!svg) return;
+    const src = e.touches ? e.touches[0] : e;
+    if (drag.on) {
+      const px = svgPx(svg, src);
+      const dms = (px - drag.lastPx) / plotW * (view[1] - view[0]);
+      if (Math.abs(px - drag.lastPx) > 2) drag.moved = true;
+      view = [view[0] - dms, view[1] - dms]; drag.lastPx = px; clampView(); redraw();
+    } else {
+      showTip(src);
+    }
+  }
+  function panEnd() {
+    const svg = el("mainsvg");
+    // A press that never moved is a TAP: on a curve it isolates that curve,
+    // on empty plot it clears the isolation. A drag never selects anything.
+    if (drag.on && !drag.moved && drag.startKey) toggleSolo(drag.startKey);
+    else if (drag.on && !drag.moved && soloed) clearSolo();
+    drag.on = false; drag.startKey = null;
+    if (svg) svg.classList.remove("dragging");
+  }
+  addEventListener("mousemove", panMove);
+  addEventListener("mouseup", panEnd);
+  addEventListener("touchend", panEnd);
+  addEventListener("touchcancel", panEnd);
+
   function wirePlot() {
     const svg = el("mainsvg");
-    const pxFromEvent = (e) => {
-      const r = svg.getBoundingClientRect();
-      return ((e.clientX - r.left) / r.width) * VW;
-    };
     svg.addEventListener("wheel", (e) => {
       e.preventDefault();
-      const px = pxFromEvent(e);
+      const px = svgPx(svg, e);
       if (px < LP || px > VW - RP) return;
       zoomAt(msOf(px), e.deltaY > 0 ? 1.15 : 1 / 1.15);
     }, { passive: false });
 
-    let dragging = false, lastPx = 0, moved = false;
-    const down = (e) => { dragging = true; moved = false; lastPx = pxFromEvent(e.touches ? e.touches[0] : e); svg.classList.add("dragging"); };
-    const move = (e) => {
+    const down = (e) => {
       const src = e.touches ? e.touches[0] : e;
-      if (dragging) {
-        const px = pxFromEvent(src);
-        const dms = (px - lastPx) / plotW * (view[1] - view[0]);
-        if (Math.abs(px - lastPx) > 1) moved = true;
-        view = [view[0] - dms, view[1] - dms]; lastPx = px; clampView(); redraw();
-      } else {
-        showTip(src);
-      }
+      drag.on = true; drag.moved = false;
+      drag.lastPx = svgPx(svg, src);
+      drag.startKey = seriesKeyAt(e.target);
+      svg.classList.add("dragging");
     };
-    const up = () => { dragging = false; svg.classList.remove("dragging"); };
     svg.addEventListener("mousedown", down);
-    addEventListener("mousemove", move);
-    addEventListener("mouseup", up);
     svg.addEventListener("mouseleave", () => { hideTip(); });
-    svg.addEventListener("touchstart", (e) => { down(e); }, { passive: true });
-    svg.addEventListener("touchmove", (e) => { move(e); }, { passive: true });
-    svg.addEventListener("touchend", up);
+    svg.addEventListener("touchstart", down, { passive: true });
+    svg.addEventListener("touchmove", panMove, { passive: true });
+  }
+
+  // ---- solo: show one curve, then bring the rest back -------------------
+  // A hold (or a tap on the curve itself) narrows to a single subject without
+  // destroying the chosen set — repeating it restores exactly what was there.
+  function toggleSolo(k) {
+    if (soloed === k) { clearSolo(); return; }
+    if (soloed === null) preSolo = new Set(visible);
+    soloed = k;
+    visible = new Set([k]);
+    redraw(); savePrefs();
+  }
+  function clearSolo() {
+    if (soloed === null) return;
+    soloed = null;
+    if (preSolo) visible = new Set(preSolo);
+    preSolo = null;
+    redraw(); savePrefs();
   }
 
   function showTip(src) {
@@ -537,6 +634,7 @@
   function hideTip() { el("tip").style.opacity = "0"; const x = el("xhair"); if (x) x.style.opacity = "0"; }
 
   // ---- brush drag --------------------------------------------------------
+  let brushWired = false;
   function wireBrush() {
     const svg = el("overview");
     const pxOf = (e) => { const r = svg.getBoundingClientRect(); return ((e.clientX - r.left) / r.width) * OVW; };
@@ -551,7 +649,7 @@
       }
       startPx = px; startView = view.slice();
     };
-    const drag = (e) => {
+    const onDrag = (e) => {
       if (!action) return;
       const px = pxOf(e.touches ? e.touches[0] : e);
       const dms = (px - startPx) / (OVW - OLP - ORP) * (FULL[1] - FULL[0]);
@@ -561,31 +659,102 @@
       clampView(); redraw();
     };
     const end = () => { action = null; };
+    // The overview SVG's own innerHTML is replaced per redraw, but the element
+    // itself is not — so wire it once, or the handlers stack per frame.
+    if (brushWired) return;
+    brushWired = true;
     svg.addEventListener("mousedown", (e) => { const id = e.target.id; if (["bh0","bh1","brush"].includes(id) || e.target.tagName === "path" || e.target === svg) { e.preventDefault(); begin(id, e); } });
-    addEventListener("mousemove", drag);
+    addEventListener("mousemove", onDrag);
     addEventListener("mouseup", end);
     svg.addEventListener("touchstart", (e) => { begin(e.target.id, e); }, { passive: true });
-    svg.addEventListener("touchmove", (e) => { drag(e); }, { passive: true });
+    svg.addEventListener("touchmove", (e) => { onDrag(e); }, { passive: true });
     svg.addEventListener("touchend", end);
+    svg.addEventListener("touchcancel", end);
   }
 
-  // ---- legend + table ----------------------------------------------------
-  function renderLegend() {
-    const totals = seriesTotalsInView();
-    const active = ORDER.filter((k) => (DATA.totals.byKey[k]?.commits || 0) > 0);
+  // ---- the curve picker + table -------------------------------------------
+  // The chips are BUILT ONCE and then patched in place. They used to be
+  // re-`innerHTML`ed inside redraw(), which runs on every frame of a pan —
+  // so the chip under a finger was destroyed mid-gesture and the whole strip
+  // relaid out 60×/s. A picker has to hold still to be tappable.
+  let chipEls = new Map();      // key → chip element
+  function activeKeys() { return ORDER.filter((k) => (DATA.totals.byKey[k]?.commits || 0) > 0); }
+
+  function buildLegend() {
     const box = el("legend");
-    box.innerHTML = active.map((k) => {
-      const s = SUBJ.get(k), on = visible.has(k), t = totals.get(k);
-      const ct = metric === "commits" ? (t?.commits || 0) : (t?.val || 0);
-      return `<span class="legchip" role="button" tabindex="0" data-k="${k}" aria-pressed="${on}" title="${svgTag(s.blurb)}">` +
-        `<span class="sw" style="background:${seriesColor(s.color)}"></span>${svgTag(s.label)} <span class="ct">${fmt(ct)}</span></span>`;
+    box.innerHTML = activeKeys().map((k) => {
+      const s = SUBJ.get(k);
+      return `<button type="button" class="legchip" data-k="${k}" aria-pressed="false" title="${svgTag(s.blurb)}">` +
+        `<span class="mk" aria-hidden="true">○</span>` +
+        `<span class="sw" style="--c:${seriesColor(s.color)}"></span>` +
+        `<span class="lb">${svgTag(s.label)}</span> <span class="ct"></span></button>`;
     }).join("");
+    chipEls = new Map();
     box.querySelectorAll(".legchip").forEach((chip) => {
       const k = chip.dataset.k;
-      const toggle = () => { visible.has(k) ? visible.delete(k) : visible.add(k); redraw(); };
-      chip.addEventListener("click", toggle);
-      chip.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
+      chipEls.set(k, chip);
+      wireChip(chip, k);
     });
+  }
+
+  // A chip answers two gestures: TAP adds or removes its curve, HOLD narrows
+  // to that curve alone. Chrome/Android hijacks a touch at the long-press
+  // threshold and fires `contextmenu` instead of letting a timer run, so the
+  // hold has to be driven from both signals (same trap as the composer knobs,
+  // UX-10); iOS suppresses contextmenu and rides the timer.
+  const HOLD_MS = 500;
+  function wireChip(chip, k) {
+    let timer = null, held = false;
+    const startHold = () => {
+      clearTimeout(timer);
+      held = false;
+      timer = setTimeout(() => { held = true; toggleSolo(k); }, HOLD_MS);
+    };
+    const cancelHold = () => { clearTimeout(timer); timer = null; };
+    chip.addEventListener("pointerdown", startHold);
+    chip.addEventListener("pointerup", cancelHold);
+    chip.addEventListener("pointerleave", () => { cancelHold(); held = false; });
+    chip.addEventListener("pointercancel", cancelHold);
+    chip.addEventListener("contextmenu", (e) => { e.preventDefault(); cancelHold(); held = true; toggleSolo(k); });
+    chip.addEventListener("click", (e) => {
+      // The release that ENDS a hold is also a click — it must not toggle the
+      // curve back off on top of the solo it just triggered.
+      if (held) { held = false; e.preventDefault(); return; }
+      toggleCurve(k);
+    });
+  }
+
+  function toggleCurve(k) {
+    // A deliberate pick ends any isolation: the chosen set is now what's shown.
+    soloed = null; preSolo = null;
+    visible.has(k) ? visible.delete(k) : visible.add(k);
+    redraw(); savePrefs();
+  }
+
+  function setCurves(keys) {
+    soloed = null; preSolo = null;
+    visible = new Set(keys);
+    redraw(); savePrefs();
+  }
+
+  function syncLegend() {
+    const totals = seriesTotalsInView();
+    for (const [k, chip] of chipEls) {
+      const on = visible.has(k), t = totals.get(k);
+      const ct = metric === "commits" ? (t?.commits || 0) : (t?.val || 0);
+      if (chip.getAttribute("aria-pressed") !== String(on)) {
+        chip.setAttribute("aria-pressed", String(on));
+        chip.querySelector(".mk").textContent = on ? "✓" : "○";
+      }
+      const ctEl = chip.querySelector(".ct"), next = fmt(ct);
+      if (ctEl.textContent !== next) ctEl.textContent = next;
+      const sw = chip.querySelector(".sw"), col = seriesColor(SUBJ.get(k).color);
+      if (sw.style.getPropertyValue("--c") !== col) sw.style.setProperty("--c", col);
+    }
+    const total = chipEls.size, shown = [...chipEls.keys()].filter((k) => visible.has(k)).length;
+    el("pickCount").textContent = soloed
+      ? `only ${SUBJ.get(soloed).label} — hold it again to bring the others back`
+      : `${shown} of ${total} shown`;
   }
 
   function renderTable() {
@@ -617,16 +786,16 @@
   function redraw() {
     if (showTable) { renderTable(); } else { renderChart(); }
     renderOverview();
-    renderLegend();
+    syncLegend();
   }
 
-  function defaultVisibleTop(n) {
+  function topKeys(n) {
     const totals = new Map(ORDER.map((k) => [k, DATA.totals.byKey[k] || { commits: 0, added: 0, removed: 0 }]));
-    const ranked = ORDER.filter((k) => totals.get(k).commits > 0)
+    return ORDER.filter((k) => totals.get(k).commits > 0)
       .sort((a, b) => metric === "commits"
         ? totals.get(b).commits - totals.get(a).commits
-        : (totals.get(b).added + totals.get(b).removed) - (totals.get(a).added + totals.get(a).removed));
-    visible = new Set(ranked.slice(0, n));
+        : (totals.get(b).added + totals.get(b).removed) - (totals.get(a).added + totals.get(a).removed))
+      .slice(0, n);
   }
 
   // toggles
@@ -634,13 +803,13 @@
     b.addEventListener("click", () => {
       metric = b.dataset.metric;
       for (const x of document.querySelectorAll("[data-metric]")) x.setAttribute("aria-pressed", String(x === b));
-      redraw();
+      redraw(); savePrefs();
     }));
   document.querySelectorAll("[data-mode]").forEach((b) =>
     b.addEventListener("click", () => {
       mode = b.dataset.mode;
       for (const x of document.querySelectorAll("[data-mode]")) x.setAttribute("aria-pressed", String(x === b));
-      redraw();
+      redraw(); savePrefs();
     }));
   el("resetZoom").addEventListener("click", () => { view = FULL.slice(); clampView(); redraw(); });
   el("tableToggle").addEventListener("click", () => {
@@ -650,9 +819,10 @@
     el("tableView").hidden = !showTable;
     redraw();
   });
-  el("legTop").addEventListener("click", () => { defaultVisibleTop(6); redraw(); });
-  el("legAll").addEventListener("click", () => { visible = new Set(ORDER.filter((k) => (DATA.totals.byKey[k]?.commits || 0) > 0)); redraw(); });
-  el("legNone").addEventListener("click", () => { visible = new Set(); redraw(); });
+  el("legTop").addEventListener("click", () => setCurves(topKeys(6)));
+  el("legAll").addEventListener("click", () => setCurves(activeKeys()));
+  el("legNone").addEventListener("click", () => setCurves([]));
+  el("legInvert").addEventListener("click", () => setCurves(activeKeys().filter((k) => !visible.has(k))));
   matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", redraw);
 
   // ---- boot --------------------------------------------------------------
@@ -667,7 +837,23 @@
       if (!COMMITS.length) { el("chart").innerHTML = '<p class="muted">No commit history yet.</p>'; return; }
       FULL = [COMMITS[0].ms, COMMITS[COMMITS.length - 1].ms];
       view = FULL.slice();
-      defaultVisibleTop(6);
+
+      // Restore the device's last picks; fall back to the busiest six. A saved
+      // set is filtered against the CURRENT registry, so a subject that has
+      // since been renamed or dropped can't leave the picker empty.
+      const prefs = loadPrefs();
+      if (prefs?.metric === "lines" || prefs?.metric === "commits") {
+        metric = prefs.metric;
+        for (const x of document.querySelectorAll("[data-metric]")) x.setAttribute("aria-pressed", String(x.dataset.metric === metric));
+      }
+      if (prefs?.mode === "lines" || prefs?.mode === "stream") {
+        mode = prefs.mode;
+        for (const x of document.querySelectorAll("[data-mode]")) x.setAttribute("aria-pressed", String(x.dataset.mode === mode));
+      }
+      const known = new Set(activeKeys());
+      const saved = Array.isArray(prefs?.curves) ? prefs.curves.filter((k) => known.has(k)) : null;
+      visible = new Set(saved && saved.length ? saved : topKeys(6));
+      buildLegend();
       const from = d.range?.from, to = d.range?.to;
       if (from) {
         const active = ORDER.filter((k) => (d.totals.byKey[k]?.commits || 0) > 0).length;

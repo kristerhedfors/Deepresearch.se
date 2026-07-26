@@ -1,15 +1,15 @@
 {
-  "generated": "2026-07-24T15:35:57.828Z",
+  "generated": "2026-07-26T07:02:52.893Z",
   "repo": "kristerhedfors/deepresearch.se",
   "range": {
     "from": "2026-07-04",
-    "to": "2026-07-24"
+    "to": "2026-07-25"
   },
   "totals": {
-    "commits": 900,
-    "added": 231163,
-    "removed": 51848,
-    "features": 114
+    "commits": 976,
+    "added": 260067,
+    "removed": 54769,
+    "features": 121
   },
   "commits": [
     {
@@ -5411,6 +5411,462 @@
       "a": 0,
       "r": 0,
       "f": 0
+    },
+    {
+      "t": "2026-07-24T17:39:11+02:00",
+      "a": 1641,
+      "r": 108,
+      "f": 1
+    },
+    {
+      "t": "2026-07-24T17:43:17+02:00",
+      "a": 1,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-24T23:18:15+02:00",
+      "a": 1555,
+      "r": 31,
+      "f": 0
+    },
+    {
+      "t": "2026-07-24T23:51:58+02:00",
+      "a": 659,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-07-24T23:56:34+02:00",
+      "a": 1,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T00:06:49+02:00",
+      "a": 442,
+      "r": 41,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T00:08:59+02:00",
+      "a": 114,
+      "r": 19,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T00:10:53+02:00",
+      "a": 20,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T00:13:40+02:00",
+      "a": 1,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T00:14:54+02:00",
+      "a": 3,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T00:23:16+02:00",
+      "a": 1117,
+      "r": 609,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T00:26:55+02:00",
+      "a": 11,
+      "r": 8,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T00:48:21+02:00",
+      "a": 47,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T00:54:32+02:00",
+      "a": 344,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T00:57:35+02:00",
+      "a": 101,
+      "r": 33,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T01:04:44+02:00",
+      "a": 587,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T01:19:28+02:00",
+      "a": 4,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T01:20:25+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T01:22:36+02:00",
+      "a": 174,
+      "r": 46,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T01:26:25+02:00",
+      "a": 67,
+      "r": 14,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T01:33:08+02:00",
+      "a": 335,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T01:37:52+02:00",
+      "a": 69,
+      "r": 18,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T01:46:53+02:00",
+      "a": 226,
+      "r": 11,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T01:47:26+02:00",
+      "a": 3446,
+      "r": 11,
+      "f": 1
+    },
+    {
+      "t": "2026-07-25T01:57:32+02:00",
+      "a": 8,
+      "r": 7,
+      "f": 1
+    },
+    {
+      "t": "2026-07-25T02:01:23+02:00",
+      "a": 80,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T02:04:07+02:00",
+      "a": 298,
+      "r": 30,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T02:07:04+02:00",
+      "a": 772,
+      "r": 155,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T02:21:51+02:00",
+      "a": 16,
+      "r": 16,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T02:28:41+02:00",
+      "a": 13,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T02:31:41+02:00",
+      "a": 599,
+      "r": 40,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T02:31:55+02:00",
+      "a": 9,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T02:37:04+02:00",
+      "a": 7,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T10:50:48+02:00",
+      "a": 1477,
+      "r": 37,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T10:56:00+02:00",
+      "a": 255,
+      "r": 25,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T11:17:02+02:00",
+      "a": 30,
+      "r": 31,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T11:17:38+02:00",
+      "a": 1775,
+      "r": 46,
+      "f": 1
+    },
+    {
+      "t": "2026-07-25T11:18:56+02:00",
+      "a": 76,
+      "r": 15,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T11:21:02+02:00",
+      "a": 18,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T11:21:36+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T11:23:01+02:00",
+      "a": 3,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T11:28:00+02:00",
+      "a": 1,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T11:48:10+02:00",
+      "a": 347,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T11:56:02+02:00",
+      "a": 189,
+      "r": 13,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T11:57:33+02:00",
+      "a": 2,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T11:58:23+02:00",
+      "a": 6,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T12:08:12+02:00",
+      "a": 10,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T12:13:41+02:00",
+      "a": 1379,
+      "r": 30,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T12:26:08+02:00",
+      "a": 1555,
+      "r": 182,
+      "f": 1
+    },
+    {
+      "t": "2026-07-25T12:27:29+02:00",
+      "a": 2,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T12:29:43+02:00",
+      "a": 88,
+      "r": 13,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T12:31:38+02:00",
+      "a": 544,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T12:31:57+02:00",
+      "a": 7,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T12:35:08+02:00",
+      "a": 1291,
+      "r": 477,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T12:41:30+02:00",
+      "a": 61,
+      "r": 8,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T12:51:11+02:00",
+      "a": 228,
+      "r": 14,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T12:55:17+02:00",
+      "a": 12,
+      "r": 12,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T12:56:47+02:00",
+      "a": 6,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T12:57:31+02:00",
+      "a": 1,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T13:05:17+02:00",
+      "a": 511,
+      "r": 48,
+      "f": 1
+    },
+    {
+      "t": "2026-07-25T13:06:38+02:00",
+      "a": 6,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T13:11:36+02:00",
+      "a": 175,
+      "r": 51,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T13:14:24+02:00",
+      "a": 7,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T13:15:51+02:00",
+      "a": 1,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T13:48:06+02:00",
+      "a": 152,
+      "r": 54,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T13:50:55+02:00",
+      "a": 2,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T13:56:11+02:00",
+      "a": 4,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T14:21:55+02:00",
+      "a": 365,
+      "r": 129,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T14:53:27+02:00",
+      "a": 58,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T14:58:33+02:00",
+      "a": 9,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T18:04:23+02:00",
+      "a": 1819,
+      "r": 116,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T18:27:34+02:00",
+      "a": 13,
+      "r": 12,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T18:57:14+02:00",
+      "a": 1080,
+      "r": 204,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T19:05:41+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 1
+    },
+    {
+      "t": "2026-07-25T19:45:04+02:00",
+      "a": 2568,
+      "r": 83,
+      "f": 0
+    },
+    {
+      "t": "2026-07-25T19:59:40+02:00",
+      "a": 4,
+      "r": 4,
+      "f": 0
     }
   ],
   "days": [
@@ -6492,11 +6948,16 @@
     },
     {
       "date": "2026-07-24",
-      "commits": 44,
-      "added": 12739,
-      "removed": 1934,
-      "features": 3,
+      "commits": 49,
+      "added": 16596,
+      "removed": 2083,
+      "features": 4,
       "subjects": [
+        "introspect artifacts: regenerate snapshot, rag index, and docs corpus for the Orchestrator branch",
+        "Agent backdrops: the rotating wireframe workflow graph behind Orchestrator",
+        "Orchestrator mode: sub-agents in the background + the live workflow view",
+        "docs: tag project-pulse-feature-timeline as Merged in the branch ledger",
+        "pulse: refresh commit analytics, feature timeline, and code-size snapshot through Jul 24",
         "Re-run source bundle after docs-corpus regeneration (snapshot ordering)",
         "Record the 2026-07-24 refactor pass: docs mirror + regenerated artifacts",
         "De-dup escapeHtml into markdown.js; relocate worldRot to space-core.js",
@@ -6542,7 +7003,89 @@
         "Shared compute as a premier workspace feature: DRSC/1 wire, client halves, workspace knowledge",
         "Provider-key detection: sk-ant- never misroutes to OpenAI; admin in-place app republish (feedback #6)"
       ],
-      "summary": "Redesigned feedback capture to skip the LLM entirely, shipped the /space/ playable wireframe animation archive and rendered it in chat, fixed PDF report generation (cp1252 fonts, ruled tables) and an on-device Bonsai memory crash, and wired DRSC/1 shared compute into the client.",
+      "summary": "Orchestrator mode landed — sub-agents running in parallel waves behind a live workflow graph, with rotating wireframe agent backdrops. On-device Bonsai models reached the Se/rver tier (dropdown group, gear-panel downloads, a browser-local answer route) and got a phone-memory prompt budget to stop the long-chat crash. Also: the playable /space/ wireframe animation archive, Agent Studio's real build UX over the build tools, a one-line local browsing-agent setup at /cure/local-search, DRSC/1 shared compute, PDF report fixes (ruled markdown tables, cp1252 sanitising), and a refactor pass de-duplicating escapeHtml, sha256hex and the drc page core.",
+      "curated": true
+    },
+    {
+      "date": "2026-07-25",
+      "commits": 71,
+      "added": 25047,
+      "removed": 2772,
+      "features": 6,
+      "subjects": [
+        "Swarm docs: fix a dangling subject; refresh introspection artifacts",
+        "Orchestrator: swarm reasoning on N in-browser Bonsai models",
+        "Introspection snapshot: index the three new street-view test/core files",
+        "Street-view game: table-driven bilingual grammar, true camera projection, tests",
+        "Clean the touched doc prose and correct the module-size claim",
+        "Our own web search, run from Cloudflare — and a source picker on the web knob",
+        "Fix CI: bundle the snapshot with the new test-request file staged",
+        "Test requests for the landing page, and Clean the touched skill prose",
+        "Landing page back at the root: purpose, architecture in short, capabilities",
+        "docs: register PR #266 as the agents-SDK subsystem's maintenance owner",
+        "chore: regenerate introspection artifacts for the documentation pass",
+        "docs: reconcile the whole doc surface with the capability layer; fix typecheck",
+        "chore: regenerate introspection artifacts after merging main",
+        "chore: regenerate introspection artifacts after merging main",
+        "fix: restore the AGENT-PLATFORM edits the merge resolution dropped",
+        "chore: regenerate introspection artifacts for the prompts axis",
+        "feat(agents-sdk): the prompts axis — a spec now declares the voice it speaks in",
+        "Regenerate introspection artifacts for the shipped test request",
+        "Clean the extension-boundary docs and refresh the introspection artifacts",
+        "Clean the branch's added doc prose; regenerate artifacts",
+        "Feedback must reach the developers whatever route the send takes (feedback #23)",
+        "Docs comment mode: say which state the reader is in, never fail silently",
+        "Separate Google Maps and Shodan from the core as extensions",
+        "chore: regenerate introspection artifacts after the main merge",
+        "docs: the end-user chooser — Se/cure vs Se/rver workspaces, point by point",
+        "Fix the mocked e2e suite: pin the knobs break-glass forces on",
+        "chore: regenerate introspection artifacts for the capability layer",
+        "feat(agents-sdk): capability layer + registry-driven mode routing",
+        "docs: workspaces as the centrepiece — architecture board, both workspace specs, arrival disclosure + 👍/👎 curation",
+        "Clean the branch's added doc prose; regenerate artifacts",
+        "Regenerate introspection artifacts after rebase onto main",
+        "Branding: Se/cure before Se/rver in the agents-vs-tiers note",
+        "Document mutual consent and run-as; register the new admin capability",
+        "Add mutual ingress/egress consent to LLM sharing, plus break-glass run-as",
+        "docs: investigate generalizing the default agents into the Agents SDK",
+        "Regenerate stale introspection artifacts after the Opus 5 catalog bump",
+        "Regenerate docs artifacts for the registry update",
+        "Re-trigger the branch preview build",
+        "Registry: /src seed regression closed green, cold-seed window is the residual",
+        "Agents are not chat modes: clarify the three lists + reach the fifth mode",
+        "Clean the doc-comment prose and refresh the introspection artifacts",
+        "Bump Anthropic catalog to Opus 5; add model-catalog-refresh skill",
+        "Doc reader comment mode: passage comments that reach the code",
+        "Type the outrospection mode's lens and state fields",
+        "ci: stop running the suite twice on every PR push",
+        "Outrospection: the fifth chat mode — answer from the outward feed",
+        "test: make the DRCR/1 tamper test tamper deterministically",
+        "docs: clean the testing prose and correct three stale counts",
+        "docs: frame the feature surfaces as SDK-carried examples, not architecture",
+        "test: CI, the artifact + facade guards, and @ts-check on the tested cores",
+        "sandbox: cap guest stdout for the agent loop; record what cannot be fixed",
+        "Regenerate the introspection artifacts for the outrospection feature",
+        "Add the Outrospection agent: the outward-looking feed and its control view",
+        "skills: record the sandbox performance-evaluation loop",
+        "docs: scope the SERVER-TOKEN GUARANTEE to Se/cure, per owner directive",
+        "docs: sandbox command performance — measurements and guidance",
+        "tests: parse the real SSE shape in the agent trace, collapse delta runs",
+        "tests: make the sandbox perf battery self-healing; fix cross-origin auth leak",
+        "Regenerate source snapshot after docs-corpus refresh",
+        "MAINTENANCE-OWNERS: PR #251 owns orchestrator research quality (feedback #21)",
+        "tests: sandbox command-performance battery + agent-loop event trace",
+        "docs: restore three regressed drift fixes and reconcile stale canon",
+        "docs: testing gap analysis — automation, coverage, and structural findings",
+        "Orchestrator: ground the reference object + gate outside-registry citations (feedback #21)",
+        "Rewrite the refactor-clarity skill: five gates, split ledger, docs mirror",
+        "refactor pass 2026-07-24: share the pulse CET normalisation; ship the duplicate scanner",
+        "Regenerate source snapshot + docs corpus after the registry row",
+        "MAINTENANCE-OWNERS: PR #248 owns the iOS bar-tint / mode-theme chrome (feedback #20)",
+        "Ship the on-device test request for the feedback #20 bar-tint fix",
+        "iOS bar tint follows the mode theme on switch + in the installed app (feedback #20)",
+        "feedback: classify a first-message \"feedback …\" as generic developer feedback"
+      ],
+      "summary": "The Agents SDK grew a capability layer: a spec now declares what an agent does — answer phase, tools, gates, bounds — and mode routing became registry-driven, with a prompts axis for the voice it speaks in. Outrospection shipped as the fifth chat mode alongside its /outrospect/ feed, and Orchestrator gained swarm reasoning across N in-browser Bonsai models. Google Maps and Shodan were separated out as extensions behind the registry seam (invariant 7), web search gained a Cloudflare-hosted own-search backend plus a source picker on the web knob, and the landing page returned to the root. Rounded out by the Anthropic Opus 5 catalog bump, doc-reader comment mode, the street-view game's bilingual grammar and camera projection, a sandbox performance battery, and a wide docs reconciliation around workspaces as the centrepiece.",
       "curated": true
     }
   ]

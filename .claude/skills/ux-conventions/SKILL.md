@@ -522,9 +522,11 @@ applies.
 
 ## UX-11 — A document reader has two modes; in comment mode a marked passage gets a comment that reaches the code, not just the prose
 
-**The rule.** The documentation reader (`/docs`) carries a Word-style mode
-switch in its header: **Read only** (the default, and exactly what the page was
-before) and **Comment**. In comment mode, selecting a passage opens a composer
+**The rule.** Every documentation page carries a Word-style mode **dropdown**
+(fixed, top right): **Read only** (the default, and exactly what the page was
+before) and **Comment**. It is a dropdown, not a pair of buttons — it matches
+the chat mode selector's shape and a native `<select>` is the one control that
+is comfortable on a phone. In comment mode, selecting a passage opens a composer
 anchored to that selection; the comment is stored with the document path, the
 section heading, and the exact quoted text. Every comment on the open document
 sits in a right-hand rail, its passage highlighted in the prose, and clicking a
@@ -561,14 +563,31 @@ by ids written into the Markdown: the doc pipelines rewrite these files, so an
 id-bearing marker would not survive, and a quote that stops matching is the
 "this text was replaced" signal the rail needs.
 
-**Canonical implementation:** `public/js/docs-comments.js` (the mode switch,
-selection composer, rail, and passage highlighting; scoped `dc-` styles in
-`public/docs/index.html`) over the Node-tested pure core
+**It mounts on ANY documentation page (amended 2026-07-25).** The layer injects
+its own dropdown, rail and styles as fixed-position chrome, so a page opts in
+with one script tag and provides no markup, no CSS and no layout slot:
+
+```html
+<script type="module">
+  import { mountCommentMode } from "/js/doc-comment-gate.js";
+  mountCommentMode({ path: "public/help/index.html" });
+</script>
+```
+
+The first cut wired itself into ONE page's CSS grid (`/docs/`, the repo-corpus
+viewer), which made every other documentation page a porting job — and the page
+the app actually links as "documentation" (`/help/`) went without it while the
+feature looked shipped. Pick the surface the USER means, and make the mechanism
+surface-independent so the question stops mattering.
+
+**Canonical implementation:** `public/js/doc-comment-gate.js` (PUBLIC — the
+one-line opt-in, the admin check, the visible fallback note) →
+`public/js/docs-comments.js` (GATED — dropdown, selection composer, rail,
+passage highlighting, injected `dc-` styles) over the Node-tested pure core
 `public/js/docs-comments-core.js` (body grammar, quote anchoring, stale
-detection), mounted by `public/js/docs-viewer.js` only after `/api/me` returns
-an admin role. Storage is `POST /api/feedback` with feedback-core's
-`docPageTag`; the rail reads `GET /api/feedback?page=<tag>`. Selection-driven,
-no text routing, so no EN/SV parity applies.
+detection). Live on `/help/` and `/docs/`. Storage is `POST /api/feedback` with
+feedback-core's `docPageTag`; the rail reads `GET /api/feedback?page=<tag>`.
+Selection-driven, no text routing, so no EN/SV parity applies.
 
 ## UX-12 — A tier comparison is one question per row, both answers direct-labeled, stacked on a phone
 
@@ -606,3 +625,166 @@ why to use which"*.)
 block in `public/help/index.html` and `public/cure/help/index.html` ("Se/cure
 or Se/rver: which workspace?"). The written source both pages compress is
 `docs/WORKSPACES.md` §2 — update that section and the two pages together.
+
+---
+
+## UX-13 — In a many-series chart the legend IS the picker: tap to choose a curve, hold to isolate one, and the choice is remembered
+
+**The rule.** When a chart carries more subjects than can be read at once —
+the Feature focus timeline's 25 — the series legend is not a caption beside a
+control, it is THE control, and it has to work under a thumb:
+
+1. **Tap = choose.** A chip toggles its own curve. Under
+   `@media (pointer: coarse)` a chip is at least 44 px tall and carries
+   `touch-action: manipulation`; a chip sized for a mouse is not a picker on a
+   phone.
+2. **Hold = isolate.** A ~500 ms press (or right-click / `contextmenu`) shows
+   only that subject; holding again restores the exact set that was there
+   before. The isolation is a temporary lens, so it never destroys the chosen
+   set — but any deliberate pick afterwards ends it, because the user has now
+   said what they want shown. Both signals must be wired (UX-10's event-path
+   trap), and the release that ends a hold must not also fire the tap.
+3. **The curve itself is a target too.** A 2 px line is not tappable, so every
+   series gets a paired transparent hit path (~22 viewBox units) and the tap
+   lands on the subject, not on empty plot. A press that MOVED is a pan and
+   selects nothing — tap-versus-drag is decided by distance, never by timing
+   alone.
+4. **State is a mark, not a mood.** On/off is carried by a `✓`/`○` glyph plus
+   `aria-pressed`, and an off chip keeps its subject's HUE as a hollow ring.
+   Greying the swatch out makes the user decode the picker before they can
+   use it. Opacity alone is never the signal.
+5. **The picker holds still.** Chips are built ONCE and patched in place —
+   counts, marks, `aria-pressed`. Rebuilding the legend from `innerHTML`
+   inside the redraw path destroys the chip under the finger on every frame of
+   a pan; the same mistake registers a fresh window-level listener per frame.
+   Anything re-rendered per frame gets a build/sync split.
+6. **The choice is remembered on the device** (`localStorage`, best-effort in
+   a `try`), filtered against the current registry on load so a renamed or
+   dropped subject can't restore an empty chart. A blocked store must still
+   leave a working picker.
+7. **Bulk actions next to the chips** — Top N / All / None / Invert — plus a
+   live "N of M shown" readout that switches to "only <subject>" while
+   isolated, so the state is always written down in words.
+
+**Why.** The page is read on a phone, and its whole value is comparing a
+handful of subjects out of many — which means choosing is the primary
+interaction, not a refinement of it. Every previous affordance (a clickable
+legend chip) was technically present and practically unreachable: 29 px tall,
+undiscoverable, and re-rendered out from under the gesture (owner request,
+2026-07-26: *"I want to be able to tap and choose which curves should be
+active"*).
+
+**Canonical implementation:** the `Curves` block in
+`public/pulse/timeline.html` — `.legchip` / `.pickhead` / `.legtools` styles,
+`buildLegend` + `wireChip` + `syncLegend` + `toggleCurve` / `setCurves` /
+`toggleSolo` / `clearSolo`, the `.series-hit` paths in `renderChart`, and the
+`dr.pulse.timeline.v1` preference record. Guarded by
+`tests/e2e/pulse-timeline.spec.js` in the free `mocked` project. No text
+routing, so no EN/SV parity applies.
+
+---
+
+## UX-14 — Flipping a settings knob adds ONE line to the drawer; the detail behind it opens only when the user asks
+
+**The rule.** When a settings switch reveals more than a status sentence — a
+list, a table, per-item rows — the reveal is a single **collapsed disclosure
+line**, never the content itself. The line summarises what is behind it in the
+user's terms ("Models — 1 of 3 on this device", "Downloading Bonsai 8B · 1-bit…
+· 42%"), and it is **never opened by code**: the `<details>` ships without
+`open`, no render path sets it, and re-entering the panel returns it collapsed.
+Because the fold can hide a live process, the summary line carries that
+process's state — a download in flight outranks the resting counts on it.
+
+**Why.** The settings drawer is a list of switches the user scans. A knob that
+expands into a section pushes every switch below it off the screen and buries
+the one the user was actually heading for: *"Now the menu grows drastically when
+knob is turned, we just want one line to appear to expand to show this info
+instead"* (feedback #27, 2026-07-26). The information is not unwanted — its
+uninvited size is.
+
+**The mechanics (match all of these):**
+
+1. **A native `<details>`**, so keyboard, screen readers, and the browser's own
+   open/close semantics come for free. The custom `▸` marker replaces the
+   default triangle (`list-style: none` + `summary::-webkit-details-marker`)
+   and rotates on `[open]`; the rotation is dropped under
+   `prefers-reduced-motion`.
+2. **The knob toggles `details.hidden`, not `details.open`.** Off hides the
+   whole disclosure and empties its body; on shows the summary line alone.
+3. **The summary text is a PURE function** of the section's state, shared by
+   both tiers so they can never phrase it differently, and Node-tested
+   (including the degenerate inputs — no `"4 of 3"`, no `"140%"`).
+4. **Re-render replaces the body, never the `<details>`**, so a user who
+   expanded the section does not have it snap shut under them mid-download.
+   The one place `open` is written is the way OUT — the knob going off resets
+   it to `false`, so flipping the knob back on gives the fresh one-line reveal
+   the rule promises rather than whatever the user left open last time.
+5. **Live progress writes the summary too**, not only the row inside — a folded
+   section is otherwise a download with no visible progress at all.
+
+**Canonical implementation:** the on-device models section in both tiers —
+`public/js/ondevice-drs.js` (`onDeviceSettingsMarkup` `#oddetails`, `setSummary`,
+`renderRows`) and `public/cure/index.html` `#oddetails` + `public/cure/drc.js`
+(`odSummary`, `renderOnDeviceRows`), over the pure
+`onDeviceSummaryLine` in `public/js/ondevice-core.js`
+(`ondevice-core.test.js`). Styling is `.settings-sub` in both
+`public/css/app.css` and `public/cure/drc.css` (the two stylesheets never load
+together). Composes with UX-4: the download consent still lives inside the
+expanded rows, and folding the section never starts or continues anything.
+Language-agnostic (a disclosure gesture, no text routing), so no EN/SV parity
+applies.
+
+---
+
+## UX-15 — A slash typed first opens the command list; picking a command leaves the caret ready for its argument
+
+**When** the user types **`/` as the first character** of the chat composer,
+**then** the command list opens above the pane — one row per available command,
+each showing the command, its argument hint and a one-line description. Typing
+filters the list by prefix. **↑/↓** move the highlight (wrapping at both ends),
+**Enter** or **Tab** picks the highlighted command, a **click/tap** picks a row,
+**Escape** closes. Picking puts `/<command> ` in the composer with the caret
+after the space — the list is now closed, so the next Enter **sends** (UX-8).
+The list also closes the moment the text stops being a bare command token: an
+argument is being typed, the prefix matches nothing, or the slash isn't at
+position 0 ("what does /help do?" is a research question).
+
+**Why.** This is the interaction every chat product with commands already has
+(Slack, Discord, Claude Code), so it needs no explanation — but only if it
+behaves identically, above all in never trapping Enter. The rule that makes it
+safe is that **picking a command is not sending it**: there is exactly one state
+where Enter doesn't send, it is visible on screen, and Escape or one more
+keystroke leaves it. The commands are the same in every chat mode and on both
+tiers because they belong to the platform, not to an agent (owner directive,
+2026-07-26: *"those shall be available in every agent"*).
+
+**The mechanics (match all of these):**
+
+1. **One shared module, both tiers** — `public/js/slash-menu.js`, mounted by
+   `public/js/app.js` (Se/rver) and `public/cure/drc.js` (Se/cure). Se/cure
+   imports it from `/js/` like the other shared client modules, so a new command
+   appears in both composers at once. Both paths are in `isPublicAsset`
+   (`src/assets.js`) — the /cure module graph goes dark without that.
+2. **All the deciding lives in the pure core** (`public/js/slash-core.js`):
+   which rows, in which order, in which language, and where the highlight
+   moves. The DOM module only draws and listens, so the behaviour is
+   Node-tested without a DOM (`slash-core.test.js`).
+3. **The keydown listener is on `document`, capture phase**, and stops
+   propagation only for the keys an OPEN list consumes (↑ ↓ Enter Tab Escape).
+   That is what makes it out-rank the composer's own Enter-sends handler
+   regardless of module load order — a listener on the textarea itself would
+   depend on registration order.
+4. **Rows are `<button type="button">`** inside the form (never a submit) and
+   are chosen on **`pointerdown`, not click**, so the textarea doesn't blur and
+   close the list out from under the finger.
+5. **Language follows the deterministic EN-default convention** (`detectLang`,
+   canned-faq.js) applied to what is being typed and — while that is still just
+   a slash — to the last thing the user wrote. Command NAMES are never
+   translated; the label, argument hint and description always are (invariant 6).
+6. **Dismissal is UX-1**: a pointerdown anywhere outside the list closes it.
+
+**Canonical implementations:** `public/js/slash-menu.js` (the mount), the
+`.slash-menu` / `.slash-item` block in `public/css/app.css` and its mirror in
+`public/cure/drc.css`, and `public/js/slash-core.js` for the pure half. The
+routing the commands trigger is `src/chat.js` (resolved before mode routing) and
+`src/pipeline.js` (the feedback gate above the executor dispatch).

@@ -704,6 +704,30 @@ button:disabled { opacity: .5; cursor: default; }
 #drspop[hidden] { display: none; }
 #drspop a { color: var(--accent); font-weight: 600; }
 
+/* The slash-command typeahead (UX-13 — public/js/slash-menu.js), the Se/cure
+   mirror of the rules in css/app.css: identical shape and behaviour, restated
+   here because drc.css is self-contained and the two stylesheets never load
+   together. */
+.slash-menu {
+  position: absolute; bottom: calc(100% + .45rem); left: 1.25rem; right: 1.25rem;
+  max-width: 460px; z-index: 6;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: .3rem; overflow: hidden;
+  box-shadow: 0 6px 24px rgba(60, 50, 10, .25);
+}
+.slash-menu[hidden] { display: none; }
+.slash-item {
+  display: flex; flex-direction: column; gap: .1rem;
+  width: 100%; text-align: left; cursor: pointer;
+  background: transparent; border: 0; border-radius: 7px;
+  padding: .4rem .5rem; color: inherit; font: inherit;
+}
+.slash-item.active { background: rgba(140, 110, 20, .14); }
+.slash-name { font-size: .84rem; font-weight: 600; }
+.slash-args { font-weight: 400; opacity: .55; }
+.slash-desc { font-size: .74rem; line-height: 1.4; opacity: .78; }
+
 /* The web-knob popover (UX-10) — the #drspop glass shape, anchored RIGHT
    above the knob at the composer row's end. Hover or long-press on
    #searchtoggle opens it (wired in drc.js); it links the
@@ -1312,6 +1336,30 @@ h1 .tier { display: block; font-size: .8rem; font-weight: 600; color: var(--mute
    downloads; backdrop tap = Not now (dismissal is never consent). ---- */
 #odmodels { margin: .15rem 0 .3rem; }
 #odmodels[hidden] { display: none; }
+/* A knob's detail section (UX-14): flipping the switch adds ONE summary line
+   to the drawer, and the rows behind it open only when the user asks. Ships
+   without `open` and nothing sets it, so it never auto-expands. The Se/rver
+   twin is `.settings-sub` in css/app.css — the two stylesheets never load
+   together. */
+.settings-sub { margin: 0; }
+.settings-sub[hidden] { display: none; }
+.settings-sub > summary {
+  cursor: pointer; list-style: none;
+  font-size: .8rem; color: var(--muted);
+  padding: .25rem 0 .25rem 1rem; position: relative;
+  -webkit-user-select: none; user-select: none;
+}
+.settings-sub > summary::-webkit-details-marker { display: none; }
+.settings-sub > summary::before {
+  content: "▸"; position: absolute; left: 0; top: .25rem;
+  font-size: .7rem; line-height: 1.5;
+  transition: transform .15s ease; transform-origin: 45% 55%;
+}
+.settings-sub[open] > summary::before { transform: rotate(90deg); }
+.settings-sub > summary:hover { color: var(--text); }
+@media (prefers-reduced-motion: reduce) {
+  .settings-sub > summary::before { transition: none; }
+}
 .od-model {
   display: grid; grid-template-columns: 1fr auto; align-items: center;
   column-gap: .6rem; row-gap: .1rem; padding: .3rem 0;

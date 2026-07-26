@@ -48,16 +48,69 @@ the committed source snapshot.
   `state.outrospectionMode`, gated in `chat.js` on the same `developer_mode`
   capability as SDK and Orchestrator (precedence sdk > orchestrator >
   outrospection).
+- **The mode LOOKS before it reads (2026-07-26).** `runOutrospection` first
+  calls the shared `runLensRefresh` for the question's lens, bounded by
+  `MODE_REFRESH_BUDGET_MS` via `withDeadline`, then reads. Before this it only
+  read, which made the mode parasitic on someone opening `/outrospect/` in a
+  browser — in production nothing ever had, so the run log was empty and every
+  question got "the feed holds nothing on this yet" (feedback #25). If you are
+  tempted to drop the refresh for latency, that is the bug being re-introduced.
+  The refresh is fail-soft and its result is never awaited for correctness:
+  whatever reached D1 by read time is what gets cited.
 - **No model chooses what to retrieve.** `lensMatch` routes the question, so
   invariant 1 holds end to end and the outbound traffic stays the committed
   literal queries. An unmatched question falls back to the newest items across
   every lens rather than guessing a lens.
+- **The block always carries the lens catalog** (`outrospectionLensCatalog`),
+  including on an empty feed — the empty-feed prompt tells the model to name
+  the lenses, and before 2026-07-26 nothing in context listed them, so it
+  half-remembered three of seven. Callers decide grounded-vs-empty from the
+  ITEM COUNT, never from whether the block is a non-empty string.
 - **The no-fabrication rule is now prompt-enforced.** With an empty feed the
   prompt says so and forbids inventing articles, headlines or links — the same
   rule the scan obeys, moved to where a model could otherwise be tempted.
+- **The mode QUOTES the articles, not just their headlines (2026-07-26).** A
+  refresh fetches the page text of a few not-yet-indexed articles through the
+  Exa `/contents` client `src/exa.js` already has (`indexFeedTexts`, four per
+  run, capped and deadline-bounded) into `outrospect_texts`; the answer path
+  loads them back and picks passages with the core's lexical scorer
+  (`selectQuotes`). No embeddings, no model, no query generation — so the
+  question stays in the isolate and the outbound traffic is still a list of
+  public article URLs. `outrospect_texts` carries the article and no reader,
+  like `outrospect_items`. A body of `chars = 0` is a stored negative ("we
+  asked and got nothing usable"), which is what stops a dead page being
+  re-fetched on every visit.
 - **Fail-soft:** no D1, a throwing query, or an empty feed all still answer.
   `chat_logs` carries `outrospection_mode: 1` and `outrospection:
-  {lens, items, live}` — grep `items: 0` for "the feed had nothing to say".
+  {lens, items, texts, quotes, live}` — grep `items: 0` for "the feed had
+  nothing to say", `quotes: 0` for "it had items but nothing quotable yet".
+
+## The feed as the session's history (2026-07-26)
+
+Entering the mode opens on the FEED, not an empty chat — `public/js/outrospect-feed.js`,
+mounted from `app.js` (`openOutrospectionFeed` on mode switch / new chat / boot,
+only ever into a blank session) and consumed in `stream.js` (the excerpt block
+rides out with the question).
+
+- **Reader vs model is the design.** The reader gets the whole list, paged
+  (`feedPage`, newest at the bottom, older pages prepended with the scroll
+  position pinned). The model gets `FEED_RETRIEVE_K` semantically retrieved
+  entries. If you ever "simplify" this by putting the visible page into the
+  prompt, you have truncated the feed to recency — the exact thing the index
+  exists to prevent.
+- **`mirror: false` is load-bearing**, not tidiness. Every other indexed doc
+  mirrors to the server index when cloud storage is on, and `appendToDoc`
+  re-pushes the WHOLE doc on each append. The feed is public web content the
+  Worker already holds in D1, so mirroring would upload it back once per user
+  per visit, growing. Keep the flag.
+- **Indexing is incremental** — `unindexedItems` against a localStorage key
+  hint, so a revisit embeds only new entries. The hint is a cache, not a source
+  of truth: losing it costs a re-embed, never correctness.
+- **`feedItemIndexText` must stay self-contained** (title, lens, source, URL).
+  The chunker can merge two short entries into one chunk, and a retrieved chunk
+  that lost its URL is an article the answer cannot cite.
+- Fail-soft end to end: no feed, no index, no network → the ordinary empty chat
+  and the server's own newest-first retrieval, which still grounds the answer.
 
 ## Rules that are load-bearing
 

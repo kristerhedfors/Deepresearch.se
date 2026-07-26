@@ -87,6 +87,34 @@ so re-finding an article does not bump it back to the top. The `fresh` flag is
 computed at read time against the reader's clock, never stored — a committed
 `true` would go stale the moment it was written.
 
+### Reading the articles, not just the headlines
+
+A headline and a one-line teaser are enough to *list* what somebody shipped and
+nowhere near enough to *quote* it. So a refresh does one more bounded thing
+after storing the delta: it fetches the page text of a few of that lens's
+not-yet-read articles through the Exa `/contents` client the research pipeline
+already uses (`fetchContents` in `src/exa.js` — cached, time-bounded, no new
+dependency), and stores it in the D1 table `outrospect_texts`, one row per
+article, keyed by the same normalized URL as the headline.
+
+Newly-found items are read first, then anything else under that lens that has
+never been read — so a feed that filled up before any of this existed heals
+backwards a few articles per visit instead of staying quote-less forever.
+
+Everything about it is bounded, because it runs inside somebody's page load:
+`INDEX_MAX_ITEMS` articles per refresh, a per-article character cap, an outer
+deadline on top of the fetch client's own timeout, and a page that yields
+nothing usable is stored as an **empty body** so the same dead URL is not
+re-fetched on every visit for the rest of time. A dead backend indexes nothing
+and the refresh still returns 200 — the same fail-soft contract as the search
+half.
+
+The `origin` column says where a body came from (`web` for a fetched page). It
+is the seam for other indexed corpora: a batch of arXiv papers, or anything
+else worth quoting, becomes quotable by the same retrieval the moment it lands
+in this table, with no change on the reader's side. Nothing in the answer path
+knows or cares which origin a passage came from.
+
 ## Cost and rate limiting
 
 Every refresh is real money at the search provider, and the page invites one on
@@ -109,17 +137,23 @@ button.
 
 The feed is an outbound-request feature, so invariant 4 applies directly.
 
-- **What leaves the site** is a query and nothing else. The queries are the
-  literal strings committed in the lens registry, so what this site asks the
-  search provider is auditable in git. No conversation, no identity, and
-  nothing the reader typed is ever sent — the note composer posts to the
-  feedback queue, not to a search.
+- **What leaves the site** is a committed query, and — when an article is read
+  in full — that article's own public URL. Nothing else. The queries are the
+  literal strings in the lens registry, so what this site asks the search
+  provider is auditable in git, and the URLs are pages that provider just
+  handed back. No conversation, no identity, and nothing the reader typed is
+  ever sent — the note composer posts to the feedback queue, not to a search.
 - **What is stored** is the article, never the reader. `outrospect_items` has
   no user column at all: who happened to be visiting when a headline was found
-  is not part of the record.
+  is not part of the record. `outrospect_texts` — the fetched article bodies —
+  has none either, for the same reason.
 - **The run log** exists only because the rate limit needs it. It records which
   lens was searched and a count of queries — not query text, and nothing about
   what the reader was looking at.
+- **Choosing what to quote happens locally.** Picking the passages that answer
+  a question is a lexical scan over text that is already stored, so the
+  reader's question never leaves the site to make that choice — no embedding
+  call, no reranking service, nothing on the wire at all.
 
 ## The shortcut back
 
@@ -169,28 +203,106 @@ What a send does:
    English or Swedish alike. **No model picks anything** — invariant 1 holds
    for the whole path, and there is no JSON planning phase at all, so nothing
    runs on the fixed json model (invariant 3).
-2. `retrieveOutwardFeed` loads that lens's newest items from D1. A lens with
+2. **It goes and looks.** `runLensRefresh` searches that lens — the same shared
+   function the page's refresh button calls — bounded by
+   `MODE_REFRESH_BUDGET_MS` so a slow provider shortens the answer instead of
+   stalling it. Asking the outward-looking agent a question is itself a reason
+   to look outward.
+3. `retrieveOutwardFeed` loads that lens's newest items from D1, along with
+   whichever of their article bodies have been read (above). A lens with
    nothing filed yet falls back to the newest items across every lens, so an
    empty corner of the feed never reads as an empty world.
-3. `outrospectionBlock` numbers them, and the answer cites them `[1]`, `[2]`
-   like any research answer. The prompt closes every answer with what the
-   material means for *this* project — the comparison is the point of looking
-   outward.
+4. `selectQuotes` picks the passages of those bodies that actually bear on the
+   question — a scored lexical scan in the pure core, capped at a few passages
+   and at most two from any one article, deterministic enough that the same
+   question over the same feed yields the same quotes. Nothing relevant is a
+   valid outcome and returns none.
+5. `outrospectionBlock` numbers the items, and the answer cites them `[1]`,
+   `[2]` like any research answer; the quotable passages follow as their own
+   section, each carrying its own URL so a quotation can be linked to the page
+   it came from. The block also always carries the lens catalog, so the model
+   can name the seven lenses whether or not the feed had anything. The prompt
+   closes every answer with what the material means for *this* project — the
+   comparison is the point of looking outward.
 
-**The no-fabrication rule is enforced here too.** With nothing to cite, the
-prompt says the feed holds nothing on this yet and forbids inventing an
-article, headline or link. That is the same rule the scan obeys, moved to the
-one place a model could otherwise be tempted to fill a gap.
+**No model chooses what to retrieve, at either level.** The lens is picked by
+`lensMatch`, the passages by a scorer, and both are ordinary code — invariant 1
+holds for the quoting exactly as it holds for the routing. Embeddings are
+deliberately absent from this path: the refresh runs inside a page load, and a
+vector index would be a dependency of answering rather than an enrichment of
+it. `outrospect_texts` is where one could later be built *over*, not through.
 
-Fail-soft like everything else (invariant 2): no D1, a failing query, or an
-empty feed all still produce an answer. `chat_logs` rows carry
-`outrospection_mode: 1` and `outrospection: {lens, items, live}` — grep for
-`items: 0` to find questions the feed could not answer.
+> **Step 2 was missing until 2026-07-26** and it is worth knowing why. The mode
+> shipped read-only, which left it parasitic on someone opening `/outrospect/`
+> in a browser. Nobody had: the production run log showed zero refreshes ever,
+> the feed was empty, and so every question in the mode was answered "the feed
+> holds nothing on this yet" — an outward-looking agent that never looked
+> outward (feedback #25). Latency is the obvious reason to remove the step
+> again; the cooldown, the budget, and the fail-soft path are there so it
+> doesn't have to be.
+
+**The no-fabrication rule is enforced here too**, and now on two levels. With
+nothing to cite, the prompt says the feed holds nothing on this yet and forbids
+inventing an article, headline or link. With items but no article bodies read
+yet, it forbids quoting at all — summarise and link, but do not put words in
+quotation marks — because an unread feed is precisely where a model would
+otherwise write a plausible sentence and attribute it to a real URL. That is
+the same rule the scan obeys, moved to the two places a model could be tempted
+to fill a gap.
+
+Fail-soft like everything else (invariant 2): no D1, a failing query, an empty
+feed, or a `outrospect_texts` table that is not there yet all still produce an
+answer. `chat_logs` rows carry `outrospection_mode: 1` and `outrospection:
+{lens, items, texts, quotes, live}` — grep for `items: 0` to find questions the
+feed could not answer at all, and `quotes: 0` for the ones it could list but
+not quote.
 
 The mode is gated on the same `developer_mode` capability as Agent Studio and
 Orchestrator, and wears the newsprint theme (`outro-mode`): a paper field, the
 masthead red as the accent, and the composer as a printed sheet rather than a
 metal pane.
+
+## The feed as the session's history
+
+*(Owner directive, 2026-07-26.)*
+
+Entering the outrospection agent does not open an empty chat. The feed **is**
+the session's history: the latest entries are already in the transcript, older
+pages load as you scroll back, and the whole feed is indexed in your browser so
+a question reaches all of it.
+
+The split between what you see and what the model sees is the whole design, and
+it is why the indexing exists:
+
+- **The reader** gets the full list, paged (`FEED_PAGE_SIZE`, newest at the
+  bottom like any transcript). Older pages are prepended and the scroll
+  position is pinned to the entry you were reading, so loading history never
+  yanks the view.
+- **The model** gets `FEED_RETRIEVE_K` semantically retrieved entries. Hundreds
+  of entries do not fit in a prompt, and sending "the newest 24" instead would
+  silently truncate the feed to recency — losing the entry from three weeks ago
+  that actually answers the question.
+
+The index is **browser-local**: `public/js/rag.js` over IndexedDB, the same
+store attachments and project chats use. Its excerpts ride out inside the
+outgoing message exactly like document excerpts, so what leaves is the question
+plus the entries this browser chose. It is incremental — a revisit embeds only
+entries it has not seen — and it is the one indexed document written with
+`mirror: false`: `appendToDoc` re-pushes the whole document on every append,
+and this one is public web content the Worker already stores in D1, so
+mirroring it would upload the same public feed back to the server once per user
+per visit.
+
+Everything here fails soft. No feed, no index, no network, or embedding
+unavailable each leave the ordinary empty chat and the server's own
+newest-first retrieval, which still grounds every answer on its own.
+
+Its header tag is the one mode tag that is a **link**. The other three name the
+mode; this one opens `/outrospect/`, because the answers come from that page's
+feed and the shortest useful thing a reader can do next is go and look at it.
+The mode's empty state says the same thing in a sentence, replacing the default
+"I'll search the web and report back" copy, which is simply not what this mode
+does.
 
 ## Surfaces
 
@@ -199,7 +311,7 @@ metal pane.
 | `/outrospect/` | The view. Linked from the account panel's documentation list. |
 | Chat mode **Outrospection** | The feed as an answering surface (above); `outrospection_mode: true` on `/api/chat` |
 | `GET /api/outrospect/feed` | The live stream. `?lens=` `?since=` `?limit=` `?format=text` |
-| `POST /api/outrospect/refresh` | One lens, on the visitor's behalf. `{lens?, known?}` |
+| `POST /api/outrospect/refresh` | One lens, on the visitor's behalf. `{lens?, known?}`; also reads a few articles in full |
 | `GET /api/admin/outrospect` | Feed plus run log, `?format=text` for the agent loop |
 | `npm run outrospect` | The offline scan (`scripts/outrospect-scan.mjs`) |
 | `scripts/outrospect` | The read CLI against the deployed site |
@@ -208,8 +320,9 @@ metal pane.
 
 | Path | Role |
 |---|---|
-| `public/js/outrospect-core.js` | The pure core: lens registry, item identity, delta, merge, text render, and the mode's `outrospectionBlock` / `outrospectionAnswerPrompt` |
-| `src/outrospect.js` | Worker façade + the three endpoints + D1 storage + the mode's `runOutrospection` / `retrieveOutwardFeed` |
+| `public/js/outrospect-core.js` | The pure core: lens registry, item identity, delta, merge, text render, the passage scorer (`splitPassages` / `scorePassage` / `selectQuotes`), and the mode's `outrospectionBlock` / `outrospectionAnswerPrompt` |
+| `src/outrospect.js` | Worker façade + the three endpoints + D1 storage + the article indexer (`indexFeedTexts` / `loadTexts`) + the mode's `runOutrospection` / `retrieveOutwardFeed` |
+| `src/db.js` | The D1 schema: `outrospect_items` (headlines), `outrospect_runs` (the rate limit), `outrospect_texts` (article bodies) |
 | `public/js/outrospect-view.js` | The page module: render, look, and the shortcut back |
 | `public/outrospect/index.html` | The page |
 | `public/outrospect/feed.json` | The committed artifact (empty until a scan runs) |

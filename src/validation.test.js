@@ -12,6 +12,7 @@ import {
   resolveShellTranscript,
   resolveSwarmResults,
   sanitizeClientDiag,
+  sanitizeSwarmDiag,
   sanitizeFsSummary,
 } from "./validation.js";
 import { validateMapView, validateStreetViewPov } from "./maps-enrichment.js";
@@ -387,6 +388,40 @@ describe("sanitizeClientDiag / sanitizeFsSummary", () => {
     assert.equal(sanitizeClientDiag({ bl: 1 }).bl, false); // 1 !== true
     assert.equal(sanitizeClientDiag({ bl: true }).bl, true);
     assert.equal(sanitizeClientDiag({}).coi, null); // tri-state defaults to null
+  });
+
+  test("nested swarm crash breadcrumb survives sanitizing, bounded and content-free", () => {
+    const out = sanitizeClientDiag({
+      sw: { died: 1, kind: "swarm", phase: "diverge", round: 99, members: 999, conc: 99, mb: 4200, cls: "oom", ago: 12 },
+    });
+    // The whole point: without this the breadcrumb was dropped here and the
+    // tab death stayed invisible (feedback #26).
+    assert.equal(out.sw.died, 1);
+    assert.equal(out.sw.phase, "diverge");
+    assert.equal(out.sw.cls, "oom");
+    assert.equal(out.sw.mb, 4200);
+    assert.equal(out.sw.round, 8); // clamped
+    assert.equal(out.sw.members, 32); // clamped
+    assert.equal(out.sw.conc, 16); // clamped
+    assert.equal(sanitizeClientDiag({}).sw, undefined);
+  });
+
+  test("swarm breadcrumb vocabularies are closed and it carries no free text", () => {
+    const out = sanitizeSwarmDiag({
+      died: "yes", kind: "../evil", phase: "'; DROP TABLE", cls: "made-up",
+      ago: 1e9, note: "the user asked about their divorce", text: "secret",
+    });
+    assert.equal(out.died, 0); // only 1/true is 1
+    assert.equal(out.kind, "swarm"); // closed: swarm | chat
+    assert.equal(out.phase, "start"); // unknown phase falls back
+    assert.equal(out.cls, ""); // unknown class falls back
+    assert.equal(out.ago, 86_400); // clamped to a day
+    // No key may carry model- or user-authored text (invariant 4).
+    assert.deepEqual(
+      Object.keys(out).sort(),
+      ["ago", "cls", "conc", "died", "kind", "mb", "members", "phase", "round"],
+    );
+    assert.equal(sanitizeSwarmDiag("x"), undefined);
   });
 
   test("nested fs summary is bounded", () => {

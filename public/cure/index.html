@@ -123,7 +123,8 @@
   <div id="chat"><div class="empty">Hi — I'm an AI research assistant that runs right here in your
     browser, on your own OpenAI, Groq or Berget API key (or a local model you run yourself). My replies
     are model-generated, so verify anything critical. Ask a research question to get started — the first
-    send helps you set a key up.</div></div>
+    send helps you set a key up. Type “/” for the commands: “/feedback” reaches the developers,
+    “/help” answers from the documentation.</div></div>
 
   <div id="footer">
     <div class="footer-slide">
@@ -362,7 +363,13 @@
           Each model is a large one-time download (shown before anything starts) stored only on this device,
           with a Delete button to free the space. Phones need WebGPU (Android Chrome works; iOS Safari is
           experimental) and answers stream slower than hosted models.</div>
-        <div id="odmodels" hidden></div>
+        <!-- The knob reveals ONE summary line, not the model list (UX-14,
+             feedback #27): the rows live behind this disclosure, which ships
+             without `open` and is never opened by code. -->
+        <details class="settings-sub" id="oddetails" hidden>
+          <summary id="odsummary"></summary>
+          <div id="odmodels"></div>
+        </details>
         <span id="odstatus" class="muted setting-note"></span>
         <!-- The visible, copyable engine trace (?oddebug=1 / dr_ondevice_debug):
              phones have no console, so the debug switch renders here — the
@@ -629,6 +636,7 @@
       <a class="pub-item acct-link" href="/architecture/" target="_blank" rel="noopener">The architecture story<span>How the Worker, pipeline, and privacy split fit together.</span></a>
       <a class="pub-item acct-link" href="/pulse/" target="_blank" rel="noopener">Project pulse<span>Live charts of commits, lines, and new features over the repo's history.</span></a>
       <a class="pub-item acct-link" href="/welcome/" target="_blank" rel="noopener">The landing page<span><span class="wm">Se<span class="sl">/</span>cure</span> and <span class="wm">Se<span class="sl">/</span>rver</span> side by side — what each tier does.</span></a>
+      <a class="pub-item acct-link" href="/docs/" target="_blank" rel="noopener">Repository documentation<span>Every design document, rendered in-app: architecture, the privacy model, testing, and the full dependency inventory.</span></a>
       <a class="pub-item acct-link" href="https://github.com/kristerhedfors/Deepresearch.se" target="_blank" rel="noopener">Source code<span>MIT-licensed, on GitHub — every privacy claim is yours to verify.</span></a>
     </aside>
   </div>

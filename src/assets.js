@@ -212,6 +212,15 @@ export function isPublicAsset(url, method) {
     // whole /cure tier dark. It's the same deterministic gate the Se/rver
     // pipeline uses (src/feedback.js re-exports it), no secrets.
     url.pathname === "/js/feedback-core.js" ||
+    // The slash-command registry (slash-core.js) and its composer typeahead
+    // (slash-menu.js): both are in the /cure graph — drc.js imports the menu
+    // and the parser, and feedback-core.js imports the registry so `/feedback`
+    // reaches the same gate as the bare keyword. Same public-graph rule as the
+    // entries around it: a 401 on either would take the whole Se/cure tier
+    // dark. A literal table of two command names and their descriptions, no
+    // secrets.
+    url.pathname === "/js/slash-core.js" ||
+    url.pathname === "/js/slash-menu.js" ||
     url.pathname === "/introspect/source-snapshot.json" ||
     // The OWASP Top 10 reference corpus — public so DRC (Se/cure, server in no
     // data path) can fetch it and ground a security assessment OFFLINE, quoting
@@ -228,6 +237,14 @@ export function isPublicAsset(url, method) {
     url.pathname === "/introspect/docs-corpus.json" ||
     // The docs viewer's controller module (public graph).
     url.pathname === "/js/docs-viewer.js" ||
+    // The documentation COMMENT MODE bootstrap. Both /docs/ AND /help/ (a
+    // public page with no other JS) import it, so a 401 here would break the
+    // documentation pages for signed-out visitors — the same public-module-
+    // graph rule as the /cure entries. It reveals nothing: the admin check
+    // runs against /api/me, and the layer that can actually write a comment
+    // (/js/docs-comments.js + its core) stays GATED, deliberately absent from
+    // this list.
+    url.pathname === "/js/doc-comment-gate.js" ||
     url.pathname.startsWith("/introspect/docs-img/") ||
     url.pathname === "/llm-assiterad-utveckling.mp4" ||
     url.pathname === "/js/markdown.js" ||
