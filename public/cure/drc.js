@@ -101,6 +101,7 @@ import { wireBarTint } from "/js/bar-tint.js";
 import { DRC_RECENT_TURNS, ensureDrcRag, indexDrcChatTurns, retrieveDrcContext } from "/js/drc-rag.js";
 import { runDrcResearch } from "/js/drc-research.js";
 import { runBackendSearch as runDirectBackendSearch } from "/js/websearch-backends-core.js";
+import { normalizeExecBackend, probeRunner, runnerStatusLine, usesLocalRunner } from "/js/exec-backends-core.js";
 import { EXA_SETTING_INFO, exaStatusText, getExaEnabled, getSearchSource, setExaEnabled } from "/js/search-source.js";
 import { ensureSandboxBooted, sandboxIdle, sandboxSupported, setSandboxImage } from "/js/sandbox.js";
 import { hideTerminalIcon, showTerminalIcon } from "/js/agent-backdrop.js";
@@ -723,6 +724,7 @@ function openSettings() {
   renderStRow(); // reflect the consolidated Se/rver token (if any)
   renderProxyRow(); // reflect the secure-research-space bundle (if any)
   renderSearchBackend(); // reflect the per-user web-search backend
+  renderExecBackend(); // reflect WHERE shell commands run (browser VM / local runner)
   renderExaRow(); // reflect WHO runs a grant/token-routed search
   $("settingsview").hidden = false;
 }
@@ -2698,6 +2700,63 @@ function renderSearchBackend() {
   resEl.onchange = persist;
 }
 
+// ---- the EXECUTION ENVIRONMENT (exec-backends-core.js) ----------------------
+//
+// The same shape of choice the model dropdown already offers (on-device vs.
+// cloud), applied to execution: the in-browser CheerpX VM (default, unchanged)
+// or a DREE/1 runner the user starts on their own machine. Like the search
+// backend above, the config is sealed project state and the call is browser →
+// localhost, so the server stays out of the data path in BOTH cases — Se/cure's
+// posture is preserved by construction, not by a promise.
+
+/** The sealed exec-environment config, normalized (exec-backends-core.js). */
+function execBackendCfg() {
+  return normalizeExecBackend(state && state.execBackend);
+}
+
+/** Reflects the sealed exec config into the settings section and wires edits. */
+function renderExecBackend() {
+  const sel = /** @type {HTMLSelectElement} */ ($("exec-backend"));
+  if (!sel) return;
+  const c = execBackendCfg();
+  sel.value = c.backend;
+  const wrap = $("exec-direct");
+  const urlEl = /** @type {HTMLInputElement} */ ($("exec-url"));
+  const keyEl = /** @type {HTMLInputElement} */ ($("exec-key"));
+  urlEl.value = c.baseUrl;
+  keyEl.value = c.key;
+  wrap.hidden = c.backend !== "local";
+  const status = $("exec-status");
+  status.textContent =
+    c.backend !== "local"
+      ? ""
+      : c.baseUrl
+        ? "Shell commands will run on your machine, through " + c.baseUrl + ". Press Test connection to check it."
+        : "Enter your runner's URL — then commands run on your machine instead of in this browser.";
+
+  // Same bind-once discipline as renderSearchBackend: the elements persist
+  // across drawer opens, so assign handlers rather than adding listeners.
+  const persist = async () => {
+    state.execBackend = normalizeExecBackend({ backend: sel.value, baseUrl: urlEl.value, key: keyEl.value });
+    renderExecBackend();
+    await saveState();
+  };
+  sel.onchange = persist;
+  urlEl.onchange = persist;
+  keyEl.onchange = persist;
+  // "Test connection" answers the one question the user actually has — is
+  // anything there? — and names the cause when not (runner down / CORS /
+  // Safari's mixed-content block), which a bare "Failed to fetch" never does.
+  const testBtn = $("exec-test");
+  if (testBtn) {
+    testBtn.onclick = async () => {
+      const cfg = execBackendCfg();
+      status.textContent = "Checking " + (cfg.baseUrl || "…") + " …";
+      status.textContent = runnerStatusLine(await probeRunner(cfg));
+    };
+  }
+}
+
 // ---- secure research space: the account-connected proxy BUNDLE ----------------------
 //
 // The richer sibling of the web-search grant above (src/proxy.js). A signed-in
@@ -3500,6 +3559,7 @@ async function unlockWorkspace(ev) {
     renderConvPicker();
     renderMessages();
     renderSearchBackend();
+    renderExecBackend();
     renderWsRow();
     renderProxyRow();
     renderStRow();
@@ -3750,6 +3810,10 @@ async function send(ev) {
       introspection: intro.block,
       snapshot: intro.snapshot,
       bash: state.bashLite === true,
+      // WHERE those shell commands run: the in-browser VM (default) or the
+      // user's own DREE/1 runner on localhost. Sealed state, browser-direct
+      // either way — the server is in neither path.
+      execCfg: execBackendCfg(),
       fileProvider: intro.fileProvider,
       // The local provider's whole wire config is its user-set base URL —
       // every pipeline call already threads baseUrl down (the trajectory
@@ -4092,6 +4156,10 @@ applyDrcSandboxImage();
 function prewarmDrcSandbox() {
   try {
     if (state.bashLite !== true || !sandboxSupported()) return;
+    // A local runner is the execution environment — don't stream a Debian image
+    // into a VM that will never run a command. The runner needs no pre-warm:
+    // its first container starts in well under a second.
+    if (usesLocalRunner(execBackendCfg())) return;
     // Sandbox is enabled → show the header terminal icon straight away, so its
     // presence signals "Linux is starting" the moment the page opens (even
     // before the VM prints). Independent of the idle/dev-mode boot gates below.
@@ -4112,9 +4180,11 @@ prewarmDrcSandbox();
 $("bashlite").addEventListener("change", () => {
   state.bashLite = $("bashlite").checked;
   const st = $("sandboxstatus");
-  st.textContent = state.bashLite
-    ? "Sandbox enabled — a message that asks to run a shell will boot Linux here."
-    : "Sandbox disabled.";
+  st.textContent = !state.bashLite
+    ? "Sandbox disabled."
+    : usesLocalRunner(execBackendCfg())
+      ? "Sandbox enabled — commands will run on your machine, through the local runner below."
+      : "Sandbox enabled — a message that asks to run a shell will boot Linux here.";
   saveState().catch(() => {});
   if (state.bashLite) prewarmDrcSandbox(); // enabling now → start Linux immediately + show icon
   else hideTerminalIcon(); // disabling → drop the header terminal icon
