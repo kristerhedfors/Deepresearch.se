@@ -89,6 +89,14 @@ export const MAX_TASK_CHARS = 600;
 export const MAX_RESULT_CHARS = 6000; // per-node result carried into synthesis
 export const MAX_NODE_QUERIES = 2; // web searches ONE deep_research node may run
 export const MAX_ORCH_SEARCHES = 6; // web searches the whole workflow may run
+// How much of a node's REAL prompt rides to the client for the workflow
+// inspector (the "look inside this node" popover). The assembled prompt can be
+// tens of KB — upstream briefs plus a source digest — and this one is both a
+// wire cost and PERSISTED state (it lands in the workflow embed's statuses map
+// and is replayed with the conversation), so only the head travels: the
+// persona, the task, the user request. That is the part that answers "what is
+// this node working on"; the grounding below it is already visible as sources.
+export const MAX_PROMPT_PREVIEW = 1500;
 
 // ---- validation --------------------------------------------------------------
 
@@ -371,7 +379,7 @@ export function mergeAgentResults(plan, results) {
 
 /**
  * @param {any} plan
- * @returns {{ type: "workflow", title: string, agents: Array<{id:string,kind:string,name:string,task:string,deps:string[],swarmSize?:number,rounds?:number}>, waves: string[][] }}
+ * @returns {{ type: "workflow", title: string, agents: Array<{id:string,kind:string,name:string,task:string,persona?:string,queries?:string[],deps:string[],swarmSize?:number,rounds?:number}>, waves: string[][] }}
  */
 export function workflowEvent(plan) {
   return {
@@ -379,6 +387,13 @@ export function workflowEvent(plan) {
     title: plan?.title || "",
     agents: (plan?.agents || []).map((/** @type {any} */ a) => {
       const node = { id: a.id, kind: a.kind, name: a.name, task: a.task, deps: a.deps || [] };
+      // The rest of what the plan decided for this node. It costs a few hundred
+      // bytes and it is what the workflow INSPECTOR shows when the user opens a
+      // node: the specialist's persona and the exact searches it will run. Both
+      // are already clamped by normalizeWorkflow. Omitted when empty so a plain
+      // deep_research team's event is unchanged.
+      if (a.persona) /** @type {any} */ (node).persona = a.persona;
+      if (a.queries?.length) /** @type {any} */ (node).queries = a.queries;
       // The swarm's shape rides in the plan event so the graph can draw the
       // member dots the moment the team appears — before the first member has
       // reported anything.
@@ -395,13 +410,21 @@ export function workflowEvent(plan) {
 /**
  * @param {string} id
  * @param {string} status one of NODE_STATES
- * @param {{ note?: string, duration_ms?: number, chars?: number }} [extra]
- * @returns {{ type: "agent_update", id: string, status: string, note?: string, duration_ms?: number, chars?: number }}
+ * @param {{ note?: string, duration_ms?: number, chars?: number, prompt?: string }} [extra]
+ * @returns {{ type: "agent_update", id: string, status: string, note?: string, duration_ms?: number, chars?: number, prompt?: string, prompt_chars?: number }}
  */
 export function agentUpdateEvent(id, status, extra = {}) {
   const ev = { type: /** @type {"agent_update"} */ ("agent_update"), id, status: NODE_STATES.includes(status) ? status : "running" };
   if (extra.note) /** @type {any} */ (ev).note = String(extra.note).slice(0, 200);
   if (Number.isFinite(extra.duration_ms)) /** @type {any} */ (ev).duration_ms = extra.duration_ms;
   if (Number.isFinite(extra.chars)) /** @type {any} */ (ev).chars = extra.chars;
+  // The node's real prompt, head-clamped, with the FULL length alongside so the
+  // inspector can say honestly how much of it it is showing rather than
+  // presenting a truncation as the whole instruction.
+  if (extra.prompt) {
+    const full = String(extra.prompt);
+    /** @type {any} */ (ev).prompt = full.slice(0, MAX_PROMPT_PREVIEW);
+    /** @type {any} */ (ev).prompt_chars = full.length;
+  }
   return ev;
 }

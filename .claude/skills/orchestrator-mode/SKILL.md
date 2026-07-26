@@ -58,6 +58,25 @@ workflow itself is a first-class UI element: a live graph of the team.
   palette/pane/tag/waves, ORCH_SPINNER balloon recolour in mode-spinner.js,
   `--check-violet`), both dropdowns, deeplink aliases
   (`orchestrator|orchestrate|orch|workflow`).
+- **The node INSPECTOR — tap a node to see inside it** (2026-07-26, feedback
+  #35). The graph is the only place a sub-agent is visible, and a box cannot
+  hold a whole sub-run, so every node is a button: tapping one opens a panel
+  under the graph with that node's task, persona, searches, upstream/downstream
+  links (themselves buttons — walking the team is the point), and the PROMPT it
+  is working on. Tap it again to close; tap another to switch. It is LIVE — the
+  open panel repaints on every update while the answer is still streaming, and
+  `nodeActivity` turns the stored facts into the sentence it leads with
+  ("Searching the web — 1 query still running", "Writing its brief from the
+  prompt below"). Three things feed it, all additive and forward-compatible:
+  `persona`/`queries` on the `workflow` event, a second `running`
+  `agent_update` carrying `prompt` + `prompt_chars` (emitted in
+  `runAgentNode` once the node's grounding is assembled), and `agent` on the
+  per-node `search_start`/`search_done` events. Pure and Node-tested:
+  `inspectorModel`, `inspectorHtml`, `nodeActivity`, `mergeSearch` and
+  `nodeRenderState`; the DOM side is delegation on the box (click + Enter/Space,
+  the nodes are `role="button" tabindex="0"`). Everything it stores is BOUNDED
+  for the same reason the swarm strip is — `statuses` is persisted with the
+  turn.
 - **The `swarm` kind — the one node that runs OUTSIDE the server**
   (2026-07-25, `docs/SWARM-REASONING.md`): N tiny Bonsai models reasoning at
   once in the user's browser (`public/js/swarm-core.js` = the algorithm:
@@ -121,8 +140,11 @@ workflow itself is a first-class UI element: a live graph of the team.
 ## Verification
 
 - Unit: `orchestrator-core.test.js` (plan salvage, waves, cycle-break,
-  prompts, event shapes, the swarm kind's downgrade/dep rules),
-  `workflow-viz.test.js` (layout, SVG, XSS, the swarm member strip),
+  prompts, event shapes incl. the inspector's persona/queries/prompt fields,
+  the swarm kind's downgrade/dep rules),
+  `workflow-viz.test.js` (layout, SVG, XSS, the swarm member strip, and the
+  inspector: model assembly, the activity sentence per stage, escaped HTML,
+  the bounded `nodeRenderState`/`mergeSearch` folds, selection markup),
   `swarm-core.test.js` (the algorithm — scoring, the EN+SV agreement metric,
   the stop condition), `swarm-runtime.test.js` (the loop against a FAKE
   member — `spawn` is injected for exactly this), `orchestrator-api.test.js`,
@@ -133,7 +155,9 @@ workflow itself is a first-class UI element: a live graph of the team.
 - STILL OWED (live-verify discipline): a real Orchestrator round trip on the
   deployed site — pick Orchestrator (violet pane + `orchestrator` tag), ask a
   decomposable question, confirm the plan step lists the team, the workflow
-  graph renders and nodes flip running→done, searches show per node, the
+  graph renders and nodes flip running→done, TAPPING a node opens its inspector
+  mid-run and the prompt/searches fill in live (and a reopened conversation
+  still opens its nodes), searches show per node, the
   merged answer cites [n], the reopened conversation replays the graph, and
   a chat_logs row carries `orchestrator: 1`. Also a Swedish request (plan
   names/tasks in Swedish) and a web-search-off run (nodes degrade to custom).

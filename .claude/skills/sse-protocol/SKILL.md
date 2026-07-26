@@ -168,7 +168,7 @@ unknown `status` types (forward compatibility).
   result. Compacted to title + question count in the per-turn research log
   (`sanitizeResearchEvent`). A dropped stream loses the interactive quiz
   (answer recovery returns only the intro text) — accepted fail-soft.
-- `{"status":{"type":"workflow","title":"…","agents":[{"id":"workers","kind":"deep_research","name":"…","task":"…","deps":[]}],"waves":[["workers","deno"],["critic"]]}}`
+- `{"status":{"type":"workflow","title":"…","agents":[{"id":"workers","kind":"deep_research","name":"…","task":"…","deps":[],"queries":["…"],"persona":"…"}],"waves":[["workers","deno"],["critic"]]}}`
   — Orchestrator mode's resolved plan graph (src/orchestrator.js
   runOrchestration, shapes built in public/js/orchestrator-core.js), emitted
   ONCE before execution: the sub-agent nodes, their dependency edges, and the
@@ -180,12 +180,30 @@ unknown `status` types (forward compatibility).
   shape in the per-turn research log (`sanitizeResearchEvent`). Old clients
   ignore it and still see the run via the ordinary `step_*` events the mode
   also emits per agent (`agent_<id>` step ids) — forward-compat by redundancy.
+  `persona` (custom nodes) and `queries` (deep_research nodes) ride along for
+  the node INSPECTOR — both omitted when empty, so a plain team's event is
+  byte-identical to the pre-inspector one.
 - `{"status":{"type":"agent_update","id":"workers","status":"done","duration_ms":8100,"chars":2400}}`
   — one Orchestrator sub-agent's lifecycle change (running → done/failed;
   `note` carries a bounded failure reason). The client updates that node in
   the workflow view AND the statuses map stored on the workflow embed, so the
   persisted record always carries the latest node states (an interrupted run
   honestly re-renders as "running").
+  A node emits `running` TWICE (2026-07-26, feedback #35): once when the wave
+  reaches it, then again once its grounding is assembled, carrying
+  `prompt` — the instruction it is actually working on, head-clamped to
+  `MAX_PROMPT_PREVIEW` — plus `prompt_chars`, the full length, so the
+  inspector says how much of it it is showing instead of passing a truncation
+  off as the whole prompt. The repeat is idempotent: the status is unchanged,
+  and a client that ignores `prompt` repaints to the identical picture.
+  The client keeps only the fields it draws (`workflow-viz.js`
+  `nodeRenderState`) — `statuses` is persisted with the turn, so an event
+  gaining a field must not grow every stored conversation.
+- Orchestrator's per-node searches carry one extra field on the SHARED search
+  events: `{"status":{"type":"search_start","round":1,"query":"…","agent":"workers"}}`
+  (and the matching `search_done`). `agent` names the sub-agent that planned
+  the query, so the inspector can show that node's own searches landing live;
+  every other search omits it and every other consumer ignores it.
 - `{"status":{"type":"swarm_update","id":"weigh","round":2,"rounds":3,"agreement":0.62,"members":["done","running","loading","failed"],"model":"Bonsai 1.7B · 1-bit","phase":"critique"}}`
   — one `swarm` node's live state: per-member status, the round counter and the
   measured peer agreement (public/js/swarm-core.js `swarmUpdateEvent`;
