@@ -62,6 +62,7 @@ import {
 import { BUDGET_MAX_S, BUDGET_MIN_S, budgetTier, fmtBudget, posToSeconds, secondsToPos } from "./timescale.js";
 import { clearChatDom, EMPTY_TEXT, initTurns } from "./turns.js";
 import { initTestpoints } from "./testpoints.js";
+import { initStarters } from "./starters.js";
 import { parseComposerDeepLink } from "./deeplink-core.js";
 
 // ---- Elements -------------------------------------------------------------
@@ -70,6 +71,13 @@ const chat = document.getElementById("chat");
 const form = document.getElementById("form");
 const input = document.getElementById("input");
 const send = document.getElementById("send");
+
+// The starter-prompt strip (public/js/starters.js), wired at the bottom of
+// this file once the composer helpers it needs exist. Declared here so
+// newChat() and the chat-mode handler — both defined above that wiring — can
+// ask it to re-render; null until boot completes, and every call site uses
+// `?.` because a click cannot land before then.
+let starters = null;
 
 // Chat-mode theme (Normal / Introspection titanium / SDK green) — applied
 // FIRST, synchronously, from the local cache (chat-mode.js) so a returning
@@ -357,6 +365,10 @@ modeSel.addEventListener("change", () => {
       .catch(() => {});
   }
   greetSdkMode(mode);
+  // Each mode runs a different agent, so the starter strip has to follow it —
+  // Deep Research openers sitting in Agent Studio would advertise the wrong
+  // thing entirely.
+  starters?.refresh();
 });
 
 // The web-search popover opens on a press-and-hold of the spiderweb knob
@@ -531,6 +543,9 @@ function newChat(keepProject = false) {
   if (keepProject !== true) setActiveProject(null);
   clearHistory(); // also resets the (API-level) incognito flag
   clearChatDom();
+  // clearChatDom rebuilds the empty state from scratch, so the starter strip
+  // has to be re-rendered into the new element (and rotates to the next four).
+  starters?.refresh();
   syncCopyState();
   refreshSdkBuildChip(null); // a fresh chat has no build of its own yet
   input.focus();
@@ -896,6 +911,21 @@ initTestpoints({
       localStorage.setItem("budget_s", String(budgetS));
     },
     selectModel: (m) => selectModel(m),
+  },
+});
+
+// Starter prompts (public/js/starters.js): the four example questions offered
+// on an empty chat, drawn from the active mode's agent queue and rotated so a
+// returning visitor is shown different ones. Clicking one sends it — a chip
+// that only fills the box makes the visitor confirm a question they did not
+// write, which is friction exactly where a newcomer has least patience.
+starters = initStarters({
+  chat,
+  getMode: () => cachedChatMode(),
+  compose: (text) => {
+    input.value = text;
+    autogrow();
+    form.requestSubmit();
   },
 });
 

@@ -617,6 +617,41 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
 .tool-btn:hover { background: var(--panel-2); border-color: var(--border); }
 .tool-btn.active { background: var(--panel-2); border-color: var(--border); color: var(--text); }
 .empty { color: var(--muted); text-align: center; margin-top: 3rem; }
+
+/* Starter prompts (public/js/starters.js): four example questions on an empty
+   chat, drawn from the active mode's agent queue. Themed off the mode
+   variables rather than hard-coded colours, so the strip picks up the
+   introspection titanium / Agent Studio green / Orchestrator violet panes for
+   free — the chips should look like they belong to the agent they open. */
+.starters {
+  display: flex; flex-wrap: wrap; justify-content: center;
+  gap: .5rem; margin: 1.5rem auto 0; max-width: 52rem;
+}
+.starter {
+  flex: 1 1 15rem; max-width: 24rem;
+  text-align: left; cursor: pointer;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: .6rem .75rem; font: inherit; font-size: .84rem; line-height: 1.4;
+  /* A starter is a whole question, so it wraps to at most three lines and
+     then truncates — a chip that grows to six lines stops reading as a
+     shortcut and starts competing with the empty-state prose. */
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden;
+  transition: background .12s ease, border-color .12s ease, transform .12s ease;
+}
+.starter:hover { background: var(--panel-2); border-color: var(--accent); }
+.starter:active { transform: translateY(1px); }
+.starter:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 600px) {
+  /* One per row on a phone: four half-width chips of wrapped question text
+     are unreadable at that width. */
+  .starter { flex-basis: 100%; max-width: none; -webkit-line-clamp: 2; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .starter { transition: none; }
+  .starter:active { transform: none; }
+}
 /* The transient reopened-chat feedback cue (turns.js FEEDBACK_HINT_TEXT):
    quieter than a message, centered under the restored turns, gone on the
    next send. */
