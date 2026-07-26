@@ -839,6 +839,21 @@ agent-registry preview surface at `public/agents/preview.html`);
 sandbox — `planSourceMount`, the `/workspace` + `/mnt` layout, the tiered
 ingest; see `docs/SANDBOX-HOST-COMMANDS.md` part B) and `boot-messages.js`
 (the rotating boot-bar quips shown while the CheerpX VM streams and boots);
+`exec-backends-core.js` (the EXECUTION-ENVIRONMENT seam's shared pure core —
+the execution counterpart of `websearch-backends-core.js`: the backend
+registry, `normalizeExecBackend`, the **DREE/1** client (`GET /healthz` +
+`POST /exec`, `probeRunner`/`makeLocalRunner`), and `selectRunner`, which
+returns the in-browser-VM bridge UNCHANGED unless a local runner is fully
+configured — so the default path can never regress; both tiers import it) with
+`exec-env.js` (its Se/rver glue: the browser-local `dr_exec_env` config —
+per DEVICE, since a runner lives on one machine and its URL/key then never
+reach the server — and the gear-panel section with the ⓘ docs and Test
+connection), the reference runner `public/cure/local-exec/runner.mjs` (one
+dependency-free Node file: auto-detects Apple `container`/docker/podman/
+nerdctl, one throwaway container per research session, `NETWORK=none` by
+default) and its setup page `public/cure/local-exec/index.html`
+(`/cure/local-exec`, a reserved replay slug); see
+`docs/EXECUTION-ENVIRONMENTS.md`;
 `agent-backdrop-core.js` + `agent-backdrop.js` (the agent activity
 backdrop, split pure-core/DOM per the pure-core convention); and
 `umbrella-spinner.js` (the Se/cure intro umbrella, shrunk and looped as a

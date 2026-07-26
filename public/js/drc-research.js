@@ -48,6 +48,7 @@ import {
 } from "./bash-core.js";
 import { AI_MODEL_NOT_A_PACKAGE_NOTE, AI_MODEL_RESEARCH_NOTE, aiModelIntent } from "./ai-models.js";
 import { ensureSandboxBooted, execInSandbox, sandboxSupported } from "./sandbox.js";
+import { selectRunner } from "./exec-backends-core.js";
 import {
   INTROSPECTION_TOOLS,
   MAX_READ_TOTAL_CHARS,
@@ -62,6 +63,21 @@ const MAX_SUBQUESTIONS = 4;
 const MAX_GAP_FOLLOWUPS = 2;
 const CONTEXT_CHARS = 12_000;
 const STREAM_IDLE_MS = 90_000;
+
+/** The in-browser CheerpX VM as a Runner — the default execution environment. */
+const BROWSER_RUNNER = { supported: sandboxSupported, boot: ensureSandboxBooted, exec: execInSandbox };
+
+/**
+ * WHERE this run's shell commands execute. `execCfg` is the user's sealed
+ * execution-environment choice (drc.js execBackendCfg); with none, or with the
+ * browser VM picked, this returns BROWSER_RUNNER and every downstream line is
+ * byte-identical to a run before this seam existed. The `sandbox` option is
+ * unchanged and still wins — it is the tests' injection point.
+ * @param {{backend?: string, baseUrl?: string, key?: string}|null} execCfg
+ */
+function pickRunner(execCfg) {
+  return selectRunner(execCfg, BROWSER_RUNNER);
+}
 
 // ---- the research time budget (the /cure slider — Se/rver's slider, mirrored) ----
 //
@@ -443,8 +459,8 @@ function emitChunked(text, onDelta) {
 // never boots the VM. `sandbox` is injectable for tests; defaults to the real
 // public/js/sandbox.js bridge.
 /** @param {any} opts */
-async function runDrcShellPass({ provider, apiKey, jsonModel, question, context, signal, baseUrl, onStatus, sandbox, fileProvider, budgetS }) {
-  const sb = sandbox || { supported: sandboxSupported, boot: ensureSandboxBooted, exec: execInSandbox };
+async function runDrcShellPass({ provider, apiKey, jsonModel, question, context, signal, baseUrl, onStatus, sandbox, execCfg, fileProvider, budgetS }) {
+  const sb = sandbox || pickRunner(execCfg);
   if (!sb.supported()) return [];
   // The /cure slider's research budget scopes the per-command ceiling, same
   // as DRS (stream.js): a 15 s question must not sit 30 s on one wedged
@@ -531,6 +547,7 @@ export async function runDrcSourceTools({
   context,
   bash = false,
   sandbox = null,
+  execCfg = null,
   fileProvider = null,
   onStatus = () => {},
   onDelta = () => {},
@@ -539,7 +556,7 @@ export async function runDrcSourceTools({
 }) {
   const budget = { used: 0 };
   const sitemap = buildSourceSitemap(snapshot);
-  const sb = sandbox || { supported: sandboxSupported, boot: ensureSandboxBooted, exec: execInSandbox };
+  const sb = sandbox || pickRunner(execCfg);
   const bashOn = bash === true && !!sb.supported();
   const tools = bashOn ? [...INTROSPECTION_TOOLS, RUN_BASH_TOOL] : [...INTROSPECTION_TOOLS];
 
@@ -636,6 +653,10 @@ export async function runDrcResearch({
   snapshot = null,
   bash = false,
   sandbox = null,
+  // The user's execution-environment choice (exec-backends-core.js): null or
+  // {backend:"browser"} keeps the in-browser VM; {backend:"local", baseUrl}
+  // routes every command to a DREE/1 runner on their own machine instead.
+  execCfg = null,
   fileProvider = null,
   webSearch = null,
   onStatus = () => {},
@@ -733,6 +754,7 @@ export async function runDrcResearch({
         context: drcContext(messages) + (recall ? "\n\n" + recall : ""),
         bash,
         sandbox,
+        execCfg,
         fileProvider,
         onStatus,
         onDelta,
@@ -763,7 +785,7 @@ export async function runDrcResearch({
   const pureModelQuestion = aiModelIntent(question) && !bashIntent(question);
   if (bash && !pureModelQuestion) {
     try {
-      const transcript = await runDrcShellPass({ provider, apiKey, jsonModel, question, context, signal, baseUrl, onStatus, sandbox, fileProvider, budgetS });
+      const transcript = await runDrcShellPass({ provider, apiKey, jsonModel, question, context, signal, baseUrl, onStatus, sandbox, execCfg, fileProvider, budgetS });
       shellBlock = buildShellTranscript(transcript);
     } catch {
       shellBlock = "";
