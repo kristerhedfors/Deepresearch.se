@@ -397,7 +397,9 @@ measurements above decide two of them:
 1. **Where the index lives.** 335 MB of vectors and 506 MB of metadata do not
    fit a Worker. Either Vectorize (which `src/rag.js` already speaks, at
    ~326k vectors) or an R2-backed shard read. Vectorize also removes the
-   brute-force scan.
+   brute-force scan. **Answered in §9:** Vectorize for the abstract tier — at
+   327k vectors it uses 3% of one index — and R2 blobs for the full-text tier,
+   which needs no global ANN at all.
 2. **Which pipeline serves it** — settled: dense retrieval plus a
    cross-encoder rerank, no lexical arm (§4.3). The rerank is one extra
    provider call of about 2 s, which fits the existing helper-phase budget and
@@ -429,3 +431,150 @@ researching is exactly the kind of thing this project exists to demonstrate.
 | `scripts/arxiv-goldset.mjs` | needle gold-set generation |
 | `scripts/arxiv-topical-queries.json` | the hand-written EN/SV topical set |
 | `scripts/arxiv-eval.mjs` | the bake-off |
+
+---
+
+## 9. The full-text build — decision memo
+
+The abstract tier answers "which papers are relevant". It cannot answer
+"what does section 4 say", and that is the question deep research on
+scientific data actually needs. This section is the plan for the full-text
+tier: what was measured, which options were rejected, and what to build.
+
+Every number below comes from real papers pulled off arXiv, not from
+estimates. The probes are `/tmp` scratch scripts, not committed; the
+measurements they produced are.
+
+### 9.1 What a paper actually yields
+
+Measured over 138 papers sampled across the corpus (18 for extraction yield,
+120 for chunk structure), fetched as LaTeX source from `export.arxiv.org/e-print`:
+
+| | |
+|---|---|
+| Papers with usable LaTeX source | **78%** (the rest are PDF-only or oddly packaged) |
+| Body text per paper | mean **49,788** chars, median 48,236 — **~40x the abstract** |
+| Section-aware chunks per paper (1100 chars) | mean **52.3**, median 49, p90 85 |
+| Chunks that carry a section heading | **98.6%** |
+| Papers where `\section` parsing found nothing | 4 / 120 |
+| Source tarball | mean 3.07 MB, median 0.85 MB |
+
+Section structure survives extraction well, so chunks can carry their heading
+as context rather than being blind windows.
+
+### 9.2 What the whole-corpus build would cost
+
+Projecting those measurements onto the 326,814-paper corpus:
+
+| | |
+|---|---|
+| Papers with full text | ~255,000 |
+| Full-text vectors | **13.3M** |
+| Embedding tokens | **2.98B** |
+| Embedding cost | **~€89** |
+| Embedding time at 46k tok/s | **~18 h** |
+| int8 vectors | 13.6 GB |
+| Chunk text | 12.7 GB |
+| Source download | **~1.2 TB** (arXiv's own figure: ~100 GB/month of `src`) |
+
+Two of those numbers are structural rather than merely large:
+
+**13.3M vectors exceeds Vectorize's 10,000,000-per-index limit.** A whole-corpus
+flat full-text index cannot be one Vectorize index. It can be two — the account
+limit is 50,000 indexes — but that means fanning every query out and merging.
+
+**1.2 TB has to come from arXiv's S3 requester-pays bucket**, not from
+`export.arxiv.org`. arXiv groups `src` into ~500 MB tars keyed by month
+(`src/arXiv_src_2507_001.tar` …) with a manifest, so a one-year slice is
+directly selectable — but the downloader pays AWS egress, roughly $110 for
+the year. Pulling 255,000 papers one at a time off the public endpoint would
+be roughly 113 hours of sustained requests and is exactly the abuse the S3
+bucket exists to prevent. Per-paper fetching is fine at research-run rates;
+it is not fine as a bulk-build strategy.
+
+### 9.3 Retrieval shape: two-stage, not flat
+
+**Do not let full-text chunks compete with abstracts for discovery.** An
+abstract is an author-written summary optimized for precisely the "is this
+paper relevant" question; a chunk from someone's experimental setup is not.
+In one flat ranking a tangential mid-paper chunk outranks the right paper's
+abstract, and the corpus grows 40x, which is the direction that already hurts:
+measured, dense recall@1 fell 92.1 → 72.1 going from 20k to 327k units (§4.3).
+A flat 13.3M-chunk index is another 40x on top of that.
+
+So:
+
+```
+stage 1  question → abstract index (327k) → top ~20 candidate PAPERS
+stage 2  question → chunks of those papers only → top ~10 PASSAGES → rerank
+```
+
+Stage 1 is the pipeline already measured at 87% r@1 / 96% r@10. Stage 2 never
+searches globally, which is what makes the hosting decision easy.
+
+> **Open, and honestly so:** whether two-stage matches or beats a flat
+> full-text search on body-level questions is *not yet measured*. The
+> validation harness was written and the corpus fetched (120 papers, 6,270
+> chunks, cached), but the run stopped on `402 INSUFFICIENT_WALLET_BALANCE`
+> from Berget before the embedding pass. The argument above is from
+> architecture plus the measured scale-degradation curve, not from a
+> body-question benchmark. Run it before committing to the design.
+
+### 9.4 Where each tier lives
+
+| Tier | Contents | Home | Why |
+|---|---|---|---|
+| 1 — discovery | 326,814 abstract vectors | **Vectorize** | needs global ANN; 327k is 3% of one index's cap, ~$0.17/mo of stored dimensions; `src/rag.js` already speaks it |
+| 2 — depth | per-paper chunk vectors + text | **R2, keyed by paper id** | never searched globally, so no ANN and no 10M cap; ~101 KB per paper (52 KB int8 + 49 KB text) |
+
+Stage 2 fetches the blobs for its ~20 candidate papers — about 2 MB — and
+scans ~1,000 vectors in the Worker. That is nothing against a 5-minute CPU
+budget. It also sidesteps the Vectorize per-index ceiling entirely: the
+full-text tier can grow past 13.3M vectors without ever becoming an
+architecture problem.
+
+### 9.5 The three ways to fill tier 2
+
+| | Coverage | Download | Embed | Vectors | Fits one Vectorize index? |
+|---|---|---|---|---|---|
+| **A. Eager, everything** | all 255k papers | ~1.2 TB / ~$110 | €89, 18 h | 13.3M | no (needs 2, or R2) |
+| **B. Eager, `cs.*` slice** | ~120k papers | ~370 GB / ~$35 | €42, ~8 h | 6.3M | yes |
+| **C. On demand, cached** | whatever gets read | ~3 MB per paper | €0.0004 per paper | grows with use | n/a |
+
+**Recommendation: C, with B as an optional warm start.**
+
+C costs about €0.004 and roughly 5 seconds for a ten-paper deep read, cached
+after that; it needs no AWS account, no 1.2 TB of transfer, and no bulk
+crawling. Cost is proportional to use rather than to the corpus, and the cache
+warms exactly where the research actually goes. Under the two-stage shape it
+is not a compromise: stage 2 only ever looks at candidate papers, so a paper
+that has never been read has cost nothing by not being indexed.
+
+B is worth adding only if instant depth in the site's own subject areas
+matters more than the ~$35 and the 8 hours.
+
+A buys very little that C does not, and costs 1.2 TB, an AWS account, and a
+Vectorize sharding problem to buy it.
+
+### 9.6 Decided, along the way
+
+- **LaTeX source, not PDF.** 78% yield, section headings intact in 98.6% of
+  chunks, math preserved, no column/ligature garbling. PDF extraction is the
+  fallback for the remaining 22% and needs a extractor this container does not
+  have. The ~300 GB Hugging Face LaTeX mirrors were rejected on size and on
+  unverified coverage of the last year.
+- **Section-aware chunks of ~1100 chars, heading prepended.** Measured, not
+  assumed: `\section` parsing worked on 116 of 120 papers.
+- **No full-text BM25.** The abstract-tier BM25 is already 401 MB of JSON for
+  327k documents; at 40x the text it would be tens of gigabytes — to add a
+  retrieval arm that §4.3 measured as *harmful* on unbiased queries.
+- **Keep the reranker.** It is the one stage that reliably pays, and its
+  50-document depth is exactly Vectorize's `topK` ceiling with metadata.
+
+### 9.7 Blocked on
+
+- **Berget wallet is empty** (`402 INSUFFICIENT_WALLET_BALANCE`, confirmed
+  2026-07-26). No further embedding of any kind runs until it is topped up —
+  including the §9.3 validation.
+- For option A or B only: an AWS account for requester-pays S3, and a build
+  host with the transfer budget and ~30 GB of disk.
