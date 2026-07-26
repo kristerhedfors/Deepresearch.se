@@ -26,7 +26,6 @@ import { initProjectsUi } from "./projects-ui.js";
 import { bashLiteOn, developerModeOn, loadSettings, setDeveloperMode } from "./settings.js";
 import { storeDeveloperMode } from "./dev-mode.js";
 import { applyChatModeTheme, cachedChatMode, reconcileChatMode } from "./chat-mode.js";
-import { getSearchSource, searchSourcePickerHtml, wireSearchSourcePicker } from "./search-source.js";
 import { applyModeBackdrop } from "./mode-backdrop.js";
 import { barTint } from "./mode-theme.js";
 import { wireBarTint } from "./bar-tint.js";
@@ -269,18 +268,10 @@ webSearchBox.addEventListener("change", () => {
   localStorage.setItem("web_search", webSearchBox.checked ? "on" : "off");
 });
 
-// The knob's long-press card also answers WHO runs the searches (UX-10 amended,
-// 2026-07-25): Exa (the default, a hosted index that retains queries) or this
-// site's own Cloudflare Worker (src/websearch-cf.js — no search company in the
-// path). Rendered once at boot into #searchsrc; the pick is device-local
-// (search-source.js) and rides each /api/chat as `search_source`, which the
-// server re-validates. Fail-soft: a stale cached page without the container
-// just keeps sending its stored pick.
-const searchSrcBox = document.getElementById("searchsrc");
-if (searchSrcBox) {
-  searchSrcBox.innerHTML = searchSourcePickerHtml(getSearchSource(), "srvsrc");
-  wireSearchSourcePicker(searchSrcBox, () => {});
-}
+// WHO runs the searches is NOT this knob's business (owner directive,
+// 2026-07-26): the knob is on/off, and the Exa-or-our-own-Worker choice is the
+// "Exa web search" knob in the Settings view (account-settings.js), device-local
+// in search-source.js. stream.js reads the resulting source per request.
 
 // ---- Introspection / SDK composer-row status chips -------------------------
 // The research-depth slider is hidden in these two modes (mode-theme.js

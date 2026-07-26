@@ -164,7 +164,7 @@ rest of the document elaborates.
 | **Vectorize** | Cloudflare | chunk text + vectors | the operator | retrieval over workspace material |
 | **Berget / Anthropic / OpenAI** | third party | whatever a request carries | that provider | the models. Berget is primary and runs every JSON planning phase |
 | **Exa** | third party | the search query | Exa | live web results, and the DEFAULT search backend. Only the query ever leaves — never the conversation |
-| **Web search from our own Worker** (`src/websearch-cf.js`) | Cloudflare (this Worker) | the search query, to a public results page and the result pages | the operator, plus whoever hosts each page we read | live web results with no search company in the path. Selectable site-wide by an admin, or per request by a user from the web knob's long-press card |
+| **Web search from our own Worker** (`src/websearch-cf.js`) | Cloudflare (this Worker) | the search query, to a public results page and the result pages | the operator, plus whoever hosts each page we read | live web results with no search company in the path. Selectable site-wide by an admin, or per request by a user with the "Exa web search" knob in settings |
 | **Shodan** (`src/shodan.js`, `shodan_mcp` knob) | third party, **Se/rver only** | one host or IP | Shodan | host intelligence folded into research. Not available on Se/cure: the key is server-side, and a server-side key means a server in the data path |
 | **Google Maps / Street View** (`google_maps` knob) | third party, Se/rver only | a place or coordinate | Google | maps, street imagery, place context |
 | **OSM Nominatim** | third party, Se/rver only | a coordinate | OSM | turning a photo's EXIF GPS into place context |

@@ -121,16 +121,21 @@ async function fetchCatalog(env) {
         m.capabilities?.streaming &&
         m.capabilities?.json_mode,
     )
-    .map((m) => ({
-      id: m.id,
-      name: m.name || m.id,
-      pricing: formatPricing(m.pricing),
-      // Raw EUR-per-token prices, kept for quota cost accounting.
-      price_in: typeof m.pricing?.input === "number" ? m.pricing.input : 0,
-      price_out: typeof m.pricing?.output === "number" ? m.pricing.output : 0,
-      up: m.status?.up !== false,
-      vision: m.capabilities?.vision === true,
-    }));
+    .map((m) => {
+      // Normalized to EUR per TOKEN at the wire — the catalog's stated unit
+      // is not stable (see eurPerTokenFromBerget).
+      const price = bergetPricingPerToken(m.pricing);
+      return {
+        id: m.id,
+        name: m.name || m.id,
+        pricing: formatPricing(price),
+        // EUR-per-token prices, kept for quota cost accounting.
+        price_in: price?.input || 0,
+        price_out: price?.output || 0,
+        up: m.status?.up !== false,
+        vision: m.capabilities?.vision === true,
+      };
+    });
 
   modelsCache = { at: Date.now(), list, raw };
   return modelsCache;
@@ -160,6 +165,64 @@ export async function rawModelEntry(env, id) {
   } catch {
     return null;
   }
+}
+
+// Berget's catalog states a UNIT for its prices, and that unit CHANGED under
+// us: until 2026-07-16 `pricing.input`/`pricing.output` were raw EUR per
+// TOKEN; from 2026-07-17 they are EUR per MILLION tokens, tagged
+// `unit: "€ / M Token"`. Everything downstream accounts in EUR per token
+// (quota.js bergetCost, the EUR budget caps, the admin cost totals), so the
+// catalog is normalized HERE, at the wire, and nothing else has to know.
+//
+// What the un-normalized value cost, as recorded in usage_events: Mistral
+// Small's per-token price went from 3e-7 to 0.30 EUR on 2026-07-17 — exactly
+// its per-1M figure, a 1e6 overstatement. That put ~€500k of phantom spend on
+// the admin usage panel and, because the same number feeds enforcement, put
+// every real user past their EUR budget cap within a single request.
+//
+// Two independent signals, so a future silent unit change can't re-inflate
+// costs by 1e6: the stated unit, and — whatever the unit claims — a magnitude
+// sanity bound. A genuine per-token price is ~1e-8..1e-5 EUR (the priciest
+// frontier model is ~1.4e-5); the cheapest per-million price in the catalog is
+// 0.02. Anything at or above 1e-3 EUR/token (€1000 per 1M tokens) is a
+// per-million figure wearing the wrong unit, not a real price.
+const PER_MILLION_UNIT_RE = /m\s*tok/i;
+const PER_SECOND_UNIT_RE = /second/i;
+export const MAX_PLAUSIBLE_EUR_PER_TOKEN = 1e-3;
+
+/**
+ * One side of a Berget catalog `pricing` block as EUR per TOKEN, whatever
+ * unit the catalog states it in. 0 for a missing/non-numeric price and for
+ * the per-SECOND units (the speech-to-text models price by audio duration —
+ * there is no token price to report). Pure + unit-tested.
+ * @param {{ input?: number, output?: number, unit?: string } | null | undefined} p
+ * @param {"input" | "output"} field
+ * @returns {number}
+ */
+export function eurPerTokenFromBerget(p, field) {
+  const v = p?.[field];
+  if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) return 0;
+  const unit = String(p?.unit || "");
+  if (PER_SECOND_UNIT_RE.test(unit)) return 0;
+  if (PER_MILLION_UNIT_RE.test(unit) || v >= MAX_PLAUSIBLE_EUR_PER_TOKEN) return v / 1e6;
+  return v;
+}
+
+/**
+ * A whole Berget `pricing` block normalized to EUR per TOKEN — the shape
+ * formatPricing and the catalog's price_in/price_out both want. null when the
+ * entry carries no numeric pricing (so an unpriced model keeps rendering no
+ * tooltip rather than a bogus "€0"). Pure + unit-tested.
+ * @param {{ input?: number, output?: number, currency?: string, unit?: string } | null | undefined} p
+ * @returns {{ input: number, output: number, currency?: string } | null}
+ */
+export function bergetPricingPerToken(p) {
+  if (!p || typeof p.input !== "number" || typeof p.output !== "number") return null;
+  return {
+    input: eurPerTokenFromBerget(p, "input"),
+    output: eurPerTokenFromBerget(p, "output"),
+    currency: p.currency,
+  };
 }
 
 // "€0.30 in / €0.30 out per 1M tokens" — shown as a tooltip in the UI.

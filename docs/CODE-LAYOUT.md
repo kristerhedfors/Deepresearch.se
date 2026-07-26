@@ -242,12 +242,14 @@ as a real diagram — the vendored `mermaid.min.js` lazy-loads on first use
 only, fail-soft to the plain code block), `report.js` (the branded PDF report export of
 an answer — lazy-injects the vendored jsPDF on first use only, so the
 normal page load never pays for it), `timescale.js` (slider scale), `search-source.js` (WHO runs the web
-searches — the per-device pick behind the web knob's long-press card,
-UX-10: Exa or this site's own Cloudflare Worker; the ids mirror the
-server's `USER_SEARCH_SOURCES` and the server re-validates, so this is a
-preference and never a trust boundary. One module for BOTH tiers — DRS
-sends it as `/api/chat`'s `search_source`, DRC as the grant/token calls'
-`source` — Node-tested), `history-store.js`
+searches — the per-device preference behind the **Exa web search** settings
+knob: on (default) means Exa, off means this site's own Cloudflare Worker.
+The composer's web knob is on/off ONLY (2026-07-26 directive; it briefly
+carried a picker). The ids mirror the server's `USER_SEARCH_SOURCES` and the
+server re-validates, so this is a preference and never a trust boundary. One
+module for BOTH tiers — the settings row is `account-settings.js` on DRS and
+`#exarow` on DRC; DRS sends the source as `/api/chat`'s `search_source`, DRC
+as the grant/token calls' `source` — Node-tested), `history-store.js`
 (IndexedDB + AES-GCM: the conversation store itself — encrypted, except
 project chats which rest readable because they're RAG-indexed — also
 dual-writing each record to the cloud, always, per invariant 4),
