@@ -49,8 +49,8 @@ test("different secrets never collide", async () => {
 test("project state round-trips sealed under the blob key — API keys inside", async () => {
   const { blobKey } = await deriveDrcProfile(generateDrcSecret());
   const state = emptyDrcState();
-  state.keys = { openai: "sk-test-openai", groq: "gsk-test-groq" };
-  state.providerId = "groq";
+  state.keys = { openai: "sk-test-openai", anthropic: "sk-ant-test" };
+  state.providerId = "anthropic";
   state.model = "llama-3.3-70b-versatile";
   state.conversations.push({
     id: "c1",

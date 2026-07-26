@@ -6,7 +6,7 @@
      Colors are the tier tokens (see public/architecture/index.html). -->
 <svg xmlns="http://www.w3.org/2000/svg" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" viewBox="0 0 420 470">
   <title>The Se/cure data path</title>
-  <desc>The Se/cure data path: browser calls providers directly on the user's own keys; the server only serves static files and is not in the data path</desc>
+  <desc>The Se/cure data path: the browser calls OpenAI, Anthropic, Groq, Berget.ai — or any other OpenAI-compatible endpoint — directly on the user's own keys; the server only serves static files and is not in the data path</desc>
   <!-- Browser: the engine -->
   <rect x="40" y="10" width="340" height="150" rx="10" fill="#7c6a24"/>
   <text x="210" y="38" text-anchor="middle" font-size="14" font-weight="700" fill="#ffffff">Your browser</text>
@@ -24,25 +24,36 @@
   <line x1="310" y1="160" x2="348" y2="236" stroke="#7c6a24" stroke-width="1.5"/>
   <polygon points="351,242 344,236 352,232" fill="#7c6a24"/>
   <text x="210" y="222" text-anchor="middle" font-size="9.5" fill="#75683f">direct CORS calls, on YOUR keys</text>
-  <rect x="8" y="242" width="128" height="60" rx="8" fill="#f0e9d2" stroke="#b3a06e"/>
-  <text x="72" y="264" text-anchor="middle" font-size="10.5" font-weight="700" fill="#3d3418">OpenAI</text>
-  <text x="72" y="279" text-anchor="middle" font-size="9" fill="#75683f">answers · JSON phases</text>
-  <text x="72" y="291" text-anchor="middle" font-size="9" fill="#75683f">· embeddings (RAG)</text>
-  <rect x="146" y="242" width="128" height="60" rx="8" fill="#f0e9d2" stroke="#b3a06e"/>
-  <text x="210" y="264" text-anchor="middle" font-size="10.5" font-weight="700" fill="#3d3418">Groq</text>
-  <text x="210" y="279" text-anchor="middle" font-size="9" fill="#75683f">answers · JSON phases</text>
-  <text x="210" y="291" text-anchor="middle" font-size="9" fill="#75683f">(no embeddings → no RAG)</text>
-  <rect x="284" y="242" width="128" height="60" rx="8" fill="#f0e9d2" stroke="#b3a06e"/>
-  <text x="348" y="264" text-anchor="middle" font-size="10.5" font-weight="700" fill="#3d3418">Berget.ai</text>
-  <text x="348" y="279" text-anchor="middle" font-size="9" fill="#75683f">answers · JSON phases</text>
-  <text x="348" y="291" text-anchor="middle" font-size="9" fill="#75683f">· embeddings (RAG)</text>
+  <rect x="8" y="242" width="96" height="58" rx="8" fill="#f0e9d2" stroke="#b3a06e"/>
+  <text x="56" y="261" text-anchor="middle" font-size="10" font-weight="700" fill="#3d3418">OpenAI</text>
+  <text x="56" y="276" text-anchor="middle" font-size="7.5" fill="#75683f">answers · JSON phases</text>
+  <text x="56" y="288" text-anchor="middle" font-size="7.5" fill="#75683f">· embeddings (RAG)</text>
+  <rect x="110" y="242" width="96" height="58" rx="8" fill="#f0e9d2" stroke="#b3a06e"/>
+  <text x="158" y="261" text-anchor="middle" font-size="10" font-weight="700" fill="#3d3418">Anthropic</text>
+  <text x="158" y="276" text-anchor="middle" font-size="7.5" fill="#75683f">answers · JSON phases</text>
+  <text x="158" y="288" text-anchor="middle" font-size="7.5" fill="#75683f">no embeddings</text>
+  <rect x="212" y="242" width="96" height="58" rx="8" fill="#f0e9d2" stroke="#b3a06e"/>
+  <text x="260" y="261" text-anchor="middle" font-size="10" font-weight="700" fill="#3d3418">Groq</text>
+  <text x="260" y="276" text-anchor="middle" font-size="7.5" fill="#75683f">answers · JSON phases</text>
+  <text x="260" y="288" text-anchor="middle" font-size="7.5" fill="#75683f">no embeddings</text>
+  <rect x="314" y="242" width="96" height="58" rx="8" fill="#f0e9d2" stroke="#b3a06e"/>
+  <text x="362" y="261" text-anchor="middle" font-size="10" font-weight="700" fill="#3d3418">Berget.ai</text>
+  <text x="362" y="276" text-anchor="middle" font-size="7.5" fill="#75683f">answers · JSON phases</text>
+  <text x="362" y="288" text-anchor="middle" font-size="7.5" fill="#75683f">· embeddings (RAG)</text>
+  <!-- The escape hatch: the four named providers are shortcuts, not the
+       boundary. Dashed, because what sits here is whatever the user points it
+       at — including a server on their own machine, which is the tier's
+       strongest privacy mode. -->
+  <rect x="8" y="306" width="404" height="34" rx="8" fill="#f7f2e2" stroke="#b3a06e" stroke-dasharray="5 3"/>
+  <text x="210" y="321" text-anchor="middle" font-size="10" font-weight="700" fill="#3d3418">…or ANY other OpenAI-compatible endpoint</text>
+  <text x="210" y="333" text-anchor="middle" font-size="8.5" fill="#75683f">a service you choose — or a model you run yourself, so nothing leaves your machine</text>
   <!-- the absent server -->
   <!-- x=30/width=360, not 60/300: the two 9.5px lines inside are wider than a
        300-unit box, so at the old size they spilled past the dashed border. -->
-  <rect x="30" y="330" width="360" height="72" rx="10" fill="none" stroke="#b3a06e" stroke-width="1.5" stroke-dasharray="6 4"/>
-  <text x="210" y="354" text-anchor="middle" font-size="12" font-weight="700" fill="#75683f">The server (not in the data path)</text>
-  <text x="210" y="372" text-anchor="middle" font-size="9.5" fill="#75683f">serves the static page + public research replays — nothing else.</text>
-  <text x="210" y="386" text-anchor="middle" font-size="9.5" fill="#75683f">No accounts. It could not log content or keys even in principle.</text>
-  <text x="210" y="434" text-anchor="middle" font-size="9.5" fill="#75683f">no web search either: the "harvest" phase draws on the model's own</text>
-  <text x="210" y="448" text-anchor="middle" font-size="9.5" fill="#75683f">knowledge, and the prompts force it to be honest about that</text>
+  <rect x="30" y="350" width="360" height="72" rx="10" fill="none" stroke="#b3a06e" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="210" y="374" text-anchor="middle" font-size="12" font-weight="700" fill="#75683f">The server (not in the data path)</text>
+  <text x="210" y="392" text-anchor="middle" font-size="9.5" fill="#75683f">serves the static page + public research replays — nothing else.</text>
+  <text x="210" y="406" text-anchor="middle" font-size="9.5" fill="#75683f">No accounts. It could not log content or keys even in principle.</text>
+  <text x="210" y="442" text-anchor="middle" font-size="9.5" fill="#75683f">no web search either: the "harvest" phase draws on the model's own</text>
+  <text x="210" y="456" text-anchor="middle" font-size="9.5" fill="#75683f">knowledge, and the prompts force it to be honest about that</text>
 </svg>

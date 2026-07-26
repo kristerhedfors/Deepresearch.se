@@ -8,7 +8,8 @@
 // DRC is modular by definition, and this page is just the wiring layer
 // over four self-contained, Node-tested modules:
 //   /js/drc-core.js      — secret → derived ids/keys, the sealed state
-//   /js/drc-providers.js — the CORS-capable provider registry (OpenAI, Groq, Berget)
+//   /js/drc-providers.js — the CORS-capable provider registry (OpenAI, Anthropic,
+//                            Groq, Berget + any OpenAI-compatible endpoint)
 //   /js/drc-research.js  — the client-side deep-research pipeline
 //   /js/drc-store.js     — BROWSER-LOCAL sealed-state storage (the seam)
 //
@@ -911,7 +912,8 @@ async function handlePublicationLink() {
     workStatus(
       "This is a published research replay" +
         (pub.description ? " — " + pub.description : "") +
-        ". Ask a follow-up to continue it: replies run on YOUR API key (OpenAI, Groq or Berget), straight " +
+        ". Ask a follow-up to continue it: replies run on YOUR API key (OpenAI, Anthropic, Groq or Berget — or " +
+        "any OpenAI-compatible endpoint you point it at), straight " +
         "from this browser.",
     );
     return true;
@@ -1154,7 +1156,8 @@ async function saveState() {
 // ---- provider keys ---------------------------------------------------------------------
 
 // ONE input for the key + a provider dropdown that follows the pasted
-// key's prefix automatically (sk-… OpenAI, gsk_… Groq, sk_ber_… Berget —
+// key's prefix automatically (sk-… OpenAI, sk-ant-… Anthropic, gsk_… Groq,
+// sk_ber_… Berget —
 // detectDrcProvider); unknown prefixes leave the dropdown to the user.
 // Saved keys are listed below with per-provider remove buttons.
 function renderKeysPanel() {
@@ -1640,16 +1643,14 @@ async function refreshModels() {
   // The ON-DEVICE group (downloaded models only) lands FIRST: the most
   // private option a session can hold outranks every borrowed/keyed one.
   if (odGroup) groups.unshift(odGroup);
-  // The tier's provider limit, made visible: only CORS-capable providers
-  // can serve DRC (direct browser calls); the hosted ones stay listed,
-  // disabled, pointing at DRS. Berget graduated OFF this list 2026-07-11
-  // when api.berget.ai started serving browser CORS — it's a real
-  // provider above now.
-  groups.push(
-    '<optgroup label="Se/rver only — DeepResearch.Se/rver">' +
-      '<option disabled>🇺🇸 Anthropic Claude</option>' +
-      "</optgroup>",
-  );
+  // There is no longer a "Se/rver only" tail here. This list once named the
+  // providers DRC could NOT reach, disabled, pointing at DRS — Berget
+  // graduated off it 2026-07-11 when api.berget.ai started serving browser
+  // CORS, and Anthropic followed on 2026-07-26 once its Messages API got a
+  // client-side wire adapter (drc-providers.js), leaving it empty. With the
+  // keyless entry
+  // taking any OpenAI-compatible base URL on top of that, an honest list of
+  // what this tier cannot reach would be empty — so nothing is appended.
   pick.innerHTML = groups.join("");
   const remembered = state.providerId && state.model ? state.providerId + "::" + state.model : null;
   if (remembered && [...pick.options].some((o) => o.value === remembered)) {
@@ -1716,8 +1717,9 @@ function renderMessages() {
     const empty = document.createElement("div");
     empty.className = "empty";
     empty.textContent =
-      "Hi — I'm an AI research assistant that runs right here in your browser, on your own OpenAI, Groq " +
-      "or Berget API key (or a local model you run yourself). My replies are model-generated, so verify " +
+      "Hi — I'm an AI research assistant that runs right here in your browser, on your own OpenAI, Anthropic, " +
+      "Groq or Berget API key — or any OpenAI-compatible endpoint, a model you run yourself included. My replies " +
+      "are model-generated, so verify " +
       "anything critical. Ask a research question to get started, or type “/” for the commands — " +
       "“/feedback” reaches the developers, “/help” answers from the documentation.";
     box.appendChild(empty);
@@ -1971,7 +1973,7 @@ function newChat() {
 // ---- client-side RAG (drc-rag.js): recall before the pipeline, index after ------------
 
 // The embedding hookup for client-side RAG. Two ways to get one:
-//   1. A stored OWN key that serves embeddings (OpenAI today — Groq has none).
+//   1. A stored OWN key that serves embeddings (OpenAI today — Anthropic and Groq have none).
 //   2. A borrowed `api` grant on the proxy / Se/rver-token provider — the
 //      SAME grant that lends completions now proxies /embeddings to Berget's
 //      e5 model on the server key (owner directive, 2026-07-17), so a keyless

@@ -549,7 +549,7 @@ test("groupIntrospectionModels: private first + recommended, remote labeled as r
   const { groups, recommended } = groupIntrospectionModels(
     [
       { id: "openai", label: "OpenAI", models: ["gpt-5.6-sol", "gpt-5.4-mini"] },
-      { id: "groq", label: "Groq", models: ["llama-4"] },
+      { id: "anthropic", label: "Anthropic", models: ["claude-opus-5"] },
     ],
     [
       { id: "mistral-small", name: "Mistral Small", up: true },
@@ -1186,3 +1186,4 @@ test("lexicalRetrieveCorpus: generic per-doc diversity over a docs-shaped corpus
   // Doc paths carry no space, so the diversity key is the whole path → per-DOC cap.
   assert.ok(hits.filter((h) => h.p === "docs/VAULT.md").length <= 2);
 });
+

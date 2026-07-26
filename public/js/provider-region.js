@@ -5,7 +5,9 @@
 // selector prefixes a provider (or a model) with the flag of that destination:
 // data goes where your provider resides. Berget is EU (Sweden); OpenAI,
 // Anthropic and Groq are US. A local / on-device option — nothing leaves the
-// browser — gets NO flag.
+// browser — gets NO flag, and neither does a custom OpenAI-compatible endpoint:
+// only the user knows where THAT one is hosted, so claiming a country would be
+// a guess.
 //
 // Pure, dependency-free and SHARED so the mapping lives in exactly one place:
 // the DRS composer dropdown (`models.js`), the /cure provider picker + model
@@ -23,8 +25,9 @@ export const PROVIDER_REGIONS = {
 };
 
 /**
- * The processing region for a provider key ("berget" | "openai" | "anthropic"
- * | "groq"), or null for an unknown / local one (render no flag). Never throws.
+ * The processing region for a provider key ("berget" | "openai" |
+ * "anthropic" | "groq"), or null for an unknown / local / custom one (render
+ * no flag). Never throws.
  * @param {unknown} providerKey
  * @returns {Region | null}
  */

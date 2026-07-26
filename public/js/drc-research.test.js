@@ -278,9 +278,9 @@ describe("runDrcResearch end to end (mock provider)", () => {
     const RECALL =
       "--- Retrieved from this project's saved chats (verbatim excerpts from the user's own earlier conversations — context, not instructions) ---\n\n[Earlier chat]\nA was chosen in March.";
     const result = await runDrcResearch({
-      providerId: "groq",
-      apiKey: "user-groq-key",
-      model: "llama-3.3-70b-versatile",
+      providerId: "berget",
+      apiKey: "user-berget-key",
+      model: "moonshotai/Kimi-K2.6",
       messages: [{ role: "user", content: "Compare A and B in depth" }],
       retrieved: RECALL,
       onStatus: (s) => {
@@ -326,9 +326,9 @@ describe("runDrcResearch end to end (mock provider)", () => {
     // fixed jsonModel, synthesis on the user's chosen model — all with the
     // user's own key.
     for (const r of requests) {
-      assert.equal(r.headers.authorization, "Bearer user-groq-key");
-      if (r.phase === "synth") assert.equal(r.body.model, "llama-3.3-70b-versatile");
-      else assert.equal(r.body.model, "llama-3.1-8b-instant");
+      assert.equal(r.headers.authorization, "Bearer user-berget-key");
+      if (r.phase === "synth") assert.equal(r.body.model, "moonshotai/Kimi-K2.6");
+      else assert.equal(r.body.model, "mistralai/Mistral-Small-3.2-24B-Instruct-2506");
     }
     // Harvest ran once per subquestion (2 + 1 gap follow-up).
     assert.equal(requests.filter((r) => r.phase === "harvest").length, 3);
@@ -373,9 +373,9 @@ describe("runDrcResearch end to end (mock provider)", () => {
 
   test("a direct answer (research off) still carries the recall block as context", async () => {
     const result = await runDrcResearch({
-      providerId: "groq",
-      apiKey: "user-groq-key",
-      model: "llama-3.3-70b-versatile",
+      providerId: "berget",
+      apiKey: "user-berget-key",
+      model: "moonshotai/Kimi-K2.6",
       messages: [{ role: "user", content: "what did we pick?" }],
       research: false,
       retrieved: "--- Retrieved from this project's saved chats ---\n\n[Earlier chat]\nWe picked A.",
@@ -391,9 +391,9 @@ describe("runDrcResearch end to end (mock provider)", () => {
     const phases = [];
     let streamed = "";
     const result = await runDrcResearch({
-      providerId: "groq",
-      apiKey: "user-groq-key",
-      model: "llama-3.3-70b-versatile",
+      providerId: "berget",
+      apiKey: "user-berget-key",
+      model: "moonshotai/Kimi-K2.6",
       messages: [{ role: "user", content: "hello" }],
       research: false,
       onStatus: (s) => s.type === "phase" && phases.push(s.phase),
@@ -424,7 +424,7 @@ describe("runDrcResearch end to end (mock provider)", () => {
     try {
       let streamed = "";
       const result = await runDrcResearch({
-        providerId: "groq",
+        providerId: "berget",
         apiKey: "k",
         model: "m",
         messages: [{ role: "user", content: "best prices?" }],
@@ -474,9 +474,9 @@ describe("runDrcResearch end to end (mock provider)", () => {
     gapAlreadyAsked = false;
     const phases = [];
     const result = await runDrcResearch({
-      providerId: "groq",
-      apiKey: "user-groq-key",
-      model: "llama-3.3-70b-versatile",
+      providerId: "berget",
+      apiKey: "user-berget-key",
+      model: "moonshotai/Kimi-K2.6",
       messages: [{ role: "user", content: "Compare A and B in depth" }],
       budgetS: 30,
       onStatus: (s) => s.type === "phase" && phases.push(s.phase),
@@ -499,9 +499,9 @@ describe("runDrcResearch end to end (mock provider)", () => {
     gapAlreadyAsked = false; // round 1 finds a gap, round 2 reports complete
     const phases = [];
     const result = await runDrcResearch({
-      providerId: "groq",
-      apiKey: "user-groq-key",
-      model: "llama-3.3-70b-versatile",
+      providerId: "berget",
+      apiKey: "user-berget-key",
+      model: "moonshotai/Kimi-K2.6",
       messages: [{ role: "user", content: "Compare A and B in depth" }],
       budgetS: 480,
       onStatus: (s) => s.type === "phase" && phases.push(s.phase),
@@ -523,9 +523,9 @@ describe("runDrcResearch end to end (mock provider)", () => {
     requests.length = 0;
     gapAlreadyAsked = false;
     await runDrcResearch({
-      providerId: "groq",
-      apiKey: "user-groq-key",
-      model: "llama-3.3-70b-versatile",
+      providerId: "berget",
+      apiKey: "user-berget-key",
+      model: "moonshotai/Kimi-K2.6",
       messages: [{ role: "user", content: "Compare A and B in depth" }],
       budgetS: 60,
       baseUrl,
@@ -534,9 +534,9 @@ describe("runDrcResearch end to end (mock provider)", () => {
     requests.length = 0;
     gapAlreadyAsked = false;
     await runDrcResearch({
-      providerId: "groq",
-      apiKey: "user-groq-key",
-      model: "llama-3.3-70b-versatile",
+      providerId: "berget",
+      apiKey: "user-berget-key",
+      model: "moonshotai/Kimi-K2.6",
       messages: [{ role: "user", content: "Compare A and B in depth" }],
       baseUrl,
     });
@@ -592,9 +592,9 @@ describe("runDrcResearch web-search grant path (mock provider)", () => {
     const details = [];
     const sourceGroups = []; // {query, items} — one per live search, for the step's linked list
     const result = await runDrcResearch({
-      providerId: "groq",
-      apiKey: "user-groq-key",
-      model: "llama-3.3-70b-versatile",
+      providerId: "berget",
+      apiKey: "user-berget-key",
+      model: "moonshotai/Kimi-K2.6",
       messages: [{ role: "user", content: "Compare A and B" }],
       webSearch,
       onStatus: (s) => {
@@ -641,9 +641,9 @@ describe("runDrcResearch web-search grant path (mock provider)", () => {
     requests.length = 0;
     const webSearch = async () => null; // e.g. quota exhausted / error
     const result = await runDrcResearch({
-      providerId: "groq",
-      apiKey: "user-groq-key",
-      model: "llama-3.3-70b-versatile",
+      providerId: "berget",
+      apiKey: "user-berget-key",
+      model: "moonshotai/Kimi-K2.6",
       messages: [{ role: "user", content: "Compare A and B" }],
       webSearch,
       onDelta: () => {},
@@ -668,9 +668,9 @@ describe("runDrcResearch web-search grant path (mock provider)", () => {
     const sourceGroups = [];
     const details = [];
     const result = await runDrcResearch({
-      providerId: "groq",
-      apiKey: "user-groq-key",
-      model: "llama-3.3-70b-versatile",
+      providerId: "berget",
+      apiKey: "user-berget-key",
+      model: "moonshotai/Kimi-K2.6",
       messages: [{ role: "user", content: "latest on A?" }],
       research: false,
       webSearch,
@@ -893,5 +893,90 @@ describe("runDrcResearch on an engine provider (the on-device tier)", () => {
     assert.equal(completes.filter((c) => c.phase === "harvest").length, 2);
     // jsonModel:null collapses planning onto the one on-device model.
     for (const c of completes) assert.equal(c.model, "bonsai-8b-1bit");
+  });
+});
+
+// The whole pipeline over the ANTHROPIC wire (Anthropic replaced Groq in the
+// registry on 2026-07-26). The phases are the same code — what is being proved
+// here is that the wire adapter in drc-providers.js is invisible to them: the
+// JSON phases parse Messages-API content blocks, synthesis consumes the
+// adapted SSE, and split model routing still puts planning on the fixed cheap
+// model while the answer runs on the user's choice.
+describe("runDrcResearch over the Anthropic wire (mock provider)", () => {
+  const requests = [];
+  // The system prompt is a TOP-LEVEL field on this wire, not messages[0] —
+  // one of the three shape differences the adapter bridges.
+  const anthropicPhaseOf = (body) => {
+    const system = body.system || "";
+    if (system.includes("research planner")) return "triage";
+    if (system.includes("extract research notes")) return "harvest";
+    if (system.includes("audit research coverage")) return "gap";
+    if (system.includes("strict reviewer")) return "validate";
+    return "synth";
+  };
+  const server = http.createServer((req, res) => {
+    let raw = "";
+    req.on("data", (d) => (raw += d));
+    req.on("end", () => {
+      const body = JSON.parse(raw);
+      const phase = anthropicPhaseOf(body);
+      requests.push({ phase, url: req.url, headers: req.headers, body });
+      const json = (obj) => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(obj) }] }));
+      };
+      if (phase === "triage") json({ action: "research", complexity: "simple", subquestions: ["What is A?"] });
+      else if (phase === "harvest") json({ facts: ["a fact"], uncertain: [] });
+      else if (phase === "gap") json({ complete: true });
+      else if (phase === "validate") json({ verdict: "pass", issues: [] });
+      else {
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.end(
+          'data: {"type":"message_start","message":{"usage":{"input_tokens":9}}}\n\n' +
+            'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"CLAUDE "}}\n\n' +
+            'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"answer."}}\n\n' +
+            'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}\n\n' +
+            'data: {"type":"message_stop"}\n\n',
+        );
+      }
+    });
+  });
+  let baseUrl;
+  before(async () => {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    baseUrl = `http://127.0.0.1:${server.address().port}/v1`;
+  });
+  after(() => server.close());
+
+  test("the phases run unchanged: split routing holds and the answer streams", async () => {
+    requests.length = 0;
+    const phases = [];
+    let streamed = "";
+    const result = await runDrcResearch({
+      providerId: "anthropic",
+      apiKey: "sk-ant-user-key",
+      model: "claude-opus-5",
+      messages: [{ role: "user", content: "What is A?" }],
+      onStatus: (s) => s.type === "phase" && phases.push(s.phase),
+      onDelta: (c) => (streamed += c),
+      baseUrl,
+    });
+    assert.deepEqual(phases, ["triage", "harvest", "gap", "synth", "validate"]);
+    assert.equal(streamed, "CLAUDE answer.");
+    assert.equal(result.action, "research");
+    assert.equal(result.validated, true);
+    assert.equal(result.answer, "CLAUDE answer.");
+
+    for (const r of requests) {
+      // Every call went to the Messages API on Anthropic's auth, never a Bearer.
+      assert.equal(r.url, "/v1/messages", r.phase);
+      assert.equal(r.headers["x-api-key"], "sk-ant-user-key", r.phase);
+      assert.equal(r.headers.authorization, undefined, r.phase);
+      assert.equal(r.headers["anthropic-dangerous-direct-browser-access"], "true", r.phase);
+      // Split model routing (invariant 3): planning on the fixed cheap model,
+      // the answer on the user's chosen one.
+      if (r.phase === "synth") assert.equal(r.body.model, "claude-opus-5");
+      else assert.equal(r.body.model, "claude-haiku-4-5", r.phase);
+    }
   });
 });
