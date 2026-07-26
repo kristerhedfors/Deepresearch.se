@@ -113,7 +113,7 @@ export function agentForMode(mode, opts = {}) {
  * that asks for a queue that isn't there renders no strip instead of erroring.
  * @param {any} reg  the starter registry (starters-data.js STARTERS)
  * @param {string} agentId
- * @returns {Array<{id:string,text:string,aspect:string,lang:string,rank?:number,evidence?:string}>}
+ * @returns {Array<{id:string,text:string,aspect:string,lang:string,xp?:number,rank?:number,evidence?:string}>}
  */
 export function resolveQueue(reg, agentId) {
   const raw = reg && reg.queues && Array.isArray(reg.queues[agentId]) ? reg.queues[agentId] : [];
@@ -278,12 +278,16 @@ export function withoutStarterTags(messages) {
       return { ...m, content: stripped };
     }
     if (Array.isArray(m.content)) {
-      const idx = m.content.findIndex((p) => p?.type === "text" && typeof p.text === "string");
+      const idx = m.content.findIndex((/** @type {any} */ p) => p?.type === "text" && typeof p.text === "string");
       if (idx < 0) return m;
       const stripped = stripStarterRef(m.content[idx].text);
       if (stripped === m.content[idx].text) return m;
       changed = true;
-      return { ...m, content: m.content.map((p, i) => (i === idx ? { ...p, text: stripped } : p)) };
+      return {
+        ...m,
+        content: m.content.map((/** @type {any} */ p, /** @type {number} */ i) =>
+          (i === idx ? { ...p, text: stripped } : p)),
+      };
     }
     return m;
   });
@@ -709,12 +713,13 @@ export function validateStarters(reg, agentsRegistry = null, opts = {}) {
       // The #XP number is a starter's public identity — it is what a feedback
       // entry cites. A missing one leaves an evaluation chip with nothing to
       // tag; a shared one points two starters at the same report.
-      if (!Number.isInteger(e.xp) || e.xp <= 0) {
+      const xp = e.xp;
+      if (typeof xp !== "number" || !Number.isInteger(xp) || xp <= 0) {
         at(agent, `starter "${e.id}" has no \`xp\` number (the #XP tag a reviewer's feedback cites)`);
-      } else if (globalXp.has(e.xp)) {
-        at(agent, `starter "${e.id}" reuses xp ${e.xp}, already held by "${globalXp.get(e.xp)}"`);
+      } else if (globalXp.has(xp)) {
+        at(agent, `starter "${e.id}" reuses xp ${xp}, already held by "${globalXp.get(xp)}"`);
       } else {
-        globalXp.set(e.xp, e.id);
+        globalXp.set(xp, e.id);
       }
       if (e.text.length < 12) at(agent, `starter "${e.id}" is too short to be a useful opener`);
       if (e.text.length > 220) at(agent, `starter "${e.id}" is too long for a chip`);

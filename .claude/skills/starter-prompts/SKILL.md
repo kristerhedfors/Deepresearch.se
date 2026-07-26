@@ -93,10 +93,10 @@ Where it appears, and where it deliberately does not:
   triage would plan against it and the search queries would carry it, so what
   got evaluated would no longer be the starter. Every user turn is swept, not
   just the first — a reopened chat replays its whole history.
-- **The record keeps it.** `chat.js` holds the untagged-nothing original: the
-  chat-log row gets `starter: "#XP-07"` and the feedback entry gets a `starter:`
-  line of its own, because a long transcript is trimmed from the FRONT and that
-  is exactly where the tag sits.
+- **The record keeps it.** `chat.js` still holds the untouched conversation, so
+  the chat-log row gets `starter: "#XP-07"` and the feedback entry gets a
+  `starter:` line of its own — a long transcript is trimmed from the FRONT, and
+  that is exactly where the tag sits.
 - **Se/cure does the same** in the browser (`drc.js` `send()`), importing the
   same core rather than a second copy of the rule — its pipeline has no server
   in it to do the stripping.

@@ -894,15 +894,25 @@ tied back by the first message. Two halves make it safe:
 - **The tag rides to the RECORD.** The conversation as stored, the chat-log row,
   and the feedback entry all carry it — the entry states it on its own line
   rather than trusting a transcript that gets trimmed from the front.
-- **The tag never reaches the MACHINERY.** It is stripped before any model call,
-  so triage plans against the reviewer's actual question and the search queries
-  carry no code the item never had.
+- **The tag never reaches the MACHINERY** *when the tagged message is the thing
+  being reviewed*. A starter is a research question, so `#XP-07` is stripped
+  before any model call: triage plans against the reviewer's actual question and
+  the search queries carry no code the item never had.
+
+The two shipped tags differ on that second half, and the difference is not an
+oversight. `#UC-34` rides through unstripped, because for a use case the tag on
+the message IS the signal — `parseUseCaseRef` reads it off the feedback text to
+find the point's thread, and the feedback route makes no model call at all
+(owner directive, 2026-07-24). Strip it and the feature loses its target. A new
+tag should follow whichever half its message needs; do not "fix" `#UC-34` into
+symmetry with `#XP-07`.
 
 **Why.** Without the tag the report says "this sentence…" and someone has to
 match prose back to a registry by hand (that is feedback #37, verbatim). With
-the tag left *in* the message, the tagged run is no longer the run being
-reviewed — you would be evaluating `#XP-07 <question>`, which no visitor ever
-sends. Both failure modes are silent, which is why the rule is written down.
+the tag left *in* a message that gets researched, the tagged run is no longer
+the run being reviewed — you would be evaluating `#XP-07 <question>`, which no
+visitor ever sends. Both failure modes are silent, which is why the rule is
+written down.
 
 **The mechanics (match all of these):**
 
@@ -919,8 +929,8 @@ sends. Both failure modes are silent, which is why the rule is written down.
    because losing it would hide the mistake.
 4. **Grammars must not collide.** `#XP-07` requires its letters — a bare `#7`
    belongs to the use-case grammar and stays there.
-5. **Stripping sweeps every user turn**, not just the newest: a reopened
-   conversation replays its history into the prompt.
+5. **Stripping, where it applies, sweeps every user turn** — not just the
+   newest: a reopened conversation replays its history into the prompt.
 6. **Both tiers strip with the same code.** Se/cure's pipeline runs in the
    browser with no server in the path, so it imports the shared core rather than
    carrying a second copy of the rule.
