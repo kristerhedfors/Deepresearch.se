@@ -19,6 +19,9 @@ import {
   loadItems,
   projectItem,
   retrieveOutwardFeed,
+  runLensRefresh,
+  withDeadline,
+  MODE_REFRESH_BUDGET_MS,
   storeItems,
   validateRefreshBody,
 } from "./outrospect.js";
@@ -481,4 +484,89 @@ test("retrieveOutwardFeed returns no lens when nothing matched, but still the ne
   const got = await retrieveOutwardFeed({ DB: db }, "zzzz qqqq");
   assert.equal(got.lens, null);
   assert.deepEqual(got.items.map((i) => i.title), ["Newest thing"]);
+});
+
+// ---------------------------------------------------------------------------
+// runLensRefresh — the shared look-outward (extracted 2026-07-26)
+//
+// It had one caller, and that was the defect: the chat MODE only READ the
+// feed, so the outward-looking agent never looked. In production the run log
+// showed zero refreshes ever, and every outrospection question answered "the
+// feed holds nothing on this yet" (feedback #25).
+// ---------------------------------------------------------------------------
+
+test("runLensRefresh: no D1 is reported, not thrown", async () => {
+  const res = await runLensRefresh(/** @type {any} */ ({}), log, { userId: "u-1" });
+  assert.equal(res.unavailable, true);
+  assert.deepEqual(res.fresh, []);
+});
+
+test("runLensRefresh: an unconfigured search backend degrades, never throws", async () => {
+  const db = fakeDb();
+  const res = await runLensRefresh(envWith(db), log, { userId: "u-1" });
+  assert.equal(res.degraded, true);
+  assert.deepEqual(res.fresh, []);
+  assert.ok(LENS_IDS.includes(/** @type {string} */ (res.lens)));
+  assert.equal(db._runs.length, 1, "the attempt is logged so the cooldown holds");
+});
+
+test("runLensRefresh: an explicit lens on cooldown is reported cooled and costs no run", async () => {
+  const db = fakeDb();
+  const env = envWith(db);
+  const first = await runLensRefresh(env, log, { userId: "u-1" });
+  const second = await runLensRefresh(env, log, { userId: "u-1", lens: first.lens });
+  assert.equal(second.cooled, true);
+  assert.equal(db._runs.length, 1);
+});
+
+test("runLensRefresh: the per-user cap is reported, not thrown", async () => {
+  const db = fakeDb();
+  seedRuns(db, "u-1", USER_RUNS_PER_HOUR);
+  const res = await runLensRefresh(envWith(db), log, { userId: "u-1" });
+  assert.equal(res.limited, true);
+  assert.deepEqual(res.fresh, []);
+});
+
+test("runLensRefresh honours a caller's lens pick when it is not cooling", async () => {
+  const db = fakeDb();
+  const res = await runLensRefresh(envWith(db), log, { userId: "u-1", lens: "privacy-llm" });
+  assert.equal(res.lens, "privacy-llm");
+  assert.equal(db._runs[0].lens, "privacy-llm");
+});
+
+// The endpoint must stay a thin wrapper — the shared function is the one
+// implementation, exactly as the core is for the pure logic.
+test("the HTTP handler maps runLensRefresh's outcomes onto status codes", async () => {
+  const db = fakeDb();
+  seedRuns(db, "u-1", USER_RUNS_PER_HOUR);
+  assert.equal((await handleOutrospectRefresh(refreshReq({}), envWith(db), log, identity)).status, 429);
+
+  const fresh = fakeDb();
+  const env = envWith(fresh);
+  const ok = await handleOutrospectRefresh(refreshReq({}), env, log, identity);
+  assert.equal(ok.status, 200);
+  const picked = (await ok.json()).lens;
+  const cooled = await handleOutrospectRefresh(refreshReq({ lens: picked }), env, log, identity);
+  assert.equal(cooled.status, 200);
+  assert.equal((await cooled.json()).cooled, true);
+});
+
+// ---------------------------------------------------------------------------
+// withDeadline — why a slow search can't stall a streamed answer
+// ---------------------------------------------------------------------------
+
+test("withDeadline resolves early when the work finishes first", async () => {
+  assert.equal(await withDeadline(Promise.resolve("done"), 1000), "done");
+});
+
+test("withDeadline gives up with null rather than waiting, and swallows rejections", async () => {
+  const never = new Promise(() => {});
+  assert.equal(await withDeadline(never, 20), null);
+  assert.equal(await withDeadline(Promise.reject(new Error("boom")), 1000), null);
+});
+
+test("the mode's refresh budget leaves room to answer", () => {
+  // A ceiling long enough to be worth waiting for on a cold feed, short enough
+  // that it never dominates the turn.
+  assert.ok(MODE_REFRESH_BUDGET_MS >= 5_000 && MODE_REFRESH_BUDGET_MS <= 20_000);
 });
