@@ -752,6 +752,20 @@ async function buildOutgoingUserContent(text, opts) {
   if (convRagDocs.length || project) {
     apiText += await buildRagBlocks(text, newRagDocs);
   }
+  // Outrospection mode: the whole outward feed is indexed in THIS browser
+  // (outrospect-feed.js), so the question carries the entries it actually
+  // matches rather than only the newest ones the server would pick. The
+  // server's own newest-first retrieval still runs and still grounds the
+  // answer — this adds reach back through the feed, it does not replace it.
+  // Fail-soft: no index, no network, no match → "" and the turn is unchanged.
+  if (cachedChatMode() === "outrospection") {
+    try {
+      const { outwardExcerptsFor } = await import("./outrospect-feed.js");
+      apiText += await outwardExcerptsFor(text);
+    } catch {
+      /* the server-side retrieval carries the turn alone */
+    }
+  }
   for (const a of opts.images) {
     apiText += imageMetadataBlock(a);
   }
