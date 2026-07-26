@@ -2,7 +2,7 @@
 // view, image counting, last/previous user turn, non-mutating appenders).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { textOf, countImages, lastUserMessage, previousUserText, imagePartsOf, formatConversation, withImageNudge, withAppendedText, withAppendedImage } from "./conversation.js";
+import { textOf, countImages, lastUserMessage, previousUserText, imagePartsOf, formatConversation, withImageNudge, withAppendedText, withAppendedImage, starterRefOf, withoutStarterTags } from "./conversation.js";
 
 describe("previousUserText", () => {
   test("returns the user message before the latest one", () => {
@@ -217,5 +217,56 @@ describe("withAppendedImage", () => {
     const out = withAppendedImage(conv, "x");
     assert.equal(out[0].content, "first");
     assert.equal(Array.isArray(out[1].content), true);
+  });
+});
+
+// The starter-prompt tag (#XP-07) an evaluation-mode chip prepends to its
+// question. It has to reach the chat log and the feedback entry, and it must
+// NOT reach a model — triage would plan against it and the search queries
+// would carry it, so the thing being evaluated would no longer be the starter.
+describe("starter tags", () => {
+  test("starterRefOf reads the tag off the first user turn", () => {
+    const conv = [
+      { role: "user", content: "#XP-07 Where does your own source code live?" },
+      { role: "assistant", content: "…" },
+      { role: "user", content: "and how is it retrieved?" },
+    ];
+    assert.deepEqual(starterRefOf(conv), { xp: 7, tag: "#XP-07" });
+    assert.equal(starterRefOf([{ role: "user", content: "just a question" }]), null);
+    assert.equal(starterRefOf([]), null);
+    // A tag typed mid-conversation is not a starter — only the opening turn
+    // can be one, so only the opening turn is consulted.
+    assert.equal(starterRefOf([
+      { role: "user", content: "hello" },
+      { role: "user", content: "#XP-07 later" },
+    ]), null);
+  });
+
+  test("withoutStarterTags strips every user turn, non-mutating", () => {
+    const conv = [
+      { role: "user", content: "#XP-07 Where does your own source code live?" },
+      { role: "assistant", content: "#XP-07 stays here — assistant turns are untouched" },
+      { role: "user", content: "#xp7: och på svenska?" },
+    ];
+    const out = withoutStarterTags(conv);
+    assert.equal(out[0].content, "Where does your own source code live?");
+    assert.equal(out[1].content, "#XP-07 stays here — assistant turns are untouched");
+    assert.equal(out[2].content, "och på svenska?");
+    assert.equal(conv[0].content, "#XP-07 Where does your own source code live?", "original untouched");
+  });
+
+  test("withoutStarterTags handles multimodal content and returns the same reference when there is nothing to strip", () => {
+    const withImage = [{
+      role: "user",
+      content: [{ type: "text", text: "#XP-12 what is in this photo?" }, { type: "image_url", image_url: { url: "a" } }],
+    }];
+    const out = withoutStarterTags(withImage);
+    assert.equal(out[0].content[0].text, "what is in this photo?");
+    assert.equal(out[0].content[1].image_url.url, "a", "the image part rides along");
+
+    const plain = [{ role: "user", content: "an ordinary question" }];
+    assert.equal(withoutStarterTags(plain), plain, "untagged conversations are not copied");
+    assert.deepEqual(withoutStarterTags([]), []);
+    assert.equal(withoutStarterTags(null), null);
   });
 });

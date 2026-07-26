@@ -113,7 +113,7 @@ export function agentForMode(mode, opts = {}) {
  * that asks for a queue that isn't there renders no strip instead of erroring.
  * @param {any} reg  the starter registry (starters-data.js STARTERS)
  * @param {string} agentId
- * @returns {Array<{id:string,text:string,aspect:string,lang:string,rank?:number,evidence?:string}>}
+ * @returns {Array<{id:string,text:string,aspect:string,lang:string,xp?:number,rank?:number,evidence?:string}>}
  */
 export function resolveQueue(reg, agentId) {
   const raw = reg && reg.queues && Array.isArray(reg.queues[agentId]) ? reg.queues[agentId] : [];
@@ -129,6 +129,7 @@ export function resolveQueue(reg, agentId) {
       text,
       aspect: typeof e.aspect === "string" ? e.aspect : "",
       lang: e.lang === "sv" ? "sv" : "en",
+      ...(Number.isInteger(e.xp) && e.xp > 0 ? { xp: e.xp } : {}),
       ...(typeof e.rank === "number" ? { rank: e.rank } : {}),
       ...(typeof e.evidence === "string" ? { evidence: e.evidence } : {}),
     });
@@ -141,6 +142,171 @@ export function resolveQueue(reg, agentId) {
  * @returns {string[]} */
 export function agentIds(reg) {
   return reg && reg.queues ? Object.keys(reg.queues) : [];
+}
+
+// ---- the #XP tag -------------------------------------------------------------
+//
+// A starter's public identity (feedback #37, 2026-07-26). The try-it list
+// already solved this problem for use cases: a composed prompt opens with
+// `#UC-34` (testpoints-core.js tagStarterPrompt), so a "feedback …" note sent
+// later in that conversation is tied to the exact use case by the first
+// message. Starters needed the same handle — a reviewer working an evaluation
+// batch was reporting on "this sentence", and matching a sentence back to a
+// registry entry by hand is exactly the kind of work an identifier removes.
+//
+// Two rules make the tag safe to put in front of a real question:
+//
+//   1. It is added ONLY in evaluation mode (starters.js). The visitor strip
+//      stays untagged — a visitor's pick signal never leaves their browser,
+//      and an identifier prefixed onto their first message would be that byte
+//      on the wire.
+//   2. The pipeline STRIPS it before any model call (src/pipeline.js), so the
+//      agent answers the starter's text, not the starter's text plus a code.
+//      A tag left in place would reach triage and the search queries, and the
+//      thing being evaluated would no longer be the starter.
+
+/**
+ * The canonical display tag for a starter's xp number: `#XP-07`. Padded to two
+ * digits (the form the numbering was requested in) and left unpadded above 99.
+ * DISPLAY only — the functional identifier stays the bare integer.
+ * @param {number|string} xp
+ * @returns {string}
+ */
+export function starterTag(xp) {
+  const n = Number(xp);
+  if (!Number.isInteger(n) || n <= 0) return "";
+  return `#XP-${String(n).padStart(2, "0")}`;
+}
+
+// The ref grammar, matched at the START of a message: "#XP-07", "#XP07",
+// "XP-7", "XP 07", "xp07". Language-neutral (a generated identifier), and
+// deliberately NOT matching a bare "#7" — that form already belongs to the
+// use-case grammar in testpoints-core.js and the two must not collide.
+const STARTER_REF_RE = /^\s*#?\s*xp[\s\-–—]?0*(\d{1,6})\b[\s:,.\-–—]*/i;
+
+/**
+ * Read a starter reference off the front of a message.
+ * @param {unknown} text
+ * @returns {{ xp: number, tag: string } | null}
+ */
+export function parseStarterRef(text) {
+  if (typeof text !== "string" || !text) return null;
+  const m = text.match(STARTER_REF_RE);
+  if (!m) return null;
+  const xp = Number(m[1]);
+  return Number.isInteger(xp) && xp > 0 ? { xp, tag: starterTag(xp) } : null;
+}
+
+/**
+ * The message without its leading starter tag — what every model call sees.
+ * A message that carries no tag comes back unchanged (same string), so callers
+ * can strip unconditionally.
+ * @param {unknown} text
+ * @returns {string}
+ */
+export function stripStarterRef(text) {
+  if (typeof text !== "string" || !text) return typeof text === "string" ? text : "";
+  const m = text.match(STARTER_REF_RE);
+  return m ? text.slice(m[0].length) : text;
+}
+
+/**
+ * Prepend a starter's tag to its text, once. An untagged number (0, missing)
+ * leaves the text alone rather than composing a meaningless `#XP-` prefix.
+ * @param {number|string} xp
+ * @param {string} text
+ * @returns {string}
+ */
+export function tagStarterText(xp, text) {
+  const tag = starterTag(xp);
+  const body = typeof text === "string" ? text : "";
+  if (!tag) return body;
+  const ref = parseStarterRef(body);
+  if (ref && ref.xp === Number(xp)) return body; // already tagged
+  return body ? `${tag} ${body}` : tag;
+}
+
+/**
+ * The starter tag on a conversation's FIRST user message, or null. Only the
+ * first turn is consulted: a starter is only ever an opening message, so a tag
+ * typed mid-conversation is a person talking about a starter, not sending one.
+ *
+ * Messages are the OpenAI-style shape both tiers use — content is a string or
+ * an array of parts. Kept here rather than in src/conversation.js so the
+ * browser-side pipeline (Se/cure, which has no server in its data path) and
+ * the Worker strip tags by the same code; conversation.js re-exports it.
+ * @param {Array<any>} messages
+ * @returns {{ xp: number, tag: string } | null}
+ */
+export function starterRefOf(messages) {
+  const first = (Array.isArray(messages) ? messages : []).find((m) => m?.role === "user");
+  if (!first) return null;
+  return parseStarterRef(firstText(first.content));
+}
+
+/** The first text of a message's content, whichever shape it is in.
+ * @param {any} content @returns {string} */
+function firstText(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    const part = content.find((p) => p?.type === "text" && typeof p.text === "string");
+    return part ? part.text : "";
+  }
+  return "";
+}
+
+/**
+ * The conversation with any leading starter tag removed from every user
+ * message — what every model call gets. Non-mutating, and returns the SAME
+ * array reference when nothing carried a tag, so callers strip unconditionally.
+ *
+ * Every user turn is swept, not just the first: a reopened conversation
+ * replays its whole history, and a tag left in an earlier turn would still
+ * reach the phases that format the conversation into a prompt.
+ * @param {Array<any>} messages
+ * @returns {Array<any>}
+ */
+export function withoutStarterTags(messages) {
+  if (!Array.isArray(messages) || !messages.length) return messages;
+  let changed = false;
+  const out = messages.map((m) => {
+    if (m?.role !== "user") return m;
+    if (typeof m.content === "string") {
+      const stripped = stripStarterRef(m.content);
+      if (stripped === m.content) return m;
+      changed = true;
+      return { ...m, content: stripped };
+    }
+    if (Array.isArray(m.content)) {
+      const idx = m.content.findIndex((/** @type {any} */ p) => p?.type === "text" && typeof p.text === "string");
+      if (idx < 0) return m;
+      const stripped = stripStarterRef(m.content[idx].text);
+      if (stripped === m.content[idx].text) return m;
+      changed = true;
+      return {
+        ...m,
+        content: m.content.map((/** @type {any} */ p, /** @type {number} */ i) =>
+          (i === idx ? { ...p, text: stripped } : p)),
+      };
+    }
+    return m;
+  });
+  return changed ? out : messages;
+}
+
+/**
+ * Resolve an xp number back to the starter it names — the lookup a reader of a
+ * feedback entry (or `scripts/starters --xp 7`) performs. Searches the queues
+ * and the candidate pool, which share one number space.
+ * @param {any} reg
+ * @param {number|string} xp
+ * @param {{candidates?:Array<any>}} [opts]
+ * @returns {any|null} the entry plus `agent` and `band`, or null
+ */
+export function starterByXp(reg, xp, opts = {}) {
+  const n = Number(xp);
+  if (!Number.isInteger(n) || n <= 0) return null;
+  return evalPool(reg, { candidates: opts.candidates }).find((e) => e.xp === n) || null;
 }
 
 // ---- selection ---------------------------------------------------------------
@@ -497,9 +663,13 @@ export function parseJudgeReply(text) {
  *
  * @param {any} reg
  * @param {any} [agentsRegistry]  sdk/AGENTS.json, when available, to cross-check ids
+ * @param {{candidates?:Array<any>}} [opts]  the trial pool, checked for #XP collisions
+ *   only — a candidate is otherwise deliberately unvalidated (that is what makes
+ *   it a trial), but it shares the one number space, so a clash here would
+ *   follow it into a queue on promotion.
  * @returns {{ ok: boolean, problems: string[] }}
  */
-export function validateStarters(reg, agentsRegistry = null) {
+export function validateStarters(reg, agentsRegistry = null, opts = {}) {
   const problems = [];
   const at = (/** @type {string} */ agent, /** @type {string} */ msg) => problems.push(`${agent}: ${msg}`);
 
@@ -509,6 +679,8 @@ export function validateStarters(reg, agentsRegistry = null) {
 
   const ids = agentIds(reg);
   const globalIds = new Set();
+  /** xp number → the id that already holds it, registry-wide. @type {Map<number,string>} */
+  const globalXp = new Map();
 
   for (const agent of ids) {
     const raw = reg.queues[agent];
@@ -538,6 +710,17 @@ export function validateStarters(reg, agentsRegistry = null) {
     for (const e of queue) {
       if (globalIds.has(e.id)) at(agent, `starter id "${e.id}" is not unique across the registry`);
       globalIds.add(e.id);
+      // The #XP number is a starter's public identity — it is what a feedback
+      // entry cites. A missing one leaves an evaluation chip with nothing to
+      // tag; a shared one points two starters at the same report.
+      const xp = e.xp;
+      if (typeof xp !== "number" || !Number.isInteger(xp) || xp <= 0) {
+        at(agent, `starter "${e.id}" has no \`xp\` number (the #XP tag a reviewer's feedback cites)`);
+      } else if (globalXp.has(xp)) {
+        at(agent, `starter "${e.id}" reuses xp ${xp}, already held by "${globalXp.get(xp)}"`);
+      } else {
+        globalXp.set(xp, e.id);
+      }
       if (e.text.length < 12) at(agent, `starter "${e.id}" is too short to be a useful opener`);
       if (e.text.length > 220) at(agent, `starter "${e.id}" is too long for a chip`);
       if (e.rank != null) {
@@ -548,6 +731,17 @@ export function validateStarters(reg, agentsRegistry = null) {
           at(agent, `starter "${e.id}" carries a rank with no \`evidence\` (invariant 5: a rank cites the eval run that produced it)`);
         }
       }
+    }
+  }
+
+  for (const c of Array.isArray(opts.candidates) ? opts.candidates : []) {
+    const id = typeof c?.id === "string" ? c.id : "(unnamed candidate)";
+    if (!Number.isInteger(c?.xp) || c.xp <= 0) {
+      problems.push(`candidate "${id}" has no \`xp\` number (evaluation mode tags it like any other starter)`);
+    } else if (globalXp.has(c.xp)) {
+      problems.push(`candidate "${id}" reuses xp ${c.xp}, already held by "${globalXp.get(c.xp)}"`);
+    } else {
+      globalXp.set(c.xp, id);
     }
   }
 
@@ -658,6 +852,7 @@ export function evalPool(reg, opts = {}) {
       agent,
       aspect: typeof c.aspect === "string" ? c.aspect : "",
       lang: c.lang === "sv" ? "sv" : "en",
+      ...(Number.isInteger(c.xp) && c.xp > 0 ? { xp: c.xp } : {}),
       band: "candidate",
       note: typeof c.note === "string" ? c.note : "",
     });
@@ -831,7 +1026,11 @@ export function verdictReport(pool, verdicts) {
   for (const [agent, items] of [...byAgent.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0])))) {
     lines.push(`## ${agent}`);
     for (const { id, e, v } of items.sort((a, b) => a.id.localeCompare(b.id))) {
-      lines.push(`- [${mark[v.v] || v.v}] ${id} (${e?.band || "?"})`);
+      // The #XP tag leads each line: it is the identity the chip put in front
+      // of the message, so a pasted report and a feedback entry name the
+      // starter the same way.
+      const tag = starterTag(e?.xp);
+      lines.push(`- [${mark[v.v] || v.v}] ${tag ? `${tag} ` : ""}${id} (${e?.band || "?"})`);
       if (e?.text) lines.push(`      ${e.text}`);
       if (v.note) lines.push(`      note: ${v.note}`);
     }

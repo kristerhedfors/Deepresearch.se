@@ -21,6 +21,7 @@
 import {
   SLOT_COUNT, agentForMode, resolveQueue, selectStarters, nextCursor, recordStarterUse,
   evalPool, selectEvalBatch, recordVerdict, verdictReport, MODE_AGENTS,
+  starterTag, tagStarterText,
 } from "./starters-core.js";
 import { STARTERS, CANDIDATES } from "./starters-data.js";
 
@@ -210,7 +211,8 @@ function renderEvalBatch({ mount, compose, platform, setMode }) {
 
   const head = document.createElement("p");
   head.className = "starter-eval-head";
-  head.textContent = "Evaluation mode — try one, then rate the answer. Turn it off in Settings.";
+  head.textContent =
+    "Evaluation mode — try one, then rate the answer. Each one sends with its #XP tag, so feedback in that chat ties back to it. Turn it off in Settings.";
   wrap.appendChild(head);
 
   const strip = document.createElement("div");
@@ -231,9 +233,15 @@ function renderEvalBatch({ mount, compose, platform, setMode }) {
     chip.dataset.starter = entry.id;
     chip.lang = entry.lang;
 
+    const xpTag = starterTag(entry.xp);
     const tag = document.createElement("span");
     tag.className = `starter-band band-${entry.band}`;
-    tag.textContent = `${entry.agent} · ${BAND_LABEL[entry.band] || entry.band}`;
+    // The #XP tag leads the band label because it is the identity that will
+    // travel: the chip prepends it to the message, so a reviewer who later
+    // sends "feedback …" has it sitting in the first turn of the conversation
+    // and never has to describe which chip they meant (feedback #37).
+    tag.textContent = [xpTag, entry.agent, BAND_LABEL[entry.band] || entry.band]
+      .filter(Boolean).join(" · ");
     chip.appendChild(tag);
     chip.appendChild(document.createTextNode(entry.text));
 
@@ -242,7 +250,10 @@ function renderEvalBatch({ mount, compose, platform, setMode }) {
       const targetMode = Object.keys(MODE_AGENTS).find((m) => MODE_AGENTS[m] === entry.agent);
       if (setMode && targetMode) setMode(targetMode);
       writeStore(SIGNAL_KEY, recordStarterUse(readStore(SIGNAL_KEY, {}), entry.id));
-      compose(entry.text);
+      // Tagged ONLY here, never on the visitor strip below: the pipeline
+      // strips the tag before any model call, so what the agent answers is
+      // still exactly the starter's text.
+      compose(tagStarterText(entry.xp, entry.text));
     });
 
     const rate = document.createElement("div");

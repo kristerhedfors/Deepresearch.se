@@ -16,7 +16,9 @@ description: >-
   EVALUATION MODE — the Settings knob "Starter prompt evaluation" that turns the
   strip into a cross-agent review batch (the proven / weak / untried / candidate
   bands, 👍👎 verdicts, Copy report) — and the CANDIDATES trial pool that new
-  questions are promoted into a queue from.
+  questions are promoted into a queue from. ALSO the #XP-<nn> tag every starter
+  carries, how an evaluation chip sends it so feedback ties back to the exact
+  starter, and where the pipeline strips it.
 ---
 
 # Starter prompts — the queue and its evaluation
@@ -45,7 +47,7 @@ inadequate.
 | `public/js/starters.js` | The DOM half — renders the strip, holds the local cursor + click signal. |
 | `src/starters.js` | Server/CLI façade (re-export only; the agent-spec.js pattern). |
 | `public/js/starters-core.test.js` | Unit tests + the validator run over the real registry. |
-| `scripts/starters` | Offline CLI: report, queue, strip preview, aspects, shortlist, batch, coverage, validate. |
+| `scripts/starters` | Offline CLI: report, queue, strip preview, aspects, shortlist, batch, coverage, validate, `--xp <n>` lookup. |
 | `tests/starter-eval.mjs` | The live cross-agent battery. |
 | `tests/STARTER-EVAL-FINDINGS.md` | Append-only ledger. A `rank` cites a run id here. |
 
@@ -68,6 +70,46 @@ inadequate.
   that the page does not phone home, and a starter-analytics beacon is exactly
   the quiet exception that promise dies of. It nudges one browser's own strip
   and is capped so three clicks cannot outrank a recorded eval result.
+
+## The #XP tag
+
+Every entry — queue and candidate alike — carries an `xp` number, rendered as
+`#XP-07`. It is the starter's public identity, and it exists because a reviewer
+reporting on a chip had no way to say *which* chip: feedback #37 quoted the
+sentence back to us and asked for the same handle the try-it list already has
+(`#UC-34`, `testpoints-core.js`).
+
+Where it appears, and where it deliberately does not:
+
+- **Evaluation-mode chips prepend it** to the message they compose
+  (`tagStarterText`), so it sits in the first turn of the conversation. Send
+  `feedback …` later in that chat and the entry carries it.
+- **The ordinary visitor strip never tags.** A visitor's pick signal is
+  local-only by design; prefixing an identifier onto their first message would
+  put exactly the byte on the wire that promise says is not there — and show
+  them a code they never asked about.
+- **The pipeline strips it before any model call** (`starterRefOf` +
+  `withoutStarterTags`, read at the top of `runPipeline`). If the tag survived,
+  triage would plan against it and the search queries would carry it, so what
+  got evaluated would no longer be the starter. Every user turn is swept, not
+  just the first — a reopened chat replays its whole history.
+- **The record keeps it.** `chat.js` still holds the untouched conversation, so
+  the chat-log row gets `starter: "#XP-07"` and the feedback entry gets a
+  `starter:` line of its own — a long transcript is trimmed from the FRONT, and
+  that is exactly where the tag sits.
+- **Se/cure does the same** in the browser (`drc.js` `send()`), importing the
+  same core rather than a second copy of the rule — its pipeline has no server
+  in it to do the stripping.
+
+Numbering is **append-only**: a new starter takes max+1, and a number is never
+reused or reordered. A number that moves silently re-points every feedback entry
+that cited it. The validator enforces presence and uniqueness (across queues AND
+candidates, which share one number space, so a promoted candidate keeps its
+number); append-only is discipline.
+
+```bash
+scripts/starters --xp 7        # which starter #XP-07 names
+```
 
 ## Provenance — this one is not negotiable
 
@@ -98,7 +140,8 @@ Two opposite failure modes, one per end of the product:
 
 1. `scripts/starters --aspects <agent>` — find declared aspects with no starter.
 2. Add entries to the agent's queue in `starters-data.js`. Every entry needs
-   `id` (unique registry-wide), `text`, `aspect` (declared in `ASPECTS`), `lang`.
+   `id` (unique registry-wide), `xp` (the next free number — see below), `text`,
+   `aspect` (declared in `ASPECTS`), `lang`.
 3. **Swedish in the same change** (invariant 6). `MIN_SV` = 6 per queue and the
    validator fails the build below it — English-only with "Swedish later" is
    exactly what the invariant exists to stop.
@@ -199,7 +242,7 @@ across *every* agent, one per band.
 | `untried` | no rank | Most of the registry lives here. |
 | `candidate` | not in a queue | A question we are considering **adding**. |
 
-Each chip is labelled with its agent and band, carries 👍/👎, and — on
+Each chip is labelled with its `#XP` tag, agent and band, carries 👍/👎, and — on
 Se/rver — **switches the chat mode to its agent before sending**, because a
 cross-agent batch that ran everything as Deep Research would measure the wrong
 thing. On Se/cure the pool is restricted to the `secure` agent, since no mode
