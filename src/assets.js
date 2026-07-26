@@ -134,7 +134,7 @@ export function isPublicAsset(url, method) {
     // umbrella intro, dead composer. The derived module-graph test in
     // assets.test.js now fails `npm test` on this whole class.)
     url.pathname === "/js/websearch-backends-core.js" ||
-    // The search-SOURCE preference behind the web knob's long-press card —
+    // The search-SOURCE preference behind the "Exa web search" settings knob —
     // /cure/drc.js statically imports it (the same public-graph rule).
     url.pathname === "/js/search-source.js" ||
     url.pathname === "/js/drc-research.js" ||

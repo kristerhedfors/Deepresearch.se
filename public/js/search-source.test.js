@@ -1,18 +1,22 @@
 // Unit tests for the shared search-SOURCE preference (public/js/search-source.js):
-// the pure normalizer + picker markup, and the storage helpers under a fake
-// localStorage (and with storage missing entirely, which is a real browser
-// state — a locked-down Safari — not a hypothetical).
+// the pure normalizer, the storage helpers under a fake localStorage (and with
+// storage missing entirely, which is a real browser state — a locked-down
+// Safari — not a hypothetical), and the boolean "Exa web search" settings knob
+// layered over them.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
   DEFAULT_SEARCH_SOURCE,
+  EXA_SETTING_INFO,
   SEARCH_SOURCES,
   SEARCH_SOURCE_KEY,
+  exaStatusText,
+  getExaEnabled,
   getSearchSource,
   normalizeSearchSource,
-  searchSourcePickerHtml,
+  setExaEnabled,
   setSearchSource,
 } from "./search-source.js";
 
@@ -32,12 +36,9 @@ function withStorage(fn, store = new Map()) {
   }
 }
 
-test("the option set mirrors the server's user-selectable ids, Exa first and default", () => {
-  assert.deepEqual(SEARCH_SOURCES.map((s) => s.id), ["exa", "cloudflare"]);
+test("the source ids mirror the server's user-selectable set, Exa first and default", () => {
+  assert.deepEqual(SEARCH_SOURCES, ["exa", "cloudflare"]);
   assert.equal(DEFAULT_SEARCH_SOURCE, "exa");
-  for (const s of SEARCH_SOURCES) {
-    assert.ok(s.label && s.note, `${s.id} needs a label and a note`);
-  }
 });
 
 test("normalizeSearchSource accepts known ids only", () => {
@@ -69,21 +70,37 @@ test("storage being unavailable degrades to the default instead of throwing", ()
   try {
     assert.equal(getSearchSource(), "exa");
     assert.equal(setSearchSource("cloudflare"), "cloudflare"); // reported, just not persisted
+    assert.equal(getExaEnabled(), true); // the knob still reads as its default
   } finally {
     if (orig !== undefined) /** @type {any} */ (globalThis).localStorage = orig;
   }
 });
 
-test("searchSourcePickerHtml checks exactly the effective source and names its group", () => {
-  const html = searchSourcePickerHtml("cloudflare", "drcsrc");
-  assert.equal((html.match(/ checked/g) || []).length, 1);
-  assert.match(html, /value="cloudflare" checked/);
-  assert.match(html, /name="drcsrc"/);
-  assert.match(html, /role="radiogroup"/);
-  for (const s of SEARCH_SOURCES) assert.ok(html.includes(s.label), `${s.id} label rendered`);
+// ---- the "Exa web search" settings knob ------------------------------------
 
-  // An unknown/absent selection renders as the default rather than nothing
-  // checked — a radio group with no selection is a dead control.
-  assert.match(searchSourcePickerHtml("searxng"), /value="exa" checked/);
-  assert.match(searchSourcePickerHtml(""), /value="exa" checked/);
+test("the Exa knob is ON by default, and OFF means the Worker backend", () => {
+  withStorage(() => assert.equal(getExaEnabled(), true)); // nothing stored yet
+  withStorage((store) => {
+    assert.equal(setExaEnabled(false), false);
+    assert.equal(store.get(SEARCH_SOURCE_KEY), "cloudflare");
+    assert.equal(getExaEnabled(), false);
+    assert.equal(getSearchSource(), "cloudflare"); // what actually rides the wire
+
+    assert.equal(setExaEnabled(true), true);
+    assert.equal(store.get(SEARCH_SOURCE_KEY), "exa");
+    assert.equal(getExaEnabled(), true);
+    assert.equal(getSearchSource(), "exa");
+  });
+});
+
+test("a stored junk source reads as the default (knob on), not as off", () => {
+  withStorage(() => assert.equal(getExaEnabled(), true), new Map([[SEARCH_SOURCE_KEY, "searxng"]]));
+});
+
+test("the knob's shared copy names both engines and distinguishes itself from the web knob", () => {
+  assert.match(EXA_SETTING_INFO, /Exa/);
+  assert.match(EXA_SETTING_INFO, /Worker/);
+  assert.match(EXA_SETTING_INFO, /web knob/); // says what it is NOT
+  assert.notEqual(exaStatusText(true), exaStatusText(false));
+  assert.match(exaStatusText(false), /Worker/);
 });
