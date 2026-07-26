@@ -11,6 +11,7 @@
     "eval:models": "node model-eval.mjs",
     "eval:bench": "node eval-bench.mjs",
     "eval:hf": "node hf-bench.mjs",
+    "eval:starters": "node starter-eval.mjs",
     "bench:gate": "node bench-gate.mjs"
   },
   "devDependencies": {
