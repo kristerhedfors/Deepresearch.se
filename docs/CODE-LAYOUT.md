@@ -870,8 +870,15 @@ visible note when the answer is no. The DOM half injects its own Read/Comment
 dropdown, comment rail and styles as fixed chrome, so it mounts on ANY
 documentation page without that page laying out for it; it is GATED,
 dynamic-imported only after the admin check, and deliberately NOT on the
-public allowlist. The pure core owns the stored body grammar, quote anchoring
-and stale detection. Live on `/help/` (the page the app links as
+public allowlist. Taking no layout from the page means the rail can only
+OVERLAY the prose, so it is something the reader opens rather than something
+that appears: read-only mode never opens it, the counter in the mode slot is
+the switch, a highlighted passage is the other way in, and the rail carries a
+✕ (feedback #40, 2026-07-26 — an iPhone got a dark pane over the documentation
+with no way to dismiss it). On a phone it sits along the BOTTOM, sized to its
+content, with the marked passage scrolled clear of it. The pure core owns the
+stored body grammar, quote anchoring, stale detection and `railVisible` (when
+the rail is on screen). Live on `/help/` (the page the app links as
 "documentation") and `/docs/`. A comment is filed into the ONE instruction
 pipeline, the feedback queue, with feedback-core's `doc` scope and the
 document's repo path in the `page` tag, so the loop reads it as an instruction
