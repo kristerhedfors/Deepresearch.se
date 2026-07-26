@@ -83,4 +83,14 @@ test("routingNeedsRegistry keeps the plain Deep Research turn off the load path"
     assert.equal(routingNeedsRegistry({ [flag]: true }, false), true, flag);
     assert.equal(routingNeedsRegistry({ [flag]: "yes" }, false), false, `${flag} must be a strict boolean`);
   }
+  // An ADDRESSED agent is the third way routing can differ. Naming one needs
+  // the registry — including a name that turns out not to exist, so that
+  // "unknown id" and "id you may not have" are indistinguishable from outside.
+  assert.equal(routingNeedsRegistry({ agent: "under-construction" }, false), true);
+  assert.equal(routingNeedsRegistry({ agent: "ghost" }, false), true);
+  // …but an empty or non-string one is no address at all, and must not drag the
+  // multi-megabyte snapshot onto the commonest path.
+  for (const agent of ["", "   ", null, 0, false, 7, {}, []]) {
+    assert.equal(routingNeedsRegistry({ agent }, false), false, `agent=${JSON.stringify(agent)} is not an address`);
+  }
 });

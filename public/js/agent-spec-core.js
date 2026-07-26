@@ -328,6 +328,73 @@ export function resolveCapability(a) {
   });
 }
 
+// ---- reading a capability at run time ----------------------------------------
+//
+// Stage 2 shipped the capability block DECLARED: a test asserted each field
+// equalled the constant that actually governed the run, which caught drift but
+// meant a spec could not vary anything. These three accessors are what make a
+// field EXECUTED — the pipeline reads the agent's declaration instead of the
+// constant it used to import.
+//
+// Every one of them is NARROWING. The platform's own limit is passed in as both
+// the default (a spec that declares nothing gets exactly today's behaviour) and
+// the ceiling (a spec may ask its own run to do less, never more). That
+// asymmetry is the whole safety argument for stage 7: once a spec can be
+// authored by a user rather than committed to the repo, the worst a hostile
+// declaration can do is make its own agent do less work. There is no value of
+// any capability field that reaches further than the code already reaches.
+
+/**
+ * A declared bound, clamped to the platform limit for the phase that runs it.
+ * `limit` is the constant the code enforces (MAX_SOURCE_TOOL_ROUNDS and
+ * friends), so an absent, malformed or over-large declaration all resolve to
+ * exactly today's value.
+ * @param {AgentCapability | null | undefined} cap
+ * @param {string} key one of BOUND_KEYS
+ * @param {number} limit the platform's own ceiling for this bound
+ * @returns {number}
+ */
+export function capBound(cap, key, limit) {
+  const v = /** @type {any} */ (cap?.bounds)?.[key];
+  if (typeof v !== "number" || !Number.isFinite(v) || v < 0) return limit;
+  return Math.min(v, limit);
+}
+
+/**
+ * The search policy for a run: the agent's declared ceiling ANDed with what the
+ * request asked for. A knob that is off stays off whatever the spec says, and a
+ * spec that declares `web: false` cannot be re-enabled by a request — the two
+ * compose by narrowing in both directions.
+ *
+ * `maxQueries: null` means "no agent-imposed cap" on either side, so it yields
+ * to whichever side names a number.
+ * @param {AgentCapability | null | undefined} cap
+ * @param {{ web?: boolean, auxSources?: boolean, maxQueries?: number|null }} requested
+ * @returns {{ web: boolean, auxSources: boolean, maxQueries: number|null }}
+ */
+export function capSearch(cap, requested = {}) {
+  const s = cap?.search || /** @type {any} */ ({});
+  const caps = [s.maxQueries, requested.maxQueries].filter(
+    (/** @type {any} */ n) => typeof n === "number" && Number.isFinite(n) && n >= 0,
+  );
+  return {
+    web: requested.web !== false && s.web !== false,
+    auxSources: requested.auxSources !== false && s.auxSources !== false,
+    maxQueries: caps.length ? Math.min(.../** @type {number[]} */ (caps)) : null,
+  };
+}
+
+/**
+ * Whether a capability selects a tool CLASS. A null capability selects none,
+ * which is what a request that never consulted the registry means.
+ * @param {AgentCapability | null | undefined} cap
+ * @param {string} cls a key of TOOL_CLASSES
+ * @returns {boolean}
+ */
+export function capHasTool(cap, cls) {
+  return Array.isArray(cap?.tools) && /** @type {string[]} */ (cap?.tools).includes(cls);
+}
+
 /**
  * The prompt set an agent runs on: its declared `capability.prompts`, else the
  * default for its answer phase. Always a key of PROMPT_SETS for a valid spec.
@@ -575,6 +642,99 @@ export function validateAgentSpec(a) {
   return problems;
 }
 
+// ---- resolving a spec the repo did not commit --------------------------------
+//
+// Every spec above ships inside the source snapshot, so `npm test` is what
+// stands between a bad declaration and production. A spec a USER authored has
+// no such gate: validation has to move onto the request path, and it has to
+// fail closed.
+//
+// Validation alone is not enough, because of one asymmetry that is easy to
+// miss. `capability.requires` is SELF-DECLARED. A spec that selects the build
+// tools and declares `requires: []` would, under the ordinary routing gate,
+// sail straight through — the gate checks what the spec claims to need, not
+// what it actually reaches for. So the requirement a selection carries has to
+// be DERIVED from the selection, and the derived set is what gets checked.
+
+/**
+ * Selection → the capability knobs it actually needs, regardless of what the
+ * spec declares. Only members that reach privileged machinery appear; a
+ * selection absent here needs nothing (the shell TRANSCRIPT, for instance, is
+ * context the client already attached and is gated where it is collected).
+ *
+ * Every shipped agent's declared `requires` is a superset of what this derives
+ * for it, asserted in agent-capability.test.js — so the table is checked
+ * against the real registry rather than being a parallel opinion of it.
+ */
+export const IMPLIED_REQUIREMENTS = {
+  answerPhase: {
+    "source-research": ["developer_mode"],
+    "build": ["developer_mode"],
+    "workflow": ["developer_mode"],
+    "feed": ["developer_mode"],
+  },
+  tools: {
+    "source-read": ["developer_mode"],
+    "sdk-plan": ["developer_mode"],
+    "build-publish": ["developer_mode"],
+    "shell": ["sandbox"],
+  },
+  context: {
+    "source-snapshot": ["developer_mode"],
+    "docs-corpus": ["developer_mode"],
+    "secure-digest": ["developer_mode"],
+    "outward-feed": ["developer_mode"],
+  },
+};
+
+/**
+ * Every capability knob an agent needs: what it declares, PLUS what its
+ * selections imply. Sorted and deduped so the result is comparable.
+ * @param {any} a
+ * @returns {string[]}
+ */
+export function requirementsFor(a) {
+  const cap = resolveCapability(a);
+  const need = new Set(cap.requires);
+  for (const r of /** @type {any} */ (IMPLIED_REQUIREMENTS.answerPhase)[cap.answerPhase] || []) need.add(r);
+  for (const t of cap.tools) for (const r of /** @type {any} */ (IMPLIED_REQUIREMENTS.tools)[t] || []) need.add(r);
+  for (const b of cap.context) for (const r of /** @type {any} */ (IMPLIED_REQUIREMENTS.context)[b] || []) need.add(r);
+  return [...need].sort();
+}
+
+/**
+ * Resolve a spec that did NOT come from the committed registry — one a user
+ * wrote through Agent Studio, or one read back from per-user storage.
+ *
+ * Fails closed in every direction: a spec that is not an object, that fails any
+ * validation rule, or that reaches for a knob the caller has not been granted
+ * yields a null agent and the reasons why. There is no partial success and no
+ * "resolve what we can" path — a spec is either wholly servable or it is not
+ * served, because a half-applied capability block is exactly the state no
+ * reader downstream is written to expect.
+ *
+ * What makes this safe rather than merely careful is that it adds no new rules.
+ * The closed vocabularies already reject anything that is not a member; the
+ * invariant rules (1, 3, 4, 6) already run inside `validateAgentSpec`; the
+ * narrowing accessors already make every field a ceiling rather than a request.
+ * This function's whole job is to run them at the boundary and refuse.
+ *
+ * @param {any} spec an untrusted AgentSpec
+ * @param {Record<string, boolean>} granted capability knob → granted?
+ * @returns {{ agent: any, capability: AgentCapability | null, problems: string[] }}
+ */
+export function resolveUntrustedAgent(spec, granted = {}) {
+  const deny = (/** @type {string[]} */ problems) => ({ agent: null, capability: null, problems });
+  if (!spec || typeof spec !== "object" || Array.isArray(spec)) return deny(["spec is not an object"]);
+  const problems = validateAgentSpec(spec);
+  if (problems.length) return deny(problems);
+  const missing = requirementsFor(spec).filter((r) => granted[r] !== true);
+  if (missing.length) {
+    return deny(missing.map((r) => `${spec.id}: requires "${r}", which this caller has not been granted`));
+  }
+  return { agent: spec, capability: resolveCapability(spec), problems: [] };
+}
+
 /**
  * Validate a whole registry object ({agents:[...]}). Checks each spec plus
  * cross-agent uniqueness of ids. Returns problem strings; empty means valid.
@@ -626,31 +786,56 @@ export function validateAgentRegistry(reg) {
 // registry edit rather than an edit in every file that mentions a mode.
 
 /**
- * The agent a request resolves to. Walks `reg.defaults` in precedence order and
- * takes the first row whose `flag` is literally `true` in the request body AND
- * whose agent's `capability.requires` are all granted. A row with a null flag is
- * a derived default, taken only when no flagged row matched and its
- * requirements hold — which is exactly how introspection (developer_mode, no
- * flag) sits ahead of normal today.
+ * The agent a request resolves to, in three passes.
+ *
+ *  1. **Addressed by id** — `body.agent` names a registry entry directly. This
+ *     is what makes a registry agent reachable WITHOUT a `defaults` row, a mode
+ *     flag, a `CHAT_MODE_IDS` entry, a mode-theme descriptor or any CSS: the
+ *     difference between "a sixth MODE is data" (which the defaults table
+ *     already gave us) and "a sixth AGENT is data", which is what a builder
+ *     actually needs. The named agent's own `mode` is reported, so an agent
+ *     that belongs to no chat mode still says which one it renders as.
+ *  2. **Flagged rows**, in `defaults` order — the mode flags, precedence being
+ *     array order (sdk > orchestrator > outrospection).
+ *  3. **Derived rows** (null flag) — introspection when its knob is granted,
+ *     else normal.
+ *
+ * Every pass applies the SAME requirement gate: an agent whose declared
+ * `capability.requires` are not all granted is skipped, never served. So an
+ * unknown id, a misspelt id and an id the caller may not have all behave
+ * identically — the request falls through to the table it would have got
+ * anyway. Addressing can narrow what answers a request; it can never reach a
+ * capability the knobs withhold.
  *
  * Returns null when the registry is unusable, so the caller keeps its built-in
  * behaviour rather than failing the request (invariant 2).
  * @param {any} reg
  * @param {Record<string, any>} body the /api/chat request body
  * @param {Record<string, boolean>} granted capability knob → granted?
- * @returns {{ mode: string, agent: any, capability: typeof BASE_CAPABILITY } | null}
+ * @returns {{ mode: string, agent: any, capability: typeof BASE_CAPABILITY, addressed: boolean } | null}
  */
 export function resolveRequestAgent(reg, body, granted = {}) {
   const rows = Array.isArray(reg?.defaults) ? reg.defaults : null;
   if (!rows || !rows.length) return null;
-  /** @param {any} row */
-  const usable = (row) => {
-    const agent = findAgent(reg, row?.agent);
+  /** @param {any} agent @param {string} mode @param {boolean} addressed */
+  const serve = (agent, mode, addressed) => {
     if (!agent) return null;
     const cap = resolveCapability(agent);
     for (const req of cap.requires) if (granted[req] !== true) return null;
-    return { mode: row.mode, agent, capability: cap };
+    return { mode, agent, capability: cap, addressed };
   };
+  /** @param {any} row */
+  const usable = (row) => serve(findAgent(reg, row?.agent), row?.mode, false);
+
+  const named = typeof body?.agent === "string" ? body.agent.trim() : "";
+  if (named) {
+    const agent = findAgent(reg, named);
+    // `mode` falls back to normal for an agent bound to no chat mode — a
+    // derived agent renders in the plain composer unless it says otherwise.
+    const hit = serve(agent, agent?.mode || "normal", true);
+    if (hit) return hit;
+  }
+
   for (const row of rows) {
     if (!row?.flag) continue;
     if (body?.[row.flag] !== true) continue;

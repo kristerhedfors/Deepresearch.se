@@ -34,8 +34,12 @@ import {
   CONTEXT_BLOCKS,
   GATE_IDS,
   MODE_THEMES,
+  requirementsFor,
+  resolveUntrustedAgent,
   TOOL_CLASSES,
   TOOL_FALLBACKS,
+  capHasTool,
+  capSearch,
   defaultAgentForMode,
   findAgent,
   resolveCapability,
@@ -365,4 +369,313 @@ test("routing: a sixth agent is data — adding one to the registry routes it", 
   // without the sandbox knob the flagged row is skipped and the request falls
   // through to the derived default.
   assert.equal(resolveRequestAgent(extended, { scout_mode: true }, DEV).agent.id, "introspection");
+});
+
+// ---- the narrowing accessors (stage 5: declared → executed) -------------------
+//
+// capBound has its own suite next to the Worker constants it clamps against
+// (src/agent-bounds.test.js). These two live here because they are wholly
+// expressible in the client module graph.
+
+test("capSearch narrows in both directions and never widens", () => {
+  const off = { search: { web: false, auxSources: false } };
+  const on = { search: { web: true, auxSources: true } };
+  // A knob that is off wins over any declaration…
+  assert.deepEqual(capSearch(on, { web: false }).web, false);
+  // …and a declaration that is off wins over any knob.
+  assert.deepEqual(capSearch(off, { web: true }).web, false);
+  // Both on is the only way through.
+  assert.deepEqual(capSearch(on, { web: true }).web, true);
+  // Absent request fields mean "not asked about", not "denied".
+  assert.deepEqual(capSearch(on, {}).auxSources, true);
+  assert.deepEqual(capSearch(off, {}).auxSources, false);
+  // No capability at all is the request alone — a run that never consulted
+  // the registry behaves exactly as it did before this existed.
+  assert.deepEqual(capSearch(null, { web: true }), { web: true, auxSources: true, maxQueries: null });
+});
+
+test("capSearch takes the LOWER query ceiling, and null means unbounded", () => {
+  assert.equal(capSearch({ search: { maxQueries: 3 } }, { maxQueries: 9 }).maxQueries, 3);
+  assert.equal(capSearch({ search: { maxQueries: 9 } }, { maxQueries: 3 }).maxQueries, 3);
+  assert.equal(capSearch({ search: { maxQueries: null } }, { maxQueries: 4 }).maxQueries, 4);
+  assert.equal(capSearch({ search: { maxQueries: 4 } }, {}).maxQueries, 4);
+  assert.equal(capSearch({ search: {} }, {}).maxQueries, null);
+  assert.equal(capSearch({ search: { maxQueries: 0 } }, {}).maxQueries, 0, "zero is a real ceiling");
+  // Garbage is not a ceiling — it is an absent one (invariant 2 at the seam).
+  for (const bad of [-1, NaN, Infinity, "3", null]) {
+    assert.equal(capSearch({ search: { maxQueries: bad } }, {}).maxQueries, null, `${String(bad)} ignored`);
+  }
+});
+
+test("the orchestrator's declared query ceiling is the executor's own budget", () => {
+  // The one search field that was genuinely declared-but-unread before stage 5:
+  // MAX_ORCH_SEARCHES now comes from the spec, clamped to itself.
+  const orch = resolveCapability(findAgent(realRegistry(), "orchestrator"));
+  assert.equal(orch.search.maxQueries, MAX_ORCH_SEARCHES);
+  assert.equal(capSearch(orch, { web: true }).maxQueries, MAX_ORCH_SEARCHES);
+});
+
+test("capHasTool reads the declared classes and nothing else", () => {
+  const build = resolveCapability(findAgent(realRegistry(), "agent-builder"));
+  assert.ok(capHasTool(build, "source-read"));
+  assert.ok(capHasTool(build, "build-publish"));
+  assert.ok(!capHasTool(build, "shell"));
+  // An agent with no tools, and no capability at all, both select nothing.
+  assert.ok(!capHasTool(resolveCapability(findAgent(realRegistry(), "research")), "source-read"));
+  assert.ok(!capHasTool(null, "source-read"));
+});
+
+// ---- Stage 6: an agent is ADDRESSABLE, not only a mode's default -------------
+//
+// The defaults table made a sixth MODE data. These make a sixth AGENT data: a
+// registry entry reachable with no defaults row, no request flag, no
+// CHAT_MODE_IDS entry, no mode-theme descriptor and no CSS. That is the seam a
+// builder needs, and the one Agent Studio publishes into.
+
+test("addressing: `agent` selects a registry entry the defaults table cannot reach", () => {
+  const reg = realRegistry();
+  // `secure` and `under-construction` are tier archetypes — no defaults row, no
+  // flag, unreachable before this. Addressed, they answer.
+  const hit = resolveRequestAgent(reg, { agent: "under-construction" }, DEV);
+  assert.equal(hit.agent.id, "under-construction");
+  assert.equal(hit.capability.answerPhase, "direct");
+  assert.equal(hit.addressed, true);
+  assert.equal(hit.mode, "normal", "an agent bound to no chat mode renders in the plain composer");
+  // The archetype for the client tier, likewise.
+  assert.equal(resolveRequestAgent(reg, { agent: "secure" }, DEV).agent.id, "secure");
+});
+
+test("addressing beats every mode flag, because it is more specific", () => {
+  const reg = realRegistry();
+  const hit = resolveRequestAgent(reg, { agent: "outrospection", sdk_mode: true }, DEV);
+  assert.equal(hit.agent.id, "outrospection");
+  assert.equal(hit.capability.answerPhase, "feed");
+});
+
+test("addressing is subject to the SAME requirement gate as every other route", () => {
+  const reg = realRegistry();
+  // Agent Studio requires developer_mode. Addressing it without the knob must
+  // not be a way around the knob — it falls through to what the caller could
+  // have had anyway.
+  const denied = resolveRequestAgent(reg, { agent: "agent-builder" }, {});
+  assert.equal(denied.agent.id, "research", "an ungranted address falls through, never escalates");
+  assert.equal(denied.addressed, false);
+  // With the knob, the same body reaches it.
+  assert.equal(resolveRequestAgent(reg, { agent: "agent-builder" }, DEV).agent.id, "agent-builder");
+});
+
+test("an unknown, malformed or empty address falls through to the table", () => {
+  const reg = realRegistry();
+  // Every one of these must behave exactly like a body that named no agent at
+  // all — so probing for ids reveals nothing and breaks nothing.
+  for (const agent of ["ghost", "", "   ", null, 7, {}, [], true]) {
+    const hit = resolveRequestAgent(reg, { agent }, DEV);
+    assert.equal(hit.agent.id, "introspection", `agent=${JSON.stringify(agent)} falls through`);
+    assert.equal(hit.addressed, false);
+  }
+  // …and without the knob, to plain Deep Research.
+  assert.equal(resolveRequestAgent(reg, { agent: "ghost" }, {}).agent.id, "research");
+});
+
+test("a defaults-table hit is never marked addressed", () => {
+  const reg = realRegistry();
+  assert.equal(resolveRequestAgent(reg, { sdk_mode: true }, DEV).addressed, false);
+  assert.equal(resolveRequestAgent(reg, {}, DEV).addressed, false);
+  assert.equal(resolveRequestAgent(reg, {}, {}).addressed, false);
+});
+
+test("addressing an agent that exists only as registry data routes it whole", () => {
+  // The stage-6 acceptance test: a new agent added ONLY to AGENTS.json, with no
+  // defaults row at all, answers on its own phase, prompt set and bounds.
+  const reg = realRegistry();
+  const scout = {
+    id: "scout",
+    name: "Scout",
+    platform: "server",
+    mode: "normal",
+    controls: [{ type: "prompt-input" }],
+    capability: {
+      answerPhase: "research",
+      bounds: { maxRounds: 2 },
+      search: { web: false, auxSources: false, maxQueries: 1 },
+    },
+  };
+  assert.deepEqual(validateAgentSpec(scout), []);
+  const extended = { ...reg, agents: [...reg.agents, scout] };
+  const hit = resolveRequestAgent(extended, { agent: "scout" }, DEV);
+  assert.equal(hit.agent.id, "scout");
+  assert.equal(hit.capability.answerPhase, "research");
+  assert.equal(hit.capability.bounds.maxRounds, 2);
+  assert.equal(capSearch(hit.capability, { web: true }).web, false, "its declaration narrows the knob");
+  assert.equal(capSearch(hit.capability, { maxQueries: 20 }).maxQueries, 1, "…and its query ceiling");
+});
+
+test("addressing: prompt set and answer phase stay independent choices", () => {
+  // The freedom capability.prompts bought, exercised through addressing: a
+  // build-phase agent speaking in the source-research voice. It is bounded —
+  // a set that cannot fill its phase's roles is still rejected, which is why
+  // the research phase can only take the research set.
+  const reg = realRegistry();
+  const quiet = {
+    id: "quiet-builder",
+    name: "Quiet Builder",
+    platform: "server",
+    mode: "sdk",
+    controls: [{ type: "prompt-input" }],
+    capability: {
+      answerPhase: "build",
+      prompts: "source-research",
+      tools: ["build-publish"],
+      toolFallback: "file-blocks",
+      requires: ["developer_mode"],
+    },
+  };
+  assert.deepEqual(validateAgentSpec(quiet), []);
+  const hit = resolveRequestAgent({ ...reg, agents: [...reg.agents, quiet] }, { agent: "quiet-builder" }, DEV);
+  assert.equal(hit.capability.answerPhase, "build");
+  assert.equal(hit.capability.prompts, "source-research");
+  // …and the pairing that is NOT expressible stays rejected.
+  const bad = { ...quiet, id: "bad", capability: { ...quiet.capability, answerPhase: "research" } };
+  assert.ok(validateAgentSpec(bad).some((p) => p.includes("does not fill the research phase")));
+});
+
+// ---- Stage 7: resolving a spec the repo did not commit -----------------------
+//
+// Every spec in AGENTS.json ships inside the source snapshot, so `npm test` is
+// what stands between a bad declaration and production. A spec a USER authored
+// has no such gate. These are the rules that replace it, and each one is
+// written as "the hostile spec that would work without this".
+
+test("the implied-requirement table agrees with the real registry", () => {
+  // The table is derived from what the shipped agents declare, so it must not
+  // drift from them: every shipped agent's declared `requires` has to cover
+  // what its own selections imply. A newly-privileged selection that nobody
+  // added to the table fails here rather than at a request.
+  for (const a of realRegistry().agents) {
+    const declared = new Set(resolveCapability(a).requires);
+    for (const r of requirementsFor(a)) {
+      assert.ok(declared.has(r), `${a.id} selects something implying "${r}" but does not declare it`);
+    }
+  }
+  // …and the derivation adds nothing where nothing is due.
+  assert.deepEqual(requirementsFor(findAgent(realRegistry(), "research")), []);
+  assert.deepEqual(requirementsFor(findAgent(realRegistry(), "agent-builder")), ["developer_mode"]);
+});
+
+test("a self-declared `requires: []` cannot buy a privileged selection", () => {
+  // THE escalation this stage exists to close. The routing gate checks what a
+  // spec claims to need; a spec is data, and hostile data claims to need
+  // nothing. Requirements are derived from the SELECTION, so lying is inert.
+  const liar = {
+    id: "liar",
+    name: "Liar",
+    platform: "server",
+    controls: [{ type: "prompt-input" }],
+    capability: {
+      answerPhase: "build",
+      tools: ["build-publish"],
+      toolFallback: "file-blocks",
+      requires: [], // "I need nothing"
+    },
+  };
+  assert.deepEqual(validateAgentSpec(liar), [], "it is structurally valid — that is the point");
+  assert.deepEqual(requirementsFor(liar), ["developer_mode"], "…but its selection says otherwise");
+  const denied = resolveUntrustedAgent(liar, {});
+  assert.equal(denied.agent, null);
+  assert.match(denied.problems[0], /requires "developer_mode"/);
+  // With the knob genuinely granted, the same spec resolves.
+  assert.equal(resolveUntrustedAgent(liar, { developer_mode: true }).agent.id, "liar");
+});
+
+test("an untrusted spec that fails ANY rule is refused whole, not in part", () => {
+  const ok = {
+    id: "probe",
+    name: "Probe",
+    platform: "server",
+    controls: [{ type: "prompt-input" }],
+    capability: { answerPhase: "research" },
+  };
+  assert.equal(resolveUntrustedAgent(ok, {}).agent.id, "probe");
+  // One broken field at a time — each must yield a null agent AND a reason.
+  const broken = [
+    ["a phase outside the vocabulary", { capability: { answerPhase: "exfiltrate" } }],
+    ["a tool class outside the vocabulary", { capability: { answerPhase: "research", tools: ["rm-rf"], toolFallback: "read-loop" } }],
+    ["a context block outside the vocabulary", { capability: { answerPhase: "research", context: ["/etc/passwd"] } }],
+    ["an event outside the vocabulary", { capability: { answerPhase: "research", emits: ["exfil"] } }],
+    ["a requirement outside the vocabulary", { capability: { answerPhase: "research", requires: ["root"] } }],
+    ["a gate outside the vocabulary", { capability: { answerPhase: "research", gates: [{ id: "backdoor", langs: ["en", "sv"] }] } }],
+    ["a bound outside the vocabulary", { capability: { answerPhase: "research", bounds: { maxSpend: 5 } } }],
+    ["a non-slug id", { id: "../../etc/passwd" }],
+    ["a platform outside the vocabulary", { platform: "root" }],
+    ["a mode that is not a chat mode", { mode: "godmode" }],
+    ["a control outside the vocabulary", { controls: [{ type: "shell-input" }] }],
+  ];
+  for (const [why, over] of broken) {
+    const hit = resolveUntrustedAgent({ ...ok, ...over }, { developer_mode: true, sandbox: true });
+    assert.equal(hit.agent, null, `refused: ${why}`);
+    assert.equal(hit.capability, null, `no partial capability: ${why}`);
+    assert.ok(hit.problems.length, `says why: ${why}`);
+  }
+});
+
+test("an untrusted spec cannot move a planning phase off the fixed JSON model (inv. 3)", () => {
+  const spec = {
+    id: "hijack", name: "Hijack", platform: "server", controls: [{ type: "prompt-input" }],
+    capability: { answerPhase: "research", routing: { planModel: "user", answerModel: "user" } },
+  };
+  const hit = resolveUntrustedAgent(spec, { developer_mode: true });
+  assert.equal(hit.agent, null);
+  assert.ok(hit.problems.some((p) => p.includes("invariant 3")));
+});
+
+test("an untrusted client-tier spec cannot put the server in the data path (inv. 4)", () => {
+  // The privacy split as a request-path refusal rather than a build-time one.
+  const spec = {
+    id: "leak", name: "Leak", platform: "client", controls: [{ type: "prompt-input" }],
+    capability: { answerPhase: "feed", context: ["outward-feed"] },
+  };
+  const hit = resolveUntrustedAgent(spec, { developer_mode: true });
+  assert.equal(hit.agent, null);
+  assert.ok(hit.problems.some((p) => p.includes("invariant 4")));
+});
+
+test("an untrusted tool-bearing spec must still work without native tool use (inv. 1)", () => {
+  const spec = {
+    id: "toolsonly", name: "Tools Only", platform: "server", controls: [{ type: "prompt-input" }],
+    capability: { answerPhase: "source-research", tools: ["source-read"], toolFallback: "none" },
+  };
+  const hit = resolveUntrustedAgent(spec, { developer_mode: true });
+  assert.equal(hit.agent, null);
+  assert.ok(hit.problems.some((p) => p.includes("every mode must work on models without native tool use")));
+});
+
+test("an untrusted spec's gate must route Swedish and English alike (inv. 6)", () => {
+  const spec = {
+    id: "enonly", name: "EN Only", platform: "server", controls: [{ type: "prompt-input" }],
+    capability: { answerPhase: "research", gates: [{ id: "quiz", langs: ["en"] }] },
+  };
+  const hit = resolveUntrustedAgent(spec, { developer_mode: true });
+  assert.equal(hit.agent, null);
+  assert.ok(hit.problems.some((p) => p.includes("invariant 6")));
+});
+
+test("junk in place of a spec is refused without throwing", () => {
+  for (const junk of [null, undefined, "", "agent", 7, true, [], [{ id: "x" }], () => {}]) {
+    const hit = resolveUntrustedAgent(junk, { developer_mode: true });
+    assert.equal(hit.agent, null, `refused: ${JSON.stringify(junk) ?? String(junk)}`);
+    assert.ok(hit.problems.length);
+  }
+});
+
+test("a resolved untrusted spec is still bounded by the narrowing accessors", () => {
+  // Belt and braces: even a spec that validates cannot ask for MORE than the
+  // platform does. Validation says the declaration is well-formed; capBound and
+  // capSearch say it cannot exceed the code's own limits.
+  const greedy = {
+    id: "greedy", name: "Greedy", platform: "server", controls: [{ type: "prompt-input" }],
+    capability: { answerPhase: "research", bounds: { maxRounds: 100000 }, search: { maxQueries: 100000 } },
+  };
+  const hit = resolveUntrustedAgent(greedy, { developer_mode: true });
+  assert.equal(hit.agent.id, "greedy", "it validates — a large number is not malformed");
+  assert.equal(capSearch(hit.capability, { maxQueries: 6 }).maxQueries, 6, "the request's ceiling still wins");
 });

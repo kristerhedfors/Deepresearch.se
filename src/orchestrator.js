@@ -29,6 +29,7 @@ import { classifyFailure, recordSubsystemFailure } from "./server-errors.js";
 import { addSources, sourceDigest } from "./sources.js";
 import { retrieveSourceBlockFor } from "./introspect.js";
 import { phasePrompt } from "./prompt-sets.js";
+import { capBound, capSearch } from "./agent-spec.js";
 import {
   MAX_ORCH_SEARCHES,
   agentTaskPrompt,
@@ -182,7 +183,10 @@ export async function runOrchestration(ctx) {
           ctx.step(stepId, `${agent.name} working…`);
           const text = await withTimeout(
             runAgentNode(ctx, plan, agent, results, searchBudget, token),
-            ORCH_NODE_TIMEOUT_MS,
+            // The answering agent's declared per-node wall-clock, clamped to the
+            // executor's own. The shipped orchestrator spec declares exactly
+            // ORCH_NODE_TIMEOUT_MS, so this is that constant today.
+            capBound(ctx.state.capability, "timeoutMs", ORCH_NODE_TIMEOUT_MS),
             () => { token.cancelled = true; },
           );
           // Store CLAMPED. mergeAgentResults clamps again at prompt-assembly
@@ -374,7 +378,13 @@ async function runAgentNode(ctx, plan, agent, results, searchBudget, token = { c
     // Tighter completion budget than synthesis (the buffered-ctx override
     // pattern from runSdkBuildDeterministic); totals is shared by reference,
     // so billing lands in the normal bucket.
-    state: { ...ctx.state, plan: { .../** @type {any} */ (ctx.state.plan), synthMaxTokens: ORCH_NODE_MAX_TOKENS } },
+    state: {
+      ...ctx.state,
+      plan: {
+        .../** @type {any} */ (ctx.state.plan),
+        synthMaxTokens: capBound(ctx.state.capability, "maxTokens", ORCH_NODE_MAX_TOKENS),
+      },
+    },
     emitDelta: (/** @type {string} */ t) => sink.push(t),
     emit: (/** @type {any} */ event) => {
       // streamCompletion's early-stall retry discards and restarts — nothing
@@ -431,12 +441,19 @@ export function nodeTextSink(token) {
  */
 async function runNodeSearches(ctx, agent, searchBudget) {
   const { env, log, emit, state } = ctx;
-  if (!state.webSearch) return "";
+  // The workflow phase IS the phase the orchestrator agent declares, so its
+  // `capability.search` governs directly: the knob and the declaration must
+  // both allow the search, and the declared `maxQueries` narrows the executor's
+  // own MAX_ORCH_SEARCHES. The shipped spec declares exactly 6, so the budget
+  // is unchanged; a derived workflow agent can be cheaper by declaration.
+  const policy = capSearch(/** @type {any} */ (state).capability, { web: state.webSearch });
+  if (!policy.web) return "";
+  const budget = Math.min(MAX_ORCH_SEARCHES, policy.maxQueries ?? MAX_ORCH_SEARCHES);
   /** @type {string[]} */
   const planned = agent.queries?.length ? agent.queries : [String(agent.task).slice(0, 120)];
   // Reserve synchronously — waves run nodes concurrently, but JS is
   // single-threaded between awaits, so this can't over-commit the budget.
-  const take = Math.max(0, Math.min(planned.length, MAX_ORCH_SEARCHES - searchBudget.used));
+  const take = Math.max(0, Math.min(planned.length, budget - searchBudget.used));
   searchBudget.used += take;
   const queries = planned.slice(0, take);
   if (!queries.length) return "";
