@@ -1006,3 +1006,149 @@ the search phase.
   model through `router.huggingface.co` is billed, requires the token, and is
   one provider inside the Models agent's lifecycle — see the **models-agent**
   skill.
+
+## arXiv search — a search-phase source (no knob)
+
+`src/arxiv.js` + the `arxiv` entry in `src/search-sources.js`: when the latest
+user message asks about scientific literature, each search wave also queries
+the arXiv API and the preprints join the numbered source registry as ordinary
+citable sources. No knob and no key — like Exa and the HF Hub, only the
+AI-derived search terms cross the wire, the API is free, and it is gated behind
+the web-search toggle by virtue of living in the search phase.
+
+Added 2026-07-26 after a reported failure: "Latest on llm swarm reasoning and
+how many agents … become smarter than just one" ran ONE web search and never
+asked arXiv, although the sources it did return were an `arxiv.org/html/…`
+page, a `doi.org/…/arxiv` link and a bare `https://arxiv.org/pdf/2510.10047`
+with no title at all. arXiv was never wired into `/api/chat`; the only arXiv
+work in the repo was the offline CLI RAG database (`docs/ARXIV-RAG.md`), whose
+335 MB of vectors a Worker cannot reach.
+
+- **Intent** (`arxivIntent`, two tiers like `hfIntent`): explicit
+  arXiv/preprint/e-print vocabulary and arXiv ids fire ALONE; so does
+  scientific-literature vocabulary (papers/publications/studies/peer-reviewed/
+  citations/literature/research + `forskning`/`artiklarna`/`studier`/
+  `referentgranskad`/`avhandling`/`rön`), whatever the topic. Research phrasing
+  ("latest", "outperforms", "state of the art", "how many … work together",
+  `senaste`/`framsteg`/`forskningsläget`/`bevis`/`smartare`) fires only WITH a
+  scientific topic word, drawn from arXiv's own archive vocabulary, so "the
+  latest iPhone" and "latest news about the election" stay out. EN+SV parity
+  tested in `arxiv.test.js` — and the parity test earned its keep immediately:
+  `artiklarna`, the definite plural and the most natural Swedish phrasing, was
+  missed by an `\bartiklar?\b` alternation.
+- **Query grammar — the trap that silently returns nothing** (established by
+  probing the live endpoint, 2026-07-26; all numbers measured):
+  - `all:"multi word phrase"` returns **0 results, always** —
+    `all:"llm swarm reasoning"` → 0. A quoted phrase in the catch-all field
+    matches nothing. This is the shape a naive integration writes first.
+  - Unquoted spaces inside a field are **OR, not AND**:
+    `all:llm+swarm+reasoning` → 163,854 hits, byte-identical to the explicit
+    OR query, top hit a mobile-robot paper with no LLM content. Adding words
+    makes it worse: `+research+2026` → 511,207.
+  - `abs:"term" AND abs:"term" …` is the form that works, and multi-word
+    phrases DO quote correctly in a fielded term (`abs:"collective
+    intelligence"` → 75 relevant hits). Widths on the same question: 2 terms →
+    113 hits, 3 → 37, 4 → 26, **6 → 0**. Hence `arxivTerms` (noise stripping)
+    + `arxivAttempts` (a bounded 4→2-term ladder that drops from the tail and
+    stops on the first rung with hits).
+  - A bare year is the single worst noise term — AND-ing "2026" in was what
+    pushed the reported query to 511k junk hits. Stripped, along with generic
+    research nouns (model/method/framework/system) that match nearly every
+    abstract and would spend a ladder slot without narrowing anything.
+  - An explicit arXiv id short-circuits the ladder into `id_list`.
+- **Ordering: relevance only — date ordering was tried and lost.**
+  `sortBy=submittedDate` destroys relevance on a broad set, and re-sorting one
+  AND-narrowed relevance slice by date locally demoted the two most on-point
+  papers out of the top 5 in favour of newer but tangential UAV-swarm work. The
+  softer variant (prefer the last 18 months, relevance-stable within the
+  bucket) measured a **no-op** — every hit in a realistic slice is already
+  inside that window, because the corpus grows. So there is no local
+  re-ordering at all; recency reaches the model as data instead, on each item's
+  metadata highlight.
+- **Term selection is by DISTINCTIVENESS, not position.** Taking the first four
+  surviving terms works for a planner's keyword angle but fails on a natural
+  question: "Do recent large studies still support the idea that moderate
+  alcohol consumption has a protective cardiovascular effect" leaves, in order,
+  `large still support idea` in the four slots and the subject never reaches
+  the query. Found by running `arxivIntent` over `tests/bench-questions.mjs` —
+  13 of 34 fire, so the firing set was worth reading. Scoring is length plus
+  two corrections length gets wrong: an acronym the user capitalised (LLM, RAG,
+  SSE) outranks any ordinary word outright — a mere +6 bonus still lost "LLM"
+  (9) to "consumption" (11) — and hyphenated/digit-bearing tokens
+  (multi-agent, GPT-4) get a nudge as compound technical terms. Chosen terms
+  are emitted in the query's own word order and successive rungs NEST. That
+  turned `large still support idea` into `moderate consumption protective
+  cardiovascular`, and every other firing bench question improved similarly.
+  The same pass added a discourse/meta noise class (still/support/idea/view/
+  whether/genuinely/disagree/conclusions/effectiveness + Swedish) and the
+  HYPHENATED literature forms — "peer" and "reviewed" are noise separately, but
+  "peer-reviewed" is one token and slipped through.
+- **arXiv DOES rate-limit, with 429** — worth knowing, because the harvester's
+  experience (recorded in the **arxiv-rag** skill) is that overload shows up as
+  503 + Retry-After rather than a hard limit. Probing this client produced
+  plain `429 Too Many Requests` and then timeouts. Two rules follow, both
+  enforced in `arxivSearch` and unit-tested: a 429/503 **aborts the ladder**
+  rather than being read as "this rung found nothing" (answering a rate limit
+  by firing the next query immediately is what earns a longer block; a 400 is
+  still per-rung), and the ladder carries a TOTAL time budget of 9 s, because
+  three rungs at the per-request timeout is 21 s inside a search wave —
+  invariant 2's fail-soft has to hold on the clock too, not just on errors.
+- **There is nothing to buy, and the published limit is 1 req / 3 s** (arXiv
+  API Terms of Use, checked 2026-07-26 — one connection at a time, counted
+  across the query API, OAI-PMH and RSS together). arXiv is a Cornell
+  non-profit: bulk access is open, commercial projects need no MOU and are only
+  *encouraged* to become sponsors or affiliates, and the sole escalation path
+  is free — "if your use-case requires a higher request rate, please contact
+  our support team". So capacity here is a design budget, not a purchase. It is
+  spent deliberately: `MAX_ATTEMPTS` 2 × `ARXIV_MAX_PER_REQUEST` 2 caps one
+  turn at four requests (it was 3 × 3 = 9, which exceeded the terms), the hour
+  cache absorbs repeats, and a unit test pins the product so neither constant
+  can be raised without meeting the limit. If volume ever genuinely needs more,
+  the answer is to stop asking arXiv per-query at all — the hosted RAG index
+  (`docs/ARXIV-RAG.md` §7), which is also the privacy-favourable direction.
+- **Probing this API costs you the API.** Roughly 30 requests spread over ~40
+  minutes from one IP earned a block that lasted more than ten minutes and
+  alternated 429, 503 and outright timeouts; a single successful probe in the
+  middle of it did not mean recovery. Budget for that when integrating or
+  re-probing: batch the query-grammar matrix into ONE scripted run with ≥3 s
+  spacing, capture the hit counts, and work from the capture instead of
+  re-querying. The silver lining is that the throttle exercised the fail-soft
+  path live — `throttled: true`, ladder aborted on the 429, budget guard
+  cutting in at 12 s, zero throws, chat unaffected — which is the branch
+  hardest to verify deliberately.
+- **Cached through `edge-cache.js` for an hour**, the same Workers Cache
+  mechanics `exa.js` and `googlemaps.js` use, and the main structural defence
+  against that 429: one turn can make 3 searches × up to 3 rungs, all from
+  Cloudflare's shared egress IPs. A hit means no outbound call at all, and
+  because the key is the request PARAMS rather than the user's prose, two
+  differently worded questions that reduce to the same rung share one entry.
+  arXiv metadata is stable (the archive publishes about daily), so an hour is
+  safe where Exa uses 10 minutes. Only a SUCCESSFUL, parsed response is
+  written — a throttle or a timeout takes another path — so a transient failure
+  can never pin an empty answer for an hour, while a genuinely empty rung IS
+  remembered (deterministic for that query, and skipping it is how the ladder
+  broadens without asking arXiv again). This is the ONE cross-module import in
+  the source: the registry's "no imports from other `src/` modules" rule is
+  about not colliding in shared ORCHESTRATOR files, and a stable leaf utility
+  is not that.
+- **Parsing:** Workers have no `DOMParser`, so the Atom feed is cut up by regex
+  (`arxivParseFeed`). `&amp;` is decoded LAST, or `&amp;lt;` would become `<`.
+  Junk in → `null` out (`arxivMapEntry`), never a throw.
+- **Diversity:** `arxiv.org` URLs are capped per PAPER
+  (`arxiv.org/<id>`, with `abs`/`pdf`/`html` and `v2` suffixes collapsing to
+  one key), not per hostname — otherwise the 3-per-domain cap would collapse
+  the whole archive into 3 slots, and arXiv's own hits would fight the
+  arxiv.org pages Exa returns for the same three.
+- **Prompt layer:** `arxivPromptNote` forbids clarifying "arxiv" (the trap that
+  killed `Latest on cybersecurity on hf`) and tells the planner to write at
+  least one angle in plain English technical terms — arXiv abstracts are
+  English, so a Swedish-worded AND query matches nothing. That is invariant 6
+  served by translating the QUERY, not by dropping the source for Swedish.
+- **Eval:** bench questions kind `arxiv` (`tests/bench-questions.mjs`,
+  `arxiv_*` ids), including the reported failure verbatim as a regression case.
+- **Not to be confused with the arXiv RAG database** (`docs/ARXIV-RAG.md`, the
+  **arxiv-rag** skill): same corpus, different retrieval. This section is the
+  live keyword-AND API that runs today; that is dense retrieval + a
+  cross-encoder rerank over a frozen year, with measurably better recall, still
+  waiting on a hosting decision. The registry entry is the seam it slots into —
+  promoting it replaces the fetch inside `arxivSearch` and nothing else.

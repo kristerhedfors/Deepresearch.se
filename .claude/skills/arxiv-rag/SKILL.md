@@ -55,7 +55,11 @@ are 335 MB.
   month shard that touched it.
 - arXiv answers overload with `503` + `Retry-After`, not a hard rate limit.
   Concurrency 3 across month shards with a 1 s inter-page pause is polite and
-  fast enough.
+  fast enough. **That holds for OAI-PMH, not for the query API**: probing
+  `export.arxiv.org/api/query` for the live search source (2026-07-26) earned
+  plain `429 Too Many Requests` followed by timeouts. Treat a 429/503 there as
+  "stop", never as "try the next query" — see the **integrations** skill's
+  arXiv section.
 
 ## Berget serving limits that break long builds
 
@@ -232,3 +236,25 @@ Wiring this into `/api/chat` as a research source is the **add-research-source**
 skill's job, and needs a hosting decision first: 335 MB of vectors does not fit
 a Worker, so either Vectorize (which `src/rag.js` already speaks) or an
 R2-backed shard read. `docs/ARXIV-RAG.md` §7 has the open questions.
+
+**The pipeline seam is already built and occupied (2026-07-26).** `src/arxiv.js`
+is a registered search source serving the LIVE arXiv API — keyword-AND over
+abstracts, no hosted index, no key — added because arXiv was reachable by the
+CLI and nowhere else, and a real research question about LLM swarm reasoning
+ran web-only and cited a bare `arxiv.org/pdf/…` URL with no title. So do NOT
+start a second source module for this tier. Everything around retrieval is
+already retrieval-agnostic and reusable: the intent predicate, the planner
+prompt note, the registry entry, the per-paper diversity key and the item
+shape. Promoting THIS database into it means replacing the fetch inside
+`arxivSearch` with a Vectorize query (plus the rerank call, which fits the
+helper-phase budget and fails soft the same way) and changing nothing else.
+Two things to carry over when you do:
+
+- the live tier's measured query traps do not apply to dense retrieval, but its
+  **noise stripping still might not** — a dense query wants the natural
+  question, not four AND-ed terms. Keep `arxivTerms` for the lexical path and
+  pass the raw query to the embedder.
+- the live tier's ordering finding (**relevance only; local date re-sorting
+  demoted the best papers and the softer bucketed variant was a no-op**) was
+  measured on keyword retrieval. Re-measure before importing that conclusion
+  into a reranked pipeline; do not assume it transfers.
