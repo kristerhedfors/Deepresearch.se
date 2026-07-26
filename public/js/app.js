@@ -348,7 +348,36 @@ function greetSdkMode(mode) {
     .then((m) => m.showSdkPlantGreeter())
     .catch(() => {});
 }
+
+// Outrospection mode opens on the FEED, not on an empty chat (owner directive,
+// 2026-07-26): the outward feed IS this agent's session history — latest
+// entries in the transcript, older pages on scroll-back, the whole thing
+// indexed in this browser so a question retrieves against all of it rather
+// than just what fits on screen. Only ever mounted into a BLANK session; a
+// real conversation is never displaced. Dynamically imported and fail-soft, so
+// a feed that will not load leaves the ordinary empty chat behind.
+let outroFeedMounted = false;
+function openOutrospectionFeed(mode) {
+  if (mode !== "outrospection" || outroFeedMounted) return;
+  if (chat.querySelector(".msg, .turn")) return; // a real conversation is in progress
+  outroFeedMounted = true;
+  import("./outrospect-feed.js")
+    .then((m) => m.openFeedSession(chat))
+    .catch(() => {
+      outroFeedMounted = false;
+    });
+}
+
+// Leaving the mode (or starting a new chat) drops the mounted feed so it is
+// re-read fresh next time — the feed keeps growing, and a stale render would
+// quietly hide the newest entries.
+function clearOutrospectionFeed() {
+  outroFeedMounted = false;
+  for (const node of chat.querySelectorAll(".outro-history")) node.remove();
+}
 syncModeSelect(cachedChatMode());
+// A returning outrospection user lands straight on the feed, same as a switch.
+openOutrospectionFeed(cachedChatMode());
 modeSel.addEventListener("change", () => {
   const mode = applyChatModeTheme(modeSel.value);
   modeSel.value = mode;
@@ -363,6 +392,8 @@ modeSel.addEventListener("change", () => {
       .catch(() => {});
   }
   greetSdkMode(mode);
+  clearOutrospectionFeed();
+  openOutrospectionFeed(mode);
 });
 
 // The web-search popover opens on a press-and-hold of the spiderweb knob
@@ -539,6 +570,9 @@ function newChat(keepProject = false) {
   clearChatDom();
   syncCopyState();
   refreshSdkBuildChip(null); // a fresh chat has no build of its own yet
+  // A new chat in outrospection mode is a new FEED session, not a blank one.
+  clearOutrospectionFeed();
+  openOutrospectionFeed(cachedChatMode());
   input.focus();
 }
 document.getElementById("clearbtn").addEventListener("click", () => newChat());
