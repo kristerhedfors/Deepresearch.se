@@ -77,8 +77,8 @@ import { normalizeSearchSource } from "./websearch-backends.js";
  * @property {boolean} [incognito] ghost toggle: suppresses the chat-log row
  * @property {number} [time_budget_s] UI slider value (clamped server-side)
  * @property {boolean} [web_search] knob, default on (only `false` disables)
- * @property {string} [search_source] WHO runs this request's searches, picked on
- *   the knob's long-press card: "exa" (default) | "cloudflare" (this Worker
+ * @property {string} [search_source] WHO runs this request's searches, set by the
+ *   "Exa web search" knob in settings: "exa" (default) | "cloudflare" (this Worker
  *   searches for itself). Anything else — including absent — means the
  *   site-configured backend; an admin can pin that with search.allow_user_choice
  * @property {boolean} [developer_mode] OFF-ONLY override: `false` disables the introspection enrichment for this request (never enables it)
@@ -163,7 +163,7 @@ import { normalizeSearchSource } from "./websearch-backends.js";
  *   orchWorkflow?: any,
  *   swarmResults?: Record<string, { text: string, agreement: number, members: number, rounds: number, failed: number }>,
  *   outrospectionMode?: boolean,
- *   outrospection?: { lens: string | null, items: number, live: boolean },
+ *   outrospection?: { lens: string | null, items: number, texts: number, quotes: number, live: boolean },
  *   buildSlug?: string | null,
  *   userId?: string,
  *   buildResult?: { slug: string, url: string, files: number, bytes: number },
@@ -250,7 +250,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   let budgetS = clampBudget(body.time_budget_s); // UI slider (src/budget.js)
   budgetS = Math.min(budgetS, config.max_time_budget_s);
   const webSearchEnabled = body.web_search !== false; // knob: default on
-  // …and WHO runs those searches, picked on the knob's long-press card (UX-10):
+  // …and WHO runs those searches, set by the "Exa web search" knob in settings:
   // "exa" (the default), "cloudflare" (this Worker searches for itself), or ""
   // for the site-wide backend. Coerced to the allowlist here so nothing past
   // this line can route a search at an unvalidated target; the admin can pin

@@ -472,7 +472,14 @@ body.term-fg .brand {
 /* Outrospection's header tag — the outward feed mode (chat-mode.js toggles
    `outro-mode`). Same treatment, in ink over newsprint rather than a light
    tag over a saturated field: this theme's field is PAPER, so a pale tag
-   would vanish. */
+   would vanish.
+
+   Unlike the other three it is an ANCHOR to /outrospect/ (owner feedback #28,
+   2026-07-26): this mode answers FROM that page's feed, so the shortest useful
+   thing a reader can do next is open it. It therefore re-enables pointer
+   events (the whole <header> is pointer-events: none, its interactive strips
+   opt back in — see .header-right below) and wears a dotted masthead underline
+   so it reads as tappable rather than as a label that happens to be blue. */
 .outro-tag {
   display: none;
   align-self: center;
@@ -483,7 +490,14 @@ body.term-fg .brand {
   text-transform: lowercase;
   color: #6d3228;
   text-shadow: 0 1px 1px rgba(255, 253, 248, .8);
-  pointer-events: none;
+  text-decoration: none;
+  border-bottom: 1px dotted rgba(109, 50, 40, .55);
+  padding-bottom: .05rem;
+  pointer-events: auto;
+}
+.outro-tag:hover, .outro-tag:focus-visible {
+  color: #8f1d14;
+  border-bottom-color: rgba(143, 29, 20, .9);
 }
 :root.outro-mode .outro-tag { display: block; }
 .header-right, #composer { pointer-events: auto; }
@@ -617,6 +631,95 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
 .tool-btn:hover { background: var(--panel-2); border-color: var(--border); }
 .tool-btn.active { background: var(--panel-2); border-color: var(--border); color: var(--text); }
 .empty { color: var(--muted); text-align: center; margin-top: 3rem; }
+
+/* Starter prompts (public/js/starters.js): four example questions on an empty
+   chat, drawn from the active mode's agent queue. Themed off the mode
+   variables rather than hard-coded colours, so the strip picks up the
+   introspection titanium / Agent Studio green / Orchestrator violet panes for
+   free — the chips should look like they belong to the agent they open. */
+.starters {
+  display: flex; flex-wrap: wrap; justify-content: center;
+  gap: .5rem; margin: 1.5rem auto 0; max-width: 52rem;
+}
+.starter {
+  flex: 1 1 15rem; max-width: 24rem;
+  text-align: left; cursor: pointer;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: .6rem .75rem; font: inherit; font-size: .84rem; line-height: 1.4;
+  /* A starter is a whole question, so it wraps to at most three lines and
+     then truncates — a chip that grows to six lines stops reading as a
+     shortcut and starts competing with the empty-state prose. */
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden;
+  transition: background .12s ease, border-color .12s ease, transform .12s ease;
+}
+.starter:hover { background: var(--panel-2); border-color: var(--accent); }
+.starter:active { transform: translateY(1px); }
+.starter:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 600px) {
+  /* One per row on a phone: four half-width chips of wrapped question text
+     are unreadable at that width. */
+  .starter { flex-basis: 100%; max-width: none; -webkit-line-clamp: 2; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .starter { transition: none; }
+  .starter:active { transform: none; }
+}
+
+/* Evaluation mode (the Settings "Starter prompt evaluation" knob): the strip
+   becomes a cross-agent review batch — each chip carries its agent + band and
+   a 👍/👎 pair, with a footer for progress and handing the findings back. */
+.starter-eval { margin-top: 1.5rem; }
+.starter-eval-head {
+  color: var(--muted); font-size: .8rem; text-align: center; margin: 0 0 .75rem;
+}
+.starter-cell { flex: 1 1 15rem; max-width: 24rem; display: flex; flex-direction: column; gap: .25rem; }
+.starter-cell .starter { flex: 1 1 auto; max-width: none; -webkit-line-clamp: 4; }
+.starter-band {
+  display: block; font-size: .68rem; text-transform: uppercase;
+  letter-spacing: .04em; opacity: .75; margin-bottom: .25rem;
+}
+/* The band is the reviewer's whole frame for the chip, so the four read
+   differently at a glance rather than relying on the words alone. */
+.band-proven { color: #2e7d32; }
+.band-weak { color: #c62828; }
+.band-untried { color: var(--muted); }
+.band-candidate { color: #6a1b9a; }
+.starter-rate { display: flex; gap: .25rem; justify-content: flex-end; }
+.starter-vote {
+  background: transparent; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--muted); cursor: pointer; font-size: .8rem; line-height: 1;
+  padding: .2rem .45rem;
+}
+.starter-vote:hover { background: var(--panel-2); }
+.starter-vote.on { background: var(--panel-2); border-color: var(--accent); color: var(--text); }
+.starter-eval-foot {
+  display: flex; align-items: center; justify-content: center; gap: .6rem;
+  margin-top: .75rem; font-size: .78rem; color: var(--muted); flex-wrap: wrap;
+}
+.starter-eval-btn {
+  background: transparent; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--muted); cursor: pointer; font: inherit; font-size: .78rem;
+  padding: .2rem .5rem;
+}
+.starter-eval-btn:hover:not(:disabled) { background: var(--panel-2); border-color: var(--accent); }
+.starter-eval-btn:disabled { opacity: .5; cursor: default; }
+.starter-eval-report {
+  text-align: left; white-space: pre-wrap; font-size: .72rem; max-height: 16rem;
+  overflow: auto; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: .6rem; margin-top: .6rem;
+}
+
+/* Outrospection's own empty state (owner feedback #28). The mode answers from
+   the outward feed rather than from a web search, so the default "I'll search
+   the web and report back" copy is wrong there — and the feed page is exactly
+   what a first-time reader of this mode should be pointed at. Swapped on the
+   root class so it is correct from first paint, no JS. */
+.empty-outro { display: none; }
+:root.outro-mode .empty-default { display: none; }
+:root.outro-mode .empty-outro { display: inline; }
+.empty a { color: var(--accent); }
 /* The transient reopened-chat feedback cue (turns.js FEEDBACK_HINT_TEXT):
    quieter than a message, centered under the restored turns, gone on the
    next send. */
@@ -1388,23 +1491,6 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 .slash-name { font-size: .84rem; font-weight: 600; }
 .slash-args { font-weight: 400; opacity: .55; }
 .slash-desc { font-size: .74rem; line-height: 1.4; opacity: .78; }
-
-/* The search-SOURCE picker inside a knob popover (public/js/search-source.js):
-   WHO runs the searches — Exa or this site's own Worker. Shared shape across
-   both tiers; the Se/cure copy of these rules lives in cure/drc.css because
-   the two stylesheets never load together. Each row is the whole label so the
-   tap target is the option, not the 14 px radio. */
-.srcpick {
-  display: flex; flex-direction: column; gap: .35rem;
-  margin: .55rem 0; padding: .5rem 0;
-  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
-}
-.srcopt {
-  display: flex; gap: .5rem; align-items: flex-start;
-  cursor: pointer; padding: .15rem 0;
-}
-.srcopt input { margin-top: .2rem; flex: 0 0 auto; accent-color: var(--accent, #0d4fa0); }
-.srcnote { opacity: .78; font-size: .95em; }
 
 #budgetval {
   min-width: 3.6rem;
@@ -2490,3 +2576,65 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 .pool-mint input { flex: 1 1 12rem; min-width: 0; }
 .pool-link { word-break: break-all; font-size: .72rem; }
 .pool-flow { margin-top: .8rem; }
+
+/* ---------------------------------------------------------------------------
+   The outward feed as the outrospection session's history (owner directive,
+   2026-07-26 — public/js/outrospect-feed.js). Rendered INTO the chat scroller,
+   newest at the bottom, older pages prepended on demand. It reuses the mode's
+   newsprint variables rather than inventing a palette, so the feed reads as
+   part of the session rather than a widget dropped into it.
+   --------------------------------------------------------------------------- */
+.outro-history { display: flex; flex-direction: column; gap: 0; }
+.outro-list { display: flex; flex-direction: column; }
+.outro-more {
+  align-self: center;
+  margin: .2rem 0 .6rem;
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: .35rem .85rem;
+  cursor: pointer;
+}
+.outro-more:hover { color: var(--text); border-color: var(--muted); }
+.outro-more[hidden] { display: none; }
+.outro-entry {
+  padding: .7rem 0;
+  border-bottom: 1px solid var(--border);
+}
+/* A newly-arrived entry gets the same red rule the /outrospect/ page uses, so
+   "new since you last looked" reads identically on both surfaces. */
+.outro-entry.fresh {
+  border-left: 3px solid var(--accent);
+  padding-left: .7rem;
+  margin-left: -.7rem;
+}
+.outro-kicker {
+  margin: 0 0 .15rem;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+  font-size: .66rem;
+  font-weight: 700;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.outro-new { background: var(--accent); color: #fffdf8; border-radius: 3px; padding: .05rem .3rem; }
+.outro-head { margin: 0 0 .2rem; font-size: 1rem; line-height: 1.25; font-weight: 700; }
+.outro-head a { color: var(--text); text-decoration: none; }
+.outro-head a:hover { color: var(--accent); text-decoration: underline; }
+.outro-teaser { margin: 0 0 .2rem; font-size: .86rem; color: var(--muted); }
+.outro-src { margin: 0; font-size: .7rem; font-weight: 600; color: var(--muted); }
+.outro-intro {
+  margin: .8rem 0 .2rem;
+  font-size: .78rem;
+  font-style: italic;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  padding-top: .6rem;
+}

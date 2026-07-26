@@ -27,7 +27,7 @@ Server (`src/`):
 | `google.js` | Google OIDC sign-in: state cookie, code exchange, claims validation, auto-provisioning (`ADMIN_EMAIL` → admin) |
 | `login.js` | Sign-in, pending-approval, and one-time terms pages (PWAs can't answer a 401 challenge) |
 | `accounts.js` | User accounts CRUD (D1; provisioned by Google sign-in, no passwords) |
-| `db.js` | Optional D1 binding + lazy schema (no-op without the binding). Cost tracking rests on TWO ledgers: `usage_events` (ENFORCEMENT — one row per request, `berget_cost` = the SUM across every model that ran, all a cost cap needs) and `usage_model_events` (ATTRIBUTION — one row per model bucket that spent: answer/JSON/vision, so a user's spend stays attributable to the model that drove it; never read for enforcement) |
+| `db.js` | Optional D1 binding + lazy schema (no-op without the binding; `outrospect_texts` — the fetched article bodies behind the outward feed, identity-free like `outrospect_items` — is part of it). Cost tracking rests on TWO ledgers: `usage_events` (ENFORCEMENT — one row per request, `berget_cost` = the SUM across every model that ran, all a cost cap needs) and `usage_model_events` (ATTRIBUTION — one row per model bucket that spent: answer/JSON/vision, so a user's spend stays attributable to the model that drove it; never read for enforcement) |
 | `config.js` | Global site config (D1 `config` table, admin-edited, cached ~30 s) |
 | `quota.js` | Window usage accounting, quota enforcement, cost calc, usage recording, the per-user in-flight concurrency reservation (`reserveInflight`/`releaseInflight`, `INFLIGHT_CAP`), and the two sibling 429-payload builders `quotaBlockedResponse` (quota-window block; also imported by quiz-api/bash-api/rag) and `inflightLimitResponse` (concurrency limit). Cost attribution lives here too: `recordModelUsage` writes the per-model rows into the `usage_model_events` attribution ledger (fail-soft, separate from the enforcement `recordUsage` so it can't disturb it), and `getUsageByModel` (site-wide) / `getUsageByModelForUser` (one user) read the per-model breakdown that answers "what did this budget go to" |
 | `alerts.js` | Operational alerts (D1 `alerts` table): classifies caught pipeline/backend failures (Berget errors, wallet depletion) into a small stable set of alert types surfaced in the admin panel and as a notification badge — rows are upserted by `type` (a recurrence bumps `count`/`last_seen_at` and re-surfaces itself) rather than one row per occurrence; fails soft (a no-op without D1) — see the **access-control** skill |
@@ -72,6 +72,7 @@ Server (`src/`):
 | `features.js` | The features/priority review board (D1 `features_reviews`) — the SECOND loop channel next to security (façade over `board.js`): a code CATALOG mirroring `FEATURES.md` §3 (same F-ids, same order, same mirror-in-one-commit discipline) + the admin's votes/EFFORT (the shared "score" field, relabelled)/note and the explicit PRIORITY that is the feature-build loop's fixed work order (`/api/admin/features*`, `?format=text` = the build loop's input; `scripts/features`; impact rank instead of severity, build order instead of fix order) — see the **feature-board** skill and `docs/DECISION-BOARD-LOOPS.md` |
 | `panels.js` | The panel-SELECTION board (D1 `panels_reviews`) — a THIRD `board.js` consumer but a different KIND of loop (the ATTENTION loop, not a backlog). Its catalog items ARE the admin panels themselves; it has NO board widget — each panel header on `/admin` carries ▲/▼ thumbs and voting reshapes the admin view in place (up floats to top, net-negative collapses + sinks). Reshapes PURELY on votes: no drag, no explicit priority (reuses the core's `"priority"` ordering with none ever set → votes-desc). The votes-driven focus order (`/api/admin/panels*`, `?format=text` = the attention loop's input; `scripts/panels`) tells a Claude Code session which admin surface the owner is working on now — read it, then read that surface's own board. See the **feature-board** skill §6 |
 | `testpoints.js` | The testable-interaction-points queue (D1 `test_points`): declared, linkable "try-it" points — each a `label` + a "what was fixed" `summary` + a same-origin `target` path + an ordered list of client ACTIONS (the deep-link reachability grammar: open a panel/settings-knob, prefill the composer, flip search, set the budget, pick a model, highlight an element) — plus the 👍/👎/❓ verdict (pass / fail / untestable–needs-clarification; the ❓ opens a tester↔loop DIALOGUE THREAD on the point — D1 `test_point_messages`, verdict notes land as tester messages, the loop answers via `…/:id/messages` / `scripts/testpoints --reply` and re-opens the point). Pure core (validation/projection/`?format=text`/`deepLink`) + `handleAdminTestpoints` (CRUD + result + thread, admin-gated, `/api/admin/testpoints*`) + `handleTryRedirect` (the `/try/:id` deep link → 302 to `<target>?try=<id>`, home-on-miss). The banner + queue UI live in `public/js/testpoints.js` over the pure `public/js/testpoints-core.js`; `scripts/testpoints` is the producer/reader CLI. Each point is also a numbered **use case**: `useCaseTag` gives it a stable `#UC-<id>` tag (on the projection as `.tag`, prepended to `compose` starter prompts client-side); `parseUseCaseRef` (EN+SV) reads it back off a `feedback #UC-<id> …` chat message (both defined once in `public/js/testpoints-core.js`, re-exported here — the `agent-spec.js` façade pattern) and `recordUseCaseFeedback` posts the note onto that point's thread (admin-gated, from `chat.js`) — see the **testable-interaction-points** skill |
+| `starters.js` | The STARTER-PROMPT server FAÇADE: a pure re-export of the ONE shared core `public/js/starters-core.js` plus the registry `public/js/starters-data.js` (the `agent-spec.js` façade pattern) — the per-agent queue of opening questions offered on an empty chat (4 shown at a time, ≥20 deep), the exploit/explore selection + rotation (`selectStarters`/`nextCursor`), the local-only pick signal (`recordStarterUse`/`starterStanding`), the evaluation layer (`starterScore` over capability/firstImpression/quality with the `deadEnd` cap, `rankStarters`, `shortlistFor`, `starterJudgePrompt`/`parseJudgeReply`) and the registry validator (`validateStarters` — depth, EN/SV parity per invariant 6, aspect spread, and "no `rank` without `evidence`" per invariant 5). Consumed by both tiers' empty state via `public/js/starters.js`, by `scripts/starters` and by the live battery `tests/starter-eval.mjs` (ledger `tests/STARTER-EVAL-FINDINGS.md`) — see the **starter-prompts** skill |
 | `admin-api.js` | `/api/admin/*`: overview, users, config, chatlogs, feedback, security, features, panels, testpoints, errors, boards, and `user-cost` (one user's spend attribution — per-window LLM-vs-search totals + the per-model breakdown; `scripts/user-cost` is its CLI) |
 | `admin-boards.js` | The admin-BOARDS discovery index (`GET /api/admin/boards`, `scripts/boards`): one pure static registry (`ADMIN_BOARDS`) of every Claude-fetchable admin list (security, features, panels, feedback, errors, chatlogs) — id/purpose/api/`text_query`/orderings/`order_help`/script/skill — with a `?format=text` render that prints each board's exact fetch line. The one-call "pop up every board and act on the admin's priority order" entry point; no D1, no secrets (see the **decision-boards** skill) |
 | `chat.js` | `/api/chat` handler: validation, model resolution, quota gate, per-user in-flight concurrency reservation (`reserveInflight`/`releaseInflight`, P-3), state, SSE scaffold, usage recording (the split-billing totals — `summarizeSpend`/`exaCost` now live in the shared `billing.js`, re-exported here) |
@@ -97,7 +98,7 @@ Server (`src/`):
 | `tokemon-api.js` | The first registered game: `/api/games/tokemon/*` (dispatched via `games.js`) — save persistence (D1 `tokemon_saves`), spawn re-derivation + proximity validation, server-side battle resolution; 503s without D1. Also the street-view AR mode: `…/scene` (a Street View frame at the player's position with spawns projected INTO the imagery, via `googlemaps.js`'s edge-cached POV capture, gated on the per-user `google_maps` knob) and `…/go` (text navigation) |
 | `tokemon-nav.js` | The street-view mode's PURE side (Node-tested): the bilingual text-command grammar (`parseGoCommand` — "go north 200 m" / "continue 50 m" / "gå till Kungsgatan 1" / "look right", EN+SV parity per invariant 6 enforced structurally, since one vocabulary table per word class declares both languages and everything — lookups, the reply-language flag, the parity test — derives from it), spherical geodesy (`destinationPoint`/`bearingBetween`/`absoluteBearing`, which resolves absolute and heading-relative commands alike), and `projectSpawns` (spawns placed inside a Street View frame under the same pinhole camera the imagery was shot with: tangent law → x, camera height over distance → y, 1/distance → size) |
 | `space.js` | The SPACE-ANIMATIONS domain's server FAÇADE: a pure re-export of the ONE shared core `public/js/space-core.js` (the scene registry — one "animation skill" per common space question, EN+SV — the deterministic `spaceIntent` matcher, zoom math, wireframe mesh builders, feedback validation) plus the domain's two endpoints: PUBLIC `POST /api/space/feedback` (the /space/ showcase gallery's 👍/👎 + short comment; validated against the registry, comment clamped, D1 `space_feedback` rows carry NO identity — the page is public) and admin `GET /api/admin/space-feedback` (newest-first entries + per-scene tallies, `?format=text` for loops). No D1 → 503, only the feedback button degrades — the animations are static assets and keep playing. See the **space-animations** skill and `docs/SPACE-ANIMATIONS.md` |
-| `outrospect.js` | OUTROSPECTION — introspection's mirror image (the outward-looking feed at `/outrospect/`): a pure re-export of the ONE shared core `public/js/outrospect-core.js` (the seven-LENS registry — one standing strategic question each: the one big dependency / browser-runnable models / edge RAG / LLM app architecture / provable privacy / agent standards / other deep-research systems, each carrying its own literal Exa queries and EN+SV routing terms per invariant 6 — plus item normalization, `deltaItems`, `mergeFeed`, `stalestLens`, the `?format=text` render) plus the domain's three endpoints: `GET /api/outrospect/feed` (the live D1 stream), `POST /api/outrospect/refresh` (runs ONE lens's searches on behalf of the visiting user, stores the delta, returns what is genuinely new — per-lens cooldown + per-user hourly cap off D1 `outrospect_runs`), and admin `GET /api/admin/outrospect` (feed + run log, `?format=text` for the agent loop). Fail-soft throughout (invariant 2: a dead search backend degrades to zero new items, never a 500); no D1 → the live half reports `live:false` and the page runs on the committed artifact alone. The stored `outrospect_items` rows carry the ARTICLE and never the reader (invariant 4). Offline bulk half: `scripts/outrospect-scan.mjs` (`npm run outrospect`) → `public/outrospect/feed.json`; read CLI `scripts/outrospect`. See the **outrospection** skill and `docs/OUTROSPECTION.md` |
+| `outrospect.js` | OUTROSPECTION — introspection's mirror image (the outward-looking feed at `/outrospect/`): a pure re-export of the ONE shared core `public/js/outrospect-core.js` (the seven-LENS registry — one standing strategic question each: the one big dependency / browser-runnable models / edge RAG / LLM app architecture / provable privacy / agent standards / other deep-research systems, each carrying its own literal Exa queries and EN+SV routing terms per invariant 6 — plus item normalization, `deltaItems`, `mergeFeed`, `stalestLens`, the `?format=text` render) plus the domain's three endpoints: `GET /api/outrospect/feed` (the live D1 stream), `POST /api/outrospect/refresh` (runs ONE lens's searches on behalf of the visiting user, stores the delta, returns what is genuinely new — per-lens cooldown + per-user hourly cap off D1 `outrospect_runs`), and admin `GET /api/admin/outrospect` (feed + run log, `?format=text` for the agent loop). Fail-soft throughout (invariant 2: a dead search backend degrades to zero new items, never a 500); no D1 → the live half reports `live:false` and the page runs on the committed artifact alone. The stored `outrospect_items` rows carry the ARTICLE and never the reader (invariant 4). A refresh also INDEXES a bounded few of the lens's articles (`indexFeedTexts` → the existing Exa `/contents` client → `outrospect_texts`, four per run, capped and deadline-bounded, fail-soft), and the answer path reads them back (`loadTexts`) so a reply can QUOTE the article with its source link — the passages are chosen by the core's deterministic lexical scorer (`selectQuotes`), no model and no embeddings, so the reader's question never leaves the isolate (owner feedback #28). Offline bulk half: `scripts/outrospect-scan.mjs` (`npm run outrospect`) → `public/outrospect/feed.json`; read CLI `scripts/outrospect`. See the **outrospection** skill and `docs/OUTROSPECTION.md` |
 | `prompt-sets.js` | The PROMPT-SET binding: the one place a capability block's `prompts` name becomes a real system-prompt builder. The pure core declares which sets exist and which of the six closed ROLES (`plan`/`worker`/`answer`/`answer-tools`/`answer-direct`/`answer-search-off`) each fills; this binds set+role → the function in `prompts.js` (plus the two pure ones, `orchestratorPlanPrompt` and `outrospectionAnswerPrompt`). `phasePrompt(state, phase, role)` is the call-site helper every answer phase now goes through, so prompt set and answer phase are INDEPENDENT choices. Total by construction — no state can leave a phase without a prompt; the binding is identity-pinned in `prompt-sets.test.js` |
 | `prompts.js` | All LLM prompt builders |
 | `tool-sets.js` | The TOOL-CLASS binding, `prompt-sets.js`'s sibling: the one place a capability block's `tools` names become real tool definitions. `TOOL_BINDINGS` maps each closed class (`source-read`/`sdk-plan`/`build-publish`/`shell`) to the array the phase used to import, plus what the deployment must `have` for it to be usable (the source snapshot). `toolsForRun(cap, fallback, have)` is the call-site helper: it walks the binding in REGISTRY order so a spec cannot reorder what a model sees, drops a class whose need is unmet rather than erroring (invariant 2), honours an explicitly-empty `tools` as none, and uses the phase's fallback classes only when NO capability resolved. Pinned in `tool-sets.test.js`, which also asserts `pipeline.js` never names a tool array directly |
@@ -134,7 +135,18 @@ hide; also wires the test-queue client
 `testpoints.js` — the try-it banner + queue over the pure
 `testpoints-core.js`, fed the app-specific action hooks so it never
 reaches into `app.js` internals — see the
-**testable-interaction-points** skill), `stream.js` (conversation history + `/api/chat`
+**testable-interaction-points** skill; and the starter strip
+`starters.js` — the four opening questions rendered inside the empty
+state, drawn from the active chat mode's agent queue over the pure
+`starters-core.js`/`starters-data.js`, re-rendered on a new chat and on
+a mode switch, with the rotation cursor and pick counts kept in
+`localStorage` and sent nowhere. With the Settings knob *Starter prompt
+evaluation* on (browser-local, `dr_starter_eval`) the same module renders a
+cross-agent REVIEW BATCH instead — one starter per band (proven / weak /
+untried / candidate, the last from `starters-data.js`'s `CANDIDATES` trial
+pool), each labelled, each carrying a 👍/👎 whose verdicts stay local and leave
+via a *Copy report* button; a chip switches the chat mode to its own agent
+before sending — see the **starter-prompts** skill), `stream.js` (conversation history + `/api/chat`
 SSE send loop, autosaves to encrypted local history after every turn;
 `currentBuildSlug`/`resetBuildSlug` expose the SDK-mode build-status chip's
 state — the conversation's remembered `/app/<slug>/`, and the chip's ↺ action
@@ -243,12 +255,14 @@ as a real diagram — the vendored `mermaid.min.js` lazy-loads on first use
 only, fail-soft to the plain code block), `report.js` (the branded PDF report export of
 an answer — lazy-injects the vendored jsPDF on first use only, so the
 normal page load never pays for it), `timescale.js` (slider scale), `search-source.js` (WHO runs the web
-searches — the per-device pick behind the web knob's long-press card,
-UX-10: Exa or this site's own Cloudflare Worker; the ids mirror the
-server's `USER_SEARCH_SOURCES` and the server re-validates, so this is a
-preference and never a trust boundary. One module for BOTH tiers — DRS
-sends it as `/api/chat`'s `search_source`, DRC as the grant/token calls'
-`source` — Node-tested), `history-store.js`
+searches — the per-device preference behind the **Exa web search** settings
+knob: on (default) means Exa, off means this site's own Cloudflare Worker.
+The composer's web knob is on/off ONLY (2026-07-26 directive; it briefly
+carried a picker). The ids mirror the server's `USER_SEARCH_SOURCES` and the
+server re-validates, so this is a preference and never a trust boundary. One
+module for BOTH tiers — the settings row is `account-settings.js` on DRS and
+`#exarow` on DRC; DRS sends the source as `/api/chat`'s `search_source`, DRC
+as the grant/token calls' `source` — Node-tested), `history-store.js`
 (IndexedDB + AES-GCM: the conversation store itself — encrypted, except
 project chats which rest readable because they're RAG-indexed — also
 dual-writing each record to the cloud, always, per invariant 4),
@@ -684,11 +698,35 @@ and the lens it was written under (`strategyPageTag`), so the development loop
 reads it as an operative/strategic idea rather than triaging it as a defect.
 Every item's title and teaser come from the open web, so the whole feed is
 built with `createElement`/`textContent` — nothing on this page goes through
-`innerHTML`. Deterministic logic lives in the shared pure core
+`innerHTML`. The page also reports how many articles a refresh read in full, since the
+quoting the chat mode does depends on it. Deterministic logic lives in the shared pure core
 `public/js/outrospect-core.js` (Node-tested), which `src/outrospect.js`
 re-exports server-side and `scripts/outrospect-scan.mjs` imports in Node — one
 implementation, three faces, so a scan and a visit can never disagree about
 what counts as new. See `docs/OUTROSPECTION.md`.
+
+The outward feed as the outrospection session's HISTORY
+(`public/js/outrospect-feed.js`, owner directive 2026-07-26): entering the
+outrospection agent no longer opens an empty chat — the feed IS the session's
+history. `openFeedSession` loads both halves (committed artifact + live rows,
+merged by the core's `mergeFeed`), `mountFeedHistory` renders the newest page
+into the chat scroller with newest at the BOTTOM and older pages prepended on
+demand (`feedPage`, scroll position pinned so loading older entries never
+yanks the view), and `indexFeedLocally` indexes the WHOLE feed into this
+browser's RAG store in the background. The reader/model split is the design:
+the reader gets the full list paged, the model gets `FEED_RETRIEVE_K`
+semantically retrieved entries (`outwardExcerptsFor` → `outwardExcerptBlock`),
+because sending "the newest 24" would silently truncate the feed to recency.
+The index is incremental (`unindexedItems` over a localStorage key hint, so a
+revisit re-embeds only new entries) and is written with `mirror: false` — the
+one RAG doc that must NOT mirror to the server, since `appendToDoc` re-pushes
+the whole doc and this one is public web content the Worker already holds in
+D1. Wired in `app.js` (`openOutrospectionFeed` on mode switch, new chat, and
+boot; only ever into a BLANK session) and `stream.js` (the excerpt block rides
+out with the question, exactly like document excerpts). Fail-soft end to end:
+no feed, no index, or no network each leave the ordinary empty chat and the
+server's own newest-first retrieval. Styles are the mode's own newsprint
+variables (`.outro-*` in `public/css/app.css`).
 
 Space animations (`public/space/` — the PUBLIC showcase at `/space/`,
 allowlisted like `/pulse/`): an archive of playable wireframe 3D

@@ -408,7 +408,7 @@ export async function handleWebSearchStatus(request, env) {
  * on the server's side, and returns the results. A failed/empty search refunds
  * the reservation so quota only pays for usable results.
  *
- * `source` is the Se/cure caller's pick from the web knob's long-press card —
+ * `source` is the Se/cure caller's pick from the "Exa web search" settings knob —
  * "exa" (the default) or "cloudflare" (this Worker searches for itself). It
  * changes only WHICH backend the server runs; the exposure is unchanged either
  * way (the query string, nothing else — CLAUDE.md invariant 4's query-only

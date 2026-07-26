@@ -175,7 +175,7 @@ import {
  *   capability?: import('./agent-spec.js').AgentCapability | null,
  *   helpCommand?: boolean,
  *   outrospectionMode?: boolean,
- *   outrospection?: { lens: string | null, items: number, live: boolean },
+ *   outrospection?: { lens: string | null, items: number, texts: number, quotes: number, live: boolean },
  *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string, images?: { name: string | null, data: string }[], useCase?: { id: number, tag: string } | null, scope?: import("../public/js/feedback-core.js").FeedbackScope },
  * }} PipelineState
  */
@@ -1885,8 +1885,8 @@ async function runSearches(ctx, queries, round) {
     // name): the client's cards must always make clear WHICH provider ran a
     // search — a user report showed hub and web searches rendering identically.
     for (const query of batch) emit({ status: { type: "search_start", round, query, source: "web", service: "Web search" } });
-    // …and every search honours the source the user picked on the knob's
-    // long-press card (state.searchSource — "" = whatever the site is
+    // …and every search honours the source the user's "Exa web
+    // search" setting selects (state.searchSource — "" = whatever the site is
     // configured to use).
     const results = await Promise.all(
       batch.map((query) => webSearch(env, log, query, state.plan.searchDepth, { source: state.searchSource || "" })),

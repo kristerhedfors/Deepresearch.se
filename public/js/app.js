@@ -25,7 +25,6 @@ import { initProjectsUi } from "./projects-ui.js";
 import { bashLiteOn, developerModeOn, loadSettings, setDeveloperMode } from "./settings.js";
 import { storeDeveloperMode } from "./dev-mode.js";
 import { applyChatModeTheme, cachedChatMode, reconcileChatMode } from "./chat-mode.js";
-import { getSearchSource, searchSourcePickerHtml, wireSearchSourcePicker } from "./search-source.js";
 import { applyModeBackdrop } from "./mode-backdrop.js";
 import { barTint } from "./mode-theme.js";
 import { wireBarTint } from "./bar-tint.js";
@@ -62,6 +61,7 @@ import {
 import { BUDGET_MAX_S, BUDGET_MIN_S, budgetTier, fmtBudget, posToSeconds, secondsToPos } from "./timescale.js";
 import { clearChatDom, EMPTY_TEXT, initTurns } from "./turns.js";
 import { initTestpoints } from "./testpoints.js";
+import { initStarters } from "./starters.js";
 import { parseComposerDeepLink } from "./deeplink-core.js";
 import { mountSlashMenu } from "./slash-menu.js";
 import { detectLang } from "./canned-faq.js";
@@ -72,6 +72,13 @@ const chat = document.getElementById("chat");
 const form = document.getElementById("form");
 const input = document.getElementById("input");
 const send = document.getElementById("send");
+
+// The starter-prompt strip (public/js/starters.js), wired at the bottom of
+// this file once the composer helpers it needs exist. Declared here so
+// newChat() and the chat-mode handler — both defined above that wiring — can
+// ask it to re-render; null until boot completes, and every call site uses
+// `?.` because a click cannot land before then.
+let starters = null;
 
 // Chat-mode theme (Normal / Introspection titanium / SDK green) — applied
 // FIRST, synchronously, from the local cache (chat-mode.js) so a returning
@@ -268,18 +275,10 @@ webSearchBox.addEventListener("change", () => {
   localStorage.setItem("web_search", webSearchBox.checked ? "on" : "off");
 });
 
-// The knob's long-press card also answers WHO runs the searches (UX-10 amended,
-// 2026-07-25): Exa (the default, a hosted index that retains queries) or this
-// site's own Cloudflare Worker (src/websearch-cf.js — no search company in the
-// path). Rendered once at boot into #searchsrc; the pick is device-local
-// (search-source.js) and rides each /api/chat as `search_source`, which the
-// server re-validates. Fail-soft: a stale cached page without the container
-// just keeps sending its stored pick.
-const searchSrcBox = document.getElementById("searchsrc");
-if (searchSrcBox) {
-  searchSrcBox.innerHTML = searchSourcePickerHtml(getSearchSource(), "srvsrc");
-  wireSearchSourcePicker(searchSrcBox, () => {});
-}
+// WHO runs the searches is NOT this knob's business (owner directive,
+// 2026-07-26): the knob is on/off, and the Exa-or-our-own-Worker choice is the
+// "Exa web search" knob in the Settings view (account-settings.js), device-local
+// in search-source.js. stream.js reads the resulting source per request.
 
 // ---- Introspection / SDK composer-row status chips -------------------------
 // The research-depth slider is hidden in these two modes (mode-theme.js
@@ -348,7 +347,36 @@ function greetSdkMode(mode) {
     .then((m) => m.showSdkPlantGreeter())
     .catch(() => {});
 }
+
+// Outrospection mode opens on the FEED, not on an empty chat (owner directive,
+// 2026-07-26): the outward feed IS this agent's session history — latest
+// entries in the transcript, older pages on scroll-back, the whole thing
+// indexed in this browser so a question retrieves against all of it rather
+// than just what fits on screen. Only ever mounted into a BLANK session; a
+// real conversation is never displaced. Dynamically imported and fail-soft, so
+// a feed that will not load leaves the ordinary empty chat behind.
+let outroFeedMounted = false;
+function openOutrospectionFeed(mode) {
+  if (mode !== "outrospection" || outroFeedMounted) return;
+  if (chat.querySelector(".msg, .turn")) return; // a real conversation is in progress
+  outroFeedMounted = true;
+  import("./outrospect-feed.js")
+    .then((m) => m.openFeedSession(chat))
+    .catch(() => {
+      outroFeedMounted = false;
+    });
+}
+
+// Leaving the mode (or starting a new chat) drops the mounted feed so it is
+// re-read fresh next time — the feed keeps growing, and a stale render would
+// quietly hide the newest entries.
+function clearOutrospectionFeed() {
+  outroFeedMounted = false;
+  for (const node of chat.querySelectorAll(".outro-history")) node.remove();
+}
 syncModeSelect(cachedChatMode());
+// A returning outrospection user lands straight on the feed, same as a switch.
+openOutrospectionFeed(cachedChatMode());
 modeSel.addEventListener("change", () => {
   const mode = applyChatModeTheme(modeSel.value);
   modeSel.value = mode;
@@ -363,6 +391,12 @@ modeSel.addEventListener("change", () => {
       .catch(() => {});
   }
   greetSdkMode(mode);
+  // Each mode runs a different agent, so the starter strip has to follow it —
+  // Deep Research openers sitting in Agent Studio would advertise the wrong
+  // thing entirely.
+  starters?.refresh();
+  clearOutrospectionFeed();
+  openOutrospectionFeed(mode);
 });
 
 // The web-search popover opens on a press-and-hold of the spiderweb knob
@@ -537,8 +571,14 @@ function newChat(keepProject = false) {
   if (keepProject !== true) setActiveProject(null);
   clearHistory(); // also resets the (API-level) incognito flag
   clearChatDom();
+  // clearChatDom rebuilds the empty state from scratch, so the starter strip
+  // has to be re-rendered into the new element (and rotates to the next four).
+  starters?.refresh();
   syncCopyState();
   refreshSdkBuildChip(null); // a fresh chat has no build of its own yet
+  // A new chat in outrospection mode is a new FEED session, not a blank one.
+  clearOutrospectionFeed();
+  openOutrospectionFeed(cachedChatMode());
   input.focus();
 }
 document.getElementById("clearbtn").addEventListener("click", () => newChat());
@@ -925,6 +965,35 @@ initTestpoints({
       localStorage.setItem("budget_s", String(budgetS));
     },
     selectModel: (m) => selectModel(m),
+  },
+});
+
+// Starter prompts (public/js/starters.js): the four example questions offered
+// on an empty chat, drawn from the active mode's agent queue and rotated so a
+// returning visitor is shown different ones. Clicking one sends it — a chip
+// that only fills the box makes the visitor confirm a question they did not
+// write, which is friction exactly where a newcomer has least patience.
+starters = initStarters({
+  chat,
+  getMode: () => cachedChatMode(),
+  // Evaluation mode serves starters from every agent, so a chip has to be able
+  // to take the app to its agent's mode before it sends — otherwise an Agent
+  // Studio opener runs as plain research and the reviewer rates the wrong
+  // thing. Reuses the composer dropdown's own path so the theme, the knob and
+  // the request flag all follow, exactly as if the mode had been picked by hand.
+  setMode: (mode) => {
+    if (cachedChatMode() === mode) return;
+    const applied = applyChatModeTheme(mode);
+    syncModeSelect(applied);
+    applyModeBackdrop(applied);
+    if (applied !== "normal" && !developerModeOn()) {
+      setDeveloperMode(true).then(() => storeDeveloperMode(true)).catch(() => {});
+    }
+  },
+  compose: (text) => {
+    input.value = text;
+    autogrow();
+    form.requestSubmit();
   },
 });
 

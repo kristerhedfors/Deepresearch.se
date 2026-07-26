@@ -247,7 +247,7 @@ export interface RequestState {
   webSearch: boolean;
   /**
    * The user's picked web-search SOURCE for this request — who actually runs
-   * the searches (the web knob's long-press card, UX-10): "exa", "cloudflare"
+   * the searches (the "Exa web search" settings knob): "exa", "cloudflare"
    * (this Worker does the searching itself), or "" for the site default.
    * Validated against websearch-backends.js USER_SEARCH_SOURCES before it gets
    * here, and ignored when the admin pinned the site-wide backend.

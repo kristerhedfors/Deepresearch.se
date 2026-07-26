@@ -268,6 +268,34 @@ CREATE TABLE IF NOT EXISTS outrospect_runs (
   found INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_outrospect_runs_ts ON outrospect_runs(ts DESC);
+-- The INDEXED ARTICLE TEXT behind the feed (owner feedback #28, 2026-07-26):
+-- a headline and a teaser are enough to LIST what someone shipped and nowhere
+-- near enough to QUOTE it. One row per article whose page text has been
+-- fetched (src/outrospect.js indexFeedTexts → the existing Exa /contents
+-- client), keyed by the same normalized URL as outrospect_items, so the two
+-- tables join on that key and an article can only ever have one body.
+--
+-- Identity-free like outrospect_items: the row carries the ARTICLE, never the
+-- reader — there is no user column and there must not be one. A chars value of
+-- 0 is a deliberately stored NEGATIVE result ("we asked and got nothing
+-- usable"), so a dead page is not re-fetched on every refresh forever.
+--
+-- The origin column names where the body came from ('web' for a fetched page).
+-- It is the documented seam for other indexed corpora — arXiv papers above all
+-- — to land in the same table and become quotable by the same retrieval
+-- without any change to the reader side.
+CREATE TABLE IF NOT EXISTS outrospect_texts (
+  key TEXT PRIMARY KEY,
+  lens TEXT NOT NULL,
+  url TEXT NOT NULL,
+  title TEXT,
+  source TEXT,
+  text TEXT NOT NULL,
+  chars INTEGER NOT NULL DEFAULT 0,
+  origin TEXT NOT NULL DEFAULT 'web',
+  fetched_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_outrospect_texts_lens ON outrospect_texts(lens, fetched_at DESC);
 CREATE TABLE IF NOT EXISTS websearch_grants (
   jti TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
