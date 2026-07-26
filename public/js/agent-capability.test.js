@@ -97,10 +97,10 @@ test("every mode-select offers only real chat modes", () => {
 
 test("the defaults table covers every chat mode, in chat.js precedence order", () => {
   const reg = realRegistry();
-  assert.deepEqual(reg.defaults.map((r) => r.mode), ["sdk", "orchestrator", "outrospection", "hf", "introspection", "normal"]);
+  assert.deepEqual(reg.defaults.map((r) => r.mode), ["sdk", "orchestrator", "outrospection", "models", "introspection", "normal"]);
   assert.deepEqual(
     reg.defaults.map((r) => r.flag),
-    ["sdk_mode", "orchestrator_mode", "outrospection_mode", "hf_mode", null, null],
+    ["sdk_mode", "orchestrator_mode", "outrospection_mode", "models_mode", null, null],
   );
   for (const m of CHAT_MODE_IDS) {
     assert.ok(defaultAgentForMode(reg, m), `chat mode "${m}" has no default agent`);
@@ -171,7 +171,7 @@ test("declared tool sets and fallbacks match the modes that have them", () => {
   assert.deepEqual(cap("agent-builder").tools, ["source-read", "sdk-plan", "build-publish"]);
   assert.equal(cap("agent-builder").toolFallback, "file-blocks");
   // The modes with no tool loop say so.
-  for (const id of ["research", "orchestrator", "outrospection", "huggingface", "secure", "under-construction"]) {
+  for (const id of ["research", "orchestrator", "outrospection", "models", "secure", "under-construction"]) {
     assert.deepEqual(cap(id).tools, [], `${id} runs no tool loop`);
     assert.equal(cap(id).toolFallback, "none");
   }
@@ -188,16 +188,16 @@ test("declared answer phases are one per shipped answer path", () => {
     sdk: "build",
     orchestrator: "workflow",
     outrospection: "feed",
-    // The Hugging Face agent adds NO executor: it is the research phase with
-    // the Hub forced on and the priced model catalog in context, which is why
-    // a sixth mode needed no row in ANSWER_PHASE_RUNNERS.
-    hf: "research",
+    // The Models agent adds NO executor: it is the research phase with the Hub
+    // forced on and the priced, verification-annotated model catalog in
+    // context, which is why a sixth mode needed no row in ANSWER_PHASE_RUNNERS.
+    models: "research",
   });
 });
 
 test("every mode that needs the capability knob declares it", () => {
   const reg = realRegistry();
-  for (const mode of ["sdk", "orchestrator", "outrospection", "hf", "introspection"]) {
+  for (const mode of ["sdk", "orchestrator", "outrospection", "models", "introspection"]) {
     const cap = resolveCapability(defaultAgentForMode(reg, mode));
     assert.deepEqual(cap.requires, ["developer_mode"], `${mode} is gated on the developer_mode knob`);
   }
@@ -275,7 +275,7 @@ test("the closed vocabularies stay closed", () => {
   assert.deepEqual(Object.keys(ANSWER_PHASES), ["research", "source-research", "build", "workflow", "feed", "direct"]);
   assert.deepEqual(Object.keys(TOOL_CLASSES), ["source-read", "sdk-plan", "build-publish", "shell"]);
   assert.deepEqual(TOOL_FALLBACKS, ["read-loop", "file-blocks", "none"]);
-  assert.deepEqual(Object.keys(GATE_IDS), ["external-source", "lens", "quiz", "model-shopping", "feedback"]);
+  assert.deepEqual(Object.keys(GATE_IDS), ["external-source", "lens", "quiz", "model-lifecycle", "feedback"]);
   assert.ok(Object.keys(CONTEXT_BLOCKS).includes("source-snapshot"));
   assert.ok(Object.keys(CAPABILITY_EVENTS).includes("agent_update"));
   assert.ok(Object.keys(CAPABILITY_REQUIREMENTS).includes("developer_mode"));

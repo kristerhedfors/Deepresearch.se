@@ -21,8 +21,9 @@
 //   src/user-api.js  — /api/me + /api/models + /api/client-error + /api/history-key
 //   src/history-key.js — per-user key for the client's encrypted local history
 //   src/settings.js  — per-user settings (/api/settings: the opt-in feature knobs; cloud storage is implicit, not a knob)
-//   src/hf-api.js    — /api/hf/models: browse the open Hugging Face router catalog
-//                      with prices, accept one into this account's model menu
+//   src/models-api.js — /api/models/{catalog,verify,enable,disable}: the model
+//                      LIFECYCLE — explore every provider, evaluate against the
+//                      established checks, enable for every agent
 //   src/storage.js   — opt-in R2 cloud storage (/api/convos, /api/files, /api/storage)
 //   src/rag.js       — document RAG: /api/embed proxy + /api/rag/* (Vectorize)
 //   src/quiz-api.js  — /api/quiz/grade: free-text quiz-answer grading (src/quiz.js)
@@ -61,7 +62,12 @@ import { handleFeedbackApi, handleServerTokenFeedback } from "./feedback.js";
 import { handleOutrospectFeed, handleOutrospectRefresh } from "./outrospect.js";
 import { handleTryRedirect } from "./testpoints.js";
 import { bashLiteEnabled, handleSettingsGet, handleSettingsPut } from "./settings.js";
-import { handleHfModelAccept, handleHfModelRemove, handleHfModelsList } from "./hf-api.js";
+import {
+  handleModelCatalog,
+  handleModelDisable,
+  handleModelEnable,
+  handleModelVerify,
+} from "./models-api.js";
 import { handleBashStep } from "./bash-api.js";
 import { handleOrchestratorPlan } from "./orchestrator-api.js";
 import { handleStorage } from "./storage.js";
@@ -673,13 +679,21 @@ async function routeApi(request, env, url, log, identity, ctx, requestId) {
   if (url.pathname === "/api/settings" && request.method === "PUT") {
     return handleSettingsPut(request, env, log, identity);
   }
-  // The Hugging Face agent's MODEL SURFACE: browse the open router catalog with
-  // prices, then accept a model into this account's own menu — which is what
-  // makes it selectable in every other agent mode too (src/hf-api.js).
-  if (url.pathname === "/api/hf/models") {
-    if (request.method === "GET") return handleHfModelsList(env, log, identity, url);
-    if (request.method === "POST") return handleHfModelAccept(request, env, log, identity);
-    if (request.method === "DELETE") return handleHfModelRemove(env, log, identity, url);
+  // The Models agent's LIFECYCLE surface (src/models-api.js): explore every
+  // provider's catalog, evaluate a model against the established checks, and
+  // enable it for every other agent. Sub-paths of /api/models, whose bare GET
+  // above stays the answer-model dropdown.
+  if (url.pathname === "/api/models/catalog" && request.method === "GET") {
+    return handleModelCatalog(env, log, identity, url);
+  }
+  if (url.pathname === "/api/models/verify" && request.method === "POST") {
+    return handleModelVerify(request, env, log, identity);
+  }
+  if (url.pathname === "/api/models/enable" && request.method === "POST") {
+    return handleModelEnable(request, env, log, identity);
+  }
+  if (url.pathname === "/api/models/disable" && request.method === "POST") {
+    return handleModelDisable(request, env, log, identity);
   }
   // Temporary web-search grant: a signed-in user crossing to Se/cure mints
   // (or reuses) their short-lived, quota-metered token so the client-side

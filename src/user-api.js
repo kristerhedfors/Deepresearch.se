@@ -25,9 +25,9 @@ import { countUnreadUserMessages, listUserMessages, markAllRead } from "./user-m
 // and up, else the Worker default).
 //
 // The identity is passed through because one provider's menu is per-account:
-// the Hugging Face models this user accepted in the Hugging Face agent join the
-// catalog here, which is precisely what makes them selectable in every OTHER
-// agent mode (src/user-models.js).
+// the models this user enabled in the Models agent join the catalog here, which
+// is precisely what makes them selectable in every OTHER agent mode
+// (src/user-models.js).
 /**
  * @param {Env} env
  * @param {Logger} log

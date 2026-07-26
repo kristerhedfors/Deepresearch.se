@@ -40,6 +40,8 @@ import {
 import {
   hfChatCompletion,
   hfCompleteJson,
+  hfExplore,
+  hfInferenceConfigured,
   hfInferenceModels,
   isHfModel,
 } from "./hf-inference.js";
@@ -54,18 +56,29 @@ export { isAnthropicModel, isOpenAiModel, isHfModel };
  * contracts as their Berget counterparts (an OpenAI-style SSE body for
  * chatCompletion, the { value, usage, diagnostics } object for
  * completeJson), so everything downstream works unchanged.
+ *
+ * `id` is the stable slug the catalog groups by and the client renders — it is
+ * a WIRE name, so it must not change once shipped. `explore` is optional and
+ * marks the provider whose catalog is OPEN: a provider that ships a curated
+ * list needs none (its models are simply available), while one that fronts a
+ * marketplace declares how to browse it. Today Hugging Face is the only one,
+ * and src/model-catalog.js is written so it never has to be the last.
  * @typedef {{
+ *   id: string,
  *   label: string,
  *   matches: (id: unknown) => boolean,
  *   models: (env: import('./types.js').Env, accepted: import('./user-models.js').AcceptedModel[]) => import('./types.js').ModelCatalogEntry[],
  *   chatCompletion: (env: import('./types.js').Env, messages: import('./types.js').Conversation, opts: { model?: string, maxTokens?: number }) => Promise<any>,
  *   completeJson: (env: import('./types.js').Env, messages: import('./types.js').Conversation, opts: { model?: string, maxTokens?: number }) => Promise<any>,
+ *   configured?: (env: import('./types.js').Env) => boolean,
+ *   explore?: (env: import('./types.js').Env, log: any) => Promise<any[]>,
  * }} SecondaryProvider
  */
 
 /** @type {SecondaryProvider[]} */
 const SECONDARY_PROVIDERS = [
   {
+    id: "anthropic",
     label: "Anthropic",
     matches: isAnthropicModel,
     models: anthropicModels,
@@ -73,6 +86,7 @@ const SECONDARY_PROVIDERS = [
     completeJson: anthropicCompleteJson,
   },
   {
+    id: "openai",
     label: "OpenAI",
     matches: isOpenAiModel,
     models: openaiModels,
@@ -87,13 +101,65 @@ const SECONDARY_PROVIDERS = [
     // second `models` argument is that accepted list — [] for every caller that
     // doesn't pass an identity, which is why an anonymous or unaware caller
     // simply sees the catalog it always saw.
+    id: "huggingface",
     label: "Hugging Face",
     matches: isHfModel,
     models: hfInferenceModels,
     chatCompletion: hfChatCompletion,
     completeJson: hfCompleteJson,
+    configured: hfInferenceConfigured,
+    explore: hfExplore,
   },
 ];
+
+/** Every registered provider, Berget first — the shape src/model-catalog.js
+ * iterates so the Models agent can describe the whole landscape without naming
+ * a provider. Berget is synthesised here rather than being a registry entry,
+ * because it is the one provider that is always present and carries the
+ * catalog default (see listChatModels below).
+ * @returns {Array<{ id: string, label: string, open: boolean }>} */
+export function providerDescriptors() {
+  return [
+    { id: "berget", label: "Berget", open: false },
+    ...SECONDARY_PROVIDERS.map((p) => ({ id: p.id, label: p.label, open: typeof p.explore === "function" })),
+  ];
+}
+
+/** The provider slug serving a model id — the catalog's grouping key. Berget
+ * for anything no secondary provider claims, exactly as providerName reports.
+ * @param {string | undefined} model
+ * @returns {string} */
+export function providerIdFor(model) {
+  return providerFor(model)?.id || "berget";
+}
+
+/** Whether a provider's backing secret is configured on this deployment.
+ * @param {import('./types.js').Env} env
+ * @param {string} providerId
+ * @returns {boolean} */
+export function providerConfigured(env, providerId) {
+  if (providerId === "berget") return !!(/** @type {any} */ (env).BERGET_API_TOKEN);
+  const p = SECONDARY_PROVIDERS.find((x) => x.id === providerId);
+  if (!p) return false;
+  return p.configured ? p.configured(env) : p.models(env, []).length > 0;
+}
+
+/** Browse an OPEN provider's catalog. [] for a provider that ships a curated
+ * list (nothing to browse) or one that isn't configured — never a throw, so a
+ * dead marketplace costs the Models agent a lane, not the request.
+ * @param {import('./types.js').Env} env
+ * @param {any} log
+ * @param {string} providerId
+ * @returns {Promise<any[]>} */
+export async function exploreProvider(env, log, providerId) {
+  const p = SECONDARY_PROVIDERS.find((x) => x.id === providerId);
+  if (!p?.explore) return [];
+  try {
+    return await p.explore(env, log);
+  } catch {
+    return [];
+  }
+}
 
 /** @param {string | undefined} model */
 function providerFor(model) {
@@ -120,8 +186,20 @@ export function providerName(model) {
  * @returns {Promise<import('./types.js').ModelCatalogEntry[]>}
  */
 export async function listChatModels(env, identity) {
-  const accepted = identity ? acceptedModels(identity) : [];
-  const secondary = SECONDARY_PROVIDERS.flatMap((p) => p.models(env, accepted));
+  return listChatModelsWith(env, identity ? acceptedModels(identity) : []);
+}
+
+/**
+ * The same merged catalog from an ALREADY-RESOLVED enabled list. The seam
+ * exists so a caller that has the account's models in hand — the Models agent's
+ * enrichment, which runs inside the pipeline and deliberately holds no identity
+ * — does not have to reconstruct one to ask for a catalog.
+ * @param {import('./types.js').Env} env
+ * @param {import('./user-models.js').AcceptedModel[]} accepted
+ * @returns {Promise<import('./types.js').ModelCatalogEntry[]>}
+ */
+export async function listChatModelsWith(env, accepted) {
+  const secondary = SECONDARY_PROVIDERS.flatMap((p) => p.models(env, accepted || []));
   try {
     const berget = await bergetListModels(env);
     return [...(berget || []), ...secondary];

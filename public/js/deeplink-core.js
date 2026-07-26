@@ -9,7 +9,7 @@
 // app.js does the DOM side effects from what this returns.
 
 /** Canonical chat-mode ids (mirror chat-mode.js CHAT_MODES — all six). */
-export const DEEPLINK_MODES = ["normal", "introspection", "sdk", "orchestrator", "outrospection", "hf"];
+export const DEEPLINK_MODES = ["normal", "introspection", "sdk", "orchestrator", "outrospection", "models"];
 
 /** Friendly aliases → canonical mode id, so links can read naturally. The
  * `agent-builder` entry is the AgentSpec's name for the `sdk` mode
@@ -32,10 +32,11 @@ const MODE_ALIASES = {
   outrospect: "outrospection",
   outro: "outrospection",
   feed: "outrospection",
-  hf: "hf",
-  huggingface: "hf",
-  "hugging-face": "hf",
-  models: "hf",
+  models: "models",
+  model: "models",
+  hf: "models",
+  huggingface: "models",
+  "hugging-face": "models",
 };
 
 /** Cap on a prefilled question — long enough for a real ask, bounded for safety. */

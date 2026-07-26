@@ -43,11 +43,11 @@ const STORY_INLINE_HASH = "'sha256-ATMgXgI8+2fgznyrbCNX5n9ZAqIHL8/YoN64WD6CwlI='
 // regex above stays unique to the attribute-less boot guard). Adds the
 // `dev-mode` (introspection, white titanium), `sdk-mode` (SDK, green) or
 // `orch-mode` (Orchestrator, violet), `outro-mode` (Outrospection,
-// newsprint) or `hf-mode` (Hugging Face, amber) class before first paint from the
+// newsprint) or `models-mode` (Models, amber) class before first paint from the
 // chat-mode cache (public/js/chat-mode.js).
 // Recompute on edit:
 //   node -e 'const c=require("crypto"),h=require("fs").readFileSync("public/index.html","utf8").match(/<script data-devtheme>([\s\S]*?)<\/script>/)[1];console.log("sha256-"+c.createHash("sha256").update(h).digest("base64"))'
-const THEME_BOOT_HASH = "'sha256-Gq8ZlBJKVx9qskSNTB1ajQz0QeJzSvUg+KGFnYiPZHs='";
+const THEME_BOOT_HASH = "'sha256-maj8denc9ygVoO8th/4ye6hwqNBz3/g0M1sG4MnCvTc='";
 const CSP = [
   "default-src 'self'",
   "base-uri 'self'",

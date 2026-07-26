@@ -43,17 +43,17 @@ import { DEFAULT_SERP_PROVIDERS, normalizeSerpProviders } from "./websearch-cf.j
  *   local LLM as pooled capacity — src/pool.js)
  * @property {SandboxImageConfig} sandbox the self-hosted Linux sandbox image
  *   selection + registry (admin-selectable small image — src/sandbox-image.js)
- * @property {HfAllowanceConfig} hf the open-catalog MODEL ALLOWANCE — how
- *   expensive a Hugging Face model this account may enable, and how many
- *   (src/hf-inference.js hfAllowance)
+ * @property {ModelAllowanceConfig} models the MODEL ALLOWANCE — how expensive a
+ *   model this account may enable out of an open provider catalog, and how many
+ *   (src/model-catalog.js modelAllowance)
  */
 /**
- * The starting model allowance the Hugging Face agent hands out. Raising these
- * IS how the allowance is extended — the agent's own copy says as much.
- * @typedef {Object} HfAllowanceConfig
+ * The starting model allowance the Models agent hands out. Raising these IS how
+ * the allowance is extended — the agent's own copy says as much.
+ * @typedef {Object} ModelAllowanceConfig
  * @property {number} max_output_usd USD per 1M output tokens an enableable
  *   model may cost (0 = uncapped)
- * @property {number} max_accepted how many models one account may keep enabled
+ * @property {number} max_enabled how many models one account may keep enabled
  *   (0 = uncapped; src/user-models.js MAX_STORED is the structural ceiling)
  */
 /**
@@ -252,15 +252,17 @@ export const DEFAULT_CONFIG = {
     images: [],
     prefetch: false,
   },
-  // The open-catalog MODEL ALLOWANCE (src/hf-inference.js). The Hugging Face
-  // agent browses a provider catalog nobody curated, so accepting a model out
-  // of it — which is what puts it in every agent mode's dropdown — is bounded
-  // rather than free: a ceiling on the model's output rate, and a cap on how
-  // many an account may keep enabled. These are the STARTING allowance; raising
-  // them here is how it gets extended. 0 = uncapped on either axis.
-  hf: {
-    max_output_usd: 3, // USD per 1M output tokens an acceptable model may cost
-    max_accepted: 6, // how many accepted models one account may hold
+  // The MODEL ALLOWANCE (src/model-catalog.js). The Models agent browses open
+  // provider catalogs nobody curated, so ENABLING a model out of one — which is
+  // what puts it in every agent mode's dropdown — is bounded rather than free:
+  // a ceiling on the model's output rate, and a cap on how many an account may
+  // keep enabled. These are the STARTING allowance; raising them here is how it
+  // gets extended. 0 = uncapped on either axis. It governs the discovered →
+  // enabled transition ONLY: a curated provider's models are available by
+  // construction and no allowance applies to selecting one.
+  models: {
+    max_output_usd: 3, // USD per 1M output tokens an enableable model may cost
+    max_enabled: 6, // how many enabled models one account may hold
   },
 };
 

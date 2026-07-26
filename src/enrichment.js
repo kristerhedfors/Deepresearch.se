@@ -22,7 +22,7 @@
 
 import { extensionEnrichments } from "./extensions.js";
 import { runIntrospectionEnrichment } from "./introspect.js";
-import { runHfAgentEnrichment } from "./hf-agent.js";
+import { runModelsAgentEnrichment } from "./models-agent.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -67,16 +67,17 @@ const CORE_ENRICHMENTS = [
     run: (c) => runIntrospectionEnrichment(c.env, c.log, c.step, c.stepDone, c.conversation, c.state),
   },
   {
-    // The Hugging Face agent (src/hf-agent.js): its mode forces hub search on
-    // for the turn, and a message about choosing/pricing/starting a model gets
-    // the live router catalog folded in with real per-token rates. Core, not an
-    // extension, for the same reason the Hub already is a core SEARCH SOURCE
-    // (src/search-sources.js): the open-model ecosystem is research material
-    // this site is about, not an optional third-party lookup bolted onto a
-    // message. Silent on every turn that isn't model-shopping.
-    id: "hf_models",
-    enabled: (state) => !!(/** @type {any} */ (state).hfMode),
-    run: (c) => runHfAgentEnrichment(c),
+    // The Models agent (src/models-agent.js): its mode forces hub search on for
+    // the turn, and a message about choosing/pricing/evaluating/starting a
+    // model gets the live CROSS-PROVIDER catalog folded in with real per-token
+    // rates and real verification state. Core, not an extension: the model
+    // landscape is this platform's own subject matter — which models it can
+    // reach, what they cost, what has been verified — not an optional
+    // third-party lookup bolted onto a message. Silent on every turn that isn't
+    // about models.
+    id: "models",
+    enabled: (state) => !!(/** @type {any} */ (state).modelsMode),
+    run: (c) => runModelsAgentEnrichment(c),
   },
 ];
 

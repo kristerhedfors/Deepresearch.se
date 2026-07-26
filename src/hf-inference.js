@@ -3,15 +3,23 @@
 // catalog is OPEN: Berget, Anthropic and OpenAI each offer a curated handful
 // of models this repo picked, while HF's router serves whatever the inference
 // providers have live at the moment. That difference is the whole point of the
-// Hugging Face agent (src/hf-agent.js): browse the open catalog, read what a
-// model actually COSTS, accept one, and only then does it become a model this
-// account can answer with — in the HF agent and, once promoted, in every other
-// agent mode too (src/user-models.js).
+// Models agent (src/models-agent.js): browse the open catalog, read what a
+// model actually COSTS, enable one, and only then does it become a model this
+// account can answer with — in the Models agent and, once promoted, in every
+// other agent mode too (src/user-models.js).
 //
 // This module is the INFERENCE half of the Hugging Face integration. The other
 // half — searching the Hub for models/datasets/papers as citable research
 // sources — is src/hf.js, and the two are deliberately separate: hf.js answers
 // "what exists and who says what about it", this one answers "run it".
+//
+// SCOPE. Everything here is Hugging-Face-specific: the id namespace, the router
+// wire, the catalog fetch, and the `explore` hook that translates HF's own
+// vocabulary into provider-agnostic rows. Everything CROSS-provider — ranking,
+// the lifecycle, the model allowance, the verification checklist — lives one
+// layer up in src/model-catalog.js, which names no provider. That cut is what
+// makes Hugging Face one marketplace among possible others rather than the
+// feature itself.
 //
 // Wire: the HF router is OpenAI-compatible
 // (https://router.huggingface.co/v1/chat/completions), so — like src/openai.js
@@ -37,8 +45,9 @@
 // is_free, supports_tools, supports_structured_output, first_token_latency_ms,
 // throughput }] }`. 21 carried no pricing on any provider, 39 accept image
 // input, every provider row read `status: "live"`, and output prices spanned
-// $0.03–$6.27 per 1M. Those numbers are why unpriced models are shown but
-// never acceptable (see hfAllowance) — an unknown rate cannot be budgeted.
+// $0.03–$6.27 per 1M. Those numbers are why unpriced models are shown but never
+// enableable (src/model-catalog.js modelAllowance) — an unknown rate cannot be
+// budgeted.
 
 import { eurPerTokenFromUsd, formatPricing, parseLooseJson } from "./berget.js";
 
@@ -65,13 +74,26 @@ const MAX_TOKENS = 4096;
 /** The id-namespace prefix. */
 export const HF_PREFIX = "hf:";
 
-// The illustrative turn the browse UI prices a model against. Deliberately ONE
-// documented pair of numbers rather than a per-model guess: a deep-research
-// synthesis prompt carries the source block plus the conversation (~12k tokens)
-// and answers in ~1.2k. It is shown as "≈ per research turn", never as a
-// promise — the real bill is metered per request by src/billing.js off the same
-// price_in/price_out this module publishes.
+// The illustrative turn every model's price is expressed against, so two models
+// from two providers are compared on one number rather than on two pricing
+// pages. Deliberately ONE documented pair rather than a per-model guess: a
+// deep-research synthesis prompt carries the source block plus the conversation
+// (~12k tokens) and answers in ~1.2k. Shown as "≈ per research turn", never as
+// a promise — the real bill is metered per request by src/billing.js off the
+// same price_in/price_out this module publishes. Lives here because this is
+// where per-token pricing first had to be made comparable; src/model-catalog.js
+// re-exports it as the cross-provider definition.
 export const TYPICAL_TURN = { prompt: 12_000, completion: 1_200 };
+
+/**
+ * Cost of the illustrative research turn at a model's rates, in EUR.
+ * @param {number} priceIn EUR per prompt token
+ * @param {number} priceOut EUR per completion token
+ * @returns {number}
+ */
+export function turnCostEur(priceIn, priceOut) {
+  return priceIn * TYPICAL_TURN.prompt + priceOut * TYPICAL_TURN.completion;
+}
 
 // ---- id namespace -----------------------------------------------------------
 
@@ -255,160 +277,39 @@ export async function hfRouterModels(env, log) {
   }
 }
 
-// ---- search + cost ----------------------------------------------------------
-
 /**
- * Rank the catalog against a free-text query. Deterministic and pure (no model
- * call — invariant 1): a lexical scan over the repo id, so "qwen vision" and
- * "swedish" behave predictably and the query never leaves the isolate.
- * An empty query returns the catalog cheapest-first, which is the sane default
- * for a page whose whole point is cost.
- * @param {HfModelInfo[]} models
- * @param {string} query
- * @returns {HfModelInfo[]}
+ * The provider registry's `explore` hook (src/providers.js): the OPEN catalog,
+ * as provider-agnostic rows the model catalog can merge with every other
+ * provider's. This is the ONE place Hugging Face's own vocabulary — repo ids,
+ * serving providers, USD-per-1M pricing — is translated into the shape the
+ * Models agent reasons about, which is what lets a second marketplace be added
+ * later without touching src/model-catalog.js.
+ * @param {Env} env
+ * @param {import('./types.js').Logger} [log]
+ * @returns {Promise<Array<{ id: string, name: string, provider: string, vision: boolean, tools: boolean, context: number | null, price_in: number, price_out: number, usd_in: number | null, usd_out: number | null, url: string, servedBy: string | null }>>}
  */
-export function hfRankModels(models, query) {
-  const terms = String(query || "")
-    .toLowerCase()
-    .split(/[^a-z0-9.+-]+/)
-    .filter((t) => t.length > 1);
-  if (!terms.length) {
-    return [...models].sort((a, b) => (a.best?.usdOut ?? Infinity) - (b.best?.usdOut ?? Infinity));
-  }
-  const scored = models
-    .map((m) => {
-      const hay = m.hfId.toLowerCase();
-      let score = 0;
-      for (const t of terms) {
-        if (hay.includes(t)) score += hay.split("/").pop()?.includes(t) ? 2 : 1;
-      }
-      // A model whose repo NAME (not just the org) matches every term is what
-      // the user meant; partial matches still surface, below it.
-      if (score && terms.every((t) => hay.includes(t))) score += 3;
-      return { m, score };
-    })
-    .filter((s) => s.score > 0);
-  scored.sort((a, b) => b.score - a.score || (a.m.best?.usdOut ?? Infinity) - (b.m.best?.usdOut ?? Infinity));
-  return scored.map((s) => s.m);
-}
-
-/**
- * The MODEL ALLOWANCE — the "start with this much, extend it later" rule the
- * Hugging Face agent hands out. Opening an unbounded provider catalog to a
- * signed-in account is a spend surface, so acceptance is bounded rather than
- * free: a ceiling on the model's output rate, and a cap on how many HF models
- * one account may keep accepted at once. Both are admin-tunable in the site
- * config (`hf.max_output_usd` / `hf.max_accepted`), which is exactly how the
- * allowance gets extended for an account that has earned it.
- * @typedef {{ maxOutputUsd: number, maxAccepted: number }} HfAllowance
- */
-
-/** The built-in starting allowance, absent any admin config. */
-export const DEFAULT_ALLOWANCE = { maxOutputUsd: 3, maxAccepted: 6 };
-
-/**
- * Read the allowance out of the site config, falling back to the starting one.
- * @param {any} config the getConfig(env) object
- * @returns {HfAllowance}
- */
-export function hfAllowance(config) {
-  const hf = config?.hf || {};
-  const maxOutputUsd = typeof hf.max_output_usd === "number" && hf.max_output_usd >= 0
-    ? hf.max_output_usd
-    : DEFAULT_ALLOWANCE.maxOutputUsd;
-  const maxAccepted = Number.isInteger(hf.max_accepted) && hf.max_accepted >= 0
-    ? hf.max_accepted
-    : DEFAULT_ALLOWANCE.maxAccepted;
-  return { maxOutputUsd, maxAccepted };
-}
-
-/**
- * A browse row: the model, its cost in both currencies, an illustrative
- * per-turn estimate, and whether the account's allowance covers it — with the
- * REASON when it doesn't, so the UI explains a greyed-out card instead of just
- * greying it out.
- * @typedef {{
- *   id: string,
- *   hfId: string,
- *   name: string,
- *   owner: string,
- *   url: string,
- *   vision: boolean,
- *   context: number | null,
- *   provider: string | null,
- *   providers: string[],
- *   usd_in: number | null,
- *   usd_out: number | null,
- *   price_in: number,
- *   price_out: number,
- *   pricing: string | null,
- *   turn_eur: number | null,
- *   tools: boolean,
- *   allowed: boolean,
- *   reason: string | null,
- *   accepted: boolean,
- * }} HfBrowseItem
- */
-
-/**
- * Cost of the illustrative research turn at a model's rates, in EUR.
- * @param {number} priceIn EUR per prompt token
- * @param {number} priceOut EUR per completion token
- * @returns {number}
- */
-export function turnCostEur(priceIn, priceOut) {
-  return priceIn * TYPICAL_TURN.prompt + priceOut * TYPICAL_TURN.completion;
-}
-
-/**
- * Turn one catalog model into a browse row for the picker UI. `serving` pins
- * which of the model's providers the row is priced against — the picker offers
- * the cheapest live one by default, and a user who deliberately chose a
- * different provider gets THAT provider's rates, allowance check included.
- * @param {HfModelInfo} m
- * @param {{ allowance: HfAllowance, acceptedIds?: Set<string>, acceptedCount?: number, serving?: HfServing | null }} opts
- * @returns {HfBrowseItem}
- */
-export function hfBrowseItem(m, { allowance, acceptedIds, acceptedCount = 0, serving }) {
-  const best = serving || m.best;
-  const priceIn = best?.usdIn !== null && best?.usdIn !== undefined ? eurPerTokenFromUsd(best.usdIn) : 0;
-  const priceOut = best?.usdOut !== null && best?.usdOut !== undefined ? eurPerTokenFromUsd(best.usdOut) : 0;
-  const id = hfModelId(m.hfId, best?.provider) || HF_PREFIX + m.hfId;
-  const accepted = !!acceptedIds?.has(m.hfId);
-  let allowed = true;
-  /** @type {string | null} */
-  let reason = null;
-  if (!best) {
-    allowed = false;
-    reason = "No provider publishes a price for this model — it can't be budgeted, so it can't be enabled.";
-  } else if (allowance.maxOutputUsd > 0 && (best.usdOut || 0) > allowance.maxOutputUsd) {
-    allowed = false;
-    reason = `Above your model allowance ($${allowance.maxOutputUsd.toFixed(2)} per 1M output tokens). Ask an admin to raise it.`;
-  } else if (!accepted && allowance.maxAccepted > 0 && acceptedCount >= allowance.maxAccepted) {
-    allowed = false;
-    reason = `Your allowance holds ${allowance.maxAccepted} enabled models. Remove one to enable another.`;
-  }
-  return {
-    id,
-    hfId: m.hfId,
-    name: m.name,
-    owner: m.owner,
-    url: m.url,
-    vision: m.vision,
-    context: best?.contextLength ?? m.contextLength,
-    provider: best?.provider || null,
-    providers: m.servings.filter((s) => s.live).map((s) => s.provider),
-    usd_in: best?.usdIn ?? null,
-    usd_out: best?.usdOut ?? null,
-    price_in: priceIn,
-    price_out: priceOut,
-    pricing: best ? formatPricing({ input: priceIn, output: priceOut, currency: "EUR" }) : null,
-    turn_eur: best ? turnCostEur(priceIn, priceOut) : null,
-    tools: !!best?.tools,
-    allowed,
-    reason,
-    accepted,
-  };
+export async function hfExplore(env, log) {
+  if (!hfInferenceConfigured(env)) return [];
+  const catalog = await hfRouterModels(env, log);
+  return catalog.map((m) => {
+    const best = m.best;
+    const usdIn = best?.usdIn ?? null;
+    const usdOut = best?.usdOut ?? null;
+    return {
+      id: hfModelId(m.hfId, best?.provider) || HF_PREFIX + m.hfId,
+      name: m.name,
+      provider: "huggingface",
+      vision: m.vision,
+      tools: !!best?.tools,
+      context: best?.contextLength ?? m.contextLength,
+      price_in: usdIn === null ? 0 : eurPerTokenFromUsd(usdIn),
+      price_out: usdOut === null ? 0 : eurPerTokenFromUsd(usdOut),
+      usd_in: usdIn,
+      usd_out: usdOut,
+      url: m.url,
+      servedBy: best?.provider || null,
+    };
+  });
 }
 
 // ---- provider contract ------------------------------------------------------

@@ -2,7 +2,9 @@
 // repo — tsconfig's types is workers-only and @types/node would be a new
 // dependency.)
 // Unit tests for the Hugging Face INFERENCE provider (src/hf-inference.js) —
-// the id namespace, the catalog normalization, the ranking, and the allowance.
+// the id namespace, the catalog normalization, and the wire payload. Everything
+// CROSS-provider that used to live here — ranking, the lifecycle, the model
+// allowance — moved up to src/model-catalog.js and is tested there.
 //
 // The fixture rows are trimmed copies of what GET https://router.huggingface.co
 // /v1/models actually returned on 2026-07-26 (see the module header), so the
@@ -13,13 +15,9 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  DEFAULT_ALLOWANCE,
-  hfAllowance,
-  hfBrowseItem,
   hfInferenceConfigured,
   hfInferenceModels,
   hfModelId,
-  hfRankModels,
   hfWireModel,
   isHfModel,
   normalizeRouterModel,
@@ -109,88 +107,14 @@ describe("catalog normalization", () => {
   });
 });
 
-describe("ranking", () => {
-  const catalog = [RAW_INKLING, RAW_UNPRICED, RAW_CHEAP].map(normalizeRouterModel).filter(Boolean);
-
-  test("an empty query orders cheapest-first", () => {
-    // The picker exists to make cost legible, so "no query" means "show me the
-    // cheap end", and the unpriced model sorts last rather than first.
-    const ids = hfRankModels(/** @type {any} */ (catalog), "").map((m) => m.hfId);
-    assert.deepEqual(ids, ["meta-llama/Llama-3.1-8B-Instruct", "thinkingmachines/Inkling", "zai-org/GLM-4.5"]);
-  });
-
-  test("a query matches the repo name and drops non-matches", () => {
-    const ids = hfRankModels(/** @type {any} */ (catalog), "llama").map((m) => m.hfId);
-    assert.deepEqual(ids, ["meta-llama/Llama-3.1-8B-Instruct"]);
-    assert.deepEqual(hfRankModels(/** @type {any} */ (catalog), "nothingmatches"), []);
-  });
-});
-
-describe("the model allowance", () => {
-  test("defaults apply with no config, and admin values extend them", () => {
-    assert.deepEqual(hfAllowance(undefined), DEFAULT_ALLOWANCE);
-    assert.deepEqual(hfAllowance({ hf: { max_output_usd: 12, max_accepted: 20 } }), {
-      maxOutputUsd: 12,
-      maxAccepted: 20,
-    });
-    // Junk falls back rather than uncapping by accident.
-    assert.deepEqual(hfAllowance({ hf: { max_output_usd: "lots", max_accepted: 1.5 } }), DEFAULT_ALLOWANCE);
-  });
-
-  test("an unpriced model is never enableable — an unknown rate cannot be budgeted", () => {
-    const m = normalizeRouterModel(RAW_UNPRICED);
-    const row = hfBrowseItem(/** @type {any} */ (m), { allowance: DEFAULT_ALLOWANCE });
-    assert.equal(row.allowed, false);
-    assert.match(String(row.reason), /can't be budgeted/);
-    assert.equal(row.turn_eur, null);
-    assert.equal(row.pricing, null);
-  });
-
-  test("a model above the output ceiling is blocked, with the ceiling named", () => {
-    const m = normalizeRouterModel(RAW_INKLING);
-    const row = hfBrowseItem(/** @type {any} */ (m), { allowance: { maxOutputUsd: 1, maxAccepted: 6 } });
-    assert.equal(row.allowed, false);
-    assert.match(String(row.reason), /\$1\.00 per 1M output tokens/);
-  });
-
-  test("a full allowance blocks a NEW model but never an already-enabled one", () => {
-    const m = normalizeRouterModel(RAW_CHEAP);
-    const allowance = { maxOutputUsd: 3, maxAccepted: 2 };
-    const blocked = hfBrowseItem(/** @type {any} */ (m), { allowance, acceptedCount: 2 });
-    assert.equal(blocked.allowed, false);
-    assert.match(String(blocked.reason), /Remove one/);
-    // Already enabled: the card must stay actionable so it can be REMOVED.
-    const already = hfBrowseItem(/** @type {any} */ (m), {
-      allowance,
-      acceptedCount: 2,
-      acceptedIds: new Set(["meta-llama/Llama-3.1-8B-Instruct"]),
-    });
-    assert.equal(already.allowed, true);
-    assert.equal(already.accepted, true);
-  });
-
-  test("pinning a serving prices the row against THAT provider", () => {
-    const m = /** @type {any} */ (normalizeRouterModel(RAW_INKLING));
-    const pinned = hfBrowseItem(m, {
-      allowance: DEFAULT_ALLOWANCE,
-      serving: m.servings.find((/** @type {any} */ s) => s.provider === "together"),
-    });
-    assert.equal(pinned.provider, "together");
-    assert.equal(pinned.usd_out, 4.05);
-    assert.equal(pinned.id, "hf:thinkingmachines/Inkling@together");
-  });
-});
-
 describe("cost", () => {
-  test("the per-turn estimate is the documented turn at the row's rates", () => {
-    const m = /** @type {any} */ (normalizeRouterModel(RAW_CHEAP));
-    const row = hfBrowseItem(m, { allowance: DEFAULT_ALLOWANCE });
-    assert.equal(row.turn_eur, turnCostEur(row.price_in, row.price_out));
-    // …and that turn is the one the UI is told about, so the label can't drift
-    // away from the number.
+  test("the per-turn estimate is the documented turn at a model's rates", () => {
+    // ONE definition of the comparison turn, so the label the UI prints and the
+    // number it prints can't drift apart.
     assert.equal(TYPICAL_TURN.prompt, 12000);
-    const byHand = row.price_in * TYPICAL_TURN.prompt + row.price_out * TYPICAL_TURN.completion;
-    assert.ok(Math.abs((row.turn_eur || 0) - byHand) < 1e-12);
+    assert.equal(TYPICAL_TURN.completion, 1200);
+    const byHand = 2e-8 * TYPICAL_TURN.prompt + 6e-8 * TYPICAL_TURN.completion;
+    assert.ok(Math.abs(turnCostEur(2e-8, 6e-8) - byHand) < 1e-15);
   });
 
   test("catalog entries carry EUR per-token prices, so billing works unchanged", () => {

@@ -286,11 +286,11 @@ describe("core purity", () => {
     // extensions.js is the ONLY door to a third-party integration. The other
     // two are CORE enrichments, which the registry has always been allowed to
     // import directly: introspection reads this repo's own committed snapshot,
-    // and hf-agent.js is the Hugging Face agent's own mode behaviour — the same
-    // standing this project already gives the Hub as a core SEARCH SOURCE
-    // (src/search-sources.js). Neither has a knob, a per-request state slice,
-    // or an extension descriptor, which is the registry's own test for
-    // membership (see the note above CORE_ENRICHMENTS).
-    assert.deepEqual(imports, ["./extensions.js", "./introspect.js", "./hf-agent.js"]);
+    // and models-agent.js is the Models agent's own mode behaviour over this
+    // platform's own model landscape — the same standing this project already
+    // gives the Hub as a core SEARCH SOURCE (src/search-sources.js). Neither
+    // has a knob, a per-request state slice, or an extension descriptor, which
+    // is the registry's own test for membership (see CORE_ENRICHMENTS).
+    assert.deepEqual(imports, ["./extensions.js", "./introspect.js", "./models-agent.js"]);
   });
 });

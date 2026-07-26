@@ -27,8 +27,8 @@ function stubStorage() {
 }
 
 test("normalizeChatMode clamps junk to the fallback", () => {
-  assert.deepEqual(CHAT_MODES, ["normal", "introspection", "sdk", "orchestrator", "outrospection", "hf"]);
-  assert.equal(normalizeChatMode("hf"), "hf");
+  assert.deepEqual(CHAT_MODES, ["normal", "introspection", "sdk", "orchestrator", "outrospection", "models"]);
+  assert.equal(normalizeChatMode("models"), "models");
   assert.equal(normalizeChatMode("orchestrator"), "orchestrator");
   assert.equal(normalizeChatMode("outrospection"), "outrospection");
   assert.equal(normalizeChatMode("sdk"), "sdk");

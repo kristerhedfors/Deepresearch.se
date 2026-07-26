@@ -43,7 +43,7 @@
  * @property {string} checkVar       the app.css custom property holding `check`
  * @property {"balloon"|"plant"} spinner  the waiting-symbol animation
  * @property {"balloon"|"tin"|"plant"} character  the theme character/greeter
- * @property {"history"|"showcase"} panel  the side-panel flavour
+ * @property {"history"|"showcase"|"models"} panel  the side-panel flavour
  * @property {"terminal"|"graph"} backdrop  the AGENT BACKGROUND behind the chat
  *                                  — what drifts on the field while agents
  *                                  work. "terminal" is the sandbox
@@ -69,7 +69,7 @@
 
 /** The Se/rver-app chat modes, dropdown order. Mirrors chat-mode.js CHAT_MODES;
  * kept here too so the registry is self-describing. */
-export const CHAT_MODE_IDS = ["normal", "introspection", "sdk", "orchestrator", "outrospection", "hf"];
+export const CHAT_MODE_IDS = ["normal", "introspection", "sdk", "orchestrator", "outrospection", "models"];
 
 /** The mode descriptors, keyed by id.
  * @type {Record<string, ModeTheme>} */
@@ -170,27 +170,31 @@ export const MODE_THEMES = {
     symbol: "the front page",
     blurb: "looked outward — what everyone else shipped",
   },
-  hf: {
-    id: "hf",
-    label: "Hugging Face",
-    rootClass: "hf-mode",
-    tag: "hugging face",
-    // Hugging Face's own yellow. The one mode named after somebody else's
-    // platform, so it wears their colour rather than inventing a sixth of ours.
+  models: {
+    id: "models",
+    label: "Models",
+    rootClass: "models-mode",
+    tag: "models",
+    // Amber — the workshop light. This is the mode where models are examined
+    // before anyone relies on them, so it reads as a bench rather than as
+    // another research field.
     accent: "#b8860b",
-    bar: "#ffd21e", // the HF yellow status bar over the warm field
+    bar: "#ffd21e", // amber status bar over the warm field
     check: "#b8860b",
     checkVar: "--check-amber",
-    // The balloon recoloured in AMBER (mode-spinner.js HF_SPINNER) — the
+    // The balloon recoloured in AMBER (mode-spinner.js MODELS_SPINNER) — the
     // introspection/orchestrator/outrospection recolour pattern; the KIND stays
     // "balloon", the palette lives in mode-spinner.js.
     spinner: "balloon",
     character: "balloon",
-    panel: "history",
+    // The one mode whose side panel is NOT chat history: it is the model
+    // lifecycle board — every model this deployment can reach, its state, and
+    // its verification checklist (public/js/models-panel.js).
+    panel: "models",
     backdrop: "terminal",
-    depthSlider: true, // it researches the hub like any other source — the slider applies
-    symbol: "the open shelf",
-    blurb: "browsed — every model on the shelf, with its price on the tag",
+    depthSlider: true, // it researches the landscape like any other subject — the slider applies
+    symbol: "the bench",
+    blurb: "examined — every model weighed, priced and checked before anyone leans on it",
   },
 };
 
@@ -274,7 +278,7 @@ export function showsDepthSlider(mode) {
   return modeTheme(mode).depthSlider !== false;
 }
 
-/** The side-panel flavour for a mode. @param {unknown} mode @returns {"history"|"showcase"} */
+/** The side-panel flavour for a mode. @param {unknown} mode @returns {"history"|"showcase"|"models"} */
 export function panelFlavour(mode) {
   return modeTheme(mode).panel;
 }

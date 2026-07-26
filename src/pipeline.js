@@ -438,7 +438,7 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   if (!policy.web) {
     if (quizReq && (await runQuizGeneration(ctx, quizReq))) return;
     // "Applicable" is a source's own intent OR the state's forceAux list — a
-    // mode built AROUND a source (the Hugging Face agent) must not fall through
+    // mode built AROUND a source (the Models agent) must not fall through
     // to a sourceless answer just because the message didn't name the hub. The
     // agent's `auxSources` declaration still outranks both: an agent that says
     // it uses no auxiliary sources uses none, forced or not.

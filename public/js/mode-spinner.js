@@ -58,10 +58,10 @@ export const NEWSPRINT_SPINNER = {
   check: "#8f1d14",
 };
 
-/** The Hugging Face agent's balloon palette: warm cream crown, sand alt, an
- * amber border folding into the amber ✓. `check` MUST match app.css
- * --check-amber (the introspection-recolour pattern). */
-export const HF_SPINNER = {
+/** The Models agent's balloon palette: warm cream crown, sand alt, an amber
+ * border folding into the amber ✓. `check` MUST match app.css --check-amber
+ * (the introspection-recolour pattern). */
+export const MODELS_SPINNER = {
   palette: {
     col: "#ffe9a8",
     alt: "#e8c46a",
@@ -101,7 +101,7 @@ export function mountModeSpinner(host, opts = {}) {
     mode === "introspection" ? { ...TITANIUM_SPINNER, ...opts }
     : mode === "orchestrator" ? { ...ORCH_SPINNER, ...opts }
     : mode === "outrospection" ? { ...NEWSPRINT_SPINNER, ...opts }
-    : mode === "hf" ? { ...HF_SPINNER, ...opts }
+    : mode === "models" ? { ...MODELS_SPINNER, ...opts }
     : opts;
   return mountBalloonSpinner(host, balloonOpts);
 }

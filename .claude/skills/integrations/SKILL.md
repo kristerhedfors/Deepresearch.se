@@ -8,7 +8,7 @@ description: >-
   Nominatim reverse geocoding (src/geocode.js), Shodan host intelligence
   (src/shodan.js), Google Maps / Street View (src/googlemaps.js), or
   Hugging Face Hub search (src/hf.js; its INFERENCE sibling
-  src/hf-inference.js belongs to the hf-agent skill) — or adding a new enrichment in the
+  src/hf-inference.js belongs to the models-agent skill) — or adding a new enrichment in the
   same deterministic no-function-calling pattern. ALSO the go-to for the
   EXTENSION BOUNDARY (src/extensions.js, CLAUDE.md invariant 7): the
   knob-gated third-party integrations are extensions, not core, so wiring
@@ -1004,4 +1004,5 @@ the search phase.
   the same company, a different surface and a different token contract. This
   section is Hub SEARCH — free, optional token, citable sources. Running a
   model through `router.huggingface.co` is billed, requires the token, and is
-  the Hugging Face agent's business — see the **hf-agent** skill.
+  one provider inside the Models agent's lifecycle — see the **models-agent**
+  skill.

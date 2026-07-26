@@ -15,7 +15,7 @@
     "model-select": "choose the answer/synthesis model (provider registry)",
     "depth-slider": "research depth → number of pipeline search rounds",
     "toggle": "a boolean request flag (web search, incognito, …) — id IS the flag",
-    "mode-select": "choose the chat mode — the app's six canonical ids: normal (Deep Research) / introspection / sdk (Agent Studio; the spec's historical alias agent-builder still resolves to it) / orchestrator / outrospection / hf (Hugging Face)",
+    "mode-select": "choose the chat mode — the app's six canonical ids: normal (Deep Research) / introspection / sdk (Agent Studio; the spec's historical alias agent-builder still resolves to it) / orchestrator / outrospection / models (Models)",
     "attachments": "attach files to the turn"
   },
   "defaults": [
@@ -35,9 +35,9 @@
       "flag": "outrospection_mode"
     },
     {
-      "mode": "hf",
-      "agent": "huggingface",
-      "flag": "hf_mode"
+      "mode": "models",
+      "agent": "models",
+      "flag": "models_mode"
     },
     {
       "mode": "introspection",
@@ -50,7 +50,7 @@
       "flag": null
     }
   ],
-  "defaults_note": "The Se/rver app's six DEFAULT agents — one per chat mode (public/js/chat-mode.js CHAT_MODES). ARRAY ORDER IS PRECEDENCE, mirroring src/chat.js: a request carrying several mode flags resolves to the first match (sdk > orchestrator > outrospection > hf). `flag` names the /api/chat request field that selects the mode; a null flag means the mode is derived — introspection when the developer_mode capability is granted and no flag is set, normal otherwise. Agents NOT listed here (secure, under-construction) are tier archetypes and templates, not chat modes.",
+  "defaults_note": "The Se/rver app's six DEFAULT agents — one per chat mode (public/js/chat-mode.js CHAT_MODES). ARRAY ORDER IS PRECEDENCE, mirroring src/chat.js: a request carrying several mode flags resolves to the first match (sdk > orchestrator > outrospection > models). `flag` names the /api/chat request field that selects the mode; a null flag means the mode is derived — introspection when the developer_mode capability is granted and no flag is set, normal otherwise. Agents NOT listed here (secure, under-construction) are tier archetypes and templates, not chat modes.",
   "agents": [
     {
       "id": "research",
@@ -689,14 +689,14 @@
       }
     },
     {
-      "id": "huggingface",
-      "name": "Hugging Face",
-      "tagline": "The research agent with an OPEN model catalog — browse it, price it, run it.",
-      "description": "A deep-research agent that always has the Hugging Face Hub in the search wave, and that can additionally spin up ANY model the HF router serves. A question about choosing, pricing or starting a model folds the live router catalog into the turn with real per-token rates, so the answer quotes what a model actually costs before you commit to it. Accepting a model puts it in this account's own catalog, which makes it selectable in every other chat mode too — bounded by a starting model allowance the site config raises.",
+      "id": "models",
+      "name": "Models",
+      "tagline": "The agent whose subject is the models themselves — explore every provider, evaluate, enable.",
+      "description": "The model lifecycle, in one place. It researches the model landscape with the Hugging Face Hub in every search wave, and it holds the live catalog of every model this deployment can reach — Berget, Anthropic, OpenAI and the open Hugging Face router — with each one's price and its verification checklist. A model moves discovered -> evaluated -> enabled here: the checks are real probes run against the real provider dispatch, they are evidence rather than gates (a failing check is a known limitation, never a ban), and enabling puts a model in every other agent's dropdown, bounded by a starting model allowance the site config raises.",
       "platform": "server",
       "tier": "Se/rver",
       "derivesFrom": "research",
-      "mode": "hf",
+      "mode": "models",
       "theme": {
         "--agent-accent": "#b8860b",
         "--agent-accent-soft": "rgba(255,210,30,0.16)",
@@ -722,7 +722,7 @@
       "controls": [
         {
           "type": "prompt-input",
-          "placeholder": "Ask about a model — or which one to run…"
+          "placeholder": "Ask about a model — which to run, what it costs, what it passed…"
         },
         {
           "type": "model-select",
@@ -766,7 +766,7 @@
             "sdk",
             "orchestrator",
             "outrospection",
-            "hf"
+            "models"
           ]
         },
         {
@@ -793,7 +793,7 @@
         },
         "gates": [
           {
-            "id": "model-shopping",
+            "id": "model-lifecycle",
             "langs": [
               "en",
               "sv"
@@ -804,7 +804,7 @@
         "emits": [
           "step",
           "search",
-          "hf_models"
+          "model_cards"
         ],
         "requires": [
           "developer_mode"
@@ -812,16 +812,16 @@
         "team": null
       },
       "examples": [
-        "Which model on the Hugging Face router is the cheapest that still handles images?",
-        "Vilken modell ska jag köra för svensk text, och vad kostar den per 1M tokens?",
-        "Compare Qwen and Llama on the hub right now — downloads, licence, and price per research turn."
+        "Which model can I run here that reads images, and what does one research turn cost?",
+        "Vilken modell ska jag aktivera för svensk text, och vad har den verifierats för?",
+        "Compare the models I have enabled on price, context length and which checks they pass."
       ],
       "generateExamples": true,
       "quota": {
         "window": "day",
         "requests": 50,
         "credits": null,
-        "note": "Signed-in default window; an accepted open-catalog model bills at its own published rate."
+        "note": "Signed-in default window; an enabled open-catalog model bills at its own published rate, and a verification run bills like any other model call."
       }
     },
     {
