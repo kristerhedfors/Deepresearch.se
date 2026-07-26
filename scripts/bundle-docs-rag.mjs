@@ -36,6 +36,7 @@ import {
   quantizeInt8,
   validateSnapshot,
 } from "../public/js/introspect-core.js";
+import { describeProviders, embedAll } from "./embed-providers.mjs";
 import { truncateChars } from "./embed-truncate.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -45,47 +46,10 @@ const OUT = "public/introspect/docs-rag.json";
 const EMBED_MODEL = "intfloat/multilingual-e5-large";
 const PASSAGE_PREFIX = "passage: ";
 const MAX_CHUNK_CHARS = 1200; // pre-truncate for e5's 512-token window (see bundle-source-rag.mjs)
-const BATCH = Number(process.env.INTROSPECT_EMBED_BATCH) || 32;
-
-const BERGET_KEY = process.env.BERGET_API_KEY || process.env.BERGET_API_TOKEN;
+const BATCH = Number(process.env.INTROSPECT_EMBED_BATCH) || 256;
+const PROVIDER = process.env.EMBED_PROVIDER || "";
 
 const fileHash = (text) => createHash("sha256").update(String(text ?? "")).digest("hex").slice(0, 16);
-
-/** @param {string[]} texts @returns {Promise<Float32Array[]>} */
-async function embedBatch(texts) {
-  if (!BERGET_KEY) throw new Error("Set BERGET_API_KEY (or BERGET_API_TOKEN) to embed the docs corpus.");
-  const res = await fetch("https://api.berget.ai/v1/embeddings", {
-    method: "POST",
-    headers: { authorization: "Bearer " + BERGET_KEY, "content-type": "application/json" },
-    body: JSON.stringify({ model: EMBED_MODEL, input: texts.map((t) => PASSAGE_PREFIX + t) }),
-  });
-  if (!res.ok) {
-    const err = new Error(`Berget embeddings ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    /** @type {any} */ (err).status = res.status;
-    throw err;
-  }
-  const data = await res.json();
-  return (data.data || []).map((d) => Float32Array.from(d.embedding));
-}
-
-// Markdown tables are token-DENSE (well under 2.4 chars/token), so a chunk can
-// still overflow e5's 512-token window at MAX_CHUNK_CHARS. Same remedy as
-// bundle-source-rag.mjs: on a too-long 400, shrink EVERY chunk in the batch
-// ×0.8 and retry — the vector loses a short tail; the retrieved TEXT is always
-// the full chunk (re-chunked from the corpus).
-/** @param {string[]} texts @returns {Promise<Float32Array[]>} */
-async function embedBatchShrinking(texts) {
-  let batch = texts;
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await embedBatch(batch);
-    } catch (/** @type {any} */ err) {
-      const tooLong = err.status === 400 && /maximum context length|reduce the length/i.test(err.message);
-      if (!tooLong || attempt >= 6) throw err;
-      batch = batch.map((t) => truncateChars(t, Math.max(200, Math.floor(t.length * 0.8))));
-    }
-  }
-}
 
 async function main() {
   const corpus = validateSnapshot(JSON.parse(readFileSync(join(ROOT, CORPUS), "utf8")));
@@ -99,7 +63,7 @@ async function main() {
     const pieces = chunkSourceText(f.t);
     pieces.forEach((text, ci) => toEmbed.push({ p: f.p, ci, text: truncateChars(text, MAX_CHUNK_CHARS) }));
   }
-  console.log(`${corpus.files.length} docs, ${toEmbed.length} chunks — embedding via Berget (batch ${BATCH}) …`);
+  console.log(`${corpus.files.length} docs, ${toEmbed.length} chunks — ${describeProviders(PROVIDER)} …`);
 
   /** @type {string[]} */
   const vectors = [];
@@ -108,7 +72,7 @@ async function main() {
   let dims = 0;
   for (let i = 0; i < toEmbed.length; i += BATCH) {
     const batch = toEmbed.slice(i, i + BATCH);
-    const vecs = await embedBatchShrinking(batch.map((c) => c.text));
+    const vecs = (await embedAll(batch.map((c) => PASSAGE_PREFIX + c.text), { model: EMBED_MODEL, provider: PROVIDER })).vectors;
     if (vecs.length !== batch.length) throw new Error(`got ${vecs.length} vectors for ${batch.length} texts`);
     for (let j = 0; j < batch.length; j++) {
       dims = vecs[j].length;

@@ -413,3 +413,4 @@ Features & surfaces:
 - **space-animations** — the public /space/ archive of playable wireframe animations (one "animation skill" per common space question, EN+SV matched): the only-stars-glow rendering rule, real-scale zoom, the gallery feedback queue.
 - **tokemon-game** — the games registry seam + the Tokemon AR game (Pokémon Gen-1 mechanics verbatim, no invented rules).
 - **commit-analytics** — the public `/pulse` dashboard and its `npm run pulse` refresh workflow.
+- **arxiv-rag** — the arXiv RAG search database (a year of arXiv, Berget-embedded, searched from the CLI): the OAI-PMH bulk-harvest pattern, the binary index pack, the three Berget serving limits that break long builds, and the evaluation discipline that keeps a RAG bake-off honest.

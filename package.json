@@ -2,7 +2,7 @@
   "name": "deepresearch-se",
   "private": true,
   "type": "module",
-  "description": "Deep-research Cloudflare Worker. No build step — deployed via `npx wrangler deploy`, reading src/ as plain JS. This package.json exists only to run the unit test suite and the type-checker (both dev-only; neither is part of the deploy).",
+  "description": "Deep-research Cloudflare Worker. No build step \u2014 deployed via `npx wrangler deploy`, reading src/ as plain JS. This package.json exists only to run the unit test suite and the type-checker (both dev-only; neither is part of the deploy).",
   "scripts": {
     "test": "node --test src/*.test.js public/js/*.test.js public/games/*/js/*.test.js sdk/*.test.mjs scripts/*.test.mjs tests/*.test.js",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.public.json --noEmit",
@@ -17,7 +17,15 @@
     "pulse": "node scripts/build-pulse.mjs",
     "pulse:timeline": "node scripts/build-pulse-timeline.mjs",
     "pulse:size": "node scripts/build-pulse-size.mjs",
-    "proof:agents": "node scripts/agent-proof.mjs"
+    "proof:agents": "node scripts/agent-proof.mjs",
+    "arxiv:harvest": "node scripts/arxiv-harvest.mjs",
+    "arxiv:corpus": "node scripts/arxiv-corpus.mjs",
+    "arxiv:goldset": "node scripts/arxiv-goldset.mjs",
+    "arxiv:index": "node scripts/arxiv-index.mjs",
+    "arxiv:search": "node scripts/arxiv-search.mjs",
+    "arxiv:eval": "node scripts/arxiv-eval.mjs",
+    "arxiv:fulltext": "node scripts/arxiv-fulltext.mjs",
+    "arxiv:fulltext-eval": "node scripts/arxiv-fulltext-eval.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",
