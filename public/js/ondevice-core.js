@@ -620,6 +620,47 @@ export function downloadProgress(files, doneFiles, current = {}) {
   return { loaded, total, pct };
 }
 
+// ---- the settings disclosure summary ---------------------------------------------------
+//
+// Both tiers hide the per-model rows behind a COLLAPSED disclosure (UX-14):
+// flipping the knob must add ONE line to the settings drawer, not a whole
+// section (feedback #27 — "the menu grows drastically when knob is turned, we
+// just want one line to appear to expand to show this info"). That one line
+// still has to carry the state the rows would have shown, or collapsing it
+// would hide a running download. Pure, so both tiers phrase it identically.
+
+/**
+ * The collapsed disclosure's summary text. The fields: `total` the catalog
+ * size, `cached` models whose weights are on this device, `unsupported`
+ * models this device can't run (the capability verdict), `downloading` the
+ * label of the model downloading right now with its `pct` when known,
+ * `failed` models whose last download attempt failed, `checking` the device
+ * probe is still running, `error` the probe failed (the rows carry why).
+ * @param {{total?: number, cached?: number, unsupported?: number, downloading?: ?string, pct?: ?number, failed?: number, checking?: boolean, error?: boolean}} [s]
+ */
+export function onDeviceSummaryLine(s = {}) {
+  const total = Math.max(0, s.total || 0);
+  const cached = Math.max(0, Math.min(s.cached || 0, total));
+  // A download in flight OUTRANKS the counts: it is the one state a user
+  // would miss while the section is folded away.
+  if (s.downloading) {
+    const pct = typeof s.pct === "number" && s.pct >= 0 ? " · " + Math.min(100, Math.floor(s.pct)) + "%" : "";
+    return "Downloading " + s.downloading + "…" + pct;
+  }
+  if (s.error) return "Models — this device couldn't be checked";
+  if (s.checking) return "Models — checking this device…";
+  const failed = Math.max(0, s.failed || 0);
+  const tail = failed ? " · " + failed + (failed === 1 ? " download failed" : " downloads failed") : "";
+  if (!total) return "Models" + tail;
+  if (cached) return "Models — " + cached + " of " + total + " on this device" + tail;
+  // "Available" must mean available TO THIS DEVICE: the expanded rows say
+  // "this browser has no WebGPU", so the folded line may not advertise a
+  // download the user can't use. All unsupported → say that instead of a count.
+  const runnable = Math.max(0, total - Math.max(0, Math.min(s.unsupported || 0, total)));
+  if (!runnable) return "Models — none can run on this device" + tail;
+  return "Models — none on this device yet, " + runnable + " available" + tail;
+}
+
 // ---- streaming SHA-256 -----------------------------------------------------------------
 //
 // SubtleCrypto.digest needs the whole buffer in memory — a non-starter for

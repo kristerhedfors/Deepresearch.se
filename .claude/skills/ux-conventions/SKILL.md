@@ -662,3 +662,55 @@ active"*).
 `dr.pulse.timeline.v1` preference record. Guarded by
 `tests/e2e/pulse-timeline.spec.js` in the free `mocked` project. No text
 routing, so no EN/SV parity applies.
+
+---
+
+## UX-14 — Flipping a settings knob adds ONE line to the drawer; the detail behind it opens only when the user asks
+
+**The rule.** When a settings switch reveals more than a status sentence — a
+list, a table, per-item rows — the reveal is a single **collapsed disclosure
+line**, never the content itself. The line summarises what is behind it in the
+user's terms ("Models — 1 of 3 on this device", "Downloading Bonsai 8B · 1-bit…
+· 42%"), and it is **never opened by code**: the `<details>` ships without
+`open`, no render path sets it, and re-entering the panel returns it collapsed.
+Because the fold can hide a live process, the summary line carries that
+process's state — a download in flight outranks the resting counts on it.
+
+**Why.** The settings drawer is a list of switches the user scans. A knob that
+expands into a section pushes every switch below it off the screen and buries
+the one the user was actually heading for: *"Now the menu grows drastically when
+knob is turned, we just want one line to appear to expand to show this info
+instead"* (feedback #27, 2026-07-26). The information is not unwanted — its
+uninvited size is.
+
+**The mechanics (match all of these):**
+
+1. **A native `<details>`**, so keyboard, screen readers, and the browser's own
+   open/close semantics come for free. The custom `▸` marker replaces the
+   default triangle (`list-style: none` + `summary::-webkit-details-marker`)
+   and rotates on `[open]`; the rotation is dropped under
+   `prefers-reduced-motion`.
+2. **The knob toggles `details.hidden`, not `details.open`.** Off hides the
+   whole disclosure and empties its body; on shows the summary line alone.
+3. **The summary text is a PURE function** of the section's state, shared by
+   both tiers so they can never phrase it differently, and Node-tested
+   (including the degenerate inputs — no `"4 of 3"`, no `"140%"`).
+4. **Re-render replaces the body, never the `<details>`**, so a user who
+   expanded the section does not have it snap shut under them mid-download.
+   The one place `open` is written is the way OUT — the knob going off resets
+   it to `false`, so flipping the knob back on gives the fresh one-line reveal
+   the rule promises rather than whatever the user left open last time.
+5. **Live progress writes the summary too**, not only the row inside — a folded
+   section is otherwise a download with no visible progress at all.
+
+**Canonical implementation:** the on-device models section in both tiers —
+`public/js/ondevice-drs.js` (`onDeviceSettingsMarkup` `#oddetails`, `setSummary`,
+`renderRows`) and `public/cure/index.html` `#oddetails` + `public/cure/drc.js`
+(`odSummary`, `renderOnDeviceRows`), over the pure
+`onDeviceSummaryLine` in `public/js/ondevice-core.js`
+(`ondevice-core.test.js`). Styling is `.settings-sub` in both
+`public/css/app.css` and `public/cure/drc.css` (the two stylesheets never load
+together). Composes with UX-4: the download consent still lives inside the
+expanded rows, and folding the section never starts or continues anything.
+Language-agnostic (a disclosure gesture, no text routing), so no EN/SV parity
+applies.

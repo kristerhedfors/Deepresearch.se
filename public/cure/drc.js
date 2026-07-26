@@ -1195,25 +1195,53 @@ const odDownloading = new Set(); // modelIds with a download in flight (UI state
 // (the 2026-07-17 iPhone report). Cleared on the next attempt.
 const odErrors = new Map();
 
+/**
+ * The collapsed disclosure's one line (UX-14). The shared phrasing lives in
+ * the pure core, which rides the LAZY engine import (the bandwidth
+ * guarantee) — so before that module resolves this section has only the two
+ * states spelled out here to show.
+ * @param {{total?: number, cached?: number, downloading?: ?string, pct?: ?number, failed?: number, checking?: boolean, error?: boolean}} s
+ */
+function odSummary(s) {
+  const el = $("odsummary");
+  if (!el) return;
+  el.textContent = odEngineModule
+    ? odEngineModule.onDeviceSummaryLine(s)
+    : s.error
+      ? "Models — this device couldn't be checked"
+      : "Models — checking this device…";
+}
+
 // The settings section: one row per catalog model with its true state —
 // on this device (Delete) / downloadable (Download → consent) / not yet
 // published (the 27B today) / unsupported here (the self-explaining verdict).
+// The rows sit behind a COLLAPSED disclosure whose summary line carries their
+// gist; flipping the knob must add one line to the drawer, not a section
+// (UX-14, feedback #27), so nothing here ever sets `details.open`.
 async function renderOnDeviceRows() {
   const wrap = $("odmodels");
+  const details = $("oddetails");
   const on = state.onDevice === true;
-  wrap.hidden = !on;
+  details.hidden = !on;
   if (!on) {
+    // Collapse on the way OUT, never on a re-render: turning the knob back on
+    // must give the fresh one-line reveal, but a running download must not
+    // snap the section shut under a user who expanded it.
+    details.open = false;
     wrap.innerHTML = "";
     $("odstatus").textContent = "";
     return;
   }
   $("odstatus").textContent = "";
-  if (!wrap.childElementCount) wrap.innerHTML = '<span class="muted setting-note">Checking this device…</span>';
+  if (!wrap.childElementCount) odSummary({ checking: true });
   try {
     const eng = await odEngine();
     const probe = await eng.probeOnDevice();
     const cached = await eng.listCachedModels();
     wrap.innerHTML = "";
+    let onDeviceCount = 0;
+    let unsupportedCount = 0;
+    let downloadingLabel = "";
     for (const m of eng.ONDEVICE_MODELS) {
       const entry = cached.find((c) => c.id === m.id);
       const verdict = eng.capabilityVerdict(probe, m);
@@ -1228,6 +1256,9 @@ async function renderOnDeviceRows() {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "btnlike od-btn";
+      if (entry?.cachedBytes) onDeviceCount++;
+      if (verdict.verdict === "unsupported") unsupportedCount++;
+      if (odDownloading.has(m.id)) downloadingLabel = m.label;
       if (odDownloading.has(m.id)) {
         note.textContent = "Downloading…";
         btn.textContent = "Cancel";
@@ -1262,11 +1293,19 @@ async function renderOnDeviceRows() {
       row.append(label, note, btn);
       wrap.appendChild(row);
     }
+    odSummary({
+      total: eng.ONDEVICE_MODELS.length,
+      cached: onDeviceCount,
+      unsupported: unsupportedCount,
+      downloading: downloadingLabel || null,
+      failed: [...odErrors.keys()].length,
+    });
   } catch (err) {
     // The engine's deadline errors NAME the failing stage (the on-device-
     // trace convention: this line is the remote debugger on a real phone) —
     // show them verbatim. textContent, never innerHTML: the message can
     // carry a worker error string.
+    odSummary({ error: true });
     wrap.innerHTML = '<span class="muted setting-note"></span>';
     wrap.firstElementChild.textContent =
       err?.message || "The on-device engine failed to load — try reloading the page.";
@@ -1380,6 +1419,9 @@ async function odRunDownload(m) {
       sawBytes = sawBytes || p.loaded > 0;
       const el = document.querySelector('[data-od="' + m.id + '"] .od-note');
       if (el) el.textContent = "Downloading… " + p.pct + "% · " + eng.fmtBytes(p.loaded) + " of " + eng.fmtBytes(p.total);
+      // The rows may be folded away — the summary line is then the ONLY
+      // progress the user can see, so it carries the percent too.
+      odSummary({ total: eng.ONDEVICE_MODELS.length, downloading: m.label, pct: p.pct });
     });
     workStatus(m.label + " is on this device — pick it in the model dropdown. Nothing you ask it will leave this browser.");
   } catch (err) {
