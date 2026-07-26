@@ -301,11 +301,10 @@ merged shape before wiring UI.
 Filed from user feedback #33 (2026-07-26, "add this mcp update as a task").
 `POST /mcp` (`src/mcp.js`) is the ONE place this project points outward — the
 pipeline exposed AS a tool other agents call (`docs/ARCHITECTURE-ROADMAP.md`
-§3). The upcoming protocol revision is the largest revision since MCP
-launched, and it changes the exact three methods we hand-rolled. Left alone,
-our only outward integration drifts out of spec.
+§3). The next protocol revision rewrites the exact three methods we
+hand-rolled. Left alone, our only outward integration drifts out of spec.
 
-**Where we actually stand.** `PROTOCOL_VERSION` is `"2025-06-18"` — already
+**Where we stand.** `PROTOCOL_VERSION` is `"2025-06-18"` — already
 two revisions behind the published `2025-11-25`, never bumped. So this item
 is a *catch-up plus a jump*, not a single bump.
 
