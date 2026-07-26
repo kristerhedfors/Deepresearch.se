@@ -64,16 +64,23 @@ const MAX_ABSTRACT_CHARS = 420; // presentation cut, matches the live tier
 // contain every subject a user might ask about.
 //
 // Judged on bge-reranker-v2-m3's relevance_score, NOT on the e5 cosine. That
-// choice and the value are both measured (2026-07-26, live index):
+// choice and the value are both measured (2026-07-26, live index), at two
+// corpus sizes:
 //
-//   query                                        cosine   rerank top
-//   "how do multiple LLM agents collaborate…"     0.8517     0.16638
-//   "critical temperature of graphene super…"     0.8503     0.05429
-//   "best pizza recipe napoletana dough…"         0.7925     0.00002
+//                                            512 papers        26,624 papers
+//   query                                  cosine  rerank     cosine  rerank
+//   "how do multiple LLM agents collab…"   0.8517  0.16638    0.7890  0.83008
+//   "critical temperature of graphene…"    0.8503  0.05429    0.7703  0.36548
+//   "best pizza recipe napoletana dough"   0.7925  0.00002    0.7112  0.00005
 //
-// The cosines are useless as a gate — 0.85 for a good match and 0.85 for an
-// unrelated one, with the outright nonsense query still at 0.79. The rerank
-// scores separate the same three cases by four orders of magnitude.
+// Read the first pair of columns and the cosine already looks unusable as a
+// gate: 0.85 for a good match, 0.85 for an unrelated one, and the outright
+// nonsense query still at 0.79. Read ACROSS the two corpus sizes and it is
+// settled — as the corpus grew and the top match got much better, its cosine
+// went DOWN (0.8517 → 0.7890) while the rerank score went up fivefold. Any
+// cosine threshold would have been tuned to noise and would drift with every
+// upsert. The rerank scores separate the same three cases by four orders of
+// magnitude at both sizes.
 //
 // The value is 0.01, not the 0.1 tried first: this reranker's scores are
 // compressed toward zero, so 0.1 kept only 1 of 20 candidates on the
