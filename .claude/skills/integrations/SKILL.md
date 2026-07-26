@@ -1093,6 +1093,16 @@ work in the repo was the offline CLI RAG database (`docs/ARXIV-RAG.md`), whose
   still per-rung), and the ladder carries a TOTAL time budget of 9 s, because
   three rungs at the per-request timeout is 21 s inside a search wave —
   invariant 2's fail-soft has to hold on the clock too, not just on errors.
+- **Probing this API costs you the API.** Roughly 30 requests spread over ~40
+  minutes from one IP earned a block that lasted more than ten minutes and
+  alternated 429, 503 and outright timeouts; a single successful probe in the
+  middle of it did not mean recovery. Budget for that when integrating or
+  re-probing: batch the query-grammar matrix into ONE scripted run with ≥3 s
+  spacing, capture the hit counts, and work from the capture instead of
+  re-querying. The silver lining is that the throttle exercised the fail-soft
+  path live — `throttled: true`, ladder aborted on the 429, budget guard
+  cutting in at 12 s, zero throws, chat unaffected — which is the branch
+  hardest to verify deliberately.
 - **Cached through `edge-cache.js` for an hour**, the same Workers Cache
   mechanics `exa.js` and `googlemaps.js` use, and the main structural defence
   against that 429: one turn can make 3 searches × up to 3 rungs, all from
