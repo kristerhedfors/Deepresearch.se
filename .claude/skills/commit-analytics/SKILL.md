@@ -10,8 +10,10 @@ description: >-
   (commits / lines / features) are counted, the day/week/month rollup, and
   committing + pushing so the deploy serves the fresh data. ALSO the sibling
   Feature focus timeline (/pulse/timeline.html + scripts/pulse-themes.mjs +
-  build-pulse-timeline.mjs + timeline.json): the subject-taxonomy tagger and the
-  multi-line / streamgraph of where feature-focus went over time. ALSO the
+  build-pulse-timeline.mjs + timeline.json): the subject-taxonomy tagger, the
+  multi-line / streamgraph of where feature-focus went over time, and its CURVE
+  PICKER — "choose which curves are active/shown", "tap to pick subjects",
+  "toggle series", "show only one theme" on that page. ALSO the
   "Code size" snapshot on the main pulse page (scripts/build-pulse-size.mjs +
   public/pulse/size.json): lines/chars per language, README size, and
   dependency counts — "update the size metrics", "refresh lines of code /
@@ -71,18 +73,36 @@ consistent at every resolution.
 
 ## The update workflow (what to do when invoked)
 
-1. **Sync first** (the repo rule): make sure the working tree is at the latest
-   `origin/main` so the git history is complete.
-2. **Regenerate the dataset:**
+**"Update the pulse" means all three datasets, not just `data.json`.** The page
+has three independent sources and two pages; refreshing one and not the others
+ships a dashboard that disagrees with itself. Run the whole list — it takes one
+pass and about ten minutes, most of it the artifact re-embedding.
+
+1. **Sync, and get the FULL history.** Be at the latest `origin/main`, then
+   `git fetch --unshallow origin` — session clones are shallow and a shallow
+   clone silently produces a dataset that starts a few days ago. Verify with
+   `git log --oneline | wc -l` (four figures, not dozens).
+2. **Regenerate all three datasets:**
    ```bash
-   npm run pulse
+   npm run pulse            # public/pulse/data.json      — commits / lines / features
+   npm run pulse:timeline   # public/pulse/timeline.json  — subject-tagged focus over time
+   npm run pulse:size       # public/pulse/size.json      — code-size snapshot
    ```
-   It prints how many days need review (`curated:false`). Curation is
-   preserved: a day whose commit subjects are unchanged and was previously
+   `npm run pulse` prints how many days need review (`curated:false`). Curation
+   is preserved: a day whose commit subjects are unchanged and was previously
    marked `curated:true` keeps its hand-written `summary` — only the exact git
    counts refresh. New or changed days get a fresh heuristic summary flagged
    `curated:false` (the page shows a "review pending" marker on those).
-3. **Curate the `summary` of days flagged `curated:false`.** The summary is the
+3. **Check the tagger's coverage** before curating anything:
+   ```bash
+   node scripts/build-pulse-timeline.mjs --audit
+   ```
+   Target untagged **< ~15 %**; the tail is genuinely theme-less chore commits.
+   If a whole class of recent work has no subject at all (a new feature area
+   shipped since the last refresh), add or widen a pattern in
+   `scripts/pulse-themes.mjs` — Swedish forms alongside English — and re-run.
+   Never hand-edit the emitted data.
+4. **Curate the `summary` of days flagged `curated:false`.** The summary is the
    ONLY hand-edited field. For each such day in `public/pulse/data.json`, read
    its `subjects` and rewrite `summary` into one or two concise, factual
    sentences describing what actually shipped that day (not a raw subject
@@ -91,24 +111,73 @@ consistent at every resolution.
    `features`, `subjects`, or the `commits[]` array — those are exact from git
    and the script rewrites them. (Feature COUNTS are heuristic, not curated — if
    they're systematically off, fix `classify()` in the script, not the data.)
-4. **Verify** the JSON is valid and the page renders:
+   Finish with zero uncurated days:
    ```bash
-   node -e "JSON.parse(require('fs').readFileSync('public/pulse/data.json'))"
+   node -e "const d=require('./public/pulse/data.json');console.log(d.days.filter(x=>!x.curated).length)"
    ```
-   For a real render check, serve `public/` and open `/pulse/` in a browser
-   (Chromium is pre-installed — see the pattern in the session that built this,
-   or the live-verify skill). Confirm the Day/Week/Month toggle switches the
-   bars, tooltips show, and the summaries list the right periods.
-5. **Commit and push** to the branch the session is working on (per the repo's
-   git workflow — normally straight to `main`):
+5. **Regenerate the introspection artifacts.** All three datasets are tracked
+   files, so they ride in the source snapshot — skipping this fails `npm test`
+   on "source snapshot artifact matches the working tree":
    ```bash
-   git add scripts/build-pulse.mjs public/pulse/ public/pulse/data.json
-   git commit -m "pulse: refresh commit analytics through <date>"
-   git push origin main
+   npm run bundle && npm run bundle:rag
    ```
-   The deploy is git-connected, so the fresh `data.json` goes live with the
-   push. `data.json` is served `no-cache` (revalidate), so the new data appears
-   on the next page load.
+   (Add `npm run bundle:docs && npm run bundle:docs-rag` if the pass also
+   touched a `docs/` file.) Never hand-edit an artifact.
+6. **Gate:**
+   ```bash
+   npm test          # includes scripts/pulse-*.test.mjs + the artifact drift check
+   npm run typecheck # needs a root `npm install` first — node_modules is not pre-seeded
+   ```
+7. **Verify in a real browser** — the two pages are inline-JS static assets, so
+   nothing in the unit suite touches their rendering. Serve `public/` and drive
+   them (Chromium is at `/opt/pw-browsers/chromium`; the pre-canned recipe is
+   §"Verifying the pages in a browser" below). On `/pulse/` confirm the
+   Day/Week/Month toggle switches the bars, tooltips show and the summaries
+   list the right periods; on `/pulse/timeline.html` confirm the curve picker,
+   both view modes, and zoom/pan. If the pass changed picker behaviour, run its
+   own suite:
+   ```bash
+   cd tests && env -u HTTPS_PROXY BASIC_AUTH_USER=x BASIC_AUTH_PASS=y \
+     BASE_URL=http://127.0.0.1:8788 npx playwright test --project=mocked pulse-timeline
+   ```
+8. **Commit and push** on a feature branch cut from the latest `origin/main`
+   (per the repo git workflow), then merge or open a PR:
+   ```bash
+   git add public/pulse/ public/introspect/ scripts/ tests/
+   git commit -m "pulse: refresh commit analytics, feature timeline, and code-size snapshot through <date>"
+   git push -u origin <feature-branch>
+   ```
+   The deploy is git-connected, so the fresh datasets go live with the merge.
+   They are served `no-cache` (revalidate), so new data appears on the next
+   page load.
+
+### Verifying the pages in a browser
+
+No dev server is needed — both pages are static and fetch only their own JSON:
+
+```bash
+# 1. serve public/ (any static server; this one has no deps)
+node -e "const h=require('http'),f=require('fs'),pa=require('path');const r=pa.join(process.cwd(),'public');
+const t={'.html':'text/html','.json':'application/json','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.ico':'image/x-icon'};
+h.createServer((q,s)=>{let u=decodeURIComponent(new URL(q.url,'http://x').pathname);if(u.endsWith('/'))u+='index.html';
+const fp=pa.join(r,u);if(!fp.startsWith(r)||!f.existsSync(fp)||f.statSync(fp).isDirectory()){s.writeHead(404);return s.end()}
+s.writeHead(200,{'content-type':t[pa.extname(fp)]||'application/octet-stream'});f.createReadStream(fp).pipe(s)}).listen(8788)" &
+
+# 2. drive it — playwright lives in tests/, chromium at /opt/pw-browsers/chromium
+cd tests && npm install     # once
+```
+
+Two traps, both cost real time:
+
+- **The proxy kills a localhost run.** `tests/playwright.config.js` routes the
+  browser through `HTTPS_PROXY` when it is set, and a request to
+  `127.0.0.1:8788` then hangs with no output until the timeout. Run local
+  checks with `env -u HTTPS_PROXY -u https_proxy …`.
+- **The pinned Playwright expects a browser revision that isn't installed.**
+  `npx playwright install` is blocked; pass
+  `executablePath: "/opt/pw-browsers/chromium"` (the config already does — a
+  standalone probe script must too).
+
 
 ## Notes / gotchas
 
@@ -141,7 +210,8 @@ independent of `data.json` (nothing here needs re-curation):
 | `scripts/pulse-themes.test.mjs` | Runs in `npm test` (the glob now includes `scripts/*.test.mjs`). Guards distinct colours + representative subject-line → tag cases. |
 | `scripts/build-pulse-timeline.mjs` | `npm run pulse:timeline`. Tags every commit, emits `timeline.json` (`subjects[]` registry + per-commit `{t,a,r,s}` + per-subject totals). `--audit` prints tag coverage, writes nothing. |
 | `public/pulse/timeline.json` | The committed dataset (like `data.json`, it rides in the introspection source-snapshot, so re-run `npm run bundle`/`bundle:rag` after regenerating). |
-| `public/pulse/timeline.html` | Self-contained page: multi-line **or** streamgraph, weigh by commits **or** lines, wheel/drag/brush zoom-and-pan, legend toggles, tooltip, table fallback. Light + dark. |
+| `public/pulse/timeline.html` | Self-contained page: multi-line **or** streamgraph, weigh by commits **or** lines, wheel/drag/brush zoom-and-pan, the **curve picker** (below), tooltip, table fallback. Light + dark. |
+| `tests/e2e/pulse-timeline.spec.js` | The picker's regression guard, in Playwright's free `mocked` project (`/pulse/` is a public asset, so it needs no auth and no `/api/chat`). Eight cases: defaults, tap, hold-to-isolate, tap-a-curve, drag-never-selects, the bulk buttons, persistence, and the 44px touch target. |
 
 To refresh it: `npm run pulse:timeline`, eyeball `--audit` coverage (target
 untagged < ~15%; the tail is genuinely theme-less chore/meta commits), and if a
@@ -152,6 +222,45 @@ the legend + direct end-labels + the table view, so >8 simultaneously-visible
 series stays legible (the page defaults to the busiest six). The shallow session
 clone only sees recent days — `git fetch --unshallow origin` first for the full
 range. Same `/pulse/` allowlist covers it.
+
+### The curve picker (which curves are active)
+
+Twenty-five subjects cannot be read at once, so **choosing** is the page's
+primary interaction, not a refinement of it. The `Curves` block under the chart
+is both the legend and the control — the full rule, and the reasoning, is
+**UX-13** in the `ux-conventions` skill. What matters when editing this page:
+
+| Gesture | Effect |
+|---|---|
+| Tap a chip | adds / removes that curve |
+| Tap a curve **in the chart** | isolates that one subject (every series carries a paired transparent `.series-hit` path, ~22 viewBox units — a 2 px line is not a tap target) |
+| Press-and-hold a chip or curve (~500 ms), or right-click | same isolation; hold again restores the previous set |
+| Drag | pans. A press that moved never selects anything |
+| Top 6 / All / None / Invert | reset the whole set |
+
+Three things are load-bearing and easy to break:
+
+1. **`buildLegend()` runs ONCE; `syncLegend()` patches in place.** The chips
+   used to be re-`innerHTML`ed inside `redraw()`, which runs on every frame of
+   a pan — so a chip was destroyed under the finger mid-gesture. Never move
+   chip construction back into the redraw path.
+2. **Window-level listeners are registered once**, outside `wirePlot()` /
+   behind `brushWired`. Those functions re-run per render (the SVG element is
+   replaced), and re-adding `mousemove`/`mouseup` there stacks one handler per
+   frame. Element-local handlers on the fresh SVG are fine; window-level ones
+   are not.
+3. **Both long-press signals must stay wired.** Chrome/Android hijacks the
+   touch at the threshold and fires `contextmenu` instead of letting the timer
+   run; iOS suppresses `contextmenu` and rides the timer. And the release that
+   ends a hold is also a `click`, so it has to be swallowed or the isolation
+   toggles straight back off. Same trap as the composer knobs (UX-10).
+
+State (`{ curves, metric, mode }`) persists to `localStorage` under
+`dr.pulse.timeline.v1`, filtered against the live registry on load so a
+renamed or removed subject cannot restore an empty chart. **Renaming or
+dropping a subject key in `pulse-themes.mjs` silently drops it from every
+returning visitor's saved selection** — that is the intended degradation, but
+say so in the commit message.
 
 ## Sibling: the Code size snapshot (`/pulse` → "Code size" section)
 
