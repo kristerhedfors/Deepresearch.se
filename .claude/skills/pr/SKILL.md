@@ -91,6 +91,18 @@ it's cheap and the Step 2 freshness check will fail you if you guessed wrong.
 > file — so run the bundle AFTER your last content edit, then commit the artifacts
 > alongside it in Step 3.
 
+> **`git add -A` BEFORE you bundle when the branch adds NEW files.**
+> `bundle-source.mjs` walks `git ls-files`, which lists TRACKED files only — an
+> untracked new module is invisible to it. Bundle first and the artifacts omit
+> the new file, `npm test` passes locally (working tree and artifacts agree),
+> and then `git add` makes the file tracked and CI regenerates a DIFFERENT
+> snapshot: both freshness checks fail on a branch that was green a minute
+> earlier. (Hit 2026-07-25 on the doc-comment-gate branch.) Order that always
+> works: `git add -A` → `npm run bundle && npm run bundle:rag && npm run
+> bundle:docs && npm run bundle:docs-rag` → `git add -A` again → commit. And
+> run all FOUR bundles after a late fix: a source edit shifts the symbol lines
+> the docs corpus records, so a JS-only change can stale `docs-corpus.json`.
+
 ## Step 2 — the green gate (never skip)
 
 ```bash

@@ -1,6 +1,6 @@
-// The documentation reader's COMMENT MODE (owner directive, 2026-07-25) —
-// the Word convention: a mode switch between reading and commenting, and in
-// comment mode you mark a passage and write a note against it.
+// Documentation COMMENT MODE (owner directive, 2026-07-25) — the Word
+// convention: a mode control that switches between reading and commenting,
+// and in comment mode you mark a passage and write a note against it.
 //
 // This module is the UI half; the format, the anchoring and the doc⇄code
 // contract live in the pure core (docs-comments-core.js), and the storage is
@@ -10,11 +10,24 @@
 // back beside the passage: what the agent did (status), what it said (thread),
 // and whether the text has been REPLACED since (the anchor going stale).
 //
-// Administrative: the mode switch only appears for an admin identity. It is
-// loaded dynamically by docs-viewer.js for exactly that reason — /docs is a
-// public page, and a signed-out visitor never fetches this module.
+// SELF-CONTAINED BY DESIGN. The layer injects its own dropdown, rail and
+// styles as fixed-position chrome, so it mounts on ANY documentation page
+// without that page providing markup, CSS or a layout slot — /help/ (hand-
+// written HTML, no other JS), /docs/ (the corpus viewer), and whatever comes
+// next. The first cut hard-wired itself into one page's CSS grid, and the
+// owner's actual documentation page went without it.
+//
+// Administrative: reached only through doc-comment-gate.js, which mounts this
+// after /api/me returns an admin role. The module is deliberately NOT on the
+// public asset allowlist.
 
-import { docCommentsFor, buildDocCommentBody, isCommentableSelection, locateQuote, normalizeQuote } from "./docs-comments-core.js";
+import {
+  buildDocCommentBody,
+  docCommentsFor,
+  isCommentableSelection,
+  locateQuote,
+  normalizeQuote,
+} from "./docs-comments-core.js";
 import { docPageTag } from "./feedback-core.js";
 import { escapeHtml } from "./markdown.js";
 
@@ -26,48 +39,122 @@ const STATUS_LABEL = {
   declined: "declined",
 };
 
+const STYLES = `
+.dc-slot { position: fixed; top: .5rem; right: .6rem; z-index: 40;
+  font: 400 .78rem/1.4 system-ui, -apple-system, sans-serif;
+  display: flex; align-items: center; gap: .35rem;
+  background: rgba(127,127,127,.14); border-radius: 999px; padding: .2rem .5rem .2rem .7rem;
+  backdrop-filter: blur(6px); }
+.dc-slot label { opacity: .7; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; }
+.dc-slot select { font: inherit; padding: .16rem 1.3rem .16rem .4rem; border-radius: 999px;
+  border: 1px solid rgba(127,127,127,.4); background: rgba(255,255,255,.9); color: #16202c;
+  cursor: pointer; -webkit-appearance: none; appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='7'><path d='M1 1l4 4 4-4' stroke='%23555' fill='none' stroke-width='1.6'/></svg>");
+  background-repeat: no-repeat; background-position: right .45rem center; }
+.dc-count { opacity: .75; font-variant-numeric: tabular-nums; }
+
+body.dc-commenting .dc-root { cursor: text; }
+body.dc-commenting .dc-root a { pointer-events: none; }
+.dc-root mark.dc-mark { background: rgba(240,173,78,.35); color: inherit;
+  border-bottom: 2px solid #f0ad4e; border-radius: 2px; padding: 0 1px; cursor: pointer; }
+.dc-root mark.dc-mark.dc-flash { background: rgba(240,173,78,.85); transition: background .3s; }
+
+.dc-rail { position: fixed; top: 0; right: 0; bottom: 0; width: min(340px, 88vw); z-index: 39;
+  overflow-y: auto; padding: 3rem .7rem 2rem; box-sizing: border-box;
+  background: rgba(248,249,251,.97); border-left: 1px solid rgba(127,127,127,.3);
+  font: 400 .82rem/1.5 system-ui, -apple-system, sans-serif; color: #16202c; }
+.dc-rail[hidden] { display: none; }
+@media (prefers-color-scheme: dark) {
+  .dc-rail { background: rgba(18,24,33,.97); color: #dbe4ee; }
+  .dc-slot select { background-color: rgba(30,38,50,.95); color: #dbe4ee; }
+}
+.dc-railhead { font-size: .68rem; text-transform: uppercase; letter-spacing: .06em;
+  opacity: .65; margin: 0 0 .6rem; }
+.dc-empty { opacity: .7; }
+.dc-card, .dc-composer { background: rgba(127,127,127,.09); border: 1px solid rgba(127,127,127,.25);
+  border-radius: 10px; padding: .6rem .7rem; margin-bottom: .7rem; }
+.dc-card { cursor: pointer; }
+.dc-card.dc-stale-card { border-style: dashed; opacity: .85; }
+.dc-composer { border-color: #2563eb; cursor: auto; }
+.dc-cardhead { display: flex; justify-content: space-between; align-items: center; margin-bottom: .4rem; }
+.dc-status { font-size: .62rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+  padding: .08rem .38rem; border-radius: 999px; background: rgba(37,99,235,.16); color: #2563eb; }
+.dc-status.resolved, .dc-status.declined { background: rgba(90,160,110,.2); color: #3d8f5b; }
+.dc-date { font-size: .7rem; opacity: .6; }
+.dc-quote { border-left: 3px solid #f0ad4e; padding: .1rem .5rem; margin: 0 0 .45rem;
+  opacity: .8; font-style: italic; }
+.dc-hint { font-size: .74rem; opacity: .7; margin: .1rem 0 .5rem; }
+.dc-note { white-space: pre-wrap; }
+.dc-stale { font-size: .74rem; color: #b4690e; margin: .2rem 0 .45rem; }
+.dc-msg { margin-top: .5rem; padding: .4rem .5rem; border-radius: 8px;
+  background: rgba(127,127,127,.12); white-space: pre-wrap; }
+.dc-msg.dc-agent { background: rgba(37,99,235,.12); }
+.dc-who { display: block; font-size: .64rem; text-transform: uppercase; letter-spacing: .05em; opacity: .6; }
+.dc-composer textarea, .dc-reply textarea { width: 100%; font: inherit; padding: .4rem .5rem;
+  resize: vertical; box-sizing: border-box; border: 1px solid rgba(127,127,127,.4);
+  border-radius: 8px; background: rgba(255,255,255,.75); color: inherit; }
+@media (prefers-color-scheme: dark) {
+  .dc-composer textarea, .dc-reply textarea { background: rgba(0,0,0,.25); }
+}
+.dc-actions { display: flex; align-items: center; gap: .4rem; margin-top: .4rem; flex-wrap: wrap; }
+.dc-actions button { font: inherit; font-size: .76rem; padding: .22rem .6rem; cursor: pointer;
+  border: 1px solid rgba(127,127,127,.4); border-radius: 7px;
+  background: rgba(127,127,127,.12); color: inherit; }
+.dc-actions .dc-send { background: #2563eb; border-color: #2563eb; color: #fff; font-weight: 600; }
+.dc-actions .dc-msgline { font-size: .74rem; opacity: .7; background: none; padding: 0; margin: 0; }
+.dc-reply { margin-top: .5rem; }
+`;
+
 /**
- * Mount comment mode onto the docs viewer.
- * @param {{
- *   docEl: HTMLElement, railEl: HTMLElement, toggleEl: HTMLElement,
- *   currentPath: () => string, currentText: () => string,
- * }} ctx
+ * Mount comment mode onto a documentation page.
+ * @param {{ rootEl: HTMLElement, pathOf: () => string, textOf: () => string }} ctx
  */
 export function mountDocComments(ctx) {
-  const { docEl, railEl, toggleEl } = ctx;
+  const { rootEl } = ctx;
   let commenting = false;
   /** @type {any[]} */
   let comments = [];
   /** @type {{ quote: string, section: string } | null} */
   let pending = null;
 
-  toggleEl.hidden = false;
-  toggleEl.innerHTML = `
-    <span class="mode-label">Mode</span>
-    <button type="button" class="mode-btn active" data-mode="read">Read only</button>
-    <button type="button" class="mode-btn" data-mode="comment">Comment</button>`;
+  rootEl.classList.add("dc-root");
+  const style = document.createElement("style");
+  style.textContent = STYLES;
+  document.head.appendChild(style);
 
-  toggleEl.addEventListener("click", (e) => {
-    const btn = /** @type {HTMLElement} */ (e.target).closest("button.mode-btn");
-    if (!btn) return;
-    setMode(btn.getAttribute("data-mode") === "comment");
-  });
+  // The mode control is a DROPDOWN (owner, 2026-07-25) — it matches the chat
+  // mode selector's shape, and a native <select> is the one control that is
+  // comfortable on a phone.
+  const slot = document.createElement("div");
+  slot.className = "dc-slot";
+  slot.innerHTML =
+    '<label for="dc-mode">Mode</label>' +
+    '<select id="dc-mode"><option value="read">Read only</option><option value="comment">Comment</option></select>' +
+    '<span class="dc-count"></span>';
+  document.body.appendChild(slot);
+  const select = /** @type {HTMLSelectElement} */ (slot.querySelector("select"));
+  const countEl = /** @type {HTMLElement} */ (slot.querySelector(".dc-count"));
+
+  const rail = document.createElement("aside");
+  rail.className = "dc-rail";
+  rail.hidden = true;
+  document.body.appendChild(rail);
+
+  select.addEventListener("change", () => setMode(select.value === "comment"));
 
   /** @param {boolean} on */
   function setMode(on) {
     commenting = on;
-    for (const b of toggleEl.querySelectorAll("button.mode-btn")) {
-      b.classList.toggle("active", (b.getAttribute("data-mode") === "comment") === on);
-    }
-    document.body.classList.toggle("commenting", on);
+    select.value = on ? "comment" : "read";
+    document.body.classList.toggle("dc-commenting", on);
     if (!on) closeComposer();
     renderRail();
   }
 
   // ---- selection → composer ------------------------------------------------
 
-  docEl.addEventListener("mouseup", onSelect);
-  docEl.addEventListener("touchend", onSelect);
+  rootEl.addEventListener("mouseup", onSelect);
+  rootEl.addEventListener("touchend", onSelect);
 
   function onSelect() {
     if (!commenting) return;
@@ -75,23 +162,22 @@ export function mountDocComments(ctx) {
     setTimeout(() => {
       const sel = window.getSelection();
       const text = sel ? sel.toString() : "";
-      if (!isCommentableSelection(text) || !sel || !docEl.contains(sel.anchorNode)) return;
+      if (!isCommentableSelection(text) || !sel || !rootEl.contains(sel.anchorNode)) return;
       pending = { quote: text, section: headingAbove(sel.anchorNode) };
       openComposer();
     }, 0);
   }
 
   /**
-   * The nearest heading at or above a node — the section a passage lives in.
-   * Stored with the comment so a quote that occurs more than once still lands
-   * in the right place.
+   * The nearest heading at or above a node — the section a passage lives in,
+   * stored so a quote occurring twice still lands in the right place.
    * @param {Node | null} node
    * @returns {string}
    */
   function headingAbove(node) {
     /** @type {Element | null} */
     let el = node instanceof Element ? node : node?.parentElement || null;
-    while (el && el !== docEl) {
+    while (el && el !== rootEl) {
       for (let sib = el.previousElementSibling; sib; sib = sib.previousElementSibling) {
         if (/^H[1-6]$/.test(sib.tagName)) return normalizeQuote(sib.textContent);
       }
@@ -105,6 +191,7 @@ export function mountDocComments(ctx) {
   function openComposer() {
     closeComposer();
     if (!pending) return;
+    rail.hidden = false;
     const box = document.createElement("div");
     box.className = "dc-composer";
     box.innerHTML = `
@@ -115,17 +202,17 @@ export function mountDocComments(ctx) {
       <div class="dc-actions">
         <button type="button" class="dc-send">Comment</button>
         <button type="button" class="dc-cancel">Cancel</button>
-        <span class="dc-msg"></span>
+        <span class="dc-msgline"></span>
       </div>`;
-    railEl.prepend(box);
+    rail.prepend(box);
     const ta = /** @type {HTMLTextAreaElement} */ (box.querySelector("textarea"));
     ta.focus();
-    box.querySelector(".dc-cancel")?.addEventListener("click", closeComposer);
+    box.querySelector(".dc-cancel")?.addEventListener("click", () => { closeComposer(); renderRail(); });
     box.querySelector(".dc-send")?.addEventListener("click", () => submit(box, ta));
   }
 
   function closeComposer() {
-    railEl.querySelector(".dc-composer")?.remove();
+    rail.querySelector(".dc-composer")?.remove();
   }
 
   /**
@@ -134,7 +221,7 @@ export function mountDocComments(ctx) {
    */
   async function submit(box, ta) {
     const note = ta.value.trim();
-    const msg = /** @type {HTMLElement} */ (box.querySelector(".dc-msg"));
+    const msg = /** @type {HTMLElement} */ (box.querySelector(".dc-msgline"));
     if (!note) {
       msg.textContent = "Write a comment first.";
       return;
@@ -142,13 +229,18 @@ export function mountDocComments(ctx) {
     const btn = /** @type {HTMLButtonElement} */ (box.querySelector(".dc-send"));
     btn.disabled = true;
     msg.textContent = "Sending…";
-    const path = ctx.currentPath();
+    const path = ctx.pathOf();
     try {
       const res = await fetch("/api/feedback", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          comment: buildDocCommentBody({ path, section: pending?.section || "", quote: pending?.quote || "", note }),
+          comment: buildDocCommentBody({
+            path,
+            section: pending?.section || "",
+            quote: pending?.quote || "",
+            note,
+          }),
           page: docPageTag(path),
         }),
       });
@@ -166,7 +258,7 @@ export function mountDocComments(ctx) {
   // ---- the rail ------------------------------------------------------------
 
   async function load() {
-    const path = ctx.currentPath();
+    const path = ctx.pathOf();
     if (!path) {
       comments = [];
       renderRail();
@@ -175,7 +267,7 @@ export function mountDocComments(ctx) {
     try {
       const res = await fetch(`/api/feedback?page=${encodeURIComponent(docPageTag(path))}`);
       const entries = res.ok ? (await res.json()).feedback || [] : [];
-      comments = docCommentsFor(entries, { path, text: ctx.currentText() });
+      comments = docCommentsFor(entries, { path, text: ctx.textOf() });
     } catch {
       comments = [];
     }
@@ -183,21 +275,19 @@ export function mountDocComments(ctx) {
   }
 
   function renderRail() {
-    // The rail claims layout space only when it has something to show:
-    // reading a document with no comments looks exactly as it did before.
-    railEl.hidden = !commenting && !comments.length;
-    document.body.classList.toggle("has-rail", !railEl.hidden);
-    const composer = railEl.querySelector(".dc-composer");
-    const head = `<p class="dc-railhead">Comments${comments.length ? ` (${comments.length})` : ""}</p>`;
+    countEl.textContent = comments.length ? `${comments.length} 💬` : "";
+    // The rail takes screen space only when there is something to show.
+    rail.hidden = !commenting && !comments.length;
+    const composer = rail.querySelector(".dc-composer");
     const body = comments.length
       ? comments.map(renderComment).join("")
       : `<p class="dc-empty">${
           commenting
-            ? "Mark a passage in the document to comment on it."
+            ? "Mark a passage in the page to comment on it."
             : "No comments on this document."
         }</p>`;
-    railEl.innerHTML = head + body;
-    if (composer) railEl.prepend(composer);
+    rail.innerHTML = `<p class="dc-railhead">Comments${comments.length ? ` (${comments.length})` : ""}</p>` + body;
+    if (composer) rail.prepend(composer);
     wireCards();
     paintHighlights();
   }
@@ -207,21 +297,21 @@ export function mountDocComments(ctx) {
     const status = STATUS_LABEL[c.status] || c.status;
     const stale =
       c.hit.match === "stale"
-        ? `<p class="dc-stale">The text this comments on has been replaced. Read the reply below against the current wording.</p>`
+        ? '<p class="dc-stale">The text this comments on has been replaced. Read the reply below against the current wording.</p>'
         : c.hit.match === "partial"
-          ? `<p class="dc-stale dc-partial">The commented text has been edited since — only part of it still matches.</p>`
+          ? '<p class="dc-stale">The commented text has been edited since — only part of it still matches.</p>'
           : "";
     const thread = (c.messages || [])
       .map(
         (m) => `
-        <div class="dc-msg ${m.author === "agent" ? "agent" : "user"}">
+        <div class="dc-msg ${m.author === "agent" ? "dc-agent" : ""}">
           <span class="dc-who">${m.author === "agent" ? "Agent" : "You"}</span>
           ${escapeHtml(m.body)}
         </div>`,
       )
       .join("");
     return `
-      <div class="dc-card${c.hit.match === "stale" ? " stale" : ""}" data-cid="${c.id}">
+      <div class="dc-card${c.hit.match === "stale" ? " dc-stale-card" : ""}" data-cid="${c.id}">
         <div class="dc-cardhead">
           <span class="dc-status ${c.status}">${escapeHtml(status)}</span>
           <span class="dc-date">${escapeHtml(new Date(c.created_at).toLocaleDateString())}</span>
@@ -230,24 +320,24 @@ export function mountDocComments(ctx) {
         ${stale}
         <div class="dc-note">${escapeHtml(c.anchor.note)}</div>
         ${thread}
-        <div class="dc-cardactions">
-          <button type="button" class="dc-replybtn" data-reply="${c.id}">Reply</button>
-          <button type="button" class="dc-delbtn" data-del="${c.id}">Delete</button>
+        <div class="dc-actions">
+          <button type="button" data-reply="${c.id}">Reply</button>
+          <button type="button" data-del="${c.id}">Delete</button>
         </div>
       </div>`;
   }
 
   function wireCards() {
-    for (const card of railEl.querySelectorAll(".dc-card")) {
+    for (const card of rail.querySelectorAll(".dc-card")) {
       card.addEventListener("click", (e) => {
         if (/** @type {HTMLElement} */ (e.target).closest("button")) return;
         focusComment(Number(card.getAttribute("data-cid")));
       });
     }
-    for (const btn of railEl.querySelectorAll("[data-reply]")) {
+    for (const btn of rail.querySelectorAll("[data-reply]")) {
       btn.addEventListener("click", () => openReply(/** @type {HTMLElement} */ (btn)));
     }
-    for (const btn of railEl.querySelectorAll("[data-del]")) {
+    for (const btn of rail.querySelectorAll("[data-del]")) {
       btn.addEventListener("click", async () => {
         /** @type {HTMLButtonElement} */ (btn).disabled = true;
         try {
@@ -264,8 +354,9 @@ export function mountDocComments(ctx) {
     if (!card || card.querySelector(".dc-reply")) return;
     const box = document.createElement("div");
     box.className = "dc-reply";
-    box.innerHTML = `<textarea rows="2" placeholder="Reply…"></textarea>
-      <div class="dc-actions"><button type="button" class="dc-send">Send</button><span class="dc-msg"></span></div>`;
+    box.innerHTML =
+      '<textarea rows="2" placeholder="Reply…"></textarea>' +
+      '<div class="dc-actions"><button type="button" class="dc-send">Send</button><span class="dc-msgline"></span></div>';
     card.appendChild(box);
     const ta = /** @type {HTMLTextAreaElement} */ (box.querySelector("textarea"));
     ta.focus();
@@ -284,36 +375,35 @@ export function mountDocComments(ctx) {
         await load();
       } catch {
         send.disabled = false;
-        /** @type {HTMLElement} */ (box.querySelector(".dc-msg")).textContent = "Could not send.";
+        /** @type {HTMLElement} */ (box.querySelector(".dc-msgline")).textContent = "Could not send.";
       }
     });
   }
 
   /** @param {number} id */
   function focusComment(id) {
-    const mark = docEl.querySelector(`mark.dc-mark[data-cid="${id}"]`);
+    const mark = rootEl.querySelector(`mark.dc-mark[data-cid="${id}"]`);
     if (!mark) return;
     mark.scrollIntoView({ block: "center", behavior: "smooth" });
-    mark.classList.add("flash");
-    setTimeout(() => mark.classList.remove("flash"), 1200);
+    mark.classList.add("dc-flash");
+    setTimeout(() => mark.classList.remove("dc-flash"), 1200);
   }
 
   // ---- highlighting the commented passages ---------------------------------
 
   /**
-   * Wrap each located quote in the rendered document. Works over the
-   * document's TEXT NODES with the same whitespace normalization the core
-   * matches with, so a quote taken from rendered text still lands when the
-   * Markdown wrapped it across lines.
+   * Wrap each located quote in the rendered document. Works over the page's
+   * TEXT NODES with the same whitespace normalization the core matches with,
+   * so a quote taken from rendered text still lands when the source wrapped it
+   * across lines.
    */
   function paintHighlights() {
-    for (const m of docEl.querySelectorAll("mark.dc-mark")) {
+    for (const m of rootEl.querySelectorAll("mark.dc-mark")) {
       const parent = m.parentNode;
       if (!parent) continue;
       parent.replaceChild(document.createTextNode(m.textContent || ""), m);
       parent.normalize();
     }
-    if (!comments.length) return;
     for (const c of comments) {
       if (c.hit.match === "stale") continue;
       const range = rangeForQuote(c.anchor.quote, c.anchor.section, c.hit.length);
@@ -339,15 +429,16 @@ export function mountDocComments(ctx) {
    * @returns {Range | null}
    */
   function rangeForQuote(quote, section, length) {
-    // Walk the text nodes once, building the same normalized string the core
-    // searched, and remember which node each normalized offset came from.
-    const walker = document.createTreeWalker(docEl, NodeFilter.SHOW_TEXT);
+    const walker = document.createTreeWalker(rootEl, NodeFilter.SHOW_TEXT);
     let norm = "";
     /** @type {Array<{node: Text, offset: number}>} */
     const map = [];
     let node;
     let lastWasSpace = true;
     while ((node = /** @type {Text} */ (walker.nextNode()))) {
+      // The rail lives outside rootEl, but a highlight must never be painted
+      // into our own injected chrome if a page ever nests it.
+      if (node.parentElement?.closest(".dc-rail, .dc-slot")) continue;
       const raw = node.data;
       for (let i = 0; i < raw.length; i++) {
         const isSpace = /\s/.test(raw[i]);
@@ -361,8 +452,6 @@ export function mountDocComments(ctx) {
         lastWasSpace = isSpace;
       }
     }
-    // Trailing space in the normalized string has no counterpart in the
-    // core's trimmed search string; the leading one was skipped above.
     const hit = locateQuote(norm, quote, { section });
     if (hit.match === "stale") return null;
     const start = map[hit.index];
@@ -374,5 +463,6 @@ export function mountDocComments(ctx) {
     return range;
   }
 
+  load();
   return { onDocRendered: load };
 }

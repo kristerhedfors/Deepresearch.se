@@ -114,16 +114,22 @@ describe("isPublicAsset", () => {
     }
   });
 
-  test("every module STATICALLY reachable from the /docs page is public", () => {
-    // /docs is a public page, so the same breakage class as /cure applies: a
+  for (const page of ["docs/index.html", "help/index.html"]) {
+   test(`every module STATICALLY reachable from /${page.replace("/index.html", "")}/ is public`, () => {
+    // Both are public pages, so the same breakage class as /cure applies: a
     // static import added without an allowlist entry 401s for a signed-out
-    // visitor and the whole documentation reader goes inert. Derived from the
-    // real files, static imports only — comment mode is loaded dynamically on
-    // purpose (see the test below).
+    // visitor and the documentation page goes inert. Derived from the real
+    // files, static imports only — the comment LAYER is loaded dynamically on
+    // purpose (see the test below), but the gate that loads it is static and
+    // must be public.
     const pub = fileURLToPath(new URL("../public", import.meta.url));
-    const html = readFileSync(join(pub, "docs/index.html"), "utf8");
+    const html = readFileSync(join(pub, page), "utf8");
     const queue = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)].map((m) => m[1]);
-    assert.ok(queue.length >= 1, "found no <script src> entries in /docs/index.html");
+    // An inline module script (the one-line comment-mode opt-in) counts too.
+    for (const m of html.matchAll(/<script type="module">([\s\S]*?)<\/script>/g)) {
+      for (const im of m[1].matchAll(/from\s+["']([^"']+)["']/g)) queue.push(im[1]);
+    }
+    assert.ok(queue.length >= 1, `found no module entries in /${page}`);
     const seen = new Set();
     while (queue.length) {
       const p = queue.shift();
@@ -148,18 +154,21 @@ describe("isPublicAsset", () => {
         queue.push(spec.startsWith("/") ? spec : posix.normalize(posix.join(posix.dirname(p), spec)));
       }
     }
-  });
+   });
+  }
 
   test("the docs comment layer is NOT public — comment mode is administrative", () => {
     // Comment mode files instructions into the feedback pipeline, so it exists
-    // only for an admin identity. docs-viewer.js dynamic-imports it AFTER
-    // /api/me confirms the role; a signed-out visitor never requests it, and
-    // the gate stays real rather than cosmetic.
+    // only for an admin identity. The GATE is public (both documentation pages
+    // import it statically); it dynamic-imports the layer only AFTER /api/me
+    // confirms the role, so the gate stays real rather than cosmetic.
     assert.equal(isPublicAsset(u("/js/docs-comments.js"), "GET"), false);
     assert.equal(isPublicAsset(u("/js/docs-comments-core.js"), "GET"), false);
-    // The reader itself stays public.
+    assert.equal(isPublicAsset(u("/js/doc-comment-gate.js"), "GET"), true);
+    // Both documentation surfaces stay public.
     assert.equal(isPublicAsset(u("/js/docs-viewer.js"), "GET"), true);
     assert.equal(isPublicAsset(u("/docs/"), "GET"), true);
+    assert.equal(isPublicAsset(u("/help/"), "GET"), true);
   });
 
   test("vault.js (DRS store/load) is NOT public — only the pure core is", () => {
