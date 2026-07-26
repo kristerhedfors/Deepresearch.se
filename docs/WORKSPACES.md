@@ -105,10 +105,17 @@ vendor mesh to audit. §4.7 states that bargain in full.
 Written for the person deciding, not for the person implementing. §2.8 is the
 same comparison in system terms.
 
-This section is the SOURCE for the in-app chooser: both help pages carry a
-compressed version of it ("Se/cure or Se/rver: which workspace?" in
-`public/help/index.html` and `public/cure/help/index.html`, pattern UX-12).
-Change them in the same commit.
+This section is the SOURCE for the in-app comparison, which lives in TWO
+places and only two (owner directive, 2026-07-26 — a third copy is what
+drifts):
+
+- **`/architecture/`** carries the paired tables (privacy, capabilities,
+  workspaces) — the page to send someone who is deciding.
+- **`/cure/help/`** carries the compressed point-by-point chooser
+  ("Se/cure or Se/rver: which workspace?", pattern UX-12).
+
+`/help/` deliberately does NOT: it is the signed-in app's overview and links
+to both. Change this section and those two pages in the same commit.
 
 ### 2.1 The short answer
 

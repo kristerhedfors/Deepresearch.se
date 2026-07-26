@@ -590,7 +590,7 @@ Selection-driven, no text routing, so no EN/SV parity applies.
 ## UX-12 — A tier comparison is one question per row, both answers direct-labeled, stacked on a phone
 
 **When** a surface compares Se/cure and Se/rver — the workspace chooser on
-both help pages is the canonical case — **then** it renders as one row per
+`/cure/help/` is the canonical case — **then** it renders as one row per
 QUESTION the reader actually has ("who can read it", "who pays for the AI",
 "if you lose the password"), with each tier's answer in its own cell carrying
 the tier's NAME as a bold prefix, Se/cure first. On a phone the row stacks to
@@ -618,11 +618,17 @@ why to use which"*.)
    new `.sl` context. Both help pages' scoped `-.04em` was re-measured at
    weight 700 (`node scripts/slash-gap.mjs --weights 700 --margin -0.04`:
    every font row ok, worst side +0.043em vs the 0.03em floor).
+6. **One copy of the comparison per audience** (owner directive, 2026-07-26).
+   The paired tables belong to `/architecture/` (the design audience) and the
+   point-by-point chooser to `/cure/help/` (the deciding audience). `/help/`
+   is the signed-in app's OVERVIEW — it opens from the absolute starting
+   point and links onward — so it carries no `.cmp` block at all. Do not
+   "restore" one there; a third copy is what drifts.
 
 **Canonical implementation:** the `.cmp` / `.cmp-row` / `.cmp-q` / `.cmp-a`
-block in `public/help/index.html` and `public/cure/help/index.html` ("Se/cure
-or Se/rver: which workspace?"). The written source both pages compress is
-`docs/WORKSPACES.md` §2 — update that section and the two pages together.
+block in `public/cure/help/index.html` ("Se/cure or Se/rver: which
+workspace?"). The written source it compresses is `docs/WORKSPACES.md` §2 —
+update that section, this page, and `/architecture/`'s paired tables together.
 
 ---
 
