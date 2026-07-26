@@ -111,7 +111,7 @@ way:
     handler.
   - **Priority in `send()`:** a configured browser-direct backend wins over the
     server grant, which wins over nothing (offline harvest). All fail-soft.
-  - **Providers must be CORS-capable anyway** in DRC (OpenAI/Anthropic/Groq/
+  - **Providers must be CORS-capable anyway** in DRC (OpenAI, Anthropic, Groq,
     Berget, and any custom endpoint the user adds), so a
     CORS-enabled search service fits the tier's existing constraint.
 

@@ -462,12 +462,12 @@ providers ONLY — OpenAI, Anthropic, Groq and Berget (Berget's CORS
 confirmed live 2026-07-11; Anthropic joined 2026-07-26 and speaks its own
 Messages API, adapted at the wire by `wire: "anthropic"` — the browser
 mirror of `src/anthropic.js`, with `anthropic-dangerous-direct-browser-access`
-as the header that makes the browser-direct call legal), callable directly
-from the browser
-with the user's key — PLUS the keyless `local` entry (2026-07-15,
+as the header CORS requires before the browser-direct call is permitted),
+callable directly from the browser with the user's key — PLUS the keyless
+`local` entry (2026-07-15,
 Forever Agent §8 pick #2), which is ALSO the "any OpenAI-compatible
-endpoint" escape hatch that keeps the four named providers from being the
-boundary: usually the user's OWN server
+endpoint" escape hatch, so the four named providers are not the boundary:
+usually the user's OWN server
 (Ollama / LM Studio / llama.cpp), "configured" by its base URL alone
 (`configuredDrcProviders`' keyless generalization; the URL lives in the
 sealed state as `localBaseUrl`, set in the /cure settings drawer with a
