@@ -108,6 +108,58 @@ deliberately small. Workers are spawned once and reused across rounds, so each
 pays the model compile only once, and members are not pinned to a worker —
 generation is stateless, so a task queue beats affinity.
 
+### The memory budget (feedback #26, 2026-07-26)
+
+Two Safari tab crashes "after some thinking" were reported against orchestrator
+mode. A renderer OOM is the expected signature, and N concurrent in-browser
+models is by far the largest allocation this app makes, so the worker count is
+now treated as a budget rather than a parameter:
+
+- **The pool is sized against the model that is actually cached here.** The
+  earlier sizing divided reported RAM by the model's footprint but fell back to
+  a fixed two members when the browser reported nothing — and Safari and
+  Firefox report nothing. A 1.2 GB build therefore got the same pool as a
+  300 MB one. Now the unknown case divides an assumed budget
+  (`ASSUMED_MEMORY_BUDGET_GB`) by the model's runtime footprint
+  (`MODEL_RUNTIME_FACTOR` over its bytes on disk), so the bound can only fall
+  as the model grows.
+- **Live heap pressure tightens it further** where the browser measures one
+  (`heapUsedRatio` over Chrome's `performance.memory`): above 70 % the pool
+  halves, above 85 % it runs one member at a time. An absent measurement is
+  read as unknown, never as "plenty".
+- **One run at a time.** A send calls `stopSwarms()` first, so a superseded
+  swarm's workers are terminated instead of decoding alongside their
+  replacements. Nothing used to stop a swarm whose turn was abandoned.
+- **One pool per run**, shared by every swarm node in the plan, and **at most
+  one swarm node per plan** (`normalizeWorkflow` downgrades the extras to
+  `custom`; `validateWorkflow` reports them). The prompt already asked for one
+  — this is the bound.
+- **An abandoned generation's worker is retired, not reused.** A deadline
+  rejects the wrapper without stopping the decode, so the runtime aborts what
+  it can, terminates that worker and puts a fresh one in its slot.
+- The **singleton engine's** resident model is freed before the pool spawns
+  (`unloadOnDeviceModel`), a worker that reports an uncaught error is
+  terminated rather than just dereferenced, and a member that crashes twice
+  (`MEMBER_CRASH_BUDGET`) stops respawning.
+- `pagehide` terminates everything.
+
+### Catching what can be caught
+
+A renderer OOM kills the page before any handler runs, so the catch is layered:
+
+1. A durable **breadcrumb** (`ONDEVICE_CRASH_KEY` in `localStorage`) is written
+   *before* the workers spawn and updated as the phase advances — the only
+   thing that survives a tab the browser kills. A clean finish clears it.
+2. `window` `error` / `unhandledrejection` guards for the failures that leave
+   the page alive; a memory-class one stamps the breadcrumb and ends the swarm
+   early rather than buying another round of allocations.
+3. On the next request, `swarmCrashDiag()` reads the crumb back (once) as
+   counters for the existing `client_diag` channel: `died`, the phase and
+   round it stopped in, the member/concurrency counts, the model size in MB
+   and a failure class. **Counters and classes only** — invariant 4: no task
+   text, no node ids (they are slugified from plan names, which come from the
+   user's request), no drafts.
+
 ## Where it runs, and why the request is split in two
 
 The orchestrator executes server-side, the swarm executes in the browser, and
@@ -166,7 +218,25 @@ disagreement rather than dropping it.
 | `SWARM_DRAFT_MAX_TOKENS` | 320 | a draft is a paragraph |
 | `SWARM_CRITIQUE_MAX_TOKENS` | 160 | three lines |
 | `MEMBER_DEADLINE_MS` | 300 s | covers the first call's model compile on a phone |
-| `SWARM_DEADLINE_MS` | 900 s | the node's own ceiling |
+| `SWARM_DEADLINE_MS` | 900 s | the node's own ceiling, now enforced per node |
+| swarm nodes per plan | 1 | every one of them spawns model instances |
+| `MEMBER_CRASH_BUDGET` | 2 | a crash that repeats is the device saying no |
+| `ASSUMED_MEMORY_BUDGET_GB` | 1.0 | what a browser that hides its RAM is allowed to bet |
+| `HEAP_TIGHT` / `HEAP_STOP` | 0.7 / 0.85 | live heap fill that halves the pool / drops it to one |
+
+### Owed wiring (stream.js)
+
+`swarm-runtime.js` exposes the seams, but the send path does not use all of
+them yet:
+
+- `runSwarmNodes` is still called **without a `signal`**, so an aborted send is
+  only stopped by the supersession rule (the next send), not by the user's Stop
+  button. Pass the send's `AbortSignal`.
+- `stopSwarms()` should be called from the abort path and on a chat-mode
+  switch, not only implicitly by the next run.
+- `swarmCrashDiag()` should ride along in `payload.client_diag` (as `sw`), and
+  `sanitizeClientDiag` (`src/validation.js`) has to whitelist that block before
+  it reaches the chat log.
 
 ## Still owed (live-verify)
 

@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h52;
+  --css-version: h53;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -1386,6 +1386,31 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   box-shadow: 0 6px 24px rgba(4, 30, 60, .25);
 }
 #searchpop[hidden] { display: none; }
+
+/* The slash-command typeahead (UX-13 — public/js/slash-menu.js), mounted in
+   #composer on both tiers. Same glass-popover shape as #searchpop above,
+   anchored across the composer's width so the descriptions read as one line
+   each; the Se/cure copy of these rules lives in cure/drc.css because the two
+   stylesheets never load together. */
+.slash-menu {
+  position: absolute; bottom: calc(100% + .45rem); left: 1.25rem; right: 1.25rem;
+  max-width: 460px; z-index: 6;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: .3rem; overflow: hidden;
+  box-shadow: 0 6px 24px rgba(4, 30, 60, .25);
+}
+.slash-menu[hidden] { display: none; }
+.slash-item {
+  display: flex; flex-direction: column; gap: .1rem;
+  width: 100%; text-align: left; cursor: pointer;
+  background: transparent; border: 0; border-radius: 7px;
+  padding: .4rem .5rem; color: inherit; font: inherit;
+}
+.slash-item.active { background: rgba(13, 79, 160, .12); }
+.slash-name { font-size: .84rem; font-weight: 600; }
+.slash-args { font-weight: 400; opacity: .55; }
+.slash-desc { font-size: .74rem; line-height: 1.4; opacity: .78; }
 
 /* The search-SOURCE picker inside a knob popover (public/js/search-source.js):
    WHO runs the searches — Exa or this site's own Worker. Shared shape across
