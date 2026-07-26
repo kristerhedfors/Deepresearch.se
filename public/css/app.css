@@ -472,7 +472,14 @@ body.term-fg .brand {
 /* Outrospection's header tag — the outward feed mode (chat-mode.js toggles
    `outro-mode`). Same treatment, in ink over newsprint rather than a light
    tag over a saturated field: this theme's field is PAPER, so a pale tag
-   would vanish. */
+   would vanish.
+
+   Unlike the other three it is an ANCHOR to /outrospect/ (owner feedback #28,
+   2026-07-26): this mode answers FROM that page's feed, so the shortest useful
+   thing a reader can do next is open it. It therefore re-enables pointer
+   events (the whole <header> is pointer-events: none, its interactive strips
+   opt back in — see .header-right below) and wears a dotted masthead underline
+   so it reads as tappable rather than as a label that happens to be blue. */
 .outro-tag {
   display: none;
   align-self: center;
@@ -483,7 +490,14 @@ body.term-fg .brand {
   text-transform: lowercase;
   color: #6d3228;
   text-shadow: 0 1px 1px rgba(255, 253, 248, .8);
-  pointer-events: none;
+  text-decoration: none;
+  border-bottom: 1px dotted rgba(109, 50, 40, .55);
+  padding-bottom: .05rem;
+  pointer-events: auto;
+}
+.outro-tag:hover, .outro-tag:focus-visible {
+  color: #8f1d14;
+  border-bottom-color: rgba(143, 29, 20, .9);
 }
 :root.outro-mode .outro-tag { display: block; }
 .header-right, #composer { pointer-events: auto; }
@@ -617,6 +631,15 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
 .tool-btn:hover { background: var(--panel-2); border-color: var(--border); }
 .tool-btn.active { background: var(--panel-2); border-color: var(--border); color: var(--text); }
 .empty { color: var(--muted); text-align: center; margin-top: 3rem; }
+/* Outrospection's own empty state (owner feedback #28). The mode answers from
+   the outward feed rather than from a web search, so the default "I'll search
+   the web and report back" copy is wrong there — and the feed page is exactly
+   what a first-time reader of this mode should be pointed at. Swapped on the
+   root class so it is correct from first paint, no JS. */
+.empty-outro { display: none; }
+:root.outro-mode .empty-default { display: none; }
+:root.outro-mode .empty-outro { display: inline; }
+.empty a { color: var(--accent); }
 /* The transient reopened-chat feedback cue (turns.js FEEDBACK_HINT_TEXT):
    quieter than a message, centered under the restored turns, gone on the
    next send. */
@@ -2502,3 +2525,65 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 .pool-mint input { flex: 1 1 12rem; min-width: 0; }
 .pool-link { word-break: break-all; font-size: .72rem; }
 .pool-flow { margin-top: .8rem; }
+
+/* ---------------------------------------------------------------------------
+   The outward feed as the outrospection session's history (owner directive,
+   2026-07-26 — public/js/outrospect-feed.js). Rendered INTO the chat scroller,
+   newest at the bottom, older pages prepended on demand. It reuses the mode's
+   newsprint variables rather than inventing a palette, so the feed reads as
+   part of the session rather than a widget dropped into it.
+   --------------------------------------------------------------------------- */
+.outro-history { display: flex; flex-direction: column; gap: 0; }
+.outro-list { display: flex; flex-direction: column; }
+.outro-more {
+  align-self: center;
+  margin: .2rem 0 .6rem;
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: .35rem .85rem;
+  cursor: pointer;
+}
+.outro-more:hover { color: var(--text); border-color: var(--muted); }
+.outro-more[hidden] { display: none; }
+.outro-entry {
+  padding: .7rem 0;
+  border-bottom: 1px solid var(--border);
+}
+/* A newly-arrived entry gets the same red rule the /outrospect/ page uses, so
+   "new since you last looked" reads identically on both surfaces. */
+.outro-entry.fresh {
+  border-left: 3px solid var(--accent);
+  padding-left: .7rem;
+  margin-left: -.7rem;
+}
+.outro-kicker {
+  margin: 0 0 .15rem;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+  font-size: .66rem;
+  font-weight: 700;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.outro-new { background: var(--accent); color: #fffdf8; border-radius: 3px; padding: .05rem .3rem; }
+.outro-head { margin: 0 0 .2rem; font-size: 1rem; line-height: 1.25; font-weight: 700; }
+.outro-head a { color: var(--text); text-decoration: none; }
+.outro-head a:hover { color: var(--accent); text-decoration: underline; }
+.outro-teaser { margin: 0 0 .2rem; font-size: .86rem; color: var(--muted); }
+.outro-src { margin: 0; font-size: .7rem; font-weight: 600; color: var(--muted); }
+.outro-intro {
+  margin: .8rem 0 .2rem;
+  font-size: .78rem;
+  font-style: italic;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  padding-top: .6rem;
+}

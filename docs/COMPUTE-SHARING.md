@@ -359,8 +359,8 @@ a held request of tens of seconds a non-issue; the job TTL is set well under it.
     `resumePoolSharing`). The loop is a module-level singleton, so leaving the
     screen does not stop the lending the user switched on.
 
-  Two open tabs simply register as two providers under the one pool — which is
-  what the design already allowed (§3) and now actually happens across tiers.
+  Two open tabs register as two providers under the one pool — what §3 already
+  allowed, now happening across tiers rather than within one.
 - **The local model, once:** `public/js/pool-local.js`
   (`normalizePoolLocalUrl` / `listLocalPoolModels` / `runLocalPoolJob`) is what
   both tiers call, so the wire spoken to a user's own machine cannot drift
@@ -420,14 +420,15 @@ and the disclosure, and the invariant text is left for the owner to amend.
 
 ### 7b. What the CONSUMER's tier is allowed to claim (feedback #31, 2026-07-26)
 
-Disclosing the route in the notice is necessary but was not sufficient. Se/cure
-also makes its promise ambiently — the strolling ghost's speech bubbles, the
-first-visit greeter, the intro glass pane, the tier explainer — and that copy
-was UNCONDITIONAL. A user who opened a workspace link carrying a pool token was
-met with "everything here stays in this browser" and "no server's watching —
-cross my heart 👻" while the session was configured to relay every prompt to a
-named stranger's computer. The notice was right and the mascot was wrong, which
-is worse than either alone: the loud surface contradicted the careful one.
+The notice under the ℹ described the pooled route correctly from the start.
+That was not enough. Se/cure also makes its promise ambiently — the strolling
+ghost's speech bubbles, the first-visit greeter, the intro glass pane, the tier
+explainer — and that copy was UNCONDITIONAL. Open a workspace link carrying a
+pool token and the mascot cheerfully told you "everything here stays in this
+browser" and "no server's watching — cross my heart 👻" while the session was
+configured to relay every prompt to a named stranger's computer. The careful
+surface was right and the loud one was wrong, which is worse than either being
+wrong alone.
 
 The fix is one pure core, `public/js/secure-posture-core.js`, that every
 tier-voice surface reads:
@@ -444,13 +445,14 @@ Rules the core encodes, all test-pinned:
 - **The largest disclosure wins.** `peer` outranks `routed` outranks `local`, so
   a session holding both a pool token and an `api` grant is never described as
   merely borrowed.
-- **`peer` is armed, not just selected.** A connected AND enabled pool token
-  counts, not only a pooled model picked in the dropdown — the reporter's
-  session was routed there by intent before any model was chosen.
-- **What survives everywhere.** Chats, keys and projects really are sealed
-  browser-side in every configuration, so that half of the promise is kept
-  verbatim. Only the claims about what this session SENDS are conditional;
-  overcorrecting into "Se/cure is not private" would be its own lie.
+- **A connected pool arms `peer` before any model is picked.** The trigger is a
+  live, enabled pool token, not the moment someone chooses a pooled model from
+  the dropdown. The reporter's session was aimed at a peer by intent well
+  before that.
+- **Half the promise is kept verbatim.** Chats, keys and projects really are
+  sealed browser-side in every configuration. Only the claims about what a
+  session SENDS are conditional — overcorrecting into "Se/cure is not private"
+  would be its own lie.
 - **Late arrivals correct themselves.** The grant and pool intakes are async, so
   the ghost is handed a quip GETTER rather than a frozen list and each bubble
   re-resolves as it speaks.
