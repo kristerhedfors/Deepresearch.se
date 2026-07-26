@@ -701,16 +701,21 @@ Client modules not covered by a section above, each one file under
 `public/js/`: `docs.js` (attachment parsing — pdf/docx/md/txt, entirely
 in the browser, so file bytes never reach the server) and `docs-viewer.js`
 (the public `/docs/` viewer, rendering every repo doc out of the committed
-`docs-corpus.json`); `docs-comments-core.js` + `docs-comments.js` (the
-reader's Word-style COMMENT MODE, split pure-core/DOM — the core owns the
-stored body grammar, quote anchoring and stale detection, the DOM half owns
-the Read/Comment switch, the selection composer, the margin rail and the
-passage highlights. A comment is filed into the ONE instruction pipeline, the
-feedback queue, with feedback-core's `doc` scope and the document path in the
-`page` tag, so the loop reads it as an instruction to reconcile the document
-AND the code it describes; administrative — the DOM half is loaded
-dynamically only after `/api/me` returns an admin role, and is deliberately
-NOT on the public asset allowlist. See `docs/DECISION-BOARD-LOOPS.md` §1a);
+`docs-corpus.json`); `doc-comment-gate.js` + `docs-comments.js` +
+`docs-comments-core.js` (documentation COMMENT MODE, in three layers. The
+GATE is public and is the whole per-page cost — one script tag,
+`mountCommentMode({path})` — doing the `/api/me` admin check and rendering a
+visible note when the answer is no. The DOM half injects its own Read/Comment
+dropdown, comment rail and styles as fixed chrome, so it mounts on ANY
+documentation page without that page laying out for it; it is GATED,
+dynamic-imported only after the admin check, and deliberately NOT on the
+public allowlist. The pure core owns the stored body grammar, quote anchoring
+and stale detection. Live on `/help/` (the page the app links as
+"documentation") and `/docs/`. A comment is filed into the ONE instruction
+pipeline, the feedback queue, with feedback-core's `doc` scope and the
+document's repo path in the `page` tag, so the loop reads it as an instruction
+to reconcile the document AND the code it describes. See
+`docs/DECISION-BOARD-LOOPS.md` §1a);
 `provider-region.js` (the country-of-processing badges
 on the model selector — the conversation goes wherever the chosen model is
 hosted, so the selector says which country that is); `canned-faq.js` (the
