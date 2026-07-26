@@ -114,6 +114,7 @@ import {
 } from "/js/introspect-core.js";
 import { engageIntrospection, initIntrospectUi, noteIntrospectionText } from "/js/introspect-ui.js";
 import { initSourcePeek, wireSourcePeek } from "/js/source-peek.js";
+import { renderStarterStrip } from "/js/starters.js";
 import { drcStoreAvailable, getSealedProject, putSealedProject } from "/js/drc-store.js";
 import { BUDGET_MAX_S, BUDGET_MIN_S, budgetTier, fmtBudget, posToSeconds, secondsToPos } from "/js/timescale.js";
 import {
@@ -1643,6 +1644,20 @@ function renderMessages() {
       "anything critical. Ask a research question to get started, or type “/” for the commands — " +
       "“/feedback” reaches the developers, “/help” answers from the documentation.";
     box.appendChild(empty);
+    // The starter strip: four openers from the Se/cure agent's queue
+    // (public/js/starters-core.js), rotated per visit. Se/cure gets its OWN
+    // queue rather than the Se/rver one — half of what a newcomer needs to
+    // learn here is the privacy posture, so the openers interrogate it.
+    // Clicking one sends it, exactly as typing it would; nothing about the
+    // pick leaves this browser.
+    renderStarterStrip({
+      mount: empty,
+      platform: "client",
+      compose: (text) => {
+        $("input").value = text;
+        $("form").requestSubmit();
+      },
+    });
     return;
   }
   const conv = activeConv();
