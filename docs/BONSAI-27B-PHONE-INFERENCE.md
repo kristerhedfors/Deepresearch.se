@@ -7,8 +7,13 @@ are live behind the Se/cure settings knob). **Se/rver integration ADDED**
 app). One reality-driven refinement vs
 §6: the catalog is data-driven (`public/js/ondevice-core.js`) because the
 27B's ONNX browser conversion is not yet published — Bonsai 8B (1.11 GiB
-q1f16) and 1.7B (278 MB q1) work today, and the pre-wired 27B entry lights
-up the day `onnx-community/Bonsai-27B-ONNX` ships; the consent popup
+q1f16) and 1.7B (278 MB q1) work today, and the pre-wired 27B entry sits
+GRAYED OUT with no button (feedback #36, 2026-07-26: an entry that can only
+fail is not an entry to offer), lighting up the day
+`onnx-community/Bonsai-27B-ONNX` ships — the catalog's
+`browserBuild: "unpublished"` decides the first paint and a live tree probe
+(`probeModelPublished`, cached per device for a day) lifts it without a code
+change; the consent popup
 therefore opens per-model from its Download button (exact live-computed
 size in the button label, UX-4) rather than from the switch itself, which
 only reveals the section. It realizes milestone **M4** of

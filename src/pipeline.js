@@ -748,7 +748,7 @@ export const MAX_SOURCE_TOOL_ROUNDS = 6; // native tool rounds before we force a
 // and emits the final answer. Throws on a hard provider failure so the caller
 // falls back to the deterministic read loop.
 /** @param {PipelineCtx} ctx @param {any} snapshot */
-async function runSourceResearchTools(ctx, snapshot) {
+async function runSourceResearchTools(ctx, snapshot, auxBlock = "") {
   const tools = toolsForRun(ctx.state.capability, ["source-read"], { snapshot: !!snapshot });
   // An agent whose declaration leaves this path with nothing to drive has no
   // business on it. Throwing hands the turn to the deterministic read loop, the
@@ -775,12 +775,17 @@ async function runSourceResearchTools(ctx, snapshot) {
     (ctx.shellBlock ? `${ctx.shellBlock}\n\n` : "") +
     (helpBlock ? `${helpBlock}\n\n` : "") +
     (owaspBlock ? `${owaspBlock}\n\n` : "") +
+    // The forced auxiliary sources (runForcedAuxSearches) need the same
+    // explicit injection as the two blocks above, for the same reason: this
+    // path reads the CLEAN pre-enrichment conversation.
+    (auxBlock ? `${auxBlock}\n\n` : "") +
     `File index (repo paths — investigate with grep_source / read_file):\n${sitemap}\n\n` +
-    "Investigate the ACTUAL source with the tools, then write the answer.";
+    "Investigate the ACTUAL source with the tools, then write the answer." +
+    (auxBlock ? " Use the external sources above for facts that live OUTSIDE this repository, citing them as [n]." : "");
   const startedAt = Date.now();
   const result = await anthropicToolRun(ctx.env, {
     model: ctx.model,
-    system: phasePrompt(ctx.state, "source-research", "answer-tools")(),
+    system: phasePrompt(ctx.state, "source-research", "answer-tools")({ externalSources: !!auxBlock }),
     userContent: userText,
     // The snapshot readers, reached through the agent's declared tool CLASSES
     // (src/tool-sets.js) rather than imported. The shipped introspection spec
@@ -1166,11 +1171,85 @@ async function runSdkBuildDeterministic(ctx, manifest, secureDigest) {
 }
 
 /** @param {PipelineCtx} ctx */
+// ---- forced auxiliary sources on the source-research path -------------------
+//
+// An agent built AROUND a search source declares it in `state.forceAux`, and
+// the research path honours that on every wave (runAuxSearch). This path never
+// reaches a wave — it answers from the site's own source — so the declaration
+// used to be silently dropped whenever developer mode was on at the same time.
+// The Models agent is exactly that combination, and it made the mode whose
+// identity IS the model hub answer model questions without ever asking the hub
+// (feedback #36: "none of these questions resulted in hugging face being
+// searched, which is weird since this is the Models agent"; chat_logs #670 and
+// #671 both recorded 0 searches / 0 sources).
+//
+// So the forced sources run here too, BEFORE the investigation: the items join
+// the same registry the research path fills, and the returned block puts them
+// in front of both answer paths. Generic by construction — ids come off the
+// state and this function names none of them. Fail-soft like every helper
+// phase (invariant 2): no forced source, no usable query, or a source that
+// throws leaves the turn a plain source-research answer.
+
+/**
+ * The query batch for a forced aux search on a path that never ran triage.
+ * The recent USER turns, newest first, so a source's own pickQuery can prefer
+ * whichever carries the entities — a contentless follow-up ("verify this")
+ * has no search terms of its own, but the turn it refers to does.
+ * @param {PipelineCtx} ctx
+ * @returns {string[]}
+ */
+function auxQueryBatch(ctx) {
+  /** @type {string[]} */
+  const out = [];
+  const push = (/** @type {string} */ t) => {
+    const s = String(t || "").replace(/\s+/g, " ").trim().slice(0, 400);
+    if (s && !out.includes(s)) out.push(s);
+  };
+  // The CLEAN latest message: the enrichments append their context blocks to
+  // that message only, and a hub search on the injected source excerpt would
+  // be a search for this repo's own prose.
+  push(ctx.cleanLastUser);
+  for (let i = ctx.conversation.length - 2; i >= 0 && out.length < 3; i--) {
+    const m = ctx.conversation[i];
+    if (m?.role === "user") push(textOf(m.content)); // earlier turns carry no injected block
+  }
+  return out;
+}
+
+/**
+ * Run the state's forced auxiliary sources once and return the labeled block
+ * of what they found ("" when there is nothing to add).
+ * @param {PipelineCtx} ctx
+ * @returns {Promise<string>}
+ */
+async function runForcedAuxSearches(ctx) {
+  const { state } = ctx;
+  const forced = Array.isArray(/** @type {any} */ (state).forceAux) ? /** @type {any} */ (state).forceAux : [];
+  // The agent's own declaration still outranks the force: an agent that says
+  // it uses no auxiliary sources uses none (same rule as runAuxSearches).
+  if (!forced.length || !searchPolicyFor(state).auxSources) return "";
+  const batch = auxQueryBatch(ctx);
+  if (!batch.length) return "";
+  for (const source of SEARCH_SOURCES) {
+    if (!forced.includes(source.id)) continue;
+    await runAuxSearch(ctx, source, batch, 1);
+  }
+  const digest = sourceDigest(state.sources, state.plan.digestCap);
+  if (!digest) return "";
+  return `External sources retrieved for this question (cite these as [n]; the file reads below are NOT numbered sources):\n${digest}`;
+}
+
+/** @param {PipelineCtx} ctx */
 async function runSourceResearch(ctx) {
   const { state } = ctx;
   const snapshot = /** @type {any} */ (state).sourceSnapshot;
   ctx.step("plan", "Analyzing request…");
   ctx.stepDone("plan", "Researching the site's own source — web search skipped");
+
+  // A mode built AROUND an auxiliary source keeps that source even here.
+  // Runs BEFORE the snapshot check so every exit below — including the
+  // no-snapshot direct reply — answers with it.
+  const auxBlock = await runForcedAuxSearches(ctx);
 
   if (!snapshot || !Array.isArray(snapshot.files) || !snapshot.files.length) {
     // No readable snapshot — answer from the excerpts the enrichment already
@@ -1194,7 +1273,7 @@ async function runSourceResearch(ctx) {
   });
   if (toolsOn) {
     try {
-      return await runSourceResearchTools(ctx, snapshot);
+      return await runSourceResearchTools(ctx, snapshot, auxBlock);
     } catch (/** @type {any} */ err) {
       ctx.log.warn("introspect.tools_failed", { model: ctx.model, error: err?.message || String(err) });
       // fall through to the deterministic read loop
@@ -1277,11 +1356,13 @@ async function runSourceResearch(ctx) {
   const synthText =
     `Question:\n${ctx.lastUser}\n\nConversation context:\n${ctx.convText}\n\n` +
     (gathered ? `${gathered}\n\n` : "") +
-    "Write the answer now, grounded in the project's ACTUAL source code above and in the conversation context. Cite file paths for every claim about the implementation, and verify against the code rather than the repo's own documentation.";
+    (auxBlock ? `${auxBlock}\n\n` : "") +
+    "Write the answer now, grounded in the project's ACTUAL source code above and in the conversation context. Cite file paths for every claim about the implementation, and verify against the code rather than the repo's own documentation." +
+    (auxBlock ? " Use the external sources for facts that live OUTSIDE this repository, citing them as [n]." : "");
   ctx.step("synth", "Writing report…");
   const synthStartedAt = Date.now();
   await streamCompletion(ctx, [
-    { role: "system", content: phasePrompt(ctx.state, "source-research", "answer")() },
+    { role: "system", content: phasePrompt(ctx.state, "source-research", "answer")({ externalSources: !!auxBlock }) },
     {
       role: "user",
       content: ctx.imageParts.length ? [{ type: "text", text: synthText }, ...ctx.imageParts] : synthText,
@@ -2010,7 +2091,16 @@ async function runAuxSearch(ctx, source, batch, round) {
   if (!batch.length || (!forced && !source.intent(ctx.lastUser))) return;
   state.aux ||= {};
   const st = (state.aux[source.id] ||= { count: 0, ran: new Set() });
-  if (st.count >= (source.maxPerRequest ?? MAX_AUX_SEARCHES_DEFAULT)) return;
+  // How many searches this source gets THIS request. The source's own
+  // maxPerRequest is the default; `state.auxMaxPerRequest` raises it for a mode
+  // that leans on the source harder than an incidental mention does (the Models
+  // agent — feedback #36's "the Models pipeline should be even more inclined to
+  // search hf for answers"). Read generically: ids come off the state, and the
+  // cross-wave dedup below still stops repeat searches, so a raised cap buys
+  // DISTINCT queries, never the same one twice.
+  const override = /** @type {any} */ (state).auxMaxPerRequest?.[source.id];
+  const cap = typeof override === "number" && override > 0 ? override : (source.maxPerRequest ?? MAX_AUX_SEARCHES_DEFAULT);
+  if (st.count >= cap) return;
   // The wave's most on-topic query for THIS source (pickQuery — e.g. hf
   // prefers the entity/identifier-bearing angle over the generic one, the
   // web→hub insight flow); batch[0] when the source doesn't care.

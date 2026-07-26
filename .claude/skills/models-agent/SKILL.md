@@ -31,8 +31,22 @@ It is **not a new executor.** Its answer phase is the ordinary `research` one,
 so a sixth mode needed no row in `src/pipeline.js` `ANSWER_PHASE_RUNNERS`. What
 it adds is one pre-pipeline enrichment (`src/models-agent.js`, registered in
 `src/enrichment.js` `CORE_ENRICHMENTS`) that forces Hub search on via the
-generic `state.forceAux` seam and, when the message is about models, folds the
-live cross-provider catalog into context and emits `model_cards`.
+generic `state.forceAux` seam, raises the hub's per-request search ceiling via
+the equally generic `state.auxMaxPerRequest` seam, and, when the message is
+about models, folds the live cross-provider catalog into context and emits
+`model_cards`.
+
+**A forced source has to survive every answer path, not just the wave.** The
+declaration used to be honoured only inside `runSearches`, so turning developer
+mode on in this mode routed the turn to `runSourceResearch` — which answers from
+this repo's own files and never reaches a wave. The Models agent then answered
+model questions having asked the hub nothing: `chat_logs` #670 and #671 both
+recorded `0s/0src` (feedback #36, 2026-07-26). `runForcedAuxSearches` now runs
+the forced sources on that path too and hands the digest to both its answer
+paths, with the answer prompts taking `{ externalSources: true }` so their
+"there are no external sources to cite" clause doesn't discard what was just
+fetched. Adding another always-on source? Check every path that can END a turn,
+not just the one you were looking at.
 
 ## The two orthogonal axes — the design's whole point
 
@@ -101,7 +115,12 @@ calls against a key that real user traffic is also using.
    thinks — some catalogs read without a key. `buildCatalog` reports
    `configured || count > 0`, because "not configured" beside eight of its
    models makes the whole status line worth ignoring.
-6. **The `hf_models` / `hfId` storage keys are deliberate legacy.** They predate
+6. **`hfIntent` already fires on a bare `hf`** (`src/hf.js` — `\bhf\b`, any
+   casing, either language, plus `hf:`-prefixed model ids people paste back).
+   Test-pinned in `src/hf.test.js`. So "make `hf` trigger the hub" is a
+   verification task, not a code change — check before widening a regex that
+   already covers it.
+7. **The `hf_models` / `hfId` storage keys are deliberate legacy.** They predate
    the generalisation from a Hugging Face agent to a Models agent and are kept
    so no account is stranded. Internal only — nothing user-facing says "hf".
 
