@@ -18,6 +18,7 @@ import {
   mergeAgentResults,
   workflowEvent,
   agentUpdateEvent,
+  MAX_PROMPT_PREVIEW,
 } from "./orchestrator-core.js";
 
 const goodPlan = {
@@ -203,12 +204,38 @@ test("workflowEvent carries the plan graph and resolved waves", () => {
   assert.deepEqual(ev.agents[2].deps, ["workers", "deno"]);
 });
 
+test("workflowEvent carries the persona and planned queries the inspector shows", () => {
+  // The plan decides more per node than the box can draw; the node INSPECTOR
+  // shows the rest, so it has to ride along (feedback #35).
+  const plan = normalizeWorkflow({
+    agents: [
+      { id: "workers", kind: "deep_research", name: "R", task: "Research.", queries: ["cloudflare workers limits", "workers cpu"] },
+      { id: "critic", kind: "custom", name: "C", persona: "A skeptical engineer.", task: "Compare.", deps: ["workers"] },
+    ],
+  });
+  const ev = workflowEvent(plan);
+  assert.deepEqual(ev.agents[0].queries, ["cloudflare workers limits", "workers cpu"]);
+  assert.equal(ev.agents[0].persona, undefined, "omitted when empty — an unchanged event for a plain team");
+  assert.equal(ev.agents[1].persona, "A skeptical engineer.");
+  assert.equal(ev.agents[1].queries, undefined, "only deep_research nodes plan searches");
+});
+
 test("agentUpdateEvent normalizes status and bounds the note", () => {
   const ev = agentUpdateEvent("workers", "done", { duration_ms: 1200, chars: 900 });
   assert.deepEqual(ev, { type: "agent_update", id: "workers", status: "done", duration_ms: 1200, chars: 900 });
   assert.equal(agentUpdateEvent("x", "not-a-state").status, "running");
   assert.ok(agentUpdateEvent("x", "failed", { note: "n".repeat(500) }).note.length <= 200);
   for (const s of NODE_STATES) assert.equal(agentUpdateEvent("x", s).status, s);
+});
+
+test("agentUpdateEvent head-clamps the prompt but reports its true length", () => {
+  const full = "You are a sub-agent.\n" + "g".repeat(MAX_PROMPT_PREVIEW * 3);
+  const ev = agentUpdateEvent("workers", "running", { prompt: full });
+  assert.equal(ev.prompt.length, MAX_PROMPT_PREVIEW);
+  assert.ok(ev.prompt.startsWith("You are a sub-agent."), "the HEAD travels — the task, not the grounding");
+  assert.equal(ev.prompt_chars, full.length);
+  // Nothing extra on an ordinary update.
+  assert.equal(agentUpdateEvent("workers", "done").prompt, undefined);
 });
 
 test("kind registry is closed and self-describing", () => {
