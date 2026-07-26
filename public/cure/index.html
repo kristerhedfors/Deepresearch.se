@@ -125,8 +125,8 @@
   </div>
 
   <div id="chat"><div class="empty">Hi — I'm an AI research assistant that runs right here in your
-    browser, on your own OpenAI, Anthropic or Berget API key — or any OpenAI-compatible endpoint, a model
-    you run yourself included. My replies
+    browser, on your own OpenAI, Anthropic, Groq or Berget API key — or any OpenAI-compatible endpoint,
+    a model you run yourself included. My replies
     are model-generated, so verify anything critical. Ask a research question to get started — the first
     send helps you set a key up. Type “/” for the commands: “/feedback” reaches the developers,
     “/help” answers from the documentation.</div></div>
@@ -284,11 +284,12 @@
           your sealed blob, in this browser.</p>
         <label for="key-input">API key</label>
         <input id="key-input" type="password" autocomplete="off"
-               placeholder="sk-… (OpenAI) · sk-ant-… (Anthropic) · sk_ber_… (Berget)">
+               placeholder="sk-… (OpenAI) · sk-ant-… (Anthropic) · gsk_… (Groq) · sk_ber_… (Berget)">
         <label for="key-provider">Provider <span id="keydetect" class="muted"></span></label>
         <select id="key-provider">
           <option value="openai">🇺🇸 OpenAI (platform.openai.com)</option>
           <option value="anthropic">🇺🇸 Anthropic (console.anthropic.com — Claude)</option>
+          <option value="groq">🇺🇸 Groq (console.groq.com — free tier available)</option>
           <option value="berget">🇸🇪 Berget (berget.ai — EU-hosted models)</option>
         </select>
         <div class="row">
@@ -843,7 +844,7 @@
            session's truth, and drc.js rewrites it when this session's config
            says otherwise (securePostureBrief) — feedback #31. -->
       <p class="lead" id="intro-lead">Deep research that runs <b>client-side, in your browser</b>: bring
-        your own OpenAI, Anthropic or Berget API key — or point it at any other OpenAI-compatible
+        your own OpenAI, Anthropic, Groq or Berget API key — or point it at any other OpenAI-compatible
         endpoint — and every model call goes straight from this
         page to the provider — this site's server is never in the path, so it could not
         read or log your messages even if it wanted to.</p>

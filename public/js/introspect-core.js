@@ -1561,7 +1561,7 @@ export const MAX_GREP_CONTEXT = 5; // context lines each side of a match (grep -
 
 // The provider-neutral tool definitions (name / description / JSON input
 // schema). The DRS loop maps these onto Anthropic's `tools` shape and DRC onto
-// the OpenAI `tools` shape — the fields line up with both. read_file /
+// the OpenAI/Groq `tools` shape — the fields line up with both. read_file /
 // grep_source / list_files are source-only; DRC ADDS a run_bash entry at its
 // call site (the sandbox is browser-only), so it is not declared here.
 export const INTROSPECTION_TOOLS = [

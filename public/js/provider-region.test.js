@@ -11,10 +11,10 @@ import {
   regionForProvider,
 } from "./provider-region.js";
 
-test("Berget is Sweden; OpenAI/Anthropic are the US", () => {
+test("Berget is Sweden; OpenAI/Anthropic/Groq are the US", () => {
   assert.equal(regionForProvider("berget").country, "Sweden");
   assert.equal(regionForProvider("berget").flag, "🇸🇪");
-  for (const id of ["openai", "anthropic"]) {
+  for (const id of ["openai", "anthropic", "groq"]) {
     assert.equal(regionForProvider(id).country, "United States");
     assert.equal(regionForProvider(id).flag, "🇺🇸");
   }

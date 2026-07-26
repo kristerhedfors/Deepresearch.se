@@ -6,7 +6,7 @@
      Colors are the tier tokens (see public/architecture/index.html). -->
 <svg xmlns="http://www.w3.org/2000/svg" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" viewBox="0 0 420 470">
   <title>The Se/cure data path</title>
-  <desc>The Se/cure data path: the browser calls OpenAI, Anthropic, Berget.ai — or any other OpenAI-compatible endpoint — directly on the user's own keys; the server only serves static files and is not in the data path</desc>
+  <desc>The Se/cure data path: the browser calls OpenAI, Anthropic, Groq, Berget.ai — or any other OpenAI-compatible endpoint — directly on the user's own keys; the server only serves static files and is not in the data path</desc>
   <!-- Browser: the engine -->
   <rect x="40" y="10" width="340" height="150" rx="10" fill="#7c6a24"/>
   <text x="210" y="38" text-anchor="middle" font-size="14" font-weight="700" fill="#ffffff">Your browser</text>
@@ -24,19 +24,23 @@
   <line x1="310" y1="160" x2="348" y2="236" stroke="#7c6a24" stroke-width="1.5"/>
   <polygon points="351,242 344,236 352,232" fill="#7c6a24"/>
   <text x="210" y="222" text-anchor="middle" font-size="9.5" fill="#75683f">direct CORS calls, on YOUR keys</text>
-  <rect x="8" y="242" width="128" height="58" rx="8" fill="#f0e9d2" stroke="#b3a06e"/>
-  <text x="72" y="262" text-anchor="middle" font-size="10.5" font-weight="700" fill="#3d3418">OpenAI</text>
-  <text x="72" y="277" text-anchor="middle" font-size="9" fill="#75683f">answers · JSON phases</text>
-  <text x="72" y="289" text-anchor="middle" font-size="9" fill="#75683f">· embeddings (RAG)</text>
-  <rect x="146" y="242" width="128" height="58" rx="8" fill="#f0e9d2" stroke="#b3a06e"/>
-  <text x="210" y="262" text-anchor="middle" font-size="10.5" font-weight="700" fill="#3d3418">Anthropic</text>
-  <text x="210" y="277" text-anchor="middle" font-size="9" fill="#75683f">answers · JSON phases</text>
-  <text x="210" y="289" text-anchor="middle" font-size="9" fill="#75683f">(no embeddings → no RAG)</text>
-  <rect x="284" y="242" width="128" height="58" rx="8" fill="#f0e9d2" stroke="#b3a06e"/>
-  <text x="348" y="262" text-anchor="middle" font-size="10.5" font-weight="700" fill="#3d3418">Berget.ai</text>
-  <text x="348" y="277" text-anchor="middle" font-size="9" fill="#75683f">answers · JSON phases</text>
-  <text x="348" y="289" text-anchor="middle" font-size="9" fill="#75683f">· embeddings (RAG)</text>
-  <!-- The escape hatch: the three named providers are shortcuts, not the
+  <rect x="8" y="242" width="96" height="58" rx="8" fill="#f0e9d2" stroke="#b3a06e"/>
+  <text x="56" y="261" text-anchor="middle" font-size="10" font-weight="700" fill="#3d3418">OpenAI</text>
+  <text x="56" y="276" text-anchor="middle" font-size="7.5" fill="#75683f">answers · JSON phases</text>
+  <text x="56" y="288" text-anchor="middle" font-size="7.5" fill="#75683f">· embeddings (RAG)</text>
+  <rect x="110" y="242" width="96" height="58" rx="8" fill="#f0e9d2" stroke="#b3a06e"/>
+  <text x="158" y="261" text-anchor="middle" font-size="10" font-weight="700" fill="#3d3418">Anthropic</text>
+  <text x="158" y="276" text-anchor="middle" font-size="7.5" fill="#75683f">answers · JSON phases</text>
+  <text x="158" y="288" text-anchor="middle" font-size="7.5" fill="#75683f">no embeddings</text>
+  <rect x="212" y="242" width="96" height="58" rx="8" fill="#f0e9d2" stroke="#b3a06e"/>
+  <text x="260" y="261" text-anchor="middle" font-size="10" font-weight="700" fill="#3d3418">Groq</text>
+  <text x="260" y="276" text-anchor="middle" font-size="7.5" fill="#75683f">answers · JSON phases</text>
+  <text x="260" y="288" text-anchor="middle" font-size="7.5" fill="#75683f">no embeddings</text>
+  <rect x="314" y="242" width="96" height="58" rx="8" fill="#f0e9d2" stroke="#b3a06e"/>
+  <text x="362" y="261" text-anchor="middle" font-size="10" font-weight="700" fill="#3d3418">Berget.ai</text>
+  <text x="362" y="276" text-anchor="middle" font-size="7.5" fill="#75683f">answers · JSON phases</text>
+  <text x="362" y="288" text-anchor="middle" font-size="7.5" fill="#75683f">· embeddings (RAG)</text>
+  <!-- The escape hatch: the four named providers are shortcuts, not the
        boundary. Dashed, because what sits here is whatever the user points it
        at — including a server on their own machine, which is the tier's
        strongest privacy mode. -->

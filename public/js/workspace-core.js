@@ -252,7 +252,7 @@ export function isWorkspacePath(pathname) {
 //   { v: 1, kind: "drc-workspace",
 //     name?,                       // display name for the opened workspace
 //     note?,                       // welcome note shown on open (hacka.re's welcomeMessage)
-//     keys?: {openai?, anthropic?, berget?},
+//     keys?: {openai?, anthropic?, groq?, berget?},
 //     providerId?, model?,
 //     settings?: { research?, bashLite?, developerMode?, searchBackend? },
 //     conversations?: [{id?, title?, messages: [{role, content}]}],

@@ -284,7 +284,8 @@ CORS-capable registry: per-provider wire quirks, JSON-mode payloads,
 lenient JSON extraction, model filters, the `bergetCatalogFilter` shared
 by the Berget entry AND the proxy provider, `filterAndSortModels`'s
 curate-and-order-newest-first shaping, live-vs-fallback catalog over
-mock HTTP, the embed config — small model, 512 dims, Anthropic has none —
+mock HTTP, the embed config — small model, 512 dims, neither Anthropic nor
+Groq has one —
 `drcEmbed`'s wire shape/index-ordering over mock HTTP, and the ANTHROPIC
 WIRE adapter: payload translation (system hoisting, image blocks, same-role
 merging), the SSE event mapping including the drain-past-empty-events pull

@@ -2,29 +2,29 @@
 // Free mode's client-side LLM provider registry — the browser counterpart
 // of src/providers.js, for providers whose APIs allow DIRECT cross-origin
 // calls from JavaScript (CORS). That property is the admission ticket:
-// OpenAI serves `Access-Control-Allow-Origin: *` on its chat-completions
-// endpoints; Anthropic (api.anthropic.com) serves `*` too and allows
-// x-api-key / anthropic-version plus the explicit browser opt-in header
+// OpenAI and Groq (GroqCloud) both serve `Access-Control-Allow-Origin: *`
+// on their OpenAI-compatible endpoints; Anthropic (api.anthropic.com)
+// serves `*` too and allows x-api-key / anthropic-version plus the
+// explicit browser opt-in header
 // `anthropic-dangerous-direct-browser-access: true` (probed live
 // 2026-07-23); and Berget (api.berget.ai) serves origin-reflecting CORS
 // with POST + Authorization allowed on /chat/completions and /models
 // (probed live 2026-07-11 — it used to have no browser CORS, which is why
 // it was originally excluded here). So the user's browser can call all
-// three with the user's own API key and Deepresearch's server is never in
+// four with the user's own API key and Deepresearch's server is never in
 // the request path at all.
 //
-// The three named providers are the SHIPPED shortcuts, not the boundary:
+// The four named providers are the SHIPPED shortcuts, not the boundary:
 // the keyless `local` entry below takes ARBITRARY OpenAI-compatible base
 // URLs, so any other service speaking that wire (or a model the user runs
 // themselves) is reachable without a registry change.
 //
-// Anthropic joined the registry on 2026-07-26, replacing Groq (which spoke
-// the plain OpenAI wire and is still reachable through the custom
-// OpenAI-compatible entry). CORS was never what kept Anthropic out — the
-// WIRE was: the Messages API is not OpenAI chat completions. The fix is
-// the browser mirror of src/anthropic.js's stream adapter, below: an entry
-// declares `wire: "anthropic"` and the four wire functions branch on it,
-// so everything downstream keeps consuming OpenAI-shaped SSE. Adapt at the
+// Anthropic joined the registry on 2026-07-26, alongside the three that
+// were already here. CORS was never what kept it out — the WIRE was: the
+// Messages API is not OpenAI chat completions. The fix is the browser
+// mirror of src/anthropic.js's stream adapter, below: an entry declares
+// `wire: "anthropic"` and the four wire functions branch on it, so
+// everything downstream keeps consuming OpenAI-shaped SSE. Adapt at the
 // wire, don't fork the pipeline — the same rule the server seam follows.
 //
 // Same registry discipline as the server seam: one declarative entry per
@@ -48,9 +48,10 @@ export const bergetCatalogFilter = (/** @type {string} */ id) =>
 
 // Per-provider wire quirks, mirroring what the server clients learned:
 // OpenAI's GPT-5 family wants max_completion_tokens + reasoning_effort
-// (src/openai.js); Berget speaks plain OpenAI chat completions (the same
-// wire src/berget.js drives server-side); Anthropic speaks its own Messages
-// API and is adapted at the wire (`wire: "anthropic"`).
+// (src/openai.js); Groq and Berget speak plain OpenAI chat completions
+// (Berget: the same wire src/berget.js drives server-side); Anthropic
+// speaks its own Messages API and is adapted at the wire
+// (`wire: "anthropic"`).
 /**
  * One registry entry. Every field past `id`/`label` is optional because the
  * entries differ by tier: a keyless local server has no key pattern, an
@@ -151,6 +152,29 @@ export const DRC_PROVIDERS = [
     // error).
   },
   {
+    id: "groq",
+    label: "Groq",
+    base: "https://api.groq.com/openai/v1",
+    keyPattern: /^gsk_/,
+    jsonModel: "llama-3.1-8b-instant",
+    fallbackModels: [
+      "llama-3.3-70b-versatile",
+      "llama-3.1-8b-instant",
+      "openai/gpt-oss-120b",
+      "openai/gpt-oss-20b",
+    ],
+    // Same curation rule: the recent flagship + fast language models one
+    // would actually pick here, not Groq's whole zoo (no whisper/tts/
+    // guard/embedding, no older generations).
+    modelFilter: (id) =>
+      /^(llama-3\.3-|llama-3\.1-8b|llama-4|openai\/gpt-oss-|moonshotai\/kimi-k2|qwen)/.test(id) &&
+      !/(whisper|tts|guard|embedding|allam)/i.test(id),
+    params: (maxTokens) => ({ max_tokens: maxTokens }),
+    // No `embed`: Groq serves no /embeddings endpoint either, so a
+    // Groq-only session runs without client-side RAG, like an
+    // Anthropic-only one.
+  },
+  {
     id: "berget",
     label: "Berget",
     base: "https://api.berget.ai/v1",
@@ -184,7 +208,8 @@ export const DRC_PROVIDERS = [
     // through drc-rag.js, its vectors are 1024-dim (double the sealed
     // localStorage footprint of OpenAI's 512), and the wire is unverified
     // without a live key — a deliberate later step, not an oversight.
-    // Until then a Berget-only session runs without RAG, like Anthropic.
+    // Until then a Berget-only session runs without RAG, like Anthropic
+    // and Groq.
   },
   {
     // ANY OpenAI-compatible endpoint — this is the escape hatch that keeps
@@ -216,7 +241,8 @@ export const DRC_PROVIDERS = [
     params: (maxTokens) => ({ max_tokens: maxTokens }),
     // No `embed`: local embeddings (transformers.js or the server's own
     // /embeddings) are a deliberate later step — a local-only session runs
-    // without client-side RAG, like Anthropic (fail-soft, never an error).
+    // without client-side RAG, like Anthropic and Groq (fail-soft, never
+    // an error).
   },
 ];
 
@@ -288,18 +314,6 @@ export function serverTokenLlmProvider(origin) {
 // prefixes scripts/scan-secrets already knows.
 export const FOREIGN_KEY_SHAPES = [
   {
-    pattern: /^gsk_/,
-    label: "Groq",
-    // Groq speaks plain OpenAI chat completions, so it is not unreachable —
-    // it is just not one of the three shortcuts. Point the custom endpoint
-    // at https://api.groq.com/openai/v1 and it works like any other
-    // OpenAI-compatible service. (Groq WAS a registry entry until
-    // 2026-07-26, when Anthropic took its slot.)
-    hint:
-      "That looks like a Groq key — Groq isn't one of the built-in providers, but it speaks the OpenAI wire: " +
-      "add it under the custom OpenAI-compatible endpoint (https://api.groq.com/openai/v1).",
-  },
-  {
     pattern: /^hf_/,
     label: "Hugging Face",
     hint: "That looks like a Hugging Face token — not a chat provider this app can call.",
@@ -352,8 +366,8 @@ export function poolLlmProvider(origin) {
 
 /**
  * Identify the provider a pasted API key belongs to by its prefix
- * (sk_ber_… → Berget, sk-ant-… → Anthropic, sk-… minus sk-ant-… → OpenAI),
- * or null for an unrecognized shape — the key panel's one-field UX: the
+ * (sk_ber_… → Berget, sk-ant-… → Anthropic, gsk_… → Groq, sk-… minus
+ * sk-ant-… → OpenAI), or null for an unrecognized shape — the key panel's one-field UX: the
  * provider dropdown follows the detected prefix automatically, and stays
  * user-pickable for keys no pattern knows. The patterns are mutually
  * exclusive BY CONSTRUCTION (the most specific prefix owns the key —
@@ -1067,8 +1081,8 @@ export function filterAndSortModels(data, modelFilter) {
     // every call, and the newest-first sort loves to put exactly those first
     // (zai-org/GLM-5.2 landed as a borrowed session's DEFAULT while dark,
     // 2026-07-15, test point #10). Same treatment as the DRS dropdown's
-    // `up === false` disable; fail-open when the field is absent (OpenAI and
-    // Anthropic /models entries carry no `status`).
+    // `up === false` disable; fail-open when the field is absent (OpenAI,
+    // Anthropic and Groq /models entries carry no `status`).
     .filter((m) => m?.status?.up !== false)
     .map((m) => m?.id)
     .filter((id) => typeof id === "string" && modelFilter(id))

@@ -322,15 +322,16 @@
     <p>Open the settings drawer (the <b>gear icon</b> in the header) and paste
     an API key. The provider is detected from the key itself
     (<code>sk-…</code> OpenAI, <code>sk-ant-…</code> Anthropic,
-    <code>sk_ber_…</code> Berget). Your browser then calls that provider
+    <code>gsk_…</code> Groq, <code>sk_ber_…</code> Berget). Your browser then
+    calls that provider
     <b>directly</b>; the conversation travels from your device to your
     provider and nowhere else.</p>
     <ul>
-      <li><b>OpenAI, Anthropic, Berget</b> — the three named shortcuts, whose
-        APIs a browser can call directly. The key is yours, the usage is billed
-        to you, and the provider's own data policies apply to what it
+      <li><b>OpenAI, Anthropic, Groq, Berget</b> — the four named shortcuts,
+        whose APIs a browser can call directly. The key is yours, the usage is
+        billed to you, and the provider's own data policies apply to what it
         receives.</li>
-      <li><b>Any other OpenAI-compatible endpoint</b> — those three are
+      <li><b>Any other OpenAI-compatible endpoint</b> — those four are
         shortcuts, not the boundary. Point Se<span class="sl">/</span>cure at
         any service speaking that wire by its base URL, or at a server on your
         own machine (Ollama, LM Studio, llama.cpp), where no key is needed.

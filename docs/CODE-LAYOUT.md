@@ -48,7 +48,7 @@ Server (`src/`):
 | `sandbox-image.js` | Self-hosted Linux sandbox images (the admin-selectable small-image feature — `docs/SANDBOX-LOCAL-IMAGE.md`): `GET /sandbox/img/<id>.ext2` (streams a content-addressed, immutable ext2 image from R2 with HTTP Range support for CheerpX's HttpBytesDevice) + `GET /api/sandbox-image` (the effective image config both tiers read) — both PUBLIC, routed before the identity gate because Se/cure must reach them too; fail-soft by construction (no binding / unknown id / R2 miss → the client falls back to the built-in streamed default, invariant 2) |
 | `storage.js` | Implicit R2 cloud storage (availability-gated, always on for signed-in accounts — invariant 4): encrypted conversation AND project records (`/api/convos*`, `/api/projects*` — same handler), original attached files (`/api/files*`), the account's one-call data wipe (`DELETE /api/storage` — vault objects excluded) |
 | `vault.js` | The secret-keyed project vault (`/api/vault/:id`, R2 `vault/{uid}/{id}`): one CLIENT-encrypted project archive per id — key AND id both derived in the browser from a user-held secret the server never sees (`public/js/vault.js`), the strictest storage tier — the server can neither locate nor read an archive; each store is its own explicit consent act, and vault objects are excluded from the `DELETE /api/storage` wipe |
-| — (DRC has no server module) | DRC — "deep research secure", C for CLIENT-side: the public tier at `DeepResearch.Se/cure` (saved projects at `/my/project-<hash>`; `/free*` legacy aliases — all routed BEFORE the identity gate in `index.js`; the root `/` serves the promotional landing to visitors — which links /cure — and 302s signed-in arrivals to /rver). MINIMAL SERVER BY DESIGN: the Worker serves the static page (`public/cure/`) and the public replay JSONs (`pub.js`) and is in no other DRC path — model calls go directly (cross-origin) from the browser to the user's own CORS-capable providers (OpenAI, Anthropic, Berget, or any other OpenAI-compatible endpoint — `public/js/drc-providers.js`), the deep-research flow runs client-side (`drc-research.js`), and the sealed project state rests in BROWSER-LOCAL storage (`drc-store.js`). Its remote sibling DRS — "deep research server", R for REMOTE — is the signed-in app at `/rver` (sign-in/terms redirects land there; PWA manifest starts there): everything else in this table |
+| — (DRC has no server module) | DRC — "deep research secure", C for CLIENT-side: the public tier at `DeepResearch.Se/cure` (saved projects at `/my/project-<hash>`; `/free*` legacy aliases — all routed BEFORE the identity gate in `index.js`; the root `/` serves the promotional landing to visitors — which links /cure — and 302s signed-in arrivals to /rver). MINIMAL SERVER BY DESIGN: the Worker serves the static page (`public/cure/`) and the public replay JSONs (`pub.js`) and is in no other DRC path — model calls go directly (cross-origin) from the browser to the user's own CORS-capable providers (OpenAI, Anthropic, Groq, Berget, or any other OpenAI-compatible endpoint — `public/js/drc-providers.js`), the deep-research flow runs client-side (`drc-research.js`), and the sealed project state rests in BROWSER-LOCAL storage (`drc-store.js`). Its remote sibling DRS — "deep research server", R for REMOTE — is the signed-in app at `/rver` (sign-in/terms redirects land there; PWA manifest starts there): everything else in this table |
 | `pub.js` | Published research replays — the `DeepResearch.Se/cure/<slug>` ("deep research SECURE <slug>") surface, R2 `pub/{slug}`: frozen deep-research sessions as read-only public pages (`GET /api/pub[/:slug]` public, routed pre-auth; `PUT/DELETE /api/pub/:slug` admin-only), each opened IN PLACE by the DRC app (`/cure/<slug>` seeds a DRC conversation, so continuing on the visitor's own keys is just typing; `/?continue=<slug>` legacy) — see the **publish-research** skill |
 | `build-pub.js` | SDK-mode BUILD publications — the live `/app/<slug>/` "try it" surface (R2 `build/{slug}`): `publishBuild` (called from `pipeline.js` `runSdkBuild` — validates/caps the generated files, enforces slug ownership so only the minting user republishes their URL, prunes dropped files) and the PUBLIC serving face `handleBuildGet`, whose every response carries `Content-Security-Policy: sandbox allow-scripts …` — the published page runs in an OPAQUE ORIGIN (no cookies, no credentialed same-origin fetch), so a generated app can never act as the signed-in visitor despite being served from the site's hostname. Admin-only `DELETE /api/build/:slug` unpublishes — see the **sdk-mode** skill. `PUT /api/build/:slug` (`handleBuildManualPublish`, admin-only) is the ONE other write surface: a bypass of the chat/tool loop that calls the same `publishBuild` for a bundle already built elsewhere (the execution sandbox's outbox, a hand-assembled directory) — `scripts/publish-app`, see the **publish-app** skill |
 | `grant-http.js` | The grant subsystems' shared pure PRESENTATION leaf (imports only `http.js`'s `jsonResponse`): the response fragments `websearch.js` and `proxy.js` must keep in lockstep — `budgetExceeded409`, the `adjustResultResponse` ladder, the `resolveQuotaPatch` set/±/pause clamp arithmetic, the granted-web-search result projections (`emptyWebResultResponse`/`webResultResponse`), `readTokenBody`, the `posInt` positive-int config clamp the defaults resolvers share, and the shared `QUERY_MAX`/`GRANTS_LIST_MAX`/`GRANT_DEPTH` constants. Each subsystem keeps its OWN mint/meter/adjust logic (deliberately different tables and claims); only the pure response/clamp layer lives here. Node-tested |
@@ -458,15 +458,15 @@ against silent localStorage eviction; import never clobbers a newer
 local copy (newer state wins, the other's chats merge in — drc.js) —
 Node-tested),
 `drc-providers.js` (the client-side provider registry: the CORS-capable
-providers ONLY — OpenAI, Anthropic and Berget (Berget's CORS confirmed
-live 2026-07-11; Anthropic took Groq's slot 2026-07-26 and speaks its own
+providers ONLY — OpenAI, Anthropic, Groq and Berget (Berget's CORS
+confirmed live 2026-07-11; Anthropic joined 2026-07-26 and speaks its own
 Messages API, adapted at the wire by `wire: "anthropic"` — the browser
 mirror of `src/anthropic.js`, with `anthropic-dangerous-direct-browser-access`
 as the header that makes the browser-direct call legal), callable directly
 from the browser
 with the user's key — PLUS the keyless `local` entry (2026-07-15,
 Forever Agent §8 pick #2), which is ALSO the "any OpenAI-compatible
-endpoint" escape hatch that keeps the three named providers from being the
+endpoint" escape hatch that keeps the four named providers from being the
 boundary: usually the user's OWN server
 (Ollama / LM Studio / llama.cpp), "configured" by its base URL alone
 (`configuredDrcProviders`' keyless generalization; the URL lives in the
@@ -478,8 +478,8 @@ per-provider wire quirks, JSON mode, a fixed cheap
 `jsonModel` per provider, live `/models` with a static fallback, plus
 the per-provider `embed` entry + `drcEmbed` — browser-direct embeddings
 on the user's key: OpenAI `text-embedding-3-small` dimension-reduced to
-512, the deliberate small/fast/quota-friendly choice; Anthropic serves no
-embeddings endpoint, so an Anthropic-only session runs without RAG —
+512, the deliberate small/fast/quota-friendly choice; neither Anthropic nor
+Groq serves an embeddings endpoint, so a session on either runs without RAG —
 Node-tested over mock HTTP), `drc-rag.js` (DRC's client-side RAG over
 conversations and projects: each chat is an incrementally-indexed doc —
 only not-yet-indexed turns embed, the chat-rag `srcMsgs` discipline —
@@ -648,7 +648,8 @@ sidebar mirrored) holds the local chat list and the Project panel; the
 header's gear icon (between ghost and account, both tiers) opens the
 settings drawer — ALL configuration: the ONE-FIELD API-key form whose
 provider dropdown auto-follows the pasted key's prefix
-(`detectDrcProvider`: sk-… OpenAI, sk-ant-… Anthropic, sk_ber_… Berget) plus
+(`detectDrcProvider`: sk-… OpenAI, sk-ant-… Anthropic, gsk_… Groq,
+sk_ber_… Berget) plus
 the sandbox knob; the ghost is the secure-tier marker in both tiers,
 each its own way (2026-07-12): on the BLUE tier a glow + shimmer
 sweep once every THREE minutes (the same ~4 s event in the first ~2%

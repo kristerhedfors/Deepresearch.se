@@ -1,8 +1,8 @@
 // @ts-check
 // Free mode's deep-research pipeline, ported to run ENTIRELY in the
 // browser: every phase is a direct cross-origin call from the user's
-// browser to the user's own provider (drc-providers.js — OpenAI, Anthropic, Berget,
-// or any other OpenAI-compatible endpoint),
+// browser to the user's own provider (drc-providers.js — OpenAI, Anthropic, Groq,
+// Berget, or any other OpenAI-compatible endpoint),
 // with Deepresearch's server nowhere in the path. The phase FLOW mirrors
 // the server pipeline (src/pipeline.js) and keeps its two load-bearing
 // rules — deterministic orchestration with NO function calling (every

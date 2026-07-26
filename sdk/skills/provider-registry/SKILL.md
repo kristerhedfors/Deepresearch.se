@@ -186,7 +186,7 @@ The prefix table (mirror of the reference's `FOREIGN_KEY_SHAPES` +
 |---|---|---|
 | `sk-ant-` | Anthropic | Yes (via a wire adapter — see below) |
 | `sk_ber_` | Berget (underscore) | Yes |
-| `gsk_` | Groq | No (reachable as a custom OpenAI-compatible endpoint) |
+| `gsk_` | Groq | Yes |
 | `sk-` minus `sk-ant-` (incl. `sk-proj-`, `sk-svcacct-`) | OpenAI | Yes |
 | `hf_` | Hugging Face token (not a chat key here) | No |
 
@@ -198,7 +198,7 @@ stale) — gated on an explicit opt-in header acknowledging the key is
 exposed in a browser. What kept it out of the reference client registry was
 only the WIRE: the Messages API is not OpenAI chat completions. That adapter
 now exists (`public/js/drc-providers.js`, `wire: "anthropic"` — the browser
-mirror of `src/anthropic.js`), and Anthropic took Groq's registry slot on
+mirror of `src/anthropic.js`), and Anthropic joined the client registry on
 2026-07-26. A distilled flavour wires it like this:
 
 - **Endpoint**: `POST https://api.anthropic.com/v1/messages` (no
@@ -304,8 +304,8 @@ mirror of `src/anthropic.js`), and Anthropic took Groq's registry slot on
 - **Body-size ceilings**: the reference's primary rejects bodies over
   ~1 MB (measured), which is why the client downscales images and strips
   them from history resends. Probe the limit; don't discover it in prod.
-- **Anthropic serves no `/embeddings` endpoint** — a client-tier session on
-  that provider alone runs without RAG; the embed entry is per-provider
+- **Anthropic and Groq serve no `/embeddings` endpoint** — a client-tier
+  session on either alone runs without RAG; the embed entry is per-provider
   and its absence must degrade fail-soft, never error a send.
 - **Error wording**: use `providerName(model)` in every failure message —
   hardcoding the primary's name makes multi-provider incidents
