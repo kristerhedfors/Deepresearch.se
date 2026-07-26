@@ -19,6 +19,7 @@
 // knob, autogrow, submit), and the module initializers.
 
 import { initAccountPanel } from "./account.js";
+import { resumePoolSharing } from "./account-pool.js";
 import { hasPending, indexingBusy, initAttachments, syncAttachState, takeAttachments } from "./attachments.js";
 import { refreshProjects, setActiveProject } from "./projects.js";
 import { initProjectsUi } from "./projects-ui.js";
@@ -1010,6 +1011,12 @@ window.__appReady = true;
 // capability (the async settings reconcile above is authoritative — if the
 // server denies it the mode falls back to normal, but the prefilled question
 // still lands). Never auto-submits unless the link says &go=1.
+// Compute sharing: a sharer who left "Share my compute" on gets this tab
+// lending again (docs/COMPUTE-SHARING.md §6). Sharing is not a Se/cure-only
+// feature — the signed-in app is a perfectly good provider tab, and this is
+// where its loop resumes. Fail-soft: the panel's own toggle is the fallback.
+resumePoolSharing();
+
 (function applyComposerDeepLink() {
   try {
     const { mode, ask, send } = parseComposerDeepLink(location.search);

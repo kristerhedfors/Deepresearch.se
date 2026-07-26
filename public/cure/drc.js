@@ -65,6 +65,13 @@ import {
   serverTokenLlmProvider,
 } from "/js/drc-providers.js";
 import { poolDataFlowNotice } from "/js/pool-core.js";
+import { runLocalPoolJob } from "/js/pool-local.js";
+import {
+  securePosture,
+  securePostureBrief,
+  securePostureLine,
+  securePostureQuips,
+} from "/js/secure-posture-core.js";
 import { createPoolProvider } from "/js/pool-provider.js";
 import {
   KNOWLEDGE_FILE_EXT,
@@ -584,7 +591,11 @@ function maybePlayUmbrella(deepLinked) {
 // it through reduced-motion just as it does the intro.
 function startGhostStroll(force) {
   import("./ghostwalk.js")
-    .then((m) => m.startGhostWalk({ force: !!force }))
+    // The quips are passed as a GETTER, not an array: the borrowed-allowance
+    // and shared-compute arrival chains are async, so a stroll that started
+    // before a pool token connected must still correct itself mid-walk rather
+    // than keep promising "no server's watching" (feedback #31, 2026-07-26).
+    .then((m) => m.startGhostWalk({ force: !!force, quips: () => securePostureQuips(postureCtx()) }))
     .catch(() => {
       // decoration only — never block the page over it
     });
@@ -642,8 +653,35 @@ function showGhostSay() {
   } catch {
     // fine
   }
+  applyPostureCopy();
   $("ghostsay").hidden = false;
   $("accountbtn").classList.add("nudge"); // briefly draw the eye to the target
+}
+
+// Point the tier's two standing self-descriptions — the first-visit greeter and
+// the intro glass pane — at what THIS session actually does. Both ship with the
+// unconfigured session's copy in the markup (which is true, and is the common
+// case); a session carrying a borrowed allowance or shared compute gets the
+// route stated instead, from the same pure core the ghost's quips come from.
+// Idempotent and fail-soft: called before either surface is shown, and again
+// whenever the configuration changes underneath them.
+function applyPostureCopy() {
+  try {
+    const ctx = postureCtx();
+    const posture = securePosture(ctx);
+    // `direct` and `local` sessions send nothing anywhere the crafted default
+    // copy doesn't already say — leave those words alone.
+    if (posture !== "peer" && posture !== "routed") return;
+    const brief = securePostureBrief(ctx);
+    const head = $("ghostsay-head");
+    if (head) head.innerHTML = wmHtml(brief.headline);
+    const p = $("ghostsay-posture");
+    if (p) p.innerHTML = brief.lines.map((line) => wmHtml(line)).join("<br><br>");
+    const lead = $("intro-lead");
+    if (lead) lead.innerHTML = brief.lines.map((line) => wmHtml(line)).join(" ");
+  } catch {
+    // the markup's default copy stands — never break the page over decoration
+  }
 }
 
 function hideGhostSay() {
@@ -698,7 +736,11 @@ function closeSettings() {
 const DRS_FEATURES = {
   ghost: {
     title: "Ghost mode — you are here",
-    text: "The ghost in the signed-in app brings you HERE: Se/cure is ghost mode. This site's server never receives your messages, keys, or projects — there is nothing to keep out of any log. (In Se/rver the server honors per-conversation incognito for its own log; here the question doesn't arise.)",
+    // The unqualified half is about STORAGE (messages, keys and projects never
+    // reach a server in any configuration) and stays true throughout. What this
+    // session SENDS is appended live by showDrs from the posture core, because
+    // a borrowed allowance or shared compute does put text on the wire.
+    text: "The ghost in the signed-in app brings you HERE: Se/cure is ghost mode. This site's server never stores your messages, keys, or projects — there is nothing to keep out of any log. (In Se/rver the server honors per-conversation incognito for its own log; here the question doesn't arise.)",
   },
   attach: {
     title: "Attachments & documents",
@@ -714,7 +756,11 @@ function showDrs(feature) {
   const f = DRS_FEATURES[feature];
   if (!f) return;
   $("drspop-title").innerHTML = wmHtml(feature === "ghost" ? f.title : f.title + " — a Se/rver feature");
-  $("drspop-text").innerHTML = wmHtml(f.text);
+  // The ghost card doubles as "what does this session send?" — answer it from
+  // the session's own configuration rather than leaving the reader to assume
+  // the unconfigured case (feedback #31, 2026-07-26).
+  const tail = feature === "ghost" ? " " + securePostureLine(postureCtx()) : "";
+  $("drspop-text").innerHTML = wmHtml(f.text + tail);
   $("drspop").hidden = false;
 }
 
@@ -766,7 +812,36 @@ function privacyCtx() {
     grantsConnected: grantSearch || apiProxyUsable() || stApiUsable(),
     workspaceName: sharedWorkspace,
     workspaceGrants: sharedWorkspaceGrants,
+    pool: poolInPath(pid),
+    peerLabel: poolOwnerLabel(),
   };
+}
+
+// Is SHARED COMPUTE in this session's answer path? Two ways to be true, and
+// both matter for what the tier may claim (feedback #31, 2026-07-26):
+//   - the pool provider is the SELECTED model — the next prompt goes to a peer;
+//   - a pool token is connected and switched on — the session was ENTERED to
+//     route queries there, which is exactly the state the reporter described,
+//     even before a model is picked from the shared group.
+// Either way, "everything stays in this browser" is not something we may say.
+function poolInPath(providerId) {
+  return providerId === POOL_LLM_PROVIDER_ID || poolUsable();
+}
+
+// The pool owner as the SERVER resolved them (never a name a peer typed) —
+// used to say WHOSE machine answers. Empty until /api/pool/peer has answered,
+// and the posture copy falls back to "another person" on its own.
+function poolOwnerLabel() {
+  const o = poolPeer && poolPeer.owner;
+  return (o && (o.display || o.key)) || "";
+}
+
+// The SESSION POSTURE the tier's own copy speaks from — the ghost's quips, the
+// first-visit greeter, the intro pane and the tier explainer all read it, so
+// they can never contradict each other or the notice under the ℹ.
+function postureCtx() {
+  const c = privacyCtx();
+  return { pool: c.pool, viaProxy: c.viaProxy, local: c.local, search: c.search, peerLabel: c.peerLabel };
 }
 
 function showPrivacyNotice() {
@@ -2921,6 +2996,9 @@ function renderPoolRow() {
     (poolEnabled() ? (live ? "Connected — " : "Expired/used up — ") : "Off — ") +
     "🤝 another user's machine · " + meter;
   renderPoolConsent();
+  // Connecting, disabling or expiring shared compute changes what the tier may
+  // claim about this session — keep the standing copy in step (feedback #31).
+  applyPostureCopy();
 }
 
 // ---- MUTUAL CONSENT, the consumer's half ---------------------------------------
@@ -3011,18 +3089,11 @@ function poolShareProvider() {
   poolShareLoop = createPoolProvider({
     label: "Se/cure local model",
     listModels: async () => listDrcModels(drcProvider("local"), "", { baseUrl: localUrl() }),
-    runJob: async (body) => {
-      // The job runs against the sharer's OWN local server (Ollama / LM
-      // Studio / llama.cpp) — the same URL the `local` provider uses.
-      const res = await fetch(localUrl() + "/chat/completions", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error("local server answered " + res.status);
-      const data = await res.json();
-      return { response: data, usage: data?.usage };
-    },
+    // The job runs against the sharer's OWN local server (Ollama / LM Studio /
+    // llama.cpp) — the same URL the `local` provider uses. Shared with the
+    // Se/rver tab's loop (pool-local.js) so both tiers speak one wire to a
+    // user's own machine.
+    runJob: (body) => runLocalPoolJob(localUrl(), body),
     onStatus: poolShareStatus,
   });
   return poolShareLoop;

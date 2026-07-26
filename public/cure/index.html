@@ -88,8 +88,12 @@
       </svg>
     </span>
     <div class="ghostsay-body">
-      <strong>You're on DeepResearch.<b><span class="wm">Se<span class="sl">/</span>cure</span></b></strong>
-      <p>The private, all-client-side side. Your chats, keys and projects stay in <b>this browser</b> — the server never sees them. Just add your own API key and ask.</p>
+      <strong id="ghostsay-head">You're on DeepResearch.<b><span class="wm">Se<span class="sl">/</span>cure</span></b></strong>
+      <!-- The tier's claim about THIS session. The default below describes an
+           unconfigured session; drc.js replaces it from securePostureBrief when
+           the session was entered with a configuration that routes queries
+           outward (a borrowed allowance, shared compute) — feedback #31. -->
+      <p id="ghostsay-posture">The private, all-client-side side. Your chats, keys and projects stay in <b>this browser</b> — the server never sees them. Just add your own API key and ask.</p>
       <p><b>A research project, not a product.</b> It's experimental — put into service solely to research which capabilities and use cases fit the <b><span class="wm">Se<span class="sl">/</span>cure</span></b> + <b><span class="wm">Se<span class="sl">/</span>rver</span></b> architecture. Please don't rely on it for any real-world use.</p>
       <p class="ghostsay-point">Want accounts, cloud sync and live web search? That's <b><span class="wm">Se<span class="sl">/</span>rver</span></b> — tap the account button, top-right ↗</p>
       <a id="ghostsaygo" href="/login">Sign in to <b><span class="wm">Se<span class="sl">/</span>rver</span></b> →</a>
@@ -829,7 +833,10 @@
   <div id="intro" hidden>
     <div class="intro-card">
       <h1>DeepResearch.<b><span class="wm">Se<span class="sl">/</span>cure</span></b> <span class="tier">deep research secure</span></h1>
-      <p class="lead">Deep research that runs <b>client-side, in your browser</b>: bring
+      <!-- Same rule as the greeter: the default lead is the unconfigured
+           session's truth, and drc.js rewrites it when this session's config
+           says otherwise (securePostureBrief) — feedback #31. -->
+      <p class="lead" id="intro-lead">Deep research that runs <b>client-side, in your browser</b>: bring
         your own OpenAI, Groq or Berget API key and every model call goes straight from this
         page to the provider — this site's server is never in the path, so it could not
         read or log your messages even if it wanted to.</p>

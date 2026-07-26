@@ -2572,6 +2572,18 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 .pool-badge.unverified { border-color: #e3c576; color: #7a5c12; }
 .pool-state { font-size: .72rem; color: var(--muted); }
 .pool-state.pending { color: var(--accent); font-weight: 600; }
+/* The SHARER's own control, on the same screen (feedback #31, 2026-07-26):
+   lending compute is not a Se/cure-only feature, so the signed-in app carries
+   the local-server URL + the toggle rather than pointing at the other tier. */
+.pool-share {
+  display: flex; gap: .5rem; flex-wrap: wrap; align-items: flex-end; margin: .4rem 0;
+}
+.pool-share-url { flex: 1 1 14rem; min-width: 0; font-size: .78rem; color: var(--muted); }
+.pool-share-url input { width: 100%; margin-top: .2rem; }
+.pool-share-toggle {
+  display: flex; align-items: center; gap: .4rem; font-size: .82rem;
+  padding-bottom: .35rem; white-space: nowrap;
+}
 .pool-mint { display: flex; gap: .4rem; flex-wrap: wrap; margin: .35rem 0; }
 .pool-mint input { flex: 1 1 12rem; min-width: 0; }
 .pool-link { word-break: break-all; font-size: .72rem; }
