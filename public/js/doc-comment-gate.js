@@ -77,9 +77,11 @@ export async function mountCommentMode(opts) {
 }
 
 /**
- * The quiet fallback badge, in the same corner the mode dropdown occupies.
- * Self-contained so a page that never loads the full layer still explains
- * itself.
+ * The quiet fallback badge, in the same corner the mode dropdown occupies —
+ * BOTTOM right, because every page that mounts this layer already uses the top
+ * right for its own title and back link (see the `.dc-slot` note in
+ * docs-comments.js; this style must stay in step with it). Self-contained so a
+ * page that never loads the full layer still explains itself.
  * @param {string} html trusted, built above — never user or document content
  */
 function showNote(html) {
@@ -88,8 +90,13 @@ function showNote(html) {
   el.innerHTML = html;
   el.setAttribute(
     "style",
-    "position:fixed;top:.5rem;right:.6rem;z-index:40;font:400 .74rem/1.4 system-ui,-apple-system,sans-serif;" +
-      "background:rgba(127,127,127,.14);color:inherit;opacity:.75;border-radius:999px;padding:.25rem .7rem;" +
+    "position:fixed;bottom:.6rem;right:.6rem;z-index:40;font:400 .74rem/1.4 system-ui,-apple-system,sans-serif;" +
+      // Opaque enough to read as chrome rather than a smudge: a fixed badge
+      // floats over prose, and at opacity .75 over a .14 wash the text behind
+      // it showed through both it and its own label. The neutral grey works on
+      // a light and a dark page alike (`color: inherit` follows the page), so
+      // one inline style — which cannot carry a media query — covers both.
+      "background:rgba(127,127,127,.32);color:inherit;border-radius:999px;padding:.25rem .7rem;" +
       "backdrop-filter:blur(6px);max-width:min(70vw,26rem);",
   );
   document.body.appendChild(el);
