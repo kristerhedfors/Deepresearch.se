@@ -486,6 +486,12 @@ const DOC_LINKS = [
   // building, through the seven standing lenses. Opens a refresh on arrival,
   // so visiting it is what keeps it current.
   ["/outrospect/", "Outrospection", "The outward feed — libraries, browser-runnable models, edge RAG, and other people's LLM architectures."],
+  // The in-app reader over the repo's own Markdown (public/js/docs-viewer.js,
+  // rendered from the committed docs-corpus.json). It was reachable only from
+  // a link inside /help/ until 2026-07-26; it belongs here, because it is the
+  // one place every design document — architecture, privacy model, encryption,
+  // testing, the dependency inventory — can actually be read.
+  ["/docs/", "Repository documentation", "Every design document, rendered in-app: architecture, the privacy model, testing, and the full dependency inventory."],
   ["https://github.com/kristerhedfors/Deepresearch.se", "Source code", "MIT-licensed, on GitHub — every privacy claim is yours to verify."],
 ];
 
