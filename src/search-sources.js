@@ -21,6 +21,15 @@
 // timing, dedup, caps, SSE events, fail-soft) lives once in pipeline.js's
 // runAuxSearches and is identical for every source.
 
+import {
+  ARXIV_MAX_PER_REQUEST,
+  arxivDiversityKey,
+  arxivIntent,
+  arxivPickQuery,
+  arxivPromptNote,
+  arxivSearch,
+  arxivTermKey,
+} from "./arxiv.js";
 import { hfDiversityKey, hfIntent, hfPickQuery, hfPromptNote, hfSearch, hfTermKey } from "./hf.js";
 
 /**
@@ -93,6 +102,21 @@ export const SEARCH_SOURCES = [
     promptNote: hfPromptNote,
     diversityHost: "huggingface.co",
     diversityKeyOf: hfDiversityKey,
+  },
+  {
+    id: "arxiv",
+    intent: arxivIntent,
+    search: arxivSearch,
+    service: "arXiv",
+    pickQuery: arxivPickQuery,
+    dedupKey: arxivTermKey,
+    // Lower than hf's 3: arXiv publishes a rate limit (1 req / 3 s, single
+    // connection) and sells no way past it, so the per-turn request budget is
+    // deliberate — see ARXIV_MAX_PER_REQUEST and MAX_ATTEMPTS in arxiv.js.
+    maxPerRequest: ARXIV_MAX_PER_REQUEST,
+    promptNote: arxivPromptNote,
+    diversityHost: "arxiv.org",
+    diversityKeyOf: arxivDiversityKey,
   },
 ];
 

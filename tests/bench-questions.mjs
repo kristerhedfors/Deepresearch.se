@@ -468,6 +468,69 @@ export const BENCH_QUESTIONS = [
     ],
     notes: "Svenska + hub-centriskt; kartl\u00e4ggningsfr\u00e5ga med verifierbara svar.",
   },
+
+  // --- arXiv literature research (added 2026-07-26, kind "arxiv") ----------
+  // Questions whose authoritative sources are preprints, added alongside the
+  // src/arxiv.js search integration. The first one is the REPORTED FAILURE
+  // that motivated the source, kept verbatim: it ran five web searches, cited
+  // a bare "https://arxiv.org/pdf/2510.10047" with no title among its sources,
+  // and never asked arXiv itself. Append-only like everything above.
+  {
+    id: "arxiv_llm_swarm_scaling",
+    question:
+      "Latest on llm swarm reasoning and how many agents with the same model can work together and become smarter than just one?",
+    lang: "en",
+    kind: "arxiv",
+    rubric: [
+      "Names concrete multi-agent/swarm reasoning systems from the literature (e.g. SwarmSys, Model Swarms, swarm-intelligence reasoning frameworks)",
+      "Addresses the agent-COUNT question directly, including that the literature reports no universal optimum and that gains saturate or reverse",
+      "Reports at least one contrary/critical finding rather than only positive results (e.g. collaboration not inherently improving reasoning, correlated-bias or consensus failure modes)",
+      "Cites arxiv.org paper pages among the sources, with titles rather than bare PDF URLs",
+    ],
+    notes: "The regression case for the arXiv source (reported 2026-07-26).",
+  },
+  {
+    id: "arxiv_multiagent_critique",
+    question:
+      "Is there peer-reviewed evidence that multi-agent LLM debate actually improves accuracy over a single well-prompted model, or is it mostly reported gains?",
+    lang: "en",
+    kind: "arxiv",
+    rubric: [
+      "Presents evidence on BOTH sides rather than only the pro-multi-agent framing",
+      "Names specific papers or benchmarks behind each side",
+      "Distinguishes preprints from peer-reviewed/published work where the sources allow it",
+      "Cites arxiv.org pages among the sources",
+    ],
+    notes: "Contested-evidence shape over literature; tests the balance rule.",
+  },
+  {
+    id: "arxiv_id_lookup",
+    question: "What does arXiv:2510.10047 propose, and what does it measure?",
+    lang: "en",
+    kind: "arxiv",
+    rubric: [
+      "Correctly identifies the paper behind the id (SwarmSys, decentralized swarm-inspired agents for scalable adaptive reasoning)",
+      "Describes its proposed mechanism rather than generic multi-agent background",
+      "Says something concrete about what it evaluates",
+      "Cites the arxiv.org page for that id",
+    ],
+    notes: "Exercises the id_list path (arxivId short-circuits the term ladder).",
+  },
+  {
+    id: "arxiv_sv_kvantdatorer",
+    question:
+      "Vad s\u00e4ger den senaste forskningen om felkorrigering i kvantdatorer, och vilka genombrott har publicerats?",
+    lang: "sv",
+    kind: "arxiv",
+    rubric: [
+      "Namnger konkreta resultat eller metoder f\u00f6r kvantfelkorrigering fr\u00e5n publicerad forskning",
+      "S\u00e4tter n\u00e5got av resultaten i tid (n\u00e4r det publicerades)",
+      "Skiljer p\u00e5 f\u00f6rtryck och granskad publikation d\u00e4r k\u00e4llorna till\u00e5ter det",
+      "Citerar arxiv.org-sidor bland k\u00e4llorna",
+    ],
+    notes:
+      "Svensk fr\u00e5ga, engelskt s\u00f6kf\u00e4lt: pr\u00f6var promptregeln att arXiv-vinklar skrivs p\u00e5 engelska medan svaret f\u00f6rblir svenskt (invariant 6).",
+  },
 ];
 
 // Convenience: filter helpers the runner uses for env overrides.

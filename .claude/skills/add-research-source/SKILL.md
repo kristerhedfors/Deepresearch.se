@@ -95,6 +95,23 @@ product name, an entity class), teach the PROMPTS too
   ("swedish" alone returns the canonical 2.5M-download Swedish ASR model
   at rank 1). Record what you established in the client's header comment
   and in the **integrations** skill, dated.
+- **Probe the query GRAMMAR, not only the result quality** (added 2026-07-26
+  from the arXiv integration). A search API can accept a syntactically
+  valid query, answer `200`, and return an empty result set forever:
+  arXiv's `all:"multi word phrase"` matches NOTHING, and unquoted spaces in
+  one field are OR rather than AND, so the obvious first shape either finds
+  zero papers or half a million junk ones. Neither failure raises an error
+  and both look like "the source just isn't very good" from the outside. So
+  probe a matrix — quoted vs unquoted, fielded vs catch-all, AND vs OR,
+  narrow vs wide term counts — and record the HIT COUNTS next to the top
+  titles. That matrix is also what sizes the fallback ladder: it showed 6
+  AND-ed terms returning 0 and 2 returning 113, which is the ladder's
+  bounds rather than a guess.
+- **Prove the fix against the reported failure, not a paraphrase.** Keep the
+  user's verbatim question as the probe and as a bench-question regression
+  case. The arXiv source was verified by watching the two papers that the
+  failing session had surfaced only as a bare `arxiv.org/pdf/…` URL and a
+  `doi.org` redirect come back as ranked titles with abstracts.
 - **Query adaptation is usually needed**: planned queries are written for
   a web search engine. For keyword/name-matching APIs: a noise-word
   stripper (`hfTerms`) covering platform words, question words, AND
