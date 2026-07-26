@@ -1,8 +1,10 @@
 // The account panel's "settings" view — ALL configuration in one place
 // (2026-07-11 directive; also opened straight from the header's gear
-// icon): the Shodan / Google Maps knobs, each disabled (with a note) when
-// the server can't back it, plus the execution-sandbox and introspection
-// knobs (rows + wiring from account-views.js), a note on how to give
+// icon): the "Exa web search" knob (WHO runs live searches — browser-local,
+// search-source.js; 2026-07-26 owner directive moved it here off the composer
+// knob's long-press card), the Shodan / Google Maps knobs, each disabled (with
+// a note) when the server can't back it, plus the execution-sandbox and
+// introspection knobs (rows + wiring from account-views.js), a note on how to give
 // feedback (now done from the chat, not a knob), and — first — the
 // cloud-storage DISCLOSURE row: cloud storage is implicit on Se/rver
 // (2026-07-16 owner directive, no per-account opt-out), so the row informs
@@ -12,6 +14,7 @@
 
 import { renderConfigKnobs, settingRow, wireModeKnob, wireSandboxKnob, wireSettingPopovers } from "./account-views.js";
 import { loadSettings, setGoogleMaps, setShodanMcp } from "./settings.js";
+import { EXA_SETTING_INFO, exaStatusText, getExaEnabled, setExaEnabled } from "./search-source.js";
 import { onDeviceSettingsMarkup, wireOnDeviceSettings } from "./ondevice-drs.js";
 import { evalModeOn, setEvalMode } from "./starters.js";
 import { refreshOnDeviceModels } from "./models.js";
@@ -129,6 +132,15 @@ export async function loadSettingsView(ctx) {
     <p class="section-lbl">Settings</p>
     ${cloudRow}
     ${settingRow({
+      id: "exaknob",
+      label: "Exa web search",
+      checked: getExaEnabled(),
+      disabled: false,
+      popId: "exapop",
+      info: EXA_SETTING_INFO,
+    })}
+    <p id="exastatus" class="muted setting-note" hidden></p>
+    ${settingRow({
       id: "shodanknob",
       label: "Shodan host intelligence",
       checked: shodanUsable && s?.shodan_mcp,
@@ -191,6 +203,20 @@ export async function loadSettingsView(ctx) {
   wireSimpleKnob("starterevalknob", "starterevalstatus", (on) => setEvalMode(on), {
     on: "Evaluation mode is on — the empty chat now offers a cross-agent review batch you can rate.",
     off: "Evaluation mode is off — the empty chat shows the normal opening questions.",
+  });
+  // Exa web search: a BROWSER-LOCAL knob (search-source.js localStorage), not
+  // an /api/settings write — it is a preference about where a query goes, so it
+  // needs no account and works for break-glass sessions too. On (default) keeps
+  // searches on Exa; off routes them through this site's own Worker.
+  const exaKnob = /** @type {HTMLInputElement | null} */ (document.getElementById("exaknob"));
+  const exaStatus = document.getElementById("exastatus");
+  exaKnob?.addEventListener("change", () => {
+    const on = setExaEnabled(exaKnob.checked);
+    exaKnob.checked = on;
+    if (exaStatus) {
+      exaStatus.hidden = false;
+      exaStatus.textContent = exaStatusText(on);
+    }
   });
 
   if (shodanUsable) {

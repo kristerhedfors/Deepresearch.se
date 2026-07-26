@@ -123,7 +123,8 @@
   <div id="chat"><div class="empty">Hi — I'm an AI research assistant that runs right here in your
     browser, on your own OpenAI, Groq or Berget API key (or a local model you run yourself). My replies
     are model-generated, so verify anything critical. Ask a research question to get started — the first
-    send helps you set a key up.</div></div>
+    send helps you set a key up. Type “/” for the commands: “/feedback” reaches the developers,
+    “/help” answers from the documentation.</div></div>
 
   <div id="footer">
     <div class="footer-slide">
@@ -143,11 +144,9 @@
           <strong>Web research</strong><br>
           <span>Off answers in one pass. Live web search needs a search source:
           your own local browsing agent, or a server grant/token.</span>
-          <!-- The search-SOURCE picker (public/js/search-source.js): WHO runs a
-               search that goes through a grant/token. A configured local agent
-               outranks both — the browser calls it directly and no query
-               reaches this server at all. Rendered and wired in drc.js. -->
-          <div id="knobsrc"></div>
+          <!-- The knob is ON/OFF only (owner directive, 2026-07-26). WHO runs a
+               grant/token-routed search is the "Exa web search" knob in Settings
+               (#exarow below, public/js/search-source.js). -->
           <a href="/cure/local-search/">Run a local browsing agent — one-line setup →</a>
         </div>
         <form id="form">
@@ -398,6 +397,26 @@
           query</b> leaves this browser (never your conversation); the allowance is fixed for this session and
           metered on the server. Turn it off to stay fully client-side.</div>
         <span id="wsstatus" class="muted setting-note"></span>
+      </div>
+
+      <!-- Exa web search — WHO runs a search that goes through a server
+           grant/token: Exa (on, the default) or this site's own Cloudflare
+           Worker (off). Browser-local (public/js/search-source.js), reflected
+           and wired in drc.js. A configured local browsing agent or direct
+           backend below outranks both — the browser calls it directly and no
+           query reaches this server at all. -->
+      <div class="settings-item" id="exarow">
+        <div class="settings-row">
+          <span class="settings-label">Exa web search
+            <button type="button" class="setting-info" data-pop="exapop" aria-label="More about Exa web search">ⓘ</button>
+          </span>
+          <label class="switch">
+            <input type="checkbox" id="exaweb">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
+        </div>
+        <div class="setting-pop" id="exapop" hidden></div>
+        <span id="exastatus" class="muted setting-note"></span>
       </div>
 
       <!-- Web search SERVICE — the expert, per-user backend for live web

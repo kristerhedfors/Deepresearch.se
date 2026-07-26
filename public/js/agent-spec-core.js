@@ -43,6 +43,16 @@ export { CHAT_MODE_IDS, MODE_THEMES };
 // renderer on either tier — and the visual-proof test — knows every shape it
 // must draw. Each entry declares the extra fields that type carries and their
 // defaults, so resolveControls() can normalize a terse spec into a full one.
+//
+// NOT here, deliberately: SLASH COMMANDS (public/js/slash-core.js — `/feedback`
+// and `/help`). The owner's directive was that they are available in EVERY
+// agent (2026-07-26), and a control is by definition something a spec chooses,
+// so modelling them as one would create the exact thing the directive rules
+// out — an agent that ships without them. They are composer BASELINE instead:
+// every `prompt-input` carries the typeahead, and the platform resolves the
+// command before any agent's answer phase runs (src/chat.js → src/pipeline.js).
+// The same reasoning already applies to the `feedback` gate in GATE_IDS below,
+// which no shipped spec declares because it is never an agent's decision.
 
 /** @typedef {"model-select"|"depth-slider"|"toggle"|"mode-select"|"attachments"|"prompt-input"|"send-button"} ControlType */
 
@@ -225,7 +235,11 @@ export const GATE_IDS = {
   "external-source": { label: "External source", desc: "does the ask want outside material? — hands a source-research turn back to research (externalSourceIntent)" },
   "lens": { label: "Lens", desc: "which standing lens does this ask belong under? (outrospect-core lensMatch)" },
   "quiz": { label: "Quiz", desc: "is this an ask for a quiz? (src/quiz.js quizIntent)" },
-  "feedback": { label: "Feedback", desc: "is this a report to the developers? (src/feedback.js feedbackIntent)" },
+  // Listed for completeness, but PLATFORM BASELINE and so declared by no
+  // shipped spec: the gate — the bare keyword or the `/feedback` command —
+  // runs before any agent's answer phase, and the slash commands it is half of
+  // are not a declarable capability at all (see the note above CONTROL_REGISTRY).
+  "feedback": { label: "Feedback", desc: "is this a report to the developers? (src/feedback.js feedbackRequested — the keyword or the /feedback command)" },
 };
 
 /** The mode-DISTINGUISHING SSE status events (docs: the sse-protocol skill).

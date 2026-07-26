@@ -94,7 +94,7 @@ import { wireBarTint } from "/js/bar-tint.js";
 import { DRC_RECENT_TURNS, ensureDrcRag, indexDrcChatTurns, retrieveDrcContext } from "/js/drc-rag.js";
 import { runDrcResearch } from "/js/drc-research.js";
 import { runBackendSearch as runDirectBackendSearch } from "/js/websearch-backends-core.js";
-import { getSearchSource, searchSourcePickerHtml, wireSearchSourcePicker } from "/js/search-source.js";
+import { EXA_SETTING_INFO, exaStatusText, getExaEnabled, getSearchSource, setExaEnabled } from "/js/search-source.js";
 import { ensureSandboxBooted, sandboxIdle, sandboxSupported, setSandboxImage } from "/js/sandbox.js";
 import { hideTerminalIcon, showTerminalIcon } from "/js/agent-backdrop.js";
 import {
@@ -132,8 +132,10 @@ import {
   unlockCelebrationSize,
   wmHtml,
 } from "/js/drc-page-core.js";
-import { matchCanned } from "/js/canned-faq.js";
-import { feedbackIntent, feedbackPageTag, feedbackScopeOfPrior } from "/js/feedback-core.js";
+import { detectLang, matchCanned } from "/js/canned-faq.js";
+import { feedbackComment, feedbackPageTag, feedbackRequested, feedbackScopeOfPrior } from "/js/feedback-core.js";
+import { slashEffect } from "/js/slash-core.js";
+import { mountSlashMenu } from "/js/slash-menu.js";
 import { spaceIntentMatch } from "/js/space-core.js";
 import { renderMarkdownInto } from "/js/markdown.js";
 import { mountUmbrellaSpinner } from "/js/umbrella-spinner.js";
@@ -150,6 +152,11 @@ let profile = null; // {refHash, blobId, blobKey} — null while the session is 
 let state = emptyDrcState(); // the working state (keys included), from the first keystroke
 let convId = null; // active conversation id
 let sending = false;
+// Set for ONE send by the `/help` slash command (send() below): the turn is a
+// documentation question, so the help docs block is injected even with the
+// developer-mode toggle off. Per-turn, never persisted — a command applies to
+// the message it was typed on, not to the session.
+let helpCommandTurn = false;
 let unsavedHintShown = false;
 
 // The local (keyless) provider's configured base URL — normalized on read so a
@@ -678,6 +685,7 @@ function openSettings() {
   renderStRow(); // reflect the consolidated Se/rver token (if any)
   renderProxyRow(); // reflect the secure-research-space bundle (if any)
   renderSearchBackend(); // reflect the per-user web-search backend
+  renderExaRow(); // reflect WHO runs a grant/token-routed search
   $("settingsview").hidden = false;
 }
 
@@ -1633,7 +1641,8 @@ function renderMessages() {
     empty.textContent =
       "Hi — I'm an AI research assistant that runs right here in your browser, on your own OpenAI, Groq " +
       "or Berget API key (or a local model you run yourself). My replies are model-generated, so verify " +
-      "anything critical. Ask a research question to get started.";
+      "anything critical. Ask a research question to get started, or type “/” for the commands — " +
+      "“/feedback” reaches the developers, “/help” answers from the documentation.";
     box.appendChild(empty);
     // The starter strip: four openers from the Se/cure agent's queue
     // (public/js/starters-core.js), rotated per visit. Se/cure gets its OWN
@@ -1741,7 +1750,8 @@ function renderCannedExchange(userText, reply) {
 // ---- Se/cure feedback (the "feedback" keyword → confirm → send) ----------------
 //
 // Se/cure normally never contacts the server. But a message opening with the
-// word "feedback" (feedbackIntent, EN+SV — the SAME gate the Se/rver pipeline
+// word "feedback" — or with the `/feedback` slash command (feedbackRequested,
+// EN+SV — the SAME gate the Se/rver pipeline
 // uses, shared from feedback-core.js) is a report to the developers, not a
 // research question. So instead of researching it we ECHO it, PROMPT for
 // confirmation (UX-4: dismissing a consent dialog is a NO, never a YES), and
@@ -2037,7 +2047,24 @@ async function introspectionContext(conv, latestText) {
   // named files from the snapshot the browser already fetches. The client-side
   // provider embedder can't cheaply re-embed the whole codebase, so retrieval
   // stays a DRS feature; the snapshot block still lets the model answer.)
-  if (state.developerMode !== true) return { block: "", fileProvider: null, snapshot: null };
+  if (state.developerMode !== true) {
+    // …except for a `/help` turn: the command IS the request for the help
+    // layer, so the documentation block goes in even with the toggle off. Only
+    // the docs — no source snapshot, no OWASP, no file provider — because the
+    // user asked how something works, not to read the implementation.
+    if (helpCommandTurn) {
+      try {
+        const texts = conv.messages.filter((m) => m.role === "user").map((m) => m.content);
+        phaseStep("introspect", "Reading the documentation…");
+        const helpDocs = await helpDocsBlockFor(texts, latestText);
+        phaseStep("introspect", helpDocs ? "Documentation read" : "No matching documentation");
+        return { block: helpDocs, fileProvider: null, snapshot: null };
+      } catch {
+        /* fail soft — the turn answers without the docs block */
+      }
+    }
+    return { block: "", fileProvider: null, snapshot: null };
+  }
   try {
     const texts = conv.messages.filter((m) => m.role === "user").map((m) => m.content);
     phaseStep("introspect", "Reading the site's own source…");
@@ -2532,6 +2559,26 @@ async function drcDirectWebSearch(query) {
   }
 }
 
+// Reflects the "Exa web search" knob (search-source.js — browser-local, NOT
+// sealed state: a preference about where a query goes should never travel in a
+// shared workspace link). On means a grant/token-routed search runs on Exa; off
+// points the server at its own Worker backend instead. Moot while a direct
+// backend or local browsing agent is configured — that path never reaches this
+// server — so the status line says so rather than pretending otherwise.
+function renderExaRow() {
+  const knob = /** @type {HTMLInputElement} */ ($("exaweb"));
+  if (!knob) return;
+  const on = getExaEnabled();
+  knob.checked = on;
+  const pop = $("exapop");
+  if (pop && !pop.innerHTML) pop.innerHTML = EXA_SETTING_INFO;
+  const direct = searchBackendCfg();
+  const isDirect = (direct.backend === "searxng" || direct.backend === "exa_compatible") && !!direct.baseUrl;
+  $("exastatus").textContent = isDirect
+    ? "Your own service handles web search in this browser, so this setting only applies if you switch back to a server grant."
+    : exaStatusText(on);
+}
+
 // Reflects the sealed backend config into the settings section and wires edits.
 function renderSearchBackend() {
   const sel = /** @type {HTMLSelectElement} */ ($("ws-backend"));
@@ -2564,6 +2611,7 @@ function renderSearchBackend() {
       results: resEl.value,
     });
     renderSearchBackend();
+    renderExaRow(); // a direct backend makes the Exa/Worker choice moot — say so
     // Configuring (or clearing) a browser-direct backend changes whether web
     // search is reachable — keep the knob honest about it.
     reflectResearchKnob();
@@ -3498,11 +3546,25 @@ async function send(ev) {
   const text = $("input").value.trim();
   if (!text) return;
 
-  // Feedback keyword (EN+SV, the shared gate) → confirm-then-send to the
+  // The `/help` command (owner directive, 2026-07-26 — available in every
+  // agent, and here in every Se/cure session): answer from this site's
+  // DOCUMENTATION. Se/cure already carries the whole help layer offline — the
+  // committed docs corpus is a same-origin static file and retrieval is lexical
+  // in the browser (helpDocsBlockFor) — so the command just turns that block on
+  // for this turn regardless of the developer-mode toggle. No request of any
+  // kind leaves the device that wouldn't have anyway; the server stays out of
+  // the data path exactly as before. Assigned on EVERY send (before the
+  // feedback branch returns) so it can never persist into the next turn.
+  helpCommandTurn = slashEffect(text) === "help";
+
+  // Feedback keyword or the `/feedback` command (EN+SV, the shared gate) →
+  // confirm-then-send to the
   // developers over the DeepResearch token, never researched. Handled BEFORE
-  // provider routing so it works even with no LLM configured.
-  if (feedbackIntent(text)) {
-    startFeedback(text);
+  // provider routing so it works even with no LLM configured. The command
+  // token is stripped (feedbackComment) so the developers read what the user
+  // wrote, and so the confirm dialog echoes the same words that will be sent.
+  if (feedbackRequested(text)) {
+    startFeedback(feedbackComment(text));
     return;
   }
 
@@ -4029,6 +4091,24 @@ $("input").addEventListener("keydown", (e) => {
   e.preventDefault();
   $("form").requestSubmit();
 });
+// SLASH COMMANDS (UX-15) — the SAME typeahead the Se/rver composer mounts
+// (public/js/slash-menu.js), because `/feedback` and `/help` are platform
+// baseline rather than a tier's feature. Mounted AFTER the Enter handler above,
+// which it out-ranks: the menu listens on document in the capture phase, so an
+// Enter that picks a command never also sends the message. The description
+// language follows the repo's EN-default detectLang convention, read from what
+// is being typed and — while that is still just a slash — from the last thing
+// the user wrote in this conversation.
+mountSlashMenu({
+  input: /** @type {HTMLTextAreaElement} */ ($("input")),
+  container: $("composer"),
+  lang: () => {
+    const typed = $("input").value.replace(/^\/\S*/, "").trim();
+    const conv = activeConv();
+    const prior = conv?.messages?.filter((m) => m.role === "user").slice(-1)[0]?.content || "";
+    return detectLang(typed || prior);
+  },
+});
 // Introspection knob (client-local, persisted in the sealed project state):
 // unlocks introspection mode for this browser's conversations, and tints the
 // composer pane WHITE TITANIUM (drc.css :root.dev-mode #composer) so the tier's
@@ -4111,16 +4191,11 @@ $("websearch").addEventListener("change", () => {
 (() => {
   const knob = $("searchtoggle");
   const pop = $("knobpop");
-  // The card also answers WHO runs a grant/token-routed search — Exa or this
-  // site's own Worker (UX-10 amended, 2026-07-25). It is a preference about a
-  // path that only exists when a grant is in play; with a local browsing agent
-  // configured the browser calls that directly and this picker is moot, which
-  // is exactly why the agent's setup link stays right underneath it.
-  const srcBox = $("knobsrc");
-  if (srcBox) {
-    srcBox.innerHTML = searchSourcePickerHtml(getSearchSource(), "drcsrc");
-    wireSearchSourcePicker(srcBox, () => {});
-  }
+  // The card explains the knob and links the setup page — nothing more (owner
+  // directive, 2026-07-26). WHO runs a grant/token-routed search is the "Exa
+  // web search" knob in Settings (#exarow); with a local browsing agent
+  // configured the browser calls that directly and the choice is moot anyway,
+  // which is why the agent's setup link stays on this card.
   let hoverShow = 0;
   let hoverHide = 0;
   let holdTimer = 0;
@@ -4182,6 +4257,11 @@ $("budget").addEventListener("input", renderBudgetReadout);
 $("budget").addEventListener("change", () => {
   state.budgetS = renderBudgetReadout();
   saveState();
+});
+// "Exa web search" — WHO runs a grant/token-routed search (browser-local).
+$("exaweb").addEventListener("change", () => {
+  setExaEnabled($("exaweb").checked);
+  renderExaRow();
 });
 // The server-proxied web-search toggle (only meaningful when a grant is live).
 $("websearchserver").addEventListener("change", () => {

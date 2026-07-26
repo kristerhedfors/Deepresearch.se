@@ -31,7 +31,7 @@
 // and every vector carries metadata {u, d, seq, text} with a metadata
 // index on `u` for per-user filtering.
 
-import { embedModel, embedTexts, rawModelEntry } from "./berget.js";
+import { embedModel, embedTexts, eurPerTokenFromBerget, rawModelEntry } from "./berget.js";
 import { getConfig } from "./config.js";
 import { jsonResponse } from "./http.js";
 import {
@@ -197,7 +197,10 @@ async function quotaGate(env, identity) {
 async function recordEmbedUsage(env, log, identity, usage, model, durationMs) {
   const promptTokens = usage?.prompt_tokens || 0;
   const entry = await rawModelEntry(env, model);
-  const price = typeof entry?.pricing?.input === "number" ? entry.pricing.input : 0;
+  // rawModelEntry hands back the catalog entry VERBATIM, so its pricing still
+  // carries whatever unit Berget stated it in — normalize to EUR per token
+  // (berget.js eurPerTokenFromBerget) before multiplying by a token count.
+  const price = eurPerTokenFromBerget(entry?.pricing, "input");
   await recordUsage(env, log, {
     user_id: identity.id,
     model,

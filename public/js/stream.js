@@ -35,6 +35,7 @@ import { runDrcResearch } from "./drc-research.js";
 import { runShellLoop, shellCommandLabel } from "./bash-agent.js";
 import { GUEST_STDOUT_CAP_BYTES, bashIntent, deliverablesRun, execTimeoutForBudget, wantsOutboxCollect } from "./bash-core.js";
 import { feedbackForcesServerRoute, feedbackIntent } from "./feedback-core.js";
+import { slashEffect } from "./slash-core.js";
 import { aiModelIntent } from "./ai-models.js";
 import { collectDeliverables, ensureSandboxBooted, execInSandbox, resetSandboxIfLacking, sandboxFsSummary, sandboxIdle, sandboxSupported, sblog } from "./sandbox.js";
 import { hasPending } from "./attachments.js";
@@ -81,7 +82,7 @@ import { setGraphWorkflow, updateGraphAgent } from "./graph-backdrop.js";
 import { workflowEvent, workflowWaves } from "./orchestrator-core.js";
 // The on-device swarm pre-pass (maybeRunSwarmPrepass): both entry points are
 // lazy inside — nothing here loads the inference engine until a swarm runs.
-import { detectSwarmCapability, engineSpawner, runSwarmNodes } from "./swarm-runtime.js";
+import { detectSwarmCapability, engineSpawner, runSwarmNodes, stopSwarms, swarmCrashDiag } from "./swarm-runtime.js";
 import { createSseParser } from "./sse.js";
 import {
   capEmbedBytes,
@@ -251,6 +252,7 @@ export function conversationAsText() {
 function openConversationRecord(id, record) {
   controller?.abort();
   controller = null;
+  stopSwarms(); // opening another conversation abandons this one's models too
   generation++;
   history.length = 0;
   history.push(...record.messages);
@@ -347,6 +349,7 @@ export function clearHistory() {
   generation++;
   controller?.abort();
   controller = null;
+  stopSwarms(); // a new chat must not leave the old chat's models resident
   clearPending(); // "New chat" abandons any pending-answer resume too
   resetConversationMeta(); // the next send re-adopts whatever project is active
   convIncognito = false; // incognito is chosen per conversation, never inherited
@@ -372,6 +375,11 @@ function resetConversationMeta() {
 // catch block tells the two apart via `gen === generation`.
 export function stopGeneration() {
   controller?.abort();
+  // Stop must free the models, not just the stream. The signal alone only
+  // takes effect at the next member checkpoint; terminating the pool reclaims
+  // the memory now, which is the whole point of pressing Stop on a device
+  // that is running N models locally.
+  stopSwarms();
 }
 
 // ---- Answer recovery --------------------------------------------------
@@ -744,6 +752,20 @@ async function buildOutgoingUserContent(text, opts) {
   if (convRagDocs.length || project) {
     apiText += await buildRagBlocks(text, newRagDocs);
   }
+  // Outrospection mode: the whole outward feed is indexed in THIS browser
+  // (outrospect-feed.js), so the question carries the entries it actually
+  // matches rather than only the newest ones the server would pick. The
+  // server's own newest-first retrieval still runs and still grounds the
+  // answer — this adds reach back through the feed, it does not replace it.
+  // Fail-soft: no index, no network, no match → "" and the turn is unchanged.
+  if (cachedChatMode() === "outrospection") {
+    try {
+      const { outwardExcerptsFor } = await import("./outrospect-feed.js");
+      apiText += await outwardExcerptsFor(text);
+    } catch {
+      /* the server-side retrieval carries the turn alone */
+    }
+  }
   for (const a of opts.images) {
     apiText += imageMetadataBlock(a);
   }
@@ -792,7 +814,7 @@ async function buildChatPayload(opts) {
     messages: stripOldImages(history),
     time_budget_s: opts.budgetS,
     web_search: opts.webSearch,
-    // WHO runs those searches — the knob's long-press pick (search-source.js),
+    // WHO runs those searches — the "Exa web search" setting (search-source.js),
     // read from device storage at send time rather than threaded through the
     // send opts, so a resumed/recovered send uses the CURRENT preference
     // instead of one frozen into an old record. The server re-validates it.
@@ -965,7 +987,10 @@ async function maybeRunShellLoop(turn, opts) {
     // the loop runs on every send (the model decides), and a feedback text
     // that merely TALKS about Linux commands lures the model into proposing
     // some — booting the VM on the way to the feedback case (feedback #18).
-    if (latestUser && feedbackIntent(latestUser)) return [];
+    // (Since 2026-07-26 a `/feedback` or `/help` command is turned away here
+    // too: both are answered without a shell, and the ~25 s boot would be spent
+    // on the way to a canned acknowledgment or a documentation answer.)
+    if (latestUser && (feedbackIntent(latestUser) || slashEffect(latestUser))) return [];
     if (latestUser && aiModelIntent(latestUser) && !bashIntent(latestUser)) return [];
     // Agent Studio (SDK mode): building is the BUILD tools' job (write_file /
     // publish_app — files created in the sandbox are never published), so a
@@ -1076,10 +1101,19 @@ async function maybeRunShellLoop(turn, opts) {
 /**
  * @param {any} turn
  * @param {any} payload the chat payload being assembled — mutated in place
+ * @param {AbortSignal} [signal] the send's signal — Stop must free the models
  */
-async function maybeRunSwarmPrepass(turn, payload) {
+async function maybeRunSwarmPrepass(turn, payload, signal) {
   try {
     if (cachedChatMode() !== "orchestrator") return;
+    // A SLASH COMMAND is never orchestrated (owner directive, 2026-07-26 —
+    // feedback #26). This pre-pass runs BEFORE /api/chat, so without this guard
+    // a "/feedback the orchestrator ignores this" typed in Orchestrator mode
+    // posted the note to /api/orchestrator/plan and drew a sub-agent team over
+    // the turn — the server then answered it correctly, but from the user's
+    // seat the mode had visibly taken the message. The server-side twin of this
+    // rule is in src/chat.js (a command clears every executor phase).
+    if (slashEffect(latestUserText())) return;
     // Capability = the on-device knob is on AND weights are already cached
     // here. Never triggers a download (the consent rule lives in Settings).
     const cap = await detectSwarmCapability();
@@ -1131,6 +1165,11 @@ async function maybeRunSwarmPrepass(turn, payload) {
 
     const spawn = await engineSpawner();
     const results = await runSwarmNodes(plan, {
+      // WITHOUT this, Stop only stopped the stream: the members kept decoding
+      // to their own deadline (up to MEMBER_DEADLINE_MS each) and the next
+      // send spawned a second full pool on top — N models became 2N, then 3N.
+      // That stacking is the crash reported in feedback #26.
+      signal,
       spawn,
       modelId: cap.modelId,
       modelLabel: cap.modelLabel,
@@ -1708,7 +1747,7 @@ export async function sendMessage(text, opts) {
     // Orchestrator mode with on-device models here: plan the team, run its
     // swarm nodes in this browser, and attach both. No-op in every other mode
     // and on every device without cached weights (maybeRunSwarmPrepass).
-    await maybeRunSwarmPrepass(turn, payload);
+    await maybeRunSwarmPrepass(turn, payload, signal);
     // Diagnostic: report the client's sandbox-readiness so a not-running
     // sandbox can be diagnosed from the chat log (src/chatlog.js meta) —
     // crossOriginIsolated is the gate the loop needs, and it can only be
@@ -1729,6 +1768,13 @@ export async function sendMessage(text, opts) {
       // the debug beacon: files mounted (n), bytes (b), a project mount (proj),
       // dropped count (drop), boot ms, and any error.
       fs: sandboxFsSummary() || undefined,
+      // A breadcrumb left by an orchestrator swarm run that never reached
+      // "done" — i.e. the tab died mid-run (public/js/swarm-runtime.js). A
+      // dead tab cannot report itself, so the NEXT request carries the
+      // evidence. Read-once, so one death is reported on one request. Counters
+      // and closed-vocabulary classes only, never conversation content
+      // (invariant 4); the server whitelists it again in sanitizeSwarmDiag.
+      sw: swarmCrashDiag() || undefined,
     };
     // The stream is about to start: arm the stall watchdog and open a fresh
     // full silence window from HERE, so the (possibly long) pre-fetch work

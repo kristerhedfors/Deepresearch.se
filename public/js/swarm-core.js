@@ -106,34 +106,79 @@ function clamp(n, lo, hi) {
 }
 
 /**
+ * How much more RAM a loaded model occupies than its bytes on disk: the
+ * decompressed weights, the tokenizer, the wasm heap and the KV cache all sit
+ * on top of the file. 1.6 is deliberately a LOW estimate — it is a divisor, so
+ * guessing low means fewer concurrent members, which is the safe direction.
+ */
+export const MODEL_RUNTIME_FACTOR = 1.6;
+
+/**
+ * The memory budget assumed when the browser refuses to say (Safari and
+ * Firefox ship no navigator.deviceMemory — and Safari is exactly where a tab
+ * OOM has been reported). One gigabyte is not a measurement, it is a
+ * deliberately small allowance: with the 300 MB 1.7B build it still permits
+ * two members, and with anything larger it collapses the pool to one rather
+ * than betting a whole tab on an unknown.
+ */
+export const ASSUMED_MEMORY_BUDGET_GB = 1.0;
+
+/** Above this JS-heap fill the pool halves; above HEAP_STOP it runs one at a time. */
+export const HEAP_TIGHT = 0.7;
+export const HEAP_STOP = 0.85;
+
+/**
  * Turn "the plan asked for N members" into what THIS device will actually run.
  * The member count is honoured (capped) — the device constraint is expressed as
  * CONCURRENCY instead, so a phone runs a swarm of 8 as four waves of two rather
  * than silently shrinking the team. Every member still gets its own worker with
  * its own model instance; `concurrency` is how many exist at once.
  *
- * Memory is the real ceiling: each live worker holds its own copy of the
- * weights (a 1-bit 1.7B build is ~300 MB on disk and more once compiled), so
- * the pool is sized from navigator.deviceMemory when the browser reports it and
- * kept deliberately small when it does not.
+ * MEMORY IS THE CEILING, AND IT IS PER MODEL. Each live worker holds its own
+ * copy of the weights, so the pool has to be sized against the model that is
+ * actually cached here — a 1.2 GB Bonsai 8B cannot run as many concurrent
+ * members as the 300 MB 1.7B. The original sizing missed exactly that: with no
+ * navigator.deviceMemory (Safari, Firefox) it fixed the memory bound at two
+ * members REGARDLESS of model size, so a browser that reports nothing about
+ * its RAM would happily spawn two multi-gigabyte instances next to whatever
+ * the page already held. Now the unknown case gets an assumed budget divided
+ * by the model's own runtime footprint, and every branch is a divisor of that
+ * footprint — the bound can only fall as the model grows.
  *
- * @param {{ requested?: number, rounds?: number, hardwareConcurrency?: ?number, deviceMemoryGb?: ?number, modelBytes?: ?number, maxWorkers?: ?number }} opts
- * @returns {{ members: number, concurrency: number, rounds: number, batches: number }}
+ * `heapUsedRatio` (ondevice-core.js, Chrome-only) is the live pressure input:
+ * a page already near its heap ceiling halves the pool, or drops to one.
+ * Unknown (null) changes nothing — an absent measurement is never read as
+ * "plenty".
+ *
+ * @param {{ requested?: number, rounds?: number, hardwareConcurrency?: ?number, deviceMemoryGb?: ?number,
+ *   modelBytes?: ?number, maxWorkers?: ?number, heapUsedRatio?: ?number }} opts
+ * @returns {{ members: number, concurrency: number, rounds: number, batches: number, perMemberGb: number, budgetGb: number }}
  */
 export function planSwarmCapacity(opts = {}) {
   const members = clamp(opts.requested ?? SWARM_DEFAULT_MEMBERS, SWARM_MIN_MEMBERS, SWARM_MAX_MEMBERS);
   const rounds = clamp(opts.rounds ?? SWARM_DEFAULT_ROUNDS, SWARM_MIN_ROUNDS, SWARM_MAX_ROUNDS);
-  // CPU threads are the cheap signal; leave one for the page itself.
+  // CPU threads are the cheap signal; leave half for the page itself.
   const byCpu = Number.isFinite(opts.hardwareConcurrency) ? Math.floor(Number(opts.hardwareConcurrency) / 2) : 2;
-  // Memory is the expensive one. deviceMemory is coarse (0.25…8) and capped at
-  // 8 by every browser that ships it, so treat it as a floor, not a budget:
-  // half the reported RAM, divided by the model's own footprint.
+  // deviceMemory is coarse (0.25…8) and capped at 8 by every browser that
+  // ships it, so treat half of it as the budget — never as a promise.
   const gb = Number.isFinite(opts.deviceMemoryGb) ? Number(opts.deviceMemoryGb) : null;
+  const budgetGb = gb ? gb / 2 : ASSUMED_MEMORY_BUDGET_GB;
   const modelGb = Number.isFinite(opts.modelBytes) ? Number(opts.modelBytes) / 1e9 : 0.35;
-  const byMem = gb ? Math.floor((gb / 2) / Math.max(0.2, modelGb)) : 2;
+  const perMemberGb = Math.max(0.2, modelGb) * MODEL_RUNTIME_FACTOR;
+  const byMem = Math.max(1, Math.floor(budgetGb / perMemberGb));
   const hardCap = Number.isFinite(opts.maxWorkers) ? clamp(Number(opts.maxWorkers), 1, SWARM_MAX_MEMBERS) : 4;
-  const concurrency = Math.min(members, hardCap, Math.max(1, Math.min(byCpu, byMem)));
-  return { members, concurrency, rounds, batches: Math.ceil(members / concurrency) };
+  let concurrency = Math.min(members, hardCap, Math.max(1, Math.min(byCpu, byMem)));
+  const heap = Number.isFinite(opts.heapUsedRatio) ? Number(opts.heapUsedRatio) : null;
+  if (heap !== null && heap >= HEAP_STOP) concurrency = 1;
+  else if (heap !== null && heap >= HEAP_TIGHT) concurrency = Math.max(1, Math.floor(concurrency / 2));
+  return {
+    members,
+    concurrency,
+    rounds,
+    batches: Math.ceil(members / concurrency),
+    perMemberGb: Math.round(perMemberGb * 100) / 100,
+    budgetGb,
+  };
 }
 
 // ---- the prompts (pure string assembly) --------------------------------------

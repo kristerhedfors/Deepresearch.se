@@ -18,11 +18,11 @@
 // on failure. See the local-web-search skill for running your own service.
 //
 // On top of that server-wide selection sits the per-request USER choice: the
-// web knob's long-press card (UX-10) lets a person pick who runs their
+// "Exa web search" knob in settings lets a person pick who runs their
 // searches — Exa (the default) or Cloudflare-originating. Only those two are
 // user-selectable; a self-hosted backend stays an operator decision because it
 // names an operator's own service. `search.allow_user_choice` (default true)
-// lets an admin pin the site-wide backend and take the picker away.
+// lets an admin pin the site-wide backend and take that knob away.
 
 import {
   SELF_HOSTED_BACKENDS,
@@ -53,7 +53,7 @@ export const CLOUDFLARE_BACKEND = "cloudflare";
 // `search.backend` against this.
 export const SEARCH_BACKENDS = ["exa", CLOUDFLARE_BACKEND, ...SELF_HOSTED_BACKENDS];
 
-// The subset a USER may pick per request from the web knob's long-press card.
+// The subset a USER may pick per request with the "Exa web search" settings knob.
 // Deliberately just the two that need no operator setup: Exa (the default, a
 // hosted third party) and the Worker-native one (no third party at all). A
 // self-hosted backend names the operator's own service and stays admin-only.

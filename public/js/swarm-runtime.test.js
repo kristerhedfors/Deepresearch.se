@@ -5,7 +5,31 @@
 // model). Nothing here touches the engine or the DOM.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createSwarmPool, runSwarmNode, runSwarmNodes } from "./swarm-runtime.js";
+import {
+  createSwarmPool,
+  lastRunHint,
+  runSwarmNode,
+  runSwarmNodes,
+  setBreadcrumbStore,
+  stopSwarms,
+  swarmCrashDiag,
+  swarmRunning,
+} from "./swarm-runtime.js";
+
+/** A localStorage-shaped fake so the breadcrumb path is testable in Node. */
+function fakeStore() {
+  const mem = new Map();
+  const store = {
+    getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+    setItem: (k, v) => void mem.set(k, String(v)),
+    removeItem: (k) => void mem.delete(k),
+    get size() {
+      return mem.size;
+    },
+  };
+  setBreadcrumbStore(store);
+  return store;
+}
 
 /**
  * A fake member: answers draft prompts from `answers` (by call order),
@@ -174,4 +198,173 @@ test("an aborted send stops the swarm without leaving workers behind", async () 
   );
   assert.deepEqual(out, {});
   assert.equal(live.size, 0);
+});
+
+// ---- the memory contract (feedback #26 — the Safari tab crashes) -------------
+
+test("one pool serves the whole run instead of a fresh set of models per node", async () => {
+  const { spawn, live } = fakeSpawner();
+  let peak = 0;
+  const counting = (label) => {
+    const h = spawn(label);
+    peak = Math.max(peak, live.size);
+    return h;
+  };
+  const plan = {
+    agents: [
+      { id: "sw", kind: "swarm", task: "weigh it", swarmSize: 2, rounds: 1 },
+      // A plan that slipped two swarm nodes past the planner must still not
+      // multiply the workers (normalizeWorkflow downgrades extras; this is the
+      // runtime's own bound).
+      { id: "sw2", kind: "swarm", task: "weigh it again", swarmSize: 2, rounds: 1 },
+    ],
+  };
+  const out = await runSwarmNodes(plan, { spawn: counting, modelId: "m", device });
+  assert.deepEqual(Object.keys(out).sort(), ["sw", "sw2"]);
+  assert.equal(peak, 2, "both nodes share the one pool the device was sized for");
+  assert.equal(live.size, 0, "and it is gone when the run ends");
+});
+
+test("a new run supersedes the previous one — never two swarms of models at once", async () => {
+  const { spawn, live } = fakeSpawner();
+  let peak = 0;
+  const slow = (label) => {
+    const h = spawn(label);
+    peak = Math.max(peak, live.size);
+    return {
+      ...h,
+      generate: (a) => new Promise((resolve) => setTimeout(() => resolve(h.generate(a)), 30)),
+    };
+  };
+  const plan = { agents: [{ id: "sw", kind: "swarm", task: "t", swarmSize: 2, rounds: 1 }] };
+  const first = runSwarmNodes(plan, { spawn: slow, modelId: "m", device });
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal(swarmRunning(), true);
+  const second = await runSwarmNodes(plan, { spawn: slow, modelId: "m", device });
+  await first;
+  assert.ok(peak <= 2, `the superseded run's workers were terminated, peak ${peak}`);
+  assert.equal(live.size, 0);
+  assert.equal(swarmRunning(), false);
+  assert.ok(second, "the newer run still answers");
+});
+
+test("stopSwarms terminates everything a live run is holding", async () => {
+  const { spawn, live } = fakeSpawner();
+  const hang = (label) => ({ ...spawn(label), generate: () => new Promise(() => {}) });
+  const run = runSwarmNodes(
+    { agents: [{ id: "sw", kind: "swarm", task: "t", swarmSize: 2, rounds: 1 }] },
+    { spawn: hang, modelId: "m", device, deadlineMs: 5000 },
+  );
+  await new Promise((r) => setTimeout(r, 5));
+  assert.ok(live.size > 0);
+  stopSwarms();
+  assert.equal(live.size, 0, "workers die on the spot, not at the next GC");
+  assert.deepEqual(await run, {}, "and the run unwinds fail-soft");
+});
+
+test("a timed-out member's worker is replaced, not handed to the next member", async () => {
+  const spawned = [];
+  let calls = 0;
+  const aborts = [];
+  const flaky = (label) => {
+    const h = {
+      label,
+      dead: false,
+      // Only the first generation hangs; the replacement worker answers.
+      generate: () => (++calls === 1 ? new Promise(() => {}) : Promise.resolve("latency is the constraint")),
+      abort: () => aborts.push(label),
+      terminate: () => (h.dead = true),
+    };
+    spawned.push(h);
+    return h;
+  };
+  const res = await runSwarmNode(
+    { id: "sw", task: "t", swarmSize: 2, rounds: 1 },
+    { spawn: flaky, modelId: "m", device, deadlineMs: 20 },
+  );
+  assert.ok(res, "the swarm survived the hung member");
+  assert.ok(aborts.length >= 1, "the abandoned generation is aborted, not just forgotten");
+  assert.ok(spawned.length > 2, "a fresh worker took the retired one's slot");
+  assert.ok(spawned.filter((h) => h.dead).length >= 1, "and the retired one was terminated");
+});
+
+test("a run writes a breadcrumb before spawning and clears it on a clean finish", async () => {
+  const store = fakeStore();
+  const seen = [];
+  const { spawn } = fakeSpawner();
+  const watching = (label) => {
+    seen.push(JSON.parse(store.getItem("dr_ondevice_run") || "null"));
+    return spawn(label);
+  };
+  await runSwarmNodes(
+    { agents: [{ id: "sw", kind: "swarm", task: "t", swarmSize: 2, rounds: 1 }] },
+    { spawn: watching, modelId: "m", device },
+  );
+  assert.ok(seen[0], "the breadcrumb exists BEFORE the first worker — the point of it");
+  assert.equal(seen[0].phase, "spawn");
+  assert.equal(seen[0].members, 2);
+  assert.ok(seen[0].conc >= 1);
+  assert.equal(store.getItem("dr_ondevice_run"), null, "a clean run leaves nothing behind");
+  assert.equal(swarmCrashDiag(), undefined);
+});
+
+test("a breadcrumb left by a dead tab becomes counters on the next request", () => {
+  const store = fakeStore();
+  store.setItem(
+    "dr_ondevice_run",
+    JSON.stringify({ v: 1, t: Date.now() - 60_000, kind: "swarm", nodes: 1, members: 6, conc: 4, rounds: 2, round: 2, phase: "diverge", mb: 1200, cls: "" }),
+  );
+  const diag = swarmCrashDiag();
+  assert.equal(diag.died, 1);
+  assert.equal(diag.phase, "diverge");
+  assert.equal(diag.members, 6);
+  assert.equal(diag.conc, 4);
+  assert.equal(diag.mb, 1200);
+  assert.equal(diag.ago, 60);
+  // Counters and classes ONLY (invariant 4): nothing here can carry a task,
+  // a node id or an answer.
+  assert.deepEqual(Object.keys(diag).sort(), ["ago", "cls", "conc", "died", "kind", "mb", "members", "phase", "round"]);
+  assert.equal(swarmCrashDiag(), undefined, "read once — one death is reported once");
+});
+
+test("a member's memory failure ends the swarm early and is kept for the report", async () => {
+  const store = fakeStore();
+  let call = 0;
+  const oom = () => ({
+    async generate() {
+      // The first member answers; the second dies of memory, which must stop
+      // the run rather than buy another round of allocations.
+      if (++call % 2 === 0) throw new Error("Cannot enlarge memory arrays");
+      return "latency is the constraint";
+    },
+    terminate() {},
+  });
+  await runSwarmNodes(
+    { agents: [{ id: "sw", kind: "swarm", task: "t", swarmSize: 2, rounds: 3 }] },
+    { spawn: oom, modelId: "m", device },
+  );
+  const diag = swarmCrashDiag();
+  assert.ok(diag, "the pressure survives the run for the next request's diagnostics");
+  assert.equal(diag.cls, "oom");
+  assert.equal(diag.died, 0, "the run finished — this device is at its limit, not dead");
+});
+
+test("a retry does not erase the crash it may be repeating", async () => {
+  const store = fakeStore();
+  // A previous page died mid-swarm and nothing has reported it yet.
+  store.setItem(
+    "dr_ondevice_run",
+    JSON.stringify({ v: 1, t: Date.now() - 5000, kind: "swarm", nodes: 1, members: 4, conc: 4, rounds: 2, round: 1, phase: "diverge", mb: 300, cls: "" }),
+  );
+  assert.ok(lastRunHint(), "the device's own verdict is readable without consuming it");
+  const { spawn } = fakeSpawner();
+  await runSwarmNodes(
+    { agents: [{ id: "sw", kind: "swarm", task: "t", swarmSize: 2, rounds: 1 }] },
+    { spawn, modelId: "m", device },
+  );
+  const diag = swarmCrashDiag();
+  assert.ok(diag, "the older death still gets reported after a clean retry");
+  assert.equal(diag.died, 1);
+  assert.equal(diag.phase, "diverge");
+  assert.equal(swarmCrashDiag(), undefined);
 });

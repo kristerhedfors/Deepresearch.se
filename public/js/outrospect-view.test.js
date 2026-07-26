@@ -62,6 +62,22 @@ test("refreshStatusLine names the lens by its title, not its slug", () => {
   assert.match(line, new RegExp(lensById("browser-models").title));
 });
 
+// A visit also reads a few articles in FULL so the chat mode can quote them
+// (owner feedback #28). Work that happens silently reads as work that did not
+// happen, which is the same reason `cooled` and `nothing new` are separate
+// sentences — so the indexing gets its own clause.
+test("refreshStatusLine reports the articles read in full for quotation", () => {
+  const one = refreshStatusLine({ lens: "edge-rag", fresh: [], indexed: 1 });
+  assert.match(one, /did not already have/, "the search outcome is still stated first");
+  assert.match(one, /Read 1 article in full/);
+  assert.match(refreshStatusLine({ lens: "edge-rag", fresh: [{}], indexed: 3 }), /Read 3 articles in full/);
+  // Nothing indexed adds nothing — the line stays exactly what it was.
+  assert.equal(
+    refreshStatusLine({ lens: "edge-rag", fresh: [], indexed: 0 }),
+    refreshStatusLine({ lens: "edge-rag", fresh: [] }),
+  );
+});
+
 test("refreshStatusLine surfaces limits, backend failures, and errors plainly", () => {
   assert.match(refreshStatusLine({ limited: true }), /Enough refreshes/);
   assert.match(refreshStatusLine({ lens: "edge-rag", degraded: true }), /did not answer/);

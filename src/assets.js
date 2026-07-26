@@ -134,7 +134,7 @@ export function isPublicAsset(url, method) {
     // umbrella intro, dead composer. The derived module-graph test in
     // assets.test.js now fails `npm test` on this whole class.)
     url.pathname === "/js/websearch-backends-core.js" ||
-    // The search-SOURCE preference behind the web knob's long-press card —
+    // The search-SOURCE preference behind the "Exa web search" settings knob —
     // /cure/drc.js statically imports it (the same public-graph rule).
     url.pathname === "/js/search-source.js" ||
     url.pathname === "/js/drc-research.js" ||
@@ -220,6 +220,15 @@ export function isPublicAsset(url, method) {
     // whole /cure tier dark. It's the same deterministic gate the Se/rver
     // pipeline uses (src/feedback.js re-exports it), no secrets.
     url.pathname === "/js/feedback-core.js" ||
+    // The slash-command registry (slash-core.js) and its composer typeahead
+    // (slash-menu.js): both are in the /cure graph — drc.js imports the menu
+    // and the parser, and feedback-core.js imports the registry so `/feedback`
+    // reaches the same gate as the bare keyword. Same public-graph rule as the
+    // entries around it: a 401 on either would take the whole Se/cure tier
+    // dark. A literal table of two command names and their descriptions, no
+    // secrets.
+    url.pathname === "/js/slash-core.js" ||
+    url.pathname === "/js/slash-menu.js" ||
     url.pathname === "/introspect/source-snapshot.json" ||
     // The OWASP Top 10 reference corpus — public so DRC (Se/cure, server in no
     // data path) can fetch it and ground a security assessment OFFLINE, quoting

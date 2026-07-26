@@ -233,18 +233,39 @@ test("swarm nodes need a capable device — no capability downgrades to custom",
 });
 
 test("swarm nodes carry clamped member/round counts", () => {
+  // One swarm node per plan (see the next test), so each case is its own plan.
+  const one = (/** @type {any} */ a) => normalizeWorkflow({ agents: [a] }, { hasSwarm: true }).agents[0];
+  assert.deepEqual(
+    [
+      one({ id: "big", kind: "swarm", task: "A.", swarmSize: 99, rounds: 9 }),
+      one({ id: "small", kind: "swarm", task: "B.", swarmSize: 1, rounds: 0 }),
+      one({ id: "bare", kind: "swarm", task: "C." }),
+    ].map((a) => [a.swarmSize, a.rounds]),
+    [[12, 3], [2, 1], [4, 2]],
+  );
+});
+
+test("only ONE swarm node survives a plan — the extras run as ordinary specialists", () => {
+  // Every swarm node spawns in-browser model instances; several of them is a
+  // memory multiplier, not a bigger team (feedback #26, the Safari tab
+  // crashes). The prompt already asked for one; this is the bound.
   const plan = normalizeWorkflow(
     {
       agents: [
-        { id: "big", kind: "swarm", task: "A.", swarmSize: 99, rounds: 9 },
-        { id: "small", kind: "swarm", task: "B.", swarmSize: 1, rounds: 0 },
-        { id: "bare", kind: "swarm", task: "C." },
+        { id: "first", kind: "swarm", task: "Weigh it.", swarmSize: 6 },
+        { id: "second", kind: "swarm", task: "Weigh it differently.", swarmSize: 6 },
+        { id: "third", kind: "swarm", task: "And again." },
       ],
     },
     { hasSwarm: true },
   );
-  assert.deepEqual(plan.agents.map((a) => a.swarmSize), [12, 2, 4]);
-  assert.deepEqual(plan.agents.map((a) => a.rounds), [3, 1, 2]);
+  assert.deepEqual(plan.agents.map((a) => a.kind), ["swarm", "custom", "custom"]);
+  assert.equal(plan.agents[1].swarmSize, undefined, "a downgraded node carries no swarm shape");
+  assert.ok(
+    validateWorkflow({ agents: [{ id: "a", kind: "swarm", task: "x" }, { id: "b", kind: "swarm", task: "y" }] })
+      .some((p) => /at most one swarm agent/.test(p)),
+    "validation names it too",
+  );
 });
 
 test("a swarm node can never depend on another agent (it runs before the request)", () => {

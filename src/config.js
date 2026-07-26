@@ -89,7 +89,7 @@ import { DEFAULT_SERP_PROVIDERS, normalizeSerpProviders } from "./websearch-cf.j
  *   datacenter IPs outright. An empty or unrecognised list falls back to the
  *   default pair rather than searching nothing
  * @property {boolean} allow_user_choice users may override the site-wide
- *   backend per request from the web knob's long-press card, choosing between
+ *   backend per request with the "Exa web search" settings knob, choosing between
  *   Exa and the Cloudflare-originating backend (default true). Turn off to pin
  *   the site-wide selection for everyone.
  */

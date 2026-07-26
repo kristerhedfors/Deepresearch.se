@@ -25,7 +25,6 @@ import { initProjectsUi } from "./projects-ui.js";
 import { bashLiteOn, developerModeOn, loadSettings, setDeveloperMode } from "./settings.js";
 import { storeDeveloperMode } from "./dev-mode.js";
 import { applyChatModeTheme, cachedChatMode, reconcileChatMode } from "./chat-mode.js";
-import { getSearchSource, searchSourcePickerHtml, wireSearchSourcePicker } from "./search-source.js";
 import { applyModeBackdrop } from "./mode-backdrop.js";
 import { barTint } from "./mode-theme.js";
 import { wireBarTint } from "./bar-tint.js";
@@ -64,6 +63,8 @@ import { clearChatDom, EMPTY_TEXT, initTurns } from "./turns.js";
 import { initTestpoints } from "./testpoints.js";
 import { initStarters } from "./starters.js";
 import { parseComposerDeepLink } from "./deeplink-core.js";
+import { mountSlashMenu } from "./slash-menu.js";
+import { detectLang } from "./canned-faq.js";
 
 // ---- Elements -------------------------------------------------------------
 
@@ -274,18 +275,10 @@ webSearchBox.addEventListener("change", () => {
   localStorage.setItem("web_search", webSearchBox.checked ? "on" : "off");
 });
 
-// The knob's long-press card also answers WHO runs the searches (UX-10 amended,
-// 2026-07-25): Exa (the default, a hosted index that retains queries) or this
-// site's own Cloudflare Worker (src/websearch-cf.js — no search company in the
-// path). Rendered once at boot into #searchsrc; the pick is device-local
-// (search-source.js) and rides each /api/chat as `search_source`, which the
-// server re-validates. Fail-soft: a stale cached page without the container
-// just keeps sending its stored pick.
-const searchSrcBox = document.getElementById("searchsrc");
-if (searchSrcBox) {
-  searchSrcBox.innerHTML = searchSourcePickerHtml(getSearchSource(), "srvsrc");
-  wireSearchSourcePicker(searchSrcBox, () => {});
-}
+// WHO runs the searches is NOT this knob's business (owner directive,
+// 2026-07-26): the knob is on/off, and the Exa-or-our-own-Worker choice is the
+// "Exa web search" knob in the Settings view (account-settings.js), device-local
+// in search-source.js. stream.js reads the resulting source per request.
 
 // ---- Introspection / SDK composer-row status chips -------------------------
 // The research-depth slider is hidden in these two modes (mode-theme.js
@@ -354,11 +347,44 @@ function greetSdkMode(mode) {
     .then((m) => m.showSdkPlantGreeter())
     .catch(() => {});
 }
+
+// Outrospection mode opens on the FEED, not on an empty chat (owner directive,
+// 2026-07-26): the outward feed IS this agent's session history — latest
+// entries in the transcript, older pages on scroll-back, the whole thing
+// indexed in this browser so a question retrieves against all of it rather
+// than just what fits on screen. Only ever mounted into a BLANK session; a
+// real conversation is never displaced. Dynamically imported and fail-soft, so
+// a feed that will not load leaves the ordinary empty chat behind.
+let outroFeedMounted = false;
+function openOutrospectionFeed(mode) {
+  if (mode !== "outrospection" || outroFeedMounted) return;
+  if (chat.querySelector(".msg, .turn")) return; // a real conversation is in progress
+  outroFeedMounted = true;
+  import("./outrospect-feed.js")
+    .then((m) => m.openFeedSession(chat))
+    .catch(() => {
+      outroFeedMounted = false;
+    });
+}
+
+// Leaving the mode (or starting a new chat) drops the mounted feed so it is
+// re-read fresh next time — the feed keeps growing, and a stale render would
+// quietly hide the newest entries.
+function clearOutrospectionFeed() {
+  outroFeedMounted = false;
+  for (const node of chat.querySelectorAll(".outro-history")) node.remove();
+}
 syncModeSelect(cachedChatMode());
+// A returning outrospection user lands straight on the feed, same as a switch.
+openOutrospectionFeed(cachedChatMode());
 modeSel.addEventListener("change", () => {
   const mode = applyChatModeTheme(modeSel.value);
   modeSel.value = mode;
   applyModeBackdrop(mode);
+  // Leaving Orchestrator abandons any local swarm still decoding: free the
+  // models now rather than letting them run to their own deadline in a mode
+  // that has no use for them (public/js/swarm-runtime.js).
+  if (mode !== "orchestrator") import("./swarm-runtime.js").then((m) => m.stopSwarms()).catch(() => {});
   if (mode !== "normal" && !developerModeOn()) {
     setDeveloperMode(true)
       .then(() => storeDeveloperMode(true))
@@ -369,6 +395,8 @@ modeSel.addEventListener("change", () => {
   // Deep Research openers sitting in Agent Studio would advertise the wrong
   // thing entirely.
   starters?.refresh();
+  clearOutrospectionFeed();
+  openOutrospectionFeed(mode);
 });
 
 // The web-search popover opens on a press-and-hold of the spiderweb knob
@@ -548,6 +576,9 @@ function newChat(keepProject = false) {
   starters?.refresh();
   syncCopyState();
   refreshSdkBuildChip(null); // a fresh chat has no build of its own yet
+  // A new chat in outrospection mode is a new FEED session, not a blank one.
+  clearOutrospectionFeed();
+  openOutrospectionFeed(cachedChatMode());
   input.focus();
 }
 document.getElementById("clearbtn").addEventListener("click", () => newChat());
@@ -649,6 +680,29 @@ const autogrow = () => {
   syncChatInset(); // the taller composer must not bury the reply's tail
 };
 input.addEventListener("input", autogrow);
+
+// SLASH COMMANDS (UX-15): a "/" typed as the first character opens the command
+// list — `/feedback` and `/help`, the two that are available in every agent
+// (owner directive, 2026-07-26). Identical mount on Se/cure (public/cure/drc.js),
+// because the commands belong to the platform rather than to a tier or a mode.
+//
+// The menu's language follows the repo's deterministic EN-default convention
+// (canned-faq.js detectLang): what is being typed decides, and while that is
+// still just a slash, the last thing the user wrote does — so a Swedish
+// conversation gets Swedish descriptions from the first keystroke.
+const lastUserBubbleText = () => {
+  try {
+    const bubbles = document.querySelectorAll("#chat .msg.user");
+    return bubbles.length ? bubbles[bubbles.length - 1].textContent || "" : "";
+  } catch {
+    return "";
+  }
+};
+mountSlashMenu({
+  input,
+  container: document.getElementById("composer"),
+  lang: () => detectLang(input.value.replace(/^\/\S*/, "").trim() || lastUserBubbleText()),
+});
 
 // Keep the chat's bottom inset matched to the FIXED footer glass so the last
 // lines of a reply always clear the composer pane. The footer's real footprint
@@ -799,7 +853,7 @@ input.addEventListener("keydown", (e) => {
 // every module was current. If the marker doesn't match, fetch the
 // stylesheet with cache:"reload" (bypasses AND overwrites the cached
 // entry) and swap the link so the fresh rules apply without a reload.
-const CSS_VERSION = "h52";
+const CSS_VERSION = "h53";
 try {
   const seen = getComputedStyle(document.documentElement).getPropertyValue("--css-version").trim();
   if (seen !== CSS_VERSION) {

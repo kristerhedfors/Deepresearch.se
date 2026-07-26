@@ -18,7 +18,10 @@
 //               page settles (POST /api/outrospect/refresh) — the server picks
 //               whichever lens has gone stalest, so the feed heals its thin
 //               spots by being read. Anything genuinely new streams in at the
-//               top with the NEW flash, without a reload.
+//               top with the NEW flash, without a reload. The same call also
+//               reads a few articles in FULL so the chat mode can quote them
+//               (owner feedback #28); the status line says how many, because
+//               work that happens silently reads as work that did not happen.
 //   3. ANSWER   the shortcut back: a note written here is not a bug report, it
 //               is an operative/strategic idea, and it is submitted as one —
 //               feedback-core's `strategy` scope, tagged with the lens it was
@@ -82,7 +85,7 @@ export function whenLabel(ts, now = Date.now()) {
  * feed is a shared resource on a cooldown, so "nothing new" and "someone just
  * looked" are DIFFERENT outcomes and both are stated — a silent no-op reads as
  * a broken button.
- * @param {{ lens?: string | null, fresh?: unknown[], cooled?: boolean, limited?: boolean, degraded?: boolean, error?: string }} res
+ * @param {{ lens?: string | null, fresh?: unknown[], cooled?: boolean, limited?: boolean, degraded?: boolean, indexed?: number, error?: string }} res
  * @returns {string}
  */
 export function refreshStatusLine(res) {
@@ -96,8 +99,17 @@ export function refreshStatusLine(res) {
   }
   const n = Array.isArray(res.fresh) ? res.fresh.length : 0;
   if (res.degraded) return `Searched “${lens}” — the search backend did not answer. Nothing lost; try again shortly.`;
-  if (!n) return `Searched “${lens}” on your behalf — nothing out there we did not already have.`;
-  return `Searched “${lens}” on your behalf — ${n} new item${n === 1 ? "" : "s"}, marked NEW below.`;
+  // The indexing tail (owner feedback #28): a visit also fetches the page text
+  // of a few not-yet-indexed articles so the chat mode can QUOTE them. It is
+  // worth stating for the same reason the cooled/nothing-new outcomes are —
+  // work that happened silently reads as work that did not happen.
+  const head = !n
+    ? `Searched “${lens}” on your behalf — nothing out there we did not already have.`
+    : `Searched “${lens}” on your behalf — ${n} new item${n === 1 ? "" : "s"}, marked NEW below.`;
+  const indexed = Number(res.indexed) || 0;
+  return indexed
+    ? `${head} Read ${indexed} article${indexed === 1 ? "" : "s"} in full, so they can be quoted.`
+    : head;
 }
 
 /**

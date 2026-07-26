@@ -470,20 +470,20 @@ not buried in settings. Hover and long-press are the two "tell me more
 without committing" gestures — both must exist because each platform only
 has one of them (owner request, 2026-07-24).
 
-**Amended 2026-07-25 — the card may also DECIDE, not only explain.** Once a
-control has more than one honest answer to "where does this come from?", the
-card that explains it is also the right place to choose between them: the web
-knob's card carries a radio picker of WHO runs the searches (Exa or this
-site's own Cloudflare Worker — `public/js/search-source.js`, shared by both
-tiers). The rules that keep it from becoming a settings drawer: **at most one
-decision per card**, its options **need no setup** (anything requiring an
-operator or a URL stays in settings, and the card links there instead), each
-option carries a one-line consequence rather than a bare label, the whole row
-is the label so the tap target is the option and not the 14 px radio, and the
-default is preselected — a radio group with nothing checked is a dead
-control. The pick is device-local and the SERVER RE-VALIDATES it; a card
-picker must never be the only thing standing between a user and an
-unvalidated target.
+**Amended 2026-07-25, REVERSED 2026-07-26 (owner directive) — the card
+EXPLAINS; it does not decide.** For one day the web knob's card carried a
+radio picker of WHO runs the searches (Exa or this site's own Cloudflare
+Worker). That is now a **settings knob** — "Exa web search", on by default,
+off meaning the Worker backend — in the Se/rver Settings view
+(`account-settings.js`) and the Se/cure settings drawer (`#exarow`), over the
+unchanged shared preference `public/js/search-source.js`. **The standing
+rule: a composer knob answers ITS OWN question and nothing else** (the web
+knob: is this question researched live — on or off), and a second, unrelated
+decision belongs in settings even when it is topically adjacent. A card may
+still link to where that decision is made; this one still links the
+local-browsing-agent setup page. The reversal does not undo the dismiss trap
+below: any card a user reads to the end has to survive the release, whether or
+not it holds a control.
 
 **The dismiss trap (found 2026-07-25, headless Chromium):** the release that
 ENDS a long-press is itself a document click, and the control is not inside
@@ -510,10 +510,8 @@ right-click lands in the same handler, which is harmless on a toggle.
 **Canonical implementation:** the web knob (`#searchtoggle`) → `#knobpop` →
 `/cure/local-search/`: `public/cure/index.html` (the card), `drc.css` (the
 `#drspop` glass shape anchored right), `drc.js` (the wiring IIFE after the
-`websearch` change handler). The picker half is `#knobsrc` / `#searchsrc`
-(Se/cure / Se/rver) rendered from `searchSourcePickerHtml`, with the `.srcpick`
-rules duplicated in `drc.css` and `css/app.css` — the two stylesheets never
-load together. Hover binds only under
+`websearch` change handler). The Se/rver twin is `#searchpop` in
+`public/index.html` + `public/js/app.js`. Hover binds only under
 `matchMedia("(hover: hover) and (pointer: fine)")` — on touch, synthesized
 mouseenter would fight the toggle. No text routing, so no EN/SV parity
 applies.
@@ -733,3 +731,58 @@ together). Composes with UX-4: the download consent still lives inside the
 expanded rows, and folding the section never starts or continues anything.
 Language-agnostic (a disclosure gesture, no text routing), so no EN/SV parity
 applies.
+
+---
+
+## UX-15 — A slash typed first opens the command list; picking a command leaves the caret ready for its argument
+
+**When** the user types **`/` as the first character** of the chat composer,
+**then** the command list opens above the pane — one row per available command,
+each showing the command, its argument hint and a one-line description. Typing
+filters the list by prefix. **↑/↓** move the highlight (wrapping at both ends),
+**Enter** or **Tab** picks the highlighted command, a **click/tap** picks a row,
+**Escape** closes. Picking puts `/<command> ` in the composer with the caret
+after the space — the list is now closed, so the next Enter **sends** (UX-8).
+The list also closes the moment the text stops being a bare command token: an
+argument is being typed, the prefix matches nothing, or the slash isn't at
+position 0 ("what does /help do?" is a research question).
+
+**Why.** This is the interaction every chat product with commands already has
+(Slack, Discord, Claude Code), so it needs no explanation — but only if it
+behaves identically, above all in never trapping Enter. The rule that makes it
+safe is that **picking a command is not sending it**: there is exactly one state
+where Enter doesn't send, it is visible on screen, and Escape or one more
+keystroke leaves it. The commands are the same in every chat mode and on both
+tiers because they belong to the platform, not to an agent (owner directive,
+2026-07-26: *"those shall be available in every agent"*).
+
+**The mechanics (match all of these):**
+
+1. **One shared module, both tiers** — `public/js/slash-menu.js`, mounted by
+   `public/js/app.js` (Se/rver) and `public/cure/drc.js` (Se/cure). Se/cure
+   imports it from `/js/` like the other shared client modules, so a new command
+   appears in both composers at once. Both paths are in `isPublicAsset`
+   (`src/assets.js`) — the /cure module graph goes dark without that.
+2. **All the deciding lives in the pure core** (`public/js/slash-core.js`):
+   which rows, in which order, in which language, and where the highlight
+   moves. The DOM module only draws and listens, so the behaviour is
+   Node-tested without a DOM (`slash-core.test.js`).
+3. **The keydown listener is on `document`, capture phase**, and stops
+   propagation only for the keys an OPEN list consumes (↑ ↓ Enter Tab Escape).
+   That is what makes it out-rank the composer's own Enter-sends handler
+   regardless of module load order — a listener on the textarea itself would
+   depend on registration order.
+4. **Rows are `<button type="button">`** inside the form (never a submit) and
+   are chosen on **`pointerdown`, not click**, so the textarea doesn't blur and
+   close the list out from under the finger.
+5. **Language follows the deterministic EN-default convention** (`detectLang`,
+   canned-faq.js) applied to what is being typed and — while that is still just
+   a slash — to the last thing the user wrote. Command NAMES are never
+   translated; the label, argument hint and description always are (invariant 6).
+6. **Dismissal is UX-1**: a pointerdown anywhere outside the list closes it.
+
+**Canonical implementations:** `public/js/slash-menu.js` (the mount), the
+`.slash-menu` / `.slash-item` block in `public/css/app.css` and its mirror in
+`public/cure/drc.css`, and `public/js/slash-core.js` for the pure half. The
+routing the commands trigger is `src/chat.js` (resolved before mode routing) and
+`src/pipeline.js` (the feedback gate above the executor dispatch).
