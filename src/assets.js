@@ -134,7 +134,7 @@ export function isPublicAsset(url, method) {
     // umbrella intro, dead composer. The derived module-graph test in
     // assets.test.js now fails `npm test` on this whole class.)
     url.pathname === "/js/websearch-backends-core.js" ||
-    // The search-SOURCE preference behind the web knob's long-press card —
+    // The search-SOURCE preference behind the "Exa web search" settings knob —
     // /cure/drc.js statically imports it (the same public-graph rule).
     url.pathname === "/js/search-source.js" ||
     url.pathname === "/js/drc-research.js" ||
@@ -171,6 +171,14 @@ export function isPublicAsset(url, method) {
     // sandbox.js but not here, so /js/boot-messages.js 401'd and /cure went
     // dark — no umbrella intro, inert page — for every unauthenticated visitor).
     url.pathname === "/js/boot-messages.js" ||
+    // Starter prompts: /cure/drc.js statically imports /js/starters.js (the
+    // strip renderer), which imports the pure core AND the registry data.
+    // All three are in the public graph — same rule that took /cure dark
+    // twice above, so all three are allowlisted together here rather than
+    // one at a time.
+    url.pathname === "/js/starters.js" ||
+    url.pathname === "/js/starters-core.js" ||
+    url.pathname === "/js/starters-data.js" ||
     // Introspection (developer mode): the shared pure core (imported by
     // /cure/drc.js — same public-graph rule as the modules above) and the
     // committed source-snapshot artifact both tiers fetch. The snapshot is

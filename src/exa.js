@@ -92,7 +92,7 @@ export function searchCacheKey(query, type, numResults, backend = "exa") {
  * @param {string} query
  * @param {{ numResults?: number, type?: string }} [depth] the budget's search-depth tier
  * @param {{ source?: string }} [opts] the request's user-picked search SOURCE
- *   (the web knob's long-press card — "exa" | "cloudflare" | ""), which
+ *   (the "Exa web search" settings knob — "exa" | "cloudflare" | ""), which
  *   outranks the site-wide backend unless the admin pinned it
  * @returns {Promise<SearchResult>}
  */
@@ -115,7 +115,7 @@ export async function webSearch(env, log, query, depth = {}, opts = {}) {
   }
 
   // Resolve the web-search BACKEND: the caller's user-picked source first (the
-  // web knob's long-press card), then the site-wide admin selection, then Exa —
+  // "Exa web search" settings knob), then the site-wide admin selection, then Exa —
   // so an unconfigured site with no pick is unchanged. The Worker-native
   // "cloudflare" backend and a self-hosted SearXNG / Exa-compatible service
   // (src/websearch-backends.js) both route through the alt path below.

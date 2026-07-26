@@ -876,7 +876,7 @@ async function loadWebsearchService() {
         </fieldset>
       </div>
       <label><input type="checkbox" name="allow_user_choice" id="wssvc-userchoice" ${s.allow_user_choice !== false ? "checked" : ""}>
-        Let users pick Exa or the Cloudflare-originating backend per request (the web knob's long-press card)</label>
+        Let users pick Exa or the Cloudflare-originating backend per request (the "Exa web search" knob in their settings)</label>
       <p class="muted">Env: ${escapeHtml(envLine)}</p>
       <div class="group"><button type="submit">Save backend</button><span class="muted" id="wssvc-msg"></span></div>
     </form>

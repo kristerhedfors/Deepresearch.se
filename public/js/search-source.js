@@ -1,53 +1,44 @@
 // @ts-check
-// WHO runs your web searches — the per-user search-SOURCE choice behind the web
-// knob's long-press card (UX-10), shared by both tiers.
+// WHO runs your web searches — the per-user search-SOURCE preference, shared by
+// both tiers and surfaced as ONE settings knob: "Exa web search".
 //
-// The knob has always answered "should this question be researched live?". It
-// never answered "and who does the searching?" — the answer was Exa, silently,
-// for everyone. It no longer has to be: src/websearch-cf.js makes this site's
-// own Cloudflare Worker a search engine, so the same long-press card that
-// explains the knob now also lets a person choose between them:
+// The composer's web knob answers exactly one question — "should this question
+// be researched live?" — and nothing else (owner directive, 2026-07-26). WHO
+// does the searching is a configuration decision, so it lives in Settings:
 //
-//   exa         the default. A hosted third-party index — the best results,
-//               and a third party that retains the query.
-//   cloudflare  this site's Worker does the searching itself: it fetches a
-//               no-JS SERP and the result pages from Cloudflare's edge. No
-//               search API, no third-party account, nothing retained by one —
-//               at the cost of ranking quality, since it reads a public SERP
-//               rather than a research-grade index.
+//   Exa web search ON (default)   searches run on Exa, a hosted research index
+//                                 — the strongest results, and a third party
+//                                 that retains the query.
+//   Exa web search OFF            this site's own Cloudflare Worker does the
+//                                 searching (src/websearch-cf.js): it fetches a
+//                                 no-JS SERP and the result pages from
+//                                 Cloudflare's edge. No search API, no
+//                                 third-party account, nothing retained by one
+//                                 — at the cost of ranking quality, since it
+//                                 reads a public SERP rather than a
+//                                 research-grade index.
 //
-// The two ids are the server's USER_SEARCH_SOURCES (src/websearch-backends.js)
-// verbatim; the server re-validates the string it receives and ignores anything
-// else, so this module is a preference, never a trust boundary. A self-hosted
-// backend is deliberately NOT here — it names an operator's own service and
-// stays an admin (Se/rver) or settings-drawer (Se/cure) decision.
+// The knob is a boolean; the WIRE value is unchanged — the two ids below are
+// the server's USER_SEARCH_SOURCES (src/websearch-backends.js) verbatim, and
+// the server re-validates the string it receives and ignores anything else, so
+// this module is a preference, never a trust boundary. A self-hosted backend is
+// deliberately NOT one of them — it names an operator's own service and stays
+// an admin (Se/rver) or settings-drawer (Se/cure) decision.
 //
 // The pick is a browser-local preference (localStorage, this device): it is a
 // preference about where a query goes, not conversation content, and Se/cure
 // keeps it out of the sealed workspace state for the same reason the grant
 // toggles are — nothing about it should travel in a shared workspace link.
 
-/** @typedef {{ id: string, label: string, note: string }} SearchSourceOption */
+/** Exa, the default: the hosted research index. */
+export const EXA_SOURCE = "exa";
+/** This site's own Worker — where searches go when Exa is switched off. */
+export const WORKER_SOURCE = "cloudflare";
 
-/**
- * The user-selectable sources, in display order. Exa first because it is the
- * default; the ids match the server's allowlist exactly.
- * @type {SearchSourceOption[]}
- */
-export const SEARCH_SOURCES = [
-  {
-    id: "exa",
-    label: "Exa",
-    note: "A hosted research index — the strongest results. Exa receives the search query and retains it.",
-  },
-  {
-    id: "cloudflare",
-    label: "This site's Worker",
-    note: "Searches run from our own Cloudflare Worker: a public results page plus the pages themselves, read at the edge. No search company involved; ranking is weaker than Exa's.",
-  },
-];
+/** The two source ids the server accepts, in display order. */
+export const SEARCH_SOURCES = [EXA_SOURCE, WORKER_SOURCE];
 
-export const DEFAULT_SEARCH_SOURCE = "exa";
+export const DEFAULT_SEARCH_SOURCE = EXA_SOURCE;
 // The localStorage key. Prefixed like the rest of this project's client keys.
 export const SEARCH_SOURCE_KEY = "dr_search_source";
 
@@ -59,11 +50,11 @@ export const SEARCH_SOURCE_KEY = "dr_search_source";
  */
 export function normalizeSearchSource(value) {
   const v = typeof value === "string" ? value.trim().toLowerCase() : "";
-  return SEARCH_SOURCES.some((s) => s.id === v) ? v : "";
+  return SEARCH_SOURCES.includes(v) ? v : "";
 }
 
 /**
- * This device's stored pick, defaulting to Exa. Never throws — a browser with
+ * This device's stored source, defaulting to Exa. Never throws — a browser with
  * storage disabled just gets the default.
  * @returns {string}
  */
@@ -76,7 +67,7 @@ export function getSearchSource() {
 }
 
 /**
- * Stores a pick. Unknown ids are ignored rather than stored. Never throws.
+ * Stores a source. Unknown ids are ignored rather than stored. Never throws.
  * @param {string} id
  * @returns {string} the effective source after the write
  */
@@ -91,39 +82,48 @@ export function setSearchSource(id) {
 }
 
 /**
- * The picker markup for a knob popover — a radio group, so a tap picks and the
- * card stays readable at composer size. Pure (string in, string out) so it
- * unit-tests without a DOM.
- * @param {string} selected the currently effective source id
- * @param {string} [name] radio group name (distinct per tier so the two cards
- *   never share a group if both are ever on one page)
- * @returns {string}
+ * The settings knob's state: is Exa web search enabled on this device? True by
+ * default — anything other than Exa means the Worker backend.
+ * @returns {boolean}
  */
-export function searchSourcePickerHtml(selected, name = "searchsrc") {
-  const active = normalizeSearchSource(selected) || DEFAULT_SEARCH_SOURCE;
-  const rows = SEARCH_SOURCES.map(
-    (s) => `<label class="srcopt">
-      <input type="radio" name="${name}" value="${s.id}"${s.id === active ? " checked" : ""}>
-      <span><b>${s.label}</b><br><span class="srcnote">${s.note}</span></span>
-    </label>`,
-  ).join("");
-  return `<div class="srcpick" role="radiogroup" aria-label="Who runs the web searches">${rows}</div>`;
+export function getExaEnabled() {
+  return getSearchSource() === EXA_SOURCE;
 }
 
 /**
- * Wires a rendered picker: every change reports the new source id. Returns a
- * no-op when the markup isn't there (a stale cached page), so a caller never
- * has to guard.
- * @param {Element | null} root the element the picker markup was rendered into
- * @param {(id: string) => void} onPick
- * @returns {void}
+ * Flips the settings knob. Off means the Worker does the searching.
+ * @param {boolean} on
+ * @returns {boolean} the effective state after the write
  */
-export function wireSearchSourcePicker(root, onPick) {
-  const inputs = root ? root.querySelectorAll(".srcpick input[type=radio]") : [];
-  for (const input of inputs) {
-    input.addEventListener("change", () => {
-      const el = /** @type {HTMLInputElement} */ (input);
-      if (el.checked) onPick(setSearchSource(el.value));
-    });
-  }
+export function setExaEnabled(on) {
+  return setSearchSource(on ? EXA_SOURCE : WORKER_SOURCE) === EXA_SOURCE;
+}
+
+/**
+ * The knob's info-popover text, shared by both tiers so the explanation of what
+ * switching Exa off actually does is written once. HTML, in the same
+ * `<strong>` + `<b>On:</b>/<b>Off:</b>` shape as the other settings popovers.
+ */
+export const EXA_SETTING_INFO = `<strong>Exa web search</strong><br>
+  <b>On (default):</b> live web searches run on
+  <a href="https://exa.ai" target="_blank" rel="noopener">Exa</a>, a hosted
+  research index — the strongest results. Only the search query is sent; Exa
+  retains it by default.<br>
+  <b>Off:</b> this site's own Cloudflare Worker does the searching instead — it
+  reads a public results page and the result pages themselves from Cloudflare's
+  edge. No search company is involved and no search account retains the query;
+  ranking is weaker than Exa's.<br>
+  Either way this is only about <b>who</b> runs a search. Whether a question is
+  researched live at all stays the web knob next to the composer.`;
+
+/**
+ * The status line under the knob, per state. Shared for the same reason the
+ * popover text is.
+ * @param {boolean} on
+ * @returns {string}
+ */
+export function exaStatusText(on) {
+  return on
+    ? "Exa is on — live web searches run on Exa's hosted index."
+    : "Exa is off — searches run from this site's own Cloudflare Worker instead.";
 }

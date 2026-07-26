@@ -94,7 +94,7 @@ import { wireBarTint } from "/js/bar-tint.js";
 import { DRC_RECENT_TURNS, ensureDrcRag, indexDrcChatTurns, retrieveDrcContext } from "/js/drc-rag.js";
 import { runDrcResearch } from "/js/drc-research.js";
 import { runBackendSearch as runDirectBackendSearch } from "/js/websearch-backends-core.js";
-import { getSearchSource, searchSourcePickerHtml, wireSearchSourcePicker } from "/js/search-source.js";
+import { EXA_SETTING_INFO, exaStatusText, getExaEnabled, getSearchSource, setExaEnabled } from "/js/search-source.js";
 import { ensureSandboxBooted, sandboxIdle, sandboxSupported, setSandboxImage } from "/js/sandbox.js";
 import { hideTerminalIcon, showTerminalIcon } from "/js/agent-backdrop.js";
 import {
@@ -114,6 +114,7 @@ import {
 } from "/js/introspect-core.js";
 import { engageIntrospection, initIntrospectUi, noteIntrospectionText } from "/js/introspect-ui.js";
 import { initSourcePeek, wireSourcePeek } from "/js/source-peek.js";
+import { renderStarterStrip } from "/js/starters.js";
 import { drcStoreAvailable, getSealedProject, putSealedProject } from "/js/drc-store.js";
 import { BUDGET_MAX_S, BUDGET_MIN_S, budgetTier, fmtBudget, posToSeconds, secondsToPos } from "/js/timescale.js";
 import {
@@ -684,6 +685,7 @@ function openSettings() {
   renderStRow(); // reflect the consolidated Se/rver token (if any)
   renderProxyRow(); // reflect the secure-research-space bundle (if any)
   renderSearchBackend(); // reflect the per-user web-search backend
+  renderExaRow(); // reflect WHO runs a grant/token-routed search
   $("settingsview").hidden = false;
 }
 
@@ -1642,6 +1644,20 @@ function renderMessages() {
       "anything critical. Ask a research question to get started, or type “/” for the commands — " +
       "“/feedback” reaches the developers, “/help” answers from the documentation.";
     box.appendChild(empty);
+    // The starter strip: four openers from the Se/cure agent's queue
+    // (public/js/starters-core.js), rotated per visit. Se/cure gets its OWN
+    // queue rather than the Se/rver one — half of what a newcomer needs to
+    // learn here is the privacy posture, so the openers interrogate it.
+    // Clicking one sends it, exactly as typing it would; nothing about the
+    // pick leaves this browser.
+    renderStarterStrip({
+      mount: empty,
+      platform: "client",
+      compose: (text) => {
+        $("input").value = text;
+        $("form").requestSubmit();
+      },
+    });
     return;
   }
   const conv = activeConv();
@@ -2543,6 +2559,26 @@ async function drcDirectWebSearch(query) {
   }
 }
 
+// Reflects the "Exa web search" knob (search-source.js — browser-local, NOT
+// sealed state: a preference about where a query goes should never travel in a
+// shared workspace link). On means a grant/token-routed search runs on Exa; off
+// points the server at its own Worker backend instead. Moot while a direct
+// backend or local browsing agent is configured — that path never reaches this
+// server — so the status line says so rather than pretending otherwise.
+function renderExaRow() {
+  const knob = /** @type {HTMLInputElement} */ ($("exaweb"));
+  if (!knob) return;
+  const on = getExaEnabled();
+  knob.checked = on;
+  const pop = $("exapop");
+  if (pop && !pop.innerHTML) pop.innerHTML = EXA_SETTING_INFO;
+  const direct = searchBackendCfg();
+  const isDirect = (direct.backend === "searxng" || direct.backend === "exa_compatible") && !!direct.baseUrl;
+  $("exastatus").textContent = isDirect
+    ? "Your own service handles web search in this browser, so this setting only applies if you switch back to a server grant."
+    : exaStatusText(on);
+}
+
 // Reflects the sealed backend config into the settings section and wires edits.
 function renderSearchBackend() {
   const sel = /** @type {HTMLSelectElement} */ ($("ws-backend"));
@@ -2575,6 +2611,7 @@ function renderSearchBackend() {
       results: resEl.value,
     });
     renderSearchBackend();
+    renderExaRow(); // a direct backend makes the Exa/Worker choice moot — say so
     // Configuring (or clearing) a browser-direct backend changes whether web
     // search is reachable — keep the knob honest about it.
     reflectResearchKnob();
@@ -4154,16 +4191,11 @@ $("websearch").addEventListener("change", () => {
 (() => {
   const knob = $("searchtoggle");
   const pop = $("knobpop");
-  // The card also answers WHO runs a grant/token-routed search — Exa or this
-  // site's own Worker (UX-10 amended, 2026-07-25). It is a preference about a
-  // path that only exists when a grant is in play; with a local browsing agent
-  // configured the browser calls that directly and this picker is moot, which
-  // is exactly why the agent's setup link stays right underneath it.
-  const srcBox = $("knobsrc");
-  if (srcBox) {
-    srcBox.innerHTML = searchSourcePickerHtml(getSearchSource(), "drcsrc");
-    wireSearchSourcePicker(srcBox, () => {});
-  }
+  // The card explains the knob and links the setup page — nothing more (owner
+  // directive, 2026-07-26). WHO runs a grant/token-routed search is the "Exa
+  // web search" knob in Settings (#exarow); with a local browsing agent
+  // configured the browser calls that directly and the choice is moot anyway,
+  // which is why the agent's setup link stays on this card.
   let hoverShow = 0;
   let hoverHide = 0;
   let holdTimer = 0;
@@ -4225,6 +4257,11 @@ $("budget").addEventListener("input", renderBudgetReadout);
 $("budget").addEventListener("change", () => {
   state.budgetS = renderBudgetReadout();
   saveState();
+});
+// "Exa web search" — WHO runs a grant/token-routed search (browser-local).
+$("exaweb").addEventListener("change", () => {
+  setExaEnabled($("exaweb").checked);
+  renderExaRow();
 });
 // The server-proxied web-search toggle (only meaningful when a grant is live).
 $("websearchserver").addEventListener("change", () => {

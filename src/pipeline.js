@@ -97,14 +97,14 @@ import {
   validatePrompt,
 } from "./prompts.js";
 import { phasePrompt } from "./prompt-sets.js";
+import { capBound, capSearch } from "./agent-spec.js";
+import { toolsForRun } from "./tool-sets.js";
 import { runOrchestration } from "./orchestrator.js";
 import { runOutrospection } from "./outrospect.js";
 import { anthropicConfigured, anthropicToolRun, isAnthropicModel } from "./anthropic.js";
-import { INTROSPECTION_TOOLS, runIntrospectionTool } from "./introspect-tools.js";
+import { runIntrospectionTool } from "./introspect-tools.js";
 import {
-  BUILD_TOOLS,
   BUILD_TOOL_NAMES,
-  SDK_TOOLS,
   SDK_TOOL_NAMES,
   buildFilesSummary,
   buildSdkContextBlock,
@@ -172,6 +172,7 @@ import {
  *   aux?: Record<string, AuxSourceState>,
  *   failoverModel?: string,
  *   feedbackCapture?: boolean,
+ *   capability?: import('./agent-spec.js').AgentCapability | null,
  *   helpCommand?: boolean,
  *   outrospectionMode?: boolean,
  *   outrospection?: { lens: string | null, items: number, texts: number, quotes: number, live: boolean },
@@ -247,6 +248,12 @@ const ANSWER_PHASE_RUNNERS = {
   build: runSdkBuild,
   workflow: runOrchestration,
   feed: runOutrospection,
+  // The plain model answer with no research phase at all. It was always in the
+  // ANSWER_PHASES vocabulary and always the fallback the research flow takes
+  // when nothing external applies; it becomes a DISPATCH target now that an
+  // agent can be addressed by id, which is how a spec declaring
+  // `answerPhase: "direct"` (the under-construction template) gets to mean it.
+  direct: runWithoutSearch,
 };
 
 /**
@@ -263,6 +270,30 @@ function answerPhaseFor(state) {
   if (state.orchestratorMode) return "workflow";
   if (state.outrospectionMode) return "feed";
   return null;
+}
+
+/**
+ * The SEARCH POLICY governing this request: the agent's declared ceiling ANDed
+ * with what the caller asked for, narrowing in both directions.
+ *
+ * The subtlety is which capability may narrow at all. A capability's
+ * `search` block describes the phase that capability DECLARES. The research
+ * flow is reached two ways — an agent whose `answerPhase` is `research` or
+ * `direct` (its declaration governs), and an introspection-mode turn that the
+ * per-message `hasSource` + `externalSourceIntent` gate handed back to research
+ * (its declaration describes the source-research phase it just left, and
+ * introspection declares `web: false` precisely because that phase does not
+ * search). Applying the second one here would silently kill web search for
+ * every developer-mode turn — the gate routed the message here in order to
+ * search. So a capability narrows only the phase it names.
+ *
+ * @param {PipelineState} state
+ * @returns {{ web: boolean, auxSources: boolean, maxQueries: number|null }}
+ */
+export function searchPolicyFor(state) {
+  const cap = /** @type {any} */ (state).capability;
+  const governs = cap && (cap.answerPhase === "research" || cap.answerPhase === "direct");
+  return capSearch(governs ? cap : null, { web: state.webSearch });
 }
 
 /**
@@ -399,9 +430,14 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // path whenever one of those applies. Only when NONE does is there nothing
   // external to consult — then answer from the model, with the slider's report
   // tier still scaling that answer (runWithoutSearch).
-  if (!state.webSearch) {
+  // …and the answering agent's own declaration narrows the knob further
+  // (searchPolicyFor). Every shipped agent that reaches here declares
+  // `web: true`, so this is the knob alone today; a derived agent can ship
+  // with search structurally off without depending on the user's toggle.
+  const policy = searchPolicyFor(state);
+  if (!policy.web) {
     if (quizReq && (await runQuizGeneration(ctx, quizReq))) return;
-    if (!ctx.hasSource && !SEARCH_SOURCES.some((s) => s.intent(ctx.lastUser))) {
+    if (!ctx.hasSource && !(policy.auxSources && SEARCH_SOURCES.some((s) => s.intent(ctx.lastUser)))) {
       return runWithoutSearch(ctx);
     }
   }
@@ -697,6 +733,12 @@ export const MAX_SOURCE_TOOL_ROUNDS = 6; // native tool rounds before we force a
 // falls back to the deterministic read loop.
 /** @param {PipelineCtx} ctx @param {any} snapshot */
 async function runSourceResearchTools(ctx, snapshot) {
+  const tools = toolsForRun(ctx.state.capability, ["source-read"], { snapshot: !!snapshot });
+  // An agent whose declaration leaves this path with nothing to drive has no
+  // business on it. Throwing hands the turn to the deterministic read loop, the
+  // same fallback a provider failure takes — which is exactly what a spec
+  // declaring `toolFallback: "read-loop"` asks for.
+  if (!tools.length) throw new Error("no tool classes resolved for source research");
   const budget = { used: 0 };
   const sitemap = buildSourceSitemap(snapshot);
   let calls = 0;
@@ -724,8 +766,17 @@ async function runSourceResearchTools(ctx, snapshot) {
     model: ctx.model,
     system: phasePrompt(ctx.state, "source-research", "answer-tools")(),
     userContent: userText,
-    tools: INTROSPECTION_TOOLS,
-    maxRounds: MAX_SOURCE_TOOL_ROUNDS,
+    // The snapshot readers, reached through the agent's declared tool CLASSES
+    // (src/tool-sets.js) rather than imported. The shipped introspection spec
+    // declares exactly ["source-read"], so this is INTROSPECTION_TOOLS for every
+    // request today; a derived agent that declares no tools gets the
+    // deterministic read loop instead (guarded above).
+    tools,
+    // The agent's declared round cap, clamped to the loop's own ceiling. The
+    // shipped introspection spec declares exactly MAX_SOURCE_TOOL_ROUNDS, so
+    // this is that constant for every request today; a derived agent may ask
+    // for a shorter investigation, never a longer one.
+    maxRounds: capBound(ctx.state.capability, "maxRounds", MAX_SOURCE_TOOL_ROUNDS),
     execTool: (name, input) => runIntrospectionTool(snapshot, name, input, budget),
     // Each tool call gets its OWN activity row: the tool + its arguments as the
     // headline, and the actual result (grep matches / file start / output) in
@@ -782,11 +833,14 @@ export const MAX_SDK_TOOL_ROUNDS = 12; // staging many files takes more rounds t
 export const SDK_BUILD_ROUND_MAX_TOKENS = 16_384; // one write_file must fit a whole real file
 export const SDK_BUILD_ROUND_TIMEOUT_MS = 240_000; // non-streaming rounds; scaled to the token budget
 
-// The SDK-mode tool set: the snapshot readers (read the real Se/cure source —
-// only useful with a snapshot to read), the sdk_* planning tools over the
-// DistillSDK manifest, and the build tools (write_file / publish_app).
-/** @param {any} snapshot @returns {any[]} */
-const sdkBuildTools = (snapshot) => [...(snapshot ? INTROSPECTION_TOOLS : []), ...SDK_TOOLS, ...BUILD_TOOLS];
+// The SDK-mode tool CLASSES, as the Agent Studio spec declares them: the
+// snapshot readers (read the real Se/cure source — only useful with a snapshot
+// to read, which src/tool-sets.js knows), the sdk_* planning tools over the
+// DistillSDK manifest, and the build tools (write_file / publish_app). This
+// list is the fallback for a run that resolved no capability at all; a routed
+// request uses the agent's own declaration, which for the shipped spec is
+// exactly these three.
+const SDK_BUILD_TOOL_CLASSES = ["source-read", "sdk-plan", "build-publish"];
 
 /** @param {PipelineCtx} ctx @returns {Promise<any>} */
 async function sdkSnapshot(ctx) {
@@ -885,7 +939,7 @@ async function runSdkBuildTools(ctx, snapshot, manifest, secureDigest) {
 
   // The snapshot readers (read the real Se/cure source) only make sense with a
   // snapshot to read; the SDK planning tools + build tools always ride.
-  const tools = sdkBuildTools(snapshot);
+  const tools = toolsForRun(ctx.state.capability, SDK_BUILD_TOOL_CLASSES, { snapshot: !!snapshot });
   /** @param {string} name @param {any} input @returns {Promise<string> | string} */
   const execTool = (name, input) => {
     if (SDK_TOOL_NAMES.has(name)) return runSdkTool(manifest, name, input, { fileCheck });
@@ -921,7 +975,7 @@ async function runSdkBuildTools(ctx, snapshot, manifest, secureDigest) {
     system: phasePrompt(ctx.state, "build", "answer-tools")(),
     userContent: userText,
     tools,
-    maxRounds: MAX_SDK_TOOL_ROUNDS,
+    maxRounds: capBound(ctx.state.capability, "maxRounds", MAX_SDK_TOOL_ROUNDS),
     // A build round is not a JSON blip: one write_file call for a real-sized
     // index.html needs several thousand output tokens in a single round. At
     // the 4096-token default the tool_use truncated (stop_reason max_tokens,
@@ -930,8 +984,8 @@ async function runSdkBuildTools(ctx, snapshot, manifest, secureDigest) {
     // deterministic path, which then dumped raw FILE blocks into the chat
     // (feedback #13, chat_logs #599). Sized for the biggest single file a
     // build realistically stages, with a timeout to match the token budget.
-    maxTokens: SDK_BUILD_ROUND_MAX_TOKENS,
-    timeoutMs: SDK_BUILD_ROUND_TIMEOUT_MS,
+    maxTokens: capBound(ctx.state.capability, "maxTokens", SDK_BUILD_ROUND_MAX_TOKENS),
+    timeoutMs: capBound(ctx.state.capability, "timeoutMs", SDK_BUILD_ROUND_TIMEOUT_MS),
     execTool,
     onToolUse: ({ name, input, result: out }) => {
       calls++;
@@ -1039,7 +1093,13 @@ async function runSdkBuildDeterministic(ctx, manifest, secureDigest) {
     // whole multi-file app draft truncates there (a ~14 KB bundle alone is
     // ~4k tokens, before any prose). Same budget as a tool-path round; the
     // totals object is shared by reference, so billing lands unchanged.
-    state: { ...ctx.state, plan: { .../** @type {any} */ (ctx.state.plan), synthMaxTokens: SDK_BUILD_ROUND_MAX_TOKENS } },
+    state: {
+      ...ctx.state,
+      plan: {
+        .../** @type {any} */ (ctx.state.plan),
+        synthMaxTokens: capBound(ctx.state.capability, "maxTokens", SDK_BUILD_ROUND_MAX_TOKENS),
+      },
+    },
     emitDelta: (/** @type {string} */ t) => {
       buf += t;
       for (const path of scanner.feed(buf)) {
@@ -1809,7 +1869,8 @@ async function jsonPhase(ctx, { label, statKey, messages, maxTokens, recordStat 
  */
 async function runSearches(ctx, queries, round) {
   const { env, log, emit, state } = ctx;
-  const batch = takeSearchBatch(state, queries);
+  const policy = searchPolicyFor(state);
+  const batch = takeSearchBatch(state, queries, policy.maxQueries ?? Infinity);
   if (!batch.length) return;
 
   // The web-search knob gates EXA ONLY (owner directive 2026-07-18). The
@@ -1818,14 +1879,14 @@ async function runSearches(ctx, queries, round) {
   // wave still runs the aux sources over the planned angles — depth governs
   // how deep the research goes over whatever sources ARE available. Only the
   // Exa leg (the query-to-a-third-party leg the knob is about) is skipped.
-  if (state.webSearch) {
+  if (policy.web) {
     state.searchCount += batch.length;
     // Every search event names its provider (`source` slug + `service` display
     // name): the client's cards must always make clear WHICH provider ran a
     // search — a user report showed hub and web searches rendering identically.
     for (const query of batch) emit({ status: { type: "search_start", round, query, source: "web", service: "Web search" } });
-    // …and every search honours the source the user picked on the knob's
-    // long-press card (state.searchSource — "" = whatever the site is
+    // …and every search honours the source the user's "Exa web
+    // search" setting selects (state.searchSource — "" = whatever the site is
     // configured to use).
     const results = await Promise.all(
       batch.map((query) => webSearch(env, log, query, state.plan.searchDepth, { source: state.searchSource || "" })),
@@ -1890,6 +1951,11 @@ const MAX_AUX_SEARCHES_DEFAULT = 3;
  * @param {number} round
  */
 async function runAuxSearches(ctx, batch, round) {
+  // An agent may decline the auxiliary sources entirely (`search.auxSources:
+  // false`) — the Se/cure spec does, because a client-tier agent has no
+  // server-side source registry to reach. Every server-tier agent that gets
+  // this far declares true, so the loop below is unchanged today.
+  if (!searchPolicyFor(ctx.state).auxSources) return;
   for (const source of SEARCH_SOURCES) {
     await runAuxSearch(ctx, source, batch, round);
   }
