@@ -19,7 +19,19 @@
 // (drc-research.js) against the in-browser engine — /api/chat is never
 // called for it.
 
-import { ONDEVICE_MODELS, onDeviceModel, onDeviceOptionValue, onDeviceSummaryLine } from "./ondevice-core.js";
+import {
+  ONDEVICE_MODELS,
+  PUBLISHED_CACHE_KEY,
+  declaredUnpublished,
+  modelPublished,
+  onDeviceModel,
+  onDeviceOptionValue,
+  onDeviceSummaryLine,
+  probeModelPublished,
+  readPublishedCache,
+  unpublishedNote,
+  writePublishedCache,
+} from "./ondevice-core.js";
 
 const KNOB_KEY = "dr_ondevice";
 
@@ -131,6 +143,54 @@ export function onDeviceSettingsMarkup() {
 }
 
 const odDownloading = new Set(); // modelIds with a download in flight (UI state)
+
+// ---- browser-build availability (ondevice-core.js) --------------------------
+//
+// A model whose upstream ONNX conversion hasn't shipped is rendered GRAYED OUT
+// with no button (feedback #36). The catalog's declaration decides the first
+// paint so there is no flash of a tappable Download; the live tree probe then
+// confirms or lifts it, so the row un-grays itself the day the conversion
+// ships without anyone editing the catalog. One probe per model per day per
+// device, and only while the section is open — an unreachable hub leaves the
+// row exactly as it was.
+
+function publishedCache() {
+  try {
+    return readPublishedCache(localStorage.getItem(PUBLISHED_CACHE_KEY), Date.now());
+  } catch {
+    return {}; // storage blocked — the declaration alone decides
+  }
+}
+
+/** @param {string} id @param {boolean} published */
+function rememberPublished(id, published) {
+  try {
+    localStorage.setItem(PUBLISHED_CACHE_KEY, writePublishedCache(localStorage.getItem(PUBLISHED_CACHE_KEY), id, published, Date.now()));
+  } catch {
+    /* storage blocked — re-probed next render */
+  }
+}
+
+/**
+ * Probe every declared-unpublished model this device holds no fresh answer
+ * for, and re-render if any verdict actually changed. Fire-and-forget: the
+ * rows already painted from the declaration.
+ * @param {Array<{id: string, repo: string, dtype: string, browserBuild?: string}>} models
+ * @param {Record<string, boolean>} cache
+ * @param {() => void} modelsChanged
+ */
+async function refreshPublished(models, cache, modelsChanged) {
+  const pending = models.filter((m) => declaredUnpublished(m) && typeof cache[m.id] !== "boolean");
+  if (!pending.length) return;
+  let changed = false;
+  for (const m of pending) {
+    const published = await probeModelPublished(m).catch(() => null);
+    if (typeof published !== "boolean") continue; // inconclusive — leave the row alone
+    rememberPublished(m.id, published);
+    if (published !== modelPublished(m, cache)) changed = true;
+  }
+  if (changed) await renderRows(modelsChanged).catch(() => {});
+}
 // modelId → the last download failure, shown IN the model's row (the
 // 2026-07-17 Se/cure iPhone lesson: a status line elsewhere reads as
 // "nothing happened"). Cleared on the next attempt.
@@ -199,24 +259,30 @@ async function renderRows(modelsChanged) {
     const cached = await eng.listCachedModels();
     if (!document.getElementById("odrows")) return; // the panel view changed mid-check
     wrap.innerHTML = "";
+    const cache = publishedCache();
     let onDevice = 0;
     let unsupported = 0;
+    let unavailable = 0;
     let downloading = "";
     for (const m of eng.ONDEVICE_MODELS) {
       const entry = cached.find((c) => c.id === m.id);
       const verdict = eng.capabilityVerdict(probe, m);
+      const published = modelPublished(m, cache);
       if (entry?.cachedBytes) onDevice++;
-      if (verdict.verdict === "unsupported") unsupported++;
+      else if (!published) unavailable++;
+      else if (verdict.verdict === "unsupported") unsupported++;
       if (odDownloading.has(m.id)) downloading = m.label;
-      wrap.appendChild(modelRow(eng, m, entry, verdict, modelsChanged));
+      wrap.appendChild(modelRow(eng, m, entry, verdict, published, modelsChanged));
     }
     setSummary({
       total: eng.ONDEVICE_MODELS.length,
       cached: onDevice,
       unsupported,
+      unavailable,
       downloading: downloading || null,
       failed: [...odErrors.keys()].length,
     });
+    refreshPublished(eng.ONDEVICE_MODELS, cache, modelsChanged).catch(() => {});
   } catch (err) {
     // The engine's deadline errors NAME the failing stage — show them
     // verbatim (textContent: the message can carry a worker error string).
@@ -228,7 +294,7 @@ async function renderRows(modelsChanged) {
 }
 
 /** One model's row: label + state note + its single action button. */
-function modelRow(eng, m, entry, verdict, modelsChanged) {
+function modelRow(eng, m, entry, verdict, published, modelsChanged) {
   const row = document.createElement("div");
   row.className = "settings-item";
   row.dataset.od = m.id;
@@ -245,6 +311,16 @@ function modelRow(eng, m, entry, verdict, modelsChanged) {
     note.textContent = "Downloading…";
     btn.textContent = "Cancel";
     btn.onclick = async () => (await loadOnDeviceEngine()).cancelDownload(m.id);
+  } else if (!published && !entry?.cachedBytes) {
+    // Nothing to download anywhere yet: gray the row out and take the button
+    // away entirely, rather than offering a tap whose only outcome is this
+    // same sentence (feedback #36). Ranked ABOVE the capability verdict — an
+    // unshipped build is a fact about the model, and telling a WebGPU-less
+    // phone "your browser can't run it" would blame the device for it.
+    row.classList.add("od-unavailable");
+    row.setAttribute("aria-disabled", "true");
+    note.textContent = unpublishedNote(m);
+    btn.hidden = true;
   } else if (entry?.cachedBytes) {
     note.textContent = "On this device · " + eng.fmtBytes(entry.cachedBytes) + " — pick it in the composer's model dropdown.";
     btn.textContent = "Delete";
@@ -297,7 +373,10 @@ async function openConsent(m, row, modelsChanged) {
         ? "Couldn't reach huggingface.co to compute the download size — check your connection and try again. Nothing was downloaded."
         : plan?.reason === "engine"
           ? (plan.message || "The on-device engine failed.") + " Nothing was downloaded."
-          : m.label + "'s browser build isn't published yet — this entry lights up the moment onnx-community ships it. Nothing was downloaded.";
+          : unpublishedNote(m) + " Nothing was downloaded.";
+    // The row was offering a download the hub says doesn't exist — record it
+    // so the NEXT render grays the row out instead of offering it again.
+    if (plan?.reason === "unpublished") rememberPublished(m.id, false);
     return;
   }
   const size = eng.fmtBytes(plan.totalBytes);

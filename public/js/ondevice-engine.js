@@ -41,7 +41,20 @@ import {
   withDeadline,
 } from "/js/ondevice-core.js";
 
-export { ONDEVICE_MODELS, capabilityVerdict, fmtBytes, onDeviceModel, onDeviceSummaryLine } from "/js/ondevice-core.js";
+export {
+  ONDEVICE_MODELS,
+  PUBLISHED_CACHE_KEY,
+  capabilityVerdict,
+  declaredUnpublished,
+  fmtBytes,
+  modelPublished,
+  onDeviceModel,
+  onDeviceSummaryLine,
+  probeModelPublished,
+  readPublishedCache,
+  unpublishedNote,
+  writePublishedCache,
+} from "/js/ondevice-core.js";
 
 export const ONDEVICE_PROVIDER_ID = "ondevice";
 

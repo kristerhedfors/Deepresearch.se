@@ -13,7 +13,9 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
-import { modelIntent, modelQuery } from "./models-agent.js";
+import { readFileSync } from "node:fs";
+
+import { HUB_SEARCHES_PER_REQUEST, modelIntent, modelQuery } from "./models-agent.js";
 
 describe("modelIntent", () => {
   test("fires on choosing / pricing / starting a model", () => {
@@ -120,5 +122,39 @@ describe("the lifecycle vocabulary", () => {
     ]) {
       assert.equal(modelIntent(q), true, q);
     }
+  });
+});
+
+// ---- the forced hub search (feedback #36) -----------------------------------
+//
+// "None of these questions resulted in hugging face being searched, which is
+// weird since this is the Models agent." Two halves: the enrichment must FORCE
+// the hub source on regardless of the message (that half already shipped), and
+// it must lean on it harder than a mode that merely mentions the hub in
+// passing. Read from the source: the enrichment's own body is a Worker call
+// away from a unit test, and these are its two state declarations.
+
+describe("the forced hub source", () => {
+  const src = readFileSync(new URL("./models-agent.js", import.meta.url), "utf8");
+  const enrichment = src.slice(src.indexOf("export async function runModelsAgentEnrichment"));
+
+  test("forces the hub source on for the turn, before the intent gate", () => {
+    assert.match(enrichment, /\(state\)\.forceAux = \["hf"\];/);
+    // Above the modelIntent early return: EVERY turn in this mode searches the
+    // hub, not just the ones asking to pick a model.
+    assert.ok(
+      enrichment.indexOf("forceAux") < enrichment.indexOf("if (!modelIntent(lastUser)) return conversation;"),
+      "forceAux is set before the modelIntent early return",
+    );
+  });
+
+  test("raises the hub's per-request search ceiling above the registry default", () => {
+    assert.match(enrichment, /\(state\)\.auxMaxPerRequest = \{ hf: HUB_SEARCHES_PER_REQUEST \};/);
+    assert.ok(HUB_SEARCHES_PER_REQUEST > 3, "above src/search-sources.js's maxPerRequest: 3");
+    // Set beside forceAux, so the same "every turn" rule covers it.
+    assert.ok(
+      enrichment.indexOf("auxMaxPerRequest") < enrichment.indexOf("if (!modelIntent(lastUser)) return conversation;"),
+      "the ceiling is raised before the modelIntent early return",
+    );
   });
 });

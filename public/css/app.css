@@ -2211,6 +2211,12 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   background-repeat: no-repeat; background-position: right .5rem center;
 }
 .settings-select:disabled { opacity: .6; cursor: default; }
+/* An on-device model whose browser build hasn't shipped upstream: grayed out,
+   no button (feedback #36). The row still READS — its note says why — so this
+   dims the label rather than hiding the entry, which would leave the catalog
+   silently short of the headline model. */
+.settings-item.od-unavailable .settings-label { opacity: .5; }
+.settings-item.od-unavailable .od-note { opacity: .75; font-style: italic; }
 /* The ⓘ affordance: a single-line row's "more info" trigger — click, or
    press-and-hold, opens the row's detail popover (the same gesture the
    composer's web-search knob uses). */
