@@ -3,12 +3,12 @@
 // step wired into the doc pipelines, so there is one authoritative version —
 // no original/candidate variants.
 //
-// Two modes, the Word convention: read only, and — for an admin — COMMENT,
-// where a marked passage gets a note that enters the feedback pipeline as a
-// doc⇄code coherence instruction (docs-comments.js + its pure core). The
-// comment layer is loaded DYNAMICALLY and only after /api/me answers with an
-// admin identity: /docs is a public page, and a signed-out visitor must not
-// fetch a module that would 401 on them.
+// Comment mode (the Word convention: read only vs COMMENT) is not this
+// viewer's own feature — it is the shared documentation comment layer, mounted
+// through /js/doc-comment-gate.js exactly as /help/ mounts it. The layer
+// injects its own dropdown, rail and styles, so nothing here lays out for it;
+// this module only tells it which document is on screen, since the viewer
+// swaps documents in place without navigating.
 
 import { escapeHtml, renderMarkdownInto } from "/js/markdown.js";
 
@@ -16,9 +16,6 @@ const listEl = /** @type {HTMLElement} */ (document.getElementById("list"));
 const docEl = /** @type {HTMLElement} */ (document.getElementById("doc"));
 const statusEl = /** @type {HTMLElement} */ (document.getElementById("status"));
 const filterEl = /** @type {HTMLInputElement} */ (document.getElementById("filter"));
-const railEl = /** @type {HTMLElement} */ (document.getElementById("rail"));
-const modeEl = /** @type {HTMLElement} */ (document.getElementById("mode"));
-
 /** @type {{ onDocRendered: () => void } | null} */
 let commentLayer = null;
 
@@ -74,63 +71,17 @@ function render() {
   commentLayer?.onDocRendered();
 }
 
-// Comment mode is administrative: the switch exists only for an admin
-// identity, and /api/me is behind the identity gate.
-//
-// EVERY outcome here is VISIBLE (2026-07-25). The first cut returned silently
-// on each failure path — no identity, no admin, import error — which made a
-// missing switch indistinguishable from a broken feature: /docs is a PUBLIC
-// page, so the ordinary way to arrive is signed out, and the reader then
-// looked exactly as if comment mode had never shipped. Silence is the wrong
-// default for a feature someone is looking for. Now the mode slot always says
-// which of the three it is, and anything unexpected also reaches the console.
-async function maybeMountComments() {
-  if (!modeEl || !railEl) {
-    // Old cached HTML against new JS: mounting would throw on a null element.
-    console.warn("[docs] comment mode: #mode / #rail missing from the page — stale cached HTML?");
-    return;
-  }
-  let me = null;
-  try {
-    const res = await fetch("/api/me");
-    if (res.ok) me = await res.json();
-  } catch (e) {
-    console.warn("[docs] comment mode: could not read the identity:", e);
-  }
-  if (me?.role !== "admin") {
-    // Signed out is the common case on a public page and the one worth
-    // explaining; a signed-in non-admin is told plainly rather than left
-    // wondering. Neither is an error.
-    showModeNote(
-      me
-        ? "Comment mode is for administrators."
-        : '<a href="/rver">Sign in as an administrator</a> to comment on this documentation.',
-    );
-    return;
-  }
-  try {
-    const { mountDocComments } = await import("/js/docs-comments.js");
-    commentLayer = mountDocComments({
-      docEl,
-      railEl,
-      toggleEl: modeEl,
-      currentPath: () => current,
-      currentText: () => docs.get(current) || "",
-    });
-    commentLayer.onDocRendered();
-  } catch (e) {
-    console.error("[docs] comment mode failed to load:", e);
-    showModeNote("Comment mode failed to load — details in the browser console.");
-  }
-}
-
-/**
- * Render the mode slot as a quiet note instead of the Read/Comment switch.
- * @param {string} html trusted, built here — never user or document content
- */
-function showModeNote(html) {
-  modeEl.hidden = false;
-  modeEl.innerHTML = `<span class="mode-note">${html}</span>`;
+// Comment mode, through the shared gate. `pathOf` reports the document
+// currently rendered (the corpus path, e.g. "docs/ENCRYPTION.md") so a comment
+// is tagged against the file it was written in, not against this viewer.
+async function mountComments() {
+  const { mountCommentMode } = await import("/js/doc-comment-gate.js");
+  commentLayer = await mountCommentMode({
+    path: "",
+    rootEl: docEl,
+    pathOf: () => current,
+    textOf: () => docs.get(current) || "",
+  });
 }
 
 function selectFromHash() {
@@ -158,7 +109,7 @@ async function load() {
   }
   buildList();
   selectFromHash();
-  maybeMountComments();
+  mountComments();
 }
 
 listEl.addEventListener("click", (e) => {
