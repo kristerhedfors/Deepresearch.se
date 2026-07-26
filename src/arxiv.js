@@ -62,6 +62,15 @@
 //   every item's metadata highlight carries the submission date, so the
 //   synthesis model weighs freshness itself, from evidence rather than from a
 //   sort this module guessed at.
+// - **The published limit is ONE REQUEST EVERY THREE SECONDS, single
+//   connection at a time** (arXiv API Terms of Use, checked 2026-07-26),
+//   covering the query API, OAI-PMH and RSS together. There is NO paid tier to
+//   buy past it: bulk access is open, commercial projects need no MOU and are
+//   only encouraged to sponsor, and the sole escalation path is to ask support
+//   for a higher rate. So the budget is spent deliberately — MAX_ATTEMPTS 2 ×
+//   ARXIV_MAX_PER_REQUEST 2 caps one turn at four requests — and the real fix
+//   for volume is to stop asking arXiv at all (the hosted RAG index,
+//   docs/ARXIV-RAG.md §7).
 // - **arXiv DOES rate-limit, with 429.** The prior note here (inherited from
 //   the harvester's experience) said overload shows up as 503 + Retry-After
 //   rather than a hard limit. Probing this client produced plain
@@ -97,7 +106,15 @@ const ARXIV_TIMEOUT_MS = 6000; // per request
 const ARXIV_LADDER_BUDGET_MS = 9000; // across the whole ladder
 const MAX_TERMS = 4; // first ladder rung; 6 AND-ed terms measured 0 hits
 const MIN_TERMS = 2; // below this the AND query is too broad to be useful
-const MAX_ATTEMPTS = 3; // bounded ladder, same discipline as hfAttempts
+// 2, not 3 — arXiv's API Terms of Use ask for "no more than one request every
+// three seconds, and limit requests to a single connection at a time", across
+// the query API, OAI-PMH and RSS alike. The registry also caps this source at
+// ARXIV_MAX_PER_REQUEST searches per turn, so the worst case a single turn can
+// put on arXiv is 2 × 2 = 4 requests rather than 3 × 3 = 9. The measured hit
+// counts say the third rung rarely earns its keep anyway: the widest rung
+// already returned 26 hits on the reported question, so the ladder usually
+// stops at the first.
+const MAX_ATTEMPTS = 2;
 const SLICE = 8; // fetched per attempt; MAX_ITEMS survive the cut
 const MAX_ITEMS = 5; // registry items contributed per search
 const MAX_ABSTRACT_CHARS = 420; // abstract excerpt carried as a highlight
@@ -109,6 +126,9 @@ const MAX_ABSTRACT_CHARS = 420; // abstract excerpt carried as a highlight
 // timeout can never pin an empty answer; a genuinely empty feed is
 // deterministic for that query and worth remembering.
 const CACHE_TTL_S = 3600;
+// The registry entry's maxPerRequest, declared here so the rate-limit budget
+// (see MAX_ATTEMPTS) lives in one place rather than being split across files.
+export const ARXIV_MAX_PER_REQUEST = 2;
 
 // ---- intent ----------------------------------------------------------------
 // An arXiv id anywhere in the message, or the site/word itself. "Preprint"

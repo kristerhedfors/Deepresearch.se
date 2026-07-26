@@ -1093,6 +1093,19 @@ work in the repo was the offline CLI RAG database (`docs/ARXIV-RAG.md`), whose
   still per-rung), and the ladder carries a TOTAL time budget of 9 s, because
   three rungs at the per-request timeout is 21 s inside a search wave —
   invariant 2's fail-soft has to hold on the clock too, not just on errors.
+- **There is nothing to buy, and the published limit is 1 req / 3 s** (arXiv
+  API Terms of Use, checked 2026-07-26 — one connection at a time, counted
+  across the query API, OAI-PMH and RSS together). arXiv is a Cornell
+  non-profit: bulk access is open, commercial projects need no MOU and are only
+  *encouraged* to become sponsors or affiliates, and the sole escalation path
+  is free — "if your use-case requires a higher request rate, please contact
+  our support team". So capacity here is a design budget, not a purchase. It is
+  spent deliberately: `MAX_ATTEMPTS` 2 × `ARXIV_MAX_PER_REQUEST` 2 caps one
+  turn at four requests (it was 3 × 3 = 9, which exceeded the terms), the hour
+  cache absorbs repeats, and a unit test pins the product so neither constant
+  can be raised without meeting the limit. If volume ever genuinely needs more,
+  the answer is to stop asking arXiv per-query at all — the hosted RAG index
+  (`docs/ARXIV-RAG.md` §7), which is also the privacy-favourable direction.
 - **Probing this API costs you the API.** Roughly 30 requests spread over ~40
   minutes from one IP earned a block that lasted more than ten minutes and
   alternated 429, 503 and outright timeouts; a single successful probe in the

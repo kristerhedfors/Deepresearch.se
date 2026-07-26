@@ -9,6 +9,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  ARXIV_MAX_PER_REQUEST,
   arxivAttempts,
   arxivCacheKey,
   arxivDistinctiveness,
@@ -150,19 +151,31 @@ test("arxivTerms", async (t) => {
 });
 
 test("arxivAttempts (the bounded AND ladder)", async (t) => {
-  await t.test("most distinctive rung first, giving up slots, bounded to 3 attempts", () => {
+  await t.test("most distinctive rung first, giving up slots, bounded to 2 attempts", () => {
     const rungs = arxivAttempts("llm swarm reasoning agents architecture");
-    assert.equal(rungs.length, 3);
+    // 2, not 3: arXiv publishes a 1-request-per-3-seconds limit and sells no
+    // way past it, so the per-turn request budget is spent deliberately.
+    assert.equal(rungs.length, 2);
     // Terms are picked by distinctiveness but emitted in the query's own word
-    // order, and successive rungs NEST (top-2 ⊂ top-3 ⊂ top-4).
+    // order, and successive rungs NEST (top-3 ⊂ top-4).
     assert.deepEqual(
       rungs.map((r) => r.terms),
       [
         ["swarm", "reasoning", "agents", "architecture"],
         ["reasoning", "agents", "architecture"],
-        ["reasoning", "architecture"],
       ],
     );
+  });
+
+  await t.test("one turn's worst case stays inside the published rate limit", () => {
+    // arXiv asks for no more than one request every three seconds. The
+    // registry caps this source at ARXIV_MAX_PER_REQUEST searches per turn and
+    // each search at MAX_ATTEMPTS rungs, so the ceiling is their product —
+    // pinned here so neither can be raised without facing the limit.
+    const worstRungs = arxivAttempts("alpha beta gamma delta epsilon zeta").length;
+    assert.equal(worstRungs, 2);
+    assert.equal(ARXIV_MAX_PER_REQUEST, 2);
+    assert.ok(worstRungs * ARXIV_MAX_PER_REQUEST <= 4, "per-turn arXiv request ceiling grew");
   });
 
   await t.test("caps the first rung at 4 terms (6 AND-ed terms measured 0 hits)", () => {
@@ -556,7 +569,7 @@ test("arxivSearch is fail-soft in every branch", async (t) => {
       return new Response("bad request", { status: 400 });
     };
     await arxivSearch({}, log, "llm swarm reasoning agents");
-    assert.equal(calls, 3, "a 400 is per-rung, not a global stop");
+    assert.equal(calls, 2, "a 400 is per-rung, not a global stop");
   });
 
   await t.test("a malformed body degrades to zero items", async () => {

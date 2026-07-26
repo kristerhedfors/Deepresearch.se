@@ -482,6 +482,15 @@ measurements above decide two of them:
    construction: re-running with a narrow window and appending to the pack is a
    day's worth of new papers, not a rebuild.
 
+There is also a capacity argument, established while wiring the live tier.
+arXiv's API Terms of Use ask for **one request every three seconds, single
+connection**, counted across the query API, OAI-PMH and RSS together — and
+there is no paid tier to buy past it (bulk access is open, commercial projects
+need no MOU and are only encouraged to sponsor; the one escalation path is to
+ask support). The live tier therefore runs on a deliberately small request
+budget. A hosted index removes arXiv from the request path entirely, which is
+the only real answer if this source ever carries volume.
+
 The privacy posture matters too, and it is favourable: unlike web search, this
 corpus is **local**. A query against it never leaves the machine except as an
 embedding call, and on the Se/cure tier that call can be browser-direct. A

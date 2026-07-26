@@ -22,6 +22,7 @@
 // runAuxSearches and is identical for every source.
 
 import {
+  ARXIV_MAX_PER_REQUEST,
   arxivDiversityKey,
   arxivIntent,
   arxivPickQuery,
@@ -109,7 +110,10 @@ export const SEARCH_SOURCES = [
     service: "arXiv",
     pickQuery: arxivPickQuery,
     dedupKey: arxivTermKey,
-    maxPerRequest: 3,
+    // Lower than hf's 3: arXiv publishes a rate limit (1 req / 3 s, single
+    // connection) and sells no way past it, so the per-turn request budget is
+    // deliberate — see ARXIV_MAX_PER_REQUEST and MAX_ATTEMPTS in arxiv.js.
+    maxPerRequest: ARXIV_MAX_PER_REQUEST,
     promptNote: arxivPromptNote,
     diversityHost: "arxiv.org",
     diversityKeyOf: arxivDiversityKey,
