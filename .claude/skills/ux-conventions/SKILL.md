@@ -98,40 +98,43 @@ rule so it lands everywhere at once rather than one bubble at a time.
 
 ---
 
-## UX-2 — Sandbox two-layer switch: a background tap swaps the foreground pane; message taps never switch; the background pane leans along in synchronization
+## UX-2 — Sandbox pane switch: the header terminal icon cycles three modes, and a tap is NEVER a no-op; the background pane leans along in synchronization
 
-**Rule.** While the execution sandbox is running (the agent backdrop has produced
-output), the page holds **two stacked panes** — the CONVERSATION (`#chat`) and
-the TERMINAL backdrop (`#dr-agent-backdrop`). A **tap on the bare page
-background** — not on a message bubble, not on interactive chrome — **swaps which
-pane is in front**: the front pane reads at full strength, the other recedes to a
-faint background (`body.term-fg` → chat `opacity:.16`, backdrop rises to `z:4`
-below the fixed chrome at `z:5`), with a quick **slide-in-from-the-right** on the
-pane that just came forward. A tap that lands on a **user/assistant message** (or
-any control) does its normal thing and **never switches**. A **swipe/drag** is
-not a tap and never switches. Once in a mode, **scrolling the foreground pane
-makes the background pane lean along in the same direction, weaker and shorter**
-(a gentle parallax that springs back).
+**Rule.** While the execution sandbox is enabled the page holds **two stacked
+panes** — the CONVERSATION (`#chat`) and the TERMINAL backdrop
+(`#dr-agent-backdrop`). The **header terminal icon `#termbtn`** is the one
+control, and tapping it **cycles three modes**: CONVO (conversation forward, the
+terminal a faint backdrop) → TERMINAL (the terminal forward at full strength:
+`body.term-fg` → chat `opacity:.16`, backdrop rises to `z:4` below the fixed
+chrome at `z:5`, with a quick **slide-in-from-the-right**) → HIDDEN (the terminal
+not shown at all, `body.term-hidden`) → CONVO. **Every tap changes the mode**,
+including before the VM has printed a single byte. Once in a mode, **scrolling
+the foreground pane makes the background pane lean along in the same direction,
+weaker and shorter** (a gentle parallax that springs back).
 
 **Why.** The old design popped a full terminal panel open, which covered the
 screen and broke the prompt-first flow. Two peers you flip between keep both the
 conversation and the raw agent activity one tap away without either ever taking
-the whole screen. The message-vs-background discrimination is load-bearing: users
-must be able to select/tap message text and controls without the layer flipping
-out from under them, so ONLY the empty field toggles.
+the whole screen.
 
 **The mechanics that make it consistent (match all of these):**
 
-1. **Tap detection is `pointerdown`→`pointerup`** (covers mouse + touch), gated by
-   `isTapGesture` (small travel on both axes, short duration) so a swipe or a
-   press-and-hold text-selection is excluded (`agent-backdrop-core.js`).
-2. **The switch fires only on the bare background.** Both the press AND the
-   release target must pass `isSwitchTarget` — not inside `BLOCK_SEL` (`.msg`,
-   `.step`, `.activity`, controls, chrome, panels) and no active text selection.
-   `.msg` is in `BLOCK_SEL`: **tapping a message never switches.**
-3. **Gated on sandbox output** (`hasBackdropContent()` → a channel exists). Before
-   the sandbox runs there is nothing to switch to, so background taps are inert
-   and the page behaves normally.
+1. **The header icon is the ONLY switcher.** The original tap-on-the-bare-
+   background gesture was removed (2026-07-14): a page-wide invisible hit area is
+   not a discoverable control, and it fought text selection. `#termbtn` lives in
+   both tiers' headers under the same id, `hidden` until the sandbox is on.
+2. **The icon's presence is a status signal.** It appears the moment the sandbox
+   is enabled — at first paint from the cached knob, before the VM boots — so
+   "the icon is there" means Linux is starting. Its class reflects the current
+   mode with one accent hue at descending intensity (`.on` → `.mode-bg` →
+   `.mode-off`).
+3. **A tap is NEVER a silent no-op** (see UX-18). The switch used to bail while
+   the ring buffer was empty ("nothing to switch to"), which made every tap
+   during the VM's 24-80 s cold boot do nothing on a control that was already on
+   screen and styled as live — reported as "terminal button does not work"
+   (feedback #38). Now the mode always cycles, the pane carries the boot progress
+   while the VM comes up, and an entirely empty pane says so in words
+   (`EMPTY_PANE_LINE`).
 4. **Never auto-pop.** New sandbox output does NOT bring the terminal forward on
    its own (that was the removed screen-covering behavior); the default stays
    conversation-forward and the user chooses to flip.
@@ -145,13 +148,15 @@ out from under them, so ONLY the empty field toggles.
    the instant opacity swap.
 
 **Canonical implementation:** `public/js/agent-backdrop.js`
-(`setLayerMode` / `slideInForeground` / `isSwitchTarget` / `scrollBackdrop` /
-`leanChat` / `leanBackdrop` and the `wireScroll` gesture wiring) over the pure
-core `public/js/agent-backdrop-core.js` (`nextLayerMode`, `isTapGesture`,
-`parallaxFollow`); the `body.term-fg` styling + pane transitions live in
-`public/css/app.css` (the two-layer-view-switch block). Pure logic is
-Node-tested in `agent-backdrop-core.test.js`; the DOM glue is browser-verified
-(tap-vs-message, swap opacity/z-index, tap-vs-swipe, both parallax directions).
+(`wireTermBtn` / `setLayerMode` / `syncTermBtn` / `revealTermBtn` /
+`slideInForeground` / `scrollBackdrop` / `leanChat` and the `wireScroll` gesture
+wiring) over the pure core `public/js/agent-backdrop-core.js` (`nextLayerMode`,
+`hasPaneContent`, `composePaneLines`, `parallaxFollow`); the `body.term-fg` /
+`body.term-hidden` styling + pane transitions live in `public/css/app.css` and
+are mirrored in `public/cure/drc.css`. Pure logic is Node-tested in
+`agent-backdrop-core.test.js`; the DOM glue is browser-verified (mode cycle,
+swap opacity/z-index, the empty-pane and booting states, both parallax
+directions).
 
 ---
 
@@ -943,3 +948,59 @@ written down.
 `src/pipeline.js` / `public/cure/drc.js`; the older sibling is
 `public/js/testpoints-core.js` (`useCaseTag`, `parseUseCaseRef`,
 `tagStarterPrompt`) with `src/chat.js` recording both onto the feedback entry.
+
+---
+
+## UX-18 — A control that is on screen always responds; a control with nothing to do is not shown
+
+**Rule.** If an interactive control is **visible and styled as live**, tapping it
+**must produce a visible change** — every time, in every state. A handler that
+silently returns because the feature has no data yet is a bug, not a guard: from
+the outside it is indistinguishable from a broken button, and that is exactly how
+users report it. When a control genuinely has nothing to act on, pick one of two
+honest outcomes:
+
+- **Hide it** until it does (`hidden`, the way `#historybtn` / `#tryqueuebtn` /
+  `#ghostbtn` come and go), or
+- **Let it act anyway and show the empty state in words** — the panel opens and
+  says what is missing, or reports the work in flight that will fill it.
+
+Never the third thing: on screen, enabled-looking, and inert.
+
+**Why.** The cost of a silent no-op is paid entirely by the user, who has no way
+to tell "nothing to show yet" from "this is broken" and no reason to try again.
+It is worst on surfaces with a long warm-up, where the inert window is the
+*majority* of the control's visible life. Feedback #38 is the worked example: the
+header terminal icon is revealed the instant the sandbox knob is on, because its
+presence is the "Linux is starting" signal — but the click handler bailed on
+`hasBackdropContent()`, so for the whole 24-80 s cold boot
+(`docs/SANDBOX-PERFORMANCE.md`) the icon sat there doing nothing. The report came
+back as *"terminal button does not work, I don't get to see what happens in
+terminal."* The pane had nothing in it; the button was fine. The user could not
+possibly know that.
+
+**The mechanics (match all of these):**
+
+1. **Decide at REVEAL time, not at click time.** Whatever condition governs
+   whether the control is useful belongs in the code that shows/hides it. Once
+   shown, the handler does not re-litigate it.
+2. **A pending state is content.** Work in flight — booting, loading, syncing —
+   is something to say, not a reason to stay silent. Route the progress you
+   already compute for one surface into the other rather than leaving it blank
+   (`sandbox.js`'s boot ticker now drives BOTH the chat activity label and the
+   terminal pane's status line).
+3. **An empty surface names itself.** The last-resort render is a sentence, not
+   a void — a black rectangle reads as a crash. Keep the copy in the pure core
+   next to the compose function so it cannot drift (`EMPTY_PANE_LINE`).
+4. **The state is reversible and obvious.** The control's own appearance reflects
+   the mode it just moved to, so a user who lands somewhere unexpected can get
+   back without guessing (`syncTermBtn`'s `.on` / `.mode-bg` / `.mode-off`).
+5. **Test the cold state.** The interesting case is the one before any data
+   exists; pin it (`hasPaneContent` / `composePaneLines` with an empty model).
+
+**Canonical implementation:** `public/js/agent-backdrop.js` (`wireTermBtn`'s
+handler — no content gate; `setLayerMode`'s `ensureLayer()`+`render()`;
+`feedStatus`) over `public/js/agent-backdrop-core.js` (`hasPaneContent`,
+`composePaneLines`, `EMPTY_PANE_LINE`), fed by `public/js/sandbox.js`'s boot
+ticker. Node-tested in `agent-backdrop-core.test.js` ("hasPaneContent counts a
+live status line", "composePaneLines … never renders blank").

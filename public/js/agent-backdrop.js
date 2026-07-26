@@ -88,9 +88,11 @@ import {
   clampLine,
   clipboardPassthrough,
   clipToNextChannel,
+  composePaneLines,
   convoSyncOffset,
   createBackdropModel,
   ensureChannel,
+  hasPaneContent,
   LAYER_HIDDEN,
   nextLayerMode,
   opacityCss,
@@ -131,6 +133,15 @@ let clipTimer = 0; // round-robin between channels when >1 is active
 // the model. Cleared/flushed when a command starts (feedCommand) so the command
 // appears BELOW the prompt, not above it.
 let termBuf = "";
+
+// The live STATUS line: one replaceable line pinned under the log while the VM
+// is coming up (the boot progress the sandbox.js ticker drives). The header
+// icon is revealed the instant the sandbox is enabled — before the VM prints
+// anything — so without this the terminal pane came forward as a black void for
+// the whole cold boot, which is what feedback #38 reported as "the terminal
+// button does not work". Cleared once the boot ticker stops and the VM's own
+// output takes over.
+let bootStatus = "";
 
 // Backdrop scroll state: bgOffset px scrolled back into the log (0 = pinned to
 // the live tail), bgPinned tracks whether we're still following the newest.
@@ -319,9 +330,10 @@ function blurTerminalInput() {
 // The header terminal icon (#termbtn) swaps the foreground pane (see the header
 // note). We keep the mode meaningful only while the sandbox has produced output.
 
-/** Whether the sandbox has produced any output yet (→ a terminal worth showing). */
+/** Whether there is a terminal worth showing: the VM has produced output, OR it
+ * is still booting and the status line is carrying its progress. */
 function hasBackdropContent() {
-  return channelCount(model) > 0;
+  return hasPaneContent(model, bootStatus);
 }
 
 function reduceMotion() {
@@ -441,6 +453,8 @@ export function showTerminalIcon() {
  */
 export function hideTerminalIcon() {
   try {
+    bootStatus = ""; // the knob is off — no boot is in flight to report
+    render();
     if (hasBackdropContent()) return; // a real terminal is running — keep it
     termActive = false;
     const btn = termBtn();
@@ -456,7 +470,11 @@ function wireTermBtn() {
   btn.addEventListener("click", (e) => {
     try {
       e.preventDefault();
-      if (!hasBackdropContent()) return; // nothing to switch to
+      // ALWAYS cycle. This used to bail when the buffer was empty ("nothing to
+      // switch to"), which made every tap during the VM's cold boot a silent
+      // no-op on a control that was already on screen and styled as live —
+      // feedback #38. If the icon is visible the tap has to do something; an
+      // empty pane says so itself (EMPTY_PANE_LINE).
       setLayerMode(nextLayerMode(layerMode));
     } catch { /* decoration — never break the page */ }
   });
@@ -469,6 +487,11 @@ function setLayerMode(mode) {
       : LAYER_CONVO;
   if (next === layerMode) return;
   layerMode = next;
+  // The pane may never have been built (the switch is reachable before the VM
+  // prints), so make sure there is something to bring forward — render() fills
+  // it with the status line, or with EMPTY_PANE_LINE when even that is absent.
+  ensureLayer();
+  render();
   const terminal = layerMode === LAYER_TERMINAL;
   const hidden = layerMode === LAYER_HIDDEN;
   if (typeof document !== "undefined" && document.body) {
@@ -524,9 +547,8 @@ function render() {
   // terminal tail (the live shell prompt) is shown appended, so "characters are
   // drifting behind the chat" the instant the VM prints anything — the visible
   // proof Linux has booted.
-  let lines = activeLines(model);
-  if (model.active === TERM_CHANNEL && termBuf) lines = lines.concat([clampLine(termBuf)]);
-  pre.textContent = lines.join("\n");
+  const tail = model.active === TERM_CHANNEL ? termBuf : "";
+  pre.textContent = composePaneLines(activeLines(model), tail, bootStatus).join("\n");
   // In convo mode, re-derive the offset from the conversation's current scroll
   // position (the content height just changed). In terminal mode, fresh output
   // re-pins to the live tail unless the user has scrolled back to read history;
@@ -748,6 +770,28 @@ export function feedTerminal(text) {
     render();
     syncClipTimer();
     if (hasBackdropContent()) revealTermBtn(); // terminal is active → show the icon
+  } catch { /* the backdrop is decoration — never break the caller */ }
+}
+
+/**
+ * Set (or clear, with "") the live STATUS line under the terminal log — the
+ * VM's boot progress, driven from sandbox.js's boot ticker. This is what the
+ * terminal pane shows during the cold boot, when the header icon is already on
+ * screen but nothing has been printed yet (feedback #38); the moment the VM
+ * prints, its own output is the tail and this line trails it until the ticker
+ * stops. Also reveals the icon, so a boot that starts on page open surfaces the
+ * switch on its own. Fully fail-soft — decoration must never break the boot.
+ * @param {unknown} text a one-line status, or "" to clear
+ */
+export function feedStatus(text) {
+  try {
+    const next = clampLine(text);
+    if (next === bootStatus) return;
+    bootStatus = next;
+    if (!bootStatus && !layer) return; // nothing shown, nothing to clear
+    ensureLayer();
+    render();
+    if (hasBackdropContent()) revealTermBtn();
   } catch { /* the backdrop is decoration — never break the caller */ }
 }
 

@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 
 import {
   DEFAULT_OPACITY_PCT,
+  EMPTY_PANE_LINE,
   FOLLOW_CAP_PX,
   LAYER_CONVO,
   LAYER_HIDDEN,
@@ -26,10 +27,12 @@ import {
   clampScrollOffset,
   clipboardPassthrough,
   clipToNextChannel,
+  composePaneLines,
   convoSyncOffset,
   createBackdropModel,
   ensureChannel,
   formatResultLines,
+  hasPaneContent,
   isTapGesture,
   nextLayerMode,
   opacityCss,
@@ -249,6 +252,49 @@ test("nextLayerMode cycles convo → terminal → hidden → convo; unknown → 
   // a first background tap (mode unset/garbage) always brings the terminal up
   assert.equal(nextLayerMode(undefined), LAYER_TERMINAL);
   assert.equal(nextLayerMode("nope"), LAYER_TERMINAL);
+});
+
+// Feedback #38 — "terminal button does not work, I don't get to see what
+// happens in terminal". The header icon is revealed the moment the sandbox is
+// enabled, ~24-80 s before a cold VM prints anything, so the pane must have
+// something to show for that whole window. These pin the two pieces that made
+// the tap a silent no-op.
+test("hasPaneContent counts a live status line, not just buffered output", () => {
+  const m = createBackdropModel();
+  // the cold-boot window: nothing printed yet, no status → genuinely empty
+  assert.equal(hasPaneContent(m, ""), false);
+  assert.equal(hasPaneContent(m, null), false);
+  assert.equal(hasPaneContent(m, "   "), false); // whitespace is not content
+  // the VM is booting: the progress line alone is enough to show a pane
+  assert.equal(hasPaneContent(m, "booting the Linux sandbox — 12s"), true);
+  // and real output counts with or without a status
+  pushCommand(m, "shell", "ls /");
+  assert.equal(hasPaneContent(m, ""), true);
+  assert.equal(hasPaneContent(m, "still booting"), true);
+});
+
+test("composePaneLines stacks output, live tail and status; never renders blank", () => {
+  // output only
+  assert.deepEqual(composePaneLines(["$ ls /", "bin"], "", ""), ["$ ls /", "bin"]);
+  // output + the unterminated raw tail (the live shell prompt)
+  assert.deepEqual(
+    composePaneLines(["$ ls /"], "root@vm:~# ", ""),
+    ["$ ls /", "root@vm:~#"],
+  );
+  // the status line always trails
+  assert.deepEqual(
+    composePaneLines(["$ ls /"], "", "booting — 3s"),
+    ["$ ls /", "booting — 3s"],
+  );
+  assert.deepEqual(
+    composePaneLines([], "", "booting — 3s"),
+    ["booting — 3s"],
+  );
+  // status is clamped like any other line
+  assert.equal(composePaneLines([], "", "a\nb")[0], "a b");
+  // NOTHING at all still renders a line — a black void reads as a broken switch
+  assert.deepEqual(composePaneLines([], "", ""), [EMPTY_PANE_LINE]);
+  assert.deepEqual(composePaneLines(null, null, null), [EMPTY_PANE_LINE]);
 });
 
 test("isTapGesture accepts small quick presses, rejects drags and long holds", () => {

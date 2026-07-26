@@ -1,0 +1,53 @@
+{
+  "branch": "claude/terminal-visibility-feedback-21n6j2",
+  "requested_at": "2026-07-26",
+  "points": [
+    {
+      "label": "Terminal icon responds during the sandbox boot",
+      "summary": "Feedback #38 reported the terminal button doing nothing. It used to refuse to switch until the Linux VM had printed something, which is 25-80 seconds after the icon appears. Now every tap does something. With the execution sandbox knob ON, reload the page and tap the terminal icon (>_ , upper right) IMMEDIATELY, while the system is still starting. PASS: the screen switches to the dark terminal view straight away, and it shows the boot progress line (a bar, a step count, the seconds, and a rotating quip) updating as the system comes up — not a blank black screen and not nothing at all.",
+      "target": "/rver",
+      "actions": [
+        {
+          "type": "openSettings",
+          "knob": "bash_lite_mcp"
+        },
+        {
+          "type": "note",
+          "text": "Turn the execution sandbox knob ON if it is off (the page reloads to isolate). Then reload once more and tap the terminal icon in the top right within a second or two of the page appearing — before anything has run."
+        }
+      ],
+      "runs": 2,
+      "verdicts": []
+    },
+    {
+      "label": "Terminal icon cycles all three views and shows real output",
+      "summary": "The terminal icon cycles three views: terminal behind the chat (faint characters in the background), terminal in front (dark full-screen terminal), and terminal hidden (no terminal at all). Send the prefilled question, wait for the answer, then tap the icon three times. PASS: each tap visibly changes the screen, the icon itself changes appearance to match (filled / outlined / dimmed), the dark terminal view shows the real commands and their output, and the third tap returns you to where you started.",
+      "target": "/rver",
+      "actions": [
+        {
+          "type": "note",
+          "text": "The execution sandbox knob must be ON. Send the prefilled message and let it finish before tapping."
+        },
+        {
+          "type": "compose",
+          "text": "list files in /"
+        }
+      ],
+      "runs": 1,
+      "verdicts": []
+    },
+    {
+      "label": "Terminal icon works the same on Se/cure",
+      "summary": "The same terminal icon and the same three views exist on the client-side tier. On /cure, with the execution sandbox enabled in settings, reload and tap the terminal icon early (while the system starts), then again after asking it to run something. PASS: the tap always changes the view, the boot progress is visible in the terminal view while it starts, and real command output appears there afterwards.",
+      "target": "/cure",
+      "actions": [
+        {
+          "type": "note",
+          "text": "Open the gear icon on /cure and make sure the execution sandbox is enabled (an API key must already be configured for the chat itself to answer)."
+        }
+      ],
+      "runs": 1,
+      "verdicts": []
+    }
+  ]
+}

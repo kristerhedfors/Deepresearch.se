@@ -164,6 +164,50 @@ export function channelCount(model) {
   return model.order.length;
 }
 
+// ---- what the terminal pane has to show -------------------------------------
+// The header terminal icon is revealed the moment the sandbox is ENABLED — at
+// first paint, from the cached knob — because its presence is the "Linux is
+// starting" signal (2026-07-14 directive). That is long BEFORE the VM prints:
+// a cold boot is ~24 s bare and up to ~80 s with a /src seed
+// (docs/SANDBOX-PERFORMANCE.md). So for most of the window the icon is on
+// screen with an empty ring buffer behind it, and "does the pane have anything
+// to show" cannot be answered from the buffer alone — the live STATUS line (the
+// boot progress the ticker drives) counts too. Feedback #38 was exactly this
+// gap: the icon looked live, the tap did nothing, and the user reported "I
+// don't get to see what happens in terminal".
+
+/** The line the pane shows when it is brought forward with nothing in it at all
+ * — a blank black field reads as a broken switch, so say what is going on. */
+export const EMPTY_PANE_LINE = "[ sandbox terminal idle — no output yet ]";
+
+/**
+ * Whether the terminal pane has anything real to show: buffered output from a
+ * channel, or a live status line while the VM is still coming up.
+ * @param {BackdropModel} model
+ * @param {unknown} [status] the live status line (boot progress), if any
+ */
+export function hasPaneContent(model, status) {
+  return channelCount(model) > 0 || !!clampLine(status);
+}
+
+/**
+ * The lines the terminal pane renders: the active channel's buffered output,
+ * then the not-yet-terminated raw tail (the live shell prompt), then the live
+ * status line. When all three are empty the pane still shows EMPTY_PANE_LINE so
+ * bringing it forward is always visibly something rather than a black void.
+ * @param {string[]} base the active channel's lines
+ * @param {unknown} [tail] the unterminated raw-terminal remainder
+ * @param {unknown} [status] the live status line (boot progress)
+ * @returns {string[]}
+ */
+export function composePaneLines(base, tail, status) {
+  const out = Array.isArray(base) ? base.slice() : [];
+  if (tail) out.push(clampLine(tail));
+  const s = clampLine(status);
+  if (s) out.push(s);
+  return out.length ? out : [EMPTY_PANE_LINE];
+}
+
 /**
  * Advance the active channel to the next one in round-robin order — the "clip
  * back and forth between agents" step. A no-op (returns the same id) when zero

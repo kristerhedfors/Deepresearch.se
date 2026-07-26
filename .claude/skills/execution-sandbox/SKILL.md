@@ -329,6 +329,54 @@ originals plus a mode where the terminal output is **not shown at all**. Tapping
   (`body.term-hidden #dr-agent-backdrop { display:none }` + the three `#termbtn`
   states). Core test: `nextLayerMode cycles convo → terminal → hidden → convo`.
 
+### The tap is never a no-op; the pane carries the boot progress (2026-07-26)
+
+**Feedback #38: "terminal button does not work, I don't get to see what happens
+in terminal."** The button was fine — the pane was empty, and the switch refused
+to move for that reason.
+
+`revealTermBtn`/`showTerminalIcon` un-hide `#termbtn` the moment the sandbox knob
+is on — at first paint from the cached knob (`app.js`), before the VM boots,
+because the icon's presence IS the "Linux is starting" signal. But
+`wireTermBtn`'s handler opened with `if (!hasBackdropContent()) return;`, and
+content only exists once the VM prints. A cold boot is **24 s bare and up to
+~80 s with a /src seed** (`docs/SANDBOX-PERFORMANCE.md`), so for most of the
+icon's visible life every tap did *nothing at all* — no body class, no layer, no
+feedback of any kind — on a control already styled as live (`.mode-bg`, accent
+outline). Reproduced in a headless Chromium against the real `index.html` +
+`app.css`: tap before content → `body.className` unchanged, `#dr-agent-backdrop`
+never even built.
+
+Three coordinated changes, all in the backdrop + its feed:
+
+- **The handler always cycles.** The content gate is gone from the click path
+  (`agent-backdrop.js` `wireTermBtn`). `setLayerMode` now calls `ensureLayer()` +
+  `render()` so the pane exists to be brought forward. Codified as **UX-18** in
+  the **ux-conventions** skill: a visible control always responds, or it isn't
+  shown.
+- **The boot ticker feeds the pane.** `sandbox.js` `startBootQuips`'s `tick()`
+  drives the SAME `formatBootProgress(...) — quip` line into both the chat
+  activity label (`_bootOnMessage`, when a sink exists) and the new
+  `agent-backdrop.js` **`feedStatus()`**. The `_bootOnMessage` check moved from
+  an early `return` to an `if` so the pane still gets progress on a bare
+  **pre-warm** boot — the auto-start-on-open path, which has no activity sink and
+  is exactly when a user is most likely to tap the fresh icon. `stopBootQuips()`
+  clears the status (`feedStatus("")`), covering ready / failed / timed-out /
+  torn-down in one place. **Does not touch the LOAD-BEARING guard** — the sink
+  itself is still never nulled there.
+- **An empty pane says so.** `feedStatus` holds one replaceable `bootStatus`
+  line (like `termBuf`), and the pure `composePaneLines(base, tail, status)`
+  stacks output → live prompt tail → status, falling back to `EMPTY_PANE_LINE`
+  (`[ sandbox terminal idle — no output yet ]`) when all three are empty.
+  `hasBackdropContent()` is now `hasPaneContent(model, bootStatus)`, so a boot in
+  flight counts as content (and `hideTerminalIcon` clears the status first, so a
+  server-confirmed knob-off still hides the icon).
+
+New pure exports (`agent-backdrop-core.js`, Node-tested): `hasPaneContent`,
+`composePaneLines`, `EMPTY_PANE_LINE`. No CSS change → **no handshake bump**.
+**Still owed:** on-device confirmation that tapping the icon during a real cold
+boot on iOS shows the progress line in the terminal pane.
+
 ### Terminal mode: real terminal coloring + tap-to-type (2026-07-16)
 
 Two owner directives on the terminal-forward state (`body.term-fg`):
