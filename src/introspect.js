@@ -1,6 +1,7 @@
 // @ts-check
-// The introspection enrichment (developer mode): whenever the caller's
-// developer_mode knob is on, this appends the site's OWN source to the
+// The introspection enrichment: whenever the caller's chat mode carries the
+// source (chat-mode-core.js modeCarriesSource — every non-normal mode), this
+// appends the site's OWN source to the
 // conversation so every phase (triage, synthesis, validation) answers
 // implementation questions — and code-example requests — from the real code
 // instead of denying it has any. Two parts:
@@ -25,8 +26,8 @@
 // Standing enrichment contract (src/enrichment.js): fail-soft in every branch.
 // Retrieval or index failures degrade to a snapshot-only (orientation) block —
 // and a missing snapshot to an unchanged conversation — never an error. The
-// enrichment only RUNS when developer mode is on (registry gate in
-// enrichment.js), so "always inject" here means "always inject in dev mode".
+// enrichment only RUNS in a source-carrying mode (registry gate in
+// enrichment.js), so "always inject" here means "always inject in those modes".
 
 import {
   DOCS_CORPUS_PATH,
@@ -59,7 +60,7 @@ const RETRIEVE_K = 6;
 // vulnerabilities the model can quote, not the single closest one.
 const OWASP_RETRIEVE_K = 8;
 const OWASP_PER_CATEGORY = 2;
-// Documentation passages retrieved for the HELP layer (always on in dev mode —
+// Documentation passages retrieved for the HELP layer (always on in a source mode —
 // the same no-brittle-gate lesson as the source injection). A help-shaped ask
 // (helpIntent) widens the retrieval; per-doc cap keeps the passages spanning
 // several docs rather than k near-duplicates from the closest one.
@@ -385,7 +386,7 @@ export async function retrieveSourceBlockFor(env, log, query, snapshot = null) {
 
 /**
  * The enrichment runner (registered in src/enrichment.js; enabled =
- * state.introspection = developer mode on). Always injects the source in dev
+ * state.introspection = a source-carrying mode). Always injects the source in that
  * mode — retrieval finds the relevant code for the question, plus orientation.
  * @param {Env} env
  * @param {Logger} log
@@ -426,7 +427,7 @@ export async function runIntrospectionEnrichment(env, log, step, stepDone, conve
     latestText,
     retrieved,
     includeIndex: strongIntent,
-    // The sandbox knob being on is the mount signal: with dev mode on, EVERY
+    // The sandbox knob being on is the mount signal: in a source mode, EVERY
     // sandbox boot mounts the tree at /src (stream.js pre-warm + provider), so
     // the pointer is truthful whether or not a shell ran this message. The
     // shell-transcript fallback covers a client that attached a transcript
@@ -442,7 +443,7 @@ export async function runIntrospectionEnrichment(env, log, step, stepDone, conve
   // Same convention as the Shodan block: appended so every phase sees it.
   let convo = /** @type {Conversation} */ (withAppendedText(conversation, block));
 
-  // HELP layer (always on in dev mode, like the source itself): the
+  // HELP layer (always on in a source mode, like the source itself): the
   // documentation passages relevant to this question, quoted verbatim with
   // resolved symbol references — the first layer of the one help interface; the
   // source above is the deeper level a follow-up escalates into. A help-shaped

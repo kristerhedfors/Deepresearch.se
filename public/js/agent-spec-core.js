@@ -261,9 +261,16 @@ export const CAPABILITY_EVENTS = {
   "model_cards": { label: "Model cards", desc: "the priced, pickable catalog rows with their verification checklists", serverOnly: true },
 };
 
-/** Server capability knobs a mode may require before it is honored. */
+// Server capabilities a mode may require before it is honored. The names are a
+// published part of the spec (`capability.requires`), so `developer_mode` keeps
+// its id even though the per-account KNOB it was named after is gone
+// (2026-07-26): what it has always gated is whether the non-default chat modes
+// are available to the caller at all — a signed-in account or the break-glass
+// operator — which is what src/settings.js chatModesAvailable answers. It is not
+// a mode selector; `chat_mode` selects the mode.
+/** Server capabilities a mode may require before it is honored. */
 export const CAPABILITY_REQUIREMENTS = {
-  "developer_mode": { label: "Developer mode", desc: "the introspection/agent-mode capability knob", serverOnly: true },
+  "developer_mode": { label: "Agent modes", desc: "the non-default chat modes are available to this account", serverOnly: true },
   "sandbox": { label: "Sandbox", desc: "the bash-lite in-browser Linux sandbox knob" },
 };
 
@@ -798,10 +805,20 @@ export function validateAgentRegistry(reg) {
  *     already gave us) and "a sixth AGENT is data", which is what a builder
  *     actually needs. The named agent's own `mode` is reported, so an agent
  *     that belongs to no chat mode still says which one it renders as.
- *  2. **Flagged rows**, in `defaults` order — the mode flags, precedence being
- *     array order (sdk > orchestrator > outrospection).
- *  3. **Derived rows** (null flag) — introspection when its knob is granted,
- *     else normal.
+ *  2. **The resolved MODE** — the row whose `mode` matches the caller's already
+ *     resolved chat mode (src/chat.js resolves it once, from the `chat_mode`
+ *     field / a legacy mode flag / the account's stored pick, with availability
+ *     applied). This is the normal path for every shipped mode.
+ *  3. **Flagged rows**, in `defaults` order. Pass 2 covers the six built-in
+ *     modes, so this pass exists for a registry that declares a mode the
+ *     shipped table doesn't know (a `scout_mode` row added by a builder) — "a
+ *     sixth mode is data" keeps working without the resolver having to know it.
+ *  4. **Derived rows** (null flag) — `normal`, the terminal fallback.
+ *
+ * Before 2026-07-26 pass 4 was where INTROSPECTION came from: it had no flag,
+ * so it was whatever was left once the knob was on and no other flag matched.
+ * It now has a flag and a mode like every sibling, which is why the derived pass
+ * has exactly one row left.
  *
  * Every pass applies the SAME requirement gate: an agent whose declared
  * `capability.requires` are not all granted is skipped, never served. So an
@@ -815,9 +832,10 @@ export function validateAgentRegistry(reg) {
  * @param {any} reg
  * @param {Record<string, any>} body the /api/chat request body
  * @param {Record<string, boolean>} granted capability knob → granted?
+ * @param {string} [mode] the caller's already-resolved chat mode
  * @returns {{ mode: string, agent: any, capability: typeof BASE_CAPABILITY, addressed: boolean } | null}
  */
-export function resolveRequestAgent(reg, body, granted = {}) {
+export function resolveRequestAgent(reg, body, granted = {}, mode = "") {
   const rows = Array.isArray(reg?.defaults) ? reg.defaults : null;
   if (!rows || !rows.length) return null;
   /** @param {any} agent @param {string} mode @param {boolean} addressed */
@@ -837,6 +855,14 @@ export function resolveRequestAgent(reg, body, granted = {}) {
     // derived agent renders in the plain composer unless it says otherwise.
     const hit = serve(agent, agent?.mode || "normal", true);
     if (hit) return hit;
+  }
+
+  if (mode) {
+    const row = rows.find((/** @type {any} */ r) => r?.mode === mode);
+    if (row) {
+      const hit = usable(row);
+      if (hit) return hit;
+    }
   }
 
   for (const row of rows) {

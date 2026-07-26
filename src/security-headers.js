@@ -47,7 +47,7 @@ const STORY_INLINE_HASH = "'sha256-ATMgXgI8+2fgznyrbCNX5n9ZAqIHL8/YoN64WD6CwlI='
 // chat-mode cache (public/js/chat-mode.js).
 // Recompute on edit:
 //   node -e 'const c=require("crypto"),h=require("fs").readFileSync("public/index.html","utf8").match(/<script data-devtheme>([\s\S]*?)<\/script>/)[1];console.log("sha256-"+c.createHash("sha256").update(h).digest("base64"))'
-const THEME_BOOT_HASH = "'sha256-maj8denc9ygVoO8th/4ye6hwqNBz3/g0M1sG4MnCvTc='";
+const THEME_BOOT_HASH = "'sha256-jlngGLt0MMWK47lsLGYTz6wws8ep6SufJ92zOqtd0zQ='";
 const CSP = [
   "default-src 'self'",
   "base-uri 'self'",

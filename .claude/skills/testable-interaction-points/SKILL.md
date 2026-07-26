@@ -152,7 +152,7 @@ all three (plus a unit test) in one change.
 |---|---|---|
 | `note` | `text` | Extra inline guidance in the banner; no side effect. |
 | `openAccount` | `view?` (`summary`\|`full`\|`messages`\|`settings`\|`feedback`\|`games`\|`docs`) | Opens the account panel to a view. |
-| `openSettings` | `knob?` (`shodan_mcp`\|`google_maps`\|`bash_lite_mcp`\|`developer_mode`) | Opens Settings and pulse-highlights that knob's row. |
+| `openSettings` | `knob?` (`shodan_mcp`\|`google_maps`\|`bash_lite_mcp`\|`chat_mode`) | Opens Settings and pulse-highlights that setting's row (`chat_mode` pulses the Chat mode dropdown; the retired `developer_mode` name still aliases to it). |
 | `openProjects` | — | Opens the left drawer (chat history **and** the projects list). |
 | `openHistory` | — | Opens the left drawer. |
 | `newChat` | — | Starts a fresh chat. |

@@ -33,9 +33,9 @@
      relaunch (the device-cached shell paints before /api/settings answers):
      `sdk-mode` (green — Agent Studio, which distills this site into a new
      flavour), `orch-mode` (violet — Orchestrator, the sub-agent workflow
-     mode), `outro-mode` (newsprint — Outrospection, the outward feed)
-     or `dev-mode` (titanium — introspection; also the legacy default
-     when only the dr_dev_mode knob cache exists). The complete theme it
+     mode), `outro-mode` (newsprint — Outrospection, the outward feed),
+     `models-mode` (amber — the Models agent) or `dev-mode` (titanium —
+     introspection). The complete theme it
      triggers — the field + drifting waves, the whole palette, the composer pane
      and the waiting/entry animations — is CSS keyed on that class, so the
      background paints correctly from frame 1. This script ALSO sets the iOS
@@ -45,10 +45,10 @@
      JS left iPhone's status bar painted the default blue in Introspection and
      Agent Studio (the JS nudge fires inside Safari's navigation-chrome
      transition and is swallowed); bar-tint.js still re-asserts the current
-     mode's tint on later events. In-session toggle/reconcile is chat-mode.js.
+     mode's tint on later events. In-session switching is chat-mode.js.
      If this script changes, recompute its CSP hash (THEME_BOOT_HASH in
      src/security-headers.js). */
-try{var m=localStorage.getItem("dr_chat_mode");var t="#6fc3fd";if(m==="sdk"){document.documentElement.classList.add("sdk-mode");t="#66cc92";}else if(m==="orchestrator"){document.documentElement.classList.add("orch-mode");t="#c3aaf2";}else if(m==="outrospection"){document.documentElement.classList.add("outro-mode");t="#e5ddcb";}else if(m==="models"){document.documentElement.classList.add("models-mode");t="#ffd21e";}else if(m==="introspection"||(!m&&localStorage.getItem("dr_dev_mode")==="1")){document.documentElement.classList.add("dev-mode");t="#ccd2d8";}var mc=document.querySelector('meta[name="theme-color"]');if(mc){mc.setAttribute("content",t);}}catch(e){}</script>
+try{var m=localStorage.getItem("dr_chat_mode");var t="#6fc3fd";if(m==="sdk"){document.documentElement.classList.add("sdk-mode");t="#66cc92";}else if(m==="orchestrator"){document.documentElement.classList.add("orch-mode");t="#c3aaf2";}else if(m==="outrospection"){document.documentElement.classList.add("outro-mode");t="#e5ddcb";}else if(m==="models"){document.documentElement.classList.add("models-mode");t="#ffd21e";}else if(m==="introspection"){document.documentElement.classList.add("dev-mode");t="#ccd2d8";}var mc=document.querySelector('meta[name="theme-color"]');if(mc){mc.setAttribute("content",t);}}catch(e){}</script>
 </head>
 <body>
   <header>

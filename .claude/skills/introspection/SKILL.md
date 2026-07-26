@@ -1,15 +1,15 @@
 ---
 name: introspection
 description: >-
-  Load when working on introspection mode / the developer_mode knob — the
+  Load when working on introspection mode / the retired developer_mode knob — the
   feature that lets a conversation ask about THIS SITE's own implementation
   and get answered from the deployed source — or anything touching
   scripts/bundle-source.mjs, public/introspect/source-snapshot.json (the
   committed snapshot artifact), public/js/introspect-core.js (the shared pure
   core), public/js/introspect-ui.js (TIN the titanium mascot + the
   private-vs-remote model picker), public/js/dev-mode.js (the client
-  titanium-palette theme + the dr_dev_mode first-paint cache),
-  src/introspect.js (the DRS enrichment),
+  titanium-palette theme), the mode table public/js/chat-mode-core.js and its
+  Worker facade src/chat-modes.js, src/introspect.js (the DRS enrichment),
   the DRS private browser-direct route (stream.js maybePrivateIntrospection),
   the /src sandbox mount (sandbox-files.js planSourceMount), or the DRC
   developerMode knob. ALSO load when `npm test` fails on "source snapshot
@@ -17,9 +17,10 @@ description: >-
   editing the artifact by hand.
 ---
 
-# Introspection mode (developer_mode)
+# Introspection mode (chat_mode: "introspection")
 
-With the **developer_mode** knob on (both tiers), a conversation that asks
+With **introspection mode** on (Se/rver: the `chat_mode` pick; Se/cure: its own
+`developerMode` knob), a conversation that asks
 about this site's own implementation ("how are you built?", "visa mig din
 källkod", or naming a repo path like `src/pipeline.js`) enters INTROSPECTION
 MODE: the exact deployed source is given to the model as structured context,
@@ -84,17 +85,20 @@ DRC has no server embedder of the right model, so it can't do dense retrieval
 (orientation + named files, full index on strong intent) whenever developer
 mode is on — same "always on in dev mode" rule, minus retrieval.
 
-**Off-only request override (2026-07-15):** `/api/chat` accepts
-`developer_mode: false` in the body to SKIP the introspection enrichment for
-that one request (never enables — the incognito pattern; `chat.js
-resolveEnrichmentOptions`). Exists because developer mode is ALWAYS ON for
-the break-glass admin (`settings.js` — no settings row to flip, the PUT
-refuses break-glass), which made the eval harnesses structurally unable to
-measure the web pipeline: every bench request routed introspection-first,
-and pre-fix even quiz-triggered off the injected CLAUDE.md prose (chat_logs
-#360 — the quiz gate now reads `cleanLastUser`, source-pinned in
-`pipeline.test.js`). `tests/eval-bench.mjs` and `tests/model-eval.mjs`
-always send it.
+**Off-only request override (2026-07-15, still honored):** `/api/chat` accepts
+`developer_mode: false` in the body to force that one request back to `normal` —
+no source enrichment, no mode (never enables anything — the incognito pattern;
+`chat.js resolveEnrichmentOptions` → `chat-mode-core.js resolveBodyChatMode`).
+It exists because developer mode used to be ALWAYS ON for the break-glass admin,
+which made the eval harnesses structurally unable to measure the web pipeline:
+every bench request routed introspection-first, and pre-fix even quiz-triggered
+off the injected CLAUDE.md prose (chat_logs #360 — the quiz gate now reads
+`cleanLastUser`, source-pinned in `pipeline.test.js`).
+
+Since the 2026-07-26 collapse the harnesses say `chat_mode: "normal"` instead,
+and break-glass no longer defaults to introspection at all — so the override is
+kept for EXTERNAL callers written against the old shape, not because anything in
+this repo needs it. `developer_mode: true` grants nothing.
 
 ## Agentic source investigation — read loop + native tools (2026-07-12)
 
@@ -159,7 +163,7 @@ Three consumers, one artifact:
 1. **DRS server enrichment** — `src/introspect.js` reads it back through the
    `env.ASSETS` binding and appends the context block to the conversation
    (registered in `src/enrichment.js`, gated on `state.introspection` ←
-   `developerModeEnabled` in chat.js). Standard enrichment contract: silent
+   `modeCarriesSource` in chat.js). Standard enrichment contract: silent
    when not engaged, a visible `introspect` step when it is, fail-soft
    everywhere.
 2. **The sandbox mount (both tiers)** — the browser fetches the snapshot and
@@ -412,17 +416,34 @@ hand-edit the artifacts.
 
 ## Gating
 
-- DRS: `developer_mode` in `src/settings.js` (sixth knob, default OFF, needs
-  only a user row; break-glass admin gets it unconditionally — the
-  testability path). In the account panel's Settings view the capability is
-  now driven by the **Chat mode dropdown** (`account-views.js` MODE_INFO /
-  `wireModeKnob` — picking Introspection/SDK turns developer_mode on,
-  Normal turns it off), which replaced the old Introspection on/off switch.
+- **DRS: the MODE, not a knob (2026-07-26 collapse).** The account's
+  `chat_mode` (`src/settings.js`) is the stored pick; the request names its
+  mode in the `chat_mode` field; and whether the source is injected is
+  `modeCarriesSource(mode)` — true for EVERY non-normal mode, so Agent Studio,
+  Orchestrator, Outrospection and Models all get the source too, exactly as
+  they did when the knob was on for all of them. The table and the one wire
+  resolution live in `public/js/chat-mode-core.js` (Worker façade
+  `src/chat-modes.js`); availability is `chatModesAvailable` (any signed-in
+  account or break-glass — availability, not an opt-in). The Settings
+  **Chat mode dropdown** (`account-views.js` MODE_INFO / `wireModeKnob`) is
+  the only thing that writes it, and the composer `#modesel` mirrors it.
+  - The retired `developer_mode` boolean had become derived state (the dropdown
+    wrote it on every change) while ALSO being introspection's only activation
+    signal and the name of the availability gate — three jobs, three stores, a
+    reconcile on every page load. Introspection now has its own request flag
+    (`introspection_mode`) like its four siblings. `developer_mode: false`
+    survives as the off-only override; `developer_mode: true` does nothing.
+  - **Break-glass changed behaviour deliberately:** it used to read as
+    developer-mode-ON permanently, so every unflagged operator request routed
+    introspection-first. It now gets plain research unless the request says a
+    mode — which the app always does. `chat_mode` is a browser-local choice
+    there (no D1 row to persist into), and Settings says so.
 - DRC: `state.developerMode` in the sealed project state (`drc-core.js`),
-  knob in the settings drawer (`#devpanel` in cure/index.html).
-- No /api/chat protocol change: the SERVER decides from the knob + the
-  conversation it already receives; the client mirrors the same shared gate
-  only to decide the sandbox mount.
+  knob in the settings drawer (`#devpanel` in cure/index.html). Se/cure did
+  NOT get the dropdown and keeps its own boolean — that asymmetry is current.
+- /api/chat carries the mode: `chat_mode` (preferred) or a legacy per-mode
+  boolean. The client sends it every send and mirrors `modeCarriesSource`
+  locally to decide the sandbox mount and the source-peek gate.
 
 ## TIN — the mascot, the model picker, and the private route
 
@@ -479,7 +500,7 @@ Node-tested pure core (reference parsing with a closed extension list so
 `example.com`/`v1.5` never light up, exact→suffix→basename resolution with
 a picker for ambiguous basenames, the dependency-free tokenizer returning
 textContent-only tokens — file text never meets innerHTML). Wiring:
-`turns.js renderContent` + the `initSourcePeek({enabled: developerModeOn})`
+`turns.js renderContent` + the `initSourcePeek({enabled: () => modeCarriesSource(cachedChatMode())})`
 gate in app.js (DRS); `drc.js messageEl` + the live final render, gated on
 `state.developerMode` (DRC). Both modules are in `isPublicAsset` (the /cure
 graph imports them). Fenced blocks and links are never rewritten — inline

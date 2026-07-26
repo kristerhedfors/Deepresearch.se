@@ -257,7 +257,7 @@ answer. `chat_logs` rows carry `outrospection_mode: 1` and `outrospection:
 feed could not answer at all, and `quotes: 0` for the ones it could list but
 not quote.
 
-The mode is gated on the same `developer_mode` capability as Agent Studio and
+The mode is gated on the same availability as Agent Studio and
 Orchestrator, and wears the newsprint theme (`outro-mode`): a paper field, the
 masthead red as the accent, and the composer as a printed sheet rather than a
 metal pane.

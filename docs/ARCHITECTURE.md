@@ -1365,12 +1365,29 @@ merges. The algorithm (diverge → ring critique → deterministic converge, wit
 a measured agreement score) is `public/js/swarm-core.js`; full spec in
 `docs/SWARM-REASONING.md`.
 
-## 14. Introspection mode (`developer_mode`)
+## 14. Introspection mode (`chat_mode: "introspection"`)
 
-An opt-in per-user knob (`developer_mode`, default OFF, both tiers) that
-lets a conversation ask about THIS SITE's own implementation and be
+A chat MODE (Se/rver: picked from the Chat mode dropdown, stored per account as
+`chat_mode`; Se/cure: still its own `developerMode` knob in the settings drawer)
+that lets a conversation ask about THIS SITE's own implementation and be
 answered from the deployed source rather than an "I'm not a coding tool"
-denial. When on, the server enrichment (`src/introspect.js`) retrieves the
+denial.
+
+Until 2026-07-26 this was an opt-in per-user BOOLEAN knob called
+`developer_mode`, and that knob was three things at once: the availability gate
+for every non-default mode, the persisted user choice, and — because
+introspection was the only mode with no request flag of its own — introspection's
+activation signal. One choice therefore lived in three stores (the D1 knob, a
+`dr_dev_mode` browser cache, the mode pick) and had to be reconciled on every
+page load. The knob is gone: the MODE is the unit, every mode including
+introspection has a name on the wire (`chat_mode`, resolved once by
+`public/js/chat-mode-core.js`), availability is availability
+(`chatModesAvailable`), and whether the site's own source is in context is
+derived from the mode (`modeCarriesSource` — every non-normal mode carries it).
+`developer_mode: false` survives as a documented off-only override that forces a
+single request back to plain research.
+
+When the mode is on, the server enrichment (`src/introspect.js`) retrieves the
 source chunks most relevant to the question from a COMMITTED dense index
 (`public/introspect/source-rag.json` — int8 embeddings per source chunk,
 built by `npm run bundle:rag`), embeds the query with the same Berget e5

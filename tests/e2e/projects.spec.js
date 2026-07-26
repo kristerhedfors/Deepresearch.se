@@ -159,7 +159,7 @@ test("projects mirror to the cloud implicitly — and there is no per-project sw
     return r.fulfill({ status: 204 });
   });
   // This spec mocks /api/settings itself, so it owns the knob pinning (its
-  // mock omits bash_lite_mcp/developer_mode = both off).
+  // mock omits bash_lite_mcp/chat_mode = sandbox off, Deep Research).
   await openApp(page, { pinSettings: false });
   await mockEmbed(page);
 

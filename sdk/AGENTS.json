@@ -42,7 +42,7 @@
     {
       "mode": "introspection",
       "agent": "introspection",
-      "flag": null
+      "flag": "introspection_mode"
     },
     {
       "mode": "normal",
@@ -50,7 +50,7 @@
       "flag": null
     }
   ],
-  "defaults_note": "The Se/rver app's six DEFAULT agents — one per chat mode (public/js/chat-mode.js CHAT_MODES). ARRAY ORDER IS PRECEDENCE, mirroring src/chat.js: a request carrying several mode flags resolves to the first match (sdk > orchestrator > outrospection > models). `flag` names the /api/chat request field that selects the mode; a null flag means the mode is derived — introspection when the developer_mode capability is granted and no flag is set, normal otherwise. Agents NOT listed here (secure, under-construction) are tier archetypes and templates, not chat modes.",
+  "defaults_note": "The Se/rver app's six DEFAULT agents — one per chat mode (public/js/chat-mode-core.js CHAT_MODES). ARRAY ORDER IS PRECEDENCE, mirroring src/chat.js: a request carrying several mode flags resolves to the first match (sdk > orchestrator > outrospection > models > introspection). `flag` names the /api/chat request field that selects the mode; every mode except `normal` has one, and `normal` (flag null) is the terminal fallback. A request may instead name its mode outright with the `chat_mode` field, which is the preferred form and what the app sends — the per-mode booleans are the legacy spelling. Until 2026-07-26 introspection had NO flag and was the derived leftover (whatever remained when the developer_mode knob was on and no other flag matched); it now has `introspection_mode` like every sibling, and `developer_mode` is an AVAILABILITY grant only, never a mode selector. Agents NOT listed here (secure, under-construction) are tier archetypes and templates, not chat modes.",
   "agents": [
     {
       "id": "research",

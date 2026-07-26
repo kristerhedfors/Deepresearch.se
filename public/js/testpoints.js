@@ -59,8 +59,10 @@ const KNOB_SELECTORS = {
   shodan_mcp: "#shodanknob",
   google_maps: "#gmapsknob",
   bash_lite_mcp: "#sbknob",
-  // The developer_mode capability is now driven by the Chat mode dropdown
-  // (account-views.js) rather than a standalone switch — pulse that control.
+  // The chat mode is the dropdown, not a switch (account-views.js). The retired
+  // `developer_mode` key is kept as an alias so an older declared test point
+  // still pulses the right control instead of silently pulsing nothing.
+  chat_mode: "#modesetting",
   developer_mode: "#modesetting",
 };
 

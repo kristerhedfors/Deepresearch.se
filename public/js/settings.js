@@ -1,8 +1,10 @@
 // @ts-check
 // Per-account settings (GET/PUT /api/settings — src/settings.js): the
-// shodan_mcp (Shodan host-intel), google_maps, bash_lite_mcp, and
-// developer_mode knobs. Feedback is NOT a knob (given from the chat — a
-// message opening with "feedback" is routed to the feedback pipeline).
+// shodan_mcp (Shodan host-intel), google_maps and bash_lite_mcp knobs, plus the
+// account's picked `chat_mode` (the one non-boolean setting — it replaced the
+// developer_mode knob in 2026-07-26's mode collapse). Feedback is NOT a knob
+// (given from the chat — a message opening with "feedback" is routed to the
+// feedback pipeline).
 // Cloud storage is NOT a knob
 // (2026-07-16 owner directive): on this signed-in tier history is always
 // cloud-stored whenever the server can store it — the cached
@@ -20,7 +22,7 @@
  * @property {boolean} [shodan_mcp]
  * @property {boolean} [google_maps]
  * @property {boolean} [bash_lite_mcp]
- * @property {boolean} [developer_mode]
+ * @property {string} [chat_mode]
  * @property {string} [maps_embed_key]
  * @property {{storage?: boolean, rag?: boolean, shodan?: boolean, google_maps?: boolean, bash_lite?: boolean, developer?: boolean, exec_container?: boolean}} [available]
  */
@@ -142,23 +144,30 @@ export function bashLiteOn() {
   return settings?.bash_lite_mcp === true;
 }
 
-// Developer-mode knob (default off; needs only a signed-in account). While
-// on, conversations that ask about this site's own implementation enter
-// INTROSPECTION MODE: the server appends the deployed source snapshot as
-// context (src/introspect.js), and — when the sandbox knob is also on — the
-// client mounts the source tree at /src in the in-browser Linux VM
-// (public/js/introspect-core.js is the shared gate/plan logic).
-export function developerModeOn() {
-  return settings?.developer_mode === true;
+// The account's stored chat mode — the authoritative copy of the pick, which is
+// why it follows the account across devices. chat-mode.js holds the
+// localStorage CACHE of it for first paint; this is the value that replaces the
+// cache once /api/settings resolves. Empty string until then (callers should
+// read chat-mode.js cachedChatMode for a synchronous answer).
+export function serverChatMode() {
+  return typeof settings?.chat_mode === "string" ? settings.chat_mode : "";
 }
 
-export function developerModeAvailable() {
+// Whether the non-default chat modes (Introspection, Agent Studio, Orchestrator,
+// Outrospection, Models) are available to this account at all — true for any
+// signed-in account and the break-glass operator. Availability, not a per-account
+// opt-in: there is nothing to switch on any more, only a mode to pick.
+export function chatModesAvailable() {
   return settings?.available?.developer === true;
 }
 
-/** @param {boolean} on */
-export function setDeveloperMode(on) {
-  return updateSetting({ developer_mode: on });
+/**
+ * Persist the picked chat mode. Replaced setDeveloperMode (2026-07-26): the mode
+ * IS the setting now, rather than a boolean the dropdown had to keep in step.
+ * @param {string} mode
+ */
+export function setChatMode(mode) {
+  return updateSetting({ chat_mode: mode });
 }
 
 export function bashLiteAvailable() {

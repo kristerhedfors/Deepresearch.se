@@ -268,7 +268,7 @@ export const synthPrompt = ({ hasShell = false, hasSource = false, reportTier = 
 // This runs on the reliable JSON model like the other planning phases (command
 // choice must be dependable regardless of the user's answer-model pick), but it
 // is a normal text completion, not JSON mode — the convention IS the structure.
-// `sourceMounted` (developer mode): the client mounts the site's own source
+// `sourceMounted` (a source-carrying chat mode): the client mounts the site's own source
 // tree at /src in the VM, so the step model must know to explore it there —
 // without this line it denies having the code (chat_logs #514).
 // `sdkMode` (Agent Studio, feedback #7 2026-07-24): the build assistant ships
@@ -344,7 +344,7 @@ const HELP_DOCS_NOTE =
   "\nIn every escalation the conclusion must rest on code you actually read in this conversation — quote the decisive lines and cite their paths; if you could not read enough to prove the claim, say exactly which files you would need.";
 
 // Introspection source-research loop (src/pipeline.js runSourceResearch, gated
-// by developer mode + no external-source intent). One turn of the agentic loop
+// by a source-carrying mode + no external-source intent). One turn of the agentic loop
 // that reads THIS SITE's own source: given the question, a sitemap (every file +
 // a one-line description), and the files already read, the model asks for the
 // next files to READ — or declares itself done. NO function calling (invariant
@@ -665,11 +665,11 @@ const CAPABILITIES_NOTE =
 
 // The capabilities-note closing line, split out so it can flip when the
 // experimental execution sandbox actually ran for THIS request, OR when
-// introspection mode (developer mode) has put the site's OWN source in
+// introspection mode has put the site's OWN source in
 // context. Default: the site does not run code. hasShell: it DID (the
 // in-browser Linux sandbox), so the model must answer from that output
 // instead of denying the capability (chat_logs #200/#201, 2026-07-10).
-// hasSource: developer mode injected the deployed source (retrieved code +
+// hasSource: a source-carrying mode injected the deployed source (retrieved code +
 // orientation), so the model must answer implementation and code-example
 // questions FROM it and never deny having the source or claim it isn't a
 // coding tool (chat_logs #275, 2026-07-12 — "Code examples from site" was
