@@ -76,6 +76,56 @@
       display: block; width: 100%; border-radius: 12px;
       background: #0a2e5c; box-shadow: 0 4px 18px rgba(4, 30, 60, .2);
     }
+    /* ---- the feature-focus timeline, compact. The full page
+       (/pulse/timeline.html) has the zoom, pan, streamgraph and table; here,
+       high on the front door, it answers one question — what has this project
+       actually been working on — and lets you switch any feature's graph on
+       and off (feedback #32). Both surfaces draw from the SAME dataset via the
+       same pure core (/js/pulse-timeline-core.js), so they cannot disagree.
+       The whole card removes itself if the dataset can't be read: a broken
+       chart on the landing page is worse than no chart. ---- */
+    #focuscard[hidden] { display: none; }
+    #focuscard .fclede { font-size: .86rem; color: var(--muted); margin: .1rem 0 .7rem; }
+    #focuschart svg { width: 100%; height: auto; display: block; overflow: visible; }
+    #focuschart .grid-line { stroke: rgba(10, 46, 92, .13); stroke-width: 1; }
+    #focuschart .axis-line { stroke: rgba(10, 46, 92, .3); stroke-width: 1; }
+    #focuschart .y-lbl { fill: var(--muted); font-size: 12px; text-anchor: end; font-variant-numeric: tabular-nums; }
+    #focuschart .x-lbl { fill: var(--muted); font-size: 12px; text-anchor: middle; }
+    #focuschart .series-line { fill: none; stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
+    #focuschart .empty-note { fill: var(--muted); font-size: 13px; text-anchor: middle; }
+    /* The chips ARE the legend — the chart carries no in-plot labels, so a
+       curve's identity lives here (swatch + name + count), never in colour
+       alone. An off curve keeps its hue as a hollow ring so you can still
+       find the feature you're looking for. */
+    .fclegend { display: flex; flex-wrap: wrap; gap: .35rem .4rem; margin: .7rem 0 0; }
+    .fcchip {
+      display: inline-flex; align-items: center; gap: .4rem;
+      border: 1px solid var(--border); background: rgba(255, 255, 255, .55);
+      border-radius: 999px; padding: .3rem .65rem .3rem .55rem;
+      font: inherit; font-size: .78rem; font-weight: 600; color: var(--text);
+      cursor: pointer; user-select: none; touch-action: manipulation;
+    }
+    /* `display: inline-flex` outranks the UA's [hidden] rule, so the folded
+       tail of the strip needs this or "+N more" reveals nothing. */
+    .fcchip[hidden] { display: none; }
+    .fcchip .sw { width: 11px; height: 11px; border-radius: 3px; flex: 0 0 auto; background: var(--c); }
+    .fcchip .ct { color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; }
+    .fcchip[aria-pressed="true"] { border-color: var(--accent); }
+    .fcchip[aria-pressed="false"] { opacity: .6; }
+    .fcchip[aria-pressed="false"] .sw { background: transparent; box-shadow: 0 0 0 2px var(--c) inset; }
+    .fcchip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    @media (pointer: coarse) { .fcchip { min-height: 44px; padding: .5rem .8rem .5rem .65rem; font-size: .82rem; } }
+    .fctools { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; margin: .7rem 0 0; }
+    .fctools button {
+      border: 1px solid var(--border); background: rgba(255, 255, 255, .55);
+      color: var(--text); font: inherit; font-size: .75rem; font-weight: 600;
+      padding: .3rem .6rem; border-radius: 8px; cursor: pointer;
+    }
+    @media (pointer: coarse) { .fctools button { min-height: 40px; } }
+    .fctools .fcspacer { flex: 1 1 auto; }
+    .fctools a { font-size: .78rem; }
+    #focuscard .fchint { font-size: .76rem; color: var(--muted); margin: .55rem 0 0; }
+
     /* ---- the short architecture block. The two data-path diagrams are the
        SAME files the full story at /architecture/ renders
        (architecture/path-secure.svg / path-server.svg), referenced rather
@@ -226,7 +276,11 @@
     }
     #ghostbtn.ghost-attn { animation: ghost-attn 1.3s ease-out infinite; }
 
-    /* ---- first-visit overlay: what it does — and doesn't ---- */
+    /* ---- first-visit overlay: who this is, THEN what it does and doesn't.
+       It opens over the page before anything has been read, so it has to
+       introduce the site itself first — the name and the tagline — or the
+       does/doesn't lands with nothing to attach to (feedback #32). Kept
+       short for the same reason: it is a doorway, not the page. ---- */
     #wintro {
       position: fixed; inset: 0; z-index: 20;
       background: rgba(10, 46, 92, .35);
@@ -244,6 +298,16 @@
       box-shadow: 0 18px 50px rgba(4, 30, 60, .35);
     }
     .wcard h2 { font-size: 1.15rem; margin: .1rem 0 .6rem; }
+    /* The lead-in: the same wordmark and the same tagline the page itself
+       opens with, so the overlay and the page behind it introduce one thing. */
+    .wlogo { display: flex; align-items: center; gap: .6rem; margin: 0 0 .5rem; }
+    .wlogo img { width: 40px; height: 40px; border-radius: 50%; flex: 0 0 auto; }
+    .wname {
+      font-family: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", Quicksand, Comfortaa, system-ui, sans-serif;
+      font-size: 1.35rem; font-weight: 300; letter-spacing: .04em;
+      margin: 0; color: var(--text);
+    }
+    .wlede { font-size: .88rem; margin: 0 0 .9rem; color: var(--muted); }
     .dodont { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem; }
     @media (max-width: 480px) { .dodont { grid-template-columns: 1fr; } }
     .dodont h3 { font-size: .85rem; margin: 0 0 .3rem; color: var(--accent); }
@@ -350,6 +414,26 @@
   <div class="card">
     <video src="/llm-assiterad-utveckling.mp4" controls autoplay muted loop playsinline
       aria-label="Promotional video: LLM-assisted development research"></video>
+  </div>
+
+  <!-- Directly under the video, per feedback #32. Hidden until the dataset
+       loads, so a failed fetch leaves no empty frame on the front door. -->
+  <div class="card" id="focuscard" hidden>
+    <h2>What it has been working on</h2>
+    <p class="fclede" id="fclede">Every commit tagged with the feature sets it
+      touched, over the project's whole history. Turn a feature's graph on or
+      off below.</p>
+    <div id="focuschart"></div>
+    <div class="fclegend" id="fclegend" role="group" aria-label="Features shown"></div>
+    <div class="fctools">
+      <button type="button" id="fcMore" aria-expanded="false" aria-controls="fclegend" hidden></button>
+      <button type="button" id="fcTop">Busiest 6</button>
+      <button type="button" id="fcAll">All</button>
+      <button type="button" id="fcNone">None</button>
+      <span class="fcspacer"></span>
+      <a href="/pulse/timeline.html">Full timeline →</a>
+    </div>
+    <p class="fchint">Tap a feature to add or remove its curve.</p>
   </div>
 
   <div class="card">
@@ -498,37 +582,35 @@
      ?anim=1; skipped entirely once seen (localStorage dr_welcome_seen). ---- -->
 <div id="wintro" hidden>
   <div class="wcard">
-    <h2>First time here? What this does — and doesn't</h2>
+    <div class="wlogo">
+      <img src="/icons/icon-192.png?v=4" alt="">
+      <h2 class="wname">DeepResearch.se</h2>
+    </div>
+    <p class="wlede">A deep-research AI assistant that plans its own web
+    searches, checks they cover the question, and answers with numbered
+    citations — and an open experiment in how private an AI assistant can
+    be made.</p>
     <div class="dodont">
       <div>
         <h3>It does</h3>
         <ul>
-          <li>Plan its own web searches, run them, and answer with numbered
-            citations — within a time budget you set.</li>
-          <li>Read the documents and photos you attach, keep work in
-            projects, quiz you on a topic, look up places on the map, and
-            even explain its own source code.</li>
-          <li>Run code for you in an experimental Linux sandbox that boots
-            right inside your browser tab.</li>
-          <li>Do all of that <b>entirely in your browser</b>, on your own
-            OpenAI, Groq or Berget key — no account, and no cost to anyone,
-            that in-browser sandbox included.</li>
+          <li>Research a question properly: its own searches, cited answers,
+            within a time budget you set.</li>
+          <li>Read what you attach, run code in a Linux sandbox that boots in
+            this tab, and explain its own source.</li>
+          <li>Run <b>entirely in your browser</b> on your own API key — no
+            account, no cost to anyone.</li>
         </ul>
       </div>
       <div>
         <h3>It doesn't</h3>
         <ul>
-          <li>Sell anything — no ads, no trackers. This is an open
-            exploration of AI-assisted architecture and the build process
-            itself, not a commercial product.</li>
-          <li>Put the server in the loop when you run it in your browser —
-            DeepResearch.<b class="tail">Se<span class="sl">/</span>cure</b>
-            never sees your chats or your keys, by construction.</li>
-          <li>Take open signups. Hosted extras — EU-hosted models, web
-            search, cloud sync at DeepResearch.<b class="tail">Se<span class="sl">/</span>rver</b> —
-            run on cost-bearing APIs, not-for-profit, so access is
-            approval-gated: sign in with the <b>account button</b> (top
-            right) and await the operator's OK.</li>
+          <li>Sell anything — no ads, no trackers, not a commercial
+            product.</li>
+          <li>See your chats in
+            DeepResearch.<b class="tail">Se<span class="sl">/</span>cure</b>:
+            the server isn't in the data path, by construction.</li>
+          <li>Take open signups — the hosted tier is approval-gated.</li>
         </ul>
       </div>
     </div>
@@ -704,6 +786,154 @@
     const chip = e.target.closest(".askchip");
     if (chip) answer(chip.textContent);
   });
+</script>
+
+<!-- The compact feature-focus timeline. Draws /pulse/timeline.json through the
+     SAME pure core the full page uses, so the two can never disagree about
+     what a curve means; only the drawing here is smaller (whole range, lines
+     only, no zoom/pan/table — the full page owns those). Fails soft: any
+     problem reading the dataset leaves the card hidden. -->
+<script type="module">
+  import {
+    MONTHS, activeKeys, buildBuckets, linePath, niceMax, normalizeCommits,
+    peakOf, seriesColor, seriesTotalsInWindow, svgEscape, topKeys,
+  } from "/js/pulse-timeline-core.js";
+
+  const card = document.getElementById("focuscard");
+  const fmt = (n) => Math.round(n).toLocaleString("en-US");
+  // The landing is a light surface only (no dark variant), so the registry
+  // hue is used as-is — but go through the core so the rule stays in one place.
+  const colorOf = (hex) => seriesColor(hex, false);
+
+  // Geometry: a short, wide plot. No in-plot labels — the chips below are the
+  // legend, which keeps the 680px column readable at six curves.
+  const VW = 1000, LP = 46, RP = 14, TP = 10, PLOT_H = 230;
+  const plotW = VW - LP - RP, plotBottom = TP + PLOT_H, H = plotBottom + 28;
+  const METRIC = "commits";
+  // Twenty-eight chips is four-plus rows on a phone — more page than the chart
+  // it controls. Show the busiest handful and keep the rest one tap away.
+  const CHIPS_SHOWN = 12;
+
+  let SUBJ = new Map(), ORDER = [], COMMITS = [], FULL = [0, 1], BYKEY = {};
+  let visible = new Set();
+  const chips = new Map();
+
+  function render() {
+    const keys = ORDER.filter((k) => visible.has(k));
+    const buckets = buildBuckets(COMMITS, FULL[0], FULL[1], {
+      anchorMs: FULL[0], metric: METRIC, mode: "lines", maxBuckets: 40,
+    });
+    const ymax = niceMax(peakOf(buckets, keys, "lines"));
+    const xOf = (ms) => LP + ((ms - FULL[0]) / (FULL[1] - FULL[0] || 1)) * plotW;
+    const yOf = (v) => plotBottom - (v / ymax) * PLOT_H;
+
+    let g = "";
+    for (const t of [0, 0.5, 1]) {
+      const yy = plotBottom - t * PLOT_H;
+      g += `<line class="grid-line" x1="${LP}" y1="${yy.toFixed(1)}" x2="${VW - RP}" y2="${yy.toFixed(1)}"/>`;
+      g += `<text class="y-lbl" x="${LP - 7}" y="${(yy + 4).toFixed(1)}">${fmt(t * ymax)}</text>`;
+    }
+    g += `<line class="axis-line" x1="${LP}" y1="${plotBottom}" x2="${VW - RP}" y2="${plotBottom}"/>`;
+
+    // Five evenly spaced date ticks across the whole range.
+    for (let i = 0; i <= 4; i++) {
+      const t = FULL[0] + ((FULL[1] - FULL[0]) * i) / 4;
+      const d = new Date(t);
+      g += `<text class="x-lbl" x="${xOf(t).toFixed(1)}" y="${plotBottom + 18}">${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}</text>`;
+    }
+
+    for (const k of keys) {
+      const s = SUBJ.get(k);
+      if (!s) continue;
+      g += `<path class="series-line" d="${linePath(buckets, k, xOf, yOf)}" stroke="${colorOf(s.color)}"><title>${svgEscape(s.label)}</title></path>`;
+    }
+    if (!keys.length) {
+      g += `<text class="empty-note" x="${(LP + plotW / 2).toFixed(1)}" y="${(TP + PLOT_H / 2).toFixed(1)}">Pick a feature below to draw its curve.</text>`;
+    }
+
+    document.getElementById("focuschart").innerHTML =
+      `<svg viewBox="0 0 ${VW} ${H}" preserveAspectRatio="xMidYMid meet" role="img" ` +
+      `aria-label="Commits per feature set over the project's history">${g}</svg>`;
+    syncChips();
+  }
+
+  function syncChips() {
+    for (const [k, chip] of chips) {
+      const on = visible.has(k);
+      chip.setAttribute("aria-pressed", String(on));
+    }
+  }
+
+  function setCurves(keys) { visible = new Set(keys); render(); }
+
+  fetch("/pulse/timeline.json", { cache: "no-cache" })
+    .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+    .then((d) => {
+      COMMITS = normalizeCommits(d.commits);
+      if (!COMMITS.length) return;                 // nothing to draw — stay hidden
+      SUBJ = new Map((d.subjects || []).map((s) => [s.key, s]));
+      ORDER = (d.subjects || []).map((s) => s.key);
+      BYKEY = d.totals?.byKey || {};
+      FULL = [COMMITS[0].ms, COMMITS[COMMITS.length - 1].ms];
+
+      const offered = activeKeys(ORDER, BYKEY);
+      if (!offered.length) return;
+      const totals = seriesTotalsInWindow(COMMITS, ORDER, FULL[0], FULL[1], METRIC);
+
+      // Chips in busiest-first order so the ones above the fold are the ones
+      // worth tapping; the tail is revealed by the "more" button below.
+      const ranked = topKeys(ORDER, BYKEY, METRIC, offered.length);
+      document.getElementById("fclegend").innerHTML = ranked.map((k, i) => {
+        const s = SUBJ.get(k);
+        return `<button type="button" class="fcchip" data-k="${svgEscape(k)}" aria-pressed="false"` +
+          `${i >= CHIPS_SHOWN ? " data-extra=\"1\" hidden" : ""} title="${svgEscape(s.blurb || s.label)}">` +
+          `<span class="sw" style="--c:${colorOf(s.color)}"></span>` +
+          `<span>${svgEscape(s.label)}</span> <span class="ct">${fmt(totals.get(k)?.commits || 0)}</span></button>`;
+      }).join("");
+      for (const chip of document.querySelectorAll("#fclegend .fcchip")) {
+        const k = chip.dataset.k;
+        chips.set(k, chip);
+        chip.addEventListener("click", () => {
+          visible.has(k) ? visible.delete(k) : visible.add(k);
+          render();
+        });
+      }
+
+      const more = document.getElementById("fcMore");
+      const hiddenCount = Math.max(0, ranked.length - CHIPS_SHOWN);
+      if (hiddenCount) {
+        more.hidden = false;
+        more.textContent = `+${hiddenCount} more`;
+        more.addEventListener("click", () => {
+          const expand = more.getAttribute("aria-expanded") !== "true";
+          more.setAttribute("aria-expanded", String(expand));
+          more.textContent = expand ? "Fewer" : `+${hiddenCount} more`;
+          for (const c of document.querySelectorAll("#fclegend .fcchip[data-extra]")) c.hidden = !expand;
+        });
+      }
+
+      document.getElementById("fcTop").addEventListener("click", () => setCurves(topKeys(ORDER, BYKEY, METRIC, 6)));
+      // "All" turns on chips that may be behind the "more" fold — reveal them,
+      // or the strip would show six ticks for twenty-eight drawn curves.
+      document.getElementById("fcAll").addEventListener("click", () => {
+        if (hiddenCount && more.getAttribute("aria-expanded") !== "true") more.click();
+        setCurves(offered);
+      });
+      document.getElementById("fcNone").addEventListener("click", () => setCurves([]));
+
+      const from = d.range?.from, to = d.range?.to;
+      if (from && to) {
+        document.getElementById("fclede").textContent =
+          `Every commit tagged with the feature sets it touched, ${from} to ${to} — ` +
+          `${fmt(COMMITS.length)} commits across ${offered.length} feature sets. ` +
+          `Turn a feature's graph on or off below.`;
+      }
+
+      visible = new Set(topKeys(ORDER, BYKEY, METRIC, 6));
+      render();
+      card.hidden = false;
+    })
+    .catch(() => { /* the front door renders fine without the chart */ });
 </script>
 </body>
 </html>

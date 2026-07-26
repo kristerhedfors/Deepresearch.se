@@ -12,6 +12,13 @@
 //     split exists to prevent.
 //  3. The page still carries what the front door is for: the promo video, the
 //     stated purpose, the capability list, and the MIT/GitHub line.
+//  4. The first-visit overlay INTRODUCES the site before it contrasts what the
+//     site does and doesn't do, and stays short (feedback #32 — the overlay
+//     opens over an unread page, so a does/doesn't with no subject lands on
+//     nothing).
+//  5. The feature-focus timeline card sits under the video, and BOTH it and
+//     /pulse/timeline.html draw through the shared pure core rather than
+//     carrying their own copy of the bucketing maths.
 
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
@@ -25,6 +32,7 @@ const read = (p) => readFileSync(join(ROOT, p), "utf8");
 const LANDING = read("public/welcome/index.html");
 const ARCH = read("public/architecture/index.html");
 const ROUTER = read("src/index.js");
+const TIMELINE = read("public/pulse/timeline.html");
 
 const DIAGRAMS = ["/architecture/path-secure.svg", "/architecture/path-server.svg"];
 
@@ -60,6 +68,106 @@ describe("the landing page at /", () => {
     const server = LANDING.indexOf("path-server.svg");
     assert.ok(secure > -1 && server > -1);
     assert.ok(secure < server, "secure-first: the Se/cure diagram comes first");
+  });
+});
+
+describe("the first-visit overlay", () => {
+  // Everything below addresses one failure: the overlay is the FIRST thing a
+  // visitor sees, drawn over a page they have not read yet.
+  const CARD = LANDING.slice(LANDING.indexOf('<div id="wintro"'), LANDING.indexOf('<div id="mascot"'));
+
+  test("introduces the site by name and tagline", () => {
+    assert.match(CARD, /class="wname">DeepResearch\.se</, "the overlay must name the site");
+    assert.match(CARD, /class="wlede">[\s\S]*?deep-research AI assistant/,
+      "…and say what it is, in the same words as the page's own tagline");
+  });
+
+  test("the introduction comes BEFORE the does/doesn't contrast", () => {
+    const name = CARD.indexOf('class="wname"');
+    const lede = CARD.indexOf('class="wlede"');
+    const grid = CARD.indexOf('class="dodont"');
+    assert.ok(name > -1 && lede > -1 && grid > -1);
+    assert.ok(name < lede && lede < grid,
+      "name → tagline → does/doesn't; a contrast with no subject is what feedback #32 reported");
+  });
+
+  test("stays short — it is a doorway, not the page", () => {
+    const bullets = (CARD.match(/<li>/g) || []).length;
+    assert.ok(bullets > 0 && bullets <= 6,
+      `the overlay carries ${bullets} bullets; keep it at 6 or fewer (it opens over the real page)`);
+    const words = CARD.replace(/<[^>]+>/g, " ").trim().split(/\s+/).length;
+    assert.ok(words <= 140, `the overlay runs to ${words} words; keep it under ~140`);
+  });
+
+  test("still offers both halves and the dismiss", () => {
+    assert.match(CARD, /It does/);
+    assert.match(CARD, /It doesn't/);
+    assert.match(CARD, /id="wintrook"/);
+  });
+});
+
+describe("the feature-focus timeline on the landing", () => {
+  test("the card sits directly under the promo video", () => {
+    const video = LANDING.indexOf('<video src="/llm-assiterad-utveckling.mp4"');
+    const card = LANDING.indexOf('id="focuscard"');
+    const purpose = LANDING.indexOf("What this project is for");
+    assert.ok(video > -1 && card > -1 && purpose > -1);
+    assert.ok(video < card, "the timeline goes below the video");
+    assert.ok(card < purpose, "…and stays high on the page, above the prose");
+  });
+
+  test("a feature's graph can be turned on and off", () => {
+    // The whole point of the card: chips as the picker, plus the bulk resets.
+    assert.match(LANDING, /id="fclegend"/);
+    assert.match(LANDING, /class="fcchip"/, "each feature gets a toggle chip");
+    assert.match(LANDING, /aria-pressed=/, "on/off state is exposed, not colour-only");
+    for (const id of ["fcTop", "fcAll", "fcNone", "fcMore"]) {
+      assert.ok(LANDING.includes(`id="${id}"`), `missing the ${id} control`);
+    }
+  });
+
+  test("the card removes itself when the dataset can't be read", () => {
+    // A broken chart on the front door is worse than no chart.
+    assert.match(LANDING, /<div class="card" id="focuscard" hidden>/,
+      "the card starts hidden and is only revealed once the data parses");
+    assert.match(LANDING, /card\.hidden = false/);
+    assert.match(LANDING, /\.catch\(\(\) => \{/, "a failed fetch must not throw on the landing");
+  });
+
+  test("it links through to the full timeline rather than reimplementing it", () => {
+    assert.match(LANDING, /href="\/pulse\/timeline\.html"/);
+    for (const owned of ["overview", "brush", "stream", "resetZoom", "tableView"]) {
+      assert.ok(!LANDING.includes(`id="${owned}"`), `${owned} belongs to the full page, not the landing card`);
+    }
+  });
+});
+
+describe("the shared feature-timeline core", () => {
+  const CORE = "/js/pulse-timeline-core.js";
+
+  test("both surfaces import it", () => {
+    for (const [name, html] of [["landing", LANDING], ["timeline page", TIMELINE]]) {
+      assert.ok(html.includes(CORE), `${name} must draw the timeline through ${CORE}`);
+    }
+  });
+
+  test("neither page keeps its own copy of the bucketing maths", () => {
+    // The drift this split exists to prevent: two pages quietly disagreeing
+    // about what a curve means (bin width, the multi-tag weight, the y-scale).
+    for (const [name, html] of [["landing", LANDING], ["timeline page", TIMELINE]]) {
+      for (const dup of ["function buildBuckets", "function pickStep", "function niceMax", "function normalizeCommits"]) {
+        assert.ok(!html.includes(dup),
+          `${name} redefines ${dup} — import it from ${CORE} instead`);
+      }
+    }
+  });
+
+  test("the core itself stays pure — no DOM, no fetch", () => {
+    const src = read("public/js/pulse-timeline-core.js");
+    for (const banned of ["document.", "window.", "fetch(", "localStorage"]) {
+      assert.ok(!src.includes(banned),
+        `the core touches ${banned}; keep it pure so both pages can unit-test the same maths`);
+    }
   });
 });
 
