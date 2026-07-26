@@ -221,6 +221,13 @@ export function isPublicAsset(url, method) {
     // the promotional landing (/welcome/) so a signed-out visitor can ask the
     // common questions before signing in. Static content, no secrets.
     url.pathname === "/js/canned-faq.js" ||
+    // The feature-focus timeline's pure core: the bucketing/scale/colour maths
+    // shared by /pulse/timeline.html and the compact card on the landing. Both
+    // are public surfaces (/pulse/ is allowlisted above, /welcome/ is the
+    // signed-out front door), so a 401 here would blank the chart on each —
+    // same public-graph rule as the modules around it. Pure maths over a
+    // committed dataset, no secrets.
+    url.pathname === "/js/pulse-timeline-core.js" ||
     // The shared feedback intent gate (feedback-core.js): a leaf pure module
     // imported by /cure/drc.js (the public DRC graph) so the "feedback" keyword
     // is caught client-side. Same public-graph rule — a 401 here would take the

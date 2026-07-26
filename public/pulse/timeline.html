@@ -221,23 +221,34 @@
 <div id="tip" role="status" aria-live="polite"></div>
 
 <script type="module">
+  // The bucketing, scales, colour lift and subject selection live in the
+  // SHARED pure core — the compact card on the landing (/welcome/) draws the
+  // same dataset from the same maths, so neither surface can drift into its
+  // own idea of what a curve means. Only this page's drawing and its gestures
+  // (zoom, pan, brush, solo, table) are local.
+  import {
+    DAY, HOUR, MONTHS,
+    activeKeys as coreActiveKeys,
+    buildBuckets as coreBuildBuckets,
+    declutterLabels, labelGap, linePath,
+    metricOf as coreMetricOf,
+    niceMax, normalizeCommits, peakOf, pickStep,
+    seriesColor as coreSeriesColor,
+    seriesTotalsInWindow,
+    svgEscape as svgTag,
+    topKeys as coreTopKeys,
+  } from "/js/pulse-timeline-core.js";
+
   const el = (id) => document.getElementById(id);
   const fmt = (n) => Math.round(n).toLocaleString("en-US");
-  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  const HOUR = 3600e3, DAY = 24 * HOUR;
 
-  // ---- theme-aware series colours ----------------------------------------
-  // The dataset carries a light-mode hex per subject; lift it onto the dark
-  // surface by mixing toward white so identity stays stable in both themes.
+  // The page may pin a theme; otherwise follow the OS.
   const isDark = () => {
     const t = document.documentElement.getAttribute("data-theme");
     if (t === "dark") return true; if (t === "light") return false;
     return matchMedia("(prefers-color-scheme: dark)").matches;
   };
-  const hexToRgb = (h) => [1,3,5].map((i) => parseInt(h.slice(i, i + 2), 16));
-  const rgbToHex = (r) => "#" + r.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
-  const mix = (hex, target, t) => rgbToHex(hexToRgb(hex).map((c, i) => c + (target[i] - c) * t));
-  const seriesColor = (hex) => isDark() ? mix(hex, [255,255,255], 0.24) : hex;
+  const seriesColor = (hex) => coreSeriesColor(hex, isDark());
 
   // ---- state -------------------------------------------------------------
   let DATA = null;
@@ -267,61 +278,19 @@
     } catch { /* storage unavailable — the picker still works, it just forgets */ }
   }
 
-  // Wall-clock ms from an ISO that already carries the CET offset: read the
-  // local components straight off the string so bucketing matches /pulse.
-  const wallMs = (iso) => {
-    const y = +iso.slice(0,4), mo = +iso.slice(5,7)-1, d = +iso.slice(8,10);
-    const h = +iso.slice(11,13), mi = +iso.slice(14,16), s = +iso.slice(17,19);
-    return Date.UTC(y, mo, d, h, mi, s);
-  };
-  const metricOf = (c) => (metric === "commits" ? 1 : c.a + c.r);
+  const metricOf = (c) => coreMetricOf(c, metric);
 
-  // ---- bucketing ---------------------------------------------------------
-  const STEPS = [HOUR, 2*HOUR, 3*HOUR, 6*HOUR, 12*HOUR, DAY, 2*DAY, 7*DAY];
-  function pickStep(span) {
-    for (const st of STEPS) if (span / st <= 56) return st;
-    return STEPS[STEPS.length - 1];
-  }
-  // Bucket every commit in [t0,t1] into fixed-width bins aligned to FULL[0]'s day.
-  function buildBuckets(t0, t1) {
-    const step = pickStep(t1 - t0);
-    const anchor = Math.floor(FULL[0] / DAY) * DAY;
-    const i0 = Math.floor((t0 - anchor) / step);
-    const i1 = Math.floor((t1 - anchor) / step);
-    const buckets = [];
-    for (let i = i0; i <= i1; i++) {
-      const b0 = anchor + i * step;
-      buckets.push({ t0: b0, t1: b0 + step, mid: b0 + step / 2, step, per: Object.create(null), total: 0, untagged: 0, commits: 0 });
-    }
-    for (const c of COMMITS) {
-      if (c.ms < buckets[0].t0 || c.ms >= buckets[buckets.length - 1].t1) continue;
-      const bi = Math.floor((c.ms - anchor) / step) - i0;
-      const b = buckets[bi]; if (!b) continue;
-      b.commits += 1;
-      const v = metricOf(c);
-      b.total += v;
-      if (!c.s.length) { b.untagged += v; continue; }
-      // Lines mode: full weight to each tag (overlap is fine — it's attention,
-      // not a partition). Stream mode: split so the stack sums to the real total.
-      const share = mode === "stream" ? v / c.s.length : v;
-      for (const k of c.s) b.per[k] = (b.per[k] || 0) + share;
-    }
-    return buckets;
-  }
+  // Bucket every commit in [t0,t1] into fixed-width bins aligned to FULL[0]'s
+  // day — the core owns the rules (including how a multi-subject commit is
+  // weighed in each mode); this just binds them to the page's live state.
+  const buildBuckets = (t0, t1) =>
+    coreBuildBuckets(COMMITS, t0, t1, { anchorMs: FULL[0], metric, mode });
 
   // ---- scales ------------------------------------------------------------
   const VW = 1000, LP = 46, RP = 96, TP = 12, PLOT_H = 300;
   const plotW = VW - LP - RP, plotBottom = TP + PLOT_H, plotTop = TP;
   const xOf = (ms) => LP + ((ms - view[0]) / (view[1] - view[0])) * plotW;
   const msOf = (px) => view[0] + ((px - LP) / plotW) * (view[1] - view[0]);
-
-  function niceMax(v) {
-    if (v <= 0) return 1;
-    const pow = Math.pow(10, Math.floor(Math.log10(v)));
-    for (const m of [1, 1.5, 2, 2.5, 3, 4, 5, 7.5, 10]) { const c = m * pow; if (c >= v) return c; }
-    return 10 * pow;
-  }
-  const svgTag = (v) => String(v).replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
 
   function xTicks(buckets) {
     const span = view[1] - view[0];
@@ -344,16 +313,9 @@
   // ---- render main chart -------------------------------------------------
   function activeSeries() { return ORDER.filter((k) => visible.has(k)); }
 
-  function seriesTotalsInView() {
-    // full-weight per-subject metric over the visible window (for legend/table)
-    const out = new Map(ORDER.map((k) => [k, { commits: 0, val: 0 }]));
-    for (const c of COMMITS) {
-      if (c.ms < view[0] || c.ms > view[1]) continue;
-      const v = metricOf(c);
-      for (const k of c.s) { const o = out.get(k); if (o) { o.commits += 1; o.val += v; } }
-    }
-    return out;
-  }
+  // full-weight per-subject metric over the visible window (for legend/table)
+  const seriesTotalsInView = () =>
+    seriesTotalsInWindow(COMMITS, ORDER, view[0], view[1], metric);
 
   function renderChart() {
     const buckets = buildBuckets(view[0], view[1]);
@@ -361,17 +323,8 @@
     const keys = activeSeries();
     let g = "";
 
-    // y-max
-    let ymax = 1;
-    if (mode === "lines") {
-      for (const b of buckets) for (const k of keys) ymax = Math.max(ymax, b.per[k] || 0);
-    } else {
-      for (const b of buckets) {
-        let sum = 0; for (const k of keys) sum += b.per[k] || 0;
-        ymax = Math.max(ymax, sum);
-      }
-    }
-    ymax = niceMax(ymax);
+    // y-max: the tallest curve (lines) or the tallest stack (stream)
+    const ymax = niceMax(peakOf(buckets, keys, mode));
     const yOf = (v) => plotBottom - (v / ymax) * PLOT_H;
 
     // gridlines + y labels. In Lines mode the y-scale is a real magnitude
@@ -402,14 +355,9 @@
     if (mode === "lines") {
       for (const k of keys) {
         const col = seriesColor(SUBJ.get(k).color);
-        let d = "", started = false, lastPt = null;
+        const d = linePath(buckets, k, xOf, yOf);
         const lastV = buckets.length ? (buckets[buckets.length - 1].per[k] || 0) : 0;
-        buckets.forEach((b) => {
-          const v = b.per[k] || 0;
-          const x = xOf(b.mid), y = yOf(v);
-          d += (started ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1) + " ";
-          started = true; lastPt = { x, y };
-        });
+        const lastPt = buckets.length ? { y: yOf(lastV) } : null;
         g += `<path class="series-line" d="${d}" stroke="${col}" data-k="${k}"/>`;
         // A 2px stroke is not a tap target — pair every line with a fat
         // invisible one so a finger can grab the curve itself.
@@ -451,18 +399,8 @@
     const trunc = (s) => (s.length > 15 ? s.slice(0, 14) + "…" : s);
     // The gap compresses when the set is over-full (28 labels × 12px would
     // overflow the 300px plot), so every label always fits without colliding.
-    const GAP = Math.min(12, (plotBottom - plotTop - 6) / Math.max(1, endLabels.length - 1));
-    const labeled = endLabels.slice().sort((a, b) => a.y - b.y);
-    let prevY = -1e9;
-    for (const lab of labeled) {
-      lab.ly = Math.max(lab.y, prevY + GAP, plotTop + 6);
-      prevY = lab.ly;
-    }
-    let nextY = plotBottom + GAP;
-    for (let i = labeled.length - 1; i >= 0; i--) {
-      labeled[i].ly = Math.min(labeled[i].ly, nextY - GAP);
-      nextY = labeled[i].ly;
-    }
+    const GAP = labelGap(endLabels.length, plotBottom - plotTop);
+    const labeled = declutterLabels(endLabels, GAP, plotTop, plotBottom);
     for (const lab of labeled) {
       const y = Math.max(lab.ly, plotTop + 4);
       g += `<circle cx="${(VW - RP + 3).toFixed(1)}" cy="${y.toFixed(1)}" r="2.5" fill="${lab.col}"/>`;
@@ -690,7 +628,7 @@
   // so the chip under a finger was destroyed mid-gesture and the whole strip
   // relaid out 60×/s. A picker has to hold still to be tappable.
   let chipEls = new Map();      // key → chip element
-  function activeKeys() { return ORDER.filter((k) => (DATA.totals.byKey[k]?.commits || 0) > 0); }
+  const activeKeys = () => coreActiveKeys(ORDER, DATA.totals.byKey);
 
   function buildLegend() {
     const box = el("legend");
@@ -801,14 +739,7 @@
     syncLegend();
   }
 
-  function topKeys(n) {
-    const totals = new Map(ORDER.map((k) => [k, DATA.totals.byKey[k] || { commits: 0, added: 0, removed: 0 }]));
-    return ORDER.filter((k) => totals.get(k).commits > 0)
-      .sort((a, b) => metric === "commits"
-        ? totals.get(b).commits - totals.get(a).commits
-        : (totals.get(b).added + totals.get(b).removed) - (totals.get(a).added + totals.get(a).removed))
-      .slice(0, n);
-  }
+  const topKeys = (n) => coreTopKeys(ORDER, DATA.totals.byKey, metric, n);
 
   // toggles
   el("plotwrap").parentElement.querySelectorAll("[data-metric]").forEach((b) =>
@@ -844,8 +775,7 @@
       DATA = d;
       SUBJ = new Map(d.subjects.map((s) => [s.key, s]));
       ORDER = d.subjects.map((s) => s.key);
-      COMMITS = (d.commits || []).map((c) => ({ ms: wallMs(c.t), a: c.a || 0, r: c.r || 0, s: c.s || [] }))
-        .sort((a, b) => a.ms - b.ms);
+      COMMITS = normalizeCommits(d.commits);
       if (!COMMITS.length) { el("chart").innerHTML = '<p class="muted">No commit history yet.</p>'; return; }
       FULL = [COMMITS[0].ms, COMMITS[COMMITS.length - 1].ms];
       view = FULL.slice();

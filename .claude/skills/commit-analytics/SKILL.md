@@ -210,8 +210,21 @@ independent of `data.json` (nothing here needs re-curation):
 | `scripts/pulse-themes.test.mjs` | Runs in `npm test` (the glob now includes `scripts/*.test.mjs`). Guards distinct colours + representative subject-line → tag cases. |
 | `scripts/build-pulse-timeline.mjs` | `npm run pulse:timeline`. Tags every commit, emits `timeline.json` (`subjects[]` registry + per-commit `{t,a,r,s}` + per-subject totals). `--audit` prints tag coverage, writes nothing. |
 | `public/pulse/timeline.json` | The committed dataset (like `data.json`, it rides in the introspection source-snapshot, so re-run `npm run bundle`/`bundle:rag` after regenerating). |
-| `public/pulse/timeline.html` | Self-contained page: multi-line **or** streamgraph, weigh by commits **or** lines, wheel/drag/brush zoom-and-pan, the **curve picker** (below), tooltip, table fallback. Light + dark. |
+| `public/js/pulse-timeline-core.js` | **The shared pure core** (2026-07-26): bucketing, the metric, the multi-tag weight per mode, `niceMax`/`peakOf`, the dark-mode colour lift, `topKeys`/`activeKeys`, `linePath`, label declutter. No DOM, no fetch. Unit-tested in `public/js/pulse-timeline-core.test.js`; on the public allowlist (`src/assets.js`). |
+| `public/pulse/timeline.html` | Self-contained page: multi-line **or** streamgraph, weigh by commits **or** lines, wheel/drag/brush zoom-and-pan, the **curve picker** (below), tooltip, table fallback. Light + dark. Imports the core; keeps only its drawing + gestures. |
+| `public/welcome/index.html` | The SECOND surface (2026-07-26, feedback #32): a compact feature-focus card under the promo video on the landing — whole range, lines only, chips to turn an individual feature's graph on/off, `+N more` fold, Busiest 6 / All / None, and a link to the full page. Same core. Hides itself if the dataset can't be read. |
 | `tests/e2e/pulse-timeline.spec.js` | The picker's regression guard, in Playwright's free `mocked` project (`/pulse/` is a public asset, so it needs no auth and no `/api/chat`). Eight cases: defaults, tap, hold-to-isolate, tap-a-curve, drag-never-selects, the bulk buttons, persistence, and the 44px touch target. |
+
+**Two surfaces, one core — don't fork the maths.** The landing card and the
+full page must agree about what a curve means, so everything deciding that
+lives in `pulse-timeline-core.js` and both pages import it. `src/landing.test.js`
+fails the build if either page redefines `buildBuckets` / `pickStep` /
+`niceMax` / `normalizeCommits`, or if the core reaches for `document` /
+`window` / `fetch` / `localStorage`. Add to the core rather than to a page.
+Both pages carry their module code INLINE (`<script type="module">`), which the
+`/cure` import-graph walker can't see — `src/assets.test.js` walks the inline
+blocks of both and fails if an import is missing from the public allowlist
+(the recurring 401-blanks-the-page breakage class).
 
 To refresh it: `npm run pulse:timeline`, eyeball `--audit` coverage (target
 untagged < ~15%; the tail is genuinely theme-less chore/meta commits), and if a

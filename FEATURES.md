@@ -296,6 +296,82 @@ Se/cure data path; the sealed envelope is opaque to the server; keys never log.
 Design-first per the interchange-standards discipline — spec the envelope and
 merged shape before wiring UI.
 
+### F-19 · Track MCP's stateless protocol revision — 🔵 OPEN (medium)
+
+Filed from user feedback #33 (2026-07-26, "add this mcp update as a task").
+`POST /mcp` (`src/mcp.js`) is the ONE place this project points outward — the
+pipeline exposed AS a tool other agents call (`docs/ARCHITECTURE-ROADMAP.md`
+§3). The next protocol revision rewrites the exact three methods we
+hand-rolled. Left alone, our only outward integration drifts out of spec.
+
+**Where we stand.** `PROTOCOL_VERSION` is `"2025-06-18"` — already
+two revisions behind the published `2025-11-25`, never bumped. So this item
+is a *catch-up plus a jump*, not a single bump.
+
+**Verified against the upstream draft changelog (checked 2026-07-26,
+`modelcontextprotocol.io/specification/draft/changelog`).** The revision is
+in draft; a release-candidate date of 2026-07-28 was reported in the feed
+that prompted the feedback but is NOT confirmed by the published revision
+list, which still shows `2025-11-25` as current. Treat the date as unfixed
+and the substance as settled. What lands on us:
+
+- **The handshake goes away.** `initialize` and `notifications/initialized`
+  are removed; MCP becomes stateless. Every request instead carries its
+  protocol version and client capabilities in `_meta`
+  (`io.modelcontextprotocol/protocolVersion`,
+  `io.modelcontextprotocol/clientCapabilities`), clients SHOULD send
+  `io.modelcontextprotocol/clientInfo`, and servers SHOULD return
+  `io.modelcontextprotocol/serverInfo` in each result's `_meta`. Version
+  mismatch answers `UnsupportedProtocolVersionError`.
+- **`server/discover` becomes mandatory** — servers MUST implement it to
+  advertise supported protocol versions, capabilities and identity. This is
+  new surface, not a rename of `initialize`.
+- **Protocol-level sessions and `Mcp-Session-Id` are removed**; list
+  endpoints no longer vary per connection. Cross-call state becomes an
+  explicit server-minted handle passed as an ordinary tool argument.
+- **Every result carries a required `resultType`** (`"complete"`, or
+  `"input_required"` for the new multi-round-trip pattern). Results from
+  earlier-protocol servers that omit it MUST be read as `"complete"`.
+- **`tools/list` results gain required `ttlMs` + `cacheScope`**
+  (`CacheableResult`), and tools SHOULD come back in deterministic order —
+  ours already do (a static array), so that half is free.
+- **Extensions become first-class**: an `extensions` field on client and
+  server capabilities. Note this is MCP's own extension concept and has
+  nothing to do with invariant 7's `src/extensions.js` registry — don't let
+  the shared word merge the two.
+- **Standard request headers** `Mcp-Method` / `Mcp-Name` are required on
+  Streamable HTTP POSTs, with a `HeaderMismatch` error.
+- **Error codes are re-partitioned**: `-32020`–`-32099` is reserved for the
+  spec (`UnsupportedProtocolVersion` = `-32022`), `-32000`–`-32019` stays
+  implementation-defined. Our `RPC_*` constants are all standard JSON-RPC
+  codes, so they are unaffected — but new codes must come from the right
+  range.
+- **Removed / deprecated, and all irrelevant to us — confirm, don't
+  implement:** `ping`, `logging/setLevel`, `notifications/roots/list_changed`,
+  SSE stream resumability (`Last-Event-ID`), the HTTP+SSE transport, and the
+  Roots / Sampling / Logging features. We implement none of them.
+
+**Scope of the work.** Add `server/discover`; accept requests with no prior
+handshake and read the version + capabilities off `_meta`; emit `resultType`
+and `serverInfo`; add `ttlMs`/`cacheScope` to `toolsListResult()`; return
+`UnsupportedProtocolVersionError` on mismatch. **Serve both revisions at
+once** — the spec's new deprecation policy guarantees a minimum twelve-month
+window and removes nothing inside it, so `initialize` must keep working for
+existing clients rather than being deleted. That dual support is the design
+question worth settling first.
+
+Two constraints hold throughout. The **file-layout rule** stands: all of
+this is pure protocol logic, so it belongs at the TOP of `src/mcp.js` behind
+no dynamic import, and `src/mcp.test.js` must still load the module without
+pulling in the pipeline. And **invariant 1** is untouched: a richer inbound
+protocol is still the client's model choosing to call us — orchestration
+inside stays deterministic, with no function calling introduced.
+
+Verification is the **mcp-server** skill's ladder: unit tests on the pure
+helpers, then a live JSON-RPC probe of both the legacy handshake path and
+the stateless path. Re-read the changelog before starting — this item was
+written against a draft that can still move.
+
 ---
 
 ## 4. History log (append-only)
@@ -393,3 +469,21 @@ merged shape before wiring UI.
   workflow can put its output on a real served URL without a live model
   conversation — reuses SDK mode's existing `publishBuild`/caps/opaque-origin
   CSP unchanged rather than building a second publish system.
+- **2026-07-26** — F-19 opened from user feedback #33 ("add this mcp update as
+  a task"): track MCP's stateless protocol revision on `POST /mcp`. Checked the
+  upstream draft changelog rather than trusting the feed that prompted the
+  report — the substance is confirmed (the `initialize`/`notifications/
+  initialized` handshake removed, per-request `_meta` version + capabilities,
+  a mandatory new `server/discover`, protocol sessions and `Mcp-Session-Id`
+  gone, a required `resultType`, `ttlMs`/`cacheScope` on `tools/list`, an
+  `extensions` capability field, required `Mcp-Method`/`Mcp-Name` headers, a
+  re-partitioned error-code range) but the reported 2026-07-28 RC date is not,
+  so the item is written against the draft and says so. Recorded two things the
+  feed did not: `PROTOCOL_VERSION` has been stuck at `"2025-06-18"` since it
+  was written, two revisions behind the published `2025-11-25`, so this is
+  catch-up plus a jump; and the new twelve-month deprecation window means both
+  revisions must be served at once rather than the handshake being deleted.
+  Also corrected the **mcp-server** skill, which still described a single
+  `deep_research` tool and "anything else is method-not-found" after the
+  `sdk_*` tools landed, and gave it an upcoming-revision section so whoever
+  builds F-19 starts from the verified list.
