@@ -50,7 +50,7 @@ text rendering.
 | `session` | mid-conversation | `chat`, `se/cure` | a report about the answer above it | — |
 | `standalone` | the first message of a chat | `chat/standalone`, `se/cure/standalone` | a generic suggestion; no session behind it | reproducing a complaint |
 | `strategy` | the outrospection feed | `outrospect:<lens>/strategy` | direction for where the project goes | triaging it as a defect |
-| `doc` | the `/docs` reader's comment mode | `docs:<path>/doc` | a passage comment: the doc **and** the code | rewording the paragraph |
+| `doc` | comment mode on a documentation page (`/help/`, `/docs/`) | `docs:<path>/doc` | a passage comment: the doc **and** the code | rewording the paragraph |
 
 Each non-session scope also gets its own `SCOPE: …` block in the text view, a
 matching flag on the JSON (`standalone` / `strategy` / `doc` + `doc_path`), and
@@ -74,8 +74,10 @@ on a documented claim is an instruction about the system:
   against the invariants — not executed literally. Validate it, don't
   rubber-stamp it, and record the reasoning.
 - **Reply on the thread with what you changed.** The admin reads your reply
-  beside the passage in `/docs`, and sees the anchor go stale when you rewrite
-  the text it quoted — that staleness IS the "your comment landed" signal.
+  beside the passage on the page they wrote it on, and sees the anchor go stale
+  when you rewrite the text it quoted — that staleness IS the "your comment
+  landed" signal. The tagged path is a real repo file (`docs/ENCRYPTION.md`,
+  `public/help/index.html`) — edit that file, not a rendered copy.
 
 The comment body carries the document, the section heading and the exact quoted
 passage (`public/js/docs-comments-core.js` `buildDocCommentBody`), so

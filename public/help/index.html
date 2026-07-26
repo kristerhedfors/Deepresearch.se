@@ -748,5 +748,15 @@
   <p class="muted">Questions or something unclear? Ask the site owner.</p>
 
 </main>
+<!-- Documentation COMMENT MODE (owner directive, 2026-07-25): an admin gets a
+     Read only / Comment dropdown and can mark a passage and write a note
+     against it. The note enters the feedback pipeline tagged with this file's
+     path, so the development loop reconciles the documentation AND the code it
+     describes. The layer injects its own chrome — this page needs no markup
+     and no styles. Non-admins see a one-line explanation; nothing is silent. -->
+<script type="module">
+  import { mountCommentMode } from "/js/doc-comment-gate.js";
+  mountCommentMode({ path: "public/help/index.html" });
+</script>
 </body>
 </html>
