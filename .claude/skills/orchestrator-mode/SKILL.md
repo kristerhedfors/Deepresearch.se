@@ -72,7 +72,7 @@ workflow itself is a first-class UI element: a live graph of the team.
   `agent_update` carrying `prompt` + `prompt_chars` (emitted in
   `runAgentNode` once the node's grounding is assembled), and `agent` on the
   per-node `search_start`/`search_done` events. Pure and Node-tested:
-  `inspectorModel`/`inspectorHtml`/`nodeActivity`/`mergeSearch`/
+  `inspectorModel`, `inspectorHtml`, `nodeActivity`, `mergeSearch` and
   `nodeRenderState`; the DOM side is delegation on the box (click + Enter/Space,
   the nodes are `role="button" tabindex="0"`). Everything it stores is BOUNDED
   for the same reason the swarm strip is — `statuses` is persisted with the

@@ -327,8 +327,9 @@ round/agreement readout the `swarm_update` events drive; every node is also a
 BUTTON opening the node INSPECTOR — a live panel under the graph showing that
 sub-agent's task, persona, searches as they land, upstream/downstream links and
 the PROMPT it is working on, repainted on every update while the answer streams
-and bounded on what it retains, `inspectorModel`/`inspectorHtml`/`nodeActivity`
-/`mergeSearch`/`nodeRenderState` all pure and Node-tested),
+and bounded on what it retains; `inspectorModel`, `inspectorHtml`,
+`nodeActivity`, `mergeSearch` and `nodeRenderState` are all pure and
+Node-tested),
 `graph-backdrop.js` (the Orchestrator GRAPH BACKDROP — the "graph" value of
 the mode-theme `backdrop` axis: a hovering, slowly rotating wireframe
 DIRECTED GRAPH drifting faintly behind the chat (fixed canvas, z-index -1
