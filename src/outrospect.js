@@ -33,9 +33,12 @@
 // provider and nothing else — no identity, no conversation, no note the user
 // wrote. The queries are the literal strings committed in the lens registry,
 // so what leaves the site is auditable in git. The stored row carries the
-// article, never the reader: `outrospect_items` has NO user column at all.
-// The run log records who spent a search only because the rate limit needs
-// it, and carries no query text beyond the lens id.
+// article, never the reader: `outrospect_items` has NO user column at all, and
+// neither does `outrospect_texts` (the fetched article BODIES — see the
+// indexing section below). The run log records who spent a search only because
+// the rate limit needs it, and carries no query text beyond the lens id.
+// Choosing which stored passage answers a question is a local lexical scan, so
+// the reader's question never leaves the isolate either.
 //
 // Fail posture (invariant 2): every search is fail-soft — a dead provider
 // yields zero new items and an ok response, never a 500. No D1 → 503 on the
@@ -44,13 +47,14 @@
 
 import { getDb } from "./db.js";
 import { jsonResponse, textResponse } from "./http.js";
-import { webSearch } from "./exa.js";
+import { fetchContents, webSearch } from "./exa.js";
 import { streamCompletion } from "./answer-stream.js";
 import {
   FRESH_WINDOW_MS,
   LENS_IDS,
   OUTROSPECT_CAPS,
   OUTROSPECT_LENSES,
+  OUTROSPECT_QUOTE_CAPS,
   deltaItems,
   feedItemFromSearch,
   formatFeedText,
@@ -63,7 +67,12 @@ import {
   outrospectionAnswerPrompt,
   outrospectionBlock,
   outrospectionLensCatalog,
+  outrospectionQuoteBlock,
+  quoteTerms,
   refreshQueries,
+  scorePassage,
+  selectQuotes,
+  splitPassages,
   stalestLens,
   validateFeedItem,
 } from "../public/js/outrospect-core.js";
@@ -74,6 +83,7 @@ export {
   LENS_IDS,
   OUTROSPECT_CAPS,
   OUTROSPECT_LENSES,
+  OUTROSPECT_QUOTE_CAPS,
   deltaItems,
   feedItemFromSearch,
   formatFeedText,
@@ -86,7 +96,12 @@ export {
   outrospectionAnswerPrompt,
   outrospectionBlock,
   outrospectionLensCatalog,
+  outrospectionQuoteBlock,
+  quoteTerms,
   refreshQueries,
+  scorePassage,
+  selectQuotes,
+  splitPassages,
   stalestLens,
   validateFeedItem,
 };
@@ -121,6 +136,43 @@ export const USER_RUNS_PER_HOUR = 8;
 // what the research pipeline is for — an item's URL is a normal chat away).
 export const REFRESH_DEPTH = { numResults: 6, type: "auto" };
 
+// ---------------------------------------------------------------------------
+// INDEXING — the article bodies behind the headlines (owner feedback #28)
+//
+// "AND all the contents shown with headlines - Web fetch those and RAG index!
+//  … to allow search and quotations plus links to the source in this
+//  outrospection agent."
+//
+// So a refresh does one more bounded thing after storing the delta: it fetches
+// the page text of a FEW of the lens's un-indexed articles through the Exa
+// /contents client this repo already has (src/exa.js `fetchContents` — cached,
+// time-bounded, fail-soft, no new dependency and no new HTTP client) and stores
+// it in `outrospect_texts`. The answer path then quotes from those bodies with
+// the source link attached, selecting passages with the pure lexical scorer in
+// the core — no embeddings, no model, nothing new on the wire.
+//
+// Everything about it is bounded, because it runs inside somebody's page load:
+//   * INDEX_MAX_ITEMS articles per refresh, never the whole feed;
+//   * INDEX_TEXT_CAP chars stored per article (exa.js caps the fetch itself);
+//   * INDEX_BUDGET_MS as the outer ceiling, on top of exa.js's own timeout;
+//   * a page that yields nothing usable is stored as an EMPTY body, so the
+//     same dead URL is not re-fetched on every visit forever.
+// And all of it is fail-soft (invariant 2): no key, a dead backend, a throwing
+// query — the refresh still returns 200 with zero indexed texts.
+// ---------------------------------------------------------------------------
+
+/** How many un-indexed articles one refresh may fetch bodies for. */
+export const INDEX_MAX_ITEMS = 4;
+
+/** Max stored body per article (exa.js's /contents cap is the same order). */
+export const INDEX_TEXT_CAP = OUTROSPECT_QUOTE_CAPS.text;
+
+/** Outer ceiling on the indexing pass, on top of exa.js's own fetch timeout. */
+export const INDEX_BUDGET_MS = 10_000;
+
+/** How many indexed bodies the answer path reads for one question. */
+export const QUOTE_SOURCE_LIMIT = 12;
+
 // How long an outrospection-mode turn will wait for its look outward before
 // answering from whatever the feed already holds. The searches run
 // concurrently and each is bounded at 15 s inside exa.js, so this is the only
@@ -139,10 +191,16 @@ export const MODE_REFRESH_BUDGET_MS = 12_000;
  * @returns {Promise<T | null>}
  */
 export function withDeadline(promise, ms) {
-  return Promise.race([
-    promise,
-    new Promise((resolve) => setTimeout(() => resolve(null), ms)),
-  ]).catch(() => null);
+  /** @type {any} */
+  let timer;
+  const deadline = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(null), ms);
+  });
+  // The timer is CLEARED when the work wins the race. Leaving it pending kept
+  // the isolate (and the unit-test process) alive for the full budget after
+  // the answer had already moved on — with two of these per refresh that is
+  // tens of seconds of nothing.
+  return Promise.race([promise, deadline]).catch(() => null).finally(() => clearTimeout(timer));
 }
 
 // ---------------------------------------------------------------------------
@@ -263,6 +321,180 @@ export async function storeItems(db, items) {
   return written;
 }
 
+/**
+ * One stored article body.
+ * @typedef {{ key: string, lens: string, url: string, title: string, source: string, text: string, chars: number, origin: string, fetched_at: number }} TextRow
+ */
+
+/**
+ * Which of these keys already have a body row (usable or not). Used to pick
+ * what still needs fetching AND to stop a dead page being re-fetched forever.
+ * @param {D1Database} db
+ * @param {string[]} keys
+ * @returns {Promise<Set<string>>}
+ */
+export async function indexedKeys(db, keys) {
+  const list = [...new Set((keys || []).filter(Boolean))].slice(0, OUTROSPECT_CAPS.items);
+  if (!list.length) return new Set();
+  // `placeholders` is one "?" per key — never a value (the keys themselves are
+  // bound). Named rather than inlined so the SQL-injection guard's allowlist
+  // recognises it, which is the point of that allowlist.
+  const placeholders = list.map(() => "?").join(",");
+  const { results } = await db
+    .prepare(`SELECT key FROM outrospect_texts WHERE key IN (${placeholders})`)
+    .bind(...list)
+    .all();
+  return new Set((results || []).map((r) => String(/** @type {any} */ (r).key)));
+}
+
+/**
+ * The stored bodies for a set of item keys, in the order the keys were given
+ * (the feed's newest-first order), empty bodies dropped — an unusable page is
+ * remembered so it is not re-fetched, never quoted.
+ * @param {D1Database} db
+ * @param {string[]} keys
+ * @returns {Promise<Array<{ key: string, url: string, title: string, source: string, lens: string, text: string, origin: string }>>}
+ */
+export async function loadTexts(db, keys) {
+  const list = [...new Set((keys || []).filter(Boolean))].slice(0, QUOTE_SOURCE_LIMIT);
+  if (!list.length) return [];
+  const placeholders = list.map(() => "?").join(",");
+  const { results } = await db
+    .prepare(
+      `SELECT key, lens, url, title, source, text, chars, origin FROM outrospect_texts
+       WHERE key IN (${placeholders}) AND chars > 0`,
+    )
+    .bind(...list)
+    .all();
+  /** @type {Map<string, any>} */
+  const byKey = new Map();
+  for (const row of /** @type {TextRow[]} */ (results || [])) byKey.set(String(row.key), row);
+  /** @type {Array<{ key: string, url: string, title: string, source: string, lens: string, text: string, origin: string }>} */
+  const out = [];
+  for (const key of list) {
+    const row = byKey.get(key);
+    if (!row || !row.text) continue;
+    out.push({
+      key,
+      url: row.url || key,
+      title: row.title || "",
+      source: row.source || "",
+      lens: normalizeLens(row.lens),
+      text: String(row.text).slice(0, INDEX_TEXT_CAP),
+      origin: row.origin || "web",
+    });
+  }
+  return out;
+}
+
+/**
+ * Store fetched bodies. `INSERT OR IGNORE` on the primary key, so two visitors
+ * indexing the same article at once cannot double-file it and the first body
+ * stands — the same discipline `storeItems` uses for the headline.
+ * @param {D1Database} db
+ * @param {Array<{ key: string, lens: string, url: string, title?: string, source?: string, text?: string, origin?: string }>} rows
+ * @param {number} [now]
+ * @returns {Promise<number>} rows actually written (including empty negatives)
+ */
+export async function storeTexts(db, rows, now = Date.now()) {
+  let written = 0;
+  for (const r of rows || []) {
+    const text = String(r.text || "").slice(0, INDEX_TEXT_CAP);
+    const res = await db
+      .prepare(
+        `INSERT OR IGNORE INTO outrospect_texts (key, lens, url, title, source, text, chars, origin, fetched_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        r.key,
+        normalizeLens(r.lens),
+        r.url || r.key,
+        r.title || null,
+        r.source || null,
+        text,
+        text.length,
+        r.origin || "web",
+        now,
+      )
+      .run();
+    if (res?.meta?.changes) written += res.meta.changes;
+  }
+  return written;
+}
+
+/**
+ * Fetch and store the page text of a few not-yet-indexed articles.
+ *
+ * Deliberately NOT a query-generation phase and not a model call: the URLs come
+ * from feed rows this site already found through its committed lens queries, so
+ * what leaves the site is a list of public article URLs and nothing about the
+ * reader (invariant 4). Never throws (invariant 2).
+ *
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {D1Database} db
+ * @param {FeedItem[]} items candidates, newest/most-relevant first
+ * @param {{ now?: number, max?: number, fetchContentsImpl?: typeof fetchContents }} [opts]
+ *   `fetchContentsImpl` is a test seam only — production always uses the one
+ *   Exa /contents client, exactly as the search half always uses `webSearch`.
+ * @returns {Promise<{ requested: number, indexed: number, chars: number }>}
+ */
+export async function indexFeedTexts(
+  env,
+  log,
+  db,
+  items,
+  { now = Date.now(), max = INDEX_MAX_ITEMS, fetchContentsImpl = fetchContents } = {},
+) {
+  const none = { requested: 0, indexed: 0, chars: 0 };
+  try {
+    const list = (Array.isArray(items) ? items : []).filter((i) => i && i.key && i.url);
+    if (!list.length || max <= 0) return none;
+    const have = await indexedKeys(db, list.map((i) => i.key));
+    const todo = list.filter((i) => !have.has(i.key)).slice(0, Math.max(0, max));
+    if (!todo.length) return none;
+
+    const fetched = await fetchContentsImpl(env, todo.map((i) => i.url), log);
+    /** @type {Map<string, { title: string, text: string }>} */
+    const byKey = new Map();
+    for (const r of fetched.results || []) {
+      const key = normalizeItemUrl(r.url);
+      if (key && r.text) byKey.set(key, { title: r.title || "", text: r.text });
+    }
+    // Nothing came back at all: the backend is down, missing a key, or timed
+    // out. That is a TRANSIENT failure, so record nothing — the next refresh
+    // retries. Only a response that carried at least one usable body lets us
+    // conclude the misses are the pages' own fault and mark them tried.
+    if (!byKey.size) {
+      log.info("outrospect.index", { requested: todo.length, indexed: 0, degraded: true });
+      return { requested: todo.length, indexed: 0, chars: 0 };
+    }
+
+    /** @type {Array<{ key: string, lens: string, url: string, title: string, source: string, text: string }>} */
+    const rows = todo.map((i) => {
+      const got = byKey.get(i.key);
+      return {
+        key: i.key,
+        lens: i.lens,
+        url: i.url,
+        title: (got && got.title) || i.title,
+        source: i.source,
+        text: (got && got.text) || "", // "" is the stored negative: asked, nothing usable
+      };
+    });
+    await storeTexts(db, rows, now);
+    const indexed = rows.filter((r) => r.text).length;
+    const chars = rows.reduce((n, r) => n + r.text.length, 0);
+    log.info("outrospect.index", { requested: todo.length, indexed, chars });
+    return { requested: todo.length, indexed, chars };
+  } catch (err) {
+    // Invariant 2: indexing is an enrichment. It degrades to nothing indexed,
+    // never to a failed refresh — the refresh runs inside a page load.
+    log.warn?.("outrospect.index_failed", { error: String(err) });
+    return none;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // GET /api/outrospect/feed
 // ---------------------------------------------------------------------------
@@ -315,7 +547,7 @@ export async function handleOutrospectFeed(env, url) {
  * @param {Env} env
  * @param {Logger} log
  * @param {{ userId: string, lens?: string | null, known?: string[], now?: number }} opts
- * @returns {Promise<{ lens: string | null, fresh: FeedItem[], searched: number, cooled?: boolean, limited?: boolean, degraded?: boolean, unavailable?: boolean }>}
+ * @returns {Promise<{ lens: string | null, fresh: FeedItem[], searched: number, indexed?: number, cooled?: boolean, limited?: boolean, degraded?: boolean, unavailable?: boolean }>}
  */
 export async function runLensRefresh(env, log, { userId, lens: wanted = null, known = [], now = Date.now() }) {
   const db = await getDb(env);
@@ -388,15 +620,28 @@ export async function runLensRefresh(env, log, { userId, lens: wanted = null, kn
     .bind(now, userId, lens, queries.length, fresh.length)
     .run();
 
+  // INDEX the bodies behind the headlines (feedback #28). Newly-found items go
+  // first, then whatever else this lens holds that has never been fetched, so a
+  // feed that filled up before indexing existed heals backwards a few articles
+  // per visit instead of staying quote-less forever. Bounded twice — a small
+  // item count and an outer deadline — and fail-soft: `indexFeedTexts` never
+  // throws and `withDeadline` never lets it hold the response.
+  const indexResult = await withDeadline(
+    indexFeedTexts(env, log, db, [...fresh, ...stored], { now }),
+    INDEX_BUDGET_MS,
+  );
+  const indexed = indexResult ? indexResult.indexed : 0;
+
   log.info("outrospect.refresh", {
     lens,
     queries: queries.length,
     found: found.length,
     fresh: fresh.length,
     written,
+    indexed,
     failures,
   });
-  return { lens, fresh, searched: queries.length, degraded: failures > 0 && !fresh.length };
+  return { lens, fresh, searched: queries.length, indexed, degraded: failures > 0 && !fresh.length };
 }
 
 /**
@@ -444,7 +689,13 @@ export async function handleOutrospectRefresh(request, env, log, identity) {
   if (res.cooled) {
     return jsonResponse({ lens: res.lens, fresh: [], cooled: true, retry_after_ms: LENS_COOLDOWN_MS }, 200);
   }
-  return jsonResponse({ lens: res.lens, fresh: res.fresh, searched: res.searched, degraded: !!res.degraded });
+  return jsonResponse({
+    lens: res.lens,
+    fresh: res.fresh,
+    searched: res.searched,
+    indexed: res.indexed || 0,
+    degraded: !!res.degraded,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -514,25 +765,38 @@ export const OUTRO_ANSWER_ITEMS = 24;
  * Retrieve the feed slice this question should be answered from. Prefers the
  * matched lens; falls back to the whole feed when nothing matched, so a
  * general "what's new out there" still gets the newest items.
+ *
+ * Also loads the INDEXED BODIES of those items (`outrospect_texts`) — the
+ * material the answer can quote from. The passage selection itself is pure and
+ * lives in the core (`selectQuotes`); this only fetches the documents, in feed
+ * order, so the newest article's passages break score ties. A feed with no
+ * bodies indexed yet returns `texts: []` and the answer stays headline-only.
  * @param {Env} env
  * @param {string} question
  * @param {Logger} [log]
- * @returns {Promise<{ lens: Lens | null, items: FeedItem[], live: boolean }>}
+ * @returns {Promise<{ lens: Lens | null, items: FeedItem[], texts: Array<{ key: string, url: string, title: string, source: string, lens: string, text: string, origin: string }>, live: boolean }>}
  */
 export async function retrieveOutwardFeed(env, question, log) {
   const lensId = lensMatch(question);
   const lens = lensId ? lensById(lensId) : null;
   try {
     const db = await getDb(env);
-    if (!db) return { lens, items: [], live: false };
+    if (!db) return { lens, items: [], texts: [], live: false };
     let items = await loadItems(db, { lens: lensId, limit: OUTRO_ANSWER_ITEMS });
     // A lens with nothing filed yet still deserves an answer: fall back to the
     // whole feed rather than pretending the outward world is empty.
     if (!items.length && lensId) items = await loadItems(db, { limit: OUTRO_ANSWER_ITEMS });
-    return { lens, items: mergeFeed([items], { limit: OUTRO_ANSWER_ITEMS }), live: true };
+    const merged = mergeFeed([items], { limit: OUTRO_ANSWER_ITEMS });
+    // Fail-soft on its own: a missing texts table (a database created before
+    // this shipped and not yet re-initialized) costs the quotes, not the answer.
+    const texts = await loadTexts(db, merged.map((i) => i.key)).catch((err) => {
+      log?.warn?.("outrospect.texts_failed", { error: String(err) });
+      return [];
+    });
+    return { lens, items: merged, texts, live: true };
   } catch (err) {
     log?.warn?.("outrospect.retrieve_failed", { error: String(err) });
-    return { lens, items: [], live: false };
+    return { lens, items: [], texts: [], live: false };
   }
 }
 
@@ -571,21 +835,46 @@ export async function runOutrospection(ctx) {
   );
 
   ctx.step("outrospect", "Reading the outward feed…");
-  const { lens, items, live } = await retrieveOutwardFeed(env, question, log);
-  const block = outrospectionBlock(items, { limit: OUTRO_ANSWER_ITEMS });
+  const { lens, items, texts, live } = await retrieveOutwardFeed(env, question, log);
+  // The passages to quote, chosen DETERMINISTICALLY from text already stored —
+  // a lexical scan in the pure core, no model and no embedding call, and the
+  // question never leaves the isolate to do it (invariants 1 and 4).
+  const quotes = selectQuotes(question, texts);
+  const block = outrospectionBlock(items, { limit: OUTRO_ANSWER_ITEMS, quotes });
   const label =
     items.length ?
-      `${items.length} item${items.length === 1 ? "" : "s"}${lens ? ` · ${lens.title}` : ""}`
+      `${items.length} item${items.length === 1 ? "" : "s"}${lens ? ` · ${lens.title}` : ""}` +
+        (quotes.length ? ` · ${quotes.length} quotable passage${quotes.length === 1 ? "" : "s"}` : "")
     : live ? "The feed is empty so far"
     : "The outward feed is unavailable";
   ctx.stepDone("outrospect", label);
-  ctx.state.outrospection = { lens: lens ? lens.id : null, items: items.length, live };
+  // `texts` / `quotes` are the same debugging signal `items` already is: grep
+  // chat_logs for `quotes: 0` to find questions the feed could list but not
+  // quote. The state typedef this widens is declared in src/pipeline.js and
+  // src/chat.js (mirrored), so the cast stays here until those two gain the
+  // keys rather than being silently narrowed away.
+  /** @type {any} */ (ctx.state).outrospection = {
+    lens: lens ? lens.id : null,
+    items: items.length,
+    texts: texts.length,
+    quotes: quotes.length,
+    live,
+  };
   await streamCompletion(ctx, [
     // `hasItems` reads the ITEM COUNT, not whether the block is a non-empty
     // string: the block now always carries the lens catalog, so an empty feed
     // still produces one (that catalog is exactly what the empty-feed prompt
-    // tells the model to name).
-    { role: "system", content: phasePrompt(ctx.state, "feed", "answer")({ lens, hasItems: items.length > 0 }) },
+    // tells the model to name). `hasQuotes` is the same discipline one level
+    // down — the model may quote verbatim only when passages are actually in
+    // context, and is told not to invent one when they are not.
+    {
+      role: "system",
+      content: phasePrompt(ctx.state, "feed", "answer")({
+        lens,
+        hasItems: items.length > 0,
+        hasQuotes: quotes.length > 0,
+      }),
+    },
     ...(block ? [{ role: "system", content: block }] : []),
     ...ctx.conversation,
   ]);

@@ -57,7 +57,12 @@ try{var m=localStorage.getItem("dr_chat_mode");var t="#6fc3fd";if(m==="sdk"){doc
       <div class="introspection-tag">introspection</div>
       <div class="sdk-tag">agent studio</div>
       <div class="orch-tag">orchestrator</div>
-      <div class="outro-tag">outrospection</div>
+      <!-- Outrospection's header tag is the one mode tag that is a LINK (owner
+           feedback #28): the mode answers from the outward feed, so the reader
+           of an answer needs one tap to the feed page it was answered from.
+           Same newsprint treatment as the other tags, with the ink underline
+           marking it as the only tappable one. -->
+      <a class="outro-tag" href="/outrospect/" target="_blank" rel="noopener" title="Open the outward feed — /outrospect/">outrospection ↗</a>
       <div class="header-right">
         <button id="historybtn" type="button" title="Chat history" aria-label="Chat history" hidden>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
@@ -98,7 +103,19 @@ try{var m=localStorage.getItem("dr_chat_mode");var t="#6fc3fd";if(m==="sdk"){doc
       </div>
     </div>
   </header>
+<<<<<<< HEAD
+  <!-- The empty state carries TWO copies: the ordinary research one, and
+       Outrospection's (owner feedback #28) — that mode answers from the
+       outward feed rather than from a web search, so telling the reader it
+       will "search the web and report back" is simply wrong there, and the
+       page the answers come from deserves naming. app.css swaps them on the
+       root's `outro-mode` class, so the right one is in place from first
+       paint with no JS involved (turns.js removes the whole block on the
+       first message either way). -->
+  <div id="chat"><div class="empty"><span class="empty-default">Ask a research question to get started. I may ask a follow-up to narrow the scope, then search the web and report back with sources. To send the developers feedback, just start your message with the word “feedback” — for example: “feedback: the map view was cut off on my phone”.</span><span class="empty-outro">Ask what everyone <em>else</em> is building. Answers come from the outward feed — a running front page of what other people shipped, filed under seven standing questions — and they quote the articles themselves with a link to each source. Read, filter and refresh the whole feed at <a href="/outrospect/" target="_blank" rel="noopener">DeepResearch.se/outrospect</a>, where a note you write is filed as direction for the project rather than a bug report.</span></div></div>
+=======
   <div id="chat"><div class="empty">Ask a research question to get started. I may ask a follow-up to narrow the scope, then search the web and report back with sources. Type “/” for the commands that work in every mode — “/feedback” goes straight to the developers, “/help” answers from the documentation.</div></div>
+>>>>>>> origin/main
   <div id="footer">
     <div class="footer-slide">
       <div id="composer">

@@ -69,9 +69,21 @@ the committed source snapshot.
 - **The no-fabrication rule is now prompt-enforced.** With an empty feed the
   prompt says so and forbids inventing articles, headlines or links — the same
   rule the scan obeys, moved to where a model could otherwise be tempted.
+- **The mode QUOTES the articles, not just their headlines (2026-07-26).** A
+  refresh fetches the page text of a few not-yet-indexed articles through the
+  Exa `/contents` client `src/exa.js` already has (`indexFeedTexts`, four per
+  run, capped and deadline-bounded) into `outrospect_texts`; the answer path
+  loads them back and picks passages with the core's lexical scorer
+  (`selectQuotes`). No embeddings, no model, no query generation — so the
+  question stays in the isolate and the outbound traffic is still a list of
+  public article URLs. `outrospect_texts` carries the article and no reader,
+  like `outrospect_items`. A body of `chars = 0` is a stored negative ("we
+  asked and got nothing usable"), which is what stops a dead page being
+  re-fetched on every visit.
 - **Fail-soft:** no D1, a throwing query, or an empty feed all still answer.
   `chat_logs` carries `outrospection_mode: 1` and `outrospection:
-  {lens, items, live}` — grep `items: 0` for "the feed had nothing to say".
+  {lens, items, texts, quotes, live}` — grep `items: 0` for "the feed had
+  nothing to say", `quotes: 0` for "it had items but nothing quotable yet".
 
 ## Rules that are load-bearing
 
