@@ -3,28 +3,33 @@
 // of src/providers.js, for providers whose APIs allow DIRECT cross-origin
 // calls from JavaScript (CORS). That property is the admission ticket:
 // OpenAI and Groq (GroqCloud) both serve `Access-Control-Allow-Origin: *`
-// on their OpenAI-compatible endpoints, and Berget (api.berget.ai) serves
-// origin-reflecting CORS with POST + Authorization allowed on
-// /chat/completions and /models (probed live 2026-07-11 — it used to have
-// no browser CORS, which is why it was originally excluded here). So the
-// user's browser can call all three with the user's own API key and
-// Deepresearch's server is never in the request path at all.
+// on their OpenAI-compatible endpoints; Anthropic (api.anthropic.com)
+// serves `*` too and allows x-api-key / anthropic-version plus the
+// explicit browser opt-in header
+// `anthropic-dangerous-direct-browser-access: true` (probed live
+// 2026-07-23); and Berget (api.berget.ai) serves origin-reflecting CORS
+// with POST + Authorization allowed on /chat/completions and /models
+// (probed live 2026-07-11 — it used to have no browser CORS, which is why
+// it was originally excluded here). So the user's browser can call all
+// four with the user's own API key and Deepresearch's server is never in
+// the request path at all.
 //
-// Anthropic: NOT in the registry, but no longer for lack of CORS — probed
-// live 2026-07-23, api.anthropic.com/v1/messages serves
-// `Access-Control-Allow-Origin: *` and allows x-api-key / anthropic-version
-// plus the explicit browser opt-in header
-// `anthropic-dangerous-direct-browser-access: true` (the earlier "Anthropic
-// has no browser CORS" note here was true when written, stale now). What
-// still keeps it out is the WIRE: the Messages API is not OpenAI chat
-// completions, so admission needs a client-side foreign-wire adapter (the
-// browser mirror of src/anthropic.js's openAiStreamFromAnthropic) — a
-// deliberate later step. Until then its key shape is recognized as FOREIGN
-// (FOREIGN_KEY_SHAPES below) so detection never misroutes it.
+// The four named providers are the SHIPPED shortcuts, not the boundary:
+// the keyless `local` entry below takes ARBITRARY OpenAI-compatible base
+// URLs, so any other service speaking that wire (or a model the user runs
+// themselves) is reachable without a registry change.
+//
+// Anthropic joined the registry on 2026-07-26, alongside the three that
+// were already here. CORS was never what kept it out — the WIRE was: the
+// Messages API is not OpenAI chat completions. The fix is the browser
+// mirror of src/anthropic.js's stream adapter, below: an entry declares
+// `wire: "anthropic"` and the four wire functions branch on it, so
+// everything downstream keeps consuming OpenAI-shaped SSE. Adapt at the
+// wire, don't fork the pipeline — the same rule the server seam follows.
 //
 // Same registry discipline as the server seam: one declarative entry per
-// provider (id, label, base URL, wire-param quirks, a JSON-phase default
-// model, a static fallback catalog), and everything downstream —
+// provider (id, label, base URL, wire dialect + param quirks, a JSON-phase
+// default model, a static fallback catalog), and everything downstream —
 // drc-research.js's pipeline phases and the /cure page — is
 // provider-agnostic.
 //
@@ -44,7 +49,9 @@ export const bergetCatalogFilter = (/** @type {string} */ id) =>
 // Per-provider wire quirks, mirroring what the server clients learned:
 // OpenAI's GPT-5 family wants max_completion_tokens + reasoning_effort
 // (src/openai.js); Groq and Berget speak plain OpenAI chat completions
-// (Berget: the same wire src/berget.js drives server-side).
+// (Berget: the same wire src/berget.js drives server-side); Anthropic
+// speaks its own Messages API and is adapted at the wire
+// (`wire: "anthropic"`).
 /**
  * One registry entry. Every field past `id`/`label` is optional because the
  * entries differ by tier: a keyless local server has no key pattern, an
@@ -54,6 +61,7 @@ export const bergetCatalogFilter = (/** @type {string} */ id) =>
  * @property {string} id
  * @property {string} label
  * @property {string} [base] the chat-completions base URL
+ * @property {"openai"|"anthropic"} [wire] the wire dialect; absent means OpenAI chat completions
  * @property {boolean} [proxied] routed through one of the server's bounded exceptions
  * @property {boolean} [whole] answers un-streamed; drcChatWhole adapts it to SSE
  * @property {boolean} [keyless] send no Authorization header at all
@@ -109,6 +117,41 @@ export const DRC_PROVIDERS = [
     embed: { model: "text-embedding-3-small", dimensions: 512 },
   },
   {
+    id: "anthropic",
+    label: "Anthropic",
+    // The Messages API root. Every path this module appends (/messages,
+    // /models) hangs off it exactly like the OpenAI-wire providers'.
+    base: "https://api.anthropic.com/v1",
+    // sk-ant-… — the most specific sk- prefix, so it must win over OpenAI's
+    // (whose pattern excludes it explicitly; feedback #6, 2026-07-23).
+    keyPattern: /^sk-ant-/,
+    // NOT the OpenAI chat-completions wire: the four wire functions below
+    // branch on this and adapt the Messages API to OpenAI-shaped SSE, so
+    // drc-research.js's phases never learn a second dialect.
+    wire: "anthropic",
+    // The fixed cheap model for the JSON planning phases (the client-side
+    // mirror of split model routing — planning does not run on the user's
+    // chosen answer model).
+    jsonModel: "claude-haiku-4-5",
+    // Shown until (or in place of) a live /models fetch; ids from the
+    // server's static catalog (src/anthropic.js MODELS).
+    fallbackModels: ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"],
+    // The same CURATED-not-exhaustive rule the other entries follow: the
+    // current generation only. Anthropic's /v1/models returns dated ids
+    // (claude-haiku-4-5-20251001) alongside every legacy family, so the
+    // prefixes are matched with a boundary. Bumped in the same pass the
+    // server catalog is (the model-catalog-refresh skill).
+    modelFilter: (id) => /^claude-(opus-5|sonnet-5|haiku-4-5)\b/.test(id),
+    // Consumed only by the OpenAI-wire payload builder; the Anthropic wire
+    // sets max_tokens itself. Kept so a generic caller can't produce a
+    // payload with no token cap at all.
+    params: (maxTokens) => ({ max_tokens: maxTokens }),
+    // No `embed`: Anthropic serves no embeddings endpoint, so an
+    // Anthropic-only session runs without client-side RAG (drc-rag.js
+    // degrades to the plain recent-turns context — fail-soft, never an
+    // error).
+  },
+  {
     id: "groq",
     label: "Groq",
     base: "https://api.groq.com/openai/v1",
@@ -127,9 +170,9 @@ export const DRC_PROVIDERS = [
       /^(llama-3\.3-|llama-3\.1-8b|llama-4|openai\/gpt-oss-|moonshotai\/kimi-k2|qwen)/.test(id) &&
       !/(whisper|tts|guard|embedding|allam)/i.test(id),
     params: (maxTokens) => ({ max_tokens: maxTokens }),
-    // No `embed`: Groq serves no /embeddings endpoint, so a Groq-only
-    // session runs without client-side RAG (drc-rag.js degrades to the
-    // plain recent-turns context — fail-soft, never an error).
+    // No `embed`: Groq serves no /embeddings endpoint either, so a
+    // Groq-only session runs without client-side RAG, like an
+    // Anthropic-only one.
   },
   {
     id: "berget",
@@ -165,20 +208,24 @@ export const DRC_PROVIDERS = [
     // through drc-rag.js, its vectors are 1024-dim (double the sealed
     // localStorage footprint of OpenAI's 512), and the wire is unverified
     // without a live key — a deliberate later step, not an oversight.
-    // Until then a Berget-only session runs without RAG, like Groq.
+    // Until then a Berget-only session runs without RAG, like Anthropic
+    // and Groq.
   },
   {
-    // The user's OWN inference server — Ollama, LM Studio, llama.cpp, or any
-    // OpenAI-compatible endpoint the user controls (localhost included:
-    // browsers treat http://localhost as a potentially-trustworthy origin, so
-    // an https page may call it). This is the tier's strongest privacy mode —
-    // with it, the conversation reaches NO third party at all — and the reason
-    // it exists (the project mission; docs/FOREVERAGENT-GAP-ANALYSIS.md §8).
+    // ANY OpenAI-compatible endpoint — this is the escape hatch that keeps
+    // the three named providers above from being the boundary. Point it at a
+    // model server the user runs (Ollama, LM Studio, llama.cpp; localhost
+    // included, because browsers treat http://localhost as a
+    // potentially-trustworthy origin, so an https page may call it) or at any
+    // other hosted service speaking that wire. Running it yourself is the
+    // tier's strongest privacy mode — with it, the conversation reaches NO
+    // third party at all — and the reason the entry exists (the project
+    // mission; docs/FOREVERAGENT-GAP-ANALYSIS.md §8).
     // KEYLESS: no key exists, so "configured" means "a base URL is set"
     // (configuredDrcProviders below); the URL itself lives in the sealed state
     // (drc-core.js localBaseUrl) and always overrides `base` on the wire.
     id: "local",
-    label: "Local (Ollama / LM Studio / llama.cpp)",
+    label: "Any OpenAI-compatible endpoint (Ollama / LM Studio / llama.cpp / your own)",
     base: "http://localhost:11434/v1", // Ollama's default; the settings URL overrides
     keyPattern: null,
     keyless: true,
@@ -194,7 +241,8 @@ export const DRC_PROVIDERS = [
     params: (maxTokens) => ({ max_tokens: maxTokens }),
     // No `embed`: local embeddings (transformers.js or the server's own
     // /embeddings) are a deliberate later step — a local-only session runs
-    // without client-side RAG, like Groq (fail-soft, never an error).
+    // without client-side RAG, like Anthropic and Groq (fail-soft, never
+    // an error).
   },
 ];
 
@@ -266,11 +314,6 @@ export function serverTokenLlmProvider(origin) {
 // prefixes scripts/scan-secrets already knows.
 export const FOREIGN_KEY_SHAPES = [
   {
-    pattern: /^sk-ant-/,
-    label: "Anthropic",
-    hint: "That looks like an Anthropic key — Anthropic isn't callable browser-direct here yet.",
-  },
-  {
     pattern: /^hf_/,
     label: "Hugging Face",
     hint: "That looks like a Hugging Face token — not a chat provider this app can call.",
@@ -278,10 +321,10 @@ export const FOREIGN_KEY_SHAPES = [
 ];
 
 /**
- * The honest message for a recognized-but-unsupported key shape (an
- * Anthropic sk-ant-… key above all), or null for anything else. The key
- * panels show this instead of nothing, so a paste that CANNOT work says so
- * up front rather than failing downstream on the wrong provider.
+ * The honest message for a recognized-but-not-built-in key shape, or null
+ * for anything else. The key panels show this instead of nothing, so a
+ * paste that CANNOT work on the one-field flow says so up front rather than
+ * failing downstream on the wrong provider.
  * @param {string} key
  * @returns {?string}
  */
@@ -323,8 +366,8 @@ export function poolLlmProvider(origin) {
 
 /**
  * Identify the provider a pasted API key belongs to by its prefix
- * (sk_ber_… → Berget, gsk_… → Groq, sk-… minus sk-ant-… → OpenAI), or
- * null for an unrecognized shape — the key panel's one-field UX: the
+ * (sk_ber_… → Berget, sk-ant-… → Anthropic, gsk_… → Groq, sk-… minus
+ * sk-ant-… → OpenAI), or null for an unrecognized shape — the key panel's one-field UX: the
  * provider dropdown follows the detected prefix automatically, and stays
  * user-pickable for keys no pattern knows. The patterns are mutually
  * exclusive BY CONSTRUCTION (the most specific prefix owns the key —
@@ -365,15 +408,229 @@ export function drcEmbedProvider(keys) {
   return DRC_PROVIDERS.find((p) => p.embed && typeof keys?.[p.id] === "string" && keys[p.id]) || null;
 }
 
-// The wire headers for a call: keyless providers (the local entry) get NO
-// Authorization header at all — "Bearer undefined" makes some servers 401 —
-// while every keyed call keeps the exact header it always sent.
-/** @param {string|undefined} apiKey */
-function wireHeaders(apiKey) {
+// ---- the Anthropic wire (the browser mirror of src/anthropic.js) ------------
+//
+// Anthropic's Messages API is the one non-OpenAI dialect in this registry.
+// Rather than teach drc-research.js a second shape, it is adapted AT THE WIRE:
+// requests are translated on the way out and the SSE stream is re-emitted as
+// OpenAI-style chunks on the way back, so every consumer downstream — the
+// pipeline phases, the /cure page, drcToolRun's callers — is unchanged. This
+// is the same pattern (and largely the same code) as the server client's
+// `openAiStreamFromAnthropic`; keep the two in step when either changes.
+
+/** @param {DrcProvider|null|undefined} provider */
+const isAnthropicWire = (provider) => provider?.wire === "anthropic";
+
+// data:image/jpeg;base64,… → its media type + raw base64 payload.
+const DATA_URL_RE = /^data:(image\/[\w.+-]+);base64,(.+)$/s;
+
+// The wire headers for a call. Anthropic authenticates with x-api-key plus a
+// version header, and browser-direct calls need its EXPLICIT opt-in header
+// (`anthropic-dangerous-direct-browser-access`) or the preflight is rejected —
+// the one header that makes Se/cure's browser-direct promise work on Claude.
+// Every other provider keeps the exact Bearer header it always sent, and
+// keyless ones (the custom endpoint) get NO Authorization header at all —
+// "Bearer undefined" makes some servers 401.
+/** @param {DrcProvider|null|undefined} provider @param {string|undefined} apiKey */
+function wireHeaders(provider, apiKey) {
+  if (isAnthropicWire(provider)) {
+    return {
+      "content-type": "application/json",
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+      ...(apiKey ? { "x-api-key": apiKey } : {}),
+    };
+  }
   return {
     "content-type": "application/json",
     ...(apiKey ? { authorization: "Bearer " + apiKey } : {}),
   };
+}
+
+/**
+ * One OpenAI-style message array → an Anthropic Messages payload. Bridges the
+ * three differences that matter here: `system` turns are a top-level field (not
+ * messages), image parts are base64 source blocks (not data-URL image_url
+ * parts), and consecutive same-role messages are merged (the pipeline's
+ * appended context blocks routinely produce them). Pure and exported for tests.
+ * @param {any[]} messages
+ * @param {{model?: string, maxTokens?: number, stream?: boolean, tools?: any[]}} [opts]
+ */
+export function toDrcAnthropicPayload(messages, { model, maxTokens = 4096, stream = false, tools } = {}) {
+  const system = [];
+  /** @type {Array<{role: string, content: any[]}>} */
+  const out = [];
+  for (const m of messages || []) {
+    if (m?.role === "system") {
+      const text = anthropicPartsText(m.content);
+      if (text) system.push(text);
+      continue;
+    }
+    const role = m?.role === "assistant" ? "assistant" : "user";
+    const content = toAnthropicBlocks(m?.content);
+    if (!content.length) continue;
+    const prev = out[out.length - 1];
+    if (prev && prev.role === role) prev.content.push(...content);
+    else out.push({ role, content });
+  }
+  /** @type {Record<string, any>} */
+  const payload = { model, max_tokens: maxTokens, stream, messages: out };
+  const sys = system.join("\n\n");
+  if (sys) payload.system = sys;
+  if (Array.isArray(tools) && tools.length) payload.tools = tools;
+  return payload;
+}
+
+/** @param {any} content */
+function anthropicPartsText(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .flatMap((p) => (p?.type === "text" && typeof p.text === "string" ? [p.text] : []))
+    .join("\n");
+}
+
+/** @param {any} content */
+function toAnthropicBlocks(content) {
+  if (typeof content === "string") return content ? [{ type: "text", text: content }] : [];
+  if (!Array.isArray(content)) return [];
+  const blocks = [];
+  for (const part of content) {
+    if (part?.type === "text" && typeof part.text === "string" && part.text) {
+      blocks.push({ type: "text", text: part.text });
+    } else if (part?.type === "image_url" && typeof part.image_url?.url === "string") {
+      const m = DATA_URL_RE.exec(part.image_url.url);
+      // Only data:image URLs reach here; a non-match is a malformed part —
+      // skip it rather than erroring the whole request.
+      if (m) blocks.push({ type: "image", source: { type: "base64", media_type: m[1], data: m[2] } });
+    }
+  }
+  return blocks;
+}
+
+// Anthropic stop_reason → OpenAI finish_reason. Consumers only check
+// truthiness (a missing finish_reason marks a dropped stream), but mapped
+// values keep diagnostics reading consistently across providers.
+/** @type {Record<string, string>} */
+const ANTHROPIC_STOP_REASONS = {
+  end_turn: "stop",
+  stop_sequence: "stop",
+  max_tokens: "length",
+  tool_use: "tool_calls",
+};
+
+/**
+ * One parsed Anthropic SSE event → zero or more OpenAI-style data payloads
+ * (pre-serialized; "[DONE]" is the literal terminator). Mutates the shared
+ * usage accumulator. Exported for tests.
+ * @param {any} evt
+ * @param {{prompt_tokens: number, completion_tokens: number}} usage
+ * @returns {string[]}
+ */
+export function oaiChunksFromAnthropicEvent(evt, usage) {
+  switch (evt?.type) {
+    case "message_start": {
+      const u = evt.message?.usage;
+      if (typeof u?.input_tokens === "number") usage.prompt_tokens = u.input_tokens;
+      if (typeof u?.output_tokens === "number") usage.completion_tokens = u.output_tokens;
+      return [];
+    }
+    case "content_block_delta": {
+      const d = evt.delta;
+      if (d?.type === "text_delta" && d.text) {
+        return [JSON.stringify({ choices: [{ delta: { content: d.text } }] })];
+      }
+      return []; // thinking / tool deltas are dropped — text only
+    }
+    case "message_delta": {
+      if (typeof evt.usage?.output_tokens === "number") usage.completion_tokens = evt.usage.output_tokens;
+      const stop = evt.delta?.stop_reason;
+      if (!stop) return [];
+      return [
+        JSON.stringify({
+          choices: [{ delta: {}, finish_reason: ANTHROPIC_STOP_REASONS[stop] || String(stop) }],
+          usage: {
+            prompt_tokens: usage.prompt_tokens,
+            completion_tokens: usage.completion_tokens,
+            total_tokens: usage.prompt_tokens + usage.completion_tokens,
+          },
+        }),
+      ];
+    }
+    case "message_stop":
+      return ["[DONE]"];
+    default:
+      return []; // ping, content_block_start/stop, unknown future events
+  }
+}
+
+/**
+ * Wrap an Anthropic SSE body in a stream emitting the OpenAI-style SSE every
+ * downstream consumer already parses. An `error` event ERRORS the stream so
+ * the caller's try/catch engages exactly as it does on a broken OpenAI stream.
+ * @param {ReadableStream} body
+ */
+export function openAiStreamFromAnthropic(body) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buffer = "";
+  const usage = { prompt_tokens: 0, completion_tokens: 0 };
+
+  return new ReadableStream({
+    // Loops until at least one chunk is enqueued (or the source ends): a pull
+    // that enqueues nothing is NOT re-invoked by the stream machinery, so
+    // events mapping to zero output (message_start, ping, block start/stop)
+    // would otherwise deadlock the read.
+    async pull(controller) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          controller.close();
+          return;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        let enqueued = false;
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          const data = line.slice(5).trim();
+          if (!data) continue;
+          let evt;
+          try {
+            evt = JSON.parse(data);
+          } catch {
+            continue;
+          }
+          if (evt.type === "error") {
+            reader.cancel().catch(() => {});
+            controller.error(new Error("Anthropic stream error: " + (evt.error?.message || "unknown")));
+            return;
+          }
+          for (const chunk of oaiChunksFromAnthropicEvent(evt, usage)) {
+            controller.enqueue(encoder.encode("data: " + chunk + "\n\n"));
+            enqueued = true;
+          }
+        }
+        if (enqueued) return;
+      }
+    },
+    cancel(reason) {
+      return reader.cancel(reason);
+    },
+  });
+}
+
+/**
+ * The concatenated text of an Anthropic Messages response's content blocks.
+ * @param {any} data
+ */
+function anthropicText(data) {
+  return (Array.isArray(data?.content) ? data.content : [])
+    .filter((/** @type {any} */ b) => b?.type === "text" && typeof b.text === "string")
+    .map((/** @type {any} */ b) => b.text)
+    .join("");
 }
 
 /**
@@ -403,7 +660,7 @@ export async function drcEmbed(provider, apiKey, texts, { signal, baseUrl, kind 
   const input = e5 ? texts.map((t) => (kind === "query" ? "query: " : "passage: ") + t) : texts;
   const res = await fetch((baseUrl || provider.base) + "/embeddings", {
     method: "POST",
-    headers: wireHeaders(apiKey),
+    headers: wireHeaders(provider, apiKey),
     body: JSON.stringify({
       model: provider.embed.model,
       input,
@@ -463,11 +720,37 @@ export function buildDrcPayload(provider, model, messages, { stream = false, jso
 export function drcChatStream(provider, apiKey, model, messages, { signal, baseUrl, maxTokens } = {}) {
   if (provider.engine) return provider.engine.chatStream(model, messages, { signal, maxTokens });
   if (provider.whole) return drcChatWhole(provider, apiKey, model, messages, { signal, baseUrl, maxTokens });
+  if (isAnthropicWire(provider)) return drcChatStreamAnthropic(provider, apiKey, model, messages, { signal, baseUrl, maxTokens });
   return fetch((baseUrl || provider.base) + "/chat/completions", {
     method: "POST",
-    headers: wireHeaders(apiKey),
+    headers: wireHeaders(provider, apiKey),
     body: JSON.stringify(buildDrcPayload(provider, model, messages, { stream: true, maxTokens })),
     signal,
+  });
+}
+
+/**
+ * The Anthropic-wire half of drcChatStream: POST /messages, then hand back a
+ * Response whose body is already OpenAI-style SSE. A FAILED response is
+ * returned untouched so providerErrorDetail reads its `{error:{message}}` —
+ * Anthropic's error shape happens to match the OpenAI one.
+ * @param {DrcProvider} provider
+ * @param {string} apiKey
+ * @param {string} model
+ * @param {any[]} messages
+ * @param {DrcCallOpts} [opts]
+ */
+async function drcChatStreamAnthropic(provider, apiKey, model, messages, { signal, baseUrl, maxTokens = 4096 } = {}) {
+  const res = await fetch((baseUrl || provider.base) + "/messages", {
+    method: "POST",
+    headers: wireHeaders(provider, apiKey),
+    body: JSON.stringify(toDrcAnthropicPayload(messages, { model, maxTokens, stream: true })),
+    signal,
+  });
+  if (!res.ok || !res.body) return res;
+  return new Response(openAiStreamFromAnthropic(res.body), {
+    status: res.status,
+    headers: { "content-type": "text/event-stream" },
   });
 }
 
@@ -487,7 +770,7 @@ export function drcChatStream(provider, apiKey, model, messages, { signal, baseU
 async function drcChatWhole(provider, apiKey, model, messages, { signal, baseUrl, maxTokens } = {}) {
   const res = await fetch((baseUrl || provider.base) + "/chat/completions", {
     method: "POST",
-    headers: wireHeaders(apiKey),
+    headers: wireHeaders(provider, apiKey),
     body: JSON.stringify(buildDrcPayload(provider, model, messages, { stream: false, maxTokens })),
     signal,
   });
@@ -570,10 +853,18 @@ export async function drcCompleteJson(provider, apiKey, model, messages, { signa
     if (!value) throw new Error(provider.label + " returned no usable JSON.");
     return value;
   }
-  const res = await fetch((baseUrl || provider.base) + "/chat/completions", {
+  // Anthropic has no response_format param: the planning prompts already
+  // demand JSON-only output and extractJson repairs prose-wrapped objects —
+  // the same bargain src/anthropic.js's completeJson makes server-side.
+  const anthropic = isAnthropicWire(provider);
+  const res = await fetch((baseUrl || provider.base) + (anthropic ? "/messages" : "/chat/completions"), {
     method: "POST",
-    headers: wireHeaders(apiKey),
-    body: JSON.stringify(buildDrcPayload(provider, model, messages, { json: true, maxTokens })),
+    headers: wireHeaders(provider, apiKey),
+    body: JSON.stringify(
+      anthropic
+        ? toDrcAnthropicPayload(messages, { model, maxTokens })
+        : buildDrcPayload(provider, model, messages, { json: true, maxTokens }),
+    ),
     signal: timeout,
   });
   if (!res.ok) {
@@ -581,7 +872,7 @@ export async function drcCompleteJson(provider, apiKey, model, messages, { signa
     throw new Error(provider.label + " rejected the request (" + res.status + ")." + (detail ? " " + detail : ""));
   }
   const data = await res.json();
-  const value = extractJson(data?.choices?.[0]?.message?.content || "");
+  const value = extractJson(anthropic ? anthropicText(data) : data?.choices?.[0]?.message?.content || "");
   if (!value) throw new Error(provider.label + " returned no usable JSON.");
   return value;
 }
@@ -590,13 +881,14 @@ export async function drcCompleteJson(provider, apiKey, model, messages, { signa
 //
 // DRC's counterpart to the server's src/anthropic.js anthropicToolRun: the
 // user's OWN provider drives an agentic tool loop straight from the browser.
-// All three DRC providers speak the OpenAI tools / tool_calls wire, so the
-// shared provider-neutral tool defs (introspect-core.js INTROSPECTION_TOOLS,
-// {name, description, input_schema}) map onto `{type:"function", function:{…}}`
-// here. Unlike the server, DRC can also expose a REAL run_bash tool (the CheerpX
-// sandbox is browser-reachable) — the caller adds that entry and handles it in
-// execTool. Non-streaming (tool rounds are request/response); the final answer
-// text is returned whole for the caller to emit.
+// The shared provider-neutral tool defs (introspect-core.js
+// INTROSPECTION_TOOLS, {name, description, input_schema}) are ALREADY the
+// Anthropic shape, so the Anthropic wire passes them through untouched while
+// the OpenAI wire maps them onto `{type:"function", function:{…}}`. Unlike the
+// server, DRC can also expose a REAL run_bash tool (the CheerpX sandbox is
+// browser-reachable) — the caller adds that entry and handles it in execTool.
+// Non-streaming (tool rounds are request/response); the final answer text is
+// returned whole for the caller to emit.
 
 /**
  * Map the provider-neutral tool defs to the OpenAI function-tool shape.
@@ -630,8 +922,13 @@ export async function drcToolRun(
   model,
   { system, userContent, tools, execTool, maxRounds = 6, maxTokens = 4096, onToolUse, signal, baseUrl },
 ) {
+  if (isAnthropicWire(provider)) {
+    return drcToolRunAnthropic(provider, apiKey, model, {
+      system, userContent, tools, execTool, maxRounds, maxTokens, onToolUse, signal, baseUrl,
+    });
+  }
   const url = (baseUrl || provider.base) + "/chat/completions";
-  const headers = wireHeaders(apiKey);
+  const headers = wireHeaders(provider, apiKey);
   /** @type {any[]} */
   const messages = [
     ...(system ? [{ role: "system", content: system }] : []),
@@ -694,6 +991,80 @@ export async function drcToolRun(
 }
 
 /**
+ * The Anthropic-wire half of drcToolRun: the Messages API's tool_use /
+ * tool_result loop. Same contract and same bounds as the OpenAI half — each
+ * round may return tool_use blocks, which are executed and fed back as paired
+ * tool_result blocks until the model stops calling tools; the round cap then
+ * forces one tools-off answer. The provider-neutral tool defs need no mapping
+ * here — they are already Anthropic-shaped.
+ * @param {DrcProvider} provider
+ * @param {string} apiKey
+ * @param {string} model
+ * @param {{system?: string, userContent?: any, tools: any[],
+ *   execTool: (name: string, args: any) => any, maxRounds?: number,
+ *   maxTokens?: number, onToolUse?: (u: any) => void, signal?: AbortSignal,
+ *   baseUrl?: string}} opts
+ * @returns {Promise<{ text: string, toolCalls: number, rounds: number }>}
+ */
+async function drcToolRunAnthropic(
+  provider,
+  apiKey,
+  model,
+  { system, userContent, tools, execTool, maxRounds = 6, maxTokens = 4096, onToolUse, signal, baseUrl },
+) {
+  const url = (baseUrl || provider.base) + "/messages";
+  const headers = wireHeaders(provider, apiKey);
+  /** @type {any[]} */
+  const messages = [{ role: "user", content: userContent }];
+  let toolCalls = 0;
+
+  const call = async (/** @type {any[]} */ turns, /** @type {boolean} */ withTools) => {
+    const timeout =
+      signal || (typeof AbortSignal !== "undefined" && AbortSignal.timeout ? AbortSignal.timeout(60_000) : undefined);
+    /** @type {any} */
+    const payload = { model, max_tokens: maxTokens, messages: turns };
+    if (system) payload.system = system;
+    if (withTools && Array.isArray(tools) && tools.length) payload.tools = tools;
+    const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(payload), signal: timeout });
+    if (!res.ok) throw new Error(provider.label + " rejected the tool request (" + res.status + ").");
+    return res.json();
+  };
+
+  for (let round = 1; round <= maxRounds; round++) {
+    const data = /** @type {any} */ (await call(messages, true));
+    const blocks = Array.isArray(data?.content) ? data.content : [];
+    const toolUses = blocks.filter((/** @type {any} */ b) => b?.type === "tool_use");
+    if (data?.stop_reason !== "tool_use" || !toolUses.length) {
+      return { text: anthropicText(data), toolCalls, rounds: round };
+    }
+    // Echo the assistant's tool_use turn, then answer every call — Anthropic
+    // requires the tool_result blocks paired by id in ONE user turn.
+    messages.push({ role: "assistant", content: blocks });
+    /** @type {any[]} */
+    const results = [];
+    for (const tu of toolUses) {
+      toolCalls++;
+      let result;
+      try {
+        result = await execTool(tu?.name, tu?.input || {});
+      } catch (err) {
+        result = "Tool error: " + (/** @type {any} */ (err)?.message || String(err));
+      }
+      const content = typeof result === "string" ? result : JSON.stringify(result);
+      if (onToolUse) onToolUse({ round, name: tu?.name, input: tu?.input, result: content });
+      results.push({ type: "tool_result", tool_use_id: tu?.id, content });
+    }
+    messages.push({ role: "user", content: results });
+  }
+
+  messages.push({
+    role: "user",
+    content: "You have gathered enough. Do NOT call more tools — write the complete final answer now from what you found.",
+  });
+  return { text: anthropicText(await call(messages, false)), toolCalls, rounds: maxRounds };
+}
+
+/**
  * The curated, ordered model-id list from a raw /models `data` array: keep the
  * string ids the provider's `modelFilter` accepts, sorted newest-generation
  * first (gpt-5.6 above gpt-5.4). Pure — the shaping half of `listDrcModels`,
@@ -710,8 +1081,8 @@ export function filterAndSortModels(data, modelFilter) {
     // every call, and the newest-first sort loves to put exactly those first
     // (zai-org/GLM-5.2 landed as a borrowed session's DEFAULT while dark,
     // 2026-07-15, test point #10). Same treatment as the DRS dropdown's
-    // `up === false` disable; fail-open when the field is absent (OpenAI and
-    // Groq /models entries carry no `status`).
+    // `up === false` disable; fail-open when the field is absent (OpenAI,
+    // Anthropic and Groq /models entries carry no `status`).
     .filter((m) => m?.status?.up !== false)
     .map((m) => m?.id)
     .filter((id) => typeof id === "string" && modelFilter(id))
@@ -729,8 +1100,11 @@ export function filterAndSortModels(data, modelFilter) {
  */
 export async function listDrcModels(provider, apiKey, { baseUrl } = {}) {
   try {
+    // GET, so only the auth headers matter — but Anthropic's are x-api-key +
+    // the browser opt-in, not a Bearer, so the same helper the POSTs use
+    // supplies them (content-type on a GET is inert).
     const res = await fetch((baseUrl || provider.base) + "/models", {
-      headers: apiKey ? { authorization: "Bearer " + apiKey } : {},
+      headers: wireHeaders(provider, apiKey),
     });
     if (!res.ok) throw new Error(String(res.status));
     const data = await res.json();

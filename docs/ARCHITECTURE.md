@@ -1190,8 +1190,10 @@ consent act — and it is excluded from the account-wide wipe. Endpoints:
 
 A second, public product tier at `DeepResearch.Se/cure` where the server
 is in NO data path at all. There are no accounts: the browser calls the
-user's OWN CORS-capable providers (OpenAI, Groq, Berget) directly with the
-user's key, runs the whole research pipeline client-side
+user's OWN CORS-capable providers directly with the user's key (OpenAI,
+Anthropic, Groq and Berget as named shortcuts, plus ANY other
+OpenAI-compatible endpoint — a hosted service, or a model server on the
+user's own machine), runs the whole research pipeline client-side
 (`public/js/drc-research.js` — the same triage → harvest → gap → synthesis
 → validation flow, ported, deterministic, no function calling), and stores
 the sealed project state — chats AND the user's API keys, sealed in one

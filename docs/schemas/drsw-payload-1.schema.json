@@ -12,7 +12,7 @@
     "note": { "type": "string", "maxLength": 2000, "description": "Welcome note shown on open, before anything is applied." },
     "keys": {
       "type": "object",
-      "description": "Provider API credentials, keyed by provider id (e.g. openai, groq, berget). The most sensitive section — writers MUST warn before including it; readers SHOULD stage its application behind explicit consent.",
+      "description": "Provider API credentials, keyed by provider id (e.g. openai, anthropic, groq, berget). The most sensitive section — writers MUST warn before including it; readers SHOULD stage its application behind explicit consent.",
       "additionalProperties": { "type": "string", "minLength": 1 }
     },
     "providerId": { "type": "string", "description": "The active provider choice accompanying keys." },

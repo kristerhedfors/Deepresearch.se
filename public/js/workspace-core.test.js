@@ -150,7 +150,7 @@ test("validateWorkspacePayload accepts the full and the minimal shape, rejects m
 
 test("buildWorkspacePayload projects only the selected sections", () => {
   const state = {
-    keys: { openai: " sk-x ", groq: "", berget: "sk_ber_1" },
+    keys: { openai: " sk-x ", anthropic: "", berget: "sk_ber_1" },
     providerId: "openai",
     model: "gpt-5.6-sol",
     research: false,
@@ -203,7 +203,7 @@ test("workspacePayloadCarries counts content keys, never the envelope metadata",
 
 test("applyWorkspacePayload merges into a DRC state and hands back the grants", () => {
   const state = {
-    keys: { groq: "gsk_old" },
+    keys: { anthropic: "sk-ant-old" },
     providerId: null,
     model: null,
     research: true,
@@ -211,7 +211,7 @@ test("applyWorkspacePayload merges into a DRC state and hands back the grants", 
   };
   const { grants, note, name } = applyWorkspacePayload(state, PAYLOAD);
   assert.equal(state.keys.openai, "sk-test-123");
-  assert.equal(state.keys.groq, "gsk_old"); // untouched — only carried fields overwrite
+  assert.equal(state.keys.anthropic, "sk-ant-old"); // untouched — only carried fields overwrite
   assert.equal(state.providerId, "openai");
   assert.equal(state.model, "gpt-5.6-luna");
   assert.equal(state.bashLite, false);
