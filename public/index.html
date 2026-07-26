@@ -199,6 +199,16 @@ try{var m=localStorage.getItem("dr_chat_mode");var t="#6fc3fd";if(m==="sdk"){doc
            builds, populated by history-ui.js and shown ONLY in SDK mode (the
            green distiller). Picking a card prefills the composer in SDK mode. -->
       <div id="sdkshowcase" class="showcase" hidden></div>
+      <!-- The live PIPELINE MAP: introspection mode's diagram of this site's
+           own request path, with the nodes the current chat passed through lit
+           up and the loops counting their rounds. Shown only in introspection
+           mode (pipeline-map.js syncPipelineMap, called from history-ui.js);
+           collapsed by default, drawn on expand. -->
+      <details id="pipelinemap" class="pipemap" hidden>
+        <summary>Pipeline <span class="pipemap-hint">live map</span></summary>
+        <p class="pipemap-status muted">Nothing has run yet — send a message and the steps light up here.</p>
+        <div class="pipemap-body"></div>
+      </details>
       <button id="projectnewbtn" type="button" class="history-new">+ New project</button>
       <div id="projectcreate" hidden>
         <input id="projectcreatename" type="text" placeholder="Project name" maxlength="80">

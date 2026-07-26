@@ -36,7 +36,7 @@ import { runIntrospectionEnrichment } from "./introspect.js";
  *   log: Logger,
  *   emit: (event: object) => void,
  *   step: (id: string, label: string) => void,
- *   stepDone: (id: string, label: string, details?: string[]) => void,
+ *   stepDone: (id: string, label: string, details?: string[], extra?: Record<string, unknown>) => void,
  *   conversation: Conversation,
  *   state: RequestState,
  * }} EnrichmentCtx

@@ -485,6 +485,47 @@ gate in app.js (DRS); `drc.js messageEl` + the live final render, gated on
 graph imports them). Fenced blocks and links are never rewritten — inline
 code only. The interaction rule is UX-9 in the **ux-conventions** skill.
 
+## The live pipeline map — the drawer panel (2026-07-26, feedback #34)
+
+Introspection answers keep DRAWING the request path (a Mermaid flowchart of
+composer → validation → quota → pipeline → synthesis). Feedback #34 asked for
+that picture as a standing panel instead of a per-answer re-derivation: *"an
+expandable which if expanded shows this entire pipeline, and blinks and upcolors
+nodes which the current chat has passed through, or keep lighting up the nodes
+where the agent loops."*
+
+- **Where.** A `<details id="pipelinemap">` at the top of the LEFT drawer
+  (`public/index.html`, inside `.history-panel`), shown in introspection mode
+  ONLY — `syncPipelineMap(mode)` called from `history-ui.js`'s `renderShowcase`,
+  the same one-mode-owns-one-block shape as SDK mode's showcase gallery. Titanium
+  palette (`.pipemap` in `public/css/app.css`).
+- **The graph is DATA, not a drawing.** `public/js/pipeline-map-core.js` declares
+  `PIPELINE_NODES` / `PIPELINE_EDGES` — a mirror of shipped control flow, so a
+  pipeline change is a table edit. Layered two-lane layout (main spine + a
+  branch/terminal column) sized to fit the 320px drawer, asserted by a test.
+- **Only observed steps light.** `nodesForStatus` maps SSE status events → nodes
+  and ignores what it doesn't know. Three states: idle / active (blinks) /
+  passed (stays lit). A loop node counts its rounds (`source` re-emits per tool
+  call, `gap1…gapN` per round, and a search wave in round 2+ lights the gap loop
+  too) — that count IS the "keep lighting up the nodes where the agent loops".
+  Nothing is inferred from the answer text; the front-door nodes light because a
+  stream carrying an event PROVES the request was posted, routed, validated and
+  admitted. `post` is deliberately not lit at send time — the private route and
+  an on-device pick answer browser-direct without calling `/api/chat`.
+- **Branches come off a field, not a label.** `src/pipeline.js` puts `route`
+  (`feedback` / `search_off` / `direct` / `clarify` / `research`) on the finished
+  `plan` step; `ROUTE_NODES` reads it. Sniffing the English label would break on
+  a rewording and could never work in Swedish. Same change made the notes digest
+  emit a `digest` step — it was the one phase with no signal, so its node could
+  never have lit honestly.
+- **The state outlives a closed drawer.** `pipeline-map.js` holds the run;
+  `stream.js` feeds it from `handleEvent` (and resets it per send in
+  `sendMessage`, closes it in the `finally`). Rendering is skipped while
+  collapsed and caught up on expand, so a live chat pays nothing for a panel
+  nobody is looking at.
+- The interaction rule is **UX-16** in the **ux-conventions** skill; the sibling
+  implementation is the Orchestrator workflow view (`workflow-viz.js`).
+
 ## Allowlist / caching facts
 
 - `/js/introspect-core.js` and `/introspect/source-snapshot.json` are in

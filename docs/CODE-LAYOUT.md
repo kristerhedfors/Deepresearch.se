@@ -324,7 +324,23 @@ sub-agent graph in the turn body, persists as embeds-registry kind
 `turns.js`), and is referenced in the copy-text export via `embedRef`; a
 `swarm` node is drawn taller, with one dot per on-device member and the
 round/agreement readout the `swarm_update` events drive),
-`graph-backdrop.js` (the Orchestrator GRAPH BACKDROP — the "graph" value of
+`pipeline-map-core.js` + `pipeline-map.js` (INTROSPECTION mode's live PIPELINE
+MAP — the expandable in the left drawer that draws this site's own request path,
+from the composer to the streamed answer, with the nodes the current chat passed
+through lit and the loops counting their rounds. The core is pure and
+Node-tested: the node/edge table (a declaration of shipped control flow across
+`src/index.js` → `src/chat.js` → `src/pipeline.js` plus the client half in
+`stream.js`), the layered two-lane layout sized for the 320px drawer, the
+XSS-safe SVG string builder, and `nodesForStatus` — the SSE-status → node map,
+which ignores anything it doesn't know (the forward-compatibility rule) and
+reads the `route` field `src/pipeline.js` puts on the finished `plan` step rather
+than sniffing an English label. The DOM module owns the run state, because the
+drawer is usually CLOSED while a chat runs: `stream.js` feeds it every status
+event, rendering is skipped while collapsed and caught up on expand. Three node
+states only — idle / active (blinking) / passed — and a node lights ONLY on a
+signal that the step ran, never on an inference from the answer text; see UX-16.
+Shown in introspection mode alone, gated from `history-ui.js` beside the SDK
+showcase gallery), `graph-backdrop.js` (the Orchestrator GRAPH BACKDROP — the "graph" value of
 the mode-theme `backdrop` axis: a hovering, slowly rotating wireframe
 DIRECTED GRAPH drifting faintly behind the chat (fixed canvas, z-index -1
 like the terminal layer), root + one node per sub-agent, each drawn as its

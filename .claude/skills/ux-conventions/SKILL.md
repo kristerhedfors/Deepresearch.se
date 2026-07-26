@@ -786,3 +786,62 @@ tiers because they belong to the platform, not to an agent (owner directive,
 `public/cure/drc.css`, and `public/js/slash-core.js` for the pure half. The
 routing the commands trigger is `src/chat.js` (resolved before mode routing) and
 `src/pipeline.js` (the feedback gate above the executor dispatch).
+
+---
+
+## UX-16 — A live diagram of a running process lights only what it observed, and a repeated step shows its rounds
+
+**When** the UI draws a process the user's own request is moving through — a
+pipeline, a plan, a workflow — **then** a node changes appearance only on a
+signal that the step actually ran. Three states, no fourth: **idle** (not taken
+this time), **active** (running now — it blinks), **passed** (this request went
+through it, and it stays lit for the rest of the run). A step the process
+re-enters counts its rounds on the node (`×3`) and re-blinks on each entry, so a
+loop reads as a loop rather than as one box that sat "active" for a minute. A run
+that ends without reaching the end stops blinking but keeps its path lit.
+
+**Why.** A diagram of your own request is only worth anything if it is evidence.
+The moment a node lights up on an assumption — "synthesis must be running by
+now", "the POST obviously happened" — the picture becomes a decoration that
+happens to be shaped like the truth, and the one case where the user needs it
+(something went wrong, or a branch they didn't expect was taken) is exactly the
+case it gets wrong. Introspection mode exists to answer questions about this site
+honestly, so its own diagram must hold to the same standard. Feedback #34
+(2026-07-26) asked for the pipeline diagram an answer had just drawn, as a live
+panel: *"blinks and upcolors nodes which the current chat has passed through, or
+keep lighting up the nodes where the agent loops."*
+
+**The mechanics (match all of these):**
+
+1. **A node exists only where a signal exists.** If a phase runs silently, either
+   give it a real event or leave it off the diagram — never a node that can only
+   ever be dark. (Making the notes digest emit its step was part of this change,
+   for exactly that reason.)
+2. **Branch on machine-readable fields, never on a label.** A decision that
+   routes the request announces the branch it took as data (`route` on the
+   finished step). Sniffing an English label couples the drawing to copy that
+   gets reworded and breaks silently — and could not work in a second language.
+3. **Nothing is inferred from the answer text.** Only events, plus what an event
+   *proves* about the steps upstream of it (a stream carrying an event proves the
+   request was routed, validated and admitted).
+4. **The graph is a declared table, not a drawing** — a pure module (nodes,
+   edges, event→node map, layout, SVG string), so a pipeline change is a table
+   edit and the whole thing is Node-tested without a DOM.
+5. **State survives a closed panel.** The drawer is usually shut while a request
+   runs; events keep accumulating and the map catches up on open. Rendering is
+   skipped entirely while collapsed, so a live request pays nothing for a panel
+   nobody is looking at.
+6. **It scrolls inside its own box** and keeps the newest node in view — never
+   scrolling the page or the list it sits in (UX-1's blast-radius discipline).
+7. **The blink is animation-only** and drops under `prefers-reduced-motion`; the
+   colour change carries the state on its own.
+
+**Canonical implementations:** `public/js/pipeline-map-core.js` (the pure half —
+node table, `nodesForStatus`, the visit-counting run state, `pipelineMapSvg`;
+`pipeline-map-core.test.js`) and `public/js/pipeline-map.js` (the drawer mount),
+fed by `public/js/stream.js`'s SSE dispatch and gated to introspection mode from
+`public/js/history-ui.js`. The `.pipemap` block in `public/css/app.css` owns the
+three states. The server half is `src/pipeline.js`'s `route` field on the `plan`
+step plus the `digest` step. The sibling implementation is the Orchestrator
+workflow view (`public/js/workflow-viz.js`), which follows the same three-state
+discipline over `agent_update` events.
