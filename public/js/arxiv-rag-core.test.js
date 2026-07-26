@@ -9,6 +9,11 @@ import {
   buildBm25,
   buildPassage,
   decodeShard,
+  fullTextChunks,
+  fullTextPassage,
+  latexBody,
+  latexSections,
+  latexToText,
   denseSearch,
   denseSearchPacked,
   hitAtK,
@@ -234,4 +239,89 @@ test("decodeShard restores the passage→paper alignment denseSearch needs", () 
   assert.equal(d.vectors.length, 3);
   assert.equal(d.byId.get("2607.00001").title, PAPER.title);
   assert.equal(denseSearch(Float32Array.from([1, 0, 0]), d, 5)[0].id, "2607.00001");
+});
+
+// ---- full text: LaTeX → sections → chunks ------------------------------------
+
+const TEX = String.raw`
+\documentclass{article}
+\newcommand{\hidden}{never appears}
+\begin{document}
+\title{Private Retrieval}
+\section{Introduction}
+Retrieval under differential privacy is hard. % a trailing comment
+We bound the loss by $\epsilon$ and show \cite{smith2024} it is tight.
+\begin{figure}
+  \includegraphics{plot.png}\caption{A plot nobody should retrieve.}
+\end{figure}
+\section{Method}
+The index is perturbed, not the query. \[ \sum_i x_i \le n \] That is the whole trick.
+\subsection{Complexity}
+Each lookup costs 100\% of one scan, which is acceptable.
+\end{document}
+`;
+
+test("latexToText keeps prose and drops the apparatus", () => {
+  const t = latexToText(TEX);
+  assert.ok(t.includes("Retrieval under differential privacy is hard"));
+  assert.ok(t.includes("The index is perturbed, not the query"));
+  assert.ok(!t.includes("a trailing comment"), "comments are stripped");
+  assert.ok(!t.includes("plot.png") && !t.includes("nobody should retrieve"), "figure environment dropped");
+  assert.ok(!t.includes("\\") && !t.includes("{"), "no LaTeX syntax survives");
+  assert.ok(t.includes("[m]") && t.includes("[eq]"), "math leaves a placeholder so sentences still read");
+  assert.ok(!t.includes("smith2024"), "citation keys are not prose");
+});
+
+test("latexBody isolates the document, and tolerates a bare fragment", () => {
+  assert.ok(latexBody(TEX).includes("\\section{Introduction}"));
+  assert.ok(!latexBody(TEX).includes("documentclass"), "the preamble is not body text");
+  assert.equal(latexBody("just a fragment"), "just a fragment");
+});
+
+test("latexSections splits on section and subsection with readable headings", () => {
+  const secs = latexSections(TEX);
+  assert.deepEqual(secs.map((s) => s.heading), ["Introduction", "Method", "Complexity"]);
+  assert.ok(secs[1].text.includes("perturbed"));
+  // Short sections are KEPT, not dropped — losing a terse Methods section
+  // would defeat the point of a full-text tier.
+  assert.ok(secs.every((s) => s.text.length >= 40));
+  assert.ok(secs.some((s) => s.text.length < 120), "this fixture has short sections and they survived");
+});
+
+test("latexSections falls back to one section when a paper has no headings", () => {
+  const flat = "\\begin{document}" + "This paper has no sections at all, only prose. ".repeat(6) + "\\end{document}";
+  const secs = latexSections(flat);
+  assert.equal(secs.length, 1);
+  assert.equal(secs[0].heading, "");
+  assert.ok(secs[0].text.startsWith("This paper has no sections"));
+  assert.deepEqual(latexSections("\\begin{document}tiny\\end{document}"), [], "a stub is not worth a vector");
+});
+
+test("fullTextChunks numbers chunks, carries headings, and respects the window", () => {
+  // Vary the prose: a repeated sentence would produce legitimately identical
+  // chunks and the duplicate check below would be meaningless.
+  const prose = Array.from({ length: 200 }, (_, i) => `Run ${i} reported an error of ${i / 7} units.`).join(" ");
+  const long = `\\begin{document}\\section{Results}${prose}\\end{document}`;
+  const chunks = fullTextChunks(long, { window: 500 });
+  assert.ok(chunks.length > 5, `expected several chunks, got ${chunks.length}`);
+  chunks.forEach((c, i) => {
+    assert.equal(c.seq, i, "seq is the chunk's position");
+    assert.equal(c.heading, "Results");
+    assert.ok(c.text.length <= 500, `chunk ${i} is ${c.text.length} chars`);
+  });
+  // Every chunk must be non-empty prose — an off-by-one in the window walk
+  // shows up here as blank or duplicated chunks.
+  assert.equal(new Set(chunks.map((c) => c.text)).size, chunks.length, "no duplicated chunks");
+});
+
+test("fullTextChunks is bounded so one pathological paper cannot blow up a build", () => {
+  const huge = `\\begin{document}\\section{S}${"word ".repeat(200000)}\\end{document}`;
+  assert.ok(fullTextChunks(huge, { window: 200, maxChunks: 50 }).length <= 50);
+});
+
+test("fullTextPassage puts the heading in front of the prose, inside the embed window", () => {
+  assert.equal(fullTextPassage({ heading: "Method", text: "We perturb the index." }), "Method — We perturb the index.");
+  assert.equal(fullTextPassage({ heading: "", text: "No heading here." }), "No heading here.");
+  const long = fullTextPassage({ heading: "H", text: "x".repeat(5000) });
+  assert.ok(long.length <= MAX_PASSAGE_CHARS);
 });

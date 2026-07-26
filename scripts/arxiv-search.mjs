@@ -13,6 +13,14 @@
 //   hybrid          RRF(dense, BM25) — needs an index built with --bm25
 //   hybrid_rerank   hybrid top-50 → bge-reranker-v2-m3
 //
+// --deep adds the FULL-TEXT stage: the pipelines above pick candidate PAPERS
+// from their abstracts, then the body chunks of those papers only are searched
+// and reranked, so the answer can come from section 4 rather than the summary.
+// Papers not yet in the full-text cache are warmed on the spot
+// (scripts/arxiv-fulltext.mjs). Deliberately two-stage: a flat index over every
+// paper's body would put mid-paper chunks in competition with abstracts for
+// DISCOVERY, and abstracts are what discovery is good at (docs/ARXIV-RAG.md §9).
+//
 // `dense_rerank` is the default because it measured best on every unbiased
 // metric in BOTH languages (docs/ARXIV-RAG.md §4.3): nDCG@10 0.759 EN / 0.795
 // SV against 0.711 / 0.713 for plain dense, and +15/+17 points of recall@1.
@@ -28,12 +36,19 @@
 import { open, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { QUERY_PREFIX, bm25Search, denseSearchPacked, packedNorms, rrfFuse } from "../public/js/arxiv-rag-core.js";
+import { QUERY_PREFIX, bm25Search, cosineF32Int8, denseSearchPacked, packedNorms, rrfFuse } from "../public/js/arxiv-rag-core.js";
 import { RERANK_DOC_CHARS, rerank } from "./arxiv-berget.mjs";
 import { embedBatch } from "./embed-providers.mjs";
+import { loadFullText, warmPapers } from "./arxiv-fulltext.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const RERANK_DEPTH = 50;
+// How many candidate PAPERS stage 1 hands to the full-text stage. 24 is where
+// the measured curve flattens: over the real 326k index a body question
+// surfaces its own paper 30% of the time in the top 12, 36.7% in the top 24 and
+// only 38.3% in the top 48 — so doubling past 24 doubles the cold-cache warming
+// cost for under two points (docs/ARXIV-RAG.md §9.8).
+const DEEP_PAPERS = Number(process.env.ARXIV_DEEP_PAPERS) || 24;
 
 /**
  * Load the packed index. Vectors are read as one Buffer and viewed as an
@@ -102,7 +117,7 @@ export async function readPapers(dir, ids) {
 /**
  * @param {string} query
  * @param {Awaited<ReturnType<typeof loadIndex>>} index
- * @param {{ pipeline?: string, topK?: number, bm25?: any, embedProvider?: string }} [opts]
+ * @param {{ pipeline?: string, topK?: number, bm25?: any, embedProvider?: string, deep?: boolean, onWarm?: (r: any) => void }} [opts]
  */
 export async function search(query, index, opts = {}) {
   const pipeline = opts.pipeline || "dense_rerank";
@@ -143,8 +158,52 @@ export async function search(query, index, opts = {}) {
     timings.rerank = Date.now() - t;
   }
 
-  hits = hits.slice(0, topK);
+  hits = hits.slice(0, opts.deep ? Math.max(topK, DEEP_PAPERS) : topK);
   const papers = await readPapers(index.dir, hits.map((h) => h.id));
+
+  if (opts.deep) {
+    t = Date.now();
+    const ids = hits.map((h) => h.id);
+    const warmed = await warmPapers(ids, { provider: opts.embedProvider, onEach: opts.onWarm });
+    timings.warm = Date.now() - t;
+
+    t = Date.now();
+    const blobs = await loadFullText(ids);
+    /** @type {Array<{ id: string, seq: number, heading: string, text: string, score: number }>} */
+    const passages = [];
+    for (const b of blobs) {
+      for (let i = 0; i < b.vectors.length; i++) {
+        passages.push({
+          id: b.id,
+          seq: b.chunks[i].seq,
+          heading: b.chunks[i].heading,
+          text: b.chunks[i].text,
+          score: cosineF32Int8(vectors[0], b.vectors[i]),
+        });
+      }
+    }
+    passages.sort((a, b) => b.score - a.score);
+    let top = passages.slice(0, RERANK_DEPTH);
+    if (top.length) {
+      try {
+        const ranked = await rerank(query, top.map((p) => `${p.heading}\n${p.text}`.slice(0, RERANK_DOC_CHARS)), { topN: topK });
+        top = ranked.map((r) => ({ ...top[r.index], score: r.score }));
+      } catch (err) {
+        // Same fail-soft contract as the abstract tier: a reranker outage
+        // degrades to cosine order rather than failing the search.
+        process.stderr.write(`rerank unavailable (${err.message}) — full-text results in cosine order\n`);
+      }
+    }
+    timings.fulltext = Date.now() - t;
+    return {
+      hits: hits.slice(0, topK).map((h) => ({ ...h, paper: papers.get(h.id) || null })),
+      passages: top.slice(0, topK).map((p) => ({ ...p, paper: papers.get(p.id) || null })),
+      warmed: warmed.filter((w) => w.ok && !w.cached).length,
+      skipped: warmed.filter((w) => !w.ok).length,
+      timings,
+    };
+  }
+
   return {
     hits: hits.map((h) => ({ ...h, paper: papers.get(h.id) || null })),
     timings,
@@ -161,7 +220,7 @@ async function main() {
   const flags = new Set(["--index", "--pipeline", "--top", "--embed-provider"]);
   const query = argv.filter((a, i) => !a.startsWith("--") && !flags.has(argv[i - 1])).join(" ").trim();
   if (!query) {
-    console.log('usage: node scripts/arxiv-search.mjs [--index data/arxiv/index] [--pipeline dense_rerank|dense|hybrid|hybrid_rerank] [--top 10] [--json] "your question"');
+    console.log('usage: node scripts/arxiv-search.mjs [--index data/arxiv/index] [--pipeline dense_rerank|dense|hybrid|hybrid_rerank] [--top 10] [--deep] [--json] "your question"');
     process.exit(1);
   }
   const dir = join(ROOT, get("--index", "data/arxiv/index"));
@@ -174,9 +233,17 @@ async function main() {
   let bm25 = null;
   if (pipeline.startsWith("hybrid")) bm25 = JSON.parse(await readFile(join(dir, "bm25.json"), "utf8"));
 
-  const { hits, timings } = await search(query, index, { pipeline, topK, bm25, embedProvider: get("--embed-provider", "") });
+  const deep = has("--deep");
+  const { hits, passages, timings, warmed, skipped } = await search(query, index, {
+    pipeline,
+    topK,
+    bm25,
+    deep,
+    embedProvider: get("--embed-provider", ""),
+    onWarm: (r) => deep && !r.cached && process.stderr.write(`  warming ${r.id}: ${r.ok ? `${r.chunks} chunks` : r.reason}\n`),
+  });
   if (has("--json")) {
-    console.log(JSON.stringify({ query, pipeline, timings, hits }, null, 1));
+    console.log(JSON.stringify({ query, pipeline, deep, timings, warmed, skipped, hits, passages }, null, 1));
     return;
   }
   console.log(
@@ -191,6 +258,16 @@ async function main() {
         `    ${(p?.abstract || "").slice(0, 190).replace(/\s+/g, " ")}…\n`,
     );
   });
+  if (passages) {
+    console.log(`— full text: ${warmed} papers warmed, ${skipped} without LaTeX source —\n`);
+    passages.forEach((p, i) => {
+      console.log(
+        `${String(i + 1).padStart(2)}. [${p.score.toFixed(3)}] arXiv:${p.id} §${p.heading || "(untitled)"} #${p.seq}\n` +
+          `    ${p.paper?.title || ""}\n` +
+          `    ${p.text.slice(0, 320).replace(/\s+/g, " ")}…\n`,
+      );
+    });
+  }
 }
 
 if (process.argv[1]?.endsWith("arxiv-search.mjs")) {

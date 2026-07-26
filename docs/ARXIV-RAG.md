@@ -57,7 +57,8 @@ harvest ─→ corpus ─→ passages ─→ embed ─→ int8 pack ─┐
 | Harvest | `scripts/arxiv-harvest.mjs` | OAI-PMH, month-sharded, resumable |
 | Corpus | `scripts/arxiv-corpus.mjs` | dedup, filter, deterministic sampling |
 | Build | `scripts/arxiv-index.mjs` | passages → embeddings → binary pack |
-| Search | `scripts/arxiv-search.mjs` | four retrieval pipelines; `dense_rerank` is the default |
+| Search | `scripts/arxiv-search.mjs` | four retrieval pipelines; `dense_rerank` is the default, `--deep` adds the full-text stage |
+| Full text | `scripts/arxiv-fulltext.mjs` | tier 2: LaTeX → section chunks → per-paper blob, warmed on demand |
 | Gold set | `scripts/arxiv-goldset.mjs` | LLM-written needle queries, EN+SV |
 | Bake-off | `scripts/arxiv-eval.mjs` | every variant, both query families |
 | Pure core | `public/js/arxiv-rag-core.js` | passages, BM25, RRF, pooling, metrics |
@@ -390,6 +391,9 @@ npm run arxiv:search -- "how can LLM applications provably protect user data"
 npm run arxiv:search -- --top 10 "kvantfelkorrigering med ytkoder"      # Swedish works
 npm run arxiv:search -- --pipeline dense "fast path, skips the reranker"
 npm run arxiv:search -- --pipeline hybrid "MaskSQL"                      # exact-term lookup
+npm run arxiv:search -- --deep "what batch size did they train with"     # + full-text stage
+npm run arxiv:fulltext -- 2607.00042 2606.01131                          # pre-warm papers
+npm run arxiv:fulltext -- --stats
 ```
 
 Rebuilding the evaluation:
@@ -558,13 +562,11 @@ stage 2  question → chunks of those papers only → top ~10 PASSAGES → reran
 Stage 1 is the pipeline already measured at 87% r@1 / 96% r@10. Stage 2 never
 searches globally, which is what makes the hosting decision easy.
 
-> **Open, and honestly so:** whether two-stage matches or beats a flat
-> full-text search on body-level questions is *not yet measured*. The
-> validation harness was written and the corpus fetched (120 papers, 6,270
-> chunks, cached), but the run stopped on `402 INSUFFICIENT_WALLET_BALANCE`
-> from Berget before the embedding pass. The argument above is from
-> architecture plus the measured scale-degradation curve, not from a
-> body-question benchmark. Run it before committing to the design.
+> **This was measured afterwards, and the argument above is partly wrong.**
+> See §9.8: two-stage does not beat flat, and the reason is a hard ceiling in
+> stage 1 that the reasoning above did not anticipate. The shape still ships,
+> for the reasons §9.8 sets out, but with a scope the original argument
+> did not state.
 
 ### 9.4 Where each tier lives
 
@@ -624,3 +626,78 @@ Vectorize sharding problem to buy it.
   including the §9.3 validation.
 - For option A or B only: an AWS account for requester-pays S3, and a build
   host with the transfer budget and ~30 GB of disk.
+
+### 9.8 The full-text tier, measured — and where §9.3 was wrong
+
+§9.3 argued that a flat full-text index would be *worse* than two-stage for
+discovery, because mid-paper chunks would crowd out abstracts. That argument
+was never tested. It is now (`scripts/arxiv-fulltext-eval.mjs`), and it does
+not survive: 60 LLM-written **body-level** questions — drawn from real chunks,
+skipping introduction/related-work/conclusion sections so the answer genuinely
+is not in the abstract — over 120 warmed papers and 7,194 body chunks.
+
+| pipeline | chunk r@1 | r@5 | r@10 | MRR | stage-1 ceiling |
+|---|---|---|---|---|---|
+| flat (all chunks compete) | 63.3 | 86.7 | 90.0 | 73.9 | — |
+| two-stage, top-6 papers | 45.0 | 65.0 | 66.7 | 53.2 | 70% |
+| two-stage, top-12 | 48.3 | 70.0 | 71.7 | 57.4 | 78.3% |
+| two-stage, top-24 | 56.7 | 76.7 | 80.0 | 65.7 | 90% |
+| two-stage, top-48 | 60.0 | 83.3 | 86.7 | 70.7 | 96.7% |
+| two-stage, top-96 | 63.3 | 86.7 | 90.0 | 73.9 | 100% |
+
+Two-stage converges on flat exactly as its candidate list grows, and **the
+entire gap is the stage-1 ceiling** — the share of questions whose paper the
+abstract stage surfaced at all. Within the candidate set, stage 2 is close to
+perfect; nothing is lost to chunks competing with each other. §9.3's stated
+mechanism was simply not the operative one.
+
+#### The number that actually matters
+
+Those ceilings come from a 120-paper experiment, where the gold paper is one of
+120. Run the same questions against the **real 326,814-paper index**:
+
+| candidates | body question surfaces its own paper |
+|---|---|
+| top-6 | **28.3%** |
+| top-12 | **30.0%** |
+| top-24 | **36.7%** |
+| top-48 | **38.3%** |
+| top-96 | **40.0%** |
+
+**Two-stage caps at roughly 40% for cold body-level questions at real corpus
+scale, however good stage 2 is.** An abstract does not say what batch size the
+experiments used, so no amount of candidate widening finds the paper from that
+question — the curve is nearly flat from 24 onward. This is a property of
+abstracts, not a tuning problem.
+
+#### What that changes
+
+**It does not retire the on-demand tier — it scopes it.** The two flows are
+different, and only one of them is capped:
+
+- **"Go deeper on these papers"** — the actual deep-research flow. Papers are
+  found by a *topical* question, which the abstract tier is good at (nDCG@10
+  0.759 EN / 0.795 SV, §4.3); the body search then runs inside that set and is
+  near-perfect. This works today, costs ~€0.0004 and ~5 s per uncached paper,
+  and is what `--deep` ships.
+- **"Find me the paper that used batch size 128"** — a cold body-level lookup
+  across the whole corpus. This is the ~40% case, and no amount of on-demand
+  warming fixes it. It needs the eager flat build: 13.3M vectors, ~1.2 TB of
+  source, ~18 h, ~€89, and two Vectorize indexes (§9.2).
+
+So the recommendation holds with its scope stated: **ship on demand, know it
+answers the first question and not the second.** The eager build stays the
+upgrade path, and §9.2 still has its price.
+
+`--deep` defaults to **24 candidate papers**: the real-index ceiling is 30% at
+12, 36.7% at 24 and only 38.3% at 48, so doubling past 24 doubles the
+cold-cache warming cost for under two points.
+
+#### Reproducing it
+
+```bash
+node scripts/arxiv-fulltext-eval.mjs --papers 120 --questions 60 --index data/arxiv/index
+```
+
+Warms 120 papers, generates body questions from their chunks, and prints both
+the in-experiment ceiling and the real-index one. Roughly €0.15 and ~6 minutes.

@@ -23,7 +23,9 @@
     "arxiv:goldset": "node scripts/arxiv-goldset.mjs",
     "arxiv:index": "node scripts/arxiv-index.mjs",
     "arxiv:search": "node scripts/arxiv-search.mjs",
-    "arxiv:eval": "node scripts/arxiv-eval.mjs"
+    "arxiv:eval": "node scripts/arxiv-eval.mjs",
+    "arxiv:fulltext": "node scripts/arxiv-fulltext.mjs",
+    "arxiv:fulltext-eval": "node scripts/arxiv-fulltext-eval.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",

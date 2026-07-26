@@ -15,15 +15,16 @@
 // the whole reason this registry can exist — a provider switch that changed the
 // vectors would silently corrupt an index built across both.
 //
-//   EMBED_PROVIDER=auto    (default) Berget, failing over to HF mid-build
-//   EMBED_PROVIDER=berget  Berget only
+//   EMBED_PROVIDER=berget  (default) Berget only
+//   EMBED_PROVIDER=auto    Berget, failing over to HF mid-build
 //   EMBED_PROVIDER=hf      Hugging Face only
 //   EMBED_PROVIDER=both    both at once, work-stealing with a straggler guard
 //
-// USE `auto`. That is the mode worth having: a build that would have died on
-// `402 INSUFFICIENT_WALLET_BALANCE` — which is exactly what killed an arXiv
-// index build and a docs-index regeneration on 2026-07-26 — finishes on the
-// other provider instead.
+// The DEFAULT is berget-only (owner directive, 2026-07-26): the wallet now has
+// auto top-up, so the failure this registry was built for — a build dying on
+// `402 INSUFFICIENT_WALLET_BALANCE` mid-flight, which happened twice in one
+// session — should no longer occur. `auto` remains one environment variable
+// away and is still the right choice on an unattended long build.
 //
 // `both` is implemented, guarded and tested, but measured against THIS pair it
 // buys nothing. On real 1100-char passages Berget runs at 180-270 passages/s
@@ -47,6 +48,9 @@ const sleep = (/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms)
 // How much bigger the remaining work must be than a slow provider's batch
 // before that provider is allowed to take one. See mayTake().
 const TAIL_MARGIN = Number(process.env.EMBED_TAIL_MARGIN) || 10;
+
+// Berget-only unless asked otherwise — see the header.
+export const DEFAULT_PROVIDER = "berget";
 
 /** The 512-token rejection, in either provider's wording. */
 const OVER_LENGTH = /maximum context length is (\d+) tokens.*?requested (\d+) tokens|too long|must have less than|maximum sequence length/is;
@@ -148,7 +152,7 @@ export const isTerminal = (err) => [401, 402, 403].includes(err?.status);
  * @returns {{ mode: string, providers: EmbedProvider[] }}
  */
 export function resolveProviders(spec, registry = PROVIDERS) {
-  const mode = String(spec || process.env.EMBED_PROVIDER || "auto").toLowerCase();
+  const mode = String(spec || process.env.EMBED_PROVIDER || DEFAULT_PROVIDER).toLowerCase();
   const all = Object.values(registry).filter((p) => p.available());
   if (mode === "auto" || mode === "both") {
     if (!all.length) {

@@ -32,7 +32,9 @@ working knowledge — what bites, and what not to re-derive.
 | `scripts/embed-providers.mjs` | the embedding-provider registry: Berget + HF on the SAME model, `auto`/`berget`/`hf`/`both`, failover and the straggler guard |
 | `scripts/arxiv-berget.mjs` | the Berget-only surfaces (rerank, JSON chat) |
 | `scripts/arxiv-index.mjs` | the binary index pack, resumable |
-| `scripts/arxiv-search.mjs` | the four retrieval pipelines |
+| `scripts/arxiv-search.mjs` | the four retrieval pipelines, plus `--deep` (the full-text stage) |
+| `scripts/arxiv-fulltext.mjs` | tier 2: LaTeX → section chunks → one blob per paper, warmed on demand |
+| `scripts/arxiv-fulltext-eval.mjs` | the two-stage-vs-flat measurement behind §9.8 |
 | `scripts/arxiv-goldset.mjs`, `arxiv-topical-queries.json`, `arxiv-eval.mjs`, `arxiv-report.mjs` | the measured bake-off |
 
 Built data lives under gitignored `data/`. Never commit it — the vectors alone
@@ -176,6 +178,31 @@ Everything is resumable: rerun the same command and it continues from its
 checkpoint. The index writes `docIds` into `passages.json` only when the vector
 file is complete, so a half-built pack refuses to be searched instead of
 returning nonsense.
+
+## The full-text tier, and its ceiling
+
+Tier 2 holds ~52 body chunks per paper and is warmed ON DEMAND (~€0.0004 and
+~5 s per paper). `--deep` runs it: the abstract tier picks 24 candidate papers,
+their body chunks are searched and reranked.
+
+**Know the ceiling before promising anything.** Measured over the real 326k
+index, a cold body-level question ("what batch size did they use") surfaces its
+own paper only **30% of the time in the abstract top-12 and 40% at top-96** —
+abstracts do not contain that information, so widening the candidate list
+barely helps and the curve is flat past 24. Two-stage is therefore excellent
+for *"go deeper on these papers"* (topical discovery works: nDCG 0.759/0.795)
+and capped at ~40% for *"find me the paper that did X in section 4"*. The
+second use case needs the eager flat build — 13.3M vectors, ~1.2 TB, ~18 h.
+
+Two LaTeX-assembly traps, both found by breaking a real paper:
+
+- A submission is often a thin wrapper plus `\input` fragments. Concatenating
+  the `.tex` files and then matching `\begin{document}` finds the WRAPPER's —
+  three lines — and discards the paper: 2606.00096 has 100 KB of source and
+  yielded 89 characters. Pick the richest real body, then append fragments that
+  have no document of their own.
+- When NO file declares a document, the promoted fragment must be removed from
+  the fragment list, or the paper is emitted twice and every chunk duplicates.
 
 ## Extending it
 
