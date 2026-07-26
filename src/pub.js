@@ -39,8 +39,10 @@ const MAX_MESSAGES = 200;
 // way: /cure/help is the Se/cure tier's documentation page (public/cure/help/,
 // routed in index.js before the replay map). "local-search" likewise:
 // /cure/local-search is the local-browsing-agent setup page reached from the
-// web knob (public/cure/local-search/).
-const RESERVED_SLUGS = new Set(["workspace", "help", "local-search"]);
+// web knob (public/cure/local-search/). "local-exec" likewise:
+// /cure/local-exec is the local-execution-runner setup page reached from the
+// Execution environment setting (public/cure/local-exec/).
+const RESERVED_SLUGS = new Set(["workspace", "help", "local-search", "local-exec"]);
 /** @param {unknown} s */
 export const pubSlugOk = (s) =>
   typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,79}$/.test(s) && !RESERVED_SLUGS.has(s);

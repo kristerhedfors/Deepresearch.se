@@ -16,6 +16,7 @@ import { renderConfigKnobs, settingRow, wireModeKnob, wireSandboxKnob, wireSetti
 import { loadSettings, setGoogleMaps, setShodanMcp } from "./settings.js";
 import { EXA_SETTING_INFO, exaStatusText, getExaEnabled, setExaEnabled } from "./search-source.js";
 import { onDeviceSettingsMarkup, wireOnDeviceSettings } from "./ondevice-drs.js";
+import { execEnvSettingsMarkup, wireExecEnvSettings } from "./exec-env.js";
 import { evalModeOn, setEvalMode } from "./starters.js";
 import { refreshOnDeviceModels } from "./models.js";
 import { openBundle } from "./proxy-bundle.js";
@@ -161,6 +162,7 @@ export async function loadSettingsView(ctx) {
     ${googleMapsNote}
     <p id="gmapsstatus" class="muted setting-note" hidden></p>
     ${renderConfigKnobs(ctx.me)}
+    ${execEnvSettingsMarkup()}
     ${settingRow({
       id: "starterevalknob",
       label: "Starter prompt evaluation",
@@ -193,6 +195,10 @@ export async function loadSettingsView(ctx) {
   wireSettingPopovers(ctx.body);
   wireSandboxKnob(ctx);
   wireModeKnob(ctx);
+  // Execution environment: WHERE the sandbox knob above runs its commands.
+  // Browser-local (a runner lives on one machine), so — like the on-device
+  // models below — it deliberately isn't an /api/settings write.
+  wireExecEnvSettings();
   // On-device models (Bonsai): a browser-local knob — the weights live in
   // THIS device's storage, so it deliberately isn't an /api/settings write.
   // A download or delete refreshes the composer dropdown's on-device group.

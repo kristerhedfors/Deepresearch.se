@@ -55,6 +55,10 @@ test("pubSlugOk: lowercase words with hyphens, dot-free", () => {
   // /cure/local-search (reached from the composer's web knob).
   assert.equal(pubSlugOk("local-search"), false);
   assert.equal(pubSlugOk("local-search-tips"), true); // only the exact word is reserved
+  // "local-exec" is RESERVED for the local-execution-runner setup page at
+  // /cure/local-exec (reached from the Execution environment setting).
+  assert.equal(pubSlugOk("local-exec"), false);
+  assert.equal(pubSlugOk("local-exec-notes"), true); // only the exact word is reserved
 });
 
 test("validatePublication normalizes the frozen-session shape", () => {

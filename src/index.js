@@ -250,6 +250,20 @@ async function route(request, env, url, log, ctx, requestId) {
     return { response: await serveAsset(request, env, url.origin + "/cure/local-search/") };
   }
 
+  // The local-execution-runner setup page (public/cure/local-exec/): how to run
+  // your own execution environment instead of the in-browser Linux VM, linked
+  // from BOTH tiers' "Execution environment" setting. Same routing rule as the
+  // two pages above — "local-exec" is a RESERVED replay slug (src/pub.js
+  // pubSlugOk) and this must sit BEFORE the wordplay map. The runner script
+  // itself (runner.mjs) needs no route: /cure/ paths WITH an extension are
+  // already public assets.
+  if (
+    (request.method === "GET" || request.method === "HEAD") &&
+    (url.pathname === "/cure/local-exec" || url.pathname === "/cure/local-exec/")
+  ) {
+    return { response: await serveAsset(request, env, url.origin + "/cure/local-exec/") };
+  }
+
   // ---- the wordplay URL map (all BEFORE the identity gate) -----------------
   // The .se domain completes English words, and the two product tiers live
   // under them:

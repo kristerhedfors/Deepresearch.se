@@ -149,6 +149,13 @@ export function emptyDrcState() {
     // self-hosted service. `key` lives inside the sealed state like the provider
     // keys. Absent (older blobs) reads as the grant default.
     searchBackend: { backend: "grant", baseUrl: "", key: "", results: 6 },
+    // WHERE the sandbox's shell commands run (public/js/exec-backends-core.js)
+    // — the execution counterpart of the model choice. "browser" (default, and
+    // what an absent field reads as) is the in-browser CheerpX VM, unchanged;
+    // "local" plus a baseUrl points at a DREE/1 runner on the user's own
+    // machine, called STRAIGHT from the browser like the search backend above.
+    // `key` lives inside the sealed state like the provider keys.
+    execBackend: { backend: "browser", baseUrl: "", key: "" },
     // The user's own OpenAI-compatible LOCAL inference server (Ollama /
     // LM Studio / llama.cpp): the base URL the keyless `local` provider
     // entry (drc-providers.js) calls, e.g. http://localhost:11434/v1.

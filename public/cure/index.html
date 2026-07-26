@@ -576,8 +576,46 @@
         </div>
         <div class="setting-pop" id="sbpop" hidden>Boots a real Linux <b>in this browser</b> so the assistant can
           run shell commands to answer you (e.g. “run ls”). Everything runs on your device — nothing leaves the
-          browser. The first use downloads a Linux image, so it's slow to start.</div>
+          browser. The first use downloads a Linux image, so it's slow to start. <b>Where</b> those commands run is
+          the next setting.</div>
         <span id="sandboxstatus" class="muted setting-note"></span>
+      </div>
+
+      <!-- WHERE the sandbox's commands actually run. The same shape of choice
+           the model dropdown already offers (on-device vs. cloud), applied to
+           execution: the in-browser VM, or a DREE/1 runner on the user's own
+           machine called STRAIGHT from this browser. Wired by
+           renderExecBackend() in drc.js; config lives in the sealed project
+           state. -->
+      <div class="settings-item" id="execrow">
+        <div class="settings-row">
+          <span class="settings-label">Execution environment
+            <button type="button" class="setting-info" data-pop="execpop" aria-label="More about the execution environment">ⓘ</button>
+          </span>
+        </div>
+        <div class="setting-pop" id="execpop" hidden>Choose <b>where</b> the assistant's shell commands run.<br>
+          <b>In-browser Linux VM</b> (default) boots a real Linux inside this page. Nothing leaves the device, but it
+          is an emulator: slow to start, slow to run, one fixed image, and it cannot see your machine.<br>
+          <b>Local runner</b> points at a small service you start on your own computer; each research session gets a
+          <b>throwaway container</b>, at native speed, with whatever image and tools you choose. This browser calls it
+          directly on <code>localhost</code> — no command, no output and no file touches this site's server, and the
+          runner prints every command it runs so you can watch. It must send <b>CORS</b> headers; the setup page's
+          one-liner already does. The URL and key are stored only inside your sealed session, in this browser.<br>
+          <a href="/cure/local-exec/">One-line setup for a local runner →</a></div>
+        <label class="setting-note" style="display:block;margin-top:.4rem">Environment
+          <select id="exec-backend" style="width:100%;margin-top:.2rem">
+            <option value="browser">In-browser Linux VM (default)</option>
+            <option value="local">Local runner — your machine</option>
+          </select>
+        </label>
+        <div id="exec-direct" hidden style="margin-top:.4rem;display:flex;flex-direction:column;gap:.4rem">
+          <label class="setting-note">Runner URL
+            <input id="exec-url" type="url" placeholder="http://localhost:8100" style="width:100%;margin-top:.2rem"></label>
+          <label class="setting-note">API key <span class="muted">(optional)</span>
+            <input id="exec-key" type="password" autocomplete="off" placeholder="only if your runner needs one" style="width:100%;margin-top:.2rem"></label>
+          <button type="button" id="exec-test" class="btnlike" style="align-self:flex-start">Test connection</button>
+        </div>
+        <span id="exec-status" class="muted setting-note"></span>
       </div>
 
       <div class="settings-item">

@@ -141,6 +141,12 @@ export function isPublicAsset(url, method) {
     // umbrella intro, dead composer. The derived module-graph test in
     // assets.test.js now fails `npm test` on this whole class.)
     url.pathname === "/js/websearch-backends-core.js" ||
+    // The pluggable EXECUTION-ENVIRONMENT core — the sibling seam, letting a
+    // DREE/1 runner on the user's own machine stand in for the in-browser
+    // Linux VM. /cure/drc.js and drc-research.js both import it, so it is in
+    // the public graph under the same rule as the line above. (Its DRS-side
+    // glue, /js/exec-env.js, is NOT here: only the signed-in app imports that.)
+    url.pathname === "/js/exec-backends-core.js" ||
     // The search-SOURCE preference behind the "Exa web search" settings knob —
     // /cure/drc.js statically imports it (the same public-graph rule).
     url.pathname === "/js/search-source.js" ||
