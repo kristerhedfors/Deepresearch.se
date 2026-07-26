@@ -148,7 +148,8 @@ several of the dependencies above, because the policy predates them:
 - `connect-src` allows `'self'`, `*.googleapis.com`, `*.gstatic.com`. It does
   **not** allow `wss://disks.webvm.io`, `huggingface.co`, or the Se/cure tier's
   browser-direct provider calls to `api.berget.ai` / `api.openai.com` /
-  `api.groq.com` — Se/cure would stop working entirely.
+  `api.anthropic.com` / `api.groq.com` — nor whatever host a user's custom
+  OpenAI-compatible endpoint lives on — Se/cure would stop working entirely.
 - `img-src` is broad (`https:`), so OSM tiles are fine.
 
 This is not a live breakage, since the header is off. It is a note for whoever

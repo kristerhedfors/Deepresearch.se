@@ -144,7 +144,7 @@
     <div class="pair">
       <figure>
         <div class="diagram">
-        <img src="/architecture/path-secure.svg" alt="The Se/cure data path: browser calls providers directly on the user's own keys; the server only serves static files and is not in the data path">
+        <img src="/architecture/path-secure.svg" alt="The Se/cure data path: the browser calls OpenAI, Anthropic, Groq, Berget.ai or any other OpenAI-compatible endpoint directly on the user's own keys; the server only serves static files and is not in the data path">
         </div>
         <figcaption><span class="wm cure">DeepResearch.<b>Se<span class="sl">/</span>cure</b></span> —
         the browser orchestrates.
@@ -274,12 +274,12 @@
         </tr>
         <tr>
           <th>Models</th>
-          <td class="drc-c">The CORS-capable providers only (OpenAI, Groq, Berget), because the browser must be able to call them directly. Split routing survives: JSON phases run on each provider's fixed cheap JSON model.</td>
+          <td class="drc-c">CORS-capable providers only, because the browser must be able to call them directly: OpenAI, Anthropic, Groq and Berget as named shortcuts, plus any other OpenAI-compatible endpoint you point it at — a hosted service or a model server on your own machine. Split routing survives: JSON phases run on each provider's fixed cheap JSON model.</td>
           <td class="drs-c">The full Berget catalog plus key-gated Claude and GPT answer models; JSON planning phases always on the fixed reliable model (split routing).</td>
         </tr>
         <tr>
           <th>Documents &amp; RAG</th>
-          <td class="drc-c">Project &amp; chat RAG, browser-direct embeddings on your key (OpenAI small/512-dim by design; Berget too; a Groq-only session simply runs without RAG, fail-soft).</td>
+          <td class="drc-c">Project &amp; chat RAG, browser-direct embeddings on your key (OpenAI small/512-dim by design; Berget too; a session on a provider that serves no embeddings — Anthropic, Groq, or most custom endpoints — simply runs without RAG, fail-soft).</td>
           <td class="drs-c">Attachments (pdf/docx/images with metadata extraction), project files, chat RAG, with embeddings via the Worker's <code>/api/embed</code> proxy.</td>
         </tr>
         <tr>

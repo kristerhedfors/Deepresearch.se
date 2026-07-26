@@ -260,10 +260,12 @@ test("providerVisibilityNote: the standing model-picker disclosure per provider 
   assert.match(openai, /OpenAI/);
   assert.match(openai, /they can read them/i);
   assert.match(openai, /server can't/i);
-  // An unknown id still discloses, using the id itself.
-  assert.match(providerVisibilityNote("groq"), /groq/);
+  // A remote provider with no label still discloses, using the id itself.
+  assert.match(providerVisibilityNote("anthropic"), /anthropic/);
+  // …and so does an id the registry has never heard of.
+  assert.match(providerVisibilityNote("some-other-service"), /some-other-service/);
   // The local provider: the strongest true statement.
-  const local = providerVisibilityNote("local", "Local (Ollama / LM Studio / llama.cpp)");
+  const local = providerVisibilityNote("local", "Any OpenAI-compatible endpoint");
   assert.match(local, /nothing leaves this device/i);
   assert.doesNotMatch(local, /can read them/i);
   // The on-device tier: same strongest statement, in-browser wording.

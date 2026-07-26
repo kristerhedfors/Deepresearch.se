@@ -12,7 +12,8 @@ description: >-
   /my/project-<hash>; public/cure/,
   public/js/drc-core.js, drc-providers.js, drc-rag.js, drc-research.js, drc-store.js:
   no-account deep research with DIRECT browser→provider calls on user keys
-  — OpenAI + Groq + Berget, the CORS-capable providers — and BROWSER-LOCAL sealed
+  — OpenAI + Anthropic + Groq + Berget, the CORS-capable providers, plus any
+  OpenAI-compatible endpoint the user names — and BROWSER-LOCAL sealed
   storage; the server is in no DRC data path), or the
   privacy/encryption model (encrypted-at-rest except RAG-indexed and
   project chats; keys never at rest beside ciphertext).
@@ -402,12 +403,18 @@ master secret → HKDF-derived reference/blob id/blob key; the sealed
 state; NOTE: the HKDF info strings and state-kind constant are frozen
 pre-rename "free" values — changing them breaks existing secrets;
 state v3 added the `rag` section), `drc-providers.js` (the CORS-capable
-provider registry: OpenAI + Groq + Berget (api.berget.ai grew browser
-CORS, confirmed by live preflight probe 2026-07-11) — providers without browser CORS
-can't join, that's the admission ticket; also the `embed` entry +
+provider registry: OpenAI + Anthropic + Groq + Berget (api.berget.ai grew
+browser CORS, confirmed by live preflight probe 2026-07-11; Anthropic joined
+2026-07-26 — it needs the `anthropic-dangerous-direct-browser-access` opt-in
+header AND a client-side wire adapter, `wire: "anthropic"`, because the
+Messages API is not OpenAI chat completions) — providers without browser CORS
+can't join, that's the admission ticket; the keyless `local` entry takes ANY
+OpenAI-compatible base URL, so the four named ones are shortcuts rather than
+the boundary; also the `embed` entry +
 `drcEmbed` — browser-direct embeddings on the user's OpenAI key,
 `text-embedding-3-small` dimension-reduced to 512, chosen for send-path
-latency and the localStorage quota; Groq has no embeddings endpoint),
+latency and the localStorage quota; neither Anthropic nor Groq has an
+embeddings endpoint),
 `drc-rag.js` (DRC's client-side RAG over conversations and projects:
 each chat incrementally indexed after every exchange — only new turns
 embed — and each send retrieves top-k across the project's chats,
@@ -418,7 +425,8 @@ rest — deliberately STRICTER than DRS's readable-when-indexed
 exception, because retrieval happens in the tab that already holds the
 decrypted state and no server ever needs the plaintext; embedder
 mismatch wipes + lazily re-indexes; size caps + LRU-doc eviction hold
-the index inside the quota; a Groq-only session simply runs without
+the index inside the quota; a session on a provider with no embeddings
+endpoint — Anthropic, Groq, or most custom ones — simply runs without
 RAG, fail-soft), `drc-research.js` (the client-side pipeline: triage →
 parallel knowledge harvest → gap audit → streamed synthesis →
 validation, the pipeline invariants held client-side; the recall block
