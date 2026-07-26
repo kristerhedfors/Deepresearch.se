@@ -226,6 +226,53 @@ for confirmation before anything is sent — nothing leaves the browser silently
 matching the same opt-in, per-use posture as the web-search grant and the
 research-space proxy.
 
+## The MCP key — a Se/rver-side credential, not a lendable grant (2026-07-26)
+
+The MCP server (`POST /mcp`, `docs/ARCHITECTURE.md` §7) gained a bearer
+credential so an external agent — Claude Code, Cursor, any MCP client — can
+reach it: the **MCP key** (`src/mcp-key.js`, `mck1.…`). It belongs in this
+document because it is a fourth signed-token family under the one
+`SESSION_SECRET`, and because the obvious question is why it is not simply a
+Se/rver token.
+
+**It is not one, and could not be.** A Se/rver token's guarantee is
+upstream-services-only, and its permission vocabulary is CLOSED precisely so
+nothing can ever name a data surface. An MCP key does the opposite thing on
+purpose: it acts for a **signed-in Se/rver account**, running that account's
+research on that account's quota, logged in that account's name. That is the
+Se/rver tier, where the server sits inside the trust boundary (the 2026-07-24
+directive above) — so the right move was a separate credential, not a widened
+vocabulary. Nothing about the Se/rver token changed.
+
+**What bounds it instead**, all three structural rather than promised:
+
+- **It is never a login.** `src/auth.js`'s `identify()` reads a `Basic` header
+  and the `dr_session` cookie; an `mck1.` bearer is neither, in any position.
+  `/admin`, `/api/admin/*` and every data-bearing `/api/*` route are therefore
+  out of reach — the same argument the Se/rver token makes, pinned the same
+  way (`src/mcp-key.test.js`).
+- **It is verified in exactly one place.** `src/mcp-api.js`'s
+  `resolveMcpKeyIdentity`, which the router consults for the MCP endpoint and
+  nothing else.
+- **What it reaches is the account's choice, not the holder's.** Which tools
+  the surface exposes, the research defaults, and whether a caller may
+  override them are per-account configuration read at CALL time
+  (`src/mcp-config.js`, Settings → *MCP server*). The config endpoints sit
+  behind the identity gate, so a key holder can observe the effects and never
+  change them; narrowing takes effect on the next call for every outstanding
+  key, with nothing to re-issue. One key per account: minting rotates,
+  revoking rewrites the stored `jti` the token must match, and an outstanding
+  copy dies on its next call.
+
+**Be clear about what an MCP call exposes**, because it is the opposite of
+Se/cure's posture and the setup page (`public/connect/`) says so plainly: the
+question reaches this server, goes upstream to the model and the search
+provider, and is recorded in the full-visibility interaction log (channel
+`mcp`) like any Se/rver chat. Research that must not rest on a server does not
+belong on this endpoint — that is what Se/cure is for. The dedicated
+`mcp.deepresearch.se` host changes none of this: same Worker, same code path,
+a separate name so a machine credential is pasted against a machine endpoint.
+
 ## Where shell commands run — the third execution environment (2026-07-26)
 
 The execution sandbox has three environments (`docs/EXECUTION-ENVIRONMENTS.md`)

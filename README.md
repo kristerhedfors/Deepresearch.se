@@ -38,7 +38,10 @@ the pipeline context. Google sign-in gates the whole site. D1 stores accounts,
 real-cost research quotas, the chat interaction log, and feedback threads.
 Opt-in R2 and Vectorize hold encrypted cloud history and document RAG. An
 `/admin` console shows usage and approves users. The pipeline is also exposed
-as an MCP tool (`POST /mcp`, `deep_research`).
+as an MCP tool (`POST /mcp`, `deep_research`) — point Claude Code or any other
+MCP client at `mcp.deepresearch.se` with an account-minted key, and choose
+which tools it may reach under Settings → MCP server ([setup
+instructions](https://mcp.deepresearch.se/)).
 
 ```
 browser / PWA / MCP client ── Google OIDC session ──> Worker (src/index.js)
@@ -47,7 +50,7 @@ browser / PWA / MCP client ── Google OIDC session ──> Worker (src/index.
     │     ├── LLMs           src/providers.js → berget.js | anthropic.js | openai.js
     │     ├── web search     src/exa.js (+ src/search-sources.js: hf.js)
     │     └── enrichments    src/enrichment.js (shodan.js, maps-enrichment.js)
-    ├── POST /mcp            src/mcp.js (deep_research tool)
+    ├── POST /mcp            src/mcp.js (deep_research + sdk_* tools; MCP key or session)
     ├── /admin, /api/admin/* admin console (usage, users, chatlogs, feedback)
     ├── D1  (accounts, quotas, config, chat_logs, feedback, answer recovery, game saves)
     └── R2 + Vectorize (opt-in encrypted cloud history + document RAG)

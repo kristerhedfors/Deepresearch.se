@@ -13,6 +13,20 @@ compatibility_date = "2026-07-04"
 routes = [
   { pattern = "deepresearch.se", custom_domain = true },
   { pattern = "www.deepresearch.se", custom_domain = true },
+  # The dedicated MCP host (added 2026-07-26). External MCP clients — Claude
+  # Code, Cursor, any agent SDK — are pointed at https://mcp.deepresearch.se/mcp
+  # and authenticate with an account-minted MCP key (src/mcp-key.js). It is the
+  # SAME Worker and the same code path as /mcp on the apex; the separate host
+  # exists so a machine credential is pasted against a machine endpoint, and so
+  # the bare origin can also answer (clients disagree about whether the
+  # configured URL includes the path — src/mcp-config.js isMcpEndpoint). A GET
+  # serves the public setup page (public/connect/). src/canonical.js leaves this
+  # host alone: it only rewrites http → https and strips `www.`.
+  #
+  # Provisioned 2026-07-26 through the Workers custom-domains API with the
+  # account API token (Cloudflare created the DNS record and the certificate);
+  # this entry keeps it declared in config so a later deploy does not drop it.
+  { pattern = "mcp.deepresearch.se", custom_domain = true },
 ]
 
 # Per-version PREVIEW URLs (branch previews — see the **deploy** skill):

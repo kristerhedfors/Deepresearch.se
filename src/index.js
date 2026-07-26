@@ -44,7 +44,15 @@ import { handleAdminApi } from "./admin-api.js";
 import { handleAnswerAck, handleAnswerGet } from "./answers.js";
 import { clearSessionCookie, createSessionCookie, identify, resolveRunAs } from "./auth.js";
 import { handleChat } from "./chat.js";
-import { handleMcp } from "./mcp.js";
+import { RPC_INVALID_REQUEST, handleMcp, jsonRpcError } from "./mcp.js";
+import { isMcpEndpoint, isMcpHost } from "./mcp-config.js";
+import {
+  handleMcpConfigGet,
+  handleMcpConfigPut,
+  handleMcpKeyMint,
+  handleMcpKeyRevoke,
+  resolveMcpKeyIdentity,
+} from "./mcp-api.js";
 import { handleGoogleCallback, handleGoogleStart } from "./google.js";
 import { htmlResponse, jsonResponse } from "./http.js";
 import { createLogger } from "./log.js";
@@ -228,6 +236,45 @@ async function route(request, env, url, log, ctx, requestId) {
 
   if (isPublicAsset(url, request.method)) {
     return { response: await serveAsset(request, env) };
+  }
+
+  // ---- the MCP endpoint, key-bearing half (src/mcp.js) --------------------
+  //
+  // The MCP server is reachable two ways. This is the first: an external
+  // client — Claude Code, Cursor, any agent SDK — presenting an MCP KEY as a
+  // bearer token. It is resolved HERE, above the identity gate, because such a
+  // client has no cookie jar and cannot be handed the break-glass secrets; and
+  // it is resolved ONLY here, which is precisely what scopes a key to this one
+  // endpoint (the scope note in src/mcp-key.js). A request carrying no MCP key
+  // falls straight through to the gate below, so the session and break-glass
+  // paths are exactly as they were.
+  if (isMcpEndpoint(url, request.method)) {
+    const keyed = await resolveMcpKeyIdentity(request, env);
+    if (keyed && "error" in keyed) {
+      // A key WAS presented and is not usable (expired, revoked, account
+      // disabled, surface switched off). Answered as a JSON-RPC error rather
+      // than as the sign-in page: an MCP client that gets HTML here reports a
+      // transport failure, which sends its user hunting for the wrong problem.
+      log.warn("mcp.key_denied", { reason: keyed.error });
+      return { response: jsonResponse(jsonRpcError(null, RPC_INVALID_REQUEST, keyed.error), 401) };
+    }
+    if (keyed) {
+      return {
+        response: await handleMcp(request, env, log, keyed.identity, ctx, requestId),
+        identity: keyed.identity,
+      };
+    }
+  }
+
+  // The dedicated `mcp.` host has nothing to serve on a GET but the setup
+  // page — how to point a client at it, and where to mint the key. Public: it
+  // is instructions, and a signed-out reader is exactly who needs them.
+  if (
+    isMcpHost(url.hostname) &&
+    (request.method === "GET" || request.method === "HEAD") &&
+    (url.pathname === "/" || url.pathname === "/mcp" || url.pathname === "/connect" || url.pathname === "/connect/")
+  ) {
+    return { response: await serveAsset(request, env, url.origin + "/connect/") };
   }
 
   // The Se/cure tier's OWN documentation (public/cure/help/): served under the
@@ -669,11 +716,29 @@ async function routeApi(request, env, url, log, identity, ctx, requestId) {
     return handleChat(request, env, log, identity, ctx, requestId);
   }
   // MCP server (Streamable HTTP, JSON-RPC 2.0): exposes the research pipeline
-  // as a `deep_research` tool for other agents. Placed after the identity gate
-  // so it inherits the same access control (break-glass Basic Auth header or a
-  // signed-in session).
-  if (url.pathname === "/mcp" && request.method === "POST") {
+  // and the SDK manifest tools to other agents. This is the SESSION half —
+  // placed after the identity gate so it inherits the same access control
+  // (break-glass Basic Auth header or a signed-in session). The key-bearing
+  // half runs above the gate in `route`; both agree on what the endpoint is by
+  // asking the same isMcpEndpoint predicate.
+  if (isMcpEndpoint(url, request.method)) {
     return handleMcp(request, env, log, identity, ctx, requestId);
+  }
+  // The MCP control surface (src/mcp-api.js): WHAT this account exposes over
+  // MCP, and the one key it hands to an external client. Behind the identity
+  // gate by construction — which is what makes the exposure config something a
+  // key holder can read the effects of but never change.
+  if (url.pathname === "/api/mcp/config" && request.method === "GET") {
+    return handleMcpConfigGet(url, identity);
+  }
+  if (url.pathname === "/api/mcp/config" && request.method === "PUT") {
+    return handleMcpConfigPut(request, env, url, log, identity);
+  }
+  if (url.pathname === "/api/mcp/key" && request.method === "POST") {
+    return handleMcpKeyMint(request, env, url, log, identity);
+  }
+  if (url.pathname === "/api/mcp/key" && request.method === "DELETE") {
+    return handleMcpKeyRevoke(env, url, log, identity);
   }
   // Answer recovery (src/answers.js): poll a dropped stream's finished
   // answer back, or ack an intact delivery so the cached copy is purged.
