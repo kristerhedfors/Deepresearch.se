@@ -22,6 +22,7 @@
 
 import { extensionEnrichments } from "./extensions.js";
 import { runIntrospectionEnrichment } from "./introspect.js";
+import { runHfAgentEnrichment } from "./hf-agent.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -64,6 +65,18 @@ const CORE_ENRICHMENTS = [
     id: "introspect",
     enabled: (state) => !!state.introspection,
     run: (c) => runIntrospectionEnrichment(c.env, c.log, c.step, c.stepDone, c.conversation, c.state),
+  },
+  {
+    // The Hugging Face agent (src/hf-agent.js): its mode forces hub search on
+    // for the turn, and a message about choosing/pricing/starting a model gets
+    // the live router catalog folded in with real per-token rates. Core, not an
+    // extension, for the same reason the Hub already is a core SEARCH SOURCE
+    // (src/search-sources.js): the open-model ecosystem is research material
+    // this site is about, not an optional third-party lookup bolted onto a
+    // message. Silent on every turn that isn't model-shopping.
+    id: "hf_models",
+    enabled: (state) => !!(/** @type {any} */ (state).hfMode),
+    run: (c) => runHfAgentEnrichment(c),
   },
 ];
 

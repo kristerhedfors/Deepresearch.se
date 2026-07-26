@@ -7,7 +7,8 @@ description: >-
   src/providers.js registry), Exa web search (src/exa.js), OpenStreetMap
   Nominatim reverse geocoding (src/geocode.js), Shodan host intelligence
   (src/shodan.js), Google Maps / Street View (src/googlemaps.js), or
-  Hugging Face Hub search (src/hf.js) — or adding a new enrichment in the
+  Hugging Face Hub search (src/hf.js; its INFERENCE sibling
+  src/hf-inference.js belongs to the hf-agent skill) — or adding a new enrichment in the
   same deterministic no-function-calling pattern. ALSO the go-to for the
   EXTENSION BOUNDARY (src/extensions.js, CLAUDE.md invariant 7): the
   knob-gated third-party integrations are extensions, not core, so wiring
@@ -999,3 +1000,8 @@ the search phase.
   sources total. The cap still stops any single org dominating.
 - **Eval:** bench questions kind `hf` (`tests/bench-questions.mjs`,
   `hf_*` ids) exercise it; A/B history in `tests/EVAL-BENCH-FINDINGS.md`.
+- **Not to be confused with Hugging Face INFERENCE** (`src/hf-inference.js`):
+  the same company, a different surface and a different token contract. This
+  section is Hub SEARCH — free, optional token, citable sources. Running a
+  model through `router.huggingface.co` is billed, requires the token, and is
+  the Hugging Face agent's business — see the **hf-agent** skill.

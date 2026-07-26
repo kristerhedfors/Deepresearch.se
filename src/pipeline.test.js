@@ -305,14 +305,26 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
   });
 
   test("web-off short-circuits to the model answer ONLY when no other source applies", () => {
-    // Developer-mode source research and any applicable aux source (SEARCH_SOURCES
-    // intent) keep the research path alive with the knob off; runWithoutSearch is
-    // the fallback for when none applies. The aux half is now also subject to the
-    // agent's own auxSources declaration.
+    // Developer-mode source research and any applicable aux source keep the
+    // research path alive with the knob off; runWithoutSearch is the fallback
+    // for when none applies. "Applicable" is the source's own intent OR the
+    // state's forceAux list — a mode built AROUND a source (the Hugging Face
+    // agent) must not fall through to a sourceless answer just because the
+    // message didn't happen to name the hub. The aux half is still subject to
+    // the agent's own auxSources declaration, which outranks a forced source.
     assert.match(
       src,
-      /if \(!policy\.web\) \{[\s\S]*if \(!ctx\.hasSource && !\(policy\.auxSources && SEARCH_SOURCES\.some\(\(s\) => s\.intent\(ctx\.lastUser\)\)\)\) \{[\s\S]*return runWithoutSearch\(ctx\);/,
+      /if \(!policy\.web\) \{[\s\S]*if \(!ctx\.hasSource && !\(policy\.auxSources && SEARCH_SOURCES\.some\(\(s\) => forcedAux\.includes\(s\.id\) \|\| s\.intent\(ctx\.lastUser\)\)\)\) \{[\s\S]*return runWithoutSearch\(ctx\);/,
     );
+  });
+
+  test("a forced source runs even when the message does not engage it", () => {
+    // The forceAux seam itself: runAuxSearch skips a source whose intent is
+    // false UNLESS the state listed its id. Generic — the pipeline reads ids
+    // off the state and never names one.
+    const runAux = src.slice(src.indexOf("async function runAuxSearch(ctx, source"));
+    assert.match(runAux, /forceAux[\s\S]*\.includes\(source\.id\)/);
+    assert.match(runAux, /if \(!batch\.length \|\| \(!forced && !source\.intent\(ctx\.lastUser\)\)\) return;/);
   });
 
   test("an introspection agent's `search.web: false` does not disarm the knob", () => {

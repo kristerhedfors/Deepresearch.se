@@ -66,6 +66,7 @@ import { initStarters } from "./starters.js";
 import { parseComposerDeepLink } from "./deeplink-core.js";
 import { mountSlashMenu } from "./slash-menu.js";
 import { detectLang } from "./canned-faq.js";
+import { closeHfShelf, initHfModels } from "./hf-models.js";
 
 // ---- Elements -------------------------------------------------------------
 
@@ -375,7 +376,29 @@ function clearOutrospectionFeed() {
   outroFeedMounted = false;
   for (const node of chat.querySelectorAll(".outro-history")) node.remove();
 }
+// The Hugging Face agent's MODEL SHELF (public/js/hf-models.js): the composer's
+// 🤗 button and the sliding panel behind it. Wired once at boot; the button is
+// unhidden only in that mode — every other mode picks from the fixed dropdown,
+// and an "open the open catalog" affordance there would promise a browse the
+// mode does not have.
+const hfShelfBtn = document.getElementById("hfbtn");
+initHfModels({
+  button: hfShelfBtn,
+  panel: document.getElementById("hfpanel"),
+  close: document.getElementById("hfclose"),
+  list: document.getElementById("hflist"),
+  search: /** @type {HTMLInputElement|null} */ (document.getElementById("hfsearch")),
+  allowance: document.getElementById("hfallowance"),
+  note: document.getElementById("hfnote"),
+});
+/** @param {string} mode */
+function syncHfShelf(mode) {
+  if (hfShelfBtn) hfShelfBtn.hidden = mode !== "hf";
+  if (mode !== "hf") closeHfShelf();
+}
+
 syncModeSelect(cachedChatMode());
+syncHfShelf(cachedChatMode());
 // A returning outrospection user lands straight on the feed, same as a switch.
 openOutrospectionFeed(cachedChatMode());
 modeSel.addEventListener("change", () => {
@@ -398,6 +421,7 @@ modeSel.addEventListener("change", () => {
   starters?.refresh();
   clearOutrospectionFeed();
   openOutrospectionFeed(mode);
+  syncHfShelf(mode);
 });
 
 // The web-search popover opens on a press-and-hold of the spiderweb knob

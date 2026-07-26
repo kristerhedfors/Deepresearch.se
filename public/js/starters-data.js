@@ -97,6 +97,12 @@ export const ASPECTS = {
     "open-weights", "sandbox-tech", "eval-benchmarks", "local-inference", "sv-privacy",
     "feed-state", "strategy", "sv-architecture", "tooling", "gap-check",
   ],
+  huggingface: [
+    "pick-a-model", "cost-compare", "vision-model", "sv-language", "context-window",
+    "licence", "open-weights", "sv-cost", "benchmark-claims", "self-host",
+    "provider-choice", "quantization", "sv-pick", "dataset", "fine-tune",
+    "paper", "tool-support", "sv-licence", "small-models", "model-family",
+  ],
   "agent-builder": [
     "single-purpose", "themed-agent", "tutor", "tool-app", "distill-secure",
     "sv-agent", "data-app", "writing-aid", "dev-tool", "visual-app",
@@ -393,6 +399,59 @@ export const STARTERS = {
         text: "Vilka standarder för agenter och verktygsanrop börjar bli verkliga, och hur står sig våra egna format bredvid dem?" },
       { id: "out-open-weights", lang: "en", aspect: "open-weights",
         text: "Which recent open-weight model releases are genuinely usable in production, and what are the licence terms people keep getting wrong?" },
+    ],
+
+
+    // =====================================================================
+    // huggingface — the agent with the OPEN model catalog. Its openers have a
+    // job the others do not: get the visitor to the moment where a price is on
+    // screen next to a model they might actually run. So most of these are
+    // shaped as decisions ("which one, and what does it cost") rather than as
+    // background reading, and several name a concrete constraint — a language,
+    // a modality, a context length — because a constraint is what makes the
+    // catalog ranking do something visible.
+    // =====================================================================
+    huggingface: [
+      { id: "hfq-cheapest-vision", lang: "en", aspect: "vision-model",
+        text: "Which is the cheapest model on the Hugging Face router that can read images, and what would one research turn cost me?" },
+      { id: "hfq-swedish", lang: "en", aspect: "sv-language",
+        text: "Which open model handles Swedish best right now, and what does it cost per million tokens?" },
+      { id: "hfq-compare-price", lang: "en", aspect: "cost-compare",
+        text: "Compare the Llama and Qwen models available here on price, context length and licence." },
+      { id: "hfq-longctx", lang: "en", aspect: "context-window",
+        text: "I need at least 200k tokens of context. Which models can do that, and what is the cheapest of them?" },
+      { id: "hfq-licence", lang: "en", aspect: "licence",
+        text: "Which of the models I could enable here are actually usable commercially, and which licences trip people up?" },
+      { id: "hfq-tools", lang: "en", aspect: "tool-support",
+        text: "Which models here support real tool calling, and how reliable is it reported to be?" },
+      { id: "hfq-small", lang: "en", aspect: "small-models",
+        text: "What is the smallest model that still writes decent research prose, and what does running it cost compared with a flagship?" },
+      { id: "hfq-benchmarks", lang: "en", aspect: "benchmark-claims",
+        text: "A model card claims state-of-the-art results. How would I check that claim against independent evaluations?" },
+      { id: "hfq-selfhost", lang: "en", aspect: "self-host",
+        text: "Which recent open-weight models fit on a single 24GB GPU, and what quantization do people actually run them at?" },
+      { id: "hfq-family", lang: "en", aspect: "model-family",
+        text: "Walk me through the current Qwen family: which sizes exist, what each is for, and which one I should enable here." },
+      { id: "hfq-quant", lang: "en", aspect: "quantization",
+        text: "What does an FP8 or 1-bit variant actually cost me in quality, and are any of them served here?" },
+      { id: "hfq-dataset", lang: "en", aspect: "dataset",
+        text: "Which open datasets are people using to fine-tune for Nordic languages, and what are their licence terms?" },
+      { id: "hfq-paper", lang: "en", aspect: "paper",
+        text: "Summarise the most-discussed papers on the Hub this month and say which ones changed anything practical." },
+      { id: "hfq-provider", lang: "en", aspect: "provider-choice",
+        text: "The same model is served by several providers at different prices. How should I choose between them?" },
+      { id: "hfq-sv-vilken", lang: "sv", aspect: "sv-pick",
+        text: "Vilken modell ska jag köra för svensk text, och vad kostar den per miljon tokens?" },
+      { id: "hfq-sv-billigast", lang: "sv", aspect: "sv-cost",
+        text: "Vilken är den billigaste modellen här som ändå klarar längre resonemang? Visa prislappen." },
+      { id: "hfq-sv-licens", lang: "sv", aspect: "sv-licence",
+        text: "Vilka av de öppna modellerna får jag använda kommersiellt, och vad är den vanligaste licensfällan?" },
+      { id: "hfq-sv-jamfor", lang: "sv", aspect: "cost-compare",
+        text: "Jämför de modeller jag kan aktivera här på pris, kontextfönster och om de klarar bilder." },
+      { id: "hfq-sv-egen-server", lang: "sv", aspect: "self-host",
+        text: "Vilka öppna modeller kan jag köra på egen hårdvara i stället, och vad krävs?" },
+      { id: "hfq-sv-nyheter", lang: "sv", aspect: "open-weights",
+        text: "Vad har hänt med öppna vikter den senaste tiden, och är något av det värt att aktivera här?" },
     ],
 
     // =====================================================================

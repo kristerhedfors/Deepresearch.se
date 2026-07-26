@@ -133,13 +133,13 @@ test("sdk/AGENTS.json is a valid registry", () => {
   assert.deepEqual(validateAgentRegistry(reg), []);
 });
 
-test("the seven shipped agents are present with the expected identities", () => {
+test("the eight shipped agents are present with the expected identities", () => {
   const reg = realRegistry();
   const ids = reg.agents.map((a) => a.id).sort();
-  // Five DEFAULT agents — one per Se/rver chat mode — plus the two client-tier
+  // Six DEFAULT agents — one per Se/rver chat mode — plus the two client-tier
   // entries: the Se/cure archetype and the template you copy.
   assert.deepEqual(ids, [
-    "agent-builder", "introspection", "orchestrator", "outrospection", "research", "secure", "under-construction",
+    "agent-builder", "huggingface", "introspection", "orchestrator", "outrospection", "research", "secure", "under-construction",
   ]);
   assert.equal(findAgent(reg, "research").platform, "server");
   assert.equal(findAgent(reg, "secure").platform, "client");

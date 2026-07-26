@@ -17,8 +17,10 @@ deterministic and works on any model in the catalog. The primary LLM provider
 is **Berget.ai** (OpenAI-compatible); **Anthropic (Claude)** and **OpenAI
 (GPT)** are secondary, key-gated providers for answer/synthesis models
 (claude-* opus/sonnet/haiku — `src/anthropic.js`; bare gpt-* —
-`src/openai.js`; both dispatched via the `src/providers.js` registry; the
-JSON planning phases always stay on Berget). Web search is **Exa**.
+`src/openai.js`; hf:* — `src/hf-inference.js`, the OPEN catalog a user browses
+and enables per account in the Hugging Face agent; all dispatched via the
+`src/providers.js` registry; the JSON planning phases always stay on Berget).
+Web search is **Exa**.
 
 **Mission (2026-07-13):** the project is framed as **innovation and
 research on the privacy capabilities of LLM applications** — how far a
@@ -398,8 +400,9 @@ Features & surfaces:
 
 - **execution-sandbox** — the in-browser Linux sandbox + bash-lite agent: COEP isolation, the fenced-block loop, file mounts.
 - **introspection** — introspection mode / `developer_mode`: the committed snapshot + rag artifacts, both tiers' wiring.
+- **hf-agent** — the amber Hugging Face agent: the OPEN model catalog (`src/hf-inference.js` over router.huggingface.co, the `hf:` id namespace, the model ALLOWANCE), the mode's enrichment (forced Hub search + the EN/SV model-shopping gate + the priced catalog block + the `hf_models` event), `/api/hf/models`, the accepted-model store, and the shelf UI that promotes a model into every OTHER mode's dropdown.
 - **outrospection** — introspection's mirror image: the FIFTH chat mode (answers from the outward feed) and the feed page at `/outrospect/`: the seven-lens registry, the offline scan + per-visit refresh that fill it, and the feedback STRATEGY lane.
-- **sdk-mode** — the green Agent Studio "lovable experience" mode: the chat-mode dropdown (Deep Research / Introspection / Agent Studio / Orchestrator / Outrospection), the Platform-SDK (DistillSDK) build flow that distils an individual agent OR a whole platform, `/app/<slug>/` publishing, the MCP `sdk_*` tools.
+- **sdk-mode** — the green Agent Studio "lovable experience" mode: the chat-mode dropdown (Deep Research / Introspection / Agent Studio / Orchestrator / Outrospection / Hugging Face), the Platform-SDK (DistillSDK) build flow that distils an individual agent OR a whole platform, `/app/<slug>/` publishing, the MCP `sdk_*` tools.
 - **orchestrator-mode** — the violet sub-agent workflow mode: one JSON plan phase decomposes a request into a team of sub-agents (Deep Research / Introspection / custom) the Worker runs in parallel waves, the `workflow`/`agent_update` SSE events, the live workflow graph view.
 - **publish-app** — the admin/CLI bridge (`scripts/publish-app`, `PUT /api/build/:slug`) that publishes an already-built bundle (sandbox outbox, hand-assembled files) into sdk-mode's `/app/<slug>/` without a chat/tool loop.
 - **help-docs** — help mode, the documentation-first layer of introspection: the docs corpus/index, docs-first routing.

@@ -37,8 +37,15 @@ import {
   openaiCompleteJson,
   openaiModels,
 } from "./openai.js";
+import {
+  hfChatCompletion,
+  hfCompleteJson,
+  hfInferenceModels,
+  isHfModel,
+} from "./hf-inference.js";
+import { acceptedModels } from "./user-models.js";
 
-export { isAnthropicModel, isOpenAiModel };
+export { isAnthropicModel, isOpenAiModel, isHfModel };
 
 /**
  * One key-gated secondary provider. `matches` is the id-namespace routing
@@ -50,7 +57,7 @@ export { isAnthropicModel, isOpenAiModel };
  * @typedef {{
  *   label: string,
  *   matches: (id: unknown) => boolean,
- *   models: (env: import('./types.js').Env) => import('./types.js').ModelCatalogEntry[],
+ *   models: (env: import('./types.js').Env, accepted: import('./user-models.js').AcceptedModel[]) => import('./types.js').ModelCatalogEntry[],
  *   chatCompletion: (env: import('./types.js').Env, messages: import('./types.js').Conversation, opts: { model?: string, maxTokens?: number }) => Promise<any>,
  *   completeJson: (env: import('./types.js').Env, messages: import('./types.js').Conversation, opts: { model?: string, maxTokens?: number }) => Promise<any>,
  * }} SecondaryProvider
@@ -71,6 +78,20 @@ const SECONDARY_PROVIDERS = [
     models: openaiModels,
     chatCompletion: openaiChatCompletion,
     completeJson: openaiCompleteJson,
+  },
+  {
+    // The one provider whose menu is PER ACCOUNT. Every other entry lists a
+    // curated set the repo chose; Hugging Face's router serves an open catalog,
+    // so a model appears here only after this account browsed it in the Hugging
+    // Face agent, saw the price, and accepted it (src/user-models.js). The
+    // second `models` argument is that accepted list — [] for every caller that
+    // doesn't pass an identity, which is why an anonymous or unaware caller
+    // simply sees the catalog it always saw.
+    label: "Hugging Face",
+    matches: isHfModel,
+    models: hfInferenceModels,
+    chatCompletion: hfChatCompletion,
+    completeJson: hfCompleteJson,
   },
 ];
 
@@ -93,10 +114,14 @@ export function providerName(model) {
 // pricing then still work for the models that can actually serve.
 /**
  * @param {import('./types.js').Env} env
+ * @param {import('./settings.js').Identity | null} [identity] the signed-in
+ *   account, when the caller has one: its accepted Hugging Face models join the
+ *   catalog (src/user-models.js). Omitted → the shared catalog, unchanged.
  * @returns {Promise<import('./types.js').ModelCatalogEntry[]>}
  */
-export async function listChatModels(env) {
-  const secondary = SECONDARY_PROVIDERS.flatMap((p) => p.models(env));
+export async function listChatModels(env, identity) {
+  const accepted = identity ? acceptedModels(identity) : [];
+  const secondary = SECONDARY_PROVIDERS.flatMap((p) => p.models(env, accepted));
   try {
     const berget = await bergetListModels(env);
     return [...(berget || []), ...secondary];

@@ -253,18 +253,45 @@ export function developerModeEnabled(env, identity) {
   return identity?.user ? getSettings(identity).developer_mode : true;
 }
 
+// settings_json is not knobs-only any more. `parseSettings` deliberately drops
+// every key it doesn't recognize (that is what makes a legacy flag fall away),
+// so writing its output straight back would DELETE anything else the column
+// carries — today the accepted-model list src/user-models.js keeps there, which
+// would mean "turn on the sandbox" silently un-enabled the models an account
+// had accepted. This merge is the fix: knobs are replaced, everything else in
+// the stored object survives untouched. Pure and exported for unit tests, and
+// for user-models.js, which writes the other half through it.
+/**
+ * @param {unknown} storedJson the current settings_json (string or object)
+ * @param {Record<string, any>} patch the keys to replace
+ * @returns {Record<string, any>} the object to store
+ */
+export function mergeStoredSettings(storedJson, patch) {
+  /** @type {Record<string, any>} */
+  let stored = {};
+  try {
+    const parsed = typeof storedJson === "string" ? JSON.parse(storedJson) : storedJson;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) stored = parsed;
+  } catch {
+    stored = {};
+  }
+  return { ...stored, ...patch };
+}
+
 /**
  * @param {Env} env
- * @param {number | string} userId
+ * @param {Identity} identity
  * @param {Settings} settings
  */
-async function saveSettings(env, userId, settings) {
+async function saveSettings(env, identity, settings) {
   const db = await getDb(env);
   if (!db) throw new Error("Database not configured.");
+  const merged = mergeStoredSettings(identity.user?.settings_json, settings);
   await db
     .prepare("UPDATE users SET settings_json = ? WHERE id = ?")
-    .bind(JSON.stringify(settings), userId)
+    .bind(JSON.stringify(merged), identity.user?.id)
     .run();
+  if (identity.user) identity.user.settings_json = JSON.stringify(merged);
 }
 
 // The payload reports the EFFECTIVE state, not the raw stored flags: each
@@ -374,7 +401,7 @@ export async function handleSettingsPut(request, env, log, identity) {
   }
   const settings = { ...getSettings(identity) };
   for (const key of present) settings[key] = body[key];
-  await saveSettings(env, identity.user.id, settings);
+  await saveSettings(env, identity, settings);
   log.info("settings.updated", { user_id: identity.id, ...settings });
   return jsonResponse(settingsPayload(env, identity, settings));
 }

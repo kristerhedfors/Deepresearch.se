@@ -78,6 +78,7 @@ import {
 import { firstChunks, retrieve } from "./rag.js";
 import { renderQuiz } from "./quiz.js";
 import { renderWorkflow } from "./workflow-viz.js";
+import { renderHfModelsEvent } from "./hf-models.js";
 import { setGraphWorkflow, updateGraphAgent } from "./graph-backdrop.js";
 import { workflowEvent, workflowWaves } from "./orchestrator-core.js";
 // The on-device swarm pre-pass (maybeRunSwarmPrepass): both entry points are
@@ -611,6 +612,15 @@ function handleEvent(turn, evt, acc) {
         setGraphWorkflow(embed.workflow, embed.statuses);
       }
     }
+    else if (s.type === "hf_models" && Array.isArray(s.models) && s.models.length) {
+      // The Hugging Face agent priced the open catalog against this question
+      // (src/hf-agent.js). Render the pickable cost cards inside the turn, so
+      // the "which model, and what does it cost" decision sits next to the
+      // reasoning about it. Not recorded as a persisted embed: the prices are
+      // live and a reopened conversation must not show yesterday's rates as if
+      // they were current — the shelf (🤗) re-reads them on demand.
+      renderHfModelsEvent(turn, s);
+    }
     else if (s.type === "agent_update" && typeof s.id === "string" && turn._wfEmbed) {
       applyAgentUpdate(turn, s.id, { status: s.status, duration_ms: s.duration_ms, note: s.note });
     }
@@ -841,6 +851,13 @@ async function buildChatPayload(opts) {
     // The outward feed (src/outrospect.js) — introspection's mirror image,
     // same capability gate; the server ignores the field when the knob is off.
     payload.outrospection_mode = true;
+  } else if (chatMode === "hf") {
+    // The open-catalog agent (src/hf-agent.js): Hub search forced on for the
+    // turn, and a model-shopping message answered against the live priced
+    // router catalog. Same capability gate; the server ignores the field when
+    // the knob is off. It replaces no flow, so the turn is an ordinary research
+    // turn with the hub and the catalog in front of it.
+    payload.hf_mode = true;
   }
   // Ghost toggle: tells the server to keep this exchange out of the
   // server-side interaction log too (src/chatlog.js) — the same choice

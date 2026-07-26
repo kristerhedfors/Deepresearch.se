@@ -221,6 +221,7 @@ export const CONTEXT_BLOCKS = {
   "shell-transcript": { label: "Shell transcript", desc: "what the in-browser sandbox actually ran, as ground truth" },
   "outward-feed": { label: "Outward feed", desc: "the stored lens feed of what everyone else shipped (src/outrospect.js)", serverOnly: true },
   "owasp": { label: "OWASP reference", desc: "the OWASP Top 10 block retrieved for a security-assessment ask" },
+  "model-catalog": { label: "Model catalog", desc: "the live, priced open model catalog folded in for a model-shopping ask (src/hf-agent.js hfCatalogBlock)", serverOnly: true },
 };
 
 /** The model buckets a phase may run on. `json-default` is the fixed reliable
@@ -235,6 +236,7 @@ export const GATE_IDS = {
   "external-source": { label: "External source", desc: "does the ask want outside material? — hands a source-research turn back to research (externalSourceIntent)" },
   "lens": { label: "Lens", desc: "which standing lens does this ask belong under? (outrospect-core lensMatch)" },
   "quiz": { label: "Quiz", desc: "is this an ask for a quiz? (src/quiz.js quizIntent)" },
+  "model-shopping": { label: "Model shopping", desc: "is this ask about choosing, pricing or starting a model? (src/hf-agent.js hfModelIntent)" },
   // Listed for completeness, but PLATFORM BASELINE and so declared by no
   // shipped spec: the gate — the bare keyword or the `/feedback` command —
   // runs before any agent's answer phase, and the slash commands it is half of
@@ -256,6 +258,7 @@ export const CAPABILITY_EVENTS = {
   // could emit it without a server in the path at all.
   "swarm_update": { label: "Swarm update", desc: "a local-swarm node's members, round and agreement" },
   "build": { label: "Build", desc: "the published app's slug + URL", serverOnly: true },
+  "hf_models": { label: "Model cards", desc: "the priced, pickable open-catalog model rows", serverOnly: true },
 };
 
 /** Server capability knobs a mode may require before it is honored. */

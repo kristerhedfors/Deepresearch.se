@@ -365,7 +365,7 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
   /** @type {import('./types.js').ModelCatalog | null} */
   let catalog = null;
   try {
-    catalog = await listChatModels(env);
+    catalog = await listChatModels(env, identity);
   } catch (err) {
     log.warn("mcp.model_catalog_unavailable", { error: (/** @type {any} */ (err))?.message || String(err) });
   }

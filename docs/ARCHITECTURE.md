@@ -3,8 +3,8 @@
 Complete technical architecture of the **platform** — the Worker, the
 pipeline, the tiers, and the storage/identity/security model everything else
 stands on. The feature surfaces layered over it (Orchestrator, Agent Studio,
-Outrospection, the games, the space archive, on-device inference, compute
-sharing) are not
+Outrospection, the Hugging Face agent, the games, the space archive, on-device
+inference, compute sharing) are not
 separate architecture: they are **examples and pre-bundled agents**, and the
 goal is to express them through the two SDKs rather than as bespoke
 subsystems — §15 gives that framing and the honest current state. **Start
@@ -263,6 +263,7 @@ flowchart LR
 | Exa | `POST https://api.exa.ai/search`, `POST …/contents` | `x-api-key: EXA_API_KEY` | Web search — `numResults`/`type` scale with the time budget (§4.3b); `/contents` is the (currently disabled, §4.2) full-text fetch |
 | A results-page CASCADE + the result pages themselves | `GET` each configured source in order — DuckDuckGo's no-JS HTML, Marginalia, optionally Bing's RSS output — then a plain `GET` per result page (`src/websearch-cf.js`) | none | The Cloudflare-originating search backend: the Worker IS the search engine. A cascade because no single source answers every caller — DuckDuckGo returns an empty anti-bot shell to datacenter IPs (measured 2026-07-25). Bounded (8 s per source, 8 s per page, ≤5 pages, 3 at a time) and fail-soft — an exhausted cascade returns null and falls back to Exa |
 | Hugging Face Hub | Hub search APIs (`src/hf.js`) | `HUGGINGFACE_API_TOKEN` (optional) | Models/datasets/papers as citable sources when the question targets HF (`hfIntent`), via the search-source registry |
+| Hugging Face router | `GET https://router.huggingface.co/v1/models`, `POST …/v1/chat/completions` (`src/hf-inference.js`) | `HUGGINGFACE_API_TOKEN` (**required** — inference is billed) | The OPEN model catalog: browsed with prices in the Hugging Face agent, and — once an account accepts a model — a fourth answer/synthesis provider (`hf:*` ids). OpenAI-compatible, so no stream adapter |
 | Shodan | REST API (`src/shodan.js`) | `SHODAN_API_KEY` (optional) | Opt-in host-intelligence enrichment (`shodan_mcp` knob) — an **extension**, registered in `src/extensions.js` (§4.2a); the core does not depend on it |
 | Google Maps Platform | Places, Street View Static, Static Maps, Embed (`src/googlemaps.js`) | `GOOGLE_MAPS_API_KEY` (+ optional `GOOGLE_MAPS_EMBED_KEY`) | Opt-in maps/street-view enrichment (`google_maps` knob) + Tokemon's street mode — an **extension**, registered in `src/extensions.js` (§4.2a); the core does not depend on it |
 | OpenStreetMap Nominatim | reverse geocoding (`src/geocode.js`) | none (generic UA) | Turning attached photos' EXIF GPS into place context before the pipeline |
@@ -848,7 +849,8 @@ button (`public/js/activity.js`'s `buildResearchDebugJson`).
 Berget is the primary provider and always present; **secondary providers
 are key-gated registry entries** dispatched by model-id namespace:
 `claude-*` → Anthropic (`src/anthropic.js`), bare `gpt-*` → OpenAI
-(`src/openai.js`), everything else → Berget (including the lookalike
+(`src/openai.js`), `hf:*` → Hugging Face (`src/hf-inference.js`),
+everything else → Berget (including the lookalike
 `openai/gpt-oss-120b`, whose vendor-path id keeps it on Berget).
 Everything downstream — pipeline, enrichments, validation, quota pricing,
 UI — consumes the merged catalog (`listChatModels`) and the two dispatched
@@ -863,8 +865,25 @@ calls (`chatCompletion`, `completeJson`) and never names a provider.
   consumer parses) — only pinned wire params: `max_completion_tokens`,
   `reasoning_effort: "none"`, `stream_options.include_usage`. Static
   EUR-priced catalog.
+- **Hugging Face** is the odd one out, and deliberately: its catalog is
+  OPEN and its menu is PER ACCOUNT. The other three offer a handful of
+  models this repo chose, identical for everyone; the HF router serves
+  whatever inference providers have live (129 models at prices spanning
+  $0.03–$6.27 per 1M output tokens, measured 2026-07-26). So a model gets
+  into the catalog by a DECISION rather than by existing: the user browses
+  it in the Hugging Face agent, reads the price, and enables it — after
+  which `listChatModels(env, identity)` merges it in and it is selectable
+  in every mode. The accepted entries are price SNAPSHOTS in the account's
+  `users.settings_json` (`src/user-models.js`), so billing never depends on
+  a third-party fetch and nobody's rate changes without them re-accepting.
+  What may be enabled is bounded by the config's `hf` MODEL ALLOWANCE.
+  Wire-wise it is the simplest of the three: the router is
+  OpenAI-compatible, so like OpenAI it needs no adapter. See the
+  **hf-agent** skill.
 - The JSON planning phases stay on Berget's `DEFAULT_MODEL` by
-  construction, whatever provider answers (§4.2).
+  construction, whatever provider answers (§4.2) — which is why an
+  open-catalog model, the least predictable thing in the dropdown, can
+  never plan a research turn.
 
 Adding a provider = one client module + one registry entry (see the
 **add-llm-provider** skill).
@@ -1345,7 +1364,8 @@ use keep the deterministic single-pass injection described above. See the
 ## 15. Feature surfaces — examples and pre-bundled agents
 
 The sections above describe the platform. Almost everything a visitor
-actually *sees* sits on top of it: Orchestrator and Outrospection modes, Agent
+actually *sees* sits on top of it: Orchestrator, Outrospection and Hugging Face
+modes, Agent
 Studio, the Se/cure tier itself, published replays, the games shelf, the space
 animations, on-device inference, compute sharing. Read those as **examples
 and pre-bundled agents**, not as architecture — demonstrations of what the
