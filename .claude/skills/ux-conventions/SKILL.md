@@ -822,19 +822,29 @@ keep lighting up the nodes where the agent loops."*
    finished step). Sniffing an English label couples the drawing to copy that
    gets reworded and breaks silently — and could not work in a second language.
 3. **Nothing is inferred from the answer text.** Only events, plus what an event
-   *proves* about the steps upstream of it (a stream carrying an event proves the
-   request was routed, validated and admitted).
-4. **The graph is a declared table, not a drawing** — a pure module (nodes,
+   *proves* about the path behind it — a stream carrying anything at all proves
+   the request was admitted, and a step proves the always-run gates before it
+   were passed. Declare those implications as a table, resolve them
+   transitively, and never let one count as a round of its own.
+4. **One signal, one node.** A step that lights two nodes double-counts the
+   rounds of whichever loop they share, and a "finished" event that re-counts its
+   own start turns every ordinary step into two visits. Both were real bugs here.
+5. **The graph is a declared table, not a drawing** — a pure module (nodes,
    edges, event→node map, layout, SVG string), so a pipeline change is a table
    edit and the whole thing is Node-tested without a DOM.
-5. **State survives a closed panel.** The drawer is usually shut while a request
+6. **State survives a closed panel.** The drawer is usually shut while a request
    runs; events keep accumulating and the map catches up on open. Rendering is
-   skipped entirely while collapsed, so a live request pays nothing for a panel
-   nobody is looking at.
-6. **It scrolls inside its own box** and keeps the newest node in view — never
+   skipped entirely while collapsed, so nobody pays for a panel they aren't
+   looking at.
+7. **It scrolls inside its own box** and keeps the newest node in view — never
    scrolling the page or the list it sits in (UX-1's blast-radius discipline).
-7. **The blink is animation-only** and drops under `prefers-reduced-motion`; the
+8. **The blink is animation-only** and drops under `prefers-reduced-motion`; the
    colour change carries the state on its own.
+9. **Measure the geometry against the real stylesheet.** A diagram in a fixed
+   panel has a width budget, and SVG text neither wraps nor clips — it just
+   overlaps. Render it in a headless browser and assert the box fits and no label
+   collides with a glyph, an edge label, or a neighbouring node. The pass on this
+   one caught four defects, including a checkmark drawn through a node's name.
 
 **Canonical implementations:** `public/js/pipeline-map-core.js` (the pure half —
 node table, `nodesForStatus`, the visit-counting run state, `pipelineMapSvg`;

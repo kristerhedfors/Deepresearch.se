@@ -505,13 +505,23 @@ where the agent loops."*
   branch/terminal column) sized to fit the 320px drawer, asserted by a test.
 - **Only observed steps light.** `nodesForStatus` maps SSE status events → nodes
   and ignores what it doesn't know. Three states: idle / active (blinks) /
-  passed (stays lit). A loop node counts its rounds (`source` re-emits per tool
-  call, `gap1…gapN` per round, and a search wave in round 2+ lights the gap loop
-  too) — that count IS the "keep lighting up the nodes where the agent loops".
-  Nothing is inferred from the answer text; the front-door nodes light because a
-  stream carrying an event PROVES the request was posted, routed, validated and
-  admitted. `post` is deliberately not lit at send time — the private route and
-  an on-device pick answer browser-direct without calling `/api/chat`.
+  passed (stays lit). A loop node counts its rounds — `source` re-emits per tool
+  call, `gap1…gapN` once per round, and each `search_start`/`search_done` pair is
+  one wave — and that count IS the "keep lighting up the nodes where the agent
+  loops". Each signal feeds exactly ONE node: lighting `gap` from the search
+  events as well as its own step ids counted every gap round twice, and a
+  `step_done` counts no visit of its own (its `step_start` already did), or an
+  ordinary start/done pair read as two rounds.
+- **What may be inferred, and what may not.** Nothing comes from the answer text.
+  Two inferences are allowed, both about the path BEHIND an observed event:
+  `STREAM_OPEN_NODES` (a stream carrying any event proves the request was posted,
+  routed, validated and admitted) and `IMPLIED_UPSTREAM` (the gates that run on
+  every request and emit nothing of their own — the feedback check, the
+  enrichment pass, the mode dispatch — settle when a step downstream of them
+  fires, resolved transitively and never counted as a round). Without the second,
+  those three boxes could never light at all, and a permanently dark box reads as
+  "this never happens". `post` is deliberately NOT lit at send time — the private
+  route and an on-device pick answer browser-direct without calling `/api/chat`.
 - **Branches come off a field, not a label.** `src/pipeline.js` puts `route`
   (`feedback` / `search_off` / `direct` / `clarify` / `research`) on the finished
   `plan` step; `ROUTE_NODES` reads it. Sniffing the English label would break on
