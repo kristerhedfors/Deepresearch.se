@@ -131,6 +131,18 @@ unknown `status` types (forward compatibility).
   rendered and the embed-registry rules don't apply. Older clients ignore the
   event (forward compatibility) — they just mint a fresh slug per turn. See
   the **sdk-mode** skill.
+- `{"status":{"type":"model_cards","query":"swedish","total":137,"models":[{"id":"hf:owner/model@nebius","name":"model","provider":"huggingface","providerLabel":"Hugging Face","state":"discovered","usable":false,"usd_in":0.02,"usd_out":0.06,"turn_eur":0.00028,"context":131072,"enableable":true,"reason":null,"checks":[{"id":"json","label":"JSON mode","state":"untested","note":"","why":"…"}],"verification":{"pass":0,"fail":0,"untested":9,"total":9,"label":"not verified yet"}}],"providers":[{"id":"berget","label":"Berget","open":false,"configured":true,"count":8}],"allowance":{"max_output_usd":3,"max_enabled":6,"used":0}}}`
+  — the Models agent ranked the CROSS-PROVIDER catalog against this question
+  (src/models-agent.js `runModelsAgentEnrichment`, gated on the EN+SV
+  `modelIntent`). The client (public/js/models-panel.js
+  `renderModelCardsEvent`) renders pickable cards in the turn body, each with
+  its price and its verification checklist; the buttons call
+  `/api/models/{enable,disable,verify}`. Deliberately NOT recorded in the embed
+  registry, unlike the workflow and quiz elements: prices and check results are
+  live, and a reopened conversation showing yesterday's as if they were current
+  is worse than showing nothing — the ⚖ board re-reads them on demand. Older
+  clients ignore the event and get the priced answer text alone. See the
+  **models-agent** skill.
 - `{"status":{"type":"quiz","quiz":{"title":"…","intro":"…","questions":[{"question":"…","alternatives":["…","…"],"correct":1,"explanation":"…"}]}}}`
   — the inline-quiz capability (src/quiz.js's deterministic `quizIntent`
   gate, with a fail-soft triage `quiz:true` backup flag for typos/paraphrases

@@ -7,7 +7,7 @@
   "reachability_note": "An agent is reachable three ways, tried most specific first, all applying the same requirement gate: an inline `agent_spec` object on the /api/chat request (a spec the caller wrote — no registry load), an `agent` id addressing an entry in this file (no `defaults` row, flag, chat mode or CSS needed), and the `defaults` table's mode flags. Falling through is the only failure mode: an unknown id, an ungranted one and a refused inline spec all resolve to the agent the request would have got anyway, so nothing errors, nothing escalates, and probing reveals nothing.",
   "untrusted_spec_note": "A spec that did NOT come from this committed file is resolved through resolveUntrustedAgent(spec, granted), which fails closed — not an object, any validation problem, or any ungranted requirement yields no agent and the reasons why, never a partial capability. Requirements are DERIVED from what a capability selects (requirementsFor over IMPLIED_REQUIREMENTS, pinned against this registry), never read from the self-declared `requires`: a spec claiming to need nothing while selecting the build tools is refused exactly as if it had been honest. Nothing new is enforced there — the closed vocabularies, invariants 1/3/4/6 and the narrowing accessors already do the work; the boundary runs them on the request path and refuses.",
   "reference_product": "deepresearch.se",
-  "agents_are_not_chat_modes": "The entries below are reference AgentSpecs — templates you copy to define a new agent. They are not themselves the chat-mode dropdown, and they are not the tiers. FIVE of them are the DEFAULT agent of a chat mode, bound to it by the `defaults` table above, and two (secure, under-construction) are tier archetypes bound to no mode. An agent PICKS a tier via `platform` (client = Se/cure, server = Se/rver) and a mode via `mode`; the specs named Research and Secure are simply the reference agent for each tier, not the tiers themselves. Since spec 0.2.0 an agent also picks an ANSWER PHASE via `capability.answerPhase` — one of the phases the platform already implements. A spec can therefore reach any shipped execution semantics, but it still cannot invent new ones: a genuinely new executor is a row in src/pipeline.js ANSWER_PHASE_RUNNERS, written by hand.",
+  "agents_are_not_chat_modes": "The entries below are reference AgentSpecs — templates you copy to define a new agent. They are not themselves the chat-mode dropdown, and they are not the tiers. SIX of them are the DEFAULT agent of a chat mode, bound to it by the `defaults` table above, and two (secure, under-construction) are tier archetypes bound to no mode. An agent PICKS a tier via `platform` (client = Se/cure, server = Se/rver) and a mode via `mode`; the specs named Research and Secure are simply the reference agent for each tier, not the tiers themselves. Since spec 0.2.0 an agent also picks an ANSWER PHASE via `capability.answerPhase` — one of the phases the platform already implements. A spec can therefore reach any shipped execution semantics, but it still cannot invent new ones: a genuinely new executor is a row in src/pipeline.js ANSWER_PHASE_RUNNERS, written by hand.",
   "starters_note": "The `examples` field on each agent below is the SEED set — three or so questions used by Agent Studio previews and by exampleGenPrompt when generating more. It is NOT what a visitor sees on an empty chat. That is the STARTER QUEUE: a separate, deeper registry (public/js/starters-data.js, logic in public/js/starters-core.js, façade src/starters.js) holding 20+ opening questions per agent, of which four are shown at a time and rotated. The two are kept apart deliberately — a spec's examples describe the agent for someone deriving a new one, while a starter queue is a ranked, evaluated product surface whose entries carry scores from tests/starter-eval.mjs. See the **starter-prompts** skill.",
   "control_types": {
     "prompt-input": "the message textarea",
@@ -15,17 +15,42 @@
     "model-select": "choose the answer/synthesis model (provider registry)",
     "depth-slider": "research depth → number of pipeline search rounds",
     "toggle": "a boolean request flag (web search, incognito, …) — id IS the flag",
-    "mode-select": "choose the chat mode — the app's five canonical ids: normal (Deep Research) / introspection / sdk (Agent Studio; the spec's historical alias agent-builder still resolves to it) / orchestrator / outrospection",
+    "mode-select": "choose the chat mode — the app's six canonical ids: normal (Deep Research) / introspection / sdk (Agent Studio; the spec's historical alias agent-builder still resolves to it) / orchestrator / outrospection / models (Models)",
     "attachments": "attach files to the turn"
   },
   "defaults": [
-    { "mode": "sdk", "agent": "agent-builder", "flag": "sdk_mode" },
-    { "mode": "orchestrator", "agent": "orchestrator", "flag": "orchestrator_mode" },
-    { "mode": "outrospection", "agent": "outrospection", "flag": "outrospection_mode" },
-    { "mode": "introspection", "agent": "introspection", "flag": null },
-    { "mode": "normal", "agent": "research", "flag": null }
+    {
+      "mode": "sdk",
+      "agent": "agent-builder",
+      "flag": "sdk_mode"
+    },
+    {
+      "mode": "orchestrator",
+      "agent": "orchestrator",
+      "flag": "orchestrator_mode"
+    },
+    {
+      "mode": "outrospection",
+      "agent": "outrospection",
+      "flag": "outrospection_mode"
+    },
+    {
+      "mode": "models",
+      "agent": "models",
+      "flag": "models_mode"
+    },
+    {
+      "mode": "introspection",
+      "agent": "introspection",
+      "flag": null
+    },
+    {
+      "mode": "normal",
+      "agent": "research",
+      "flag": null
+    }
   ],
-  "defaults_note": "The Se/rver app's five DEFAULT agents — one per chat mode (public/js/chat-mode.js CHAT_MODES). ARRAY ORDER IS PRECEDENCE, mirroring src/chat.js: a request carrying several mode flags resolves to the first match (sdk > orchestrator > outrospection). `flag` names the /api/chat request field that selects the mode; a null flag means the mode is derived — introspection when the developer_mode capability is granted and no flag is set, normal otherwise. Agents NOT listed here (secure, under-construction) are tier archetypes and templates, not chat modes.",
+  "defaults_note": "The Se/rver app's six DEFAULT agents — one per chat mode (public/js/chat-mode.js CHAT_MODES). ARRAY ORDER IS PRECEDENCE, mirroring src/chat.js: a request carrying several mode flags resolves to the first match (sdk > orchestrator > outrospection > models). `flag` names the /api/chat request field that selects the mode; a null flag means the mode is derived — introspection when the developer_mode capability is granted and no flag is set, normal otherwise. Agents NOT listed here (secure, under-construction) are tier archetypes and templates, not chat modes.",
   "agents": [
     {
       "id": "research",
@@ -42,30 +67,100 @@
         "--agent-bg": "#0b0f17",
         "--agent-fg": "#e8edf4"
       },
-      "intro": { "kind": "fade", "durationMs": 400 },
-      "loading": { "kind": "pipeline-phases", "messages": ["Triaging…", "Searching…", "Checking gaps…", "Synthesising…", "Validating…"] },
-      "backdrop": { "kind": "terminal" },
+      "intro": {
+        "kind": "fade",
+        "durationMs": 400
+      },
+      "loading": {
+        "kind": "pipeline-phases",
+        "messages": [
+          "Triaging…",
+          "Searching…",
+          "Checking gaps…",
+          "Synthesising…",
+          "Validating…"
+        ]
+      },
+      "backdrop": {
+        "kind": "terminal"
+      },
       "controls": [
-        { "type": "prompt-input", "placeholder": "Ask a research question…" },
-        { "type": "model-select", "providers": "all", "allowLocal": false },
-        { "type": "depth-slider", "min": 0, "max": 3, "default": 1, "ticks": ["Quick", "Standard", "Deep", "Exhaustive"] },
-        { "type": "toggle", "id": "web_search", "label": "Web search", "default": true },
-        { "type": "toggle", "id": "incognito", "label": "Incognito", "default": false },
-        { "type": "attachments", "accept": "*/*", "max": 5 },
-        { "type": "mode-select", "modes": ["normal", "introspection", "sdk", "orchestrator", "outrospection"] },
-        { "type": "send-button" }
+        {
+          "type": "prompt-input",
+          "placeholder": "Ask a research question…"
+        },
+        {
+          "type": "model-select",
+          "providers": "all",
+          "allowLocal": false
+        },
+        {
+          "type": "depth-slider",
+          "min": 0,
+          "max": 3,
+          "default": 1,
+          "ticks": [
+            "Quick",
+            "Standard",
+            "Deep",
+            "Exhaustive"
+          ]
+        },
+        {
+          "type": "toggle",
+          "id": "web_search",
+          "label": "Web search",
+          "default": true
+        },
+        {
+          "type": "toggle",
+          "id": "incognito",
+          "label": "Incognito",
+          "default": false
+        },
+        {
+          "type": "attachments",
+          "accept": "*/*",
+          "max": 5
+        },
+        {
+          "type": "mode-select",
+          "modes": [
+            "normal",
+            "introspection",
+            "sdk",
+            "orchestrator",
+            "outrospection"
+          ]
+        },
+        {
+          "type": "send-button"
+        }
       ],
       "capability": {
         "answerPhase": "research",
         "prompts": "research",
         "tools": [],
         "toolFallback": "none",
-        "context": ["shell-transcript"],
-        "search": { "web": true, "auxSources": true, "maxQueries": null },
-        "routing": { "planModel": "json-default", "answerModel": "user" },
+        "context": [
+          "shell-transcript"
+        ],
+        "search": {
+          "web": true,
+          "auxSources": true,
+          "maxQueries": null
+        },
+        "routing": {
+          "planModel": "json-default",
+          "answerModel": "user"
+        },
         "gates": [],
         "bounds": {},
-        "emits": ["step", "search", "quiz"],
+        "emits": [
+          "step",
+          "search",
+          "quiz"
+        ],
         "requires": [],
         "team": null
       },
@@ -75,7 +170,12 @@
         "Compare Cloudflare Workers, Deno Deploy and Bun for a low-latency edge API."
       ],
       "generateExamples": true,
-      "quota": { "window": "day", "requests": 50, "credits": null, "note": "Signed-in default window; a share link mints its own metered token." }
+      "quota": {
+        "window": "day",
+        "requests": 50,
+        "credits": null,
+        "note": "Signed-in default window; a share link mints its own metered token."
+      }
     },
     {
       "id": "secure",
@@ -92,28 +192,80 @@
         "--agent-bg": "#08120e",
         "--agent-fg": "#e6f4ee"
       },
-      "intro": { "kind": "seal", "durationMs": 500 },
-      "loading": { "kind": "pipeline-phases", "messages": ["Triaging…", "Searching…", "Synthesising…"] },
-      "backdrop": { "kind": "terminal" },
+      "intro": {
+        "kind": "seal",
+        "durationMs": 500
+      },
+      "loading": {
+        "kind": "pipeline-phases",
+        "messages": [
+          "Triaging…",
+          "Searching…",
+          "Synthesising…"
+        ]
+      },
+      "backdrop": {
+        "kind": "terminal"
+      },
       "controls": [
-        { "type": "prompt-input", "placeholder": "Ask — nothing leaves this device except the model call…" },
-        { "type": "model-select", "providers": "cors-capable", "allowLocal": true },
-        { "type": "depth-slider", "min": 0, "max": 2, "default": 1, "ticks": ["Quick", "Standard", "Deep"] },
-        { "type": "toggle", "id": "web_search", "label": "Web search (granted)", "default": false },
-        { "type": "attachments", "accept": "*/*", "max": 5 },
-        { "type": "send-button" }
+        {
+          "type": "prompt-input",
+          "placeholder": "Ask — nothing leaves this device except the model call…"
+        },
+        {
+          "type": "model-select",
+          "providers": "cors-capable",
+          "allowLocal": true
+        },
+        {
+          "type": "depth-slider",
+          "min": 0,
+          "max": 2,
+          "default": 1,
+          "ticks": [
+            "Quick",
+            "Standard",
+            "Deep"
+          ]
+        },
+        {
+          "type": "toggle",
+          "id": "web_search",
+          "label": "Web search (granted)",
+          "default": false
+        },
+        {
+          "type": "attachments",
+          "accept": "*/*",
+          "max": 5
+        },
+        {
+          "type": "send-button"
+        }
       ],
       "capability": {
         "answerPhase": "research",
         "prompts": "research",
         "tools": [],
         "toolFallback": "none",
-        "context": ["shell-transcript"],
-        "search": { "web": true, "auxSources": false, "maxQueries": null },
-        "routing": { "planModel": "json-default", "answerModel": "user" },
+        "context": [
+          "shell-transcript"
+        ],
+        "search": {
+          "web": true,
+          "auxSources": false,
+          "maxQueries": null
+        },
+        "routing": {
+          "planModel": "json-default",
+          "answerModel": "user"
+        },
         "gates": [],
         "bounds": {},
-        "emits": ["step", "search"],
+        "emits": [
+          "step",
+          "search"
+        ],
         "requires": [],
         "team": null
       },
@@ -123,7 +275,12 @@
         "What can a static host observe about my session? What can't it?"
       ],
       "generateExamples": true,
-      "quota": { "window": "day", "requests": 0, "credits": null, "note": "No server quota by default — Se/cure runs on your own keys. A share link may add a bounded, disclosed web-search grant." }
+      "quota": {
+        "window": "day",
+        "requests": 0,
+        "credits": null,
+        "note": "No server quota by default — Se/cure runs on your own keys. A share link may add a bounded, disclosed web-search grant."
+      }
     },
     {
       "id": "under-construction",
@@ -140,12 +297,24 @@
         "--agent-bg": "#14100a",
         "--agent-fg": "#f4ecdd"
       },
-      "intro": { "kind": "none" },
-      "loading": { "kind": "dots" },
-      "backdrop": { "kind": "none" },
+      "intro": {
+        "kind": "none"
+      },
+      "loading": {
+        "kind": "dots"
+      },
+      "backdrop": {
+        "kind": "none"
+      },
       "controls": [
-        { "type": "prompt-input", "placeholder": "This agent is under construction…" },
-        { "type": "send-button", "label": "Send" }
+        {
+          "type": "prompt-input",
+          "placeholder": "This agent is under construction…"
+        },
+        {
+          "type": "send-button",
+          "label": "Send"
+        }
       ],
       "capability": {
         "answerPhase": "direct",
@@ -153,11 +322,20 @@
         "tools": [],
         "toolFallback": "none",
         "context": [],
-        "search": { "web": false, "auxSources": false, "maxQueries": 0 },
-        "routing": { "planModel": "json-default", "answerModel": "user" },
+        "search": {
+          "web": false,
+          "auxSources": false,
+          "maxQueries": 0
+        },
+        "routing": {
+          "planModel": "json-default",
+          "answerModel": "user"
+        },
         "gates": [],
         "bounds": {},
-        "emits": ["step"],
+        "emits": [
+          "step"
+        ],
         "requires": [],
         "team": null
       },
@@ -165,7 +343,12 @@
         "What will this agent do?"
       ],
       "generateExamples": false,
-      "quota": { "window": "day", "requests": 10, "credits": null, "note": "A cautious default for a work-in-progress share link." }
+      "quota": {
+        "window": "day",
+        "requests": 10,
+        "credits": null,
+        "note": "A cautious default for a work-in-progress share link."
+      }
     },
     {
       "id": "introspection",
@@ -182,29 +365,97 @@
         "--agent-bg": "#0e1114",
         "--agent-fg": "#e9edf1"
       },
-      "intro": { "kind": "fade", "durationMs": 400 },
-      "loading": { "kind": "source-steps", "messages": ["Retrieving source…", "Reading files…", "Writing report…"] },
-      "backdrop": { "kind": "terminal" },
+      "intro": {
+        "kind": "fade",
+        "durationMs": 400
+      },
+      "loading": {
+        "kind": "source-steps",
+        "messages": [
+          "Retrieving source…",
+          "Reading files…",
+          "Writing report…"
+        ]
+      },
+      "backdrop": {
+        "kind": "terminal"
+      },
       "controls": [
-        { "type": "prompt-input", "placeholder": "Ask how this site is built…" },
-        { "type": "model-select", "providers": "all", "allowLocal": false },
-        { "type": "toggle", "id": "incognito", "label": "Incognito", "default": false },
-        { "type": "attachments", "accept": "*/*", "max": 5 },
-        { "type": "mode-select", "modes": ["normal", "introspection", "sdk", "orchestrator", "outrospection"] },
-        { "type": "send-button" }
+        {
+          "type": "prompt-input",
+          "placeholder": "Ask how this site is built…"
+        },
+        {
+          "type": "model-select",
+          "providers": "all",
+          "allowLocal": false
+        },
+        {
+          "type": "toggle",
+          "id": "incognito",
+          "label": "Incognito",
+          "default": false
+        },
+        {
+          "type": "attachments",
+          "accept": "*/*",
+          "max": 5
+        },
+        {
+          "type": "mode-select",
+          "modes": [
+            "normal",
+            "introspection",
+            "sdk",
+            "orchestrator",
+            "outrospection"
+          ]
+        },
+        {
+          "type": "send-button"
+        }
       ],
       "capability": {
         "answerPhase": "source-research",
         "prompts": "source-research",
-        "tools": ["source-read"],
+        "tools": [
+          "source-read"
+        ],
         "toolFallback": "read-loop",
-        "context": ["source-snapshot", "docs-corpus", "owasp", "shell-transcript"],
-        "search": { "web": false, "auxSources": true, "maxQueries": 0 },
-        "routing": { "planModel": "json-default", "answerModel": "user" },
-        "gates": [{ "id": "external-source", "langs": ["en", "sv"] }],
-        "bounds": { "maxRounds": 6 },
-        "emits": ["step", "quiz"],
-        "requires": ["developer_mode"],
+        "context": [
+          "source-snapshot",
+          "docs-corpus",
+          "owasp",
+          "shell-transcript"
+        ],
+        "search": {
+          "web": false,
+          "auxSources": true,
+          "maxQueries": 0
+        },
+        "routing": {
+          "planModel": "json-default",
+          "answerModel": "user"
+        },
+        "gates": [
+          {
+            "id": "external-source",
+            "langs": [
+              "en",
+              "sv"
+            ]
+          }
+        ],
+        "bounds": {
+          "maxRounds": 6
+        },
+        "emits": [
+          "step",
+          "quiz"
+        ],
+        "requires": [
+          "developer_mode"
+        ],
         "team": null
       },
       "examples": [
@@ -213,7 +464,12 @@
         "Assess this project's security posture from its actual source."
       ],
       "generateExamples": true,
-      "quota": { "window": "day", "requests": 30, "credits": null, "note": "Reading the snapshot is cheap; the tool loop is not — a moderate default." }
+      "quota": {
+        "window": "day",
+        "requests": 30,
+        "credits": null,
+        "note": "Reading the snapshot is cheap; the tool loop is not — a moderate default."
+      }
     },
     {
       "id": "orchestrator",
@@ -230,29 +486,92 @@
         "--agent-bg": "#0d0a16",
         "--agent-fg": "#ece7f8"
       },
-      "intro": { "kind": "assemble", "durationMs": 600 },
-      "loading": { "kind": "workflow-waves", "messages": ["Planning the team…", "Running wave 1…", "Merging briefs…"] },
-      "backdrop": { "kind": "graph" },
+      "intro": {
+        "kind": "assemble",
+        "durationMs": 600
+      },
+      "loading": {
+        "kind": "workflow-waves",
+        "messages": [
+          "Planning the team…",
+          "Running wave 1…",
+          "Merging briefs…"
+        ]
+      },
+      "backdrop": {
+        "kind": "graph"
+      },
       "controls": [
-        { "type": "prompt-input", "placeholder": "Describe a task for a team of agents…" },
-        { "type": "model-select", "providers": "all", "allowLocal": false },
-        { "type": "attachments", "accept": "*/*", "max": 5 },
-        { "type": "mode-select", "modes": ["normal", "introspection", "sdk", "orchestrator", "outrospection"] },
-        { "type": "send-button" }
+        {
+          "type": "prompt-input",
+          "placeholder": "Describe a task for a team of agents…"
+        },
+        {
+          "type": "model-select",
+          "providers": "all",
+          "allowLocal": false
+        },
+        {
+          "type": "attachments",
+          "accept": "*/*",
+          "max": 5
+        },
+        {
+          "type": "mode-select",
+          "modes": [
+            "normal",
+            "introspection",
+            "sdk",
+            "orchestrator",
+            "outrospection"
+          ]
+        },
+        {
+          "type": "send-button"
+        }
       ],
       "capability": {
         "answerPhase": "workflow",
         "prompts": "workflow",
         "tools": [],
         "toolFallback": "none",
-        "context": ["source-snapshot"],
-        "search": { "web": true, "auxSources": false, "maxQueries": 6 },
-        "routing": { "planModel": "json-default", "answerModel": "user" },
+        "context": [
+          "source-snapshot"
+        ],
+        "search": {
+          "web": true,
+          "auxSources": false,
+          "maxQueries": 6
+        },
+        "routing": {
+          "planModel": "json-default",
+          "answerModel": "user"
+        },
         "gates": [],
-        "bounds": { "maxTokens": 2048, "timeoutMs": 150000 },
-        "emits": ["step", "search", "workflow", "agent_update", "swarm_update"],
-        "requires": ["developer_mode"],
-        "team": { "kinds": ["research", "introspection"], "allowCustom": true, "maxAgents": 6, "maxWaves": 3, "maxQueriesPerAgent": 2 }
+        "bounds": {
+          "maxTokens": 2048,
+          "timeoutMs": 150000
+        },
+        "emits": [
+          "step",
+          "search",
+          "workflow",
+          "agent_update",
+          "swarm_update"
+        ],
+        "requires": [
+          "developer_mode"
+        ],
+        "team": {
+          "kinds": [
+            "research",
+            "introspection"
+          ],
+          "allowCustom": true,
+          "maxAgents": 6,
+          "maxWaves": 3,
+          "maxQueriesPerAgent": 2
+        }
       },
       "examples": [
         "Compare three vector databases: one agent per product, then merge the verdict.",
@@ -260,7 +579,12 @@
         "Assess this site's privacy posture from the source and from what competitors claim."
       ],
       "generateExamples": true,
-      "quota": { "window": "day", "requests": 15, "credits": null, "note": "One request runs a whole team — a tighter default than single-agent modes." }
+      "quota": {
+        "window": "day",
+        "requests": 15,
+        "credits": null,
+        "note": "One request runs a whole team — a tighter default than single-agent modes."
+      }
     },
     {
       "id": "outrospection",
@@ -277,27 +601,78 @@
         "--agent-bg": "#14100e",
         "--agent-fg": "#f2eadf"
       },
-      "intro": { "kind": "fade", "durationMs": 400 },
-      "loading": { "kind": "feed-lenses", "messages": ["Choosing a lens…", "Reading the feed…", "Writing the brief…"] },
-      "backdrop": { "kind": "terminal" },
+      "intro": {
+        "kind": "fade",
+        "durationMs": 400
+      },
+      "loading": {
+        "kind": "feed-lenses",
+        "messages": [
+          "Choosing a lens…",
+          "Reading the feed…",
+          "Writing the brief…"
+        ]
+      },
+      "backdrop": {
+        "kind": "terminal"
+      },
       "controls": [
-        { "type": "prompt-input", "placeholder": "Ask what the rest of the field shipped…" },
-        { "type": "model-select", "providers": "all", "allowLocal": false },
-        { "type": "mode-select", "modes": ["normal", "introspection", "sdk", "orchestrator", "outrospection"] },
-        { "type": "send-button" }
+        {
+          "type": "prompt-input",
+          "placeholder": "Ask what the rest of the field shipped…"
+        },
+        {
+          "type": "model-select",
+          "providers": "all",
+          "allowLocal": false
+        },
+        {
+          "type": "mode-select",
+          "modes": [
+            "normal",
+            "introspection",
+            "sdk",
+            "orchestrator",
+            "outrospection"
+          ]
+        },
+        {
+          "type": "send-button"
+        }
       ],
       "capability": {
         "answerPhase": "feed",
         "prompts": "feed",
         "tools": [],
         "toolFallback": "none",
-        "context": ["outward-feed"],
-        "search": { "web": false, "auxSources": false, "maxQueries": 0 },
-        "routing": { "planModel": "json-default", "answerModel": "user" },
-        "gates": [{ "id": "lens", "langs": ["en", "sv"] }],
+        "context": [
+          "outward-feed"
+        ],
+        "search": {
+          "web": false,
+          "auxSources": false,
+          "maxQueries": 0
+        },
+        "routing": {
+          "planModel": "json-default",
+          "answerModel": "user"
+        },
+        "gates": [
+          {
+            "id": "lens",
+            "langs": [
+              "en",
+              "sv"
+            ]
+          }
+        ],
         "bounds": {},
-        "emits": ["step"],
-        "requires": ["developer_mode"],
+        "emits": [
+          "step"
+        ],
+        "requires": [
+          "developer_mode"
+        ],
         "team": null
       },
       "examples": [
@@ -306,7 +681,148 @@
         "Which privacy-first assistants launched recently, and what do they actually promise?"
       ],
       "generateExamples": true,
-      "quota": { "window": "day", "requests": 30, "credits": null, "note": "Answering from a pre-collected feed is cheap — no live search on the turn." }
+      "quota": {
+        "window": "day",
+        "requests": 30,
+        "credits": null,
+        "note": "Answering from a pre-collected feed is cheap — no live search on the turn."
+      }
+    },
+    {
+      "id": "models",
+      "name": "Models",
+      "tagline": "The agent whose subject is the models themselves — explore every provider, evaluate, enable.",
+      "description": "The model lifecycle, in one place. It researches the model landscape with the Hugging Face Hub in every search wave, and it holds the live catalog of every model this deployment can reach — Berget, Anthropic, OpenAI and the open Hugging Face router — with each one's price and its verification checklist. A model moves discovered -> evaluated -> enabled here: the checks are real probes run against the real provider dispatch, they are evidence rather than gates (a failing check is a known limitation, never a ban), and enabling puts a model in every other agent's dropdown, bounded by a starting model allowance the site config raises.",
+      "platform": "server",
+      "tier": "Se/rver",
+      "derivesFrom": "research",
+      "mode": "models",
+      "theme": {
+        "--agent-accent": "#b8860b",
+        "--agent-accent-soft": "rgba(255,210,30,0.16)",
+        "--agent-bg": "#15120a",
+        "--agent-fg": "#f4efe2"
+      },
+      "intro": {
+        "kind": "fade",
+        "durationMs": 400
+      },
+      "loading": {
+        "kind": "pipeline-phases",
+        "messages": [
+          "Triaging…",
+          "Searching the Hub…",
+          "Reading the model catalog…",
+          "Synthesising…"
+        ]
+      },
+      "backdrop": {
+        "kind": "terminal"
+      },
+      "controls": [
+        {
+          "type": "prompt-input",
+          "placeholder": "Ask about a model — which to run, what it costs, what it passed…"
+        },
+        {
+          "type": "model-select",
+          "providers": "all",
+          "allowLocal": false
+        },
+        {
+          "type": "depth-slider",
+          "min": 0,
+          "max": 3,
+          "default": 1,
+          "ticks": [
+            "Quick",
+            "Standard",
+            "Deep",
+            "Exhaustive"
+          ]
+        },
+        {
+          "type": "toggle",
+          "id": "web_search",
+          "label": "Web search",
+          "default": true
+        },
+        {
+          "type": "toggle",
+          "id": "incognito",
+          "label": "Incognito",
+          "default": false
+        },
+        {
+          "type": "attachments",
+          "accept": "*/*",
+          "max": 5
+        },
+        {
+          "type": "mode-select",
+          "modes": [
+            "normal",
+            "introspection",
+            "sdk",
+            "orchestrator",
+            "outrospection",
+            "models"
+          ]
+        },
+        {
+          "type": "send-button"
+        }
+      ],
+      "capability": {
+        "answerPhase": "research",
+        "prompts": "research",
+        "tools": [],
+        "toolFallback": "none",
+        "context": [
+          "model-catalog",
+          "shell-transcript"
+        ],
+        "search": {
+          "web": true,
+          "auxSources": true,
+          "maxQueries": null
+        },
+        "routing": {
+          "planModel": "json-default",
+          "answerModel": "user"
+        },
+        "gates": [
+          {
+            "id": "model-lifecycle",
+            "langs": [
+              "en",
+              "sv"
+            ]
+          }
+        ],
+        "bounds": {},
+        "emits": [
+          "step",
+          "search",
+          "model_cards"
+        ],
+        "requires": [
+          "developer_mode"
+        ],
+        "team": null
+      },
+      "examples": [
+        "Which model can I run here that reads images, and what does one research turn cost?",
+        "Vilken modell ska jag aktivera för svensk text, och vad har den verifierats för?",
+        "Compare the models I have enabled on price, context length and which checks they pass."
+      ],
+      "generateExamples": true,
+      "quota": {
+        "window": "day",
+        "requests": 50,
+        "credits": null,
+        "note": "Signed-in default window; an enabled open-catalog model bills at its own published rate, and a verification run bills like any other model call."
+      }
     },
     {
       "id": "agent-builder",
@@ -323,27 +839,83 @@
         "--agent-bg": "#07130b",
         "--agent-fg": "#e7f7ea"
       },
-      "intro": { "kind": "assemble", "durationMs": 600 },
-      "loading": { "kind": "build-steps", "messages": ["Planning modules…", "Reading Se/cure source…", "Writing files…", "Publishing…"] },
-      "backdrop": { "kind": "terminal" },
+      "intro": {
+        "kind": "assemble",
+        "durationMs": 600
+      },
+      "loading": {
+        "kind": "build-steps",
+        "messages": [
+          "Planning modules…",
+          "Reading Se/cure source…",
+          "Writing files…",
+          "Publishing…"
+        ]
+      },
+      "backdrop": {
+        "kind": "terminal"
+      },
       "controls": [
-        { "type": "prompt-input", "placeholder": "Describe the agent to build…" },
-        { "type": "model-select", "providers": "tool-capable", "allowLocal": false },
-        { "type": "mode-select", "modes": ["normal", "introspection", "sdk", "orchestrator", "outrospection"] },
-        { "type": "send-button", "label": "Build" }
+        {
+          "type": "prompt-input",
+          "placeholder": "Describe the agent to build…"
+        },
+        {
+          "type": "model-select",
+          "providers": "tool-capable",
+          "allowLocal": false
+        },
+        {
+          "type": "mode-select",
+          "modes": [
+            "normal",
+            "introspection",
+            "sdk",
+            "orchestrator",
+            "outrospection"
+          ]
+        },
+        {
+          "type": "send-button",
+          "label": "Build"
+        }
       ],
       "capability": {
         "answerPhase": "build",
         "prompts": "build",
-        "tools": ["source-read", "sdk-plan", "build-publish"],
+        "tools": [
+          "source-read",
+          "sdk-plan",
+          "build-publish"
+        ],
         "toolFallback": "file-blocks",
-        "context": ["source-snapshot", "secure-digest", "shell-transcript"],
-        "search": { "web": false, "auxSources": false, "maxQueries": 0 },
-        "routing": { "planModel": "json-default", "answerModel": "user" },
+        "context": [
+          "source-snapshot",
+          "secure-digest",
+          "shell-transcript"
+        ],
+        "search": {
+          "web": false,
+          "auxSources": false,
+          "maxQueries": 0
+        },
+        "routing": {
+          "planModel": "json-default",
+          "answerModel": "user"
+        },
         "gates": [],
-        "bounds": { "maxRounds": 12, "maxTokens": 16384, "timeoutMs": 240000 },
-        "emits": ["step", "build"],
-        "requires": ["developer_mode"],
+        "bounds": {
+          "maxRounds": 12,
+          "maxTokens": 16384,
+          "timeoutMs": 240000
+        },
+        "emits": [
+          "step",
+          "build"
+        ],
+        "requires": [
+          "developer_mode"
+        ],
         "team": null
       },
       "examples": [
@@ -352,7 +924,12 @@
         "Make a Swedish-language study assistant with a depth slider and no web search."
       ],
       "generateExamples": true,
-      "quota": { "window": "day", "requests": 20, "credits": null, "note": "Building is expensive; a share link to a builder gets a tighter default." }
+      "quota": {
+        "window": "day",
+        "requests": 20,
+        "credits": null,
+        "note": "Building is expensive; a share link to a builder gets a tighter default."
+      }
     }
   ]
 }
