@@ -23,7 +23,9 @@
 import { streamCompletion } from "./answer-stream.js";
 import { completeJson } from "./providers.js";
 import { webSearch } from "./exa.js";
+import { loggerRequestId } from "./log.js";
 import { addUsage } from "./quota.js";
+import { classifyFailure, recordSubsystemFailure } from "./server-errors.js";
 import { addSources, sourceDigest } from "./sources.js";
 import { retrieveSourceBlockFor } from "./introspect.js";
 import { phasePrompt } from "./prompt-sets.js";
@@ -48,6 +50,12 @@ import {
 export const ORCH_NODE_MAX_TOKENS = 2048;
 export const ORCH_NODE_TIMEOUT_MS = 150_000;
 const ORCH_PLAN_MAX_TOKENS = 900;
+
+// How many node failures are described in full in the chat_logs row. A run is
+// capped at MAX_AGENTS (6) nodes, so this can only bind if the cap moves or a
+// future retry loop re-fails the same node — bound it anyway rather than let a
+// log field grow with the run (the `failed` COUNT stays exact regardless).
+export const MAX_LOGGED_FAILURES = 12;
 
 /**
  * The whole Orchestrator answer phase (routed from pipeline.js runPipeline
@@ -98,10 +106,23 @@ export async function runOrchestration(ctx) {
       raw = r.value;
     } catch (/** @type {any} */ err) {
       ctx.log.warn("chat.phase_failed", { phase: "orch_plan", model: ctx.jsonModel, error: err?.message || String(err) });
+      // Durable too: a plan phase that keeps failing silently degrades every
+      // Orchestrator run to a one-agent fallback, which reads to the user as
+      // "the mode does nothing" rather than as a bug.
+      await recordSubsystemFailure(ctx.env, ctx.log, {
+        subsystem: "orchestrator",
+        op: "plan",
+        failureClass: classifyFailure(err),
+        detail: err?.message || String(err),
+        requestId: loggerRequestId(ctx.log),
+        context: { model: ctx.jsonModel },
+      });
     }
   }
   let plan = preplanned || normalizeWorkflow(raw, { hasSource, hasSwarm: !!swarm });
   if (!plan) plan = fallbackPlan(ctx);
+  /** @type {Array<{ id: string, kind: string, wave: number, class: string, ms: number, note: string }>} */
+  const failures = [];
   const { waves } = workflowWaves(plan);
   emit({ status: /** @type {any} */ (workflowEvent(plan)) });
   ctx.stepDone(
@@ -134,7 +155,8 @@ export async function runOrchestration(ctx) {
   }
   const searchBudget = { used: 0 };
   let failed = 0;
-  for (const wave of waves) {
+  for (let w = 0; w < waves.length; w++) {
+    const wave = waves[w];
     // Nodes within a wave are independent by construction — run them
     // concurrently (the runSearches Promise.all reasoning: sequential
     // sub-agents would leave most of the wall-clock on the table).
@@ -144,27 +166,72 @@ export async function runOrchestration(ctx) {
         if (!agent) return;
         if (results[id]) return; // already done in the browser (a swarm node)
         const stepId = `agent_${id}`;
-        emit({ status: /** @type {any} */ (agentUpdateEvent(id, "running")) });
-        ctx.step(stepId, `${agent.name} working…`);
         const startedAt = Date.now();
+        // The node's cancellation token. `withTimeout` cannot stop the
+        // underlying provider call (there is no cross-provider abort to
+        // thread), but flipping this makes the ABANDONED node let go of its
+        // buffered text and stop emitting into a stream that has already moved
+        // on — the accumulate-forever half of a run's memory growth.
+        const token = { cancelled: false };
         try {
-          const text = await withTimeout(runAgentNode(ctx, plan, agent, results, searchBudget), ORCH_NODE_TIMEOUT_MS);
-          results[id] = { status: "done", text };
-          emit({ status: /** @type {any} */ (agentUpdateEvent(id, "done", { duration_ms: Date.now() - startedAt, chars: text.length })) });
+          // Inside the guard on purpose: the announce calls are the only work
+          // that used to sit OUTSIDE it, so a throw there (a client-side emit
+          // sink that died, a malformed node) escaped every fail-soft path and
+          // took the whole request down with it.
+          emit({ status: /** @type {any} */ (agentUpdateEvent(id, "running")) });
+          ctx.step(stepId, `${agent.name} working…`);
+          const text = await withTimeout(
+            runAgentNode(ctx, plan, agent, results, searchBudget, token),
+            ORCH_NODE_TIMEOUT_MS,
+            () => { token.cancelled = true; },
+          );
+          // Store CLAMPED. mergeAgentResults clamps again at prompt-assembly
+          // time, but that is too late to bound what the run HOLDS: a
+          // degenerate generation would sit in `results` for the rest of the
+          // run (and then in the chat_logs meta) at full length.
+          const kept = clampResult(text);
+          results[id] = { status: "done", text: kept };
+          emit({ status: /** @type {any} */ (agentUpdateEvent(id, "done", { duration_ms: Date.now() - startedAt, chars: kept.length })) });
           ctx.stepDone(stepId, `${agent.name} finished (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);
         } catch (/** @type {any} */ err) {
           failed++;
-          const note = String(err?.message || err).slice(0, 200);
+          const ms = Date.now() - startedAt;
+          const record = nodeFailureRecord(agent, w, err, ms, { timedOut: token.cancelled });
+          pushFailure(failures, record);
+          // The class rides in the SSE note (agentUpdateEvent's shape is fixed
+          // in the shared core), so the workflow graph can say "timed out"
+          // rather than just turning the node red.
+          const note = `${record.class}: ${record.note}`.slice(0, 200);
           results[id] = { status: "failed", note };
-          emit({ status: /** @type {any} */ (agentUpdateEvent(id, "failed", { note, duration_ms: Date.now() - startedAt })) });
+          emit({ status: /** @type {any} */ (agentUpdateEvent(id, "failed", { note, duration_ms: ms })) });
           ctx.stepDone(stepId, `${agent.name} failed — continuing without it`);
-          ctx.log.warn("chat.orch_node_failed", { agent: id, kind: agent.kind, error: note });
+          ctx.log.warn("chat.orch_node_failed", { agent: id, kind: agent.kind, class: record.class, duration_ms: ms, error: record.note });
+          // …and DURABLY, in the fix queue. Invariant 2 says this failure must
+          // not break the request; it does not say it should be invisible. A
+          // Workers Logs line ages out and cannot be searched after the fact,
+          // and if the run later dies before chat.js writes its row, this is
+          // the only surviving evidence the node ever ran.
+          await recordSubsystemFailure(ctx.env, ctx.log, {
+            subsystem: "orchestrator",
+            op: "node",
+            failureClass: record.class,
+            detail: record.note,
+            requestId: loggerRequestId(ctx.log),
+            // Closed-vocabulary context only — never the agent id/name, which
+            // the plan model derived from the user's request.
+            context: { kind: agent.kind, wave: `${w + 1}/${waves.length}`, ms },
+          });
         }
       }),
     );
   }
   // Meta for the chat log (the chat-logs skill greps on this).
   anyState.orchestration = { agents: plan.agents.length, waves: waves.length, failed, searches: searchBudget.used };
+  // Per-node failure detail, so `scripts/chatlogs --id N` answers "which
+  // sub-agent died and how" instead of only "failed: 2". Dropped entirely on a
+  // clean run (JSON.stringify drops undefined) — a zero-failure row stays
+  // exactly as it was.
+  if (failures.length) anyState.orchestration.failures = failures;
   if (swarm || swarmNodes) {
     // What the browser actually did — the only trace of a client-hosted swarm
     // the server can log (the reasoning itself never leaves the device).
@@ -204,6 +271,44 @@ export async function runOrchestration(ctx) {
 }
 
 /**
+ * One node failure, described well enough to fix it: WHICH node (id + kind),
+ * WHERE in the run (wave, 1-based), WHAT KIND of failure, how long it burned,
+ * and the upstream message clamped. Pure — the caller decides where it lands.
+ * @param {{ id?: string, kind?: string }} agent
+ * @param {number} waveIndex 0-based index into the resolved waves
+ * @param {unknown} err
+ * @param {number} ms
+ * @param {{ timedOut?: boolean }} [opts]
+ * @returns {{ id: string, kind: string, wave: number, class: string, ms: number, note: string }}
+ */
+export function nodeFailureRecord(agent, waveIndex, err, ms, opts = {}) {
+  const message = String(/** @type {any} */ (err)?.message || err || "unknown failure");
+  return {
+    id: String(agent?.id || "?").slice(0, 60),
+    kind: String(agent?.kind || "?").slice(0, 30),
+    wave: waveIndex + 1,
+    class: classifyFailure(err, opts),
+    ms: Math.max(0, Math.round(ms) || 0),
+    note: message.replace(/\s+/g, " ").trim().slice(0, 200),
+  };
+}
+
+/**
+ * Append a failure record under the log cap. Bounded on purpose: everything a
+ * run accumulates and then hands to the chat log has to have a ceiling, or the
+ * row grows with the failure count (D1's 2 MB ceiling is the hard wall, and
+ * LOG_CAPS truncation would silently eat the tail).
+ * @template {{ id: string }} T
+ * @param {T[]} list
+ * @param {T} record
+ * @returns {T[]} the same list
+ */
+export function pushFailure(list, record) {
+  if (list.length < MAX_LOGGED_FAILURES) list.push(record);
+  return list;
+}
+
+/**
  * When the plan phase returns nothing usable, the workflow degrades to ONE
  * agent doing the whole task — the request still runs, still renders a
  * (single-node) workflow, and the mode's promise holds.
@@ -228,9 +333,12 @@ function fallbackPlan(ctx) {
  * @param {any} agent
  * @param {Record<string, { status: string, text?: string, note?: string }>} results
  * @param {{ used: number }} searchBudget
+ * @param {{ cancelled: boolean }} [token] flipped when this node's deadline
+ *   fired — the work keeps running (nothing to abort), but it stops HOLDING
+ *   anything and stops emitting into a stream that moved on without it
  * @returns {Promise<string>}
  */
-async function runAgentNode(ctx, plan, agent, results, searchBudget) {
+async function runAgentNode(ctx, plan, agent, results, searchBudget, token = { cancelled: false }) {
   const upstream = (agent.deps || [])
     .filter((/** @type {string} */ d) => results[d]?.status === "done" && results[d]?.text)
     .map((/** @type {string} */ d) => ({
@@ -260,19 +368,22 @@ async function runAgentNode(ctx, plan, agent, results, searchBudget) {
     agentTaskPrompt(agent, upstream, { userRequest: /** @type {any} */ (ctx).cleanLastUser || ctx.lastUser }) +
     (grounding ? `\n\n${grounding}` : "");
 
-  let buf = "";
+  const sink = nodeTextSink(token);
   const buffered = /** @type {PipelineCtx} */ ({
     ...ctx,
     // Tighter completion budget than synthesis (the buffered-ctx override
     // pattern from runSdkBuildDeterministic); totals is shared by reference,
     // so billing lands in the normal bucket.
     state: { ...ctx.state, plan: { .../** @type {any} */ (ctx.state.plan), synthMaxTokens: ORCH_NODE_MAX_TOKENS } },
-    emitDelta: (/** @type {string} */ t) => { buf += t; },
+    emitDelta: (/** @type {string} */ t) => sink.push(t),
     emit: (/** @type {any} */ event) => {
       // streamCompletion's early-stall retry discards and restarts — nothing
       // was shown, so just reset the buffer; pass every other event through
       // (failover steps stay visible).
-      if (event?.status?.type === "discard_text") { buf = ""; return; }
+      if (event?.status?.type === "discard_text") { sink.discard(); return; }
+      // A timed-out node has already been announced `failed`; anything it says
+      // afterwards would contradict the workflow graph.
+      if (token.cancelled) return;
       ctx.emit(event);
     },
   });
@@ -280,7 +391,31 @@ async function runAgentNode(ctx, plan, agent, results, searchBudget) {
     { role: "system", content: phasePrompt(ctx.state, "workflow", "worker")() },
     { role: "user", content: userMsg },
   ]);
-  return (text || buf || "").trim();
+  return (text || sink.text() || "").trim();
+}
+
+/**
+ * The buffer a node's tokens land in while it runs. A node's text NEVER
+ * streams to the user (only the merge does), so it has to be held — and the
+ * holding is where an abandoned node's memory grows: past its deadline the
+ * wave loop has already moved on, but the provider keeps streaming into this
+ * closure with nothing left to read it.
+ *
+ * Once the node's token is cancelled the sink drops what it has and refuses
+ * everything after, so an abandoned node costs a constant, not a stream.
+ * @param {{ cancelled: boolean }} token
+ * @returns {{ push: (t: string) => void, discard: () => void, text: () => string }}
+ */
+export function nodeTextSink(token) {
+  let buf = "";
+  return {
+    push(t) {
+      if (token.cancelled) { buf = ""; return; }
+      buf += String(t ?? "");
+    },
+    discard() { buf = ""; },
+    text() { return token.cancelled ? "" : buf; },
+  };
 }
 
 /**
@@ -342,16 +477,28 @@ async function runNodeSearches(ctx, agent, searchBudget) {
  * Bound one node's wall-clock. The underlying work keeps running past the
  * deadline (there's no cross-provider abort to thread), but its node is marked
  * failed and the workflow moves on — bounded latency beats a hung request.
+ *
+ * `onTimeout` fires exactly once, at the deadline, BEFORE the rejection
+ * propagates: the caller uses it to flip the node's cancellation token so the
+ * abandoned work releases its buffer instead of accumulating for the rest of
+ * the run. The race is also what keeps the late rejection of `p` HANDLED — an
+ * unhandled rejection in a Worker isolate is not a soft failure.
  * @template T
  * @param {Promise<T>} p
  * @param {number} ms
+ * @param {() => void} [onTimeout]
  * @returns {Promise<T>}
  */
-function withTimeout(p, ms) {
+export function withTimeout(p, ms, onTimeout) {
   /** @type {ReturnType<typeof setTimeout>} */
   let timer;
   return Promise.race([
     p.finally(() => clearTimeout(timer)),
-    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`timed out after ${Math.round(ms / 1000)}s`)), ms); }),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        try { onTimeout?.(); } catch { /* a cancel hook must never mask the timeout */ }
+        reject(new Error(`timed out after ${Math.round(ms / 1000)}s`));
+      }, ms);
+    }),
   ]);
 }

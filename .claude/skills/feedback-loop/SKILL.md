@@ -17,9 +17,16 @@ description: >-
 
 Users of deepresearch.se give feedback **straight from the chat**: a message
 whose text opens with the word "feedback" (`feedbackIntent`, EN+SV — e.g.
-"feedback: the map view was cut off") is routed by the research pipeline into
+"feedback: the map view was cut off") **or with the `/feedback` slash command**
+(2026-07-26 — `/feedback the map view was cut off`; both behind
+`feedbackRequested`, and `feedbackComment` strips the command token so the queue
+shows the user's own words) is routed by the research pipeline into
 the **feedback case** (`src/pipeline.js` `runFeedbackCapture`) instead of being
-researched. That replies with a **canned acknowledgment** (owner directive,
+researched. The gate is evaluated ABOVE the executor-phase dispatch, so it works
+in every chat mode — Deep Research, Introspection, Agent Studio, Orchestrator,
+Outrospection — which is what feedback #26 asked for after Orchestrator visibly
+planned a sub-agent team over a report. `src/slash.test.js` keeps it that way by
+discovering the modes rather than listing them. That replies with a **canned acknowledgment** (owner directive,
 2026-07-24: user feedback is NEVER run through an LLM — the deterministic
 EN+SV variants live in `public/js/feedback-core.js` `cannedFeedbackAck`) and
 records the message as a `feedback` entry (D1, `src/feedback.js`
@@ -94,9 +101,10 @@ standalone — the ref IS its context.
 
 **Se/cure feedback (owner directive, 2026-07-24).** The client-side tier
 sends feedback too, over the SAME gate (the shared `public/js/feedback-core.js`
-`feedbackIntent`, which `src/feedback.js` now re-exports). Because Se/cure keeps
+`feedbackRequested`, which `src/feedback.js` now re-exports — the keyword AND
+the `/feedback` command). Because Se/cure keeps
 the server out of its data path, the flow is CONFIRMED, not automatic:
-`public/cure/drc.js` catches the "feedback" keyword, echoes the message, and
+`public/cure/drc.js` catches either form, echoes the message, and
 prompts (`#fbconsent`) before anything is sent — then POSTs to
 `POST /api/server-token/feedback` (`handleServerTokenFeedback`) over the
 **DeepResearch (Se/rver) token**, the same token used for LLM / Exa access. This

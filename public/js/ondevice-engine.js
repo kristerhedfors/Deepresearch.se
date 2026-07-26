@@ -139,6 +139,7 @@ const dlHandlers = new Map(); // modelId → {onProgress, resolve, reject}
 const planHandlers = new Map(); // modelId → {resolve, reject}
 const deleteHandlers = new Map(); // modelId → {resolve, reject}
 let listWaiters = []; // {resolve, reject}
+let unloadWaiters = []; // resolve fns for an in-flight {t:"unload"}
 let loadStatusCb = null;
 // The most recent workerdiag detail: the worker-side error listener's full
 // copy of an uncaught error that is ALSO propagating to worker.onerror below,
@@ -167,6 +168,10 @@ function failAllPending(message) {
   deleteHandlers.clear();
   for (const w of listWaiters) w.reject(err);
   listWaiters = [];
+  // The unload waiters RESOLVE rather than reject: a dead worker holds no
+  // model, which is exactly what the caller was asking for.
+  for (const r of unloadWaiters) r(undefined);
+  unloadWaiters = [];
 }
 
 function getWorker() {
@@ -174,6 +179,9 @@ function getWorker() {
   // The debug flag rides the spawn URL — a worker can't read localStorage
   // (onDeviceDebug() covers flips while it's already alive).
   worker = new Worker("/js/ondevice-worker.js" + (_odDebug ? "?oddebug=1" : ""), { type: "module" });
+  // The handlers below close over THIS worker: a late event from a worker that
+  // has already been replaced must never terminate (or null out) its successor.
+  const spawned = worker;
   workerSpoke = false;
   dbg("worker spawned");
   worker.onmessage = (e) => {
@@ -207,6 +215,9 @@ function getWorker() {
     } else if (m.t === "list") {
       for (const w of listWaiters) w.resolve(m.entries);
       listWaiters = [];
+    } else if (m.t === "unloaded") {
+      for (const r of unloadWaiters) r(undefined);
+      unloadWaiters = [];
     } else if (m.t === "workererror") {
       // A dispatch-level throw in the worker (generate/download carry their
       // own error replies; this covers list/plan/delete). The worker itself
@@ -239,10 +250,61 @@ function getWorker() {
     trace("worker crashed", workerSpoke ? "(mid-run)" : "(never started)", detail);
     failAllPending(crashMessage(workerSpoke, detail));
     lastWorkerDiag = "";
-    worker = null;
+    // TERMINATE, don't just forget. An uncaught error in the worker propagates
+    // here WITHOUT killing it (the worker's own listener deliberately doesn't
+    // preventDefault), so dropping the reference used to orphan a live worker
+    // that still held a fully compiled model — invisible, unreachable, and
+    // charged against the tab until it died. The next call spawns a fresh one.
+    try {
+      spawned.terminate();
+    } catch {
+      /* already gone */
+    }
+    if (worker === spawned) worker = null;
   };
   worker.onmessageerror = () => failAllPending("The on-device engine sent an unreadable message.");
   return worker;
+}
+
+/**
+ * Free the resident model without killing the worker: the engine keeps one
+ * compiled model for the life of the page, which is right for a conversation
+ * and wrong the moment something else wants the GPU (a swarm spawning N
+ * instances of its own — swarm-runtime.js releaseHostModel). Fail-soft and
+ * bounded; the next generate() reloads lazily.
+ */
+export function unloadOnDeviceModel() {
+  if (!worker) return Promise.resolve(); // never spawned → nothing resident
+  return withDeadline(
+    new Promise((resolve) => {
+      unloadWaiters.push(resolve);
+      getWorker().postMessage({ t: "unload" });
+    }),
+    UNLOAD_TIMEOUT_MS,
+    "The on-device engine did not answer the unload.",
+  ).catch(() => undefined); // a busy engine is not a reason to fail the caller
+}
+
+/**
+ * Stop the engine outright: fail every pending call and terminate the worker,
+ * releasing its model, its wasm heap and its GPU context now. The next call
+ * spawns a fresh one. Used when the page is done with on-device inference
+ * (mode switch, navigation) — memory this tier holds is measured in gigabytes,
+ * so "the GC will get to it" is not a plan.
+ */
+export function terminateOnDeviceEngine() {
+  const w = worker;
+  worker = null;
+  if (!w) return;
+  failAllPending("The on-device engine was stopped.");
+  for (const r of unloadWaiters) r(undefined);
+  unloadWaiters = [];
+  try {
+    w.terminate();
+  } catch {
+    /* already gone */
+  }
+  dbg("engine terminated");
 }
 
 // ---- capability probe -------------------------------------------------------------
@@ -290,6 +352,10 @@ export async function probeOnDevice() {
 const LIST_TIMEOUT_MS = 20_000;
 const PLAN_TIMEOUT_MS = 30_000;
 const DELETE_TIMEOUT_MS = 10_000;
+// An unload waits behind whatever generation is in flight; the caller (a swarm
+// about to spawn) must not wait that long, and a missed unload only costs
+// memory it was already holding.
+const UNLOAD_TIMEOUT_MS = 15_000;
 
 /** @returns {Promise<Array<{id: string, cachedBytes: ?number}>>} */
 export function listCachedModels() {
@@ -409,9 +475,18 @@ function generateSerialized({ modelId, messages, maxTokens, json, signal, onToke
 // member never fetches anything.
 
 /**
+ * How many times ONE member may crash and be respawned before it gives up. A
+ * crash that repeats is almost always the device saying no (an OOM at model
+ * compile crashes, respawns, and OOMs again — each attempt allocating another
+ * full model), so the third attempt is refused: the swarm loses one member and
+ * keeps going, which is what invariant 2 asks for.
+ */
+export const MEMBER_CRASH_BUDGET = 2;
+
+/**
  * Spawn one isolated inference member. `label` only rides the debug trace.
  * @param {string} [label]
- * @returns {{ generate: (args: { modelId: string, messages: any[], maxTokens?: number, json?: boolean, onToken?: (t: string) => void }) => Promise<string>, terminate: () => void }}
+ * @returns {{ generate: (args: { modelId: string, messages: any[], maxTokens?: number, json?: boolean, onToken?: (t: string) => void }) => Promise<string>, abort: () => void, terminate: () => void }}
  */
 export function spawnSwarmMember(label = "member") {
   let w = /** @type {Worker | null} */ (null);
@@ -419,6 +494,8 @@ export function spawnSwarmMember(label = "member") {
   /** @type {Map<number, {resolve: (t: string) => void, reject: (e: Error) => void, onToken: (t: string) => void}>} */
   const pending = new Map();
   let spoke = false;
+  let crashes = 0;
+  let stopped = false; // terminate() is final — a member never comes back
 
   const failAll = (/** @type {string} */ message) => {
     const err = new Error(message);
@@ -444,15 +521,21 @@ export function spawnSwarmMember(label = "member") {
       } else if (m.t === "workererror") failAll(m.message || "The on-device engine failed.");
       else if (m.t === "workerdiag" && m.message) trace("swarm member error:", label, m.message);
     };
+    const spawned = w;
     w.onerror = (e) => {
+      crashes++;
       trace("swarm member crashed", label, spoke ? "(mid-run)" : "(never started)", errorEventDetail(e));
       failAll(crashMessage(spoke, errorEventDetail(e)));
       try {
-        w?.terminate();
+        spawned.terminate();
       } catch {
         /* already gone */
       }
-      w = null; // the next generate() respawns — one crashed member must not end the swarm
+      // The next generate() respawns — one crashed member must not end the
+      // swarm — unless it has burned its crash budget, in which case
+      // respawning would just allocate another model into a device that has
+      // already refused two.
+      if (w === spawned) w = null;
     };
     w.onmessageerror = () => failAll("The on-device engine sent an unreadable message.");
     return w;
@@ -461,6 +544,8 @@ export function spawnSwarmMember(label = "member") {
   return {
     generate({ modelId, messages, maxTokens, json, onToken }) {
       return new Promise((resolve, reject) => {
+        if (stopped) return reject(new Error("This swarm member was stopped."));
+        if (crashes > MEMBER_CRASH_BUDGET) return reject(new Error("This swarm member kept crashing on this device."));
         const id = ++seq;
         pending.set(id, { resolve, reject, onToken: onToken || (() => {}) });
         ensure().postMessage({
@@ -473,7 +558,24 @@ export function spawnSwarmMember(label = "member") {
         });
       });
     },
+    /**
+     * Stop whatever this member is decoding WITHOUT killing the worker (the
+     * model stays compiled for the next task). The runtime calls this the
+     * moment a generation passes its deadline: the wrapper rejecting does not
+     * stop the decode, and a member left running holds its KV cache while its
+     * replacement allocates a new one.
+     */
+    abort() {
+      for (const id of pending.keys()) {
+        try {
+          w?.postMessage({ t: "abort", id });
+        } catch {
+          /* the worker is gone — nothing to interrupt */
+        }
+      }
+    },
     terminate() {
+      stopped = true; // and it stays stopped: a late generate() must not respawn
       failAll("The swarm was stopped.");
       try {
         w?.terminate();
