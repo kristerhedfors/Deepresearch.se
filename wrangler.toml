@@ -106,7 +106,7 @@ database_id = "d9144c29-c8b2-4914-a795-37f8df393ac8"
 binding = "STORAGE"
 bucket_name = "deepresearch-se-storage"
 
-# ---- SERVER-SIDE EXECUTION ENVIRONMENT (deliberately NOT enabled) -----------
+# ---- SERVER-SIDE EXECUTION ENVIRONMENT (enabled 2026-07-26, never deployed) --
 #
 # src/exec-container.js offers a THIRD execution environment for the sandbox: an
 # ephemeral Cloudflare Container per research session, Se/rver only (the other
@@ -115,27 +115,25 @@ bucket_name = "deepresearch-se-storage"
 # why it exists on the signed-in tier alone. See docs/EXECUTION-ENVIRONMENTS.md
 # §9 and CLAUDE.md invariant 4).
 #
-# It ships SWITCHED OFF, and the block below is commented out ON PURPOSE. Two
-# reasons, both learned the hard way:
+# It shipped SWITCHED OFF, with the block below commented out. Two reasons, both
+# learned the hard way, and both now settled:
 #
 #  1. A binding whose resource does not exist yet fails EVERY deploy outright —
 #     the same failure class as the round-4 cpu_ms rejection and the R2/Vectorize
-#     bindings above (tests/MODEL-EVAL-FINDINGS.md). The container image and the
-#     Durable Object namespace must exist BEFORE these lines are uncommented.
+#     bindings above (tests/MODEL-EVAL-FINDINGS.md). The image had to exist
+#     first; it does now (below). The Durable Object namespace is created by the
+#     v1 migration on the deploy that first carries the binding.
 #  2. The image is built out of band and referenced by URI. The agent containers
 #     this repo is developed in ship a Docker client and `dockerd` (start it with
 #     `dockerd &` if the socket is absent), so scripts/build-exec-image.sh builds,
 #     VERIFIES (40 checks) and pushes it from a session.
 #
-# STATUS 2026-07-26: the image IS pushed —
+# STATUS 2026-07-26: the image is pushed —
 #   registry.cloudflare.com/<account-id>/deepresearch-exec:1  (sha256:f0ddd1ed…)
-# so reason 1's precondition is now met and this block is ready to uncomment.
-# It stays commented until an owner deploys it deliberately: uncommenting is
-# what turns the feature on for every signed-in account.
-#
-# With the block commented out, /api/settings reports `available.exec_container:
-# false`, the Settings picker omits the option, and the feature is invisible —
-# exactly how the Shodan and Maps knobs behave without their keys.
+# — and the block below is UNCOMMENTED. No deploy has carried it yet. Until one
+# does, /api/settings reports `available.exec_container: false`, the Settings
+# picker omits the option, and the feature is invisible — exactly how the Shodan
+# and Maps knobs behave without their keys. The deploy is the switch.
 #
 # TO ENABLE (owner):
 #

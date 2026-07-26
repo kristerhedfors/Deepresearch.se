@@ -219,14 +219,15 @@ cmd_push() {
   ( cd "$REPO_ROOT" && CLOUDFLARE_API_TOKEN="$(push_token)" npx wrangler containers push "$tag" )
   cat <<EOF
 
-Pushed. To switch the environment ON:
-  1. uncomment the [[containers]] / [[durable_objects.bindings]] / [[migrations]]
-     block in wrangler.toml and set image = "$tag"
-  2. npx wrangler deploy
-  3. confirm /api/settings reports available.exec_container: true while signed in
+Pushed. wrangler.toml's [[containers]] block already points at
+  $tag
+so the next deploy that includes it switches the environment on:
+  npx wrangler deploy
+  # then confirm /api/settings reports available.exec_container: true (signed in)
 
-Leave the block commented until the push above has actually succeeded — a
-binding whose resource does not exist fails EVERY deploy, not just this feature.
+If you ever re-comment that block, keep it commented until a push has actually
+succeeded — a binding whose resource does not exist fails EVERY deploy, not just
+this feature.
 EOF
 }
 

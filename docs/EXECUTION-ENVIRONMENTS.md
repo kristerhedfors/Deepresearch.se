@@ -12,9 +12,9 @@ DISABLED and the whole environment is therefore invisible until an owner enables
 it (§9).*
 
 *Image pushed 2026-07-26 (third change): the container image is built, verified
-by a 40-check battery and pushed to the managed registry — but the binding is
-still commented out, so nothing has yet run against a real Cloudflare Container
-(§9, §10).*
+by a 40-check battery and pushed to the managed registry, and the binding is now
+uncommented. No deploy has carried it yet, so nothing has run against a real
+Cloudflare Container (§9, §10).*
 
 The model choice already spans on-device and cloud. This is the same choice for
 execution: **where the shell commands the agent proposes actually run.** Until
@@ -380,15 +380,21 @@ on EU-jurisdiction infrastructure, matching where the primary LLM provider runs.
 
 ## 9. Enabling the cloud container (owner)
 
-It ships **switched off**, and `wrangler.toml`'s `[[containers]]` +
-`durable_objects` + `migrations` block is commented out on purpose. Two reasons:
+It shipped **switched off**, with `wrangler.toml`'s `[[containers]]` +
+`durable_objects` + `migrations` block commented out. Two things kept it that
+way, and both are now settled:
 
 1. **A binding whose resource does not exist fails EVERY deploy** — the same
    failure class as the round-4 `cpu_ms` rejection and the R2/Vectorize bindings
-   (`tests/MODEL-EVAL-FINDINGS.md`). The image and the Durable Object namespace
-   must exist before those lines are uncommented.
-2. **Pushing the image needs an API token carrying the Containers permission**
-   (below). Building it no longer needs a special machine.
+   (`tests/MODEL-EVAL-FINDINGS.md`). The image had to exist first. It does now
+   (below); the Durable Object namespace is created by the `v1` migration on the
+   deploy that first carries the binding.
+2. **The push needs the right credential** — a user API token, not the
+   account-owned deploy token (below). Building needs no special machine.
+
+**The block is uncommented as of 2026-07-26**, so a deploy from `main` carries
+the binding. That deploy is the switch: until it happens, production keeps
+whatever the last one carried, and `available.exec_container` stays `false`.
 
 `scripts/build-exec-image.sh` does the whole thing:
 
@@ -397,9 +403,10 @@ It ships **switched off**, and `wrangler.toml`'s `[[containers]]` +
 ./scripts/build-exec-image.sh verify   # the battery, against the built image
 ./scripts/build-exec-image.sh push     # wrangler containers push
 ./scripts/build-exec-image.sh all      # all three (default)
-# then uncomment the block in wrangler.toml, set `image` to the pushed URI:
-npx wrangler deploy
 ```
+
+Re-run it whenever `container/Dockerfile` changes; the tag stays `:1`, so a
+deploy picks up the new image. `wrangler.toml`'s `image` already points at it.
 
 Until then `/api/settings` reports `available.exec_container: false`, the Settings
 picker omits the option, and the code is inert — exactly how the Shodan and Maps
@@ -467,9 +474,9 @@ Do not preflight on the Cloudchamber API — it refuses the *working* token too:
 
 ### The manifest trap
 
-`docker push` will cheerfully publish an **OCI index with an attestation
-manifest** instead of a plain image, and that is what reached the registry on
-the first attempt here — a tag left over from a build made *before* the
+`docker push` publishes an **OCI index with an attestation manifest** instead of
+a plain image without warning you, and that is what reached the registry on the
+first attempt here: a tag left over from a build made *before* the
 `--provenance=false --sbom=false` flags were added still pointed at the index.
 Rebuilding with the flags and re-pushing fixed it (`mediaType:
 application/vnd.docker.distribution.manifest.v2+json`).
@@ -490,13 +497,11 @@ registry live.
   three, plus the browser-direct call (CORS + private-network preflight) from a
   live page, before treating this as production-ready.
 - **The cloud environment has never run.** The image is built, verified and
-  **pushed** (§9), but the `[[containers]]` block is still commented out and no
-  deploy has carried the binding — so nothing has exercised a real Cloudflare
-  Container. Everything known about that path comes from the fake in
-  `src/exec-container.test.js` and the image battery. Enabling it (uncomment,
-  set `image`, deploy) is the next step, and the first real test of container
-  cold start, the `/mount` and `/source` bridges, and the §8 fences against an
-  actual instance.
+  pushed, and the binding is uncommented (§9) — but no deploy has carried it, so
+  nothing has exercised a real Cloudflare Container. Everything known about that
+  path comes from the fake in `src/exec-container.test.js` and the image
+  battery. The first deploy is the first real test of container cold start, the
+  `/mount` and `/source` bridges, and the §8 fences against an actual instance.
 - **Apple `container` flag set.** It gets a reduced flag list (no
   `--pids-limit`); confirm `--memory`/`--cpus`/`--network` behave as assumed on
   macOS 26.
