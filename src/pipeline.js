@@ -119,7 +119,7 @@ import {
   stripFileBlocks,
 } from "./sdk-tools.js";
 import { publishBuild } from "./build-pub.js";
-import { feedbackIntent, buildFeedbackContext, cannedFeedbackAck, feedbackImagesFromParts, feedbackScope } from "./feedback.js";
+import { feedbackRequested, feedbackComment, buildFeedbackContext, cannedFeedbackAck, feedbackImagesFromParts, feedbackScope } from "./feedback.js";
 import { parseUseCaseRef } from "./testpoints.js";
 import { loadSourceSnapshot } from "./introspect.js";
 import { DEFAULT_QUIZ_QUESTIONS, normalizeQuiz, quizIntent, quizQuestionCount } from "./quiz.js";
@@ -172,6 +172,7 @@ import {
  *   aux?: Record<string, AuxSourceState>,
  *   failoverModel?: string,
  *   feedbackCapture?: boolean,
+ *   helpCommand?: boolean,
  *   outrospectionMode?: boolean,
  *   outrospection?: { lens: string | null, items: number, live: boolean },
  *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string, images?: { name: string | null, data: string }[], useCase?: { id: number, tag: string } | null, scope?: import("../public/js/feedback-core.js").FeedbackScope },
@@ -299,8 +300,9 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // phase, triage included (ctx.lastUser / ctx.convText / ctx.imageParts
   // are all read from `convo`). Fully fail-soft — the conversation comes
   // back unchanged if there's nothing to look up or a service is down.
-  // Feedback pipeline (feedback.js feedbackIntent): a message that opens with
-  // "feedback" (EN+SV) is a report to the developers, not research. Detect it
+  // Feedback pipeline (feedback.js feedbackRequested): a message that opens
+  // with "feedback" (EN+SV) or with the `/feedback` slash command is a report
+  // to the developers, not research. Detect it
   // BEFORE the enrichments so a feedback note that happens to mention an IP or
   // address doesn't fire an enrichment lookup on the way in. Gated on
   // state.feedbackCapture — set only by the /api/chat channel (chat.js), so the
@@ -308,7 +310,7 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // done by chat.js from state.feedback; runFeedbackCapture below just answers.
   const feedbackReq =
     !!state.feedbackCapture &&
-    feedbackIntent(textOf(lastUserMessage(conversation)?.content));
+    feedbackRequested(textOf(lastUserMessage(conversation)?.content));
   const convo = feedbackReq
     ? conversation
     : await runEnrichments(env, log, emit, step, stepDone, conversation, state);
@@ -362,8 +364,11 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // whole answer became a 5-question quiz (chat_logs #360, 2026-07-15; the
   // same bug class as externalSourceIntent's cleanLastUser fix below).
   // Feedback takes priority over every other case (research, quiz, SDK,
-  // introspection): the user is reporting to the developers, so answer warmly
-  // and let chat.js record it — never route it into research.
+  // introspection, orchestration, the outward feed): the user is reporting to
+  // the developers, so answer warmly and let chat.js record it — never route it
+  // into research. This sits ABOVE the executor dispatch below on purpose —
+  // that is what makes a slash command PLATFORM BASELINE rather than something
+  // each agent has to opt into (owner directive, 2026-07-26).
   if (feedbackReq) return runFeedbackCapture(ctx);
 
   let quizReq = state.quizzes ? quizIntent(ctx.cleanLastUser) : null;
@@ -415,7 +420,13 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   // externalSourceIntent (e.g. a bare "vs") and would spuriously route every
   // dev-mode ask to the web-search wave / a triage direct reply instead of the
   // source read loop.
-  if (ctx.hasSource && !externalSourceIntent(ctx.cleanLastUser)) {
+  //
+  // The `/help` slash command (chat.js resolved it and turned the introspection
+  // enrichment on for this request, whatever mode was picked) is the one case
+  // that IGNORES externalSourceIntent: the user asked for the documentation in
+  // so many words, so a help question phrased as a comparison ("/help how does
+  // this compare to …") must not be handed back to the web-search wave.
+  if (ctx.hasSource && (/** @type {any} */ (state).helpCommand === true || !externalSourceIntent(ctx.cleanLastUser))) {
     if (quizReq && (await runQuizGeneration(ctx, quizReq))) return;
     return runSourceResearch(ctx);
   }
@@ -480,6 +491,11 @@ async function runFeedbackCapture(ctx) {
   // point's thread (src/chat.js recordUseCaseFeedback) so it lands "as if
   // answered in the list of use cases". The step line confirms it
   // deterministically, independent of the model's acknowledgment.
+  // The words the DEVELOPERS read. Identical to the message for the bare
+  // keyword; for the `/feedback …` command the command token itself is stripped
+  // (feedback-core feedbackComment), so the queue shows what the user wrote
+  // rather than how they addressed it.
+  const comment = feedbackComment(ctx.cleanLastUser);
   const useCase = parseUseCaseRef(ctx.cleanLastUser);
   // SCOPE (feedback-core feedbackScope): a "feedback …" message that OPENS a
   // conversation cannot be about that conversation — it is generic developer
@@ -504,7 +520,7 @@ async function runFeedbackCapture(ctx) {
   // locked in src/feedback.test.js.
   state.feedback = {
     ...buildFeedbackContext(ctx.conversation, {
-      comment: ctx.cleanLastUser,
+      comment,
       model: ctx.model,
     }),
     // Screenshots attached to the feedback message itself — textOf flattened
@@ -516,7 +532,7 @@ async function runFeedbackCapture(ctx) {
   };
   emitChunked(
     ctx,
-    cannedFeedbackAck(ctx.cleanLastUser, { useCaseTag: useCase ? useCase.tag : null, scope }),
+    cannedFeedbackAck(comment, { useCaseTag: useCase ? useCase.tag : null, scope }),
   );
 }
 

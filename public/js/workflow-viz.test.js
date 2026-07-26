@@ -3,7 +3,7 @@
 // and returns null in Node — asserted too.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { NODE_H, NODE_W, SWARM_NODE_H, layoutWorkflow, nodeHeight, renderWorkflow, statusGlyph, workflowSvg } from "./workflow-viz.js";
+import { NODE_H, NODE_W, SWARM_NODE_H, layoutWorkflow, nodeHeight, renderWorkflow, statusGlyph, swarmRenderState, workflowSvg } from "./workflow-viz.js";
 
 const wf = {
   title: "Compare runtimes",
@@ -122,4 +122,29 @@ test("statusGlyph covers the lifecycle", () => {
 
 test("renderWorkflow fails soft without a DOM", () => {
   assert.equal(renderWorkflow({ el: undefined }, wf, {}), null);
+});
+
+// ---- what the live view is allowed to RETAIN ---------------------------------
+
+test("swarmRenderState keeps only what the strip draws", () => {
+  const s = swarmRenderState({
+    type: "swarm_update",
+    id: "sw",
+    round: 2,
+    rounds: 3,
+    agreement: 0.62,
+    phase: "diverge",
+    model: "Bonsai 1.7B · 1-bit",
+    members: Array.from({ length: 40 }, () => "running"),
+    extra: { anything: "a future event field" },
+  });
+  // `statuses` is persisted with the turn, so a swarm publishing on every
+  // member state change must not grow what gets stored.
+  assert.deepEqual(Object.keys(s).sort(), ["agreement", "members", "phase", "round", "rounds"]);
+  assert.equal(s.members.length, 12, "capped at the drawable member count");
+  assert.equal(s.round, 2);
+  assert.equal(s.agreement, 0.62);
+  const empty = swarmRenderState(null);
+  assert.deepEqual(empty.members, []);
+  assert.equal(empty.round, 0);
 });

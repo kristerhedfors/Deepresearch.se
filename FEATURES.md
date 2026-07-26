@@ -148,7 +148,8 @@ the DRC app so continuing on the visitor's own keys is just typing
 ### F-11 · Feedback pipeline — chat-triggered dialogue with the dev agent — ✅ SHIPPED (medium)
 
 User feedback given straight from the chat — a message opening with the word
-"feedback" (`feedbackIntent`, EN+SV) routes to the feedback case
+"feedback" (`feedbackIntent`, EN+SV) or with the `/feedback` slash command
+(2026-07-26; both behind `feedbackRequested`) routes to the feedback case
 (`src/pipeline.js` `runFeedbackCapture`), which replies with a canned
 acknowledgment (no LLM anywhere in the path — 2026-07-24) and records a
 dialogue-thread entry (`src/feedback.js`) carrying the exact text plus the
@@ -160,7 +161,10 @@ feedback typed as the FIRST message of a chat is generic developer feedback —
 a suggestion, next steps — so it is tagged `chat/standalone`, gets an
 acknowledgment that doesn't promise a conversation, and carries no transcript
 instead of a one-turn fake one. Superseded the earlier per-reply Feedback
-button + settings knob (2026-07-18). See the **feedback-loop** skill.
+button + settings knob (2026-07-18). The gate is evaluated ABOVE the
+executor-phase dispatch, so it reaches the developers from every chat mode —
+Deep Research, Introspection, Agent Studio, Orchestrator, Outrospection
+(feedback #26). See the **feedback-loop** skill.
 
 ### F-12 · Project pulse dashboard (/pulse) — ✅ SHIPPED (low)
 

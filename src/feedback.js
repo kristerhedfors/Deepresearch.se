@@ -1,7 +1,9 @@
 // @ts-check
 // User feedback pipeline (D1 `feedback` + `feedback_messages`). Feedback is
 // captured from the CHAT itself: a message whose text opens with the word
-// "feedback" (feedbackIntent below, EN+SV) is routed by the research pipeline
+// "feedback" (feedbackIntent below, EN+SV) — or with the `/feedback` slash
+// command, available in every agent since 2026-07-26 (feedbackRequested,
+// public/js/slash-core.js) — is routed by the research pipeline
 // into the feedback case (src/pipeline.js runFeedbackCapture) instead of being
 // researched — it lands here (createFeedbackEntry, called from chat.js) as an
 // entry carrying the user's comment plus the turn it followed: the prior
@@ -47,8 +49,10 @@ import {
   cannedFeedbackAck,
   docPageTag,
   docPathOfPage,
+  feedbackComment,
   feedbackIntent,
   feedbackPageTag,
+  feedbackRequested,
   feedbackScope,
   feedbackScopeOfPrior,
   isDocPage,
@@ -132,8 +136,10 @@ export {
   cannedFeedbackAck,
   docPageTag,
   docPathOfPage,
+  feedbackComment,
   feedbackIntent,
   feedbackPageTag,
+  feedbackRequested,
   feedbackScope,
   feedbackScopeOfPrior,
   isDocPage,
@@ -235,6 +241,10 @@ export function buildFeedbackDebugContext(conversation, meta = {}) {
 // stored comment was) — no schema change, works for reopened historical
 // chats too, and falls back to a fresh entry when the earlier report was
 // withdrawn or never stored.
+//
+// "The earlier turn's exact text" means the text as it was STORED, so the
+// lookup applies the same `/feedback` prefix stripping the capture did — a
+// conversation that mixes "feedback …" and "/feedback …" still threads.
 
 /**
  * The text of the most recent user turn BEFORE the last one that was itself a
@@ -247,7 +257,7 @@ export function priorFeedbackComment(conversation) {
   users.pop(); // the current feedback turn
   for (let i = users.length - 1; i >= 0; i--) {
     const t = textOf(users[i]?.content);
-    if (feedbackIntent(t)) return cleanStr(t, FEEDBACK_CAPS.comment);
+    if (feedbackRequested(t)) return cleanStr(feedbackComment(t), FEEDBACK_CAPS.comment);
   }
   return null;
 }
