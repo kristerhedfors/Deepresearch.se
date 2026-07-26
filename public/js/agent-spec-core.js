@@ -679,31 +679,56 @@ export function validateAgentRegistry(reg) {
 // registry edit rather than an edit in every file that mentions a mode.
 
 /**
- * The agent a request resolves to. Walks `reg.defaults` in precedence order and
- * takes the first row whose `flag` is literally `true` in the request body AND
- * whose agent's `capability.requires` are all granted. A row with a null flag is
- * a derived default, taken only when no flagged row matched and its
- * requirements hold — which is exactly how introspection (developer_mode, no
- * flag) sits ahead of normal today.
+ * The agent a request resolves to, in three passes.
+ *
+ *  1. **Addressed by id** — `body.agent` names a registry entry directly. This
+ *     is what makes a registry agent reachable WITHOUT a `defaults` row, a mode
+ *     flag, a `CHAT_MODE_IDS` entry, a mode-theme descriptor or any CSS: the
+ *     difference between "a sixth MODE is data" (which the defaults table
+ *     already gave us) and "a sixth AGENT is data", which is what a builder
+ *     actually needs. The named agent's own `mode` is reported, so an agent
+ *     that belongs to no chat mode still says which one it renders as.
+ *  2. **Flagged rows**, in `defaults` order — the mode flags, precedence being
+ *     array order (sdk > orchestrator > outrospection).
+ *  3. **Derived rows** (null flag) — introspection when its knob is granted,
+ *     else normal.
+ *
+ * Every pass applies the SAME requirement gate: an agent whose declared
+ * `capability.requires` are not all granted is skipped, never served. So an
+ * unknown id, a misspelt id and an id the caller may not have all behave
+ * identically — the request falls through to the table it would have got
+ * anyway. Addressing can narrow what answers a request; it can never reach a
+ * capability the knobs withhold.
  *
  * Returns null when the registry is unusable, so the caller keeps its built-in
  * behaviour rather than failing the request (invariant 2).
  * @param {any} reg
  * @param {Record<string, any>} body the /api/chat request body
  * @param {Record<string, boolean>} granted capability knob → granted?
- * @returns {{ mode: string, agent: any, capability: typeof BASE_CAPABILITY } | null}
+ * @returns {{ mode: string, agent: any, capability: typeof BASE_CAPABILITY, addressed: boolean } | null}
  */
 export function resolveRequestAgent(reg, body, granted = {}) {
   const rows = Array.isArray(reg?.defaults) ? reg.defaults : null;
   if (!rows || !rows.length) return null;
-  /** @param {any} row */
-  const usable = (row) => {
-    const agent = findAgent(reg, row?.agent);
+  /** @param {any} agent @param {string} mode @param {boolean} addressed */
+  const serve = (agent, mode, addressed) => {
     if (!agent) return null;
     const cap = resolveCapability(agent);
     for (const req of cap.requires) if (granted[req] !== true) return null;
-    return { mode: row.mode, agent, capability: cap };
+    return { mode, agent, capability: cap, addressed };
   };
+  /** @param {any} row */
+  const usable = (row) => serve(findAgent(reg, row?.agent), row?.mode, false);
+
+  const named = typeof body?.agent === "string" ? body.agent.trim() : "";
+  if (named) {
+    const agent = findAgent(reg, named);
+    // `mode` falls back to normal for an agent bound to no chat mode — a
+    // derived agent renders in the plain composer unless it says otherwise.
+    const hit = serve(agent, agent?.mode || "normal", true);
+    if (hit) return hit;
+  }
+
   for (const row of rows) {
     if (!row?.flag) continue;
     if (body?.[row.flag] !== true) continue;

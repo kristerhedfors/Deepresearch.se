@@ -348,3 +348,41 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     );
   });
 });
+
+// ---- the answer-phase dispatch (stage 3, extended by stage 6) ----------------
+//
+// The registry-resolved `capability.answerPhase` picks the executor. This was
+// never pinned: a grep for the mode flags across every *.test.js hit only
+// prompts.test.js, so the table could lose a row without a failing test.
+
+describe("the answer-phase dispatch table", () => {
+  const src = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
+  const table = src.slice(src.indexOf("const ANSWER_PHASE_RUNNERS"), src.indexOf("function answerPhaseFor"));
+
+  test("every executor phase in the vocabulary has a runner", () => {
+    // ANSWER_PHASES also declares `research` and `source-research`, which are
+    // deliberately NOT dispatch targets: which of those two a knob-on turn runs
+    // is a per-message decision the hasSource + externalSourceIntent gate owns.
+    for (const [phase, fn] of [
+      ["build", "runSdkBuild"],
+      ["workflow", "runOrchestration"],
+      ["feed", "runOutrospection"],
+      ["direct", "runWithoutSearch"],
+    ]) {
+      assert.match(table, new RegExp(`\\b${phase}: ${fn},`), `${phase} → ${fn}`);
+    }
+    assert.ok(!/\bresearch:/.test(table), "research is not a dispatch target");
+    assert.ok(!/\bsource-research:/.test(table), "source-research is not a dispatch target");
+  });
+
+  test("the mode booleans survive as the fail-soft fallback", () => {
+    // An unreadable registry, and the MCP channel which builds state without
+    // any of this, both depend on these three (invariant 2).
+    assert.match(src, /if \(state\.sdkMode\) return "build";/);
+    assert.match(src, /if \(state\.orchestratorMode\) return "workflow";/);
+    assert.match(src, /if \(state\.outrospectionMode\) return "feed";/);
+    // `direct` deliberately has NO boolean fallback: it is reachable only by
+    // addressing an agent that declares it, so there is no mode to fall back to.
+    assert.ok(!/return "direct";/.test(src.slice(src.indexOf("function answerPhaseFor"), src.indexOf("function answerPhaseFor") + 900)));
+  });
+});

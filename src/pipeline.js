@@ -247,6 +247,12 @@ const ANSWER_PHASE_RUNNERS = {
   build: runSdkBuild,
   workflow: runOrchestration,
   feed: runOutrospection,
+  // The plain model answer with no research phase at all. It was always in the
+  // ANSWER_PHASES vocabulary and always the fallback the research flow takes
+  // when nothing external applies; it becomes a DISPATCH target now that an
+  // agent can be addressed by id, which is how a spec declaring
+  // `answerPhase: "direct"` (the under-construction template) gets to mean it.
+  direct: runWithoutSearch,
 };
 
 /**

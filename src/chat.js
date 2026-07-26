@@ -107,6 +107,13 @@ import { normalizeSearchSource } from "./websearch-backends.js";
  *   mirror image, answering from what everyone ELSE shipped rather than from
  *   this site's own source. Honored only when the caller's developer_mode knob
  *   grants the capability — the same gate as sdk_mode
+ * @property {string} [agent] ADDRESS an agent from the registry (sdk/AGENTS.json)
+ *   by id, instead of letting a mode flag pick the mode's default agent. This is
+ *   what makes a registry entry reachable with no `defaults` row, no mode flag
+ *   and no client code — the seam an agent builder needs. Subject to the SAME
+ *   `capability.requires` gate as every other route: an unknown id, and an id
+ *   whose requirements the caller's knobs don't grant, both fall through to the
+ *   defaults table rather than erroring or escalating
  * @property {any} [imageLocations] attached-photo GPS EXIF coords
  * @property {any} [street_view_pov] the user's current panorama view
  * @property {any} [map_view] the user's current interactive-map view
@@ -288,11 +295,27 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   const outroOn = byRegistry
     ? routedPhase === "feed"
     : body.outrospection_mode === true && !sdkOn && !orchOn && enrich.developerOn;
+  // The plain model answer, with no research phase at all. Reachable only by
+  // ADDRESSING an agent that declares it (`body.agent`) — no mode flag selects
+  // it, because it is not a chat mode. Without this a spec could declare
+  // `answerPhase: "direct"` and be quietly answered by the research flow.
+  const directOn = byRegistry && routedPhase === "direct";
   // The answer phase the pipeline dispatches on, and the agent it came from —
   // null when the registry was unavailable or not consulted, in which case the
-  // pipeline falls back to the three booleans above.
-  const answerPhase = sdkOn || orchOn || outroOn ? routedPhase : null;
-  const agentId = answerPhase ? String(routed?.agent?.id || "") : null;
+  // pipeline falls back to the mode booleans above.
+  //
+  // An agent's phase is authoritative only for the phases that HAVE an executor
+  // (pipeline.js ANSWER_PHASE_RUNNERS). An agent declaring `research` or
+  // `source-research` resolves to null here on purpose: which of those two a
+  // knob-on turn runs is a per-MESSAGE decision the pipeline's hasSource +
+  // externalSourceIntent gate owns, and a per-request declaration must not
+  // pre-empt it. The agent still governs that turn through its prompt set and
+  // its capability, both carried below.
+  const answerPhase = sdkOn || orchOn || outroOn || directOn ? routedPhase : null;
+  // The agent that answered, recorded for every routed request rather than only
+  // the dispatched phases — an addressed research agent is still the agent that
+  // answered, and the chat log should say so.
+  const agentId = routed ? String(routed.agent?.id || "") : null;
   // The resolved agent's PROMPT SET (capability.prompts, else its phase's
   // default). Carried for every routed request — not only the executor phases —
   // because introspection and research choose their phase per message, and

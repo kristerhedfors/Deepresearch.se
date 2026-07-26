@@ -422,3 +422,117 @@ test("capHasTool reads the declared classes and nothing else", () => {
   assert.ok(!capHasTool(resolveCapability(findAgent(realRegistry(), "research")), "source-read"));
   assert.ok(!capHasTool(null, "source-read"));
 });
+
+// ---- Stage 6: an agent is ADDRESSABLE, not only a mode's default -------------
+//
+// The defaults table made a sixth MODE data. These make a sixth AGENT data: a
+// registry entry reachable with no defaults row, no request flag, no
+// CHAT_MODE_IDS entry, no mode-theme descriptor and no CSS. That is the seam a
+// builder needs, and the one Agent Studio publishes into.
+
+test("addressing: `agent` selects a registry entry the defaults table cannot reach", () => {
+  const reg = realRegistry();
+  // `secure` and `under-construction` are tier archetypes — no defaults row, no
+  // flag, unreachable before this. Addressed, they answer.
+  const hit = resolveRequestAgent(reg, { agent: "under-construction" }, DEV);
+  assert.equal(hit.agent.id, "under-construction");
+  assert.equal(hit.capability.answerPhase, "direct");
+  assert.equal(hit.addressed, true);
+  assert.equal(hit.mode, "normal", "an agent bound to no chat mode renders in the plain composer");
+  // The archetype for the client tier, likewise.
+  assert.equal(resolveRequestAgent(reg, { agent: "secure" }, DEV).agent.id, "secure");
+});
+
+test("addressing beats every mode flag, because it is more specific", () => {
+  const reg = realRegistry();
+  const hit = resolveRequestAgent(reg, { agent: "outrospection", sdk_mode: true }, DEV);
+  assert.equal(hit.agent.id, "outrospection");
+  assert.equal(hit.capability.answerPhase, "feed");
+});
+
+test("addressing is subject to the SAME requirement gate as every other route", () => {
+  const reg = realRegistry();
+  // Agent Studio requires developer_mode. Addressing it without the knob must
+  // not be a way around the knob — it falls through to what the caller could
+  // have had anyway.
+  const denied = resolveRequestAgent(reg, { agent: "agent-builder" }, {});
+  assert.equal(denied.agent.id, "research", "an ungranted address falls through, never escalates");
+  assert.equal(denied.addressed, false);
+  // With the knob, the same body reaches it.
+  assert.equal(resolveRequestAgent(reg, { agent: "agent-builder" }, DEV).agent.id, "agent-builder");
+});
+
+test("an unknown, malformed or empty address falls through to the table", () => {
+  const reg = realRegistry();
+  // Every one of these must behave exactly like a body that named no agent at
+  // all — so probing for ids reveals nothing and breaks nothing.
+  for (const agent of ["ghost", "", "   ", null, 7, {}, [], true]) {
+    const hit = resolveRequestAgent(reg, { agent }, DEV);
+    assert.equal(hit.agent.id, "introspection", `agent=${JSON.stringify(agent)} falls through`);
+    assert.equal(hit.addressed, false);
+  }
+  // …and without the knob, to plain Deep Research.
+  assert.equal(resolveRequestAgent(reg, { agent: "ghost" }, {}).agent.id, "research");
+});
+
+test("a defaults-table hit is never marked addressed", () => {
+  const reg = realRegistry();
+  assert.equal(resolveRequestAgent(reg, { sdk_mode: true }, DEV).addressed, false);
+  assert.equal(resolveRequestAgent(reg, {}, DEV).addressed, false);
+  assert.equal(resolveRequestAgent(reg, {}, {}).addressed, false);
+});
+
+test("addressing an agent that exists only as registry data routes it whole", () => {
+  // The stage-6 acceptance test: a new agent added ONLY to AGENTS.json, with no
+  // defaults row at all, answers on its own phase, prompt set and bounds.
+  const reg = realRegistry();
+  const scout = {
+    id: "scout",
+    name: "Scout",
+    platform: "server",
+    mode: "normal",
+    controls: [{ type: "prompt-input" }],
+    capability: {
+      answerPhase: "research",
+      bounds: { maxRounds: 2 },
+      search: { web: false, auxSources: false, maxQueries: 1 },
+    },
+  };
+  assert.deepEqual(validateAgentSpec(scout), []);
+  const extended = { ...reg, agents: [...reg.agents, scout] };
+  const hit = resolveRequestAgent(extended, { agent: "scout" }, DEV);
+  assert.equal(hit.agent.id, "scout");
+  assert.equal(hit.capability.answerPhase, "research");
+  assert.equal(hit.capability.bounds.maxRounds, 2);
+  assert.equal(capSearch(hit.capability, { web: true }).web, false, "its declaration narrows the knob");
+  assert.equal(capSearch(hit.capability, { maxQueries: 20 }).maxQueries, 1, "…and its query ceiling");
+});
+
+test("addressing: prompt set and answer phase stay independent choices", () => {
+  // The freedom capability.prompts bought, exercised through addressing: a
+  // build-phase agent speaking in the source-research voice. It is bounded —
+  // a set that cannot fill its phase's roles is still rejected, which is why
+  // the research phase can only take the research set.
+  const reg = realRegistry();
+  const quiet = {
+    id: "quiet-builder",
+    name: "Quiet Builder",
+    platform: "server",
+    mode: "sdk",
+    controls: [{ type: "prompt-input" }],
+    capability: {
+      answerPhase: "build",
+      prompts: "source-research",
+      tools: ["build-publish"],
+      toolFallback: "file-blocks",
+      requires: ["developer_mode"],
+    },
+  };
+  assert.deepEqual(validateAgentSpec(quiet), []);
+  const hit = resolveRequestAgent({ ...reg, agents: [...reg.agents, quiet] }, { agent: "quiet-builder" }, DEV);
+  assert.equal(hit.capability.answerPhase, "build");
+  assert.equal(hit.capability.prompts, "source-research");
+  // …and the pairing that is NOT expressible stays rejected.
+  const bad = { ...quiet, id: "bad", capability: { ...quiet.capability, answerPhase: "research" } };
+  assert.ok(validateAgentSpec(bad).some((p) => p.includes("does not fill the research phase")));
+});
