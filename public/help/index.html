@@ -154,15 +154,30 @@
         anywhere in the pipeline — so the whole thing works on models with
         unreliable tool support, including small ones you host yourself.</li>
       <li><b>Distil it instead of reading it.</b> Two SDKs ship with the
-        project: 34 modules for building a platform like this one, and an
-        agent specification for building agents on it. Agent Studio, in the
-        app, turns a description into either a new agent or a whole new
-        platform and publishes it live.</li>
+        project: <a href="/docs/#docs%2FDISTILLSDK.md">34 modules for building
+        a platform like this one</a>, and
+        <a href="/docs/#docs%2FAGENT-PLATFORM.md">an agent specification for
+        building agents on it</a>. Agent Studio, in the app, turns a
+        description into either a new agent or a whole new platform and
+        publishes it live.</li>
       <li><b>Open interchange standards.</b> The workspace bundle
-        (<b>DRSW/1</b>) and the pipeline structure (<b>DRPL/1</b>) are written
-        as specifications, with this site as their reference implementation —
-        so a workspace or a pipeline you build is not locked to this
-        codebase.</li>
+        (<a href="/docs/#docs%2FWORKSPACE-PROTOCOL.md"><b>DRSW/1</b></a>) and
+        the pipeline structure
+        (<a href="/docs/#docs%2FPIPELINE-LANGUAGE.md"><b>DRPL/1</b></a>) are
+        written as specifications, with this site as their reference
+        implementation — so a workspace or a pipeline you build is not locked
+        to this codebase.
+        Both names open the standard itself: wire format, payload sections,
+        conformance classes, versioning, written for an implementer who has
+        never seen this repository. They are drafts that run ahead of the
+        code on purpose, and DRSW/1 §6 records which conformance class this
+        site actually meets. A third wire,
+        <a href="/docs/#docs%2FEXECUTION-ENVIRONMENTS.md"><b>DREE/1</b></a>,
+        does the same for where the agent's shell commands run — two
+        endpoints a machine of your own answers on, in place of the browser
+        VM. The argument for writing any of it down is
+        <a href="/docs/#docs%2FSTACKLESS-RESEARCH.md">stackless
+        research</a>.</li>
       <li><b>MIT-licensed, and checkable end to end.</b> The live site is
         served straight from the public repository, git-connected, so what
         production runs is what you can read.</li>

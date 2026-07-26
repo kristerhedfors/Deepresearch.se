@@ -268,7 +268,14 @@ pass extracted — `endpoint-gate.js` (the side-endpoint admission preamble),
 `facade-contract.js`, `run-as.js`, `slash.js`, `starter-tag.js` (the `#XP-<nn>`
 tags tying feedback back to one starter), `build-pub.js`, `sandbox-image.js`,
 `static-pages.js`, `landing.js`, `server-errors.js`, `config.js`, `db.js`,
-`google.js`, `log.js` and `sql-injection-guard.js`.
+`google.js`, `log.js` and `sql-injection-guard.js`. **The interchange
+standards** get the same treatment, and it is pointed specifically at the gap
+between what a spec claims and what the code does: `drsw-manifest.js` pins that
+`/.well-known/drsw.json` declares the payload kind and version the workspace
+code actually reads, advertises only sections the payload validator accepts,
+does NOT advertise the unimplemented §5 interchange sections, and claims the
+higher conformance class only once those land; `standards-links.js` pins that
+the help page says where the standards stand relative to the code.
 
 Client-side pure logic gets the same treatment even though it ships as
 `public/js/`, not `src/` — `exif.js` (TIFF/EXIF parsing: GPS/camera/
