@@ -36,6 +36,7 @@ import {
   releaseInflight,
   reserveInflight,
 } from "./quota.js";
+import { classifyFailure, recordSubsystemFailure } from "./server-errors.js";
 import { developerModeEnabled } from "./settings.js";
 import { validateMessages } from "./validation.js";
 import { normalizeWorkflow, orchestratorPlanPrompt, workflowWaves } from "../public/js/orchestrator-core.js";
@@ -111,21 +112,41 @@ export async function handleOrchestratorPlan(request, env, log, identity) {
     if (!plan) {
       // Nothing salvageable: let the chat request plan again server-side
       // rather than shipping a degenerate team the user would watch run.
-      log.info("orch.plan_empty", { user_id: identity.id });
-      return jsonResponse({ plan: null, reason: "unusable" });
+      log.info("orch.plan_empty", { user_id: identity.id, request_id: reqId });
+      return jsonResponse({ plan: null, reason: "unusable", request_id: reqId });
     }
     const waves = workflowWaves(plan).waves;
     const swarmNodes = plan.agents.filter((a) => a.kind === "swarm").length;
+    // The two-call flow's ONLY server-side breadcrumb: this line is what says
+    // a run was planned at all. If the browser then dies running the swarm
+    // nodes locally (the on-device model pool is the memory-hungriest thing
+    // this product does), /api/chat never arrives and no chat_logs row is ever
+    // written — an `orch.plan` with no matching `chat.complete` is the shape
+    // of that crash. `request_id` is echoed to the client so the two calls can
+    // be tied together once it forwards it.
     log.info("orch.plan", {
       user_id: identity.id,
+      request_id: reqId,
       agents: plan.agents.length,
       waves: waves.length,
       swarm_nodes: swarmNodes,
       swarm_model: swarm?.modelId || "",
     });
-    return jsonResponse({ plan, waves });
+    return jsonResponse({ plan, waves, request_id: reqId });
   } catch (err) {
     log.warn("orch.plan_failed", { user_id: identity.id, error: (/** @type {any} */ (err))?.message || String(err) });
+    // Fail-soft answers the CLIENT ({plan:null} → it plans server-side
+    // instead), but the failure still needs somewhere durable to live: this
+    // endpoint writes no chat_logs row of its own, so before this the only
+    // trace was one retention-bounded Workers Logs line.
+    await recordSubsystemFailure(env, log, {
+      subsystem: "orchestrator",
+      op: "plan_api",
+      failureClass: classifyFailure(err),
+      detail: (/** @type {any} */ (err))?.message || String(err),
+      requestId: reqId,
+      context: { model: DEFAULT_MODEL },
+    });
     return jsonResponse({ plan: null, reason: "error" });
   } finally {
     await releaseInflight(env, reqId);

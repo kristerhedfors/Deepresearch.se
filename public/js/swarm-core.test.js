@@ -52,6 +52,36 @@ test("planSwarmCapacity clamps every input and survives missing device info", ()
   assert.equal(planSwarmCapacity({ requested: 6, maxWorkers: 1 }).concurrency, 1);
 });
 
+test("the pool shrinks as the MODEL grows, even when the browser hides its RAM", () => {
+  // Safari and Firefox ship no navigator.deviceMemory — the browser the tab
+  // crashes were reported on (feedback #26). The old sizing fixed the memory
+  // bound at two members regardless of model size, so a 1.2 GB build got the
+  // same pool as a 300 MB one. Each live member holds its own copy: the bound
+  // has to follow the model.
+  const tiny = planSwarmCapacity({ requested: 8, hardwareConcurrency: 10, modelBytes: 300e6 });
+  const mid = planSwarmCapacity({ requested: 8, hardwareConcurrency: 10, modelBytes: 1.2e9 });
+  const huge = planSwarmCapacity({ requested: 8, hardwareConcurrency: 10, modelBytes: 4.2e9 });
+  assert.ok(tiny.concurrency >= mid.concurrency, `${tiny.concurrency} >= ${mid.concurrency}`);
+  assert.ok(mid.concurrency >= huge.concurrency);
+  assert.equal(huge.concurrency, 1, "a multi-gigabyte model runs one member at a time");
+  assert.equal(huge.members, 8, "the team is not shrunk — it is queued (invariant 2)");
+  assert.equal(huge.batches, 8);
+  // Reported memory only ever DIVIDES: a bigger model never buys a bigger pool.
+  const known = planSwarmCapacity({ requested: 8, hardwareConcurrency: 10, deviceMemoryGb: 8, modelBytes: 1.2e9 });
+  assert.ok(known.perMemberGb > 1.2, "a loaded model costs more than its bytes on disk");
+  assert.ok(known.concurrency <= planSwarmCapacity({ requested: 8, hardwareConcurrency: 10, deviceMemoryGb: 8, modelBytes: 300e6 }).concurrency);
+});
+
+test("live heap pressure tightens the pool, and an absent measurement never loosens it", () => {
+  const base = { requested: 8, hardwareConcurrency: 16, deviceMemoryGb: 8, modelBytes: 300e6 };
+  const calm = planSwarmCapacity(base);
+  assert.ok(calm.concurrency >= 2);
+  assert.ok(planSwarmCapacity({ ...base, heapUsedRatio: 0.75 }).concurrency < calm.concurrency, "tight heap halves it");
+  assert.equal(planSwarmCapacity({ ...base, heapUsedRatio: 0.95 }).concurrency, 1, "a nearly full heap runs one");
+  assert.equal(planSwarmCapacity({ ...base, heapUsedRatio: null }).concurrency, calm.concurrency, "unknown = unchanged");
+  assert.equal(planSwarmCapacity({ ...base, heapUsedRatio: 0.2 }).concurrency, calm.concurrency);
+});
+
 // ---- stances -----------------------------------------------------------------
 
 test("members get distinct stances and the list wraps past its length", () => {

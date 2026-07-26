@@ -23,6 +23,16 @@
 // "feedback loop(s)" is the ONE excluded collision: it's a ubiquitous fixed
 // phrase (control theory, ML, and this repo's own skill names), so a research
 // question that opens with it must NOT be swallowed by the gate.
+//
+// SINCE 2026-07-26 there is a SECOND way in: the `/feedback` slash command
+// (public/js/slash-core.js), available in every agent and on both tiers. The
+// keyword gate below is unchanged and stays the documented behaviour — Se/cure's
+// confirm flow and every stored entry depend on it — so the command is an
+// addition, not a replacement. Everything downstream asks `feedbackRequested`
+// rather than `feedbackIntent`, so the two forms are indistinguishable once the
+// note is on its way to the developers.
+
+import { parseSlashCommand, slashEffect } from "./slash-core.js";
 
 export const FEEDBACK_PATTERNS = [
   /^\s*feedback\b(?!\s+loops?\b)/i, // EN + SV loanword: "feedback", "Feedback:", "feedback – …"
@@ -38,6 +48,32 @@ export const FEEDBACK_PATTERNS = [
 export function feedbackIntent(text) {
   const t = typeof text === "string" ? text : "";
   return FEEDBACK_PATTERNS.some((re) => re.test(t));
+}
+
+/**
+ * Whether the latest user message asks for the feedback path AT ALL — the bare
+ * keyword (above) OR the `/feedback` slash command. This is what every router
+ * calls; `feedbackIntent` remains the keyword gate on its own so the two can be
+ * reasoned about (and tested) separately.
+ * @param {unknown} text the user's message text
+ * @returns {boolean}
+ */
+export function feedbackRequested(text) {
+  return feedbackIntent(text) || slashEffect(text) === "feedback";
+}
+
+/**
+ * The words the developers should read: the message with a `/feedback` prefix
+ * removed. A bare-keyword message is returned untouched (the word "feedback" is
+ * part of how the note reads), and so is a bare `/feedback` with nothing after
+ * it — stripping that would file an empty entry.
+ * @param {unknown} text the user's message text
+ * @returns {string}
+ */
+export function feedbackComment(text) {
+  const raw = typeof text === "string" ? text : "";
+  const parsed = parseSlashCommand(raw);
+  return parsed?.effect === "feedback" && parsed.args ? parsed.args : raw;
 }
 
 /**
@@ -68,7 +104,7 @@ export function feedbackIntent(text) {
  * @returns {boolean}
  */
 export function feedbackForcesServerRoute(text) {
-  return feedbackIntent(text);
+  return feedbackRequested(text);
 }
 
 // ---------------------------------------------------------------------------
