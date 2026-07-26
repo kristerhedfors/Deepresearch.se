@@ -21,18 +21,17 @@
 // ordinary orchestrator request that plans server-side without a swarm.
 
 import { completeJson } from "./providers.js";
-import { DEFAULT_MODEL, listModels } from "./berget.js";
+import { DEFAULT_MODEL } from "./berget.js";
 import { getConfig } from "./config.js";
 import { jsonResponse } from "./http.js";
 import { lastUserMessage, textOf } from "./conversation.js";
 import {
-  bergetCost,
   effectiveQuota,
   getUsage,
   inflightLimitResponse,
   quotaBlockedResponse,
   quotaExceeded,
-  recordUsage,
+  recordDefaultModelUsage,
   releaseInflight,
   reserveInflight,
 } from "./quota.js";
@@ -107,7 +106,7 @@ export async function handleOrchestratorPlan(request, env, log, identity) {
       }],
       { model: DEFAULT_MODEL, maxTokens: PLAN_MAX_TOKENS },
     );
-    await recordPlanUsage(env, log, identity, r.usage, Date.now() - startedAt);
+    await recordDefaultModelUsage(env, log, identity, r.usage, Date.now() - startedAt);
     const plan = normalizeWorkflow(r.value, { hasSource: body?.has_source === true, hasSwarm: !!swarm });
     if (!plan) {
       // Nothing salvageable: let the chat request plan again server-side
@@ -167,33 +166,3 @@ export function normalizeSwarmCapability(raw) {
   return { modelId, modelLabel: (typeof raw.modelLabel === "string" ? raw.modelLabel : modelId).slice(0, 60) };
 }
 
-// The plan spends real (small) Berget money on DEFAULT_MODEL — recorded like
-// every other spend, priced from the catalog (fail-soft: an unreachable
-// catalog records the tokens at zero cost rather than failing the plan).
-/**
- * @param {Env} env
- * @param {Logger} log
- * @param {Identity} identity
- * @param {{ prompt_tokens?: number, completion_tokens?: number } | null | undefined} usage
- * @param {number} durationMs
- */
-async function recordPlanUsage(env, log, identity, usage, durationMs) {
-  let entry = null;
-  try {
-    entry = (await listModels(env))?.find((m) => m.id === DEFAULT_MODEL) || null;
-  } catch {
-    entry = null;
-  }
-  const prompt_tokens = usage?.prompt_tokens || 0;
-  const completion_tokens = usage?.completion_tokens || 0;
-  await recordUsage(env, log, {
-    user_id: identity.id,
-    model: DEFAULT_MODEL,
-    prompt_tokens,
-    completion_tokens,
-    searches: 0,
-    berget_cost: bergetCost(entry, prompt_tokens, completion_tokens),
-    exa_cost: 0,
-    duration_ms: durationMs,
-  });
-}

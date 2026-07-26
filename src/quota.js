@@ -30,6 +30,9 @@
 //                         getUsageByModelForUser reads it. Never enforcement.
 
 import { getDb } from "./db.js";
+// The DEFAULT_MODEL catalog lookup recordDefaultModelUsage prices from.
+// berget.js imports nothing, so this edge drags no graph behind it.
+import { DEFAULT_MODEL, listModels } from "./berget.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -609,6 +612,43 @@ export async function recordUsage(env, log, evt) {
     // Accounting must never break a served answer.
     log.error("quota.record_failed", { error: (/** @type {any} */ (err))?.message || String(err) });
   }
+}
+
+// A one-off spend on the fixed DEFAULT_MODEL — the shape every side call that
+// runs the reliable JSON model shares (the Orchestrator's plan phase in
+// orchestrator-api.js, quiz grading in quiz-api.js), which used to re-inline it
+// verbatim. Each spends real (small) Berget money and is recorded like every
+// other spend, priced from the catalog (fail-soft: an unreachable catalog
+// records the tokens at zero cost rather than failing the caller).
+/**
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {{ id: string }} identity the minimal shape of settings.js's Identity
+ *   this needs — spelled structurally so accounting stays clear of the
+ *   data-bearing settings.js even for a type.
+ * @param {{ prompt_tokens?: number, completion_tokens?: number } | null | undefined} usage
+ * @param {number} durationMs
+ * @returns {Promise<void>}
+ */
+export async function recordDefaultModelUsage(env, log, identity, usage, durationMs) {
+  let entry = null;
+  try {
+    entry = (await listModels(env))?.find((m) => m.id === DEFAULT_MODEL) || null;
+  } catch {
+    entry = null;
+  }
+  const prompt_tokens = usage?.prompt_tokens || 0;
+  const completion_tokens = usage?.completion_tokens || 0;
+  await recordUsage(env, log, {
+    user_id: identity.id,
+    model: DEFAULT_MODEL,
+    prompt_tokens,
+    completion_tokens,
+    searches: 0,
+    berget_cost: bergetCost(entry, prompt_tokens, completion_tokens),
+    exa_cost: 0,
+    duration_ms: durationMs,
+  });
 }
 
 /**
