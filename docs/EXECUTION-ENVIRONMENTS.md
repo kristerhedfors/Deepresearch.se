@@ -356,7 +356,8 @@ the signed-in tier only and never in DeepResearch.**Se/cure**.
 | `src/exec-container.js` | The server-side environment: the `/api/exec/*` DREE/1 endpoints, the `ExecSandbox` Durable Object that drives one container per session, and the server-side `/src` seed |
 | `src/exec-container.test.js` | Its contract against a fake container: availability, `bash -lc`, the timeout→124 path, output caps, the command budget across an eviction, and the stamp-guarded source mount |
 | `container/Dockerfile` | The image (Debian slim + the research toolchain), built out of band and referenced by URI |
-| `wrangler.toml` | The container + Durable Object + migration block, COMMENTED OUT by default (§9) |
+| `scripts/build-exec-image.sh` | `build` → `verify` (40 checks) → `push` for that image; overrides the deploy token with the user token the registry needs (§9) |
+| `wrangler.toml` | The container + Durable Object + migration block. Uncommented since 2026-07-26 and pointing at the pushed image; no deploy has carried it yet (§9) |
 | `public/js/exec-env.js` | Also: `remoteRunnerActive()`, `execSessionId()`, `releaseExecSession()` |
 
 ## 8. The fences on a server-side container
@@ -505,10 +506,10 @@ registry live.
 - **Apple `container` flag set.** It gets a reduced flag list (no
   `--pids-limit`); confirm `--memory`/`--cpus`/`--network` behave as assumed on
   macOS 26.
-- **File mounts.** A Se/rver send with attachments or a project mounts them into
-  the browser VM; with a local runner those attachments are simply not there.
-  Bridging that (push attachments through `/exec` into `/workspace`) is the
-  obvious next step and is not implemented.
+- ~~**File mounts.**~~ Closed by the mount bridge (§2a): `planRemoteMount` sends
+  the same plan the browser VM mounts as one ustar archive to `POST /mount`, and
+  the reference runner implements it. What is still unverified is the bridge
+  running against a live page rather than a unit test.
 - **A Platform-SDK module.** Per the 2026-07-24 directive that feature surfaces
   should be carried by an SDK rather than built bespoke, the execution-environment
   seam owes a `sdk/MANIFEST.json` module (`docs/ARCHITECTURE.md` §15).
@@ -518,12 +519,13 @@ registry live.
 - **Nothing has run in a real container yet.** The Durable Object is proven
   against a double that mimics the documented API (`exec` throws until running,
   `output()` reads once, a killed process resolves), and the endpoints are proven
-  end to end in unit tests. But no container has been started here, because the
-  binding cannot be enabled from this environment and there is no Docker daemon
-  to build the image with. Before treating it as production-ready: enable it per
-  §9, then verify a cold start's real latency, that `bash -lc` finds the whole
-  toolchain, that a 120 s command is killed cleanly, that the `/src` seed lands
-  782 files, and that the stamp guard skips the second send.
+  end to end in unit tests. The image itself is now built, battery-verified and
+  pushed, and the binding is uncommented (§9) — what is still missing is a
+  **deploy carrying it**, so no container has ever been started. Before treating
+  it as production-ready: deploy, then verify a cold start's real latency, that
+  `bash -lc` finds the whole toolchain, that a 120 s command is killed cleanly,
+  that the `/src` seed lands 782 files, and that the stamp guard skips the second
+  send.
 - **Cost per session is unmeasured.** Instance-seconds are billed; the fences in
   §8 bound them but no figure has been observed. Measure before offering it
   widely.

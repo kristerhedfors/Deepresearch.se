@@ -154,6 +154,8 @@ rest of the document elaborates.
 | **Se/cure app** (`public/cure/`) | browser | nothing server-side | the user | the full research pipeline with the server in no data path |
 | **Se/rver app** (`public/`, `public/js/`) | browser + Worker | the signed-in session | the account | the full platform: modes, panels, projects-as-workspaces, admin |
 | **CheerpX JS Linux VM** (§13) | browser, WASM | a real x86 Linux filesystem in IndexedDB; mounted workspace files; `/src` in developer mode | the browser only — the VM never talks to the Worker | running code, inspecting data, testing what an agent builds — offline, in the tab |
+| **Local runner** (§13, `docs/EXECUTION-ENVIRONMENTS.md`) | the user's own machine, behind a small HTTP service | one throwaway container per research session, plus whatever the user mounts | the user only — the browser calls it directly | native-speed execution with neither the emulator's ceiling nor a server in the path |
+| **Cloud container** (§13) | Cloudflare, one ephemeral container per session | `/workspace`, the project mount, `/src` in developer mode | the operator — this is the one execution environment the server is inside | native-speed execution with nothing to install. **Se/rver only**, refused for Se/cure in code |
 | **On-device model** | browser, WebGPU | downloaded weights in OPFS | the browser only | answers with no provider and no server in the path |
 | **Worker** (`src/index.js`) | Cloudflare edge | request state only | the operator | routing, the identity gate, every server capability |
 | **Research pipeline** (`src/pipeline.js`) | Worker | the request while it runs | the operator (`chat_logs` unless incognito) | triage → search → gap → synthesis → validation, deterministic, no function calling |
@@ -195,6 +197,7 @@ channel they are on before they contribute anything (`docs/WORKSPACES.md` §6).
 | What rests where, encrypted or not? | §9, `docs/PRIVACY-MODEL.md` |
 | What can a lent token do? | `docs/SERVER-TOKENS.md`, §9 |
 | How does the in-browser Linux work? | §13, the **execution-sandbox** skill |
+| Where do the agent's shell commands actually run? | §13, `docs/EXECUTION-ENVIRONMENTS.md` |
 | How do the feature surfaces relate to the platform? | §15 |
 
 ---
@@ -207,9 +210,10 @@ deployable via `npx wrangler deploy`). There is no origin server. Server-side
 state lives in Cloudflare bindings: **D1** (accounts, quotas, config, the
 chat interaction log, feedback threads, answer-recovery cache, game saves —
 plus the grant/token meters, the decision-board review rows, and the
-compute-sharing broker tables listed below), **R2** (opt-in cloud copies of
-conversations/files/RAG exports) and
-**Vectorize** (the document-RAG vector index). Conversation state is still
+compute-sharing broker tables listed below), **R2** (cloud copies of
+conversations/files/RAG exports, implicit on the signed-in tier) and
+**Vectorize** (the document-RAG vector index, plus the arXiv corpus).
+Conversation state is still
 client-held and resent with each request; what the server persists, and what
 rests encrypted vs readable, is governed by the privacy split in §9.
 
@@ -263,6 +267,8 @@ flowchart LR
 | Exa | `POST https://api.exa.ai/search`, `POST …/contents` | `x-api-key: EXA_API_KEY` | Web search — `numResults`/`type` scale with the time budget (§4.3b); `/contents` is the (currently disabled, §4.2) full-text fetch |
 | A results-page CASCADE + the result pages themselves | `GET` each configured source in order — DuckDuckGo's no-JS HTML, Marginalia, optionally Bing's RSS output — then a plain `GET` per result page (`src/websearch-cf.js`) | none | The Cloudflare-originating search backend: the Worker IS the search engine. A cascade because no single source answers every caller — DuckDuckGo returns an empty anti-bot shell to datacenter IPs (measured 2026-07-25). Bounded (8 s per source, 8 s per page, ≤5 pages, 3 at a time) and fail-soft — an exhausted cascade returns null and falls back to Exa |
 | Hugging Face Hub | Hub search APIs (`src/hf.js`) | `HUGGINGFACE_API_TOKEN` (optional) | Models/datasets/papers as citable sources when the question targets HF (`hfIntent`), via the search-source registry |
+| arXiv | `GET https://export.arxiv.org/api/query` (`src/arxiv.js`), Atom 1.0 | none — public and free | Preprints as citable sources when a question asks about scientific literature (`arxivIntent`), via the same registry. Queried as fielded `abs:"…" AND abs:"…"` terms: a quoted phrase in the catch-all `all:` field silently returns zero, and unquoted words there are OR, not AND. Rate-limited to 1 request / 3 s with no paid tier, hence the hosted tier below |
+| — (no third party) | `ARXIV_INDEX` Vectorize index (`src/arxiv-rag.js`) | binding | The DENSE tier of the same source: the arXiv corpus embedded once and searched in-account, so arXiv leaves the request path entirely and the user's question reaches only the embedding call. Falls back to the live API when unbound, erroring, or below the relevance floor (`docs/ARXIV-RAG.md`) |
 | Hugging Face router | `GET https://router.huggingface.co/v1/models`, `POST …/v1/chat/completions` (`src/hf-inference.js`) | `HUGGINGFACE_API_TOKEN` (**required** — inference is billed) | The one OPEN provider catalog: browsed with prices in the Models agent, and — once an account enables a model — a fourth answer/synthesis provider (`hf:*` ids). OpenAI-compatible, so no stream adapter |
 | Shodan | REST API (`src/shodan.js`) | `SHODAN_API_KEY` (optional) | Opt-in host-intelligence enrichment (`shodan_mcp` knob) — an **extension**, registered in `src/extensions.js` (§4.2a); the core does not depend on it |
 | Google Maps Platform | Places, Street View Static, Static Maps, Embed (`src/googlemaps.js`) | `GOOGLE_MAPS_API_KEY` (+ optional `GOOGLE_MAPS_EMBED_KEY`) | Opt-in maps/street-view enrichment (`google_maps` knob) + Tokemon's street mode — an **extension**, registered in `src/extensions.js` (§4.2a); the core does not depend on it |
@@ -328,9 +334,22 @@ L-12.
   interaction log, feedback threads, answer recovery, alerts, game saves
   (schema self-applies on first use, `src/db.js`).
 - `[[r2_buckets]] binding = "STORAGE"` and `[[vectorize]] binding =
-  "RAG_INDEX"` — the opt-in cloud-storage/RAG layer (§9). The bound
+  "RAG_INDEX"` — the cloud-storage/RAG layer (§9; implicit on Se/rver, so
+  the deployment opts in, not the account). The bound
   resources must exist before deploy or every deploy fails; removing the
   bindings just switches the feature off (clients run browser-only).
+- `[[vectorize]] binding = "ARXIV_INDEX"` — the hosted dense tier of the
+  arXiv research source (`src/arxiv-rag.js`), the same 1024 dims because
+  the same e5 model builds it. Removing it falls back to the live arXiv
+  API, which is how every deployment without the index already behaves.
+- `[[containers]]` + `[[durable_objects.bindings]] name = "EXEC_SANDBOX"`
+  + the `v1` migration — the server-side execution environment (§13):
+  one ephemeral Cloudflare Container per research session, `standard-1`,
+  EU jurisdiction, `max_instances` as the global fence. Same
+  resource-must-exist-first rule, which is why it shipped commented out
+  until the image was pushed; the deploy that first carries it is the
+  switch, and none has yet. Absent, `/api/settings` reports
+  `available.exec_container: false` and the picker omits the option.
 - `[vars] LOG_LEVEL = "info"`; `[observability] enabled = true` persists
   logs to Workers Logs.
 - Secrets are set only in the dashboard/CLI, never in the repo. Required:
@@ -517,7 +536,10 @@ JSON-hardening layer) falls back: substantial question →
    the time budget (§4.3b). Auxiliary sources from the
    **search-source registry** (`src/search-sources.js`) run alongside Exa
    when their intent gate fires — today the Hugging Face Hub
-   (models/datasets/papers, `src/hf.js`). Results feed the **source
+   (models/datasets/papers, `src/hf.js`) and **arXiv** (preprints,
+   `src/arxiv.js`, served from the hosted Vectorize corpus when
+   `ARXIV_INDEX` is bound and from the live API otherwise —
+   `src/arxiv-rag.js`, `docs/ARXIV-RAG.md`). Results feed the **source
    registry** (`src/sources.js`): deduped by URL, numbered in arrival order
    so `[n]` citations stay stable, capped at `plan.maxSources` overall AND
    at 3 per origin (per-domain; per-*owner* for huggingface.co), keeping
@@ -1353,6 +1375,54 @@ CheerpX device mounts (`public/js/sandbox-files.js`): tiered ingest
 device-API facts: `docs/SANDBOX-HOST-COMMANDS.md` and the
 **execution-sandbox** skill.
 
+**Where those commands run is now a separate choice** (2026-07-26,
+`docs/EXECUTION-ENVIRONMENTS.md`). The browser VM is the default and stays
+supported, but it is one of THREE environments behind a single wire, **DREE/1**
+(DeepResearch Execution Environment): `GET /healthz` + `POST /exec`, with
+optional `/mount` and `/source` endpoints advertised in the health body. The
+response shape is deliberately `execInSandbox`'s, so the `bash-core.js` loop,
+the transcript renderer and the deliverables export are byte-for-byte
+indifferent to which machine ran a command.
+
+| | Runs on | Tier | Server in the data path |
+|---|---|---|---|
+| **In-browser VM** (default) | the tab, CheerpX WASM | both | no |
+| **Local runner** | the user's own machine, `localhost:8100` | both | no |
+| **Cloud container** | one ephemeral Cloudflare Container per session | **Se/rver only** | **yes** |
+
+The first two are browser-direct: no command, output or mounted file passes
+through this server, which is why the local runner needs no new invariant-4
+exception — it is a different endpoint for the same browser-side call, not a
+third channel to the server. The reference runner
+(`public/cure/local-exec/runner.mjs`, dependency-free, docker/podman/Apple
+`container`/`host` backends) and its one-command setup page live at
+`/cure/local-exec`.
+
+The third one **is** the server, so it is admissible only on Se/rver, where the
+server sits inside the trust boundary (owner directive, 2026-07-24), and never
+on Se/cure. That refusal is in code twice, not in convention: `selectRunner`
+(`public/js/exec-backends-core.js`) requires an explicit `tier:"server"` and
+gives a caller who says nothing the browser VM, and `/api/exec/*` sits behind
+the identity gate Se/cure has no identity to pass. Se/cure's count of deliberate
+server-touching exceptions therefore stays at two.
+
+Server-side, `src/exec-container.js` speaks that same DREE/1 at `/api/exec/*`
+and drives one container per research session through the `ExecSandbox` Durable
+Object (re-exported from `index.js`, since a DO must be exported from the
+entrypoint). There is no service inside the image and no added dependency
+(invariant 5): the image is plain Debian plus a toolchain with `sleep infinity`
+as its entrypoint, and each command is one `bash -lc` process started with the
+DO's raw `ctx.container.exec`. Mounts match the browser VM's — the page pushes
+one ustar archive of `/workspace` plus the project mount, and `/src` is seeded
+server-side from the `ASSETS` binding under a stamp guard, so a warm container
+pays nothing and the tree is by construction this deploy's source. Per-session
+fences (idle destroy, one-hour lifetime, a 400-command budget) live in the
+module; `max_instances` is the global one. Availability follows the optional
+`EXEC_SANDBOX` binding (§2) — absent, the option is invisible. **Nothing has run
+in a real container yet**: no deploy has carried the binding, so everything known
+about that path comes from the fake in `src/exec-container.test.js` and the image
+battery (`docs/EXECUTION-ENVIRONMENTS.md` §9–§10).
+
 **The same two-call shape, one surface over:** Orchestrator's `swarm`
 sub-agent kind (2026-07-25) reasons with many tiny Bonsai models running at
 once in the user's browser, so it too must be driven from the client.
@@ -1457,10 +1527,10 @@ models reasoning in parallel browser workers, planned through
 (`src/pool.js`, `src/pool-token.js`, `docs/COMPUTE-SHARING.md`), **workspace
 knowledge** (`src/knowledge.js`), the **quiz** surface (`src/quiz.js`) and the
 **execution-environment seam** (`public/js/exec-backends-core.js`,
-`docs/EXECUTION-ENVIRONMENTS.md`, 2026-07-26 — the DREE/1 wire letting a
-container runner on the user's own machine replace the in-browser VM; the
-`execution-sandbox` Platform-SDK module covers the VM, not the choice of where
-commands run).
+`src/exec-container.js`, `docs/EXECUTION-ENVIRONMENTS.md`, 2026-07-26 — the
+DREE/1 wire letting either a runner on the user's own machine or an ephemeral
+Cloudflare Container replace the in-browser VM; the `execution-sandbox`
+Platform-SDK module covers the VM, not the choice of where commands run).
 Each is a candidate for the same treatment — an SDK module, an AgentSpec, or
 both — and until that happens `docs/CODE-LAYOUT.md` is their per-module map.
 Adding a feature surface means asking which of the two SDKs should carry it

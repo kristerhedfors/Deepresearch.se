@@ -36,7 +36,17 @@ description: >-
   section), public/cure/local-exec/ (the reference runner runner.mjs + its
   setup page), or the selectRunner call sites in stream.js and
   drc-research.js; full spec, exposure ledger and what is still owed:
-  docs/EXECUTION-ENVIRONMENTS.md.
+  docs/EXECUTION-ENVIRONMENTS.md. That seam has a THIRD environment as of
+  2026-07-26 — the CLOUD CONTAINER (src/exec-container.js,
+  container/Dockerfile, scripts/build-exec-image.sh): one ephemeral
+  Cloudflare Container per research session behind the ExecSandbox Durable
+  Object, speaking the same DREE/1 at /api/exec/*, Se/rver ONLY because it is
+  the one execution environment with the server in the data path. Load this
+  when touching that module, the EXEC_SANDBOX binding, the container image or
+  its verify battery — including the two credential/registry traps (the push
+  needs CLOUDFLARE_USER_API_TOKEN, not the account-owned deploy token; build
+  with --provenance=false --sbom=false or the managed registry gets a
+  manifest list).
 ---
 
 # Execution sandbox (bash-lite)
@@ -135,24 +145,43 @@ denies the capability even with a transcript in front of it.
 | Stale-client rescue | `src/chat.js`: a knob-on request with **no `client_diag`** = a pre-fix cached bundle → responds `Clear-Site-Data: "cache"` (self-limiting) |
 | DRS settings UI (Experimental knob) | in the Settings view (`public/js/account-settings.js` renders it via account-views.js's `renderConfigKnobs`/`wireSandboxKnob`), next to the Introspection knob — since 2026-07-11 ALL configuration lives under Settings, opened from the summary's Settings button or the header's gear icon; `public/js/settings.js` accessors |
 | DRC loop + prompt + knob | `public/js/drc-research.js` (`runDrcShellPass`, `drcBashAgentPrompt`), `public/js/drc-core.js` (`bashLite` state). The knob lives in the DRC **settings view** (`#settingsview` in `public/cure/index.html`, opened by the header's gear `gearbtn` → `openSettings` in `drc.js`) alongside the API keys (since 2026-07-11; the account view keeps only the no-accounts explainer) — the left drawer is chats+projects only. Plain `.toggle-track` styling (no spiderweb) in `drc.css` |
-| **WHERE the commands run** (2026-07-26) | `public/js/exec-backends-core.js` — the shared pure core + the **DREE/1** wire (`GET /healthz`, `POST /exec`), `probeRunner`, `makeLocalRunner`, and `selectRunner`, which hands back the in-browser-VM bridge UNCHANGED unless a local runner is fully configured. Se/rver config + gear-panel section: `public/js/exec-env.js` (browser-local `dr_exec_env`, per DEVICE). Se/cure: `state.execBackend` + `renderExecBackend()` in `drc.js`. Reference runner + setup page: `public/cure/local-exec/`. Full spec + exposure ledger + what is still owed: `docs/EXECUTION-ENVIRONMENTS.md` |
+| **WHERE the commands run** (2026-07-26) | `public/js/exec-backends-core.js` — the shared pure core + the **DREE/1** wire (`GET /healthz`, `POST /exec`), `probeRunner`, `makeLocalRunner`, `makeContainerRunner`, and `selectRunner`, which hands back the in-browser-VM bridge UNCHANGED unless a remote environment is fully configured AND allowed in the caller's tier. Se/rver config + gear-panel section: `public/js/exec-env.js` (browser-local `dr_exec_env`, per DEVICE). Se/cure: `state.execBackend` + `renderExecBackend()` in `drc.js`. Reference runner + setup page: `public/cure/local-exec/`. THIRD environment, Se/rver only: `src/exec-container.js` (`/api/exec/*`, the `ExecSandbox` Durable Object, `container/Dockerfile`, `scripts/build-exec-image.sh`, the `EXEC_SANDBOX` binding). Full spec + exposure ledger + what is still owed: `docs/EXECUTION-ENVIRONMENTS.md` |
 
 ## Choosing the execution environment (2026-07-26)
 
 The VM below is the DEFAULT, not the only option. A user may point either tier
 at a **DREE/1 runner** on their own machine instead — a container per research
-session, at native speed. Three things to keep straight when working here:
+session, at native speed — and a signed-in user may instead pick the **cloud
+container**, one ephemeral Cloudflare Container per session driven by the
+`ExecSandbox` Durable Object (`src/exec-container.js`), same wire at
+`/api/exec/*`. Four things to keep straight when working here:
 
 1. **The default path must stay byte-identical.** `selectRunner` returns the
    browser bridge for absent config, an unknown backend id, or a `local` pick
    with no URL. Pinned by `exec-backends-core.test.js`; don't weaken it.
-2. **Some VM machinery is VM-specific and is skipped for a local runner** —
+2. **Some VM machinery is VM-specific and is skipped for a remote runner** —
    the COEP/isolation gate (isolation is a SharedArrayBuffer requirement, not
-   an execution one), the pre-warm, `resetSandboxIfLacking` and the page's file
-   mounts. Attachments do NOT currently reach a local runner (§8 of the doc).
+   an execution one), the pre-warm, `resetSandboxIfLacking`, and the CheerpX
+   *device* mounts. The FILES still arrive: `planMounts` is the one plan every
+   environment mounts from, and `planRemoteMount` turns it into a single ustar
+   archive pushed to `POST /mount` (an optional DREE/1 capability advertised in
+   `/healthz`, so a runner without it is never asked). The cloud container adds
+   `POST /source`, which seeds `/src` server-side from the `ASSETS` binding
+   under a stamp guard — keeping ~11 MB off the browser and making the tree by
+   construction this deploy's source.
 3. **The deliverables flow is runner-agnostic** — `collectDeliverables(exec)`
    and `exportFile(path, exec)` take the environment that ran the loop, because
    the outbox convention and the base64 round-trip are pure `bash-core.js`.
+4. **The tier gate on the cloud container is not a convention, it is code, in
+   two places.** `selectRunner` requires an explicit `tier:"server"` (Se/cure
+   passes `tier:"secure"`, and a caller that says nothing gets the browser VM),
+   and `/api/exec/*` sits behind the identity gate Se/cure has no identity to
+   pass. Both are pinned by tests. Don't add a "just for testing" bypass — this
+   is the boundary that keeps Se/cure's deliberate server-touching exceptions
+   at two (invariant 4). Also note the cloud container has **never run for
+   real**: no deploy has carried the `EXEC_SANDBOX` binding, so everything
+   known about it comes from `src/exec-container.test.js`'s fake and the image
+   battery.
 
 ## The flow
 

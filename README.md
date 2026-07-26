@@ -22,7 +22,9 @@ is already network- and authentication-restricted. The "Installing your own
 instance" section below is the full walkthrough. The architecture gives you an
 extendable platform with a few unusual features — a browser-side research
 pipeline, sealed browser-local state, lendable capability grants, an in-browser
-Linux VM — and those features are what this research project explores.
+Linux VM that the agent's shell commands can also be pointed away from, to your
+own machine or to an ephemeral cloud container — and those features are what
+this research project explores.
 
 The **Se/rver** tier is a deep-research AI assistant on Cloudflare Workers: a
 static chat UI plus a streaming `/api/chat` endpoint. That endpoint runs a
@@ -32,25 +34,37 @@ deterministic JSON-mode and streamed calls only. Berget.ai's EU-hosted,
 OpenAI-compatible models are the primary LLM provider. Anthropic (`claude-*`)
 and OpenAI (`gpt-*`) are optional, key-gated answer-model providers behind the
 `src/providers.js` registry; the JSON planning phases always stay on Berget.
-Exa is the web search, the Hugging Face Hub is an auxiliary search source, and
-opt-in enrichments (Shodan host intelligence, Google Maps and Street View) feed
-the pipeline context. Google sign-in gates the whole site. D1 stores accounts,
-real-cost research quotas, the chat interaction log, and feedback threads.
-Opt-in R2 and Vectorize hold encrypted cloud history and document RAG. An
-`/admin` console shows usage and approves users. The pipeline is also exposed
-as an MCP tool (`POST /mcp`, `deep_research`).
+Exa is the web search — or the Worker itself, which can originate searches with
+no search company in the path — and the Hugging Face Hub and arXiv are auxiliary
+search sources; opt-in enrichments (Shodan host intelligence, Google Maps and
+Street View) feed the pipeline context. Google sign-in gates the whole site. D1
+stores accounts, real-cost research quotas, the chat interaction log, and
+feedback threads. R2 and Vectorize hold encrypted cloud history and document RAG
+— implicit on this tier, so the tier is the choice rather than a per-account
+knob. An `/admin` console shows usage and approves users. The pipeline is also
+exposed as an MCP tool (`POST /mcp`, `deep_research`).
+
+The chat itself has several **modes**, each a pre-bundled agent over the same
+platform: Deep Research (the default), Introspection (the site answering
+questions about its own deployed source), Agent Studio (distilling this site
+into a new agent or platform and publishing it live), Orchestrator (one plan
+phase decomposing a request into a team of sub-agents run in parallel waves),
+Outrospection (answers from an outward feed of what everyone else is building)
+and Models (browsing an open model catalog, priced, and enabling models per
+account).
 
 ```
 browser / PWA / MCP client ── Google OIDC session ──> Worker (src/index.js)
     ├── static UI            public/ (env.ASSETS)
     ├── POST /api/chat       src/chat.js → src/pipeline.js
-    │     ├── LLMs           src/providers.js → berget.js | anthropic.js | openai.js
-    │     ├── web search     src/exa.js (+ src/search-sources.js: hf.js)
-    │     └── enrichments    src/enrichment.js (shodan.js, maps-enrichment.js)
-    ├── POST /mcp            src/mcp.js (deep_research tool)
+    │     ├── LLMs           src/providers.js → berget.js | anthropic.js | openai.js | hf-inference.js
+    │     ├── web search     src/exa.js | src/websearch-cf.js (+ src/search-sources.js: hf.js, arxiv.js)
+    │     └── enrichments    src/enrichment.js (via src/extensions.js: shodan.js, maps-enrichment.js)
+    ├── POST /mcp            src/mcp.js (deep_research + sdk_* tools)
+    ├── POST /api/exec/*     src/exec-container.js (DREE/1 → one container per session)
     ├── /admin, /api/admin/* admin console (usage, users, chatlogs, feedback)
     ├── D1  (accounts, quotas, config, chat_logs, feedback, answer recovery, game saves)
-    └── R2 + Vectorize (opt-in encrypted cloud history + document RAG)
+    └── R2 + Vectorize (encrypted cloud history, document RAG, the arXiv corpus)
 ```
 
 ## Workspaces — where research is distributed and findings come back
@@ -296,6 +310,39 @@ Then restore the `[[r2_buckets]]` and `[[vectorize]]` blocks in
 bucket or index makes every deploy fail outright. What lands where (and what
 is or isn't encrypted) is documented in `docs/ARCHITECTURE.md` §9 and the
 **storage-privacy** skill (`.claude/skills/storage-privacy/`).
+
+### 8. Optional: the hosted arXiv corpus and the cloud execution environment
+
+Two more bindings follow the same create-the-resource-first rule, and each is
+invisible until it exists.
+
+`ARXIV_INDEX` is the dense tier of the arXiv search source: the corpus embedded
+once into Vectorize, so arXiv's rate limit leaves the request path and the
+user's question reaches only the embedding call. Unbound, `src/arxiv.js` uses
+the live arXiv API instead — which is how every deployment without the index
+already behaves. Build and cost figures: `docs/ARXIV-RAG.md`.
+
+```bash
+npx wrangler vectorize create deepresearch-se-arxiv --dimensions=1024 --metric=cosine
+node scripts/arxiv-vectorize.mjs --index deepresearch-se-arxiv   # incremental, resumable
+```
+
+`EXEC_SANDBOX` is the server-side execution environment: one ephemeral
+Cloudflare Container per research session, offered on the signed-in tier as an
+alternative to the in-browser Linux VM. It is the only execution environment
+with the server in the data path, so it is refused for Se/cure in code, and it
+needs the image pushed before the binding can be declared:
+
+```bash
+./scripts/build-exec-image.sh all     # build → verify (40 checks) → push
+```
+
+The push needs a Cloudflare **user** API token (`CLOUDFLARE_USER_API_TOKEN`)
+with Workers + Containers edit — the ordinary account-owned deploy token cannot
+reach Containers whatever permissions it carries. Then set `image` in
+`wrangler.toml`'s `[[containers]]` block and deploy. Without the binding,
+`/api/settings` reports the environment unavailable and the picker omits it.
+Full walkthrough, fences and exposure ledger: `docs/EXECUTION-ENVIRONMENTS.md`.
 
 ## Running outside Cloudflare (untested)
 

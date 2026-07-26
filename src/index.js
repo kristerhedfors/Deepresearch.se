@@ -127,9 +127,8 @@ import { runAsUid, runAsView } from "./run-as.js";
 // The Durable Object class behind the SERVER-SIDE execution environment. A
 // Durable Object must be exported from the Worker's ENTRYPOINT to be bindable,
 // which is the only reason this line is here rather than staying inside
-// src/exec-container.js. It is inert unless wrangler.toml's (commented-out by
-// default) container + durable_objects block is enabled — an unbound class
-// costs nothing.
+// src/exec-container.js. It is inert until a deploy carries wrangler.toml's
+// container + durable_objects block — an unbound class costs nothing.
 export { ExecSandbox } from "./exec-container.js";
 
 export default {

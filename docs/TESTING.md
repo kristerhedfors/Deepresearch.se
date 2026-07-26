@@ -236,6 +236,40 @@ against the client grammar, `nextOpenPoint` oldest-open selection,
 `targetPath` same-page normalization, `noteTexts` note-action extraction for
 the queue's read-before-you-go detail view).
 
+The surfaces added through 2026-07 are covered the same way. **Search sources:**
+`arxiv.js` (the intent gate EN+SV, and the query grammar the live API actually
+honours — fielded `abs:"…" AND …` ladders rather than the `all:`-with-spaces
+form that silently returns nothing) and `arxiv-rag.js` (the dense tier: binding
++ embedder gating, an item shape identical to the live tier's, the rerank
+document cut to the served 512-token window, and the fall-back-to-live path).
+**Execution:** `exec-container.js` against a FAKE container that mimics the
+documented Durable Object API — availability follows the optional binding then
+the sandbox knob, session ids can't shape the DO name, `/exec` bodies are
+validated rather than trusted, commands run through an explicit `bash -lc`
+argv, the timeout→124 path, byte-boundary output caps, the command budget
+across an eviction, and the stamp-guarded `/src` seed. **Agents and modes:**
+`agent-spec.js` + `agent-bounds.js` (a declared bound NARROWS a run and can
+never widen it; a malformed one falls back to the constant), `tool-sets.js`
+(every tool class in the vocabulary is bound, the shipped agents reproduce
+today's tool lists exactly, and REGISTRY order wins so a spec cannot reorder
+it), `chat-modes.js`, and `agent-registry.js`'s ordered `defaults` table.
+**Orchestrator:** `orchestrator.js` (bounded, total failure records that a
+`chat_logs` field cannot grow with, and `withTimeout`'s cancel-first
+ordering) and `orchestrator-api.js`. **Outrospection:** `outrospect.js` — the
+façade re-exports the core registry by identity, plus refresh-body validation.
+**Models:** `model-catalog.js`, `model-checks.js`, `models-agent.js`,
+`user-models.js` and `hf-inference.js` cover the discovered → evaluated →
+enabled lifecycle and the per-account record. **Compute sharing and
+knowledge:** `pool.js` / `pool-token.js`, and `knowledge.js` (the agent key
+generated once and never served private, ciphertext-only submission, revoked
+tokens and blocked consumers refused, backlog cap → 429, and an owner list
+that shows metadata until import decrypts). Plus the shared seams a refactor
+pass extracted — `endpoint-gate.js` (the side-endpoint admission preamble),
+`facade-contract.js`, `run-as.js`, `slash.js`, `starter-tag.js` (the `#XP-<nn>`
+tags tying feedback back to one starter), `build-pub.js`, `sandbox-image.js`,
+`static-pages.js`, `landing.js`, `server-errors.js`, `config.js`, `db.js`,
+`google.js`, `log.js` and `sql-injection-guard.js`.
+
 Client-side pure logic gets the same treatment even though it ships as
 `public/js/`, not `src/` — `exif.js` (TIFF/EXIF parsing: GPS/camera/
 timestamp extraction, byte-order handling, malformed-input safety) and
@@ -380,6 +414,45 @@ the rag index's every chunk ref must still resolve against the snapshot
 façade: the re-export contract pinning that its surface IS
 `public/js/introspect-core.js`, not a mirror, and the tool schemas/executors
 load without pulling in the pipeline).
+
+The client cores behind the newer surfaces are covered to the same standard.
+`exec-backends-core.js` pins the environment choice, including the two
+properties the privacy split rests on: `normalizeExecBackend` falls back to the
+browser VM for anything unknown, and `selectRunner` demands an explicit server
+tier — so Se/cure, and any caller that says nothing, gets the browser VM (the
+suite also holds the "browser bridge returned untouched" property).
+`chat-mode-core.js` pins that every non-normal mode has exactly one request
+flag and carries the site's own source, which is what let the `developer_mode`
+knob collapse into the mode. `orchestrator-core.js` covers plan validation that
+reports problems rather than throwing, cycle and cap detection, and
+deterministic wave resolution; `workflow-viz.js` covers the graph layout and
+its XSS-safe SVG; `swarm-core.js` covers capacity planning that clamps every
+input, tightens under live heap pressure and never loosens on a missing
+measurement, plus the distinct-stance assignment. `outrospect-core.js` carries
+the seven-lens registry with **full Swedish routing parity** (definite and
+plural forms, not just base words — invariant 6's enforcement pattern outside
+`googlemaps.test.js`), alongside `outrospect-feed.js` and `outrospect-view.js`.
+`starters-core.js` pins that `MODE_AGENTS` mirrors `sdk/AGENTS.json`'s defaults
+table and that the strip never repeats an id; `pipeline-map-core.js` pins a
+connected, uniquely-identified graph whose POST node is proven by the wire
+rather than by starting a send. Also here: `sdk-core.js`, `agent-spec-core.js`
+and `agent-capability.js` (the SDK/AgentSpec cores), `arxiv-rag-core.js`,
+`knowledge-core.js`, `pool-core.js` / `pool-local.js` / `pool-provider.js`,
+`ondevice-core.js`, `models-core.js` / `ai-models.js` / `provider-region.js`,
+`websearch-backends-core.js`, `secure-posture-core.js`,
+`research-seal-core.js`, `feedback-core.js`, `markdown.js`, `turns.js`,
+`report.js`, `deeplink-core.js`, `slash-core.js`, `source-peek-core.js`,
+`docs-comments-core.js`, `canned-faq.js`, `space-core.js`,
+`pulse-timeline-core.js`, `swarm-runtime.js` (the worker pool's hand-out and
+queueing, and a full draft → critique → converge run emitting the member states
+the graph renders), `search-source.js` (the client's user-selectable backend
+set, mirroring the server's with Exa first and default), `sdk-showcase.js` (a
+catalog whose every item carries a stable unique id and a real build prompt),
+`sdk-plant.js`, `account-views.js` (the account panel's summary/row rendering,
+including a Messages count that excludes feedback replies the badge folds in)
+and `account-articles.js`, plus the presentation cores `mode-theme.js`,
+`bar-tint.js`, `graph-backdrop.js`, `plant-spinner.js`, `boot-messages.js`,
+`umbrella-intro.js`, `ghostwalk.js`, `sandbox-mode.js` and `dev-mode.js`.
 
 The games' client cores are tested the same way, one directory over
 (`public/games/*/js/*.test.js`): `street-core.js` — the Tokemon street-view
