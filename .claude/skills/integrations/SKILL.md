@@ -75,6 +75,25 @@ next two sections.)
   /api/chat` body; the Worker validates it (400 on unknown or down models)
   and falls back to the default if the catalog is unreachable. Selection
   persists in `localStorage`.
+- **Pricing units are NOT stable — normalize at the wire.** Each catalog
+  entry carries a `pricing` block, and on **2026-07-17** its unit changed
+  from raw EUR **per token** to EUR **per million tokens**, tagged
+  `unit: "€ / M Token"` (`{"currency":"EUR","input":0.3,"output":0.3,"unit":"€ / M Token"}`).
+  `src/berget.js` stored the raw number as if it were per-token, so from that
+  day every Berget model's recorded cost was **1e6× too high**: Mistral
+  Small's `usage_events.berget_cost` per token jumped from `3e-7` to `0.30`
+  overnight, ~€500k of phantom spend landed on the admin usage panel, and —
+  since the same column is what `quotaExceeded` enforces against the EUR
+  budget caps — every real user blew their month cap on one request. Fixed by
+  normalizing in the catalog fetch: `eurPerTokenFromBerget()` /
+  `bergetPricingPerToken()` convert to EUR-per-token using the stated unit
+  **and** a magnitude bound (anything ≥ `1e-3` EUR/token is a per-million
+  figure wearing the wrong unit), so a future silent unit change can't
+  re-inflate costs. Everything downstream (`quota.js` `bergetCost`, the admin
+  totals, the dropdown tooltip via `formatPricing`) assumes EUR-per-token —
+  keep the conversion in `berget.js`, and note `rawModelEntry()` returns the
+  catalog entry **verbatim**, so its pricing still needs normalizing (the
+  embedding cost in `src/rag.js` does).
 - **API shape:** OpenAI-style `POST /v1/chat/completions` with
   `stream: true`; SSE deltas arrive as `choices[0].delta.content`, terminated
   by `data: [DONE]`.
