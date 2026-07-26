@@ -156,21 +156,28 @@ bucket_name = "deepresearch-se-storage"
 # src/exec-container.js. `constraints.jurisdiction = "eu"` keeps the container on
 # EU-jurisdiction infrastructure, matching where the primary LLM provider runs.
 #
-# [[containers]]
-# class_name = "ExecSandbox"
-# image = "registry.cloudflare.com/<account-id>/deepresearch-exec:1"
-# instance_type = "standard-1"
-# max_instances = 10
-# [containers.constraints]
-# jurisdiction = "eu"
-#
-# [[durable_objects.bindings]]
-# name = "EXEC_SANDBOX"
-# class_name = "ExecSandbox"
-#
-# [[migrations]]
-# tag = "v1"
-# new_sqlite_classes = ["ExecSandbox"]
+# ⚠️ ENABLED ON THIS BRANCH ONLY (2026-07-26). Merging this to `main` DEPLOYS it
+# — the git-connected build turns a push to main into a production deploy — and
+# that switches the cloud execution environment ON for every signed-in account,
+# and creates the ExecSandbox Durable Object namespace via the migration below.
+# Nothing here has yet run against a real Cloudflare Container. Deploy it
+# deliberately; do not let it ride along in an unrelated merge.
+
+[[containers]]
+class_name = "ExecSandbox"
+image = "registry.cloudflare.com/90aff449c1f4e5e2ac3dabc9a01904d0/deepresearch-exec:1"
+instance_type = "standard-1"
+max_instances = 10
+[containers.constraints]
+jurisdiction = "eu"
+
+[[durable_objects.bindings]]
+name = "EXEC_SANDBOX"
+class_name = "ExecSandbox"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ExecSandbox"]
 
 [[vectorize]]
 binding = "RAG_INDEX"
