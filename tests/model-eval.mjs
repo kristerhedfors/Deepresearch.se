@@ -231,10 +231,9 @@ async function postOnce(model, messages) {
         model: model.id,
         web_search: true,
         time_budget_s: BUDGET_S,
-        // Off-only override (src/chat.js): break-glass has developer mode
-        // forced on; decline the introspection enrichment so the battery
-        // measures the web-research pipeline (see eval-bench.mjs's note).
-        developer_mode: false,
+        // Name the mode outright, so the battery measures the WEB-RESEARCH
+        // pipeline rather than source reading (see eval-bench.mjs's note).
+        chat_mode: "normal",
       }),
       signal: controller.signal,
     });

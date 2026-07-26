@@ -27,7 +27,7 @@ import { jsonResponse } from "./http.js";
 import { lastUserMessage, textOf } from "./conversation.js";
 import { recordDefaultModelUsage, releaseInflight } from "./quota.js";
 import { classifyFailure, recordSubsystemFailure } from "./server-errors.js";
-import { developerModeEnabled } from "./settings.js";
+import { chatModesAvailable } from "./settings.js";
 import { validateMessages } from "./validation.js";
 import { normalizeWorkflow, orchestratorPlanPrompt, workflowWaves } from "../public/js/orchestrator-core.js";
 
@@ -48,10 +48,11 @@ export async function handleOrchestratorPlan(request, env, log, identity) {
   if (!env.BERGET_API_TOKEN) {
     return jsonResponse({ error: "Server not configured: BERGET_API_TOKEN secret is missing." }, 500);
   }
-  // The SAME capability gate as orchestrator_mode in chat.js (developer mode).
-  // A client without it gets a clean null plan, not an error — it falls back to
-  // the ordinary request, which the server will route by its own rules anyway.
-  if (!developerModeEnabled(env, identity)) {
+  // The SAME capability gate as orchestrator mode in chat.js: the non-normal
+  // chat modes must be available to this identity. A client without it gets a
+  // clean null plan, not an error — it falls back to the ordinary request,
+  // which the server will route by its own rules anyway.
+  if (!chatModesAvailable(env, identity)) {
     return jsonResponse({ plan: null, reason: "capability" }, 403);
   }
 

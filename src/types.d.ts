@@ -329,18 +329,24 @@ export interface PipelineCtx {
 
 // ---- Per-user settings (src/settings.js parseSettings) ---------------------
 /**
- * The effective per-account knob state parseSettings coerces to: the two core
- * knobs below, plus one boolean per registered EXTENSION whose key the
- * registry owns (src/extensions.js) — which is why the index signature is
- * open and no service is named here.
+ * The effective per-account setting state parseSettings coerces to: the core
+ * knob and the picked chat mode below, plus one boolean per registered
+ * EXTENSION whose key the registry owns (src/extensions.js) — which is why the
+ * index signature is open and no service is named here.
  */
 export interface Settings {
   /** The in-browser Linux execution sandbox + bash-lite agent (default OFF — opt-in). */
   bash_lite_mcp: boolean;
-  /** Developer mode: unlocks introspection mode (default OFF — opt-in). */
-  developer_mode: boolean;
+  /**
+   * The account's picked chat mode — one of public/js/chat-mode-core.js
+   * CHAT_MODES, default "normal". Replaced the `developer_mode` boolean knob
+   * (2026-07-26): the mode is the unit that selects how a request is answered,
+   * and everything else — the source enrichment, the answer phase, the theme —
+   * is derived from it.
+   */
+  chat_mode: string;
   /** One per registered extension, e.g. `shodan_mcp`, `google_maps`. */
-  [key: string]: boolean;
+  [key: string]: boolean | string;
 }
 
 // ---- SSE protocol (/api/chat) ----------------------------------------------

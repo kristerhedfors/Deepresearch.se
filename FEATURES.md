@@ -123,7 +123,7 @@ decided priority orders that drive the owner's Claude Code loops.
 
 ### F-7 · Introspection mode — ask the site about its own source — ✅ SHIPPED (2026-07-11)
 
-The `developer_mode` knob: a committed dense source-RAG index answers "how are
+Introspection mode (`chat_mode: "introspection"`): a committed dense source-RAG index answers "how are
 you built" from the exact deployed source, on both tiers, with an optional
 `/src` sandbox mount. See the **introspection** skill.
 

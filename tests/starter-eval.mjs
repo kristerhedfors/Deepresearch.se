@@ -77,31 +77,31 @@ const JUDGE_ENV = process.env.STARTER_JUDGE_MODEL?.trim() || null;
 const AGENT_RUNS = {
   research: {
     runnable: true,
-    flags: { web_search: true, developer_mode: false },
+    flags: { web_search: true, chat_mode: "normal" },
     expect:
       "Run the deep-research pipeline: search the web across several rounds, and answer from numbered sources it actually retrieved. A confident answer with zero searches and zero sources has not used this agent's capability.",
   },
   introspection: {
     runnable: true,
-    flags: { web_search: false, developer_mode: true },
+    flags: { web_search: false, chat_mode: "introspection" },
     expect:
       "Answer from this site's OWN deployed source code and documentation, quoting real code and citing real file paths. A plausible architectural essay that cites no file has not used this agent's capability.",
   },
   orchestrator: {
     runnable: true,
-    flags: { web_search: true, orchestrator_mode: true },
+    flags: { web_search: true, chat_mode: "orchestrator" },
     expect:
       "Decompose the request into a team of sub-agents, run them in parallel waves, and merge their findings into one answer. A single-threaded answer with no visible workflow has not used this agent's capability.",
   },
   outrospection: {
     runnable: true,
-    flags: { web_search: true, outrospection_mode: true },
+    flags: { web_search: true, chat_mode: "outrospection" },
     expect:
       "Answer from the outward feed — what everyone ELSE shipped — routing the question to one of the seven standing lenses and citing entries from that feed. An answer that only explains how the feed works, or admits it found nothing, has not used this agent's capability.",
   },
   "agent-builder": {
     runnable: true,
-    flags: { web_search: false, sdk_mode: true },
+    flags: { web_search: false, chat_mode: "sdk" },
     expect:
       "Actually BUILD something: produce the files for a working agent or app and publish it to a live URL. Asking the user a clarifying question, or describing what it would build, is the specific failure this agent is judged on.",
   },
@@ -252,7 +252,7 @@ function traceOf(run) {
 async function judge(judgeModelId, starter, agentMeta, run) {
   const prompt = starterJudgePrompt(starter, agentMeta, run.text, traceOf(run));
   const r = await postOnce(judgeModelId, [{ role: "user", content: prompt }], {
-    flags: { web_search: false, developer_mode: false },
+    flags: { web_search: false, chat_mode: "normal" },
     budgetS: 45,
   });
   const parsed = parseJudgeReply(r.text);

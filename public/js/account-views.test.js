@@ -6,6 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { settingSelectRow, renderConfigKnobs, renderSummary } from "./account-views.js";
+import { CHAT_MODES } from "./chat-mode-core.js";
 
 const baseMe = (notifications) => ({
   email: "a@b.c",
@@ -76,6 +77,24 @@ test("renderConfigKnobs: the mode dropdown replaced the Introspection switch (si
   assert.match(html, /<option value="sdk">/);
   assert.doesNotMatch(html, /<option value="swe">/); // SWE mode retired, folded into SDK
   assert.doesNotMatch(html, /id="devknob"/); // the old toggle is gone
+});
+
+test("renderConfigKnobs: the Settings dropdown offers EVERY chat mode", () => {
+  // The drift this exists to catch: CHAT_MODE_OPTIONS was hand-maintained and
+  // silently lost `models`, so the Models agent was reachable from the composer
+  // dropdown (public/index.html #modesel) but not from Settings — and opening
+  // Settings while in it showed the wrong mode. Both dropdowns drive the same
+  // state, so both have to offer the same modes.
+  for (const me of [{ email: "a@b.c" }, { email: null }]) {
+    const html = renderConfigKnobs(me);
+    for (const mode of CHAT_MODES) {
+      assert.match(
+        html,
+        new RegExp(`<option value="${mode}"`),
+        `mode "${mode}" is missing from the Settings dropdown (me.email=${me.email})`,
+      );
+    }
+  }
 });
 
 test("renderConfigKnobs: break-glass admin gets an ACTIVE mode dropdown (not a disabled switch)", () => {

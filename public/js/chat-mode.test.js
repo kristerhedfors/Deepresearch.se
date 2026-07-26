@@ -1,18 +1,19 @@
 // Unit suite for the chat-mode dropdown state (public/js/chat-mode.js) — the
-// Normal / Introspection / SDK mode cache, theming classes, and the settings
-// reconcile. Runs without a DOM (module is import-safe); localStorage is
-// stubbed the dev-mode.test.js way.
+// mode cache, the theming classes, and adopting the server's stored mode. Runs
+// without a DOM (module is import-safe); localStorage is stubbed the
+// dev-mode.test.js way. The mode TABLE and the wire resolution live in the
+// shared core and are tested in chat-mode-core.test.js.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEV_MODE_CLASS, DEV_MODE_KEY } from "./dev-mode.js";
+import { DEV_MODE_CLASS } from "./dev-mode.js";
 import {
   CHAT_MODES,
   CHAT_MODE_KEY,
   SDK_MODE_CLASS,
+  adoptServerChatMode,
   applyChatModeTheme,
   cachedChatMode,
   normalizeChatMode,
-  reconcileChatMode,
   storeChatMode,
 } from "./chat-mode.js";
 
@@ -37,15 +38,17 @@ test("normalizeChatMode clamps junk to the fallback", () => {
   assert.equal(normalizeChatMode(undefined, "introspection"), "introspection");
 });
 
-test("cachedChatMode: stored choice wins; else the dev-mode cache maps to introspection", () => {
+test("cachedChatMode: the cached pick, else normal", () => {
   const store = stubStorage();
-  assert.equal(cachedChatMode(), "normal");
-  store.set(DEV_MODE_KEY, "1");
-  assert.equal(cachedChatMode(), "introspection"); // legacy knob-on default
+  assert.equal(cachedChatMode(), "normal"); // nothing cached — the safe default
   store.set(CHAT_MODE_KEY, "sdk");
-  assert.equal(cachedChatMode(), "sdk"); // explicit choice beats the knob
+  assert.equal(cachedChatMode(), "sdk");
   store.set(CHAT_MODE_KEY, "normal");
-  assert.equal(cachedChatMode(), "normal"); // explicit Normal survives knob-on
+  assert.equal(cachedChatMode(), "normal"); // an explicit Normal pick is stored, not absent
+  store.set(CHAT_MODE_KEY, "junk");
+  assert.equal(cachedChatMode(), "normal"); // a junk cache clamps rather than throwing
+  delete globalThis.localStorage;
+  assert.equal(cachedChatMode(), "normal"); // no storage at all — fail-soft
 });
 
 test("applyChatModeTheme: exactly one theme class per mode; persist opt-out honored", () => {
@@ -69,16 +72,26 @@ test("applyChatModeTheme: exactly one theme class per mode; persist opt-out hono
   }
 });
 
-test("reconcileChatMode: a knob turned off elsewhere downgrades a non-normal mode", () => {
+test("adoptServerChatMode: the server's stored mode wins and is cached", () => {
   const store = stubStorage();
   store.set(CHAT_MODE_KEY, "sdk");
-  assert.equal(reconcileChatMode(false), "normal");
+  // A mode picked on another device replaces this browser's cache.
+  assert.equal(adoptServerChatMode({ chat_mode: "orchestrator" }), "orchestrator");
+  assert.equal(store.get(CHAT_MODE_KEY), "orchestrator");
+  // The server has already clamped to normal when the modes are unavailable, so
+  // an explicit normal is adopted like any other mode — no downgrade rule here.
+  assert.equal(adoptServerChatMode({ chat_mode: "normal" }), "normal");
   assert.equal(store.get(CHAT_MODE_KEY), "normal");
+});
+
+test("adoptServerChatMode: a payload with no mode leaves the cached pick alone", () => {
+  const store = stubStorage();
   store.set(CHAT_MODE_KEY, "introspection");
-  assert.equal(reconcileChatMode(true), "introspection");
-  store.delete(CHAT_MODE_KEY);
-  store.set(DEV_MODE_KEY, "1");
-  assert.equal(reconcileChatMode(true), "introspection"); // legacy default kept
+  // An older or partial /api/settings response must not silently reset the pick.
+  assert.equal(adoptServerChatMode({}), "introspection");
+  assert.equal(adoptServerChatMode(null), "introspection");
+  assert.equal(adoptServerChatMode({ chat_mode: "junk" }), "introspection");
+  assert.equal(store.get(CHAT_MODE_KEY), "introspection");
 });
 
 test("storeChatMode normalizes before storing", () => {

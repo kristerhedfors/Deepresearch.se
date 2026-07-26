@@ -242,7 +242,7 @@ import {
 // they are decided per MESSAGE further down, by the hasSource +
 // externalSourceIntent gate and by triage, not per request.
 //
-// Every one is gated in chat.js on the developer_mode capability and is fully
+// Every one is gated in chat.js on the request's chat mode and is fully
 // fail-soft inside — a dead plan degrades to a single-agent workflow, an empty
 // feed answers honestly, a failed publish degrades to the answer text.
 /** @type {Record<string, (ctx: PipelineCtx) => Promise<any>>} */
@@ -878,9 +878,9 @@ const SDK_BUILD_TOOL_CLASSES = ["source-read", "sdk-plan", "build-publish"];
 
 /** @param {PipelineCtx} ctx @returns {Promise<any>} */
 async function sdkSnapshot(ctx) {
-  // The introspection enrichment (dev mode is on — SDK mode is gated on it)
+  // The introspection enrichment (a source-carrying mode is on — SDK mode is one)
   // normally stashed the snapshot already; load it directly when it didn't
-  // (e.g. a developer_mode:false override combined with sdk_mode).
+  // (e.g. an off-only developer_mode:false override alongside sdk_mode).
   const stashed = /** @type {any} */ (ctx.state).sourceSnapshot;
   if (stashed && Array.isArray(stashed.files)) return stashed;
   return loadSourceSnapshot(ctx.env, ctx.log);

@@ -71,7 +71,7 @@ the relevant body on demand — the effect is identical.
 ## The same catalog is surfaced to end users (regardless of model)
 
 This catalog is not only for agents editing the repo. In the deployed product's
-**introspection mode** (the `developer_mode` knob, on both tiers —
+**introspection mode** (Se/rver: `chat_mode: "introspection"`; Se/cure: its `developerMode` knob —
 DeepResearch.**Se/cure** and DeepResearch.**Se/rver**), the same skills catalog
 is injected into the model's context as a first-class part of the introspection
 block (`public/js/introspect-core.js` → `buildIntrospectionBlock`, via
@@ -120,7 +120,7 @@ the summaries below with the parser in `introspect-core.js` if a skill's
   docs→source escalation, the `bundle:docs` regeneration discipline.
 - **integrations** — external providers and the enrichment pattern (Berget,
   Anthropic, OpenAI, Exa, geocoding, Shodan, Google Maps, Hugging Face).
-- **introspection** — introspection mode / the `developer_mode` knob: the
+- **introspection** — introspection mode / the retired `developer_mode` knob: the
   source snapshot + RAG index, the shared pure core, both tiers' clients.
 - **live-verify** — verifying against the live site, Workers Logs /
   `wrangler tail`, request-id correlation, disconnect/recovery machinery.

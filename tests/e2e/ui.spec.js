@@ -86,7 +86,7 @@ test("settings panel: cloud storage renders as an always-on disclosure row", asy
   );
 
   // This spec mocks /api/settings itself, so it owns the knob pinning
-  // (its mock omits bash_lite_mcp/developer_mode = both off).
+  // (its mock omits bash_lite_mcp/chat_mode = sandbox off, Deep Research).
   await openApp(page, { webSearch: false, budgetS: 15, pinSettings: false });
   await page.click("#accountbtn");
   await page.click("#settingsbtn");

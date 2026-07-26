@@ -28,7 +28,7 @@ workflow itself is a first-class UI element: a live graph of the team.
   (`jsonTotals`); every node and the merge on the user's chosen model via
   buffered `streamCompletion` (retry/failover included) into `totals`.
 - **Capability gate:** `orchestrator_mode: true` is honored only with the
-  `developer_mode` knob on (`chat.js`, same gate as `sdk_mode`; sdk wins if
+  modes available to the caller (`chat.js`, same gate as sdk mode; sdk wins if
   both arrive). Picking the mode in either dropdown flips the knob.
 
 ## The pieces
@@ -135,7 +135,8 @@ workflow itself is a first-class UI element: a live graph of the team.
   `THEME_BOOT_HASH` (src/security-headers.js — command in its comment).
 - Se/cure (DRC) is deliberately NOT wired: /cure has no mode dropdown
   (modes were never generalized there). Porting means generalizing DRC's
-  boolean developerMode into a mode field first.
+  boolean developerMode into a mode field first — Se/rver's own collapse to
+  `chat_mode` (2026-07-26) is the worked example of that move.
 
 ## Verification
 

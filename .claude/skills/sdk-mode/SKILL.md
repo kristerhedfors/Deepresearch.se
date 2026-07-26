@@ -117,11 +117,14 @@ show live signatures/`:root` vars.
 
 ## The mode dropdown (client)
 
-- `public/js/chat-mode.js` — the pure state module (Node-tested):
-  `dr_chat_mode` ∈ normal | introspection | sdk in localStorage, layered OVER
-  the server `developer_mode` capability knob (dev-mode.js keeps owning the
-  `dr_dev_mode` knob cache). Exactly one root theme class per mode:
-  `dev-mode` (titanium) for introspection, `sdk-mode` (green) for sdk.
+- `public/js/chat-mode-core.js` — THE MODE TABLE (pure, no DOM/storage, shared
+  with the Worker via `src/chat-modes.js`); `public/js/chat-mode.js` — the
+  browser half (Node-tested): `dr_chat_mode` in localStorage, which since the
+  2026-07-26 collapse is a first-paint CACHE of the account's stored
+  `chat_mode` rather than a pick layered over a separate `developer_mode` knob
+  (dev-mode.js is now just the class toggle; its `dr_dev_mode` cache is gone).
+  Exactly one root theme class per mode: `dev-mode` (titanium) for
+  introspection, `sdk-mode` (green) for sdk.
 - First paint: the inline `<script data-devtheme>` in `public/index.html`
   applies the class at PARSE time from the cache. **Editing that script
   requires recomputing THEME_BOOT_HASH in `src/security-headers.js`** (the
@@ -131,18 +134,19 @@ show live signatures/`:root` vars.
   dropdown** (`account-views.js` `settingSelectRow` / `wireModeKnob`, which
   REPLACED the old Introspection on/off switch — owner directive 2026-07-18).
   Both pick from Deep Research / Introspection / Agent Studio / Orchestrator /
-  Outrospection; picking
-  Introspection or Agent Studio flips the `developer_mode` knob on via PUT
-  /api/settings (Deep Research flips it off), fail-soft — break-glass has it
-  implicitly and its PUT refuses; theme applies anyway. `loadSettings().then`
-  reconciles: knob off elsewhere → stored pick downgrades to the `normal` mode
-  id (`reconcileChatMode`). `wireModeKnob`
+  Outrospection / Models (the Settings list is pinned against `CHAT_MODES` by
+  test — it had silently lost `models`). Picking a mode PUTs
+  `chat_mode` to /api/settings, fail-soft — break-glass's PUT refuses and the
+  theme applies anyway. `loadSettings().then` calls `adoptServerChatMode`: the
+  account's stored mode replaces the cache, with no downgrade rule (the server
+  already clamped it). `wireModeKnob`
   syncs `#modesel` and routes through `applyChatModeTheme`, so both dropdowns,
-  the theme class, and the caches stay consistent.
-- Per-send fields (`stream.js buildChatPayload`): normal →
-  `developer_mode:false` (the existing off-only override — a knob-on account
-  still gets plain web research); sdk → `sdk_mode:true` (+ `build_slug` when
-  the conversation already published); introspection → nothing extra.
+  the theme class, and the cache stay consistent.
+- Per-send fields (`stream.js buildChatPayload`): ONE field,
+  `chat_mode:"<mode>"`, for every mode including `normal` — plus `build_slug`
+  in sdk mode when the conversation already published. The old per-mode
+  booleans (and normal's `developer_mode:false`) are still accepted by the
+  server for external callers.
 
 ## The showcase gallery (client — the SDK build-idea library)
 
@@ -165,9 +169,10 @@ to the right group in `SDK_SHOWCASE` — don't renumber existing ids.
 
 ## The server flow
 
-- `src/chat.js`: `sdk_mode` is honored only when `developerModeEnabled`
-  grants the capability (a client can't acquire a mode the knob doesn't
-  grant); `build_slug` is validated (`buildSlugOk`). State carries
+- `src/chat.js`: sdk mode is `enrich.chatMode === "sdk"`, and the mode was
+  resolved once by `resolveBodyChatMode`, which returns `normal` when the modes
+  are unavailable to the caller (a client can't acquire a capability it doesn't
+  hold); `build_slug` is validated (`buildSlugOk`). State carries
   `sdkMode`/`buildSlug`/`userId`; the chat_logs meta records `sdk: 1` and
   `build: {slug,url,files,bytes}`.
 - `src/pipeline.js` `runSdkBuild` (routed FIRST in runPipeline — SDK mode

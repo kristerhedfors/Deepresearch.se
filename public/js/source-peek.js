@@ -29,9 +29,9 @@ import {
   resolveSourcePath,
 } from "./source-peek-core.js";
 
-// The tier wires its own developer-mode gate (DRS: settings.js
-// developerModeOn; DRC: the sealed state's developerMode). Default off — an
-// unwired page never marks anything up.
+// The tier wires its own gate (DRS: whether the picked chat mode carries the
+// source — chat-mode-core.js modeCarriesSource; DRC: the sealed state's
+// developerMode). Default off — an unwired page never marks anything up.
 let enabledGate = () => false;
 
 export function initSourcePeek(opts = {}) {

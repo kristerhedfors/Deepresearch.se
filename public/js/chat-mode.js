@@ -7,54 +7,55 @@
 // the mode id stays `normal` — same convention as SDK mode staying `sdk`
 // while labeled "Agent Studio".
 //
-// The mode is a per-BROWSER choice (localStorage `dr_chat_mode`) layered on
-// top of the server's developer_mode capability knob:
+// THE MODE IS THE UNIT (2026-07-26). Every request names its mode —
+// `chat_mode: "<mode>"` — and the theme, the answer phase and whether the site's
+// own source is in context are all derived from that one value. The table of
+// modes and the wire resolution live in the shared pure core
+// chat-mode-core.js, so this module is only the BROWSER half: which theme class
+// the root carries and where the pick is cached.
 //
-//   normal        → the request carries `developer_mode: false` (the existing
-//                   off-only override), so a knob-on account still gets plain
-//                   web research. No theme class.
-//   introspection → the classic developer-mode behavior (the knob must be on;
-//                   picking the mode flips it via PUT /api/settings). Theme:
-//                   the `dev-mode` root class (dev-mode.js's titanium pane).
-//   sdk           → the request carries `sdk_mode: true` (chat.js), routing to
-//                   the DistillSDK build flow — distill this site (above all
-//                   the Se/cure tier) into a new flavour published at a live
-//                   URL. Same knob gate. Theme: the `sdk-mode` root class (the
-//                   green pane).
-//   outrospection → the request carries `outrospection_mode: true` (chat.js),
-//                   routing to the outward feed (src/outrospect.js) —
-//                   introspection's mirror image, answering from what everyone
-//                   ELSE shipped. Same knob gate. Theme: the `outro-mode` root
-//                   class (the newsprint pane).
-//   models        → the request carries `models_mode: true` (chat.js), routing
-//                   to the MODEL-LIFECYCLE agent (src/models-agent.js) — Hub
-//                   search forced on every turn, and a message about models
-//                   answered against the live cross-provider catalog, priced and
-//                   annotated with what has been verified. It replaces no flow
-//                   (its answer phase is the ordinary research one), so it is the
-//                   lowest-precedence flagged mode. Same knob gate. Theme: the
-//                   `models-mode` root class (the warm amber pane).
-//   orchestrator  → the request carries `orchestrator_mode: true` (chat.js),
-//                   routing to the sub-agent workflow flow (src/orchestrator.js)
-//                   — a planned team of sub-agents runs in the background and
-//                   the workflow is shown live. Same knob gate. Theme: the
-//                   `orch-mode` root class (the violet pane).
+//   normal        → plain deep research. No theme class.
+//   introspection → answers from this site's own deployed source. Theme: the
+//                   `dev-mode` root class (dev-mode.js's titanium pane).
+//   sdk           → the DistillSDK build flow — distill this site (above all the
+//                   Se/cure tier) into a new flavour published at a live URL.
+//                   Theme: the `sdk-mode` root class (the green pane).
+//   orchestrator  → the sub-agent workflow flow (src/orchestrator.js): a planned
+//                   team of sub-agents runs in the background and the workflow is
+//                   shown live. Theme: `orch-mode` (the violet pane).
+//   outrospection → the outward feed (src/outrospect.js) — introspection's mirror
+//                   image, answering from what everyone ELSE shipped. Theme:
+//                   `outro-mode` (the newsprint pane).
+//   models        → the MODEL-LIFECYCLE agent (src/models-agent.js): Hub search
+//                   forced every turn, and a message about models answered
+//                   against the live cross-provider catalog, priced and annotated
+//                   with what has been verified. Theme: `models-mode` (amber).
 //
-// This module does NOT own the `dr_dev_mode` knob cache — that stays
-// dev-mode.js's mirror of the server knob. It only decides which THEME class
-// the root carries and which mode the next send declares. Like dev-mode.js it
-// has an inline first-paint twin in index.html (<script data-devtheme>) —
-// if the class logic here changes, update that script AND recompute its CSP
-// hash (THEME_BOOT_HASH in src/security-headers.js).
+// There used to be a per-account `developer_mode` knob underneath all of this,
+// and the dropdown wrote it on every change ("on" for any non-Normal mode). That
+// made the same choice live in three places — the D1 knob, the `dr_dev_mode`
+// cache and the mode key here — which had to be reconciled on every page load.
+// Now the SERVER stores the mode (settings_json.chat_mode) and this key is
+// simply its first-paint CACHE: the cached value paints immediately, the
+// server's value replaces it when /api/settings resolves, and there is no
+// downgrade rule to get wrong.
+//
+// Like dev-mode.js this module has an inline first-paint twin in index.html
+// (<script data-devtheme>) — if the class logic here changes, update that
+// script AND recompute its CSP hash (THEME_BOOT_HASH in
+// src/security-headers.js).
 //
 // Import-safe in Node (unit-tested without a DOM): every document /
 // localStorage access is guarded and fails soft.
 
-import { DEV_MODE_CLASS, cachedDeveloperMode } from "./dev-mode.js";
+import { CHAT_MODES, DEFAULT_CHAT_MODE, normalizeChatMode } from "./chat-mode-core.js";
+import { DEV_MODE_CLASS } from "./dev-mode.js";
 import { barTint } from "./mode-theme.js";
 import { nudgeTint } from "./bar-tint.js";
 
-/** The localStorage key holding the picked chat mode. */
+export { CHAT_MODES, DEFAULT_CHAT_MODE, normalizeChatMode };
+
+/** The localStorage key caching the picked chat mode for first paint. */
 export const CHAT_MODE_KEY = "dr_chat_mode";
 /** The root class carrying the green SDK-mode pane tint. */
 export const SDK_MODE_CLASS = "sdk-mode";
@@ -64,24 +65,11 @@ export const ORCH_MODE_CLASS = "orch-mode";
 export const OUTRO_MODE_CLASS = "outro-mode";
 /** The root class carrying the amber Models-mode pane tint. */
 export const MODELS_MODE_CLASS = "models-mode";
-/** The modes, dropdown order. */
-export const CHAT_MODES = ["normal", "introspection", "sdk", "orchestrator", "outrospection", "models"];
-
 /**
- * Clamp any value to a known mode.
- * @param {unknown} v
- * @param {string} [fallback]
- * @returns {string}
- */
-export function normalizeChatMode(v, fallback = "normal") {
-  return CHAT_MODES.includes(/** @type {string} */ (v)) ? /** @type {string} */ (v) : fallback;
-}
-
-/**
- * The mode to paint/send with right now, synchronously. An explicit stored
- * choice wins; with none stored, a cached developer-mode knob reads as
- * "introspection" (the pre-dropdown behavior — a returning introspection user
- * keeps their titanium pane), everyone else is "normal".
+ * The mode to paint/send with right now, synchronously — the cached answer used
+ * at first paint, before /api/settings resolves. "normal" when nothing is
+ * cached or storage is unavailable (the safe default: the ordinary composer
+ * pane and plain deep research).
  * @returns {string}
  */
 export function cachedChatMode() {
@@ -91,12 +79,12 @@ export function cachedChatMode() {
   } catch {
     /* storage unavailable */
   }
-  return cachedDeveloperMode() ? "introspection" : "normal";
+  return DEFAULT_CHAT_MODE;
 }
 
 /**
- * Persist the picked mode ("normal" is stored too — an explicit Normal pick
- * on a knob-on account must survive reloads). Fail-soft.
+ * Cache the picked mode ("normal" is stored too — an explicit Normal pick must
+ * survive reloads rather than reading as "nothing chosen"). Fail-soft.
  * @param {string} mode
  * @returns {string} the stored (normalized) mode
  */
@@ -151,17 +139,19 @@ export function applyChatModeTheme(mode, opts) {
 }
 
 /**
- * Reconcile the mode with the server's authoritative developer_mode knob once
- * /api/settings resolves: a non-normal mode needs the capability, so a knob
- * turned off elsewhere downgrades the stored mode to normal; a knob-on
- * account with no stored choice keeps the legacy "introspection" default.
- * Returns the effective mode (already applied + persisted when it changed).
- * @param {boolean} devKnobOn
- * @returns {string}
+ * Adopt the server's mode once /api/settings resolves. The account's stored
+ * `chat_mode` is the authority — it follows the account across devices, and the
+ * server has already forced it to "normal" if the modes are unavailable — so
+ * this is a plain cache write plus a repaint, with no downgrade rule to get
+ * wrong. (It replaced `reconcileChatMode`, which existed only to referee
+ * between the local mode pick and the separate developer_mode knob.)
+ *
+ * A server payload that does not carry `chat_mode` at all — an older or partial
+ * response — leaves the cached pick alone rather than resetting it to normal.
+ * @param {{ chat_mode?: string } | null | undefined} serverSettings
+ * @returns {string} the effective mode (applied + cached)
  */
-export function reconcileChatMode(devKnobOn) {
-  const current = cachedChatMode();
-  const effective = devKnobOn || current === "normal" ? current : "normal";
-  applyChatModeTheme(effective);
-  return effective;
+export function adoptServerChatMode(serverSettings) {
+  const named = normalizeChatMode(serverSettings?.chat_mode, "");
+  return applyChatModeTheme(named || cachedChatMode());
 }

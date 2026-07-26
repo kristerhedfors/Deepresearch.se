@@ -274,7 +274,7 @@ does, and it is what makes a default agent expressible as a spec at all:
   "gates": [{ "id": "lens", "langs": ["en","sv"] }],
   "bounds": { "maxTokens": 2048, "timeoutMs": 150000 },
   "emits": ["step","search","workflow","agent_update"],
-  "requires": ["developer_mode"],
+  "requires": ["developer_mode"],  // the non-default modes are available here
   "team": { "kinds": ["research","introspection"], "maxAgents": 6, "maxWaves": 3 }
 }
 ```
@@ -342,16 +342,27 @@ selects it. **Array order is precedence.**
   { "mode": "orchestrator",  "agent": "orchestrator",  "flag": "orchestrator_mode" },
   { "mode": "outrospection", "agent": "outrospection", "flag": "outrospection_mode" },
   { "mode": "models",        "agent": "models",        "flag": "models_mode" },
-  { "mode": "introspection", "agent": "introspection", "flag": null },
+  { "mode": "introspection", "agent": "introspection", "flag": "introspection_mode" },
   { "mode": "normal",        "agent": "research",      "flag": null }
 ]
 ```
 
-`resolveRequestAgent(registry, body, granted)` walks it, takes the first flagged
-row present in the body whose agent's `capability.requires` are all granted, and
-otherwise falls to the first derived row (null flag) that qualifies. "A client
-cannot acquire a capability the knob does not grant" is therefore one rule
-applied uniformly, rather than a condition repeated per mode.
+A request normally names its mode outright — `chat_mode: "<mode>"` — and
+`resolveRequestAgent(registry, body, granted, mode)` serves that row if the
+agent's `capability.requires` are all granted. The per-mode booleans are the
+legacy spelling and still resolve, in array order; `normal` (flag null) is the
+terminal fallback. "A client cannot acquire a capability it does not hold" is
+therefore one rule applied uniformly, rather than a condition repeated per mode.
+
+**Introspection got its flag on 2026-07-26.** Before that its row had
+`flag: null` and it was the *derived* mode — whatever a request resolved to when
+the `developer_mode` capability was granted and no other flag matched. That made
+one boolean carry three unrelated jobs (availability, the persisted user choice,
+and introspection's activation), so the same choice had to be stored three times
+and reconciled on every page load. Now every mode is nameable, `developer_mode`
+is an availability grant only, and the terminal fallback is plain Deep Research —
+which is also why a broken `sdk` row now falls to `normal` rather than silently
+answering as introspection.
 
 `src/chat.js` resolves the request; `src/pipeline.js` dispatches on the
 resulting `capability.answerPhase` through a table of executors. Three practical
@@ -359,23 +370,25 @@ notes:
 
 - **The dispatch stays code, the selection stays data.** Only the four executor
   phases (`build` / `workflow` / `feed` / `direct`) come from the registry.
-  Whether a knob-on request is introspection or plain research is still decided
-  per *message* by the pipeline's `hasSource` + `externalSourceIntent` gate, so
-  an agent declaring `research` or `source-research` does not pre-empt it.
+  Whether a *source-carrying* request answers from the source or runs a web
+  search is still decided per *message* by the pipeline's `hasSource` +
+  `externalSourceIntent` gate, so an agent declaring `research` or
+  `source-research` does not pre-empt it.
 - **A mode need not bring an executor.** The Models agent's answer phase is the
   ordinary `research` one; what makes it its own mode is a capability block (a
   forced search source, a context block, a gate, an event) plus an enrichment —
   no row in `ANSWER_PHASE_RUNNERS`. It is the worked example of step 3 in §5: an
   agent whose phase already exists needs no executor code. `src/chat.js`
-  therefore resolves its flag directly and lets it lose to any mode that DOES
-  replace the flow.
+  therefore resolves it from the mode directly and lets it lose to any mode that
+  DOES replace the flow.
 - **Fail-soft (PA-2).** The registry ships inside the source snapshot and is
   loaded once per ASSETS binding ([`src/agent-registry.js`](../src/agent-registry.js)).
-  An unreadable registry falls back to the hand-written flag cascade, which the
+  An unreadable registry falls back to the hand-written mode cascade, which the
   table reproduces exactly — pinned by test.
-- **It stays off the hot path.** A request with no mode flag, no address and no
-  capability knob can only resolve to `normal`, so `routingNeedsRegistry` skips
-  the load entirely. The plain Deep Research turn pays nothing for any of this.
+- **It stays off the hot path.** A request that resolved to `normal` with no
+  address can only be answered by the research agent, so `routingNeedsRegistry`
+  skips the load entirely. The plain Deep Research turn pays nothing for any of
+  this.
 
 ### 4.1 Three ways to reach an agent
 
@@ -386,7 +399,7 @@ most-specific first, and every one of them applies the same requirement gate.
 |---|---|---|---|
 | **Inline spec** | `agent_spec` (object) | no | a spec the caller wrote — Agent Studio handing back what it just built |
 | **Address** | `agent` (id string) | yes | a registry entry with no `defaults` row, no flag, no chat mode |
-| **Mode flag / derived** | `sdk_mode`, … | yes | the five default agents (the table above) |
+| **Mode** | `chat_mode` (or a legacy `sdk_mode`, …) | yes | the six default agents (the table above) |
 
 Two rules make the extra reach safe:
 

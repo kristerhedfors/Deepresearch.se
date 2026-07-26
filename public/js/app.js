@@ -23,10 +23,10 @@ import { resumePoolSharing } from "./account-pool.js";
 import { hasPending, indexingBusy, initAttachments, syncAttachState, takeAttachments } from "./attachments.js";
 import { refreshProjects, setActiveProject } from "./projects.js";
 import { initProjectsUi } from "./projects-ui.js";
-import { bashLiteOn, developerModeOn, loadSettings, setDeveloperMode } from "./settings.js";
-import { storeDeveloperMode } from "./dev-mode.js";
+import { bashLiteOn, chatModesAvailable, loadSettings, setChatMode } from "./settings.js";
 import { releaseExecSession } from "./exec-env.js";
-import { applyChatModeTheme, cachedChatMode, reconcileChatMode } from "./chat-mode.js";
+import { adoptServerChatMode, applyChatModeTheme, cachedChatMode } from "./chat-mode.js";
+import { modeCarriesSource } from "./chat-mode-core.js";
 import { applyModeBackdrop } from "./mode-backdrop.js";
 import { barTint } from "./mode-theme.js";
 import { wireBarTint } from "./bar-tint.js";
@@ -87,7 +87,7 @@ let starters = null;
 // FIRST, synchronously, from the local cache (chat-mode.js) so a returning
 // introspection- or SDK-mode user (a PWA relaunch reads the device-cached
 // shell before /api/settings answers) paints the right pane tint with no
-// flash. The server's authoritative developer_mode reconciles this below once
+// flash. The server's authoritative chat_mode is adopted below once
 // loadSettings() resolves. { persist: false }: this is reading the cache, not
 // making a new decision.
 applyChatModeTheme(cachedChatMode(), { persist: false });
@@ -184,15 +184,14 @@ const account = initAccountPanel();
 // deliberately not awaited — the app is fully usable while it runs.
 loadSettings()
   .then((s) => {
-    // Reconcile the mode theme with the server's authoritative developer_mode
-    // capability: cache the knob (dev-mode.js), then let chat-mode.js decide
-    // the effective mode — a knob turned off elsewhere downgrades a stored
-    // Introspection/SDK pick to Normal; a knob-on account with no stored pick
-    // keeps the legacy introspection default. The dropdown mirrors the result.
-    storeDeveloperMode(s?.developer_mode === true);
-    const reconciled = reconcileChatMode(s?.developer_mode === true);
-    syncModeSelect(reconciled);
-    applyModeBackdrop(reconciled);
+    // Adopt the server's stored chat mode — the authoritative copy, so a mode
+    // picked on another device lands here. It is a plain cache write plus a
+    // repaint: the server has already forced it to Normal if the modes are
+    // unavailable, so there is no downgrade rule on this side. The dropdown and
+    // the agent backdrop mirror the result.
+    const effective = adoptServerChatMode(s);
+    syncModeSelect(effective);
+    applyModeBackdrop(effective);
     // Reconcile the local sandbox-knob cache with the server's authoritative
     // value (sandbox-mode.js), so the NEXT load's synchronous boot self-heal
     // above reflects a flip made on another device — and so a first-ever enable
@@ -402,6 +401,20 @@ syncModeSelect(cachedChatMode());
 syncModelsBoard(cachedChatMode());
 // A returning outrospection user lands straight on the feed, same as a switch.
 openOutrospectionFeed(cachedChatMode());
+
+/**
+ * Persist a mode pick to the account (PUT /api/settings), so it follows the
+ * account to its other devices. Fire-and-forget on purpose: the theme and the
+ * next request read the LOCAL cache that applyChatModeTheme already wrote, so a
+ * failed write costs only the durability of the choice — never the switch. The
+ * break-glass operator has no D1 row and its write is refused; its mode is a
+ * browser-local choice, which the Settings copy says in so many words.
+ * @param {string} mode
+ */
+function persistChatMode(mode) {
+  if (!chatModesAvailable() && mode !== "normal") return;
+  setChatMode(mode).catch(() => {});
+}
 modeSel.addEventListener("change", () => {
   const mode = applyChatModeTheme(modeSel.value);
   modeSel.value = mode;
@@ -410,11 +423,10 @@ modeSel.addEventListener("change", () => {
   // models now rather than letting them run to their own deadline in a mode
   // that has no use for them (public/js/swarm-runtime.js).
   if (mode !== "orchestrator") import("./swarm-runtime.js").then((m) => m.stopSwarms()).catch(() => {});
-  if (mode !== "normal" && !developerModeOn()) {
-    setDeveloperMode(true)
-      .then(() => storeDeveloperMode(true))
-      .catch(() => {});
-  }
+  // Persist the pick so it follows the account to its other devices. The theme
+  // is already applied above, so a failed write costs the durability of the
+  // choice, never the switch itself (break-glass has no row to write to).
+  persistChatMode(mode);
   greetSdkMode(mode);
   // Each mode runs a different agent, so the starter strip has to follow it —
   // Deep Research openers sitting in Agent Studio would advertise the wrong
@@ -643,9 +655,7 @@ const historySidebar = initHistorySidebar({
     if (cachedChatMode() !== "sdk") {
       applyChatModeTheme("sdk");
       syncModeSelect("sdk");
-      if (!developerModeOn()) {
-        setDeveloperMode(true).then(() => storeDeveloperMode(true)).catch(() => {});
-      }
+      persistChatMode("sdk");
       greetSdkMode("sdk");
     }
     input.value = item.prompt;
@@ -794,17 +804,19 @@ input.addEventListener("focus", () => applySandboxImage().finally(prewarmSandbox
 // (own-key, browser-direct) choice can be made BEFORE the question is sent.
 // Debounced; a no-op with the knob off. See public/js/introspect-ui.js.
 initIntrospectUi({ tier: "drs" });
-// Tappable file references in rendered answers (source-peek.js): in developer
-// mode an inline-code repo path opens the file from the deployed snapshot in
-// a popover. turns.js calls wireSourcePeek per render; this wires the gate.
-initSourcePeek({ enabled: developerModeOn });
+// Tappable file references in rendered answers (source-peek.js): in a
+// source-carrying mode an inline-code repo path opens the file from the deployed
+// snapshot in a popover. turns.js calls wireSourcePeek per render; this wires
+// the gate — the same modes that get the source as context are the ones whose
+// answers cite it.
+initSourcePeek({ enabled: () => modeCarriesSource(cachedChatMode()) });
 let introspectTypeTimer = 0;
 input.addEventListener("input", () => {
   clearTimeout(introspectTypeTimer);
   introspectTypeTimer = setTimeout(() => {
-    // TIN is the INTROSPECTION mascot: only that mode summons it — Normal
-    // declines the enrichment per-request and SDK mode has its own flow.
-    if (developerModeOn() && cachedChatMode() === "introspection") noteIntrospectionText(input.value);
+    // TIN is the INTROSPECTION mascot: only that mode summons it — Normal is
+    // plain research and SDK mode has its own flow.
+    if (cachedChatMode() === "introspection") noteIntrospectionText(input.value);
   }, 350);
 });
 
@@ -1010,16 +1022,15 @@ starters = initStarters({
   // Evaluation mode serves starters from every agent, so a chip has to be able
   // to take the app to its agent's mode before it sends — otherwise an Agent
   // Studio opener runs as plain research and the reviewer rates the wrong
-  // thing. Reuses the composer dropdown's own path so the theme, the knob and
-  // the request flag all follow, exactly as if the mode had been picked by hand.
+  // thing. Reuses the composer dropdown's own path so the theme and the mode
+  // the next request declares both follow, exactly as if it had been picked by
+  // hand.
   setMode: (mode) => {
     if (cachedChatMode() === mode) return;
     const applied = applyChatModeTheme(mode);
     syncModeSelect(applied);
     applyModeBackdrop(applied);
-    if (applied !== "normal" && !developerModeOn()) {
-      setDeveloperMode(true).then(() => storeDeveloperMode(true)).catch(() => {});
-    }
+    persistChatMode(applied);
   },
   compose: (text) => {
     input.value = text;
@@ -1037,10 +1048,10 @@ window.__appReady = true;
 // site with a mode selected and a question ready to ask — the agent-platform
 // docs' "ask the source" links use /?mode=introspection&ask=<question> to drop
 // the reader into the introspection agent with the exact question prefilled.
-// Fail-soft and decoration-adjacent: a non-normal mode needs the developer_mode
-// capability (the async settings reconcile above is authoritative — if the
-// server denies it the mode falls back to normal, but the prefilled question
-// still lands). Never auto-submits unless the link says &go=1.
+// Fail-soft and decoration-adjacent: a non-normal mode needs the modes to be
+// available (the async settings adopt above is authoritative — if the server
+// denies it the mode falls back to normal, but the prefilled question still
+// lands). Never auto-submits unless the link says &go=1.
 // Compute sharing: a sharer who left "Share my compute" on gets this tab
 // lending again (docs/COMPUTE-SHARING.md §6). Sharing is not a Se/cure-only
 // feature — the signed-in app is a perfectly good provider tab, and this is
@@ -1053,9 +1064,7 @@ resumePoolSharing();
     if (mode && mode !== "normal") {
       const applied = applyChatModeTheme(mode);
       syncModeSelect(applied);
-      if (!developerModeOn()) {
-        setDeveloperMode(true).then(() => storeDeveloperMode(true)).catch(() => {});
-      }
+      persistChatMode(applied);
       greetSdkMode(applied);
     } else if (mode === "normal") {
       syncModeSelect(applyChatModeTheme("normal"));
