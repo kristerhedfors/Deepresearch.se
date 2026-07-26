@@ -130,6 +130,61 @@ The design was split in response:
   real corpus pressure, so it runs against the production index.
 
 <!-- RESULTS:A -->
+### 4.2 Experiment A — which text to embed (20,000 papers)
+
+| pipeline | EN r@1 | EN r@10 | EN MRR | SV r@1 | SV r@10 | SV MRR | ms/q |
+|---|---|---|---|---|---|---|---|
+| `dense_ta` | 92.1 | 97.9 | 94.2 | 80 | 93.6 | 84.7 | 76 |
+| `dense_abs` | 90.7 | 98.6 | 94.2 | 81.4 | 96.4 | 86.7 | 76 |
+| `dense_title` | 72.1 | 91.4 | 79.1 | 65 | 83.6 | 71.5 | 77 |
+| `dense_ctx` | 92.1 | 97.9 | 94.6 | 80.7 | 92.9 | 85.2 | 77 |
+| `dense_instruct` | 90.7 | 97.1 | 92.9 | 75.7 | 85 | 79.6 | 77 |
+| `dense_chunked` | 86.4 | 97.1 | 90.1 | 76.4 | 90.7 | 80.7 | 213 |
+| `dense_ta_f32` | 92.1 | 97.9 | 94.2 | 80 | 92.9 | 84.8 | 101 |
+
+20,000 papers · 140 needle queries · 14 topical queries. r@k and MRR are percentages over the needle set; nDCG@10 is over the graded topical set. Binomial standard error on r@10 at n=140 is about ±4.2 points, so treat smaller gaps as ties.
+<!-- /RESULTS:A -->
+
+Five things fall out of that table.
+
+**int8 quantization is free.** `dense_ta` and `dense_ta_f32` are the same
+pipeline over the same vectors, quantized and not: identical on English
+(92.1 / 97.9 / 94.2) and inside the noise on Swedish. Float32 is also *slower*
+here — 101 ms/query against 76 — because four times the bytes is four times the
+memory traffic in the scan. A 4x smaller index that is faster and ranks the
+same is not a trade-off, so int8 is settled.
+
+**The abstract carries the signal; the title alone does not.** Dropping to
+titles costs 20 points of recall@1. Whatever else changes, the abstract goes in.
+
+**Adding the title to the abstract is a wash in English and a small loss in
+Swedish.** `dense_abs` beats `dense_ta` by 2.8 points of Swedish recall@10
+(96.4 vs 93.6) and matches it in English. The gap is around the noise floor,
+so it is a lead rather than a conclusion — but the direction is plausible:
+titles are terse English noun phrases, and gluing one to an abstract pulls the
+passage vector toward English lexical space in a way a Swedish query does not
+match. `title_abstract` stays the built default because BM25 and the reranker
+both want the title, and both read the same field. Worth a rematch if Swedish
+retrieval ever becomes the priority.
+
+**e5-large-instruct is a regression, and specifically a multilingual one.**
+English is a point or two down — noise — but Swedish recall@10 drops 8.6
+points, 80 → 75.7 on recall@1. The instruct variant is tuned for English
+task-prefixed retrieval, and this corpus is queried in two languages. The plain
+model wins.
+
+**Chunking abstracts makes retrieval worse and three times slower.** Sliding
+700/500-char windows with max-pooling costs 5.7 points of English recall@1 and
+runs at 213 ms/query against 76. This is the expected shape once you look at
+the corpus: the mean abstract is ~1,200 characters, so a window splits a single
+coherent argument into fragments and then asks the pooler to pick one. Chunking
+is a technique for documents longer than the embedder's window. An abstract
+already fits.
+
+`dense_ctx` — adding categories and author surnames — changes nothing here, but
+the needle queries never ask about an author or a category, so this measures
+that the extra tokens do no *harm*. Whether they help "that Bengio paper on
+diffusion" is a question this query set cannot answer.
 
 <!-- RESULTS:B -->
 
