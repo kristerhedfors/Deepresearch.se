@@ -18,7 +18,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { AGENTS_PATH, findAgent, resolveCapability } from "./agent-spec.js";
+import { AGENTS_PATH, capBound, findAgent, resolveCapability } from "./agent-spec.js";
 import { ORCH_NODE_MAX_TOKENS, ORCH_NODE_TIMEOUT_MS } from "./orchestrator.js";
 import {
   MAX_SDK_TOOL_ROUNDS,
@@ -52,5 +52,70 @@ test("an agent that declares no bounds claims none", () => {
   // numbers — an empty `bounds` is the honest declaration.
   for (const id of ["research", "outrospection", "secure", "under-construction"]) {
     assert.deepEqual(cap(id).bounds, {}, `${id} declares no bounds`);
+  }
+});
+
+// ---- executed, not merely declared -------------------------------------------
+//
+// The pins above say the registry describes the code. These say the code READS
+// the registry — the difference between stage 2 and stage 5. Without them a
+// declared bound is documentation, and a spec that varied one would change
+// nothing.
+
+test("a declared bound NARROWS the run and can never widen it", () => {
+  // The whole safety argument for resolving an untrusted spec: `limit` is the
+  // platform's own ceiling, so it is both the default and the maximum.
+  assert.equal(capBound({ bounds: { maxRounds: 2 } }, "maxRounds", 6), 2, "narrows");
+  assert.equal(capBound({ bounds: { maxRounds: 9999 } }, "maxRounds", 6), 6, "cannot widen");
+  assert.equal(capBound({ bounds: {} }, "maxRounds", 6), 6, "undeclared = the constant");
+  assert.equal(capBound(null, "maxRounds", 6), 6, "no capability at all = the constant");
+});
+
+test("a malformed bound resolves to the constant rather than breaking the run", () => {
+  // Invariant 2 at the capability seam: a spec is data, and data can be wrong.
+  for (const bad of [{ maxRounds: -1 }, { maxRounds: NaN }, { maxRounds: Infinity }, { maxRounds: "6" }, { maxRounds: null }]) {
+    assert.equal(capBound({ bounds: bad }, "maxRounds", 6), 6, `${JSON.stringify(bad)} falls back`);
+  }
+});
+
+test("every shipped agent's declared bounds resolve to the constants they pin", () => {
+  // The no-op proof for this stage: because each spec declares exactly its
+  // phase's constant, routing every shipped agent through capBound reproduces
+  // today's behaviour byte for byte. If someone lowers a spec's bound without
+  // meaning to, this is what says the run actually got shorter.
+  assert.equal(capBound(cap("introspection"), "maxRounds", MAX_SOURCE_TOOL_ROUNDS), MAX_SOURCE_TOOL_ROUNDS);
+  const build = cap("agent-builder");
+  assert.equal(capBound(build, "maxRounds", MAX_SDK_TOOL_ROUNDS), MAX_SDK_TOOL_ROUNDS);
+  assert.equal(capBound(build, "maxTokens", SDK_BUILD_ROUND_MAX_TOKENS), SDK_BUILD_ROUND_MAX_TOKENS);
+  assert.equal(capBound(build, "timeoutMs", SDK_BUILD_ROUND_TIMEOUT_MS), SDK_BUILD_ROUND_TIMEOUT_MS);
+  const orch = cap("orchestrator");
+  assert.equal(capBound(orch, "maxTokens", ORCH_NODE_MAX_TOKENS), ORCH_NODE_MAX_TOKENS);
+  assert.equal(capBound(orch, "timeoutMs", ORCH_NODE_TIMEOUT_MS), ORCH_NODE_TIMEOUT_MS);
+});
+
+test("the bound call sites read the capability rather than the constant", () => {
+  // A source pin, in the habit of pipeline.test.js: the four Worker-side bounds
+  // must each reach their limit THROUGH capBound. Passing the bare constant
+  // again would silently un-execute the declaration while every other test here
+  // stayed green.
+  const src = readFileSync(join(repoRoot, "src/pipeline.js"), "utf8")
+    + readFileSync(join(repoRoot, "src/orchestrator.js"), "utf8");
+  for (const konst of [
+    "MAX_SOURCE_TOOL_ROUNDS",
+    "MAX_SDK_TOOL_ROUNDS",
+    "SDK_BUILD_ROUND_MAX_TOKENS",
+    "SDK_BUILD_ROUND_TIMEOUT_MS",
+    "ORCH_NODE_MAX_TOKENS",
+    "ORCH_NODE_TIMEOUT_MS",
+  ]) {
+    // Every mention outside the `export const` declaration and the prose is a
+    // use, and every use must be as capBound's third argument.
+    const uses = src.split("\n").filter(
+      (l) => l.includes(konst) && !l.includes("export const") && !l.trim().startsWith("//"),
+    );
+    assert.ok(uses.length > 0, `${konst} is used somewhere`);
+    for (const line of uses) {
+      assert.match(line, /capBound\(/, `${konst} reaches the run through capBound: ${line.trim()}`);
+    }
   }
 });

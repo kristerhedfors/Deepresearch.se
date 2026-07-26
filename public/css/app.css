@@ -46,6 +46,11 @@
      .check span under :root.outro-mode so the canvas ✓ and the swapped-in span
      agree. */
   --check-red: #8f1d14;
+  /* The Models agent's ✓ — the amber-recoloured waiting balloon
+     (public/js/mode-spinner.js MODELS_SPINNER.check must match) folds into this
+     dark amber where Normal folds to --check-blue. Applied to the real .check
+     span under :root.models-mode so the canvas ✓ and the swapped-in span agree. */
+  --check-amber: #b8860b;
   --user: #d8edff;
 }
 /* COMPLETE per-mode themes (owner directive, 2026-07-23). Each chat mode is a
@@ -107,6 +112,19 @@
   --muted: #5d584c;
   --accent: #8f1d14;      /* masthead red — links, buttons, focus */
   --user: #f0ebdd;
+}
+/* • Models → AMBER: the workbench. A warm sand field under a workshop yellow,
+     because this is the mode where models are examined before anyone relies on
+     them — a bench, not another research field. */
+:root.models-mode {
+  --bg: #ffd21e;          /* amber — the workbench field */
+  --panel: #fffaf0;
+  --panel-2: #f7efdc;
+  --border: #e3d2a4;
+  --text: #201a08;
+  --muted: #6b5a2c;
+  --accent: #b8860b;      /* dark amber — links, buttons, focus */
+  --user: #fff3cf;
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; overflow-x: hidden; }
@@ -500,6 +518,22 @@ body.term-fg .brand {
   border-bottom-color: rgba(143, 29, 20, .9);
 }
 :root.outro-mode .outro-tag { display: block; }
+/* The Models agent's header tag (chat-mode.js toggles `models-mode`). Like
+   Outrospection's, this theme's field is LIGHT, so the tag is dark-on-warm
+   rather than a pale tag over a saturated field. */
+.models-tag {
+  display: none;
+  align-self: center;
+  margin-top: -.1rem;
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .16em;
+  text-transform: lowercase;
+  color: #6b5a2c;
+  text-shadow: 0 1px 1px rgba(255, 250, 240, .8);
+  pointer-events: none;
+}
+:root.models-mode .models-tag { display: block; }
 .header-right, #composer { pointer-events: auto; }
 #chat {
   flex: 1;
@@ -631,6 +665,86 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
 .tool-btn:hover { background: var(--panel-2); border-color: var(--border); }
 .tool-btn.active { background: var(--panel-2); border-color: var(--border); color: var(--text); }
 .empty { color: var(--muted); text-align: center; margin-top: 3rem; }
+
+/* Starter prompts (public/js/starters.js): four example questions on an empty
+   chat, drawn from the active mode's agent queue. Themed off the mode
+   variables rather than hard-coded colours, so the strip picks up the
+   introspection titanium / Agent Studio green / Orchestrator violet panes for
+   free — the chips should look like they belong to the agent they open. */
+.starters {
+  display: flex; flex-wrap: wrap; justify-content: center;
+  gap: .5rem; margin: 1.5rem auto 0; max-width: 52rem;
+}
+.starter {
+  flex: 1 1 15rem; max-width: 24rem;
+  text-align: left; cursor: pointer;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: .6rem .75rem; font: inherit; font-size: .84rem; line-height: 1.4;
+  /* A starter is a whole question, so it wraps to at most three lines and
+     then truncates — a chip that grows to six lines stops reading as a
+     shortcut and starts competing with the empty-state prose. */
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden;
+  transition: background .12s ease, border-color .12s ease, transform .12s ease;
+}
+.starter:hover { background: var(--panel-2); border-color: var(--accent); }
+.starter:active { transform: translateY(1px); }
+.starter:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 600px) {
+  /* One per row on a phone: four half-width chips of wrapped question text
+     are unreadable at that width. */
+  .starter { flex-basis: 100%; max-width: none; -webkit-line-clamp: 2; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .starter { transition: none; }
+  .starter:active { transform: none; }
+}
+
+/* Evaluation mode (the Settings "Starter prompt evaluation" knob): the strip
+   becomes a cross-agent review batch — each chip carries its agent + band and
+   a 👍/👎 pair, with a footer for progress and handing the findings back. */
+.starter-eval { margin-top: 1.5rem; }
+.starter-eval-head {
+  color: var(--muted); font-size: .8rem; text-align: center; margin: 0 0 .75rem;
+}
+.starter-cell { flex: 1 1 15rem; max-width: 24rem; display: flex; flex-direction: column; gap: .25rem; }
+.starter-cell .starter { flex: 1 1 auto; max-width: none; -webkit-line-clamp: 4; }
+.starter-band {
+  display: block; font-size: .68rem; text-transform: uppercase;
+  letter-spacing: .04em; opacity: .75; margin-bottom: .25rem;
+}
+/* The band is the reviewer's whole frame for the chip, so the four read
+   differently at a glance rather than relying on the words alone. */
+.band-proven { color: #2e7d32; }
+.band-weak { color: #c62828; }
+.band-untried { color: var(--muted); }
+.band-candidate { color: #6a1b9a; }
+.starter-rate { display: flex; gap: .25rem; justify-content: flex-end; }
+.starter-vote {
+  background: transparent; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--muted); cursor: pointer; font-size: .8rem; line-height: 1;
+  padding: .2rem .45rem;
+}
+.starter-vote:hover { background: var(--panel-2); }
+.starter-vote.on { background: var(--panel-2); border-color: var(--accent); color: var(--text); }
+.starter-eval-foot {
+  display: flex; align-items: center; justify-content: center; gap: .6rem;
+  margin-top: .75rem; font-size: .78rem; color: var(--muted); flex-wrap: wrap;
+}
+.starter-eval-btn {
+  background: transparent; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--muted); cursor: pointer; font: inherit; font-size: .78rem;
+  padding: .2rem .5rem;
+}
+.starter-eval-btn:hover:not(:disabled) { background: var(--panel-2); border-color: var(--accent); }
+.starter-eval-btn:disabled { opacity: .5; cursor: default; }
+.starter-eval-report {
+  text-align: left; white-space: pre-wrap; font-size: .72rem; max-height: 16rem;
+  overflow: auto; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: .6rem; margin-top: .6rem;
+}
+
 /* Outrospection's own empty state (owner feedback #28). The mode answers from
    the outward feed rather than from a web search, so the default "I'll search
    the web and report back" copy is wrong there — and the feed page is exactly
@@ -701,6 +815,7 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
    (mode-spinner.js ORCH_SPINNER), so the canvas ✓ and this span agree. */
 :root.orch-mode .step .check { color: var(--check-violet); }
 :root.outro-mode .step .check { color: var(--check-red); }
+:root.models-mode .step .check { color: var(--check-amber); }
 /* A step settled by run-end (e.g. one still mid-flight when the stream
    dropped and the answer was recovered): finished, but muted — no green
    ✓, since its own result wasn't captured. */
@@ -805,6 +920,10 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
    palettes apply; wide teams scroll inside the box (never the page). */
 .workflow-embed { margin: .6rem 0 .2rem; }
 .workflow-label { font-size: .78rem; color: var(--muted); margin-bottom: .3rem; }
+/* The affordance: the boxes read as a diagram, so the label says they are not.
+   Fades once a node has been opened — the hint has done its job by then. */
+.workflow-hint { font-size: .7rem; opacity: .7; margin-left: .4rem; }
+.workflow-hint::before { content: "— "; }
 .workflow-box {
   overflow-x: auto;
   background: var(--panel);
@@ -839,6 +958,81 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
   .workflow-svg .wf-running .wfglyph,
   .workflow-svg .wfmember.wm-running { animation: none; }
 }
+
+/* The node INSPECTOR (feedback #35): every node is a button that opens a live
+   view of that sub-agent under the graph — its task, persona, searches as they
+   land, and the prompt it is working on. Tap again to close, tap another to
+   switch. */
+.workflow-svg .wfnode { cursor: pointer; }
+.workflow-svg .wfnode:hover rect { fill: var(--panel); stroke: var(--accent); }
+.workflow-svg .wfnode:focus { outline: none; }
+.workflow-svg .wfnode:focus-visible rect { stroke: var(--accent); stroke-width: 2.4; }
+.workflow-svg .wfnode.wf-selected rect { stroke: var(--accent); stroke-width: 2.4; }
+.workflow-inspect {
+  margin-top: .4rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: .6rem .7rem;
+  font-size: .8rem;
+}
+.workflow-inspect[hidden] { display: none; }
+.wfi-head { display: flex; align-items: baseline; gap: .5rem; }
+.wfi-name { font-weight: 650; }
+.wfi-meta { color: var(--muted); font-size: .72rem; }
+.wfi-close {
+  margin-left: auto;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: .9rem;
+  line-height: 1;
+  padding: .1rem .2rem;
+}
+.wfi-close:hover { color: var(--text); }
+.wfi-state { margin: .35rem 0 .5rem; color: var(--muted); }
+.wfi-state strong { color: var(--text); }
+.wfi-glyph { color: var(--accent); }
+.wfi-state.wf-done .wfi-glyph { color: var(--check-violet); }
+.wfi-state.wf-failed .wfi-glyph, .wfi-state.wf-failed strong { color: #b3455c; }
+.wfi-row { display: grid; grid-template-columns: 7.5rem 1fr; gap: .5rem; padding: .25rem 0; }
+.wfi-k { color: var(--muted); font-size: .72rem; padding-top: .1rem; }
+.wfi-v p { margin: 0; }
+.wfi-dim { color: var(--muted); font-size: .72rem; }
+.wfi-queries { list-style: none; margin: 0; padding: 0; }
+.wfi-q { padding: .05rem 0; }
+.wfi-q::before { content: "▸ "; color: var(--muted); }
+.wfi-q-planned, .wfi-q-running { color: var(--muted); }
+.wfi-link {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: .72rem;
+  padding: .1rem .5rem;
+}
+.wfi-link:hover { border-color: var(--accent); }
+.wfi-prompt {
+  margin: 0;
+  max-height: 15rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: .72rem;
+  line-height: 1.45;
+  background: var(--panel-2);
+  border-radius: 8px;
+  padding: .45rem .55rem;
+}
+/* Narrow screens: the label column stacks above its value rather than
+   squeezing the prompt into a third of the width. */
+@media (max-width: 560px) {
+  .wfi-row { grid-template-columns: 1fr; gap: .1rem; }
+}
+
 .streetview-embed { margin: .6rem 0 .2rem; }
 .streetview-embed-label { font-size: .75rem; color: var(--muted); margin-bottom: .3rem; }
 .streetview-embed iframe {
@@ -1412,23 +1606,6 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 .slash-args { font-weight: 400; opacity: .55; }
 .slash-desc { font-size: .74rem; line-height: 1.4; opacity: .78; }
 
-/* The search-SOURCE picker inside a knob popover (public/js/search-source.js):
-   WHO runs the searches — Exa or this site's own Worker. Shared shape across
-   both tiers; the Se/cure copy of these rules lives in cure/drc.css because
-   the two stylesheets never load together. Each row is the whole label so the
-   tap target is the option, not the 14 px radio. */
-.srcpick {
-  display: flex; flex-direction: column; gap: .35rem;
-  margin: .55rem 0; padding: .5rem 0;
-  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
-}
-.srcopt {
-  display: flex; gap: .5rem; align-items: flex-start;
-  cursor: pointer; padding: .15rem 0;
-}
-.srcopt input { margin-top: .2rem; flex: 0 0 auto; accent-color: var(--accent, #0d4fa0); }
-.srcnote { opacity: .78; font-size: .95em; }
-
 #budgetval {
   min-width: 3.6rem;
   font-variant-numeric: tabular-nums;
@@ -1658,6 +1835,91 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   box-shadow: 4px 0 30px rgba(60, 35, 110, .26), inset 0 3px 0 rgba(109, 63, 196, .35);
 }
 #historysidebar[data-mode="orchestrator"] .history-head strong { color: #5a349e; }
+/* The live PIPELINE MAP (public/js/pipeline-map.js + pipeline-map-core.js):
+   introspection mode's expandable diagram of this site's own request path,
+   inside the left drawer. Titanium palette throughout — it only ever appears
+   under [data-mode="introspection"]. The graph is taller than the drawer, so it
+   scrolls inside its OWN box (never the page, and never the drawer's list). */
+.pipemap {
+  border: 1px solid rgba(120, 140, 160, .4);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .34);
+  padding: .45rem .55rem;
+  font-size: .85rem;
+}
+.pipemap > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #4a5a6a;
+  list-style: none;
+  display: flex; align-items: center; gap: .4rem;
+}
+.pipemap > summary::-webkit-details-marker { display: none; }
+.pipemap > summary::before { content: "▸"; color: var(--muted); font-size: .8rem; }
+.pipemap[open] > summary::before { content: "▾"; }
+.pipemap-hint { font-weight: 400; font-size: .72rem; color: var(--muted); }
+.pipemap-status { margin: .35rem 0 .3rem; font-size: .72rem; line-height: 1.35; }
+.pipemap-body {
+  max-height: 48vh;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+/* Intrinsically sized (the layout math targets the 320px drawer) but allowed to
+   scale down: on a narrow phone the drawer is 86vw, so the map shrinks to fit
+   instead of scrolling sideways. */
+.pipemap-svg { display: block; max-width: 100%; height: auto; }
+.pipemap-svg .pmedge { stroke: #8d9aa8; stroke-width: 1.3; opacity: .5; }
+.pipemap-svg .pmedge.pm-weak { stroke-dasharray: 3 3; opacity: .3; }
+.pipemap-svg .pmedge.pm-back { stroke-dasharray: 4 3; opacity: .4; }
+/* An edge between two nodes this chat actually visited is part of the path
+   taken — it lights with them, so the route through the graph reads at a
+   glance instead of node by node. */
+.pipemap-svg .pmedge.pm-taken { stroke: #5f6b78; opacity: .85; stroke-width: 1.7; }
+.pipemap-svg .pmedgelabel { font: 400 .58rem/1 system-ui, sans-serif; fill: var(--muted); }
+.pipemap-svg .pmnode rect { fill: rgba(255, 255, 255, .5); stroke: #c2ccd6; stroke-width: 1.1; }
+.pipemap-svg .pmnode.pm-kind-terminal rect { stroke-dasharray: 3 2; }
+.pipemap-svg .pmlabel { font: 600 .68rem/1 system-ui, sans-serif; fill: #3d4a57; }
+.pipemap-svg .pmsub { font: 400 .58rem/1 system-ui, sans-serif; fill: #7d8996; }
+.pipemap-svg .pmglyph { font: 600 .68rem/1 system-ui, sans-serif; fill: #a6b1bd; }
+.pipemap-svg .pmloop { font: 600 .58rem/1 system-ui, sans-serif; fill: var(--check-tin, #5f6b78); }
+/* PASSED — "upcolours" every node this chat went through, and keeps it lit. */
+.pipemap-svg .pmnode.pm-passed rect {
+  fill: rgba(206, 216, 226, .72);
+  stroke: #5f6b78;
+  stroke-width: 1.7;
+}
+.pipemap-svg .pmnode.pm-passed .pmlabel { fill: #26313c; }
+.pipemap-svg .pmnode.pm-passed .pmsub { fill: #5c6874; }
+.pipemap-svg .pmnode.pm-passed .pmglyph { fill: var(--check-tin, #5f6b78); }
+/* ACTIVE — the step running right now blinks, so a looping agent visibly keeps
+   re-lighting the same node instead of just incrementing a counter. */
+.pipemap-svg .pmnode.pm-active rect {
+  fill: rgba(226, 234, 242, .95);
+  stroke: #38566f;
+  stroke-width: 2;
+  animation: pm-blink 1.15s ease-in-out infinite;
+}
+.pipemap-svg .pmnode.pm-active .pmlabel { fill: #16202a; }
+.pipemap-svg .pmnode.pm-active .pmglyph { fill: #38566f; animation: pm-blink 1.15s ease-in-out infinite; }
+@keyframes pm-blink { 50% { opacity: .38; } }
+@media (prefers-reduced-motion: reduce) {
+  .pipemap-svg .pmnode.pm-active rect,
+  .pipemap-svg .pmnode.pm-active .pmglyph { animation: none; }
+}
+@media (prefers-color-scheme: dark) {
+  .pipemap { background: rgba(20, 26, 33, .4); border-color: rgba(120, 140, 160, .3); }
+  .pipemap > summary { color: #b3c0cd; }
+  .pipemap-svg .pmnode rect { fill: rgba(30, 38, 47, .6); stroke: #46525f; }
+  .pipemap-svg .pmlabel { fill: #d6dee6; }
+  .pipemap-svg .pmsub { fill: #8b97a4; }
+  .pipemap-svg .pmnode.pm-passed rect { fill: rgba(74, 91, 108, .6); stroke: #9fb0c1; }
+  .pipemap-svg .pmnode.pm-passed .pmlabel { fill: #eef3f8; }
+  .pipemap-svg .pmnode.pm-passed .pmsub { fill: #b6c2ce; }
+  .pipemap-svg .pmnode.pm-active rect { fill: rgba(104, 126, 148, .75); stroke: #cfdce8; }
+  .pipemap-svg .pmnode.pm-active .pmlabel { fill: #fff; }
+  .pipemap-svg .pmedge.pm-taken { stroke: #b8c6d3; }
+}
 .history-head { display: flex; justify-content: space-between; align-items: center; }
 .history-head button {
   background: none; border: 0; color: var(--muted); font-size: 1rem; padding: .2rem .4rem;
@@ -2509,6 +2771,18 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 .pool-badge.unverified { border-color: #e3c576; color: #7a5c12; }
 .pool-state { font-size: .72rem; color: var(--muted); }
 .pool-state.pending { color: var(--accent); font-weight: 600; }
+/* The SHARER's own control, on the same screen (feedback #31, 2026-07-26):
+   lending compute is not a Se/cure-only feature, so the signed-in app carries
+   the local-server URL + the toggle rather than pointing at the other tier. */
+.pool-share {
+  display: flex; gap: .5rem; flex-wrap: wrap; align-items: flex-end; margin: .4rem 0;
+}
+.pool-share-url { flex: 1 1 14rem; min-width: 0; font-size: .78rem; color: var(--muted); }
+.pool-share-url input { width: 100%; margin-top: .2rem; }
+.pool-share-toggle {
+  display: flex; align-items: center; gap: .4rem; font-size: .82rem;
+  padding-bottom: .35rem; white-space: nowrap;
+}
 .pool-mint { display: flex; gap: .4rem; flex-wrap: wrap; margin: .35rem 0; }
 .pool-mint input { flex: 1 1 12rem; min-width: 0; }
 .pool-link { word-break: break-all; font-size: .72rem; }
@@ -2575,3 +2849,145 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   border-top: 1px solid var(--border);
   padding-top: .6rem;
 }
+
+/* ── The Models agent's lifecycle board ──────────────────────────────────────
+   The Models agent's LEFT SIDEBAR: every model this deployment can reach,
+   grouped by lifecycle lane, each card carrying its price and its verification
+   checklist. Left, not right, because it replaces the history drawer — in this
+   agent the models ARE the session, so they occupy the place a session's
+   contents normally do (mode-theme.js `panel: "models"`).
+
+   The cards are deliberately dense on facts and quiet on chrome: the board
+   exists so a price and a check result are read before a model is relied on,
+   and decoration makes both harder to find, not easier. */
+#modelspanel {
+  position: fixed; inset: 0; z-index: 10;
+  background: rgba(60, 45, 5, .35);
+}
+#modelspanel[hidden] { display: none; }
+.mdl-board {
+  position: absolute; top: 0; left: 0; bottom: 0;
+  width: min(400px, 94vw);
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  border-radius: 0 18px 18px 0;
+  box-shadow: 4px 0 30px rgba(60, 45, 5, .28);
+  padding: .9rem 1rem 1rem;
+  display: flex; flex-direction: column; gap: .55rem;
+  overflow-y: auto;
+}
+.mdl-board-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .5rem;
+}
+.mdl-board-head button {
+  background: none; border: 0; color: var(--muted);
+  font-size: 1.4rem; line-height: 1; cursor: pointer; padding: 0 .3rem;
+}
+#modelssearch {
+  width: 100%;
+  padding: .5rem .6rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+}
+.mdl-providers { margin-top: .2rem; }
+.mdl-list { display: flex; flex-direction: column; gap: .5rem; }
+/* A lane header — the lifecycle group, with the one line that explains what
+   the state MEANS. Someone opening this for the first time should not have to
+   infer why a model is in one group and not another. */
+.mdl-lane {
+  display: flex; flex-direction: column;
+  margin-top: .5rem;
+}
+.mdl-lane strong { font-size: .8rem; letter-spacing: .04em; text-transform: uppercase; }
+.mdl-lane-blurb { font-size: .7rem; color: var(--muted); }
+.mdl-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-2);
+  padding: .55rem .65rem;
+  display: flex; flex-direction: column; gap: .25rem;
+}
+/* An enabled model wears the accent edge — the board's answer to "which of
+   these did I turn on", readable at a glance while scrolling. */
+.mdl-card.mdl-enabled { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.mdl-card.mdl-blocked { opacity: .62; }
+.mdl-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: .4rem; }
+.mdl-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .82rem;
+  color: var(--text);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+a.mdl-id:hover { color: var(--accent); text-decoration: underline; }
+.mdl-provider { font-size: .68rem; color: var(--muted); white-space: nowrap; }
+.mdl-badges { display: flex; flex-wrap: wrap; gap: .25rem; }
+.mdl-badge {
+  font-size: .64rem; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: .05rem .4rem;
+}
+.mdl-price { font-size: .78rem; font-weight: 600; color: var(--text); }
+.mdl-est { font-size: .72rem; color: var(--muted); }
+.mdl-why { font-size: .72rem; color: var(--muted); font-style: italic; }
+
+/* THE VERIFICATION CHECKLIST. Three states, three treatments — and crucially
+   the failing state is NOT alarming: a red-alert box would read as "do not
+   use", which is the opposite of what a non-blocking status means. Pass is the
+   accent, fail is a muted strike, untested is a dotted outline that visibly
+   says "nobody asked yet". */
+.mdl-checks { margin-top: .15rem; }
+.mdl-checkboxes { display: flex; flex-wrap: wrap; gap: .2rem; }
+.mdl-check {
+  display: inline-flex; align-items: center; gap: .2rem;
+  font-size: .64rem;
+  border-radius: 5px;
+  padding: .05rem .3rem;
+  border: 1px solid transparent;
+  cursor: help;
+}
+.mdl-check-glyph { font-weight: 700; }
+.mdl-check-pass { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+.mdl-check-fail { color: var(--muted); border-color: var(--border); text-decoration: line-through; }
+.mdl-check-untested { color: var(--muted); border-style: dotted; border-color: var(--border); opacity: .8; }
+.mdl-check-sum { font-size: .68rem; color: var(--muted); margin-top: .2rem; cursor: help; }
+
+.mdl-actions { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .25rem; }
+.mdl-btn {
+  font: inherit; font-size: .78rem;
+  padding: .28rem .7rem;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fffaf0;
+  cursor: pointer;
+}
+.mdl-btn[disabled] { cursor: not-allowed; opacity: .5; }
+.mdl-btn-on { background: transparent; color: var(--accent); }
+.mdl-btn-ghost { background: transparent; color: var(--accent); }
+/* The composer's board button — present only in Models mode (app.js unhides
+   it), styled like the other composer icon buttons. */
+#modelsbtn { font-size: 1.05rem; line-height: 1; }
+/* The inline cards: the same rows rendered inside an answer, where the agent
+   just reasoned about them. Bounded height so a long list never buries the
+   answer text under a catalog. */
+.mdl-embed {
+  margin: .6rem 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-2);
+  padding: .6rem .7rem;
+}
+.mdl-embed-head { font-weight: 600; font-size: .85rem; margin-bottom: .15rem; }
+.mdl-embed-sub { font-size: .72rem; margin: 0 0 .45rem; }
+.mdl-embed-list {
+  display: flex; flex-direction: column; gap: .45rem;
+  max-height: 24rem; overflow-y: auto;
+}
+.mdl-embed-list .mdl-card { background: var(--panel); }

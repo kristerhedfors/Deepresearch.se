@@ -79,7 +79,7 @@
     <a href="https://github.com/kristerhedfors/Deepresearch.se">github.com/kristerhedfors/Deepresearch.se</a>;
     what the site is for and its use restrictions are on
     <a href="/build/">About this project</a>.</p>
-    <div><p class="muted">Loading…</p></div>
+    <div id="history"><p class="muted">Loading…</p></div>
   </section>
 
 </main>
@@ -87,11 +87,25 @@
 <script src="/vendor/purify.min.js"></script>
 <script type="module">
   import { renderMarkdownInto } from "/js/markdown.js";
-  const el = document.getElementById("history");
+  // The container id is load-bearing and has been lost off the div by accident
+  // before. That failure mode is silent and total: getElementById returns null,
+  // the render throws, and the catch below throws again on the same null — so
+  // the page sits on the lead paragraph plus a permanent "Loading…" with no
+  // error anywhere on screen. Rebuild the container rather than dead-end, and
+  // keep the error path reachable. src/static-pages.test.js pins the markup.
+  let el = document.getElementById("history");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "history";
+    document.querySelector("main section").append(el);
+  }
   fetch("/build/history.md")
     .then((r) => { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
     .then((md) => renderMarkdownInto(el, md))
-    .catch(() => { el.innerHTML = '<p class="muted">Could not load the build history.</p>'; });
+    .catch((err) => {
+      console.error("build story: could not render /build/history.md", err);
+      el.innerHTML = '<p class="muted">Could not load the build history. Reload to try again.</p>';
+    });
 </script>
 </body>
 </html>

@@ -247,7 +247,7 @@ export interface RequestState {
   webSearch: boolean;
   /**
    * The user's picked web-search SOURCE for this request — who actually runs
-   * the searches (the web knob's long-press card, UX-10): "exa", "cloudflare"
+   * the searches (the "Exa web search" settings knob): "exa", "cloudflare"
    * (this Worker does the searching itself), or "" for the site default.
    * Validated against websearch-backends.js USER_SEARCH_SOURCES before it gets
    * here, and ignored when the admin pinned the site-wide backend.
@@ -363,6 +363,11 @@ export interface StatusSearchStart {
   type: "search_start";
   round: number;
   query: string;
+  /**
+   * Orchestrator mode only: the sub-agent whose plan this query came from, so
+   * the workflow inspector can attribute it to that node.
+   */
+  agent?: string;
 }
 /** A web search finished; `sources` populates the expandable list. */
 export interface StatusSearchDone {
@@ -374,6 +379,8 @@ export interface StatusSearchDone {
   sources: SseSource[];
   /** True when served from the Exa result cache (not billed). */
   cached?: boolean;
+  /** Orchestrator mode only: the sub-agent that planned this query. */
+  agent?: string;
 }
 /** Post-validation rejected the draft: clear streamed text and keep waiting. */
 export interface StatusDiscardText {
@@ -401,7 +408,17 @@ export interface StatusBuild {
 export interface StatusWorkflow {
   type: "workflow";
   title: string;
-  agents: Array<{ id: string; kind: string; name: string; task: string; deps: string[] }>;
+  agents: Array<{
+    id: string;
+    kind: string;
+    name: string;
+    task: string;
+    deps: string[];
+    /** A custom specialist's one-line persona (shown in the node inspector). */
+    persona?: string;
+    /** A deep_research node's planned queries (shown before they run). */
+    queries?: string[];
+  }>;
   waves: string[][];
 }
 /**
@@ -416,6 +433,14 @@ export interface StatusAgentUpdate {
   note?: string;
   duration_ms?: number;
   chars?: number;
+  /**
+   * The prompt the node is actually working on, head-clamped to
+   * MAX_PROMPT_PREVIEW, emitted as a second `running` update once the node's
+   * grounding is assembled. The workflow inspector shows it live.
+   */
+  prompt?: string;
+  /** The full prompt's length, so the inspector can say how much it is showing. */
+  prompt_chars?: number;
 }
 /** Terminal stats footer. */
 export interface StatusDone {

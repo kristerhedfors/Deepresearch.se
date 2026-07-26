@@ -65,6 +65,13 @@ import {
   serverTokenLlmProvider,
 } from "/js/drc-providers.js";
 import { poolDataFlowNotice } from "/js/pool-core.js";
+import { runLocalPoolJob } from "/js/pool-local.js";
+import {
+  securePosture,
+  securePostureBrief,
+  securePostureLine,
+  securePostureQuips,
+} from "/js/secure-posture-core.js";
 import { createPoolProvider } from "/js/pool-provider.js";
 import {
   KNOWLEDGE_FILE_EXT,
@@ -94,7 +101,8 @@ import { wireBarTint } from "/js/bar-tint.js";
 import { DRC_RECENT_TURNS, ensureDrcRag, indexDrcChatTurns, retrieveDrcContext } from "/js/drc-rag.js";
 import { runDrcResearch } from "/js/drc-research.js";
 import { runBackendSearch as runDirectBackendSearch } from "/js/websearch-backends-core.js";
-import { getSearchSource, searchSourcePickerHtml, wireSearchSourcePicker } from "/js/search-source.js";
+import { normalizeExecBackend, probeRunner, runnerStatusLine, usesLocalRunner } from "/js/exec-backends-core.js";
+import { EXA_SETTING_INFO, exaStatusText, getExaEnabled, getSearchSource, setExaEnabled } from "/js/search-source.js";
 import { ensureSandboxBooted, sandboxIdle, sandboxSupported, setSandboxImage } from "/js/sandbox.js";
 import { hideTerminalIcon, showTerminalIcon } from "/js/agent-backdrop.js";
 import {
@@ -114,6 +122,7 @@ import {
 } from "/js/introspect-core.js";
 import { engageIntrospection, initIntrospectUi, noteIntrospectionText } from "/js/introspect-ui.js";
 import { initSourcePeek, wireSourcePeek } from "/js/source-peek.js";
+import { renderStarterStrip } from "/js/starters.js";
 import { drcStoreAvailable, getSealedProject, putSealedProject } from "/js/drc-store.js";
 import { BUDGET_MAX_S, BUDGET_MIN_S, budgetTier, fmtBudget, posToSeconds, secondsToPos } from "/js/timescale.js";
 import {
@@ -583,7 +592,11 @@ function maybePlayUmbrella(deepLinked) {
 // it through reduced-motion just as it does the intro.
 function startGhostStroll(force) {
   import("./ghostwalk.js")
-    .then((m) => m.startGhostWalk({ force: !!force }))
+    // The quips are passed as a GETTER, not an array: the borrowed-allowance
+    // and shared-compute arrival chains are async, so a stroll that started
+    // before a pool token connected must still correct itself mid-walk rather
+    // than keep promising "no server's watching" (feedback #31, 2026-07-26).
+    .then((m) => m.startGhostWalk({ force: !!force, quips: () => securePostureQuips(postureCtx()) }))
     .catch(() => {
       // decoration only — never block the page over it
     });
@@ -641,8 +654,35 @@ function showGhostSay() {
   } catch {
     // fine
   }
+  applyPostureCopy();
   $("ghostsay").hidden = false;
   $("accountbtn").classList.add("nudge"); // briefly draw the eye to the target
+}
+
+// Point the tier's two standing self-descriptions — the first-visit greeter and
+// the intro glass pane — at what THIS session actually does. Both ship with the
+// unconfigured session's copy in the markup (which is true, and is the common
+// case); a session carrying a borrowed allowance or shared compute gets the
+// route stated instead, from the same pure core the ghost's quips come from.
+// Idempotent and fail-soft: called before either surface is shown, and again
+// whenever the configuration changes underneath them.
+function applyPostureCopy() {
+  try {
+    const ctx = postureCtx();
+    const posture = securePosture(ctx);
+    // `direct` and `local` sessions send nothing anywhere the crafted default
+    // copy doesn't already say — leave those words alone.
+    if (posture !== "peer" && posture !== "routed") return;
+    const brief = securePostureBrief(ctx);
+    const head = $("ghostsay-head");
+    if (head) head.innerHTML = wmHtml(brief.headline);
+    const p = $("ghostsay-posture");
+    if (p) p.innerHTML = brief.lines.map((line) => wmHtml(line)).join("<br><br>");
+    const lead = $("intro-lead");
+    if (lead) lead.innerHTML = brief.lines.map((line) => wmHtml(line)).join(" ");
+  } catch {
+    // the markup's default copy stands — never break the page over decoration
+  }
 }
 
 function hideGhostSay() {
@@ -684,6 +724,8 @@ function openSettings() {
   renderStRow(); // reflect the consolidated Se/rver token (if any)
   renderProxyRow(); // reflect the secure-research-space bundle (if any)
   renderSearchBackend(); // reflect the per-user web-search backend
+  renderExecBackend(); // reflect WHERE shell commands run (browser VM / local runner)
+  renderExaRow(); // reflect WHO runs a grant/token-routed search
   $("settingsview").hidden = false;
 }
 
@@ -696,7 +738,11 @@ function closeSettings() {
 const DRS_FEATURES = {
   ghost: {
     title: "Ghost mode — you are here",
-    text: "The ghost in the signed-in app brings you HERE: Se/cure is ghost mode. This site's server never receives your messages, keys, or projects — there is nothing to keep out of any log. (In Se/rver the server honors per-conversation incognito for its own log; here the question doesn't arise.)",
+    // The unqualified half is about STORAGE (messages, keys and projects never
+    // reach a server in any configuration) and stays true throughout. What this
+    // session SENDS is appended live by showDrs from the posture core, because
+    // a borrowed allowance or shared compute does put text on the wire.
+    text: "The ghost in the signed-in app brings you HERE: Se/cure is ghost mode. This site's server never stores your messages, keys, or projects — there is nothing to keep out of any log. (In Se/rver the server honors per-conversation incognito for its own log; here the question doesn't arise.)",
   },
   attach: {
     title: "Attachments & documents",
@@ -712,7 +758,11 @@ function showDrs(feature) {
   const f = DRS_FEATURES[feature];
   if (!f) return;
   $("drspop-title").innerHTML = wmHtml(feature === "ghost" ? f.title : f.title + " — a Se/rver feature");
-  $("drspop-text").innerHTML = wmHtml(f.text);
+  // The ghost card doubles as "what does this session send?" — answer it from
+  // the session's own configuration rather than leaving the reader to assume
+  // the unconfigured case (feedback #31, 2026-07-26).
+  const tail = feature === "ghost" ? " " + securePostureLine(postureCtx()) : "";
+  $("drspop-text").innerHTML = wmHtml(f.text + tail);
   $("drspop").hidden = false;
 }
 
@@ -764,7 +814,36 @@ function privacyCtx() {
     grantsConnected: grantSearch || apiProxyUsable() || stApiUsable(),
     workspaceName: sharedWorkspace,
     workspaceGrants: sharedWorkspaceGrants,
+    pool: poolInPath(pid),
+    peerLabel: poolOwnerLabel(),
   };
+}
+
+// Is SHARED COMPUTE in this session's answer path? Two ways to be true, and
+// both matter for what the tier may claim (feedback #31, 2026-07-26):
+//   - the pool provider is the SELECTED model — the next prompt goes to a peer;
+//   - a pool token is connected and switched on — the session was ENTERED to
+//     route queries there, which is exactly the state the reporter described,
+//     even before a model is picked from the shared group.
+// Either way, "everything stays in this browser" is not something we may say.
+function poolInPath(providerId) {
+  return providerId === POOL_LLM_PROVIDER_ID || poolUsable();
+}
+
+// The pool owner as the SERVER resolved them (never a name a peer typed) —
+// used to say WHOSE machine answers. Empty until /api/pool/peer has answered,
+// and the posture copy falls back to "another person" on its own.
+function poolOwnerLabel() {
+  const o = poolPeer && poolPeer.owner;
+  return (o && (o.display || o.key)) || "";
+}
+
+// The SESSION POSTURE the tier's own copy speaks from — the ghost's quips, the
+// first-visit greeter, the intro pane and the tier explainer all read it, so
+// they can never contradict each other or the notice under the ℹ.
+function postureCtx() {
+  const c = privacyCtx();
+  return { pool: c.pool, viaProxy: c.viaProxy, local: c.local, search: c.search, peerLabel: c.peerLabel };
 }
 
 function showPrivacyNotice() {
@@ -1642,6 +1721,20 @@ function renderMessages() {
       "anything critical. Ask a research question to get started, or type “/” for the commands — " +
       "“/feedback” reaches the developers, “/help” answers from the documentation.";
     box.appendChild(empty);
+    // The starter strip: four openers from the Se/cure agent's queue
+    // (public/js/starters-core.js), rotated per visit. Se/cure gets its OWN
+    // queue rather than the Se/rver one — half of what a newcomer needs to
+    // learn here is the privacy posture, so the openers interrogate it.
+    // Clicking one sends it, exactly as typing it would; nothing about the
+    // pick leaves this browser.
+    renderStarterStrip({
+      mount: empty,
+      platform: "client",
+      compose: (text) => {
+        $("input").value = text;
+        $("form").requestSubmit();
+      },
+    });
     return;
   }
   const conv = activeConv();
@@ -2543,6 +2636,26 @@ async function drcDirectWebSearch(query) {
   }
 }
 
+// Reflects the "Exa web search" knob (search-source.js — browser-local, NOT
+// sealed state: a preference about where a query goes should never travel in a
+// shared workspace link). On means a grant/token-routed search runs on Exa; off
+// points the server at its own Worker backend instead. Moot while a direct
+// backend or local browsing agent is configured — that path never reaches this
+// server — so the status line says so rather than pretending otherwise.
+function renderExaRow() {
+  const knob = /** @type {HTMLInputElement} */ ($("exaweb"));
+  if (!knob) return;
+  const on = getExaEnabled();
+  knob.checked = on;
+  const pop = $("exapop");
+  if (pop && !pop.innerHTML) pop.innerHTML = EXA_SETTING_INFO;
+  const direct = searchBackendCfg();
+  const isDirect = (direct.backend === "searxng" || direct.backend === "exa_compatible") && !!direct.baseUrl;
+  $("exastatus").textContent = isDirect
+    ? "Your own service handles web search in this browser, so this setting only applies if you switch back to a server grant."
+    : exaStatusText(on);
+}
+
 // Reflects the sealed backend config into the settings section and wires edits.
 function renderSearchBackend() {
   const sel = /** @type {HTMLSelectElement} */ ($("ws-backend"));
@@ -2575,6 +2688,7 @@ function renderSearchBackend() {
       results: resEl.value,
     });
     renderSearchBackend();
+    renderExaRow(); // a direct backend makes the Exa/Worker choice moot — say so
     // Configuring (or clearing) a browser-direct backend changes whether web
     // search is reachable — keep the knob honest about it.
     reflectResearchKnob();
@@ -2584,6 +2698,63 @@ function renderSearchBackend() {
   urlEl.onchange = persist;
   keyEl.onchange = persist;
   resEl.onchange = persist;
+}
+
+// ---- the EXECUTION ENVIRONMENT (exec-backends-core.js) ----------------------
+//
+// The same shape of choice the model dropdown already offers (on-device vs.
+// cloud), applied to execution: the in-browser CheerpX VM (default, unchanged)
+// or a DREE/1 runner the user starts on their own machine. Like the search
+// backend above, the config is sealed project state and the call is browser →
+// localhost, so the server stays out of the data path in BOTH cases — Se/cure's
+// posture is preserved by construction, not by a promise.
+
+/** The sealed exec-environment config, normalized (exec-backends-core.js). */
+function execBackendCfg() {
+  return normalizeExecBackend(state && state.execBackend);
+}
+
+/** Reflects the sealed exec config into the settings section and wires edits. */
+function renderExecBackend() {
+  const sel = /** @type {HTMLSelectElement} */ ($("exec-backend"));
+  if (!sel) return;
+  const c = execBackendCfg();
+  sel.value = c.backend;
+  const wrap = $("exec-direct");
+  const urlEl = /** @type {HTMLInputElement} */ ($("exec-url"));
+  const keyEl = /** @type {HTMLInputElement} */ ($("exec-key"));
+  urlEl.value = c.baseUrl;
+  keyEl.value = c.key;
+  wrap.hidden = c.backend !== "local";
+  const status = $("exec-status");
+  status.textContent =
+    c.backend !== "local"
+      ? ""
+      : c.baseUrl
+        ? "Shell commands will run on your machine, through " + c.baseUrl + ". Press Test connection to check it."
+        : "Enter your runner's URL — then commands run on your machine instead of in this browser.";
+
+  // Same bind-once discipline as renderSearchBackend: the elements persist
+  // across drawer opens, so assign handlers rather than adding listeners.
+  const persist = async () => {
+    state.execBackend = normalizeExecBackend({ backend: sel.value, baseUrl: urlEl.value, key: keyEl.value });
+    renderExecBackend();
+    await saveState();
+  };
+  sel.onchange = persist;
+  urlEl.onchange = persist;
+  keyEl.onchange = persist;
+  // "Test connection" answers the one question the user actually has — is
+  // anything there? — and names the cause when not (runner down / CORS /
+  // Safari's mixed-content block), which a bare "Failed to fetch" never does.
+  const testBtn = $("exec-test");
+  if (testBtn) {
+    testBtn.onclick = async () => {
+      const cfg = execBackendCfg();
+      status.textContent = "Checking " + (cfg.baseUrl || "…") + " …";
+      status.textContent = runnerStatusLine(await probeRunner(cfg));
+    };
+  }
 }
 
 // ---- secure research space: the account-connected proxy BUNDLE ----------------------
@@ -2884,6 +3055,9 @@ function renderPoolRow() {
     (poolEnabled() ? (live ? "Connected — " : "Expired/used up — ") : "Off — ") +
     "🤝 another user's machine · " + meter;
   renderPoolConsent();
+  // Connecting, disabling or expiring shared compute changes what the tier may
+  // claim about this session — keep the standing copy in step (feedback #31).
+  applyPostureCopy();
 }
 
 // ---- MUTUAL CONSENT, the consumer's half ---------------------------------------
@@ -2974,18 +3148,11 @@ function poolShareProvider() {
   poolShareLoop = createPoolProvider({
     label: "Se/cure local model",
     listModels: async () => listDrcModels(drcProvider("local"), "", { baseUrl: localUrl() }),
-    runJob: async (body) => {
-      // The job runs against the sharer's OWN local server (Ollama / LM
-      // Studio / llama.cpp) — the same URL the `local` provider uses.
-      const res = await fetch(localUrl() + "/chat/completions", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error("local server answered " + res.status);
-      const data = await res.json();
-      return { response: data, usage: data?.usage };
-    },
+    // The job runs against the sharer's OWN local server (Ollama / LM Studio /
+    // llama.cpp) — the same URL the `local` provider uses. Shared with the
+    // Se/rver tab's loop (pool-local.js) so both tiers speak one wire to a
+    // user's own machine.
+    runJob: (body) => runLocalPoolJob(localUrl(), body),
     onStatus: poolShareStatus,
   });
   return poolShareLoop;
@@ -3392,6 +3559,7 @@ async function unlockWorkspace(ev) {
     renderConvPicker();
     renderMessages();
     renderSearchBackend();
+    renderExecBackend();
     renderWsRow();
     renderProxyRow();
     renderStRow();
@@ -3642,6 +3810,10 @@ async function send(ev) {
       introspection: intro.block,
       snapshot: intro.snapshot,
       bash: state.bashLite === true,
+      // WHERE those shell commands run: the in-browser VM (default) or the
+      // user's own DREE/1 runner on localhost. Sealed state, browser-direct
+      // either way — the server is in neither path.
+      execCfg: execBackendCfg(),
       fileProvider: intro.fileProvider,
       // The local provider's whole wire config is its user-set base URL —
       // every pipeline call already threads baseUrl down (the trajectory
@@ -3984,6 +4156,10 @@ applyDrcSandboxImage();
 function prewarmDrcSandbox() {
   try {
     if (state.bashLite !== true || !sandboxSupported()) return;
+    // A local runner is the execution environment — don't stream a Debian image
+    // into a VM that will never run a command. The runner needs no pre-warm:
+    // its first container starts in well under a second.
+    if (usesLocalRunner(execBackendCfg())) return;
     // Sandbox is enabled → show the header terminal icon straight away, so its
     // presence signals "Linux is starting" the moment the page opens (even
     // before the VM prints). Independent of the idle/dev-mode boot gates below.
@@ -4004,9 +4180,11 @@ prewarmDrcSandbox();
 $("bashlite").addEventListener("change", () => {
   state.bashLite = $("bashlite").checked;
   const st = $("sandboxstatus");
-  st.textContent = state.bashLite
-    ? "Sandbox enabled — a message that asks to run a shell will boot Linux here."
-    : "Sandbox disabled.";
+  st.textContent = !state.bashLite
+    ? "Sandbox disabled."
+    : usesLocalRunner(execBackendCfg())
+      ? "Sandbox enabled — commands will run on your machine, through the local runner below."
+      : "Sandbox enabled — a message that asks to run a shell will boot Linux here.";
   saveState().catch(() => {});
   if (state.bashLite) prewarmDrcSandbox(); // enabling now → start Linux immediately + show icon
   else hideTerminalIcon(); // disabling → drop the header terminal icon
@@ -4154,16 +4332,11 @@ $("websearch").addEventListener("change", () => {
 (() => {
   const knob = $("searchtoggle");
   const pop = $("knobpop");
-  // The card also answers WHO runs a grant/token-routed search — Exa or this
-  // site's own Worker (UX-10 amended, 2026-07-25). It is a preference about a
-  // path that only exists when a grant is in play; with a local browsing agent
-  // configured the browser calls that directly and this picker is moot, which
-  // is exactly why the agent's setup link stays right underneath it.
-  const srcBox = $("knobsrc");
-  if (srcBox) {
-    srcBox.innerHTML = searchSourcePickerHtml(getSearchSource(), "drcsrc");
-    wireSearchSourcePicker(srcBox, () => {});
-  }
+  // The card explains the knob and links the setup page — nothing more (owner
+  // directive, 2026-07-26). WHO runs a grant/token-routed search is the "Exa
+  // web search" knob in Settings (#exarow); with a local browsing agent
+  // configured the browser calls that directly and the choice is moot anyway,
+  // which is why the agent's setup link stays on this card.
   let hoverShow = 0;
   let hoverHide = 0;
   let holdTimer = 0;
@@ -4225,6 +4398,11 @@ $("budget").addEventListener("input", renderBudgetReadout);
 $("budget").addEventListener("change", () => {
   state.budgetS = renderBudgetReadout();
   saveState();
+});
+// "Exa web search" — WHO runs a grant/token-routed search (browser-local).
+$("exaweb").addEventListener("change", () => {
+  setExaEnabled($("exaweb").checked);
+  renderExaRow();
 });
 // The server-proxied web-search toggle (only meaningful when a grant is live).
 $("websearchserver").addEventListener("change", () => {

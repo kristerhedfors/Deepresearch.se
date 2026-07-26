@@ -22,6 +22,7 @@
 
 import { extensionEnrichments } from "./extensions.js";
 import { runIntrospectionEnrichment } from "./introspect.js";
+import { runModelsAgentEnrichment } from "./models-agent.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -36,7 +37,7 @@ import { runIntrospectionEnrichment } from "./introspect.js";
  *   log: Logger,
  *   emit: (event: object) => void,
  *   step: (id: string, label: string) => void,
- *   stepDone: (id: string, label: string, details?: string[]) => void,
+ *   stepDone: (id: string, label: string, details?: string[], extra?: Record<string, unknown>) => void,
  *   conversation: Conversation,
  *   state: RequestState,
  * }} EnrichmentCtx
@@ -64,6 +65,19 @@ const CORE_ENRICHMENTS = [
     id: "introspect",
     enabled: (state) => !!state.introspection,
     run: (c) => runIntrospectionEnrichment(c.env, c.log, c.step, c.stepDone, c.conversation, c.state),
+  },
+  {
+    // The Models agent (src/models-agent.js): its mode forces hub search on for
+    // the turn, and a message about choosing/pricing/evaluating/starting a
+    // model gets the live CROSS-PROVIDER catalog folded in with real per-token
+    // rates and real verification state. Core, not an extension: the model
+    // landscape is this platform's own subject matter — which models it can
+    // reach, what they cost, what has been verified — not an optional
+    // third-party lookup bolted onto a message. Silent on every turn that isn't
+    // about models.
+    id: "models",
+    enabled: (state) => !!(/** @type {any} */ (state).modelsMode),
+    run: (c) => runModelsAgentEnrichment(c),
   },
 ];
 

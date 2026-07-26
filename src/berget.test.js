@@ -1,9 +1,15 @@
-// Unit tests for berget.js's consumeChatStream: OpenAI-style SSE parsing and
-// the opt-in idle/total stream guards.
+// Unit tests for berget.js: consumeChatStream (OpenAI-style SSE parsing and
+// the opt-in idle/total stream guards) and the catalog price normalization
+// that keeps quota/cost accounting in EUR per token.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
-import { consumeChatStream } from "./berget.js";
+import {
+  bergetPricingPerToken,
+  consumeChatStream,
+  eurPerTokenFromBerget,
+  formatPricing,
+} from "./berget.js";
 
 // Builds an SSE body from chunks; a `null` chunk means "stall forever from
 // here" (the stream never produces another read and never closes) — the
@@ -75,5 +81,66 @@ describe("consumeChatStream", () => {
     );
     const out = await consumeChatStream(sseBody([delta("x".repeat(30)), doneChunk]), () => {}, { maxChars: 100 });
     assert.equal(out.text.length, 30);
+  });
+});
+
+// ---- catalog price normalization -------------------------------------------
+// Berget's catalog changed the UNIT of its prices under us on 2026-07-17
+// (EUR per token -> EUR per MILLION tokens, tagged `unit: "€ / M Token"`).
+// Stored raw, that overstated every Berget model's cost by 1e6: ~€500k of
+// phantom spend on the admin usage panel, and every real user pushed past
+// their EUR budget cap on the first request. These pin the normalization.
+
+describe("eurPerTokenFromBerget", () => {
+  test("divides an explicit per-MILLION unit by 1e6 (the 2026-07-17 catalog)", () => {
+    const p = { currency: "EUR", input: 0.3, output: 0.3, unit: "€ / M Token" };
+    assert.equal(eurPerTokenFromBerget(p, "input"), 3e-7);
+    assert.equal(eurPerTokenFromBerget(p, "output"), 3e-7);
+  });
+
+  test("passes a genuine per-token price through untouched (the pre-2026-07-17 catalog)", () => {
+    const p = { currency: "EUR", input: 3e-7, output: 9e-7 };
+    assert.equal(eurPerTokenFromBerget(p, "input"), 3e-7);
+    assert.equal(eurPerTokenFromBerget(p, "output"), 9e-7);
+  });
+
+  test("the magnitude bound catches a per-million price wearing no (or a wrong) unit", () => {
+    // The unit signal is not trusted alone — this is what stops the same 1e6
+    // inflation from coming back silently if the tag changes again.
+    assert.equal(eurPerTokenFromBerget({ input: 1.5 }, "input"), 1.5e-6);
+    assert.equal(eurPerTokenFromBerget({ input: 0.75, unit: "€ / token" }, "input"), 7.5e-7);
+    // ...and it does not touch a plausible per-token price just under the bound.
+    assert.equal(eurPerTokenFromBerget({ input: 1.4e-5 }, "input"), 1.4e-5);
+  });
+
+  test("a per-SECOND unit (speech-to-text) has no token price", () => {
+    assert.equal(eurPerTokenFromBerget({ input: 3.3e-5, unit: "€ / second" }, "input"), 0);
+  });
+
+  test("missing / non-numeric / non-positive prices are 0, never NaN", () => {
+    assert.equal(eurPerTokenFromBerget(null, "input"), 0);
+    assert.equal(eurPerTokenFromBerget({}, "input"), 0);
+    assert.equal(eurPerTokenFromBerget({ input: "0.3" }, "input"), 0);
+    assert.equal(eurPerTokenFromBerget({ input: 0 }, "input"), 0);
+  });
+});
+
+describe("bergetPricingPerToken", () => {
+  test("normalizes a whole pricing block, keeping the currency", () => {
+    const p = bergetPricingPerToken({ currency: "EUR", input: 1.5, output: 5, unit: "€ / M Token" });
+    assert.deepEqual(p, { input: 1.5e-6, output: 5e-6, currency: "EUR" });
+  });
+
+  test("an unpriced entry stays null, so its tooltip stays absent (not a bogus €0)", () => {
+    assert.equal(bergetPricingPerToken(null), null);
+    assert.equal(bergetPricingPerToken({ currency: "EUR" }), null);
+    assert.equal(formatPricing(bergetPricingPerToken(undefined)), null);
+  });
+
+  test("the dropdown tooltip reads back the catalog's own per-1M figures", () => {
+    // formatPricing multiplies per-token prices back up by 1e6, so a correct
+    // normalization round-trips to exactly what Berget published.
+    const tip = formatPricing(bergetPricingPerToken({ currency: "EUR", input: 0.3, output: 0.3, unit: "€ / M Token" }));
+    assert.equal(tip, "€0.3 in / €0.3 out per 1M tokens");
   });
 });

@@ -43,6 +43,18 @@ import { DEFAULT_SERP_PROVIDERS, normalizeSerpProviders } from "./websearch-cf.j
  *   local LLM as pooled capacity — src/pool.js)
  * @property {SandboxImageConfig} sandbox the self-hosted Linux sandbox image
  *   selection + registry (admin-selectable small image — src/sandbox-image.js)
+ * @property {ModelAllowanceConfig} models the MODEL ALLOWANCE — how expensive a
+ *   model this account may enable out of an open provider catalog, and how many
+ *   (src/model-catalog.js modelAllowance)
+ */
+/**
+ * The starting model allowance the Models agent hands out. Raising these IS how
+ * the allowance is extended — the agent's own copy says as much.
+ * @typedef {Object} ModelAllowanceConfig
+ * @property {number} max_output_usd USD per 1M output tokens an enableable
+ *   model may cost (0 = uncapped)
+ * @property {number} max_enabled how many models one account may keep enabled
+ *   (0 = uncapped; src/user-models.js MAX_STORED is the structural ceiling)
  */
 /**
  * The self-hosted Linux sandbox image selection (see docs/SANDBOX-LOCAL-IMAGE.md).
@@ -89,7 +101,7 @@ import { DEFAULT_SERP_PROVIDERS, normalizeSerpProviders } from "./websearch-cf.j
  *   datacenter IPs outright. An empty or unrecognised list falls back to the
  *   default pair rather than searching nothing
  * @property {boolean} allow_user_choice users may override the site-wide
- *   backend per request from the web knob's long-press card, choosing between
+ *   backend per request with the "Exa web search" settings knob, choosing between
  *   Exa and the Cloudflare-originating backend (default true). Turn off to pin
  *   the site-wide selection for everyone.
  */
@@ -239,6 +251,18 @@ export const DEFAULT_CONFIG = {
     image: "",
     images: [],
     prefetch: false,
+  },
+  // The MODEL ALLOWANCE (src/model-catalog.js). The Models agent browses open
+  // provider catalogs nobody curated, so ENABLING a model out of one — which is
+  // what puts it in every agent mode's dropdown — is bounded rather than free:
+  // a ceiling on the model's output rate, and a cap on how many an account may
+  // keep enabled. These are the STARTING allowance; raising them here is how it
+  // gets extended. 0 = uncapped on either axis. It governs the discovered →
+  // enabled transition ONLY: a curated provider's models are available by
+  // construction and no allowance applies to selecting one.
+  models: {
+    max_output_usd: 3, // USD per 1M output tokens an enableable model may cost
+    max_enabled: 6, // how many enabled models one account may hold
   },
 };
 

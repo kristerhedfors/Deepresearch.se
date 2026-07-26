@@ -21,6 +21,7 @@ import { exaCost, spendByModel, summarizeSpend } from "./billing.js";
 // Re-exported so chat.test.js (and any importer) keeps getting it from here.
 export { summarizeSpend } from "./billing.js";
 import { listChatModels } from "./providers.js";
+import { accountModels } from "./user-models.js";
 import { clampBudget, planResearch } from "./budget.js";
 import { augmentWithLocations } from "./geocode.js";
 import { jsonResponse, sseResponse } from "./http.js";
@@ -55,7 +56,7 @@ import { lastUserMessage, textOf } from "./conversation.js";
 import { buildSlugOk } from "./build-pub.js";
 import { normalizeSwarmCapability } from "./orchestrator-api.js";
 import { loadAgentRegistry, routingNeedsRegistry } from "./agent-registry.js";
-import { resolvePromptSet, resolveRequestAgent } from "./agent-spec.js";
+import { resolvePromptSet, resolveRequestAgent, resolveUntrustedAgent } from "./agent-spec.js";
 import { buildFeedbackDebugContext, createOrThreadFeedbackEntry, feedbackPageTag } from "./feedback.js";
 import { slashEffect } from "./slash.js";
 import { recordUseCaseFeedback } from "./testpoints.js";
@@ -77,8 +78,8 @@ import { normalizeSearchSource } from "./websearch-backends.js";
  * @property {boolean} [incognito] ghost toggle: suppresses the chat-log row
  * @property {number} [time_budget_s] UI slider value (clamped server-side)
  * @property {boolean} [web_search] knob, default on (only `false` disables)
- * @property {string} [search_source] WHO runs this request's searches, picked on
- *   the knob's long-press card: "exa" (default) | "cloudflare" (this Worker
+ * @property {string} [search_source] WHO runs this request's searches, set by the
+ *   "Exa web search" knob in settings: "exa" (default) | "cloudflare" (this Worker
  *   searches for itself). Anything else — including absent — means the
  *   site-configured backend; an admin can pin that with search.allow_user_choice
  * @property {boolean} [developer_mode] OFF-ONLY override: `false` disables the introspection enrichment for this request (never enables it)
@@ -104,11 +105,33 @@ import { normalizeSearchSource } from "./websearch-backends.js";
  * @property {any} [swarm_results] agent id → the brief that node's on-device swarm
  *   produced in the browser ({text, agreement, members, rounds, failed}).
  *   Clamped by resolveSwarmResults; ignored outside orchestrator mode
+ * @property {boolean} [models_mode] Models mode: the model-lifecycle research
+ *   agent (src/models-agent.js). Forces Hub search on for the turn and folds
+ *   the live CROSS-PROVIDER catalog in — priced, and annotated with what has
+ *   been verified — when the message is about choosing, pricing, evaluating or
+ *   starting a model. Honored only when the caller's developer_mode knob grants
+ *   the capability — the same gate as sdk_mode. Adds no executor: the answer
+ *   phase stays the ordinary research one
  * @property {boolean} [outrospection_mode] Outrospection mode: route this request
  *   to the outward feed (src/outrospect.js runOutrospection) — introspection's
  *   mirror image, answering from what everyone ELSE shipped rather than from
  *   this site's own source. Honored only when the caller's developer_mode knob
  *   grants the capability — the same gate as sdk_mode
+ * @property {string} [agent] ADDRESS an agent from the registry (sdk/AGENTS.json)
+ *   by id, instead of letting a mode flag pick the mode's default agent. This is
+ *   what makes a registry entry reachable with no `defaults` row, no mode flag
+ *   and no client code — the seam an agent builder needs. Subject to the SAME
+ *   `capability.requires` gate as every other route: an unknown id, and an id
+ *   whose requirements the caller's knobs don't grant, both fall through to the
+ *   defaults table rather than erroring or escalating
+ * @property {any} [agent_spec] an AgentSpec supplied INLINE with the request —
+ *   a spec the caller wrote rather than one this repo committed (what Agent
+ *   Studio hands back once it has built one). Most specific of the routes: it
+ *   beats `agent` and every mode flag, and needs no registry load. UNTRUSTED —
+ *   validated whole at the boundary (resolveUntrustedAgent), with the knobs it
+ *   needs DERIVED from what it selects rather than from what it claims to
+ *   require, so it can narrow its own run and never widen it. A refused spec is
+ *   logged and the turn is answered by the agent it would otherwise have got
  * @property {any} [imageLocations] attached-photo GPS EXIF coords
  * @property {any} [street_view_pov] the user's current panorama view
  * @property {any} [map_view] the user's current interactive-map view
@@ -140,6 +163,7 @@ import { normalizeSearchSource } from "./websearch-backends.js";
  *   answerPhase?: string | null,
  *   agentId?: string | null,
  *   promptSet?: string | null,
+ *   capability?: import('./agent-spec.js').AgentCapability | null,
  *   sdkMode?: boolean,
  *   orchestratorMode?: boolean,
  *   orchestration?: { agents: number, waves: number, failed: number, searches: number, swarm?: { nodes: number, members: number, agreement: number, model: string } },
@@ -148,6 +172,10 @@ import { normalizeSearchSource } from "./websearch-backends.js";
  *   swarmResults?: Record<string, { text: string, agreement: number, members: number, rounds: number, failed: number }>,
  *   outrospectionMode?: boolean,
  *   outrospection?: { lens: string | null, items: number, texts: number, quotes: number, live: boolean },
+ *   modelsMode?: boolean,
+ *   account?: { enabled: import("./user-models.js").AcceptedModel[], checks: Record<string, Record<string, any>> } | null,
+ *   modelCards?: { shown: number, total: number, query: string, enabled: number, verified: number },
+ *   forceAux?: string[],
  *   buildSlug?: string | null,
  *   userId?: string,
  *   buildResult?: { slug: string, url: string, files: number, bytes: number },
@@ -205,7 +233,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     return jsonResponse({ error: invalid }, 400);
   }
 
-  const { catalog, config, resolved } = await resolveChatModels(env, log, body);
+  const { catalog, config, resolved } = await resolveChatModels(env, log, body, identity);
   if ("error" in resolved) return jsonResponse({ error: resolved.error }, resolved.status);
   const model = resolved.model;
   const jsonModel = resolveJsonModel(catalog, model);
@@ -234,7 +262,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   let budgetS = clampBudget(body.time_budget_s); // UI slider (src/budget.js)
   budgetS = Math.min(budgetS, config.max_time_budget_s);
   const webSearchEnabled = body.web_search !== false; // knob: default on
-  // …and WHO runs those searches, picked on the knob's long-press card (UX-10):
+  // …and WHO runs those searches, set by the "Exa web search" knob in settings:
   // "exa" (the default), "cloudflare" (this Worker searches for itself), or ""
   // for the site-wide backend. Coerced to the allowlist here so nothing past
   // this line can route a search at an unvalidated target; the admin can pin
@@ -289,12 +317,36 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // Fail-soft (invariant 2): an unreadable registry falls back to the
   // hand-written cascade below, which this table reproduces exactly (pinned in
   // public/js/agent-capability.test.js).
-  const routed = routingNeedsRegistry(body, enrich.developerOn)
-    ? resolveRequestAgent(await loadAgentRegistry(env), body, {
-      developer_mode: enrich.developerOn,
-      sandbox: bashLiteEnabled(env, identity),
-    })
-    : null;
+  const granted = {
+    developer_mode: enrich.developerOn,
+    sandbox: bashLiteEnabled(env, identity),
+  };
+  // An agent supplied INLINE with the request — a spec the caller wrote rather
+  // than one this repo committed, which is what Agent Studio hands back when it
+  // has just built one. Most specific of the routes, so it wins over an
+  // addressed id and over every mode flag, and it needs no registry load at all.
+  //
+  // It is UNTRUSTED, so it goes through the boundary rather than through
+  // `resolveCapability` directly: every validation rule runs (including the
+  // invariant rules), and the knobs it needs are DERIVED from what it selects
+  // rather than read from what it claims to require — a spec that selects the
+  // build tools and declares `requires: []` is refused exactly as if it had
+  // been honest. Its bounds and search policy are then narrowing-only like any
+  // other agent's, so a valid inline spec can make its own run smaller and can
+  // never make it larger.
+  //
+  // Fail-soft on refusal (invariant 2): the request is still answered, by the
+  // agent it would have resolved to with no spec at all. The reasons go to the
+  // log, not to a 400 — a chat turn is not the place to fail a build.
+  const inline = resolveUntrustedAgent(body.agent_spec, granted);
+  if (body.agent_spec && !inline.agent) {
+    log.warn("agent_spec.refused", { problems: inline.problems.slice(0, 5) });
+  }
+  const routed = inline.agent
+    ? { mode: inline.agent.mode || "normal", agent: inline.agent, capability: inline.capability, addressed: true }
+    : routingNeedsRegistry(body, enrich.developerOn)
+      ? resolveRequestAgent(await loadAgentRegistry(env), body, granted)
+      : null;
   const routedPhase = /** @type {string | null} */ (routed?.capability?.answerPhase ?? null);
   const byRegistry = routedPhase !== null;
   // SDK ("lovable") mode: the request asks for the DistillSDK build flow.
@@ -323,11 +375,38 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   const outroOn = !slashCmd && (byRegistry
     ? routedPhase === "feed"
     : body.outrospection_mode === true && !sdkOn && !orchOn && enrich.developerOn);
+  // The plain model answer, with no research phase at all. Reachable only by
+  // ADDRESSING an agent that declares it (`body.agent`) — no mode flag selects
+  // it, because it is not a chat mode. Without this a spec could declare
+  // `answerPhase: "direct"` and be quietly answered by the research flow.
+  // Cleared by a slash command like every other executor phase: the turn is no
+  // longer the agent's.
+  const directOn = !slashCmd && byRegistry && routedPhase === "direct";
+  // Models mode: the agent whose subject is the models themselves
+  // (src/models-agent.js) — explore every provider's catalog, evaluate against
+  // the established checks, enable for every other agent. Unlike the modes
+  // above it introduces NO executor — its answer phase is the ordinary research
+  // one — so it is resolved from the flag directly rather than from
+  // `routedPhase`, and it simply loses to any mode that DOES replace the flow
+  // (the dropdown can only produce one anyway). Same capability gate as every
+  // other mode: a client can't acquire what the knob doesn't grant.
+  const modelsOn = !slashCmd && body.models_mode === true && !sdkOn && !orchOn && !outroOn && !directOn && enrich.developerOn;
   // The answer phase the pipeline dispatches on, and the agent it came from —
   // null when the registry was unavailable or not consulted, in which case the
-  // pipeline falls back to the three booleans above.
-  const answerPhase = sdkOn || orchOn || outroOn ? routedPhase : null;
-  const agentId = answerPhase ? String(routed?.agent?.id || "") : null;
+  // pipeline falls back to the mode booleans above.
+  //
+  // An agent's phase is authoritative only for the phases that HAVE an executor
+  // (pipeline.js ANSWER_PHASE_RUNNERS). An agent declaring `research` or
+  // `source-research` resolves to null here on purpose: which of those two a
+  // knob-on turn runs is a per-MESSAGE decision the pipeline's hasSource +
+  // externalSourceIntent gate owns, and a per-request declaration must not
+  // pre-empt it. The agent still governs that turn through its prompt set and
+  // its capability, both carried below.
+  const answerPhase = sdkOn || orchOn || outroOn || directOn ? routedPhase : null;
+  // The agent that answered, recorded for every routed request rather than only
+  // the dispatched phases — an addressed research agent is still the agent that
+  // answered, and the chat log should say so.
+  const agentId = routed ? String(routed.agent?.id || "") : null;
   // The resolved agent's PROMPT SET (capability.prompts, else its phase's
   // default). Carried for every routed request — not only the executor phases —
   // because introspection and research choose their phase per message, and
@@ -338,6 +417,19 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // prompts (or Agent Studio's build prompt), since phasePrompt prefers the
   // request's set over the phase's default whenever it fills the role.
   const promptSet = routed && !slashCmd ? resolvePromptSet(routed.agent) : null;
+  // The agent's whole RESOLVED capability, carried for every routed request.
+  // Until this landed only three of its fields ever reached a run (the phase,
+  // the agent id, the prompt set) and the rest were pinned to constants by
+  // tests — declared but never read. The pipeline now reads bounds, search
+  // policy and tool classes off this, each NARROWING against the platform's own
+  // limit (agent-spec-core capBound / capSearch), so a shipped agent's
+  // declaration reproduces today's behaviour exactly and cannot exceed it.
+  // Null whenever the registry was not consulted or could not be read, which
+  // every reader treats as "use the constant" (invariant 2) — and null for a
+  // slash command, on the same reasoning as the prompt set just above: a `/help`
+  // turn should not inherit the bounds or the search ceiling of the agent whose
+  // composer it happened to be typed into.
+  const capability = routed && !slashCmd ? routed.capability ?? null : null;
   // The experimental bash-lite sandbox transcript: the browser ran an agentic
   // shell loop (public/js/bash-agent.js) before sending, and attached what it
   // ran + the real output. Honored only when this account's knob is on
@@ -434,9 +526,16 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       orchWorkflow,
       swarmResults,
       outrospectionMode: outroOn,
+      modelsMode: modelsOn,
+      // The account's lifecycle state — what it enabled and what it verified —
+      // resolved ONCE here. The pipeline deliberately carries no identity (it
+      // would ride into chat_logs), so the enrichment gets exactly the two maps
+      // the catalog needs and nothing else.
+      account: modelsOn ? accountModels(identity) : null,
       answerPhase,
       agentId,
       promptSet,
+      capability,
       buildSlug,
       userId: String(identity.id),
     });
@@ -643,6 +742,13 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             // the feed had nothing to answer from.
             outrospection_mode: outroOn ? 1 : 0,
             outrospection: /** @type {any} */ (state).outrospection,
+            // Models mode: 1 when this request ran the model-lifecycle agent,
+            // with `model_cards` ({shown, total, query, enabled, verified})
+            // present only when the message was about models and the catalog
+            // answered — grep `total: 0` for turns where every provider was
+            // unreachable.
+            models_mode: modelsOn ? 1 : 0,
+            model_cards: /** @type {any} */ (state).modelCards,
             cached_searches: state.cachedSearchCount || 0,
             // Present only when the chosen model was unavailable and the
             // answer was written by the reliable fallback (pipeline.js's
@@ -790,14 +896,16 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
  * @param {Env} env
  * @param {Logger} log
  * @param {ChatRequestBody} body mutated: body.model may receive the site default
+ * @param {Identity} [identity] the signed-in account, so its per-account models
+ *   (the accepted open-catalog ones) are valid answer models here too
  * @returns {Promise<{ catalog: ModelCatalog | null, config: SiteConfig,
  *   resolved: ReturnType<typeof resolveModel> }>}
  */
-async function resolveChatModels(env, log, body) {
+async function resolveChatModels(env, log, body, identity) {
   /** @type {ModelCatalog | null} */
   let catalog = null;
   try {
-    catalog = await listChatModels(env);
+    catalog = await listChatModels(env, identity);
   } catch (err) {
     log.warn("chat.model_catalog_unavailable", { error: /** @type {any} */ (err)?.message || String(err) });
   }
@@ -918,7 +1026,7 @@ export function resolveJsonModel(catalog, userModel) {
  * @param {string} jsonModel
  * @param {boolean} webSearch
  * @param {number} budgetS
- * @param {Partial<EnrichmentOptions> & { searchSource?: string, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, swarm?: any, orchWorkflow?: any, swarmResults?: any, outrospectionMode?: boolean, answerPhase?: string | null, agentId?: string | null, promptSet?: string | null, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
+ * @param {Partial<EnrichmentOptions> & { searchSource?: string, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, swarm?: any, orchWorkflow?: any, swarmResults?: any, outrospectionMode?: boolean, modelsMode?: boolean, account?: any, answerPhase?: string | null, agentId?: string | null, promptSet?: string | null, capability?: any, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
  * @returns {ChatRequestState}
  */
 function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
@@ -982,6 +1090,12 @@ function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
     // runOutrospection: the outward feed replaces both the web research and
     // the own-source retrieval for this request.
     outrospectionMode: !!extras.outrospectionMode,
+    // Models mode — src/models-agent.js runModelsAgentEnrichment: hub search is
+    // forced on for the turn, and a message about models gets the live
+    // cross-provider catalog folded in, priced and annotated with what has been
+    // verified. No executor: the answer phase stays `research`.
+    modelsMode: !!extras.modelsMode,
+    account: extras.account || null,
     // The registry-resolved answer phase and the agent it came from
     // (sdk/AGENTS.json `defaults` → capability.answerPhase). This is what
     // pipeline.js dispatches on; the three booleans above are its fail-soft
@@ -993,6 +1107,13 @@ function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
     // phasePrompt). Null falls back to the executing phase's default set, which
     // is what every shipped agent declares anyway.
     promptSet: extras.promptSet || null,
+    // The resolved capability of the agent answering this request, or null when
+    // no registry was consulted (the MCP channel, an unreadable snapshot, a
+    // plain Deep Research turn that never needed one). Read through the
+    // narrowing accessors in agent-spec-core.js — never destructured directly —
+    // so every consumer keeps the platform constant as both its default and its
+    // ceiling.
+    capability: extras.capability || null,
     buildSlug: extras.buildSlug || null,
     userId: extras.userId || "",
     // This channel renders the interactive inline-quiz event (src/quiz.js;

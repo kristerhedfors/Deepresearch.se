@@ -38,6 +38,8 @@ import { feedbackForcesServerRoute, feedbackIntent } from "./feedback-core.js";
 import { slashEffect } from "./slash-core.js";
 import { aiModelIntent } from "./ai-models.js";
 import { collectDeliverables, ensureSandboxBooted, execInSandbox, resetSandboxIfLacking, sandboxFsSummary, sandboxIdle, sandboxSupported, sblog } from "./sandbox.js";
+import { selectRunner } from "./exec-backends-core.js";
+import { execEnvCfg, localRunnerActive } from "./exec-env.js";
 import { hasPending } from "./attachments.js";
 import {
   addAssistantTurn,
@@ -77,7 +79,9 @@ import {
 } from "./message-content.js";
 import { firstChunks, retrieve } from "./rag.js";
 import { renderQuiz } from "./quiz.js";
-import { renderWorkflow } from "./workflow-viz.js";
+import { mergeSearch, nodeRenderState, renderWorkflow } from "./workflow-viz.js";
+import { endPipelineRun, notePipelineStatus, startPipelineRun } from "./pipeline-map.js";
+import { renderModelCardsEvent } from "./models-panel.js";
 import { setGraphWorkflow, updateGraphAgent } from "./graph-backdrop.js";
 import { workflowEvent, workflowWaves } from "./orchestrator-core.js";
 // The on-device swarm pre-pass (maybeRunSwarmPrepass): both entry points are
@@ -550,8 +554,16 @@ function handleEvent(turn, evt, acc) {
   if (evt.status) {
     const s = evt.status;
     recordResearchEvent(turn, s);
-    if (s.type === "search_start") startSearchStep(turn, s);
-    else if (s.type === "search_done") finishSearchStep(turn, s);
+    // Introspection's live pipeline map in the left drawer (pipeline-map.js):
+    // every status event moves the current chat's marker through the graph. It
+    // ignores what it doesn't map, so no branch below has to know about it.
+    notePipelineStatus(s);
+    // `agent` on a search event is Orchestrator mode attributing the search to
+    // the sub-agent that planned it (src/orchestrator.js runNodeSearches), so
+    // the node's inspector can show its own searches landing live. Absent on
+    // every other search — applyAgentSearch no-ops.
+    if (s.type === "search_start") { startSearchStep(turn, s); applyAgentSearch(turn, s); }
+    else if (s.type === "search_done") { finishSearchStep(turn, s); applyAgentSearch(turn, s); }
     else if (s.type === "step_start") startGenericStep(turn, s.id, s.label || "");
     else if (s.type === "step_done") finishGenericStep(turn, s);
     else if (s.type === "streetview_embed") {
@@ -611,8 +623,28 @@ function handleEvent(turn, evt, acc) {
         setGraphWorkflow(embed.workflow, embed.statuses);
       }
     }
+    else if (s.type === "model_cards" && Array.isArray(s.models) && s.models.length) {
+      // The Models agent ranked the cross-provider catalog against this question
+      // (src/models-agent.js). Render the pickable cards inside the turn, so the
+      // "which model, what does it cost, what has it passed" decision sits next
+      // to the reasoning about it. Not recorded as a persisted embed: the prices
+      // and the verification state are live, and a reopened conversation must
+      // not show yesterday's as if they were current — the board (⚖) re-reads
+      // them on demand.
+      renderModelCardsEvent(turn, s);
+    }
     else if (s.type === "agent_update" && typeof s.id === "string" && turn._wfEmbed) {
-      applyAgentUpdate(turn, s.id, { status: s.status, duration_ms: s.duration_ms, note: s.note });
+      applyAgentUpdate(turn, s.id, {
+        status: s.status,
+        duration_ms: s.duration_ms,
+        note: s.note,
+        chars: s.chars,
+        // The node's real prompt (a second `running` update, emitted once the
+        // node's grounding is assembled) — what the inspector shows under
+        // "Prompt being worked on".
+        prompt: s.prompt,
+        prompt_chars: s.prompt_chars,
+      });
     }
     else if (s.type === "swarm_update" && typeof s.id === "string" && turn._wfEmbed) {
       // A swarm node's live member states. Emitted locally today (the swarm
@@ -814,7 +846,7 @@ async function buildChatPayload(opts) {
     messages: stripOldImages(history),
     time_budget_s: opts.budgetS,
     web_search: opts.webSearch,
-    // WHO runs those searches — the knob's long-press pick (search-source.js),
+    // WHO runs those searches — the "Exa web search" setting (search-source.js),
     // read from device storage at send time rather than threaded through the
     // send opts, so a resumed/recovered send uses the CURRENT preference
     // instead of one frozen into an old record. The server re-validates it.
@@ -841,6 +873,14 @@ async function buildChatPayload(opts) {
     // The outward feed (src/outrospect.js) — introspection's mirror image,
     // same capability gate; the server ignores the field when the knob is off.
     payload.outrospection_mode = true;
+  } else if (chatMode === "models") {
+    // The model-lifecycle agent (src/models-agent.js): Hub search forced on for
+    // the turn, and a message about models answered against the live
+    // cross-provider catalog, priced and annotated with what has been verified.
+    // Same capability gate; the server ignores the field when the knob is off.
+    // It replaces no flow, so the turn is an ordinary research turn with the
+    // hub and the catalog in front of it.
+    payload.models_mode = true;
   }
   // Ghost toggle: tells the server to keep this exchange out of the
   // server-side interaction log too (src/chatlog.js) — the same choice
@@ -917,6 +957,13 @@ function sendNeedsMounts(opts) {
   };
 }
 
+/**
+ * The in-browser CheerpX VM as a Runner (exec-backends-core.js) — this tier's
+ * default execution environment, and what selectRunner hands back untouched
+ * unless this device has a local runner configured.
+ */
+const BROWSER_RUNNER = { supported: sandboxSupported, boot: ensureSandboxBooted, exec: execInSandbox };
+
 // PRE-WARM: boot a Linux VM as soon as the user focuses the composer, so the
 // unavoidable ~25s CheerpX cold start elapses while they type instead of
 // after they hit send. Idempotent (gated on sandboxIdle) and strictly best-
@@ -930,6 +977,10 @@ function sendNeedsMounts(opts) {
 export function prewarmSandbox() {
   try {
     if (!bashLiteOn() || !sandboxSupported()) return;
+    // This device runs commands on a local runner — don't stream a Debian image
+    // into a VM that will never execute anything. The runner needs no pre-warm:
+    // its first container starts in well under a second.
+    if (localRunnerActive()) return;
     if (!sandboxIdle()) return; // already booting or booted — nothing to do
     if (hasPending() || activeProject()) return; // would need real per-send mounts
     const withSource = developerModeOn();
@@ -999,10 +1050,21 @@ async function maybeRunShellLoop(turn, opts) {
     // step prompt knows it's an SDK send (feedback #7, chat_logs #583).
     const sdkSend = cachedChatMode() === "sdk";
     if (sdkSend && !bashIntent(latestUser || "")) return [];
+    // WHERE this send's commands run (public/js/exec-backends-core.js). With no
+    // local runner configured — the default for everyone who never opens the
+    // setting — `runner` IS the browser-VM bridge and every line below behaves
+    // exactly as it did before this seam existed.
+    const localExec = localRunnerActive();
+    const runner = selectRunner(execEnvCfg(), BROWSER_RUNNER, {
+      onLog: (event, fields) => sblog("info", event, fields),
+    });
+
     // Knob on but the page isn't cross-origin isolated (COEP): the sandbox
     // cannot boot. app.js self-heals by reloading once; if we still land here,
     // tell the user plainly instead of silently answering "I can't run code".
-    if (!sandboxSupported()) {
+    // Isolation is a requirement of the in-browser VM (SharedArrayBuffer), not
+    // of execution as such — a local runner is a plain fetch and needs none.
+    if (!localExec && !sandboxSupported()) {
       startGenericStep(turn, "sandbox", "Starting sandbox…");
       finishGenericStep(turn, {
         id: "sandbox",
@@ -1018,20 +1080,31 @@ async function maybeRunShellLoop(turn, opts) {
     // and re-boot with the real provider below. Awaits any in-flight pre-warm
     // to settle first; a no-op when the live VM already has what's needed
     // (notably: a dev-mode pre-warm already carries /src and is kept).
-    await resetSandboxIfLacking(sendNeedsMounts(opts));
+    // Meaningless for a local runner — there is no VM here to hold mounts.
+    if (!localExec) await resetSandboxIfLacking(sendNeedsMounts(opts));
 
     let booted = false;
     let ran = 0;
     // Boot the VM the first (and only the first) time the model asks to run
     // something — surfaced as a turn step so the user sees the (slow) first
-    // boot. Returns whether the sandbox is usable.
+    // boot. Returns whether the sandbox is usable. For a local runner "booting"
+    // is one health probe, so the step is honest about the difference.
     const fileProvider = buildSandboxFileProvider(opts);
     const bootOnce = async () => {
-      startGenericStep(turn, "sandbox", "Booting Linux sandbox…");
+      startGenericStep(turn, "sandbox", localExec ? "Connecting to your local runner…" : "Booting Linux sandbox…");
       // The first boot is slow (a whole Debian streams in), so entertain the
       // step label with rotating quips (public/js/boot-messages.js) until ready.
-      booted = await ensureSandboxBooted(fileProvider, (msg) => updateGenericStep(turn, "sandbox", msg));
-      if (!booted) finishGenericStep(turn, { id: "sandbox", label: "Sandbox unavailable — answering normally" });
+      booted = await runner.boot(fileProvider, (msg) => updateGenericStep(turn, "sandbox", msg));
+      if (!booted) {
+        finishGenericStep(turn, {
+          id: "sandbox",
+          // Name the environment that failed: "unavailable" sends someone
+          // hunting the browser VM when the real fix is `node runner.mjs`.
+          label: localExec
+            ? "Your local runner isn't reachable — answering without a shell. Check it's running, then Test connection in Settings."
+            : "Sandbox unavailable — answering normally",
+        });
+      }
       return booted;
     };
     // The user's research time budget scopes the per-command ceiling: a
@@ -1043,7 +1116,7 @@ async function maybeRunShellLoop(turn, opts) {
       // The transcript keeps only MAX_OUTPUT_CHARS per command, so ask the guest
       // for a bounded slice instead of hauling a whole file across the VM→JS
       // boundary to throw it away (docs/SANDBOX-PERFORMANCE.md).
-      exec: (command) => execInSandbox(command, { timeoutMs: execTimeoutMs, maxStdoutBytes: GUEST_STDOUT_CAP_BYTES }),
+      exec: (command) => runner.exec(command, { timeoutMs: execTimeoutMs, maxStdoutBytes: GUEST_STDOUT_CAP_BYTES }),
       ensureReady: bootOnce,
       sdk: sdkSend,
       // Surface WHICH command is running, live — the user asked to see the
@@ -1068,7 +1141,9 @@ async function maybeRunShellLoop(turn, opts) {
       // attachments instead of pasting file contents. Entirely fail-soft.
       if (wantsOutboxCollect(transcript)) {
         try {
-          const files = await collectDeliverables();
+          // Collect from whichever environment actually ran the loop — the
+          // outbox convention is the runner's, not the browser VM's.
+          const files = await collectDeliverables(localExec ? (cmd) => runner.exec(cmd) : null);
           if (files.length) {
             renderDeliverables(turn, files);
             transcript.push(deliverablesRun(files));
@@ -1228,8 +1303,25 @@ async function maybeRunSwarmPrepass(turn, payload, signal) {
 function applyAgentUpdate(turn, id, st) {
   if (!turn?._wfEmbed || !id) return;
   if (turn._wfViz) turn._wfViz.update(id, st);
-  else turn._wfEmbed.statuses[id] = { ...turn._wfEmbed.statuses[id], ...st };
+  else turn._wfEmbed.statuses[id] = { ...turn._wfEmbed.statuses[id], ...nodeRenderState(st) };
   updateGraphAgent(id, st);
+}
+
+/**
+ * Attribute one search event to its Orchestrator sub-agent, so the node's
+ * inspector shows the query while it runs and the result count when it lands.
+ * Same three-destination shape as applyAgentUpdate minus the backdrop, which
+ * draws status only. No `agent` field (every non-orchestrator search) → no-op.
+ * @param {any} turn
+ * @param {any} s the search_start / search_done status event
+ */
+function applyAgentSearch(turn, s) {
+  if (!turn?._wfEmbed || typeof s?.agent !== "string" || !s.agent) return;
+  if (turn._wfViz) turn._wfViz.search(s.agent, s);
+  else {
+    const cur = turn._wfEmbed.statuses[s.agent] || {};
+    turn._wfEmbed.statuses[s.agent] = { ...cur, searches: mergeSearch(cur.searches, s) };
+  }
 }
 
 // ---- introspection mode: the private (browser-direct) answer route -----------
@@ -1662,6 +1754,10 @@ export async function sendMessage(text, opts) {
   if (cachedChatMode() !== "sdk") mountSpaceEmbed(turn, text);
   let acc = "";
   inFlight = true;
+  // Reset introspection's live pipeline map to this send: the browser-side
+  // nodes (composer → payload → POST) are already done by the time the request
+  // leaves, and every server node stays dark until an event proves it ran.
+  startPipelineRun();
   const gen = generation;
   controller = new AbortController();
   const signal = controller.signal;
@@ -1861,6 +1957,10 @@ export async function sendMessage(text, opts) {
     clearInterval(watchdog);
     document.removeEventListener("visibilitychange", onVisibility);
     collapseActivity(turn); // research done → fold the step bars away
+    // Stop the pipeline map blinking on a run that ended without a `done`
+    // event (error, stop, dropped stream). Whatever the chat DID reach stays
+    // lit — on a failed run that path is the interesting part.
+    endPipelineRun();
   }
 }
 

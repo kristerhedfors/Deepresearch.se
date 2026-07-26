@@ -576,6 +576,24 @@ never committed). Its pure helpers are unit-tested in
 ledgers: fixed seed/judge/budget across a before/after comparison, don't
 deploy mid-battery, append-only ledgers.
 
+A fourth harness measures something the other three do not — the **starter
+evaluation** (`tests/starter-eval.mjs`, ledger
+`tests/STARTER-EVAL-FINDINGS.md`). The benches above ask "was the answer
+good"; this one asks "was the QUESTION a good opener", which is a different
+question with a different answer. It sends each starter from
+`public/js/starters-data.js` as the first and only message to its agent, with
+that agent's mode flags, and judges the run on capability / firstImpression /
+quality plus a hard `deadEnd` flag — a clarifying question or refusal caps the
+score below the shortlist floor however well the reply reads, because the
+visitor is back at an empty box either way. Its output is a per-agent
+shortlist of openers we know produce good answers, promoted into the registry
+as `rank` + `evidence`. Two agents cannot be driven from the server (`secure`
+runs browser-direct; `under-construction` is an archetype) and are reported as
+skipped rather than silently omitted. Same disciplines as the other ledgers,
+plus one of its own: judge capability on the phase timeline, not the
+web-search counters — the modes that retrieve from source or from the outward
+feed legitimately show zero searches. See the **starter-prompts** skill.
+
 ## The bench gate (routine, for pipeline-sensitive changes)
 
 The rubric bench doubles as a routine merge gate — the P7 discipline from
