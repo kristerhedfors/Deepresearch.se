@@ -93,6 +93,7 @@ export function mountSlashMenu({ input, container, lang, id = "slashmenu" }) {
     });
   }
 
+  /** @param {number} i */
   function choose(i) {
     const item = items[i];
     if (!item) return;

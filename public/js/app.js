@@ -353,6 +353,10 @@ modeSel.addEventListener("change", () => {
   const mode = applyChatModeTheme(modeSel.value);
   modeSel.value = mode;
   applyModeBackdrop(mode);
+  // Leaving Orchestrator abandons any local swarm still decoding: free the
+  // models now rather than letting them run to their own deadline in a mode
+  // that has no use for them (public/js/swarm-runtime.js).
+  if (mode !== "orchestrator") import("./swarm-runtime.js").then((m) => m.stopSwarms()).catch(() => {});
   if (mode !== "normal" && !developerModeOn()) {
     setDeveloperMode(true)
       .then(() => storeDeveloperMode(true))
