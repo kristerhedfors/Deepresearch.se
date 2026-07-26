@@ -20,15 +20,33 @@ unknown `status` types (forward compatibility).
 - `{"status":{"type":"step_start","id":"plan","label":"Analyzing request…"}}` — pipeline step spinner
 - `{"status":{"type":"step_done","id":"plan","label":"Planned 3 search angles","details":["query …"]}}` — checkmark; `details` renders as an expandable list
   - The `id` names the phase/service so the user sees which external
-    source is being contacted: `plan`/`gap1…`/`synth`/`validate` (pipeline
-    phases), `geocode` (OpenStreetMap Nominatim reverse-geocode), `shodan`
+    source is being contacted: `plan`/`gap1…`/`digest`/`fanout`/`contents`/`synth`/`validate`
+    (pipeline phases), `source` (the developer-mode source read loop, re-emitted
+    per tool call so the loop is visible), `introspect` (the source-snapshot
+    enrichment), `outrospect`/`agent_N` (the outward feed / orchestrator
+    sub-agents), `geocode` (OpenStreetMap Nominatim reverse-geocode), `shodan`
     (Shodan host lookup), `maps` (Google Maps Platform lookup — Places +
-    Street View + Static Maps). The client records every `status` event — plus
+    Street View + Static Maps). `digest` (the notes digest) was added 2026-07-26:
+    it was the one research phase that ran silently while `fanout` and
+    `contents` beside it both reported, which left the introspection pipeline map
+    drawing a node that could never light. The client records every `status` event — plus
     the full generated answer and every error (server- or client-side,
     funnelled through `turns.js`'s single `setError` sink) — into a per-turn
     structured log for the "Copy research JSON" debug button
     (`public/js/activity.js`'s `buildResearchDebugJson`), so the export is
     the COMPLETE response, not just its live activity.
+  - **`route`** (optional, added 2026-07-26; on the `plan` step only) names the
+    branch a finished decision handed the answer to, as data rather than as
+    English prose: `"feedback"` (the developer-feedback capture), `"search_off"`
+    (web search off — answered from model knowledge), `"direct"`, `"clarify"`,
+    `"research"`. Introspection's live pipeline map
+    (`public/js/pipeline-map-core.js` `ROUTE_NODES`) is the reader; every other
+    client ignores it, and the label stays the only thing shown to the user. The
+    point of the field is that a client drawing the control flow must never have
+    to parse a label — labels get reworded, and a label check could not work in
+    a second language. Emit one whenever a new step announces a branch.
+    `stepDone`'s fourth argument (`extra`) is the general seam for machine-readable
+    fields of this kind (`src/pipeline.js`).
 - `{"status":{"type":"search_start","round":1,"query":"…","source":"web","service":"Web search"}}` — spinner on
 - `{"status":{"type":"search_done","round":1,"query":"…","source":"web","service":"Web search","results":5,"duration_ms":830,"sources":[{"title":"…","url":"…"}]}}` — expandable source list
   - `source`/`service` (added 2026-07-08) name the PROVIDER that ran the

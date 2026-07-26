@@ -1835,6 +1835,91 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   box-shadow: 4px 0 30px rgba(60, 35, 110, .26), inset 0 3px 0 rgba(109, 63, 196, .35);
 }
 #historysidebar[data-mode="orchestrator"] .history-head strong { color: #5a349e; }
+/* The live PIPELINE MAP (public/js/pipeline-map.js + pipeline-map-core.js):
+   introspection mode's expandable diagram of this site's own request path,
+   inside the left drawer. Titanium palette throughout — it only ever appears
+   under [data-mode="introspection"]. The graph is taller than the drawer, so it
+   scrolls inside its OWN box (never the page, and never the drawer's list). */
+.pipemap {
+  border: 1px solid rgba(120, 140, 160, .4);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .34);
+  padding: .45rem .55rem;
+  font-size: .85rem;
+}
+.pipemap > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #4a5a6a;
+  list-style: none;
+  display: flex; align-items: center; gap: .4rem;
+}
+.pipemap > summary::-webkit-details-marker { display: none; }
+.pipemap > summary::before { content: "▸"; color: var(--muted); font-size: .8rem; }
+.pipemap[open] > summary::before { content: "▾"; }
+.pipemap-hint { font-weight: 400; font-size: .72rem; color: var(--muted); }
+.pipemap-status { margin: .35rem 0 .3rem; font-size: .72rem; line-height: 1.35; }
+.pipemap-body {
+  max-height: 48vh;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+/* Intrinsically sized (the layout math targets the 320px drawer) but allowed to
+   scale down: on a narrow phone the drawer is 86vw, so the map shrinks to fit
+   instead of scrolling sideways. */
+.pipemap-svg { display: block; max-width: 100%; height: auto; }
+.pipemap-svg .pmedge { stroke: #8d9aa8; stroke-width: 1.3; opacity: .5; }
+.pipemap-svg .pmedge.pm-weak { stroke-dasharray: 3 3; opacity: .3; }
+.pipemap-svg .pmedge.pm-back { stroke-dasharray: 4 3; opacity: .4; }
+/* An edge between two nodes this chat actually visited is part of the path
+   taken — it lights with them, so the route through the graph reads at a
+   glance instead of node by node. */
+.pipemap-svg .pmedge.pm-taken { stroke: #5f6b78; opacity: .85; stroke-width: 1.7; }
+.pipemap-svg .pmedgelabel { font: 400 .58rem/1 system-ui, sans-serif; fill: var(--muted); }
+.pipemap-svg .pmnode rect { fill: rgba(255, 255, 255, .5); stroke: #c2ccd6; stroke-width: 1.1; }
+.pipemap-svg .pmnode.pm-kind-terminal rect { stroke-dasharray: 3 2; }
+.pipemap-svg .pmlabel { font: 600 .68rem/1 system-ui, sans-serif; fill: #3d4a57; }
+.pipemap-svg .pmsub { font: 400 .58rem/1 system-ui, sans-serif; fill: #7d8996; }
+.pipemap-svg .pmglyph { font: 600 .68rem/1 system-ui, sans-serif; fill: #a6b1bd; }
+.pipemap-svg .pmloop { font: 600 .58rem/1 system-ui, sans-serif; fill: var(--check-tin, #5f6b78); }
+/* PASSED — "upcolours" every node this chat went through, and keeps it lit. */
+.pipemap-svg .pmnode.pm-passed rect {
+  fill: rgba(206, 216, 226, .72);
+  stroke: #5f6b78;
+  stroke-width: 1.7;
+}
+.pipemap-svg .pmnode.pm-passed .pmlabel { fill: #26313c; }
+.pipemap-svg .pmnode.pm-passed .pmsub { fill: #5c6874; }
+.pipemap-svg .pmnode.pm-passed .pmglyph { fill: var(--check-tin, #5f6b78); }
+/* ACTIVE — the step running right now blinks, so a looping agent visibly keeps
+   re-lighting the same node instead of just incrementing a counter. */
+.pipemap-svg .pmnode.pm-active rect {
+  fill: rgba(226, 234, 242, .95);
+  stroke: #38566f;
+  stroke-width: 2;
+  animation: pm-blink 1.15s ease-in-out infinite;
+}
+.pipemap-svg .pmnode.pm-active .pmlabel { fill: #16202a; }
+.pipemap-svg .pmnode.pm-active .pmglyph { fill: #38566f; animation: pm-blink 1.15s ease-in-out infinite; }
+@keyframes pm-blink { 50% { opacity: .38; } }
+@media (prefers-reduced-motion: reduce) {
+  .pipemap-svg .pmnode.pm-active rect,
+  .pipemap-svg .pmnode.pm-active .pmglyph { animation: none; }
+}
+@media (prefers-color-scheme: dark) {
+  .pipemap { background: rgba(20, 26, 33, .4); border-color: rgba(120, 140, 160, .3); }
+  .pipemap > summary { color: #b3c0cd; }
+  .pipemap-svg .pmnode rect { fill: rgba(30, 38, 47, .6); stroke: #46525f; }
+  .pipemap-svg .pmlabel { fill: #d6dee6; }
+  .pipemap-svg .pmsub { fill: #8b97a4; }
+  .pipemap-svg .pmnode.pm-passed rect { fill: rgba(74, 91, 108, .6); stroke: #9fb0c1; }
+  .pipemap-svg .pmnode.pm-passed .pmlabel { fill: #eef3f8; }
+  .pipemap-svg .pmnode.pm-passed .pmsub { fill: #b6c2ce; }
+  .pipemap-svg .pmnode.pm-active rect { fill: rgba(104, 126, 148, .75); stroke: #cfdce8; }
+  .pipemap-svg .pmnode.pm-active .pmlabel { fill: #fff; }
+  .pipemap-svg .pmedge.pm-taken { stroke: #b8c6d3; }
+}
 .history-head { display: flex; justify-content: space-between; align-items: center; }
 .history-head button {
   background: none; border: 0; color: var(--muted); font-size: 1rem; padding: .2rem .4rem;
