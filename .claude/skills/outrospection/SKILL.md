@@ -73,6 +73,33 @@ the committed source snapshot.
   `chat_logs` carries `outrospection_mode: 1` and `outrospection:
   {lens, items, live}` — grep `items: 0` for "the feed had nothing to say".
 
+## The feed as the session's history (2026-07-26)
+
+Entering the mode opens on the FEED, not an empty chat — `public/js/outrospect-feed.js`,
+mounted from `app.js` (`openOutrospectionFeed` on mode switch / new chat / boot,
+only ever into a blank session) and consumed in `stream.js` (the excerpt block
+rides out with the question).
+
+- **Reader vs model is the design.** The reader gets the whole list, paged
+  (`feedPage`, newest at the bottom, older pages prepended with the scroll
+  position pinned). The model gets `FEED_RETRIEVE_K` semantically retrieved
+  entries. If you ever "simplify" this by putting the visible page into the
+  prompt, you have truncated the feed to recency — the exact thing the index
+  exists to prevent.
+- **`mirror: false` is load-bearing**, not tidiness. Every other indexed doc
+  mirrors to the server index when cloud storage is on, and `appendToDoc`
+  re-pushes the WHOLE doc on each append. The feed is public web content the
+  Worker already holds in D1, so mirroring would upload it back once per user
+  per visit, growing. Keep the flag.
+- **Indexing is incremental** — `unindexedItems` against a localStorage key
+  hint, so a revisit embeds only new entries. The hint is a cache, not a source
+  of truth: losing it costs a re-embed, never correctness.
+- **`feedItemIndexText` must stay self-contained** (title, lens, source, URL).
+  The chunker can merge two short entries into one chunk, and a retrieved chunk
+  that lost its URL is an article the answer cannot cite.
+- Fail-soft end to end: no feed, no index, no network → the ordinary empty chat
+  and the server's own newest-first retrieval, which still grounds the answer.
+
 ## Rules that are load-bearing
 
 **Never fabricate a feed item.** The committed artifact ships empty and stays

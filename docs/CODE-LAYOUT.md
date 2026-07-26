@@ -671,6 +671,29 @@ re-exports server-side and `scripts/outrospect-scan.mjs` imports in Node — one
 implementation, three faces, so a scan and a visit can never disagree about
 what counts as new. See `docs/OUTROSPECTION.md`.
 
+The outward feed as the outrospection session's HISTORY
+(`public/js/outrospect-feed.js`, owner directive 2026-07-26): entering the
+outrospection agent no longer opens an empty chat — the feed IS the session's
+history. `openFeedSession` loads both halves (committed artifact + live rows,
+merged by the core's `mergeFeed`), `mountFeedHistory` renders the newest page
+into the chat scroller with newest at the BOTTOM and older pages prepended on
+demand (`feedPage`, scroll position pinned so loading older entries never
+yanks the view), and `indexFeedLocally` indexes the WHOLE feed into this
+browser's RAG store in the background. The reader/model split is the design:
+the reader gets the full list paged, the model gets `FEED_RETRIEVE_K`
+semantically retrieved entries (`outwardExcerptsFor` → `outwardExcerptBlock`),
+because sending "the newest 24" would silently truncate the feed to recency.
+The index is incremental (`unindexedItems` over a localStorage key hint, so a
+revisit re-embeds only new entries) and is written with `mirror: false` — the
+one RAG doc that must NOT mirror to the server, since `appendToDoc` re-pushes
+the whole doc and this one is public web content the Worker already holds in
+D1. Wired in `app.js` (`openOutrospectionFeed` on mode switch, new chat, and
+boot; only ever into a BLANK session) and `stream.js` (the excerpt block rides
+out with the question, exactly like document excerpts). Fail-soft end to end:
+no feed, no index, or no network each leave the ordinary empty chat and the
+server's own newest-first retrieval. Styles are the mode's own newsprint
+variables (`.outro-*` in `public/css/app.css`).
+
 Space animations (`public/space/` — the PUBLIC showcase at `/space/`,
 allowlisted like `/pulse/`): an archive of playable wireframe 3D
 animations answering common space questions, with log-scale zoom spanning

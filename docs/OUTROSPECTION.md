@@ -207,6 +207,41 @@ Orchestrator, and wears the newsprint theme (`outro-mode`): a paper field, the
 masthead red as the accent, and the composer as a printed sheet rather than a
 metal pane.
 
+## The feed as the session's history
+
+*(Owner directive, 2026-07-26.)*
+
+Entering the outrospection agent does not open an empty chat. The feed **is**
+the session's history: the latest entries are already in the transcript, older
+pages load as you scroll back, and the whole feed is indexed in your browser so
+a question reaches all of it.
+
+The split between what you see and what the model sees is the whole design, and
+it is why the indexing exists:
+
+- **The reader** gets the full list, paged (`FEED_PAGE_SIZE`, newest at the
+  bottom like any transcript). Older pages are prepended and the scroll
+  position is pinned to the entry you were reading, so loading history never
+  yanks the view.
+- **The model** gets `FEED_RETRIEVE_K` semantically retrieved entries. Hundreds
+  of entries do not fit in a prompt, and sending "the newest 24" instead would
+  silently truncate the feed to recency — losing the entry from three weeks ago
+  that actually answers the question.
+
+The index is **browser-local**: `public/js/rag.js` over IndexedDB, the same
+store attachments and project chats use. Its excerpts ride out inside the
+outgoing message exactly like document excerpts, so what leaves is the question
+plus the entries this browser chose. It is incremental — a revisit embeds only
+entries it has not seen — and it is the one indexed document written with
+`mirror: false`: `appendToDoc` re-pushes the whole document on every append,
+and this one is public web content the Worker already stores in D1, so
+mirroring it would upload the same public feed back to the server once per user
+per visit.
+
+Everything here fails soft. No feed, no index, no network, or embedding
+unavailable each leave the ordinary empty chat and the server's own
+newest-first retrieval, which still grounds every answer on its own.
+
 ## Surfaces
 
 | Where | What |
