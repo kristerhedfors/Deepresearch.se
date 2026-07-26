@@ -376,10 +376,20 @@ export const sourceAgentPrompt = ({ reinforceJsonOnly = false } = {}) =>
 // Introspection final answer (src/pipeline.js runSourceResearch): write the
 // answer from the source the read loop gathered — real code, not web sources —
 // and, critically, from the IMPLEMENTATION rather than the repo's own docs.
-/** @returns {string} */
-export const sourceAnswerPrompt = () =>
+/**
+ * @param {{externalSources?: boolean}} [opts] `externalSources` when the turn
+ *   ALSO carries a numbered digest from a forced auxiliary source (the Models
+ *   agent's hub search — src/pipeline.js runForcedAuxSearches). Without it the
+ *   prompt's flat "there are no external sources to cite" would tell the model
+ *   to ignore material the pipeline just put in front of it.
+ * @returns {string}
+ */
+export const sourceAnswerPrompt = ({ externalSources = false } = {}) =>
   `You are the research assistant for Deepresearch.se, answering a question about THIS SITE'S OWN implementation. Today's date: ${today()}.\n` +
-  "You are given the project's ACTUAL source code — an architecture orientation, retrieved excerpts, and the full text of the files read during this research. Answer ONLY from that real source and the conversation; this is a genuine investigation of the codebase, not a web search, so there are no external sources to cite.\n" +
+  "You are given the project's ACTUAL source code — an architecture orientation, retrieved excerpts, and the full text of the files read during this research. Answer ONLY from that real source and the conversation" +
+  (externalSources
+    ? ", plus the numbered EXTERNAL SOURCES retrieved for this turn — cite those as [n], and use them only for facts that live outside this repository (what a third party publishes, what exists upstream); anything about how this site behaves must still come from the code.\n"
+    : "; this is a genuine investigation of the codebase, not a web search, so there are no external sources to cite.\n") +
   "Ground every claim in the code you were given: quote the relevant snippet and cite its file path (e.g. `src/auth.js`). Never invent files, functions, or behavior that isn't in the provided source, and never claim you lack access to the source — you have it here.\n" +
   "CRITICAL — verify, do not take documentation at face value: the repo's own Markdown docs (CLAUDE.md, SECURITY-RISKS.md, SECURITY-ASSESSMENT.md, skills, code comments) describe INTENDED behavior and can be outdated, aspirational, or simply wrong. When the question is about what the code actually does — security, correctness, whether a claimed control really exists — base the answer on the IMPLEMENTATION you read, not on what a doc asserts, and explicitly call out any place the docs and the code disagree. Treat a documented issue as a lead you checked, not a fact you inherited.\n" +
   "When the request is an audit, assessment, or review, ANSWER IT — produce concrete findings grounded in the code you read (each anchored to a specific file path, and a function/line where you can), not a description of how the project TRACKS security or a recap of SECURITY-RISKS.md / SECURITY-ASSESSMENT.md / the skills. Summarizing the repo's own security documents or its process is NOT an assessment; walking the actual implementation and reporting what you found is. If you were not given enough of the code to assess a given area, say which files you would need rather than filling the gap with what a doc claims.\n" +
@@ -397,9 +407,15 @@ export const sourceAnswerPrompt = () =>
 // list_files) and writes the final answer, so this merges the read-loop's
 // "investigate the code, distrust the docs" guidance with the answer prompt's
 // "concrete findings, cite paths" guidance.
-/** @returns {string} */
-export const sourceToolAgentPrompt = () =>
+/**
+ * @param {{externalSources?: boolean}} [opts] see sourceAnswerPrompt
+ * @returns {string}
+ */
+export const sourceToolAgentPrompt = ({ externalSources = false } = {}) =>
   `You are the research assistant for Deepresearch.se, answering a question about THIS SITE'S OWN implementation by investigating its ACTUAL deployed source code. Today's date: ${today()}.\n` +
+  (externalSources
+    ? "This turn ALSO carries numbered EXTERNAL SOURCES retrieved for the question — cite them as [n], and use them only for facts that live outside this repository (what a third party publishes, what exists upstream); anything about how this site behaves must still come from the code you read with the tools.\n"
+    : "") +
   "You have TOOLS to read the real code: grep_source (search the whole codebase like `grep -rn`, with optional context lines like `grep -C`), read_file (read files whole like `cat`, or a line range via offset/limit like `sed -n`), and list_files (see what exists, with byte sizes). USE them — do not answer from memory or from any excerpt already in the context. A typical investigation: grep_source for the relevant term, then read_file the implementation files it points to, following imports/references until you have really seen how it works.\n" +
   `TOOL ECONOMY — plan around the read budget: all read_file output in this investigation shares ONE fixed budget of ${MAX_READ_TOTAL_CHARS} characters (each result reports what is used so far); once spent, read_file returns nothing more. grep_source and list_files are free. So locate code with grep_source (its context parameter shows the surrounding lines cheaply), read only the relevant line ranges with read_file's offset/limit, and keep whole-file reads for small files (list_files shows sizes). For a broad ask spanning many files, extract per file with targeted greps and ranged reads instead of reading every file in full.\n` +
   "For an audit, assessment, or 'how secure/correct is X' request, investigate BROADLY before answering: the request entrypoint and routing (src/index.js), authentication and access control (src/auth.js), the response security headers and CSP (src/security-headers.js), request validation and input sanitizers (src/validation.js), storage/crypto and the privacy model, and the /api/chat pipeline — plus whatever those reference.\n" +

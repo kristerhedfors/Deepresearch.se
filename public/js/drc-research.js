@@ -77,7 +77,12 @@ const BROWSER_RUNNER = { supported: sandboxSupported, boot: ensureSandboxBooted,
  * @param {{backend?: string, baseUrl?: string, key?: string}|null} execCfg
  */
 function pickRunner(execCfg) {
-  return selectRunner(execCfg, BROWSER_RUNNER);
+  // `tier:"secure"` is not decoration: it is what stops this tier from ever
+  // selecting an environment that runs commands on the SERVER (the `cloudflare`
+  // container — Se/rver only, CLAUDE.md invariant 4). A sealed state that names
+  // it — hand-edited, or carried in from a shared workspace — falls back to the
+  // browser VM here rather than quietly putting Se/cure content on the wire.
+  return selectRunner(execCfg, BROWSER_RUNNER, { tier: "secure" });
 }
 
 // ---- the research time budget (the /cure slider — Se/rver's slider, mirrored) ----

@@ -26,8 +26,13 @@ import {
   probeRunner,
   remoteExecTimeout,
   runnerStatusLine,
+  SERVER_EXEC_BASE,
+  execBackendsFor,
+  makeContainerRunner,
   selectRunner,
   usesLocalRunner,
+  usesRemoteRunner,
+  usesServerContainer,
 } from "./exec-backends-core.js";
 
 /** A fetch stub: hands back a canned response and records the call. */
@@ -105,10 +110,16 @@ test("parseHealth reads a conforming body and defaults ephemeral to true", () =>
     image: "debian:stable-slim",
     ephemeral: true,
     network: "",
+    // The optional capabilities are absent unless advertised, so an older
+    // runner is simply never asked to mount anything.
+    mount: false,
+    source: false,
     version: "",
   });
   assert.equal(parseHealth({ ok: true, ephemeral: false }).ephemeral, false);
   assert.equal(parseHealth({ ok: true, network: "none" }).network, "none");
+  assert.equal(parseHealth({ ok: true, mount: true, source: true }).mount, true);
+  assert.equal(parseHealth({ ok: true, mount: true, source: true }).source, true);
   assert.equal(parseHealth(null).ok, false);
 });
 
@@ -290,4 +301,168 @@ test("selectRunner swaps in the local runner once it is fully configured", () =>
   assert.equal(typeof picked.exec, "function");
   assert.equal(typeof picked.boot, "function");
   assert.equal(typeof picked.supported, "function");
+});
+
+// ---- the THIRD environment: this platform's own container --------------------
+//
+// The server-side container (src/exec-container.js) is the same DREE/1 client
+// pointed at `/api/exec`. What needs pinning is not the transport — that is the
+// tests above — but the two things that would be dangerous or expensive to get
+// wrong: the TIER GATE (Se/cure must never select it) and the MOUNT bridge (the
+// 11 MB source tree must not be pushed up from the browser).
+
+test("the container backend is Se/rver only, and says so in the registry", () => {
+  const cf = execBackend("cloudflare");
+  assert.ok(cf);
+  assert.deepEqual(cf.tiers, ["server"]);
+  assert.equal(cf.needsUrl, false);
+  // The two browser-direct environments stay available to both tiers.
+  assert.deepEqual(execBackend("browser").tiers, ["secure", "server"]);
+  assert.deepEqual(execBackend("local").tiers, ["secure", "server"]);
+});
+
+test("execBackendsFor hides what a tier may not use, and what the deploy lacks", () => {
+  // Se/cure: never the container, whatever the server reports.
+  assert.deepEqual(execBackendsFor("secure", { container: true }).map((b) => b.id), ["browser", "local"]);
+  // Se/rver without the binding: the option is simply absent.
+  assert.deepEqual(execBackendsFor("server", {}).map((b) => b.id), ["browser", "local"]);
+  assert.deepEqual(execBackendsFor("server", { container: true }).map((b) => b.id), ["browser", "local", "cloudflare"]);
+});
+
+test("Se/cure cannot select the server-side container — invariant 4, in code", () => {
+  const browser = { supported: () => true, boot: async () => true, exec: async () => ({ exitCode: 0, stdout: "", stderr: "" }) };
+  const cfg = { backend: "cloudflare" };
+  // A hand-edited sealed state (or one carried in from a shared workspace)
+  // naming the container backend lands on the browser VM instead of putting
+  // Se/cure's commands on the wire.
+  assert.equal(selectRunner(cfg, browser, { tier: "secure" }), browser);
+  // A caller that doesn't state a tier gets the same safe direction.
+  assert.equal(selectRunner(cfg, browser), browser);
+  assert.equal(usesServerContainer(cfg, "secure"), false);
+  assert.equal(usesServerContainer(cfg, "server"), true);
+  assert.equal(usesRemoteRunner(cfg, "secure"), false);
+  assert.equal(usesRemoteRunner(cfg, "server"), true);
+  assert.equal(usesRemoteRunner({ backend: "local", baseUrl: "http://x" }, "secure"), true);
+  assert.equal(usesRemoteRunner({ backend: "browser" }, "server"), false);
+});
+
+test("Se/rver selects the container without a URL, and calls this site", async () => {
+  const browser = { supported: () => true, boot: async () => true, exec: async () => ({ exitCode: 0, stdout: "", stderr: "" }) };
+  const f = fakeFetch((url) =>
+    String(url).endsWith("/healthz")
+      ? jsonResponse({ ok: true, protocol: DREE_PROTOCOL, backend: "cloudflare-container", network: "none" })
+      : jsonResponse({ exitCode: 0, stdout: "ok", stderr: "" }),
+  );
+  const runner = selectRunner({ backend: "cloudflare" }, browser, { fetch: f, session: "s1", tier: "server" });
+  assert.notEqual(runner, browser);
+  assert.equal(await runner.boot(), true);
+  await runner.exec("uname -s");
+  assert.equal(f.calls[0].url, SERVER_EXEC_BASE + "/healthz");
+  assert.equal(f.calls[1].url, SERVER_EXEC_BASE + "/exec");
+  assert.equal(JSON.parse(f.calls[1].init.body).session, "s1");
+});
+
+test("boot pushes the send's files as ONE tar, then installs the symlink", async () => {
+  const bytes = new TextEncoder().encode("hello");
+  const provider = async () => ({
+    session: [{ name: "notes.txt", type: "text/plain", bytes }],
+    project: { name: "Trip Notes", id: "p1", files: [{ name: "plan.md", type: "text/markdown", bytes }] },
+    source: null,
+  });
+  const f = fakeFetch((url) =>
+    String(url).includes("/healthz")
+      ? jsonResponse({ ok: true, protocol: DREE_PROTOCOL, backend: "cloudflare-container", mount: true, source: true })
+      : String(url).includes("/mount")
+        ? jsonResponse({ ok: true })
+        : jsonResponse({ exitCode: 0, stdout: "", stderr: "" }),
+  );
+  const runner = makeContainerRunner({ fetch: f, session: "s2" });
+  const steps = [];
+  assert.equal(await runner.boot(provider, (m) => steps.push(m)), true);
+  const mount = f.calls.find((c) => String(c.url).includes("/mount"));
+  assert.ok(mount, "the files are pushed to the mount endpoint");
+  assert.match(String(mount.url), /session=s2/);
+  assert.equal(mount.init.headers["content-type"], "application/x-tar");
+  // ONE archive carries the manifest, the session file and the project file.
+  const tar = new TextDecoder().decode(mount.init.body);
+  assert.match(tar, /workspace\/INDEX\.txt/);
+  assert.match(tar, /workspace\/notes\.txt/);
+  assert.match(tar, /mnt\/trip-notes-/);
+  // …followed by the seed script that makes /workspace/<project> point at it.
+  const seed = f.calls.find((c) => String(c.url).endsWith("/exec"));
+  assert.match(JSON.parse(seed.init.body).command, /ln -sfn '\/mnt\/trip-notes-/);
+  assert.ok(steps.some((s) => /Mounting your files/.test(s)));
+});
+
+test("the source tree is requested from the SERVER, never pushed from here", async () => {
+  // What stream.js actually hands a container runner in developer mode: a
+  // MARKER, not the snapshot. The page never fetches multiple MB so it can ask
+  // the server to read its own asset.
+  const provider = async () => ({ session: [], project: null, source: { server: true } });
+  const f = fakeFetch((url) =>
+    String(url).includes("/healthz")
+      ? jsonResponse({ ok: true, protocol: DREE_PROTOCOL, backend: "cloudflare-container", mount: true, source: true })
+      : String(url).includes("/source")
+        ? jsonResponse({ ok: true, count: 40, bytes: 1234, cached: false })
+        : jsonResponse({ exitCode: 0, stdout: "", stderr: "" }),
+  );
+  const runner = makeContainerRunner({ fetch: f, session: "s3" });
+  await runner.boot(provider, () => {});
+  assert.ok(f.calls.some((c) => String(c.url).includes("/source?session=s3")));
+  // No tar push at all: with only the source to mount there is nothing of the
+  // USER's to send, and the snapshot is the server's own asset.
+  assert.equal(f.calls.some((c) => String(c.url).includes("/mount")), false);
+});
+
+test("a runner that doesn't advertise mounting is never asked to mount", async () => {
+  const provider = async () => ({ session: [{ name: "a.txt", type: "text/plain", bytes: new Uint8Array([1]) }] });
+  const f = fakeFetch((url) =>
+    String(url).includes("/healthz")
+      ? jsonResponse({ ok: true, protocol: DREE_PROTOCOL, backend: "docker" }) // no mount/source flags
+      : jsonResponse({ exitCode: 0, stdout: "", stderr: "" }),
+  );
+  const runner = makeLocalRunner({ backend: "local", baseUrl: "http://x", key: "" }, { fetch: f });
+  await runner.boot(provider, () => {});
+  assert.equal(f.calls.length, 1); // the probe, and nothing else
+});
+
+test("a failed mount loses the FILES, never the shell", async () => {
+  const provider = async () => ({ session: [{ name: "a.txt", type: "text/plain", bytes: new Uint8Array([1]) }] });
+  const f = fakeFetch((url) => {
+    if (String(url).includes("/healthz")) {
+      return jsonResponse({ ok: true, protocol: DREE_PROTOCOL, backend: "cloudflare-container", mount: true });
+    }
+    if (String(url).includes("/mount")) throw new Error("network went away");
+    return jsonResponse({ exitCode: 0, stdout: "", stderr: "" });
+  });
+  const runner = makeContainerRunner({ fetch: f, session: "s4" });
+  // Booted anyway (invariant 2), and the command still runs.
+  assert.equal(await runner.boot(provider, () => {}), true);
+  assert.equal((await runner.exec("ls")).exitCode, 0);
+});
+
+test("mounting happens once per runner, not once per round", async () => {
+  const provider = async () => ({ session: [{ name: "a.txt", type: "text/plain", bytes: new Uint8Array([1]) }] });
+  const f = fakeFetch((url) =>
+    String(url).includes("/healthz")
+      ? jsonResponse({ ok: true, protocol: DREE_PROTOCOL, backend: "cloudflare-container", mount: true })
+      : String(url).includes("/mount")
+        ? jsonResponse({ ok: true })
+        : jsonResponse({ exitCode: 0, stdout: "", stderr: "" }),
+  );
+  const runner = makeContainerRunner({ fetch: f, session: "s5" });
+  await runner.boot(provider, () => {});
+  await runner.boot(provider, () => {}); // bash-core calls ensureReady per round
+  assert.equal(f.calls.filter((c) => String(c.url).includes("/mount")).length, 1);
+  assert.equal(f.calls.filter((c) => String(c.url).includes("/healthz")).length, 1);
+});
+
+test("a health body that diagnoses itself is relayed verbatim", async () => {
+  const f = fakeFetch(() =>
+    jsonResponse({ ok: false, protocol: DREE_PROTOCOL, configured: false, error: "This deploy has no container binding." }),
+  );
+  const probe = await probeRunner({ baseUrl: SERVER_EXEC_BASE, key: "" }, { fetch: f });
+  assert.equal(probe.reachable, false);
+  // The settings UI shows this line as-is, so a real explanation must survive.
+  assert.equal(probe.error, "This deploy has no container binding.");
 });

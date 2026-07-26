@@ -28,6 +28,27 @@ describe("hfIntent — explicit-mention detection", () => {
     assert.ok(hfIntent("HF radio propagation at night"));
   });
 
+  test("the bare token 'hf' is enough, in either language (owner directive, feedback #36)", () => {
+    // "'hf' should trigger such intent" — typed alone, as a whole message, in
+    // any casing, next to any punctuation, and in Swedish sentences with the
+    // same breadth as English (invariant 6).
+    for (const q of [
+      "hf",
+      "HF",
+      "Hf",
+      "hf?",
+      "use hf",
+      "check hf for models",
+      "hf:deepseek-ai/DeepSeek-V4-Flash", // the model-id prefix a user pastes back
+      "kolla hf",
+      "sök på hf",
+      "vilka modeller finns på hf?",
+      "leta upp den på hf",
+    ]) {
+      assert.equal(hfIntent(q), true, q);
+    }
+  });
+
   test("does NOT match an org/name path, an hf-substring, or unrelated text", () => {
     assert.equal(hfIntent("compare meta-llama/Llama-3.3 to mistral"), false);
     assert.equal(hfIntent("the shfted spectrum"), false);

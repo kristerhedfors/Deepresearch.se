@@ -40,6 +40,14 @@ import {
   opfsUnavailableMessage,
   planModelFiles,
   planReasonForStatus,
+  PUBLISHED_CACHE_KEY,
+  PUBLISHED_TTL_MS,
+  declaredUnpublished,
+  modelPublished,
+  probeModelPublished,
+  readPublishedCache,
+  unpublishedNote,
+  writePublishedCache,
   rejectionDetail,
   sseDeltaLine,
   sseDoneLine,
@@ -625,3 +633,109 @@ test("onDeviceSummaryLine: degenerate input still yields a sane line", () => {
   // A cached count above the catalog size (a stale entry) can't read "4 of 3".
   assert.equal(onDeviceSummaryLine({ total: 3, cached: 9 }), "Models — 3 of 3 on this device");
   assert.equal(onDeviceSummaryLine({ total: -1, cached: -2 }), "Models");});
+
+
+// ---- browser-build availability (feedback #36) ------------------------------
+//
+// "The 27b model doesn't run in browser so gray it out in the gui so we can't
+// select it." The row's state now comes from the catalog's declaration first
+// and this device's live probe second — the pair is what lets an entry be
+// grayed out today AND light up on its own the day the conversion ships.
+
+test("the 27B entry declares its browser build unpublished; the shipped ones do not", () => {
+  const by = (/** @type {string} */ id) => ONDEVICE_MODELS.find((m) => m.id === id);
+  assert.equal(declaredUnpublished(by("bonsai-27b-1bit")), true);
+  assert.equal(declaredUnpublished(by("bonsai-8b-1bit")), false);
+  assert.equal(declaredUnpublished(by("bonsai-1_7b-1bit")), false);
+  // A row with no declaration at all is available — the flag is opt-in, so a
+  // new catalog entry can never be grayed out by omission.
+  assert.equal(declaredUnpublished({}), false);
+});
+
+test("modelPublished: the declaration decides until this device has probed", () => {
+  const m27 = { id: "bonsai-27b-1bit", browserBuild: "unpublished" };
+  const m8 = { id: "bonsai-8b-1bit" };
+  assert.equal(modelPublished(m27), false);
+  assert.equal(modelPublished(m8), true);
+  // A probe result OVERRIDES the declaration in BOTH directions: the row must
+  // light up when the conversion ships, and must gray out when a repo that
+  // used to serve it stops.
+  assert.equal(modelPublished(m27, { "bonsai-27b-1bit": true }), true);
+  assert.equal(modelPublished(m8, { "bonsai-8b-1bit": false }), false);
+  // Another model's answer never leaks across.
+  assert.equal(modelPublished(m27, { "bonsai-8b-1bit": true }), false);
+});
+
+test("the published cache expires, and survives garbage without throwing", () => {
+  const now = 1_800_000_000_000;
+  const fresh = JSON.stringify({ a: { published: true, at: now - 1000 } });
+  assert.deepEqual(readPublishedCache(fresh, now), { a: true });
+  // Past the TTL the answer is forgotten, so the row re-probes rather than
+  // trusting a day-old "unpublished" forever.
+  const stale = JSON.stringify({ a: { published: true, at: now - PUBLISHED_TTL_MS - 1 } });
+  assert.deepEqual(readPublishedCache(stale, now), {});
+  // A timestamp in the future means the clock moved — distrust it.
+  assert.deepEqual(readPublishedCache(JSON.stringify({ a: { published: true, at: now + 60_000 } }), now), {});
+  for (const junk of [null, "", "{", "[]", '{"a":1}', '{"a":{"published":"yes","at":1}}']) {
+    assert.deepEqual(readPublishedCache(junk, now), {}, `junk: ${junk}`);
+  }
+});
+
+test("writePublishedCache records one answer and drops the stale ones on the way", () => {
+  const now = 1_800_000_000_000;
+  const prior = JSON.stringify({
+    keep: { published: false, at: now - 1000 },
+    drop: { published: true, at: now - PUBLISHED_TTL_MS - 1 },
+  });
+  const next = writePublishedCache(prior, "new", true, now);
+  assert.deepEqual(readPublishedCache(next, now), { keep: false, new: true });
+  // Re-recording replaces rather than appends, so the key can't outgrow the catalog.
+  assert.deepEqual(readPublishedCache(writePublishedCache(next, "new", false, now), now), { keep: false, new: false });
+  assert.equal(typeof PUBLISHED_CACHE_KEY, "string");
+});
+
+test("probeModelPublished: only a definite answer moves the row", async () => {
+  const model = { repo: "onnx-community/Bonsai-27B-ONNX", dtype: "q1f16" };
+  const tree = [
+    { path: "config.json", size: 1 },
+    { path: "onnx/model_q1f16.onnx", size: 2 },
+  ];
+  const ok = async () => ({ ok: true, status: 200, json: async () => tree });
+  assert.equal(await probeModelPublished(model, ok), true);
+  // The variant missing from an existing repo is the "conversion not shipped"
+  // state — the exact case the 27B is in.
+  const other = async () => ({ ok: true, status: 200, json: async () => [{ path: "onnx/model_q4.onnx", size: 2 }] });
+  assert.equal(await probeModelPublished(model, other), false);
+  // HF answers 401 for a repo that doesn't exist (it refuses to leak which) —
+  // the Bonsai 27B trap planReasonForStatus was written for.
+  for (const status of [401, 403, 404]) {
+    assert.equal(await probeModelPublished(model, async () => ({ ok: false, status })), false, `status ${status}`);
+  }
+  // Everything inconclusive returns null: an offline phone must never
+  // "discover" that a model shipped, nor claim one vanished.
+  for (const status of [429, 500, 503]) {
+    assert.equal(await probeModelPublished(model, async () => ({ ok: false, status })), null, `status ${status}`);
+  }
+  assert.equal(await probeModelPublished(model, async () => { throw new Error("offline"); }), null);
+  assert.equal(await probeModelPublished(model, async () => ({ ok: true, status: 200, json: async () => { throw new Error("bad json"); } })), null);
+  assert.equal(await probeModelPublished({ repo: "", dtype: "" }, ok), null);
+});
+
+test("unpublishedNote names the model and promises the entry lights up on its own", () => {
+  const note = unpublishedNote({ label: "Bonsai 27B · 1-bit" });
+  assert.match(note, /Bonsai 27B · 1-bit/);
+  assert.match(note, /isn't published yet/);
+  // The consent card appends "Nothing was downloaded." — the ROW must not,
+  // since nothing was ever tapped there.
+  assert.doesNotMatch(note, /Nothing was downloaded/);
+});
+
+test("onDeviceSummaryLine: a grayed-out model is not counted as available", () => {
+  // The folded line may not advertise a download that doesn't exist upstream —
+  // same rule the unsupported count already followed.
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 0, unavailable: 1 }), "Models — none on this device yet, 2 available");
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 0, unavailable: 1, unsupported: 2 }), "Models — none can run on this device");
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 0, unavailable: 3 }), "Models — none can run on this device");
+  // Weights already here still outrank every verdict.
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 1, unavailable: 1 }), "Models — 1 of 3 on this device");
+});

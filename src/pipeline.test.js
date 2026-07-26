@@ -327,6 +327,45 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     assert.match(runAux, /if \(!batch\.length \|\| \(!forced && !source\.intent\(ctx\.lastUser\)\)\) return;/);
   });
 
+  test("a forced source survives the developer-mode source-research path (feedback #36)", () => {
+    // The regression this cost us: `state.forceAux` was honoured only inside
+    // the search wave, and developer mode never reaches a wave — it answers
+    // from the site's own files. So the Models agent, whose whole identity is
+    // the model hub, answered model questions with 0 searches / 0 sources
+    // whenever dev mode was also on (chat_logs #670, #671). Both source-
+    // research answer paths must now carry the forced sources' findings.
+    const fn = src.slice(src.indexOf("async function runForcedAuxSearches"), src.indexOf("async function runSourceResearch(ctx)"));
+    // Generic: ids come off the state, no source is named here.
+    assert.match(fn, /state\)\.forceAux/);
+    assert.match(fn, /for \(const source of SEARCH_SOURCES\)[\s\S]*forced\.includes\(source\.id\)[\s\S]*runAuxSearch\(ctx, source, batch, 1\)/);
+    assert.doesNotMatch(fn, /\bhf\b|hugging/i);
+    // The agent's own auxSources declaration still outranks the force.
+    assert.match(fn, /!forced\.length \|\| !searchPolicyFor\(state\)\.auxSources/);
+
+    const sourceResearch = src.slice(src.indexOf("async function runSourceResearch(ctx)"), src.indexOf("async function runSubquestionFanout"));
+    // Run BEFORE the snapshot check, so even the no-snapshot exit has them.
+    const auxIdx = sourceResearch.indexOf("await runForcedAuxSearches(ctx)");
+    assert.ok(auxIdx >= 0 && auxIdx < sourceResearch.indexOf("if (!snapshot"), "forced aux runs before the snapshot check");
+    // …and reaches BOTH answer paths — the native-tool one and the read loop.
+    assert.match(sourceResearch, /runSourceResearchTools\(ctx, snapshot, auxBlock\)/);
+    assert.match(sourceResearch, /\(auxBlock \? `\$\{auxBlock\}\\n\\n` : ""\)/);
+    // The answer prompt is told external sources exist — otherwise its flat
+    // "there are no external sources to cite" discards what we just fetched.
+    assert.match(sourceResearch, /"source-research", "answer"\)\(\{ externalSources: !!auxBlock \}\)/);
+    const tools = src.slice(src.indexOf("async function runSourceResearchTools"), src.indexOf("export const MAX_SDK_TOOL_ROUNDS"));
+    assert.match(tools, /"source-research", "answer-tools"\)\(\{ externalSources: !!auxBlock \}\)/);
+  });
+
+  test("a mode may raise a source's per-request search ceiling, generically", () => {
+    // feedback #36: "the Models pipeline should be even more inclined to search
+    // hf". The override is read off the state by id — core names no source —
+    // and only ever RAISES the registry's own default.
+    const runAux = src.slice(src.indexOf("async function runAuxSearch(ctx, source"));
+    assert.match(runAux, /state\)\.auxMaxPerRequest\?\.\[source\.id\]/);
+    assert.match(runAux, /typeof override === "number" && override > 0 \? override : \(source\.maxPerRequest \?\? MAX_AUX_SEARCHES_DEFAULT\)/);
+    assert.match(runAux, /if \(st\.count >= cap\) return;/);
+  });
+
   test("an introspection agent's `search.web: false` does not disarm the knob", () => {
     // The regression this stage could most easily have shipped. Introspection
     // declares web:false because its OWN phase does not search; the pipeline

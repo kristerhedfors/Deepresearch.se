@@ -178,9 +178,12 @@ export function buildManifest(plan) {
   lines.push("# Session files are in /workspace/. The active project's files are in");
   lines.push("# /workspace/" + (plan.project ? plan.project.name : "<projname>") + "/ (a symlink to its /mnt mount).");
   if (plan.source) {
-    lines.push(
-      `# INTROSPECTION: the deepresearch.se source snapshot (${plan.source.count} files, ${plan.source.bytes} bytes)`,
-    );
+    // The counts are stated when this side knows them (the browser VM tars the
+    // snapshot itself). A REMOTE environment that seeds /src server-side does
+    // not have them at manifest time, so the announcement stands without them
+    // rather than claiming zero.
+    const detail = plan.source.count ? ` (${plan.source.count} files, ${plan.source.bytes} bytes)` : "";
+    lines.push(`# INTROSPECTION: the deepresearch.se source snapshot${detail}`);
     lines.push("# is mounted at /src (also reachable as /workspace/source) — ls/cat/grep it freely.");
   }
   lines.push("# columns: scope\\tname\\ttype\\tsize_bytes\\ttier");
@@ -234,6 +237,115 @@ export function buildSeedScript(p) {
     lines.push(`cp -a /mnt/in-s/. /workspace/ 2>/dev/null || true`);
   }
   return lines.join("\n");
+}
+
+// ---- the whole-send mount plan ---------------------------------------------
+
+/**
+ * Turn a file provider's raw `{session, project, source}` payload into the plan
+ * BOTH execution environments mount from: size-capped, sanitized, de-duped
+ * lists, the project's mount identity, the manifest, and (optionally) the
+ * introspection source plan.
+ *
+ * This is the pure half of what public/js/sandbox.js's preparePlan used to do
+ * inline; it moved here when the SERVER-SIDE container gained the same mounts
+ * (src/exec-container.js), because "what a sandbox holds" must not be able to
+ * differ between environments. sandbox.js keeps the logging and the CheerpX
+ * device writes; exec-backends-core.js's remote runner turns this same plan
+ * into a tar (planRemoteMount).
+ *
+ * `source` is a SEPARATE opt-out because the two environments obtain it
+ * differently: the browser VM tars the snapshot it already fetched, while the
+ * server-side container is seeded from this deploy's ASSETS — the ~11 MB never
+ * needs to leave (or re-enter) the browser, so the remote caller passes
+ * `{source:false}` and asks the server to mount it instead.
+ *
+ * Never throws for a malformed payload: a bad provider yields an empty plan,
+ * which mounts nothing rather than failing the send.
+ *
+ * @param {any} raw the provider's payload
+ * @param {{ source?: boolean }} [opts]
+ * @returns {{ session: MountKept[], project: { name: string, id: string, hash: string, files: MountKept[] } | null, source: any, manifest: string, dropped: Array<{scope: string, name: string, reason: string}>, bytes: number }}
+ */
+export function planMounts(raw, opts = {}) {
+  raw = raw || {};
+  const withSource = opts.source !== false;
+  const sessionCap = applySizeCap(Array.isArray(raw.session) ? raw.session : []);
+  let total = sessionCap.total;
+  const dropped = sessionCap.dropped.map((d) => ({ scope: "session", ...d }));
+  let project = null;
+  if (raw.project && Array.isArray(raw.project.files) && raw.project.files.length) {
+    const projCap = applySizeCap(raw.project.files, { startTotal: total });
+    total = projCap.total;
+    for (const d of projCap.dropped) dropped.push({ scope: "project", ...d });
+    project = {
+      name: sanitizeProjName(raw.project.name),
+      id: String(raw.project.id || ""),
+      hash: projHash(raw.project.id),
+      files: projCap.kept,
+    };
+  }
+  let source = null;
+  if (withSource && raw.source && Array.isArray(raw.source.files) && raw.source.files.length) {
+    source = planSourceMount(raw.source.files);
+    if (source) total += source.bytes;
+  }
+  // The manifest still ANNOUNCES the source mount when the caller is having it
+  // seeded elsewhere — `source:{server:true}`, which is what a remote runner
+  // that can fetch the snapshot itself asks for — so the model reads the same
+  // INDEX.txt in both environments and finds /src where it is told it is.
+  const sourceNote = source
+    ? { count: source.count, bytes: source.bytes }
+    : raw.source && (raw.source.server === true || raw.source.files?.length)
+      ? { count: 0, bytes: 0 }
+      : null;
+  const manifest = buildManifest({
+    session: sessionCap.kept,
+    project: project ? { name: project.name, files: project.files } : null,
+    dropped,
+    source: sourceNote,
+  });
+  return { session: sessionCap.kept, project, source, manifest, dropped, bytes: total };
+}
+
+/**
+ * Turn a plan (planMounts above) into what a REMOTE DREE/1 runner needs: ONE
+ * ustar archive whose members are the guest's absolute layout minus the leading
+ * slash (`workspace/…`, `mnt/<project>-<hash>/…`) plus the small script that
+ * installs the friendly symlink after extraction.
+ *
+ * Paths are relative on purpose: `tar -xf - -C /` then lands them exactly where
+ * the browser VM's seed script puts them, and GNU tar's default refusal of `..`
+ * members means a hand-crafted archive can't walk out of the tree.
+ *
+ * The SOURCE tree is deliberately not included — a remote runner gets /src from
+ * the server (src/exec-container.js `/api/exec/source`), and pushing 11 MB up
+ * from the browser to reach a machine that can read it locally would be pure
+ * waste.
+ *
+ * @param {{ session: MountKept[], project: { name: string, hash: string, files: MountKept[] } | null, manifest: string }} plan
+ * @returns {{ tar: Uint8Array, script: string, count: number, bytes: number }}
+ */
+export function planRemoteMount(plan) {
+  const enc = new TextEncoder();
+  /** @type {Array<{ path: string, bytes: Uint8Array }>} */
+  const files = [];
+  let bytes = 0;
+  const add = (/** @type {string} */ path, /** @type {Uint8Array} */ b) => {
+    files.push({ path, bytes: b });
+    bytes += b.length;
+  };
+  add("workspace/INDEX.txt", enc.encode(plan?.manifest || ""));
+  for (const f of plan?.session || []) add("workspace/" + f.name, f.bytes);
+  const lines = ["mkdir -p /workspace /workspace/outbox 2>/dev/null || true"];
+  const p = plan?.project;
+  if (p && p.files?.length) {
+    const mount = "mnt/" + p.name + "-" + p.hash;
+    for (const f of p.files) add(mount + "/" + f.name, f.bytes);
+    lines.push(`mkdir -p ${shellEscape("/" + mount)} 2>/dev/null || true`);
+    lines.push(`ln -sfn ${shellEscape("/" + mount)} ${shellEscape("/workspace/" + p.name)} 2>/dev/null || true`);
+  }
+  return { tar: buildTar(files), script: lines.join("\n") + "\n", count: files.length, bytes };
 }
 
 // ---- the introspection source mount (developer mode) ------------------------

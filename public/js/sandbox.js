@@ -29,15 +29,7 @@
 // import of the CheerpX ESM) — there is no Node-testable surface, so the pure,
 // testable logic lives in public/js/bash-core.js instead.
 
-import {
-  applySizeCap,
-  buildManifest,
-  buildSeedScript,
-  planSourceMount,
-  projHash,
-  sanitizeProjName,
-  shellEscape,
-} from "./sandbox-files.js";
+import { buildSeedScript, planMounts, shellEscape } from "./sandbox-files.js";
 import { feedCommand, feedResult, feedTerminal, setTerminalInputSink } from "./agent-backdrop.js";
 import { createBootMessageRotator, formatBootProgress } from "./boot-messages.js";
 import {
@@ -948,38 +940,14 @@ async function bootVM(fileProvider = null) {
  * @returns {Promise<{ session: any[], project: any, source: any, manifest: string, dropped: any[], bytes: number }>}
  */
 async function preparePlan(fileProvider) {
-  const raw = (await fileProvider()) || {};
-  const sessionCap = applySizeCap(Array.isArray(raw.session) ? raw.session : []);
-  let total = sessionCap.total;
-  const dropped = sessionCap.dropped.map((d) => ({ scope: "session", ...d }));
-  let project = null;
-  if (raw.project && Array.isArray(raw.project.files) && raw.project.files.length) {
-    const projCap = applySizeCap(raw.project.files, { startTotal: total });
-    total = projCap.total;
-    for (const d of projCap.dropped) dropped.push({ scope: "project", ...d });
-    project = {
-      name: sanitizeProjName(raw.project.name),
-      id: String(raw.project.id || ""),
-      hash: projHash(raw.project.id),
-      files: projCap.kept,
-    };
-  }
-  // Introspection (developer mode): the pre-bundled source snapshot becomes
-  // its own flat ingest + /src seed script — budgeted separately (it's a
-  // fixed, known artifact, not user data competing for the session budget).
-  let source = null;
-  if (raw.source && Array.isArray(raw.source.files) && raw.source.files.length) {
-    source = planSourceMount(raw.source.files);
-    if (source) total += source.bytes;
-  }
-  const manifest = buildManifest({
-    session: sessionCap.kept,
-    project: project ? { name: project.name, files: project.files } : null,
-    dropped,
-    source: source ? { count: source.count, bytes: source.bytes } : null,
-  });
+  // The plan itself is pure and SHARED with the server-side container
+  // environment (sandbox-files.js planMounts, consumed there through
+  // exec-backends-core.js) — what a sandbox holds must not depend on which
+  // sandbox it is. Only the logging below is CheerpX-side.
+  const plan = planMounts((await fileProvider()) || {});
+  const { session, project, source, dropped, bytes: total } = plan;
   sblog("info", "sandbox.fs.plan", {
-    session_files: sessionCap.kept.length,
+    session_files: session.length,
     project_files: project ? project.files.length : 0,
     project_name: project ? project.name : null,
     source_files: source ? source.count : 0,
@@ -989,7 +957,7 @@ async function preparePlan(fileProvider) {
   // Per-dropped-file detail at debug so a "why isn't my file there" can be
   // answered from the log URL without a repro.
   for (const d of dropped) sblog("debug", "sandbox.fs.dropped", { scope: d.scope, name: d.name, reason: d.reason });
-  return { session: sessionCap.kept, project, source, manifest, dropped, bytes: total };
+  return plan;
 }
 
 // Write the kept bytes into the flat ingest DataDevices (files at the device

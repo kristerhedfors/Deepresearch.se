@@ -1427,6 +1427,12 @@ h1 .tier { display: block; font-size: .8rem; font-weight: 600; color: var(--mute
    covered by this very drawer on a phone) — quiet brick red on the khaki. */
 .od-model .od-note.od-fail { color: #9c4530; }
 .od-model .od-btn { font-size: .78rem; padding: .3rem .6rem; white-space: nowrap; }
+/* A model whose browser build hasn't shipped upstream: grayed out, no button
+   (feedback #36). The row still READS — its note says why — so this dims the
+   label rather than hiding the entry, which would leave the catalog silently
+   short of the headline model. */
+.od-model.od-unavailable .od-label { opacity: .5; }
+.od-model.od-unavailable .od-note { opacity: .75; font-style: italic; }
 /* The visible engine trace (?oddebug=1): the phone's stand-in console. */
 #odtracewrap { margin: .3rem 0 .4rem; }
 #odtracewrap[hidden] { display: none; }

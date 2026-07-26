@@ -46,6 +46,7 @@ Server (`src/`):
 | `bash-agent.js` | The bash-lite agent's server FAÇADE: a pure re-export of the ONE shared core `public/js/bash-core.js` — `bashIntent` (deterministic EN+SV "wants a shell" heuristic), `parseShellRequest` (the fenced ```bash convention — NO function calling), exec-result normalization/clamping, `buildShellTranscript` (the labeled synthesis block), `buildStepUserMessage` (the per-round step question both tiers send), and (client-only, not re-exported here) the exec BRIDGE's pure protocol codec — `execEnvelope`/`parseExecEnvelope` (the marker+base64 envelope incl. the RC-before-any-pipe fix), `concatChunks`/`base64ToBytes`, and `isExportablePath` (the which-guest-paths-may-leave-the-VM policy, next to `OUTBOX_PATH`) — that `sandbox.js`'s `execInSandbox`/`exportFile` drive. The core ALSO holds the OUTBOX download flow's pure side (2026-07-15, client-only — not re-exported here): ask for a file → the agent copies it into `/workspace/outbox` (`bashAgentPrompt` convention) → after the loop `sandbox.js` `collectDeliverables` lists (`outboxListCommand`/`parseOutboxListing`, capped) and exports each via the base64-through-exec round-trip → `turns.js` `renderDeliverables` attaches download chips with an add-to-project dropdown (`projects.js addFilesToProject`), and a synthetic `deliverablesRun` transcript entry tells synthesis the hand-over happened (rides the existing `shell_transcript` contract — no new API field). The core lives under `public/` because the browser can only import served modules while the Worker bundler can import from anywhere; this replaced the old hand-mirrored server/client copies (2026-07-11) — see the **execution-sandbox** skill |
 | `ai-models.js` | The AI/LLM model-name recognizer's server FAÇADE: a pure re-export of the ONE shared core `public/js/ai-models.js` — `aiModelIntent`/`aiModelMentions` (does a message name a model FAMILY, alone or with a version like `glm-5.2`, `kimi k2`, `deepseek v3`? — language-neutral, so EN+SV parity is inherent) plus the two prompt notes `AI_MODEL_NOT_A_PACKAGE_NOTE` (spliced into `bashAgentPrompt`/`drcBashAgentPrompt` so the offline sandbox stops treating a model name as a local package — the IMG_5207 `apt-cache search glm-5.2` misfire) and `AI_MODEL_RESEARCH_NOTE` (spliced into `triagePrompt`/`drcTriagePrompt` so a model question is decomposed into a proper research plan). The core lives under `public/` for the same reason `bash-agent.js` re-exports `bash-core.js`; both tiers also SKIP the offline sandbox for a pure model question (`stream.js`/`drc-research.js`). Node-tested (`public/js/ai-models.test.js`) |
 | `bash-api.js` | `POST /api/bash/step`: ONE turn of the client-orchestrated bash-lite loop — asks the reliable model (via `bashAgentPrompt`) what to run next given the transcript so far; quota-gated + concurrency-reserved through the shared `endpoint-gate.js`, usage-recorded, knob-gated (`bashLiteEnabled`), fail-soft (any failure returns `done` so the client stops). The sandbox runs in the BROWSER (`public/js/sandbox.js`); the server only decides commands |
+| `exec-container.js` | WHERE those commands run when the user picks this platform's own machine: the SERVER-SIDE execution environment (Se/rver only). Exposes the same **DREE/1** wire the local runner speaks — `GET/POST /api/exec/{healthz,exec,mount,source}` + `DELETE /api/exec/session` — and drives ONE ephemeral Cloudflare Container per research session through the `ExecSandbox` Durable Object (re-exported from `index.js`, since a DO must be exported from the entrypoint). No service inside the image and no npm dependency: commands are `bash -lc` processes started with the DO's raw `ctx.container.exec`, bounded by our own deadline (a killed process returns exit 124, the vocabulary the browser VM already uses). Mounts match the CheerpX VM: the page pushes ONE ustar archive of `/workspace` + the project mount, and `/src` (the deploy's own source snapshot, `sdk/` included) is seeded HERE from the `ASSETS` binding — stamp-guarded, so a warm container pays nothing — which keeps the ~11 MB off the browser and makes the tree by construction the source this deploy runs. Availability-gated on the OPTIONAL `EXEC_SANDBOX` binding (`wrangler.toml` ships it commented out — an undeclared resource fails every deploy) plus the account's sandbox knob; absent, `/api/settings` reports `available.exec_container:false` and the client omits the option. Per-session fences (idle destroy, lifetime, command budget) live here; the global one is `max_instances`. Se/rver only by construction — it sits behind the identity gate, and Se/cure has no identity — see `docs/EXECUTION-ENVIRONMENTS.md` |
 | `sandbox-image.js` | Self-hosted Linux sandbox images (the admin-selectable small-image feature — `docs/SANDBOX-LOCAL-IMAGE.md`): `GET /sandbox/img/<id>.ext2` (streams a content-addressed, immutable ext2 image from R2 with HTTP Range support for CheerpX's HttpBytesDevice) + `GET /api/sandbox-image` (the effective image config both tiers read) — both PUBLIC, routed before the identity gate because Se/cure must reach them too; fail-soft by construction (no binding / unknown id / R2 miss → the client falls back to the built-in streamed default, invariant 2) |
 | `storage.js` | Implicit R2 cloud storage (availability-gated, always on for signed-in accounts — invariant 4): encrypted conversation AND project records (`/api/convos*`, `/api/projects*` — same handler), original attached files (`/api/files*`), the account's one-call data wipe (`DELETE /api/storage` — vault objects excluded) |
 | `vault.js` | The secret-keyed project vault (`/api/vault/:id`, R2 `vault/{uid}/{id}`): one CLIENT-encrypted project archive per id — key AND id both derived in the browser from a user-held secret the server never sees (`public/js/vault.js`), the strictest storage tier — the server can neither locate nor read an archive; each store is its own explicit consent act, and vault objects are excluded from the `DELETE /api/storage` wipe |
@@ -123,7 +124,7 @@ Server (`src/`):
 | `hf-inference.js` | Hugging Face INFERENCE — one LLM provider among four, and the only one with an OPEN catalog: the OpenAI-compatible router (`https://router.huggingface.co/v1`, no stream adapter needed), the `hf:<owner>/<model>[@<provider>]` id namespace (`isHfModel`/`hfModelId`/`parseHfModelId`/`hfWireModel` — the prefix is required, since a bare `owner/model` path is Berget's id shape), the cached catalog fetch + normalization (`hfRouterModels`/`normalizeRouterModel`, cheapest LIVE priced serving becomes `best`), the comparison turn every provider's price is expressed against (`TYPICAL_TURN`/`turnCostEur`), and the registry's `explore` hook (`hfExplore`) that translates HF's own vocabulary into provider-agnostic rows. Everything CROSS-provider lives one layer up in `model-catalog.js`. `HUGGINGFACE_API_TOKEN` REQUIRED here (inference is billed), unlike in `hf.js` |
 | `model-catalog.js` | THE MODEL CATALOG — one list of every model this deployment can reach, from whichever provider, in whatever LIFECYCLE state (`discovered` → an open provider lists it; `available` → a configured provider ships it, already selectable; `enabled` → this account turned it on), with whatever is known about it. Names no provider: Berget/Anthropic/OpenAI/Hugging Face all arrive as descriptors from `providers.js`, so a fifth is a registry entry and nothing here changes. Owns `buildCatalog`, the deterministic `rankCatalog` (no model call, the query never leaves the isolate), the MODEL ALLOWANCE (`modelAllowance`/`enableVerdict`/`applyAllowance` over `config.js`'s `models` block — and it governs the `discovered → enabled` transition ONLY), and the `catalogBlock` the agent folds into a turn. Verification is ORTHOGONAL to the lifecycle by design |
 | `model-checks.js` | MODEL VERIFICATION — the established metrics, and the deliberately soft way the result is used: none is a hard blocker, they report what is KNOWN rather than what is permitted. Nine checks, each a failure mode this project actually hit (`reachable`/`completion` ← the round-4/6 empty-completion bug, `json` ← invariant 3's whole reason, `streaming`, `swedish` ← invariant 6, `citations`, `injection` ← round 3, `vision`, `latency` ← round 1's GLM priors). Each is ONE bounded direct model call with a DETERMINISTIC assertion — no model judges another (invariant 1) — run through the same provider dispatch a real turn uses. `runCheck` never throws (an error IS a recorded failure) and clears its raced timeout; `checklistFor`/`checkSummary` keep `untested` distinct from `fail` |
-| `models-agent.js` | The Models AGENT's mode behaviour — an ENRICHMENT, not an executor (its answer phase is the ordinary `research` one): forces Hub search on for every turn via the generic `state.forceAux` seam, and on a model-lifecycle message (`modelIntent`, EN+SV per invariant 6; ranking terms via `modelQuery`) folds the live cross-provider catalog in as a priced, verification-annotated context block and emits the `model_cards` SSE event the composer renders as pickable cards |
+| `models-agent.js` | The Models AGENT's mode behaviour — an ENRICHMENT, not an executor (its answer phase is the ordinary `research` one): forces Hub search on for every turn via the generic `state.forceAux` seam and raises the hub's per-request search ceiling through the equally generic `state.auxMaxPerRequest` seam (both carry into developer mode's source-research path via `runForcedAuxSearches` — feedback #36), and on a model-lifecycle message (`modelIntent`, EN+SV per invariant 6; ranking terms via `modelQuery`) folds the live cross-provider catalog in as a priced, verification-annotated context block and emits the `model_cards` SSE event the composer renders as pickable cards |
 | `models-api.js` | The LIFECYCLE surface: `GET /api/models/catalog?q=` (every model, every provider, with state + price + checklist), `POST /api/models/verify` (run the checks and record them — evidence, never permission), `POST /api/models/enable` / `/disable` (the promotion, re-validated against the LIVE catalog so a hand-rolled request can't enable an unpriced or over-allowance model). Signed-in only; fail-soft to fewer rows + a spelled-out note |
 | `user-models.js` | The PER-ACCOUNT MODEL RECORD, two independent maps in `users.settings_json` (no migration; `settings.js` `mergeStoredSettings` stops a knob write from wiping either). ENABLED (`hf_models` — a WIRE key kept from before the generalisation, internal-only, same split as `/api/projects*` vs "workspace") is the promotion pipeline; CHECKS (`model_checks`) is verification results for ANY model, which is why they are separate maps rather than one list. Enabled entries are PRICE SNAPSHOTS taken at enable time, deliberately: billing must not depend on a third-party fetch, and the price the user agreed to is the price they keep until they re-enable (`hfRefreshNotes` surfaces the drift instead of hiding it). A disable KEEPS the verification record — what was learned stays learned |
 | `shodan.js` | Shodan host-intelligence client + target extraction (registered as an EXTENSION in `extensions.js`, opt-in `shodan_mcp` knob) — see the **integrations** skill |
@@ -564,7 +565,10 @@ Node-tested; the worker is browser-only glue like sandbox.js; since
 2026-07-24 the SAME engine also serves the Se/rver app through
 `ondevice-drs.js` — the DRS glue owning the browser-local `dr_ondevice`
 knob, the gear-panel section (download with the exact-size inline consent,
-cancel/resume, delete, capability verdicts), and the cached-model listing
+cancel/resume, delete, capability verdicts, and the GRAYED-OUT row for a
+model whose upstream browser build has not shipped — declared by the
+catalog's `browserBuild`, lifted by the live `probeModelPublished` tree
+check, feedback #36), and the cached-model listing
 behind models.js's "📱 On-device" dropdown group; a pick from that group
 makes stream.js run the whole exchange through the client-side pipeline
 (`runOnDeviceExchange`) instead of `/api/chat`, the "ondevice::" option
@@ -868,25 +872,34 @@ deterministic, non-LLM get-started responder both tiers use before a model
 is configured); `deeplink-core.js` (the pure parser behind shareable
 "open with a question ready to ask" URLs) and `agent-preview.js` (the
 agent-registry preview surface at `public/agents/preview.html`);
-`sandbox-files.js` (the file-mounting pure core for the in-browser Linux
-sandbox — `planSourceMount`, the `/workspace` + `/mnt` layout, the tiered
-ingest; see `docs/SANDBOX-HOST-COMMANDS.md` part B) and `boot-messages.js`
+`sandbox-files.js` (the file-mounting pure core for EVERY execution
+environment — `planMounts` (the one plan they all mount from, called by
+`sandbox.js`'s `preparePlan` and by the remote runner), `planRemoteMount` (that
+plan as one ustar archive + the symlink script), `planSourceMount`, the
+`/workspace` + `/mnt` layout, the tiered ingest; see
+`docs/SANDBOX-HOST-COMMANDS.md` part B) and `boot-messages.js`
 (the rotating boot-bar quips shown while the CheerpX VM streams and boots);
 `exec-backends-core.js` (the EXECUTION-ENVIRONMENT seam's shared pure core —
 the execution counterpart of `websearch-backends-core.js`: the backend
-registry, `normalizeExecBackend`, the **DREE/1** client (`GET /healthz` +
-`POST /exec`, `probeRunner`/`makeLocalRunner`), and `selectRunner`, which
-returns the in-browser-VM bridge UNCHANGED unless a local runner is fully
-configured — so the default path can never regress; both tiers import it) with
-`exec-env.js` (its Se/rver glue: the browser-local `dr_exec_env` config —
+registry (each entry declaring the `tiers` it may be offered in),
+`normalizeExecBackend`, the **DREE/1** client (`GET /healthz` + `POST /exec`,
+plus the two OPTIONAL capabilities `POST /mount` and `POST /source`,
+`probeRunner`/`makeLocalRunner`/`makeContainerRunner`), and `selectRunner`,
+which returns the in-browser-VM bridge UNCHANGED unless a remote environment is
+fully configured AND allowed in the caller's tier — so the default path can
+never regress and Se/cure can never select the server-side container
+(invariant 4, pinned by `exec-backends-core.test.js`); both tiers import it)
+with `exec-env.js` (its Se/rver glue: the browser-local `dr_exec_env` config —
 per DEVICE, since a runner lives on one machine and its URL/key then never
-reach the server — and the gear-panel section with the ⓘ docs and Test
-connection), the reference runner `public/cure/local-exec/runner.mjs` (one
-dependency-free Node file: auto-detects Apple `container`/docker/podman/
-nerdctl, one throwaway container per research session, `NETWORK=none` by
-default) and its setup page `public/cure/local-exec/index.html`
-(`/cure/local-exec`, a reserved replay slug); see
-`docs/EXECUTION-ENVIRONMENTS.md`;
+reach the server — the per-tab `execSessionId()` that keeps one conversation on
+one machine, `releaseExecSession()` on New chat, and the gear-panel section with
+the ⓘ docs and Test connection), the reference runner
+`public/cure/local-exec/runner.mjs` (one dependency-free Node file: auto-detects
+Apple `container`/docker/podman/nerdctl, one throwaway container per research
+session, `NETWORK=none` by default, and `POST /mount` streaming the page's files
+into `tar`) and its setup page `public/cure/local-exec/index.html`
+(`/cure/local-exec`, a reserved replay slug); the server-side third environment
+is `src/exec-container.js`; see `docs/EXECUTION-ENVIRONMENTS.md`;
 `agent-backdrop-core.js` + `agent-backdrop.js` (the agent activity
 backdrop, split pure-core/DOM per the pure-core convention); and
 `umbrella-spinner.js` (the Se/cure intro umbrella, shrunk and looped as a
