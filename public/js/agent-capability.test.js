@@ -36,6 +36,8 @@ import {
   MODE_THEMES,
   TOOL_CLASSES,
   TOOL_FALLBACKS,
+  capHasTool,
+  capSearch,
   defaultAgentForMode,
   findAgent,
   resolveCapability,
@@ -365,4 +367,58 @@ test("routing: a sixth agent is data — adding one to the registry routes it", 
   // without the sandbox knob the flagged row is skipped and the request falls
   // through to the derived default.
   assert.equal(resolveRequestAgent(extended, { scout_mode: true }, DEV).agent.id, "introspection");
+});
+
+// ---- the narrowing accessors (stage 5: declared → executed) -------------------
+//
+// capBound has its own suite next to the Worker constants it clamps against
+// (src/agent-bounds.test.js). These two live here because they are wholly
+// expressible in the client module graph.
+
+test("capSearch narrows in both directions and never widens", () => {
+  const off = { search: { web: false, auxSources: false } };
+  const on = { search: { web: true, auxSources: true } };
+  // A knob that is off wins over any declaration…
+  assert.deepEqual(capSearch(on, { web: false }).web, false);
+  // …and a declaration that is off wins over any knob.
+  assert.deepEqual(capSearch(off, { web: true }).web, false);
+  // Both on is the only way through.
+  assert.deepEqual(capSearch(on, { web: true }).web, true);
+  // Absent request fields mean "not asked about", not "denied".
+  assert.deepEqual(capSearch(on, {}).auxSources, true);
+  assert.deepEqual(capSearch(off, {}).auxSources, false);
+  // No capability at all is the request alone — a run that never consulted
+  // the registry behaves exactly as it did before this existed.
+  assert.deepEqual(capSearch(null, { web: true }), { web: true, auxSources: true, maxQueries: null });
+});
+
+test("capSearch takes the LOWER query ceiling, and null means unbounded", () => {
+  assert.equal(capSearch({ search: { maxQueries: 3 } }, { maxQueries: 9 }).maxQueries, 3);
+  assert.equal(capSearch({ search: { maxQueries: 9 } }, { maxQueries: 3 }).maxQueries, 3);
+  assert.equal(capSearch({ search: { maxQueries: null } }, { maxQueries: 4 }).maxQueries, 4);
+  assert.equal(capSearch({ search: { maxQueries: 4 } }, {}).maxQueries, 4);
+  assert.equal(capSearch({ search: {} }, {}).maxQueries, null);
+  assert.equal(capSearch({ search: { maxQueries: 0 } }, {}).maxQueries, 0, "zero is a real ceiling");
+  // Garbage is not a ceiling — it is an absent one (invariant 2 at the seam).
+  for (const bad of [-1, NaN, Infinity, "3", null]) {
+    assert.equal(capSearch({ search: { maxQueries: bad } }, {}).maxQueries, null, `${String(bad)} ignored`);
+  }
+});
+
+test("the orchestrator's declared query ceiling is the executor's own budget", () => {
+  // The one search field that was genuinely declared-but-unread before stage 5:
+  // MAX_ORCH_SEARCHES now comes from the spec, clamped to itself.
+  const orch = resolveCapability(findAgent(realRegistry(), "orchestrator"));
+  assert.equal(orch.search.maxQueries, MAX_ORCH_SEARCHES);
+  assert.equal(capSearch(orch, { web: true }).maxQueries, MAX_ORCH_SEARCHES);
+});
+
+test("capHasTool reads the declared classes and nothing else", () => {
+  const build = resolveCapability(findAgent(realRegistry(), "agent-builder"));
+  assert.ok(capHasTool(build, "source-read"));
+  assert.ok(capHasTool(build, "build-publish"));
+  assert.ok(!capHasTool(build, "shell"));
+  // An agent with no tools, and no capability at all, both select nothing.
+  assert.ok(!capHasTool(resolveCapability(findAgent(realRegistry(), "research")), "source-read"));
+  assert.ok(!capHasTool(null, "source-read"));
 });

@@ -9,6 +9,11 @@
 // — so the server reaches it through this re-export. New shared AgentSpec logic
 // goes in agent-spec-core.js; do not reintroduce a copy.
 
+/** One resolved capability block — the shape `resolveCapability` returns.
+ * Re-declared here so Worker modules can name the type without reaching across
+ * into `public/`, the same courtesy the value re-exports below provide.
+ * @typedef {import('../public/js/agent-spec-core.js').AgentCapability} AgentCapability */
+
 export {
   AGENTS_PATH,
   AGENT_LINK_SERVICES,
@@ -34,6 +39,9 @@ export {
   TOOL_CLASSES,
   TOOL_FALLBACKS,
   agentsFromSnapshot,
+  capBound,
+  capHasTool,
+  capSearch,
   composerMarkup,
   defaultAgentForMode,
   resolveCapability,

@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { isTransientConnectStatus, contextOverflowMessage } from "./answer-stream.js";
 import { collectConflicts } from "./pipeline-inputs.js";
+import { searchPolicyFor } from "./pipeline.js";
 import { normalizeTriage } from "./triage.js";
 
 describe("normalizeTriage", () => {
@@ -268,37 +269,72 @@ describe("gap loop stops when a follow-up wave surfaces no new sources", () => {
 describe("the web-search knob gates Exa only — depth still runs over other sources", () => {
   const src = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
 
-  test("runSearches gates the Exa call on state.webSearch", () => {
+  // The gate is now reached through searchPolicyFor(state) — the knob ANDed
+  // with the answering agent's declared ceiling (AgentSpec 0.2.0
+  // capability.search). These pin the POLICY the way prompt-sets.test.js pins
+  // a prompt role rather than a literal call: that the knob still decides is
+  // asserted against the helper, and behaviour against the helper's own suite.
+  test("the knob reaches the Exa gate through the search policy", () => {
+    // searchPolicyFor must read state.webSearch — if it stopped, every pin
+    // below would still match while the knob quietly did nothing.
+    assert.match(src, /export function searchPolicyFor\(state\)[\s\S]*capSearch\([\s\S]*\{ web: state\.webSearch \}\)/);
+  });
+
+  test("runSearches gates the Exa call on the resolved policy", () => {
     // The web leg (webSearch(env,…) + its billing counter) lives behind the
-    // knob; without the gate the knob would still search when off. The call
-    // carries the user's picked SOURCE — which engine runs it — but the gate
-    // is what decides whether it runs at all.
+    // gate; without it the knob would still search when off. The call carries
+    // the user's picked SOURCE — which engine runs it — but the gate is what
+    // decides whether it runs at all.
     assert.match(
       src,
-      /if \(state\.webSearch\) \{[\s\S]*webSearch\(env, log, query, state\.plan\.searchDepth, \{ source: state\.searchSource \|\| "" \}\)/,
+      /if \(policy\.web\) \{[\s\S]*webSearch\(env, log, query, state\.plan\.searchDepth, \{ source: state\.searchSource \|\| "" \}\)/,
     );
-    assert.match(src, /if \(state\.webSearch\) \{[\s\S]*state\.searchCount \+= batch\.length/);
+    assert.match(src, /if \(policy\.web\) \{[\s\S]*state\.searchCount \+= batch\.length/);
   });
 
   test("runAuxSearches runs regardless of the knob (outside the Exa gate)", () => {
-    // The aux wave (HF Hub & co) must NOT be inside `if (state.webSearch)`, so
-    // it still fires with web search off — depth over available sources.
+    // The aux wave (HF Hub & co) must NOT be inside the Exa gate, so it still
+    // fires with web search off — depth over available sources. It has its own
+    // declaration (`search.auxSources`), which is a different question.
     const runSearches = src.slice(src.indexOf("async function runSearches"), src.indexOf("async function runAuxSearches"));
     assert.match(runSearches, /await runAuxSearches\(ctx, batch, round\);/);
-    // The aux call sits after the closing brace of the webSearch block, not within it.
+    // The aux call sits after the closing brace of the Exa block, not within it.
     const auxIdx = runSearches.indexOf("await runAuxSearches");
-    const gateIdx = runSearches.indexOf("if (state.webSearch)");
+    const gateIdx = runSearches.indexOf("if (policy.web)");
     assert.ok(gateIdx >= 0 && auxIdx > gateIdx, "aux call comes after the Exa gate");
   });
 
   test("web-off short-circuits to the model answer ONLY when no other source applies", () => {
     // Developer-mode source research and any applicable aux source (SEARCH_SOURCES
     // intent) keep the research path alive with the knob off; runWithoutSearch is
-    // the fallback for when none applies.
+    // the fallback for when none applies. The aux half is now also subject to the
+    // agent's own auxSources declaration.
     assert.match(
       src,
-      /if \(!state\.webSearch\) \{[\s\S]*if \(!ctx\.hasSource && !SEARCH_SOURCES\.some\(\(s\) => s\.intent\(ctx\.lastUser\)\)\) \{[\s\S]*return runWithoutSearch\(ctx\);/,
+      /if \(!policy\.web\) \{[\s\S]*if \(!ctx\.hasSource && !\(policy\.auxSources && SEARCH_SOURCES\.some\(\(s\) => s\.intent\(ctx\.lastUser\)\)\)\) \{[\s\S]*return runWithoutSearch\(ctx\);/,
     );
+  });
+
+  test("an introspection agent's `search.web: false` does not disarm the knob", () => {
+    // The regression this stage could most easily have shipped. Introspection
+    // declares web:false because its OWN phase does not search; the pipeline
+    // reaches the research flow below only when the per-message
+    // externalSourceIntent gate hands the turn back precisely in order to
+    // search. A capability governs the phase it names and no other.
+    const introspecting = { webSearch: true, capability: { answerPhase: "source-research", search: { web: false } } };
+    assert.equal(searchPolicyFor(/** @type {any} */ (introspecting)).web, true);
+    // …while an agent that DOES declare the research phase narrows it.
+    const declared = { webSearch: true, capability: { answerPhase: "research", search: { web: false } } };
+    assert.equal(searchPolicyFor(/** @type {any} */ (declared)).web, false);
+    // …and no declaration at all is the knob alone, both ways.
+    assert.equal(searchPolicyFor(/** @type {any} */ ({ webSearch: true, capability: null })).web, true);
+    assert.equal(searchPolicyFor(/** @type {any} */ ({ webSearch: false, capability: null })).web, false);
+  });
+
+  test("a declared search ceiling can never widen the knob", () => {
+    // Narrowing in both directions: the knob off wins over any declaration.
+    const state = { webSearch: false, capability: { answerPhase: "research", search: { web: true } } };
+    assert.equal(searchPolicyFor(/** @type {any} */ (state)).web, false);
   });
 
   test("runWithoutSearch scales the model answer by the slider's report tier", () => {

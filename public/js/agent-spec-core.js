@@ -314,6 +314,73 @@ export function resolveCapability(a) {
   });
 }
 
+// ---- reading a capability at run time ----------------------------------------
+//
+// Stage 2 shipped the capability block DECLARED: a test asserted each field
+// equalled the constant that actually governed the run, which caught drift but
+// meant a spec could not vary anything. These three accessors are what make a
+// field EXECUTED — the pipeline reads the agent's declaration instead of the
+// constant it used to import.
+//
+// Every one of them is NARROWING. The platform's own limit is passed in as both
+// the default (a spec that declares nothing gets exactly today's behaviour) and
+// the ceiling (a spec may ask its own run to do less, never more). That
+// asymmetry is the whole safety argument for stage 7: once a spec can be
+// authored by a user rather than committed to the repo, the worst a hostile
+// declaration can do is make its own agent do less work. There is no value of
+// any capability field that reaches further than the code already reaches.
+
+/**
+ * A declared bound, clamped to the platform limit for the phase that runs it.
+ * `limit` is the constant the code enforces (MAX_SOURCE_TOOL_ROUNDS and
+ * friends), so an absent, malformed or over-large declaration all resolve to
+ * exactly today's value.
+ * @param {AgentCapability | null | undefined} cap
+ * @param {string} key one of BOUND_KEYS
+ * @param {number} limit the platform's own ceiling for this bound
+ * @returns {number}
+ */
+export function capBound(cap, key, limit) {
+  const v = /** @type {any} */ (cap?.bounds)?.[key];
+  if (typeof v !== "number" || !Number.isFinite(v) || v < 0) return limit;
+  return Math.min(v, limit);
+}
+
+/**
+ * The search policy for a run: the agent's declared ceiling ANDed with what the
+ * request asked for. A knob that is off stays off whatever the spec says, and a
+ * spec that declares `web: false` cannot be re-enabled by a request — the two
+ * compose by narrowing in both directions.
+ *
+ * `maxQueries: null` means "no agent-imposed cap" on either side, so it yields
+ * to whichever side names a number.
+ * @param {AgentCapability | null | undefined} cap
+ * @param {{ web?: boolean, auxSources?: boolean, maxQueries?: number|null }} requested
+ * @returns {{ web: boolean, auxSources: boolean, maxQueries: number|null }}
+ */
+export function capSearch(cap, requested = {}) {
+  const s = cap?.search || /** @type {any} */ ({});
+  const caps = [s.maxQueries, requested.maxQueries].filter(
+    (/** @type {any} */ n) => typeof n === "number" && Number.isFinite(n) && n >= 0,
+  );
+  return {
+    web: requested.web !== false && s.web !== false,
+    auxSources: requested.auxSources !== false && s.auxSources !== false,
+    maxQueries: caps.length ? Math.min(.../** @type {number[]} */ (caps)) : null,
+  };
+}
+
+/**
+ * Whether a capability selects a tool CLASS. A null capability selects none,
+ * which is what a request that never consulted the registry means.
+ * @param {AgentCapability | null | undefined} cap
+ * @param {string} cls a key of TOOL_CLASSES
+ * @returns {boolean}
+ */
+export function capHasTool(cap, cls) {
+  return Array.isArray(cap?.tools) && /** @type {string[]} */ (cap?.tools).includes(cls);
+}
+
 /**
  * The prompt set an agent runs on: its declared `capability.prompts`, else the
  * default for its answer phase. Always a key of PROMPT_SETS for a valid spec.

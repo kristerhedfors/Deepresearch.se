@@ -138,6 +138,7 @@ import { normalizeSearchSource } from "./websearch-backends.js";
  *   answerPhase?: string | null,
  *   agentId?: string | null,
  *   promptSet?: string | null,
+ *   capability?: import('./agent-spec.js').AgentCapability | null,
  *   sdkMode?: boolean,
  *   orchestratorMode?: boolean,
  *   orchestration?: { agents: number, waves: number, failed: number, searches: number, swarm?: { nodes: number, members: number, agreement: number, model: string } },
@@ -297,6 +298,16 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // because introspection and research choose their phase per message, and
   // whichever they choose should speak in the voice its agent declared.
   const promptSet = routed ? resolvePromptSet(routed.agent) : null;
+  // The agent's whole RESOLVED capability, carried for every routed request.
+  // Until this landed only three of its fields ever reached a run (the phase,
+  // the agent id, the prompt set) and the rest were pinned to constants by
+  // tests — declared but never read. The pipeline now reads bounds, search
+  // policy and tool classes off this, each NARROWING against the platform's own
+  // limit (agent-spec-core capBound / capSearch), so a shipped agent's
+  // declaration reproduces today's behaviour exactly and cannot exceed it.
+  // Null whenever the registry was not consulted or could not be read, which
+  // every reader treats as "use the constant" (invariant 2).
+  const capability = routed?.capability ?? null;
   // The experimental bash-lite sandbox transcript: the browser ran an agentic
   // shell loop (public/js/bash-agent.js) before sending, and attached what it
   // ran + the real output. Honored only when this account's knob is on
@@ -392,6 +403,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       answerPhase,
       agentId,
       promptSet,
+      capability,
       buildSlug,
       userId: String(identity.id),
     });
@@ -863,7 +875,7 @@ export function resolveJsonModel(catalog, userModel) {
  * @param {string} jsonModel
  * @param {boolean} webSearch
  * @param {number} budgetS
- * @param {Partial<EnrichmentOptions> & { searchSource?: string, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, swarm?: any, orchWorkflow?: any, swarmResults?: any, outrospectionMode?: boolean, answerPhase?: string | null, agentId?: string | null, promptSet?: string | null, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
+ * @param {Partial<EnrichmentOptions> & { searchSource?: string, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, swarm?: any, orchWorkflow?: any, swarmResults?: any, outrospectionMode?: boolean, answerPhase?: string | null, agentId?: string | null, promptSet?: string | null, capability?: any, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
  * @returns {ChatRequestState}
  */
 function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
@@ -938,6 +950,13 @@ function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
     // phasePrompt). Null falls back to the executing phase's default set, which
     // is what every shipped agent declares anyway.
     promptSet: extras.promptSet || null,
+    // The resolved capability of the agent answering this request, or null when
+    // no registry was consulted (the MCP channel, an unreadable snapshot, a
+    // plain Deep Research turn that never needed one). Read through the
+    // narrowing accessors in agent-spec-core.js — never destructured directly —
+    // so every consumer keeps the platform constant as both its default and its
+    // ceiling.
+    capability: extras.capability || null,
     buildSlug: extras.buildSlug || null,
     userId: extras.userId || "",
     // This channel renders the interactive inline-quiz event (src/quiz.js;
