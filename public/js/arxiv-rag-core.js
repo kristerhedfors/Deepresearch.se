@@ -352,6 +352,15 @@ export function htmlSections(html) {
     const h = /<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/i.exec(own);
     const heading = h ? htmlToText(h[1]).slice(0, 90) : "";
     const text = htmlToText(own.replace(/<h[1-6][^>]*>[\s\S]*?<\/h[1-6]>/i, " "));
+    // Skip the bibliography. It is a citation LIST, not prose: indexed as text
+    // it produces chunks that can only ever match on author surnames, and it
+    // was 16% of this function's output across a 9-paper sample (66,235 of
+    // 406,703 chars, measured 2026-07-26). LaTeXML marks it with
+    // class="ltx_bibliography", but the heading test also catches renderings
+    // that don't, and costs nothing.
+    if (/\bltx_bibliography\b/.test(parts[i].slice(0, 400)) || /^(references|bibliography)\b/i.test(heading)) {
+      continue;
+    }
     if (text.length >= MIN_SECTION_CHARS) out.push({ heading, text });
   }
   if (!out.length) {
