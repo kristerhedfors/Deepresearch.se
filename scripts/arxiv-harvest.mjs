@@ -24,10 +24,14 @@
 // Old-style ids (`cs/0503001`) are pre-2007 and always fall outside a
 // last-year window, so they are dropped by the same rule.
 //
-// The window is sharded by month and the shards run concurrently. arXiv
-// answers overload with 503 + Retry-After rather than a hard rate limit, so
-// each shard honours Retry-After and backs off; --concurrency 3 has been the
-// sweet spot in practice. Each shard checkpoints its resumption token to
+// The window is sharded by month. arXiv answers overload with 503 +
+// Retry-After (and the query API with 429), so each shard honours Retry-After
+// and backs off. Throughput is deliberately NOT maximised: the API Terms of
+// Use ask for one request every three seconds on a single connection, counted
+// across OAI-PMH and the query API together, so the defaults are
+// --concurrency 1 --pause 3000 (they were 3 and 1000, about 9x the published
+// rate, until this was checked on 2026-07-26). A full year takes roughly half
+// an hour at that rate. Each shard checkpoints its resumption token to
 // <out>/state/<shard>.json, so an interrupted harvest resumes instead of
 // restarting.
 
@@ -44,7 +48,14 @@ const UA = "deepresearch.se-arxiv-harvest/1.0 (+https://deepresearch.se)";
 
 /** @param {string[]} argv */
 export function parseArgs(argv) {
-  const out = { months: 12, set: "", out: "data/arxiv", concurrency: 3, until: "", maxPages: 0 };
+  // Defaults are TERMS-COMPLIANT, not maximum-throughput (corrected
+  // 2026-07-26). arXiv's API Terms of Use ask for "no more than one request
+  // every three seconds, and limit requests to a single connection at a time",
+  // counted across the query API, OAI-PMH and RSS together — so the previous
+  // concurrency 3 + 1 s pause ran about 9x the published rate. One connection
+  // with a 3 s pause is the documented limit; raise --concurrency/--pause only
+  // if arXiv support has granted this project a higher rate.
+  const out = { months: 12, set: "", out: "data/arxiv", concurrency: 1, pauseMs: 3000, until: "", maxPages: 0 };
   for (let i = 0; i < argv.length; i++) {
     const [flag, inline] = argv[i].split("=");
     const value = () => (inline !== undefined ? inline : argv[++i]);
@@ -52,6 +63,7 @@ export function parseArgs(argv) {
     else if (flag === "--set") out.set = String(value() || "");
     else if (flag === "--out") out.out = String(value());
     else if (flag === "--concurrency") out.concurrency = Number(value());
+    else if (flag === "--pause") out.pauseMs = Number(value());
     else if (flag === "--until") out.until = String(value());
     else if (flag === "--max-pages") out.maxPages = Number(value());
     else if (flag === "--help" || flag === "-h") out.help = true;
@@ -295,7 +307,7 @@ async function harvestShard(shard, opts) {
       log(`stopping at --max-pages ${opts.maxPages} (resumable)`);
       break;
     }
-    await sleep(1000); // be a good citizen between pages
+    await sleep(opts.pauseMs ?? 3000); // the published rate: 1 request / 3 s
   }
   await new Promise((r) => sink.end(r));
   return { kept, seen };
@@ -306,7 +318,7 @@ async function harvestShard(shard, opts) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    console.log("usage: node scripts/arxiv-harvest.mjs [--months 12] [--set cs] [--out data/arxiv] [--concurrency 3] [--until YYYY-MM-DD] [--max-pages N]");
+    console.log("usage: node scripts/arxiv-harvest.mjs [--months 12] [--set cs] [--out data/arxiv] [--concurrency 1] [--pause 3000] [--until YYYY-MM-DD] [--max-pages N]");
     return;
   }
   const today = args.until || new Date().toISOString().slice(0, 10);

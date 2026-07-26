@@ -109,3 +109,20 @@ bucket_name = "deepresearch-se-storage"
 [[vectorize]]
 binding = "RAG_INDEX"
 index_name = "deepresearch-se-rag"
+
+# The arXiv corpus, embedded once and searched by src/arxiv-rag.js — the
+# hosted DENSE tier of the arXiv research source. Created 2026-07-26 with:
+#
+#   npx wrangler vectorize create deepresearch-se-arxiv --dimensions=1024 --metric=cosine
+#
+# Same 1024 dims as RAG_INDEX because the same embedding model builds it
+# (intfloat/multilingual-e5-large). Populated by scripts/arxiv-vectorize.mjs,
+# which embeds the harvested corpus and upserts it incrementally.
+#
+# Removing this binding switches the tier OFF rather than breaking anything:
+# src/arxiv.js falls back to the live arXiv API, which is how every deployment
+# without the index already behaves. As with the bindings above, the resource
+# must EXIST before this is declared or every deploy fails outright.
+[[vectorize]]
+binding = "ARXIV_INDEX"
+index_name = "deepresearch-se-arxiv"

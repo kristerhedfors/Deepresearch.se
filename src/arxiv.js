@@ -91,6 +91,11 @@
 // searches × up to 3 ladder rungs, all from Cloudflare's shared egress IPs,
 // and arXiv answers too much traffic with 429 (observed — see the header).
 import { cacheGet, cachePut } from "./edge-cache.js";
+// The hosted dense tier, when this deployment has the index bound. It is
+// PREFERRED over the live API (better retrieval, and arXiv leaves the request
+// path entirely, so the rate limit above stops applying); the live API stays
+// as the fallback for every deployment and every failure.
+import { arxivRagAvailable, arxivRagSearch } from "./arxiv-rag.js";
 
 /**
  * One source-registry item (same shape Exa results carry).
@@ -564,6 +569,19 @@ export function arxivCacheKey(params) {
  */
 export async function arxivSearch(env, log, query, { skipKeys } = {}) {
   const started = Date.now();
+  // Tier 1: the hosted index, when bound. It gets the PROSE query — dense
+  // retrieval wants the natural question, and the noise stripping below is a
+  // lexical-AND concern that would throw away signal an embedder uses. A null
+  // return (unavailable, or any failure) falls through to the live API, so a
+  // deployment without the binding behaves exactly as before.
+  if (arxivRagAvailable(env)) {
+    const dense = await arxivRagSearch(env, log, query, { limit: MAX_ITEMS });
+    if (dense && dense.length) {
+      const durationMs = Date.now() - started;
+      log.info("arxiv.search", { query, tier: "dense", results: dense.length, duration_ms: durationMs });
+      return { items: dense, durationMs, usedKeys: [] };
+    }
+  }
   /** @type {string[]} */
   const usedKeys = [];
   /** @type {ArxivItem[]} */

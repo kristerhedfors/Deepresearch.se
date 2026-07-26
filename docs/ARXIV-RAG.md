@@ -388,8 +388,8 @@ worth repeating, since the first capacity plan was built on it and was off by
 ## 6. Operating it
 
 ```bash
-# 1. Harvest the last year (~25 min, resumable — rerun to continue)
-npm run arxiv:harvest -- --months 12 --out data/arxiv --concurrency 3
+# 1. Harvest the last year (resumable — rerun to continue; see the timing note)
+npm run arxiv:harvest -- --months 12 --out data/arxiv
 
 # 2. What did we get?
 npm run arxiv:corpus
@@ -406,6 +406,47 @@ npm run arxiv:search -- --deep "what batch size did they train with"     # + ful
 npm run arxiv:fulltext -- 2607.00042 2606.01131                          # pre-warm papers
 npm run arxiv:fulltext -- --stats
 ```
+
+**Timing, corrected 2026-07-26.** The "~25 min" harvest assumed
+`--concurrency 3` with a 1 s inter-page pause — about **9x** arXiv's published
+rate (the API Terms of Use ask for one request every three seconds on a single
+connection, counted across OAI-PMH and the query API together). The defaults
+are now terms-compliant, and at that rate one page of ~1300 records takes about
+2.6 minutes end to end, so **a full year is roughly 15 hours**, not 25 minutes.
+Plan it as an unattended background job rather than a step inside a session. It
+resumes per month shard and the shards run newest-first, so an interrupted run
+still leaves the most recent months complete — which is what most "latest
+research" questions want anyway.
+
+### Serving it from the Worker (the hosted tier)
+
+The pack above is what the CLI bake-off searches. To make the corpus reachable
+from `/api/chat` there is no 335 MB file to host anywhere — push the vectors to
+Vectorize instead:
+
+```bash
+npx wrangler vectorize create deepresearch-se-arxiv --dimensions=1024 --metric=cosine
+NODE_USE_ENV_PROXY=1 node scripts/arxiv-vectorize.mjs --index deepresearch-se-arxiv
+```
+
+`scripts/arxiv-vectorize.mjs` embeds the harvested corpus and upserts it
+**incrementally**, checkpointing after each batch, because the machine running
+it is usually ephemeral: Vectorize is the durable store and a re-run skips
+everything already pushed, so re-running after any interruption is always the
+right move. `--limit N` pushes a slice first; `--dry-run` embeds without
+uploading (and deliberately does not checkpoint, or the next real run would
+skip rows it never uploaded).
+
+`NODE_USE_ENV_PROXY=1` is required behind an agent proxy: Node's built-in fetch
+ignores `HTTPS_PROXY` without it, and every embedding call then fails with a
+503 "DNS resolution failure" that reads exactly like Berget being down.
+
+Then declare the `ARXIV_INDEX` binding in `wrangler.toml` and `src/arxiv-rag.js`
+serves dense retrieval, with `src/arxiv.js` falling back to the live arXiv API
+whenever the index is absent, errors, or returns nothing above its relevance
+floor. Cost at this corpus size is about **$3-4/month** (Vectorize bills
+`(stored_vectors + monthly_queries) × dimensions`, so the index size is charged
+once per month rather than per query) plus a one-time ~€3 of Berget embeddings.
 
 Rebuilding the evaluation:
 
