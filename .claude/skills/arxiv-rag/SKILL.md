@@ -194,6 +194,23 @@ for *"go deeper on these papers"* (topical discovery works: nDCG 0.759/0.795)
 and capped at ~40% for *"find me the paper that did X in section 4"*. The
 second use case needs the eager flat build — 13.3M vectors, ~1.2 TB, ~18 h.
 
+**Fetch arXiv's HTML rendering first, LaTeX source second.** `arxiv.org/html/<id>`
+has existed since late 2023 and covers this whole corpus. Measured over 30
+papers: HTML 87% coverage, LaTeX 93%, **either 100%** (they fail on different
+papers), and HTML also yields more text (49,902 vs 44,558 chars/paper), finer
+sections (26 vs 21) and **7x less transfer** (0.43 MB vs a 3.07 MB tarball).
+It needs no gzip and no tar, so the whole ingestion path runs inside a
+Cloudflare Worker with `fetch` and string work — which is what makes a
+whole-corpus build Cloudflare-native (docs/ARXIV-RAG.md §9.9). An earlier
+estimate of "~1.2 TB, needs an AWS account" was anchored on the tarball and was
+simply wrong; the real figure is ~140 GB from arxiv.org with no credentials.
+
+One HTML trap: LaTeXML **nests** subsections inside their parent `<section>`,
+and a non-greedy `<section>…</section>` match ends at the CHILD's closing tag —
+which swallows the child's prose into the parent AND loses the child. Split on
+the opening tag instead (what `htmlSections` does), the same shape as
+`latexSections`.
+
 Two LaTeX-assembly traps, both found by breaking a real paper:
 
 - A submission is often a thin wrapper plus `\input` fragments. Concatenating

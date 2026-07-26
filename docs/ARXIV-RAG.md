@@ -533,8 +533,9 @@ Two of those numbers are structural rather than merely large:
 flat full-text index cannot be one Vectorize index. It can be two — the account
 limit is 50,000 indexes — but that means fanning every query out and merging.
 
-**1.2 TB has to come from arXiv's S3 requester-pays bucket**, not from
-`export.arxiv.org`. arXiv groups `src` into ~500 MB tars keyed by month
+**~1.2 TB of *source tarballs* has to come from arXiv's S3 requester-pays
+bucket**, not from `export.arxiv.org`. (§9.9 revisits this: the tarball is the
+wrong thing to fetch, and the real figure is ~7x smaller with no AWS at all.) arXiv groups `src` into ~500 MB tars keyed by month
 (`src/arXiv_src_2507_001.tar` …) with a manifest, so a one-year slice is
 directly selectable — but the downloader pays AWS egress, roughly $110 for
 the year. Pulling 255,000 papers one at a time off the public endpoint would
@@ -701,3 +702,85 @@ node scripts/arxiv-fulltext-eval.mjs --papers 120 --questions 60 --index data/ar
 
 Warms 120 papers, generates body questions from their chunks, and prints both
 the in-experiment ceiling and the real-index one. Roughly €0.15 and ~6 minutes.
+
+### 9.9 It is Cloudflare-native after all — the 1.2 TB was the wrong number
+
+§9.2 priced the whole-corpus build at ~1.2 TB of transfer out of arXiv's
+requester-pays S3 bucket, and called an AWS account a prerequisite. That was
+wrong, and the reason is worth stating plainly: it assumed the only way to get
+a paper's body is its **LaTeX source tarball**. It is not. arXiv has published
+a LaTeXML **HTML rendering** of every submission since late 2023 — which covers
+this entire corpus — at `arxiv.org/html/<id>`, with no credentials.
+
+Measured over 30 papers spread across the corpus, HTML against the shipped
+LaTeX path:
+
+| | HTML | LaTeX source |
+|---|---|---|
+| Coverage | 87% | 93% |
+| **Either one** | **100%** | |
+| Body text per paper | **49,902 chars** | 44,558 |
+| Sections per paper | **26.0** | 20.9 |
+| Transfer per paper | **0.43 MB** | 3.07 MB |
+
+They fail on *different* papers — four were LaTeX-only, two HTML-only, none
+missed both — so trying HTML then falling back to LaTeX covers everything, and
+the on-demand tier now does exactly that. It also lifts the tier's own
+coverage from the 78% §9.1 measured to effectively 100%.
+
+#### What that does to the whole-corpus build
+
+| | §9.2 said | actually |
+|---|---|---|
+| Transfer | ~1.2 TB from S3 | **~140 GB** from `arxiv.org`, no credentials |
+| AWS account | required | **not needed** |
+| Unpacking | gzip + tar per paper | none — `fetch` and string work |
+| Stored | 26 GB | ~30 GB (HTML yields more text) |
+| Embedding | ~18 h, ~€89 | unchanged |
+
+And nothing in it needs a machine outside Cloudflare:
+
+| Stage | Runs on | Binding |
+|---|---|---|
+| Fetch `arxiv.org/html/<id>` | Worker `fetch` | — |
+| Strip + section-chunk | `htmlSections` / `chunkSections`, pure JS | — |
+| Embed | Berget, as `/api/embed` already does | existing secret |
+| Store text + vectors | R2 | **`STORAGE`, already bound** |
+| Global ANN, if wanted | Vectorize | **`RAG_INDEX`, already bound** |
+
+The 5-minute CPU limit is already configured (`wrangler.toml [limits]`), and a
+0.43 MB string is nothing against a Worker's 128 MB.
+
+#### The one real ceiling, and it is not structural
+
+A flat full-text index over the corpus is ~14.7M vectors against Vectorize's
+**10M per index**. §9.2 called that structural; it is not. The account limit is
+50,000 indexes, so the honest description is "two indexes and a merge step",
+at ~$7.50/month of stored dimensions. Worth knowing, not worth being blocked by.
+
+#### The minimal-additions plan
+
+Given that, the smallest thing that gets a whole-corpus full-text tier is:
+
+1. **One `[triggers] crons` block** in `wrangler.toml` — the only new
+   configuration. No new resource.
+2. A cron handler that walks the corpus, fetches HTML, chunks, embeds and
+   writes R2 blobs, keeping its cursor in R2. Everything it calls already
+   exists in `public/js/arxiv-rag-core.js`.
+3. Optionally a second Vectorize index, and only if cold body-level search
+   across the whole corpus is wanted — the two-stage path (§9.8) needs no ANN
+   for tier 2 at all.
+
+Two ways to fill it, and the second is nicer:
+
+- **Backfill**: ~327k papers at a polite 1–2 requests/second is a few days of
+  cron ticks. Steady and unattended, but it is still a bulk crawl of a public
+  endpoint, so it deserves a note to arXiv first.
+- **Accrue forward**: arXiv publishes ~1,000 papers/day. A cron that ingests
+  each day's new submissions is ~1,000 requests/day — unambiguously ordinary
+  use — and after a year the tier is complete, with the on-demand path (already
+  shipped) covering anything older that someone actually asks for. No bulk
+  crawl, no backfill, no decision to make.
+
+**Recommendation: accrue forward, and let on demand cover the tail.** It needs
+one cron block, no new bindings, no AWS, and no conversation with arXiv.
