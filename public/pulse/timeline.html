@@ -443,16 +443,28 @@
       }
     }
 
-    // Direct end-labels carry identity beyond colour, but with many series
-    // bunched near zero they collide — so label only the few heaviest at the
-    // right edge (the legend names the rest), de-collide, and clamp in-plot.
+    // Direct end-labels carry identity beyond colour. EVERY shown curve gets
+    // one — a picked curve with no name at the right edge defeats the picker
+    // (it used to label only the 4 heaviest). Bunched series still collide,
+    // so de-collide with a two-pass sweep (push down for the minimum gap,
+    // then pull the overflow back up off the axis) and clamp in-plot.
     const trunc = (s) => (s.length > 15 ? s.slice(0, 14) + "…" : s);
-    const labeled = endLabels.filter((l) => l.weight > 0).sort((a, b) => b.weight - a.weight).slice(0, 4);
-    labeled.sort((a, b) => a.y - b.y);
+    // The gap compresses when the set is over-full (28 labels × 12px would
+    // overflow the 300px plot), so every label always fits without colliding.
+    const GAP = Math.min(12, (plotBottom - plotTop - 6) / Math.max(1, endLabels.length - 1));
+    const labeled = endLabels.slice().sort((a, b) => a.y - b.y);
     let prevY = -1e9;
     for (const lab of labeled) {
-      let y = Math.min(Math.max(lab.y, prevY + 12, plotTop + 6), plotBottom);
-      prevY = y;
+      lab.ly = Math.max(lab.y, prevY + GAP, plotTop + 6);
+      prevY = lab.ly;
+    }
+    let nextY = plotBottom + GAP;
+    for (let i = labeled.length - 1; i >= 0; i--) {
+      labeled[i].ly = Math.min(labeled[i].ly, nextY - GAP);
+      nextY = labeled[i].ly;
+    }
+    for (const lab of labeled) {
+      const y = Math.max(lab.ly, plotTop + 4);
       g += `<circle cx="${(VW - RP + 3).toFixed(1)}" cy="${y.toFixed(1)}" r="2.5" fill="${lab.col}"/>`;
       g += `<text class="end-lbl" x="${VW - RP + 9}" y="${y.toFixed(1)}" fill="${lab.col}">${svgTag(trunc(SUBJ.get(lab.k).label))}</text>`;
     }

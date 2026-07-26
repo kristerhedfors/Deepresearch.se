@@ -46,8 +46,8 @@ export const SUBJECTS = /** @type {Subject[]} */ ([
     key: "ondevice",
     label: "On-device inference",
     color: "#008300", // slot 2 · green
-    blurb: "1-bit Bonsai models running phone-local in the browser (Se/cure).",
-    test: /\b(on-?device|bonsai|1-?bit|phone[- ](local|inference)|in-browser (inference|engine)|inference engine)\b/,
+    blurb: "1-bit Bonsai models running phone-local in the browser (Se/cure); compute sharing.",
+    test: /\b(on-?device|bonsai|1-?bit|phone[- ](local|inference)|in-browser (inference|engine)|inference engine|compute[- ]?sharing|beräkningsdelning|pooled capacity|lend(ing)? a local llm)\b/,
   },
   {
     key: "introspection",
@@ -61,7 +61,7 @@ export const SUBJECTS = /** @type {Subject[]} */ ([
     label: "Web search",
     color: "#eda100", // slot 4 · yellow
     blurb: "Exa / self-hosted web search feeding the research pipeline.",
-    test: /\b(exa|web[- ]?search|websearch|search (backend|service|provider|grant)|searxng)\b/,
+    test: /\b(exa|web[- ]?search|websearch|search (backend|service|provider|grant)|searxng|local[- ]search|browsing agent|web[- ]knob)\b/,
   },
   {
     key: "pipeline",
@@ -127,6 +127,20 @@ export const SUBJECTS = /** @type {Subject[]} */ ([
     test: /\b(agent-pair|distillsdk|\bsdk\b|drpl|pair-(cli|studio|generator|architecture)|manifest|interchange|stackless|baseplate|exec-engine module|vm toolchain)\b/,
   },
   {
+    key: "orchestrator",
+    label: "Orchestrator & swarm",
+    color: "#7048e8", // extended · violet-blue (the mode's own theme family)
+    blurb: "The sub-agent workflow mode: plan → parallel waves, the live graph, the in-browser swarm.",
+    test: /\b(orchestrat(or|ion|e|es|ors)|orkestr(er|ering)|sub-?agents?|underagent(er|erna)?|swarm|svärm(en)?|workflow (graph|view|mode)|agent_update|agent team)\b/,
+  },
+  {
+    key: "outrospection",
+    label: "Outrospection",
+    color: "#946b2d", // extended · bronze
+    blurb: "The fifth chat mode: answers from the outward feed; the /outrospect/ lens page.",
+    test: /\b(outrospect(ion|ive)?|outrospekt(ion|ionen)?|outward[- ](feed|looking|scan)|seven[- ]lens)\b/,
+  },
+  {
     key: "help",
     label: "Help & docs",
     color: "#c05780", // extended · mulberry
@@ -148,6 +162,13 @@ export const SUBJECTS = /** @type {Subject[]} */ ([
     test: /\b(admin|decision board|boards?\b|panel|feedback (loop|queue|mode)|feature board|attention loop|dashboard|maintenance registry|ledger|owners? registry|\bdiag\b|client_diag|live-verify|observability|wrangler tail|tool-call activity)\b/,
   },
   {
+    key: "feedback",
+    label: "Feedback loop",
+    color: "#0b7285", // extended · deep teal
+    blurb: "User feedback capture, the queue, the human-in-the-loop decisions, the message-back channel.",
+    test: /\b(feedback|återkoppling(en)?)\b/,
+  },
+  {
     key: "access",
     label: "Access & accounts",
     color: "#6b8f00", // extended · lime
@@ -158,8 +179,8 @@ export const SUBJECTS = /** @type {Subject[]} */ ([
     key: "games",
     label: "Games",
     color: "#d45087", // extended · pink
-    blurb: "The games registry, the Tokemon AR game, inline quizzes.",
-    test: /\b(tokemon|game(s)?|quiz(zes)?|pok[eé]mon|inline-quiz)\b/,
+    blurb: "The games registry, the Tokemon AR game, inline quizzes, the /space/ archive.",
+    test: /\b(tokemon|game(s)?|quiz(zes)?|pok[eé]mon|inline-quiz|space[- ](animation|archive|core|scene)|rymd(spel|animation))\b|\/space\//,
   },
   {
     key: "mcp",

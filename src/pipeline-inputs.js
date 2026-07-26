@@ -137,19 +137,26 @@ export function extractClaims(value) {
 // as run here), and cut off at plan.maxSearches. Filtering happens BEFORE
 // firing anything (not as a mid-loop break) so a batch can't overrun the
 // cap.
+//
+// `cap` is the answering agent's declared `capability.search.maxQueries`
+// (AgentSpec 0.2.0), which narrows the budget planner's own number and never
+// widens it — the effective limit is the lower of the two. Omitted means the
+// agent declared none, which is what the budget planner alone used to mean.
 /**
  * @param {SearchBatchState} state
  * @param {string[]} queries
+ * @param {number} [cap] the agent's declared query ceiling, if it declared one
  * @returns {string[]}
  */
-export function takeSearchBatch(state, queries) {
+export function takeSearchBatch(state, queries, cap = Infinity) {
+  const limit = Math.min(state.plan.maxSearches, cap);
   const batch = [];
   for (const raw of queries) {
     const query = String(raw || "").trim();
     if (!query) continue;
     const key = query.toLowerCase();
     if (state.ranQueries.has(key)) continue;
-    if (state.searchCount + batch.length >= state.plan.maxSearches) break;
+    if (state.searchCount + batch.length >= limit) break;
     state.ranQueries.add(key);
     batch.push(query);
   }

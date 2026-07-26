@@ -16,6 +16,7 @@ import { renderConfigKnobs, settingRow, wireModeKnob, wireSandboxKnob, wireSetti
 import { loadSettings, setGoogleMaps, setShodanMcp } from "./settings.js";
 import { EXA_SETTING_INFO, exaStatusText, getExaEnabled, setExaEnabled } from "./search-source.js";
 import { onDeviceSettingsMarkup, wireOnDeviceSettings } from "./ondevice-drs.js";
+import { evalModeOn, setEvalMode } from "./starters.js";
 import { refreshOnDeviceModels } from "./models.js";
 import { openBundle } from "./proxy-bundle.js";
 import { buildWorkspacePayload, generateWorkspacePassword, sealWorkspace, workspaceLink } from "./workspace-core.js";
@@ -64,6 +65,19 @@ const GOOGLEMAPS_INFO = `<strong>Google Maps &amp; Street View</strong><br>
   to Google — never your whole question or anything about your account. It
   runs only when your message names an address or you attach a located photo,
   and independently of the web-search switch.`;
+
+// Starter prompt evaluation — a browser-local knob (like the on-device models
+// row below it, and unlike the /api/settings capability knobs above): it only
+// changes what THIS browser is offered on an empty chat, grants nothing, and
+// is never sent anywhere.
+const STARTER_EVAL_INFO = `<strong>Starter prompt evaluation</strong><br>
+  Turns the example questions on an empty chat into a review queue. Instead of
+  four openers for the mode you are in, you get four drawn across <b>every</b>
+  agent — one already known to work, one that scored badly, one never tested,
+  and one new idea we are considering adding. Each is labelled so you know what
+  you are judging. Tapping one switches to its agent and sends it; then rate the
+  answer 👍 or 👎. Ratings stay in this browser — <b>Copy report</b> hands them
+  back when you are ready. Leave it off for the normal opening questions.`;
 
 /**
  * Fetches fresh settings and renders the Settings sub-view: the cloud
@@ -147,6 +161,15 @@ export async function loadSettingsView(ctx) {
     ${googleMapsNote}
     <p id="gmapsstatus" class="muted setting-note" hidden></p>
     ${renderConfigKnobs(ctx.me)}
+    ${settingRow({
+      id: "starterevalknob",
+      label: "Starter prompt evaluation",
+      checked: evalModeOn(),
+      disabled: false,
+      popId: "starterevalpop",
+      info: STARTER_EVAL_INFO,
+    })}
+    <p id="starterevalstatus" class="muted setting-note" hidden></p>
     ${onDeviceSettingsMarkup()}
     <!-- One level below Settings (owner directive, 2026-07-25): compute
          sharing is a whole screen of its own — who may run prompts on your
@@ -174,6 +197,13 @@ export async function loadSettingsView(ctx) {
   // THIS device's storage, so it deliberately isn't an /api/settings write.
   // A download or delete refreshes the composer dropdown's on-device group.
   wireOnDeviceSettings({ onModelsChanged: () => refreshOnDeviceModels() });
+  // Starter prompt evaluation: browser-local too, so no /api/settings write and
+  // no capability check — just the knob, its status line, and a re-render of
+  // the strip so the change is visible on the empty chat behind the panel.
+  wireSimpleKnob("starterevalknob", "starterevalstatus", (on) => setEvalMode(on), {
+    on: "Evaluation mode is on — the empty chat now offers a cross-agent review batch you can rate.",
+    off: "Evaluation mode is off — the empty chat shows the normal opening questions.",
+  });
   // Exa web search: a BROWSER-LOCAL knob (search-source.js localStorage), not
   // an /api/settings write — it is a preference about where a query goes, so it
   // needs no account and works for break-glass sessions too. On (default) keeps
