@@ -885,6 +885,10 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
    palettes apply; wide teams scroll inside the box (never the page). */
 .workflow-embed { margin: .6rem 0 .2rem; }
 .workflow-label { font-size: .78rem; color: var(--muted); margin-bottom: .3rem; }
+/* The affordance: the boxes read as a diagram, so the label says they are not.
+   Fades once a node has been opened — the hint has done its job by then. */
+.workflow-hint { font-size: .7rem; opacity: .7; margin-left: .4rem; }
+.workflow-hint::before { content: "— "; }
 .workflow-box {
   overflow-x: auto;
   background: var(--panel);
@@ -919,6 +923,81 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
   .workflow-svg .wf-running .wfglyph,
   .workflow-svg .wfmember.wm-running { animation: none; }
 }
+
+/* The node INSPECTOR (feedback #35): every node is a button that opens a live
+   view of that sub-agent under the graph — its task, persona, searches as they
+   land, and the prompt it is working on. Tap again to close, tap another to
+   switch. */
+.workflow-svg .wfnode { cursor: pointer; }
+.workflow-svg .wfnode:hover rect { fill: var(--panel); stroke: var(--accent); }
+.workflow-svg .wfnode:focus { outline: none; }
+.workflow-svg .wfnode:focus-visible rect { stroke: var(--accent); stroke-width: 2.4; }
+.workflow-svg .wfnode.wf-selected rect { stroke: var(--accent); stroke-width: 2.4; }
+.workflow-inspect {
+  margin-top: .4rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: .6rem .7rem;
+  font-size: .8rem;
+}
+.workflow-inspect[hidden] { display: none; }
+.wfi-head { display: flex; align-items: baseline; gap: .5rem; }
+.wfi-name { font-weight: 650; }
+.wfi-meta { color: var(--muted); font-size: .72rem; }
+.wfi-close {
+  margin-left: auto;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: .9rem;
+  line-height: 1;
+  padding: .1rem .2rem;
+}
+.wfi-close:hover { color: var(--text); }
+.wfi-state { margin: .35rem 0 .5rem; color: var(--muted); }
+.wfi-state strong { color: var(--text); }
+.wfi-glyph { color: var(--accent); }
+.wfi-state.wf-done .wfi-glyph { color: var(--check-violet); }
+.wfi-state.wf-failed .wfi-glyph, .wfi-state.wf-failed strong { color: #b3455c; }
+.wfi-row { display: grid; grid-template-columns: 7.5rem 1fr; gap: .5rem; padding: .25rem 0; }
+.wfi-k { color: var(--muted); font-size: .72rem; padding-top: .1rem; }
+.wfi-v p { margin: 0; }
+.wfi-dim { color: var(--muted); font-size: .72rem; }
+.wfi-queries { list-style: none; margin: 0; padding: 0; }
+.wfi-q { padding: .05rem 0; }
+.wfi-q::before { content: "▸ "; color: var(--muted); }
+.wfi-q-planned, .wfi-q-running { color: var(--muted); }
+.wfi-link {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: .72rem;
+  padding: .1rem .5rem;
+}
+.wfi-link:hover { border-color: var(--accent); }
+.wfi-prompt {
+  margin: 0;
+  max-height: 15rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: .72rem;
+  line-height: 1.45;
+  background: var(--panel-2);
+  border-radius: 8px;
+  padding: .45rem .55rem;
+}
+/* Narrow screens: the label column stacks above its value rather than
+   squeezing the prompt into a third of the width. */
+@media (max-width: 560px) {
+  .wfi-row { grid-template-columns: 1fr; gap: .1rem; }
+}
+
 .streetview-embed { margin: .6rem 0 .2rem; }
 .streetview-embed-label { font-size: .75rem; color: var(--muted); margin-bottom: .3rem; }
 .streetview-embed iframe {

@@ -77,7 +77,7 @@ import {
 } from "./message-content.js";
 import { firstChunks, retrieve } from "./rag.js";
 import { renderQuiz } from "./quiz.js";
-import { renderWorkflow } from "./workflow-viz.js";
+import { mergeSearch, nodeRenderState, renderWorkflow } from "./workflow-viz.js";
 import { setGraphWorkflow, updateGraphAgent } from "./graph-backdrop.js";
 import { workflowEvent, workflowWaves } from "./orchestrator-core.js";
 // The on-device swarm pre-pass (maybeRunSwarmPrepass): both entry points are
@@ -550,8 +550,12 @@ function handleEvent(turn, evt, acc) {
   if (evt.status) {
     const s = evt.status;
     recordResearchEvent(turn, s);
-    if (s.type === "search_start") startSearchStep(turn, s);
-    else if (s.type === "search_done") finishSearchStep(turn, s);
+    // `agent` on a search event is Orchestrator mode attributing the search to
+    // the sub-agent that planned it (src/orchestrator.js runNodeSearches), so
+    // the node's inspector can show its own searches landing live. Absent on
+    // every other search — applyAgentSearch no-ops.
+    if (s.type === "search_start") { startSearchStep(turn, s); applyAgentSearch(turn, s); }
+    else if (s.type === "search_done") { finishSearchStep(turn, s); applyAgentSearch(turn, s); }
     else if (s.type === "step_start") startGenericStep(turn, s.id, s.label || "");
     else if (s.type === "step_done") finishGenericStep(turn, s);
     else if (s.type === "streetview_embed") {
@@ -612,7 +616,17 @@ function handleEvent(turn, evt, acc) {
       }
     }
     else if (s.type === "agent_update" && typeof s.id === "string" && turn._wfEmbed) {
-      applyAgentUpdate(turn, s.id, { status: s.status, duration_ms: s.duration_ms, note: s.note });
+      applyAgentUpdate(turn, s.id, {
+        status: s.status,
+        duration_ms: s.duration_ms,
+        note: s.note,
+        chars: s.chars,
+        // The node's real prompt (a second `running` update, emitted once the
+        // node's grounding is assembled) — what the inspector shows under
+        // "Prompt being worked on".
+        prompt: s.prompt,
+        prompt_chars: s.prompt_chars,
+      });
     }
     else if (s.type === "swarm_update" && typeof s.id === "string" && turn._wfEmbed) {
       // A swarm node's live member states. Emitted locally today (the swarm
@@ -1228,8 +1242,25 @@ async function maybeRunSwarmPrepass(turn, payload, signal) {
 function applyAgentUpdate(turn, id, st) {
   if (!turn?._wfEmbed || !id) return;
   if (turn._wfViz) turn._wfViz.update(id, st);
-  else turn._wfEmbed.statuses[id] = { ...turn._wfEmbed.statuses[id], ...st };
+  else turn._wfEmbed.statuses[id] = { ...turn._wfEmbed.statuses[id], ...nodeRenderState(st) };
   updateGraphAgent(id, st);
+}
+
+/**
+ * Attribute one search event to its Orchestrator sub-agent, so the node's
+ * inspector shows the query while it runs and the result count when it lands.
+ * Same three-destination shape as applyAgentUpdate minus the backdrop, which
+ * draws status only. No `agent` field (every non-orchestrator search) → no-op.
+ * @param {any} turn
+ * @param {any} s the search_start / search_done status event
+ */
+function applyAgentSearch(turn, s) {
+  if (!turn?._wfEmbed || typeof s?.agent !== "string" || !s.agent) return;
+  if (turn._wfViz) turn._wfViz.search(s.agent, s);
+  else {
+    const cur = turn._wfEmbed.statuses[s.agent] || {};
+    turn._wfEmbed.statuses[s.agent] = { ...cur, searches: mergeSearch(cur.searches, s) };
+  }
 }
 
 // ---- introspection mode: the private (browser-direct) answer route -----------

@@ -372,6 +372,17 @@ async function runAgentNode(ctx, plan, agent, results, searchBudget, token = { c
     agentTaskPrompt(agent, upstream, { userRequest: /** @type {any} */ (ctx).cleanLastUser || ctx.lastUser }) +
     (grounding ? `\n\n${grounding}` : "");
 
+  // The node is now past its grounding and about to think: publish the prompt
+  // it is actually working on (head-clamped in agentUpdateEvent) so the
+  // workflow inspector can show it LIVE rather than only after the run
+  // (feedback #35 — "a live view into that node"). A second `running` update is
+  // idempotent for every client: old ones re-apply the same status, the
+  // workflow view repaints to the identical SVG. Skipped once the node's
+  // deadline has fired, for the same reason its buffered text is dropped.
+  if (!token.cancelled) {
+    ctx.emit({ status: /** @type {any} */ (agentUpdateEvent(agent.id, "running", { prompt: userMsg })) });
+  }
+
   const sink = nodeTextSink(token);
   const buffered = /** @type {PipelineCtx} */ ({
     ...ctx,
@@ -459,7 +470,11 @@ async function runNodeSearches(ctx, agent, searchBudget) {
   if (!queries.length) return "";
 
   state.searchCount += queries.length;
-  for (const query of queries) emit({ status: { type: "search_start", round: 1, query, source: "web", service: "Web search" } });
+  // `agent` is the ONE addition to the shared search events here: it attributes
+  // the search to the node that planned it, so the workflow inspector can show
+  // a node's own searches filling in while it runs. Every other consumer (the
+  // activity trace, the research log) ignores the extra field.
+  for (const query of queries) emit({ status: { type: "search_start", round: 1, query, source: "web", service: "Web search", agent: agent.id } });
   const settled = await Promise.all(queries.map((q) => webSearch(env, log, q, {})));
   /** @type {any[]} */
   const items = [];
@@ -473,6 +488,7 @@ async function runNodeSearches(ctx, agent, searchBudget) {
         query: queries[i],
         source: "web",
         service: "Web search",
+        agent: agent.id,
         results: result.resultCount,
         duration_ms: result.durationMs,
         sources: result.sources,

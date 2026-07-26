@@ -1,0 +1,34 @@
+{
+  "branch": "claude/orchestrator-node-inspection-qjp2da",
+  "pr": null,
+  "requested_at": "2026-07-26",
+  "points": [
+    {
+      "label": "Tap a workflow node mid-run → live inspector",
+      "summary": "Feedback #35. Pick Orchestrator in the chat-mode dropdown (violet pane) and ask something decomposable, e.g. 'Compare Cloudflare Workers and Deno Deploy for a small streaming API'. While the answer is STILL generating, tap a node in the sub-agent graph. PASS: a panel opens under the graph for that node, the node itself is outlined as selected, and the panel updates WITHOUT being reopened — its status line moves from 'Gathering sources' to 'Searching the web — N queries still running' to 'Writing its brief from the prompt below', the node's own web searches appear one by one (query, then result count and seconds when each lands), and a 'Prompt being worked on' block appears with the instruction that node actually got, footed by 'Showing the first 1500 of N characters' when it was longer. Tapping the SAME node closes the panel; tapping a different node switches to it (never two panels, never two selected nodes). The ✕ closes it too. FAIL: a panel that freezes at whatever it said when opened, a node that can't be tapped, or the prompt block never arriving on a node that finished.",
+      "target": "/",
+      "actions": [],
+      "runs": 2,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Inspector on a finished + reopened conversation",
+      "summary": "After an Orchestrator answer has fully finished, tap each node. PASS: a done node reads 'Done — Finished its brief (N.Ns, N characters)', a failed one names its failure class ('timeout: …'), and 'Reads from' / 'Feeds' show the neighbouring agents as small buttons that JUMP the panel to that agent when tapped. Then reload the page and reopen the same conversation from history: the graph replays AND its nodes are still tappable, still showing each node's task, searches and prompt. FAIL: nodes inert after reload, an empty panel, or the searches/prompt lost from the replayed graph.",
+      "target": "/",
+      "actions": [],
+      "runs": 2,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Inspector on a phone",
+      "summary": "Same as above on a real phone (the graph scrolls horizontally inside its box). PASS: a tap opens the node — no long-press, no double-tap needed; the label/value rows stack instead of squeezing the prompt into a narrow column; the prompt block scrolls inside itself rather than stretching the page sideways; the page body never scrolls horizontally. FAIL: taps landing on the wrong node, the panel pushing the answer off screen, or the prompt forcing a horizontal page scroll.",
+      "target": "/",
+      "actions": [],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    }
+  ]
+}
