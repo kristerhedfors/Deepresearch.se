@@ -623,8 +623,11 @@ for Markdown rendering + sanitizing; `mermaid.min.js`, lazy-loaded by
 for the PDF report; `pdf.js` for parsing PDF attachments client-side;
 `vendor/xterm/` — the sandbox terminal `@xterm/xterm@5.5.0` + fit addon,
 vendored 2026-07-15 with SHA-256 pins recorded in `sandbox.js`, so a CDN
-outage can't break the sandbox; the CheerpX engine stays a CDN load
-pending its license question).
+outage can't break the sandbox; `vendor/transformers/` — transformers.js +
+its onnxruntime WASM, loaded only by the on-device inference worker; the
+CheerpX engine stays a CDN load pending its license question). Per-library
+versions, sizes, licenses, load triggers, rationale, and the full SHA-256
+manifest: **`docs/DEPENDENCIES.md`**.
 
 Games (`public/games/<id>/` — reached from the account panel's **Games**
 view in `account.js`, which renders the shelf from `GET /api/games`, the
@@ -700,16 +703,21 @@ Client modules not covered by a section above, each one file under
 `public/js/`: `docs.js` (attachment parsing — pdf/docx/md/txt, entirely
 in the browser, so file bytes never reach the server) and `docs-viewer.js`
 (the public `/docs/` viewer, rendering every repo doc out of the committed
-`docs-corpus.json`); `docs-comments-core.js` + `docs-comments.js` (the
-reader's Word-style COMMENT MODE, split pure-core/DOM — the core owns the
-stored body grammar, quote anchoring and stale detection, the DOM half owns
-the Read/Comment switch, the selection composer, the margin rail and the
-passage highlights. A comment is filed into the ONE instruction pipeline, the
-feedback queue, with feedback-core's `doc` scope and the document path in the
-`page` tag, so the loop reads it as an instruction to reconcile the document
-AND the code it describes; administrative — the DOM half is loaded
-dynamically only after `/api/me` returns an admin role, and is deliberately
-NOT on the public asset allowlist. See `docs/DECISION-BOARD-LOOPS.md` §1a);
+`docs-corpus.json`); `doc-comment-gate.js` + `docs-comments.js` +
+`docs-comments-core.js` (documentation COMMENT MODE, in three layers. The
+GATE is public and is the whole per-page cost — one script tag,
+`mountCommentMode({path})` — doing the `/api/me` admin check and rendering a
+visible note when the answer is no. The DOM half injects its own Read/Comment
+dropdown, comment rail and styles as fixed chrome, so it mounts on ANY
+documentation page without that page laying out for it; it is GATED,
+dynamic-imported only after the admin check, and deliberately NOT on the
+public allowlist. The pure core owns the stored body grammar, quote anchoring
+and stale detection. Live on `/help/` (the page the app links as
+"documentation") and `/docs/`. A comment is filed into the ONE instruction
+pipeline, the feedback queue, with feedback-core's `doc` scope and the
+document's repo path in the `page` tag, so the loop reads it as an instruction
+to reconcile the document AND the code it describes. See
+`docs/DECISION-BOARD-LOOPS.md` §1a);
 `provider-region.js` (the country-of-processing badges
 on the model selector — the conversation goes wherever the chosen model is
 hosted, so the selector says which country that is); `canned-faq.js` (the

@@ -63,7 +63,7 @@ differs for each:
 | `session` | mid-chat, `feedback …` | a report about the answer above it | — |
 | `standalone` | first message of a chat | a generic suggestion, no session behind it | "reproduce the complaint" |
 | `strategy` | the outrospection feed (`/outrospect/`) | direction: where the project should go | triaging it as a defect |
-| `doc` | the documentation reader (`/docs/`) | a passage comment: doc **and** code | rewording the paragraph |
+| `doc` | any documentation page (`/help/`, `/docs/`) | a passage comment: doc **and** code | rewording the paragraph |
 
 So marking a passage does **not** open a second pipeline. The comment is a
 feedback entry tagged `doc`, carrying the document path so the loop knows which
@@ -103,7 +103,9 @@ status (what the agent did), the thread (what it said), and whether the quoted
 text still exists in the document (whether the passage was replaced).
 Anchoring is by **quoting** the passage, not by ids written into the Markdown —
 the doc pipelines rewrite these files, and an id-bearing marker would not
-survive. Format and anchoring: `public/js/docs-comments-core.js`.
+survive. Format and anchoring: `public/js/docs-comments-core.js`; a page opts
+in with one line (`public/js/doc-comment-gate.js`), so "which documentation
+page" is a per-page choice rather than a porting job.
 
 ---
 
