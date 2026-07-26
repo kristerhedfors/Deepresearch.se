@@ -1379,13 +1379,14 @@ for every non-default mode, the persisted user choice, and — because
 introspection was the only mode with no request flag of its own — introspection's
 activation signal. One choice therefore lived in three stores (the D1 knob, a
 `dr_dev_mode` browser cache, the mode pick) and had to be reconciled on every
-page load. The knob is gone: the MODE is the unit, every mode including
+page load. The knob is gone. The MODE is the unit: every mode including
 introspection has a name on the wire (`chat_mode`, resolved once by
-`public/js/chat-mode-core.js`), availability is availability
-(`chatModesAvailable`), and whether the site's own source is in context is
-derived from the mode (`modeCarriesSource` — every non-normal mode carries it).
-`developer_mode: false` survives as a documented off-only override that forces a
-single request back to plain research.
+`public/js/chat-mode-core.js`), the availability gate answers only whether this
+identity may use the non-default modes at all (`chatModesAvailable`), and
+whether the site's own source is in context follows from the mode
+(`modeCarriesSource` — every non-normal mode carries it). `developer_mode: false`
+survives as a documented off-only override that forces a single request back to
+plain research.
 
 When the mode is on, the server enrichment (`src/introspect.js`) retrieves the
 source chunks most relevant to the question from a COMMITTED dense index

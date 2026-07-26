@@ -9,7 +9,7 @@ description: >-
   core), public/js/introspect-ui.js (TIN the titanium mascot + the
   private-vs-remote model picker), public/js/dev-mode.js (the client
   titanium-palette theme), the mode table public/js/chat-mode-core.js and its
-  Worker facade src/chat-modes.js, src/introspect.js (the DRS enrichment),
+  Worker façade src/chat-modes.js, src/introspect.js (the DRS enrichment),
   the DRS private browser-direct route (stream.js maybePrivateIntrospection),
   the /src sandbox mount (sandbox-files.js planSourceMount), or the DRC
   developerMode knob. ALSO load when `npm test` fails on "source snapshot
@@ -423,8 +423,9 @@ hand-edit the artifacts.
   Orchestrator, Outrospection and Models all get the source too, exactly as
   they did when the knob was on for all of them. The table and the one wire
   resolution live in `public/js/chat-mode-core.js` (Worker façade
-  `src/chat-modes.js`); availability is `chatModesAvailable` (any signed-in
-  account or break-glass — availability, not an opt-in). The Settings
+  `src/chat-modes.js`); `chatModesAvailable` answers whether the modes are
+  available at all (any signed-in account or break-glass) — an availability
+  question, not a per-account opt-in. The Settings
   **Chat mode dropdown** (`account-views.js` MODE_INFO / `wireModeKnob`) is
   the only thing that writes it, and the composer `#modesel` mirrors it.
   - The retired `developer_mode` boolean had become derived state (the dropdown
