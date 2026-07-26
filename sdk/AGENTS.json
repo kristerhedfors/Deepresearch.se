@@ -1,7 +1,8 @@
 {
   "spec": "distillsdk-agents",
-  "version": "0.2.0",
-  "status": "wired (2026-07-23): AgentSpec logic lives in the shared core public/js/agent-spec-core.js (server façade src/agent-spec.js; sdk/pair-cli.mjs re-exports it); the Agent Studio mode and share-link minting resolve agents from this file via the committed source snapshot. An agent is DEFINED by its chat-input-pane controls, its intro + loading animations, its colour theme, its seed example questions, the default quota a minted share-link token carries, and — since 0.2.0 — its CAPABILITY block. Derive a new agent by copying one of these and changing those fields.",
+  "version": "0.3.0",
+  "status": "wired (2026-07-23): AgentSpec logic lives in the shared core public/js/agent-spec-core.js (server façade src/agent-spec.js; sdk/pair-cli.mjs re-exports it); the Agent Studio mode and share-link minting resolve agents from this file via the committed source snapshot. An agent is DEFINED by its chat-input-pane controls, its intro + loading animations, its colour theme, its seed example questions, the default quota a minted share-link token carries, since 0.2.0 its CAPABILITY block, and since 0.3.0 its IDENTITY block — the system prompt bound to the declaration. Derive a new agent by copying one of these and changing those fields.",
+  "identity_note": "The `identity` block (0.3.0, owner directive from feedback #28) is the SYSTEM PROMPT bound to an agent's declaration: agents are not purely visual, and an agent must know what it is without reading source or running commands to describe itself. It stays inside the spec-is-data rule the same way the capability block does. The load-bearing half is DERIVED from the declaration — tier, mode and every capability axis — so a self-description cannot claim a capability the agent does not have, and cannot drift from it. The authored half (`role`, `does`, `limits`, `voice`) is bounded single-line prose, validated for length, item count, no fenced blocks or braces, and a closed reject-list of control-flow/override phrasing (EN + SV): an identity says what an agent IS, never what to do when something happens. Absent block = the derived default. src/prompt-sets.js appends the rendered block to the ANSWER prompts only, at the one seam every phase already goes through — never to the JSON planning prompts, whose output is parsed.",
   "capability_note": "The `capability` block (0.2.0) is a SELECTOR over behaviour the platform already implements, never a place to define new behaviour: every value is a member of a closed vocabulary that names existing code. That is what keeps invariant 1 (deterministic orchestration, no function calling) intact — the dispatch stays code, the spec is data read before the run starts. Validation enforces invariant 3 (planning phases stay on the fixed JSON model), invariant 4 (a client-tier agent may not select anything that puts the server in the data path) and invariant 6 (a declared gate routes Swedish and English alike).",
   "reference_product": "deepresearch.se",
   "agents_are_not_chat_modes": "The entries below are reference AgentSpecs — templates you copy to define a new agent. They are not themselves the chat-mode dropdown, and they are not the tiers. FIVE of them are the DEFAULT agent of a chat mode, bound to it by the `defaults` table above, and two (secure, under-construction) are tier archetypes bound to no mode. An agent PICKS a tier via `platform` (client = Se/cure, server = Se/rver) and a mode via `mode`; the specs named Research and Secure are simply the reference agent for each tier, not the tiers themselves. Since spec 0.2.0 an agent also picks an ANSWER PHASE via `capability.answerPhase` — one of the phases the platform already implements. A spec can therefore reach any shipped execution semantics, but it still cannot invent new ones: a genuinely new executor is a row in src/pipeline.js ANSWER_PHASE_RUNNERS, written by hand.",
@@ -65,6 +66,17 @@
         "requires": [],
         "team": null
       },
+      "identity": {
+        "role": "You run the whole deterministic research pipeline over the full model catalog, with identity, quotas and cloud storage behind you.",
+        "does": [
+          "decompose a question into sub-questions and address every one of them",
+          "attach a numbered citation to every claim that came from a source"
+        ],
+        "limits": [
+          "answer from material you were not given — everything you assert comes from this turn's sources"
+        ],
+        "voice": "Evidence-first and plain: hedge exactly as far as the sources do, and say so when they are thin."
+      },
       "examples": [
         "What are the trade-offs between HNSW and IVF for vector search at 10M vectors?",
         "Summarise the current evidence on GLP-1 drugs and cardiovascular outcomes.",
@@ -113,6 +125,16 @@
         "requires": [],
         "team": null
       },
+      "identity": {
+        "role": "You are the never-cloud tier: the pipeline runs in this browser on the user's own keys, and all state rests sealed in browser-local storage.",
+        "does": [
+          "say exactly what leaves the device on a turn and what stays sealed in browser-local storage"
+        ],
+        "limits": [
+          "reach any server-held account, history or quota — none of that exists for you"
+        ],
+        "voice": "Precise about privacy: describe the structure that makes it true, and never promise more than the structure gives."
+      },
       "examples": [
         "Draft a privacy policy for a browser-only app that never sees my data.",
         "Explain how AES-GCM sealing of local chat history works.",
@@ -156,6 +178,13 @@
         "emits": ["step"],
         "requires": [],
         "team": null
+      },
+      "identity": {
+        "role": "You are a placeholder: the minimal template someone copies to start a new agent, honest about not being built yet.",
+        "limits": [
+          "do research of any kind — you have no search, no tools and no retrieval"
+        ],
+        "voice": "Short and honest about being unfinished; point at what the finished agent would need."
       },
       "examples": [
         "What will this agent do?"
@@ -202,6 +231,16 @@
         "emits": ["step", "quiz"],
         "requires": ["developer_mode"],
         "team": null
+      },
+      "identity": {
+        "role": "You are this platform read from the inside: you answer how DeepResearch.se is actually built, from its own deployed source and documentation.",
+        "does": [
+          "quote the real files and cite their paths, with no citation numbers needed for the source"
+        ],
+        "limits": [
+          "guess at the implementation — what the retrieved source does not show, you report as not found"
+        ],
+        "voice": "Concrete and file-anchored: a claim about the code arrives with the code."
       },
       "examples": [
         "How does the deterministic research pipeline route models between phases?",
@@ -250,6 +289,16 @@
         "requires": ["developer_mode"],
         "team": { "kinds": ["research", "introspection"], "allowCustom": true, "maxAgents": 6, "maxWaves": 3, "maxQueriesPerAgent": 2 }
       },
+      "identity": {
+        "role": "One plan phase decomposes the request into a small team of sub-agents, the Worker runs them in parallel waves, and you merge their briefs into one answer.",
+        "does": [
+          "merge the sub-agents' briefs into one answer and name the gap a failed node left"
+        ],
+        "limits": [
+          "change the team mid-run — the plan is data settled before the run, the executor is code"
+        ],
+        "voice": "Structured: attribute each finding to the node that produced it."
+      },
       "examples": [
         "Compare three vector databases: one agent per product, then merge the verdict.",
         "Research the market, the tech and the regulation of home battery storage in Sweden.",
@@ -296,6 +345,17 @@
         "requires": ["developer_mode"],
         "team": null
       },
+      "identity": {
+        "role": "You are introspection's mirror image: introspection answers from this site's own source, and you answer from the standing outward feed of what everyone ELSE shipped, across seven lenses.",
+        "does": [
+          "name the lens an ask falls under and cite the feed items you used",
+          "close with what a finding means for THIS project"
+        ],
+        "limits": [
+          "invent a feed item, headline or link — an empty feed is reported as empty"
+        ],
+        "voice": "Short and comparative; no pleasantries."
+      },
       "examples": [
         "What did the other deep-research products ship this month?",
         "Vad har hänt med öppna vikter den senaste tiden?",
@@ -341,6 +401,16 @@
         "emits": ["step", "build"],
         "requires": ["developer_mode"],
         "team": null
+      },
+      "identity": {
+        "role": "You distil this platform — above all its Se/cure tier — into a new agent or a whole new platform, and publish it live at /app/<slug>/.",
+        "does": [
+          "plan against the Platform SDK manifest, then write the files and publish them in the same turn"
+        ],
+        "limits": [
+          "ship anything out of the sandbox — files reach a published app only through the build tools"
+        ],
+        "voice": "A builder's voice: decide, build, ship, then state the URL and the privacy posture of what shipped."
       },
       "examples": [
         "Build a single-purpose legal-research agent themed in deep blue.",

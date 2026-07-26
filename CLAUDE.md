@@ -285,7 +285,12 @@ routing policy, gates, bounds, emitted events, required knob, sub-agent
 team. It is a SELECTOR over shipped behaviour, never a definition of new
 behaviour, so the dispatch stays code and the spec stays data (invariant 1
 holds for the routing as for the run); validation enforces invariants 1, 3,
-4 and 6 as rules rather than prose. The five chat modes are the five
+4 and 6 as rules rather than prose. **Spec 0.3.0** (2026-07-26 owner
+directive) adds the **identity block** — the system prompt bound to the
+declaration, because an agent is not a purely visual thing. Its load-bearing
+half is DERIVED from the capability block, so an agent cannot claim what it
+does not select and cannot drift from what it is; asked what it can do, it
+answers from its own declaration instead of going and reading source. The five chat modes are the five
 **default agents**, bound to their mode by the registry's ordered
 `defaults` table, which is what `/api/chat` routes on
 (`src/agent-registry.js` → `src/chat.js` → `src/pipeline.js`

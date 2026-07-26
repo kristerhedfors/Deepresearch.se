@@ -8,7 +8,9 @@ description: >-
   the default quota a minted share-link token carries), the closed control
   vocabulary, the CAPABILITY block (spec 0.2.0 — what an agent DOES: answer phase,
   tool set, context blocks, search/routing policy, gates, bounds, emitted events,
-  required knob, sub-agent team) and the `defaults` ROUTING TABLE that maps each
+  required knob, sub-agent team), the IDENTITY block (spec 0.3.0 — the system
+  prompt bound to the declaration, derived from the capability block) and the
+  `defaults` ROUTING TABLE that maps each
   chat mode to its default agent, sdk/AGENTS.json (the seven shipped agents:
   the five defaults research / introspection / agent-builder / orchestrator /
   outrospection, plus secure and under-construction), the pure core public/js/agent-spec-core.js
@@ -32,6 +34,13 @@ the SDK. An agent is a *flavour* of the Se/cure + Se/rver platform, and it is
 3. its **colour theme** (a small set of CSS custom properties);
 4. its **example questions** (seed + on-demand generation);
 5. the **default quota** a minted share-link **token** carries (credits).
+
+Since spec **0.3.0** it also carries its own **identity block** — the system
+prompt bound to the declaration (`role`/`does`/`limits`/`voice`, plus the facts
+DERIVED from the capability block), so an agent answers a question about itself
+from its declaration rather than by reading source. Same selector discipline:
+the authored half is bounded single-line prose and validation rejects
+control-flow or override phrasing in EN and SV alike.
 
 Since spec **0.2.0** it is also defined by what it DOES — the **capability
 block**: `answerPhase`, `prompts`, `tools` + `toolFallback`, `context`,

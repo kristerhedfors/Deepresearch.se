@@ -19,6 +19,13 @@
 // Nothing here changes what any shipped agent does. Every default agent
 // declares the set its phase already used, which is asserted, so the resolved
 // builder is byte-identical to the one the call site imported before.
+//
+// Since spec 0.3.0 this is ALSO where an agent's IDENTITY block reaches the
+// run. `phasePrompt` is the one call every answer/plan system prompt already
+// goes through, so binding the block here gives every agent — present and
+// future — its own self-description without touching a single prompt builder,
+// and without a per-mode special case. See `IDENTITY_ROLES` below for which
+// roles carry it and why the planning roles do not.
 
 import {
   directPrompt,
@@ -98,12 +105,50 @@ export function promptBuilder(set, role) {
 }
 
 /**
+ * The roles whose system prompt carries the agent's IDENTITY block (spec 0.3.0
+ * — `agentIdentityPrompt`, resolved onto the state by src/chat.js). Only the
+ * ANSWER roles: those are the prompts a model answers the user from, and "what
+ * can you do" is a question about the answering agent.
+ *
+ * The JSON PLANNING roles are deliberately excluded. `plan` and `worker` feed
+ * parsed output (a read-loop step, a workflow plan, one node's brief) — appending
+ * a persona there would put prose in front of a parser for no gain, and the
+ * planning phases are the ones invariant 3 pins to the fixed reliable model
+ * precisely because their output has to be dependable.
+ */
+export const IDENTITY_ROLES = new Set(["answer", "answer-tools", "answer-direct", "answer-search-off"]);
+
+/**
+ * Wrap a prompt builder so its system prompt ends with the agent's identity
+ * block. The wrapper keeps the builder's signature and its output as a literal
+ * PREFIX — the shipped prompt is unchanged, the block is appended after it — so
+ * a mode gains self-knowledge and nothing else.
+ *
+ * Fail-soft (invariant 2) all the way down: no identity, a blank one, or a
+ * builder that returns something other than a string, and the original builder
+ * comes back untouched. A missing or broken persona can never break a request.
+ * @param {Function} builder
+ * @param {unknown} identity
+ * @returns {Function}
+ */
+export function withIdentity(builder, identity) {
+  if (typeof identity !== "string" || !identity.trim()) return builder;
+  return (/** @type {any[]} */ ...args) => {
+    const base = builder(...args);
+    return typeof base === "string" ? `${base}\n\n${identity}` : base;
+  };
+}
+
+/**
  * The builder a running phase should use for a role — the call-site helper.
  * Resolves the request's set, then falls back to the phase's default set if the
  * request's set does not fill this role (which validation prevents for a
  * declared phase, but a request can execute a role its agent never declared —
  * e.g. the research phase's answer-direct on an agent whose set covers only
- * `answer`). Never throws.
+ * `answer`). Finally, for an ANSWER role, binds the resolved agent's identity
+ * block onto the prompt — the ONE generic seam where every agent's system
+ * prompt gains its self-description, instead of an edit in each builder.
+ * Never throws.
  * @param {any} state
  * @param {string} phase
  * @param {string} role
@@ -112,9 +157,10 @@ export function promptBuilder(set, role) {
 export function phasePrompt(state, phase, role) {
   const set = promptSetFor(state, phase);
   const direct = PROMPT_BUILDERS[set]?.[role];
-  if (direct) return direct;
   const fallbackSet = /** @type {any} */ (DEFAULT_PROMPT_SET)[phase] || "research";
-  return promptBuilder(PROMPT_BUILDERS[fallbackSet]?.[role] ? fallbackSet : "research", role);
+  const builder = direct
+    || promptBuilder(PROMPT_BUILDERS[fallbackSet]?.[role] ? fallbackSet : "research", role);
+  return IDENTITY_ROLES.has(role) ? withIdentity(builder, state?.agentIdentity) : builder;
 }
 
 /** Every (set, role) pair this module binds — for the pinning test. */

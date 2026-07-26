@@ -28,14 +28,16 @@ links down to the subsystem docs and then to the source; and use the **"ask the
 source"** links (§9) to put any question straight to the introspection agent,
 which answers from the project's own code.
 
-> **Status (2026-07-25, spec 0.2.0):** the definition layer, the **seven**
+> **Status (2026-07-26, spec 0.3.0):** the definition layer, the **seven**
 > shipped agents, the composer renderer, the visual proof, the CLI, the live
 > preview surface, and the metered share-link **mint** are **wired and tested**.
 > The mint reuses the existing Se/rver-token subsystem verbatim (no new crypto,
-> no new meter — §8). New in 0.2.0: the **capability block** (§3.1) and the
-> **routing table** (§4) — the site's five default chat modes are now
-> registry entries, `/api/chat` dispatches on the phase a spec declares, and
-> every phase speaks in the prompt set its agent names.
+> no new meter — §8). New in 0.3.0: the **identity block** (§3.2) — every agent
+> now carries a **system prompt bound to its declaration**, so it can say what
+> it is without reading source or running commands. From 0.2.0: the
+> **capability block** (§3.1) and the **routing table** (§4) — the site's five
+> default chat modes are registry entries, `/api/chat` dispatches on the phase a
+> spec declares, and every phase speaks in the prompt set its agent names.
 > The project is experimental research into how far a useful assistant can be
 > pushed toward *provable* privacy, not a finished product.
 
@@ -62,9 +64,14 @@ retrieval blocks are injected, the search and model-routing policy, the
 deterministic gates, the bounds, the events it emits, the knob it requires, and
 — for a workflow — which agents its team may draw from.
 
-Both levels are **data**. Deriving a new agent is: copy one spec, change those
-fields, validate. No code change — including for what it does, as long as it
-selects an answer phase the platform already implements.
+**What it knows about itself** — its **identity block** (§3.2): the system
+prompt bound to the declaration. An agent is not a visual template with a
+pipeline behind it; it carries codified behavioural properties, and the first of
+them is knowing what it is.
+
+All three levels are **data**. Deriving a new agent is: copy one spec, change
+those fields, validate. No code change — including for what it does, as long as
+it selects an answer phase the platform already implements.
 
 ## 2. The seven agents we ship
 
@@ -197,7 +204,8 @@ the short version:
   ],
   "examples": ["…"], "generateExamples": true,
   "quota": { "window": "day", "requests": 50, "credits": null },
-  "capability": { … }                // §3.1
+  "capability": { … },               // §3.1 — what it does
+  "identity":   { … }                // §3.2 — the system prompt bound to it
 }
 ```
 
@@ -279,6 +287,71 @@ expressible at any price before — while a set that cannot fill its phase's rol
 is rejected at validation. The binding is pinned by identity against
 `src/prompts.js`, so a re-pointed prompt fails `npm test` rather than a request.
 
+### 3.2 The identity block — the system prompt bound to the declaration
+
+Asked "what can outrospection do", the outrospection agent went and read the
+site's source and ran sandbox commands to answer a question about *itself*
+(feedback #28, 2026-07-26). The owner's directive: **every agent has a system
+prompt bound to its agent declaration** — agents are not purely visual, they
+carry codified properties, and this is one of them. A question that needs
+implementation-level detail can still send an agent looking; a question about
+what the agent *is* should not.
+
+```jsonc
+"identity": {
+  "role":   "You are introspection's mirror image: …",  // one sentence, ≤240 chars
+  "does":   ["name the lens an ask falls under …"],      // ≤4 lines, ≤140 chars each
+  "limits": ["invent a feed item, headline or link …"],  // ≤4 lines, same
+  "voice":  "Short and comparative; no pleasantries.",   // ≤160 chars
+  "derived": true                                        // include the derived facts
+}
+```
+
+**Most of the block is not written at all — it is derived.** The load-bearing
+half comes from the declaration itself: the tier, the mode, and every axis of
+the capability block (answer phase, tools and their non-tool fallback, context
+blocks, search policy, gates, bounds, team). So a self-description cannot claim
+a capability the agent does not have, and it cannot drift: change the
+capability and the identity changes in the same commit, with no second place to
+update. `agent-capability.test.js` asserts exactly that, axis by axis, for all
+seven agents.
+
+The authored half is what derivation cannot know — why the agent exists, the one
+limit worth stating in words, the tone. It is **bounded prose, validated like
+the rest of the spec**: length caps, item caps, single-line only, no fenced
+blocks or braces, and a closed reject-list of control-flow and override phrasing
+(EN + SV, the parity habit). An identity says what an agent *is*; the moment it
+says what to do *when* something happens it has become a program, which is the
+one thing a spec may never be. A persona can colour how an agent introduces
+itself; it cannot re-route a phase, name a tool, or add a step, because none of
+those are expressible in the shape.
+
+Resolution has a default, like `BASE_CAPABILITY` and `DEFAULT_PROMPT_SET`: a
+spec declaring no `identity` still gets a correct self-description, with `role`
+falling back to its own tagline. Where it reaches the run:
+
+- `agentIdentityPrompt(agent)` renders the block
+  ([`agent-spec-core.js`](../public/js/agent-spec-core.js)); `src/chat.js`
+  resolves it for the routed agent and puts the finished text on the request
+  state, next to the prompt set.
+- [`src/prompt-sets.js`](../src/prompt-sets.js) `phasePrompt` appends it — the
+  one seam every phase already goes through, so no prompt builder was edited and
+  no mode is special-cased. It rides the **answer** roles only (`answer`,
+  `answer-tools`, `answer-direct`, `answer-search-off`); the JSON planning roles
+  are left alone, because their output is parsed and they run on the fixed
+  reliable model precisely so it stays dependable.
+- The shipped prompt stays a literal **prefix** of the result, and the whole
+  thing is fail-soft (PA-2): no identity, a blank one, or a builder that returns
+  a non-string, and the original builder comes back untouched.
+- Cost: 930–1400 characters, roughly 230–350 tokens per answer request, against
+  a synthesis prompt already around 3600 characters. `node sdk/pair-cli.mjs
+  agent <id>` prints each agent's resolved prompt with its exact size.
+
+One deliberate gap: a request that never consults the registry — the plain Deep
+Research turn with no mode flag and no capability knob, which skips the
+multi-megabyte snapshot load on purpose (§4) — resolves no agent and carries no
+block. Its prompts are exactly what they were.
+
 ## 4. The routing table — how a request finds its agent
 
 The registry's top-level `defaults` is an **ordered** table: one row per chat
@@ -321,8 +394,9 @@ notes:
 
 1. Copy an entry in `sdk/AGENTS.json` and give it a new `id`.
 2. Change the defining things — controls, animations, theme, examples, quota
-   (§1) and the capability block (§3.1) — and set `derivesFrom` to the agent you
-   copied (provenance).
+   (§1), the capability block (§3.1) and the identity block (§3.2) — and set
+   `derivesFrom` to the agent you copied (provenance). Leaving `identity` out is
+   fine: the derived default describes the agent from the fields above.
 3. To make it a chat mode, add a `defaults` row naming it (§4). An agent whose
    `answerPhase` is one the platform already implements needs **no code at all**.
 4. Validate: `node sdk/pair-cli.mjs validate` (checks agents too) and
@@ -412,6 +486,7 @@ answers from the project's own source
 - [How does a shared agent link mint a metered quota token?](/?mode=introspection&ask=How%20does%20a%20shared%20agent%20link%20mint%20a%20metered%20token%20with%20the%20spec%20quota%2C%20per%20the%20server-token%20bridge%20and%20PA-8%2FPA-9%3F)
 - [How do the composer deep-links prefill the introspection agent?](/?mode=introspection&ask=How%20does%20parseComposerDeepLink%20in%20deeplink-core.js%20prefill%20the%20composer%20and%20select%20the%20mode%3F)
 - [How do I derive a new agent from an existing one?](/?mode=introspection&ask=How%20do%20I%20derive%20a%20new%20agent%20by%20copying%20a%20spec%20in%20sdk%2FAGENTS.json%2C%20and%20how%20is%20it%20validated%3F)
+- [How does an agent's system prompt get bound to its declaration?](/?mode=introspection&ask=How%20does%20agentIdentityPrompt%20derive%20an%20agent%27s%20system%20prompt%20from%20its%20declaration%2C%20and%20how%20does%20phasePrompt%20bind%20it%20to%20the%20answer%20roles%3F)
 
 ## 10. Where this sits in the documentation
 

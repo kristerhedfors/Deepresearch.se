@@ -54,7 +54,7 @@ import { bashLiteEnabled, developerModeEnabled, extensionEnabledMap } from "./se
 import { buildSlugOk } from "./build-pub.js";
 import { normalizeSwarmCapability } from "./orchestrator-api.js";
 import { loadAgentRegistry, routingNeedsRegistry } from "./agent-registry.js";
-import { resolvePromptSet, resolveRequestAgent } from "./agent-spec.js";
+import { agentIdentityPrompt, resolvePromptSet, resolveRequestAgent } from "./agent-spec.js";
 import { buildFeedbackDebugContext, createOrThreadFeedbackEntry, feedbackPageTag } from "./feedback.js";
 import { recordUseCaseFeedback } from "./testpoints.js";
 import { getDb } from "./db.js";
@@ -138,6 +138,7 @@ import { normalizeSearchSource } from "./websearch-backends.js";
  *   answerPhase?: string | null,
  *   agentId?: string | null,
  *   promptSet?: string | null,
+ *   agentIdentity?: string,
  *   sdkMode?: boolean,
  *   orchestratorMode?: boolean,
  *   orchestration?: { agents: number, waves: number, failed: number, searches: number, swarm?: { nodes: number, members: number, agreement: number, model: string } },
@@ -145,7 +146,7 @@ import { normalizeSearchSource } from "./websearch-backends.js";
  *   orchWorkflow?: any,
  *   swarmResults?: Record<string, { text: string, agreement: number, members: number, rounds: number, failed: number }>,
  *   outrospectionMode?: boolean,
- *   outrospection?: { lens: string | null, items: number, live: boolean },
+ *   outrospection?: { lens: string | null, items: number, texts: number, quotes: number, live: boolean },
  *   buildSlug?: string | null,
  *   userId?: string,
  *   buildResult?: { slug: string, url: string, files: number, bytes: number },
@@ -297,6 +298,16 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // because introspection and research choose their phase per message, and
   // whichever they choose should speak in the voice its agent declared.
   const promptSet = routed ? resolvePromptSet(routed.agent) : null;
+  // The resolved agent's IDENTITY block (spec 0.3.0): its self-description,
+  // derived from its own declaration, appended to every ANSWER system prompt at
+  // the prompt-sets seam. It is what lets "what can you do" be answered by the
+  // agent instead of by a source read loop or a sandbox command (feedback #28).
+  // Resolved HERE because this is the only place holding the agent object; the
+  // pipeline carries the finished text, not the spec. Empty string when no
+  // agent was resolved — a request that never consulted the registry (the plain
+  // Deep Research turn skips the multi-megabyte snapshot load on purpose,
+  // routingNeedsRegistry) keeps exactly today's prompts.
+  const agentIdentity = routed ? agentIdentityPrompt(routed.agent) : "";
   // The experimental bash-lite sandbox transcript: the browser ran an agentic
   // shell loop (public/js/bash-agent.js) before sending, and attached what it
   // ran + the real output. Honored only when this account's knob is on
@@ -392,6 +403,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       answerPhase,
       agentId,
       promptSet,
+      agentIdentity,
       buildSlug,
       userId: String(identity.id),
     });
@@ -863,7 +875,7 @@ export function resolveJsonModel(catalog, userModel) {
  * @param {string} jsonModel
  * @param {boolean} webSearch
  * @param {number} budgetS
- * @param {Partial<EnrichmentOptions> & { searchSource?: string, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, swarm?: any, orchWorkflow?: any, swarmResults?: any, outrospectionMode?: boolean, answerPhase?: string | null, agentId?: string | null, promptSet?: string | null, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
+ * @param {Partial<EnrichmentOptions> & { searchSource?: string, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, swarm?: any, orchWorkflow?: any, swarmResults?: any, outrospectionMode?: boolean, answerPhase?: string | null, agentId?: string | null, promptSet?: string | null, agentIdentity?: string, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
  * @returns {ChatRequestState}
  */
 function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
@@ -938,6 +950,11 @@ function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
     // phasePrompt). Null falls back to the executing phase's default set, which
     // is what every shipped agent declares anyway.
     promptSet: extras.promptSet || null,
+    // The resolved agent's identity block (agent-spec-core.js
+    // agentIdentityPrompt): the self-description appended to every ANSWER
+    // system prompt (prompt-sets.js IDENTITY_ROLES). Empty = no agent was
+    // resolved for this request, and the prompts are exactly what they were.
+    agentIdentity: extras.agentIdentity || "",
     buildSlug: extras.buildSlug || null,
     userId: extras.userId || "",
     // This channel renders the interactive inline-quiz event (src/quiz.js;

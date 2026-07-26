@@ -14,7 +14,9 @@
 // I/O-free and Node-tested (agent-spec-core.test.js). An "agent" is DEFINED by
 // its chat-input-pane controls, its intro + loading animations, its colour
 // theme, its seed example questions, the default quota a minted share-link
-// token carries, and — since spec 0.2.0 — its CAPABILITY block: what it DOES.
+// token carries, since spec 0.2.0 its CAPABILITY block (what it DOES), and
+// since spec 0.3.0 its IDENTITY block — the system prompt bound to the
+// declaration, so an agent knows what it is without going and looking.
 // The seven agents this project ships are the reference specs in
 // sdk/AGENTS.json; deriving a new agent is copying one, changing these fields,
 // and validating.
@@ -470,6 +472,292 @@ export function validateCapability(a) {
   return problems;
 }
 
+// ---- the IDENTITY block (spec 0.3.0) -----------------------------------------
+//
+// Owner directive (feedback #28, 2026-07-26): "make sure every agent has a
+// system prompt bound to its agent declaration (agents are not purely visual,
+// they shall have all sorts of codified properties as well, system prompt being
+// one)". It came out of asking outrospection "what can outrospection do" and
+// watching the agent go read the source and run sandbox commands to answer a
+// question about ITSELF. A high-level question about an agent should be
+// answerable by the agent; only a genuinely implementation-level question
+// should send it looking.
+//
+// The shape has to satisfy two things at once:
+//
+//  · the directive — an agent must carry its own system-prompt material, bound
+//    to its declaration, so it knows what it is without looking it up;
+//  · the standing rule of this file — a spec is DATA and a SELECTOR over
+//    shipped behaviour, never a place to author new behaviour or control flow
+//    (invariant 1).
+//
+// What satisfies both is an agent's SELF-DESCRIPTION and nothing else: who this
+// agent is, what it can do, what it cannot. Two halves:
+//
+//  1. **The derived half** (the load-bearing one). Generated from the
+//     declaration itself — name, tier, mode, and every axis of the capability
+//     block: answer phase, tools + fallback, context blocks, search policy,
+//     gates, bounds, team, required knob. It therefore cannot claim a
+//     capability the agent does not have, and it cannot drift: change the
+//     capability and the self-description changes with it, in the same commit,
+//     with no second place to update.
+//  2. **The authored half** — `role`, `does`, `limits`, `voice`: bounded,
+//     single-line, prose-only strings the derivation cannot know (why the agent
+//     exists, the one limit worth stating in words, the tone). Structurally
+//     validated exactly like the rest of the spec: length caps, item caps, no
+//     newlines, no fenced blocks or braces, and a closed reject-list of
+//     control-flow-ish phrasing.
+//
+// So a persona can colour how an agent introduces itself; it can never re-route
+// a phase, name a tool, or add a step, because none of those are expressible in
+// the shape. The rendered block is appended to the ANSWER prompts only, at the
+// one seam every phase already goes through (src/prompt-sets.js `phasePrompt`)
+// — never to the JSON planning prompts, whose output is parsed.
+
+/** The closed field set of an `identity` block. Anything else is a problem, so
+ * the block cannot quietly grow into a scripting surface. */
+export const IDENTITY_FIELDS = ["role", "does", "limits", "voice", "derived"];
+
+/** Bounds on the authored half. The block rides in EVERY answer request, so the
+ * caps are what keep a persona from becoming a token budget item: the resolved
+ * text of the seven shipped agents lands between 930 and 1400 characters —
+ * roughly 230–350 tokens, against a synthesis prompt that is already ~3600. */
+export const IDENTITY_LIMITS = {
+  role: 240, // one sentence
+  voice: 160, // one clause
+  item: 140, // one `does` / `limits` entry
+  listItems: 4, // entries per list
+  block: 1800, // the rendered block, hard-clamped
+};
+
+/** Phrasing an identity string may not contain: instruction-override and
+ * control-flow language. An identity says what an agent IS; the moment it says
+ * what to do WHEN something happens, it has stopped being a description and
+ * started being a program, which is exactly what the spec-is-data rule forbids.
+ *
+ * Swedish sits beside English throughout. Invariant 6 governs deterministic
+ * intent ROUTING and this is validation, not routing — but a guard that only
+ * catches one of the site's two languages is a guard that only half-works, and
+ * the parity habit is cheap to keep. */
+export const IDENTITY_FORBIDDEN = [
+  // English
+  "ignore previous", "ignore all", "disregard", "override", "system prompt",
+  "if the user", "when the user", "call the tool", "use the tool", "step 1:",
+  // Swedish
+  "strunta i", "bortse från", "åsidosätt", "systemprompt",
+  "om användaren", "när användaren", "anropa verktyget", "använd verktyget", "steg 1:",
+];
+
+/**
+ * One resolved identity — the authored half, normalized.
+ * @typedef {Object} AgentIdentity
+ * @property {string} role one sentence: what this agent is
+ * @property {string[]} does authored capability lines the derivation cannot know
+ * @property {string[]} limits authored limits, same
+ * @property {string} voice one clause of tone
+ * @property {boolean} derived whether the declaration-derived facts are included
+ */
+
+/** What an agent inherits when it declares no identity block at all. `role`
+ * falls back to the spec's own tagline/description/name, so a spec that
+ * declares nothing still gets a correct self-description — the same
+ * default-by-construction contract as BASE_CAPABILITY / DEFAULT_PROMPT_SET.
+ * @type {AgentIdentity} */
+export const BASE_IDENTITY = { role: "", does: [], limits: [], voice: "", derived: true };
+
+/** Trim a trailing `(…)` implementation note off a vocabulary description —
+ * "answer from the standing outward feed (runOutrospection)" reads better in a
+ * system prompt without the function name. @param {string} s */
+function withoutTail(s) {
+  return String(s || "").replace(/\s*\([^()]*\)\s*$/, "").trim();
+}
+
+/**
+ * The resolved identity: the spec's authored block, normalized and clamped.
+ * Total — never throws, and a garbage block resolves to the base rather than
+ * failing anything (invariant 2; validation is what REPORTS the garbage).
+ * @param {any} a
+ * @returns {AgentIdentity}
+ */
+export function resolveIdentity(a) {
+  const raw = (a && a.identity && typeof a.identity === "object" && !Array.isArray(a.identity)) ? a.identity : {};
+  /** @param {unknown} v @param {number} cap */
+  const str = (v, cap) => (typeof v === "string" ? v.trim().replace(/\s+/g, " ").slice(0, cap) : "");
+  /** @param {unknown} v */
+  const list = (v) => (Array.isArray(v) ? v : [])
+    .map((x) => str(x, IDENTITY_LIMITS.item))
+    .filter(Boolean)
+    .slice(0, IDENTITY_LIMITS.listItems);
+  const fallbackRole = str(a?.tagline, IDENTITY_LIMITS.role)
+    || str(a?.description, IDENTITY_LIMITS.role)
+    || str(a?.name, IDENTITY_LIMITS.role);
+  return {
+    role: str(raw.role, IDENTITY_LIMITS.role) || fallbackRole,
+    does: list(raw.does),
+    limits: list(raw.limits),
+    voice: str(raw.voice, IDENTITY_LIMITS.voice),
+    derived: raw.derived !== false,
+  };
+}
+
+/**
+ * The self-description FACTS derived from the declaration: what this agent can
+ * do, what it works from, and what it cannot do — read straight off the
+ * capability block's closed vocabularies, so every line names something the
+ * platform actually implements for this agent.
+ * @param {any} a
+ * @returns {{ tier: string, runs: string, does: string[], from: string[], cannot: string[] }}
+ */
+export function derivedIdentityFacts(a) {
+  const cap = resolveCapability(a);
+  const phase = /** @type {any} */ (ANSWER_PHASES)[cap.answerPhase];
+  const does = [];
+  const from = [];
+  const cannot = [];
+
+  // The tier + mode clause. Se/cure's defining property is structural, so it is
+  // stated as such rather than as a feature.
+  const modeLabel = /** @type {any} */ (MODE_THEMES)[a?.mode]?.label || a?.mode || "";
+  const tier = a?.platform === "client"
+    ? "DeepResearch.Se/cure (the client tier — the server is in no data path)"
+    : `${modeLabel ? `the ${modeLabel} mode of ` : ""}DeepResearch.Se/rver (the signed-in tier)`;
+
+  // The answer phase — the single most load-bearing fact about what an agent
+  // does, so it gets its own line rather than a bullet among the rest.
+  const runs = phase ? `Your turn runs the ${phase.label} phase: ${withoutTail(phase.desc)}.` : "";
+
+  // The search plane.
+  if (cap.search.web && cap.search.maxQueries !== 0) {
+    does.push(`search the web${cap.search.maxQueries != null ? ` (at most ${cap.search.maxQueries} queries a turn)` : ""}`);
+    if (!cap.search.auxSources) cannot.push("use the auxiliary research sources (plain web search only)");
+  } else {
+    cannot.push("run a web search on this turn");
+  }
+
+  // The tool loop — including its non-tool fallback, which is invariant 1 as a
+  // fact about this agent rather than as a rule about the platform.
+  if (cap.tools.length) {
+    const labels = cap.tools.map((t) => /** @type {any} */ (TOOL_CLASSES)[t]?.label || t);
+    does.push(`drive the ${labels.join(" + ")} tools (on a model without native tool use the same work runs through the ${cap.toolFallback} path)`);
+  } else {
+    // Deliberately "a tool loop of your own": several tool-less agents still
+    // receive a shell transcript the BROWSER produced, which the `from` list
+    // covers — the absent thing is the agent driving tools itself.
+    cannot.push("drive a tool loop of your own — you have no tools this turn");
+  }
+
+  // What is retrieved into the turn. The block's LABEL, not its description:
+  // this rides in every request, and "the Docs corpus" costs a fifth of what
+  // "the committed documentation corpus + its dense index" costs to say. The
+  // label is used verbatim — lower-casing it would break "Se/cure digest" and
+  // "OWASP reference" for the sake of a comma.
+  for (const b of cap.context) from.push(`the ${/** @type {any} */ (CONTEXT_BLOCKS)[b]?.label || b}`);
+
+  // The deterministic gates and the sub-agent team.
+  if (cap.gates.length) {
+    const labels = cap.gates.map((g) => /** @type {any} */ (GATE_IDS)[g?.id]?.label || g?.id);
+    does.push(`route the ask through the ${labels.join(" + ")} gate, in Swedish and English alike`);
+  }
+  if (cap.team) {
+    does.push(`plan a team of up to ${cap.team.maxAgents || "a few"} sub-agents (${(cap.team.kinds || []).join(", ")}) and run it in ${cap.team.maxWaves || "several"} waves`);
+  }
+  if (Number.isFinite(cap.bounds.maxRounds)) does.push(`work in at most ${cap.bounds.maxRounds} rounds`);
+
+  return { tier, runs, does, from, cannot };
+}
+
+/** The closing instruction — the whole point of the block. Kept as a named
+ * constant so a test can assert every agent's prompt carries it, and so the
+ * "but a deep question may still investigate" half of the owner's directive
+ * ("For a sufficient requested level of detail absolutely") stays intact. */
+export const IDENTITY_SELF_ANSWER_NOTE =
+  "This description is authoritative: answer a question about yourself — who you are, what you can do, where your limits lie — briefly and directly from it, "
+  + "without reading source, running commands or searching. Investigate only when the question asks for implementation-level detail beyond this description.";
+
+/**
+ * The agent's SYSTEM PROMPT identity block, as text — the derived facts plus the
+ * authored half, in one bounded block. This is what src/prompt-sets.js appends
+ * to every answer prompt. Total and never throws: any spec, however broken,
+ * yields a string (an empty one only if there is nothing at all to say).
+ * @param {any} a
+ * @returns {string}
+ */
+export function agentIdentityPrompt(a) {
+  const id = resolveIdentity(a);
+  const facts = id.derived
+    ? derivedIdentityFacts(a)
+    : { tier: "", runs: "", does: [], from: [], cannot: [] };
+  const name = String(a?.name || a?.id || "").trim();
+  if (!name && !id.role) return "";
+  const does = [...facts.does, ...id.does].slice(0, 6);
+  const from = facts.from.slice(0, 4);
+  const cannot = [...facts.cannot, ...id.limits].slice(0, 4);
+  const head = `You are ${name || a?.id}${a?.id ? ` (agent "${a.id}")` : ""}${facts.tier ? ` — ${facts.tier}` : ""}.`;
+  const lines = [
+    "## Who you are — this agent's own declaration (sdk/AGENTS.json)",
+    id.role ? `${head} ${id.role}` : head,
+    facts.runs,
+    does.length ? `You can: ${does.join("; ")}.` : "",
+    from.length ? `You work from: ${from.join("; ")}.` : "",
+    cannot.length ? `You cannot: ${cannot.join("; ")}.` : "",
+    id.voice ? `Voice: ${id.voice}` : "",
+    IDENTITY_SELF_ANSWER_NOTE,
+  ].filter(Boolean);
+  return lines.join("\n").slice(0, IDENTITY_LIMITS.block);
+}
+
+/**
+ * Structural validation of one identity block. Returns problem strings — empty
+ * means valid. Never throws (the validateAgentSpec convention).
+ * @param {any} a
+ * @returns {string[]}
+ */
+export function validateIdentity(a) {
+  /** @type {string[]} */
+  const problems = [];
+  const at = (/** @type {string} */ msg) => `${a && a.id ? a.id : "(no id)"}: identity.${msg}`;
+  if (a?.identity == null) return problems; // absent = the derived default
+  if (typeof a.identity !== "object" || Array.isArray(a.identity)) return [at("must be an object")];
+
+  for (const k of Object.keys(a.identity)) {
+    if (!IDENTITY_FIELDS.includes(k)) problems.push(at(`unknown field "${k}" — the block is ${IDENTITY_FIELDS.join("/")}`));
+  }
+  if (a.identity.derived != null && typeof a.identity.derived !== "boolean") {
+    problems.push(at("derived must be a boolean"));
+  }
+
+  /** One authored string: prose only, single line, bounded, no control flow.
+   * @param {string} field @param {unknown} v @param {number} cap */
+  const checkString = (field, v, cap) => {
+    if (typeof v !== "string") { problems.push(at(`${field} must be a string`)); return; }
+    if (v.length > cap) problems.push(at(`${field} is ${v.length} chars — the cap is ${cap} (it rides in every request)`));
+    if (/[\n\r]/.test(v)) problems.push(at(`${field} must be a single line — an identity is prose, not a script`));
+    if (v.includes("```") || /[{}]/.test(v)) problems.push(at(`${field} may not contain fenced blocks or braces`));
+    const low = v.toLowerCase();
+    for (const bad of IDENTITY_FORBIDDEN) {
+      if (low.includes(bad)) problems.push(at(`${field} contains control-flow/override phrasing ("${bad}") — an identity describes what this agent IS, it does not instruct the run`));
+    }
+  };
+
+  if (a.identity.role != null) checkString("role", a.identity.role, IDENTITY_LIMITS.role);
+  if (a.identity.voice != null) checkString("voice", a.identity.voice, IDENTITY_LIMITS.voice);
+  for (const field of ["does", "limits"]) {
+    const v = a.identity[field];
+    if (v == null) continue;
+    if (!Array.isArray(v)) { problems.push(at(`${field} must be an array of strings`)); continue; }
+    if (v.length > IDENTITY_LIMITS.listItems) problems.push(at(`${field} has ${v.length} entries — the cap is ${IDENTITY_LIMITS.listItems}`));
+    v.forEach((/** @type {unknown} */ x, /** @type {number} */ i) => checkString(`${field}[${i}]`, x, IDENTITY_LIMITS.item));
+  }
+
+  // The rendered result is what actually costs tokens, so it is bounded too —
+  // a block that only fits because the renderer truncates it is a broken block.
+  const rendered = agentIdentityPrompt(a);
+  if (rendered.length >= IDENTITY_LIMITS.block) {
+    problems.push(at(`renders to ${rendered.length}+ chars — the cap is ${IDENTITY_LIMITS.block}`));
+  }
+  return problems;
+}
+
 // ---- validation --------------------------------------------------------------
 
 /**
@@ -558,6 +846,10 @@ export function validateAgentSpec(a) {
   // Capability (spec 0.2.0) — what the agent DOES, as a selection over shipped
   // behaviour. Absent means BASE_CAPABILITY: a plain deep-research turn.
   for (const p of validateCapability(a)) problems.push(p);
+  // Identity (spec 0.3.0) — the system-prompt material bound to the
+  // declaration. Absent means the derived default: a self-description
+  // generated from the fields above.
+  for (const p of validateIdentity(a)) problems.push(p);
   return problems;
 }
 
@@ -879,6 +1171,9 @@ export function renderAgentList(reg) {
     lines.push(`  ${a.id}  (${a.platform})  ${a.name}`);
     lines.push(`      ${a.tagline || ""}`);
     lines.push(`      controls: ${ctrls}`);
+    // The identity's one-sentence role: enough to see at a glance that every
+    // agent carries system-prompt material (`agent <id>` prints the whole block).
+    lines.push(`      identity: ${resolveIdentity(a).role || "(derived)"}`);
   }
   return lines.join("\n").trimEnd();
 }
@@ -1028,6 +1323,10 @@ export function renderAgentShow(reg, id) {
     `  theme: ${Object.entries(theme).map(([k, v]) => `${k}=${v}`).join("  ")}`,
     `  quota (share link): ${q.requests} req / ${q.window}${q.credits != null ? `, ${q.credits} credits` : ""}`,
     ex.seed.length ? `  examples:\n${ex.seed.map((s) => `    · ${s}`).join("\n")}` : "  examples: (generatable)",
+    // The resolved SYSTEM PROMPT — what every answer prompt for this agent
+    // carries (src/prompt-sets.js phasePrompt). Printed verbatim so its size
+    // and wording can be inspected without running the site.
+    `  system prompt (identity block, ${agentIdentityPrompt(a).length} chars):\n${agentIdentityPrompt(a).split("\n").map((l) => `    ${l}`).join("\n")}`,
   ];
   return lines.filter((l) => l !== "").join("\n");
 }

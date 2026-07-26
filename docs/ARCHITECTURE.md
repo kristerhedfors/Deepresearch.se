@@ -1354,7 +1354,10 @@ as bespoke subsystems:
   theme, animations, example questions, share-link quota — and, since spec
   0.2.0, its **capability block** (what it does: answer phase, tool set,
   context blocks, search/routing policy, gates, bounds, emitted events,
-  required knob, sub-agent team). Copy a spec, change those, validate. Seven
+  required knob, sub-agent team) and, since spec 0.3.0, its **identity
+  block** (the system prompt bound to the declaration, derived from that
+  capability block so self-description and capability move together). Copy a
+  spec, change those, validate. Seven
   agents ship today: the five DEFAULTS, one per chat mode — `research`
   (`normal`), `introspection`, `agent-builder` (Agent Studio, mode `sdk`),
   `orchestrator` and `outrospection` — plus `secure` (the Se/cure archetype)

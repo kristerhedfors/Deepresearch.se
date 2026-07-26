@@ -17,13 +17,15 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { BOUND_ROLES, PROMPT_BUILDERS, phasePrompt, promptBuilder, promptSetFor } from "./prompt-sets.js";
+import { BOUND_ROLES, IDENTITY_ROLES, PROMPT_BUILDERS, phasePrompt, promptBuilder, promptSetFor, withIdentity } from "./prompt-sets.js";
 import {
   AGENTS_PATH,
   ANSWER_PHASES,
   DEFAULT_PROMPT_SET,
+  IDENTITY_SELF_ANSWER_NOTE,
   PROMPT_ROLES,
   PROMPT_SETS,
+  agentIdentityPrompt,
   findAgent,
   missingPromptRoles,
   resolveCapability,
@@ -150,4 +152,71 @@ test("promptSetFor clamps to a bound set", () => {
 test("promptBuilder throws only on an unreachable programming error", () => {
   assert.throws(() => promptBuilder("feed", "plan"), /no prompt builder/);
   assert.throws(() => promptBuilder("nope", "answer"), /no prompt builder/);
+});
+
+// ---- the IDENTITY binding (spec 0.3.0) ---------------------------------------
+//
+// The fourth job of this module since the owner directive in feedback #28:
+// carrying each agent's own system prompt into the run. `phasePrompt` is the ONE
+// seam every answer prompt already goes through, so the block is bound here and
+// nowhere else — no prompt builder was edited and no mode is special-cased.
+
+test("the identity block rides on the ANSWER prompts, never on the planning ones", () => {
+  const identity = agentIdentityPrompt(findAgent(realRegistry(), "outrospection"));
+  const state = { promptSet: "feed", agentIdentity: identity };
+
+  // The answer role carries it, appended AFTER the shipped prompt — which stays
+  // a literal prefix, so the mode gains self-knowledge and nothing else.
+  const answer = phasePrompt(state, "feed", "answer")({ lens: null, hasItems: false });
+  const bare = outrospectionAnswerPrompt({ lens: null, hasItems: false });
+  assert.ok(answer.startsWith(bare), "the shipped prompt is unchanged");
+  assert.ok(answer.endsWith(identity));
+  assert.ok(answer.includes(IDENTITY_SELF_ANSWER_NOTE));
+
+  // The JSON planning roles do not: their output is parsed, and they run on the
+  // fixed reliable model precisely because it has to be dependable.
+  const planState = { promptSet: "workflow", agentIdentity: identity };
+  assert.equal(phasePrompt(planState, "workflow", "plan"), orchestratorPlanPrompt);
+  assert.equal(phasePrompt(planState, "workflow", "worker"), orchAgentPrompt);
+  assert.deepEqual([...IDENTITY_ROLES].sort(), ["answer", "answer-direct", "answer-search-off", "answer-tools"]);
+  for (const role of IDENTITY_ROLES) assert.ok(PROMPT_ROLES.includes(role), `${role} is a real prompt role`);
+});
+
+test("every default agent's identity reaches its own phase's answer prompt", () => {
+  // Not one mode wired by hand: each shipped agent, through the generic seam.
+  const reg = realRegistry();
+  for (const a of reg.agents) {
+    const cap = resolveCapability(a);
+    const state = { promptSet: resolvePromptSet(a), agentIdentity: agentIdentityPrompt(a) };
+    const roles = (ANSWER_PHASES[cap.answerPhase].promptRoles || []).filter((r) => IDENTITY_ROLES.has(r));
+    assert.ok(roles.length, `${a.id}'s phase has an answer role`);
+    for (const role of roles) {
+      const text = phasePrompt(state, cap.answerPhase, role)();
+      assert.ok(text.includes(`agent "${a.id}"`), `${a.id} ${role}: the prompt names the agent`);
+      assert.ok(text.includes(IDENTITY_SELF_ANSWER_NOTE), `${a.id} ${role}: it can answer about itself`);
+    }
+  }
+});
+
+test("a missing or broken identity leaves the shipped builder untouched (fail-soft)", () => {
+  // No agent resolved (the plain Deep Research turn never loads the registry):
+  // the resolved builder is the SAME function object it has always been.
+  assert.equal(phasePrompt({}, "research", "answer"), synthPrompt);
+  for (const junk of [undefined, null, "", "   ", 42, {}, []]) {
+    assert.equal(phasePrompt({ agentIdentity: junk }, "research", "answer"), synthPrompt, `${JSON.stringify(junk)}`);
+  }
+  // And the wrapper itself never breaks a request: a builder returning a
+  // non-string is passed through rather than concatenated into nonsense.
+  assert.equal(withIdentity(synthPrompt, ""), synthPrompt);
+  assert.equal(withIdentity(() => 7, "ID")(), 7);
+  assert.equal(withIdentity((x) => `p:${x}`, "ID")("q"), "p:q\n\nID");
+});
+
+test("chat.js binds the resolved agent's identity onto the request state", () => {
+  // The one wiring line this seam depends on, pinned in the pipeline.test.js
+  // style: the state field has to be filled from the ROUTED agent, or every
+  // assertion above is about a value nothing ever sets.
+  const chat = readFileSync(join(repoRoot, "src", "chat.js"), "utf8");
+  assert.match(chat, /const agentIdentity = routed \? agentIdentityPrompt\(routed\.agent\) : ""/);
+  assert.match(chat, /agentIdentity: extras\.agentIdentity \|\| ""/);
 });

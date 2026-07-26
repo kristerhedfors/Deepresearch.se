@@ -13,7 +13,9 @@
 //                                                  #   closure -> build order
 //   node sdk/pair-cli.mjs validate                 # manifest + skill integrity
 //   node sdk/pair-cli.mjs agents                   # the shipped agent flavours
-//   node sdk/pair-cli.mjs agent <id>               # one agent's full definition
+//   node sdk/pair-cli.mjs agent <id>               # one agent's full definition,
+//                                                  #   including the SYSTEM PROMPT
+//                                                  #   its declaration resolves to
 //
 // `plan` is the generator's mechanical half: it closes the selection over
 // `deps`, always includes the baseplate, orders by (layer, deps, manifest
@@ -60,8 +62,10 @@ export {
   validateManifest,
 } from "../public/js/sdk-core.js";
 export {
+  agentIdentityPrompt,
   renderAgentList,
   renderAgentShow,
+  resolveIdentity,
   validateAgentRegistry,
 } from "../public/js/agent-spec-core.js";
 

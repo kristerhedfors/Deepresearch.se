@@ -36,6 +36,8 @@ import {
   MODE_THEMES,
   TOOL_CLASSES,
   TOOL_FALLBACKS,
+  IDENTITY_SELF_ANSWER_NOTE,
+  agentIdentityPrompt,
   defaultAgentForMode,
   findAgent,
   resolveCapability,
@@ -194,6 +196,82 @@ test("every mode that needs the capability knob declares it", () => {
     assert.deepEqual(cap.requires, ["developer_mode"], `${mode} is gated on the developer_mode knob`);
   }
   assert.deepEqual(resolveCapability(defaultAgentForMode(reg, "normal")).requires, []);
+});
+
+// ---- Stage 3: the identity block, derived FROM the capability ----------------
+//
+// Spec 0.3.0 binds a system prompt to each declaration (owner directive,
+// feedback #28: an agent asked "what can outrospection do" went and read the
+// source to answer a question about itself). The block's load-bearing half is
+// generated from the capability, which is what makes it un-driftable — so the
+// assertions here are the same kind as the rest of this suite: declaration
+// against implementation, one per axis.
+
+test("every agent's system prompt reports its OWN capability, and claims nothing else", () => {
+  const reg = realRegistry();
+  for (const a of reg.agents) {
+    const cap = resolveCapability(a);
+    const text = agentIdentityPrompt(a);
+
+    // The answer phase, named.
+    assert.ok(text.includes(ANSWER_PHASES[cap.answerPhase].label), `${a.id} names its answer phase`);
+
+    // Tools: an agent with none may not describe a tool loop; an agent with
+    // some must name them AND its non-tool fallback (invariant 1, as a fact
+    // about this agent rather than as a rule about the platform).
+    if (cap.tools.length) {
+      for (const t of cap.tools) assert.ok(text.includes(TOOL_CLASSES[t].label), `${a.id} names its ${t} tools`);
+      assert.ok(text.includes(cap.toolFallback), `${a.id} names its no-tool fallback`);
+    } else {
+      assert.ok(!/drive the .* tools/.test(text), `${a.id} has no tools and must not claim any`);
+      assert.ok(text.includes("no tools this turn"), `${a.id} says it has no tools`);
+    }
+
+    // Search: the block agrees with the search plane either way.
+    if (cap.search.web && cap.search.maxQueries !== 0) assert.ok(text.includes("search the web"), `${a.id} searches`);
+    else assert.ok(text.includes("run a web search"), `${a.id} does not search and says so`);
+
+    // Every retrieval block it declares is named as something it works from.
+    for (const b of cap.context) {
+      assert.ok(text.includes(CONTEXT_BLOCKS[b].label), `${a.id} names the ${b} block it works from`);
+    }
+
+    // Gates and team, when declared.
+    for (const g of cap.gates) assert.ok(text.includes(GATE_IDS[g.id].label), `${a.id} names its ${g.id} gate`);
+    if (cap.team) assert.ok(text.includes(String(cap.team.maxAgents)), `${a.id} names its team size`);
+
+    // The tier is structural, so it is stated as such.
+    assert.ok(text.includes(a.platform === "client" ? "Se/cure" : "Se/rver"), `${a.id} names its tier`);
+  }
+});
+
+test('"what can you do" is answerable without a source read or a sandbox command', () => {
+  // The reported case, end to end (feedback #28): the block an outrospection
+  // turn carries has to contain the answer AND the instruction to use it.
+  const text = agentIdentityPrompt(findAgent(realRegistry(), "outrospection"));
+  assert.ok(text.includes("outward feed"), "it says what it answers from");
+  assert.ok(text.includes("Lens"), "it says how an ask is routed");
+  assert.ok(text.includes("run a web search"), "it says what it cannot do");
+  assert.ok(text.includes(IDENTITY_SELF_ANSWER_NOTE));
+  assert.ok(/without reading source, running commands or searching/.test(text));
+  // …while a genuinely implementation-level question is still allowed to go
+  // looking — the other half of the directive.
+  assert.ok(/Investigate only when the question asks for implementation-level detail/.test(text));
+});
+
+test("a capability change moves the identity with it — there is no second place to update", () => {
+  const base = spec({ capability: { answerPhase: "research", search: { web: true } } });
+  assert.ok(agentIdentityPrompt(base).includes("search the web"));
+  const noSearch = spec({ capability: { answerPhase: "research", search: { web: false } } });
+  assert.ok(!agentIdentityPrompt(noSearch).includes("search the web"));
+  assert.ok(agentIdentityPrompt(noSearch).includes("run a web search on this turn"));
+  // An authored persona cannot restore a capability the spec removed: the
+  // authored half only ADDS lines, the derived half is what states the facts.
+  const lying = spec({
+    capability: { answerPhase: "research", search: { web: false } },
+    identity: { does: ["describe what the web says"] },
+  });
+  assert.ok(agentIdentityPrompt(lying).includes("run a web search on this turn"));
 });
 
 // ---- The invariants, each with a passing and a failing case -----------------
