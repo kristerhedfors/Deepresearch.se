@@ -314,6 +314,52 @@ That third one is worth dwelling on: a fail-soft helper phase that is also
 *silent* will happily report a measurement of something else. The rerank path
 now logs every fallback.
 
+### Switching embedding providers
+
+Both `intfloat/multilingual-e5-large` backends serve the *same weights*, so
+their vectors are interchangeable and an index may be built by either — or by
+both in one run. That is measured, not assumed: re-embedding chunks of the
+committed Berget-built index through Hugging Face and comparing against the
+stored vectors gives **cosine 0.9999–1.0000**. A provider switch that changed
+the vectors would silently corrupt any index built across both, so the
+registry (`scripts/embed-providers.mjs`) is the one place either backend is
+reached from.
+
+```bash
+EMBED_PROVIDER=auto   …   # default: Berget, failing over to HF mid-build
+EMBED_PROVIDER=berget …
+EMBED_PROVIDER=hf     …
+EMBED_PROVIDER=both   …   # both at once, work-stealing
+npm run arxiv:index -- --embed-provider hf         # or the per-command flag
+npm run arxiv:search -- --embed-provider hf "…"
+```
+
+**Use `auto`.** It is the mode that earns its place: an empty Berget wallet
+(`402 INSUFFICIENT_WALLET_BALANCE`) killed both an arXiv index build and a
+docs-index regeneration on 2026-07-26, and under `auto` each would have
+finished on Hugging Face instead.
+
+**`both` does not speed this pair up.** Measured on real 1100-char passages:
+
+| | passages/s |
+|---|---|
+| Berget alone | 180–270 (its own run-to-run variance is ±20%) |
+| HF Inference alone | ~2 |
+
+HF's share of a mixed job is about 1% — below Berget's own variance, so the
+difference is not resolvable. Worse, a naive pool is *slower*: HF's batch
+latency becomes a tail the fast provider waits on, which made a
+12,000-passage run 8–16% slower than Berget alone. The pool therefore carries
+a **straggler guard** — a non-primary provider only takes a batch when the
+remaining work is at least `EMBED_TAIL_MARGIN` (default 10) times the batch's
+expected duration, using each provider's *observed* rate rather than a static
+guess. With the guard, `both` matches `berget` exactly and never loses. It
+would pay off with a second backend within a few x of the first — a second
+Berget key, or a self-hosted TEI — which is why the mode exists.
+
+Reranking and JSON-mode chat stay Berget-only: HF Inference does not serve
+`bge-reranker-v2-m3` on the sentence-similarity shape (400, measured).
+
 ### Throughput
 
 | Batch × concurrency | Sustained |

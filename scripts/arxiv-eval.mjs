@@ -39,7 +39,8 @@ import {
   reciprocalRank,
   rrfFuse,
 } from "../public/js/arxiv-rag-core.js";
-import { EMBED_MODEL, EMBED_MODEL_INSTRUCT, RERANK_DOC_CHARS, chatJson, embedAll, rerank } from "./arxiv-berget.mjs";
+import { RERANK_DOC_CHARS, chatJson, rerank } from "./arxiv-berget.mjs";
+import { EMBED_MODEL, EMBED_MODEL_INSTRUCT, describeProviders, embedAll } from "./embed-providers.mjs";
 import { loadCorpus } from "./arxiv-corpus.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -100,7 +101,7 @@ const DEFAULT_VARIANTS = ["dense_ta", "dense_abs", "dense_title", "dense_ctx", "
  * @param {string} familyKey
  * @param {import('../public/js/arxiv-rag-core.js').ArxivPaper[]} papers
  * @param {string} cacheKey
- * @returns {Promise<{ vectors: Int8Array[], f32: Float32Array[] | null, docIds: string[], tokens: number }>}
+ * @returns {Promise<{ vectors: Int8Array[], f32: Float32Array[] | null, docIds: string[] }>}
  */
 async function embedFamily(familyKey, papers, cacheKey, wantF32) {
   const fam = FAMILIES[familyKey];
@@ -113,7 +114,6 @@ async function embedFamily(familyKey, papers, cacheKey, wantF32) {
         vectors: cached.vectors.map(b64ToInt8),
         f32: null,
         docIds: cached.docIds,
-        tokens: 0,
       };
     }
   } catch {
@@ -130,18 +130,20 @@ async function embedFamily(familyKey, papers, cacheKey, wantF32) {
     }
   }
   const t0 = Date.now();
-  const { vectors, tokens } = await embedAll(texts, {
+  const { vectors } = await embedAll(texts, {
     model: fam.model,
-    onProgress: (done, total, tok) => {
+    provider: process.env.EMBED_PROVIDER,
+    onProgress: (done, total, by) => {
       const s = (Date.now() - t0) / 1000;
-      process.stdout.write(`\r  [${familyKey}] ${done}/${total} passages · ${Math.round(tok / s)} tok/s`);
+      const split = Object.entries(by).map(([k, n]) => `${k} ${n}`).join(" ");
+      process.stdout.write(`\r  [${familyKey}] ${done}/${total} passages · ${Math.round(done / s)}/s · ${split}`);
     },
   });
   process.stdout.write("\n");
   const int8 = vectors.map(quantizeInt8);
   await mkdir(CACHE, { recursive: true });
   await writeFile(file, JSON.stringify({ n: papers.length, docIds, vectors: int8.map(int8ToB64) }));
-  return { vectors: int8, f32: wantF32 ? vectors : null, docIds, tokens };
+  return { vectors: int8, f32: wantF32 ? vectors : null, docIds };
 }
 
 // ---- retrieval per variant -------------------------------------------------------

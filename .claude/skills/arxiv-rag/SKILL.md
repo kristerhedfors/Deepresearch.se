@@ -29,7 +29,8 @@ working knowledge — what bites, and what not to re-derive.
 | `public/js/arxiv-rag-core.js` | pure core: passages, tokenizer, BM25, RRF, `denseSearchPacked`, metrics, `recapForContext` |
 | `scripts/arxiv-harvest.mjs` | OAI-PMH bulk harvest, month-sharded, resumable |
 | `scripts/arxiv-corpus.mjs` | dedup, filter, deterministic hash sampling |
-| `scripts/arxiv-berget.mjs` | build-time Berget client (embed / rerank / JSON chat) |
+| `scripts/embed-providers.mjs` | the embedding-provider registry: Berget + HF on the SAME model, `auto`/`berget`/`hf`/`both`, failover and the straggler guard |
+| `scripts/arxiv-berget.mjs` | the Berget-only surfaces (rerank, JSON chat) |
 | `scripts/arxiv-index.mjs` | the binary index pack, resumable |
 | `scripts/arxiv-search.mjs` | the four retrieval pipelines |
 | `scripts/arxiv-goldset.mjs`, `arxiv-topical-queries.json`, `arxiv-eval.mjs`, `arxiv-report.mjs` | the measured bake-off |
@@ -72,6 +73,24 @@ All three were found by breaking a run, not by reading a doc.
 3. **`bge-reranker-v2-m3` is served behind the same 512-token window**, and it
    covers query + document together — even though the model natively handles
    8192. Documents are cut to `RERANK_DOC_CHARS = 900`.
+
+**Providers are switchable, and that is the fix for limit 4 below.**
+`EMBED_PROVIDER=auto|berget|hf|both` (or `--embed-provider`) routes through
+`scripts/embed-providers.mjs`. Both backends serve the same weights — verified
+cosine 0.9999–1.0000 against the committed Berget-built index — so vectors are
+interchangeable and a half-built index can be finished on the other backend.
+**Use `auto`.** `both` does not help this pair: HF runs ~2 passages/s against
+Berget's 180–270, so its share is ~1%, under Berget's own ±20% variance, and
+an unguarded pool was 8–16% SLOWER because HF's batch latency becomes a tail.
+The straggler guard (`EMBED_TAIL_MARGIN`, default 10, on *observed* rates)
+makes `both` safe rather than useful; it would pay off only with a second
+backend within a few x of the first.
+
+4. **An empty wallet stops everything, and it will happen.** Berget answers
+   `402 INSUFFICIENT_WALLET_BALANCE`; it killed an index build and a docs-index
+   regeneration in one session. `auto` is the answer — but note the committed
+   artifacts (`bundle:rag`, `bundle:docs-rag`, `bundle:owasp-rag`) all route
+   through the registry now too, so a doc edit can always be re-bundled.
 
 **Throughput:** ~46–47k prompt-tokens/s sustained at batch 256 × concurrency 8
 on real abstracts. Do not capacity-plan from a short-text probe: with ~90-token

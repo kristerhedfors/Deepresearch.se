@@ -27,7 +27,7 @@ import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PASSAGE_PREFIX, buildBm25, paperPassages, quantizeInt8 } from "../public/js/arxiv-rag-core.js";
-import { EMBED_BATCH, EMBED_CONCURRENCY, EMBED_MODEL, embedBatch } from "./arxiv-berget.mjs";
+import { EMBED_MODEL, describeProviders, embedAll } from "./embed-providers.mjs";
 import { loadCorpus } from "./arxiv-corpus.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -52,6 +52,7 @@ async function main() {
   const limit = Number(get("--limit", 0));
   const categories = get("--categories", "") ? String(get("--categories", "")).split(",") : [];
   const corpusFile = get("--corpus-file", "");
+  const provider = get("--embed-provider", "");
 
   await mkdir(outDir, { recursive: true });
   const papers = await loadCorpus(corpusFile ? { file: corpusFile } : { categories, sample: limit || 0, seed: get("--seed", "arxiv-rag-v1") });
@@ -118,29 +119,31 @@ async function main() {
   }
 
   const started = Date.now();
-  let tokens = 0;
   const startedAt = done;
-  // Ordered append: batches are dispatched concurrently but written strictly
-  // in sequence, because a row's position IS its identity in vectors.i8.
-  for (let base = done; base < texts.length; base += EMBED_BATCH * EMBED_CONCURRENCY) {
-    /** @type {Array<Promise<{ vectors: Float32Array[], tokens: number }>>} */
-    const jobs = [];
-    for (let k = 0; k < EMBED_CONCURRENCY; k++) {
-      const start = base + k * EMBED_BATCH;
-      if (start >= texts.length) break;
-      jobs.push(embedBatch(texts.slice(start, Math.min(start + EMBED_BATCH, texts.length)), { model }));
-    }
-    const results = await Promise.all(jobs);
+  console.log(`  ${describeProviders(provider)}`);
+  // Checkpointed windows: a row's position IS its identity in vectors.i8, so
+  // the pack is appended strictly in order. embedAll owns the concurrency and
+  // the provider failover and hands the window back already ordered; the
+  // window is what bounds how much work a crash can lose.
+  const WINDOW = 4096;
+  /** @type {Record<string, number>} */
+  const byProvider = {};
+  for (let base = done; base < texts.length; base += WINDOW) {
+    const slice = texts.slice(base, Math.min(base + WINDOW, texts.length));
+    const { vectors, by, retired } = await embedAll(slice, {
+      model,
+      provider,
+      log: (m) => process.stdout.write(`\n  ${m}\n`),
+    });
+    for (const [id, n] of Object.entries(by)) byProvider[id] = (byProvider[id] || 0) + n;
+    if (retired.length) process.stdout.write(`\n  retired this window: ${retired.join(", ")}\n`);
     /** @type {Buffer[]} */
     const buffers = [];
-    for (const r of results) {
-      tokens += r.tokens;
-      for (const v of r.vectors) {
-        if (!dims) dims = v.length;
-        buffers.push(Buffer.from(quantizeInt8(v).buffer));
-      }
-      done += r.vectors.length;
+    for (const v of vectors) {
+      if (!dims) dims = v.length;
+      buffers.push(Buffer.from(quantizeInt8(v).buffer));
     }
+    done += vectors.length;
     await appendFile(vecPath, Buffer.concat(buffers));
     await writeFile(
       metaPath,
@@ -149,8 +152,9 @@ async function main() {
     const elapsed = (Date.now() - started) / 1000;
     const rate = (done - startedAt) / elapsed;
     const eta = rate ? (texts.length - done) / rate : 0;
+    const split = Object.entries(byProvider).map(([k, n]) => `${k} ${Math.round((n / (done - startedAt || 1)) * 100)}%`).join(" ");
     process.stdout.write(
-      `\r  ${done}/${texts.length} passages · ${Math.round(rate)}/s · ${Math.round(tokens / elapsed)} tok/s · elapsed ${clock(elapsed)} · ETA ${clock(eta)}   `,
+      `\r  ${done}/${texts.length} passages · ${Math.round(rate)}/s · ${split} · elapsed ${clock(elapsed)} · ETA ${clock(eta)}   `,
     );
   }
   process.stdout.write("\n");
@@ -174,7 +178,7 @@ async function main() {
   const elapsed = (Date.now() - started) / 1000;
   console.log(
     `\nIndex ready: ${papers.length} papers · ${done} passages × ${dims}d int8 · ${human(vecSize)} vectors\n` +
-      `  ${clock(elapsed)} for ${done - startedAt} new passages (${Math.round(tokens / 1e6)}M prompt tokens)\n` +
+      `  ${clock(elapsed)} for ${done - startedAt} new passages via ${Object.entries(byProvider).map(([k, n]) => `${k} ${n}`).join(", ") || "cache"}\n` +
       `  → ${outDir}`,
   );
 }

@@ -49,6 +49,7 @@ import {
   validateRagIndex,
   validateSnapshot,
 } from "../public/js/introspect-core.js";
+import { describeProviders, embedAll } from "./embed-providers.mjs";
 
 /** Per-file content hash — the delta key. Same input the chunker sees. */
 const fileHash = (text) => createHash("sha256").update(String(text ?? "")).digest("hex").slice(0, 16);
@@ -91,17 +92,16 @@ const MIN_REQUEST_INTERVAL_MS =
       : 700;
 
 const SITE = process.env.INTROSPECT_SITE || "https://deepresearch.se";
+const PROVIDER = process.env.EMBED_PROVIDER || "";
 
+// One batch through the provider registry (Berget, Hugging Face, or both —
+// same model either way, see scripts/embed-providers.mjs). BATCH is 32, well
+// under the registry's own per-provider batch size, so this issues exactly ONE
+// request per call and this file's pool + pacing stay in charge of concurrency.
 /** @param {string[]} texts @returns {Promise<Float32Array[]>} */
-async function embedViaBerget(texts) {
-  const res = await fetch("https://api.berget.ai/v1/embeddings", {
-    method: "POST",
-    headers: { authorization: "Bearer " + BERGET_KEY, "content-type": "application/json" },
-    body: JSON.stringify({ model: EMBED_MODEL, input: texts.map((t) => PASSAGE_PREFIX + t) }),
-  });
-  if (!res.ok) throw new Error(`Berget embeddings ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const data = await res.json();
-  return (data.data || []).map((d) => Float32Array.from(d.embedding));
+async function embedViaProviders(texts) {
+  const { vectors } = await embedAll(texts.map((t) => PASSAGE_PREFIX + t), { model: EMBED_MODEL, provider: PROVIDER });
+  return vectors;
 }
 
 /** @param {string[]} texts @returns {Promise<Float32Array[]>} */
@@ -124,7 +124,10 @@ async function embedViaSite(texts) {
   });
 }
 
-const embedBatch = BERGET_KEY ? embedViaBerget : embedViaSite;
+// The live /api/embed path stays as the LAST resort: it needs no provider key
+// at all, only break-glass site credentials.
+const hasDirectProvider = !!(BERGET_KEY || process.env.HUGGINGFACE_API_TOKEN || process.env.HF_TOKEN);
+const embedBatch = hasDirectProvider ? embedViaProviders : embedViaSite;
 
 async function main() {
   const snapshot = validateSnapshot(JSON.parse(readFileSync(join(ROOT, SNAPSHOT), "utf8")));
@@ -189,7 +192,8 @@ async function main() {
         ? `DELTA: reusing ${reusedFiles} files / ${reusedChunks} chunks; embedding ${toEmbed.length} chunks (${files.length - reusedFiles} changed/new files)`
         : `FULL rebuild (${prior ? "model/chunker changed" : "no prior index"}): embedding ${toEmbed.length} chunks`) +
       ` via ${BERGET_KEY ? "Berget" : SITE + "/api/embed"}` +
-      ` (batch ${BATCH}, concurrency ${CONCURRENCY}, ≤${Math.round(60000 / MIN_REQUEST_INTERVAL_MS)} req/min) …`,
+      ` (batch ${BATCH}, concurrency ${CONCURRENCY}, ≤${Math.round(60000 / MIN_REQUEST_INTERVAL_MS)} req/min` +
+      `${hasDirectProvider ? `, ${describeProviders(PROVIDER)}` : ", via the live /api/embed"}) …`,
   );
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

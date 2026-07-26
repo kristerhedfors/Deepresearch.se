@@ -29,7 +29,8 @@ import { open, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { QUERY_PREFIX, bm25Search, denseSearchPacked, packedNorms, rrfFuse } from "../public/js/arxiv-rag-core.js";
-import { RERANK_DOC_CHARS, embedBatch, rerank } from "./arxiv-berget.mjs";
+import { RERANK_DOC_CHARS, rerank } from "./arxiv-berget.mjs";
+import { embedBatch } from "./embed-providers.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const RERANK_DEPTH = 50;
@@ -101,14 +102,14 @@ export async function readPapers(dir, ids) {
 /**
  * @param {string} query
  * @param {Awaited<ReturnType<typeof loadIndex>>} index
- * @param {{ pipeline?: string, topK?: number, bm25?: any }} [opts]
+ * @param {{ pipeline?: string, topK?: number, bm25?: any, embedProvider?: string }} [opts]
  */
 export async function search(query, index, opts = {}) {
   const pipeline = opts.pipeline || "dense_rerank";
   const topK = opts.topK || 10;
   const timings = {};
   let t = Date.now();
-  const { vectors } = await embedBatch([QUERY_PREFIX + query], { model: index.meta.model });
+  const { vectors } = await embedBatch([QUERY_PREFIX + query], { model: index.meta.model, provider: opts.embedProvider });
   timings.embed = Date.now() - t;
 
   t = Date.now();
@@ -157,7 +158,7 @@ async function main() {
     return i < 0 ? d : argv[i + 1];
   };
   const has = (/** @type {string} */ f) => argv.includes(f);
-  const flags = new Set(["--index", "--pipeline", "--top"]);
+  const flags = new Set(["--index", "--pipeline", "--top", "--embed-provider"]);
   const query = argv.filter((a, i) => !a.startsWith("--") && !flags.has(argv[i - 1])).join(" ").trim();
   if (!query) {
     console.log('usage: node scripts/arxiv-search.mjs [--index data/arxiv/index] [--pipeline dense_rerank|dense|hybrid|hybrid_rerank] [--top 10] [--json] "your question"');
@@ -173,7 +174,7 @@ async function main() {
   let bm25 = null;
   if (pipeline.startsWith("hybrid")) bm25 = JSON.parse(await readFile(join(dir, "bm25.json"), "utf8"));
 
-  const { hits, timings } = await search(query, index, { pipeline, topK, bm25 });
+  const { hits, timings } = await search(query, index, { pipeline, topK, bm25, embedProvider: get("--embed-provider", "") });
   if (has("--json")) {
     console.log(JSON.stringify({ query, pipeline, timings, hits }, null, 1));
     return;

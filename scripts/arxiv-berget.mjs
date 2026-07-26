@@ -1,36 +1,27 @@
 #!/usr/bin/env node
-// Berget client for the arXiv RAG tooling: embeddings, reranking and JSON-mode
-// chat, with the retry/concurrency behaviour a multi-hour index build needs.
+// The Berget-ONLY surfaces of the arXiv RAG tooling: cross-encoder reranking
+// and JSON-mode chat.
 //
-// Deliberately separate from src/berget.js (the Worker's client): that one is
-// bound to the Worker's Env/secret plumbing and quota accounting, this one is
-// a build-time CLI client reading BERGET_API_KEY from the environment. Sharing
-// it would drag Worker types into scripts for no gain.
-//
-// Measured on 2026-07-26 against api.berget.ai, and the numbers drive the
-// defaults below:
-//
-//   intfloat/multilingual-e5-large  1024-d, e5 prefixes, 512-token window
-//   throughput saturates at ~11.5k prompt-tokens/s regardless of how the work
-//   is divided; batch 256 × concurrency 8 reaches it, larger batches and
-//   higher concurrency do not go faster (and raise the cost of a retry).
+// EMBEDDING no longer lives here — it moved to scripts/embed-providers.mjs,
+// which serves the same model from either Berget or Hugging Face and can run
+// both at once. Reranking and chat stay Berget-only because HF Inference
+// serves neither: bge-reranker-v2-m3 answers 400 on the sentence-similarity
+// shape (measured 2026-07-26). The embedding names are re-exported below so
+// callers that only need "the same model, whichever backend" keep one import.
 
 import { recapForContext } from "../public/js/arxiv-rag-core.js";
+
+export { EMBED_MODEL, EMBED_MODEL_INSTRUCT, describeProviders, embedAll, embedBatch } from "./embed-providers.mjs";
 
 const BASE = process.env.BERGET_BASE_URL || "https://api.berget.ai/v1";
 const KEY = process.env.BERGET_API_KEY || process.env.BERGET_API_TOKEN;
 
-export const EMBED_MODEL = "intfloat/multilingual-e5-large";
-export const EMBED_MODEL_INSTRUCT = "intfloat/multilingual-e5-large-instruct";
 export const RERANK_MODEL = "BAAI/bge-reranker-v2-m3";
 export const PLANNING_MODEL = "mistralai/Mistral-Small-3.2-24B-Instruct-2506";
 
 // See rerank(): Berget serves the reranker behind a 512-token window covering
 // query + document together, so this is the per-document char budget.
 export const RERANK_DOC_CHARS = Number(process.env.ARXIV_RERANK_DOC_CHARS) || 900;
-
-export const EMBED_BATCH = Number(process.env.ARXIV_EMBED_BATCH) || 256;
-export const EMBED_CONCURRENCY = Number(process.env.ARXIV_EMBED_CONCURRENCY) || 8;
 
 export function requireKey() {
   if (!KEY) throw new Error("Set BERGET_API_KEY (or BERGET_API_TOKEN) — the arXiv RAG tooling embeds through Berget.");
@@ -76,74 +67,6 @@ export async function bergetPost(path, body, opts = {}) {
     }
   }
   throw new Error(`Berget ${path} failed after ${tries} tries: ${lastErr}`);
-}
-
-/**
- * Embed one batch. Texts must ALREADY carry their e5 prefix — the prefix is
- * applied by the caller's passage/query seam so this stays a dumb transport.
- * @param {string[]} texts
- * @param {{ model?: string }} [opts]
- * @returns {Promise<{ vectors: Float32Array[], tokens: number }>}
- */
-export async function embedBatch(texts, opts = {}) {
-  let input = texts;
-  let json;
-  // e5 rejects (not truncates) input past its 512-token window, and the
-  // rejection kills the whole batch. A build over hundreds of thousands of
-  // abstracts WILL meet LaTeX-dense and non-Latin-script outliers no fixed
-  // char budget covers, so re-cap from the token count the error reports and
-  // retry rather than losing the batch.
-  for (let shrink = 0; ; shrink++) {
-    try {
-      json = await bergetPost("/embeddings", { model: opts.model || EMBED_MODEL, input });
-      break;
-    } catch (err) {
-      const m = /maximum context length is (\d+) tokens.*?requested (\d+) tokens/s.exec(err?.message || "");
-      if (!m || shrink >= 6) throw err;
-      input = recapForContext(input, Number(m[2]), Number(m[1]));
-    }
-  }
-  const data = json?.data || [];
-  if (data.length !== texts.length) throw new Error(`Berget returned ${data.length} vectors for ${texts.length} texts`);
-  // The API is not contractually ordered; `index` is, so sort by it.
-  const sorted = [...data].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
-  return { vectors: sorted.map((d) => Float32Array.from(d.embedding)), tokens: json?.usage?.prompt_tokens || 0 };
-}
-
-/**
- * Embed many texts with a bounded worker pool, preserving input order.
- * `onProgress` gets (done, total, tokens) after each batch so a build can
- * print a live rate.
- * @param {string[]} texts
- * @param {{ model?: string, batch?: number, concurrency?: number, onProgress?: (done: number, total: number, tokens: number) => void }} [opts]
- * @returns {Promise<{ vectors: Float32Array[], tokens: number }>}
- */
-export async function embedAll(texts, opts = {}) {
-  const batch = opts.batch || EMBED_BATCH;
-  const concurrency = opts.concurrency || EMBED_CONCURRENCY;
-  /** @type {Float32Array[]} */
-  const out = new Array(texts.length);
-  /** @type {number[]} */
-  const starts = [];
-  for (let i = 0; i < texts.length; i += batch) starts.push(i);
-  let done = 0;
-  let tokens = 0;
-  let cursor = 0;
-  const worker = async () => {
-    for (;;) {
-      const at = cursor++;
-      if (at >= starts.length) return;
-      const start = starts[at];
-      const slice = texts.slice(start, start + batch);
-      const r = await embedBatch(slice, { model: opts.model });
-      for (let j = 0; j < r.vectors.length; j++) out[start + j] = r.vectors[j];
-      done += slice.length;
-      tokens += r.tokens;
-      opts.onProgress?.(done, texts.length, tokens);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(concurrency, starts.length) }, worker));
-  return { vectors: out, tokens };
 }
 
 /**

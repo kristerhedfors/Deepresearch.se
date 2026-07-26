@@ -786,9 +786,17 @@ from Berget's hard 512-token rejection. Vector maths is not reimplemented: the
 int8 codec and cosine come from `introspect-core.js`, the project's one
 implementation. Around it, `scripts/arxiv-harvest.mjs` (OAI-PMH bulk harvest,
 month-sharded and resumable), `arxiv-corpus.mjs` (dedup + deterministic
-sampling), `arxiv-berget.mjs` (the build-time Berget client — embeddings,
-`bge-reranker-v2-m3`, JSON chat), `arxiv-index.mjs` (the binary index pack),
+sampling), `arxiv-berget.mjs` (the Berget-only surfaces — `bge-reranker-v2-m3` and JSON
+chat; embedding moved to the registry below), `arxiv-index.mjs` (the binary index pack),
 `arxiv-search.mjs` (the four retrieval pipelines) and `arxiv-goldset.mjs` +
 `arxiv-eval.mjs` (the query sets and the measured bake-off). The built database
 lives under gitignored `data/`; the code, the query sets and the findings are
-committed. See `docs/ARXIV-RAG.md`.
+committed. Embedding for EVERY build-time index in the repo — the arXiv database and the
+committed introspection artifacts alike — goes through
+`scripts/embed-providers.mjs`, a two-backend registry (Berget and Hugging Face
+Inference) over the SAME `intfloat/multilingual-e5-large` weights: verified
+cosine 0.9999–1.0000, so the vectors are interchangeable and a build can fail
+over mid-flight instead of dying on an empty wallet. `EMBED_PROVIDER` selects
+`auto` (default), `berget`, `hf` or `both`; the work-stealing pool carries a
+straggler guard so a much slower second backend can never lengthen a run.
+See `docs/ARXIV-RAG.md`.
