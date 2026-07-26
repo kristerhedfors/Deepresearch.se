@@ -575,8 +575,39 @@ card scrolls to and flashes the highlight. Each card shows the entry's STATUS
 (what the agent did), the THREAD (what it said), and whether the quoted passage
 still exists in the document — when it does not, the card says the text was
 replaced rather than silently losing the comment. Comment
-mode is administrative: the switch appears only for an admin identity, and the
-rail claims layout space only when there is something in it.
+mode is administrative: the switch appears only for an admin identity.
+
+**The rail is OPENED, never automatic (fixed 2026-07-26).** Overlay chrome that
+covers the content is opened by the reader and closed by the reader — it does
+not decide for itself that now is a good time to be there. For a rail over a
+document:
+
+- **Read-only mode never opens it**, however many comments the document
+  carries. The passages are highlighted in the prose; the counter in the mode
+  slot says how many there are; neither takes the page away from a reader who
+  came to read.
+- **The counter is the switch.** It is a button, it carries `aria-expanded`,
+  and it looks pressed while the rail is up, because on a phone the rail may be
+  the only thing the press visibly changed.
+- **A ✕ in the rail's head closes it**, and closing is not leaving comment
+  mode: you keep marking passages, and the next selection brings the rail back
+  with the composer in it. The head does not scroll away with the list — a
+  close control you have to scroll back up to reach is not a close control.
+- **A highlighted passage is the way back in**, opening the rail on that
+  comment's card. Otherwise closing the rail is a one-way door out of a thread
+  whose only other trace is a highlight.
+- **Where it must cover the prose, it covers as little as it can.** Below
+  700px it is a sheet along the BOTTOM sized to its content (max `66vh`), not a
+  340px pane down the side of a 390px screen, and the passage that opened it is
+  scrolled clear of it. It is opaque: at `.97` the text underneath still read
+  through as grey ghost lines.
+
+Feedback #40 (2026-07-26) is what this rule costs when it is missing — an
+iPhone reading `/help/`, in read-only mode, given a dark pane over the
+documentation that nothing on screen would dismiss: "I must see the text when
+choosing what to comment." The decision of when the rail shows is the pure
+`railVisible` in `docs-comments-core.js` (composing wins, then an explicit
+open/close, then the mode), Node-tested rather than left to the DOM.
 
 **Every outcome is visible (amended 2026-07-25).** The mode slot always says
 which state the reader is in — the switch for an admin, "Comment mode is for
@@ -643,7 +674,7 @@ one-line opt-in, the admin check, the visible fallback note) →
 `public/js/docs-comments.js` (GATED — dropdown, selection composer, rail,
 passage highlighting, injected `dc-` styles) over the Node-tested pure core
 `public/js/docs-comments-core.js` (body grammar, quote anchoring, stale
-detection). Live on `/help/` and `/docs/`. Storage is `POST /api/feedback` with
+detection, `railVisible`). Live on `/help/` and `/docs/`. Storage is `POST /api/feedback` with
 feedback-core's `docPageTag`; the rail reads `GET /api/feedback?page=<tag>`.
 Selection-driven, no text routing, so no EN/SV parity applies.
 

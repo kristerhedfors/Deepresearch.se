@@ -237,6 +237,41 @@ function sectionStart(hay, section) {
 }
 
 // ---------------------------------------------------------------------------
+// When the rail is on screen
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether the comment rail should be showing.
+ *
+ * The rail is an OVERLAY — the layer promises the host page no layout
+ * cooperation, so it cannot take a column and must float over the prose. On a
+ * phone that means it covers the document, and the document is the thing you
+ * are reading and marking (feedback #40, 2026-07-26: "the right dark pane is in
+ * the way with no clear way to close it. I must see the text when choosing what
+ * to comment"). So it opens only when it is the thing you are doing:
+ *
+ * - `composing` — you are writing a comment and the composer lives in the rail.
+ *   Always open; nothing else can win.
+ * - `requested` — you pressed the counter to open it or the ✕ to close it.
+ *   An explicit act outranks the mode, and survives until the mode changes.
+ * - `commenting` — comment mode opens its own workspace, so the "mark a passage"
+ *   instruction is there to read.
+ * - READ MODE NEVER OPENS IT, even with comments on the page. The counter says
+ *   how many there are and opens them on demand; the passages are highlighted
+ *   in the prose either way. Opening it by itself is what put a pane over the
+ *   documentation of a reader who only wanted to read.
+ *
+ * @param {{ commenting?: boolean, composing?: boolean, requested?: boolean | null }} s
+ * @returns {boolean}
+ */
+export function railVisible(s = {}) {
+  if (s?.composing) return true;
+  if (s?.requested === true) return true;
+  if (s?.requested === false) return false;
+  return !!s?.commenting;
+}
+
+// ---------------------------------------------------------------------------
 // Reading the feedback queue back as this document's comments
 // ---------------------------------------------------------------------------
 
