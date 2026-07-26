@@ -23,7 +23,7 @@
 // started (2026-07-14 directive). ANSI escapes are stripped and the live,
 // not-yet-terminated prompt line is shown as a tail.
 //
-// THREE-MODE VIEW SWITCH: while the sandbox is running the page holds two stacked
+// THE VIEW SWITCH: while the sandbox is running the page holds two stacked
 // panes — the CONVERSATION and this TERMINAL backdrop. A header ICON (`#termbtn`
 // in the upper-right, a terminal glyph) is the ONE control, and tapping it CYCLES
 // three modes (2026-07-23 directive, extending the original two):
@@ -38,6 +38,19 @@
 // prints anything — so beyond the characters drifting on the background, the
 // icon's presence is the sign the Linux system is active (2026-07-14 directive:
 // replaced the old tap-on-the-background switch — the icon is the only switcher).
+//
+// A MODE WITH A SECOND BACKGROUND extends that cycle (2026-07-26 directive).
+// Orchestrator stands in front of the rotating wireframe workflow graph
+// (graph-backdrop.js) as well as this terminal, and the one icon owns both, so
+// the cycle covers every combination the user can actually see — five states:
+//   BOTH (terminal + graph, faint) → TERMINAL (forward) → CONVO (terminal
+//   faint, no graph) → GRAPH (graph alone) → HIDDEN (neither) → …
+// The pairs collapse onto the SAME two body classes via terminalLayerOf, so the
+// CSS never grew a case. The graph is reached through registered callbacks
+// (setGraphLayer, handed over by mode-backdrop.js) rather than an import: this
+// module is in the public asset allowlist because the /cure graph imports it,
+// graph-backdrop.js is not, and importing it here would 401 the whole Se/cure
+// module graph.
 //
 // The terminal text NEVER sways side to side — the old ambient horizontal wave
 // was removed (2026-07-14 directive). Its only motion is north-south, and only
@@ -92,6 +105,8 @@ import {
   convoSyncOffset,
   createBackdropModel,
   ensureChannel,
+  forGraphAvailability,
+  graphShownIn,
   hasPaneContent,
   LAYER_HIDDEN,
   nextLayerMode,
@@ -102,6 +117,7 @@ import {
   pushResult,
   scrollStep,
   stripAnsi,
+  terminalLayerOf,
   termKeySequence,
 } from "./agent-backdrop-core.js";
 
@@ -156,6 +172,15 @@ let termActive = false; // the VM has printed → the switcher icon is shown
 // forward (that was the old screen-covering behavior we removed); the user taps
 // the header terminal icon to bring it up.
 let layerMode = LAYER_CONVO;
+
+// The SECOND agent background, when the current mode has one (Orchestrator's
+// rotating workflow graph). Registered by mode-backdrop.js as a pair of
+// callbacks rather than imported: graph-backdrop.js is NOT in the public asset
+// allowlist and this module IS (the /cure graph imports it), so importing it
+// here would 401 the whole Se/cure module graph — the recurring public-graph
+// failure class. The hook keeps the dependency pointing the safe way.
+/** @type {{show: () => void, hide: () => void} | null} */
+let graphControls = null;
 
 // Direct terminal typing (2026-07-16): the hidden input a tap on the terminal
 // pane focuses, and the sink its keystrokes flow through into the VM's console
@@ -214,17 +239,19 @@ function ensureLayer() {
 
 function applyOpacity() {
   if (!layer) return;
-  // HIDDEN mode: the terminal output is not shown at all (2026-07-23 directive).
-  // Drop the layer out entirely — the body.term-hidden CSS also hides it, this
-  // is the belt-and-suspenders so it never paints even if the class is stale.
-  if (layerMode === LAYER_HIDDEN) {
+  const term = terminalLayerOf(layerMode);
+  // The terminal output is not shown at all (2026-07-23 directive) — either on
+  // its own (`hidden`) or with the graph left standing (`graph`). Drop the layer
+  // out entirely; the body.term-hidden CSS also hides it, this is the
+  // belt-and-suspenders so it never paints even if the class is stale.
+  if (term === LAYER_HIDDEN) {
     layer.style.display = "none";
     return;
   }
   layer.style.display = "";
   // Full strength when the terminal is the foreground pane; the faint ceiling
   // when it's the background (its normal, decorative state).
-  layer.style.opacity = layerMode === LAYER_TERMINAL ? "1" : String(opacityCss(OPACITY_PCT));
+  layer.style.opacity = term === LAYER_TERMINAL ? "1" : String(opacityCss(OPACITY_PCT));
 }
 
 // ---- direct terminal typing ---------------------------------------------------
@@ -394,31 +421,43 @@ function termBtn() {
 }
 
 // Reflect the current mode on the icon with HARMONIZED highlights (2026-07-23
-// directive) — one accent hue at descending intensity, so the icon itself tells
-// you which of the three modes you're in:
+// directive) — one accent hue at descending intensity, keyed off the TERMINAL
+// half of the mode, so the icon reads the same whether or not a graph rides
+// along with it:
 //   terminal forward → full accent fill      (.on)
-//   convo / faint backdrop → accent-tinted outline (.mode-bg)
-//   hidden / not shown → dim neutral glass    (.mode-off)
+//   faint backdrop (convo / both) → accent-tinted outline (.mode-bg)
+//   not shown (hidden / graph) → dim neutral glass    (.mode-off)
+// The title names the WHOLE state (both layers) and what the next tap does,
+// since with a graph in play the cycle is five long and the fill alone can't
+// distinguish `convo` from `both` or `hidden` from `graph`.
+const MODE_TITLES = {
+  both: "Terminal and workflow graph behind the chat — tap for the terminal in front",
+  terminal: "Terminal in front — tap to send it behind the chat",
+  convo: "Terminal behind the chat, no graph — tap for the graph alone",
+  graph: "Workflow graph only — tap to hide both",
+  hidden: "Terminal hidden — tap to show it behind the chat",
+};
+// Without a graph the cycle is the original three, so `convo`'s next step is
+// the terminal rather than the graph.
+const PLAIN_CONVO_TITLE = "Terminal behind the chat — tap to bring it forward";
+
 function syncTermBtn() {
   const btn = termBtn();
   if (!btn) return;
-  const terminal = layerMode === LAYER_TERMINAL;
-  const hidden = layerMode === LAYER_HIDDEN;
+  const term = terminalLayerOf(layerMode);
+  const terminal = term === LAYER_TERMINAL;
+  const hidden = term === LAYER_HIDDEN;
   btn.classList.toggle("on", terminal);
   btn.classList.toggle("mode-bg", !terminal && !hidden);
   btn.classList.toggle("mode-off", hidden);
   try {
-    // Only the forward pane is a true "pressed" toggle; the tri-state is spelled
-    // out in the label so assistive tech announces the mode and the next tap.
+    // Only the forward pane is a true "pressed" toggle; the rest of the state is
+    // spelled out in the label so assistive tech announces it and the next tap.
     btn.setAttribute("aria-pressed", terminal ? "true" : "false");
-    btn.setAttribute(
-      "title",
-      terminal
-        ? "Terminal in front — tap to hide it"
-        : hidden
-          ? "Terminal hidden — tap to show it behind the chat"
-          : "Terminal behind the chat — tap to bring it forward",
-    );
+    const title = layerMode === LAYER_CONVO && !graphControls
+      ? PLAIN_CONVO_TITLE
+      : MODE_TITLES[layerMode] || PLAIN_CONVO_TITLE;
+    btn.setAttribute("title", title);
   } catch { /* ignore */ }
 }
 
@@ -475,40 +514,87 @@ function wireTermBtn() {
       // no-op on a control that was already on screen and styled as live —
       // feedback #38. If the icon is visible the tap has to do something; an
       // empty pane says so itself (EMPTY_PANE_LINE).
-      setLayerMode(nextLayerMode(layerMode));
+      setLayerMode(nextLayerMode(layerMode, !!graphControls));
     } catch { /* decoration — never break the page */ }
   });
 }
 
-/** Switch the view mode, updating the body classes, opacity, icon and flourish. */
-function setLayerMode(mode) {
-  const next = mode === LAYER_TERMINAL ? LAYER_TERMINAL
-    : mode === LAYER_HIDDEN ? LAYER_HIDDEN
-      : LAYER_CONVO;
-  if (next === layerMode) return;
-  layerMode = next;
+// Show or hide the registered graph backdrop to match the current mode. Both
+// callbacks are idempotent on the graph side (mount returns early when already
+// mounted, unmount when already gone), so this is safe to call on every apply.
+function applyGraphLayer() {
+  if (!graphControls) return;
+  try {
+    if (graphShownIn(layerMode)) graphControls.show();
+    else graphControls.hide();
+  } catch { /* decoration — never break the page */ }
+}
+
+/**
+ * Register (or clear, with null) the mode's graph backdrop, and fold it into
+ * the view cycle. Called by mode-backdrop.js on every mode change: a mode whose
+ * backdrop axis is "graph" passes its mount/unmount pair, every other mode
+ * passes null. Gaining a graph promotes the faint-terminal state to show both —
+ * so entering Orchestrator looks exactly as it did before the graph became
+ * switchable — and losing one drops the graph half of whatever was showing.
+ * @param {{show: () => void, hide: () => void} | null} controls
+ */
+export function setGraphLayer(controls) {
+  try {
+    const next = controls && typeof controls.show === "function" &&
+      typeof controls.hide === "function" ? controls : null;
+    // Leaving a graph mode: the OLD controls own the canvas, so tear it down
+    // through them before forgetting the pair.
+    if (graphControls && graphControls !== next) {
+      try { graphControls.hide(); } catch { /* ignore */ }
+    }
+    graphControls = next;
+    // Re-home the current mode in the cycle that now applies. This is a
+    // reconcile, not a user action — no flourish, no keyboard change.
+    layerMode = forGraphAvailability(layerMode, !!graphControls);
+    applyLayerState();
+    applyGraphLayer();
+    // The graph alone is reason enough to offer the switch: without the icon
+    // there would be no way to put it away (UX-18 — a control with something to
+    // do is shown; one with nothing to do is not).
+    if (graphControls) revealTermBtn();
+  } catch { /* decoration — never break the caller */ }
+}
+
+// Push the current mode onto the DOM: body classes, layer opacity, the icon.
+// Shared by the user-driven switch and the mode-change reconcile above.
+function applyLayerState() {
+  const term = terminalLayerOf(layerMode);
   // The pane may never have been built (the switch is reachable before the VM
   // prints), so make sure there is something to bring forward — render() fills
   // it with the status line, or with EMPTY_PANE_LINE when even that is absent.
   ensureLayer();
   render();
-  const terminal = layerMode === LAYER_TERMINAL;
-  const hidden = layerMode === LAYER_HIDDEN;
   if (typeof document !== "undefined" && document.body) {
     // term-fg brings the terminal forward; term-hidden drops it out of view.
-    // Both absent = the default faint-backdrop (convo) state.
-    document.body.classList.toggle("term-fg", terminal);
-    document.body.classList.toggle("term-hidden", hidden);
+    // Both absent = the default faint-backdrop state. The graph pairs map onto
+    // the same two classes via terminalLayerOf, so the CSS never grew a case.
+    document.body.classList.toggle("term-fg", term === LAYER_TERMINAL);
+    document.body.classList.toggle("term-hidden", term === LAYER_HIDDEN);
   }
   applyOpacity();
   syncTermBtn();
+}
+
+/** Switch the view mode, updating the body classes, opacity, icon and flourish. */
+function setLayerMode(mode) {
+  if (mode === layerMode) return;
+  layerMode = mode;
+  applyLayerState();
+  applyGraphLayer();
   clearParallax();
-  // The slide-in flourish only makes sense when a pane actually comes forward
-  // (convo or terminal); hiding the terminal has nothing to slide in.
-  if (!hidden) slideInForeground(terminal);
-  // Only terminal mode keeps the keyboard on the terminal input; convo and
-  // hidden both hand the keyboard back to the page (the composer).
-  if (!terminal) blurTerminalInput();
+  const term = terminalLayerOf(layerMode);
+  // The slide-in flourish only makes sense when a pane actually comes forward;
+  // a state that shows no terminal has nothing to slide in.
+  if (term !== LAYER_HIDDEN) slideInForeground(term === LAYER_TERMINAL);
+  // Only terminal-forward keeps the keyboard on the terminal input; every other
+  // state hands it back to the page (the composer).
+  if (term !== LAYER_TERMINAL) blurTerminalInput();
 }
 
 // The BACKGROUND pane leans in the same direction as the foreground scroll, then
@@ -528,7 +614,7 @@ function leanChat(signed) {
 // position; returns true when it applied (convo mode with content), false in
 // terminal mode where the wheel/touch handlers own the offset instead.
 function recomputeConvoSync() {
-  if (layerMode !== LAYER_CONVO || !hasBackdropContent()) return false;
+  if (terminalLayerOf(layerMode) !== LAYER_CONVO || !hasBackdropContent()) return false;
   const c = chatEl();
   if (!c || !pre || !view) return false;
   const step = convoSyncOffset(
@@ -626,7 +712,7 @@ function wireScroll() {
     "wheel",
     (e) => {
       try {
-        if (layerMode !== LAYER_TERMINAL || !hasBackdropContent()) return;
+        if (terminalLayerOf(layerMode) !== LAYER_TERMINAL || !hasBackdropContent()) return;
         if (onBlocked(e.target)) return; // over a real control → leave it alone
         // The terminal is the foreground pane: capture the gesture so the
         // background conversation never scrolls, then page the log (a no-op if
@@ -642,7 +728,7 @@ function wireScroll() {
     (e) => {
       touchActive = false;
       touchMoved = false;
-      if (layerMode !== LAYER_TERMINAL || !hasBackdropContent()) return;
+      if (terminalLayerOf(layerMode) !== LAYER_TERMINAL || !hasBackdropContent()) return;
       if (!e.touches || e.touches.length !== 1) return;
       if (onBlocked(e.target)) return; // finger on a real control → leave it alone
       if (hasLiveSelection()) return; // adjusting a text selection — don't page
@@ -680,7 +766,7 @@ function wireScroll() {
   //     points of terminal mode. ---
   window.addEventListener("click", (e) => {
     try {
-      if (layerMode !== LAYER_TERMINAL || !hasBackdropContent()) return;
+      if (terminalLayerOf(layerMode) !== LAYER_TERMINAL || !hasBackdropContent()) return;
       if (onBlocked(e.target)) return; // a real control keeps its own click
       if (touchMoved) { touchMoved = false; return; } // drag remnant, not a tap
       // The click that ENDS a select-to-copy drag must not steal the selection

@@ -377,6 +377,61 @@ New pure exports (`agent-backdrop-core.js`, Node-tested): `hasPaneContent`,
 **Still owed:** on-device confirmation that tapping the icon during a real cold
 boot on iOS shows the progress line in the terminal pane.
 
+### Modes with a graph too: the cycle covers every combination (2026-07-26)
+
+Owner directive: "if we have a graph together with terminal, such as
+orchestrator, then let the terminal button cycle through terminal with and
+without graph, and also only graph, so you get all permutations."
+
+Orchestrator's backdrop axis is `graph`, so that mode stands in front of BOTH
+the rotating wireframe workflow graph (`graph-backdrop.js`, `#graphbackdrop`)
+and this terminal layer. `#termbtn` now owns both, and its cycle grows from
+three to five — every combination a user can actually distinguish:
+
+| Mode | terminal | graph | body |
+|---|---|---|---|
+| `both` | faint backdrop | shown | — |
+| `terminal` | forward (black field) | off | `term-fg` |
+| `convo` | faint backdrop | off | — |
+| `graph` | not shown | shown | `term-hidden` |
+| `hidden` | not shown | off | `term-hidden` |
+
+`terminal` has no graph variant on purpose: the forward pane is a
+`rgba(10,13,18,.93)` field over the whole viewport, so a graph behind it is a
+state nobody can see. Non-graph modes keep the original three-cycle unchanged.
+
+- **The pairs decompose; the CSS is untouched.** `terminalLayerOf(mode)` maps all
+  five onto the same three terminal states, so `body.term-fg`/`term-hidden`,
+  `applyOpacity`, and every gesture guard read exactly as before.
+  `graphShownIn(mode)` is the other half. Both pure + Node-tested.
+- **The graph arrives as a HOOK, never an import.** `mode-backdrop.js` no longer
+  mounts the graph itself — it calls `agent-backdrop.js` `setGraphLayer({show,
+  hide})` for a graph mode and `setGraphLayer(null)` for every other, and the
+  current view state decides what is on screen. **This direction is
+  load-bearing:** `agent-backdrop.js` is in `isPublicAsset` (the `/cure` graph
+  imports it) and `graph-backdrop.js` is NOT, so importing the graph into the
+  switch would 401 the entire Se/cure module graph — the recurring public-graph
+  failure class. Verified with an import-closure walk of `/cure/drc.js` (47
+  modules, all public; neither `graph-backdrop.js` nor `mode-backdrop.js` in the
+  closure). Do not "simplify" this into a direct import.
+- **A mode change keeps the user's choice.** `forGraphAvailability(mode,
+  hasGraph)` re-homes the current mode into the cycle now in force. Gaining a
+  graph SHOWS it (`convo`→`both`, `hidden`→`graph`) — the mode's own background
+  used to mount unconditionally, so entering Orchestrator still looks as it
+  always did — while leaving the terminal half exactly as set. Losing a graph
+  drops that half (`both`→`convo`, `graph`→`hidden`).
+- **The icon also appears for a graph alone**, so a graph mode with the sandbox
+  off can still put its backdrop away (UX-18).
+- **The title carries the state.** The icon's three classes key off the terminal
+  half, so they cannot tell `convo` from `both` or `hidden` from `graph`; the
+  `title` names the whole state and the next tap (`MODE_TITLES`).
+
+New pure exports (Node-tested): `LAYER_BOTH`, `LAYER_GRAPH`, `terminalLayerOf`,
+`graphShownIn`, `forGraphAvailability`; `nextLayerMode(mode, hasGraph)` takes a
+second argument (defaulted, so the old one-arg three-cycle is unchanged). No CSS
+change → **no handshake bump**. **Still owed:** on-device confirmation of the
+five-cycle in Orchestrator.
+
 ### Terminal mode: real terminal coloring + tap-to-type (2026-07-16)
 
 Two owner directives on the terminal-forward state (`body.term-fg`):

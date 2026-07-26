@@ -11,7 +11,9 @@ import {
   DEFAULT_OPACITY_PCT,
   EMPTY_PANE_LINE,
   FOLLOW_CAP_PX,
+  LAYER_BOTH,
   LAYER_CONVO,
+  LAYER_GRAPH,
   LAYER_HIDDEN,
   LAYER_TERMINAL,
   MAX_LINES,
@@ -31,9 +33,12 @@ import {
   convoSyncOffset,
   createBackdropModel,
   ensureChannel,
+  forGraphAvailability,
   formatResultLines,
+  graphShownIn,
   hasPaneContent,
   isTapGesture,
+  terminalLayerOf,
   nextLayerMode,
   opacityCss,
   parallaxFollow,
@@ -295,6 +300,83 @@ test("composePaneLines stacks output, live tail and status; never renders blank"
   // NOTHING at all still renders a line — a black void reads as a broken switch
   assert.deepEqual(composePaneLines([], "", ""), [EMPTY_PANE_LINE]);
   assert.deepEqual(composePaneLines(null, null, null), [EMPTY_PANE_LINE]);
+});
+
+// 2026-07-26 owner directive: in a mode that ALSO has a graph backdrop
+// (Orchestrator), the one header icon owns both layers, so the cycle covers
+// every combination the user can see rather than only the terminal's three.
+test("nextLayerMode with a graph cycles all five combinations", () => {
+  const g = (m) => nextLayerMode(m, true);
+  assert.equal(g(LAYER_BOTH), LAYER_TERMINAL);
+  assert.equal(g(LAYER_TERMINAL), LAYER_CONVO);
+  assert.equal(g(LAYER_CONVO), LAYER_GRAPH);
+  assert.equal(g(LAYER_GRAPH), LAYER_HIDDEN);
+  assert.equal(g(LAYER_HIDDEN), LAYER_BOTH);
+  // one full loop returns to the start, and visits every state exactly once
+  const seen = [];
+  let m = LAYER_BOTH;
+  for (let i = 0; i < 5; i++) { seen.push(m); m = g(m); }
+  assert.equal(m, LAYER_BOTH);
+  assert.equal(new Set(seen).size, 5);
+  // every distinguishable pair of (terminal state, graph shown) is reachable
+  const pairs = new Set(seen.map((s) => `${terminalLayerOf(s)}/${graphShownIn(s)}`));
+  assert.ok(pairs.has("convo/true")); // both, faint
+  assert.ok(pairs.has("convo/false")); // terminal faint, no graph
+  assert.ok(pairs.has("hidden/true")); // graph alone
+  assert.ok(pairs.has("hidden/false")); // neither
+  assert.ok(pairs.has("terminal/false")); // terminal forward (covers the graph)
+  // the graph-only modes never leak into a mode with no graph available
+  assert.equal(nextLayerMode(LAYER_BOTH), LAYER_TERMINAL);
+  assert.equal(nextLayerMode(LAYER_GRAPH), LAYER_TERMINAL);
+});
+
+test("terminalLayerOf / graphShownIn decompose a mode into its two layers", () => {
+  assert.equal(terminalLayerOf(LAYER_BOTH), LAYER_CONVO);
+  assert.equal(terminalLayerOf(LAYER_CONVO), LAYER_CONVO);
+  assert.equal(terminalLayerOf(LAYER_TERMINAL), LAYER_TERMINAL);
+  assert.equal(terminalLayerOf(LAYER_GRAPH), LAYER_HIDDEN);
+  assert.equal(terminalLayerOf(LAYER_HIDDEN), LAYER_HIDDEN);
+  assert.equal(terminalLayerOf("nope"), LAYER_CONVO); // total
+  assert.equal(graphShownIn(LAYER_BOTH), true);
+  assert.equal(graphShownIn(LAYER_GRAPH), true);
+  for (const m of [LAYER_CONVO, LAYER_TERMINAL, LAYER_HIDDEN, "nope", null]) {
+    assert.equal(graphShownIn(m), false);
+  }
+});
+
+test("forGraphAvailability re-homes a mode when the layers change", () => {
+  // entering a graph mode SHOWS the graph — the mode's own background used to
+  // mount unconditionally, so Orchestrator still looks as it always did — while
+  // the terminal half is left exactly as the user set it
+  assert.equal(forGraphAvailability(LAYER_CONVO, true), LAYER_BOTH);
+  assert.equal(forGraphAvailability(LAYER_HIDDEN, true), LAYER_GRAPH);
+  assert.equal(graphShownIn(forGraphAvailability(LAYER_CONVO, true)), true);
+  assert.equal(graphShownIn(forGraphAvailability(LAYER_HIDDEN, true)), true);
+  // hiding the TERMINAL stays hiding the terminal — the graph rides alongside
+  assert.equal(terminalLayerOf(forGraphAvailability(LAYER_HIDDEN, true)), LAYER_HIDDEN);
+  assert.equal(terminalLayerOf(forGraphAvailability(LAYER_CONVO, true)), LAYER_CONVO);
+  // terminal-forward is left alone: its near-opaque field covers a graph anyway
+  assert.equal(forGraphAvailability(LAYER_TERMINAL, true), LAYER_TERMINAL);
+  assert.equal(forGraphAvailability(LAYER_GRAPH, true), LAYER_GRAPH);
+  // leaving one: the graph half is dropped, the terminal half survives
+  assert.equal(forGraphAvailability(LAYER_BOTH, false), LAYER_CONVO);
+  assert.equal(forGraphAvailability(LAYER_GRAPH, false), LAYER_HIDDEN);
+  assert.equal(forGraphAvailability(LAYER_TERMINAL, false), LAYER_TERMINAL);
+  // garbage lands somewhere valid for the cycle in force
+  assert.equal(forGraphAvailability("nope", false), LAYER_CONVO);
+  assert.equal(forGraphAvailability("nope", true), LAYER_BOTH);
+  // whatever it is handed, the result belongs to the cycle in force — and
+  // without a graph that means no mode can still be showing one
+  const GRAPH_CYCLE = new Set([LAYER_BOTH, LAYER_TERMINAL, LAYER_CONVO, LAYER_GRAPH, LAYER_HIDDEN]);
+  const PLAIN_CYCLE = new Set([LAYER_CONVO, LAYER_TERMINAL, LAYER_HIDDEN]);
+  for (const m of [LAYER_CONVO, LAYER_TERMINAL, LAYER_HIDDEN, LAYER_BOTH, LAYER_GRAPH, "nope", null]) {
+    assert.ok(GRAPH_CYCLE.has(forGraphAvailability(m, true)));
+    assert.ok(PLAIN_CYCLE.has(forGraphAvailability(m, false)));
+    assert.equal(graphShownIn(forGraphAvailability(m, false)), false);
+    // re-homing is idempotent — a mode change that repeats does not drift
+    const homed = forGraphAvailability(m, true);
+    assert.equal(forGraphAvailability(homed, true), homed);
+  }
 });
 
 test("isTapGesture accepts small quick presses, rejects drags and long holds", () => {

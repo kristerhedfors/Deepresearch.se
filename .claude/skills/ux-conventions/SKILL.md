@@ -98,7 +98,7 @@ rule so it lands everywhere at once rather than one bubble at a time.
 
 ---
 
-## UX-2 — Sandbox pane switch: the header terminal icon cycles three modes, and a tap is NEVER a no-op; the background pane leans along in synchronization
+## UX-2 — Sandbox pane switch: one header icon cycles every visible combination of the agent backgrounds, and a tap is NEVER a no-op
 
 **Rule.** While the execution sandbox is enabled the page holds **two stacked
 panes** — the CONVERSATION (`#chat`) and the TERMINAL backdrop
@@ -112,10 +112,24 @@ including before the VM has printed a single byte. Once in a mode, **scrolling
 the foreground pane makes the background pane lean along in the same direction,
 weaker and shorter** (a gentle parallax that springs back).
 
+**When a mode carries a SECOND agent background, the same icon owns it too, and
+the cycle covers every combination the user can see** (2026-07-26 owner
+directive). Orchestrator stands in front of the rotating wireframe workflow
+graph (`#graphbackdrop`) as well as the terminal, so there the cycle is five
+long: **BOTH** (terminal + graph, both faint) → **TERMINAL** (forward) →
+**CONVO** (terminal faint, graph off) → **GRAPH** (graph alone) → **HIDDEN**
+(neither) → BOTH. Terminal-forward needs no graph variant — its near-opaque
+field covers the whole viewport, so a graph behind it would be a state nobody
+can see.
+
 **Why.** The old design popped a full terminal panel open, which covered the
 screen and broke the prompt-first flow. Two peers you flip between keep both the
 conversation and the raw agent activity one tap away without either ever taking
-the whole screen.
+the whole screen. Once a mode has more than one background, the same argument
+applies to each of them independently: a user who wants the workflow graph
+without the shell chatter, or the shell without the graph, should not have to
+leave the mode to get it — and one icon that walks the combinations beats a
+second icon per layer.
 
 **The mechanics that make it consistent (match all of these):**
 
@@ -125,9 +139,13 @@ the whole screen.
    both tiers' headers under the same id, `hidden` until the sandbox is on.
 2. **The icon's presence is a status signal.** It appears the moment the sandbox
    is enabled — at first paint from the cached knob, before the VM boots — so
-   "the icon is there" means Linux is starting. Its class reflects the current
-   mode with one accent hue at descending intensity (`.on` → `.mode-bg` →
-   `.mode-off`).
+   "the icon is there" means Linux is starting. It also appears whenever a mode
+   registers a graph, since otherwise there would be no way to put that graph
+   away. Its class reflects the TERMINAL half of the mode with one accent hue at
+   descending intensity (`.on` → `.mode-bg` → `.mode-off`), so the icon reads the
+   same whether or not a graph rides along; the `title` names the whole state and
+   what the next tap does, which is what distinguishes `convo` from `both` and
+   `hidden` from `graph`.
 3. **A tap is NEVER a silent no-op** (see UX-18). The switch used to bail while
    the ring buffer was empty ("nothing to switch to"), which made every tap
    during the VM's 24-80 s cold boot do nothing on a control that was already on
@@ -146,12 +164,30 @@ the whole screen.
    `parallaxNudge`.
 6. **Reduced motion** skips the slide flourish (`prefers-reduced-motion`), keeping
    the instant opacity swap.
+7. **A combined mode decomposes; the CSS never learns about it.** `terminalLayerOf`
+   maps the five modes onto the same three terminal states, so `body.term-fg` /
+   `body.term-hidden` and every gesture guard are unchanged; `graphShownIn` is the
+   other half. Adding a third background means extending the cycle table, not
+   touching the stylesheet.
+8. **The extra layer arrives as a HOOK, never an import.** `mode-backdrop.js`
+   hands the switch a `{show, hide}` pair (`setGraphLayer`). `agent-backdrop.js`
+   is in the public asset allowlist because the Se/cure module graph imports it
+   and `graph-backdrop.js` is not, so importing the graph there would 401 all of
+   `/cure` — the recurring public-graph failure class. Keep the dependency
+   pointing from the mode dispatch into the switch.
+9. **A mode change keeps what the user chose.** `forGraphAvailability` re-homes
+   the current mode into the cycle now in force: gaining a graph shows it (the
+   mode's own background used to mount unconditionally) while leaving the
+   terminal half alone, losing one drops the graph half.
 
 **Canonical implementation:** `public/js/agent-backdrop.js`
-(`wireTermBtn` / `setLayerMode` / `syncTermBtn` / `revealTermBtn` /
-`slideInForeground` / `scrollBackdrop` / `leanChat` and the `wireScroll` gesture
-wiring) over the pure core `public/js/agent-backdrop-core.js` (`nextLayerMode`,
-`hasPaneContent`, `composePaneLines`, `parallaxFollow`); the `body.term-fg` /
+(`wireTermBtn` / `setLayerMode` / `applyLayerState` / `setGraphLayer` /
+`applyGraphLayer` / `syncTermBtn` / `revealTermBtn` / `slideInForeground` /
+`scrollBackdrop` / `leanChat` and the `wireScroll` gesture wiring) over the pure
+core `public/js/agent-backdrop-core.js` (`nextLayerMode`, `terminalLayerOf`,
+`graphShownIn`, `forGraphAvailability`, `hasPaneContent`, `composePaneLines`,
+`parallaxFollow`), with `public/js/mode-backdrop.js` registering the graph pair;
+the `body.term-fg` /
 `body.term-hidden` styling + pane transitions live in `public/css/app.css` and
 are mirrored in `public/cure/drc.css`. Pure logic is Node-tested in
 `agent-backdrop-core.test.js`; the DOM glue is browser-verified (mode cycle,

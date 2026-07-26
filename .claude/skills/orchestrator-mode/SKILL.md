@@ -123,6 +123,17 @@ workflow itself is a first-class UI element: a live graph of the team.
   none/terminal/graph); `mode-backdrop.js` is the dispatch, the sandbox
   terminal layer (`agent-backdrop.js`) is the "terminal" implementation.
   Reduced motion → one static frame; hidden tab → the loop skips drawing.
+  **Since 2026-07-26 `mode-backdrop.js` does NOT mount it directly.** This mode
+  has BOTH backgrounds available, and the header terminal icon `#termbtn` owns
+  the choice between every combination — a five-state cycle (both → terminal
+  forward → terminal only → graph only → neither), so a user can keep the graph
+  without the shell chatter or the other way round. The dispatch registers the
+  graph's `{show, hide}` pair with `agent-backdrop.js` `setGraphLayer` and the
+  view state decides; a non-graph mode registers `null`, which tears the canvas
+  down. The hook exists because `graph-backdrop.js` is not in the public asset
+  allowlist and `agent-backdrop.js` is — a direct import there would 401 the
+  whole Se/cure module graph. Full cycle table: the **execution-sandbox** skill;
+  the interaction rule is **UX-2** (and **UX-18** for why a tap never no-ops).
 
 ## Editing rules
 

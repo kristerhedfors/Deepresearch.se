@@ -37,6 +37,19 @@
       "verdicts": []
     },
     {
+      "label": "Terminal icon cycles the graph too in Orchestrator",
+      "summary": "Orchestrator has its own background — the slowly rotating wireframe workflow graph — on top of the terminal. The terminal icon now walks every combination of the two, five steps: both behind the chat, terminal in front, terminal only (no graph), graph only, then neither. Switch to Orchestrator in the chat-mode dropdown with the execution sandbox ON, and tap the icon five times. PASS: each tap visibly changes what is behind the chat, you can reach a state with the graph but no terminal text AND a state with terminal text but no graph, the fifth tap leaves a clean chat, and the sixth returns to both. Switching to another mode and back should not leave the graph stuck on or off.",
+      "target": "/rver",
+      "actions": [
+        {
+          "type": "note",
+          "text": "Pick Orchestrator in the chat-mode dropdown in the composer. The execution sandbox knob should be ON so there is terminal text to see alongside the graph."
+        }
+      ],
+      "runs": 1,
+      "verdicts": []
+    },
+    {
       "label": "Terminal icon works the same on Se/cure",
       "summary": "The same terminal icon and the same three views exist on the client-side tier. On /cure, with the execution sandbox enabled in settings, reload and tap the terminal icon early (while the system starts), then again after asking it to run something. PASS: the tap always changes the view, the boot progress is visible in the terminal view while it starts, and real command output appears there afterwards.",
       "target": "/cure",

@@ -446,20 +446,103 @@ export const LAYER_CONVO = "convo";
 export const LAYER_TERMINAL = "terminal";
 export const LAYER_HIDDEN = "hidden";
 
+// Some modes stand in front of a SECOND agent background: Orchestrator's
+// rotating wireframe workflow graph (graph-backdrop.js — the "graph" value of
+// the mode-theme backdrop axis, where the terminal layer is "terminal"). When
+// both exist the one header icon owns both, so the cycle covers every
+// distinguishable COMBINATION rather than only the terminal's own three
+// (2026-07-26 owner directive). Two extra modes express the pairs the three
+// above cannot:
+//   - BOTH  — the terminal AND the graph, both faint behind the chat.
+//   - GRAPH — the graph alone; the terminal is not shown.
+// (`terminal` needs no graph variant: the forward pane is a near-opaque black
+// field over the whole viewport, so a graph behind it is invisible — pairing
+// them would be a state the user cannot see. `hidden` is neither layer.)
+export const LAYER_BOTH = "both";
+export const LAYER_GRAPH = "graph";
+
+// The two cycles, written out so the order IS the spec. Both read as
+// descending terminal presence, then descending graph presence:
+//   no graph: convo (faint) → terminal (forward) → hidden
+//   graph:    both (faint+graph) → terminal (forward) → convo (faint, no graph)
+//             → graph (graph alone) → hidden (neither)
+/** @type {Array<"convo"|"terminal"|"hidden"|"both"|"graph">} */
+const CYCLE_PLAIN = [LAYER_CONVO, LAYER_TERMINAL, LAYER_HIDDEN];
+/** @type {Array<"convo"|"terminal"|"hidden"|"both"|"graph">} */
+const CYCLE_GRAPH = [LAYER_BOTH, LAYER_TERMINAL, LAYER_CONVO, LAYER_GRAPH, LAYER_HIDDEN];
+
 /**
- * Advance to the next of the three view modes, cycling in a fixed order that
- * reads as descending terminal presence and back around:
- *   convo (faint backdrop) → terminal (forward) → hidden (gone) → convo …
- * Anything unrecognized (mode unset/garbage) brings the terminal FORWARD, so a
- * first tap always surfaces it — the long-standing behavior.
+ * Advance to the next view mode. Without a graph backdrop this is the
+ * long-standing three-cycle; with one it is the five-cycle above, so every
+ * visible combination of the two layers is one tap further round. Anything
+ * unrecognized (mode unset/garbage) brings the terminal FORWARD, so a first tap
+ * always surfaces it — the long-standing behavior. A mode that does not belong
+ * to the active cycle (the two layers changed under it, e.g. leaving
+ * Orchestrator while on `graph`) also resolves to the terminal, which is the
+ * one state both cycles share.
+ * @param {unknown} mode
+ * @param {boolean} [hasGraph] a graph backdrop is available in this mode
+ * @returns {"convo"|"terminal"|"hidden"|"both"|"graph"}
+ */
+export function nextLayerMode(mode, hasGraph = false) {
+  const cycle = hasGraph ? CYCLE_GRAPH : CYCLE_PLAIN;
+  const i = cycle.indexOf(/** @type {any} */ (mode));
+  if (i < 0) return LAYER_TERMINAL;
+  return cycle[(i + 1) % cycle.length];
+}
+
+/**
+ * Which of the terminal layer's three states a view mode implies — the value
+ * the body classes and the pane opacity key off, so the glue never has to know
+ * about the graph pairs.
  * @param {unknown} mode
  * @returns {"convo"|"terminal"|"hidden"}
  */
-export function nextLayerMode(mode) {
-  if (mode === LAYER_CONVO) return LAYER_TERMINAL;
-  if (mode === LAYER_TERMINAL) return LAYER_HIDDEN;
-  if (mode === LAYER_HIDDEN) return LAYER_CONVO;
-  return LAYER_TERMINAL;
+export function terminalLayerOf(mode) {
+  if (mode === LAYER_TERMINAL) return LAYER_TERMINAL;
+  if (mode === LAYER_HIDDEN || mode === LAYER_GRAPH) return LAYER_HIDDEN;
+  return LAYER_CONVO; // convo, both, and anything unrecognized
+}
+
+/**
+ * Whether the graph backdrop is shown in a view mode. Only ever true for the
+ * two modes that name it; a mode with no graph available can never reach them.
+ * @param {unknown} mode
+ */
+export function graphShownIn(mode) {
+  return mode === LAYER_BOTH || mode === LAYER_GRAPH;
+}
+
+/**
+ * Move a view mode into the cycle that matches the layers now available, so a
+ * MODE SWITCH (entering or leaving Orchestrator) keeps what the user was
+ * looking at instead of resetting it.
+ *
+ * Gaining a graph SHOWS it while leaving the terminal half alone — `convo`
+ * becomes `both`, `hidden` becomes `graph`. A mode's graph is part of that
+ * mode's identity and used to mount unconditionally, so this keeps entering
+ * Orchestrator looking as it always did; and a user who hid the TERMINAL never
+ * said anything about a graph they had not met yet. (`terminal` is left alone:
+ * the forward pane is a near-opaque field over the viewport, so whether a graph
+ * sits behind it makes no visible difference.) Losing a graph drops that half
+ * and keeps the terminal half.
+ * @param {unknown} mode
+ * @param {boolean} hasGraph
+ * @returns {"convo"|"terminal"|"hidden"|"both"|"graph"}
+ */
+export function forGraphAvailability(mode, hasGraph) {
+  if (hasGraph) {
+    if (mode === LAYER_CONVO) return LAYER_BOTH;
+    if (mode === LAYER_HIDDEN) return LAYER_GRAPH;
+    return CYCLE_GRAPH.indexOf(/** @type {any} */ (mode)) >= 0
+      ? /** @type {any} */ (mode)
+      : LAYER_BOTH;
+  }
+  if (mode === LAYER_BOTH) return LAYER_CONVO;
+  if (mode === LAYER_GRAPH) return LAYER_HIDDEN;
+  return CYCLE_PLAIN.indexOf(/** @type {any} */ (mode)) >= 0
+    ? /** @type {any} */ (mode)
+    : LAYER_CONVO;
 }
 
 // A press only counts as a "tap" (→ switch panes) when the pointer barely moved
