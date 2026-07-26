@@ -69,7 +69,7 @@
 
 /** The Se/rver-app chat modes, dropdown order. Mirrors chat-mode.js CHAT_MODES;
  * kept here too so the registry is self-describing. */
-export const CHAT_MODE_IDS = ["normal", "introspection", "sdk", "orchestrator", "outrospection"];
+export const CHAT_MODE_IDS = ["normal", "introspection", "sdk", "orchestrator", "outrospection", "hf"];
 
 /** The mode descriptors, keyed by id.
  * @type {Record<string, ModeTheme>} */
@@ -169,6 +169,28 @@ export const MODE_THEMES = {
     depthSlider: false, // answers from the feed, not from web research — the slider doesn't apply
     symbol: "the front page",
     blurb: "looked outward — what everyone else shipped",
+  },
+  hf: {
+    id: "hf",
+    label: "Hugging Face",
+    rootClass: "hf-mode",
+    tag: "hugging face",
+    // Hugging Face's own yellow. The one mode named after somebody else's
+    // platform, so it wears their colour rather than inventing a sixth of ours.
+    accent: "#b8860b",
+    bar: "#ffd21e", // the HF yellow status bar over the warm field
+    check: "#b8860b",
+    checkVar: "--check-amber",
+    // The balloon recoloured in AMBER (mode-spinner.js HF_SPINNER) — the
+    // introspection/orchestrator/outrospection recolour pattern; the KIND stays
+    // "balloon", the palette lives in mode-spinner.js.
+    spinner: "balloon",
+    character: "balloon",
+    panel: "history",
+    backdrop: "terminal",
+    depthSlider: true, // it researches the hub like any other source — the slider applies
+    symbol: "the open shelf",
+    blurb: "browsed — every model on the shelf, with its price on the tag",
   },
 };
 

@@ -48,7 +48,7 @@
      mode's tint on later events. In-session toggle/reconcile is chat-mode.js.
      If this script changes, recompute its CSP hash (THEME_BOOT_HASH in
      src/security-headers.js). */
-try{var m=localStorage.getItem("dr_chat_mode");var t="#6fc3fd";if(m==="sdk"){document.documentElement.classList.add("sdk-mode");t="#66cc92";}else if(m==="orchestrator"){document.documentElement.classList.add("orch-mode");t="#c3aaf2";}else if(m==="outrospection"){document.documentElement.classList.add("outro-mode");t="#e5ddcb";}else if(m==="introspection"||(!m&&localStorage.getItem("dr_dev_mode")==="1")){document.documentElement.classList.add("dev-mode");t="#ccd2d8";}var mc=document.querySelector('meta[name="theme-color"]');if(mc){mc.setAttribute("content",t);}}catch(e){}</script>
+try{var m=localStorage.getItem("dr_chat_mode");var t="#6fc3fd";if(m==="sdk"){document.documentElement.classList.add("sdk-mode");t="#66cc92";}else if(m==="orchestrator"){document.documentElement.classList.add("orch-mode");t="#c3aaf2";}else if(m==="outrospection"){document.documentElement.classList.add("outro-mode");t="#e5ddcb";}else if(m==="hf"){document.documentElement.classList.add("hf-mode");t="#ffd21e";}else if(m==="introspection"||(!m&&localStorage.getItem("dr_dev_mode")==="1")){document.documentElement.classList.add("dev-mode");t="#ccd2d8";}var mc=document.querySelector('meta[name="theme-color"]');if(mc){mc.setAttribute("content",t);}}catch(e){}</script>
 </head>
 <body>
   <header>
@@ -63,6 +63,7 @@ try{var m=localStorage.getItem("dr_chat_mode");var t="#6fc3fd";if(m==="sdk"){doc
            Same newsprint treatment as the other tags, with the ink underline
            marking it as the only tappable one. -->
       <a class="outro-tag" href="/outrospect/" target="_blank" rel="noopener" title="Open the outward feed — /outrospect/">outrospection ↗</a>
+      <div class="hf-tag">hugging face</div>
       <div class="header-right">
         <button id="historybtn" type="button" title="Chat history" aria-label="Chat history" hidden>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
@@ -146,13 +147,19 @@ try{var m=localStorage.getItem("dr_chat_mode");var t="#6fc3fd";if(m==="sdk"){doc
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
             </button>
             <input id="camerafile" type="file" accept="image/*" capture="environment" hidden>
-            <select id="modesel" title="Chat mode — Deep Research (the ordinary research pipeline), Introspection (titanium: the site answers from its own source), Agent Studio (green: distil this site into a new agent and get a live link), Orchestrator (violet: a planned team of sub-agents works your request in the background), or Outrospection (newsprint: answers from the outward feed of what everyone else shipped)" aria-label="Chat mode">
+            <select id="modesel" title="Chat mode — Deep Research (the ordinary research pipeline), Introspection (titanium: the site answers from its own source), Agent Studio (green: distil this site into a new agent and get a live link), Orchestrator (violet: a planned team of sub-agents works your request in the background), Outrospection (newsprint: answers from the outward feed of what everyone else shipped), or Hugging Face (amber: research with the whole open model catalog — browse it, see what each model costs, enable one for every mode)" aria-label="Chat mode">
               <option value="normal">Deep Research</option>
               <option value="introspection">Introspection</option>
               <option value="sdk">Agent Studio</option>
               <option value="orchestrator">Orchestrator</option>
               <option value="outrospection">Outrospection</option>
+              <option value="hf">Hugging Face</option>
             </select>
+            <!-- Hugging-Face-only: the model shelf. Opens the open router
+                 catalog with prices; enabling a model there puts it in the
+                 #model dropdown for every mode (public/js/hf-models.js).
+                 Hidden outside Hugging Face mode (public/js/app.js). -->
+            <button id="hfbtn" type="button" title="Model shelf — browse the Hugging Face catalog with prices" aria-label="Model shelf" hidden>🤗</button>
             <select id="model" title="Model" hidden></select>
             <button id="send" type="submit" aria-label="Send" title="Send (Enter — Shift+Enter for a new line)">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
@@ -184,6 +191,23 @@ try{var m=localStorage.getItem("dr_chat_mode");var t="#6fc3fd";if(m==="sdk"){doc
         <div id="pending"></div>
       </div>
     </div>
+  </div>
+
+  <!-- The Hugging Face model shelf: the open router catalog, searchable, each
+       row carrying its published per-1M rate and an estimate for one research
+       turn. "Enable" promotes a model into this account's catalog, which is
+       what makes it selectable in every chat mode (src/hf-api.js). -->
+  <div id="hfpanel" hidden>
+    <aside class="hf-shelf">
+      <div class="hf-shelf-head">
+        <strong>🤗 Model shelf</strong>
+        <button id="hfclose" type="button" aria-label="Close">›</button>
+      </div>
+      <p id="hfallowance" class="muted"></p>
+      <input id="hfsearch" type="search" placeholder="Search the Hugging Face catalog…" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <p id="hfnote" class="muted" hidden></p>
+      <div id="hflist" class="hf-list"></div>
+    </aside>
   </div>
 
   <div id="historysidebar" hidden>

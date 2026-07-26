@@ -43,6 +43,18 @@ import { DEFAULT_SERP_PROVIDERS, normalizeSerpProviders } from "./websearch-cf.j
  *   local LLM as pooled capacity — src/pool.js)
  * @property {SandboxImageConfig} sandbox the self-hosted Linux sandbox image
  *   selection + registry (admin-selectable small image — src/sandbox-image.js)
+ * @property {HfAllowanceConfig} hf the open-catalog MODEL ALLOWANCE — how
+ *   expensive a Hugging Face model this account may enable, and how many
+ *   (src/hf-inference.js hfAllowance)
+ */
+/**
+ * The starting model allowance the Hugging Face agent hands out. Raising these
+ * IS how the allowance is extended — the agent's own copy says as much.
+ * @typedef {Object} HfAllowanceConfig
+ * @property {number} max_output_usd USD per 1M output tokens an enableable
+ *   model may cost (0 = uncapped)
+ * @property {number} max_accepted how many models one account may keep enabled
+ *   (0 = uncapped; src/user-models.js MAX_STORED is the structural ceiling)
  */
 /**
  * The self-hosted Linux sandbox image selection (see docs/SANDBOX-LOCAL-IMAGE.md).
@@ -239,6 +251,16 @@ export const DEFAULT_CONFIG = {
     image: "",
     images: [],
     prefetch: false,
+  },
+  // The open-catalog MODEL ALLOWANCE (src/hf-inference.js). The Hugging Face
+  // agent browses a provider catalog nobody curated, so accepting a model out
+  // of it — which is what puts it in every agent mode's dropdown — is bounded
+  // rather than free: a ceiling on the model's output rate, and a cap on how
+  // many an account may keep enabled. These are the STARTING allowance; raising
+  // them here is how it gets extended. 0 = uncapped on either axis.
+  hf: {
+    max_output_usd: 3, // USD per 1M output tokens an acceptable model may cost
+    max_accepted: 6, // how many accepted models one account may hold
   },
 };
 

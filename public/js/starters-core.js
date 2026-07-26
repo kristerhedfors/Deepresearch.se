@@ -84,6 +84,7 @@ export const MODE_AGENTS = {
   sdk: "agent-builder",
   orchestrator: "orchestrator",
   outrospection: "outrospection",
+  hf: "huggingface",
 };
 
 /**

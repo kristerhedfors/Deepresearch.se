@@ -21,6 +21,7 @@ import { exaCost, spendByModel, summarizeSpend } from "./billing.js";
 // Re-exported so chat.test.js (and any importer) keeps getting it from here.
 export { summarizeSpend } from "./billing.js";
 import { listChatModels } from "./providers.js";
+import { acceptedModels } from "./user-models.js";
 import { clampBudget, planResearch } from "./budget.js";
 import { augmentWithLocations } from "./geocode.js";
 import { jsonResponse, sseResponse } from "./http.js";
@@ -104,6 +105,12 @@ import { normalizeSearchSource } from "./websearch-backends.js";
  * @property {any} [swarm_results] agent id → the brief that node's on-device swarm
  *   produced in the browser ({text, agreement, members, rounds, failed}).
  *   Clamped by resolveSwarmResults; ignored outside orchestrator mode
+ * @property {boolean} [hf_mode] Hugging Face mode: the open-catalog research
+ *   agent (src/hf-agent.js). Forces Hub search on for the turn and folds the
+ *   live, priced router catalog in when the message is about choosing, pricing
+ *   or starting a model. Honored only when the caller's developer_mode knob
+ *   grants the capability — the same gate as sdk_mode. Adds no executor: the
+ *   answer phase stays the ordinary research one
  * @property {boolean} [outrospection_mode] Outrospection mode: route this request
  *   to the outward feed (src/outrospect.js runOutrospection) — introspection's
  *   mirror image, answering from what everyone ELSE shipped rather than from
@@ -164,6 +171,10 @@ import { normalizeSearchSource } from "./websearch-backends.js";
  *   swarmResults?: Record<string, { text: string, agreement: number, members: number, rounds: number, failed: number }>,
  *   outrospectionMode?: boolean,
  *   outrospection?: { lens: string | null, items: number, texts: number, quotes: number, live: boolean },
+ *   hfMode?: boolean,
+ *   hfAccepted?: import("./user-models.js").AcceptedModel[],
+ *   hfModels?: { shown: number, total: number, query: string },
+ *   forceAux?: string[],
  *   buildSlug?: string | null,
  *   userId?: string,
  *   buildResult?: { slug: string, url: string, files: number, bytes: number },
@@ -221,7 +232,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     return jsonResponse({ error: invalid }, 400);
   }
 
-  const { catalog, config, resolved } = await resolveChatModels(env, log, body);
+  const { catalog, config, resolved } = await resolveChatModels(env, log, body, identity);
   if ("error" in resolved) return jsonResponse({ error: resolved.error }, resolved.status);
   const model = resolved.model;
   const jsonModel = resolveJsonModel(catalog, model);
@@ -370,6 +381,13 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // Cleared by a slash command like every other executor phase: the turn is no
   // longer the agent's.
   const directOn = !slashCmd && byRegistry && routedPhase === "direct";
+  // Hugging Face mode: the agent whose model catalog is OPEN (src/hf-agent.js).
+  // Unlike the modes above it introduces NO executor — its answer phase is the
+  // ordinary research one — so it is resolved from the flag directly rather
+  // than from `routedPhase`, and it simply loses to any mode that DOES replace
+  // the flow (the dropdown can only produce one anyway). Same capability gate
+  // as every other mode: a client can't acquire what the knob doesn't grant.
+  const hfOn = !slashCmd && body.hf_mode === true && !sdkOn && !orchOn && !outroOn && !directOn && enrich.developerOn;
   // The answer phase the pipeline dispatches on, and the agent it came from —
   // null when the registry was unavailable or not consulted, in which case the
   // pipeline falls back to the mode booleans above.
@@ -505,6 +523,10 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       orchWorkflow,
       swarmResults,
       outrospectionMode: outroOn,
+      hfMode: hfOn,
+      // The account's accepted open-catalog models, resolved once here so the
+      // enrichment can price against them without re-reading the identity.
+      hfAccepted: hfOn ? acceptedModels(identity) : [],
       answerPhase,
       agentId,
       promptSet,
@@ -715,6 +737,12 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             // the feed had nothing to answer from.
             outrospection_mode: outroOn ? 1 : 0,
             outrospection: /** @type {any} */ (state).outrospection,
+            // Hugging Face mode: 1 when this request ran the open-catalog
+            // agent, with `hf_models` ({shown, total, query}) present only when
+            // the message was model-shopping and the catalog answered — grep
+            // `total: 0` for turns where the router was unreachable.
+            hf_mode: hfOn ? 1 : 0,
+            hf_models: /** @type {any} */ (state).hfModels,
             cached_searches: state.cachedSearchCount || 0,
             // Present only when the chosen model was unavailable and the
             // answer was written by the reliable fallback (pipeline.js's
@@ -862,14 +890,16 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
  * @param {Env} env
  * @param {Logger} log
  * @param {ChatRequestBody} body mutated: body.model may receive the site default
+ * @param {Identity} [identity] the signed-in account, so its per-account models
+ *   (the accepted open-catalog ones) are valid answer models here too
  * @returns {Promise<{ catalog: ModelCatalog | null, config: SiteConfig,
  *   resolved: ReturnType<typeof resolveModel> }>}
  */
-async function resolveChatModels(env, log, body) {
+async function resolveChatModels(env, log, body, identity) {
   /** @type {ModelCatalog | null} */
   let catalog = null;
   try {
-    catalog = await listChatModels(env);
+    catalog = await listChatModels(env, identity);
   } catch (err) {
     log.warn("chat.model_catalog_unavailable", { error: /** @type {any} */ (err)?.message || String(err) });
   }
@@ -990,7 +1020,7 @@ export function resolveJsonModel(catalog, userModel) {
  * @param {string} jsonModel
  * @param {boolean} webSearch
  * @param {number} budgetS
- * @param {Partial<EnrichmentOptions> & { searchSource?: string, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, swarm?: any, orchWorkflow?: any, swarmResults?: any, outrospectionMode?: boolean, answerPhase?: string | null, agentId?: string | null, promptSet?: string | null, capability?: any, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
+ * @param {Partial<EnrichmentOptions> & { searchSource?: string, vision?: boolean, introspection?: boolean, sandboxEnabled?: boolean, sdkMode?: boolean, orchestratorMode?: boolean, swarm?: any, orchWorkflow?: any, swarmResults?: any, outrospectionMode?: boolean, hfMode?: boolean, hfAccepted?: any[], answerPhase?: string | null, agentId?: string | null, promptSet?: string | null, capability?: any, buildSlug?: string | null, userId?: string, shellTranscript?: Array<{ command: string, exitCode: number, stdout: string, stderr: string }> }} [extras]
  * @returns {ChatRequestState}
  */
 function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
@@ -1054,6 +1084,11 @@ function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
     // runOutrospection: the outward feed replaces both the web research and
     // the own-source retrieval for this request.
     outrospectionMode: !!extras.outrospectionMode,
+    // Hugging Face mode — src/hf-agent.js runHfAgentEnrichment: hub search is
+    // forced on for the turn, and a model-shopping message gets the live priced
+    // router catalog folded in. No executor: the answer phase stays `research`.
+    hfMode: !!extras.hfMode,
+    hfAccepted: extras.hfAccepted || [],
     // The registry-resolved answer phase and the agent it came from
     // (sdk/AGENTS.json `defaults` → capability.answerPhase). This is what
     // pipeline.js dispatches on; the three booleans above are its fail-soft

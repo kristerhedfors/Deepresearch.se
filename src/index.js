@@ -21,6 +21,8 @@
 //   src/user-api.js  — /api/me + /api/models + /api/client-error + /api/history-key
 //   src/history-key.js — per-user key for the client's encrypted local history
 //   src/settings.js  — per-user settings (/api/settings: the opt-in feature knobs; cloud storage is implicit, not a knob)
+//   src/hf-api.js    — /api/hf/models: browse the open Hugging Face router catalog
+//                      with prices, accept one into this account's model menu
 //   src/storage.js   — opt-in R2 cloud storage (/api/convos, /api/files, /api/storage)
 //   src/rag.js       — document RAG: /api/embed proxy + /api/rag/* (Vectorize)
 //   src/quiz-api.js  — /api/quiz/grade: free-text quiz-answer grading (src/quiz.js)
@@ -59,6 +61,7 @@ import { handleFeedbackApi, handleServerTokenFeedback } from "./feedback.js";
 import { handleOutrospectFeed, handleOutrospectRefresh } from "./outrospect.js";
 import { handleTryRedirect } from "./testpoints.js";
 import { bashLiteEnabled, handleSettingsGet, handleSettingsPut } from "./settings.js";
+import { handleHfModelAccept, handleHfModelRemove, handleHfModelsList } from "./hf-api.js";
 import { handleBashStep } from "./bash-api.js";
 import { handleOrchestratorPlan } from "./orchestrator-api.js";
 import { handleStorage } from "./storage.js";
@@ -652,7 +655,7 @@ async function routeApi(request, env, url, log, identity, ctx, requestId) {
     return handleAnswerAck(env, url, identity);
   }
   if (url.pathname === "/api/models" && request.method === "GET") {
-    return handleModels(env, log);
+    return handleModels(env, log, identity);
   }
   if (url.pathname === "/api/me" && request.method === "GET") {
     return handleMe(env, identity);
@@ -669,6 +672,14 @@ async function routeApi(request, env, url, log, identity, ctx, requestId) {
   }
   if (url.pathname === "/api/settings" && request.method === "PUT") {
     return handleSettingsPut(request, env, log, identity);
+  }
+  // The Hugging Face agent's MODEL SURFACE: browse the open router catalog with
+  // prices, then accept a model into this account's own menu — which is what
+  // makes it selectable in every other agent mode too (src/hf-api.js).
+  if (url.pathname === "/api/hf/models") {
+    if (request.method === "GET") return handleHfModelsList(env, log, identity, url);
+    if (request.method === "POST") return handleHfModelAccept(request, env, log, identity);
+    if (request.method === "DELETE") return handleHfModelRemove(env, log, identity, url);
   }
   // Temporary web-search grant: a signed-in user crossing to Se/cure mints
   // (or reuses) their short-lived, quota-metered token so the client-side
