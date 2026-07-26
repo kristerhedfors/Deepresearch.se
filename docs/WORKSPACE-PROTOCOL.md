@@ -283,8 +283,7 @@ password generation and channel-separation UX.
   consent when the workspace's `origin.node` differs from the opening node.
 
 A node MUST declare the classes it meets in its discovery document (§7.1,
-`conformance`), so the claim is machine-readable and does not have to be
-inferred from behavior.
+`conformance`), so a peer can read the claim instead of probing for it.
 
 **What the reference node meets today: R and W.** It opens and mints the
 payload core (§3–§4) and serves the §7.1 discovery file, but it does not yet
@@ -342,8 +341,9 @@ The rest are optional, and a reader MUST ignore members it does not know.
   reader that discovers a node can reach the texts without knowing the
   project. Keys are standard short names (`drsw`, `drpl`), plus `rationale`
   and `schema`; values are URLs, absolute or origin-relative.
-- `status` — `"experimental"`, `"beta"` or `"stable"`, the operator's own
-  statement about the deployment, not about the standard.
+- `status` — `"experimental"`, `"beta"` or `"stable"`. The operator's own
+  statement about this deployment; it says nothing about how settled the
+  standard is.
 - `pipelines` — the node's offered pipelines as DRPL documents with
   structural fingerprints, so a client can compare nodes **before** visiting:
   "this node runs the same research spine I've been using, placed
