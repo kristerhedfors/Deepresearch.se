@@ -62,8 +62,16 @@
 //   every item's metadata highlight carries the submission date, so the
 //   synthesis model weighs freshness itself, from evidence rather than from a
 //   sort this module guessed at.
-// - arXiv signals overload with 503 + Retry-After rather than a hard rate
-//   limit; one request per wave stays well inside that.
+// - **arXiv DOES rate-limit, with 429.** The prior note here (inherited from
+//   the harvester's experience) said overload shows up as 503 + Retry-After
+//   rather than a hard limit. Probing this client produced plain
+//   `429 Too Many Requests` and then timeouts. Two consequences, both now
+//   enforced in arxivSearch: a 429/503 ABORTS the ladder instead of being read
+//   as "this rung found nothing" (answering a rate limit by immediately firing
+//   the next query is what earns a longer block), and the ladder carries a
+//   TOTAL time budget, because three rungs at the per-request timeout is 21 s
+//   inside a search wave. arXiv asks for ~3 s between requests; one wave makes
+//   at most a few, and never retries through a throttle.
 
 /**
  * One source-registry item (same shape Exa results carry).
@@ -75,7 +83,8 @@
  */
 
 const ARXIV_ENDPOINT = "https://export.arxiv.org/api/query";
-const ARXIV_TIMEOUT_MS = 7000;
+const ARXIV_TIMEOUT_MS = 6000; // per request
+const ARXIV_LADDER_BUDGET_MS = 9000; // across the whole ladder
 const MAX_TERMS = 4; // first ladder rung; 6 AND-ed terms measured 0 hits
 const MIN_TERMS = 2; // below this the AND query is too broad to be useful
 const MAX_ATTEMPTS = 3; // bounded ladder, same discipline as hfAttempts
@@ -165,6 +174,10 @@ const NOISE = new Set([
   "literature", "journal", "journals", "thesis", "theses", "dissertation",
   "citation", "citations", "cited", "research", "researchers", "researcher",
   "academic", "scientific", "science", "peer", "reviewed", "review", "reviews",
+  // Hyphenated literature forms are ONE token, so the split words above do not
+  // catch them (found running the predicate over tests/bench-questions.mjs).
+  "peer-reviewed", "peer-review", "pre-print", "pre-prints", "e-print",
+  "e-prints", "referentgranskade", "referentgranskat", "sakkunniggranskade",
   "independent", "survey", "abstract", "abstracts", "article", "articles",
   // question / stop words
   "what", "which", "who", "whom", "whose", "how", "why", "when", "where",
@@ -188,6 +201,23 @@ const NOISE = new Set([
   "model", "models", "method", "methods", "approach", "approaches",
   "framework", "frameworks", "technique", "techniques", "system", "systems",
   "outperform", "outperforms", "outperformed", "outperforming",
+  // Discourse/meta vocabulary — words about the ASKING rather than the topic.
+  // Found by running the intent predicate over tests/bench-questions.mjs: for
+  // "Do recent large studies still support the idea that moderate alcohol
+  // consumption has a protective cardiovascular effect", these words are what
+  // was crowding "cardiovascular" and "consumption" out of the query.
+  "still", "support", "supports", "idea", "view", "views", "changed", "change",
+  "whether", "reach", "reaches", "different", "differ", "differs", "genuinely",
+  "disagree", "disagrees", "agree", "conclusions", "conclusion", "effect",
+  "effects", "effectiveness", "assess", "assesses", "increases", "decreases",
+  "increase", "decrease", "large", "small", "each", "prefer", "really",
+  "actually", "mostly", "generally", "typically", "significant", "significantly",
+  // Swedish counterparts of the same class
+  "fortfarande", "stöder", "stödjer", "stöd", "idén", "idé", "uppfattning",
+  "ändrats", "ändrat", "förändrats", "huruvida", "olika", "skiljer",
+  "slutsatser", "slutsats", "effekt", "effekten", "effekter", "ökar",
+  "minskar", "stor", "stora", "liten", "verkligen", "faktiskt", "oftast",
+  "vanligtvis", "betydande", "väsentligt",
   // search-intent qualifiers
   "latest", "recent", "recently", "newest", "new", "current", "currently",
   "state", "art", "sota", "advances", "advance", "breakthrough",
@@ -231,26 +261,93 @@ const NOISE = new Set([
  * @returns {string[]}
  */
 export function arxivTerms(query) {
+  return arxivRankedTerms(query).map((t) => t.term);
+}
+
+/**
+ * The same terms, each carrying how topic-bearing it looks. Scored from the
+ * ORIGINAL casing (before lowercasing), which is the only place the acronym
+ * signal survives — "LLM" as the user wrote it is distinctive, "llm" is just
+ * a short word.
+ * @param {unknown} query
+ * @returns {{ term: string, score: number }[]}
+ */
+export function arxivRankedTerms(query) {
   // String-only: String({}) is "[object Object]", which would otherwise yield
   // a bogus "object" term and AND it into a real query.
   if (typeof query !== "string") return [];
-  const words = query
-    .toLowerCase()
+  const raw = query
     // keep intra-word hyphens (multi-agent) and dots in arXiv ids; drop the rest
     .replace(/[^\p{L}\p{N}\s.-]+/gu, " ")
     .split(/\s+/)
     .map((w) => w.replace(/^[.-]+|[.-]+$/g, ""))
     .filter(Boolean);
-  /** @type {string[]} */
-  const out = [];
-  for (const w of words) {
+  /** @type {{ term: string, score: number }[]} */
+  const kept = [];
+  const seen = new Set();
+  for (const original of raw) {
+    const w = original.toLowerCase();
     if (NOISE.has(w)) continue;
     if (/^\d+$/.test(w)) continue; // bare numbers, above all years
     if (w.length < 2) continue;
-    if (out.includes(w)) continue;
-    out.push(w);
+    if (seen.has(w)) continue;
+    seen.add(w);
+    kept.push({ term: w, score: arxivDistinctiveness(original) });
   }
-  return out;
+  return kept;
+}
+
+/**
+ * How topic-bearing a word looks, used to pick WHICH terms an AND query
+ * spends its four slots on (arxivSelectTerms).
+ *
+ * Position is not a usable proxy. It works for a planner's keyword angle
+ * ("llm swarm reasoning research 2026") but fails badly on a natural
+ * question: "Do recent large studies still support the idea that moderate
+ * alcohol consumption has a protective cardiovascular effect" leaves, in
+ * order, [large, still, support, idea, moderate, alcohol, consumption,
+ * protective, cardiovascular, …] — so the first four slots go to
+ * `large still support idea` and the actual subject never reaches the query.
+ *
+ * Length is the bulk of the signal (technical vocabulary is longer than
+ * discourse vocabulary), with two corrections length alone gets wrong:
+ * acronyms are short but maximally distinctive (LLM, RAG, SSE, GAIA), and
+ * hyphenated or digit-bearing tokens are compound technical terms
+ * (multi-agent, GPT-4, 1-bit).
+ *
+ * @param {string} original the token with its original casing
+ */
+export function arxivDistinctiveness(original) {
+  const w = String(original || "");
+  // An acronym the user capitalised (LLM, RAG, SSE, GAIA, CRISPR) is the most
+  // specific token a query can carry, so it outranks any ordinary word rather
+  // than merely getting a nudge — a +6 bonus still lost "LLM" (9) to
+  // "consumption" (11), which is backwards.
+  if (/^[A-Z0-9]{2,6}$/.test(w)) return 12 + w.length;
+  let score = w.length;
+  if (/[-\d]/.test(w)) score += 3; // compound / versioned technical token
+  return score;
+}
+
+/**
+ * The terms one AND query spends its slots on: the `limit` most distinctive,
+ * returned in the query's own word order so the query reads naturally and its
+ * dedup key is stable. Successive limits NEST (top-3 ⊂ top-4), which is what
+ * makes the ladder's rungs progressively broader rather than merely different.
+ * @param {{ term: string, score: number }[]} ranked
+ * @param {number} limit
+ * @returns {string[]}
+ */
+export function arxivSelectTerms(ranked, limit) {
+  const list = Array.isArray(ranked) ? ranked : [];
+  if (list.length <= limit) return list.map((r) => r.term);
+  return list
+    .map((r, i) => ({ ...r, i }))
+    // Highest score first; ties keep the query's own order.
+    .sort((a, b) => b.score - a.score || a.i - b.i)
+    .slice(0, limit)
+    .sort((a, b) => a.i - b.i)
+    .map((r) => r.term);
 }
 
 /**
@@ -266,10 +363,10 @@ export function arxivId(query) {
 }
 
 /**
- * The bounded AND ladder: the widest term set first, then progressively
- * narrower ones by dropping the tail. Each rung carries a stable `key` for
- * cross-wave dedup, so a later wave whose planned query reduces to a rung an
- * earlier wave already spent skips it instead of re-fetching.
+ * The bounded AND ladder: the most distinctive term set first, then
+ * progressively broader ones as slots are given up. Each rung carries a stable
+ * `key` for cross-wave dedup, so a later wave whose planned query reduces to a
+ * rung an earlier wave already spent skips it instead of re-fetching.
  *
  * Measured widths on the live corpus (see header): 4 terms → 26 hits, 3 → 37,
  * 2 → 113, 6 → 0. Hence MAX_TERMS 4 down to MIN_TERMS 2.
@@ -280,18 +377,18 @@ export function arxivId(query) {
 export function arxivAttempts(query) {
   const id = arxivId(query);
   if (id) return [{ terms: [`id:${id}`], key: `id:${id}` }];
-  const terms = arxivTerms(query);
-  if (!terms.length) return [];
+  const ranked = arxivRankedTerms(query);
+  if (!ranked.length) return [];
   /** @type {{ terms: string[], key: string }[]} */
   const rungs = [];
-  const widest = Math.min(terms.length, MAX_TERMS);
+  const widest = Math.min(ranked.length, MAX_TERMS);
   for (let n = widest; n >= MIN_TERMS && rungs.length < MAX_ATTEMPTS; n--) {
-    const slice = terms.slice(0, n);
+    const slice = arxivSelectTerms(ranked, n);
     rungs.push({ terms: slice, key: slice.join(" ") });
   }
   // A single surviving term still deserves one attempt (a one-word topic like
   // "graphene" is a legitimate arXiv query, just a broad one).
-  if (!rungs.length) rungs.push({ terms: [terms[0]], key: terms[0] });
+  if (!rungs.length) rungs.push({ terms: [ranked[0].term], key: ranked[0].term });
   return rungs;
 }
 
@@ -422,9 +519,18 @@ export async function arxivSearch(env, log, query, { skipKeys } = {}) {
   /** @type {ArxivItem[]} */
   let items = [];
   let attempted = 0;
+  let throttled = false;
 
   for (const rung of arxivAttempts(query)) {
     if (skipKeys?.has(rung.key)) continue;
+    // Total-time bound across the whole ladder, not just per request: three
+    // rungs at the per-request timeout would be 21 s inside a search wave,
+    // which is long enough to matter to the deadline the wave is planned
+    // against (invariant 2 — a slow backend must not defeat fail-soft).
+    if (Date.now() - started > ARXIV_LADDER_BUDGET_MS) {
+      log.warn("arxiv.ladder_budget", { spent_ms: Date.now() - started, attempts: attempted });
+      break;
+    }
     usedKeys.push(rung.key);
     attempted++;
     const params = new URLSearchParams({ start: "0", max_results: String(SLICE) });
@@ -441,7 +547,21 @@ export async function arxivSearch(env, log, query, { skipKeys } = {}) {
         signal: AbortSignal.timeout(ARXIV_TIMEOUT_MS),
       });
       if (!res.ok) {
-        log.warn("arxiv.http", { status: res.status, terms: rung.terms.length });
+        log.warn("arxiv.http", {
+          status: res.status,
+          terms: rung.terms.length,
+          retry_after: res.headers.get("retry-after") || undefined,
+        });
+        // Being rate-limited or overloaded is NOT a "this rung found nothing"
+        // signal, and the ladder must not answer it by immediately firing the
+        // next query — that is what earns a longer block. Observed live
+        // (2026-07-26): repeated probing got 429 Too Many Requests, and the
+        // ladder walked straight through it wasting the wave's time budget.
+        // arXiv also answers overload with 503 + Retry-After. Either way: stop.
+        if (res.status === 429 || res.status === 503) {
+          throttled = true;
+          break;
+        }
         continue;
       }
       const entries = arxivParseFeed(await res.text());
@@ -459,7 +579,13 @@ export async function arxivSearch(env, log, query, { skipKeys } = {}) {
   }
 
   const durationMs = Date.now() - started;
-  log.info("arxiv.search", { query, attempts: attempted, results: items.length, duration_ms: durationMs });
+  log.info("arxiv.search", {
+    query,
+    attempts: attempted,
+    results: items.length,
+    throttled,
+    duration_ms: durationMs,
+  });
   return { items, durationMs, usedKeys };
 }
 
@@ -497,7 +623,9 @@ export function arxivPickQuery(batch) {
 export function arxivTermKey(query) {
   const id = arxivId(query);
   if (id) return `id:${id}`;
-  return arxivTerms(query).slice(0, MAX_TERMS).join(" ");
+  // The widest rung's terms — the same set arxivAttempts starts from, so the
+  // key the orchestrator dedups on and the search actually run agree.
+  return arxivSelectTerms(arxivRankedTerms(query), MAX_TERMS).join(" ");
 }
 
 // Planner vocabulary (spliced into the triage/gap prompts via the

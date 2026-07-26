@@ -55,7 +55,11 @@ are 335 MB.
   month shard that touched it.
 - arXiv answers overload with `503` + `Retry-After`, not a hard rate limit.
   Concurrency 3 across month shards with a 1 s inter-page pause is polite and
-  fast enough.
+  fast enough. **That holds for OAI-PMH, not for the query API**: probing
+  `export.arxiv.org/api/query` for the live search source (2026-07-26) earned
+  plain `429 Too Many Requests` followed by timeouts. Treat a 429/503 there as
+  "stop", never as "try the next query" — see the **integrations** skill's
+  arXiv section.
 
 ## Berget serving limits that break long builds
 

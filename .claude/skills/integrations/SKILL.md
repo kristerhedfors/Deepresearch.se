@@ -1065,6 +1065,34 @@ work in the repo was the offline CLI RAG database (`docs/ARXIV-RAG.md`), whose
   inside that window, because the corpus grows. So there is no local
   re-ordering at all; recency reaches the model as data instead, on each item's
   metadata highlight.
+- **Term selection is by DISTINCTIVENESS, not position.** Taking the first four
+  surviving terms works for a planner's keyword angle but fails on a natural
+  question: "Do recent large studies still support the idea that moderate
+  alcohol consumption has a protective cardiovascular effect" leaves, in order,
+  `large still support idea` in the four slots and the subject never reaches
+  the query. Found by running `arxivIntent` over `tests/bench-questions.mjs` —
+  13 of 34 fire, so the firing set was worth reading. Scoring is length plus
+  two corrections length gets wrong: an acronym the user capitalised (LLM, RAG,
+  SSE) outranks any ordinary word outright — a mere +6 bonus still lost "LLM"
+  (9) to "consumption" (11) — and hyphenated/digit-bearing tokens
+  (multi-agent, GPT-4) get a nudge as compound technical terms. Chosen terms
+  are emitted in the query's own word order and successive rungs NEST. That
+  turned `large still support idea` into `moderate consumption protective
+  cardiovascular`, and every other firing bench question improved similarly.
+  The same pass added a discourse/meta noise class (still/support/idea/view/
+  whether/genuinely/disagree/conclusions/effectiveness + Swedish) and the
+  HYPHENATED literature forms — "peer" and "reviewed" are noise separately, but
+  "peer-reviewed" is one token and slipped through.
+- **arXiv DOES rate-limit, with 429** — worth knowing, because the harvester's
+  experience (recorded in the **arxiv-rag** skill) is that overload shows up as
+  503 + Retry-After rather than a hard limit. Probing this client produced
+  plain `429 Too Many Requests` and then timeouts. Two rules follow, both
+  enforced in `arxivSearch` and unit-tested: a 429/503 **aborts the ladder**
+  rather than being read as "this rung found nothing" (answering a rate limit
+  by firing the next query immediately is what earns a longer block; a 400 is
+  still per-rung), and the ladder carries a TOTAL time budget of 9 s, because
+  three rungs at the per-request timeout is 21 s inside a search wave —
+  invariant 2's fail-soft has to hold on the clock too, not just on errors.
 - **Parsing:** Workers have no `DOMParser`, so the Atom feed is cut up by regex
   (`arxivParseFeed`). `&amp;` is decoded LAST, or `&amp;lt;` would become `<`.
   Junk in → `null` out (`arxivMapEntry`), never a throw.

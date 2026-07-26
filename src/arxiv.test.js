@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 
 import {
   arxivAttempts,
+  arxivDistinctiveness,
   arxivDiversityKey,
   arxivId,
   arxivIdOf,
@@ -17,8 +18,10 @@ import {
   arxivMapEntry,
   arxivParseFeed,
   arxivPickQuery,
+  arxivRankedTerms,
   arxivSearch,
   arxivSearchQuery,
+  arxivSelectTerms,
   arxivTermKey,
   arxivTerms,
 } from "./arxiv.js";
@@ -146,15 +149,17 @@ test("arxivTerms", async (t) => {
 });
 
 test("arxivAttempts (the bounded AND ladder)", async (t) => {
-  await t.test("widest rung first, dropping the tail, bounded to 3 attempts", () => {
-    const rungs = arxivAttempts("llm swarm reasoning agents model architecture");
+  await t.test("most distinctive rung first, giving up slots, bounded to 3 attempts", () => {
+    const rungs = arxivAttempts("llm swarm reasoning agents architecture");
     assert.equal(rungs.length, 3);
+    // Terms are picked by distinctiveness but emitted in the query's own word
+    // order, and successive rungs NEST (top-2 ⊂ top-3 ⊂ top-4).
     assert.deepEqual(
       rungs.map((r) => r.terms),
       [
-        ["llm", "swarm", "reasoning", "agents"],
-        ["llm", "swarm", "reasoning"],
-        ["llm", "swarm"],
+        ["swarm", "reasoning", "agents", "architecture"],
+        ["reasoning", "agents", "architecture"],
+        ["reasoning", "architecture"],
       ],
     );
   });
@@ -184,6 +189,57 @@ test("arxivAttempts (the bounded AND ladder)", async (t) => {
     // Three terms → the widest rung IS all three.
     assert.equal(arxivAttempts("llm swarm reasoning")[0].key, "llm swarm reasoning");
     assert.equal(arxivAttempts("LLM Swarm")[0].key, arxivAttempts("llm  swarm")[0].key);
+  });
+});
+
+test("term selection spends the AND slots on topic words, not position", async (t) => {
+  await t.test("the bench-question case that exposed position-based selection", () => {
+    // Terms in word order start [large, still, support, idea, moderate,
+    // alcohol, consumption, protective, cardiovascular, ...] — taking the
+    // first four put `large still support idea` in the query and left the
+    // actual subject out entirely.
+    const q =
+      "Do recent large studies still support the idea that moderate alcohol consumption has a protective cardiovascular effect, or has that view changed?";
+    const terms = arxivAttempts(q)[0].terms;
+    assert.deepEqual(terms, ["moderate", "consumption", "protective", "cardiovascular"]);
+    for (const junk of ["large", "still", "support", "idea", "view", "changed", "effect"]) {
+      assert.ok(!terms.includes(junk), `discourse word survived: ${junk}`);
+    }
+  });
+
+  await t.test("acronyms beat longer ordinary words despite being short", () => {
+    // Scored on the ORIGINAL casing — "llm" lowercased is just a short word.
+    assert.ok(arxivDistinctiveness("LLM") > arxivDistinctiveness("consumption"));
+    assert.ok(arxivDistinctiveness("RAG") > arxivDistinctiveness("retrieval"));
+    // …but a lowercase short word does not get the bonus.
+    assert.ok(arxivDistinctiveness("llm") < arxivDistinctiveness("reasoning"));
+  });
+
+  await t.test("compound/versioned technical tokens are boosted", () => {
+    assert.ok(arxivDistinctiveness("multi-agent") > arxivDistinctiveness("multiagent"));
+    assert.ok(arxivDistinctiveness("GPT-4") > arxivDistinctiveness("gpt"));
+  });
+
+  await t.test("arxivSelectTerms nests and preserves word order", () => {
+    const ranked = arxivRankedTerms("swarm reasoning agents architecture");
+    assert.deepEqual(arxivSelectTerms(ranked, 4), ["swarm", "reasoning", "agents", "architecture"]);
+    assert.deepEqual(arxivSelectTerms(ranked, 3), ["reasoning", "agents", "architecture"]);
+    assert.deepEqual(arxivSelectTerms(ranked, 2), ["reasoning", "architecture"]);
+    // Nesting: every narrower set is a subset of the wider one.
+    const wide = new Set(arxivSelectTerms(ranked, 3));
+    for (const t2 of arxivSelectTerms(ranked, 2)) assert.ok(wide.has(t2), t2);
+  });
+
+  await t.test("fewer terms than the limit returns them all, order intact", () => {
+    assert.deepEqual(arxivSelectTerms(arxivRankedTerms("llm swarm"), 4), ["llm", "swarm"]);
+    assert.deepEqual(arxivSelectTerms([], 4), []);
+    assert.deepEqual(arxivSelectTerms(null, 4), []);
+  });
+
+  await t.test("hyphenated literature words are stripped as one token", () => {
+    // "peer" and "reviewed" are noise separately, but "peer-reviewed" is ONE
+    // token and slipped through until it was added explicitly.
+    assert.ok(!arxivTerms("is there peer-reviewed evidence for this").includes("peer-reviewed"));
   });
 });
 
@@ -361,9 +417,43 @@ test("arxivSearch is fail-soft in every branch", async (t) => {
   });
 
   await t.test("a non-ok response degrades to zero items", async () => {
-    globalThis.fetch = async () => new Response("nope", { status: 503 });
+    globalThis.fetch = async () => new Response("nope", { status: 400 });
     const r = await arxivSearch({}, log, "llm swarm reasoning");
     assert.deepEqual(r.items, []);
+  });
+
+  await t.test("a 429 ABORTS the ladder instead of retrying through it", async () => {
+    // Observed live 2026-07-26: repeated probing earned 429 Too Many Requests.
+    // Answering a rate limit by firing the next rung immediately is what earns
+    // a longer block, so the ladder must stop dead.
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      return new Response("slow down", { status: 429, headers: { "retry-after": "30" } });
+    };
+    const r = await arxivSearch({}, log, "llm swarm reasoning agents");
+    assert.equal(calls, 1, "ladder kept going after a 429");
+    assert.deepEqual(r.items, []);
+  });
+
+  await t.test("a 503 aborts the ladder too (arXiv's overload signal)", async () => {
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      return new Response("overloaded", { status: 503 });
+    };
+    await arxivSearch({}, log, "llm swarm reasoning agents");
+    assert.equal(calls, 1);
+  });
+
+  await t.test("a plain error status still walks the ladder (not a throttle)", async () => {
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      return new Response("bad request", { status: 400 });
+    };
+    await arxivSearch({}, log, "llm swarm reasoning agents");
+    assert.equal(calls, 3, "a 400 is per-rung, not a global stop");
   });
 
   await t.test("a malformed body degrades to zero items", async () => {
@@ -385,10 +475,11 @@ test("arxivSearch is fail-soft in every branch", async (t) => {
     const r = await arxivSearch({}, log, "llm swarm reasoning agents model");
     assert.equal(seen.length, 2, seen.join(" | "));
     assert.equal(seen[0], 'abs:"llm" AND abs:"swarm" AND abs:"reasoning" AND abs:"agents"');
-    assert.equal(seen[1], 'abs:"llm" AND abs:"swarm" AND abs:"reasoning"');
+    // Giving up a slot drops the least distinctive term ("llm", lowercase).
+    assert.equal(seen[1], 'abs:"swarm" AND abs:"reasoning" AND abs:"agents"');
     assert.equal(r.items.length, 2);
     // Both rungs are reported as consumed, so a later wave skips them.
-    assert.deepEqual(r.usedKeys, ["llm swarm reasoning agents", "llm swarm reasoning"]);
+    assert.deepEqual(r.usedKeys, ["llm swarm reasoning agents", "swarm reasoning agents"]);
   });
 
   await t.test("skipKeys suppresses rungs an earlier wave already spent", async () => {
@@ -402,8 +493,8 @@ test("arxivSearch is fail-soft in every branch", async (t) => {
       skipKeys: new Set(["llm swarm reasoning agents"]),
     });
     assert.equal(seen.length, 1);
-    assert.equal(seen[0], 'abs:"llm" AND abs:"swarm" AND abs:"reasoning"');
-    assert.deepEqual(r.usedKeys, ["llm swarm reasoning"]);
+    assert.equal(seen[0], 'abs:"swarm" AND abs:"reasoning" AND abs:"agents"');
+    assert.deepEqual(r.usedKeys, ["swarm reasoning agents"]);
   });
 
   await t.test("an explicit id uses id_list, not a term query", async () => {
