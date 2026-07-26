@@ -9,6 +9,8 @@
 //
 //   scripts/starters                          the report: every agent's queue at a glance
 //   scripts/starters --queue <agent>          the full queue for one agent
+//   scripts/starters --xp <n>                 which starter #XP-<n> names (the tag a
+//                                             feedback entry cites)
 //   scripts/starters --strip <agent> [--cursor N] [--lang sv]
 //                                             the four chips a visitor would see
 //   scripts/starters --shortlist [<agent>]    the best-known-good openers
@@ -28,7 +30,7 @@ import { fileURLToPath } from "node:url";
 import {
   SLOT_COUNT, QUEUE_MIN, SHORTLIST_FLOOR, MODE_AGENTS, EVAL_BANDS,
   agentIds, resolveQueue, selectStarters, shortlistFor, validateStarters, registryReport,
-  evalPool, selectEvalBatch, coverageReport,
+  evalPool, selectEvalBatch, coverageReport, starterTag, starterByXp,
 } from "../src/starters.js";
 import { STARTERS, STARTERS_VERSION, ASPECTS, CANDIDATES } from "../src/starters.js";
 
@@ -64,7 +66,7 @@ function requireAgent(name) {
 // ---- --validate -------------------------------------------------------------
 
 if (has("--validate")) {
-  const { ok, problems } = validateStarters(STARTERS, AGENTS);
+  const { ok, problems } = validateStarters(STARTERS, AGENTS, { candidates: CANDIDATES });
   out({ ok, problems }, () => {
     if (ok) {
       console.log(`starters-data.js v${STARTERS_VERSION}: valid — ${agentIds(STARTERS).length} agents, ` +
@@ -75,6 +77,30 @@ if (has("--validate")) {
     }
   });
   process.exit(ok ? 0 : 1);
+}
+
+// ---- --xp -------------------------------------------------------------------
+//
+// The reverse of the tag an evaluation chip sends: a feedback entry says
+// "#XP-07", this says which starter that is.
+
+if (has("--xp")) {
+  const n = Number(flag("--xp"));
+  const hit = starterByXp(STARTERS, n, { candidates: CANDIDATES });
+  if (!hit) {
+    console.error(`No starter numbered ${flag("--xp")}. Numbers run 1..${
+      evalPool(STARTERS, { candidates: CANDIDATES }).reduce((m, e) => Math.max(m, e.xp || 0), 0)}.`);
+    process.exit(2);
+  }
+  out(hit, () => {
+    console.log(`${starterTag(hit.xp)}  ${hit.id}`);
+    console.log(`  agent:  ${hit.agent}`);
+    console.log(`  band:   ${hit.band}${hit.rank != null ? ` (scored ${hit.rank}${hit.evidence ? `, run ${hit.evidence}` : ""})` : ""}`);
+    console.log(`  aspect: ${hit.aspect} · ${hit.lang}`);
+    console.log(`\n  ${hit.text}\n`);
+    if (hit.note) console.log(`  testing: ${hit.note}\n`);
+  });
+  process.exit(0);
 }
 
 // ---- --modes ----------------------------------------------------------------
@@ -100,7 +126,7 @@ if (has("--queue")) {
     console.log(`── ${agent}: ${q.length} starters ──\n`);
     q.forEach((e, i) => {
       const rank = e.rank != null ? ` [rank ${e.rank}]` : "";
-      console.log(`${String(i).padStart(2)}. ${e.id}  (${e.aspect}, ${e.lang})${rank}`);
+      console.log(`${String(i).padStart(2)}. ${starterTag(e.xp)} ${e.id}  (${e.aspect}, ${e.lang})${rank}`);
       console.log(`    ${e.text}\n`);
     });
   });
@@ -175,7 +201,7 @@ if (has("--batch")) {
   out({ cursor, platform: platform || null, batch }, () => {
     console.log(`── evaluation batch ${cursor}${platform ? ` (${platform})` : ""} — one per band, across agents ──\n`);
     batch.forEach((e, i) => {
-      console.log(`${i + 1}. [${e.band}] ${e.agent}${e.rank != null ? ` · scored ${e.rank}` : ""}`);
+      console.log(`${i + 1}. ${starterTag(e.xp)} [${e.band}] ${e.agent}${e.rank != null ? ` · scored ${e.rank}` : ""}`);
       console.log(`   ${e.text}`);
       if (e.note) console.log(`   testing: ${e.note}`);
       console.log("");

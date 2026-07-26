@@ -17,6 +17,7 @@ import {
   selectStarters, nextCursor, recordStarterUse, shortlistFor, starterScore, rankStarters,
   starterJudgePrompt, parseJudgeReply, validateStarters, registryReport,
   EVAL_BANDS, bandOf, evalPool, selectEvalBatch, recordVerdict, verdictReport, coverageReport,
+  starterTag, parseStarterRef, stripStarterRef, tagStarterText, starterByXp,
 } from "./starters-core.js";
 import { STARTERS, ASPECTS, CANDIDATES } from "./starters-data.js";
 
@@ -26,6 +27,7 @@ const AGENTS = JSON.parse(readFileSync(new URL("../../sdk/AGENTS.json", import.m
 function fixture(n, { provenEvery = 0, rank = 4 } = {}) {
   return Array.from({ length: n }, (_, i) => ({
     id: `s${i}`,
+    xp: i + 1,
     text: `starter number ${i} with enough text to pass`,
     aspect: `aspect-${i % 5}`,
     lang: i % 3 === 0 ? "sv" : "en",
@@ -286,10 +288,81 @@ test("shortlistFor returns only proven starters, best first, and [] when nothing
   assert.deepEqual(shortlistFor({ queues: { b: fixture(10) } }, "b"), [], "an unevaluated agent honestly returns nothing");
 });
 
+// ---- the #XP tag -------------------------------------------------------------
+
+test("starterTag renders #XP-<nn>, padded to two digits", () => {
+  assert.equal(starterTag(1), "#XP-01");
+  assert.equal(starterTag(7), "#XP-07");
+  assert.equal(starterTag(42), "#XP-42");
+  assert.equal(starterTag(195), "#XP-195");
+  // No number, no tag — a chip with a missing xp sends its text unadorned
+  // rather than a meaningless "#XP-".
+  for (const bad of [0, -3, null, undefined, "abc", 1.5]) assert.equal(starterTag(bad), "");
+});
+
+test("parseStarterRef reads every form a tag can be typed in", () => {
+  for (const form of ["#XP-07 q", "#XP07 q", "XP-7 q", "xp 07 q", "  #xp-7: q", "#XP-7 — q"]) {
+    assert.deepEqual(parseStarterRef(form), { xp: 7, tag: "#XP-07" }, form);
+  }
+  // Only at the START, and never a bare "#7" — that form belongs to the
+  // use-case grammar (testpoints-core.js) and the two must not collide.
+  assert.equal(parseStarterRef("what does #XP-07 mean?"), null);
+  assert.equal(parseStarterRef("#7 the map was cut off"), null);
+  assert.equal(parseStarterRef("expression of interest"), null);
+  assert.equal(parseStarterRef(""), null);
+  assert.equal(parseStarterRef(null), null);
+});
+
+test("stripStarterRef removes the tag and nothing else", () => {
+  assert.equal(stripStarterRef("#XP-07 Where does your own source code live?"),
+    "Where does your own source code live?");
+  assert.equal(stripStarterRef("#xp7: Vad kostar det?"), "Vad kostar det?");
+  // An untagged message comes back byte-identical, so callers can strip
+  // unconditionally without checking first.
+  const plain = "Where does your own source code live?";
+  assert.equal(stripStarterRef(plain), plain);
+  assert.equal(stripStarterRef(""), "");
+});
+
+test("tagStarterText prepends once and never doubles up", () => {
+  assert.equal(tagStarterText(7, "Explain the pipeline"), "#XP-07 Explain the pipeline");
+  assert.equal(tagStarterText(7, "#XP-07 Explain the pipeline"), "#XP-07 Explain the pipeline");
+  // A DIFFERENT tag is left in place rather than silently rewritten — the
+  // caller composed it, and losing it would hide the mistake.
+  assert.equal(tagStarterText(7, "#XP-09 other"), "#XP-07 #XP-09 other");
+  assert.equal(tagStarterText(0, "untagged"), "untagged");
+});
+
+test("starterByXp resolves a tag back to the starter a feedback entry means", () => {
+  const hit = starterByXp(STARTERS, 2, { candidates: CANDIDATES });
+  assert.ok(hit, "#XP-02 must resolve");
+  assert.equal(hit.xp, 2);
+  assert.ok(hit.agent && hit.text, "the lookup carries the agent and the text");
+  // Candidates share the one number space, so a promoted candidate keeps the
+  // number the review that promoted it cited.
+  const last = CANDIDATES[CANDIDATES.length - 1];
+  assert.equal(starterByXp(STARTERS, last.xp, { candidates: CANDIDATES })?.id, last.id);
+  assert.equal(starterByXp(STARTERS, 99999, { candidates: CANDIDATES }), null);
+  assert.equal(starterByXp(STARTERS, "nope"), null);
+});
+
+test("every shipped starter and candidate has a unique #XP number", () => {
+  // The tag is what a feedback entry cites, so a gap or a collision is a
+  // report that points at the wrong question — or at nothing.
+  const pool = evalPool(STARTERS, { candidates: CANDIDATES });
+  const seen = new Map();
+  for (const e of pool) {
+    assert.ok(Number.isInteger(e.xp) && e.xp > 0, `${e.id} has no xp number`);
+    assert.ok(!seen.has(e.xp), `xp ${e.xp} is on both "${seen.get(e.xp)}" and "${e.id}"`);
+    seen.set(e.xp, e.id);
+  }
+  assert.equal(seen.size, pool.length);
+});
+
 // ---- the real registry -------------------------------------------------------
 
 test("the shipped registry validates against the real agent registry", () => {
-  const { ok, problems } = validateStarters(STARTERS, AGENTS);
+  const { ok, problems } = validateStarters(STARTERS, AGENTS, { candidates: CANDIDATES });
   assert.ok(ok, `starters-data.js is invalid:\n  ${problems.join("\n  ")}`);
 });
 
@@ -310,6 +383,18 @@ test("the validator actually catches the mistakes it exists to catch", () => {
 
   const dupes = { queues: { research: fixture(20), secure: fixture(20) } };
   assert.match(validateStarters(dupes).problems.join(" "), /not unique/);
+
+  const noXp = { queues: { research: fixture(20).map(({ xp, ...e }) => e) } };
+  assert.match(validateStarters(noXp).problems.join(" "), /no `xp` number/);
+
+  const sameXp = { queues: { research: fixture(20).map((e) => ({ ...e, xp: 3 })) } };
+  assert.match(validateStarters(sameXp).problems.join(" "), /reuses xp 3/);
+
+  // A candidate is otherwise unvalidated on purpose, but its number is
+  // checked: it follows the candidate into a queue on promotion.
+  const clash = validateStarters({ queues: { research: fixture(20) } }, null,
+    { candidates: [{ id: "cand-x", xp: 3, text: "a trial question long enough" }] });
+  assert.match(clash.problems.join(" "), /candidate "cand-x" reuses xp 3/);
 
   assert.match(validateStarters({}).problems.join(" "), /queues/);
   assert.match(validateStarters(null).problems.join(" "), /queues/);
@@ -463,8 +548,10 @@ test("verdictReport groups by agent and states the totals", () => {
   const r = verdictReport(pool, v);
   assert.match(r, /## introspection/);
   assert.match(r, /## outrospection/);
-  assert.match(r, /\[GOOD\] int-pipeline \(proven\)/);
-  assert.match(r, /\[BAD\] out-edge-rag \(weak\)/);
+  // The #XP tag leads each line: a pasted report and a feedback entry have to
+  // name the starter the same way, or the report cannot be acted on.
+  assert.match(r, /\[GOOD\] #XP-\d+ int-pipeline \(proven\)/);
+  assert.match(r, /\[BAD\] #XP-\d+ out-edge-rag \(weak\)/);
   assert.match(r, /note: listy/);
   assert.match(r, /Totals: /);
 });

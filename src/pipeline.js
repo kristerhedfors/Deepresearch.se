@@ -55,9 +55,11 @@ import {
   imagePartsOf,
   lastUserMessage,
   previousUserText,
+  starterRefOf,
   textOf,
   withAppendedText,
   withImageNudge,
+  withoutStarterTags,
 } from "./conversation.js";
 import { runEnrichments } from "./enrichment.js";
 import { fetchContents, webSearch } from "./exa.js";
@@ -307,6 +309,17 @@ export function searchPolicyFor(state) {
  * @param {PipelineState} state
  */
 export async function runPipeline(env, log, emit, conversation, model, state) {
+  // A starter sent from an evaluation-mode chip opens with its `#XP-07` tag
+  // (conversation.js, feedback #37). Read it once for the record — chat.js
+  // puts it on the chat-log row and the feedback entry — then run the whole
+  // pipeline on a copy without it, so triage, the search queries and the
+  // answer see the starter's own words and nothing else. chat.js keeps the
+  // untouched conversation, which is what carries the tag into the log.
+  const starterRef = starterRefOf(conversation);
+  if (starterRef) {
+    /** @type {any} */ (state).starterRef = starterRef;
+    conversation = withoutStarterTags(conversation);
+  }
   const profile = getModelProfile(model);
   // The JSON planning phases (triage/gap/validate) run on a fixed reliable
   // model (state.jsonModel — Mistral Small, resolved in chat.js) rather than

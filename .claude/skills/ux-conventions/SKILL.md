@@ -879,3 +879,67 @@ three states. The server half is `src/pipeline.js`'s `route` field on the `plan`
 step plus the `digest` step. The sibling implementation is the Orchestrator
 workflow view (`public/js/workflow-viz.js`), which follows the same three-state
 discipline over `agent_update` events.
+
+---
+
+## UX-17 — Review material sends with its identity tag; the tag reaches the record, never the machinery
+
+**Rule.** When a surface exists so a human can **review a piece of the product**
+— a use case from the try-it queue, a starter prompt from an evaluation batch —
+the thing it composes into the chat opens with that item's **identity tag**
+(`#UC-34`, `#XP-07`). The reviewer never types it and never has to describe
+which item they meant: a `feedback …` note later in that same conversation is
+tied back by the first message. Two halves make it safe:
+
+- **The tag rides to the RECORD.** The conversation as stored, the chat-log row,
+  and the feedback entry all carry it — the entry states it on its own line
+  rather than trusting a transcript that gets trimmed from the front.
+- **The tag never reaches the MACHINERY** *when the tagged message is the thing
+  being reviewed*. A starter is a research question, so `#XP-07` is stripped
+  before any model call: triage plans against the reviewer's actual question and
+  the search queries carry no code the item never had.
+
+The two shipped tags differ on that second half, and the difference is not an
+oversight. `#UC-34` rides through unstripped, because for a use case the tag on
+the message IS the signal — `parseUseCaseRef` reads it off the feedback text to
+find the point's thread, and the feedback route makes no model call at all
+(owner directive, 2026-07-24). Strip it and the feature loses its target. A new
+tag should follow whichever half its message needs; do not "fix" `#UC-34` into
+symmetry with `#XP-07`.
+
+**Why.** Without the tag the report says "this sentence…" and someone has to
+match prose back to a registry by hand (that is feedback #37, verbatim). With
+the tag left *in* a message that gets researched, the tagged run is no longer
+the run being reviewed — you would be evaluating `#XP-07 <question>`, which no
+visitor ever sends. Both failure modes are silent, which is why the rule is
+written down.
+
+**The mechanics (match all of these):**
+
+1. **Only the review surface tags.** The ordinary visitor strip does not. An
+   identifier prefixed onto a stranger's first message is a byte on the wire
+   that the local-only pick signal promises is not there, and a code they never
+   asked about.
+2. **The tag is display-only; the id stays an integer.** One function renders it
+   (`useCaseTag`, `starterTag`), one parses it back, and they live in the shared
+   pure core so the surface that writes it and the server that reads it cannot
+   drift.
+3. **Prepending is idempotent.** Composing twice does not double the tag; a
+   *different* tag already in the text is left alone rather than rewritten,
+   because losing it would hide the mistake.
+4. **Grammars must not collide.** `#XP-07` requires its letters — a bare `#7`
+   belongs to the use-case grammar and stays there.
+5. **Stripping, where it applies, sweeps every user turn** — not just the
+   newest: a reopened conversation replays its history into the prompt.
+6. **Both tiers strip with the same code.** Se/cure's pipeline runs in the
+   browser with no server in the path, so it imports the shared core rather than
+   carrying a second copy of the rule.
+7. **The number is append-only.** Reordering or reusing it silently re-points
+   every report that cited it.
+
+**Canonical implementations:** `public/js/starters-core.js` (`starterTag`,
+`parseStarterRef`, `stripStarterRef`, `tagStarterText`, `starterRefOf`,
+`withoutStarterTags`) with the chip in `public/js/starters.js` and the strip in
+`src/pipeline.js` / `public/cure/drc.js`; the older sibling is
+`public/js/testpoints-core.js` (`useCaseTag`, `parseUseCaseRef`,
+`tagStarterPrompt`) with `src/chat.js` recording both onto the feedback entry.
