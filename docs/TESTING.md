@@ -139,6 +139,17 @@ redirecting, that the page still carries the video / purpose / capability list
 / MIT source line, and that the two data-path diagrams stay SHARED files
 (`public/architecture/path-secure.svg`, `path-server.svg`) referenced by both
 the landing and `/architecture/` instead of being re-inlined into either.
+`intro-phase.test.js` is its cross-surface companion — the contract for the
+whole controlled new-visitor intro (`docs/INTRO-BASELINE.md`, invariant 8):
+that the APPROVED-baseline marker is still on the landing, that every door the
+intro offers is reachable signed out (each landing `href` must either pass
+`isPublicAsset` or name a known pre-auth route, so a new door forces the
+question), that no language model is in the signed-out path, that each
+first-visit key still gates its surface with every storage access wrapped and
+the "seen" flag set only after the intro actually played, that reduced-motion
+and the `?anim=1` override survive on all three animated surfaces, that
+Se/cure's head stays free of a chrome-hiding script, and that every repo path
+the contract document names actually exists.
 
 Additional server suites cover the request/routing and infra seams:
 `mcp.js` (the PURE JSON-RPC / MCP protocol helpers, asserted to load

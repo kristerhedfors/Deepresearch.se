@@ -911,6 +911,9 @@ try {
   // never let the freshness probe break boot
 }
 
+// INTRO BASELINE: Se/rver's leg of the controlled new-visitor intro phase —
+// docs/INTRO-BASELINE.md §2.8, enforced by src/intro-phase.test.js.
+//
 // The Se/rver first-visit LANDING intro (F-16, owner directive 2026-07-15):
 // the blue tier's counterpart of /cure's umbrella intro — the logo vortex
 // untwists into WIRE BALLOONS, the camera drops a full 180° (rolling
