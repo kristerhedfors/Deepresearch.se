@@ -145,7 +145,7 @@ import { normalizeSearchSource } from "./websearch-backends.js";
  *   orchWorkflow?: any,
  *   swarmResults?: Record<string, { text: string, agreement: number, members: number, rounds: number, failed: number }>,
  *   outrospectionMode?: boolean,
- *   outrospection?: { lens: string | null, items: number, live: boolean },
+ *   outrospection?: { lens: string | null, items: number, texts: number, quotes: number, live: boolean },
  *   buildSlug?: string | null,
  *   userId?: string,
  *   buildResult?: { slug: string, url: string, files: number, bytes: number },

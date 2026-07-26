@@ -173,7 +173,7 @@ import {
  *   failoverModel?: string,
  *   feedbackCapture?: boolean,
  *   outrospectionMode?: boolean,
- *   outrospection?: { lens: string | null, items: number, live: boolean },
+ *   outrospection?: { lens: string | null, items: number, texts: number, quotes: number, live: boolean },
  *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string, images?: { name: string | null, data: string }[], useCase?: { id: number, tag: string } | null, scope?: import("../public/js/feedback-core.js").FeedbackScope },
  * }} PipelineState
  */

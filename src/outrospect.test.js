@@ -7,6 +7,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  INDEX_MAX_ITEMS,
+  INDEX_TEXT_CAP,
   LENS_COOLDOWN_MS,
   LENS_IDS,
   OUTROSPECT_CAPS,
@@ -15,17 +17,21 @@ import {
   handleAdminOutrospect,
   handleOutrospectFeed,
   handleOutrospectRefresh,
+  indexFeedTexts,
+  indexedKeys,
   lensesOnCooldown,
   loadItems,
+  loadTexts,
   projectItem,
   retrieveOutwardFeed,
   runLensRefresh,
   withDeadline,
   MODE_REFRESH_BUDGET_MS,
   storeItems,
+  storeTexts,
   validateRefreshBody,
 } from "./outrospect.js";
-import { OUTROSPECT_LENSES as CORE_LENSES, mergeFeed } from "../public/js/outrospect-core.js";
+import { OUTROSPECT_LENSES as CORE_LENSES, mergeFeed, selectQuotes } from "../public/js/outrospect-core.js";
 
 // ---------------------------------------------------------------------------
 // The façade contract: ONE implementation, two faces. If these ever diverge,
@@ -125,6 +131,8 @@ function fakeDb() {
   const items = [];
   /** @type {any[]} */
   const runs = [];
+  /** @type {any[]} */
+  const texts = [];
   let itemId = 0;
   let runId = 0;
 
@@ -144,6 +152,12 @@ function fakeDb() {
           items.push({ id: ++itemId, key, lens, title, url, teaser, source, first_seen, query });
           return { meta: { changes: 1 } };
         }
+        if (/INSERT OR IGNORE INTO outrospect_texts/i.test(sql)) {
+          const [key, lens, url, title, source, text, chars, origin, fetched_at] = args;
+          if (texts.some((t) => t.key === key)) return { meta: { changes: 0 } };
+          texts.push({ key, lens, url, title, source, text, chars, origin, fetched_at });
+          return { meta: { changes: 1 } };
+        }
         if (/INSERT INTO outrospect_runs/i.test(sql)) {
           const [ts, user_id, lens, queries, found] = args;
           runs.push({ id: ++runId, ts, user_id, lens, queries, found });
@@ -160,6 +174,12 @@ function fakeDb() {
           out.sort((a, b) => b.first_seen - a.first_seen || b.id - a.id);
           return { results: out.slice(0, args[args.length - 1]) };
         }
+        if (/FROM outrospect_texts/i.test(sql)) {
+          const keys = new Set(args);
+          let out = texts.filter((t) => keys.has(t.key));
+          if (/chars > 0/.test(sql)) out = out.filter((t) => t.chars > 0);
+          return { results: out.map((t) => ({ ...t })) };
+        }
         if (/FROM outrospect_runs/i.test(sql)) {
           let out = [...runs];
           if (/ts > \?/i.test(sql)) out = out.filter((r) => r.ts > args[0]);
@@ -171,7 +191,7 @@ function fakeDb() {
     };
     return api;
   };
-  return { _items: items, _runs: runs, prepare: stmt, batch: async () => [] };
+  return { _items: items, _runs: runs, _texts: texts, prepare: stmt, batch: async () => [] };
 }
 
 const envWith = (db, extra = {}) => /** @type {any} */ ({ DB: db, ...extra });
@@ -569,4 +589,236 @@ test("the mode's refresh budget leaves room to answer", () => {
   // A ceiling long enough to be worth waiting for on a cold feed, short enough
   // that it never dominates the turn.
   assert.ok(MODE_REFRESH_BUDGET_MS >= 5_000 && MODE_REFRESH_BUDGET_MS <= 20_000);
+});
+
+// ---------------------------------------------------------------------------
+// INDEXING — the article bodies behind the headlines (owner feedback #28)
+//
+// The feed could list what other people shipped but never quote it. These
+// cover the server half: which articles get fetched, what is stored, and every
+// way it is allowed to fail (which is: quietly, with nothing indexed and a
+// working refresh, because it runs inside somebody's page load).
+// ---------------------------------------------------------------------------
+
+/** A fetchContents stand-in: returns bodies for the urls it was told to know. */
+const contentsFake = (bodies, record = []) => async (_env, urls, _log) => {
+  record.push([...urls]);
+  return {
+    results: urls.filter((u) => bodies[u]).map((u) => ({ url: u, title: `Title of ${u}`, text: bodies[u] })),
+    durationMs: 1,
+    cached: false,
+  };
+};
+
+const feedItem = (over = {}) => ({
+  key: "https://a.example/x",
+  lens: "edge-rag",
+  title: "Headline",
+  url: "https://a.example/x",
+  teaser: "",
+  source: "a.example",
+  first_seen: 1_800_000_000_000,
+  ...over,
+});
+
+test("storeTexts / loadTexts round-trip a body, keyed by the item's own key", async () => {
+  const db = fakeDb();
+  assert.equal(
+    await storeTexts(/** @type {any} */ (db), [
+      { key: "https://a.example/x", lens: "edge-rag", url: "https://a.example/x", title: "T", source: "a.example", text: "Body text." },
+    ]),
+    1,
+  );
+  const [got] = await loadTexts(/** @type {any} */ (db), ["https://a.example/x"]);
+  assert.equal(got.text, "Body text.");
+  assert.equal(got.lens, "edge-rag");
+  assert.equal(got.url, "https://a.example/x");
+});
+
+// The row carries the ARTICLE, never the reader — the same rule as
+// outrospect_items, and the reason there is no user column to add one to.
+test("a stored body carries no identity column at all", async () => {
+  const db = fakeDb();
+  await storeTexts(/** @type {any} */ (db), [
+    { key: "https://a.example/x", lens: "edge-rag", url: "https://a.example/x", text: "Body." },
+  ]);
+  const row = db._texts[0];
+  assert.deepEqual(
+    Object.keys(row).sort(),
+    ["chars", "fetched_at", "key", "lens", "origin", "source", "text", "title", "url"].sort(),
+  );
+  assert.equal(row.origin, "web", "origin is the seam other indexed corpora (arXiv) land on");
+});
+
+test("storeTexts clamps a huge body rather than storing a whole site", async () => {
+  const db = fakeDb();
+  await storeTexts(/** @type {any} */ (db), [
+    { key: "https://a.example/x", lens: "edge-rag", url: "https://a.example/x", text: "z".repeat(INDEX_TEXT_CAP * 3) },
+  ]);
+  assert.equal(db._texts[0].text.length, INDEX_TEXT_CAP);
+  assert.equal(db._texts[0].chars, INDEX_TEXT_CAP);
+});
+
+test("an empty body is remembered but never quoted — a dead page is not re-fetched forever", async () => {
+  const db = fakeDb();
+  await storeTexts(/** @type {any} */ (db), [
+    { key: "https://a.example/dead", lens: "edge-rag", url: "https://a.example/dead", text: "" },
+  ]);
+  assert.equal(db._texts.length, 1, "the attempt is recorded");
+  assert.deepEqual(await loadTexts(/** @type {any} */ (db), ["https://a.example/dead"]), [], "…but has nothing to quote");
+  assert.deepEqual([...(await indexedKeys(/** @type {any} */ (db), ["https://a.example/dead"]))], [
+    "https://a.example/dead",
+  ]);
+});
+
+test("loadTexts returns documents in the order the feed asked for them", async () => {
+  const db = fakeDb();
+  await storeTexts(/** @type {any} */ (db), [
+    { key: "https://a.example/1", lens: "edge-rag", url: "https://a.example/1", text: "One." },
+    { key: "https://a.example/2", lens: "edge-rag", url: "https://a.example/2", text: "Two." },
+  ]);
+  const got = await loadTexts(/** @type {any} */ (db), ["https://a.example/2", "https://a.example/1"]);
+  assert.deepEqual(got.map((t) => t.text), ["Two.", "One."]);
+  assert.deepEqual(await loadTexts(/** @type {any} */ (db), []), []);
+});
+
+test("indexFeedTexts fetches only the articles with no body yet, and stores what came back", async () => {
+  const db = fakeDb();
+  const asked = [];
+  const items = [feedItem({ key: "https://a.example/1", url: "https://a.example/1" }), feedItem({ key: "https://a.example/2", url: "https://a.example/2" })];
+  const res = await indexFeedTexts(envWith(db), log, /** @type {any} */ (db), items, {
+    fetchContentsImpl: contentsFake({ "https://a.example/1": "One body.", "https://a.example/2": "Two body." }, asked),
+  });
+  assert.equal(res.indexed, 2);
+  assert.deepEqual(asked, [["https://a.example/1", "https://a.example/2"]]);
+
+  // Second pass: everything is indexed, so nothing is fetched and nothing paid for.
+  const again = [];
+  const res2 = await indexFeedTexts(envWith(db), log, /** @type {any} */ (db), items, {
+    fetchContentsImpl: contentsFake({}, again),
+  });
+  assert.deepEqual(res2, { requested: 0, indexed: 0, chars: 0 });
+  assert.deepEqual(again, [], "an already-indexed feed costs no fetch at all");
+});
+
+test("indexFeedTexts is BOUNDED: one run indexes at most INDEX_MAX_ITEMS articles", async () => {
+  const db = fakeDb();
+  const asked = [];
+  const items = Array.from({ length: 20 }, (_, i) =>
+    feedItem({ key: `https://a.example/${i}`, url: `https://a.example/${i}` }),
+  );
+  const bodies = Object.fromEntries(items.map((i) => [i.url, "Body."]));
+  await indexFeedTexts(envWith(db), log, /** @type {any} */ (db), items, {
+    fetchContentsImpl: contentsFake(bodies, asked),
+  });
+  assert.equal(asked[0].length, INDEX_MAX_ITEMS);
+  assert.equal(db._texts.length, INDEX_MAX_ITEMS);
+});
+
+// Invariant 2. The refresh runs inside a page load, so every one of these must
+// end in "nothing indexed", never in a throw.
+test("indexFeedTexts fails soft: a throwing backend indexes nothing and does not throw", async () => {
+  const db = fakeDb();
+  const res = await indexFeedTexts(envWith(db), log, /** @type {any} */ (db), [feedItem()], {
+    fetchContentsImpl: async () => {
+      throw new Error("contents backend down");
+    },
+  });
+  assert.deepEqual(res, { requested: 0, indexed: 0, chars: 0 });
+  assert.equal(db._texts.length, 0);
+});
+
+test("indexFeedTexts records NOTHING when the whole fetch came back empty (a transient failure retries)", async () => {
+  const db = fakeDb();
+  const res = await indexFeedTexts(envWith(db), log, /** @type {any} */ (db), [feedItem()], {
+    fetchContentsImpl: contentsFake({}),
+  });
+  assert.equal(res.indexed, 0);
+  assert.equal(db._texts.length, 0, "a dead backend must not poison every url as 'tried'");
+});
+
+test("indexFeedTexts marks the misses tried when the response DID carry usable text", async () => {
+  const db = fakeDb();
+  const items = [
+    feedItem({ key: "https://a.example/good", url: "https://a.example/good" }),
+    feedItem({ key: "https://a.example/paywalled", url: "https://a.example/paywalled" }),
+  ];
+  const res = await indexFeedTexts(envWith(db), log, /** @type {any} */ (db), items, {
+    fetchContentsImpl: contentsFake({ "https://a.example/good": "Readable body." }),
+  });
+  assert.equal(res.indexed, 1);
+  assert.equal(db._texts.length, 2);
+  assert.equal(db._texts.find((t) => t.key === "https://a.example/paywalled").chars, 0);
+});
+
+test("indexFeedTexts with the real client and no search key indexes nothing, quietly", async () => {
+  const db = fakeDb();
+  const res = await indexFeedTexts(envWith(db), log, /** @type {any} */ (db), [feedItem()]);
+  assert.equal(res.indexed, 0);
+  assert.equal(db._texts.length, 0);
+});
+
+test("a refresh reports how many bodies it indexed, and an unconfigured backend still returns 200", async () => {
+  const db = fakeDb();
+  const res = await handleOutrospectRefresh(refreshReq({}), envWith(db), log, identity);
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).indexed, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Retrieval with quotes — the answer path's half
+// ---------------------------------------------------------------------------
+
+test("retrieveOutwardFeed loads the stored bodies for the items it returns", async () => {
+  const db = fakeDb();
+  await seed(db, [{ lens: "edge-rag", title: "Edge retrieval piece", url: "https://a.example/rag" }]);
+  await storeTexts(/** @type {any} */ (db), [
+    {
+      key: "https://a.example/rag",
+      lens: "edge-rag",
+      url: "https://a.example/rag",
+      title: "Edge retrieval piece",
+      source: "a.example",
+      text: "The embedding index runs entirely in the browser, so retrieval never leaves the tab at all.",
+    },
+  ]);
+  const got = await retrieveOutwardFeed({ DB: db }, "does the embedding index run in the browser?");
+  assert.equal(got.items.length, 1);
+  assert.equal(got.texts.length, 1);
+
+  // The pure core does the choosing — this only proves the wiring reaches it.
+  const quotes = selectQuotes("does the embedding index run in the browser?", got.texts);
+  assert.equal(quotes.length, 1);
+  assert.equal(quotes[0].url, "https://a.example/rag", "every quote must carry its source link");
+});
+
+test("retrieveOutwardFeed yields no texts when nothing is indexed, and answers anyway", async () => {
+  const db = fakeDb();
+  await seed(db, [{ lens: "edge-rag", title: "Edge retrieval piece", url: "https://a.example/rag" }]);
+  const got = await retrieveOutwardFeed({ DB: db }, "vector database at the edge");
+  assert.equal(got.items.length, 1);
+  assert.deepEqual(got.texts, []);
+  assert.deepEqual(selectQuotes("vector database at the edge", got.texts), []);
+});
+
+test("retrieveOutwardFeed: a texts table that throws costs the quotes, not the answer", async () => {
+  const db = fakeDb();
+  await seed(db, [{ lens: "edge-rag", title: "Edge retrieval piece", url: "https://a.example/rag" }]);
+  const angry = {
+    prepare(sql) {
+      if (/outrospect_texts/i.test(sql)) {
+        return { bind() { return this; }, async all() { throw new Error("no such table"); } };
+      }
+      return db.prepare(sql);
+    },
+  };
+  const warned = [];
+  const got = await retrieveOutwardFeed({ DB: angry }, "vector database at the edge", { warn: (e) => warned.push(e) });
+  assert.equal(got.items.length, 1, "the headlines still answer the question");
+  assert.deepEqual(got.texts, []);
+  assert.deepEqual(warned, ["outrospect.texts_failed"]);
+});
+
+test("retrieveOutwardFeed's no-D1 and error paths still report an empty texts list", async () => {
+  assert.deepEqual((await retrieveOutwardFeed({}, "vector database at the edge")).texts, []);
 });
