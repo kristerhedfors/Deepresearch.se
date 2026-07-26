@@ -252,8 +252,9 @@ classic supply-chain vectors are narrow, but vendored libs (`public/vendor/`)
 are hand-updated with no integrity manifest (L-12).
 
 **Posture:** 🔁 OPERATIONAL — GitHub 2FA, no long-lived broad PATs, review
-anything that touches `public/vendor/` byte-for-byte, and the L-12 fix (§3)
-adds the version+SHA-256 manifest so tampering is detectable.
+anything that touches `public/vendor/` byte-for-byte, and check the diff
+against the version+SHA-256 manifest in `docs/DEPENDENCIES.md` §7 (recorded
+2026-07-26; the automated-gate half of L-12 is still open).
 
 ### R-10 · Known-version vulnerability matching
 
@@ -263,8 +264,9 @@ dates — so a disclosed CVE in any of them is immediately mappable to this
 site by anyone.
 
 **Posture:** 🔁 OPERATIONAL — periodic (monthly, and on any DOMPurify CVE
-news) check of vendored-lib versions against upstream advisories; the L-12
-manifest makes "what version are we on" a one-file answer. DOMPurify matters
+news) check of vendored-lib versions against upstream advisories.
+`docs/DEPENDENCIES.md` §1 makes "what version are we on" a one-file answer
+for all seven vendored libraries. DOMPurify matters
 most: until the CSP is on it is the sole XSS defence (H-2 follow-up).
 
 ---
@@ -413,6 +415,11 @@ Re-verified still open 2026-07-12 unless noted. In rough order:
   `encodeURIComponent` on lat/lon; thumbnail escaping; gate admin assets.
 - **L-12** aggregate request-size cap + **vendored-lib version/SHA-256
   manifest** (elevated by R-9/R-10 — do the manifest half first).
+  *Manifest half recorded 2026-07-26:* `docs/DEPENDENCIES.md` §7 lists all
+  fourteen `public/vendor/` files with version, license and SHA-256, and §1
+  covers the five libraries that previously had no pin at all. Still a
+  hand-run `sha256sum` check, not an automated gate — and the aggregate
+  request-size cap remains untouched.
 
 ### P-10 · R-7 · Revert production `LOG_LEVEL` to `info` — 🔴 OPEN
 Time-boxed exception (2026-07-12, sandbox-filesystem testing). Revert in
