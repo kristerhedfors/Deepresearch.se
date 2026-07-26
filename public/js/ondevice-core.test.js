@@ -17,8 +17,12 @@ import {
   capabilityVerdict,
   clipMiddle,
   completionEnvelope,
+  crashClass,
+  crashDiag,
   crashMessage,
+  heapUsedRatio,
   isMemoryPressureError,
+  runBreadcrumb,
   trimForOnDevice,
   createSha256,
   createThinkFilter,
@@ -32,6 +36,7 @@ import {
   hfFileUrl,
   hfTreeUrl,
   onDeviceModel,
+  onDeviceSummaryLine,
   opfsUnavailableMessage,
   planModelFiles,
   planReasonForStatus,
@@ -509,3 +514,114 @@ test("crashMessage: a memory-looking detail carries the out-of-memory remedy; ot
   const plain = crashMessage(true, "Script error.");
   assert.ok(!plain.includes("ran out of memory"));
 });
+
+// ---- the crash breadcrumb (feedback #26 — the tab that dies mid-run) ---------
+
+test("crashClass sorts a failure into the three classes worth counting", () => {
+  assert.equal(crashClass("Cannot enlarge memory arrays"), "oom");
+  assert.equal(crashClass("oom"), "oom", "an already-classified value round-trips");
+  assert.equal(crashClass("This swarm member timed out on this device."), "timeout");
+  assert.equal(crashClass("timeout"), "timeout");
+  assert.equal(crashClass("Script error."), "crash");
+  assert.equal(crashClass(""), "");
+  assert.equal(crashClass(undefined), "");
+});
+
+test("runBreadcrumb bounds every field and carries counters ONLY", () => {
+  const b = runBreadcrumb({
+    startedAt: 1_700_000_000_000,
+    kind: "swarm",
+    nodes: 99,
+    members: 999,
+    concurrency: 99,
+    rounds: 99,
+    round: 2,
+    phase: "diverge",
+    modelMb: 1200,
+    cls: "Cannot enlarge memory arrays",
+  });
+  assert.deepEqual(b, {
+    v: 1,
+    t: 1_700_000_000_000,
+    kind: "swarm",
+    nodes: 16,
+    members: 32,
+    conc: 16,
+    rounds: 8,
+    round: 2,
+    phase: "diverge",
+    mb: 1200,
+    cls: "oom",
+  });
+  // Nothing derived from a conversation can enter the record: unknown fields
+  // are dropped, and an out-of-vocabulary phase falls back.
+  const junk = runBreadcrumb({ phase: "the user asked about X", task: "secret", id: "climate-critic" });
+  assert.equal(junk.phase, "start");
+  assert.equal(junk.task, undefined);
+  assert.equal(junk.id, undefined);
+  // A stored record re-normalizes through the same function (short keys).
+  assert.deepEqual(runBreadcrumb(b), b);
+});
+
+test("crashDiag reports an unfinished run, a survived-but-pressured one, and nothing else", () => {
+  const now = 1_700_000_100_000;
+  const base = { t: now - 30_000, kind: "swarm", nodes: 1, members: 6, conc: 4, rounds: 2, round: 2, mb: 1200 };
+  const died = crashDiag({ ...base, phase: "diverge", cls: "" }, now);
+  assert.equal(died.died, 1);
+  assert.equal(died.phase, "diverge");
+  assert.equal(died.ago, 30);
+  const survived = crashDiag({ ...base, phase: "done", cls: "oom" }, now);
+  assert.equal(survived.died, 0, "it finished — the class is still worth reporting");
+  assert.equal(survived.cls, "oom");
+  assert.equal(crashDiag({ ...base, phase: "done", cls: "" }, now), undefined, "a clean run reports nothing");
+  assert.equal(crashDiag(null, now), undefined);
+  assert.equal(crashDiag({ ...base, t: now - 8 * 86_400_000, phase: "diverge" }, now), undefined, "stale crumbs are dropped");
+});
+
+test("heapUsedRatio reports a fill only where the browser measures one", () => {
+  assert.equal(heapUsedRatio({ usedJSHeapSize: 900, jsHeapSizeLimit: 1000 }), 0.9);
+  assert.equal(heapUsedRatio(undefined), null, "Safari/Firefox report nothing — unknown, never 'fine'");
+  assert.equal(heapUsedRatio({ usedJSHeapSize: 5, jsHeapSizeLimit: 0 }), null);
+  assert.equal(heapUsedRatio({ usedJSHeapSize: 2000, jsHeapSizeLimit: 1000 }), 1, "clamped");
+});
+
+// ---- the collapsed settings disclosure (UX-13, feedback #27) ------------------
+
+test("onDeviceSummaryLine: the counts state how many models are actually here", () => {
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 0 }), "Models — none on this device yet, 3 available");
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 1 }), "Models — 1 of 3 on this device");
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 3 }), "Models — 3 of 3 on this device");
+});
+
+test("onDeviceSummaryLine: 'available' counts only what this device can run", () => {
+  // The expanded rows say "this browser has no WebGPU" — the folded line must
+  // not advertise three downloads the user can't use.
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 0, unsupported: 3 }), "Models — none can run on this device");
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 0, unsupported: 2 }), "Models — none on this device yet, 1 available");
+  // Weights already here outrank the verdict: they ran once, they're the fact.
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 1, unsupported: 3 }), "Models — 1 of 3 on this device");
+});
+
+test("onDeviceSummaryLine: a download in flight outranks the counts, and carries its percent", () => {
+  // The whole point of the fold is that the rows are hidden — a running
+  // download must still be visible on the one line that remains.
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 1, downloading: "Bonsai 8B · 1-bit", pct: 42 }), "Downloading Bonsai 8B · 1-bit… · 42%");
+  assert.equal(onDeviceSummaryLine({ total: 3, downloading: "Bonsai 8B · 1-bit" }), "Downloading Bonsai 8B · 1-bit…");
+  // A percent arriving as a float or over 100 never renders nonsense.
+  assert.equal(onDeviceSummaryLine({ downloading: "X", pct: 99.7 }), "Downloading X… · 99%");
+  assert.equal(onDeviceSummaryLine({ downloading: "X", pct: 140 }), "Downloading X… · 100%");
+});
+
+test("onDeviceSummaryLine: probe states and failed downloads surface on the folded line", () => {
+  assert.equal(onDeviceSummaryLine({ total: 3, checking: true }), "Models — checking this device…");
+  assert.equal(onDeviceSummaryLine({ total: 3, error: true }), "Models — this device couldn't be checked");
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 1, failed: 1 }), "Models — 1 of 3 on this device · 1 download failed");
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 0, failed: 2 }), "Models — none on this device yet, 3 available · 2 downloads failed");
+});
+
+test("onDeviceSummaryLine: degenerate input still yields a sane line", () => {
+  assert.equal(onDeviceSummaryLine(), "Models");
+  assert.equal(onDeviceSummaryLine({}), "Models");
+  // A cached count above the catalog size (a stale entry) can't read "4 of 3".
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 9 }), "Models — 3 of 3 on this device");
+  assert.equal(onDeviceSummaryLine({ total: -1, cached: -2 }), "Models");});

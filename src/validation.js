@@ -252,7 +252,7 @@ const MAX_SWARM_RESULT_CHARS = 8000;
  * small, whitelisted shape for the chat log — untrusted, so every field is
  * typed and bounded. Undefined (dropped by JSON.stringify) when absent.
  * @param {any} d
- * @returns {{ coi: boolean|null, bl: boolean, sb: boolean, ran: number, css: string, sab: boolean, ua: string, fs: ({ n: number, b: number, proj: boolean, drop: number, ms: number, err: string } | undefined) } | undefined}
+ * @returns {{ coi: boolean|null, bl: boolean, sb: boolean, ran: number, css: string, sab: boolean, ua: string, fs: ({ n: number, b: number, proj: boolean, drop: number, ms: number, err: string } | undefined), sw: ({ died: 0|1, kind: string, phase: string, round: number, members: number, conc: number, mb: number, cls: string, ago: number } | undefined) } | undefined}
  */
 export function sanitizeClientDiag(d) {
   if (!d || typeof d !== "object") return undefined;
@@ -269,6 +269,45 @@ export function sanitizeClientDiag(d) {
     // project mount, dropped count, boot ms, and any error — so a mount
     // problem is visible in the chat log without the debug beacon.
     fs: sanitizeFsSummary(d.fs),
+    // An orchestrator swarm run that never finished — reported by the NEXT
+    // request, because the tab that died could not report itself
+    // (public/js/swarm-runtime.js swarmCrashDiag). Without this line the block
+    // is dropped here and the crash stays invisible, which is exactly the hole
+    // feedback #26 reported.
+    sw: sanitizeSwarmDiag(d.sw),
+  };
+}
+
+/** The run phases a breadcrumb may name — mirrors RUN_PHASES in public/js/ondevice-core.js. */
+const SWARM_DIAG_PHASES = ["start", "spawn", "diverge", "critique", "converge", "synthesis", "done"];
+/** The failure classes a breadcrumb may carry — mirrors crashClass in public/js/ondevice-core.js. */
+const SWARM_DIAG_CLASSES = ["", "oom", "crash", "timeout"];
+
+/**
+ * Whitelist the on-device swarm crash breadcrumb (untrusted, bounded).
+ * Counters and closed-vocabulary tokens only — no conversation content ever
+ * reaches this block, and nothing here is allowed to widen it (invariant 4).
+ * `died: 1` means the run never reached "done" (the tab died mid-run);
+ * `died: 0` means it finished but recorded a failure class along the way.
+ * @param {any} s
+ * @returns {{ died: 0|1, kind: string, phase: string, round: number, members: number, conc: number, mb: number, cls: string, ago: number } | undefined}
+ */
+export function sanitizeSwarmDiag(s) {
+  if (!s || typeof s !== "object") return undefined;
+  /** @param {any} v @param {number} max */
+  const int = (v, max) => (Number.isFinite(v) ? Math.max(0, Math.min(max, Math.trunc(v))) : 0);
+  /** @param {any} v @param {string[]} allowed */
+  const pick = (v, allowed) => (typeof v === "string" && allowed.includes(v) ? v : allowed[0]);
+  return {
+    died: s.died === 1 || s.died === true ? /** @type {1} */ (1) : /** @type {0} */ (0),
+    kind: s.kind === "chat" ? "chat" : "swarm",
+    phase: pick(s.phase, SWARM_DIAG_PHASES),
+    round: int(s.round, 8),
+    members: int(s.members, 32),
+    conc: int(s.conc, 16),
+    mb: int(s.mb, 100_000),
+    cls: pick(s.cls, SWARM_DIAG_CLASSES),
+    ago: int(s.ago, 86_400),
   };
 }
 

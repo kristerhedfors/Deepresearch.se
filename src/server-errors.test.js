@@ -9,8 +9,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  FAILURE_CLASSES,
   SERVER_ERROR_STATUSES,
+  classifyFailure,
   errorSignature,
+  normalizeFailureClass,
+  recordSubsystemFailure,
+  subsystemPath,
   normalizePath,
   normalizeMessage,
   normalizeErrorStatus,
@@ -309,4 +314,116 @@ test("GET /api/admin/errors/:id 404s for an unknown id", async () => {
   const url = new URL("https://deepresearch.se/api/admin/errors/999");
   const res = await handleAdminServerErrors(new Request(url), env, url, noopLog);
   assert.equal(res.status, 404);
+});
+
+// ---------------------------------------------------------------------------
+// Failure classification + the SUBSYSTEM recorder (2026-07-26)
+//
+// Invariant 2 makes helper phases swallow their failures. That is right, and
+// it is why until now an Orchestrator sub-agent could time out on every run
+// and leave nothing anyone could find. These pin the second source of queue
+// rows: a closed class vocabulary both the queue and the chat_logs row quote,
+// and a pseudo-path that can never be confused with a real route's 500.
+// ---------------------------------------------------------------------------
+
+test("classifyFailure: our own deadline is authoritative over the message", () => {
+  // A wall-clock abort reads exactly like a client abort, so the caller — the
+  // only thing that KNOWS its timer fired — gets the final say.
+  assert.equal(classifyFailure(new Error("The operation was aborted"), { timedOut: true }), "timeout");
+  assert.equal(classifyFailure(new Error("anything at all"), { timedOut: true }), "timeout");
+});
+
+test("classifyFailure recognises each class from messages this repo really throws", () => {
+  assert.equal(classifyFailure(new Error("timed out after 150s")), "timeout");
+  assert.equal(classifyFailure("Berget request timeout"), "timeout");
+  // chat_logs #5 and #3 — the two oldest recorded failures on the live site.
+  assert.equal(classifyFailure(new Error("The operation was aborted")), "abort");
+  // chat_logs #524, verbatim: an upstream 400 whose CAUSE is a size ceiling.
+  assert.equal(
+    classifyFailure(new Error('Berget API error (400): {"error":{"message":"This model\'s maximum context length is 32768 tokens.')),
+    "oversized",
+    "a size refusal is an oversized bug, not a generic upstream one",
+  );
+  assert.equal(classifyFailure(new Error("Model stream exceeded the 400000-char safety cap")), "oversized");
+  assert.equal(classifyFailure(new Error("Rate limit exceeded, please retry")), "quota");
+  // chat_logs #145/#137 — a real provider refusal.
+  assert.equal(classifyFailure(new Error("OpenAI API error (401): insufficient permissions")), "upstream");
+  assert.equal(classifyFailure(new Error("fetch failed")), "upstream");
+  assert.equal(classifyFailure(new Error("Cannot read properties of undefined")), "throw");
+});
+
+test("classifyFailure is total — every class is in the closed vocabulary", () => {
+  for (const input of [undefined, null, "", 0, {}, [], new Error(""), { message: null }]) {
+    assert.ok(FAILURE_CLASSES.includes(classifyFailure(input)), `classified ${String(input)}`);
+  }
+  assert.equal(classifyFailure(undefined), "throw");
+});
+
+test("normalizeFailureClass rejects anything outside the vocabulary", () => {
+  assert.equal(normalizeFailureClass("timeout"), "timeout");
+  assert.equal(normalizeFailureClass("catastrophe"), "throw");
+  assert.equal(normalizeFailureClass(null), "throw");
+});
+
+test("subsystemPath is a pseudo-path that cannot collide with a real route", () => {
+  assert.equal(subsystemPath("orchestrator", "node", "timeout"), "/_subsystem/orchestrator/node/timeout");
+  // Hard-sanitized: nothing user-derived can ride in on a caller's mistake.
+  assert.equal(subsystemPath("orchestrator", "node", "Deep Research!"), "/_subsystem/orchestrator/node/deep-research");
+  assert.equal(subsystemPath("orchestrator", "node", "x".repeat(200)).length < 80, true);
+  assert.equal(subsystemPath("", ""), "/_subsystem/unknown");
+  // …and it survives the signature normalizer intact (no segment reads as :id).
+  assert.ok(!normalizePath(subsystemPath("orchestrator", "node", "timeout")).includes(":id"));
+});
+
+test("recordSubsystemFailure files a content-free, deduped row", async () => {
+  const { db, env } = envDb();
+  const id = await recordSubsystemFailure(env, noopLog, {
+    subsystem: "orchestrator",
+    op: "node",
+    failureClass: "timeout",
+    detail: "timed out after 150s",
+    requestId: "req-a",
+    context: { kind: "deep_research", wave: "2/3", ms: 150000 },
+  });
+  assert.ok(id);
+  const row = db._rows[0];
+  assert.equal(row.method, "SUB");
+  assert.equal(row.path, "/_subsystem/orchestrator/node/timeout");
+  assert.equal(row.request_id, "req-a");
+  assert.match(row.message, /^orchestrator\.node failed \[timeout\]/);
+  assert.match(row.message, /kind=deep_research/);
+  assert.match(row.message, /wave=2\/3/);
+  assert.match(row.message, /timed out after 150s/);
+  assert.equal(row.status, "open", "a swallowed failure still lands on the work queue");
+});
+
+test("recordSubsystemFailure dedups by class, so a recurring node timeout is ONE row", async () => {
+  const { db, env } = envDb();
+  const base = { subsystem: "orchestrator", op: "node", failureClass: "timeout", detail: "timed out after 150s" };
+  await recordSubsystemFailure(env, noopLog, { ...base, requestId: "r1", context: { kind: "deep_research", wave: "1/2" } });
+  await recordSubsystemFailure(env, noopLog, { ...base, requestId: "r2", context: { kind: "deep_research", wave: "1/2" } });
+  assert.equal(db._rows.length, 1);
+  assert.equal(db._rows[0].count, 2);
+  assert.equal(db._rows[0].request_id, "r2", "the latest occurrence is the sample to chase");
+  // A DIFFERENT class is a different bug and gets its own row.
+  await recordSubsystemFailure(env, noopLog, { ...base, failureClass: "upstream", detail: "API error (500)" });
+  assert.equal(db._rows.length, 2);
+});
+
+test("recordSubsystemFailure never throws — it runs on an already-degraded path", async () => {
+  // No DB at all, and a logger that itself blows up.
+  const hostileLog = /** @type {any} */ ({ warn() { throw new Error("log is down too"); } });
+  assert.equal(await recordSubsystemFailure(/** @type {any} */ ({}), hostileLog, { subsystem: "orchestrator", op: "node" }), null);
+  assert.equal(await recordSubsystemFailure(/** @type {any} */ (null), null, { subsystem: "x", op: "y" }), null);
+});
+
+test("recordSubsystemFailure bounds the detail it stores", async () => {
+  const { db, env } = envDb();
+  await recordSubsystemFailure(env, noopLog, {
+    subsystem: "orchestrator",
+    op: "node",
+    failureClass: "throw",
+    detail: "z".repeat(5000),
+  });
+  assert.ok(db._rows[0].message.length < 500, `message was ${db._rows[0].message.length} chars`);
 });

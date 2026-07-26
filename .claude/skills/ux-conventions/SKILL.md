@@ -681,3 +681,110 @@ active"*).
 `dr.pulse.timeline.v1` preference record. Guarded by
 `tests/e2e/pulse-timeline.spec.js` in the free `mocked` project. No text
 routing, so no EN/SV parity applies.
+
+---
+
+## UX-14 — Flipping a settings knob adds ONE line to the drawer; the detail behind it opens only when the user asks
+
+**The rule.** When a settings switch reveals more than a status sentence — a
+list, a table, per-item rows — the reveal is a single **collapsed disclosure
+line**, never the content itself. The line summarises what is behind it in the
+user's terms ("Models — 1 of 3 on this device", "Downloading Bonsai 8B · 1-bit…
+· 42%"), and it is **never opened by code**: the `<details>` ships without
+`open`, no render path sets it, and re-entering the panel returns it collapsed.
+Because the fold can hide a live process, the summary line carries that
+process's state — a download in flight outranks the resting counts on it.
+
+**Why.** The settings drawer is a list of switches the user scans. A knob that
+expands into a section pushes every switch below it off the screen and buries
+the one the user was actually heading for: *"Now the menu grows drastically when
+knob is turned, we just want one line to appear to expand to show this info
+instead"* (feedback #27, 2026-07-26). The information is not unwanted — its
+uninvited size is.
+
+**The mechanics (match all of these):**
+
+1. **A native `<details>`**, so keyboard, screen readers, and the browser's own
+   open/close semantics come for free. The custom `▸` marker replaces the
+   default triangle (`list-style: none` + `summary::-webkit-details-marker`)
+   and rotates on `[open]`; the rotation is dropped under
+   `prefers-reduced-motion`.
+2. **The knob toggles `details.hidden`, not `details.open`.** Off hides the
+   whole disclosure and empties its body; on shows the summary line alone.
+3. **The summary text is a PURE function** of the section's state, shared by
+   both tiers so they can never phrase it differently, and Node-tested
+   (including the degenerate inputs — no `"4 of 3"`, no `"140%"`).
+4. **Re-render replaces the body, never the `<details>`**, so a user who
+   expanded the section does not have it snap shut under them mid-download.
+   The one place `open` is written is the way OUT — the knob going off resets
+   it to `false`, so flipping the knob back on gives the fresh one-line reveal
+   the rule promises rather than whatever the user left open last time.
+5. **Live progress writes the summary too**, not only the row inside — a folded
+   section is otherwise a download with no visible progress at all.
+
+**Canonical implementation:** the on-device models section in both tiers —
+`public/js/ondevice-drs.js` (`onDeviceSettingsMarkup` `#oddetails`, `setSummary`,
+`renderRows`) and `public/cure/index.html` `#oddetails` + `public/cure/drc.js`
+(`odSummary`, `renderOnDeviceRows`), over the pure
+`onDeviceSummaryLine` in `public/js/ondevice-core.js`
+(`ondevice-core.test.js`). Styling is `.settings-sub` in both
+`public/css/app.css` and `public/cure/drc.css` (the two stylesheets never load
+together). Composes with UX-4: the download consent still lives inside the
+expanded rows, and folding the section never starts or continues anything.
+Language-agnostic (a disclosure gesture, no text routing), so no EN/SV parity
+applies.
+
+---
+
+## UX-15 — A slash typed first opens the command list; picking a command leaves the caret ready for its argument
+
+**When** the user types **`/` as the first character** of the chat composer,
+**then** the command list opens above the pane — one row per available command,
+each showing the command, its argument hint and a one-line description. Typing
+filters the list by prefix. **↑/↓** move the highlight (wrapping at both ends),
+**Enter** or **Tab** picks the highlighted command, a **click/tap** picks a row,
+**Escape** closes. Picking puts `/<command> ` in the composer with the caret
+after the space — the list is now closed, so the next Enter **sends** (UX-8).
+The list also closes the moment the text stops being a bare command token: an
+argument is being typed, the prefix matches nothing, or the slash isn't at
+position 0 ("what does /help do?" is a research question).
+
+**Why.** This is the interaction every chat product with commands already has
+(Slack, Discord, Claude Code), so it needs no explanation — but only if it
+behaves identically, above all in never trapping Enter. The rule that makes it
+safe is that **picking a command is not sending it**: there is exactly one state
+where Enter doesn't send, it is visible on screen, and Escape or one more
+keystroke leaves it. The commands are the same in every chat mode and on both
+tiers because they belong to the platform, not to an agent (owner directive,
+2026-07-26: *"those shall be available in every agent"*).
+
+**The mechanics (match all of these):**
+
+1. **One shared module, both tiers** — `public/js/slash-menu.js`, mounted by
+   `public/js/app.js` (Se/rver) and `public/cure/drc.js` (Se/cure). Se/cure
+   imports it from `/js/` like the other shared client modules, so a new command
+   appears in both composers at once. Both paths are in `isPublicAsset`
+   (`src/assets.js`) — the /cure module graph goes dark without that.
+2. **All the deciding lives in the pure core** (`public/js/slash-core.js`):
+   which rows, in which order, in which language, and where the highlight
+   moves. The DOM module only draws and listens, so the behaviour is
+   Node-tested without a DOM (`slash-core.test.js`).
+3. **The keydown listener is on `document`, capture phase**, and stops
+   propagation only for the keys an OPEN list consumes (↑ ↓ Enter Tab Escape).
+   That is what makes it out-rank the composer's own Enter-sends handler
+   regardless of module load order — a listener on the textarea itself would
+   depend on registration order.
+4. **Rows are `<button type="button">`** inside the form (never a submit) and
+   are chosen on **`pointerdown`, not click**, so the textarea doesn't blur and
+   close the list out from under the finger.
+5. **Language follows the deterministic EN-default convention** (`detectLang`,
+   canned-faq.js) applied to what is being typed and — while that is still just
+   a slash — to the last thing the user wrote. Command NAMES are never
+   translated; the label, argument hint and description always are (invariant 6).
+6. **Dismissal is UX-1**: a pointerdown anywhere outside the list closes it.
+
+**Canonical implementations:** `public/js/slash-menu.js` (the mount), the
+`.slash-menu` / `.slash-item` block in `public/css/app.css` and its mirror in
+`public/cure/drc.css`, and `public/js/slash-core.js` for the pure half. The
+routing the commands trigger is `src/chat.js` (resolved before mode routing) and
+`src/pipeline.js` (the feedback gate above the executor dispatch).

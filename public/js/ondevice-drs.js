@@ -19,7 +19,7 @@
 // (drc-research.js) against the in-browser engine — /api/chat is never
 // called for it.
 
-import { onDeviceModel, onDeviceOptionValue } from "./ondevice-core.js";
+import { ONDEVICE_MODELS, onDeviceModel, onDeviceOptionValue, onDeviceSummaryLine } from "./ondevice-core.js";
 
 const KNOB_KEY = "dr_ondevice";
 
@@ -123,7 +123,10 @@ export function onDeviceSettingsMarkup() {
       </div>
       <div class="setting-pop" id="odpop" hidden>${ONDEVICE_INFO}</div>
     </div>
-    <div id="odrows" hidden></div>
+    <details class="settings-sub" id="oddetails" hidden>
+      <summary id="odsummary"></summary>
+      <div id="odrows"></div>
+    </details>
     <p id="odstatus" class="muted setting-note" hidden></p>`;
 }
 
@@ -157,32 +160,67 @@ export function wireOnDeviceSettings(opts = {}) {
   renderRows(modelsChanged).catch(() => {});
 }
 
+/**
+ * The collapsed disclosure's one line (UX-14). Written on every render AND
+ * during a download, so a folded section still reports what it's doing.
+ * @param {Parameters<typeof onDeviceSummaryLine>[0]} s
+ */
+function setSummary(s) {
+  const el = document.getElementById("odsummary");
+  if (el) el.textContent = onDeviceSummaryLine(s);
+}
+
 async function renderRows(modelsChanged) {
   const wrap = document.getElementById("odrows");
+  const details = document.getElementById("oddetails");
   const status = document.getElementById("odstatus");
-  if (!wrap) return;
+  if (!wrap || !details) return;
   const on = onDeviceEnabled();
-  wrap.hidden = !on;
+  // The knob reveals the SUMMARY LINE, never the rows: `details` ships without
+  // `open`, and nothing here ever sets it — expanding is always the user's
+  // deliberate act (feedback #27).
+  details.hidden = !on;
   if (status) status.hidden = true;
   if (!on) {
+    // Collapse on the way OUT, never on a re-render: turning the knob back on
+    // must give the fresh one-line reveal, but a running download must not
+    // snap the section shut under a user who expanded it.
+    details.open = false;
     wrap.innerHTML = "";
     return;
   }
-  if (!wrap.childElementCount) wrap.innerHTML = '<p class="muted setting-note">Checking this device…</p>';
+  // The catalog is pure data (no engine import), so the summary can name the
+  // count before the engine has loaded.
+  const total = ONDEVICE_MODELS.length;
+  if (!wrap.childElementCount) setSummary({ total, checking: true });
   try {
     const eng = await loadOnDeviceEngine();
     const probe = await eng.probeOnDevice();
     const cached = await eng.listCachedModels();
     if (!document.getElementById("odrows")) return; // the panel view changed mid-check
     wrap.innerHTML = "";
+    let onDevice = 0;
+    let unsupported = 0;
+    let downloading = "";
     for (const m of eng.ONDEVICE_MODELS) {
       const entry = cached.find((c) => c.id === m.id);
       const verdict = eng.capabilityVerdict(probe, m);
+      if (entry?.cachedBytes) onDevice++;
+      if (verdict.verdict === "unsupported") unsupported++;
+      if (odDownloading.has(m.id)) downloading = m.label;
       wrap.appendChild(modelRow(eng, m, entry, verdict, modelsChanged));
     }
+    setSummary({
+      total: eng.ONDEVICE_MODELS.length,
+      cached: onDevice,
+      unsupported,
+      downloading: downloading || null,
+      failed: [...odErrors.keys()].length,
+    });
   } catch (err) {
     // The engine's deadline errors NAME the failing stage — show them
     // verbatim (textContent: the message can carry a worker error string).
+    setSummary({ total, error: true });
     wrap.innerHTML = '<p class="muted setting-note"></p>';
     wrap.firstElementChild.textContent =
       /** @type {{message?: string}} */ (err)?.message || "The on-device engine failed to load — try reloading the page.";
@@ -303,6 +341,9 @@ async function runDownload(m, modelsChanged) {
       sawBytes = sawBytes || p.loaded > 0;
       const el = document.querySelector('[data-od="' + m.id + '"] .od-note');
       if (el) el.textContent = "Downloading… " + p.pct + "% · " + eng.fmtBytes(p.loaded) + " of " + eng.fmtBytes(p.total);
+      // The rows may be folded away — the summary line is then the ONLY
+      // progress the user can see, so it carries the percent too.
+      setSummary({ total: ONDEVICE_MODELS.length, downloading: m.label, pct: p.pct });
     });
     setStatus(m.label + " is on this device — pick it in the composer's model dropdown. Questions you ask it never leave this browser.");
     modelsChanged();

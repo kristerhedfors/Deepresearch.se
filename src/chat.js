@@ -50,12 +50,14 @@ import {
   validateMessages,
 } from "./validation.js";
 import { extensionLogMeta, resolveExtensionState } from "./extensions.js";
-import { bashLiteEnabled, developerModeEnabled, extensionEnabledMap } from "./settings.js";
+import { bashLiteEnabled, developerModeEnabled, extensionEnabledMap, featureAvailability } from "./settings.js";
+import { lastUserMessage, textOf } from "./conversation.js";
 import { buildSlugOk } from "./build-pub.js";
 import { normalizeSwarmCapability } from "./orchestrator-api.js";
 import { loadAgentRegistry, routingNeedsRegistry } from "./agent-registry.js";
 import { resolvePromptSet, resolveRequestAgent, resolveUntrustedAgent } from "./agent-spec.js";
 import { buildFeedbackDebugContext, createOrThreadFeedbackEntry, feedbackPageTag } from "./feedback.js";
+import { slashEffect } from "./slash.js";
 import { recordUseCaseFeedback } from "./testpoints.js";
 import { getDb } from "./db.js";
 import { normalizeSearchSource } from "./websearch-backends.js";
@@ -166,6 +168,7 @@ import { normalizeSearchSource } from "./websearch-backends.js";
  *   userId?: string,
  *   buildResult?: { slug: string, url: string, files: number, bytes: number },
  *   feedbackCapture?: boolean,
+ *   helpCommand?: boolean,
  *   feedback?: { comment: string, question: string | null, answer_excerpt: string | null, model: string, images?: { name: string | null, data: string }[], useCase?: { id: number, tag: string } | null, scope?: import("../public/js/feedback-core.js").FeedbackScope },
  * }} ChatRequestState
  */
@@ -254,6 +257,30 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // the site-wide choice with search.allow_user_choice = false.
   const searchSource = normalizeSearchSource(body.search_source);
   const enrich = resolveEnrichmentOptions(body, env, identity, catalog, model);
+
+  // ---- slash commands (platform baseline, before any mode routing) --------
+  //
+  // Owner directive, 2026-07-26 (feedback #26): `/feedback` and `/help` are
+  // available in EVERY agent. So they are resolved HERE, above the mode
+  // dispatch, from the message text itself — no new request field, nothing for
+  // a client to forget to send, and nothing an agent can decline. The server
+  // re-derives the command with the same registry the composer offered
+  // (src/slash.js → public/js/slash-core.js), so a hand-rolled request behaves
+  // exactly like one typed into the app.
+  //
+  // The MCP channel builds its own state and never reaches this handler, so a
+  // tool call that happens to start with a slash keeps being researched.
+  const slashCmd = slashEffect(textOf(lastUserMessage(body.messages)?.content));
+  // `/help` answers from the DOCUMENTATION — the help layer that already ships
+  // inside introspection (src/introspect.js retrieveHelpDocs +
+  // introspect-core.js buildHelpDocsBlock). It is gated on the introspection
+  // capability being AVAILABLE (a real account or the break-glass operator),
+  // not on the per-account developer_mode knob: the knob exists to keep the
+  // mode out of ordinary users' way, and typing `/help` is a user asking for it
+  // in so many words. Nothing new is exposed — the docs corpus and the source
+  // snapshot are committed public artifacts, served unauthenticated already
+  // (src/assets.js).
+  const helpCommand = slashCmd === "help" && featureAvailability(env, identity).developer;
   // ---- mode routing -------------------------------------------------------
   //
   // Which agent answers this request is DATA: the ordered `defaults` table in
@@ -314,24 +341,35 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // Gated on the SAME capability the introspection enrichment uses — the
   // developer_mode knob (enrich.developerOn) — so a client can't acquire the
   // mode the knob doesn't grant; the mode dropdown flips the knob first.
-  const sdkOn = byRegistry ? routedPhase === "build" : body.sdk_mode === true && enrich.developerOn;
+  //
+  // A SLASH COMMAND outranks all three (owner directive, 2026-07-26). `/feedback`
+  // is a report to the developers and `/help` is a documentation question; both
+  // mean the same thing in every agent, so none of the executor phases may claim
+  // the turn. Forced off HERE rather than in the pipeline because
+  // `answerPhaseFor` falls back to these booleans when the registry is
+  // unavailable — leaving them set would reopen the hole on exactly the
+  // fail-soft path (this is the bug feedback #26 reported from the user's seat:
+  // typing feedback in Orchestrator planned a sub-agent team over it).
+  const sdkOn = !slashCmd && (byRegistry ? routedPhase === "build" : body.sdk_mode === true && enrich.developerOn);
   const buildSlug = sdkOn && buildSlugOk(body.build_slug) ? /** @type {string} */ (body.build_slug) : null;
   // Orchestrator mode: the sub-agent workflow flow. Same capability gate as
   // SDK mode (a client can't acquire a mode the knob doesn't grant), and the
   // modes are mutually exclusive client-side — sdk wins if both arrive.
-  const orchOn = byRegistry ? routedPhase === "workflow" : body.orchestrator_mode === true && !sdkOn && enrich.developerOn;
+  const orchOn = !slashCmd && (byRegistry ? routedPhase === "workflow" : body.orchestrator_mode === true && !sdkOn && enrich.developerOn);
   // Outrospection mode: answer from the outward feed instead of the web or our
   // own source. Same capability gate again, and the modes stay mutually
   // exclusive in the same precedence order the dropdown can only produce one
   // of anyway (sdk > orchestrator > outrospection).
-  const outroOn = byRegistry
+  const outroOn = !slashCmd && (byRegistry
     ? routedPhase === "feed"
-    : body.outrospection_mode === true && !sdkOn && !orchOn && enrich.developerOn;
+    : body.outrospection_mode === true && !sdkOn && !orchOn && enrich.developerOn);
   // The plain model answer, with no research phase at all. Reachable only by
   // ADDRESSING an agent that declares it (`body.agent`) — no mode flag selects
   // it, because it is not a chat mode. Without this a spec could declare
   // `answerPhase: "direct"` and be quietly answered by the research flow.
-  const directOn = byRegistry && routedPhase === "direct";
+  // Cleared by a slash command like every other executor phase: the turn is no
+  // longer the agent's.
+  const directOn = !slashCmd && byRegistry && routedPhase === "direct";
   // The answer phase the pipeline dispatches on, and the agent it came from —
   // null when the registry was unavailable or not consulted, in which case the
   // pipeline falls back to the mode booleans above.
@@ -352,7 +390,12 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // default). Carried for every routed request — not only the executor phases —
   // because introspection and research choose their phase per message, and
   // whichever they choose should speak in the voice its agent declared.
-  const promptSet = routed ? resolvePromptSet(routed.agent) : null;
+  // …and NOT for a slash command, for the same reason its executor phase is
+  // cleared: the turn is no longer that agent's. Carrying the set would answer
+  // a `/help` typed in Orchestrator with the workflow set's planner and merge
+  // prompts (or Agent Studio's build prompt), since phasePrompt prefers the
+  // request's set over the phase's default whenever it fills the role.
+  const promptSet = routed && !slashCmd ? resolvePromptSet(routed.agent) : null;
   // The agent's whole RESOLVED capability, carried for every routed request.
   // Until this landed only three of its fields ever reached a run (the phase,
   // the agent id, the prompt set) and the rest were pinned to constants by
@@ -361,8 +404,11 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // limit (agent-spec-core capBound / capSearch), so a shipped agent's
   // declaration reproduces today's behaviour exactly and cannot exceed it.
   // Null whenever the registry was not consulted or could not be read, which
-  // every reader treats as "use the constant" (invariant 2).
-  const capability = routed?.capability ?? null;
+  // every reader treats as "use the constant" (invariant 2) — and null for a
+  // slash command, on the same reasoning as the prompt set just above: a `/help`
+  // turn should not inherit the bounds or the search ceiling of the agent whose
+  // composer it happened to be typed into.
+  const capability = routed && !slashCmd ? routed.capability ?? null : null;
   // The experimental bash-lite sandbox transcript: the browser ran an agentic
   // shell loop (public/js/bash-agent.js) before sending, and attached what it
   // ran + the real output. Honored only when this account's knob is on
@@ -442,7 +488,11 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     const state = newRequestState(model, jsonModel, webSearchEnabled, budgetS, {
       searchSource,
       ext: enrich.ext,
-      introspection: enrich.developerOn,
+      // `/help` turns the introspection enrichment on for THIS request even
+      // when the account's knob is off — that is how the command reaches the
+      // shipped help layer (docs corpus first, source as the deeper level)
+      // from any mode. Everything else about the enrichment is unchanged.
+      introspection: enrich.developerOn || helpCommand,
       vision: enrich.modelIsVision,
       visionModel: enrich.visionModel,
       visionModels: enrich.visionModels,
@@ -470,6 +520,11 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     // needs someone to attribute the entry to and route the developers' reply
     // back to; break-glass sessions (no row) keep researching.
     state.feedbackCapture = !!identity.user;
+    // …and the `/help` command's routing hint: the pipeline's source-research
+    // gate honors it over externalSourceIntent, so an explicitly-asked help
+    // question is answered from the documentation rather than handed back to
+    // the web-search wave.
+    state.helpCommand = helpCommand;
 
     // Recovery marker (metadata only): lets the poller tell "still
     // researching" apart from "nothing will ever come".
@@ -623,6 +678,11 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             // more than one thing can run the searches. Undefined when unset,
             // so JSON.stringify drops it and an ordinary row is unchanged.
             search_source: searchSource || undefined,
+            // The slash command this turn was, if any ("feedback" / "help") —
+            // so a chatlogs scan can answer "is anyone using them, and did the
+            // command actually take the turn away from the picked mode?".
+            // Undefined (dropped from the row) for an ordinary message.
+            slash: slashCmd || undefined,
             queries: [...state.ranQueries],
             sources: state.sources.map((s) => ({ n: s.n, title: s.title, url: s.url })),
             complexity: state.complexity,

@@ -8,8 +8,10 @@ import {
   FEEDBACK_ACKS_STANDALONE,
   FEEDBACK_PATTERNS,
   cannedFeedbackAck,
+  feedbackComment,
   feedbackForcesServerRoute,
   feedbackIntent,
+  feedbackRequested,
   feedbackLangSv,
   feedbackPageTag,
   feedbackScope,
@@ -444,4 +446,54 @@ test("cannedFeedbackAck: the doc scope picks the doc set, EN and SV", () => {
   const ack = cannedFeedbackAck(sv, { scope: "doc" });
   assert.equal(FEEDBACK_ACKS_DOC.sv.includes(ack), true);
   assert.equal(cannedFeedbackAck(sv, { scope: "doc" }), ack, "deterministic");
+});
+
+// ---------------------------------------------------------------------------
+// The `/feedback` SLASH COMMAND (owner directive, 2026-07-26 — the command is
+// available in every agent and on both tiers). It is an ADDITION: the bare
+// keyword above is documented behaviour and Se/cure's confirm flow depends on
+// it, so every assertion here comes in pairs — the command works, and the
+// keyword still does.
+// ---------------------------------------------------------------------------
+
+test("feedbackRequested: the command and the keyword both ask for the feedback path", () => {
+  assert.equal(feedbackRequested("/feedback the map view was cut off"), true);
+  assert.equal(feedbackRequested("feedback the map view was cut off"), true);
+  assert.equal(feedbackRequested("/feedback"), true, "a bare command is the bare keyword");
+  // Swedish parity: the command name is not translated, the message is.
+  assert.equal(feedbackRequested("/feedback kartan var avklippt"), true);
+  assert.equal(feedbackRequested("återkoppling: kartan var avklippt"), true);
+});
+
+test("feedbackRequested: an unknown command or a mid-sentence slash is an ordinary question", () => {
+  assert.equal(feedbackRequested("/deploy the worker"), false);
+  assert.equal(feedbackRequested("/etc/passwd — what is it?"), false);
+  assert.equal(feedbackRequested("what does /feedback do?"), false);
+  assert.equal(feedbackRequested("feedback loops in control theory"), false, "the carve-out still holds");
+  assert.equal(feedbackRequested(""), false);
+});
+
+test("feedbackComment: the developers read the words, not the command token", () => {
+  assert.equal(feedbackComment("/feedback the map view was cut off"), "the map view was cut off");
+  assert.equal(feedbackComment("/feedback: kartan var avklippt"), "kartan var avklippt");
+  // The keyword form is untouched — the word is part of how the note reads.
+  assert.equal(feedbackComment("feedback the map view was cut off"), "feedback the map view was cut off");
+  // A bare command must not file an empty note.
+  assert.equal(feedbackComment("/feedback"), "/feedback");
+  // Not a command at all: the message survives verbatim.
+  assert.equal(feedbackComment("how do I export a PDF?"), "how do I export a PDF?");
+});
+
+test("the canned acknowledgment answers a /feedback note in its own language", () => {
+  const en = cannedFeedbackAck(feedbackComment("/feedback the PDF export is broken"), { scope: "session" });
+  assert.equal(FEEDBACK_ACKS.en.includes(en), true);
+  const sv = cannedFeedbackAck(feedbackComment("/feedback kartan visas inte på sidan"), { scope: "session" });
+  assert.equal(FEEDBACK_ACKS.sv.includes(sv), true);
+});
+
+test("feedbackForcesServerRoute: a /feedback command never takes a browser-direct route either", () => {
+  // The feedback-#23 rule, extended to the command form: an on-device model
+  // pick or the private introspection key must not swallow a report.
+  assert.equal(feedbackForcesServerRoute("/feedback the reply came from a 1.7B model"), true);
+  assert.equal(feedbackForcesServerRoute("/help how do I pick a model"), false, "only /feedback forces the route");
 });

@@ -131,8 +131,10 @@ import {
   unlockCelebrationSize,
   wmHtml,
 } from "/js/drc-page-core.js";
-import { matchCanned } from "/js/canned-faq.js";
-import { feedbackIntent, feedbackPageTag, feedbackScopeOfPrior } from "/js/feedback-core.js";
+import { detectLang, matchCanned } from "/js/canned-faq.js";
+import { feedbackComment, feedbackPageTag, feedbackRequested, feedbackScopeOfPrior } from "/js/feedback-core.js";
+import { slashEffect } from "/js/slash-core.js";
+import { mountSlashMenu } from "/js/slash-menu.js";
 import { spaceIntentMatch } from "/js/space-core.js";
 import { renderMarkdownInto } from "/js/markdown.js";
 import { mountUmbrellaSpinner } from "/js/umbrella-spinner.js";
@@ -149,6 +151,11 @@ let profile = null; // {refHash, blobId, blobKey} — null while the session is 
 let state = emptyDrcState(); // the working state (keys included), from the first keystroke
 let convId = null; // active conversation id
 let sending = false;
+// Set for ONE send by the `/help` slash command (send() below): the turn is a
+// documentation question, so the help docs block is injected even with the
+// developer-mode toggle off. Per-turn, never persisted — a command applies to
+// the message it was typed on, not to the session.
+let helpCommandTurn = false;
 let unsavedHintShown = false;
 
 // The local (keyless) provider's configured base URL — normalized on read so a
@@ -1195,25 +1202,53 @@ const odDownloading = new Set(); // modelIds with a download in flight (UI state
 // (the 2026-07-17 iPhone report). Cleared on the next attempt.
 const odErrors = new Map();
 
+/**
+ * The collapsed disclosure's one line (UX-14). The shared phrasing lives in
+ * the pure core, which rides the LAZY engine import (the bandwidth
+ * guarantee) — so before that module resolves this section has only the two
+ * states spelled out here to show.
+ * @param {{total?: number, cached?: number, downloading?: ?string, pct?: ?number, failed?: number, checking?: boolean, error?: boolean}} s
+ */
+function odSummary(s) {
+  const el = $("odsummary");
+  if (!el) return;
+  el.textContent = odEngineModule
+    ? odEngineModule.onDeviceSummaryLine(s)
+    : s.error
+      ? "Models — this device couldn't be checked"
+      : "Models — checking this device…";
+}
+
 // The settings section: one row per catalog model with its true state —
 // on this device (Delete) / downloadable (Download → consent) / not yet
 // published (the 27B today) / unsupported here (the self-explaining verdict).
+// The rows sit behind a COLLAPSED disclosure whose summary line carries their
+// gist; flipping the knob must add one line to the drawer, not a section
+// (UX-14, feedback #27), so nothing here ever sets `details.open`.
 async function renderOnDeviceRows() {
   const wrap = $("odmodels");
+  const details = $("oddetails");
   const on = state.onDevice === true;
-  wrap.hidden = !on;
+  details.hidden = !on;
   if (!on) {
+    // Collapse on the way OUT, never on a re-render: turning the knob back on
+    // must give the fresh one-line reveal, but a running download must not
+    // snap the section shut under a user who expanded it.
+    details.open = false;
     wrap.innerHTML = "";
     $("odstatus").textContent = "";
     return;
   }
   $("odstatus").textContent = "";
-  if (!wrap.childElementCount) wrap.innerHTML = '<span class="muted setting-note">Checking this device…</span>';
+  if (!wrap.childElementCount) odSummary({ checking: true });
   try {
     const eng = await odEngine();
     const probe = await eng.probeOnDevice();
     const cached = await eng.listCachedModels();
     wrap.innerHTML = "";
+    let onDeviceCount = 0;
+    let unsupportedCount = 0;
+    let downloadingLabel = "";
     for (const m of eng.ONDEVICE_MODELS) {
       const entry = cached.find((c) => c.id === m.id);
       const verdict = eng.capabilityVerdict(probe, m);
@@ -1228,6 +1263,9 @@ async function renderOnDeviceRows() {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "btnlike od-btn";
+      if (entry?.cachedBytes) onDeviceCount++;
+      if (verdict.verdict === "unsupported") unsupportedCount++;
+      if (odDownloading.has(m.id)) downloadingLabel = m.label;
       if (odDownloading.has(m.id)) {
         note.textContent = "Downloading…";
         btn.textContent = "Cancel";
@@ -1262,11 +1300,19 @@ async function renderOnDeviceRows() {
       row.append(label, note, btn);
       wrap.appendChild(row);
     }
+    odSummary({
+      total: eng.ONDEVICE_MODELS.length,
+      cached: onDeviceCount,
+      unsupported: unsupportedCount,
+      downloading: downloadingLabel || null,
+      failed: [...odErrors.keys()].length,
+    });
   } catch (err) {
     // The engine's deadline errors NAME the failing stage (the on-device-
     // trace convention: this line is the remote debugger on a real phone) —
     // show them verbatim. textContent, never innerHTML: the message can
     // carry a worker error string.
+    odSummary({ error: true });
     wrap.innerHTML = '<span class="muted setting-note"></span>';
     wrap.firstElementChild.textContent =
       err?.message || "The on-device engine failed to load — try reloading the page.";
@@ -1380,6 +1426,9 @@ async function odRunDownload(m) {
       sawBytes = sawBytes || p.loaded > 0;
       const el = document.querySelector('[data-od="' + m.id + '"] .od-note');
       if (el) el.textContent = "Downloading… " + p.pct + "% · " + eng.fmtBytes(p.loaded) + " of " + eng.fmtBytes(p.total);
+      // The rows may be folded away — the summary line is then the ONLY
+      // progress the user can see, so it carries the percent too.
+      odSummary({ total: eng.ONDEVICE_MODELS.length, downloading: m.label, pct: p.pct });
     });
     workStatus(m.label + " is on this device — pick it in the model dropdown. Nothing you ask it will leave this browser.");
   } catch (err) {
@@ -1590,7 +1639,8 @@ function renderMessages() {
     empty.textContent =
       "Hi — I'm an AI research assistant that runs right here in your browser, on your own OpenAI, Groq " +
       "or Berget API key (or a local model you run yourself). My replies are model-generated, so verify " +
-      "anything critical. Ask a research question to get started.";
+      "anything critical. Ask a research question to get started, or type “/” for the commands — " +
+      "“/feedback” reaches the developers, “/help” answers from the documentation.";
     box.appendChild(empty);
     return;
   }
@@ -1684,7 +1734,8 @@ function renderCannedExchange(userText, reply) {
 // ---- Se/cure feedback (the "feedback" keyword → confirm → send) ----------------
 //
 // Se/cure normally never contacts the server. But a message opening with the
-// word "feedback" (feedbackIntent, EN+SV — the SAME gate the Se/rver pipeline
+// word "feedback" — or with the `/feedback` slash command (feedbackRequested,
+// EN+SV — the SAME gate the Se/rver pipeline
 // uses, shared from feedback-core.js) is a report to the developers, not a
 // research question. So instead of researching it we ECHO it, PROMPT for
 // confirmation (UX-4: dismissing a consent dialog is a NO, never a YES), and
@@ -1980,7 +2031,24 @@ async function introspectionContext(conv, latestText) {
   // named files from the snapshot the browser already fetches. The client-side
   // provider embedder can't cheaply re-embed the whole codebase, so retrieval
   // stays a DRS feature; the snapshot block still lets the model answer.)
-  if (state.developerMode !== true) return { block: "", fileProvider: null, snapshot: null };
+  if (state.developerMode !== true) {
+    // …except for a `/help` turn: the command IS the request for the help
+    // layer, so the documentation block goes in even with the toggle off. Only
+    // the docs — no source snapshot, no OWASP, no file provider — because the
+    // user asked how something works, not to read the implementation.
+    if (helpCommandTurn) {
+      try {
+        const texts = conv.messages.filter((m) => m.role === "user").map((m) => m.content);
+        phaseStep("introspect", "Reading the documentation…");
+        const helpDocs = await helpDocsBlockFor(texts, latestText);
+        phaseStep("introspect", helpDocs ? "Documentation read" : "No matching documentation");
+        return { block: helpDocs, fileProvider: null, snapshot: null };
+      } catch {
+        /* fail soft — the turn answers without the docs block */
+      }
+    }
+    return { block: "", fileProvider: null, snapshot: null };
+  }
   try {
     const texts = conv.messages.filter((m) => m.role === "user").map((m) => m.content);
     phaseStep("introspect", "Reading the site's own source…");
@@ -3441,11 +3509,25 @@ async function send(ev) {
   const text = $("input").value.trim();
   if (!text) return;
 
-  // Feedback keyword (EN+SV, the shared gate) → confirm-then-send to the
+  // The `/help` command (owner directive, 2026-07-26 — available in every
+  // agent, and here in every Se/cure session): answer from this site's
+  // DOCUMENTATION. Se/cure already carries the whole help layer offline — the
+  // committed docs corpus is a same-origin static file and retrieval is lexical
+  // in the browser (helpDocsBlockFor) — so the command just turns that block on
+  // for this turn regardless of the developer-mode toggle. No request of any
+  // kind leaves the device that wouldn't have anyway; the server stays out of
+  // the data path exactly as before. Assigned on EVERY send (before the
+  // feedback branch returns) so it can never persist into the next turn.
+  helpCommandTurn = slashEffect(text) === "help";
+
+  // Feedback keyword or the `/feedback` command (EN+SV, the shared gate) →
+  // confirm-then-send to the
   // developers over the DeepResearch token, never researched. Handled BEFORE
-  // provider routing so it works even with no LLM configured.
-  if (feedbackIntent(text)) {
-    startFeedback(text);
+  // provider routing so it works even with no LLM configured. The command
+  // token is stripped (feedbackComment) so the developers read what the user
+  // wrote, and so the confirm dialog echoes the same words that will be sent.
+  if (feedbackRequested(text)) {
+    startFeedback(feedbackComment(text));
     return;
   }
 
@@ -3971,6 +4053,24 @@ $("input").addEventListener("keydown", (e) => {
   }
   e.preventDefault();
   $("form").requestSubmit();
+});
+// SLASH COMMANDS (UX-15) — the SAME typeahead the Se/rver composer mounts
+// (public/js/slash-menu.js), because `/feedback` and `/help` are platform
+// baseline rather than a tier's feature. Mounted AFTER the Enter handler above,
+// which it out-ranks: the menu listens on document in the capture phase, so an
+// Enter that picks a command never also sends the message. The description
+// language follows the repo's EN-default detectLang convention, read from what
+// is being typed and — while that is still just a slash — from the last thing
+// the user wrote in this conversation.
+mountSlashMenu({
+  input: /** @type {HTMLTextAreaElement} */ ($("input")),
+  container: $("composer"),
+  lang: () => {
+    const typed = $("input").value.replace(/^\/\S*/, "").trim();
+    const conv = activeConv();
+    const prior = conv?.messages?.filter((m) => m.role === "user").slice(-1)[0]?.content || "";
+    return detectLang(typed || prior);
+  },
 });
 // Introspection knob (client-local, persisted in the sealed project state):
 // unlocks introspection mode for this browser's conversations, and tints the

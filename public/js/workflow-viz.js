@@ -202,12 +202,16 @@ export function workflowSvg(wf, statuses = {}) {
  * and repaints. Fail-soft: no DOM → null.
  * @param {{ el?: HTMLElement, stats?: HTMLElement }} turn
  * @param {{ title?: string, agents: any[], waves: string[][] }} wf
- * @param {Record<string, { status?: string, duration_ms?: number, note?: string }>} statuses
- * @returns {{ update: (id: string, s: { status?: string, duration_ms?: number, note?: string }) => void } | null}
+ * @param {Record<string, { status?: string, duration_ms?: number, note?: string, swarm?: any }>} statuses
+ * @returns {{ update: (id: string, s: { status?: string, duration_ms?: number, note?: string, swarm?: any }) => void } | null}
  */
 export function renderWorkflow(turn, wf, statuses) {
   try {
     if (!turn?.el || !globalThis.document) return null;
+    // One workflow view per turn: a second render (a replay racing the live
+    // plan, a re-adopted embed) must REPLACE the first, not stack another
+    // SVG — and its update handle — under the same answer.
+    for (const old of turn.el.querySelectorAll?.(".workflow-embed") || []) old.remove();
     const wrap = document.createElement("div");
     wrap.className = "workflow-embed";
     const label = document.createElement("div");
@@ -215,17 +219,43 @@ export function renderWorkflow(turn, wf, statuses) {
     label.textContent = wf?.title ? `Sub-agent workflow — ${wf.title}` : "Sub-agent workflow";
     const box = document.createElement("div");
     box.className = "workflow-box";
-    box.innerHTML = workflowSvg(wf, statuses);
+    let painted = workflowSvg(wf, statuses);
+    box.innerHTML = painted;
     wrap.appendChild(label);
     wrap.appendChild(box);
     turn.el.insertBefore(wrap, turn.stats || null);
     return {
       update(id, s) {
-        statuses[id] = { ...statuses[id], ...s };
-        box.innerHTML = workflowSvg(wf, statuses);
+        statuses[id] = { ...statuses[id], ...s, ...(s?.swarm ? { swarm: swarmRenderState(s.swarm) } : {}) };
+        const next = workflowSvg(wf, statuses);
+        // A local swarm publishes on every member state change; most of those
+        // repaint to the identical picture. Reparsing the SVG for each one is
+        // pure churn on the device least able to afford it, so paint only when
+        // the drawing actually changed.
+        if (next === painted) return;
+        painted = next;
+        box.innerHTML = next;
       },
     };
   } catch {
     return null; // the activity steps still narrate the run
   }
+}
+
+/**
+ * The swarm fields the strip actually draws — nothing else. `statuses` is the
+ * object recorded in the conversation-embeds registry and PERSISTED with the
+ * turn, so keeping whole swarm_update events (model label, type tag, and
+ * whatever a future event adds) grows stored state for the life of a run for
+ * no visible benefit.
+ * @param {any} s
+ */
+export function swarmRenderState(s) {
+  return {
+    round: Number(s?.round) || 0,
+    rounds: Number(s?.rounds) || 0,
+    agreement: Number(s?.agreement) || 0,
+    phase: String(s?.phase || "").slice(0, 40),
+    members: (Array.isArray(s?.members) ? s.members : []).slice(0, 12).map((/** @type {any} */ m) => String(m).slice(0, 12)),
+  };
 }
