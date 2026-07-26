@@ -31,7 +31,7 @@
 
 import { spawnSync } from "node:child_process";
 import { createReadStream } from "node:fs";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -168,16 +168,34 @@ async function main() {
   const corpusDir = join(ROOT, args.corpus);
   const workDir = join(ROOT, args.work);
   await mkdir(workDir, { recursive: true });
-  const statePath = join(workDir, "pushed.json");
+  // APPEND-ONLY checkpoint, one id per line. The first version rewrote a JSON
+  // array of every id after each batch, which is O(n) per batch: harmless at a
+  // few thousand papers, but a full 327k run would rewrite a ~4 MB file 1,300
+  // times for no reason. Appending keeps each checkpoint proportional to the
+  // batch instead of the corpus.
+  const statePath = join(workDir, "pushed.txt");
+  const legacyPath = join(workDir, "pushed.json");
 
   /** @type {Set<string>} */
-  let pushed = new Set();
+  const pushed = new Set();
   try {
-    pushed = new Set(JSON.parse(await readFile(statePath, "utf8")).ids || []);
-    console.log(`resuming — ${pushed.size} ids already in the index`);
+    for (const id of (await readFile(statePath, "utf8")).split("\n")) {
+      if (id) pushed.add(id);
+    }
   } catch {
     /* first run */
   }
+  try {
+    // Carry a checkpoint written by the earlier JSON format across, so an
+    // in-flight build does not re-push everything it already paid to embed.
+    for (const id of JSON.parse(await readFile(legacyPath, "utf8")).ids || []) pushed.add(id);
+    await appendFile(statePath, [...pushed].join("\n") + "\n");
+    await writeFile(legacyPath, JSON.stringify({ migrated: true, ids: [] }));
+    console.log(`migrated ${pushed.size} ids from the old checkpoint format`);
+  } catch {
+    /* no legacy checkpoint, or already migrated */
+  }
+  if (pushed.size) console.log(`resuming — ${pushed.size} ids already in the index`);
 
   let batch = [];
   let batchNo = 0;
@@ -213,10 +231,10 @@ async function main() {
     if (!upsert(args.index, file)) {
       throw new Error(`upsert failed on batch ${batchNo} — rerun to resume from the checkpoint`);
     }
-    for (const p of batch) pushed.add(String(p.id));
     // Checkpoint AFTER the upsert, so a crash re-does at most one batch rather
     // than silently skipping it.
-    await writeFile(statePath, JSON.stringify({ ids: [...pushed] }));
+    await appendFile(statePath, batch.map((p) => String(p.id)).join("\n") + "\n");
+    for (const p of batch) pushed.add(String(p.id));
     embedded += batch.length;
     const rate = embedded / Math.max(1, (Date.now() - started) / 1000);
     console.log(`  batch ${batchNo}: +${batch.length} (${pushed.size} total, ${rate.toFixed(1)}/s)`);
