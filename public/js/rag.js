@@ -348,11 +348,16 @@ export async function pushDocToServer(docId) {
  * @param {string} docId
  * @param {string} name display name
  * @param {string} fullText
- * @param {{onProgress?: (done: number, total: number) => void}} [opts]
- *   onProgress drives the attachment card's indexing badge
+ * @param {{onProgress?: (done: number, total: number) => void, mirror?: boolean}} [opts]
+ *   onProgress drives the attachment card's indexing badge.
+ *   mirror:false skips the server mirror for a doc the server already has —
+ *   the outward feed (outrospect-feed.js) is the case: it is public web
+ *   content the Worker already stores in D1, so mirroring it would upload the
+ *   same public data back to the server once per user, for nothing. Defaults
+ *   to true, so every existing caller is unchanged.
  * @returns {Promise<{chunkCount: number, truncated: boolean}>}
  */
-export async function indexDocument(docId, name, fullText, { onProgress } = {}) {
+export async function indexDocument(docId, name, fullText, { onProgress, mirror = true } = {}) {
   const chunks = chunkText(fullText);
   if (!chunks.length) throw new Error("No indexable text.");
   const truncated = chunks.length >= MAX_CHUNKS; // chunker stops there — tail unindexed
@@ -374,7 +379,7 @@ export async function indexDocument(docId, name, fullText, { onProgress } = {}) 
   await putDocLocally(doc, chunks, vectors);
   // Mirror to the server index when cloud storage is on — fail-soft: a
   // hiccup here leaves a perfectly working local index (sync.js re-pushes).
-  if (serverRagAvailable()) {
+  if (mirror && serverRagAvailable()) {
     try {
       await pushDocToServer(docId);
     } catch (err) {
@@ -395,10 +400,12 @@ export async function indexDocument(docId, name, fullText, { onProgress } = {}) 
  * @param {string} docId
  * @param {string} name display name
  * @param {string} text the NEW text only
- * @param {{meta?: object}} [opts]
+ * @param {{meta?: object, mirror?: boolean}} [opts] mirror:false skips the
+ *   server mirror (see indexDocument) — it re-pushes the WHOLE doc on every
+ *   append, so a large doc the server already has must not ride along.
  * @returns {Promise<{chunkCount: number, appended: number}>}
  */
-export async function appendToDoc(docId, name, text, { meta = {} } = {}) {
+export async function appendToDoc(docId, name, text, { meta = {}, mirror = true } = {}) {
   const existing = await getDoc(docId);
   const startSeq = existing?.chunkCount || 0;
   const pieces = chunkText(text)
@@ -421,7 +428,7 @@ export async function appendToDoc(docId, name, text, { meta = {} } = {}) {
     ...meta,
   };
   await putDocLocally(doc, pieces, vectors);
-  if (serverRagAvailable()) {
+  if (mirror && serverRagAvailable()) {
     try {
       await pushDocToServer(docId);
     } catch (err) {
