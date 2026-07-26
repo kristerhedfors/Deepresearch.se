@@ -130,6 +130,20 @@ is off. The vendor payload is behind a dynamic `import()` exactly like
 CheerpX in `sandbox.js`, so visitors who never opt in pay zero bytes for the
 feature. That is the point of the switch.
 
+**The reveal is one line, not the model list** (2026-07-26, feedback #27 —
+UX-14). Flipping the knob on used to unfold every catalog model with its
+state and note, which pushed the rest of the settings drawer off a phone
+screen. The rows now sit inside a collapsed `<details>` (`#oddetails` in both
+tiers) whose summary reports their gist: `Models — 1 of 3 on this device`,
+`Models — none can run on this device` where the capability verdict rules the
+device out, and `Downloading Bonsai 8B · 1-bit… · 42%` while a download runs,
+since a folded section would otherwise hide the progress entirely. Nothing in
+either tier sets `open` — expanding is always the user's act, and reopening
+the panel returns it collapsed. The phrasing is one pure function,
+`onDeviceSummaryLine` (`ondevice-core.js`), so the tiers cannot word it
+differently. Measured in Chromium at 390 px: the knob adds 31 px on Se/rver
+and 23 px on Se/cure instead of ~230 px.
+
 ## 6. The consent popup (the ~4 GB notice)
 
 Flipping the toggle ON does **not** start the download. It opens a
@@ -265,10 +279,10 @@ What ships, per file:
   `dr_ondevice` knob (deliberately localStorage, NOT `/api/settings` — the
   weights live in ONE device's OPFS, so an account-wide flag would light up
   dropdown groups on devices holding no weights), the gear-panel Settings
-  section (per-model rows with the §6 consent inline in the row — the panel
-  has no modal layer — exact live size in the Download button, "Not now" and
-  navigation are a NO, cancel/resume, delete, capability verdicts), and the
-  cached-model listing for the dropdown.
+  section (per-model rows behind §5's collapsed disclosure, with the §6
+  consent inline in the row — the panel has no modal layer — exact live size
+  in the Download button, "Not now" and navigation are a NO, cancel/resume,
+  delete, capability verdicts), and the cached-model listing for the dropdown.
 - `public/js/models.js` — a "📱 On-device — runs in this browser" optgroup
   listing ONLY downloaded models (a dropdown pick must never start a
   multi-GB download); values are `ondevice::<id>` via the shared
