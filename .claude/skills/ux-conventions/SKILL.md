@@ -579,8 +579,8 @@ mode is administrative: the switch appears only for an admin identity.
 
 **The rail is OPENED, never automatic (fixed 2026-07-26).** Overlay chrome that
 covers the content is opened by the reader and closed by the reader — it does
-not decide for itself that now is a good time to be there. Concretely, for a
-rail over a document:
+not decide for itself that now is a good time to be there. For a rail over a
+document:
 
 - **Read-only mode never opens it**, however many comments the document
   carries. The passages are highlighted in the prose; the counter in the mode
