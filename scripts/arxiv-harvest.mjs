@@ -24,16 +24,28 @@
 // Old-style ids (`cs/0503001`) are pre-2007 and always fall outside a
 // last-year window, so they are dropped by the same rule.
 //
-// The window is sharded by month. arXiv answers overload with 503 +
-// Retry-After (and the query API with 429), so each shard honours Retry-After
-// and backs off. Throughput is deliberately NOT maximised: the API Terms of
-// Use ask for one request every three seconds on a single connection, counted
-// across OAI-PMH and the query API together, so the defaults are
-// --concurrency 1 --pause 3000 (they were 3 and 1000, about 9x the published
-// rate, until this was checked on 2026-07-26). A full year takes roughly half
-// an hour at that rate. Each shard checkpoints its resumption token to
-// <out>/state/<shard>.json, so an interrupted harvest resumes instead of
-// restarting.
+// The window is sharded by month. Throughput is deliberately NOT maximised:
+// the API Terms of Use ask for one request every three seconds on a single
+// connection, counted across OAI-PMH and the query API together, so the
+// defaults are --concurrency 1 --pause 3000 (they were 3 and 1000, about 9x
+// the published rate, until this was checked on 2026-07-26).
+//
+// TIMING, measured rather than assumed: a page of ~1300 records takes about
+// 2.6 minutes end to end at that rate, so a full year is roughly **15 hours**,
+// not the "~25 min" the old 9x-over-limit defaults produced. Run it as an
+// unattended job. Shards run newest-first and each checkpoints its resumption
+// token to <out>/state/<shard>.json, so an interrupted harvest resumes instead
+// of restarting — and an interrupted run still leaves the most recent months
+// complete, which is what most "latest research" questions want.
+//
+// FLOW CONTROL IS NORMAL ON A BULK SWEEP, and being impatient with it is what
+// breaks a harvest. Observed 2026-07-26: 29 pages into a shard arXiv began
+// answering 503 continuously; the then-policy waited a flat 20 s, gave up
+// after 8 identical attempts, and failed a job that was otherwise working. A
+// 503/429 here is not an error — it is arXiv telling a bulk sweep to slow
+// down, and it can persist for many minutes. So flow control now has its own
+// generous attempt ceiling and a progressive backoff (honouring Retry-After
+// when sent), while genuine errors keep a short one.
 
 import { createWriteStream } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -187,35 +199,59 @@ export function parsePage(xml) {
 
 const sleep = (/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms));
 
+// Attempt ceilings, split by what the status actually MEANS (corrected
+// 2026-07-26 after a real failure). A flat 8 attempts killed a harvest 29
+// pages into a shard: arXiv answered 503 flow control eight times in a row,
+// the script waited a flat 20 s each time, exhausted its retries after ~160
+// seconds and threw away a resumable job that was working fine.
+//
+// 503/429 from OAI-PMH is not an error — it is arXiv telling a bulk sweep to
+// slow down, and on a big ListRecords run it can persist for many minutes. A
+// job whose total runtime is measured in HOURS should answer that with
+// patience, not by giving up in under three. So flow control gets its own
+// generous ceiling and a progressive backoff, while genuine errors keep a
+// short one.
+const FLOW_CONTROL_ATTEMPTS = 40; // ~40 min of waiting at the 60s+ steps
+const ERROR_ATTEMPTS = 8;
+
 /** @param {URL} url @param {(m: string) => void} log */
 async function fetchOai(url, log) {
-  for (let attempt = 0; attempt < 8; attempt++) {
+  let flowControl = 0;
+  let errors = 0;
+  for (let attempt = 0; attempt < ERROR_ATTEMPTS + FLOW_CONTROL_ATTEMPTS; attempt++) {
     let res;
     try {
       res = await fetch(url, { headers: { "user-agent": UA } });
     } catch (err) {
-      const wait = Math.min(60, 2 ** attempt) * 1000;
+      if (++errors > ERROR_ATTEMPTS) throw err;
+      const wait = Math.min(60, 2 ** errors) * 1000;
       log(`network error (${err?.message || err}) — retrying in ${wait / 1000}s`);
       await sleep(wait);
       continue;
     }
-    if (res.status === 503) {
-      const wait = Math.min(300, Number(res.headers.get("retry-after")) || 20) * 1000;
-      log(`503 flow control — waiting ${wait / 1000}s`);
-      await sleep(wait);
-      continue;
-    }
-    if (res.status === 429) {
-      const wait = Math.min(300, Number(res.headers.get("retry-after")) || 30) * 1000;
-      log(`429 — waiting ${wait / 1000}s`);
+    if (res.status === 503 || res.status === 429) {
+      if (++flowControl > FLOW_CONTROL_ATTEMPTS) {
+        throw new Error(`OAI: ${res.status} flow control persisted across ${FLOW_CONTROL_ATTEMPTS} attempts`);
+      }
+      // Honour Retry-After when arXiv sends one; otherwise back off
+      // PROGRESSIVELY rather than hammering the same flat wait. The flat 20 s
+      // is what made the earlier failure look like a wall: eight identical
+      // retries tell you nothing and give arXiv no room to recover.
+      const stated = Number(res.headers.get("retry-after"));
+      const backoff = Math.min(300, 20 * 2 ** Math.min(flowControl - 1, 4));
+      const wait = (Number.isFinite(stated) && stated > 0 ? Math.min(300, stated) : backoff) * 1000;
+      log(`${res.status} flow control (${flowControl}/${FLOW_CONTROL_ATTEMPTS}) — waiting ${wait / 1000}s`);
       await sleep(wait);
       continue;
     }
     if (!res.ok) {
       const body = (await res.text()).slice(0, 300);
-      if (res.status >= 500) {
-        const wait = Math.min(120, 5 * 2 ** attempt) * 1000;
-        log(`HTTP ${res.status} — retrying in ${wait / 1000}s`);
+      // A genuine server error keeps the SHORT ceiling — the generous one
+      // above is for flow control only, and a real 500 should not hold a
+      // harvest open for forty minutes.
+      if (res.status >= 500 && ++errors <= ERROR_ATTEMPTS) {
+        const wait = Math.min(120, 5 * 2 ** errors) * 1000;
+        log(`HTTP ${res.status} (${errors}/${ERROR_ATTEMPTS}) — retrying in ${wait / 1000}s`);
         await sleep(wait);
         continue;
       }
