@@ -124,6 +124,7 @@ import {
 import { engageIntrospection, initIntrospectUi, noteIntrospectionText } from "/js/introspect-ui.js";
 import { initSourcePeek, wireSourcePeek } from "/js/source-peek.js";
 import { renderStarterStrip } from "/js/starters.js";
+import { stripStarterRef, withoutStarterTags } from "/js/starters-core.js";
 import { drcStoreAvailable, getSealedProject, putSealedProject } from "/js/drc-store.js";
 import { BUDGET_MAX_S, BUDGET_MIN_S, budgetTier, fmtBudget, posToSeconds, secondsToPos } from "/js/timescale.js";
 import {
@@ -3744,7 +3745,17 @@ async function createWorkspaceLink() {
 async function send(ev) {
   ev.preventDefault();
   if (sending) return;
-  const text = $("input").value.trim();
+  // An evaluation-mode starter chip prepends its `#XP-07` tag to the question
+  // it composes (starters.js), so a reviewer's later feedback is tied to the
+  // exact starter. The tag belongs to the RECORD, never to the run: `raw` (with
+  // the tag) is what gets stored in the conversation, `text` (without it) is
+  // what every gate, enrichment and pipeline phase below sees — otherwise the
+  // triage and the search queries would carry a code the starter never had, and
+  // the thing being evaluated would no longer be the starter. Se/cure runs its
+  // pipeline in this browser, so it strips with the same shared core the Worker
+  // uses (starters-core.js), not a second copy of the rule.
+  const raw = $("input").value.trim();
+  const text = stripStarterRef(raw);
   if (!text) return;
 
   // The `/help` command (owner directive, 2026-07-26 — available in every
@@ -3840,7 +3851,9 @@ async function send(ev) {
     state.conversations.push(conv);
     convId = conv.id;
   }
-  conv.messages.push({ role: "user", content: text });
+  // The stored turn keeps the tag (see `raw` above) — it is what a reviewer's
+  // feedback and the chat's own history point back at.
+  conv.messages.push({ role: "user", content: raw });
   conv.title = conv.title || deriveDrcTitle(conv.messages);
   conv.updatedAt = Date.now();
   $("input").value = "";
@@ -3873,7 +3886,9 @@ async function send(ev) {
       provider: providerOverride,
       apiKey: answerKey,
       model,
-      messages: conv.messages.slice(-DRC_RECENT_TURNS),
+      // Tag-free (withoutStarterTags): every turn, not just the newest, since
+      // a reopened conversation replays its history into the prompt.
+      messages: withoutStarterTags(conv.messages.slice(-DRC_RECENT_TURNS)),
       research: state.research,
       budgetS: state.budgetS,
       retrieved,

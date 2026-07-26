@@ -11,6 +11,14 @@
 // without adding safety. The precise Conversation/Message types are still
 // used where property access is straightforward.
 
+// The starter-prompt tag helpers come from the shared pure core rather than
+// the src/starters.js façade on purpose: the façade also re-exports the
+// 195-entry registry, and a leaf utility every request imports has no business
+// pulling that in. They live in the core (not here) because Se/cure's pipeline
+// runs in the BROWSER and has to strip tags with the same code — see the
+// starter-tag note below.
+export { starterRefOf, withoutStarterTags } from "../public/js/starters-core.js";
+
 /** @typedef {string | any[]} Content */
 /** @typedef {{ role?: string, content?: Content }} Msg */
 
@@ -120,6 +128,23 @@ export function withImageNudge(conversation) {
     },
   ];
 }
+
+// ---- starter-prompt tags -------------------------------------------------
+//
+// An evaluation-mode starter chip sends its question with a `#XP-07` tag in
+// front (public/js/starters.js), so a reviewer's later "feedback …" note is
+// tied to the exact starter by the first message of the conversation — the
+// same trick the try-it list plays with `#UC-34`. The tag is for the humans
+// and the records; it must never reach a model, because triage would plan
+// against it and the search queries would carry it, and then the thing being
+// evaluated is no longer the starter.
+//
+// So the pipeline strips it from its working copy (src/pipeline.js) while
+// chat.js keeps the raw conversation for the chat log and the feedback entry.
+// Both halves are needed: strip at the request boundary instead and the tag
+// never reaches the record that makes it useful. starterRefOf /
+// withoutStarterTags are re-exported at the top of this module from
+// starters-core.js, which Se/cure's browser pipeline imports directly.
 
 // Appends server-resolved context (e.g. geocode.js's reverse-geocoded photo
 // locations) to the LAST message — content the client couldn't have known

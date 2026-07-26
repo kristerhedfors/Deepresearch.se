@@ -750,6 +750,12 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             models_mode: modelsOn ? 1 : 0,
             model_cards: /** @type {any} */ (state).modelCards,
             cached_searches: state.cachedSearchCount || 0,
+            // The starter this conversation opened from, as its `#XP-07` tag
+            // (pipeline.js reads it off the first message; the tag itself is
+            // stripped before any model call). Present only for evaluation-mode
+            // chips, which are the only surface that sends one — so a chatlogs
+            // scan can tell a reviewed starter's run from ordinary traffic.
+            starter: /** @type {any} */ (state).starterRef?.tag,
             // Present only when the chosen model was unavailable and the
             // answer was written by the reliable fallback (pipeline.js's
             // streamCompletion failover) — JSON.stringify drops undefined.
@@ -827,6 +833,11 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
               sdk_mode: sdkOn,
               developer_mode: enrich.developerOn,
               use_case: useCase ? useCase.tag : undefined,
+              // The starter prompt this conversation opened from (feedback
+              // #37). Stated as its own line rather than left to be read out
+              // of turn 1: a long conversation's transcript is trimmed from
+              // the FRONT (feedback.js), which is exactly where the tag sits.
+              starter: /** @type {any} */ (state).starterRef?.tag,
               client_diag: sanitizeClientDiag(body.client_diag) || undefined,
             }),
           }, conversation);
