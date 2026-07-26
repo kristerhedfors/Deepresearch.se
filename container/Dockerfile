@@ -18,15 +18,22 @@
 # only to keep the instance alive until it is reaped.
 #
 # BUILDING IT. `wrangler deploy` builds and pushes this automatically when the
-# [[containers]] block in wrangler.toml is enabled — but that needs a local
-# Docker daemon, which the agent containers this repo is developed in do not
-# have. So the supported path is to build it out of band and reference the
-# pushed image by URI (see wrangler.toml's commented block and
-# docs/EXECUTION-ENVIRONMENTS.md §9):
+# [[containers]] block in wrangler.toml is enabled, but that block stays
+# commented out until the image exists, so the supported path is to build out of
+# band and reference the pushed image by URI (wrangler.toml's commented block and
+# docs/EXECUTION-ENVIRONMENTS.md §9). One command does build + verify + push:
 #
-#   docker build -t deepresearch-exec:1 container/
-#   docker tag deepresearch-exec:1 registry.cloudflare.com/<account>/deepresearch-exec:1
-#   docker push registry.cloudflare.com/<account>/deepresearch-exec:1
+#   ./scripts/build-exec-image.sh all
+#
+# Build it linux/amd64 with attestation and SBOM OFF — those turn the result into
+# a manifest list, and the managed registry wants a single plain manifest:
+#
+#   docker build --platform linux/amd64 --provenance=false --sbom=false \
+#     -t registry.cloudflare.com/<account>/deepresearch-exec:1 container/
+#   npx wrangler containers push registry.cloudflare.com/<account>/deepresearch-exec:1
+#
+# The base must stay GNU, not busybox: both mount paths in src/exec-container.js
+# call `tar … --no-same-owner`, which busybox tar rejects.
 #
 # KEEP IT SMALL. The same requirement the browser VM's image has
 # (docs/JS-VM-RESEARCH.md: small, fast, no mid-command stalls) applies here for

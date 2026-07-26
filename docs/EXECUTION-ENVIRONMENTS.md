@@ -382,15 +382,17 @@ It ships **switched off**, and `wrangler.toml`'s `[[containers]]` +
    failure class as the round-4 `cpu_ms` rejection and the R2/Vectorize bindings
    (`tests/MODEL-EVAL-FINDINGS.md`). The image and the Durable Object namespace
    must exist before those lines are uncommented.
-2. **Building the image needs a local Docker daemon**, which the agent containers
-   this repo is developed in do not have. So the image is built out of band and
-   referenced by URI.
+2. **Pushing the image needs an API token carrying the Containers permission**
+   (below). Building it no longer needs a special machine.
+
+`scripts/build-exec-image.sh` does the whole thing:
 
 ```bash
-docker build -t deepresearch-exec:1 container/
-docker tag deepresearch-exec:1 registry.cloudflare.com/<account-id>/deepresearch-exec:1
-docker push registry.cloudflare.com/<account-id>/deepresearch-exec:1
-# uncomment the block in wrangler.toml, set `image` to that URI, then:
+./scripts/build-exec-image.sh build    # linux/amd64, attestation + SBOM off
+./scripts/build-exec-image.sh verify   # the battery, against the built image
+./scripts/build-exec-image.sh push     # wrangler containers push
+./scripts/build-exec-image.sh all      # all three (default)
+# then uncomment the block in wrangler.toml, set `image` to the pushed URI:
 npx wrangler deploy
 ```
 
@@ -398,16 +400,71 @@ Until then `/api/settings` reports `available.exec_container: false`, the Settin
 picker omits the option, and the code is inert — exactly how the Shodan and Maps
 knobs behave without their keys.
 
+### The build environment has Docker now
+
+The agent containers this repo is developed in ship a Docker client **and**
+`dockerd`; if `/var/run/docker.sock` is missing, `dockerd &` brings it up (the
+script does this itself). So the image is built and exercised in-session, and the
+old "no container runtime exists here" caveat no longer applies to it.
+
+What `verify` asserts — the contracts `src/exec-container.js` depends on, run
+under `--network none` to mirror `enableInternet:false`, with this repo mounted
+read-only at `/src`:
+
+| Group | Checked |
+| --- | --- |
+| Toolchain | all 23 tools in the Dockerfile list resolve on PATH — nothing can be installed at run time |
+| Argv shape | `bash -lc` (`shellArgv`) keeps a usable PATH, the image ENV (`DR_EXEC`), `HOME`, and `/workspace` as cwd through a **login** shell |
+| Layout | `/workspace`, `/workspace/outbox`, `/mnt`, `/src` exist |
+| Mount bridge | GNU tar identity, plus a real `tar -xf - -C / --no-same-owner` (`mountExtractScript`) and the `-C /src` source mount |
+| Seed script | `mountSeedScript`'s `mkdir -p` + `ln -sfn` produce working `/workspace/<project>` and `/workspace/source` |
+| SDK claim | `node /src/sdk/pair-cli.mjs list` and `agents` actually run |
+
+Two findings the battery pinned down, both now guarded:
+
+- **The base must stay GNU, not busybox.** Both mount paths pass
+  `--no-same-owner`, which busybox tar rejects — so the obvious "shrink the
+  image" move would break file mounts. (`tar --help` does not list the flag even
+  though GNU tar accepts it, so grep the `--version` banner, not the help text.)
+- **Build with `--provenance=false --sbom=false`.** BuildKit otherwise emits an
+  attestation manifest and the result becomes a manifest *list*; the managed
+  registry wants a single plain manifest.
+
+### The push needs a Containers-scoped token
+
+`wrangler containers push` mints short-lived registry credentials from the
+Cloudchamber API, and a token scoped only to Workers cannot. Measured 2026-07-26
+against this account:
+
+| Request | Result |
+| --- | --- |
+| `GET /accounts/<id>/workers/scripts` | 200 — the token deploys fine |
+| `GET /accounts/<id>/cloudchamber/me` | 403 |
+| `POST /accounts/<id>/cloudchamber/registries/credentials` | 405, code 10405 "Method not allowed for this authentication scheme" |
+
+`wrangler` surfaces this as a bare `✘ Forbidden` / `cloudchamber push failed`
+with no hint at the cause. The fix is to add **Account · Cloudchamber
+(Containers) · Edit** to the API token, or run the push from a machine with
+`wrangler login` (OAuth). Note the credentials endpoint answers **405**, not
+403 — a preflight that probes only for 401/403 there passes a token that cannot
+push, which is why the script probes `cloudchamber/me` instead.
+
 ## 10. Still owed
 
 - **Live verification.** The runner is proven end-to-end in `host` mode
   (sessions isolate, state persists across commands, timeouts return 124,
-  truncation flags, exit codes pass through, `DELETE` reaps). The container
-  backends are built from each CLI's documented flags but have not been run
-  here — no container runtime exists in the build environment. Verify
-  `docker`, `podman` and Apple `container` on a real machine, and verify the
-  browser-direct call (CORS + private-network preflight) from a live page,
-  before treating this as production-ready.
+  truncation flags, exit codes pass through, `DELETE` reaps). Its `podman` and
+  Apple `container` backends are still built from each CLI's documented flags
+  and have not been run; its `docker` backend now *could* be exercised here
+  (§9 — the build environment has a daemon) and has not been yet. Verify all
+  three, plus the browser-direct call (CORS + private-network preflight) from a
+  live page, before treating this as production-ready.
+- **The pushed image.** `scripts/build-exec-image.sh` builds and verifies the
+  Cloudflare Container image in-session (§9), but the push needs a
+  Containers-scoped API token, so nothing has been pushed and the
+  `[[containers]]` block is still commented out. Nothing about the cloud
+  environment has run against a real Cloudflare Container — only against the
+  fake in `src/exec-container.test.js` and the image battery.
 - **Apple `container` flag set.** It gets a reduced flag list (no
   `--pids-limit`); confirm `--memory`/`--cpus`/`--network` behave as assumed on
   macOS 26.

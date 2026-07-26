@@ -122,21 +122,27 @@ bucket_name = "deepresearch-se-storage"
 #     the same failure class as the round-4 cpu_ms rejection and the R2/Vectorize
 #     bindings above (tests/MODEL-EVAL-FINDINGS.md). The container image and the
 #     Durable Object namespace must exist BEFORE these lines are uncommented.
-#  2. Building the image needs a local Docker daemon, which the agent containers
-#     this repo is developed in do not have. So the image is built and pushed out
-#     of band, and referenced here by URI.
+#  2. Pushing the image needs an API token carrying the Containers permission.
+#     BUILDING it no longer needs a special machine — the agent containers this
+#     repo is developed in now ship a Docker client and `dockerd` (start it with
+#     `dockerd &` if the socket is absent), so the image builds and is fully
+#     VERIFIED in-session by scripts/build-exec-image.sh. The push is the only
+#     step that still needs owner credentials, so the image is referenced by URI.
 #
 # With the block commented out, /api/settings reports `available.exec_container:
 # false`, the Settings picker omits the option, and the feature is invisible —
 # exactly how the Shodan and Maps knobs behave without their keys.
 #
-# TO ENABLE (owner, from a machine with Docker):
+# TO ENABLE (owner):
 #
-#   docker build -t deepresearch-exec:1 container/
-#   docker tag deepresearch-exec:1 registry.cloudflare.com/<account-id>/deepresearch-exec:1
-#   docker push registry.cloudflare.com/<account-id>/deepresearch-exec:1
-#   # then uncomment below, set `image` to that URI, and deploy:
+#   ./scripts/build-exec-image.sh all     # build → verify (37 checks) → push
+#   # then uncomment below, set `image` to the pushed URI, and deploy:
 #   npx wrangler deploy
+#
+# The push step needs `Account · Cloudchamber (Containers) · Edit` on the API
+# token — a Workers-only token deploys fine but cannot mint registry credentials
+# (measured 2026-07-26: cloudchamber/me → 403). The script preflights that and
+# names the missing permission rather than failing at the push.
 #
 # `instance_type` is the cost/capability dial (lite → standard-4); standard-1
 # (1/2 vCPU, 4 GiB, 8 GB disk) is the smallest that comfortably holds the Debian
