@@ -109,7 +109,7 @@
       "layer": 2, "class": "S", "deps": ["identity-access"],
       "skill": "sdk/skills/quota-metering/SKILL.md",
       "provides": "Multi-window quota model, split-billing cost math per provider catalog rate, usage recording, per-user in-flight concurrency caps, 429 payload conventions, operational alerts (typed, upserted), the per-user message center (metadata-only)",
-      "reference": ["src/quota.js", "src/billing.js", "src/alerts.js", "src/user-messages.js", "src/user-api.js"],
+      "reference": ["src/quota.js", "src/endpoint-gate.js", "src/billing.js", "src/alerts.js", "src/user-messages.js", "src/user-api.js"],
       "acceptance": "Window/boundary math unit-tested; breach + concurrency paths tested; alert classification tested"
     },
     {
