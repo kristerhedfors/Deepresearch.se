@@ -725,3 +725,20 @@ ingest; see `docs/SANDBOX-HOST-COMMANDS.md` part B) and `boot-messages.js`
 backdrop, split pure-core/DOM per the pure-core convention); and
 `umbrella-spinner.js` (the Se/cure intro umbrella, shrunk and looped as a
 waiting spinner).
+
+arXiv RAG search database (`public/js/arxiv-rag-core.js` + `scripts/arxiv-*.mjs`
+— a local research database over a year of arXiv, not part of the deployed
+Worker): the pure core owns passage construction (the four embed strategies and
+the sliding-window splitter), the Unicode-aware tokenizer and BM25 index, RRF
+fusion, max-pool doc scoring over the packed int8 matrix (`denseSearchPacked` /
+`packedNorms`), the evaluation metrics, and `recapForContext` — the recovery
+from Berget's hard 512-token rejection. Vector maths is not reimplemented: the
+int8 codec and cosine come from `introspect-core.js`, the project's one
+implementation. Around it, `scripts/arxiv-harvest.mjs` (OAI-PMH bulk harvest,
+month-sharded and resumable), `arxiv-corpus.mjs` (dedup + deterministic
+sampling), `arxiv-berget.mjs` (the build-time Berget client — embeddings,
+`bge-reranker-v2-m3`, JSON chat), `arxiv-index.mjs` (the binary index pack),
+`arxiv-search.mjs` (the four retrieval pipelines) and `arxiv-goldset.mjs` +
+`arxiv-eval.mjs` (the query sets and the measured bake-off). The built database
+lives under gitignored `data/`; the code, the query sets and the findings are
+committed. See `docs/ARXIV-RAG.md`.
