@@ -282,17 +282,28 @@ password generation and channel-separation UX.
 - **Progressive trust** (§9): stages `keys` application behind explicit
   consent when the workspace's `origin.node` differs from the opening node.
 
-The reference node is class N for its own shorthand grant forms and class
-R/W for the payload core; the interchange sections are specified here first
-and adopted by implementations as they land (this is a draft standard — the
-spec deliberately leads the code).
+A node MUST declare the classes it meets in its discovery document (§7.1,
+`conformance`), so the claim is machine-readable and does not have to be
+inferred from behavior.
+
+**What the reference node meets today: R and W.** It opens and mints the
+payload core (§3–§4) and serves the §7.1 discovery file, but it does not yet
+read the §5 interchange sections, so it is not class N. Corrected 2026-07-26:
+this paragraph previously claimed class N off the back of the grant shorthand
+while nothing served `/.well-known/drsw.json` at all. The interchange sections
+are specified here first and adopted by implementations as they land (this is
+a draft standard — the spec deliberately leads the code), and a conformance
+claim that leads the code the same way is just a wrong claim.
 
 ## 7. Node federation
 
 ### 7.1 Discovery: `/.well-known/drsw.json`
 
 A node advertises itself with one static JSON file — deliberately servable
-by a bare static host:
+by a bare static host. Every node MUST serve it; it is what makes a
+conformance claim checkable without running the node's UI.
+
+The full shape, with every optional member present:
 
 ```json
 {
@@ -301,8 +312,14 @@ by a bare static host:
             "software": "github.com/kristerhedfors/Deepresearch.se" },
   "portal": "/cure/workspace",
   "kinds": [ { "kind": "drc-workspace", "v": [1] } ],
-  "sections": ["keys", "settings", "conversations", "grants", "pipelines", "provenance", "route"],
+  "sections": ["name", "note", "keys", "settings", "conversations", "grants"],
   "grantTypes": [ { "issuer": "https://deepresearch.se", "types": ["web", "api", "server-token"] } ],
+  "conformance": ["R", "W"],
+  "spec": { "drsw": "/docs/#docs%2FWORKSPACE-PROTOCOL.md",
+            "drpl": "/docs/#docs%2FPIPELINE-LANGUAGE.md",
+            "rationale": "/docs/#docs%2FSTACKLESS-RESEARCH.md",
+            "schema": "https://raw.githubusercontent.com/…/drsw-payload-1.schema.json" },
+  "status": "experimental",
   "pipelines": [ { "id": "deepresearch.se/deep-research/secure",
                    "drpl": "/pipelines/deep-research-secure.drpl.json",
                    "fp": "drpl1:spine-shape:24f0fd90325d4ae5" } ],
@@ -310,15 +327,36 @@ by a bare static host:
 }
 ```
 
+Required: `drsw`, `node`, `portal`, `kinds`, `sections`, `conformance`.
+The rest are optional, and a reader MUST ignore members it does not know.
+
 - `portal` — where a `#w=` fragment opens.
 - `sections` — which payload sections this node can apply (a node that
   ignores `grants` still conforms; it just says so).
+- `conformance` — the §6 classes this node meets, as an array of `"R"`,
+  `"W"`, `"N"`. It states what the deployed code does, not what the operator
+  intends to build; an aspirational entry here is a defect. Added 2026-07-26,
+  because the reference node's own claim had drifted from its behavior and
+  nothing in the format made that visible.
+- `spec` — where the standards this node conforms to can be read, so a
+  reader that discovers a node can reach the texts without knowing the
+  project. Keys are standard short names (`drsw`, `drpl`), plus `rationale`
+  and `schema`; values are URLs, absolute or origin-relative.
+- `status` — `"experimental"`, `"beta"` or `"stable"`, the operator's own
+  statement about the deployment, not about the standard.
 - `pipelines` — the node's offered pipelines as DRPL documents with
   structural fingerprints, so a client can compare nodes **before** visiting:
   "this node runs the same research spine I've been using, placed
   client-side".
 - `peers` — optional, purely advisory node links (a discovery convenience,
   never a trust statement).
+
+The reference node's live document is
+[`/.well-known/drsw.json`](/.well-known/drsw.json), built by
+`src/drsw-manifest.js` and pinned against the deployed payload validator by
+`src/drsw-manifest.test.js` — the values cannot drift from the code without
+failing the build. It omits `pipelines` and `peers`: it serves no DRPL
+document at a URL yet, and it knows no peers.
 
 ### 7.2 Handoff: moving a workspace to another node
 

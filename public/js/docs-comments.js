@@ -60,7 +60,13 @@ const STYLES = `
   cursor: pointer; -webkit-appearance: none; appearance: none;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='7'><path d='M1 1l4 4 4-4' stroke='%23555' fill='none' stroke-width='1.6'/></svg>");
   background-repeat: no-repeat; background-position: right .45rem center; }
-.dc-count { opacity: .75; font-variant-numeric: tabular-nums; }
+/* The count doubles as the rail's handle — on a phone the rail starts closed
+   (see .dc-rail below), so this is how it is reopened. Sized as a tap target
+   rather than a label. */
+.dc-count { opacity: .75; font-variant-numeric: tabular-nums; font: inherit;
+  border: 0; background: none; color: inherit; padding: .1rem .25rem; }
+.dc-count[hidden] { display: none; }
+.dc-count:not(:disabled) { cursor: pointer; }
 
 body.dc-commenting .dc-root { cursor: text; }
 body.dc-commenting .dc-root a { pointer-events: none; }
@@ -79,8 +85,30 @@ body.dc-commenting .dc-root a { pointer-events: none; }
   .dc-rail { background: rgba(18,24,33,.97); color: #dbe4ee; }
   .dc-slot select { background-color: rgba(30,38,50,.95); color: #dbe4ee; }
 }
-.dc-railhead { font-size: .68rem; text-transform: uppercase; letter-spacing: .06em;
+
+/* PHONE: a bottom SHEET, not a side column (feedback #40, 2026-07-26 — "the
+   right dark pane in documentation is in the way with no clear way to close
+   it. I must see the text when choosing what to comment"). At 390 px the
+   min(340px, 88vw) column covers 87 % of the screen, and comment mode opened
+   it unconditionally, so the passage being commented on was behind it. As a
+   sheet the prose keeps the top half of the viewport, which is the half the
+   selection is in. Paired with the JS: on a narrow screen the rail opens only
+   when the reader marks a passage or taps the count. */
+@media (max-width: 720px) {
+  .dc-rail { top: auto; left: 0; right: 0; bottom: 0; width: auto;
+    max-height: 50vh; border-left: 0; border-top: 1px solid rgba(127,127,127,.3);
+    border-radius: 14px 14px 0 0; padding: .7rem .7rem 3.2rem;
+    box-shadow: 0 -8px 26px rgba(0,0,0,.22); }
+}
+
+.dc-railhead { display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+  font-size: .68rem; text-transform: uppercase; letter-spacing: .06em;
   opacity: .65; margin: 0 0 .6rem; }
+/* Always present, on every width. The rail had no dismiss control at all. */
+.dc-close { font: inherit; font-size: .95rem; line-height: 1; letter-spacing: 0;
+  padding: .15rem .5rem; cursor: pointer; color: inherit;
+  border: 1px solid rgba(127,127,127,.4); border-radius: 999px;
+  background: rgba(127,127,127,.12); }
 .dc-empty { opacity: .7; }
 .dc-card, .dc-composer { background: rgba(127,127,127,.09); border: 1px solid rgba(127,127,127,.25);
   border-radius: 10px; padding: .6rem .7rem; margin-bottom: .7rem; }
@@ -127,6 +155,16 @@ export function mountDocComments(ctx) {
   let comments = [];
   /** @type {{ quote: string, section: string } | null} */
   let pending = null;
+  // Whether the rail is on screen. EXPLICIT rather than derived from
+  // `commenting`/`comments.length`, because the reader gets a say now: the
+  // close button and the count handle set it, and on a phone it starts shut so
+  // the prose is readable while you decide what to mark (feedback #40).
+  let railOpen = false;
+  let firstLoad = true;
+
+  // The width the sheet layout takes over at — kept in step with the
+  // `max-width: 720px` query in STYLES above.
+  const narrow = () => window.matchMedia("(max-width: 720px)").matches;
 
   rootEl.classList.add("dc-root");
   const style = document.createElement("style");
@@ -141,10 +179,10 @@ export function mountDocComments(ctx) {
   slot.innerHTML =
     '<label for="dc-mode">Mode</label>' +
     '<select id="dc-mode"><option value="read">Read only</option><option value="comment">Comment</option></select>' +
-    '<span class="dc-count"></span>';
+    '<button type="button" class="dc-count" hidden></button>';
   document.body.appendChild(slot);
   const select = /** @type {HTMLSelectElement} */ (slot.querySelector("select"));
-  const countEl = /** @type {HTMLElement} */ (slot.querySelector(".dc-count"));
+  const countEl = /** @type {HTMLButtonElement} */ (slot.querySelector(".dc-count"));
 
   const rail = document.createElement("aside");
   rail.className = "dc-rail";
@@ -152,6 +190,10 @@ export function mountDocComments(ctx) {
   document.body.appendChild(rail);
 
   select.addEventListener("change", () => setMode(select.value === "comment"));
+  countEl.addEventListener("click", () => {
+    railOpen = !railOpen;
+    renderRail();
+  });
 
   /** @param {boolean} on */
   function setMode(on) {
@@ -159,6 +201,10 @@ export function mountDocComments(ctx) {
     select.value = on ? "comment" : "read";
     document.body.classList.toggle("dc-commenting", on);
     if (!on) closeComposer();
+    // Entering comment mode on a wide screen opens the rail beside the prose,
+    // as it always did. On a phone it would cover the prose, so it waits for a
+    // marked passage or a tap on the count.
+    railOpen = narrow() ? false : on || comments.length > 0;
     renderRail();
   }
 
@@ -202,6 +248,8 @@ export function mountDocComments(ctx) {
   function openComposer() {
     closeComposer();
     if (!pending) return;
+    // Marking a passage IS the request to open the rail, on any width.
+    railOpen = true;
     rail.hidden = false;
     const box = document.createElement("div");
     box.className = "dc-composer";
@@ -282,13 +330,27 @@ export function mountDocComments(ctx) {
     } catch {
       comments = [];
     }
+    if (firstLoad) {
+      firstLoad = false;
+      // Arriving on a document that already carries comments shows them —
+      // except on a phone, where the sheet would land on top of the prose
+      // before the reader has read a word of it.
+      railOpen = !narrow() && comments.length > 0;
+    }
     renderRail();
   }
 
   function renderRail() {
-    countEl.textContent = comments.length ? `${comments.length} 💬` : "";
-    // The rail takes screen space only when there is something to show.
-    rail.hidden = !commenting && !comments.length;
+    // The handle: how many comments there are, and the way back to a rail that
+    // was closed. Hidden when there is nothing to reopen it for.
+    countEl.hidden = !comments.length && !commenting;
+    countEl.textContent = comments.length ? `${comments.length} 💬` : "💬";
+    countEl.title = railOpen ? "Hide the comments" : "Show the comments";
+    countEl.setAttribute("aria-expanded", String(railOpen));
+
+    // The rail takes screen space only when there is something to show AND the
+    // reader has not closed it.
+    rail.hidden = !railOpen || (!commenting && !comments.length);
     const composer = rail.querySelector(".dc-composer");
     const body = comments.length
       ? comments.map(renderComment).join("")
@@ -297,7 +359,16 @@ export function mountDocComments(ctx) {
             ? "Mark a passage in the page to comment on it."
             : "No comments on this document."
         }</p>`;
-    rail.innerHTML = `<p class="dc-railhead">Comments${comments.length ? ` (${comments.length})` : ""}</p>` + body;
+    rail.innerHTML =
+      `<p class="dc-railhead"><span>Comments${comments.length ? ` (${comments.length})` : ""}</span>` +
+      '<button type="button" class="dc-close" aria-label="Close the comments">✕</button></p>' +
+      body;
+    rail.querySelector(".dc-close")?.addEventListener("click", () => {
+      railOpen = false;
+      // Closing the rail leaves comment mode on — marking another passage
+      // brings it straight back — so the mode dropdown is not touched here.
+      renderRail();
+    });
     if (composer) rail.prepend(composer);
     wireCards();
     paintHighlights();
