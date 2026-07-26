@@ -925,7 +925,8 @@ envelope carries `workspace` and `from` fields already.
 | Se/cure arrival privacy notice | **built**, narrower than §6 — `showPrivacyNotice()` |
 | Block-level curation (± with undo/redo) and sealed transport | **built** — `public/js/knowledge-core.js` |
 | Aggregation inbox and the owner's import view | **built** — `src/knowledge.js`, `public/js/account-knowledge.js` |
-| DRSW/1 interchange, DRCR/1 campaigns | **specified**, deliberately ahead of the code |
+| DRSW/1 node discovery (`/.well-known/drsw.json`) | **built** — `src/drsw-manifest.js`; declares conformance R/W, not N |
+| DRSW/1 §5 interchange sections, DRCR/1 campaigns | **specified**, deliberately ahead of the code |
 | §6 arrival disclosure (both kinds, capability lanes, animation) | **specified here** |
 | §7 message-level 👍/👎 marks, the context closure, forgetting | **specified here** |
 | Campaign dashboard, workspace roll-up of imported conclusions | **not built**, §8 |

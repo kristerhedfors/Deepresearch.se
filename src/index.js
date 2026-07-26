@@ -120,6 +120,7 @@ import { handleSpaceFeedback } from "./space.js";
 import { recordServerError } from "./server-errors.js";
 import { isPublicAsset, serveAsset } from "./assets.js";
 import { canonicalRedirect } from "./canonical.js";
+import { drswManifestResponse } from "./drsw-manifest.js";
 import { applySecurityHeaders } from "./security-headers.js";
 import { runAsUid, runAsView } from "./run-as.js";
 
@@ -236,6 +237,17 @@ async function route(request, env, url, log, ctx, requestId) {
 
   if (isPublicAsset(url, request.method)) {
     return { response: await serveAsset(request, env) };
+  }
+
+  // DRSW/1 node discovery (docs/WORKSPACE-PROTOCOL.md §7.1): the one file the
+  // workspace standard defines for a node to say what it is and which parts of
+  // the standard it meets. Public and unauthenticated by definition — a node
+  // you must sign in to discover is not discoverable (feedback #39).
+  if (
+    (request.method === "GET" || request.method === "HEAD") &&
+    url.pathname === "/.well-known/drsw.json"
+  ) {
+    return { response: drswManifestResponse(url.origin) };
   }
 
   // ---- the MCP endpoint, key-bearing half (src/mcp.js) --------------------
