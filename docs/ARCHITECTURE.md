@@ -1383,7 +1383,12 @@ Orchestrator's `swarm` node kind, `docs/SWARM-REASONING.md`: N tiny Bonsai
 models reasoning in parallel browser workers, planned through
 `POST /api/orchestrator/plan` and merged server-side), **compute sharing**
 (`src/pool.js`, `src/pool-token.js`, `docs/COMPUTE-SHARING.md`), **workspace
-knowledge** (`src/knowledge.js`) and the **quiz** surface (`src/quiz.js`).
+knowledge** (`src/knowledge.js`), the **quiz** surface (`src/quiz.js`) and the
+**execution-environment seam** (`public/js/exec-backends-core.js`,
+`docs/EXECUTION-ENVIRONMENTS.md`, 2026-07-26 — the DREE/1 wire letting a
+container runner on the user's own machine replace the in-browser VM; the
+`execution-sandbox` Platform-SDK module covers the VM, not the choice of where
+commands run).
 Each is a candidate for the same treatment — an SDK module, an AgentSpec, or
 both — and until that happens `docs/CODE-LAYOUT.md` is their per-module map.
 Adding a feature surface means asking which of the two SDKs should carry it
