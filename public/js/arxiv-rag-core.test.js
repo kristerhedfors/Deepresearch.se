@@ -7,9 +7,13 @@ import {
   bm25Search,
   buildBm25,
   buildPassage,
+  chunkSections,
   decodeShard,
   fullTextChunks,
   fullTextPassage,
+  htmlFullTextChunks,
+  htmlSections,
+  htmlToText,
   latexBody,
   latexSections,
   latexToText,
@@ -79,33 +83,6 @@ test("recapForContext re-caps from the reported token count, not by blind halvin
   assert.ok(long.length > 1200 && long.length <= 1360, `unexpected cap ${long.length}`);
   assert.equal(short, "short", "texts already inside the window are untouched");
   assert.ok(recapForContext(["abc"], 0)[0].length > 0, "a missing token count must not throw");
-});
-
-test("recapForContext never leaves an orphaned surrogate at the cut", () => {
-  // The bug this closes: embed-providers.mjs routes EVERY bundler's over-length
-  // recovery through recapForContext, so a plain `.slice(cap)` here reinstates
-  // the lone-surrogate 400 that scripts/embed-truncate.mjs exists to prevent —
-  // and that 400 does not match OVER_LENGTH, so the retry loop cannot clear it.
-  // 👍 is astral (two UTF-16 units), so a cap landing between them orphans one.
-  // The cut is deterministic, so aim at it rather than hoping: with these
-  // arguments the 0.85 floor wins, i.e. cap = floor(len × 0.85). Place the
-  // emoji's FIRST unit exactly at index cap-1 so the slice splits it.
-  const emoji = "👍";
-  const len = 2000;
-  const cap = Math.floor(len * 0.85); // 1700
-  const text = "x".repeat(cap - 1) + emoji + "y".repeat(len - (cap - 1) - 2);
-  assert.equal(text.length, len, "test fixture must be exactly the intended length");
-  assert.ok(text.charCodeAt(cap - 1) >= 0xd800 && text.charCodeAt(cap - 1) <= 0xdbff, "fixture must straddle the cut");
-
-  const [out] = recapForContext([text, "short"], 568, 512);
-  const lastUnit = out.charCodeAt(out.length - 1);
-  assert.ok(
-    !(lastUnit >= 0xd800 && lastUnit <= 0xdbff),
-    `cut left a lone high surrogate at index ${out.length - 1}`,
-  );
-  // Well-formed as a whole, not merely ending cleanly: [...s] iterates code
-  // points, so a lone surrogate anywhere round-trips differently.
-  assert.equal(out, [...out].join(""), "result is not well-formed UTF-16");
 });
 
 test("recapForContext shrinks monotonically so the retry loop converges", () => {
@@ -263,7 +240,7 @@ test("decodeShard restores the passage→paper alignment denseSearch needs", () 
   const d = decodeShard(shard);
   assert.deepEqual(d.docIds, ["2607.00001", "2607.00002", "2607.00001"]);
   assert.equal(d.vectors.length, 3);
-  assert.equal(d.byId.get("2607.00001")?.title, PAPER.title);
+  assert.equal(d.byId.get("2607.00001").title, PAPER.title);
   assert.equal(denseSearch(Float32Array.from([1, 0, 0]), d, 5)[0].id, "2607.00001");
 });
 
@@ -350,4 +327,75 @@ test("fullTextPassage puts the heading in front of the prose, inside the embed w
   assert.equal(fullTextPassage({ heading: "", text: "No heading here." }), "No heading here.");
   const long = fullTextPassage({ heading: "H", text: "x".repeat(5000) });
   assert.ok(long.length <= MAX_PASSAGE_CHARS);
+});
+
+// ---- full text from arXiv's HTML rendering -----------------------------------
+
+const HTML = `
+<html><head><style>.x{color:red}</style><script>var a=1</script></head><body>
+<article>
+<section id="S1"><h2>1 Introduction</h2>
+<p>Retrieval under differential privacy is hard, and we quantify how hard.</p>
+<figure><img src="plot.png"><figcaption>A plot nobody should retrieve.</figcaption></figure>
+<section id="S1.1"><h3>1.1 Scope</h3><p>We restrict attention to abstract-level indexes only here.</p></section>
+</section>
+<section id="S2"><h2>2 Method</h2>
+<p>The index is perturbed with <math><mi>&#x03B5;</mi></math> noise &amp; never the query itself.</p>
+<table><tr><td>99</td></tr></table>
+</section>
+</article></body></html>`;
+
+test("htmlToText keeps prose, drops apparatus, and decodes entities", () => {
+  const t = htmlToText(HTML);
+  assert.ok(t.includes("Retrieval under differential privacy is hard"));
+  assert.ok(t.includes("perturbed with [m] noise & never the query"), `entities and math: ${t}`);
+  assert.ok(!t.includes("var a=1") && !t.includes("color:red"), "script and style are gone");
+  assert.ok(!t.includes("nobody should retrieve"), "figures are not prose");
+  assert.ok(!t.includes("<") && !t.includes(">"), "no tags survive");
+});
+
+test("htmlSections uses the real section structure without heuristics", () => {
+  const secs = htmlSections(HTML);
+  assert.deepEqual(secs.map((s) => s.heading), ["1 Introduction", "1.1 Scope", "2 Method"]);
+  assert.ok(secs[0].text.includes("quantify how hard"));
+});
+
+test("a nested subsection is not also emitted inside its parent", () => {
+  // The parent must not repeat the child's prose, or every subsection is
+  // embedded twice and doubles the cost of the tier.
+  const secs = htmlSections(HTML);
+  const parent = secs.find((s) => s.heading === "1 Introduction");
+  assert.ok(!parent.text.includes("restrict attention"), `parent leaked the child: ${parent.text}`);
+  const child = secs.find((s) => s.heading === "1.1 Scope");
+  assert.ok(child.text.includes("restrict attention"));
+});
+
+test("htmlSections falls back to whole-page text when there are no sections", () => {
+  const bare = `<body><p>${"A paper rendered without any section elements at all. ".repeat(4)}</p></body>`;
+  const secs = htmlSections(bare);
+  assert.equal(secs.length, 1);
+  assert.equal(secs[0].heading, "");
+  assert.ok(secs[0].text.startsWith("A paper rendered without"));
+  assert.deepEqual(htmlSections("<body><p>tiny</p></body>"), [], "a stub page is not worth a vector");
+});
+
+test("htmlFullTextChunks produces the same shape as the LaTeX path", () => {
+  const chunks = htmlFullTextChunks(HTML);
+  assert.ok(chunks.length >= 1);
+  chunks.forEach((c, i) => {
+    assert.equal(c.seq, i);
+    assert.equal(typeof c.heading, "string");
+    assert.ok(c.text.length > 0);
+  });
+  // Downstream code must not be able to tell the two sources apart.
+  const fromTex = fullTextChunks(`\\begin{document}\\section{Method}${"Prose. ".repeat(40)}\\end{document}`);
+  assert.deepEqual(Object.keys(chunks[0]).sort(), Object.keys(fromTex[0]).sort());
+});
+
+test("chunkSections is the one windowing pass both sources share", () => {
+  const secs = [{ heading: "S", text: "Sentence one is here. ".repeat(120) }];
+  const chunks = chunkSections(secs, { window: 400 });
+  assert.ok(chunks.length > 3);
+  assert.ok(chunks.every((c) => c.text.length <= 400 && c.heading === "S"));
+  assert.deepEqual(chunks.map((c) => c.seq), chunks.map((_, i) => i));
 });

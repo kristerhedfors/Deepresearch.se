@@ -9,12 +9,11 @@
 // This tier holds ~52 vectors per paper over the body and answers "what does
 // section 4 say" — but only for papers something has actually asked to read.
 //
-// Why on demand rather than a bulk build, in one line each (docs/ARXIV-RAG.md
-// §9 has the measurements): the whole corpus would be 13.3M vectors, past
-// Vectorize's 10M per-index limit; ~1.2 TB of source, which has to come from
-// arXiv's requester-pays S3 bucket rather than by crawling; ~18 h and ~€89.
-// On demand it is ~101 KB, ~5 s and ~€0.0004 per paper, and the cache warms
-// exactly where the research goes.
+// On demand costs ~133 KB, ~5 s and ~€0.0004 per paper, and the cache warms
+// exactly where the research goes. A whole-corpus build is also possible and
+// entirely Cloudflare-native — see docs/ARXIV-RAG.md §9.9; the ~1.2 TB / AWS
+// figure in earlier revisions of §9.2 was wrong, because it assumed the source
+// tarball. arXiv's own HTML rendering is 7x smaller and needs no credentials.
 //
 // Storage is one self-contained blob per paper, deliberately shaped like an R2
 // object so moving this to R2 is a put/get swap and nothing else:
@@ -34,18 +33,23 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { PASSAGE_PREFIX, b64ToInt8, fullTextChunks, fullTextPassage, int8ToB64, latexBody, quantizeInt8 } from "../public/js/arxiv-rag-core.js";
+import { PASSAGE_PREFIX, b64ToInt8, fullTextChunks, fullTextPassage, htmlFullTextChunks, int8ToB64, latexBody, quantizeInt8 } from "../public/js/arxiv-rag-core.js";
 import { EMBED_MODEL, embedAll } from "./embed-providers.mjs";
 
 const run = promisify(execFile);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const FULLTEXT_DIR = join(ROOT, "data/arxiv/fulltext");
 
-// arXiv asks that bulk downloading go through its requester-pays S3 bucket
-// rather than this endpoint. On-demand fetching of the handful of papers one
-// research run actually reads is ordinary use; a loop over the corpus is not.
-// The concurrency cap and the polite delay below keep it the former.
+// Two sources, HTML first (see fetchRenderedHtml). arXiv asks that BULK
+// downloading of the e-print tarballs go through its requester-pays S3 bucket
+// rather than this endpoint; on-demand fetching of the handful of papers one
+// research run actually reads is ordinary use. The concurrency cap and the
+// polite delay below keep it the former.
+const HTML_RENDER = "https://arxiv.org/html/";
 const EPRINT = "https://export.arxiv.org/e-print/";
+// A rendered paper is ~0.43 MB; the biggest are a few MB. Anything past this is
+// not prose, and a Worker has 128 MB to live in.
+const MAX_HTML_BYTES = 12_000_000;
 const UA = "deepresearch.se-arxiv-fulltext/1.0 (+https://deepresearch.se)";
 const FETCH_CONCURRENCY = 3;
 const POLITE_DELAY_MS = 400;
@@ -130,6 +134,31 @@ export async function fetchLatex(id) {
 }
 
 /**
+ * arXiv's own HTML rendering — the PRIMARY source. Measured over 30 papers:
+ * 87% coverage against LaTeX's 93%, but they fail on DIFFERENT papers, so
+ * trying HTML then LaTeX covered 100%. HTML also yields more text (49,902 vs
+ * 44,558 chars), finer sections (26 vs 21) and 7x less transfer (0.43 MB vs a
+ * 3.07 MB tarball) — and needs no gzip and no tar, which is what makes this
+ * path runnable inside a Cloudflare Worker.
+ * @param {string} id
+ * @returns {Promise<string>}
+ */
+export async function fetchRenderedHtml(id) {
+  try {
+    const res = await fetch(HTML_RENDER + id, { headers: { "user-agent": UA } });
+    if (!res.ok) return "";
+    const len = Number(res.headers.get("content-length") || 0);
+    if (len > MAX_HTML_BYTES) return "";
+    const html = await res.text();
+    if (html.length > MAX_HTML_BYTES) return "";
+    // A paper with no rendering still answers 200 with a stub page.
+    return /<section\b|<article\b/i.test(html) ? html : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
  * Build (or return) one paper's full-text blob.
  * @param {string} id
  * @param {{ force?: boolean, provider?: string }} [opts]
@@ -140,10 +169,21 @@ export async function warmPaper(id, opts = {}) {
     const blob = JSON.parse(await readFile(blobPath(id), "utf8"));
     return { id, chunks: blob.chunks?.length || 0, cached: true, ok: true };
   }
-  const tex = await fetchLatex(id);
-  if (!tex) return { id, chunks: 0, cached: false, ok: false, reason: "no LaTeX source (PDF-only submission)" };
-  const chunks = fullTextChunks(tex);
-  if (!chunks.length) return { id, chunks: 0, cached: false, ok: false, reason: "no extractable body text" };
+  // HTML first, LaTeX second — they fail on different papers, so the pair
+  // leaves almost nothing behind.
+  let source = "html";
+  let chunks = htmlFullTextChunks(await fetchRenderedHtml(id));
+  if (chunks.length < 3) {
+    const tex = await fetchLatex(id);
+    const fromTex = tex ? fullTextChunks(tex) : [];
+    if (fromTex.length > chunks.length) {
+      chunks = fromTex;
+      source = "latex";
+    }
+  }
+  if (!chunks.length) {
+    return { id, chunks: 0, cached: false, ok: false, reason: "neither an HTML rendering nor usable LaTeX source" };
+  }
   const { vectors } = await embedAll(chunks.map((c) => PASSAGE_PREFIX + fullTextPassage(c)), {
     model: EMBED_MODEL,
     provider: opts.provider,
@@ -157,12 +197,12 @@ export async function warmPaper(id, opts = {}) {
       model: EMBED_MODEL,
       dims: vectors[0]?.length || 0,
       built: new Date().toISOString(),
-      source: "latex",
+      source,
       chunks,
       vectors: vectors.map((v) => int8ToB64(quantizeInt8(v))),
     }),
   );
-  return { id, chunks: chunks.length, cached: false, ok: true };
+  return { id, chunks: chunks.length, cached: false, ok: true, source };
 }
 
 /**
@@ -254,7 +294,7 @@ async function main() {
     provider: get("--embed-provider", ""),
     onEach: (r) => {
       if (r.ok) ok++;
-      process.stdout.write(`  ${r.id}  ${r.ok ? `${String(r.chunks).padStart(3)} chunks${r.cached ? " (cached)" : ""}` : `SKIPPED — ${r.reason}`}\n`);
+      process.stdout.write(`  ${r.id}  ${r.ok ? `${String(r.chunks).padStart(3)} chunks${r.source ? ` via ${r.source}` : ""}${r.cached ? " (cached)" : ""}` : `SKIPPED — ${r.reason}`}\n`);
     },
   });
   console.log(`\n${ok}/${res.length} papers warmed in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
