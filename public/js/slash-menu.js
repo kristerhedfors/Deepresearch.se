@@ -11,7 +11,7 @@
 // language, and where the highlight moves), so this file only draws and
 // listens; the behaviour is unit-tested without a DOM.
 //
-// Interaction (UX-14, the ux-conventions registry):
+// Interaction (UX-15, the ux-conventions registry):
 //   · a "/" typed as the FIRST character of the composer opens the list;
 //   · typing filters it, and the moment the text stops being a bare command
 //     token — an argument is being written, or the slash isn't at position 0 —

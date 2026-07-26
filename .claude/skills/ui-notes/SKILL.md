@@ -180,7 +180,7 @@ description: >-
   `<button type="button">` so they never submit the form they live in, and the
   markup/CSS is mirrored in `public/css/app.css` and `public/cure/drc.css`
   because the two stylesheets never load together. The behaviour rules — what
-  opens it, what closes it, why Enter can pick without sending — are UX-14 in
+  opens it, what closes it, why Enter can pick without sending — are UX-15 in
   the **ux-conventions** skill. Both `/js/slash-core.js` and `/js/slash-menu.js`
   must stay in `isPublicAsset` (`src/assets.js`) or the /cure module graph goes
   dark.
