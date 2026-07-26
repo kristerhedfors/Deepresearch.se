@@ -1006,3 +1006,83 @@ the search phase.
   model through `router.huggingface.co` is billed, requires the token, and is
   one provider inside the Models agent's lifecycle — see the **models-agent**
   skill.
+
+## arXiv search — a search-phase source (no knob)
+
+`src/arxiv.js` + the `arxiv` entry in `src/search-sources.js`: when the latest
+user message asks about scientific literature, each search wave also queries
+the arXiv API and the preprints join the numbered source registry as ordinary
+citable sources. No knob and no key — like Exa and the HF Hub, only the
+AI-derived search terms cross the wire, the API is free, and it is gated behind
+the web-search toggle by virtue of living in the search phase.
+
+Added 2026-07-26 after a reported failure: "Latest on llm swarm reasoning and
+how many agents … become smarter than just one" ran ONE web search and never
+asked arXiv, although the sources it did return were an `arxiv.org/html/…`
+page, a `doi.org/…/arxiv` link and a bare `https://arxiv.org/pdf/2510.10047`
+with no title at all. arXiv was never wired into `/api/chat`; the only arXiv
+work in the repo was the offline CLI RAG database (`docs/ARXIV-RAG.md`), whose
+335 MB of vectors a Worker cannot reach.
+
+- **Intent** (`arxivIntent`, two tiers like `hfIntent`): explicit
+  arXiv/preprint/e-print vocabulary and arXiv ids fire ALONE; so does
+  scientific-literature vocabulary (papers/publications/studies/peer-reviewed/
+  citations/literature/research + `forskning`/`artiklarna`/`studier`/
+  `referentgranskad`/`avhandling`/`rön`), whatever the topic. Research phrasing
+  ("latest", "outperforms", "state of the art", "how many … work together",
+  `senaste`/`framsteg`/`forskningsläget`/`bevis`/`smartare`) fires only WITH a
+  scientific topic word, drawn from arXiv's own archive vocabulary, so "the
+  latest iPhone" and "latest news about the election" stay out. EN+SV parity
+  tested in `arxiv.test.js` — and the parity test earned its keep immediately:
+  `artiklarna`, the definite plural and the most natural Swedish phrasing, was
+  missed by an `\bartiklar?\b` alternation.
+- **Query grammar — the trap that silently returns nothing** (established by
+  probing the live endpoint, 2026-07-26; all numbers measured):
+  - `all:"multi word phrase"` returns **0 results, always** —
+    `all:"llm swarm reasoning"` → 0. A quoted phrase in the catch-all field
+    matches nothing. This is the shape a naive integration writes first.
+  - Unquoted spaces inside a field are **OR, not AND**:
+    `all:llm+swarm+reasoning` → 163,854 hits, byte-identical to the explicit
+    OR query, top hit a mobile-robot paper with no LLM content. Adding words
+    makes it worse: `+research+2026` → 511,207.
+  - `abs:"term" AND abs:"term" …` is the form that works, and multi-word
+    phrases DO quote correctly in a fielded term (`abs:"collective
+    intelligence"` → 75 relevant hits). Widths on the same question: 2 terms →
+    113 hits, 3 → 37, 4 → 26, **6 → 0**. Hence `arxivTerms` (noise stripping)
+    + `arxivAttempts` (a bounded 4→2-term ladder that drops from the tail and
+    stops on the first rung with hits).
+  - A bare year is the single worst noise term — AND-ing "2026" in was what
+    pushed the reported query to 511k junk hits. Stripped, along with generic
+    research nouns (model/method/framework/system) that match nearly every
+    abstract and would spend a ladder slot without narrowing anything.
+  - An explicit arXiv id short-circuits the ladder into `id_list`.
+- **Ordering: relevance only — date ordering was tried and lost.**
+  `sortBy=submittedDate` destroys relevance on a broad set, and re-sorting one
+  AND-narrowed relevance slice by date locally demoted the two most on-point
+  papers out of the top 5 in favour of newer but tangential UAV-swarm work. The
+  softer variant (prefer the last 18 months, relevance-stable within the
+  bucket) measured a **no-op** — every hit in a realistic slice is already
+  inside that window, because the corpus grows. So there is no local
+  re-ordering at all; recency reaches the model as data instead, on each item's
+  metadata highlight.
+- **Parsing:** Workers have no `DOMParser`, so the Atom feed is cut up by regex
+  (`arxivParseFeed`). `&amp;` is decoded LAST, or `&amp;lt;` would become `<`.
+  Junk in → `null` out (`arxivMapEntry`), never a throw.
+- **Diversity:** `arxiv.org` URLs are capped per PAPER
+  (`arxiv.org/<id>`, with `abs`/`pdf`/`html` and `v2` suffixes collapsing to
+  one key), not per hostname — otherwise the 3-per-domain cap would collapse
+  the whole archive into 3 slots, and arXiv's own hits would fight the
+  arxiv.org pages Exa returns for the same three.
+- **Prompt layer:** `arxivPromptNote` forbids clarifying "arxiv" (the trap that
+  killed `Latest on cybersecurity on hf`) and tells the planner to write at
+  least one angle in plain English technical terms — arXiv abstracts are
+  English, so a Swedish-worded AND query matches nothing. That is invariant 6
+  served by translating the QUERY, not by dropping the source for Swedish.
+- **Eval:** bench questions kind `arxiv` (`tests/bench-questions.mjs`,
+  `arxiv_*` ids), including the reported failure verbatim as a regression case.
+- **Not to be confused with the arXiv RAG database** (`docs/ARXIV-RAG.md`, the
+  **arxiv-rag** skill): same corpus, different retrieval. This section is the
+  live keyword-AND API that runs today; that is dense retrieval + a
+  cross-encoder rerank over a frozen year, with measurably better recall, still
+  waiting on a hosting decision. The registry entry is the seam it slots into —
+  promoting it replaces the fetch inside `arxivSearch` and nothing else.

@@ -21,6 +21,14 @@
 // timing, dedup, caps, SSE events, fail-soft) lives once in pipeline.js's
 // runAuxSearches and is identical for every source.
 
+import {
+  arxivDiversityKey,
+  arxivIntent,
+  arxivPickQuery,
+  arxivPromptNote,
+  arxivSearch,
+  arxivTermKey,
+} from "./arxiv.js";
 import { hfDiversityKey, hfIntent, hfPickQuery, hfPromptNote, hfSearch, hfTermKey } from "./hf.js";
 
 /**
@@ -93,6 +101,18 @@ export const SEARCH_SOURCES = [
     promptNote: hfPromptNote,
     diversityHost: "huggingface.co",
     diversityKeyOf: hfDiversityKey,
+  },
+  {
+    id: "arxiv",
+    intent: arxivIntent,
+    search: arxivSearch,
+    service: "arXiv",
+    pickQuery: arxivPickQuery,
+    dedupKey: arxivTermKey,
+    maxPerRequest: 3,
+    promptNote: arxivPromptNote,
+    diversityHost: "arxiv.org",
+    diversityKeyOf: arxivDiversityKey,
   },
 ];
 

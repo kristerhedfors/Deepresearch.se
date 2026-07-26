@@ -12,8 +12,19 @@ number below came out of `scripts/arxiv-eval.mjs`; where a pipeline was tried
 and lost, it is written down as tried and lost rather than quietly dropped.
 
 Status: **experimental, local-only.** The database is built and searched from
-the CLI. Nothing here is wired into `/api/chat` yet — see [What this is
-for](#7-what-this-is-for).
+the CLI, and its vectors are not hosted anywhere a Worker can reach — see
+[What this is for](#7-what-this-is-for).
+
+**arXiv IS searchable from `/api/chat` as of 2026-07-26 — through a different
+door.** `src/arxiv.js` is a live-API search source in the pipeline's registry:
+it queries arxiv.org directly, needs no hosted index and no key, and its hits
+join the numbered source registry like any other. That closed the reported gap
+(a research question about LLM swarm reasoning ran five web searches, cited a
+bare `arxiv.org/pdf/…` URL with no title, and never asked arXiv). The two tiers
+are complementary, not competing: the live API does keyword-AND retrieval over
+current metadata, this database does dense retrieval plus a cross-encoder
+rerank over a frozen year — measurably better recall, once §7's hosting
+question is answered. The registry entry is the seam the RAG tier slots into.
 
 ---
 
@@ -441,7 +452,20 @@ The point of the database is deep research over scientific literature, which
 means the next step is a research source in the pipeline (the
 **add-research-source** skill has the end-to-end shape: intent routing, the
 triage-prompt layer, registry and diversity wiring, SSE visibility, the
-validation ladder). Three things have to be decided before that, and the
+validation ladder).
+
+**That source now exists** (`src/arxiv.js`, 2026-07-26) — but it serves the
+LIVE arXiv API, not this database, precisely because question 1 below is still
+open. Everything the source built is reusable by this tier: the intent
+predicate, the planner prompt note, the registry entry, the per-paper diversity
+key and the item shape are all retrieval-agnostic, so promoting the RAG index
+into it means replacing the fetch inside `arxivSearch` and nothing else. What
+the live tier does NOT give is this database's measured recall: keyword-AND over
+abstracts is a much blunter instrument than dense retrieval plus a
+cross-encoder rerank, and it cannot answer a question whose phrasing shares no
+vocabulary with the paper.
+
+Three things have to be decided before this tier serves traffic, and the
 measurements above decide two of them:
 
 1. **Where the index lives.** 335 MB of vectors and 506 MB of metadata do not
