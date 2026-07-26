@@ -41,7 +41,7 @@ commands, their output and the mounted files pass through it. That is admissible
 on **Se/rver**, where the server sits inside the trust boundary (owner directive,
 2026-07-24), and inadmissible on **Se/cure**, whose whole posture is that the
 server is in no data path. So it is offered on the signed-in tier only, and the
-refusal is enforced in code rather than by convention — twice:
+refusal is in code rather than in convention — twice:
 
 - `selectRunner` in `public/js/exec-backends-core.js` requires an explicit
   `tier:"server"`. Se/cure passes `tier:"secure"` (`drc-research.js`
@@ -121,7 +121,7 @@ small script that installs the project symlink. `tar -xf - -C /` then lands the
 archive exactly where the VM's seed script puts it, and `tar`'s default refusal
 of `..` members means a hand-crafted archive cannot walk out of the tree.
 
-**The source tree is the one asymmetry, and deliberately so.** The snapshot is
+**The source tree is the one asymmetry, on purpose.** The snapshot is
 ~11 MB. The browser VM tars the copy it already fetched; a *local* runner is not
 asked for `/src` at all; and the platform container seeds it **server-side**,
 reading `public/introspect/source-snapshot.json` through the `ASSETS` binding
@@ -131,7 +131,7 @@ guarantee introspection makes. It is stamp-guarded exactly like the VM's seed
 (`sourceStamp` over path+size), and the guard reads the stamp from the
 CONTAINER rather than from Durable Object memory, so the second send in a
 conversation extracts nothing even if the Durable Object was evicted in between.
-`sdk/` is part of the snapshot, so `/src/sdk` is the SDK mount — 
+`sdk/` is part of the snapshot, so `/src/sdk` is the SDK mount:
 `node /src/sdk/pair-cli.mjs list` works there as it does in the VM.
 
 Mounting is **not** part of the boot verdict (invariant 2): a runner that is up
@@ -292,14 +292,13 @@ execution): what each choice hands to whom.
 | Isolation boundary | WASM sandbox | container/VM | container/VM | **none** | per-instance VM (Cloudflare runs each container in its own VM) |
 | Available in Se/cure | yes | yes | yes | yes | **no** |
 
-The cloud container's row is the honest cost of the convenience it buys: no
-setup, native speed, and a machine that is already next to the pipeline — paid
-for by putting the commands and the mounted files through this server. On the
-signed-in tier that is where the conversation, its attachments and its project
-already are (cloud storage is implicit on Se/rver), so the container does not
-widen the trust boundary; it works inside the one already drawn. On Se/cure it
-would break the only promise that tier makes, which is why it isn't offered
-there.
+That last column is what the convenience costs. No setup, native speed and a
+machine already next to the pipeline, paid for by putting the commands and the
+mounted files through this server. On the signed-in tier that is where the
+conversation, its attachments and its project already sit (cloud storage is
+implicit on Se/rver), so the container works inside the trust boundary already
+drawn there. On Se/cure it would break the only promise that tier makes, which
+is why it isn't offered there.
 
 A container is a boundary against a mistaken or misled command; it is not a
 guarantee against a determined escape. `BACKEND=host` has no boundary at all and
@@ -324,7 +323,7 @@ exactly the kind of fact this project writes down rather than leaves to be
 assumed.
 
 The cloud container has nothing to configure, but it keeps the button, because
-"is a container available to me right now" has three different answers: this
+"is a container available to me right now" has three answers: this
 deploy has no container binding, the execution-sandbox knob is still off, or yes
 — and the endpoint says which. A runner that answers `ok:false` **with a reason**
 has its reason relayed verbatim rather than replaced by a generic line.
@@ -357,8 +356,8 @@ the signed-in tier only and never in DeepResearch.**Se/cure**.
 
 ## 8. The fences on a server-side container
 
-Someone else's compute is being spent, so the bounds are explicit rather than
-implied. Per session, in the Durable Object (`src/exec-container.js`):
+This spends someone else's compute, so the bounds are written down. Per session,
+in the Durable Object (`src/exec-container.js`):
 
 | Fence | Value | Why |
 |---|---|---|
@@ -366,7 +365,7 @@ implied. Per session, in the Durable Object (`src/exec-container.js`):
 | Session lifetime | 1 h | Recycled on the next command after that, so "ephemeral" keeps meaning something for a tab left open all day. |
 | Command budget | 400 | Per session, persisted in Durable Object storage so an eviction does not reset it. |
 | Per-command timeout | ≤ 120 s | Ours, not the platform's: `container.exec` has no timeout, so a bounded race kills the process and returns exit 124 — the same code the VM and the local runner use. |
-| Output per command | ≤ 2 MB (client asks for far less) | Decoded on a byte boundary with `truncated` set honestly. |
+| Output per command | ≤ 2 MB (client asks for far less) | Decoded on a byte boundary, with `truncated` set when the cap bit. |
 | Mount archive | ≤ 48 MB | Rejected before the body is read. |
 | Readiness wait | ≤ 20 s | `start()` does not block until ready and `exec` throws until it is, so readiness is probed with `true` until it works. |
 
@@ -377,8 +376,7 @@ on EU-jurisdiction infrastructure, matching where the primary LLM provider runs.
 ## 9. Enabling the cloud container (owner)
 
 It ships **switched off**, and `wrangler.toml`'s `[[containers]]` +
-`durable_objects` + `migrations` block is commented out on purpose. Two reasons,
-both learned the hard way:
+`durable_objects` + `migrations` block is commented out on purpose. Two reasons:
 
 1. **A binding whose resource does not exist fails EVERY deploy** — the same
    failure class as the round-4 `cpu_ms` rejection and the R2/Vectorize bindings
@@ -437,8 +435,8 @@ knobs behave without their keys.
   widely.
 - **`max_instances` is a hard error, not a queue.** A request that would exceed it
   fails to start a container. That currently surfaces as a boot failure ("the
-  Linux container couldn't be started"), which is honest but blunt; a queue or a
-  "come back in a moment" would be kinder.
+  Linux container couldn't be started"), which is accurate but blunt; a queue or
+  a "come back in a moment" would be kinder.
 - **No per-account daily budget.** The per-session fences plus `max_instances`
   are the whole cost story today. If the environment is opened to every account,
   a D1-backed daily command counter belongs next to the quota model.

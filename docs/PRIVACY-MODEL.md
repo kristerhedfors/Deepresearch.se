@@ -237,15 +237,14 @@ endpoint for the same browser-side call.
 
 The third, an ephemeral Cloudflare Container this platform starts per
 conversation (`src/exec-container.js`), **does** put the server in the path: it
-runs the commands. That is stated, not smoothed over, and it is bounded by
-tier rather than by policy:
+runs the commands. What that costs is bounded by tier, not by policy:
 
 - **Se/rver: admissible, and not an exception.** The server is inside the trust
   boundary on this tier (owner directive, 2026-07-24), and the conversation, its
   attachments and its project are already stored there (cloud storage is implicit).
-  A container that runs `grep` over those same files does not widen the boundary
-  already drawn — so this is not a new crossing to count, it is work done inside
-  an existing one. The commands, their output and the pushed mount archive are
+  A container that runs `grep` over those same files works inside the boundary
+  already drawn, so there is no new crossing to count. The commands, their
+  output and the pushed mount archive are
   server-visible while the container lives; the container's disk is ephemeral and
   destroyed with it (idle reaper, session lifetime, or `DELETE` on New chat).
 - **Se/cure: refused, in code, twice.** `selectRunner`
@@ -258,10 +257,10 @@ tier rather than by policy:
   channel. Pinned by `public/js/exec-backends-core.test.js`.
 
 The container starts with `enableInternet:false` — no internet, no LAN, matching
-the browser VM — and on EU-jurisdiction infrastructure. What each environment
-hands to whom is tabulated in `docs/EXECUTION-ENVIRONMENTS.md` §5; the option is
-absent entirely on a deploy without the (optional, off-by-default) container
-binding.
+the browser VM — and on EU-jurisdiction infrastructure. The table in
+`docs/EXECUTION-ENVIRONMENTS.md` §5 says what each environment hands to whom. On
+a deploy without the (optional, off-by-default) container binding the option is
+absent entirely.
 
 ## Compute sharing — peer-operated upstream (2026-07-23, PROPOSED framing, owner sign-off pending)
 
