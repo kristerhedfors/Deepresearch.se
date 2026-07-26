@@ -1,9 +1,9 @@
 # Dependencies
 
 Every dependency this project has, of every kind: the JavaScript libraries the
-browser loads, the network services the Worker calls, the Cloudflare platform
-bindings it binds to, the dev-only tooling, and the large data blobs some
-features stream at runtime.
+browser loads, the network services the Worker calls, the Cloudflare resources
+it binds to, the dev-only tooling, and the large data blobs some features
+stream at runtime.
 
 The short version:
 
@@ -12,11 +12,11 @@ The short version:
   is no build step and no bundler, so there is no transitive tree to audit
   (invariant 5 in `CLAUDE.md`).
 - **Seven third-party JavaScript libraries**, all hand-vendored into
-  `public/vendor/` and served same-origin. 41.25 MiB on disk, of which 35.42
-  MiB is the two on-device-inference WASM blobs that only download when a user
+  `public/vendor/` and served same-origin. 41.25 MiB on disk, of which 34.82
+  MiB is the two on-device-inference WASM blobs that only load when a user
   explicitly opts into phone-local inference. A normal page load pays 69.7 KiB
   (23.3 KiB gzipped) for two of them.
-- **Four external things still load at runtime, and two of them execute
+- **Five external things still load at runtime, and two of them execute
   JavaScript in our origin.** They are listed in §2 and flagged there. The
   intent is that nothing third-party executes from a host we do not control;
   we are not there yet.
@@ -36,17 +36,17 @@ sandbox without a login.
 
 | Library | Version | Files | On disk | Gzipped | License | Loads when | Why it is here |
 |---|---|---|---|---|---|---|---|
-| **marked** | 18.0.5 | `marked.min.js` | 42.9 kB | 13.0 kB | MIT | **Every page load** (classic `<script>` in `index.html`, `cure/index.html`, `story/`, `docs/`) | Answers arrive as Markdown and have to render as prose, tables, and code blocks. Writing a Markdown parser that handles what a model emits is not a weekend job, and getting it subtly wrong is an XSS surface. |
-| **DOMPurify** | 3.4.11 | `purify.min.js` | 28.4 kB | 10.6 kB | Apache-2.0 / MPL-2.0 | **Every page load**, alongside marked | The one that is not optional. Rendered answers contain untrusted model output and untrusted web-search content. DOMPurify sanitizes the HTML marked produces. With the CSP off (§2.4), it is the sole XSS defence — `SECURITY-RISKS.md` R-10 calls it out for exactly that reason. |
-| **mermaid** | 11.16.0 | `mermaid.min.js` | 3.40 MiB | 959 kB | MIT | Lazily, only when a rendered answer contains a ` ```mermaid ` fence (`public/js/markdown.js:281`) | Diagrams-as-text is something models are good at, and a rendered flow diagram answers architecture questions better than a paragraph. It is the largest non-WASM library here, which is why it is behind a fence check rather than in the base load. |
-| **jsPDF** | 2.5.2 | `jspdf.umd.min.js` | 366 kB | 117 kB | MIT | Lazily, on the first "export as PDF" click (`public/js/report.js:18`) | Exports a finished answer as a branded PDF report. Generating a real PDF from scratch is not worth writing; injecting it on first use only means the normal page load never pays for it. |
-| **pdf.js** | 3.39.0 | `pdfjs/pdf.min.mjs`, `pdfjs/pdf.worker.min.mjs` | 1.73 MiB | 520 kB | Apache-2.0 | Lazily, on the first PDF attachment (`public/js/docs.js:82`) | Users attach PDFs and expect the text to reach the pipeline. Extraction has to happen client-side to keep the file out of the server on the Se/cure tier. The worker file is 1.35 MiB of that total and is fetched by pdf.js itself, not by us. |
-| **xterm.js** | 5.5.0 (+ `addon-fit` 0.10.0) | `xterm/xterm.js`, `xterm/xterm.css`, `xterm/addon-fit.js` | 296 kB | 69 kB | MIT | When the execution sandbox opens (`public/js/sandbox.js:70`) | The terminal the in-browser Linux VM renders into. Vendored on 2026-07-15 specifically because it used to load from `cdn.jsdelivr.net`, which put the most regression-prone feature in the product at the mercy of a CDN outage. |
-| **transformers.js** (`@huggingface/transformers`) | 4.2.0, bundling **onnxruntime-web** 1.26.0-dev.20260416-b7804b056c | `transformers/transformers.min.js`, plus four `ort-wasm-simd-threaded*` files | 35.42 MiB | 8.85 MiB | Apache-2.0 (transformers.js), MIT (onnxruntime-web) | Only inside the on-device inference Web Worker, after the user consents to a model download (`public/js/ondevice-worker.js:358`) | Runs 1-bit Bonsai models on WebGPU entirely inside the browser — the strongest privacy position the project has, since no prompt leaves the device at all. The 35 MiB is 12.9 MiB + 23.6 MiB of onnxruntime WASM; nothing imports it until the settings drawer's explicit download flow runs. |
+| **marked** | 18.0.5 | `marked.min.js` | 41.9 KiB | 13.0 KiB | MIT | **Every page load** (classic `<script>` in `index.html`, `cure/index.html`, `story/`, `docs/`) | Answers arrive as Markdown and have to render as prose, tables, and code blocks. Writing a Markdown parser that handles what a model emits is not a weekend job, and getting it subtly wrong is an XSS surface. |
+| **DOMPurify** | 3.4.11 | `purify.min.js` | 27.8 KiB | 10.3 KiB | Apache-2.0 / MPL-2.0 | **Every page load**, alongside marked | The one that is not optional. Rendered answers contain untrusted model output and untrusted web-search content. DOMPurify sanitizes the HTML marked produces. With the CSP off (§2.4), it is the sole XSS defence — `SECURITY-RISKS.md` R-10 calls it out for exactly that reason. |
+| **mermaid** | 11.16.0 | `mermaid.min.js` | 3.40 MiB | 959 KiB | MIT | Lazily, only when a rendered answer contains a ` ```mermaid ` fence (`public/js/markdown.js:281`) | Diagrams-as-text is something models are good at, and a rendered flow diagram answers architecture questions better than a paragraph. It is the largest non-WASM library here, which is why it is behind a fence check rather than in the base load. |
+| **jsPDF** | 2.5.2 | `jspdf.umd.min.js` | 357 KiB | 114 KiB | MIT | Lazily, on the first "export as PDF" click (`public/js/report.js:18`) | Exports a finished answer as a branded PDF report. Generating a real PDF from scratch is not worth writing; injecting it on first use only means the normal page load never pays for it. |
+| **pdf.js** | 3.39.0 | `pdfjs/pdf.min.mjs`, `pdfjs/pdf.worker.min.mjs` | 1.73 MiB | 519 KiB | Apache-2.0 | Lazily, on the first PDF attachment (`public/js/docs.js:82`) | Users attach PDFs and expect the text to reach the pipeline. Extraction has to happen client-side to keep the file out of the server on the Se/cure tier. The worker file is 1.35 MiB of that total and is fetched by pdf.js itself, not by us. |
+| **xterm.js** | 5.5.0 (+ `addon-fit` 0.10.0) | `xterm/xterm.js`, `xterm/xterm.css`, `xterm/addon-fit.js` | 290 KiB | 69.0 KiB | MIT | When the execution sandbox opens (`public/js/sandbox.js:70`) | The terminal the in-browser Linux VM renders into. Vendored on 2026-07-15 specifically because it used to load from `cdn.jsdelivr.net`, which put the most regression-prone feature in the product at the mercy of a CDN outage. |
+| **transformers.js** (`@huggingface/transformers`) | 4.2.0, bundling **onnxruntime-web** 1.26.0-dev.20260416-b7804b056c | `transformers/transformers.min.js`, plus four `ort-wasm-simd-threaded*` files | 35.42 MiB | 8.85 MiB | Apache-2.0 (transformers.js), MIT (onnxruntime-web) | Only inside the on-device inference Web Worker, after the user consents to a model download (`public/js/ondevice-worker.js:358`) | Runs 1-bit Bonsai models on WebGPU entirely inside the browser — the strongest privacy position the project has, since no prompt leaves the device at all. The 35.42 MiB is 615 KiB of JavaScript plus two onnxruntime WASM blobs, 12.34 MiB and 22.48 MiB; nothing imports it until the settings drawer's explicit download flow runs. |
 
 **Totals.** 41.25 MiB raw / 10.49 MiB gzipped for the whole tree. Excluding the
 two WASM blobs: 6.43 MiB. What a first-time visitor to either tier actually
-downloads: **69.7 kB raw, 23.3 kB gzipped** (marked + DOMPurify). Everything
+downloads: **69.7 KiB raw, 23.3 KiB gzipped** (marked + DOMPurify). Everything
 else is gated behind a feature the user has to reach for.
 
 Two of the seven carry SHA-256 pins in the source comment above their loader
@@ -74,7 +74,7 @@ integrity manifest that substitutes for it.
 ## 2. External runtime loads — ⚠️ FLAGGED
 
 The stated goal is that no third-party code executes on our pages from a host
-we do not control. **Four external loads remain, and the first two execute
+we do not control. **Five external loads remain, and two of them execute
 JavaScript in our origin.** None is accidental; each is recorded below with its
 current status.
 
@@ -88,7 +88,7 @@ https://cxrtnc.leaningtech.com/1.2.6/cx.esm.js
 `sandbox.js:707`. This is the x86 emulator behind the in-browser Linux
 sandbox, and it is a live ES-module import from Leaning Technology's CDN.
 
-**Severity: this is the highest-value flag in this document.** Whoever controls
+**Severity: of everything on this page, look at this one first.** Whoever controls
 that URL can run arbitrary JavaScript in the `deepresearch.se` origin for any
 visitor who opens the sandbox, on both tiers, including the unauthenticated
 Se/cure tier. There is no subresource-integrity hash on a dynamic `import()`,
