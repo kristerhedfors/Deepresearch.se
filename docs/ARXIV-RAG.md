@@ -28,7 +28,9 @@ for](#7-what-this-is-for).
 | Vectors | 1024-d, int8-quantized, **335 MB** |
 | Metadata | 506 MB `papers.jsonl` + a 1.3 MB uint32 offset index |
 | Embedding cost | ~99M prompt tokens ≈ **€3** at Berget's €0.03/1M |
-| Build time | ~30 min at a sustained ~46k prompt-tokens/s |
+| Build time | ~36 min at a sustained ~40k prompt-tokens/s |
+| Lexical index | BM25 over the same text, 722,292 terms |
+| Best pipeline | dense → `bge-reranker-v2-m3`: **87% r@1 / 96% r@10** (EN), **81% / 90%** (SV) |
 
 All of it lives under `data/` (gitignored). The code, the query sets and the
 measurements are committed; the 840 MB of derived data is not.
@@ -55,7 +57,7 @@ harvest ─→ corpus ─→ passages ─→ embed ─→ int8 pack ─┐
 | Harvest | `scripts/arxiv-harvest.mjs` | OAI-PMH, month-sharded, resumable |
 | Corpus | `scripts/arxiv-corpus.mjs` | dedup, filter, deterministic sampling |
 | Build | `scripts/arxiv-index.mjs` | passages → embeddings → binary pack |
-| Search | `scripts/arxiv-search.mjs` | the four retrieval pipelines |
+| Search | `scripts/arxiv-search.mjs` | four retrieval pipelines; `dense_rerank` is the default |
 | Gold set | `scripts/arxiv-goldset.mjs` | LLM-written needle queries, EN+SV |
 | Bake-off | `scripts/arxiv-eval.mjs` | every variant, both query families |
 | Pure core | `public/js/arxiv-rag-core.js` | passages, BM25, RRF, pooling, metrics |
@@ -187,6 +189,98 @@ that the extra tokens do no *harm*. Whether they help "that Bengio paper on
 diffusion" is a question this query set cannot answer.
 
 <!-- RESULTS:B -->
+### 4.3 Experiment B — the retrieval stack at full scale
+
+| pipeline | EN r@1 | EN r@10 | EN MRR | EN nDCG@10 | SV r@1 | SV r@10 | SV MRR | SV nDCG@10 | ms/q |
+|---|---|---|---|---|---|---|---|---|---|
+| `dense_ta` | 72.1 | 89.3 | 78.4 | 0.711 | 63.6 | 80.7 | 69.6 | 0.713 | 1287 |
+| `bm25` | 81.4 | 92.1 | 85.8 | 0.589 | 6.4 | 13.6 | 9.1 | 0.057 | 388 |
+| `hybrid` | 82.1 | 95 | 87.2 | 0.702 | 57.9 | 80 | 63.9 | 0.524 | 1581 |
+| `dense_rerank` | 87.1 | 95.7 | 90.4 | 0.759 | 80.7 | 90 | 83.9 | 0.795 | 3318 |
+| `hybrid_rerank` | 87.9 | 96.4 | 91 | 0.739 | 78.6 | 85 | 80.7 | 0.751 | 3214 |
+| `hyde` | 58.6 | 82.9 | 67.8 | 0.708 | 56.4 | 78.6 | 63.2 | 0.741 | 1187 |
+
+326,814 papers · 140 needle queries · 14 topical queries. r@k and MRR are percentages over the needle set; nDCG@10 is over the graded topical set. Binomial standard error on r@10 at n=140 is about ±4.2 points, so treat smaller gaps as ties.
+<!-- /RESULTS:B -->
+
+#### Read the two query families against each other
+
+On the needle set, BM25 appears to *beat* dense retrieval in English — 81.4
+against 72.1 recall@1 — which is the opposite of what it did at 3k papers. Do
+not believe it. Measuring how much of each query's vocabulary appears in the
+document it was written from explains the whole effect:
+
+| | overlap with the title | overlap with the **abstract body** |
+|---|---|---|
+| English queries | 0.30 | **0.68** |
+| Swedish queries | 0.04 | **0.07** |
+
+The gold-set guard checked queries against **titles**, which is where an LLM
+plagiarises most visibly — but the model writes from the *abstract*, and it
+keeps two-thirds of that vocabulary even while paraphrasing the title away.
+So the English needle set hands BM25 a large lexical head start by
+construction, and the Swedish side hands it nothing at all, because the query
+language and the corpus language differ. BM25's 6.4% on Swedish is not a
+Swedish-language weakness so much as the honest score for exact-term matching
+across languages.
+
+The hand-written topical queries have no such relationship to any document,
+and they say something different:
+
+**Reranking wins, and it is the only stage that helps both languages.**
+`dense_rerank` is best on every unbiased metric — nDCG@10 of 0.759 English and
+**0.795 Swedish**, against 0.711 / 0.713 for plain dense. On the needle set it
+adds 15 points of English recall@1 and 17 of Swedish. A cross-encoder that
+reads the query and the abstract together recovers exactly what a single
+embedding comparison loses, and it does so regardless of the query's language.
+It costs about 2 seconds per query.
+
+**The lexical arm should not be in the default pipeline.** On the graded set
+BM25 alone scores 0.589 English — well below plain dense — and fusing it in
+makes things *worse* than not fusing it, in both languages: `hybrid` 0.702 vs
+dense 0.711 English, 0.524 vs 0.713 Swedish; `hybrid_rerank` 0.739 / 0.751 vs
+`dense_rerank` 0.759 / 0.795. Every apparent hybrid win lives in the needle
+family, which is the family with the lexical bias baked in.
+
+This retired a mechanism that looked worth building. The plan after seeing the
+needle numbers was to weight the BM25 arm by how much of the query's vocabulary
+the index actually contains, so English could have fusion and Swedish could
+skip it. The graded results made it unnecessary: the lexical arm is not
+something to include conditionally, it is something to leave out. `hybrid`
+stays available behind `--pipeline` because exact-term lookups (an acronym, a
+method name, an author) are a real use the topical set does not cover — but it
+is not the default, and the reason is measured rather than assumed.
+
+**HyDE actively hurts.** Having the model write a hypothetical abstract before
+searching drops English recall@1 from 72.1 to 58.6 and leaves the topical
+scores unchanged (0.708 vs 0.711). For finding a *specific* paper, the invented
+abstract's details pull the query vector toward a paper that does not exist.
+It also adds an LLM call per query. Nothing here pays for it.
+
+**Recall degrades with corpus size, as it must.** Plain dense recall@1 falls
+92.1 → 72.1 between 20k and 327k papers on the same queries. That is the number
+to hold on to when reasoning about growth: reranking is what buys it back, and
+it will matter more, not less, as the corpus grows.
+
+### 4.4 What the database is actually good at
+
+Putting both experiments together, the shipped answer is
+**one int8 vector per paper over title + abstract, retrieved dense, reranked
+with `bge-reranker-v2-m3`** — 87% recall@1 and 96% recall@10 against 327k
+papers in English, 81% and 90% in Swedish, nDCG@10 near 0.8 in both.
+
+Concretely, this means:
+
+- **Asking for a specific paper you half-remember works**, in either language,
+  and a Swedish question finds English papers — the reason for a multilingual
+  embedder rather than an English one.
+- **Topical survey questions return a usable first page.** nDCG@10 ≈ 0.78 means
+  the top ten are mostly graded 2–3, not that they are perfect.
+- **Exact-string lookups are the weak spot of the default.** An acronym or a
+  method name is what `--pipeline hybrid` is for.
+- **Anything needing the paper's body is out of scope.** The index holds
+  titles and abstracts. A question whose answer lives in section 4 cannot be
+  retrieved here — that would be a full-text corpus, a different build.
 
 ---
 
@@ -247,7 +341,9 @@ npm run arxiv:index -- --out data/arxiv/index --strategy title_abstract --bm25
 
 # 4. Search it
 npm run arxiv:search -- "how can LLM applications provably protect user data"
-npm run arxiv:search -- --pipeline dense_rerank --top 10 "kvantfelkorrigering med ytkoder"
+npm run arxiv:search -- --top 10 "kvantfelkorrigering med ytkoder"      # Swedish works
+npm run arxiv:search -- --pipeline dense "fast path, skips the reranker"
+npm run arxiv:search -- --pipeline hybrid "MaskSQL"                      # exact-term lookup
 ```
 
 Rebuilding the evaluation:
@@ -302,8 +398,10 @@ measurements above decide two of them:
    fit a Worker. Either Vectorize (which `src/rag.js` already speaks, at
    ~326k vectors) or an R2-backed shard read. Vectorize also removes the
    brute-force scan.
-2. **Which pipeline serves it** — settled below by Experiment B, including
-   the Swedish result, which is the one that constrains the design.
+2. **Which pipeline serves it** — settled: dense retrieval plus a
+   cross-encoder rerank, no lexical arm (§4.3). The rerank is one extra
+   provider call of about 2 s, which fits the existing helper-phase budget and
+   fails soft the same way.
 3. **How freshness is maintained.** The harvester is incremental by
    construction: re-running with a narrow window and appending to the pack is a
    day's worth of new papers, not a rebuild.

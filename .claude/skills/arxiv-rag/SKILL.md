@@ -108,7 +108,41 @@ pipeline that never ran. Log every fallback, and read the log before the table.
 
 **Measure both languages.** A multilingual embedder is only worth its name if
 it is measured multilingually (invariant 6). This is where the sharpest finding
-came from: see `docs/ARXIV-RAG.md` §4 on BM25 and Swedish.
+came from: see `docs/ARXIV-RAG.md` §4.3.
+
+**Check what the synthetic queries overlap with — the ABSTRACT, not just the
+title.** The leak guard here scored queries against titles, and the shipped set
+looked clean at 0.30 mean overlap. But the LLM writes from the *abstract*, and
+the English queries kept **0.68** of the abstract's vocabulary (Swedish: 0.07,
+because the corpus is English). That silently handed BM25 a large head start
+and made it look like the English winner. Always measure query-vs-body overlap
+before believing a lexical retriever's score on a synthetic set, and keep a
+hand-written graded set as the tiebreaker.
+
+## The settled pipeline
+
+Measured over all 326,814 papers, both query families, both languages:
+
+**dense retrieval → `bge-reranker-v2-m3` on the top 50. No lexical arm.**
+87% recall@1 / 96% recall@10 English, 81% / 90% Swedish, nDCG@10 0.759 / 0.795.
+
+- **Reranking is the one stage that reliably pays** — +15 points of English
+  recall@1 and +17 of Swedish over plain dense, and the only stage that helps
+  both languages. ~2 s/query.
+- **Fusing BM25 in makes it WORSE on hand-written queries**, in both languages
+  (`hybrid_rerank` 0.739/0.751 vs `dense_rerank` 0.759/0.795). Every apparent
+  hybrid win lives in the lexically-biased needle family. `hybrid` stays
+  available for exact-term lookups; it is not the default.
+- **HyDE hurts** — English recall@1 72.1 → 58.6, no topical gain, one extra LLM
+  call. Do not re-propose it without new evidence.
+- **Dense recall degrades with corpus size**: recall@1 92.1 at 20k → 72.1 at
+  327k on the same queries. Reranking buys that back and will matter more as
+  the corpus grows.
+
+A mechanism that got retired by measurement: weighting the BM25 arm by the
+query's vocabulary coverage of the index, so English could fuse and Swedish
+could skip it. Unnecessary — the lexical arm is not something to include
+conditionally, it is something to leave out.
 
 ## Rebuild recipes
 

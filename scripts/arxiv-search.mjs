@@ -8,15 +8,22 @@
 // Pipelines mirror the bake-off's variants exactly (scripts/arxiv-eval.mjs), so
 // the thing measured is the thing shipped:
 //
+//   dense_rerank    dense top-50 → bge-reranker-v2-m3   (default)
 //   dense           embed the query, cosine over the packed int8 matrix
 //   hybrid          RRF(dense, BM25) — needs an index built with --bm25
-//   dense_rerank    dense top-50 → bge-reranker-v2-m3
 //   hybrid_rerank   hybrid top-50 → bge-reranker-v2-m3
 //
-// The default is `dense`, and that default is a MEASURED choice, not a
-// conservative one: hybrid's lexical arm helps English marginally and hurts
-// Swedish badly (docs/ARXIV-RAG.md). Reranking is the only stage that reliably
-// improves the top of the list, at ~1 extra second per query.
+// `dense_rerank` is the default because it measured best on every unbiased
+// metric in BOTH languages (docs/ARXIV-RAG.md §4.3): nDCG@10 0.759 EN / 0.795
+// SV against 0.711 / 0.713 for plain dense, and +15/+17 points of recall@1.
+// It costs ~2 s per query; `--pipeline dense` is the fast path.
+//
+// The lexical arm is deliberately NOT in the default. It looks strong on the
+// synthetic needle set only because those queries inherit two-thirds of their
+// vocabulary from the abstract they were written from; on hand-written queries
+// fusing BM25 in scores WORSE than leaving it out, in both languages. `hybrid`
+// stays available for exact-term lookups (an acronym, a method name, an
+// author), which the topical query set does not cover.
 
 import { open, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -97,7 +104,7 @@ export async function readPapers(dir, ids) {
  * @param {{ pipeline?: string, topK?: number, bm25?: any }} [opts]
  */
 export async function search(query, index, opts = {}) {
-  const pipeline = opts.pipeline || "dense";
+  const pipeline = opts.pipeline || "dense_rerank";
   const topK = opts.topK || 10;
   const timings = {};
   let t = Date.now();
@@ -153,11 +160,11 @@ async function main() {
   const flags = new Set(["--index", "--pipeline", "--top"]);
   const query = argv.filter((a, i) => !a.startsWith("--") && !flags.has(argv[i - 1])).join(" ").trim();
   if (!query) {
-    console.log('usage: node scripts/arxiv-search.mjs [--index data/arxiv/index] [--pipeline dense|hybrid|dense_rerank|hybrid_rerank] [--top 10] [--json] "your question"');
+    console.log('usage: node scripts/arxiv-search.mjs [--index data/arxiv/index] [--pipeline dense_rerank|dense|hybrid|hybrid_rerank] [--top 10] [--json] "your question"');
     process.exit(1);
   }
   const dir = join(ROOT, get("--index", "data/arxiv/index"));
-  const pipeline = get("--pipeline", "dense");
+  const pipeline = get("--pipeline", "dense_rerank");
   const topK = Number(get("--top", 10));
 
   const t0 = Date.now();
