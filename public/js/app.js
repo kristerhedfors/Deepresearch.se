@@ -66,6 +66,7 @@ import { initStarters } from "./starters.js";
 import { parseComposerDeepLink } from "./deeplink-core.js";
 import { mountSlashMenu } from "./slash-menu.js";
 import { detectLang } from "./canned-faq.js";
+import { closeModelsBoard, initModelsPanel } from "./models-panel.js";
 
 // ---- Elements -------------------------------------------------------------
 
@@ -375,7 +376,29 @@ function clearOutrospectionFeed() {
   outroFeedMounted = false;
   for (const node of chat.querySelectorAll(".outro-history")) node.remove();
 }
+// The Models agent's LIFECYCLE BOARD (public/js/models-panel.js): the
+// composer's ⚖ button and the sidebar behind it. Wired once at boot; the button
+// is unhidden only in that mode — every other mode picks from the fixed
+// dropdown, and a "browse and verify models" affordance there would promise a
+// lifecycle the mode does not own.
+const modelsBtn = document.getElementById("modelsbtn");
+initModelsPanel({
+  button: modelsBtn,
+  panel: document.getElementById("modelspanel"),
+  close: document.getElementById("modelsclose"),
+  list: document.getElementById("modelslist"),
+  search: /** @type {HTMLInputElement|null} */ (document.getElementById("modelssearch")),
+  allowance: document.getElementById("modelsallowance"),
+  note: document.getElementById("modelsnote"),
+});
+/** @param {string} mode */
+function syncModelsBoard(mode) {
+  if (modelsBtn) modelsBtn.hidden = mode !== "models";
+  if (mode !== "models") closeModelsBoard();
+}
+
 syncModeSelect(cachedChatMode());
+syncModelsBoard(cachedChatMode());
 // A returning outrospection user lands straight on the feed, same as a switch.
 openOutrospectionFeed(cachedChatMode());
 modeSel.addEventListener("change", () => {
@@ -398,6 +421,7 @@ modeSel.addEventListener("change", () => {
   starters?.refresh();
   clearOutrospectionFeed();
   openOutrospectionFeed(mode);
+  syncModelsBoard(mode);
 });
 
 // The web-search popover opens on a press-and-hold of the spiderweb knob

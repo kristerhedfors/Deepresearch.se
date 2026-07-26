@@ -31,7 +31,9 @@ test("registry covers exactly the chat modes, in the same order", () => {
 test("every descriptor declares all distinguishing axes", () => {
   const spinners = new Set(["balloon", "plant"]);
   const chars = new Set(["balloon", "tin", "plant"]);
-  const panels = new Set(["history", "showcase"]);
+  // Three side-panel flavours: plain chat history, SDK mode's build-idea
+  // library, and the Models agent's lifecycle board.
+  const panels = new Set(["history", "showcase", "models"]);
   const backdrops = new Set(["terminal", "graph"]);
   for (const t of Object.values(MODE_THEMES)) {
     assert.ok(typeof t.label === "string" && t.label);

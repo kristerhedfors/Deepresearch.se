@@ -444,7 +444,13 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   const policy = searchPolicyFor(state);
   if (!policy.web) {
     if (quizReq && (await runQuizGeneration(ctx, quizReq))) return;
-    if (!ctx.hasSource && !(policy.auxSources && SEARCH_SOURCES.some((s) => s.intent(ctx.lastUser)))) {
+    // "Applicable" is a source's own intent OR the state's forceAux list — a
+    // mode built AROUND a source (the Models agent) must not fall through
+    // to a sourceless answer just because the message didn't name the hub. The
+    // agent's `auxSources` declaration still outranks both: an agent that says
+    // it uses no auxiliary sources uses none, forced or not.
+    const forcedAux = Array.isArray(/** @type {any} */ (state).forceAux) ? /** @type {any} */ (state).forceAux : [];
+    if (!ctx.hasSource && !(policy.auxSources && SEARCH_SOURCES.some((s) => forcedAux.includes(s.id) || s.intent(ctx.lastUser)))) {
       return runWithoutSearch(ctx);
     }
   }
@@ -1994,7 +2000,14 @@ async function runAuxSearches(ctx, batch, round) {
  */
 async function runAuxSearch(ctx, source, batch, round) {
   const { env, log, emit, state } = ctx;
-  if (!batch.length || !source.intent(ctx.lastUser)) return;
+  // A source normally fires only when the message engages it. `state.forceAux`
+  // is the one override: a mode whose whole identity IS a source (the agent
+  // built around it) lists that source's id and it runs every turn. Generic by
+  // construction — this reads ids off the state and never names one, exactly
+  // like the rest of the registry loop.
+  const forced = Array.isArray(/** @type {any} */ (state).forceAux)
+    && /** @type {any} */ (state).forceAux.includes(source.id);
+  if (!batch.length || (!forced && !source.intent(ctx.lastUser))) return;
   state.aux ||= {};
   const st = (state.aux[source.id] ||= { count: 0, ran: new Set() });
   if (st.count >= (source.maxPerRequest ?? MAX_AUX_SEARCHES_DEFAULT)) return;

@@ -79,6 +79,7 @@ mode; the other two are the client-tier archetype and the template.
 | **Agent Studio** | `sdk` | Se/rver | The mode that *builds* agents (spec id `agent-builder`): describe a flavour, it distils this site into it and publishes it live. |
 | **Orchestrator** | `orchestrator` | Se/rver | A planned team of sub-agents run in parallel waves, merged into one answer. One kind runs *outside* the server: a `swarm` node reasons with many tiny Bonsai models at once in the user's own browser ([`SWARM-REASONING.md`](SWARM-REASONING.md)). |
 | **Outrospection** | `outrospection` | Se/rver | Introspection's mirror image — answers from the standing outward feed of what everyone else shipped. |
+| **Models** | `models` | Se/rver | The agent whose subject is the models themselves, and the lifecycle it owns: discovered → evaluated → enabled. It holds the live catalog of every model this deployment can reach across every provider, with each one's price and its verification checklist — and enabling one puts it in every mode's dropdown. |
 | **Secure** | — | Se/cure | The never-cloud tier — runs wholly in your browser, server in no data path, sealed local state. |
 | **Under Construction** | — | Se/cure | A placeholder — the minimal viable agent (composer + send + an honest notice). The template you copy to start a new one. |
 
@@ -90,13 +91,13 @@ generate in the VM → preview → publish at `/app/<slug>/`.
 
 Four different lists get confused for one another, so here they are side by
 side. The agent list is not the chat-mode dropdown and not the tier split, even
-though five of its entries are now bound to a mode (§4).
+though six of its entries are now bound to a mode (§4).
 
 | The list | Where it lives | What it is | Its entries |
 |---|---|---|---|
 | **Tiers** | the product | The two halves of the platform, split by where the data goes | Se/cure (client, server in no data path), Se/rver (signed-in, cloud) |
-| **Chat modes** | `public/js/chat-mode.js` `CHAT_MODES`, mirrored in `public/js/mode-theme.js` | What the pipeline *does* with a turn — picked in the dropdown | `normal` (Deep Research), `introspection`, `sdk` (Agent Studio), `orchestrator`, `outrospection` |
-| **Agents** | `sdk/AGENTS.json` | Reference AgentSpecs — templates to copy | Research, Introspection, Agent Studio, Orchestrator, Outrospection, Secure, Under Construction |
+| **Chat modes** | `public/js/chat-mode.js` `CHAT_MODES`, mirrored in `public/js/mode-theme.js` | What the pipeline *does* with a turn — picked in the dropdown | `normal` (Deep Research), `introspection`, `sdk` (Agent Studio), `orchestrator`, `outrospection`, `models` (Models) |
+| **Agents** | `sdk/AGENTS.json` | Reference AgentSpecs — templates to copy | Research, Introspection, Agent Studio, Orchestrator, Outrospection, Models, Secure, Under Construction |
 | **Routes** | `public/js/stream.js` `sendMessage` | Where a send is *computed* — not chosen directly, inferred from the model pick and the knobs | server pipeline (`/api/chat`), on-device (`ondevice::` Bonsai), private introspection (own key, browser-direct) |
 
 The fourth row is the one with no user-facing name, and the omission caused a
@@ -208,7 +209,7 @@ the short version:
   "platform": "server",              // "client" | "server" — the tier
   "mode": "normal",                  // a CANONICAL chat mode id, validated against
                                      // chat-mode.js: normal | introspection | sdk |
-                                     // orchestrator | outrospection. "agent-builder"
+                                     // orchestrator | outrospection | models. "agent-builder"
                                      // is NOT accepted here — it survives only as the
                                      // Agent Studio spec's `id` and as a deep-link alias
   "theme": { "--agent-accent": "#3b82f6", … },
@@ -222,7 +223,7 @@ the short version:
     { "type": "depth-slider", "min": 0, "max": 3, "default": 1, "ticks": ["Quick","Standard","Deep","Exhaustive"] },
     { "type": "toggle", "id": "web_search", "label": "Web search", "default": true },
     { "type": "attachments" },
-    { "type": "mode-select", "modes": ["normal","introspection","sdk","orchestrator","outrospection"] }
+    { "type": "mode-select", "modes": ["normal","introspection","sdk","orchestrator","outrospection","models"] }
   ],
   "examples": ["…"], "generateExamples": true,
   "quota": { "window": "day", "requests": 50, "credits": null },
@@ -340,6 +341,7 @@ selects it. **Array order is precedence.**
   { "mode": "sdk",           "agent": "agent-builder", "flag": "sdk_mode" },
   { "mode": "orchestrator",  "agent": "orchestrator",  "flag": "orchestrator_mode" },
   { "mode": "outrospection", "agent": "outrospection", "flag": "outrospection_mode" },
+  { "mode": "models",        "agent": "models",        "flag": "models_mode" },
   { "mode": "introspection", "agent": "introspection", "flag": null },
   { "mode": "normal",        "agent": "research",      "flag": null }
 ]
@@ -360,6 +362,13 @@ notes:
   Whether a knob-on request is introspection or plain research is still decided
   per *message* by the pipeline's `hasSource` + `externalSourceIntent` gate, so
   an agent declaring `research` or `source-research` does not pre-empt it.
+- **A mode need not bring an executor.** The Models agent's answer phase is the
+  ordinary `research` one; what makes it its own mode is a capability block (a
+  forced search source, a context block, a gate, an event) plus an enrichment —
+  no row in `ANSWER_PHASE_RUNNERS`. It is the worked example of step 3 in §5: an
+  agent whose phase already exists needs no executor code. `src/chat.js`
+  therefore resolves its flag directly and lets it lose to any mode that DOES
+  replace the flow.
 - **Fail-soft (PA-2).** The registry ships inside the source snapshot and is
   loaded once per ASSETS binding ([`src/agent-registry.js`](../src/agent-registry.js)).
   An unreadable registry falls back to the hand-written flag cascade, which the
