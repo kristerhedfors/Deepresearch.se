@@ -26,6 +26,7 @@
 // diff-only push at boot plus pullNewer on the sidebar), with the cloud as
 // the account-wide copy that follows the account across devices.
 
+import { CHAT_MODES, DEFAULT_CHAT_MODE, normalizeChatMode } from "./chat-modes.js";
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
 import {
@@ -50,10 +51,12 @@ import {
  * @typedef {{ id: string, role: "admin" | "user", email: string | null, name: string | null, pending?: boolean, isSecretAdmin?: boolean, user?: UserRow | null }} Identity
  */
 /**
- * The effective per-account knob state parseSettings coerces to: the two
- * core knobs below plus one boolean per registered extension (today
- * `shodan_mcp` and `google_maps` — src/extensions.js).
- * @typedef {{ bash_lite_mcp: boolean, developer_mode: boolean } & Record<string, boolean>} Settings
+ * The effective per-account setting state parseSettings coerces to: the core
+ * knob below, one boolean per registered extension (today `shodan_mcp` and
+ * `google_maps` — src/extensions.js), plus the account's persisted
+ * `chat_mode` — the one non-boolean setting, and the reason the boolean-only
+ * key list (KNOB_KEYS) is kept separate from this shape.
+ * @typedef {{ bash_lite_mcp: boolean, chat_mode: string } & Record<string, any>} Settings
  */
 /**
  * What the server can offer this identity right now (see featureAvailability):
@@ -81,18 +84,29 @@ import {
 //    never runs a shell), and the transcript feeds synthesis. Purely a
 //    browser capability, so it needs no server secret — only a user row to
 //    persist the knob; only an explicit stored `true` enables it).
-//  - developer_mode: default OFF (opt-in — unlocks INTROSPECTION MODE:
-//    conversations that ask about this site's own implementation get the
-//    deployed source snapshot as context (src/introspect.js), and — with the
-//    sandbox knob also on — the source tree mounted at /src in the VM. The
-//    source is public on GitHub anyway; the knob keeps the mode out of
-//    ordinary users' way, not out of reach. No server secret; only an
-//    explicit stored `true` enables it).
-const CORE_DEFAULTS = { bash_lite_mcp: false, developer_mode: false };
-/** @type {Settings} */
-const DEFAULTS = { ...extensionSettingDefaults(), ...CORE_DEFAULTS };
-/** Every knob key this server understands — core plus registered extensions. */
-const KNOB_KEYS = Object.keys(DEFAULTS);
+//
+// There used to be a second core knob, `developer_mode` (default OFF), whose
+// job was to unlock INTROSPECTION MODE. It is GONE as of 2026-07-26: the
+// account's `chat_mode` below replaced it. The knob had degenerated into
+// derived state — the Chat mode dropdown wrote it on every mode change, so it
+// only ever said "the picked mode is not Normal" — while ALSO being the sole
+// activation signal for introspection (which had no request flag of its own)
+// and the name of the availability gate. Three jobs, one boolean, mirrored in
+// three stores. Now the MODE is stored and everything is derived from it; see
+// public/js/chat-mode-core.js for the table and the resolution rules.
+const CORE_DEFAULTS = { bash_lite_mcp: false };
+/** @type {Record<string, boolean>} */
+const KNOB_DEFAULTS = { ...extensionSettingDefaults(), ...CORE_DEFAULTS };
+/**
+ * Every BOOLEAN knob key this server understands — core plus registered
+ * extensions. `chat_mode` is deliberately not here: it is a string, and the PUT
+ * handler's "must be a boolean" validation walks this list.
+ */
+const KNOB_KEYS = Object.keys(KNOB_DEFAULTS);
+// The cast is needed because the extension defaults arrive as an open
+// Record<string, boolean>, which loses the literal `bash_lite_mcp` key the
+// Settings shape requires by name.
+const DEFAULTS = /** @type {Settings} */ ({ ...KNOB_DEFAULTS, chat_mode: DEFAULT_CHAT_MODE });
 
 // Tolerant parse of a stored settings_json value: unknown keys are dropped
 // (a legacy stored server_history flag simply falls away), known keys are
@@ -112,9 +126,31 @@ export function parseSettings(json) {
   } catch {
     raw = {};
   }
-  return /** @type {Settings} */ (
-    Object.fromEntries(KNOB_KEYS.map((key) => [key, raw[key] === true]))
-  );
+  return /** @type {Settings} */ ({
+    ...Object.fromEntries(KNOB_KEYS.map((key) => [key, raw[key] === true])),
+    chat_mode: storedChatModeFrom(raw),
+  });
+}
+
+// The account's persisted chat mode, read out of a raw settings_json object.
+//
+// MIGRATION (2026-07-26): rows written before the collapse carry the old
+// `developer_mode` boolean and no `chat_mode`. An account that had it ON was,
+// by definition, in a non-Normal mode — and introspection is the mode it
+// started as and the one the client's own pre-dropdown fallback assumed — so it
+// reads as `introspection`. Everything else reads as `normal`. The old key is
+// simply not written any more; a stored copy is ignored once `chat_mode` exists,
+// and mergeStoredSettings leaves the dead key alone rather than rewriting rows
+// (it costs nothing and a failed migration write would be worse than a stale
+// key nobody reads).
+/**
+ * @param {any} raw a parsed settings_json object
+ * @returns {string}
+ */
+function storedChatModeFrom(raw) {
+  const named = normalizeChatMode(raw?.chat_mode, "");
+  if (named) return named;
+  return raw?.developer_mode === true ? "introspection" : DEFAULT_CHAT_MODE;
 }
 
 // What the server can actually offer this identity right now. `storage`
@@ -157,11 +193,20 @@ export function featureAvailability(env, identity) {
     // bashLiteEnabled), which is what makes the feature reachable and
     // end-to-end testable with the break-glass credentials.
     bash_lite: !!(identity.user || identity.isSecretAdmin),
-    // Developer mode (the introspection gate) mirrors bash_lite exactly:
-    // no server secret — the source snapshot is a committed public artifact —
-    // and the break-glass admin (an explicit operator identity with no D1
-    // row) gets it, which keeps introspection end-to-end testable with the
-    // break-glass credentials.
+    // Whether the NON-NORMAL CHAT MODES (introspection, Agent Studio,
+    // Orchestrator, Outrospection, Models) are available to this identity at
+    // all. Mirrors bash_lite exactly: no server secret — the source snapshot is
+    // a committed public artifact — and the break-glass admin (an explicit
+    // operator identity with no D1 row) gets it, which keeps the modes
+    // end-to-end testable with the break-glass credentials.
+    //
+    // This is AVAILABILITY, not a per-account opt-in: it is true for every
+    // signed-in account, so it gates nothing a caller could not grant itself.
+    // It is a "does this deployment/identity have the feature" answer, in the
+    // same family as `storage` and `bash_lite`. The key keeps its historical
+    // `developer` name because the agent specs declare it as a required grant
+    // (`requires: ["developer_mode"]` — sdk/AGENTS.json), and that is a
+    // published data format.
     developer: !!(identity.user || identity.isSecretAdmin),
     // WHERE the sandbox's commands may run. The two shipped environments (the
     // in-browser VM, a runner on the user's own machine) need nothing from the
@@ -247,19 +292,34 @@ export function bashLiteEnabled(env, identity) {
   return identity?.user ? getSettings(identity).bash_lite_mcp : true;
 }
 
-// The effective developer-mode state. Gates INTROSPECTION MODE: the
-// source-snapshot enrichment (src/introspect.js) and — client-side — the
-// /src sandbox mount. A signed-in account gates on its stored knob; the
-// break-glass admin is a developer by definition, so the mode is simply on
-// for it (same rationale and same testability path as bashLiteEnabled).
+// Whether this identity may use the non-normal chat modes at all. The whole
+// answer is availability (see featureAvailability's `developer` note) — there is
+// no per-account opt-in left to consult. WHICH mode a given request runs in is
+// resolved per request from the mode field, the legacy flags and the stored
+// pick below; that decision lives in chat-mode-core.js resolveBodyChatMode, not
+// here.
 /**
  * @param {Env} env
  * @param {Identity} identity
  * @returns {boolean}
  */
-export function developerModeEnabled(env, identity) {
-  if (!featureAvailability(env, identity).developer) return false;
-  return identity?.user ? getSettings(identity).developer_mode : true;
+export function chatModesAvailable(env, identity) {
+  return featureAvailability(env, identity).developer;
+}
+
+// The chat mode this account last picked — the durable half of the choice, so
+// the mode follows the account across devices (the browser's localStorage copy
+// is a first-paint CACHE of this, not a second authority). Normal for the
+// break-glass admin: it has no D1 row to persist a pick in, so each request
+// says which mode it wants and gets plain deep research when it says nothing.
+// That is a deliberate change from the old knob, which read as permanently ON
+// for break-glass and made every unflagged operator request introspection.
+/**
+ * @param {Identity} identity
+ * @returns {string}
+ */
+export function storedChatMode(identity) {
+  return identity?.user ? getSettings(identity).chat_mode : DEFAULT_CHAT_MODE;
 }
 
 // settings_json is not knobs-only any more. `parseSettings` deliberately drops
@@ -324,10 +384,18 @@ function settingsPayload(env, identity, settings) {
   for (const spec of extensionSettingSpecs()) {
     knobs[spec.key] = !!(available[spec.availability] && settings[spec.key]);
   }
+  // The account's persisted chat mode, forced to Normal when the modes are
+  // unavailable — so a client never paints a mode it cannot actually run.
+  const chatMode = available.developer ? normalizeChatMode(settings.chat_mode) : DEFAULT_CHAT_MODE;
   return {
     ...knobs,
     bash_lite_mcp: available.bash_lite && (identity.user ? settings.bash_lite_mcp : true),
-    developer_mode: available.developer && (identity.user ? settings.developer_mode : true),
+    chat_mode: chatMode,
+    // BACK-COMPAT (2026-07-26): the old boolean, now purely derived — "the
+    // stored mode is not Normal". A client cached mid-deploy still reads it and
+    // gets the right answer; nothing in this repo reads it any more. Removable
+    // once no released client does.
+    developer_mode: chatMode !== DEFAULT_CHAT_MODE,
     // Whatever extra fields the extensions contribute to this payload (today
     // the Maps embed key — see src/extensions.js payloadExtras).
     ...extensionPayloadExtras(env, available),
@@ -345,15 +413,20 @@ export async function handleSettingsGet(env, identity) {
   return jsonResponse(settingsPayload(env, identity, getSettings(identity)));
 }
 
-// PUT /api/settings — body may carry any knob (partial updates allowed): the
-// two core ones plus one per registered extension (today {shodan_mcp?,
-// google_maps?, bash_lite_mcp?, developer_mode?}). Turning a knob ON requires
-// its backing to actually exist — an extension needs its secret — so a knob
-// can't be switched on with nothing behind it (which would silently do
-// nothing); the 503 message comes from the registry, so this handler never
-// names a service. Cloud storage is not a knob and cannot be switched here
-// (see the header note); feedback is no longer a knob either (given from the
-// chat — see the DEFAULTS note).
+// PUT /api/settings — body may carry any boolean knob (partial updates
+// allowed): the core one plus one per registered extension (today
+// {shodan_mcp?, google_maps?, bash_lite_mcp?}), and/or `chat_mode` (a string —
+// the account's picked mode). Turning a knob ON requires its backing to
+// actually exist — an extension needs its secret — so a knob can't be switched
+// on with nothing behind it (which would silently do nothing); the 503 message
+// comes from the registry, so this handler never names a service. Cloud storage
+// is not a knob and cannot be switched here (see the header note); feedback is
+// no longer a knob either (given from the chat — see the DEFAULTS note).
+//
+// LEGACY (2026-07-26): a `developer_mode` boolean is still accepted and mapped
+// onto `chat_mode` — true becomes introspection (what the knob unlocked), false
+// becomes normal — so a client cached mid-deploy keeps working. An explicit
+// `chat_mode` in the same body wins.
 /**
  * @param {Request} request
  * @param {Env} env
@@ -373,9 +446,14 @@ export async function handleSettingsPut(request, env, log, identity) {
     return jsonResponse({ error: "Request body must be valid JSON." }, 400);
   }
   const present = KNOB_KEYS.filter((key) => body?.[key] !== undefined);
-  if (!present.length) {
+  // The picked mode, from either the current field or the legacy boolean. Kept
+  // separate from `present` because it is the one setting that is not a boolean.
+  const modeGiven = body?.chat_mode !== undefined || body?.developer_mode !== undefined;
+  if (!present.length && !modeGiven) {
     return jsonResponse(
-      { error: `Expected {${KNOB_KEYS.map((k) => `${k}?: boolean`).join(", ")}}.` },
+      {
+        error: `Expected {${KNOB_KEYS.map((k) => `${k}?: boolean`).join(", ")}, chat_mode?: string}.`,
+      },
       400,
     );
   }
@@ -383,6 +461,22 @@ export async function handleSettingsPut(request, env, log, identity) {
     if (typeof body[key] !== "boolean") {
       return jsonResponse({ error: `${key} must be a boolean.` }, 400);
     }
+  }
+  /** @type {string | null} */
+  let nextMode = null;
+  if (body?.chat_mode !== undefined) {
+    nextMode = normalizeChatMode(body.chat_mode, "");
+    if (!nextMode) {
+      return jsonResponse(
+        { error: `chat_mode must be one of: ${CHAT_MODES.join(", ")}.` },
+        400,
+      );
+    }
+  } else if (body?.developer_mode !== undefined) {
+    if (typeof body.developer_mode !== "boolean") {
+      return jsonResponse({ error: "developer_mode must be a boolean." }, 400);
+    }
+    nextMode = body.developer_mode ? "introspection" : DEFAULT_CHAT_MODE;
   }
   const available = featureAvailability(env, identity);
   // An extension knob can only be switched on when the registry says its
@@ -400,16 +494,18 @@ export async function handleSettingsPut(request, env, log, identity) {
       503,
     );
   }
-  // developer_mode needs only a user row (the snapshot is a public artifact)
-  // — available is false only for break-glass, which can't reach this handler.
-  if (present.includes("developer_mode") && body.developer_mode && !available.developer) {
+  // A non-Normal mode needs only a user row (the source snapshot is a public
+  // artifact) — available is false only for break-glass, which can't reach this
+  // handler anyway.
+  if (nextMode && nextMode !== DEFAULT_CHAT_MODE && !available.developer) {
     return jsonResponse(
-      { error: "Developer mode needs a signed-in account." },
+      { error: "The non-default chat modes need a signed-in account." },
       503,
     );
   }
   const settings = { ...getSettings(identity) };
   for (const key of present) settings[key] = body[key];
+  if (nextMode) settings.chat_mode = nextMode;
   await saveSettings(env, identity, settings);
   log.info("settings.updated", { user_id: identity.id, ...settings });
   return jsonResponse(settingsPayload(env, identity, settings));

@@ -446,21 +446,24 @@ suite.
 > cross-origin resources); a spec that builds its own context still has to
 > call it directly, as the sandbox specs do.
 
-> **`openApp` PINS the per-account knobs — don't remove that.** The suite
-> authenticates as break-glass, and `src/settings.js` hard-codes the knobs
-> ON for an identity with no user row (`identity.user ? settings.x : true`),
-> so `/api/settings` answers `bash_lite_mcp: true, developer_mode: true`
+> **`openApp` PINS the per-account settings — don't remove that.** The suite
+> authenticates as break-glass, and `src/settings.js` hard-codes the sandbox
+> knob ON for an identity with no user row (`identity.user ? settings.x : true`),
+> so `/api/settings` answers `bash_lite_mcp: true`
 > here regardless of configuration. Inherited, that broke the mocked suite
 > in a way that looked like flakiness (2026-07-25): a send with a DOCUMENT
 > attached mounted it into a CheerpX VM and ran a bash-lite shell loop
 > before the turn could finish, so `waitForDone`'s 30 s expired with an
 > empty `.stats` — 15 failures across parsing/limits/metadata/projects,
 > while image-only sends passed because they mount nothing. That clean
-> split is what identified it. Developer mode also made `cachedChatMode()`
-> default to **introspection**, so specs asserting the ordinary chat
-> surface were driving a different mode. `openApp` now patches the
-> `/api/settings` GET to `bash_lite_mcp: false, developer_mode: false` and
-> pins `dr_chat_mode`; pass `{ sandbox: true }` to opt back in. A spec that
+> split is what identified it. The since-retired `developer_mode` knob also
+> made `cachedChatMode()` default to **introspection**, so specs asserting
+> the ordinary chat surface were driving a different mode; the mode collapse
+> (2026-07-26) removed that failure mode at the root — there is one mode
+> value now, and it defaults to Deep Research. `openApp` patches the
+> `/api/settings` GET to `bash_lite_mcp: false, chat_mode: "normal"` and
+> pins the matching `dr_chat_mode` cache; pass `{ sandbox: true }` to opt
+> back in, or `{ chatMode: "introspection" }` to drive another mode. A spec that
 > mocks `/api/settings` ITSELF must pass `{ pinSettings: false }` — routes
 > match last-registered-first, so `openApp`'s handler would shadow it.
 

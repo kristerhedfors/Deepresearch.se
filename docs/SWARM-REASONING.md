@@ -170,7 +170,7 @@ as the sandbox's client-orchestrated loop:
 1. `POST /api/orchestrator/plan` — the same JSON plan phase, on the same fixed
    `DEFAULT_MODEL` (invariant 3), returning the team as data. The `swarm` kind
    is offered to the planner only when the client announced a capability
-   (`{modelId, modelLabel}`); the endpoint is gated on `developer_mode` like
+   (`{modelId, modelLabel}`); the endpoint is gated on the non-default modes being available (`chatModesAvailable`) like
    orchestrator mode itself, quota-gated, and its spend is recorded.
 2. The browser renders the workflow graph, runs the swarm nodes locally, and
    then sends `/api/chat` with `orchestrator_mode: true`, the `workflow` it was

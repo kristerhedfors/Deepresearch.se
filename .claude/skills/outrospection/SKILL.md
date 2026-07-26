@@ -45,7 +45,7 @@ the committed source snapshot.
 - `outrospectionBlock` / `outrospectionAnswerPrompt` live in the pure core with
   everything else; `runOutrospection` + `retrieveOutwardFeed` are the server
   half in `src/outrospect.js`; `src/pipeline.js` dispatches on
-  `state.outrospectionMode`, gated in `chat.js` on the same `developer_mode`
+  `state.outrospectionMode`, gated in `chat.js` on the same mode availability
   capability as SDK and Orchestrator (precedence sdk > orchestrator >
   outrospection).
 - **The mode LOOKS before it reads (2026-07-26).** `runOutrospection` first

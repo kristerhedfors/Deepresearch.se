@@ -24,8 +24,9 @@ import {
   updateGenericStep,
 } from "./activity.js";
 import { balloonTaskDone } from "./balloon.js";
-import { bashLiteOn, developerModeOn } from "./settings.js";
+import { bashLiteOn } from "./settings.js";
 import { cachedChatMode } from "./chat-mode.js";
+import { modeCarriesSource } from "./chat-mode-core.js";
 import { getSearchSource } from "./search-source.js";
 import { buildIntrospectionBlock, introspectionActive, maybeRepoPathMention, SNAPSHOT_PATH, validateSnapshot } from "./introspect-core.js";
 import { engageIntrospection, introspectionRemoteModel, privateIntrospectionRoute } from "./introspect-ui.js";
@@ -853,35 +854,18 @@ async function buildChatPayload(opts) {
     search_source: getSearchSource(),
   };
   if (opts.model) payload.model = opts.model;
-  // The chat-mode dropdown (chat-mode.js): Normal DECLINES the introspection
-  // enrichment per request (the server's existing off-only developer_mode
-  // override — a knob-on account still gets plain web research); SDK asks for
-  // the DistillSDK build flow (distill a flavour from this site — above all the
-  // Se/cure tier), carrying the conversation's published build slug so an
-  // iteration keeps its /app/<slug>/ URL. Introspection sends nothing extra —
-  // the knob-on default IS introspection.
+  // WHICH MODE answers this request — the one field that says it (chat-mode.js
+  // holds the pick; chat-mode-core.js resolves it server-side). Every mode is
+  // named, Normal included: an explicit "normal" is what makes plain web
+  // research beat a stored non-Normal pick, which is the job the off-only
+  // `developer_mode: false` override used to do from the client. That override
+  // still exists on the server for external callers — the app no longer needs it.
+  //
+  // SDK mode additionally carries the conversation's published build slug so an
+  // iteration keeps its /app/<slug>/ URL.
   const chatMode = cachedChatMode();
-  if (chatMode === "normal") payload.developer_mode = false;
-  else if (chatMode === "sdk") {
-    payload.sdk_mode = true;
-    if (convBuildSlug) payload.build_slug = convBuildSlug;
-  } else if (chatMode === "orchestrator") {
-    // The sub-agent workflow flow (src/orchestrator.js) — same capability
-    // gate as sdk_mode; the server ignores the field when the knob is off.
-    payload.orchestrator_mode = true;
-  } else if (chatMode === "outrospection") {
-    // The outward feed (src/outrospect.js) — introspection's mirror image,
-    // same capability gate; the server ignores the field when the knob is off.
-    payload.outrospection_mode = true;
-  } else if (chatMode === "models") {
-    // The model-lifecycle agent (src/models-agent.js): Hub search forced on for
-    // the turn, and a message about models answered against the live
-    // cross-provider catalog, priced and annotated with what has been verified.
-    // Same capability gate; the server ignores the field when the knob is off.
-    // It replaces no flow, so the turn is an ordinary research turn with the
-    // hub and the catalog in front of it.
-    payload.models_mode = true;
-  }
+  payload.chat_mode = chatMode;
+  if (chatMode === "sdk" && convBuildSlug) payload.build_slug = convBuildSlug;
   // Ghost toggle: tells the server to keep this exchange out of the
   // server-side interaction log too (src/chatlog.js) — the same choice
   // that keeps it out of local/cloud chat history.
@@ -948,12 +932,25 @@ async function buildChatPayload(opts) {
 // whenever dev mode is on) and the server enrichment (which told the model the
 // tree was at /src while the mount had been skipped) — chat_logs #514, where
 // "Where is my source code" matched no pattern, so /src silently wasn't there.
-// In dev mode the source is simply part of what the sandbox IS.
+// In a source-carrying mode the source is simply part of what the sandbox IS.
+
+/**
+ * Whether the CURRENT mode carries this site's own source — the client-side twin
+ * of the server's `state.introspection` gate, and the single answer to "is /src
+ * mounted, does the snapshot ride along, does TIN appear". Read at call time
+ * rather than captured, so a mode switch mid-page is picked up (the same reason
+ * the send path reads cachedChatMode per send).
+ * @returns {boolean}
+ */
+function sourceModeOn() {
+  return modeCarriesSource(cachedChatMode());
+}
+
 /** @param {SendOpts} opts */
 function sendNeedsMounts(opts) {
   return {
     files: !!((opts?.docs && opts.docs.length) || (opts?.images && opts.images.length) || activeProject()),
-    source: developerModeOn(),
+    source: sourceModeOn(),
   };
 }
 
@@ -984,7 +981,7 @@ export function prewarmSandbox() {
     if (remoteRunnerActive()) return;
     if (!sandboxIdle()) return; // already booting or booted — nothing to do
     if (hasPending() || activeProject()) return; // would need real per-send mounts
-    const withSource = developerModeOn();
+    const withSource = sourceModeOn();
     const provider = async () => {
       let source = null;
       try {
@@ -1222,7 +1219,7 @@ async function maybeRunSwarmPrepass(turn, payload, signal) {
     const res = await fetch("/api/orchestrator/plan", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ messages: payload.messages, swarm: descriptor, has_source: developerModeOn() }),
+      body: JSON.stringify({ messages: payload.messages, swarm: descriptor, has_source: sourceModeOn() }),
     });
     const data = await res.json().catch(() => null);
     const plan = data?.plan;
@@ -1392,7 +1389,7 @@ async function maybePrivateIntrospection(turn, opts, signal, gen) {
   let route = null;
   let snap = null;
   try {
-    if (!developerModeOn()) return false;
+    if (cachedChatMode() !== "introspection") return false;
     route = privateIntrospectionRoute();
     if (!route) return false;
     if (!(await introspectionEngagedNow())) return false;
@@ -1534,7 +1531,7 @@ async function runOnDeviceExchange(turn, opts, signal, gen, modelId) {
     // mode + an ask about this site) — strictly fail-soft to none.
     let block = "";
     try {
-      if (developerModeOn() && (await introspectionEngagedNow())) {
+      if (sourceModeOn() && (await introspectionEngagedNow())) {
         const snap = await introspectSnapshot();
         if (snap) {
           const texts = userTexts(history);
@@ -1721,7 +1718,7 @@ function buildSandboxFileProvider(opts, fsOpts = {}) {
     // read its own asset would be pure waste.
     let source = null;
     try {
-      if (developerModeOn()) {
+      if (sourceModeOn()) {
         if (fsOpts.sourceMode === "server") {
           source = { server: true };
         } else {
@@ -1860,7 +1857,7 @@ export async function sendMessage(text, opts) {
     // Introspection on the SERVER route: wave TIN in (the user may still
     // switch to the private route for the next message), and honor a remote
     // model explicitly picked in the panel over the composer dropdown.
-    if (developerModeOn() && (await introspectionEngagedNow())) {
+    if (sourceModeOn() && (await introspectionEngagedNow())) {
       engageIntrospection();
       const remoteModel = introspectionRemoteModel();
       if (remoteModel) payload.model = remoteModel;

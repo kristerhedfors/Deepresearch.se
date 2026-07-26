@@ -24,31 +24,35 @@ export const SENTINEL = {
 // context), privacy notice pre-acknowledged, web-search knob and time
 // budget in a known state, and dialogs auto-accepted + recorded.
 //
-// PINNED KNOBS — do not "simplify" these away. The suite authenticates as
-// BREAK-GLASS, and src/settings.js hard-codes the per-account knobs ON for an
+// PINNED SETTINGS — do not "simplify" these away. The suite authenticates as
+// BREAK-GLASS, and src/settings.js hard-codes the sandbox knob ON for an
 // identity with no user row (`identity.user ? settings.x : true`) — so
-// /api/settings answers `bash_lite_mcp: true, developer_mode: true` for this
-// suite no matter what any account has configured. Left inherited, that meant:
-//
-//   - every send with a DOCUMENT attached mounted it into a CheerpX Linux VM
-//     and ran a bash-lite shell loop over it before the turn could finish, so
-//     `waitForDone`'s 30 s expired with an empty `.stats` — the whole
-//     parsing/limits/metadata failure class (image-only sends passed, because
-//     they mount nothing: that clean split is what identified this);
-//   - with no stored `dr_chat_mode`, a developer-mode account defaults to
-//     INTROSPECTION (chat-mode.js cachedChatMode), so specs asserting the
-//     ordinary chat surface were silently driving a different mode.
+// /api/settings answers `bash_lite_mcp: true` for this suite no matter what any
+// account has configured. Left inherited, that meant every send with a DOCUMENT
+// attached mounted it into a CheerpX Linux VM and ran a bash-lite shell loop
+// over it before the turn could finish, so `waitForDone`'s 30 s expired with an
+// empty `.stats` — the whole parsing/limits/metadata failure class (image-only
+// sends passed, because they mount nothing: that clean split is what identified
+// this).
 //
 // These specs assert CLIENT-SIDE parsing against the mocked /api/chat payload;
 // booting a Linux VM is neither what they test nor something they can afford.
 // Pin what we depend on instead of inheriting whatever the deployment's
 // identity happens to resolve to. `sandbox: true` opts back in.
+//
+// The CHAT MODE is pinned in both places it is read — the `dr_chat_mode` cache
+// (for first paint and the send path) and the server's `chat_mode` (which
+// app.js adopts when /api/settings resolves). One value for one choice: before
+// 2026-07-26 these were two settings that could disagree, and a break-glass
+// identity read as developer-mode-ON with no stored pick, which silently drove
+// every spec through INTROSPECTION instead of the ordinary chat surface.
+//
 // `pinSettings: false` — for a spec that mocks /api/settings ITSELF. Playwright
 // matches routes last-registered-first, so the handler below would otherwise
 // shadow the spec's own and answer from the real server instead. Such a spec
-// owns the pinning: a mock that simply omits `bash_lite_mcp`/`developer_mode`
-// already reads as both-off, which is the state these specs want.
-export async function openApp(page, { webSearch = false, budgetS = 15, sandbox = false, developerMode = false, chatMode = "normal", pinSettings = true } = {}) {
+// owns the pinning: a mock that omits `bash_lite_mcp`/`chat_mode` already reads
+// as sandbox-off and Deep Research, which is the state these specs want.
+export async function openApp(page, { webSearch = false, budgetS = 15, sandbox = false, chatMode = "normal", pinSettings = true } = {}) {
   const base = process.env.BASE_URL || "https://deepresearch.se";
   // The break-glass header must never reach a third party (see
   // stripCrossOriginAuth): the app pre-warms the sandbox on load now, so every
@@ -65,7 +69,7 @@ export async function openApp(page, { webSearch = false, budgetS = 15, sandbox =
       if (route.request().method() !== "GET") return await route.continue();
       const res = await route.fetch();
       const body = await res.json().catch(() => ({}));
-      await route.fulfill({ response: res, json: { ...body, bash_lite_mcp: sandbox, developer_mode: developerMode } });
+      await route.fulfill({ response: res, json: { ...body, bash_lite_mcp: sandbox, chat_mode: chatMode } });
     } catch {
       /* page closed mid-flight, or the fetch failed — nothing to assert on */
     }

@@ -114,7 +114,7 @@ export const FEATURE_ITEMS = [
     impact: "medium",
     status: "shipped",
     summary:
-      "The developer_mode knob: a committed dense source-RAG index answers 'how are you built' from the exact deployed source, on both tiers, with an optional /src sandbox mount. See the introspection skill.",
+      "Introspection mode (chat_mode: 'introspection'): a committed dense source-RAG index answers 'how are you built' from the exact deployed source, on both tiers, with an optional /src sandbox mount. See the introspection skill.",
   },
   {
     id: "F-8",

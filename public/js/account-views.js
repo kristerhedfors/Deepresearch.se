@@ -16,12 +16,10 @@ import { escapeHtml, formatCount as fmtN } from "./notifications.js";
 import {
   bashLiteAvailable,
   bashLiteOn,
-  developerModeAvailable,
-  developerModeOn,
+  chatModesAvailable,
   setBashLiteMcp,
-  setDeveloperMode,
+  setChatMode,
 } from "./settings.js";
-import { storeDeveloperMode } from "./dev-mode.js";
 import { applyChatModeTheme, cachedChatMode } from "./chat-mode.js";
 import { isolateForSandbox, storeSandboxMode } from "./sandbox-mode.js";
 
@@ -100,6 +98,7 @@ const CHAT_MODE_OPTIONS = [
   { value: "sdk", label: "Agent Studio" },
   { value: "orchestrator", label: "Orchestrator" },
   { value: "outrospection", label: "Outrospection" },
+  { value: "models", label: "Models" },
 ];
 
 // The execution-sandbox knob sits in Settings (short note; the
@@ -129,27 +128,35 @@ const MODE_INFO = `<strong>Chat mode</strong><br>
   <b>Orchestrator:</b> the violet workflow mode — your request is decomposed into
   a small team of sub-agents (Deep Research, Introspection or custom specialists)
   that work in the background, with the workflow shown live.<br>
-  The non-default modes turn on introspection access for this account.`;
+  <b>Outrospection:</b> the newsprint mode — answers come from the outward feed of
+  what everyone else shipped, quoting the articles themselves.<br>
+  <b>Models:</b> the amber mode — explore every provider's catalog, see what each
+  model costs, verify one against the established checks and enable it for every
+  other mode.<br>
+  Every mode except Deep Research reads this site's own source, and the pick is
+  saved to your account, so it follows you to your other devices.`;
 
 /**
  * The execution-sandbox row + the Chat mode dropdown the Settings view renders
  * under the server-backed knobs (account-settings.js) — state from the cached
  * /api/settings copy, both gated on a signed-in account. The mode dropdown
- * REPLACED the old Introspection on/off switch (owner directive: the modes —
- * Normal / Introspection / SDK — should be CHOSEN from a dropdown here,
- * not just introspection on/off). Wire with wireSandboxKnob + wireModeKnob.
+ * REPLACED the old Introspection on/off switch (owner directive: the modes
+ * should be CHOSEN from a dropdown here, not just introspection on/off), and
+ * since 2026-07-26 it is the ONLY thing that writes the mode — the dropdown's
+ * value IS the setting, rather than a local pick that also had to flip a
+ * separate developer_mode knob. Wire with wireSandboxKnob + wireModeKnob.
  * @param {object} me  cached /api/me payload
  * @returns {string} HTML
  */
 /** @param {any} me */
 export function renderConfigKnobs(me) {
   // Break-glass admin (no email): can't persist per-account settings — the
-  // /api/settings PUT needs a D1 user row — but the two BROWSER-ONLY features
-  // are ON for it by default (settings.js bashLiteEnabled/developerModeEnabled
-  // force them true for isSecretAdmin). Show the sandbox as read-only ON and
-  // the mode dropdown as ACTIVE (the mode is a browser-local choice; the
-  // capability is implicit for the admin, so all four modes work) — the pick
-  // persists locally and drives the theme, it just isn't saved server-side.
+  // /api/settings PUT needs a D1 user row — but the browser-only sandbox is ON
+  // for it by default (settings.js bashLiteEnabled forces it true for
+  // isSecretAdmin) and every chat mode is AVAILABLE to it (chatModesAvailable).
+  // Show the sandbox as read-only ON and the mode dropdown as ACTIVE — the pick
+  // is cached locally, drives the theme and rides on each request as
+  // `chat_mode`, it just isn't saved server-side.
   if (!me?.email) {
     return (
       settingRow({
@@ -173,10 +180,10 @@ export function renderConfigKnobs(me) {
       `<p class="muted setting-note">Admin session: the execution sandbox is on by default and the chat mode is a browser-local choice (not saved to an account). Sign in with a Google account to persist these per account.</p>`
     );
   }
-  // The displayed mode reflects the authoritative capability: with developer
-  // access off, the effective mode is Normal regardless of a stale stored pick
-  // (reconcileChatMode does the same downgrade for the composer dropdown).
-  const mode = developerModeAvailable() && developerModeOn() ? cachedChatMode() : "normal";
+  // The displayed mode is the cached pick, forced to Normal when the modes are
+  // unavailable to this account — the same clamp the server applies to the
+  // stored value, so the dropdown never shows a mode that would not run.
+  const mode = chatModesAvailable() ? cachedChatMode() : "normal";
   return (
     settingRow({
       id: "sbknob",
@@ -192,7 +199,7 @@ export function renderConfigKnobs(me) {
       label: "Chat mode",
       options: CHAT_MODE_OPTIONS,
       value: mode,
-      disabled: !developerModeAvailable(),
+      disabled: !chatModesAvailable(),
       popId: "modepop",
       info: MODE_INFO,
     }) +
@@ -372,12 +379,12 @@ export function wireModeKnob(ctx) {
     sdk: "SDK — distill this site (above all the Se/cure tier) into a new flavour and get a live, self-contained web app at its own link.",
     orchestrator: "Orchestrator — the composer pane turns violet, and each request runs as a planned team of sub-agents working in the background.",
     outrospection: "Outrospection — the composer pane turns newsprint, and questions are answered from the outward feed of what everyone else shipped, never from invented articles.",
+    models: "Models — the composer pane turns amber, and questions about models are answered against the live cross-provider catalog: what each one costs, what has been verified, and what you have enabled.",
   };
   sel.addEventListener("change", async () => {
     const mode = sel.value;
-    const needsCapability = mode !== "normal";
-    // Apply the theme + persist the pick immediately (browser-local; the
-    // composer dropdown reads the same cache). Sync the composer control too.
+    // Apply the theme + cache the pick immediately (the composer dropdown reads
+    // the same cache). Sync the composer control too.
     applyChatModeTheme(mode);
     const modeSel = /** @type {HTMLSelectElement | null} */ (document.getElementById("modesel"));
     if (modeSel) modeSel.value = mode;
@@ -387,14 +394,14 @@ export function wireModeKnob(ctx) {
     sel.disabled = true;
     if (status) status.hidden = false;
     try {
-      // Drive the developer_mode capability to match: on for any non-Normal
-      // mode, off for Normal. Only persist the cache after the server accepts.
-      await setDeveloperMode(needsCapability);
-      storeDeveloperMode(needsCapability);
+      // Save the pick to the account, so it follows the account to its other
+      // devices. The local cache above is already written — this is the durable
+      // copy, and the server's response is authoritative for what it stored.
+      await setChatMode(mode);
       if (status) status.textContent = STATUS[mode] || STATUS.normal;
     } catch (err) {
-      // Break-glass (no D1 row) refuses the write — but its capability is
-      // implicit, so the mode still works; keep the applied pick, just note it.
+      // Break-glass (no D1 row) refuses the write — but every mode is available
+      // to it, so the mode still works; keep the applied pick, just note it.
       if (status) {
         status.textContent = ctx?.me && !ctx.me.email
           ? STATUS[mode] || STATUS.normal

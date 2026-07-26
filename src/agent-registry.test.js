@@ -10,7 +10,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { loadAgentRegistry, routingNeedsRegistry } from "./agent-registry.js";
+import { loadAgentRegistry } from "./agent-registry.js";
+// routingNeedsRegistry moved to the shared mode table with the rest of the mode
+// logic (public/js/chat-mode-core.js, re-exported by src/chat-modes.js).
+import { routingNeedsRegistry } from "./chat-modes.js";
 import { SNAPSHOT_PATH } from "../public/js/introspect-core.js";
 import { AGENTS_PATH } from "../public/js/agent-spec-core.js";
 
@@ -71,26 +74,27 @@ test("every failure path degrades to null, never a throw", async () => {
 });
 
 test("routingNeedsRegistry keeps the plain Deep Research turn off the load path", () => {
-  // Nothing to resolve: no knob, no flag → always `normal`.
-  assert.equal(routingNeedsRegistry({}, false), false);
-  assert.equal(routingNeedsRegistry({ web_search: true, incognito: true }, false), false);
-  assert.equal(routingNeedsRegistry(undefined, false), false);
-  // The knob alone can route to introspection, so it needs the registry.
-  assert.equal(routingNeedsRegistry({}, true), true);
-  // A mode flag needs it even from a knob-off caller — so the registry, not a
-  // pre-check, is what refuses the ungranted capability.
-  for (const flag of ["sdk_mode", "orchestrator_mode", "outrospection_mode"]) {
-    assert.equal(routingNeedsRegistry({ [flag]: true }, false), true, flag);
-    assert.equal(routingNeedsRegistry({ [flag]: "yes" }, false), false, `${flag} must be a strict boolean`);
+  // Nothing to resolve: mode `normal` with no addressed agent → always the
+  // research agent, so the multi-megabyte snapshot must stay off the path.
+  assert.equal(routingNeedsRegistry({}, "normal"), false);
+  assert.equal(routingNeedsRegistry({ web_search: true, incognito: true }, "normal"), false);
+  assert.equal(routingNeedsRegistry(undefined, "normal"), false);
+  // Any non-normal mode can route somewhere else, so it needs the registry. The
+  // MODE is what is asked here, not the raw flags — chat.js resolves those into
+  // the mode before routing starts (chat-mode-core.js resolveBodyChatMode), so a
+  // flag on a request that resolved to `normal` is already spent.
+  for (const mode of ["introspection", "sdk", "orchestrator", "outrospection", "models"]) {
+    assert.equal(routingNeedsRegistry({}, mode), true, mode);
   }
-  // An ADDRESSED agent is the third way routing can differ. Naming one needs
+  assert.equal(routingNeedsRegistry({ sdk_mode: true }, "normal"), false);
+  // An ADDRESSED agent is the other way routing can differ. Naming one needs
   // the registry — including a name that turns out not to exist, so that
   // "unknown id" and "id you may not have" are indistinguishable from outside.
-  assert.equal(routingNeedsRegistry({ agent: "under-construction" }, false), true);
-  assert.equal(routingNeedsRegistry({ agent: "ghost" }, false), true);
+  assert.equal(routingNeedsRegistry({ agent: "under-construction" }, "normal"), true);
+  assert.equal(routingNeedsRegistry({ agent: "ghost" }, "normal"), true);
   // …but an empty or non-string one is no address at all, and must not drag the
   // multi-megabyte snapshot onto the commonest path.
   for (const agent of ["", "   ", null, 0, false, 7, {}, []]) {
-    assert.equal(routingNeedsRegistry({ agent }, false), false, `agent=${JSON.stringify(agent)} is not an address`);
+    assert.equal(routingNeedsRegistry({ agent }, "normal"), false, `agent=${JSON.stringify(agent)} is not an address`);
   }
 });

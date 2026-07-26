@@ -55,23 +55,9 @@ export async function loadAgentRegistry(env) {
   }
 }
 
-/**
- * Whether a request could route anywhere other than the plain Deep Research
- * turn — i.e. whether loading the registry can change the outcome. A request
- * with no mode flag and no capability knob always resolves to `normal`, and
- * paying for the snapshot to learn that would be a pointless regression on the
- * commonest path.
- * @param {Record<string, any>} body the /api/chat request body
- * @param {boolean} developerOn whether the developer_mode capability is granted
- * @returns {boolean}
- */
-export function routingNeedsRegistry(body, developerOn) {
-  if (developerOn) return true;
-  // An explicitly ADDRESSED agent (`body.agent`) is the third way routing can
-  // differ, alongside the mode flags and the derived introspection default. It
-  // is opt-in by construction — a request that does not name one never pays the
-  // snapshot load — and naming a nonexistent or ungranted id costs the load and
-  // then resolves to the same agent the table would have given.
-  if (typeof body?.agent === "string" && body.agent.trim()) return true;
-  return ["sdk_mode", "orchestrator_mode", "outrospection_mode"].some((f) => body?.[f] === true);
-}
+// `routingNeedsRegistry` used to live here, deciding from the raw body whether
+// the snapshot load could change the outcome. It now takes the ALREADY-RESOLVED
+// chat mode and lives with the rest of the mode table in
+// public/js/chat-mode-core.js (re-exported by src/chat-modes.js) — the mode
+// flags it used to sniff are resolved into that one value before routing starts,
+// so listing them here would have been a second, drift-prone copy of the table.

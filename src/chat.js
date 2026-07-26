@@ -51,11 +51,12 @@ import {
   validateMessages,
 } from "./validation.js";
 import { extensionLogMeta, resolveExtensionState } from "./extensions.js";
-import { bashLiteEnabled, developerModeEnabled, extensionEnabledMap, featureAvailability } from "./settings.js";
+import { bashLiteEnabled, chatModesAvailable, extensionEnabledMap, storedChatMode } from "./settings.js";
+import { modeCarriesSource, resolveBodyChatMode, routingNeedsRegistry } from "./chat-modes.js";
 import { lastUserMessage, textOf } from "./conversation.js";
 import { buildSlugOk } from "./build-pub.js";
 import { normalizeSwarmCapability } from "./orchestrator-api.js";
-import { loadAgentRegistry, routingNeedsRegistry } from "./agent-registry.js";
+import { loadAgentRegistry } from "./agent-registry.js";
 import { resolvePromptSet, resolveRequestAgent, resolveUntrustedAgent } from "./agent-spec.js";
 import { buildFeedbackDebugContext, createOrThreadFeedbackEntry, feedbackPageTag } from "./feedback.js";
 import { slashEffect } from "./slash.js";
@@ -82,20 +83,34 @@ import { normalizeSearchSource } from "./websearch-backends.js";
  *   "Exa web search" knob in settings: "exa" (default) | "cloudflare" (this Worker
  *   searches for itself). Anything else — including absent — means the
  *   site-configured backend; an admin can pin that with search.allow_user_choice
- * @property {boolean} [developer_mode] OFF-ONLY override: `false` disables the introspection enrichment for this request (never enables it)
+ * @property {string} [chat_mode] WHICH MODE answers this request — one of
+ *   chat-mode-core.js CHAT_MODES ("normal" | "introspection" | "sdk" |
+ *   "orchestrator" | "outrospection" | "models"). The single mode field, and the
+ *   preferred one: it outranks the per-mode booleans below, an unknown value is
+ *   ignored rather than failing the request, and a non-normal mode is honored
+ *   only when the modes are available to the caller (a signed-in account or the
+ *   break-glass operator). Absent → the account's stored pick, else "normal"
+ * @property {boolean} [developer_mode] OFF-ONLY override: `false` forces this
+ *   request to "normal" — plain web research, no source enrichment, no mode —
+ *   whatever `chat_mode`, the mode flags or the stored pick say. It never
+ *   ENABLES anything (the incognito pattern). Retained as a documented promise
+ *   to callers written before `chat_mode` existed; `true` does nothing
+ * @property {boolean} [introspection_mode] Introspection mode: answer from this
+ *   site's own deployed source (src/introspect.js + pipeline.js
+ *   runSourceResearch). Equivalent to `chat_mode: "introspection"`. New in
+ *   2026-07-26 — before that introspection had no flag and was inferred from
+ *   the developer_mode knob, which is exactly the conflation that was removed
  * @property {boolean} [sdk_mode] SDK ("lovable") mode: route this request to the
  *   DistillSDK build flow (pipeline.js runSdkBuild) — distill this site (above
- *   all the Se/cure tier) into a new flavour published at a live URL. Honored
- *   only when the caller's developer_mode knob grants introspection — the same
- *   capability gate; a client can't acquire the mode with the knob off
+ *   all the Se/cure tier) into a new flavour published at a live URL.
+ *   Equivalent to `chat_mode: "sdk"`
  * @property {string} [build_slug] the conversation's already-published build
  *   slug (from a previous reply's build event), so a build-mode iteration
  *   republishes the SAME /app/<slug>/ URL. Validated; ignored outside a build mode
  * @property {boolean} [orchestrator_mode] Orchestrator mode: route this request
  *   to the sub-agent workflow flow (src/orchestrator.js runOrchestration) — a
  *   JSON-planned team of sub-agents executed in parallel waves, then one merged
- *   answer. Honored only when the caller's developer_mode knob grants the
- *   capability — the same gate as sdk_mode
+ *   answer. Equivalent to `chat_mode: "orchestrator"`
  * @property {any} [swarm] what the caller's BROWSER can host for the Orchestrator's
  *   `swarm` node kind ({modelId, modelLabel} — public/js/swarm-runtime.js
  *   detectSwarmCapability). Its presence is what allows a plan to use the kind
@@ -109,14 +124,12 @@ import { normalizeSearchSource } from "./websearch-backends.js";
  *   agent (src/models-agent.js). Forces Hub search on for the turn and folds
  *   the live CROSS-PROVIDER catalog in — priced, and annotated with what has
  *   been verified — when the message is about choosing, pricing, evaluating or
- *   starting a model. Honored only when the caller's developer_mode knob grants
- *   the capability — the same gate as sdk_mode. Adds no executor: the answer
- *   phase stays the ordinary research one
+ *   starting a model. Equivalent to `chat_mode: "models"`. Adds no executor: the
+ *   answer phase stays the ordinary research one
  * @property {boolean} [outrospection_mode] Outrospection mode: route this request
  *   to the outward feed (src/outrospect.js runOutrospection) — introspection's
  *   mirror image, answering from what everyone ELSE shipped rather than from
- *   this site's own source. Honored only when the caller's developer_mode knob
- *   grants the capability — the same gate as sdk_mode
+ *   this site's own source. Equivalent to `chat_mode: "outrospection"`
  * @property {string} [agent] ADDRESS an agent from the registry (sdk/AGENTS.json)
  *   by id, instead of letting a mode flag pick the mode's default agent. This is
  *   what makes a registry entry reachable with no `defaults` row, no mode flag
@@ -191,7 +204,9 @@ import { normalizeSearchSource } from "./websearch-backends.js";
  * by the registry (src/extensions.js) — this handler never looks inside it.
  * @typedef {Object} EnrichmentOptions
  * @property {Record<string, any>} ext
- * @property {boolean} developerOn
+ * @property {string} chatMode the mode this request runs in (chat-mode-core.js)
+ * @property {boolean} modesAvailable whether non-normal modes are available to this identity
+ * @property {boolean} sourceOn whether the mode carries this site's own source
  * @property {boolean} modelIsVision
  * @property {string | null} visionModel
  * @property {string[]} visionModels
@@ -285,14 +300,13 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   const slashCmd = slashEffect(textOf(lastUserMessage(body.messages)?.content));
   // `/help` answers from the DOCUMENTATION — the help layer that already ships
   // inside introspection (src/introspect.js retrieveHelpDocs +
-  // introspect-core.js buildHelpDocsBlock). It is gated on the introspection
-  // capability being AVAILABLE (a real account or the break-glass operator),
-  // not on the per-account developer_mode knob: the knob exists to keep the
-  // mode out of ordinary users' way, and typing `/help` is a user asking for it
-  // in so many words. Nothing new is exposed — the docs corpus and the source
-  // snapshot are committed public artifacts, served unauthenticated already
-  // (src/assets.js).
-  const helpCommand = slashCmd === "help" && featureAvailability(env, identity).developer;
+  // introspect-core.js buildHelpDocsBlock). It is gated on the modes being
+  // AVAILABLE (a real account or the break-glass operator) and NOT on the
+  // request's mode: typing `/help` is a user asking for the help layer in so
+  // many words, from whichever mode they are in. Nothing new is exposed — the
+  // docs corpus and the source snapshot are committed public artifacts, served
+  // unauthenticated already (src/assets.js).
+  const helpCommand = slashCmd === "help" && chatModesAvailable(env, identity);
   // ---- mode routing -------------------------------------------------------
   //
   // Which agent answers this request is DATA: the ordered `defaults` table in
@@ -317,8 +331,14 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // Fail-soft (invariant 2): an unreadable registry falls back to the
   // hand-written cascade below, which this table reproduces exactly (pinned in
   // public/js/agent-capability.test.js).
+  // `developer_mode` is the GRANT NAME the agent specs declare
+  // (`capability.requires` — sdk/AGENTS.json, a published data format), and what
+  // it means is availability: may this identity use the non-normal modes at all.
+  // It is deliberately NOT "the request is in a non-normal mode" — that is the
+  // resolved mode's job, and conflating the two is exactly what the retired
+  // knob did.
   const granted = {
-    developer_mode: enrich.developerOn,
+    developer_mode: enrich.modesAvailable,
     sandbox: bashLiteEnabled(env, identity),
   };
   // An agent supplied INLINE with the request — a spec the caller wrote rather
@@ -344,15 +364,17 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   }
   const routed = inline.agent
     ? { mode: inline.agent.mode || "normal", agent: inline.agent, capability: inline.capability, addressed: true }
-    : routingNeedsRegistry(body, enrich.developerOn)
-      ? resolveRequestAgent(await loadAgentRegistry(env), body, granted)
+    : routingNeedsRegistry(body, enrich.chatMode)
+      ? resolveRequestAgent(await loadAgentRegistry(env), body, granted, enrich.chatMode)
       : null;
   const routedPhase = /** @type {string | null} */ (routed?.capability?.answerPhase ?? null);
   const byRegistry = routedPhase !== null;
-  // SDK ("lovable") mode: the request asks for the DistillSDK build flow.
-  // Gated on the SAME capability the introspection enrichment uses — the
-  // developer_mode knob (enrich.developerOn) — so a client can't acquire the
-  // mode the knob doesn't grant; the mode dropdown flips the knob first.
+  // Each mode below is simply "the resolved mode IS this one" — the mode was
+  // already decided once, in resolveEnrichmentOptions, from the request field /
+  // legacy flag / stored pick, with availability applied. The old form combined
+  // a per-mode flag with the capability knob and a mutual-exclusion chain at
+  // every site; one resolved value makes all of that unnecessary, and makes the
+  // precedence readable in ONE place (chat-mode-core.js MODE_REQUEST_FLAGS).
   //
   // A SLASH COMMAND outranks all three (owner directive, 2026-07-26). `/feedback`
   // is a report to the developers and `/help` is a documentation question; both
@@ -362,22 +384,18 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // unavailable — leaving them set would reopen the hole on exactly the
   // fail-soft path (this is the bug feedback #26 reported from the user's seat:
   // typing feedback in Orchestrator planned a sub-agent team over it).
-  const sdkOn = !slashCmd && (byRegistry ? routedPhase === "build" : body.sdk_mode === true && enrich.developerOn);
+  const modeIs = (/** @type {string} */ m) => !slashCmd && enrich.chatMode === m;
+  // SDK ("lovable") mode: the DistillSDK build flow.
+  const sdkOn = byRegistry ? !slashCmd && routedPhase === "build" : modeIs("sdk");
   const buildSlug = sdkOn && buildSlugOk(body.build_slug) ? /** @type {string} */ (body.build_slug) : null;
-  // Orchestrator mode: the sub-agent workflow flow. Same capability gate as
-  // SDK mode (a client can't acquire a mode the knob doesn't grant), and the
-  // modes are mutually exclusive client-side — sdk wins if both arrive.
-  const orchOn = !slashCmd && (byRegistry ? routedPhase === "workflow" : body.orchestrator_mode === true && !sdkOn && enrich.developerOn);
+  // Orchestrator mode: the sub-agent workflow flow.
+  const orchOn = byRegistry ? !slashCmd && routedPhase === "workflow" : modeIs("orchestrator");
   // Outrospection mode: answer from the outward feed instead of the web or our
-  // own source. Same capability gate again, and the modes stay mutually
-  // exclusive in the same precedence order the dropdown can only produce one
-  // of anyway (sdk > orchestrator > outrospection).
-  const outroOn = !slashCmd && (byRegistry
-    ? routedPhase === "feed"
-    : body.outrospection_mode === true && !sdkOn && !orchOn && enrich.developerOn);
+  // own source.
+  const outroOn = byRegistry ? !slashCmd && routedPhase === "feed" : modeIs("outrospection");
   // The plain model answer, with no research phase at all. Reachable only by
-  // ADDRESSING an agent that declares it (`body.agent`) — no mode flag selects
-  // it, because it is not a chat mode. Without this a spec could declare
+  // ADDRESSING an agent that declares it (`body.agent`) — no mode selects it,
+  // because it is not a chat mode. Without this a spec could declare
   // `answerPhase: "direct"` and be quietly answered by the research flow.
   // Cleared by a slash command like every other executor phase: the turn is no
   // longer the agent's.
@@ -386,11 +404,10 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
   // (src/models-agent.js) — explore every provider's catalog, evaluate against
   // the established checks, enable for every other agent. Unlike the modes
   // above it introduces NO executor — its answer phase is the ordinary research
-  // one — so it is resolved from the flag directly rather than from
-  // `routedPhase`, and it simply loses to any mode that DOES replace the flow
-  // (the dropdown can only produce one anyway). Same capability gate as every
-  // other mode: a client can't acquire what the knob doesn't grant.
-  const modelsOn = !slashCmd && body.models_mode === true && !sdkOn && !orchOn && !outroOn && !directOn && enrich.developerOn;
+  // one — so a registry route can never name it, and it loses to any mode that
+  // DOES replace the flow (`directOn` being the only one the resolved mode
+  // cannot already exclude, since it comes from an addressed agent).
+  const modelsOn = modeIs("models") && !directOn;
   // The answer phase the pipeline dispatches on, and the agent it came from —
   // null when the registry was unavailable or not consulted, in which case the
   // pipeline falls back to the mode booleans above.
@@ -509,11 +526,12 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     const state = newRequestState(model, jsonModel, webSearchEnabled, budgetS, {
       searchSource,
       ext: enrich.ext,
-      // `/help` turns the introspection enrichment on for THIS request even
-      // when the account's knob is off — that is how the command reaches the
-      // shipped help layer (docs corpus first, source as the deeper level)
-      // from any mode. Everything else about the enrichment is unchanged.
-      introspection: enrich.developerOn || helpCommand,
+      // The site's own source as context. Every non-normal mode carries it
+      // (chat-mode-core.js modeCarriesSource states why); `/help` turns it on
+      // for THIS request even in Normal — that is how the command reaches the
+      // shipped help layer (docs corpus first, source as the deeper level) from
+      // any mode. Everything else about the enrichment is unchanged.
+      introspection: enrich.sourceOn || helpCommand,
       vision: enrich.modelIsVision,
       visionModel: enrich.visionModel,
       visionModels: enrich.visionModels,
@@ -831,7 +849,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
               incognito,
               web_search: webSearchEnabled,
               sdk_mode: sdkOn,
-              developer_mode: enrich.developerOn,
+              chat_mode: enrich.chatMode,
               use_case: useCase ? useCase.tag : undefined,
               // The starter prompt this conversation opened from (feedback
               // #37). Stated as its own line rather than left to be read out
@@ -986,16 +1004,21 @@ async function enforceQuotaGate(env, log, config, identity) {
  * @returns {EnrichmentOptions}
  */
 function resolveEnrichmentOptions(body, env, identity, catalog, model) {
-  // OFF-ONLY request override (the incognito pattern — a client may DECLINE
-  // a capability it holds, never acquire one it doesn't): `developer_mode:
-  // false` in the body skips the introspection enrichment for THIS request,
-  // so an account with the knob on — including the break-glass admin, for
-  // whom developer mode is ALWAYS on by definition (settings.js) and who has
-  // no settings row to flip — can still get a normal web-research answer.
-  // The eval harnesses (tests/eval-bench.mjs, tests/model-eval.mjs) depend on
-  // this: without it every break-glass bench request routes introspection-
-  // first and measures source reading instead of the research pipeline.
-  const developerOn = body.developer_mode === false ? false : developerModeEnabled(env, identity);
+  // WHICH MODE this request runs in — one resolution, shared with both tiers
+  // (chat-mode-core.js resolveBodyChatMode). It reads the explicit `chat_mode`
+  // field, then the per-mode legacy flags, then the account's stored pick, and
+  // it can never return a non-normal mode to an identity the modes are
+  // unavailable to. `developer_mode: false` still forces normal — the off-only
+  // override (the incognito pattern: a client may DECLINE a capability it
+  // holds, never acquire one it doesn't) the eval harnesses depend on.
+  //
+  // Everything downstream is DERIVED from this one value: which answer phase
+  // runs, whether the site's own source is injected, what the log records.
+  const modesAvailable = chatModesAvailable(env, identity);
+  const chatMode = resolveBodyChatMode(body, {
+    available: modesAvailable,
+    stored: storedChatMode(identity),
+  });
   const modelIsVision = !!catalog?.find((m) => m.id === model)?.vision;
   const visionCandidates = catalog?.filter((m) => m.vision && m.up).map((m) => m.id) || [];
   const visionModels = (modelIsVision
@@ -1004,7 +1027,9 @@ function resolveEnrichmentOptions(body, env, identity, catalog, model) {
   ).slice(0, 3);
   return {
     ext: resolveExtensionState(body, extensionEnabledMap(env, identity)),
-    developerOn,
+    chatMode,
+    modesAvailable,
+    sourceOn: modeCarriesSource(chatMode),
     modelIsVision,
     visionModels,
     visionModel: visionModels[0] || null,

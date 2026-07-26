@@ -485,7 +485,8 @@ the path into a sandbox or the composer (feedback #10, 2026-07-24).
 `wireSourcePeek`; scoped `spk-` styles, titanium palette — introspection's
 own look per the introspect-ui.js precedent) over the Node-tested pure core
 `public/js/source-peek-core.js`; wired in `public/js/turns.js`
-(`renderContent`) with the gate set in `app.js` (`developerModeOn`), and in
+(`renderContent`) with the gate set in `app.js` (`modeCarriesSource` of the
+picked mode), and in
 `public/cure/drc.js` (`messageEl` + the live final render) gated on
 `state.developerMode`. Language-agnostic (path shapes, no text routing), so
 no EN/SV parity applies.

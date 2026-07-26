@@ -15,10 +15,12 @@
 //     and invariant 6 (a declared gate routes Swedish and English alike) each
 //     get a passing AND a failing case.
 //  3. **Routing characterization.** `resolveRequestAgent` is asserted to
-//     reproduce the flag precedence src/chat.js implements by hand
-//     (sdk > orchestrator > outrospection, all gated on developer_mode). These
-//     tests describe today's behaviour deliberately: they are the safety net a
-//     registry-driven dispatch has to keep green.
+//     reproduce what src/chat.js does: the caller resolves the chat mode once
+//     (chat-mode-core.js) and the table picks that mode's agent, with the legacy
+//     per-mode flags and an addressed id as the other two ways in — every pass
+//     gated on the capabilities the caller actually holds. These tests describe
+//     today's behaviour deliberately: they are the safety net a registry-driven
+//     dispatch has to keep green.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -51,6 +53,7 @@ import {
   validateCapability,
 } from "./agent-spec-core.js";
 import { showsDepthSlider, backdropKind } from "./mode-theme.js";
+import { MODE_REQUEST_FLAGS } from "./chat-mode-core.js";
 import { MAX_AGENTS, MAX_WAVES, MAX_NODE_QUERIES, MAX_ORCH_SEARCHES } from "./orchestrator-core.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -98,9 +101,19 @@ test("every mode-select offers only real chat modes", () => {
 test("the defaults table covers every chat mode, in chat.js precedence order", () => {
   const reg = realRegistry();
   assert.deepEqual(reg.defaults.map((r) => r.mode), ["sdk", "orchestrator", "outrospection", "models", "introspection", "normal"]);
+  // Every mode except `normal` names a request flag; `normal` (flag null) is the
+  // terminal fallback. Introspection got `introspection_mode` in 2026-07-26's
+  // collapse — before that it was the only mode with no way to ask for it by
+  // name, which is what made it the derived leftover of the developer_mode knob.
   assert.deepEqual(
     reg.defaults.map((r) => r.flag),
-    ["sdk_mode", "orchestrator_mode", "outrospection_mode", "models_mode", null, null],
+    ["sdk_mode", "orchestrator_mode", "outrospection_mode", "models_mode", "introspection_mode", null],
+  );
+  // The flags and their order agree with the shared mode table, which is what
+  // src/chat.js actually resolves a request's mode against.
+  assert.deepEqual(
+    reg.defaults.filter((r) => r.flag).map((r) => [r.mode, r.flag]),
+    MODE_REQUEST_FLAGS.map((r) => [r.mode, r.flag]),
   );
   for (const m of CHAT_MODE_IDS) {
     assert.ok(defaultAgentForMode(reg, m), `chat mode "${m}" has no default agent`);
@@ -307,45 +320,75 @@ test("a workflow team may only name agents that exist", () => {
 
 const DEV = { developer_mode: true };
 
-test("routing: the mode flags resolve exactly as src/chat.js gates them", () => {
+test("routing: the resolved MODE picks the agent, exactly as src/chat.js does", () => {
+  const reg = realRegistry();
+  // src/chat.js resolves the mode ONCE (chat-mode-core.js resolveBodyChatMode)
+  // and hands it in; this is the fourth argument.
+  const atMode = (mode, granted) => {
+    const hit = resolveRequestAgent(reg, {}, granted, mode);
+    return hit && { mode: hit.mode, agent: hit.agent.id, phase: hit.capability.answerPhase };
+  };
+
+  assert.deepEqual(atMode("sdk", DEV), { mode: "sdk", agent: "agent-builder", phase: "build" });
+  assert.deepEqual(atMode("orchestrator", DEV), { mode: "orchestrator", agent: "orchestrator", phase: "workflow" });
+  assert.deepEqual(atMode("outrospection", DEV), { mode: "outrospection", agent: "outrospection", phase: "feed" });
+  assert.deepEqual(atMode("introspection", DEV), { mode: "introspection", agent: "introspection", phase: "source-research" });
+  assert.deepEqual(atMode("normal", DEV), { mode: "normal", agent: "research", phase: "research" });
+
+  // Without the capability every gated mode is unreachable, whatever mode the
+  // caller resolved — the "a client can't acquire a capability it doesn't hold"
+  // rule, enforced here as the last line of defence even though
+  // resolveBodyChatMode has already clamped an unavailable identity to normal.
+  for (const mode of ["introspection", "sdk", "orchestrator", "outrospection"]) {
+    assert.deepEqual(atMode(mode, {}), { mode: "normal", agent: "research", phase: "research" },
+      `${mode} without the capability must fall to Deep Research`);
+  }
+});
+
+test("routing: the legacy mode flags still resolve, for callers that send them", () => {
   const reg = realRegistry();
   const at = (body, granted) => {
     const hit = resolveRequestAgent(reg, body, granted);
     return hit && { mode: hit.mode, agent: hit.agent.id, phase: hit.capability.answerPhase };
   };
 
-  // Each flag alone, with the knob granted.
+  // Each flag alone, with the capability granted. src/chat.js folds these into
+  // the resolved mode before routing, so this pass is what serves a hand-rolled
+  // request — and a registry-declared flag the shipped table doesn't know.
   assert.deepEqual(at({ sdk_mode: true }, DEV), { mode: "sdk", agent: "agent-builder", phase: "build" });
   assert.deepEqual(at({ orchestrator_mode: true }, DEV), { mode: "orchestrator", agent: "orchestrator", phase: "workflow" });
   assert.deepEqual(at({ outrospection_mode: true }, DEV), { mode: "outrospection", agent: "outrospection", phase: "feed" });
+  assert.deepEqual(at({ introspection_mode: true }, DEV), { mode: "introspection", agent: "introspection", phase: "source-research" });
 
   // Precedence when several arrive: sdk > orchestrator > outrospection.
   assert.equal(at({ sdk_mode: true, orchestrator_mode: true, outrospection_mode: true }, DEV).mode, "sdk");
   assert.equal(at({ orchestrator_mode: true, outrospection_mode: true }, DEV).mode, "orchestrator");
 
-  // No flag, knob granted → introspection (the derived default).
-  assert.deepEqual(at({}, DEV), { mode: "introspection", agent: "introspection", phase: "source-research" });
-
-  // No knob → every gated mode is unreachable, whatever the body claims. This
-  // is the "a client can't acquire a capability it doesn't hold" rule.
-  for (const body of [{}, { sdk_mode: true }, { orchestrator_mode: true }, { outrospection_mode: true }]) {
-    assert.deepEqual(at(body, {}), { mode: "normal", agent: "research", phase: "research" },
-      `${JSON.stringify(body)} without the knob must fall to Deep Research`);
-  }
+  // NO flag and no mode → Deep Research. This is the 2026-07-26 change: it used
+  // to be INTROSPECTION, because introspection had no flag and was whatever was
+  // left once the developer_mode knob was on. The capability alone no longer
+  // routes anywhere — a mode has to be asked for.
+  assert.deepEqual(at({}, DEV), { mode: "normal", agent: "research", phase: "research" });
 
   // Strict booleans only — no truthy-string surprises (the normalizeTriage habit).
-  assert.equal(at({ sdk_mode: "yes" }, DEV).mode, "introspection");
-  assert.equal(at({ sdk_mode: 1 }, DEV).mode, "introspection");
+  assert.equal(at({ sdk_mode: "yes" }, DEV).mode, "normal");
+  assert.equal(at({ sdk_mode: 1 }, DEV).mode, "normal");
+
+  // An explicit mode outranks a flag, so a stale flag cannot hijack the turn.
+  assert.equal(resolveRequestAgent(reg, { sdk_mode: true }, DEV, "introspection").mode, "introspection");
 });
 
 test("routing degrades to null on an unusable registry, never throws", () => {
   for (const reg of [null, undefined, {}, { agents: [] }, { defaults: [] }, { defaults: "x" }]) {
     assert.equal(resolveRequestAgent(reg, { sdk_mode: true }, DEV), null);
+    assert.equal(resolveRequestAgent(reg, {}, DEV, "sdk"), null);
   }
-  // A defaults row naming an agent that does not exist is skipped, not fatal.
+  // A defaults row naming an agent that does not exist is skipped, not fatal —
+  // and the request falls to `normal`, the terminal fallback.
   const reg = realRegistry();
   const broken = { ...reg, defaults: [{ mode: "sdk", agent: "ghost", flag: "sdk_mode" }, ...reg.defaults.slice(1)] };
-  assert.equal(resolveRequestAgent(broken, { sdk_mode: true }, DEV).mode, "introspection");
+  assert.equal(resolveRequestAgent(broken, { sdk_mode: true }, DEV).mode, "normal");
+  assert.equal(resolveRequestAgent(broken, {}, DEV, "sdk").mode, "normal");
 });
 
 test("routing: a sixth agent is data — adding one to the registry routes it", () => {
@@ -366,13 +409,15 @@ test("routing: a sixth agent is data — adding one to the registry routes it", 
     defaults: [{ mode: "normal", agent: "scout", flag: "scout_mode" }, ...reg.defaults],
   };
   assert.deepEqual(validateAgentSpec(sixth), []);
+  // A registry-declared flag the shipped mode table knows nothing about — which
+  // is why resolveRequestAgent keeps a flag pass of its own after the mode pass.
   const hit = resolveRequestAgent(extended, { scout_mode: true }, { ...DEV, sandbox: true });
   assert.equal(hit.agent.id, "scout");
   assert.equal(hit.capability.answerPhase, "direct");
   // Its own requirement gates it, exactly like developer_mode gates the others:
   // without the sandbox knob the flagged row is skipped and the request falls
-  // through to the derived default.
-  assert.equal(resolveRequestAgent(extended, { scout_mode: true }, DEV).agent.id, "introspection");
+  // through to the terminal `normal` row.
+  assert.equal(resolveRequestAgent(extended, { scout_mode: true }, DEV).agent.id, "research");
 });
 
 // ---- the narrowing accessors (stage 5: declared → executed) -------------------
@@ -471,13 +516,18 @@ test("addressing is subject to the SAME requirement gate as every other route", 
 test("an unknown, malformed or empty address falls through to the table", () => {
   const reg = realRegistry();
   // Every one of these must behave exactly like a body that named no agent at
-  // all — so probing for ids reveals nothing and breaks nothing.
+  // all — so probing for ids reveals nothing and breaks nothing. With no mode
+  // asked for, that is the plain Deep Research turn.
   for (const agent of ["ghost", "", "   ", null, 7, {}, [], true]) {
     const hit = resolveRequestAgent(reg, { agent }, DEV);
-    assert.equal(hit.agent.id, "introspection", `agent=${JSON.stringify(agent)} falls through`);
+    assert.equal(hit.agent.id, "research", `agent=${JSON.stringify(agent)} falls through`);
     assert.equal(hit.addressed, false);
   }
-  // …and without the knob, to plain Deep Research.
+  // A bad address falls through to the MODE the caller resolved, not past it.
+  const inMode = resolveRequestAgent(reg, { agent: "ghost" }, DEV, "introspection");
+  assert.equal(inMode.agent.id, "introspection");
+  assert.equal(inMode.addressed, false);
+  // …and without the capability, to plain Deep Research.
   assert.equal(resolveRequestAgent(reg, { agent: "ghost" }, {}).agent.id, "research");
 });
 

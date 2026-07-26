@@ -78,12 +78,15 @@ async function postOnce(modelId, messages, { webSearch = true, budgetS = BUDGET_
     const res = await fetch(`${BASE_URL}/api/chat`, {
       method: "POST",
       headers: { authorization: AUTH, "content-type": "application/json" },
-      // developer_mode:false — the off-only override (src/chat.js): the
-      // break-glass bench identity has developer mode FORCED on, and the
-      // introspection enrichment would otherwise route every question to
-      // source reading (and, pre-fix, to a quiz — chat_logs #360). The bench
-      // measures the web-research pipeline, so decline introspection.
-      body: JSON.stringify({ messages, model: modelId, web_search: webSearch, time_budget_s: budgetS, developer_mode: false }),
+      // chat_mode:"normal" — say the mode outright. The bench measures the
+      // WEB-RESEARCH pipeline, and any other mode injects this site's own source
+      // and routes the question to source reading instead (and, pre-fix, to a
+      // quiz — chat_logs #360). Before the 2026-07-26 mode collapse this had to
+      // be spelled `developer_mode: false`, because the break-glass bench
+      // identity read as developer-mode-FORCED-on and there was no way to name
+      // the mode you wanted; that off-only override still works, but naming the
+      // mode is the current spelling.
+      body: JSON.stringify({ messages, model: modelId, web_search: webSearch, time_budget_s: budgetS, chat_mode: "normal" }),
       signal: controller.signal,
     });
     requestId = res.headers.get("x-request-id");

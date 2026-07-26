@@ -24,7 +24,8 @@ import { enforceQuotaAndReserve } from "./endpoint-gate.js";
 import { jsonResponse } from "./http.js";
 import { bashAgentPrompt } from "./prompts.js";
 import { bergetCost, recordUsage, releaseInflight } from "./quota.js";
-import { bashLiteEnabled, developerModeEnabled } from "./settings.js";
+import { modeCarriesSource, resolveBodyChatMode } from "./chat-modes.js";
+import { bashLiteEnabled, chatModesAvailable, storedChatMode } from "./settings.js";
 import {
   MAX_SHELL_ROUNDS,
   buildShellTranscript,
@@ -81,6 +82,14 @@ export async function handleBashStep(request, env, log, identity) {
   if (gate.response) return gate.response;
   const reqId = gate.reqId;
 
+  // Whether this request's chat mode mounts the site's own source at /src.
+  const sourceMounted = modeCarriesSource(
+    resolveBodyChatMode(body, {
+      available: chatModesAvailable(env, identity),
+      stored: storedChatMode(identity),
+    }),
+  );
+
   // The per-round user message is the shared builder (bash-core.js), so DRS
   // and DRC ask the model the exact same step question.
   const userContent = buildStepUserMessage({
@@ -94,13 +103,15 @@ export async function handleBashStep(request, env, log, identity) {
     const resp = await chatCompletion(
       env,
       [
-        // Developer mode mounts the site's own source at /src in the VM
+        // A source-carrying mode mounts the site's own source at /src in the VM
         // (stream.js provider) — tell the step model so it explores it there.
+        // Resolved from the request's mode the same way /api/chat resolves it,
+        // so the prompt can never claim a mount the boot did not make.
         // sdk_mode (client-declared, prompt-shaping only — no capability
         // rides on it): the Agent Studio build assistant ships files with its
         // own direct tools, so the step model must not build the app in the
         // sandbox (feedback #7).
-        { role: "system", content: bashAgentPrompt({ sourceMounted: developerModeEnabled(env, identity), sdkMode: body?.sdk_mode === true }) },
+        { role: "system", content: bashAgentPrompt({ sourceMounted: sourceMounted, sdkMode: body?.sdk_mode === true }) },
         { role: "user", content: userContent },
       ],
       { model: DEFAULT_MODEL },

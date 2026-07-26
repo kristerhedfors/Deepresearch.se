@@ -31,14 +31,16 @@ import { SLASH_COMMAND_NAMES } from "../public/js/slash-core.js";
 
 const pipelineSrc = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
 const chatSrc = readFileSync(new URL("./chat.js", import.meta.url), "utf8");
-// chat-mode.js is a BROWSER module (localStorage, document) — not a pure core,
-// so src/ must not import it: doing so drags it, and bar-tint.js/dev-mode.js
-// behind it, into the Workers tsconfig program, where `document` and `window`
-// do not exist and `npm run typecheck` fails on files this branch never
-// touched. Read the list the same way this suite reads every other one.
-const chatModeSrc = readFileSync(new URL("../public/js/chat-mode.js", import.meta.url), "utf8");
+// The mode list moved to chat-mode-core.js in 2026-07-26's collapse — a PURE
+// core (no localStorage, no document), which is why this can now be read from
+// the core rather than from the browser module chat-mode.js. That still matters
+// for the browser module itself: src/ must not import it, since doing so drags
+// it, and bar-tint.js/dev-mode.js behind it, into the Workers tsconfig program,
+// where `document` and `window` do not exist and `npm run typecheck` fails on
+// files this branch never touched.
+const chatModeSrc = readFileSync(new URL("../public/js/chat-mode-core.js", import.meta.url), "utf8");
 
-/** The chat modes, read from chat-mode.js's own CHAT_MODES list. */
+/** The chat modes, read from chat-mode-core.js's own CHAT_MODES list. */
 function chatModes() {
   const list = /export const CHAT_MODES = \[([\s\S]*?)\]/.exec(chatModeSrc);
   assert.ok(list, "CHAT_MODES not found — this suite must be re-pointed");
@@ -144,8 +146,7 @@ describe("/feedback reaches the feedback case from EVERY executor phase", () => 
 
 describe("the request side: a command outranks the picked mode (src/chat.js)", () => {
   // Discovered, so a sixth mode's executor boolean is covered the day it lands.
-  const modeFlags = [...chatSrc.matchAll(/^\s*const (\w+On) = ([\s\S]*?);$/gm)]
-    .filter(([, name]) => name !== "developerOn");
+  const modeFlags = [...chatSrc.matchAll(/^\s*const (\w+On) = ([\s\S]*?);$/gm)];
 
   test("chat.js declares the executor-mode booleans this suite inspects", () => {
     assert.ok(modeFlags.length >= 3, `expected the executor-mode booleans, found ${modeFlags.length}`);
@@ -153,13 +154,23 @@ describe("the request side: a command outranks the picked mode (src/chat.js)", (
 
   for (const [, name, body] of modeFlags) {
     test(`${name} is cleared for a slash command`, () => {
+      // Either spelled out, or via the `modeIs` helper — which is the mode
+      // comparison WITH the !slashCmd guard baked in, so a mode boolean cannot
+      // be written without it (asserted just below).
       assert.match(
         body,
-        /!slashCmd/,
+        /!slashCmd|modeIs\(/,
         `${name} is not guarded by !slashCmd — a slash command typed in that mode would be swallowed by its executor`,
       );
     });
   }
+
+  test("the modeIs helper the mode booleans share carries the !slashCmd guard", () => {
+    // The guard is factored out, so this is where it is pinned: if modeIs ever
+    // stops clearing on a slash command, every mode boolean built on it would
+    // silently start swallowing /feedback and /help again (feedback #26).
+    assert.match(chatSrc, /const modeIs = \([\s\S]{0,80}?\) => !slashCmd && enrich\.chatMode === m;/);
+  });
 
   test("the command is resolved from the message text, before the mode routing", () => {
     const slashAt = chatSrc.indexOf("const slashCmd =");
@@ -169,7 +180,7 @@ describe("the request side: a command outranks the picked mode (src/chat.js)", (
   });
 
   test("/help turns the introspection enrichment on for the request", () => {
-    assert.match(chatSrc, /introspection: enrich\.developerOn \|\| helpCommand/);
+    assert.match(chatSrc, /introspection: enrich\.sourceOn \|\| helpCommand/);
     assert.match(chatSrc, /state\.helpCommand = helpCommand/);
   });
 
