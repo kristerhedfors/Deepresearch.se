@@ -15,6 +15,7 @@ import {
   locateQuote,
   normalizeQuote,
   parseDocCommentBody,
+  railVisible,
 } from "./docs-comments-core.js";
 
 test("normalizeQuote collapses the whitespace a rendered selection carries", () => {
@@ -194,6 +195,31 @@ test("docCommentsFor: an unparsable body is kept with its raw text as the note",
   });
   assert.equal(got[0].anchor.note, "written before this format existed");
   assert.equal(got[0].hit.match, "stale");
+});
+
+// The rail is an overlay over the prose, so when it is NOT on screen is as much
+// a rule as what it holds — feedback #40 (2026-07-26) was a dark pane over the
+// documentation on a phone, in read-only mode, with no way to dismiss it.
+
+test("railVisible: read mode never opens the rail on its own, comments or not", () => {
+  assert.equal(railVisible({ commenting: false }), false);
+  assert.equal(railVisible({ commenting: false, requested: null }), false);
+  assert.equal(railVisible({}), false);
+  assert.equal(railVisible(), false);
+});
+
+test("railVisible: comment mode opens its workspace", () => {
+  assert.equal(railVisible({ commenting: true }), true);
+});
+
+test("railVisible: an explicit open or close outranks the mode", () => {
+  assert.equal(railVisible({ commenting: false, requested: true }), true);
+  assert.equal(railVisible({ commenting: true, requested: false }), false);
+});
+
+test("railVisible: writing a comment keeps the rail up — the composer is in it", () => {
+  assert.equal(railVisible({ commenting: true, composing: true, requested: false }), true);
+  assert.equal(railVisible({ commenting: false, composing: true }), true);
 });
 
 test("docCommentsFor: junk input yields an empty list", () => {
