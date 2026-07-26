@@ -641,8 +641,11 @@ for Markdown rendering + sanitizing; `mermaid.min.js`, lazy-loaded by
 for the PDF report; `pdf.js` for parsing PDF attachments client-side;
 `vendor/xterm/` — the sandbox terminal `@xterm/xterm@5.5.0` + fit addon,
 vendored 2026-07-15 with SHA-256 pins recorded in `sandbox.js`, so a CDN
-outage can't break the sandbox; the CheerpX engine stays a CDN load
-pending its license question).
+outage can't break the sandbox; `vendor/transformers/` — transformers.js +
+its onnxruntime WASM, loaded only by the on-device inference worker; the
+CheerpX engine stays a CDN load pending its license question). Per-library
+versions, sizes, licenses, load triggers, rationale, and the full SHA-256
+manifest: **`docs/DEPENDENCIES.md`**.
 
 Games (`public/games/<id>/` — reached from the account panel's **Games**
 view in `account.js`, which renders the shelf from `GET /api/games`, the
