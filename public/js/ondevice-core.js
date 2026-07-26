@@ -203,6 +203,129 @@ export function crashMessage(everSpoke, detail) {
   return base + (detail ? ": " + detail : ".") + hint;
 }
 
+// ---- the crash BREADCRUMB (surviving a tab that dies) --------------------------------
+//
+// A renderer OOM is not catchable: the tab is gone before any handler runs, so
+// window.onerror / unhandledrejection / worker.onerror can only cover the
+// failures that leave the page ALIVE. The one thing that survives is what was
+// written to storage BEFORE the risky allocation — so every run that spawns
+// N model instances drops a breadcrumb first, updates it as cheaply as it can,
+// and clears it on a clean finish. A breadcrumb still present on the next page
+// load means the previous run did not finish: the tab died mid-run, and the
+// app can say so instead of the user being told nothing happened.
+//
+// PRIVACY (invariant 4): COUNTERS AND CLASSES ONLY. No task text, no node ids
+// (orchestrator ids are slugified from plan names, which are derived from the
+// user's request), no prompts, no answers — the record below is the whole
+// vocabulary, and everything in it is device capability or arithmetic.
+
+/** localStorage key for the in-flight on-device run. */
+export const ONDEVICE_CRASH_KEY = "dr_ondevice_run";
+
+/** The phases a breadcrumb may name (closed vocabulary — a bounded string). */
+export const RUN_PHASES = ["start", "spawn", "diverge", "critique", "converge", "synthesis", "done"];
+
+/** @param {unknown} v @param {number} max */
+function smallInt(v, max) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(0, Math.min(max, Math.trunc(n))) : 0;
+}
+
+/**
+ * The breadcrumb record. Bounded and typed here so the writer, the reader and
+ * the diagnostics block can never disagree about its shape. Idempotent: a
+ * stored record (short keys) normalizes back through the same function as a
+ * fresh one (long keys), so reading a crumb needs no second parser.
+ * @param {{ startedAt?: number, t?: number, kind?: string, nodes?: number, members?: number,
+ *   concurrency?: number, conc?: number, rounds?: number, round?: number, phase?: string,
+ *   modelMb?: number, mb?: number, cls?: string }} run
+ */
+export function runBreadcrumb(run = {}) {
+  return {
+    v: 1,
+    t: smallInt(run.startedAt ?? run.t, 4e12),
+    kind: run.kind === "chat" ? "chat" : "swarm",
+    nodes: smallInt(run.nodes, 16),
+    members: smallInt(run.members, 32),
+    conc: smallInt(run.concurrency ?? run.conc, 16),
+    rounds: smallInt(run.rounds, 8),
+    round: smallInt(run.round, 8),
+    phase: RUN_PHASES.includes(String(run.phase)) ? String(run.phase) : "start",
+    mb: smallInt(run.modelMb ?? run.mb, 100_000),
+    // Already-classified values round-trip through the classifier ("oom" is
+    // itself a memory signature, "timeout" a timeout), so one call covers both
+    // a raw failure message and a re-normalized record.
+    cls: crashClass(run.cls),
+  };
+}
+
+/**
+ * Classify a failure message into the three classes worth counting. Memory
+ * pressure is the one that matters (it is what kills a tab), so it wins over
+ * the others; a timeout is a stall, anything else with text is a plain crash.
+ * @param {unknown} message
+ * @returns {""|"oom"|"crash"|"timeout"}
+ */
+export function crashClass(message) {
+  const s = typeof message === "string" ? message : "";
+  if (!s.trim()) return "";
+  if (isMemoryPressureError(s)) return "oom";
+  if (/timed out|timeout|deadline/i.test(s)) return "timeout";
+  return "crash";
+}
+
+/**
+ * The client_diag block for a breadcrumb that outlived its run. Two things get
+ * reported, and `died` tells them apart:
+ *   died: 1 — the crumb never reached "done", so the run was still going when
+ *             the page stopped existing: the tab died (or was killed) mid-run.
+ *   died: 0 — the run finished, but a failure CLASS was recorded along the way
+ *             (a member's OOM, a caught allocation failure). Survivable, and
+ *             still the signal that this device is at its limit.
+ * Returns undefined for a clean or missing breadcrumb, and for one older than
+ * `maxAgeMs` (a day-old crumb tells us nothing about this session).
+ * @param {any} rec
+ * @param {number} [now]
+ * @param {number} [maxAgeMs]
+ * @returns {{ died: 0|1, kind: string, phase: string, round: number, members: number, conc: number, mb: number, cls: string, ago: number } | undefined}
+ */
+export function crashDiag(rec, now = Date.now(), maxAgeMs = 24 * 3600_000) {
+  if (!rec || typeof rec !== "object") return undefined;
+  if (rec.phase === "done" && !crashClass(rec.cls)) return undefined;
+  const b = runBreadcrumb(rec);
+  const ago = b.t ? Math.max(0, now - b.t) : 0;
+  if (b.t && ago > maxAgeMs) return undefined;
+  return {
+    died: b.phase === "done" ? /** @type {0} */ (0) : /** @type {1} */ (1),
+    kind: b.kind,
+    phase: b.phase,
+    round: b.round,
+    members: b.members,
+    conc: b.conc,
+    mb: b.mb,
+    cls: b.cls,
+    ago: Math.min(86_400, Math.round(ago / 1000)),
+  };
+}
+
+/**
+ * The one memory signal a browser will actually give us. Chrome's
+ * performance.memory reports the JS heap only (WASM/GPU allocations are NOT in
+ * it), so it under-reports this tier's real footprint — but a page already
+ * near its heap ceiling is a page that must not spawn four more model
+ * instances, and that is all this is used for. null where the API is absent
+ * (Safari, Firefox — the reporter's browser), which callers read as "unknown",
+ * never as "fine".
+ * @param {{ usedJSHeapSize?: number, jsHeapSizeLimit?: number }} [mem] performance.memory
+ * @returns {?number} 0…1, or null when unknown
+ */
+export function heapUsedRatio(mem) {
+  const used = Number(mem?.usedJSHeapSize);
+  const limit = Number(mem?.jsHeapSizeLimit);
+  if (!Number.isFinite(used) || !Number.isFinite(limit) || limit <= 0) return null;
+  return Math.max(0, Math.min(1, used / limit));
+}
+
 // ---- the on-screen trace ------------------------------------------------------------
 //
 // Phones have no console — the on-device-trace method's answer is a visible,

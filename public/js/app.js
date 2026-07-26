@@ -63,6 +63,8 @@ import { BUDGET_MAX_S, BUDGET_MIN_S, budgetTier, fmtBudget, posToSeconds, second
 import { clearChatDom, EMPTY_TEXT, initTurns } from "./turns.js";
 import { initTestpoints } from "./testpoints.js";
 import { parseComposerDeepLink } from "./deeplink-core.js";
+import { mountSlashMenu } from "./slash-menu.js";
+import { detectLang } from "./canned-faq.js";
 
 // ---- Elements -------------------------------------------------------------
 
@@ -635,6 +637,29 @@ const autogrow = () => {
 };
 input.addEventListener("input", autogrow);
 
+// SLASH COMMANDS (UX-13): a "/" typed as the first character opens the command
+// list — `/feedback` and `/help`, the two that are available in every agent
+// (owner directive, 2026-07-26). Identical mount on Se/cure (public/cure/drc.js),
+// because the commands belong to the platform rather than to a tier or a mode.
+//
+// The menu's language follows the repo's deterministic EN-default convention
+// (canned-faq.js detectLang): what is being typed decides, and while that is
+// still just a slash, the last thing the user wrote does — so a Swedish
+// conversation gets Swedish descriptions from the first keystroke.
+const lastUserBubbleText = () => {
+  try {
+    const bubbles = document.querySelectorAll("#chat .msg.user");
+    return bubbles.length ? bubbles[bubbles.length - 1].textContent || "" : "";
+  } catch {
+    return "";
+  }
+};
+mountSlashMenu({
+  input,
+  container: document.getElementById("composer"),
+  lang: () => detectLang(input.value.replace(/^\/\S*/, "").trim() || lastUserBubbleText()),
+});
+
 // Keep the chat's bottom inset matched to the FIXED footer glass so the last
 // lines of a reply always clear the composer pane. The footer's real footprint
 // (composer height — which GROWS as the textarea autosizes — plus margins and
@@ -784,7 +809,7 @@ input.addEventListener("keydown", (e) => {
 // every module was current. If the marker doesn't match, fetch the
 // stylesheet with cache:"reload" (bypasses AND overwrites the cached
 // entry) and swap the link so the fresh rules apply without a reload.
-const CSS_VERSION = "h52";
+const CSS_VERSION = "h53";
 try {
   const seen = getComputedStyle(document.documentElement).getPropertyValue("--css-version").trim();
   if (seen !== CSS_VERSION) {

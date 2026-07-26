@@ -35,6 +35,7 @@ import { runDrcResearch } from "./drc-research.js";
 import { runShellLoop, shellCommandLabel } from "./bash-agent.js";
 import { GUEST_STDOUT_CAP_BYTES, bashIntent, deliverablesRun, execTimeoutForBudget, wantsOutboxCollect } from "./bash-core.js";
 import { feedbackForcesServerRoute, feedbackIntent } from "./feedback-core.js";
+import { slashEffect } from "./slash-core.js";
 import { aiModelIntent } from "./ai-models.js";
 import { collectDeliverables, ensureSandboxBooted, execInSandbox, resetSandboxIfLacking, sandboxFsSummary, sandboxIdle, sandboxSupported, sblog } from "./sandbox.js";
 import { hasPending } from "./attachments.js";
@@ -965,7 +966,10 @@ async function maybeRunShellLoop(turn, opts) {
     // the loop runs on every send (the model decides), and a feedback text
     // that merely TALKS about Linux commands lures the model into proposing
     // some — booting the VM on the way to the feedback case (feedback #18).
-    if (latestUser && feedbackIntent(latestUser)) return [];
+    // (Since 2026-07-26 a `/feedback` or `/help` command is turned away here
+    // too: both are answered without a shell, and the ~25 s boot would be spent
+    // on the way to a canned acknowledgment or a documentation answer.)
+    if (latestUser && (feedbackIntent(latestUser) || slashEffect(latestUser))) return [];
     if (latestUser && aiModelIntent(latestUser) && !bashIntent(latestUser)) return [];
     // Agent Studio (SDK mode): building is the BUILD tools' job (write_file /
     // publish_app — files created in the sandbox are never published), so a
@@ -1080,6 +1084,14 @@ async function maybeRunShellLoop(turn, opts) {
 async function maybeRunSwarmPrepass(turn, payload) {
   try {
     if (cachedChatMode() !== "orchestrator") return;
+    // A SLASH COMMAND is never orchestrated (owner directive, 2026-07-26 —
+    // feedback #26). This pre-pass runs BEFORE /api/chat, so without this guard
+    // a "/feedback the orchestrator ignores this" typed in Orchestrator mode
+    // posted the note to /api/orchestrator/plan and drew a sub-agent team over
+    // the turn — the server then answered it correctly, but from the user's
+    // seat the mode had visibly taken the message. The server-side twin of this
+    // rule is in src/chat.js (a command clears every executor phase).
+    if (slashEffect(latestUserText())) return;
     // Capability = the on-device knob is on AND weights are already cached
     // here. Never triggers a download (the consent rule lives in Settings).
     const cap = await detectSwarmCapability();

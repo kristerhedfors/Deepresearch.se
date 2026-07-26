@@ -17,8 +17,12 @@ import {
   capabilityVerdict,
   clipMiddle,
   completionEnvelope,
+  crashClass,
+  crashDiag,
   crashMessage,
+  heapUsedRatio,
   isMemoryPressureError,
+  runBreadcrumb,
   trimForOnDevice,
   createSha256,
   createThinkFilter,
@@ -508,4 +512,74 @@ test("crashMessage: a memory-looking detail carries the out-of-memory remedy; ot
   assert.ok(oom.includes("New chat"));
   const plain = crashMessage(true, "Script error.");
   assert.ok(!plain.includes("ran out of memory"));
+});
+
+// ---- the crash breadcrumb (feedback #26 — the tab that dies mid-run) ---------
+
+test("crashClass sorts a failure into the three classes worth counting", () => {
+  assert.equal(crashClass("Cannot enlarge memory arrays"), "oom");
+  assert.equal(crashClass("oom"), "oom", "an already-classified value round-trips");
+  assert.equal(crashClass("This swarm member timed out on this device."), "timeout");
+  assert.equal(crashClass("timeout"), "timeout");
+  assert.equal(crashClass("Script error."), "crash");
+  assert.equal(crashClass(""), "");
+  assert.equal(crashClass(undefined), "");
+});
+
+test("runBreadcrumb bounds every field and carries counters ONLY", () => {
+  const b = runBreadcrumb({
+    startedAt: 1_700_000_000_000,
+    kind: "swarm",
+    nodes: 99,
+    members: 999,
+    concurrency: 99,
+    rounds: 99,
+    round: 2,
+    phase: "diverge",
+    modelMb: 1200,
+    cls: "Cannot enlarge memory arrays",
+  });
+  assert.deepEqual(b, {
+    v: 1,
+    t: 1_700_000_000_000,
+    kind: "swarm",
+    nodes: 16,
+    members: 32,
+    conc: 16,
+    rounds: 8,
+    round: 2,
+    phase: "diverge",
+    mb: 1200,
+    cls: "oom",
+  });
+  // Nothing derived from a conversation can enter the record: unknown fields
+  // are dropped, and an out-of-vocabulary phase falls back.
+  const junk = runBreadcrumb({ phase: "the user asked about X", task: "secret", id: "climate-critic" });
+  assert.equal(junk.phase, "start");
+  assert.equal(junk.task, undefined);
+  assert.equal(junk.id, undefined);
+  // A stored record re-normalizes through the same function (short keys).
+  assert.deepEqual(runBreadcrumb(b), b);
+});
+
+test("crashDiag reports an unfinished run, a survived-but-pressured one, and nothing else", () => {
+  const now = 1_700_000_100_000;
+  const base = { t: now - 30_000, kind: "swarm", nodes: 1, members: 6, conc: 4, rounds: 2, round: 2, mb: 1200 };
+  const died = crashDiag({ ...base, phase: "diverge", cls: "" }, now);
+  assert.equal(died.died, 1);
+  assert.equal(died.phase, "diverge");
+  assert.equal(died.ago, 30);
+  const survived = crashDiag({ ...base, phase: "done", cls: "oom" }, now);
+  assert.equal(survived.died, 0, "it finished — the class is still worth reporting");
+  assert.equal(survived.cls, "oom");
+  assert.equal(crashDiag({ ...base, phase: "done", cls: "" }, now), undefined, "a clean run reports nothing");
+  assert.equal(crashDiag(null, now), undefined);
+  assert.equal(crashDiag({ ...base, t: now - 8 * 86_400_000, phase: "diverge" }, now), undefined, "stale crumbs are dropped");
+});
+
+test("heapUsedRatio reports a fill only where the browser measures one", () => {
+  assert.equal(heapUsedRatio({ usedJSHeapSize: 900, jsHeapSizeLimit: 1000 }), 0.9);
+  assert.equal(heapUsedRatio(undefined), null, "Safari/Firefox report nothing — unknown, never 'fine'");
+  assert.equal(heapUsedRatio({ usedJSHeapSize: 5, jsHeapSizeLimit: 0 }), null);
+  assert.equal(heapUsedRatio({ usedJSHeapSize: 2000, jsHeapSizeLimit: 1000 }), 1, "clamped");
 });
