@@ -1,7 +1,8 @@
 # Generalizing the default agents into the Agents SDK
 
-**Status: Stages 0–3 SHIPPED plus the prompts axis, 2026-07-25 (owner go-ahead
-in-session). Stage 4 is not built; stages 5–7 are proposed (§7).** This page began as an investigation of what this site's built-in
+**Status: Stages 0–3 SHIPPED plus the prompts axis, 2026-07-25. Stages 5–7
+SHIPPED 2026-07-26 (§7). Stage 4 — publishing spend-capable agent links — is
+still not built, and is the one that needs the quota-grant assessment.** This page began as an investigation of what this site's built-in
 agents actually are, a measurement of how much of that the DeepResearch Agents
 SDK could express, and a staged plan for closing the distance. §1–§3 record the
 findings as they stood before the work; §5 marks what landed. The gap those
@@ -417,34 +418,38 @@ easy to lose, because both halves have passing tests. The difference:
 - a **declared** field is asserted equal to a hardcoded constant by a test, so
   changing it in a spec fails `npm test` rather than changing behaviour.
 
-Exactly three values cross from the registry into a run. `src/chat.js` puts
-`answerPhase`, `agentId` and `promptSet` on the pipeline state; the resolved
-capability object itself is never carried.
+When this was written, exactly three values crossed from the registry into a
+run — `src/chat.js` put `answerPhase`, `agentId` and `promptSet` on the
+pipeline state, and the resolved capability object itself was never carried.
+Stages 5–7 below closed that. The table records both columns, because the
+distinction is the thing worth remembering: a passing test proves a field is
+*accurate*, not that it is *read*.
 
-| Field | Status | Where it lands |
-|---|---|---|
-| `defaults` table + `mode` | executed | `resolveRequestAgent` → `src/chat.js` |
-| `capability.answerPhase` | executed | `ANSWER_PHASE_RUNNERS` (`src/pipeline.js`) |
-| `capability.prompts` | executed | `phasePrompt` (`src/prompt-sets.js`) |
-| `capability.requires` | executed | the knob gate in `resolveRequestAgent` |
-| `quota` | executed | `agentTokenGrantParams` → `src/agent-link.js` |
-| `capability.bounds` | declared | pinned to the constants in `src/agent-bounds.test.js` |
-| `capability.tools` | declared | the tool list is still `sdkBuildTools()` / `INTROSPECTION_TOOLS` |
-| `capability.context` | declared | blocks are still selected by `state.introspection` / `sdkMode` |
-| `capability.search` | declared | the wave still reads `state.webSearch` and the module caps |
-| `capability.gates`, `emits`, `team` | declared | the gates and caps live in their own modules |
-| `theme`, `intro`, `loading`, `backdrop`, `controls` | declared | rendered only by `/agents/preview.html`; the running app draws from `mode-theme.js` |
+| Field | Was | Now | Where it lands |
+|---|---|---|---|
+| `defaults` table + `mode` | executed | executed | `resolveRequestAgent` → `src/chat.js` |
+| `capability.answerPhase` | executed | executed | `ANSWER_PHASE_RUNNERS` (`src/pipeline.js`) |
+| `capability.prompts` | executed | executed | `phasePrompt` (`src/prompt-sets.js`) |
+| `capability.requires` | executed | executed | the knob gate in `resolveRequestAgent`, plus `requirementsFor` for an untrusted spec |
+| `quota` | executed | executed | `agentTokenGrantParams` → `src/agent-link.js` |
+| `capability.bounds` | declared | **executed** | `capBound` in the tool loops and the orchestrator's per-node caps |
+| `capability.tools` | declared | **executed** | `toolsForRun` over `src/tool-sets.js` |
+| `capability.search` | declared | **executed** | `searchPolicyFor` → the Exa gate, the aux wave, `takeSearchBatch`, the orchestrator budget |
+| `capability.context` | declared | declared | blocks are still selected by `state.introspection` / `sdkMode` |
+| `capability.gates`, `emits`, `team` | declared | declared | the gates and caps live in their own modules |
+| `theme`, `intro`, `loading`, `backdrop`, `controls` | declared | declared | rendered only by `/agents/preview.html`; the running app draws from `mode-theme.js` |
 
-So the visual half is not authoritative either — `agent-preview.js` renders a
+So the visual half is still not authoritative — `agent-preview.js` renders a
 spec's composer, and the real chat pane does not. The registry describes both
-halves accurately today because tests force it to, not because either half is
+halves accurately because tests force it to, not because either half is
 generated from it.
 
 ### The three limits Agent Studio actually hits
 
-Framing the remaining work as "Stage 4" understates it. Three separate limits
-sit between today's registry and a flexible builder, and only the third is what
-Stage 4 describes.
+Framing the remaining work as "Stage 4" understated it. Three separate limits
+sat between the registry and a flexible builder, and only the third was what
+Stage 4 described. **Limits 1 and 2 are closed** (stages 6 and 7); limit 3
+stands, and is the one that needs an owner decision rather than more code.
 
 1. **An agent cannot be addressed.** `resolveRequestAgent` walks the `defaults`
    table and nothing else — a request has no way to name an agent id. So a
@@ -465,64 +470,134 @@ Stage 4 describes.
    prompts axis closed the *drift* problem (a spec now names its voice) without
    opening the *authoring* problem.
 
-### Stages 5–7 — proposed, not built
+### Stage 5 — execute what is already declared — SHIPPED (2026-07-26)
 
-Ordered so each leaves the tree green, cheapest first, and so the risky ones
-land after the safety net exists. None has owner sign-off yet.
+The resolved capability is carried on the pipeline state, and the pipeline
+reads it. Three narrowing accessors in the pure core do the reading:
+`capBound`, `capSearch`, `capHasTool`.
 
-**Stage 5 — execute what is already declared.** Carry the resolved capability
-on the pipeline state and read it, with today's constants as the defaults, so
-each field moves from pinned to live: `bounds` into the tool loops and the
-orchestrator's per-node caps, `search` as a ceiling ANDed with the user's knob
-(narrowing only, never widening), `context` as the block selector in place of
-the mode booleans, `tools` as a class → toolset table, `gates` as a registry
-keyed on id. Behaviour-preserving by construction: every shipped agent declares
-what the code already does, which `agent-bounds.test.js` and
-`agent-capability.test.js` assert today and would keep asserting. It is the
-prerequisite for stages 6 and 7 being worth anything — a spec that can be
-authored but whose fields are ignored is worse than no spec.
+Every one of them takes the platform's own limit as **both the default and the
+ceiling**. An absent, malformed or over-large declaration all resolve to
+today's value, and no declaration can reach further than the code already
+reaches. That asymmetry is not tidiness — it is the entire safety argument for
+stage 7, because it means the worst a hostile spec can do is make its own agent
+do less work.
 
-*Accept:* the declaration pins survive unchanged, and a synthetic agent
-declaring a lower `bounds.maxRounds` observably runs fewer rounds.
+- **bounds** — the source tool loop, the build loop and the orchestrator's
+  per-node token and wall-clock caps read the agent's declaration, clamped to
+  their own constants.
+- **tools** — [`src/tool-sets.js`](../src/tool-sets.js), the sibling of
+  `prompt-sets.js`, binds each closed class to the array its phase used to
+  import. It walks the binding in *registry* order, so two specs naming the same
+  classes in different orders get byte-identical tool lists and no spec can
+  reorder what a model sees. A class whose deployment need is unmet (the source
+  snapshot) is dropped rather than erroring.
+- **search** — `searchPolicyFor()` ANDs the agent's declared ceiling with the
+  user's knob, narrowing in both directions, and the orchestrator's
+  `MAX_ORCH_SEARCHES` now comes from the spec's `maxQueries` — the one search
+  field that was genuinely declared-but-unread.
 
-**Stage 6 — address an agent by id.** Add an `agent` field to the `/api/chat`
-body, resolved against the registry and gated by `capability.requires` exactly
-as the `defaults` rows are; the table stays as the fallback for a request that
-names none. A registry entry then needs no new mode flag, no `CHAT_MODE_IDS`
-entry, no `mode-theme.js` descriptor and no CSS. Pairs naturally with making the
-spec's `theme` and `controls` authoritative in the real chat pane, with
-`mode-theme.js` as the fallback for a request that resolves to no agent.
+**The regression this nearly shipped, and the rule that came out of it.** A
+capability governs the phase it **names**, and no other. Introspection declares
+`search.web: false` because its own phase does not search; the research flow is
+reached from introspection only when the per-message `externalSourceIntent`
+gate hands the turn back *in order to* search. Applying introspection's
+declaration there would have silently killed web search for every
+developer-mode request. It has its own test.
 
-*Accept:* a request naming a registry agent with no `defaults` row runs on that
-agent's phase, prompt set and bounds; a request naming an agent whose
-`requires` are not granted falls through rather than escalating.
+No-op by construction, and asserted as such: every shipped agent declares
+exactly what its phase already did, so routing them all through the accessors
+reproduces the previous behaviour. New tests pin that the call sites read the
+capability rather than the constant — passing the bare constant again would
+un-execute the declaration while every other test stayed green.
 
-**Stage 7 — a spec becomes a deliverable.** This is §5's Stage 4, plus the
-piece it assumed: `agent_write` / `agent_publish` alongside `write_file` /
-`publish_app`, writing a *validated* spec to per-user storage that stage 6's
-resolver reads after the committed registry. Then "build me a Swedish
-legal-research agent with web search off and a source-read tool" produces
-something the real platform runs, and `team.kinds` holding registry ids lets an
-orchestrated workflow include it.
+### Stage 6 — address an agent by id — SHIPPED (2026-07-26)
 
-The security posture changes here and nowhere earlier: a user-authored spec is
-untrusted input, so validation moves from `npm test` at build time to the
-request path. `validateAgentSpec` / `validateCapability` already reject every
-out-of-vocabulary value and already enforce invariants 1, 3, 4 and 6, so the
-work is calling them at the boundary and failing closed — not new rules. Stage
-4.1's minted token is the other half, with the **quota-grant-assessment**
-checklist and the fail-safe metering rule (§6) unchanged.
+`/api/chat` takes an `agent` field naming a registry entry directly.
+`resolveRequestAgent` gained an addressing pass ahead of the flagged and
+derived rows, applying the same `capability.requires` gate.
 
-*Accept:* §5 Stage 4's acceptance, plus a rejected-spec suite covering each
-closed vocabulary and each invariant rule at the request boundary.
+An unknown id, a misspelt id and an id the caller may not have all behave
+identically: the request falls through to the table it would have got anyway.
+So addressing can narrow what answers a request and can never reach a
+capability the knobs withhold, and probing for ids reveals nothing.
 
-**What stays out of scope deliberately.** Per-agent prompt *text* is the
-obvious stage 8 and the one that most needs an owner decision, because it is
-where the selector rule (§6) bends: authored words are not a member of a closed
-vocabulary. The bounded form worth arguing is an appendix — a length-capped
-persona block appended to the shipped set's output, never replacing it, so the
-deterministic prompt and the invariants survive. It is recorded here as the
-open question, not as a plan.
+`direct` became a dispatch target alongside `build`/`workflow`/`feed`. It was
+always in the vocabulary and always the research flow's fallback; without a
+runner, a spec declaring it would have been quietly answered by the research
+pipeline. It has no mode-boolean fallback on purpose — there is no mode to fall
+back to.
+
+**The limit kept.** An agent's phase is authoritative only where an executor
+exists. One declaring `research` or `source-research` still resolves to null,
+because which of those a knob-on turn runs is the per-*message* `hasSource` +
+`externalSourceIntent` decision and a per-*request* declaration must not
+pre-empt it. The agent still governs that turn through its prompt set and its
+capability. This is Stage 3's per-message/per-request split, unchanged.
+
+The answer-phase dispatch table also got its first test. A grep for the mode
+flags across every suite previously hit only `prompts.test.js`, so the table
+could have lost a row without anything failing.
+
+### Stage 7 — an untrusted spec is safe to resolve — SHIPPED (2026-07-26)
+
+`resolveUntrustedAgent(spec, granted)` is the boundary for a spec the repo did
+not commit. It fails closed in every direction: not an object, any validation
+problem, or any ungranted requirement yields a null agent and the reasons. No
+partial success, because a half-applied capability block is a state no reader
+downstream expects.
+
+**The escalation it closes.** `capability.requires` is *self-declared*. A spec
+selecting the build tools while declaring `requires: []` would sail through the
+ordinary routing gate, which checks what a spec claims to need rather than what
+it reaches for. So requirements are **derived from the selection**
+(`requirementsFor` over the `IMPLIED_REQUIREMENTS` table) and the derived set is
+what gets checked. Lying is inert. The table is pinned against the real
+registry — every shipped agent's declared `requires` must cover what its own
+selections imply — so it cannot drift into being a parallel opinion of the
+registry.
+
+What makes this safe rather than merely careful is that it adds no new rules.
+The closed vocabularies already reject non-members, `validateAgentSpec` already
+runs invariants 1, 3, 4 and 6, and stage 5's accessors already make every field
+a ceiling. The boundary's whole job is to run them on the request path and
+refuse.
+
+It is wired: `/api/chat` accepts an `agent_spec` object, the most specific route
+(it beats `agent` and every mode flag, and needs no registry load). A refused
+spec is logged and the turn is answered by the agent it would otherwise have
+got — a chat turn is not the place to fail a build.
+
+The rejected-spec suite covers each closed vocabulary and each invariant rule at
+the boundary, plus junk in place of a spec, plus the self-declared-requires
+escalation.
+
+### What is still not built
+
+**Stage 4 — publishing spend-capable agent links.** Deliberately untouched. Its
+mechanism is in place (`agentLinkPlan` → `mintServerTokenGrant`) and stage 7
+makes a published spec resolvable, so the remaining work is wiring plus the
+**quota-grant-assessment** checklist. It stays separate because it is the only
+step that spends money on a link a stranger can click: fail-safe, not fail-soft
+(§6), and it should land as its own change.
+
+**Per-user spec STORAGE.** Stage 7 shipped the boundary and the inline route,
+not a place to keep a spec. `agent_write` / `agent_publish` writing to per-user
+storage that the resolver reads after the committed registry is a wiring job
+now rather than a security design job — which was the point of doing the
+boundary first.
+
+**Per-agent prompt TEXT.** Still the open question, and still needs an owner
+decision, because it is where the selector rule (§6) bends: authored words are
+not a member of a closed vocabulary. The bounded form worth arguing is an
+appendix — a length-capped persona block appended to the shipped set's output,
+never replacing it, so the deterministic prompt and the invariants survive.
+Recorded as the question, not as a plan.
+
+**The visual half.** `theme`, `controls`, `intro`, `loading` and `backdrop` are
+still rendered only by `/agents/preview.html`; the running chat pane draws from
+`mode-theme.js`. Making the spec authoritative there, with `mode-theme.js` as
+the fallback, is the natural pair to stage 6 and was not part of this work.
 
 ## 8. Where this sits
 

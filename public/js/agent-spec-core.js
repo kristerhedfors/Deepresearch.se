@@ -628,6 +628,99 @@ export function validateAgentSpec(a) {
   return problems;
 }
 
+// ---- resolving a spec the repo did not commit --------------------------------
+//
+// Every spec above ships inside the source snapshot, so `npm test` is what
+// stands between a bad declaration and production. A spec a USER authored has
+// no such gate: validation has to move onto the request path, and it has to
+// fail closed.
+//
+// Validation alone is not enough, because of one asymmetry that is easy to
+// miss. `capability.requires` is SELF-DECLARED. A spec that selects the build
+// tools and declares `requires: []` would, under the ordinary routing gate,
+// sail straight through — the gate checks what the spec claims to need, not
+// what it actually reaches for. So the requirement a selection carries has to
+// be DERIVED from the selection, and the derived set is what gets checked.
+
+/**
+ * Selection → the capability knobs it actually needs, regardless of what the
+ * spec declares. Only members that reach privileged machinery appear; a
+ * selection absent here needs nothing (the shell TRANSCRIPT, for instance, is
+ * context the client already attached and is gated where it is collected).
+ *
+ * Every shipped agent's declared `requires` is a superset of what this derives
+ * for it, asserted in agent-capability.test.js — so the table is checked
+ * against the real registry rather than being a parallel opinion of it.
+ */
+export const IMPLIED_REQUIREMENTS = {
+  answerPhase: {
+    "source-research": ["developer_mode"],
+    "build": ["developer_mode"],
+    "workflow": ["developer_mode"],
+    "feed": ["developer_mode"],
+  },
+  tools: {
+    "source-read": ["developer_mode"],
+    "sdk-plan": ["developer_mode"],
+    "build-publish": ["developer_mode"],
+    "shell": ["sandbox"],
+  },
+  context: {
+    "source-snapshot": ["developer_mode"],
+    "docs-corpus": ["developer_mode"],
+    "secure-digest": ["developer_mode"],
+    "outward-feed": ["developer_mode"],
+  },
+};
+
+/**
+ * Every capability knob an agent needs: what it declares, PLUS what its
+ * selections imply. Sorted and deduped so the result is comparable.
+ * @param {any} a
+ * @returns {string[]}
+ */
+export function requirementsFor(a) {
+  const cap = resolveCapability(a);
+  const need = new Set(cap.requires);
+  for (const r of /** @type {any} */ (IMPLIED_REQUIREMENTS.answerPhase)[cap.answerPhase] || []) need.add(r);
+  for (const t of cap.tools) for (const r of /** @type {any} */ (IMPLIED_REQUIREMENTS.tools)[t] || []) need.add(r);
+  for (const b of cap.context) for (const r of /** @type {any} */ (IMPLIED_REQUIREMENTS.context)[b] || []) need.add(r);
+  return [...need].sort();
+}
+
+/**
+ * Resolve a spec that did NOT come from the committed registry — one a user
+ * wrote through Agent Studio, or one read back from per-user storage.
+ *
+ * Fails closed in every direction: a spec that is not an object, that fails any
+ * validation rule, or that reaches for a knob the caller has not been granted
+ * yields a null agent and the reasons why. There is no partial success and no
+ * "resolve what we can" path — a spec is either wholly servable or it is not
+ * served, because a half-applied capability block is exactly the state no
+ * reader downstream is written to expect.
+ *
+ * What makes this safe rather than merely careful is that it adds no new rules.
+ * The closed vocabularies already reject anything that is not a member; the
+ * invariant rules (1, 3, 4, 6) already run inside `validateAgentSpec`; the
+ * narrowing accessors already make every field a ceiling rather than a request.
+ * This function's whole job is to run them at the boundary and refuse.
+ *
+ * @param {any} spec an untrusted AgentSpec
+ * @param {Record<string, boolean>} granted capability knob → granted?
+ * @returns {{ agent: any, capability: AgentCapability | null, problems: string[] }}
+ */
+export function resolveUntrustedAgent(spec, granted = {}) {
+  const deny = (/** @type {string[]} */ problems) => ({ agent: null, capability: null, problems });
+  if (!spec || typeof spec !== "object" || Array.isArray(spec)) return deny(["spec is not an object"]);
+  const problems = validateAgentSpec(spec);
+  if (problems.length) return deny(problems);
+  const missing = requirementsFor(spec).filter((r) => granted[r] !== true);
+  if (missing.length) {
+    return deny(missing.map((r) => `${spec.id}: requires "${r}", which this caller has not been granted`));
+  }
+  return { agent: spec, capability: resolveCapability(spec), problems: [] };
+}
+
 /**
  * Validate a whole registry object ({agents:[...]}). Checks each spec plus
  * cross-agent uniqueness of ids. Returns problem strings; empty means valid.
