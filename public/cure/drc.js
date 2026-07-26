@@ -4012,7 +4012,7 @@ $("input").addEventListener("keydown", (e) => {
   e.preventDefault();
   $("form").requestSubmit();
 });
-// SLASH COMMANDS (UX-13) — the SAME typeahead the Se/rver composer mounts
+// SLASH COMMANDS (UX-14) — the SAME typeahead the Se/rver composer mounts
 // (public/js/slash-menu.js), because `/feedback` and `/help` are platform
 // baseline rather than a tier's feature. Mounted AFTER the Enter handler above,
 // which it out-ranks: the menu listens on document in the capture phase, so an

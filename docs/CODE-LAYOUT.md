@@ -88,7 +88,7 @@ Server (`src/`):
 | `extensions.js` | **The EXTENSION REGISTRY — the clean cut between the platform core and the third-party services woven into research** (owner directive, 2026-07-25). The ONE `src/` module allowed to name an individual integration at the architectural seam, and the only one core imports. One descriptor per extension owns five seams core consumes generically: `setting` (the per-account knob's wire key/availability/secret/503), `resolveState` (request body → its slice of `state.ext`), `enrichment` (the runner), `logMeta` (its `chat.complete`/`chat_logs` keys), `capability` (its numbered line in the grounded capabilities note). Today: Shodan and Google Maps — example integrations, not architecture. Adding one is ONE descriptor plus its own modules; NO core file is edited, and `extensions.test.js`'s core-purity guard fails the build if a core module names or imports a service again |
 | `shodan-enrichment.js` | The Shodan enrichment runner (split out of `enrichment.js` 2026-07-25, mirroring `maps-enrichment.js`): resolves any host/IP the latest message names into a labeled context block, owns the `state.ext.shodan` slice, silent when nothing is named, fail-soft in every branch |
 | `maps-enrichment.js` | The Google Maps enrichment runners — one per lookup-target shape (address/place lookup, POV & map-view captures, jumps, nearby/relocation Places searches, cross-barrier crossings, the journey view) incl. the Street View vision-describe helper; orchestrates lookups → SSE events → context blocks, dispatched by `runGoogleMapsEnrichment`. Also owns everything Maps-shaped that used to sit in core files (2026-07-25): the `state.ext.maps` slice (`MapsSlice`), the client-view sanitizers `validateStreetViewPov`/`validateMapView` (moved out of `validation.js`), and its own `streetview_embed`/`streetview_frames`/`map_embed` SSE status types (moved out of the core `SseStatus` union) |
-| `slash.js` | **SLASH COMMANDS — the platform's composer command surface** (owner directive, 2026-07-26, feedback #26). A pure re-export of the ONE shared core `public/js/slash-core.js`: the two-entry registry (`/feedback`, `/help` — each with an EN+SV label, argument hint and description), the parser (`parseSlashCommand`/`slashEffect`/`slashArgs` — a leading slash plus an EXACT registry name; `/helper`, `/etc/passwd` and a mid-sentence slash are ordinary text), and the typeahead's pure half (`slashQuery`/`slashSuggestions`/`slashMenuItems`/`moveSlashIndex`). The commands are PLATFORM BASELINE, not an agent capability: `chat.js` resolves one from the message text BEFORE the mode routing and clears every executor phase for it, and `pipeline.js`'s feedback gate sits above the `ANSWER_PHASE_RUNNERS` dispatch — so the same two commands work in Deep Research, Introspection, Agent Studio, Orchestrator and Outrospection alike, and on Se/cure (`public/cure/drc.js` `send`). `/feedback` reaches the existing capture path (`feedbackRequested`/`feedbackComment` in `feedback-core.js`, then `runFeedbackCapture` and its canned EN+SV acknowledgment — still no LLM in the path); `/help` turns the introspection enrichment on for the request so the shipped help layer answers from the docs corpus. Every-mode routing is regression-locked in `src/slash.test.js`, which DISCOVERS the phases/booleans rather than listing them. Composer UI: `public/js/slash-menu.js` (UX-13) |
+| `slash.js` | **SLASH COMMANDS — the platform's composer command surface** (owner directive, 2026-07-26, feedback #26). A pure re-export of the ONE shared core `public/js/slash-core.js`: the two-entry registry (`/feedback`, `/help` — each with an EN+SV label, argument hint and description), the parser (`parseSlashCommand`/`slashEffect`/`slashArgs` — a leading slash plus an EXACT registry name; `/helper`, `/etc/passwd` and a mid-sentence slash are ordinary text), and the typeahead's pure half (`slashQuery`/`slashSuggestions`/`slashMenuItems`/`moveSlashIndex`). The commands are PLATFORM BASELINE, not an agent capability: `chat.js` resolves one from the message text BEFORE the mode routing and clears every executor phase for it, and `pipeline.js`'s feedback gate sits above the `ANSWER_PHASE_RUNNERS` dispatch — so the same two commands work in Deep Research, Introspection, Agent Studio, Orchestrator and Outrospection alike, and on Se/cure (`public/cure/drc.js` `send`). `/feedback` reaches the existing capture path (`feedbackRequested`/`feedbackComment` in `feedback-core.js`, then `runFeedbackCapture` and its canned EN+SV acknowledgment — still no LLM in the path); `/help` turns the introspection enrichment on for the request so the shipped help layer answers from the docs corpus. Every-mode routing is regression-locked in `src/slash.test.js`, which DISCOVERS the phases/booleans rather than listing them. Composer UI: `public/js/slash-menu.js` (UX-14) |
 | `quiz.js` | The inline-quiz capability's pure logic: `quizIntent` (deterministic "quiz me…" gate, EN+SV, typo-tolerant, question-count parsing; triage carries a fail-soft `quiz:true` backup flag for phrasings the regexes miss), `normalizeQuiz` (hardens the quiz-generation JSON the client renders), grade-request validation/normalization — the pipeline phase is `pipeline.js`'s `runQuizGeneration` (JSON model, fail-soft to a normal answer), the interaction runs client-side (`public/js/quiz.js`) |
 | `quiz-api.js` | `POST /api/quiz/grade`: grades a quiz's free-text answers (one JSON call on `DEFAULT_MODEL`, quota-gated, usage-recorded); multiple-choice picks grade client-side from the quiz payload |
 | `games.js` | The games subsystem's REGISTRY + dispatch seam (the games counterpart of `providers.js`/`search-sources.js`): one declarative entry per game (id/name/emoji/tagline/path/`available(env)`/`handle`); `GET /api/games` serves the shelf the account panel renders, `/api/games/<id>/*` dispatches to the game's handler — adding a game touches no client shelf code |
@@ -283,7 +283,7 @@ Outrospection);
 `reconcileChatMode` downgrades a stored pick when the knob is off; Node-tested),
 `slash-core.js` (SLASH COMMANDS' shared PURE core — the registry, the parser
 and the typeahead's filtering/highlight logic; see the `src/slash.js` row
-above — Node-tested) and `slash-menu.js` (the composer typeahead itself, UX-13:
+above — Node-tested) and `slash-menu.js` (the composer typeahead itself, UX-14:
 ONE DOM module both tiers mount — `app.js` on Se/rver, `drc.js` on Se/cure —
 because the commands belong to the platform rather than to a tier or a mode. A
 `/` typed as the first character opens the list; ↑/↓ move, Enter or Tab picks,
@@ -641,8 +641,11 @@ for Markdown rendering + sanitizing; `mermaid.min.js`, lazy-loaded by
 for the PDF report; `pdf.js` for parsing PDF attachments client-side;
 `vendor/xterm/` — the sandbox terminal `@xterm/xterm@5.5.0` + fit addon,
 vendored 2026-07-15 with SHA-256 pins recorded in `sandbox.js`, so a CDN
-outage can't break the sandbox; the CheerpX engine stays a CDN load
-pending its license question).
+outage can't break the sandbox; `vendor/transformers/` — transformers.js +
+its onnxruntime WASM, loaded only by the on-device inference worker; the
+CheerpX engine stays a CDN load pending its license question). Per-library
+versions, sizes, licenses, load triggers, rationale, and the full SHA-256
+manifest: **`docs/DEPENDENCIES.md`**.
 
 Games (`public/games/<id>/` — reached from the account panel's **Games**
 view in `account.js`, which renders the shelf from `GET /api/games`, the
@@ -718,16 +721,21 @@ Client modules not covered by a section above, each one file under
 `public/js/`: `docs.js` (attachment parsing — pdf/docx/md/txt, entirely
 in the browser, so file bytes never reach the server) and `docs-viewer.js`
 (the public `/docs/` viewer, rendering every repo doc out of the committed
-`docs-corpus.json`); `docs-comments-core.js` + `docs-comments.js` (the
-reader's Word-style COMMENT MODE, split pure-core/DOM — the core owns the
-stored body grammar, quote anchoring and stale detection, the DOM half owns
-the Read/Comment switch, the selection composer, the margin rail and the
-passage highlights. A comment is filed into the ONE instruction pipeline, the
-feedback queue, with feedback-core's `doc` scope and the document path in the
-`page` tag, so the loop reads it as an instruction to reconcile the document
-AND the code it describes; administrative — the DOM half is loaded
-dynamically only after `/api/me` returns an admin role, and is deliberately
-NOT on the public asset allowlist. See `docs/DECISION-BOARD-LOOPS.md` §1a);
+`docs-corpus.json`); `doc-comment-gate.js` + `docs-comments.js` +
+`docs-comments-core.js` (documentation COMMENT MODE, in three layers. The
+GATE is public and is the whole per-page cost — one script tag,
+`mountCommentMode({path})` — doing the `/api/me` admin check and rendering a
+visible note when the answer is no. The DOM half injects its own Read/Comment
+dropdown, comment rail and styles as fixed chrome, so it mounts on ANY
+documentation page without that page laying out for it; it is GATED,
+dynamic-imported only after the admin check, and deliberately NOT on the
+public allowlist. The pure core owns the stored body grammar, quote anchoring
+and stale detection. Live on `/help/` (the page the app links as
+"documentation") and `/docs/`. A comment is filed into the ONE instruction
+pipeline, the feedback queue, with feedback-core's `doc` scope and the
+document's repo path in the `page` tag, so the loop reads it as an instruction
+to reconcile the document AND the code it describes. See
+`docs/DECISION-BOARD-LOOPS.md` §1a);
 `provider-region.js` (the country-of-processing badges
 on the model selector — the conversation goes wherever the chosen model is
 hosted, so the selector says which country that is); `canned-faq.js` (the

@@ -180,7 +180,7 @@ is a command some agent ships without — the exact outcome the directive rules
 out. So the commands are composer **baseline** instead:
 
 - every `prompt-input` control carries the typeahead (`public/js/slash-menu.js`,
-  UX-13), mounted once per composer rather than once per agent;
+  UX-14), mounted once per composer rather than once per agent;
 - `src/chat.js` resolves the command from the message text **before** the
   routing table below runs, and clears every executor phase for it;
 - `src/pipeline.js` evaluates the feedback gate **above** the

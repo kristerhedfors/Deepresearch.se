@@ -65,7 +65,7 @@ everything above:
 
 No new gate: `helpIntent` already matches `/help …` (the word is right there),
 so the emphasis widening happens for free. The command registry itself is
-`public/js/slash-core.js` — see the **ux-conventions** skill's UX-13 for the
+`public/js/slash-core.js` — see the **ux-conventions** skill's UX-14 for the
 composer side.
 
 ## The two committed artifacts (the owasp-corpus pattern)

@@ -237,6 +237,14 @@ export function isPublicAsset(url, method) {
     url.pathname === "/introspect/docs-corpus.json" ||
     // The docs viewer's controller module (public graph).
     url.pathname === "/js/docs-viewer.js" ||
+    // The documentation COMMENT MODE bootstrap. Both /docs/ AND /help/ (a
+    // public page with no other JS) import it, so a 401 here would break the
+    // documentation pages for signed-out visitors — the same public-module-
+    // graph rule as the /cure entries. It reveals nothing: the admin check
+    // runs against /api/me, and the layer that can actually write a comment
+    // (/js/docs-comments.js + its core) stays GATED, deliberately absent from
+    // this list.
+    url.pathname === "/js/doc-comment-gate.js" ||
     url.pathname.startsWith("/introspect/docs-img/") ||
     url.pathname === "/llm-assiterad-utveckling.mp4" ||
     url.pathname === "/js/markdown.js" ||

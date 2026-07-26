@@ -1,0 +1,20 @@
+{
+  "branch": "claude/feature-focus-timeline-curves-ka3ui6",
+  "pr": null,
+  "requested_at": "2026-07-26",
+  "points": [
+    {
+      "label": "Feature focus timeline: tap to choose which curves are active",
+      "summary": "The timeline's legend is now the curve PICKER. On a phone, open /pulse/timeline.html and scroll to the 'Curves' block under the chart. PASS = (1) the chips are comfortable thumb targets, not 30px slivers, and the header reads '6 of 25 shown'; (2) a single tap on any subject adds or removes its curve immediately, and the chip's mark flips ○ ↔ ✓; (3) pressing and HOLDING a chip for about half a second leaves only that subject on the chart and the header changes to 'only <subject>' — holding it again brings your previous set back; (4) tapping a curve directly in the chart does the same isolation, while dragging the chart to pan changes nothing about which curves are shown; (5) after panning/zooming the chart, the chips are still immediately tappable (they used to be re-drawn mid-gesture); (6) reload the page — it opens on the curves you picked, not back on the default six. FAIL = any tap that needs a second attempt, a hold that toggles the curve back off when you lift your finger, a drag that silently changes the selection, or a selection lost on reload. Please note which phone/browser, since the hold gesture takes a different code path on iOS (timer) than on Android (contextmenu).",
+      "target": "/pulse/timeline.html",
+      "actions": [
+        {
+          "type": "note",
+          "text": "Verified in headless Chromium at 390x844 with touch (tests/e2e/pulse-timeline.spec.js, 8 cases). This request is the real-device confirmation of the two gestures a simulator cannot prove: the ~500ms hold, and whether the 44px chips actually feel tappable in the hand."
+        }
+      ],
+      "runs": 1,
+      "verdicts": []
+    }
+  ]
+}

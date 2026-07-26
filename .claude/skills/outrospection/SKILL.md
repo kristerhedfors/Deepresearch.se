@@ -48,10 +48,24 @@ the committed source snapshot.
   `state.outrospectionMode`, gated in `chat.js` on the same `developer_mode`
   capability as SDK and Orchestrator (precedence sdk > orchestrator >
   outrospection).
+- **The mode LOOKS before it reads (2026-07-26).** `runOutrospection` first
+  calls the shared `runLensRefresh` for the question's lens, bounded by
+  `MODE_REFRESH_BUDGET_MS` via `withDeadline`, then reads. Before this it only
+  read, which made the mode parasitic on someone opening `/outrospect/` in a
+  browser — in production nothing ever had, so the run log was empty and every
+  question got "the feed holds nothing on this yet" (feedback #25). If you are
+  tempted to drop the refresh for latency, that is the bug being re-introduced.
+  The refresh is fail-soft and its result is never awaited for correctness:
+  whatever reached D1 by read time is what gets cited.
 - **No model chooses what to retrieve.** `lensMatch` routes the question, so
   invariant 1 holds end to end and the outbound traffic stays the committed
   literal queries. An unmatched question falls back to the newest items across
   every lens rather than guessing a lens.
+- **The block always carries the lens catalog** (`outrospectionLensCatalog`),
+  including on an empty feed — the empty-feed prompt tells the model to name
+  the lenses, and before 2026-07-26 nothing in context listed them, so it
+  half-remembered three of seven. Callers decide grounded-vs-empty from the
+  ITEM COUNT, never from whether the block is a non-empty string.
 - **The no-fabrication rule is now prompt-enforced.** With an empty feed the
   prompt says so and forbids inventing articles, headlines or links — the same
   rule the scan obeys, moved to where a model could otherwise be tempted.

@@ -624,16 +624,44 @@ export function formatFeedText(items, { title = "OUTROSPECTION FEED (newest firs
 export const OUTROSPECT_BLOCK_CAPS = { items: 24, teaser: 320, chars: 12000 };
 
 /**
+ * The lens registry, rendered for the answer context. This is ALWAYS in the
+ * block, including when the feed is empty — the empty-feed prompt instructs
+ * the model to "name the lenses that exist", and before this existed there was
+ * nothing in context to name them from. The model then half-remembered three
+ * of the seven off the introspection source block and admitted it did not have
+ * the rest ("plus fyra till — jag har inte den fullständiga listan", feedback
+ * #25, 2026-07-26). A prompt may not order what the context cannot supply.
+ * @param {boolean} [swedish]
+ * @returns {string}
+ */
+export function outrospectionLensCatalog(swedish = false) {
+  const head =
+    swedish ?
+      `DE SJU LINSERNA — outrospektionens stående frågor (${OUTROSPECT_LENSES.length} st):`
+    : `THE LENSES — outrospection's standing questions (${OUTROSPECT_LENSES.length}):`;
+  const rows = OUTROSPECT_LENSES.map(
+    (l) => `- ${swedish ? l.titleSv : l.title} (${l.id}): ${swedish ? l.questionSv : l.question}`,
+  );
+  return `${head}\n${rows.join("\n")}`;
+}
+
+/**
  * Build the numbered context block an outrospection answer cites from. Items
  * arrive newest-first (mergeFeed's order) and are numbered in that order, so
  * "[1]" is always the most recent thing the feed knows.
+ *
+ * The lens catalog is always present; the ITEMS section appears only when the
+ * feed has something. So an empty feed still yields a block — callers must
+ * decide "grounded vs empty" from the item count, not from whether this
+ * returned a string.
  * @param {FeedItem[]} items
- * @param {{ limit?: number, teaser?: number, chars?: number }} [opts]
- * @returns {string} "" when there is nothing to cite
+ * @param {{ limit?: number, teaser?: number, chars?: number, swedish?: boolean }} [opts]
+ * @returns {string} never "" — at minimum the lens catalog
  */
 export function outrospectionBlock(items, opts = {}) {
   const list = Array.isArray(items) ? items : [];
-  if (!list.length) return "";
+  const catalog = outrospectionLensCatalog(!!opts.swedish);
+  if (!list.length) return catalog;
   const limit = Math.max(1, Math.min(OUTROSPECT_BLOCK_CAPS.items, opts.limit ?? OUTROSPECT_BLOCK_CAPS.items));
   const teaserCap = Math.max(40, opts.teaser ?? OUTROSPECT_BLOCK_CAPS.teaser);
   const charCap = Math.max(500, opts.chars ?? OUTROSPECT_BLOCK_CAPS.chars);
@@ -657,8 +685,11 @@ export function outrospectionBlock(items, opts = {}) {
     used += entry.length;
     n++;
   }
-  if (!n) return "";
-  return `OUTWARD FEED — what other people shipped (${n} item${n === 1 ? "" : "s"}, newest first):\n\n${lines.join("\n\n")}`;
+  if (!n) return catalog;
+  return (
+    `${catalog}\n\n` +
+    `OUTWARD FEED — what other people shipped (${n} item${n === 1 ? "" : "s"}, newest first):\n\n${lines.join("\n\n")}`
+  );
 }
 
 /**

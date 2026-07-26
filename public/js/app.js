@@ -641,7 +641,7 @@ const autogrow = () => {
 };
 input.addEventListener("input", autogrow);
 
-// SLASH COMMANDS (UX-13): a "/" typed as the first character opens the command
+// SLASH COMMANDS (UX-14): a "/" typed as the first character opens the command
 // list — `/feedback` and `/help`, the two that are available in every agent
 // (owner directive, 2026-07-26). Identical mount on Se/cure (public/cure/drc.js),
 // because the commands belong to the platform rather than to a tier or a mode.

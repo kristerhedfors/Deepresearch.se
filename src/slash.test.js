@@ -28,10 +28,23 @@ import { readFileSync } from "node:fs";
 import { runPipeline } from "./pipeline.js";
 import { slashEffect } from "./slash.js";
 import { SLASH_COMMAND_NAMES } from "../public/js/slash-core.js";
-import { CHAT_MODES } from "../public/js/chat-mode.js";
 
 const pipelineSrc = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
 const chatSrc = readFileSync(new URL("./chat.js", import.meta.url), "utf8");
+// chat-mode.js is a BROWSER module (localStorage, document) — not a pure core,
+// so src/ must not import it: doing so drags it, and bar-tint.js/dev-mode.js
+// behind it, into the Workers tsconfig program, where `document` and `window`
+// do not exist and `npm run typecheck` fails on files this branch never
+// touched. Read the list the same way this suite reads every other one.
+const chatModeSrc = readFileSync(new URL("../public/js/chat-mode.js", import.meta.url), "utf8");
+
+/** The chat modes, read from chat-mode.js's own CHAT_MODES list. */
+function chatModes() {
+  const list = /export const CHAT_MODES = \[([\s\S]*?)\]/.exec(chatModeSrc);
+  assert.ok(list, "CHAT_MODES not found — this suite must be re-pointed");
+  return [...list[1].matchAll(/"([a-z][\w-]*)"/g)].map((m) => m[1]);
+}
+const CHAT_MODES = chatModes();
 
 /** The executor answer phases, read from the dispatch table itself. */
 function answerPhases() {

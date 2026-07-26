@@ -300,8 +300,13 @@ section) and one live CDN load, the CheerpX sandbox engine
 (`cxrtnc.leaningtech.com`, pending its license question; see the
 **execution-sandbox** skill). The result is a narrow, mostly-auditable
 supply-chain surface with two known, tracked exceptions rather than an npm
-dependency tree. See `SECURITY-RISKS.md` R-9/R-10 and the L-12 backlog item
-(a version+SHA-256 manifest for the vendored libs) for the open follow-up.
+dependency tree. See `SECURITY-RISKS.md` R-9/R-10 for the risk framing.
+
+**`docs/DEPENDENCIES.md` is the complete dependency inventory** — every
+vendored library with its version, size, license, load trigger and reason for
+existing; the external runtime loads, flagged; the network, platform and
+dev-only sets; and the SHA-256 manifest that closes the manifest half of
+L-12.
 
 ## 2. Deployment & configuration
 
