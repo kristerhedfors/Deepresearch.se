@@ -169,13 +169,28 @@ What a send does:
    English or Swedish alike. **No model picks anything** — invariant 1 holds
    for the whole path, and there is no JSON planning phase at all, so nothing
    runs on the fixed json model (invariant 3).
-2. `retrieveOutwardFeed` loads that lens's newest items from D1. A lens with
+2. **It goes and looks.** `runLensRefresh` searches that lens — the same shared
+   function the page's refresh button calls — bounded by
+   `MODE_REFRESH_BUDGET_MS` so a slow provider shortens the answer instead of
+   stalling it. Asking the outward-looking agent a question is itself a reason
+   to look outward.
+3. `retrieveOutwardFeed` loads that lens's newest items from D1. A lens with
    nothing filed yet falls back to the newest items across every lens, so an
    empty corner of the feed never reads as an empty world.
-3. `outrospectionBlock` numbers them, and the answer cites them `[1]`, `[2]`
-   like any research answer. The prompt closes every answer with what the
-   material means for *this* project — the comparison is the point of looking
-   outward.
+4. `outrospectionBlock` numbers them, and the answer cites them `[1]`, `[2]`
+   like any research answer. The block also always carries the lens catalog, so
+   the model can name the seven lenses whether or not the feed had anything.
+   The prompt closes every answer with what the material means for *this*
+   project — the comparison is the point of looking outward.
+
+> **Step 2 was missing until 2026-07-26** and it is worth knowing why. The mode
+> shipped read-only, which left it parasitic on someone opening `/outrospect/`
+> in a browser. Nobody had: the production run log showed zero refreshes ever,
+> the feed was empty, and so every question in the mode was answered "the feed
+> holds nothing on this yet" — an outward-looking agent that never looked
+> outward (feedback #25). Latency is the obvious reason to remove the step
+> again; the cooldown, the budget, and the fail-soft path are there so it
+> doesn't have to be.
 
 **The no-fabrication rule is enforced here too.** With nothing to cite, the
 prompt says the feed holds nothing on this yet and forbids inventing an

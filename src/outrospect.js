@@ -62,6 +62,7 @@ import {
   normalizeLens,
   outrospectionAnswerPrompt,
   outrospectionBlock,
+  outrospectionLensCatalog,
   refreshQueries,
   stalestLens,
   validateFeedItem,
@@ -84,6 +85,7 @@ export {
   normalizeLens,
   outrospectionAnswerPrompt,
   outrospectionBlock,
+  outrospectionLensCatalog,
   refreshQueries,
   stalestLens,
   validateFeedItem,
@@ -118,6 +120,30 @@ export const USER_RUNS_PER_HOUR = 8;
 // headlines across many queries, not a deep read of any one of them (that is
 // what the research pipeline is for — an item's URL is a normal chat away).
 export const REFRESH_DEPTH = { numResults: 6, type: "auto" };
+
+// How long an outrospection-mode turn will wait for its look outward before
+// answering from whatever the feed already holds. The searches run
+// concurrently and each is bounded at 15 s inside exa.js, so this is the only
+// extra ceiling that matters — sized to be worth waiting for on a cold feed
+// without stalling a streamed answer.
+export const MODE_REFRESH_BUDGET_MS = 12_000;
+
+/**
+ * Resolve when `promise` settles or the budget expires, whichever is first.
+ * The promise is NOT cancelled on timeout — it keeps running and may still
+ * write its rows, which is exactly what we want: a slow refresh still fills
+ * the feed for the next question, it just doesn't hold this answer up.
+ * @template T
+ * @param {Promise<T>} promise
+ * @param {number} ms
+ * @returns {Promise<T | null>}
+ */
+export function withDeadline(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) => setTimeout(() => resolve(null), ms)),
+  ]).catch(() => null);
+}
 
 // ---------------------------------------------------------------------------
 // Pure helpers — unit-tested in src/outrospect.test.js
@@ -273,6 +299,107 @@ export async function handleOutrospectFeed(env, url) {
 // ---------------------------------------------------------------------------
 
 /**
+ * ONE lens refreshed — the actual look outward, shared by every caller.
+ *
+ * Extracted from the HTTP handler (2026-07-26) because it had only one caller
+ * and that was the bug: the chat MODE only ever READ the feed, so a question
+ * asked in outrospection mode never went looking. The feed could therefore
+ * only be filled by someone opening `/outrospect/` in a browser — and until
+ * someone did, the mode answered every question with "the feed holds nothing
+ * on this yet" forever (feedback #25). The agent whose whole purpose is
+ * looking outward has to be able to look.
+ *
+ * Returns a plain result rather than a Response so the HTTP handler can map it
+ * to status codes and the chat path can ignore it. Never throws.
+ *
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {{ userId: string, lens?: string | null, known?: string[], now?: number }} opts
+ * @returns {Promise<{ lens: string | null, fresh: FeedItem[], searched: number, cooled?: boolean, limited?: boolean, degraded?: boolean, unavailable?: boolean }>}
+ */
+export async function runLensRefresh(env, log, { userId, lens: wanted = null, known = [], now = Date.now() }) {
+  const db = await getDb(env);
+  if (!db) return { lens: wanted, fresh: [], searched: 0, unavailable: true };
+
+  // Rate limit + cooldown, both read off the run log in one query.
+  const { results: runRows } = await db
+    .prepare("SELECT lens, ts, user_id FROM outrospect_runs WHERE ts > ? ORDER BY ts DESC LIMIT 500")
+    .bind(now - Math.max(LENS_COOLDOWN_MS, 3600_000))
+    .all();
+  const runs = /** @type {{ lens: string, ts: number, user_id: string }[]} */ (runRows || []);
+  const mine = runs.filter((r) => r.user_id === userId && now - Number(r.ts) < 3600_000);
+  if (mine.length >= USER_RUNS_PER_HOUR) return { lens: wanted, fresh: [], searched: 0, limited: true };
+
+  const cooling = lensesOnCooldown(runs, now);
+  // An explicit pick is honoured unless it is the one thing on cooldown; with
+  // no pick the server chooses the lens whose newest item is oldest, so
+  // repeat visits heal the feed's thin spots instead of re-searching whatever
+  // is already busiest.
+  let lens = wanted;
+  if (lens && cooling.includes(lens)) return { lens, fresh: [], searched: 0, cooled: true };
+  if (!lens) {
+    const eligible = LENS_IDS.filter((id) => !cooling.includes(id));
+    if (!eligible.length) return { lens: null, fresh: [], searched: 0, cooled: true };
+    lens = stalestLens(await loadItems(db, {}), { skip: cooling });
+  }
+
+  // Walk the lens's queries across successive runs so every one gets its turn
+  // rather than the first N being the only ones ever issued.
+  const offset = runs.filter((r) => r.lens === lens).length;
+  const queries = refreshQueries(lens, { offset });
+
+  // Run the lens's queries CONCURRENTLY. They are independent, and serially
+  // they stacked each query's 15 s ceiling — 45 s worst case, which is far too
+  // long to sit in front of a streamed answer now that the chat path calls
+  // this too. Fail-soft per query (invariant 2): a dead provider costs that
+  // query's results and nothing else.
+  const settled = await Promise.all(
+    queries.map(async (query) => {
+      try {
+        const res = await webSearch(env, log, query, REFRESH_DEPTH);
+        return { query, items: res.items || [], ok: !!res.resultCount };
+      } catch (err) {
+        log.warn("outrospect.search_failed", { lens, error: String(err) });
+        return { query, items: [], ok: false };
+      }
+    }),
+  );
+
+  /** @type {any[]} */
+  const found = [];
+  let failures = 0;
+  for (const r of settled) {
+    if (!r.ok) failures++;
+    for (const item of r.items) {
+      const fi = feedItemFromSearch(/** @type {string} */ (lens), item, { now, query: r.query });
+      if (fi) found.push(fi);
+    }
+  }
+
+  // The DELTA: what neither the caller nor the store already had. `known`
+  // covers the committed artifact (which the server never reads), the store
+  // covers everything a previous refresh added.
+  const stored = await loadItems(db, { lens });
+  const fresh = deltaItems([...known, ...stored.map((i) => i.key)], found);
+  const written = fresh.length ? await storeItems(db, fresh) : 0;
+
+  await db
+    .prepare("INSERT INTO outrospect_runs (ts, user_id, lens, queries, found) VALUES (?, ?, ?, ?, ?)")
+    .bind(now, userId, lens, queries.length, fresh.length)
+    .run();
+
+  log.info("outrospect.refresh", {
+    lens,
+    queries: queries.length,
+    found: found.length,
+    fresh: fresh.length,
+    written,
+    failures,
+  });
+  return { lens, fresh, searched: queries.length, degraded: failures > 0 && !fresh.length };
+}
+
+/**
  * @param {Request} request
  * @param {Env} env
  * @param {Logger} log
@@ -302,87 +429,22 @@ export async function handleOutrospectRefresh(request, env, log, identity) {
   if (parsed.error) return jsonResponse({ error: parsed.error }, 400);
   const v = /** @type {{ lens: string | null, known: string[] }} */ (parsed);
 
-  const now = Date.now();
-  const userId = String(identity?.id || identity?.email || "anon");
+  const res = await runLensRefresh(env, log, {
+    userId: String(identity?.id || identity?.email || "anon"),
+    lens: v.lens,
+    known: v.known,
+  });
 
-  // Rate limit + cooldown, both read off the run log in one query.
-  const { results: runRows } = await db
-    .prepare("SELECT lens, ts, user_id FROM outrospect_runs WHERE ts > ? ORDER BY ts DESC LIMIT 500")
-    .bind(now - Math.max(LENS_COOLDOWN_MS, 3600_000))
-    .all();
-  const runs = /** @type {{ lens: string, ts: number, user_id: string }[]} */ (runRows || []);
-  const mine = runs.filter((r) => r.user_id === userId && now - Number(r.ts) < 3600_000);
-  if (mine.length >= USER_RUNS_PER_HOUR) {
+  if (res.limited) {
     return jsonResponse(
       { error: "You have refreshed the outward feed enough times this hour — it will keep updating on its own.", fresh: [], limited: true },
       429,
     );
   }
-
-  const cooling = lensesOnCooldown(runs, now);
-  // An explicit pick is honoured unless it is the one thing on cooldown; with
-  // no pick the server chooses the lens whose newest item is oldest, so
-  // repeat visits heal the feed's thin spots instead of re-searching whatever
-  // is already busiest.
-  let lens = v.lens;
-  if (lens && cooling.includes(lens)) {
-    return jsonResponse({ lens, fresh: [], cooled: true, retry_after_ms: LENS_COOLDOWN_MS }, 200);
+  if (res.cooled) {
+    return jsonResponse({ lens: res.lens, fresh: [], cooled: true, retry_after_ms: LENS_COOLDOWN_MS }, 200);
   }
-  if (!lens) {
-    const stored = await loadItems(db, {});
-    const eligible = LENS_IDS.filter((id) => !cooling.includes(id));
-    if (!eligible.length) {
-      return jsonResponse({ lens: null, fresh: [], cooled: true, retry_after_ms: LENS_COOLDOWN_MS }, 200);
-    }
-    lens = stalestLens(stored, { skip: cooling });
-  }
-
-  // Walk the lens's queries across successive runs so every one gets its turn
-  // rather than the first N being the only ones ever issued.
-  const offset = runs.filter((r) => r.lens === lens).length;
-  const queries = refreshQueries(lens, { offset });
-
-  /** @type {any[]} */
-  const found = [];
-  let failures = 0;
-  for (const query of queries) {
-    // Fail-soft per query (invariant 2): a dead provider costs this query's
-    // results, never the request. webSearch already returns errors as content
-    // strings rather than throwing, but a rejection here must not escape either.
-    try {
-      const res = await webSearch(env, log, query, REFRESH_DEPTH);
-      for (const item of res.items || []) {
-        const fi = feedItemFromSearch(lens, item, { now, query });
-        if (fi) found.push(fi);
-      }
-      if (!res.resultCount) failures++;
-    } catch (err) {
-      failures++;
-      log.warn("outrospect.search_failed", { lens, error: String(err) });
-    }
-  }
-
-  // The DELTA: what neither the client nor the store already had. The client's
-  // `known` covers the committed artifact (which the server never reads), the
-  // store covers everything a previous visitor's refresh added.
-  const stored = await loadItems(db, { lens });
-  const fresh = deltaItems([...v.known, ...stored.map((i) => i.key)], found);
-  const written = fresh.length ? await storeItems(db, fresh) : 0;
-
-  await db
-    .prepare("INSERT INTO outrospect_runs (ts, user_id, lens, queries, found) VALUES (?, ?, ?, ?, ?)")
-    .bind(now, userId, lens, queries.length, fresh.length)
-    .run();
-
-  log.info("outrospect.refresh", {
-    lens,
-    queries: queries.length,
-    found: found.length,
-    fresh: fresh.length,
-    written,
-    failures,
-  });
-  return jsonResponse({ lens, fresh, searched: queries.length, degraded: failures > 0 && !fresh.length });
+  return jsonResponse({ lens: res.lens, fresh: res.fresh, searched: res.searched, degraded: !!res.degraded });
 }
 
 // ---------------------------------------------------------------------------
@@ -482,8 +544,34 @@ export async function retrieveOutwardFeed(env, question, log) {
  */
 export async function runOutrospection(ctx) {
   const { env, log } = ctx;
+  const question = ctx.cleanLastUser || ctx.lastUser;
+
+  // GO LOOK FIRST. Until 2026-07-26 this phase only READ the feed, which made
+  // the mode parasitic on someone happening to open /outrospect/ in a browser:
+  // nothing had ever triggered a refresh in production, so every question was
+  // answered "the feed holds nothing on this yet" (feedback #25). Asking the
+  // outward-looking agent a question is now itself a reason to look.
+  //
+  // Bounded and fail-soft (invariant 2): the refresh is raced against a
+  // deadline and its result is never awaited for correctness — whatever landed
+  // in D1 by the time the read runs is what gets cited. A slow, dead, cooled,
+  // or rate-limited search costs nothing but a shorter answer.
+  ctx.step("outrospect", "Looking outward…");
+  await withDeadline(
+    runLensRefresh(env, log, {
+      // Same accessor runSdkBuild uses — chat.js puts the signed-in id on the
+      // state. It keys the per-user hourly cap only; no identity is stored.
+      userId: String(/** @type {any} */ (ctx.state).userId || "anon"),
+      lens: lensMatch(question),
+    }).catch((err) => {
+      log?.warn?.("outrospect.mode_refresh_failed", { error: String(err) });
+      return null;
+    }),
+    MODE_REFRESH_BUDGET_MS,
+  );
+
   ctx.step("outrospect", "Reading the outward feed…");
-  const { lens, items, live } = await retrieveOutwardFeed(env, ctx.cleanLastUser || ctx.lastUser, log);
+  const { lens, items, live } = await retrieveOutwardFeed(env, question, log);
   const block = outrospectionBlock(items, { limit: OUTRO_ANSWER_ITEMS });
   const label =
     items.length ?
@@ -493,7 +581,11 @@ export async function runOutrospection(ctx) {
   ctx.stepDone("outrospect", label);
   ctx.state.outrospection = { lens: lens ? lens.id : null, items: items.length, live };
   await streamCompletion(ctx, [
-    { role: "system", content: phasePrompt(ctx.state, "feed", "answer")({ lens, hasItems: !!block }) },
+    // `hasItems` reads the ITEM COUNT, not whether the block is a non-empty
+    // string: the block now always carries the lens catalog, so an empty feed
+    // still produces one (that catalog is exactly what the empty-feed prompt
+    // tells the model to name).
+    { role: "system", content: phasePrompt(ctx.state, "feed", "answer")({ lens, hasItems: items.length > 0 }) },
     ...(block ? [{ role: "system", content: block }] : []),
     ...ctx.conversation,
   ]);

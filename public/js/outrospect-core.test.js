@@ -20,6 +20,7 @@ import {
   normalizeLens,
   outrospectionAnswerPrompt,
   outrospectionBlock,
+  outrospectionLensCatalog,
   refreshQueries,
   stalestLens,
   validateFeedItem,
@@ -397,10 +398,39 @@ test("outrospectionBlock numbers items newest-first and names the lens", () => {
   assert.match(block, /2 items/);
 });
 
-test("outrospectionBlock is empty for no items, and marks fresh ones NEW", () => {
-  assert.equal(outrospectionBlock([]), "");
-  assert.equal(outrospectionBlock(null), "");
-  assert.match(outrospectionBlock([item({ fresh: true })]), /· NEW/);
+// The empty-feed prompt orders the model to "name the lenses that exist". It
+// could not: the block returned "" with no items, so nothing in context listed
+// them, and the answer said "plus fyra till — jag har inte den fullständiga
+// listan" (feedback #25, 2026-07-26). A prompt may not order what the context
+// cannot supply, so the catalog is now unconditional.
+test("outrospectionBlock ALWAYS carries the lens catalog, even with no items", () => {
+  for (const empty of [[], null, undefined]) {
+    const block = outrospectionBlock(empty);
+    assert.ok(block, "an empty feed must still give the model the lenses to name");
+    for (const lens of OUTROSPECT_LENSES) {
+      assert.ok(block.includes(lens.title), `${lens.id} missing from the empty-feed block`);
+      assert.ok(block.includes(lens.question), `${lens.id}'s standing question missing`);
+    }
+  }
+});
+
+test("outrospectionBlock: with items, the catalog AND the feed section are present", () => {
+  const block = outrospectionBlock([item({ fresh: true })]);
+  assert.match(block, /THE LENSES/);
+  assert.match(block, /OUTWARD FEED/);
+  assert.match(block, /· NEW/);
+});
+
+test("outrospectionLensCatalog: every lens, EN and SV (parity)", () => {
+  const en = outrospectionLensCatalog(false);
+  const sv = outrospectionLensCatalog(true);
+  for (const lens of OUTROSPECT_LENSES) {
+    assert.ok(en.includes(lens.title) && en.includes(lens.question), `${lens.id} missing from EN catalog`);
+    assert.ok(sv.includes(lens.titleSv) && sv.includes(lens.questionSv), `${lens.id} missing from SV catalog`);
+  }
+  // The count is stated so the model never has to infer how many there are.
+  assert.ok(en.includes(String(OUTROSPECT_LENSES.length)));
+  assert.ok(sv.includes(String(OUTROSPECT_LENSES.length)));
 });
 
 test("outrospectionBlock honors the item and character caps", () => {
