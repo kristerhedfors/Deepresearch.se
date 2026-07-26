@@ -1,7 +1,7 @@
 # Generalizing the default agents into the Agents SDK
 
 **Status: Stages 0–3 SHIPPED plus the prompts axis, 2026-07-25 (owner go-ahead
-in-session). Stage 4 is not built.** This page began as an investigation of what this site's built-in
+in-session). Stage 4 is not built; stages 5–7 are proposed (§7).** This page began as an investigation of what this site's built-in
 agents actually are, a measurement of how much of that the DeepResearch Agents
 SDK could express, and a staged plan for closing the distance. §1–§3 record the
 findings as they stood before the work; §5 marks what landed. The gap those
@@ -406,6 +406,123 @@ deliberately not started: it publishes spend-capable links. Its mechanism is
 already in place (`agentLinkPlan` → `mintServerTokenGrant`), so the work is
 wiring plus the quota-grant assessment, not new crypto. It should land as its
 own change with the **quota-grant-assessment** checklist run against it.
+
+### Declared versus executed — the measurement, 2026-07-26
+
+Stage 2 shipped the capability block "declared but not yet authoritative", and
+Stage 3 made *part* of it authoritative. The line between the two halves is
+easy to lose, because both halves have passing tests. The difference:
+
+- an **executed** field is read at run start and changes what happens;
+- a **declared** field is asserted equal to a hardcoded constant by a test, so
+  changing it in a spec fails `npm test` rather than changing behaviour.
+
+Exactly three values cross from the registry into a run. `src/chat.js` puts
+`answerPhase`, `agentId` and `promptSet` on the pipeline state; the resolved
+capability object itself is never carried.
+
+| Field | Status | Where it lands |
+|---|---|---|
+| `defaults` table + `mode` | executed | `resolveRequestAgent` → `src/chat.js` |
+| `capability.answerPhase` | executed | `ANSWER_PHASE_RUNNERS` (`src/pipeline.js`) |
+| `capability.prompts` | executed | `phasePrompt` (`src/prompt-sets.js`) |
+| `capability.requires` | executed | the knob gate in `resolveRequestAgent` |
+| `quota` | executed | `agentTokenGrantParams` → `src/agent-link.js` |
+| `capability.bounds` | declared | pinned to the constants in `src/agent-bounds.test.js` |
+| `capability.tools` | declared | the tool list is still `sdkBuildTools()` / `INTROSPECTION_TOOLS` |
+| `capability.context` | declared | blocks are still selected by `state.introspection` / `sdkMode` |
+| `capability.search` | declared | the wave still reads `state.webSearch` and the module caps |
+| `capability.gates`, `emits`, `team` | declared | the gates and caps live in their own modules |
+| `theme`, `intro`, `loading`, `backdrop`, `controls` | declared | rendered only by `/agents/preview.html`; the running app draws from `mode-theme.js` |
+
+So the visual half is not authoritative either — `agent-preview.js` renders a
+spec's composer, and the real chat pane does not. The registry describes both
+halves accurately today because tests force it to, not because either half is
+generated from it.
+
+### The three limits Agent Studio actually hits
+
+Framing the remaining work as "Stage 4" understates it. Three separate limits
+sit between today's registry and a flexible builder, and only the third is what
+Stage 4 describes.
+
+1. **An agent cannot be addressed.** `resolveRequestAgent` walks the `defaults`
+   table and nothing else — a request has no way to name an agent id. So a
+   registry entry is reachable only if it also gets a `defaults` row and its own
+   request flag, which means a sixth *mode* is data but a sixth *agent* is not.
+   The acceptance test in `agent-capability.test.js` proves the mode case, which
+   is why the distinction is easy to miss.
+2. **A spec cannot be authored at runtime.** `sdk/AGENTS.json` ships inside the
+   committed source snapshot and is loaded through the ASSETS binding. There is
+   no path by which a spec written during a session becomes resolvable, so
+   Agent Studio's `write_file` / `publish_app` produce static bundles under
+   `/app/<slug>/` and nothing else. That ceiling is §2's "a static single-page
+   app that reimplements a slice of Se/cure".
+3. **An agent cannot have its own words.** `capability.prompts` selects one of
+   five shipped sets. Persona, domain framing, house style and refusal rules are
+   not expressible at any length — the axis a builder reaches for first is the
+   one the schema is silent on. This is the inverse of the §2 finding: the
+   prompts axis closed the *drift* problem (a spec now names its voice) without
+   opening the *authoring* problem.
+
+### Stages 5–7 — proposed, not built
+
+Ordered so each leaves the tree green, cheapest first, and so the risky ones
+land after the safety net exists. None has owner sign-off yet.
+
+**Stage 5 — execute what is already declared.** Carry the resolved capability
+on the pipeline state and read it, with today's constants as the defaults, so
+each field moves from pinned to live: `bounds` into the tool loops and the
+orchestrator's per-node caps, `search` as a ceiling ANDed with the user's knob
+(narrowing only, never widening), `context` as the block selector in place of
+the mode booleans, `tools` as a class → toolset table, `gates` as a registry
+keyed on id. Behaviour-preserving by construction: every shipped agent declares
+what the code already does, which `agent-bounds.test.js` and
+`agent-capability.test.js` assert today and would keep asserting. It is the
+prerequisite for stages 6 and 7 being worth anything — a spec that can be
+authored but whose fields are ignored is worse than no spec.
+
+*Accept:* the declaration pins survive unchanged, and a synthetic agent
+declaring a lower `bounds.maxRounds` observably runs fewer rounds.
+
+**Stage 6 — address an agent by id.** Add an `agent` field to the `/api/chat`
+body, resolved against the registry and gated by `capability.requires` exactly
+as the `defaults` rows are; the table stays as the fallback for a request that
+names none. A registry entry then needs no new mode flag, no `CHAT_MODE_IDS`
+entry, no `mode-theme.js` descriptor and no CSS. Pairs naturally with making the
+spec's `theme` and `controls` authoritative in the real chat pane, with
+`mode-theme.js` as the fallback for a request that resolves to no agent.
+
+*Accept:* a request naming a registry agent with no `defaults` row runs on that
+agent's phase, prompt set and bounds; a request naming an agent whose
+`requires` are not granted falls through rather than escalating.
+
+**Stage 7 — a spec becomes a deliverable.** This is §5's Stage 4, plus the
+piece it assumed: `agent_write` / `agent_publish` alongside `write_file` /
+`publish_app`, writing a *validated* spec to per-user storage that stage 6's
+resolver reads after the committed registry. Then "build me a Swedish
+legal-research agent with web search off and a source-read tool" produces
+something the real platform runs, and `team.kinds` holding registry ids lets an
+orchestrated workflow include it.
+
+The security posture changes here and nowhere earlier: a user-authored spec is
+untrusted input, so validation moves from `npm test` at build time to the
+request path. `validateAgentSpec` / `validateCapability` already reject every
+out-of-vocabulary value and already enforce invariants 1, 3, 4 and 6, so the
+work is calling them at the boundary and failing closed — not new rules. Stage
+4.1's minted token is the other half, with the **quota-grant-assessment**
+checklist and the fail-safe metering rule (§6) unchanged.
+
+*Accept:* §5 Stage 4's acceptance, plus a rejected-spec suite covering each
+closed vocabulary and each invariant rule at the request boundary.
+
+**What stays out of scope deliberately.** Per-agent prompt *text* is the
+obvious stage 8 and the one that most needs an owner decision, because it is
+where the selector rule (§6) bends: authored words are not a member of a closed
+vocabulary. The bounded form worth arguing is an appendix — a length-capped
+persona block appended to the shipped set's output, never replacing it, so the
+deterministic prompt and the invariants survive. It is recorded here as the
+open question, not as a plan.
 
 ## 8. Where this sits
 
