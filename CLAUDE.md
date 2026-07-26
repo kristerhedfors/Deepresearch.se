@@ -392,7 +392,7 @@ Feedback, boards & testing loops:
 - **test-feedback-loop** — the standing loop over the try-it queue: sync verdicts, mine every note, mint the next batch.
 - **request-testing** — the worker side: ship test cases inside your PR as `docs/test-requests/<branch>.json`.
 - **test-batches** — the standing library of standard test cases per pipeline case + the `scripts/test-batch` CLI.
-- **starter-prompts** — the four opening questions on an empty chat and the cross-agent system that ranks them: the per-agent queue (4 shown, 20+ deep, exploit/explore rotation), the synthetic-provenance rule (never lift a starter from `chat_logs`), the judged dimensions + dead-end cap, the live battery `tests/starter-eval.mjs`, and how a `rank` gets promoted with evidence.
+- **starter-prompts** — the four opening questions on an empty chat and the cross-agent system that ranks them: the per-agent queue (4 shown, 20+ deep, exploit/explore rotation), the synthetic-provenance rule (never lift a starter from `chat_logs`), the judged dimensions + dead-end cap, the live battery `tests/starter-eval.mjs`, how a `rank` gets promoted with evidence, and the Settings knob **starter prompt evaluation** that turns the strip into a cross-agent review batch (proven/weak/untried/candidate bands + 👍👎).
 
 Features & surfaces:
 

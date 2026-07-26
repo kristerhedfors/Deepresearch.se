@@ -20,13 +20,51 @@
 
 import {
   SLOT_COUNT, agentForMode, resolveQueue, selectStarters, nextCursor, recordStarterUse,
+  evalPool, selectEvalBatch, recordVerdict, verdictReport, MODE_AGENTS,
 } from "./starters-core.js";
-import { STARTERS } from "./starters-data.js";
+import { STARTERS, CANDIDATES } from "./starters-data.js";
 
 /** localStorage key holding the explore-rotation cursor, per agent. */
 const CURSOR_KEY = "dr_starter_cursor";
 /** localStorage key holding this browser's pick counts (id → count). */
 const SIGNAL_KEY = "dr_starter_signal";
+/** localStorage key holding the evaluation-mode knob (Settings). */
+export const EVAL_KEY = "dr_starter_eval";
+/** localStorage key holding the evaluation batch cursor. */
+const EVAL_CURSOR_KEY = "dr_starter_eval_cursor";
+/** localStorage key holding the reviewer's verdicts (id → {v, at, note}). */
+const VERDICT_KEY = "dr_starter_verdicts";
+
+/** What each band means, shown on the chip so a reviewer knows what they are
+ * being asked to judge. Without this the batch is just four questions and the
+ * reviewer has no way to tell "confirm this still works" from "we think this
+ * is broken, is it?" */
+/** @type {Record<string,string>} */
+const BAND_LABEL = {
+  proven: "known good",
+  weak: "scored low",
+  untried: "untested",
+  candidate: "new idea",
+};
+
+/** True when the Settings knob "Starter prompt evaluation" is on. */
+export function evalModeOn() {
+  try {
+    return localStorage.getItem(EVAL_KEY) === "on";
+  } catch {
+    return false;
+  }
+}
+
+/** Persist the knob. Returns the value actually stored. */
+export function setEvalMode(/** @type {boolean} */ on) {
+  try {
+    localStorage.setItem(EVAL_KEY, on ? "on" : "off");
+  } catch {
+    /* private mode — the knob simply will not persist across reloads */
+  }
+  return !!on;
+}
 
 /** Read a JSON blob from localStorage, failing soft to a default.
  * @param {string} key @param {any} fallback @returns {any} */
@@ -76,11 +114,15 @@ export function readerLang() {
  * @param {string} [opts.mode]  the active chat mode id
  * @param {string} [opts.platform]  "client" for the Se/cure tier
  * @param {string} [opts.lang]  override the reader language (tests, settings)
+ * @param {(mode: string) => void} [opts.setMode]  switch chat mode (evaluation mode)
  * @returns {number} how many chips were rendered (0 when there is nothing to show)
  */
-export function renderStarterStrip({ mount, compose, mode, platform, lang }) {
+export function renderStarterStrip({ mount, compose, mode, platform, lang, setMode }) {
   if (!mount || typeof compose !== "function") return 0;
   mount.querySelector(".starters")?.remove();
+  mount.querySelector(".starter-eval")?.remove();
+
+  if (evalModeOn()) return renderEvalBatch({ mount, compose, platform, setMode });
 
   const agent = agentForMode(mode, { platform });
   const queue = resolveQueue(STARTERS, agent);
@@ -134,6 +176,156 @@ export function renderStarterStrip({ mount, compose, mode, platform, lang }) {
 }
 
 /**
+ * The evaluation strip: one starter per band, drawn across every agent, with
+ * 👍/👎 on each chip and a copy-the-report footer.
+ *
+ * Two behaviours differ from the visitor strip, both deliberate:
+ *
+ *  1. **The batch is STICKY until something in it is rated.** The visitor strip
+ *     rotates on every showing because a visitor who read four chips has seen
+ *     them. A reviewer has not finished with a chip until they have run it and
+ *     judged the answer, which takes a round trip through a whole conversation
+ *     — rotating underneath them would lose the item they were half-way
+ *     through. So the cursor advances on a RATING, not on a render.
+ *  2. **Clicking a chip switches the chat mode to that starter's agent.** The
+ *     batch is cross-agent by design; sending an Agent Studio starter while the
+ *     app sits in Deep Research would measure the wrong thing entirely and
+ *     look like the starter's fault.
+ *
+ * @param {{mount: HTMLElement, compose: (t: string) => void, platform?: string,
+ *   setMode?: (mode: string) => void}} opts
+ * @returns {number}
+ */
+function renderEvalBatch({ mount, compose, platform, setMode }) {
+  const pool = evalPool(STARTERS, { candidates: CANDIDATES, platform });
+  if (!pool.length) return 0;
+
+  const cursor = Number(readStore(EVAL_CURSOR_KEY, { c: 0 }).c) || 0;
+  const verdicts = readStore(VERDICT_KEY, {});
+  const batch = selectEvalBatch(pool, { cursor, rated: verdicts, count: SLOT_COUNT });
+  if (!batch.length) return 0;
+
+  const wrap = document.createElement("div");
+  wrap.className = "starter-eval";
+
+  const head = document.createElement("p");
+  head.className = "starter-eval-head";
+  head.textContent = "Evaluation mode — try one, then rate the answer. Turn it off in Settings.";
+  wrap.appendChild(head);
+
+  const strip = document.createElement("div");
+  strip.className = "starters";
+  strip.setAttribute("role", "list");
+
+  const rerender = () => renderStarterStrip({ mount, compose, platform, setMode });
+
+  for (const entry of batch) {
+    const cell = document.createElement("div");
+    cell.className = "starter-cell";
+    cell.setAttribute("role", "listitem");
+
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "starter";
+    chip.title = entry.note || entry.text;
+    chip.dataset.starter = entry.id;
+    chip.lang = entry.lang;
+
+    const tag = document.createElement("span");
+    tag.className = `starter-band band-${entry.band}`;
+    tag.textContent = `${entry.agent} · ${BAND_LABEL[entry.band] || entry.band}`;
+    chip.appendChild(tag);
+    chip.appendChild(document.createTextNode(entry.text));
+
+    chip.addEventListener("click", () => {
+      // Follow the starter to its agent before sending it.
+      const targetMode = Object.keys(MODE_AGENTS).find((m) => MODE_AGENTS[m] === entry.agent);
+      if (setMode && targetMode) setMode(targetMode);
+      writeStore(SIGNAL_KEY, recordStarterUse(readStore(SIGNAL_KEY, {}), entry.id));
+      compose(entry.text);
+    });
+
+    const rate = document.createElement("div");
+    rate.className = "starter-rate";
+    const current = verdicts[entry.id]?.v || "";
+    for (const [v, glyph, title] of [
+      ["good", "👍", "Good opener — the answer showed what this agent is for"],
+      ["bad", "👎", "Bad opener — vague answer, a clarifying question, or an error"],
+      ["unclear", "•", "Not sure / skip"],
+    ]) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = `starter-vote${current === v ? " on" : ""}`;
+      b.textContent = glyph;
+      b.title = title;
+      b.setAttribute("aria-label", title);
+      b.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        // Tapping the active verdict again clears it — the only undo a
+        // one-tap control can offer.
+        const next = current === v ? "" : v;
+        writeStore(VERDICT_KEY, recordVerdict(readStore(VERDICT_KEY, {}), entry.id, next, { at: Date.now() }));
+        // A rating is what retires this batch: advance so the next render
+        // brings fresh material.
+        writeStore(EVAL_CURSOR_KEY, { c: cursor + 1 });
+        rerender();
+      });
+      rate.appendChild(b);
+    }
+
+    cell.appendChild(chip);
+    cell.appendChild(rate);
+    strip.appendChild(cell);
+  }
+  wrap.appendChild(strip);
+
+  // --- footer: how far along, and how to hand the findings back ------------
+  const foot = document.createElement("div");
+  foot.className = "starter-eval-foot";
+  const n = Object.keys(verdicts).length;
+  const count = document.createElement("span");
+  count.textContent = `${n} rated of ${pool.length}`;
+  foot.appendChild(count);
+
+  const skip = document.createElement("button");
+  skip.type = "button";
+  skip.className = "starter-eval-btn";
+  skip.textContent = "Next batch →";
+  skip.addEventListener("click", () => {
+    writeStore(EVAL_CURSOR_KEY, { c: cursor + 1 });
+    rerender();
+  });
+  foot.appendChild(skip);
+
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.className = "starter-eval-btn";
+  copy.textContent = "Copy report";
+  copy.disabled = !n;
+  copy.addEventListener("click", async () => {
+    const text = verdictReport(pool, readStore(VERDICT_KEY, {}));
+    try {
+      await navigator.clipboard.writeText(text);
+      copy.textContent = "Copied";
+      setTimeout(() => { copy.textContent = "Copy report"; }, 1500);
+    } catch {
+      // Clipboard blocked (permissions, insecure context): fall back to
+      // showing the report so it can still be selected by hand. Losing the
+      // findings to a silent failure would be the worst outcome here.
+      const pre = document.createElement("pre");
+      pre.className = "starter-eval-report";
+      pre.textContent = text;
+      wrap.appendChild(pre);
+    }
+  });
+  foot.appendChild(copy);
+  wrap.appendChild(foot);
+
+  mount.appendChild(wrap);
+  return batch.length;
+}
+
+/**
  * Wire the strip to a chat container so it appears on every empty state.
  *
  * Returns a `refresh()` the host calls when the empty state is rebuilt (a new
@@ -145,16 +337,18 @@ export function renderStarterStrip({ mount, compose, mode, platform, lang }) {
  * @param {HTMLElement} opts.chat  the scrolling chat container
  * @param {(text: string) => void} opts.compose
  * @param {() => string} [opts.getMode]
+ * @param {(mode: string) => void} [opts.setMode]  switch chat mode (evaluation mode)
  * @param {string} [opts.platform]
  * @returns {{ refresh: () => void }}
  */
-export function initStarters({ chat, compose, getMode, platform }) {
+export function initStarters({ chat, compose, getMode, setMode, platform }) {
   const refresh = () => {
     try {
       renderStarterStrip({
         mount: chat?.querySelector?.(".empty") || null,
         compose,
         mode: getMode ? getMode() : "normal",
+        setMode,
         platform,
       });
     } catch {

@@ -922,6 +922,20 @@ initTestpoints({
 starters = initStarters({
   chat,
   getMode: () => cachedChatMode(),
+  // Evaluation mode serves starters from every agent, so a chip has to be able
+  // to take the app to its agent's mode before it sends — otherwise an Agent
+  // Studio opener runs as plain research and the reviewer rates the wrong
+  // thing. Reuses the composer dropdown's own path so the theme, the knob and
+  // the request flag all follow, exactly as if the mode had been picked by hand.
+  setMode: (mode) => {
+    if (cachedChatMode() === mode) return;
+    const applied = applyChatModeTheme(mode);
+    syncModeSelect(applied);
+    applyModeBackdrop(applied);
+    if (applied !== "normal" && !developerModeOn()) {
+      setDeveloperMode(true).then(() => storeDeveloperMode(true)).catch(() => {});
+    }
+  },
   compose: (text) => {
     input.value = text;
     autogrow();

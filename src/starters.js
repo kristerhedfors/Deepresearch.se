@@ -9,7 +9,9 @@
 // anywhere, so the server reaches it through this re-export.
 //
 // New shared starter logic goes in starters-core.js; do not reintroduce a copy
-// here. New starters go in starters-data.js.
+// here. New starters go in starters-data.js — either into an agent's queue, or
+// into the CANDIDATES trial pool that evaluation mode reviews before anything
+// is promoted into a queue.
 
 export {
   SLOT_COUNT,
@@ -38,6 +40,13 @@ export {
   parseJudgeReply,
   validateStarters,
   registryReport,
+  EVAL_BANDS,
+  bandOf,
+  evalPool,
+  selectEvalBatch,
+  recordVerdict,
+  verdictReport,
+  coverageReport,
 } from "../public/js/starters-core.js";
 
-export { STARTERS, STARTERS_VERSION, ASPECTS } from "../public/js/starters-data.js";
+export { STARTERS, STARTERS_VERSION, ASPECTS, CANDIDATES } from "../public/js/starters-data.js";
