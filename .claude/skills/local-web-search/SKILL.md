@@ -219,10 +219,10 @@ grant/token calls as `source` on Se/cure, and the server RE-VALIDATES it
 against `USER_SEARCH_SOURCES` — so the client is a preference, never a trust
 boundary.
 
-It briefly (2026-07-25 → 07-26) sat as a radio picker on the web knob's
+For one day (2026-07-25 → 07-26) it sat as a radio picker on the web knob's
 long-press card. The owner reversed that: **the composer knob is on/off only**,
-and this belongs in settings. See UX-10 in the **ux-conventions** skill — the
-card still EXPLAINS the knob and links the local-agent setup page, it just no
+and this belongs in settings. See UX-10 in the **ux-conventions** skill. The
+card still explains the knob and links the local-agent setup page; it just no
 longer decides.
 
 Self-hosted backends are deliberately NOT part of that knob: they name an

@@ -1911,6 +1911,30 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
    ok everywhere (worst side +0.043em). Same small-font fix as the docs pages
    and the account drawer. */
 .setting-note .sl { margin: 0 -.04em; }
+/* A knob's detail section (UX-14): flipping a switch adds ONE summary line to
+   the drawer, and the rows behind it open only when the user asks. Ships
+   without `open` and nothing sets it, so it never auto-expands. */
+.settings-sub { margin: 0 0 .5rem; }
+.settings-sub[hidden] { display: none; }
+.settings-sub > summary {
+  cursor: pointer; list-style: none;
+  font-size: .82rem; color: var(--muted);
+  padding: .25rem 0 .25rem 1rem; position: relative;
+  -webkit-user-select: none; user-select: none;
+}
+.settings-sub > summary::-webkit-details-marker { display: none; }
+/* The disclosure triangle, drawn so it points down when open. */
+.settings-sub > summary::before {
+  content: "▸"; position: absolute; left: 0; top: .25rem;
+  font-size: .7rem; line-height: 1.5;
+  transition: transform .15s ease; transform-origin: 45% 55%;
+}
+.settings-sub[open] > summary::before { transform: rotate(90deg); }
+.settings-sub > summary:hover { color: var(--text); }
+.settings-sub > div { padding-left: 1rem; }
+@media (prefers-reduced-motion: reduce) {
+  .settings-sub > summary::before { transition: none; }
+}
 
 /* Article collection (public/js/account-articles.js) — the admin-only view
    of the planned article series. Each abstract is a collapsible <details>

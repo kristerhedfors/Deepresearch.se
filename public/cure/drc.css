@@ -1296,6 +1296,30 @@ h1 .tier { display: block; font-size: .8rem; font-weight: 600; color: var(--mute
    downloads; backdrop tap = Not now (dismissal is never consent). ---- */
 #odmodels { margin: .15rem 0 .3rem; }
 #odmodels[hidden] { display: none; }
+/* A knob's detail section (UX-14): flipping the switch adds ONE summary line
+   to the drawer, and the rows behind it open only when the user asks. Ships
+   without `open` and nothing sets it, so it never auto-expands. The Se/rver
+   twin is `.settings-sub` in css/app.css — the two stylesheets never load
+   together. */
+.settings-sub { margin: 0; }
+.settings-sub[hidden] { display: none; }
+.settings-sub > summary {
+  cursor: pointer; list-style: none;
+  font-size: .8rem; color: var(--muted);
+  padding: .25rem 0 .25rem 1rem; position: relative;
+  -webkit-user-select: none; user-select: none;
+}
+.settings-sub > summary::-webkit-details-marker { display: none; }
+.settings-sub > summary::before {
+  content: "▸"; position: absolute; left: 0; top: .25rem;
+  font-size: .7rem; line-height: 1.5;
+  transition: transform .15s ease; transform-origin: 45% 55%;
+}
+.settings-sub[open] > summary::before { transform: rotate(90deg); }
+.settings-sub > summary:hover { color: var(--text); }
+@media (prefers-reduced-motion: reduce) {
+  .settings-sub > summary::before { transition: none; }
+}
 .od-model {
   display: grid; grid-template-columns: 1fr auto; align-items: center;
   column-gap: .6rem; row-gap: .1rem; padding: .3rem 0;

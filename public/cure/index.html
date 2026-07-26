@@ -360,7 +360,13 @@
           Each model is a large one-time download (shown before anything starts) stored only on this device,
           with a Delete button to free the space. Phones need WebGPU (Android Chrome works; iOS Safari is
           experimental) and answers stream slower than hosted models.</div>
-        <div id="odmodels" hidden></div>
+        <!-- The knob reveals ONE summary line, not the model list (UX-14,
+             feedback #27): the rows live behind this disclosure, which ships
+             without `open` and is never opened by code. -->
+        <details class="settings-sub" id="oddetails" hidden>
+          <summary id="odsummary"></summary>
+          <div id="odmodels"></div>
+        </details>
         <span id="odstatus" class="muted setting-note"></span>
         <!-- The visible, copyable engine trace (?oddebug=1 / dr_ondevice_debug):
              phones have no console, so the debug switch renders here — the

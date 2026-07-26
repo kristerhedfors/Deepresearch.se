@@ -32,6 +32,7 @@ import {
   hfFileUrl,
   hfTreeUrl,
   onDeviceModel,
+  onDeviceSummaryLine,
   opfsUnavailableMessage,
   planModelFiles,
   planReasonForStatus,
@@ -508,4 +509,46 @@ test("crashMessage: a memory-looking detail carries the out-of-memory remedy; ot
   assert.ok(oom.includes("New chat"));
   const plain = crashMessage(true, "Script error.");
   assert.ok(!plain.includes("ran out of memory"));
+});
+
+// ---- the collapsed settings disclosure (UX-13, feedback #27) ------------------
+
+test("onDeviceSummaryLine: the counts state how many models are actually here", () => {
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 0 }), "Models — none on this device yet, 3 available");
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 1 }), "Models — 1 of 3 on this device");
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 3 }), "Models — 3 of 3 on this device");
+});
+
+test("onDeviceSummaryLine: 'available' counts only what this device can run", () => {
+  // The expanded rows say "this browser has no WebGPU" — the folded line must
+  // not advertise three downloads the user can't use.
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 0, unsupported: 3 }), "Models — none can run on this device");
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 0, unsupported: 2 }), "Models — none on this device yet, 1 available");
+  // Weights already here outrank the verdict: they ran once, they're the fact.
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 1, unsupported: 3 }), "Models — 1 of 3 on this device");
+});
+
+test("onDeviceSummaryLine: a download in flight outranks the counts, and carries its percent", () => {
+  // The whole point of the fold is that the rows are hidden — a running
+  // download must still be visible on the one line that remains.
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 1, downloading: "Bonsai 8B · 1-bit", pct: 42 }), "Downloading Bonsai 8B · 1-bit… · 42%");
+  assert.equal(onDeviceSummaryLine({ total: 3, downloading: "Bonsai 8B · 1-bit" }), "Downloading Bonsai 8B · 1-bit…");
+  // A percent arriving as a float or over 100 never renders nonsense.
+  assert.equal(onDeviceSummaryLine({ downloading: "X", pct: 99.7 }), "Downloading X… · 99%");
+  assert.equal(onDeviceSummaryLine({ downloading: "X", pct: 140 }), "Downloading X… · 100%");
+});
+
+test("onDeviceSummaryLine: probe states and failed downloads surface on the folded line", () => {
+  assert.equal(onDeviceSummaryLine({ total: 3, checking: true }), "Models — checking this device…");
+  assert.equal(onDeviceSummaryLine({ total: 3, error: true }), "Models — this device couldn't be checked");
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 1, failed: 1 }), "Models — 1 of 3 on this device · 1 download failed");
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 0, failed: 2 }), "Models — none on this device yet, 3 available · 2 downloads failed");
+});
+
+test("onDeviceSummaryLine: degenerate input still yields a sane line", () => {
+  assert.equal(onDeviceSummaryLine(), "Models");
+  assert.equal(onDeviceSummaryLine({}), "Models");
+  // A cached count above the catalog size (a stale entry) can't read "4 of 3".
+  assert.equal(onDeviceSummaryLine({ total: 3, cached: 9 }), "Models — 3 of 3 on this device");
+  assert.equal(onDeviceSummaryLine({ total: -1, cached: -2 }), "Models");
 });
