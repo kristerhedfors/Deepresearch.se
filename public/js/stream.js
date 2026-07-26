@@ -80,6 +80,7 @@ import {
 import { firstChunks, retrieve } from "./rag.js";
 import { renderQuiz } from "./quiz.js";
 import { mergeSearch, nodeRenderState, renderWorkflow } from "./workflow-viz.js";
+import { endPipelineRun, notePipelineStatus, startPipelineRun } from "./pipeline-map.js";
 import { renderModelCardsEvent } from "./models-panel.js";
 import { setGraphWorkflow, updateGraphAgent } from "./graph-backdrop.js";
 import { workflowEvent, workflowWaves } from "./orchestrator-core.js";
@@ -553,6 +554,10 @@ function handleEvent(turn, evt, acc) {
   if (evt.status) {
     const s = evt.status;
     recordResearchEvent(turn, s);
+    // Introspection's live pipeline map in the left drawer (pipeline-map.js):
+    // every status event moves the current chat's marker through the graph. It
+    // ignores what it doesn't map, so no branch below has to know about it.
+    notePipelineStatus(s);
     // `agent` on a search event is Orchestrator mode attributing the search to
     // the sub-agent that planned it (src/orchestrator.js runNodeSearches), so
     // the node's inspector can show its own searches landing live. Absent on
@@ -1749,6 +1754,10 @@ export async function sendMessage(text, opts) {
   if (cachedChatMode() !== "sdk") mountSpaceEmbed(turn, text);
   let acc = "";
   inFlight = true;
+  // Reset introspection's live pipeline map to this send: the browser-side
+  // nodes (composer → payload → POST) are already done by the time the request
+  // leaves, and every server node stays dark until an event proves it ran.
+  startPipelineRun();
   const gen = generation;
   controller = new AbortController();
   const signal = controller.signal;
@@ -1948,6 +1957,10 @@ export async function sendMessage(text, opts) {
     clearInterval(watchdog);
     document.removeEventListener("visibilitychange", onVisibility);
     collapseActivity(turn); // research done → fold the step bars away
+    // Stop the pipeline map blinking on a run that ended without a `done`
+    // event (error, stop, dropped stream). Whatever the chat DID reach stays
+    // lit — on a failed run that path is the interesting part.
+    endPipelineRun();
   }
 }
 

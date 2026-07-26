@@ -210,7 +210,7 @@ import {
  *   imageParts: import('./types.js').ContentPart[],
  *   emitDelta: (text: string) => void,
  *   step: (id: string, label: string) => void,
- *   stepDone: (id: string, label: string, details?: string[]) => void,
+ *   stepDone: (id: string, label: string, details?: string[], extra?: Record<string, unknown>) => void,
  * }} PipelineCtx
  */
 
@@ -318,9 +318,16 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
   const jsonProfile = getModelProfile(jsonModel);
   /** @type {PipelineCtx['step']} */
   const step = (id, label) => emit({ status: { type: "step_start", id, label } });
-  /** @type {PipelineCtx['stepDone']} */
-  const stepDone = (id, label, details = []) =>
-    emit({ status: { type: "step_done", id, label, details } });
+  /**
+   * `extra` carries optional machine-readable fields alongside the human label
+   * — today just `route`, the branch a finished step handed the answer to
+   * (see ROUTE_NODES in public/js/pipeline-map-core.js). Clients that don't
+   * know a field ignore it (the SSE forward-compatibility rule), and the
+   * client that DOES read it never has to parse an English label.
+   * @type {PipelineCtx['stepDone']}
+   */
+  const stepDone = (id, label, details = [], extra = undefined) =>
+    emit({ status: { type: "step_done", id, label, details, ...(extra || {}) } });
 
   // Opt-in context enrichments (src/enrichment.js's registry — the site's
   // own source, plus whichever third-party extensions are registered and
@@ -553,6 +560,8 @@ async function runFeedbackCapture(ctx) {
       : scope === "standalone"
         ? "Sending your suggestion to the developers"
         : "Sending your feedback to the developers",
+    [],
+    { route: "feedback" },
   );
   // The message IS the comment; the prior turn (the question it followed and
   // the reply it comments on) rides along so the developer sees the context.
@@ -581,7 +590,7 @@ async function runFeedbackCapture(ctx) {
 /** @param {PipelineCtx} ctx */
 async function runWithoutSearch(ctx) {
   ctx.step("plan", "Web search off");
-  ctx.stepDone("plan", "Web search off — answering from model knowledge");
+  ctx.stepDone("plan", "Web search off — answering from model knowledge", [], { route: "search_off" });
   // No external source applied, so this answers from the model — but the depth
   // slider still scales the answer's comprehensiveness via the report tier
   // (searchOffPrompt's sourceless depth ladder; default "standard" is the
@@ -616,11 +625,11 @@ async function runTriage(ctx) {
   const decision = normalizeTriage(hardenJson(TRIAGE_SCHEMA, triage), lastUser, previousUserText(ctx.conversation));
 
   if (decision.action === "direct") {
-    stepDone("plan", "Direct reply (no research needed)");
+    stepDone("plan", "Direct reply (no research needed)", [], { route: "direct" });
     return decision;
   }
   if (decision.action === "clarify") {
-    stepDone("plan", "Need to narrow the scope first");
+    stepDone("plan", "Need to narrow the scope first", [], { route: "clarify" });
     return decision;
   }
   const queries = decision.queries.slice(0, state.plan.queries);
@@ -637,6 +646,7 @@ async function runTriage(ctx) {
     "plan",
     `Planned ${queries.length} search angle${queries.length === 1 ? "" : "s"}${kindTag} · target ${state.plan.budgetS}s`,
     [...queries, ...state.subquestions.map((s) => `Sub-question: ${s}`)],
+    { route: "research" },
   );
   return { ...decision, queries };
 }
@@ -1489,6 +1499,13 @@ async function maybeDigest(ctx) {
 
   const freshDigest = sourceDigest(fresh, plan.digestCap);
   if (!freshDigest) return;
+  // The one research phase that used to run silently, while `fanout` and
+  // `contents` beside it both reported. That gap was invisible in the activity
+  // trace and made introspection's pipeline map (public/js/pipeline-map.js)
+  // draw a step that could never light, so the digest now announces itself the
+  // same way every other phase does. Emitted only once the phase is definitely
+  // running — every skip above returns before this point.
+  ctx.step("digest", `Digesting ${fresh.length} new source${fresh.length === 1 ? "" : "s"} into notes…`);
   const priorEntities = notesEntities(state.notes).slice(0, 40);
   const result = await jsonPhase(ctx, {
     label: "digest",
@@ -1502,6 +1519,14 @@ async function maybeDigest(ctx) {
   });
   const incoming = extractNotes(result);
   if (incoming.length) state.notes = mergeNotes(state.notes, incoming);
+  // Fail-soft like every other helper phase: an empty digest still closes its
+  // step, so the trace never leaves a spinner running (invariant 2).
+  ctx.stepDone(
+    "digest",
+    incoming.length
+      ? `Noted ${incoming.length} claim${incoming.length === 1 ? "" : "s"} from the new sources`
+      : "Nothing new worth noting from those sources",
+  );
 }
 
 // Phase 3.5 — full-content fetch of the top sources (budget-gated, ≥240s
