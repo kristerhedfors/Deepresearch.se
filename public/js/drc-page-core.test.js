@@ -352,3 +352,40 @@ test("drcFeedbackContext: empty, missing, or malformed conversations yield nulls
     answer_excerpt: null,
   });
 });
+
+// ---- the pooled route (feedback #31, 2026-07-26) ----------------------------
+// Shared compute is relayed by the server AND read by a named human. Before
+// this it fell through to the "directly from your browser on your own API key"
+// branch, which was wrong on both halves.
+
+test("privacyNoticeLines describes a pooled route as server-relayed and peer-read", () => {
+  const line = privacyNoticeLines({ pool: true, provider: "Shared compute (workspace)", peerLabel: "ada@example.com" })
+    .find((l) => l.startsWith("Model calls:"));
+  assert.ok(line, "there is always a model-calls line");
+  assert.match(line, /THROUGH the DeepResearch\.Se server/);
+  assert.match(line, /ada@example\.com's own machine/);
+  assert.match(line, /can read everything you send/);
+  assert.ok(!/on your own API key/.test(line), "a pooled call is not a direct browser call");
+  assert.ok(!/server is not involved/.test(line), "the server relays every pooled job");
+});
+
+test("privacyNoticeLines falls back to a truthful placeholder for an unnamed pool owner", () => {
+  const line = privacyNoticeLines({ pool: true }).find((l) => l.startsWith("Model calls:"));
+  assert.match(line, /the pool owner/);
+});
+
+test("privacyNoticeLines ranks the pooled route above a borrowed allowance", () => {
+  // Both flags can be set at once (a workspace link carrying an api grant AND
+  // a pool token); the larger disclosure has to be the one described.
+  const line = privacyNoticeLines({ pool: true, viaProxy: true }).find((l) => l.startsWith("Model calls:"));
+  assert.match(line, /shared compute is in the path/i);
+});
+
+test("privacyNoticeLines leaves the non-pooled routes exactly as they were", () => {
+  const direct = privacyNoticeLines({ provider: "OpenAI" }).find((l) => l.startsWith("Model calls:"));
+  assert.match(direct, /directly from your browser on your own API key/);
+  const local = privacyNoticeLines({ local: true }).find((l) => l.startsWith("Model calls:"));
+  assert.match(local, /YOUR OWN machine/);
+  const proxied = privacyNoticeLines({ viaProxy: true }).find((l) => l.startsWith("Model calls:"));
+  assert.match(proxied, /borrowed, metered, time-limited allowance/);
+});

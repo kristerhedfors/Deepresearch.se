@@ -79,6 +79,7 @@ mode; the other two are the client-tier archetype and the template.
 | **Agent Studio** | `sdk` | Se/rver | The mode that *builds* agents (spec id `agent-builder`): describe a flavour, it distils this site into it and publishes it live. |
 | **Orchestrator** | `orchestrator` | Se/rver | A planned team of sub-agents run in parallel waves, merged into one answer. One kind runs *outside* the server: a `swarm` node reasons with many tiny Bonsai models at once in the user's own browser ([`SWARM-REASONING.md`](SWARM-REASONING.md)). |
 | **Outrospection** | `outrospection` | Se/rver | Introspection's mirror image — answers from the standing outward feed of what everyone else shipped. |
+| **Models** | `models` | Se/rver | The agent whose subject is the models themselves, and the lifecycle it owns: discovered → evaluated → enabled. It holds the live catalog of every model this deployment can reach across every provider, with each one's price and its verification checklist — and enabling one puts it in every mode's dropdown. |
 | **Secure** | — | Se/cure | The never-cloud tier — runs wholly in your browser, server in no data path, sealed local state. |
 | **Under Construction** | — | Se/cure | A placeholder — the minimal viable agent (composer + send + an honest notice). The template you copy to start a new one. |
 
@@ -90,13 +91,13 @@ generate in the VM → preview → publish at `/app/<slug>/`.
 
 Four different lists get confused for one another, so here they are side by
 side. The agent list is not the chat-mode dropdown and not the tier split, even
-though five of its entries are now bound to a mode (§4).
+though six of its entries are now bound to a mode (§4).
 
 | The list | Where it lives | What it is | Its entries |
 |---|---|---|---|
 | **Tiers** | the product | The two halves of the platform, split by where the data goes | Se/cure (client, server in no data path), Se/rver (signed-in, cloud) |
-| **Chat modes** | `public/js/chat-mode.js` `CHAT_MODES`, mirrored in `public/js/mode-theme.js` | What the pipeline *does* with a turn — picked in the dropdown | `normal` (Deep Research), `introspection`, `sdk` (Agent Studio), `orchestrator`, `outrospection` |
-| **Agents** | `sdk/AGENTS.json` | Reference AgentSpecs — templates to copy | Research, Introspection, Agent Studio, Orchestrator, Outrospection, Secure, Under Construction |
+| **Chat modes** | `public/js/chat-mode.js` `CHAT_MODES`, mirrored in `public/js/mode-theme.js` | What the pipeline *does* with a turn — picked in the dropdown | `normal` (Deep Research), `introspection`, `sdk` (Agent Studio), `orchestrator`, `outrospection`, `models` (Models) |
+| **Agents** | `sdk/AGENTS.json` | Reference AgentSpecs — templates to copy | Research, Introspection, Agent Studio, Orchestrator, Outrospection, Models, Secure, Under Construction |
 | **Routes** | `public/js/stream.js` `sendMessage` | Where a send is *computed* — not chosen directly, inferred from the model pick and the knobs | server pipeline (`/api/chat`), on-device (`ondevice::` Bonsai), private introspection (own key, browser-direct) |
 
 The fourth row is the one with no user-facing name, and the omission caused a
@@ -208,7 +209,7 @@ the short version:
   "platform": "server",              // "client" | "server" — the tier
   "mode": "normal",                  // a CANONICAL chat mode id, validated against
                                      // chat-mode.js: normal | introspection | sdk |
-                                     // orchestrator | outrospection. "agent-builder"
+                                     // orchestrator | outrospection | models. "agent-builder"
                                      // is NOT accepted here — it survives only as the
                                      // Agent Studio spec's `id` and as a deep-link alias
   "theme": { "--agent-accent": "#3b82f6", … },
@@ -222,7 +223,7 @@ the short version:
     { "type": "depth-slider", "min": 0, "max": 3, "default": 1, "ticks": ["Quick","Standard","Deep","Exhaustive"] },
     { "type": "toggle", "id": "web_search", "label": "Web search", "default": true },
     { "type": "attachments" },
-    { "type": "mode-select", "modes": ["normal","introspection","sdk","orchestrator","outrospection"] }
+    { "type": "mode-select", "modes": ["normal","introspection","sdk","orchestrator","outrospection","models"] }
   ],
   "examples": ["…"], "generateExamples": true,
   "quota": { "window": "day", "requests": 50, "credits": null },
@@ -308,6 +309,27 @@ expressible at any price before — while a set that cannot fill its phase's rol
 is rejected at validation. The binding is pinned by identity against
 `src/prompts.js`, so a re-pointed prompt fails `npm test` rather than a request.
 
+### 3.2 Reading a capability at run time
+
+A declared field only matters if something reads it. Three accessors in the
+pure core do, and all three NARROW:
+
+| Accessor | Reads | Rule |
+|---|---|---|
+| `capBound(cap, key, limit)` | `bounds` | `limit` is both the default and the ceiling |
+| `capSearch(cap, requested)` | `search` | the agent's ceiling ANDed with the request, both directions |
+| `capHasTool(cap, class)` | `tools` | resolved through `src/tool-sets.js` in registry order |
+
+An absent, malformed or over-large declaration resolves to the platform's own
+value. The worst a hostile capability block can do is make its own agent do
+less.
+
+One rule is easy to get wrong and has its own test: **a capability governs the
+phase it names, and no other.** Introspection declares `search.web: false`
+because its own phase does not search; a turn the `externalSourceIntent` gate
+hands back to research was routed there *in order to* search, so introspection's
+declaration must not follow it.
+
 ## 4. The routing table — how a request finds its agent
 
 The registry's top-level `defaults` is an **ordered** table: one row per chat
@@ -319,6 +341,7 @@ selects it. **Array order is precedence.**
   { "mode": "sdk",           "agent": "agent-builder", "flag": "sdk_mode" },
   { "mode": "orchestrator",  "agent": "orchestrator",  "flag": "orchestrator_mode" },
   { "mode": "outrospection", "agent": "outrospection", "flag": "outrospection_mode" },
+  { "mode": "models",        "agent": "models",        "flag": "models_mode" },
   { "mode": "introspection", "agent": "introspection", "flag": null },
   { "mode": "normal",        "agent": "research",      "flag": null }
 ]
@@ -334,17 +357,57 @@ applied uniformly, rather than a condition repeated per mode.
 resulting `capability.answerPhase` through a table of executors. Three practical
 notes:
 
-- **The dispatch stays code, the selection stays data.** Only the three
-  executor phases (`build` / `workflow` / `feed`) come from the registry.
+- **The dispatch stays code, the selection stays data.** Only the four executor
+  phases (`build` / `workflow` / `feed` / `direct`) come from the registry.
   Whether a knob-on request is introspection or plain research is still decided
-  per *message* by the pipeline's `hasSource` + `externalSourceIntent` gate.
+  per *message* by the pipeline's `hasSource` + `externalSourceIntent` gate, so
+  an agent declaring `research` or `source-research` does not pre-empt it.
+- **A mode need not bring an executor.** The Models agent's answer phase is the
+  ordinary `research` one; what makes it its own mode is a capability block (a
+  forced search source, a context block, a gate, an event) plus an enrichment —
+  no row in `ANSWER_PHASE_RUNNERS`. It is the worked example of step 3 in §5: an
+  agent whose phase already exists needs no executor code. `src/chat.js`
+  therefore resolves its flag directly and lets it lose to any mode that DOES
+  replace the flow.
 - **Fail-soft (PA-2).** The registry ships inside the source snapshot and is
   loaded once per ASSETS binding ([`src/agent-registry.js`](../src/agent-registry.js)).
   An unreadable registry falls back to the hand-written flag cascade, which the
   table reproduces exactly — pinned by test.
-- **It stays off the hot path.** A request with no mode flag and no capability
-  knob can only resolve to `normal`, so `routingNeedsRegistry` skips the load
-  entirely. The plain Deep Research turn pays nothing for any of this.
+- **It stays off the hot path.** A request with no mode flag, no address and no
+  capability knob can only resolve to `normal`, so `routingNeedsRegistry` skips
+  the load entirely. The plain Deep Research turn pays nothing for any of this.
+
+### 4.1 Three ways to reach an agent
+
+The `defaults` table is the least specific of three routes. They are tried
+most-specific first, and every one of them applies the same requirement gate.
+
+| Route | Request field | Needs the registry? | What it is for |
+|---|---|---|---|
+| **Inline spec** | `agent_spec` (object) | no | a spec the caller wrote — Agent Studio handing back what it just built |
+| **Address** | `agent` (id string) | yes | a registry entry with no `defaults` row, no flag, no chat mode |
+| **Mode flag / derived** | `sdk_mode`, … | yes | the five default agents (the table above) |
+
+Two rules make the extra reach safe:
+
+**Falling through is the only failure.** An unknown id, a misspelt id, an id
+whose requirements the caller lacks, and a refused inline spec all resolve to
+the agent the request would have got with none of them. Nothing errors, nothing
+escalates, and probing for ids reveals nothing.
+
+**Requirements are derived, not declared.** `capability.requires` is written by
+whoever wrote the spec, so for a spec the repo did not commit it cannot be the
+gate — a spec selecting the build tools while declaring `requires: []` would
+otherwise sail through. `requirementsFor()` derives the needed knobs from what
+the capability actually *selects* (the `IMPLIED_REQUIREMENTS` table, pinned
+against the shipped registry), and `resolveUntrustedAgent()` checks the derived
+set after running every validation rule. It fails closed: no partial capability,
+ever.
+
+Together with the narrowing accessors (§3.2) this is the whole argument for
+letting a stranger's spec run: it cannot select outside the closed vocabularies,
+cannot break invariants 1/3/4/6, cannot reach a knob it was not granted, and
+cannot ask for more of anything than the platform already does.
 
 ## 5. Deriving your own agent
 
@@ -352,15 +415,29 @@ notes:
 2. Change the defining things — controls, animations, theme, examples, quota
    (§1) and the capability block (§3.1) — and set `derivesFrom` to the agent you
    copied (provenance).
-3. To make it a chat mode, add a `defaults` row naming it (§4). An agent whose
-   `answerPhase` is one the platform already implements needs **no code at all**.
+3. Reach it. Addressing it by id (`{"agent": "<id>"}`) needs nothing further —
+   no `defaults` row, no request flag, no chat mode, no theme descriptor, no
+   CSS. Add a `defaults` row only if it should also BE a chat mode (§4). An
+   agent whose `answerPhase` is one the platform already implements needs **no
+   code at all**.
 4. Validate: `node sdk/pair-cli.mjs validate` (checks agents too) and
    `npm test`. Inspect it: `node sdk/pair-cli.mjs agent <id>`.
 5. Prove it renders: `node scripts/agent-proof.mjs` (§6).
 
-That is the whole loop — a new agent is data, not code. The **Agent Studio**
-mode does this same thing from a natural-language prompt, distilling the Se/cure
-source into the new flavour and publishing it live.
+That is the whole loop — a new agent is data, not code.
+
+**Without touching the repo at all**, send the spec inline as `agent_spec` on
+the request (§4.1). It goes through `resolveUntrustedAgent`, which runs every
+rule in this document and refuses the whole spec if any fails. This is the seam
+the **Agent Studio** mode builds toward: describe an agent in natural language,
+and get back something the real platform runs rather than a static page that
+reimplements a fraction of it.
+
+Two things a derived agent still cannot do, both deliberate: it cannot author
+its own prompt TEXT (it selects one of the shipped sets — §3.1), and it cannot
+be published as a spend-capable share link yet (the minted-token half of
+`docs/DEFAULT-AGENTS-GENERALIZATION.md` Stage 4, which needs the
+**quota-grant-assessment** checklist).
 
 ## 6. Visual proof-driven testing
 

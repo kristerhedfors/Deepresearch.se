@@ -7,7 +7,8 @@ description: >-
   src/providers.js registry), Exa web search (src/exa.js), OpenStreetMap
   Nominatim reverse geocoding (src/geocode.js), Shodan host intelligence
   (src/shodan.js), Google Maps / Street View (src/googlemaps.js), or
-  Hugging Face Hub search (src/hf.js) — or adding a new enrichment in the
+  Hugging Face Hub search (src/hf.js; its INFERENCE sibling
+  src/hf-inference.js belongs to the models-agent skill) — or adding a new enrichment in the
   same deterministic no-function-calling pattern. ALSO the go-to for the
   EXTENSION BOUNDARY (src/extensions.js, CLAUDE.md invariant 7): the
   knob-gated third-party integrations are extensions, not core, so wiring
@@ -75,6 +76,26 @@ next two sections.)
   /api/chat` body; the Worker validates it (400 on unknown or down models)
   and falls back to the default if the catalog is unreachable. Selection
   persists in `localStorage`.
+- **Pricing units are NOT stable — normalize at the wire.** Each catalog entry
+  carries a `pricing` block. On **2026-07-17** its unit changed from raw EUR
+  **per token** to EUR **per million tokens**, tagged `unit: "€ / M Token"`:
+  `{"currency":"EUR","input":0.3,"output":0.3,"unit":"€ / M Token"}`.
+  `src/berget.js` was storing that number as if it were still per-token, so
+  from that day every Berget model's recorded cost ran **1e6× high**. Mistral
+  Small's `usage_events.berget_cost` per token went from `3e-7` to `0.30`
+  between one day and the next, which put ~€500k of phantom spend on the admin
+  usage panel. It was not only cosmetic: `quotaExceeded` enforces that same
+  column against the EUR budget caps, so a real user blew their month cap
+  inside one request. The catalog fetch now normalizes:
+  `eurPerTokenFromBerget()` / `bergetPricingPerToken()` convert to
+  EUR-per-token from the stated unit **and** a magnitude bound (anything
+  ≥ `1e-3` EUR/token is a per-million figure wearing the wrong unit), so the
+  next silent unit change can't re-inflate costs. Keep the conversion in
+  `berget.js`: everything downstream (`quota.js` `bergetCost`, the admin
+  totals, the dropdown tooltip via `formatPricing`) assumes EUR-per-token.
+  `rawModelEntry()` is the exception — it returns the catalog entry
+  **verbatim**, so its pricing still needs normalizing, as the embedding cost
+  in `src/rag.js` does.
 - **API shape:** OpenAI-style `POST /v1/chat/completions` with
   `stream: true`; SSE deltas arrive as `choices[0].delta.content`, terminated
   by `data: [DONE]`.
@@ -979,3 +1000,9 @@ the search phase.
   sources total. The cap still stops any single org dominating.
 - **Eval:** bench questions kind `hf` (`tests/bench-questions.mjs`,
   `hf_*` ids) exercise it; A/B history in `tests/EVAL-BENCH-FINDINGS.md`.
+- **Not to be confused with Hugging Face INFERENCE** (`src/hf-inference.js`):
+  the same company, a different surface and a different token contract. This
+  section is Hub SEARCH — free, optional token, citable sources. Running a
+  model through `router.huggingface.co` is billed, requires the token, and is
+  one provider inside the Models agent's lifecycle — see the **models-agent**
+  skill.

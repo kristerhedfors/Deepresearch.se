@@ -21,6 +21,12 @@
 // answer is recorded in docs/ARXIV-RAG.md — not assumed here.
 
 import { b64ToInt8, cosineF32Int8, int8ToB64, quantizeInt8 } from "./introspect-core.js";
+// One implementation of the surrogate-safe cut, shared with the RAG bundlers.
+// Reaching into scripts/ from public/js/ is only sound because this core is
+// Node-only — it is deliberately NOT on the src/assets.js public allowlist, so
+// no browser ever imports it. If that ever changes, move embed-truncate.mjs
+// under public/js/ FIRST; a served module cannot import from scripts/.
+import { truncateChars } from "../../scripts/embed-truncate.mjs";
 
 export { b64ToInt8, cosineF32Int8, int8ToB64, quantizeInt8 };
 
@@ -70,7 +76,13 @@ export function recapForContext(texts, requestedTokens, limit = 512) {
   // which makes the loop converge instead of creeping.
   const scaled = requestedTokens ? Math.floor((longest * (limit - 16)) / requestedTokens) : longest;
   const cap = Math.max(120, Math.min(scaled, Math.floor(longest * 0.85)));
-  return texts.map((t) => (t.length > cap ? t.slice(0, cap) : t));
+  // truncateChars, not `.slice(cap)`: cutting between the two code units of an
+  // astral character leaves a lone surrogate, which the e5 tokenizer rejects
+  // with a 400 that does NOT match OVER_LENGTH — so the retry loop above can
+  // never clear it and the whole build dies. Full account in
+  // scripts/embed-truncate.mjs. This matters here because embed-providers.mjs
+  // routes every bundler's over-length recovery through this function.
+  return texts.map((t) => (t.length > cap ? truncateChars(t, cap) : t));
 }
 
 // ---- passage construction ---------------------------------------------------

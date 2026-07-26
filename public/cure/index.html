@@ -88,8 +88,12 @@
       </svg>
     </span>
     <div class="ghostsay-body">
-      <strong>You're on DeepResearch.<b><span class="wm">Se<span class="sl">/</span>cure</span></b></strong>
-      <p>The private, all-client-side side. Your chats, keys and projects stay in <b>this browser</b> — the server never sees them. Just add your own API key and ask.</p>
+      <strong id="ghostsay-head">You're on DeepResearch.<b><span class="wm">Se<span class="sl">/</span>cure</span></b></strong>
+      <!-- The tier's claim about THIS session. The default below describes an
+           unconfigured session; drc.js replaces it from securePostureBrief when
+           the session was entered with a configuration that routes queries
+           outward (a borrowed allowance, shared compute) — feedback #31. -->
+      <p id="ghostsay-posture">The private, all-client-side side. Your chats, keys and projects stay in <b>this browser</b> — the server never sees them. Just add your own API key and ask.</p>
       <p><b>A research project, not a product.</b> It's experimental — put into service solely to research which capabilities and use cases fit the <b><span class="wm">Se<span class="sl">/</span>cure</span></b> + <b><span class="wm">Se<span class="sl">/</span>rver</span></b> architecture. Please don't rely on it for any real-world use.</p>
       <p class="ghostsay-point">Want accounts, cloud sync and live web search? That's <b><span class="wm">Se<span class="sl">/</span>rver</span></b> — tap the account button, top-right ↗</p>
       <a id="ghostsaygo" href="/login">Sign in to <b><span class="wm">Se<span class="sl">/</span>rver</span></b> →</a>
@@ -144,11 +148,9 @@
           <strong>Web research</strong><br>
           <span>Off answers in one pass. Live web search needs a search source:
           your own local browsing agent, or a server grant/token.</span>
-          <!-- The search-SOURCE picker (public/js/search-source.js): WHO runs a
-               search that goes through a grant/token. A configured local agent
-               outranks both — the browser calls it directly and no query
-               reaches this server at all. Rendered and wired in drc.js. -->
-          <div id="knobsrc"></div>
+          <!-- The knob is ON/OFF only (owner directive, 2026-07-26). WHO runs a
+               grant/token-routed search is the "Exa web search" knob in Settings
+               (#exarow below, public/js/search-source.js). -->
           <a href="/cure/local-search/">Run a local browsing agent — one-line setup →</a>
         </div>
         <form id="form">
@@ -401,6 +403,26 @@
         <span id="wsstatus" class="muted setting-note"></span>
       </div>
 
+      <!-- Exa web search — WHO runs a search that goes through a server
+           grant/token: Exa (on, the default) or this site's own Cloudflare
+           Worker (off). Browser-local (public/js/search-source.js), reflected
+           and wired in drc.js. A configured local browsing agent or direct
+           backend below outranks both — the browser calls it directly and no
+           query reaches this server at all. -->
+      <div class="settings-item" id="exarow">
+        <div class="settings-row">
+          <span class="settings-label">Exa web search
+            <button type="button" class="setting-info" data-pop="exapop" aria-label="More about Exa web search">ⓘ</button>
+          </span>
+          <label class="switch">
+            <input type="checkbox" id="exaweb">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
+        </div>
+        <div class="setting-pop" id="exapop" hidden></div>
+        <span id="exastatus" class="muted setting-note"></span>
+      </div>
+
       <!-- Web search SERVICE — the expert, per-user backend for live web
            search, called STRAIGHT from this browser (server in no data path).
            Wired by renderSearchBackend() in drc.js; config lives in the sealed
@@ -547,8 +569,46 @@
         </div>
         <div class="setting-pop" id="sbpop" hidden>Boots a real Linux <b>in this browser</b> so the assistant can
           run shell commands to answer you (e.g. “run ls”). Everything runs on your device — nothing leaves the
-          browser. The first use downloads a Linux image, so it's slow to start.</div>
+          browser. The first use downloads a Linux image, so it's slow to start. <b>Where</b> those commands run is
+          the next setting.</div>
         <span id="sandboxstatus" class="muted setting-note"></span>
+      </div>
+
+      <!-- WHERE the sandbox's commands actually run. The same shape of choice
+           the model dropdown already offers (on-device vs. cloud), applied to
+           execution: the in-browser VM, or a DREE/1 runner on the user's own
+           machine called STRAIGHT from this browser. Wired by
+           renderExecBackend() in drc.js; config lives in the sealed project
+           state. -->
+      <div class="settings-item" id="execrow">
+        <div class="settings-row">
+          <span class="settings-label">Execution environment
+            <button type="button" class="setting-info" data-pop="execpop" aria-label="More about the execution environment">ⓘ</button>
+          </span>
+        </div>
+        <div class="setting-pop" id="execpop" hidden>Choose <b>where</b> the assistant's shell commands run.<br>
+          <b>In-browser Linux VM</b> (default) boots a real Linux inside this page. Nothing leaves the device, but it
+          is an emulator: slow to start, slow to run, one fixed image, and it cannot see your machine.<br>
+          <b>Local runner</b> points at a small service you start on your own computer; each research session gets a
+          <b>throwaway container</b>, at native speed, with whatever image and tools you choose. This browser calls it
+          directly on <code>localhost</code> — no command, no output and no file touches this site's server, and the
+          runner prints every command it runs so you can watch. It must send <b>CORS</b> headers; the setup page's
+          one-liner already does. The URL and key are stored only inside your sealed session, in this browser.<br>
+          <a href="/cure/local-exec/">One-line setup for a local runner →</a></div>
+        <label class="setting-note" style="display:block;margin-top:.4rem">Environment
+          <select id="exec-backend" style="width:100%;margin-top:.2rem">
+            <option value="browser">In-browser Linux VM (default)</option>
+            <option value="local">Local runner — your machine</option>
+          </select>
+        </label>
+        <div id="exec-direct" hidden style="margin-top:.4rem;display:flex;flex-direction:column;gap:.4rem">
+          <label class="setting-note">Runner URL
+            <input id="exec-url" type="url" placeholder="http://localhost:8100" style="width:100%;margin-top:.2rem"></label>
+          <label class="setting-note">API key <span class="muted">(optional)</span>
+            <input id="exec-key" type="password" autocomplete="off" placeholder="only if your runner needs one" style="width:100%;margin-top:.2rem"></label>
+          <button type="button" id="exec-test" class="btnlike" style="align-self:flex-start">Test connection</button>
+        </div>
+        <span id="exec-status" class="muted setting-note"></span>
       </div>
 
       <div class="settings-item">
@@ -811,7 +871,10 @@
   <div id="intro" hidden>
     <div class="intro-card">
       <h1>DeepResearch.<b><span class="wm">Se<span class="sl">/</span>cure</span></b> <span class="tier">deep research secure</span></h1>
-      <p class="lead">Deep research that runs <b>client-side, in your browser</b>: bring
+      <!-- Same rule as the greeter: the default lead is the unconfigured
+           session's truth, and drc.js rewrites it when this session's config
+           says otherwise (securePostureBrief) — feedback #31. -->
+      <p class="lead" id="intro-lead">Deep research that runs <b>client-side, in your browser</b>: bring
         your own OpenAI, Groq or Berget API key and every model call goes straight from this
         page to the provider — this site's server is never in the path, so it could not
         read or log your messages even if it wanted to.</p>

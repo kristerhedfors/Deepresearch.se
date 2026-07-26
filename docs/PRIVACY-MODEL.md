@@ -106,7 +106,7 @@ storage) while still getting fresh web results. It stays inside the
 minimal-outbound rule: only the search QUERY reaches the server, never the
 conversation. Since 2026-07-25 the grant call carries a `source` naming WHICH
 engine the server should point at — Exa, or the server's own Worker-native
-backend (`src/websearch-cf.js`), picked on the web knob's long-press card.
+backend (`src/websearch-cf.js`), set by the "Exa web search" knob in settings.
 That is a routing choice INSIDE the existing exception, not a new one: the
 same single query crosses, the far side simply may be Cloudflare's edge
 rather than Exa's index. The stronger option remains unchanged and still

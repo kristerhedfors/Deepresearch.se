@@ -470,20 +470,20 @@ not buried in settings. Hover and long-press are the two "tell me more
 without committing" gestures — both must exist because each platform only
 has one of them (owner request, 2026-07-24).
 
-**Amended 2026-07-25 — the card may also DECIDE, not only explain.** Once a
-control has more than one honest answer to "where does this come from?", the
-card that explains it is also the right place to choose between them: the web
-knob's card carries a radio picker of WHO runs the searches (Exa or this
-site's own Cloudflare Worker — `public/js/search-source.js`, shared by both
-tiers). The rules that keep it from becoming a settings drawer: **at most one
-decision per card**, its options **need no setup** (anything requiring an
-operator or a URL stays in settings, and the card links there instead), each
-option carries a one-line consequence rather than a bare label, the whole row
-is the label so the tap target is the option and not the 14 px radio, and the
-default is preselected — a radio group with nothing checked is a dead
-control. The pick is device-local and the SERVER RE-VALIDATES it; a card
-picker must never be the only thing standing between a user and an
-unvalidated target.
+**Amended 2026-07-25, REVERSED 2026-07-26 (owner directive) — the card
+EXPLAINS; it does not decide.** For one day the web knob's card carried a
+radio picker of WHO runs the searches (Exa or this site's own Cloudflare
+Worker). That is now a **settings knob** — "Exa web search", on by default,
+off meaning the Worker backend — in the Se/rver Settings view
+(`account-settings.js`) and the Se/cure settings drawer (`#exarow`), over the
+unchanged shared preference `public/js/search-source.js`. **The standing
+rule: a composer knob answers ITS OWN question and nothing else** (the web
+knob: is this question researched live — on or off), and a second, unrelated
+decision belongs in settings even when it is topically adjacent. A card may
+still link to where that decision is made; this one still links the
+local-browsing-agent setup page. The reversal does not undo the dismiss trap
+below: any card a user reads to the end has to survive the release, whether or
+not it holds a control.
 
 **The dismiss trap (found 2026-07-25, headless Chromium):** the release that
 ENDS a long-press is itself a document click, and the control is not inside
@@ -510,10 +510,8 @@ right-click lands in the same handler, which is harmless on a toggle.
 **Canonical implementation:** the web knob (`#searchtoggle`) → `#knobpop` →
 `/cure/local-search/`: `public/cure/index.html` (the card), `drc.css` (the
 `#drspop` glass shape anchored right), `drc.js` (the wiring IIFE after the
-`websearch` change handler). The picker half is `#knobsrc` / `#searchsrc`
-(Se/cure / Se/rver) rendered from `searchSourcePickerHtml`, with the `.srcpick`
-rules duplicated in `drc.css` and `css/app.css` — the two stylesheets never
-load together. Hover binds only under
+`websearch` change handler). The Se/rver twin is `#searchpop` in
+`public/index.html` + `public/js/app.js`. Hover binds only under
 `matchMedia("(hover: hover) and (pointer: fine)")` — on touch, synthesized
 mouseenter would fight the toggle. No text routing, so no EN/SV parity
 applies.
@@ -523,7 +521,8 @@ applies.
 ## UX-11 — A document reader has two modes; in comment mode a marked passage gets a comment that reaches the code, not just the prose
 
 **The rule.** Every documentation page carries a Word-style mode **dropdown**
-(fixed, top right): **Read only** (the default, and exactly what the page was
+(fixed, **bottom** right — see "Not the top-right corner" below): **Read
+only** (the default, and exactly what the page was
 before) and **Comment**. It is a dropdown, not a pair of buttons — it matches
 the chat mode selector's shape and a native `<select>` is the one control that
 is comfortable on a phone. In comment mode, selecting a passage opens a composer
@@ -555,6 +554,23 @@ reconciles the passage and the code behind it in one change. So the reader is
 where the instruction is given, and where the result comes back: status, reply
 and staleness land in the margin, not only in the account panel (owner
 directive, 2026-07-25).
+
+**Not the top-right corner (fixed 2026-07-26).** The slot shipped at
+`top: .5rem; right: .6rem` and collided with the host page's own header on
+every documentation page and at every width — measured with a real viewport:
+267×29px at 390, 366×13px at 820, 136×13px at 1280, where it covered `/help/`'s
+"← Back to the app" outright. That is the cost of the layer's own promise (a
+page needs no markup, no CSS and **no layout cooperation**): it cannot know
+what the page already put in that corner, so it must not claim a corner pages
+conventionally use for their title and back link. It lives at
+`bottom: .6rem; right: .6rem` now — free on every page, and a mode switch that
+stays reachable while scrolling belongs there anyway. Two things must move
+together: `.dc-slot` in `public/js/docs-comments.js`, the inline style in
+`showNote()` in `public/js/doc-comment-gate.js` (an inline style cannot carry a
+media query, so it duplicates the position on purpose), and the `.dc-rail`
+padding, which is generous on whichever end the slot floats over. The fallback
+badge also needs enough background alpha to read as chrome — at `.14` wash with
+`opacity: .75` the prose behind it showed through its own label.
 
 **No second queue.** The comment is a `feedback` entry with the `doc` scope —
 one pipeline for free-form human instructions, four scope tags on it
@@ -592,7 +608,7 @@ Selection-driven, no text routing, so no EN/SV parity applies.
 ## UX-12 — A tier comparison is one question per row, both answers direct-labeled, stacked on a phone
 
 **When** a surface compares Se/cure and Se/rver — the workspace chooser on
-both help pages is the canonical case — **then** it renders as one row per
+`/cure/help/` is the canonical case — **then** it renders as one row per
 QUESTION the reader actually has ("who can read it", "who pays for the AI",
 "if you lose the password"), with each tier's answer in its own cell carrying
 the tier's NAME as a bold prefix, Se/cure first. On a phone the row stacks to
@@ -620,11 +636,17 @@ why to use which"*.)
    new `.sl` context. Both help pages' scoped `-.04em` was re-measured at
    weight 700 (`node scripts/slash-gap.mjs --weights 700 --margin -0.04`:
    every font row ok, worst side +0.043em vs the 0.03em floor).
+6. **One copy of the comparison per audience** (owner directive, 2026-07-26).
+   The paired tables belong to `/architecture/` (the design audience) and the
+   point-by-point chooser to `/cure/help/` (the deciding audience). `/help/`
+   is the signed-in app's OVERVIEW — it opens from the absolute starting
+   point and links onward — so it carries no `.cmp` block at all. Do not
+   "restore" one there; a third copy is what drifts.
 
 **Canonical implementation:** the `.cmp` / `.cmp-row` / `.cmp-q` / `.cmp-a`
-block in `public/help/index.html` and `public/cure/help/index.html` ("Se/cure
-or Se/rver: which workspace?"). The written source both pages compress is
-`docs/WORKSPACES.md` §2 — update that section and the two pages together.
+block in `public/cure/help/index.html` ("Se/cure or Se/rver: which
+workspace?"). The written source it compresses is `docs/WORKSPACES.md` §2 —
+update that section, this page, and `/architecture/`'s paired tables together.
 
 ---
 
@@ -788,3 +810,72 @@ tiers because they belong to the platform, not to an agent (owner directive,
 `public/cure/drc.css`, and `public/js/slash-core.js` for the pure half. The
 routing the commands trigger is `src/chat.js` (resolved before mode routing) and
 `src/pipeline.js` (the feedback gate above the executor dispatch).
+
+---
+
+## UX-16 — A live diagram of a running process lights only what it observed, and a repeated step shows its rounds
+
+**When** the UI draws a process the user's own request is moving through — a
+pipeline, a plan, a workflow — **then** a node changes appearance only on a
+signal that the step actually ran. Three states, no fourth: **idle** (not taken
+this time), **active** (running now — it blinks), **passed** (this request went
+through it, and it stays lit for the rest of the run). A step the process
+re-enters counts its rounds on the node (`×3`) and re-blinks on each entry, so a
+loop reads as a loop rather than as one box that sat "active" for a minute. A run
+that ends without reaching the end stops blinking but keeps its path lit.
+
+**Why.** A diagram of your own request is only worth anything if it is evidence.
+The moment a node lights up on an assumption — "synthesis must be running by
+now", "the POST obviously happened" — the picture becomes a decoration that
+happens to be shaped like the truth, and the one case where the user needs it
+(something went wrong, or a branch they didn't expect was taken) is exactly the
+case it gets wrong. Introspection mode exists to answer questions about this site
+honestly, so its own diagram must hold to the same standard. Feedback #34
+(2026-07-26) asked for the pipeline diagram an answer had just drawn, as a live
+panel: *"blinks and upcolors nodes which the current chat has passed through, or
+keep lighting up the nodes where the agent loops."*
+
+**The mechanics (match all of these):**
+
+1. **A node exists only where a signal exists.** If a phase runs silently, either
+   give it a real event or leave it off the diagram — never a node that can only
+   ever be dark. (Making the notes digest emit its step was part of this change,
+   for exactly that reason.)
+2. **Branch on machine-readable fields, never on a label.** A decision that
+   routes the request announces the branch it took as data (`route` on the
+   finished step). Sniffing an English label couples the drawing to copy that
+   gets reworded and breaks silently — and could not work in a second language.
+3. **Nothing is inferred from the answer text.** Only events, plus what an event
+   *proves* about the path behind it — a stream carrying anything at all proves
+   the request was admitted, and a step proves the always-run gates before it
+   were passed. Declare those implications as a table, resolve them
+   transitively, and never let one count as a round of its own.
+4. **One signal, one node.** A step that lights two nodes double-counts the
+   rounds of whichever loop they share, and a "finished" event that re-counts its
+   own start turns every ordinary step into two visits. Both were real bugs here.
+5. **The graph is a declared table, not a drawing** — a pure module (nodes,
+   edges, event→node map, layout, SVG string), so a pipeline change is a table
+   edit and the whole thing is Node-tested without a DOM.
+6. **State survives a closed panel.** The drawer is usually shut while a request
+   runs; events keep accumulating and the map catches up on open. Rendering is
+   skipped entirely while collapsed, so nobody pays for a panel they aren't
+   looking at.
+7. **It scrolls inside its own box** and keeps the newest node in view — never
+   scrolling the page or the list it sits in (UX-1's blast-radius discipline).
+8. **The blink is animation-only** and drops under `prefers-reduced-motion`; the
+   colour change carries the state on its own.
+9. **Measure the geometry against the real stylesheet.** A diagram in a fixed
+   panel has a width budget, and SVG text neither wraps nor clips — it just
+   overlaps. Render it in a headless browser and assert the box fits and no label
+   collides with a glyph, an edge label, or a neighbouring node. The pass on this
+   one caught four defects, including a checkmark drawn through a node's name.
+
+**Canonical implementations:** `public/js/pipeline-map-core.js` (the pure half —
+node table, `nodesForStatus`, the visit-counting run state, `pipelineMapSvg`;
+`pipeline-map-core.test.js`) and `public/js/pipeline-map.js` (the drawer mount),
+fed by `public/js/stream.js`'s SSE dispatch and gated to introspection mode from
+`public/js/history-ui.js`. The `.pipemap` block in `public/css/app.css` owns the
+three states. The server half is `src/pipeline.js`'s `route` field on the `plan`
+step plus the `digest` step. The sibling implementation is the Orchestrator
+workflow view (`public/js/workflow-viz.js`), which follows the same three-state
+discipline over `agent_update` events.

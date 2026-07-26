@@ -11,6 +11,7 @@ import {
   clickMessage,
   facing,
   planStroll,
+  resolveQuips,
   STROLL_SPEED,
   LEG_MS_MIN,
   LEG_MS_MAX,
@@ -127,4 +128,66 @@ test("planStroll survives a viewport too narrow to offer any span", () => {
     assert.ok(Number.isFinite(leg.x));
     assert.ok(Number.isFinite(leg.dur) && leg.dur > 0);
   }
+});
+
+// ---- the injected quip set (feedback #31, 2026-07-26) ------------------------
+// A session configured to route queries outward (a borrowed allowance, shared
+// compute) supplies its own quips, so the mascot cannot promise "no server's
+// watching" while prompts are relayed to a peer's machine.
+
+test("resolveQuips takes an array, a getter, or nothing", () => {
+  assert.deepEqual(resolveQuips(["a", "b"]), ["a", "b"]);
+  assert.deepEqual(resolveQuips(() => ["x"]), ["x"]);
+  assert.deepEqual(resolveQuips(undefined), GHOST_QUIPS);
+  assert.deepEqual(resolveQuips(null), GHOST_QUIPS);
+});
+
+test("resolveQuips falls back rather than leaving the ghost mute", () => {
+  assert.deepEqual(resolveQuips([]), GHOST_QUIPS);
+  assert.deepEqual(resolveQuips(["", "  "]), GHOST_QUIPS, "blank strings are not messages");
+  assert.deepEqual(resolveQuips("not a list"), GHOST_QUIPS);
+  assert.deepEqual(
+    resolveQuips(() => {
+      throw new Error("config not ready");
+    }),
+    GHOST_QUIPS,
+    "a throwing getter is decoration failing, never a broken page",
+  );
+});
+
+test("resolveQuips drops non-strings but keeps the real ones", () => {
+  assert.deepEqual(resolveQuips(["ok", null, 7, "fine"]), ["ok", "fine"]);
+});
+
+test("planStroll speaks the INJECTED set, not the default", () => {
+  const quips = ["peer warning", "sealed anyway", "search route"];
+  const legs = planStroll({ vw: 900, ghostW: 80, legs: 6, rand: () => 0.5, quips });
+  const spoken = legs.filter((l) => l.say);
+  assert.ok(spoken.length > 0);
+  for (const leg of spoken) {
+    assert.ok(quips.includes(leg.quip), `unexpected quip: ${leg.quip}`);
+    assert.ok(!GHOST_QUIPS.includes(leg.quip), "the blanket default must not leak through");
+  }
+});
+
+test("planStroll records the quip INDEX so the DOM layer can re-resolve", () => {
+  // The index is what lets a bubble correct itself when the configuration
+  // arrives mid-stroll (an async pool-token connect) instead of replaying text
+  // frozen at plan time.
+  const legs = planStroll({ vw: 900, ghostW: 80, legs: 6, rand: () => 0.5, quips: ["a", "b"] });
+  let expected = 0;
+  for (const leg of legs) {
+    if (leg.say) {
+      assert.equal(leg.quipIdx, expected, "speaking legs walk the cycle in order");
+      assert.equal(leg.quip, pickQuip(["a", "b"], expected));
+      expected++;
+    } else {
+      assert.equal(leg.quipIdx, -1, "silent legs claim no quip");
+    }
+  }
+});
+
+test("planStroll without quips still uses the default set", () => {
+  const legs = planStroll({ vw: 900, ghostW: 80, legs: 6, rand: () => 0.5 });
+  for (const leg of legs.filter((l) => l.say)) assert.ok(GHOST_QUIPS.includes(leg.quip));
 });

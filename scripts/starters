@@ -1,0 +1,229 @@
+#!/usr/bin/env node
+// @ts-check
+// The starter-prompt queue, from the command line. Everything here is OFFLINE
+// — it reads the committed registry (public/js/starters-data.js) and the pure
+// core, so it needs no credentials and touches no network. The live battery
+// that produces ranks is a separate command (tests/starter-eval.mjs); this is
+// how you inspect what is in the queue, see exactly what a visitor's strip
+// would look like, and read the current shortlist.
+//
+//   scripts/starters                          the report: every agent's queue at a glance
+//   scripts/starters --queue <agent>          the full queue for one agent
+//   scripts/starters --strip <agent> [--cursor N] [--lang sv]
+//                                             the four chips a visitor would see
+//   scripts/starters --shortlist [<agent>]    the best-known-good openers
+//   scripts/starters --batch [--cursor N]     an evaluation-mode batch (what the knob serves)
+//   scripts/starters --coverage               what is still untested, per agent and band
+//   scripts/starters --aspects <agent>        the aspect taxonomy + coverage
+//   scripts/starters --validate               every rule the registry must satisfy
+//   scripts/starters --modes                  which agent each chat mode opens
+//   --json                                    machine-readable output (any of the above)
+//
+// See the **starter-prompts** skill.
+
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import {
+  SLOT_COUNT, QUEUE_MIN, SHORTLIST_FLOOR, MODE_AGENTS, EVAL_BANDS,
+  agentIds, resolveQueue, selectStarters, shortlistFor, validateStarters, registryReport,
+  evalPool, selectEvalBatch, coverageReport,
+} from "../src/starters.js";
+import { STARTERS, STARTERS_VERSION, ASPECTS, CANDIDATES } from "../src/starters.js";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const AGENTS = JSON.parse(readFileSync(join(ROOT, "sdk", "AGENTS.json"), "utf8"));
+
+const argv = process.argv.slice(2);
+const has = (name) => argv.includes(name);
+const flag = (name) => {
+  const i = argv.indexOf(name);
+  return i >= 0 ? argv[i + 1] : null;
+};
+const JSON_OUT = has("--json");
+
+function out(obj, text) {
+  if (JSON_OUT) console.log(JSON.stringify(obj, null, 2));
+  else text();
+}
+
+function requireAgent(name) {
+  const agent = flag(name);
+  if (!agent) {
+    console.error(`${name} needs an agent id. Known: ${agentIds(STARTERS).join(", ")}`);
+    process.exit(2);
+  }
+  if (!agentIds(STARTERS).includes(agent)) {
+    console.error(`No starter queue for "${agent}". Known: ${agentIds(STARTERS).join(", ")}`);
+    process.exit(2);
+  }
+  return agent;
+}
+
+// ---- --validate -------------------------------------------------------------
+
+if (has("--validate")) {
+  const { ok, problems } = validateStarters(STARTERS, AGENTS);
+  out({ ok, problems }, () => {
+    if (ok) {
+      console.log(`starters-data.js v${STARTERS_VERSION}: valid — ${agentIds(STARTERS).length} agents, ` +
+        `${agentIds(STARTERS).reduce((n, a) => n + resolveQueue(STARTERS, a).length, 0)} starters.`);
+    } else {
+      console.log(`starters-data.js: ${problems.length} problem(s)`);
+      problems.forEach((p) => console.log(`  · ${p}`));
+    }
+  });
+  process.exit(ok ? 0 : 1);
+}
+
+// ---- --modes ----------------------------------------------------------------
+
+if (has("--modes")) {
+  const rows = Object.entries(MODE_AGENTS).map(([mode, agent]) => ({
+    mode, agent, starters: resolveQueue(STARTERS, agent).length,
+  }));
+  rows.push({ mode: "(Se/cure tier)", agent: "secure", starters: resolveQueue(STARTERS, "secure").length });
+  out(rows, () => {
+    console.log("chat mode          → agent               starters");
+    for (const r of rows) console.log(`${r.mode.padEnd(18)} → ${r.agent.padEnd(20)} ${r.starters}`);
+  });
+  process.exit(0);
+}
+
+// ---- --queue ----------------------------------------------------------------
+
+if (has("--queue")) {
+  const agent = requireAgent("--queue");
+  const q = resolveQueue(STARTERS, agent);
+  out({ agent, count: q.length, starters: q }, () => {
+    console.log(`── ${agent}: ${q.length} starters ──\n`);
+    q.forEach((e, i) => {
+      const rank = e.rank != null ? ` [rank ${e.rank}]` : "";
+      console.log(`${String(i).padStart(2)}. ${e.id}  (${e.aspect}, ${e.lang})${rank}`);
+      console.log(`    ${e.text}\n`);
+    });
+  });
+  process.exit(0);
+}
+
+// ---- --strip ----------------------------------------------------------------
+
+if (has("--strip")) {
+  const agent = requireAgent("--strip");
+  const cursor = Number(flag("--cursor") || 0);
+  const lang = flag("--lang") || undefined;
+  const picked = selectStarters(resolveQueue(STARTERS, agent), { cursor, lang, count: SLOT_COUNT });
+  out({ agent, cursor, lang: lang || null, strip: picked }, () => {
+    console.log(`── ${agent} strip at cursor ${cursor}${lang ? ` (${lang})` : ""} ──\n`);
+    picked.forEach((e, i) => {
+      const rank = e.rank != null ? `proven ${e.rank}` : "explore";
+      console.log(`${i + 1}. [${rank}] ${e.text}`);
+      console.log(`   ${e.id} · ${e.aspect} · ${e.lang}\n`);
+    });
+    console.log("Advance --cursor to see what the next visit shows.");
+  });
+  process.exit(0);
+}
+
+// ---- --aspects --------------------------------------------------------------
+
+if (has("--aspects")) {
+  const agent = requireAgent("--aspects");
+  const q = resolveQueue(STARTERS, agent);
+  const used = new Map();
+  for (const e of q) used.set(e.aspect, (used.get(e.aspect) || 0) + 1);
+  const declared = ASPECTS[agent] || [];
+  const rows = declared.map((a) => ({ aspect: a, starters: used.get(a) || 0 }));
+  out({ agent, aspects: rows }, () => {
+    console.log(`── ${agent}: ${used.size}/${declared.length} declared aspects covered ──\n`);
+    for (const r of rows) console.log(`  ${r.starters ? String(r.starters).padStart(2) : " ·"}  ${r.aspect}`);
+    const empty = rows.filter((r) => !r.starters);
+    if (empty.length) console.log(`\n${empty.length} declared aspect(s) have no starter yet — candidates for the next batch.`);
+  });
+  process.exit(0);
+}
+
+// ---- --shortlist ------------------------------------------------------------
+
+if (has("--shortlist")) {
+  const one = flag("--shortlist");
+  const agents = one && !one.startsWith("--") ? [one] : agentIds(STARTERS);
+  const rows = agents.map((agent) => ({ agent, shortlist: shortlistFor(STARTERS, agent, 99) }));
+  out(rows, () => {
+    for (const { agent, shortlist } of rows) {
+      console.log(`── ${agent} ──`);
+      if (!shortlist.length) {
+        console.log("  (nothing proven yet — run tests/starter-eval.mjs, then promote ranks from its shortlist)\n");
+        continue;
+      }
+      for (const e of shortlist) console.log(`  ${e.rank}  ${e.text}\n      ${e.id} · ${e.evidence}`);
+      console.log("");
+    }
+    console.log(`Shortlist floor: ${SHORTLIST_FLOOR}. A rank without an eval run behind it fails --validate.`);
+  });
+  process.exit(0);
+}
+
+// ---- --batch (evaluation mode) ----------------------------------------------
+
+if (has("--batch")) {
+  const cursor = Number(flag("--cursor") || 0);
+  const platform = flag("--platform") || undefined;
+  const pool = evalPool(STARTERS, { candidates: CANDIDATES, platform });
+  const batch = selectEvalBatch(pool, { cursor, count: SLOT_COUNT });
+  out({ cursor, platform: platform || null, batch }, () => {
+    console.log(`── evaluation batch ${cursor}${platform ? ` (${platform})` : ""} — one per band, across agents ──\n`);
+    batch.forEach((e, i) => {
+      console.log(`${i + 1}. [${e.band}] ${e.agent}${e.rank != null ? ` · scored ${e.rank}` : ""}`);
+      console.log(`   ${e.text}`);
+      if (e.note) console.log(`   testing: ${e.note}`);
+      console.log("");
+    });
+    console.log("Advance --cursor for the next batch. This is what the Settings knob serves.");
+  });
+  process.exit(0);
+}
+
+// ---- --coverage -------------------------------------------------------------
+
+if (has("--coverage")) {
+  const rows = coverageReport(STARTERS, { candidates: CANDIDATES });
+  out(rows, () => {
+    console.log("What is still untested, per agent:\n");
+    console.log("agent                total  proven  weak  untried  candidates");
+    for (const r of rows) {
+      console.log(
+        `${r.agent.padEnd(20)} ${String(r.total).padStart(5)}  ${String(r.proven).padStart(6)}  ` +
+        `${String(r.weak).padStart(4)}  ${String(r.untried).padStart(7)}  ${String(r.candidates).padStart(10)}`,
+      );
+    }
+    const t = rows.reduce((a, r) => ({ untried: a.untried + r.untried, total: a.total + r.total }), { untried: 0, total: 0 });
+    console.log(`\n${t.untried} of ${t.total} starters have never been evaluated (bands: ${EVAL_BANDS.join(", ")}).`);
+  });
+  process.exit(0);
+}
+
+// ---- default: the report ----------------------------------------------------
+
+const report = registryReport(STARTERS);
+const totals = report.reduce((a, r) => ({ total: a.total + r.total, proven: a.proven + r.proven }), { total: 0, proven: 0 });
+out({ version: STARTERS_VERSION, agents: report, totals }, () => {
+  console.log(`Starter queues (registry v${STARTERS_VERSION}) — ${SLOT_COUNT} shown at a time, ${QUEUE_MIN} minimum depth\n`);
+  console.log("agent                total  proven  sv  aspects  best");
+  for (const r of report) {
+    console.log(
+      `${r.agent.padEnd(20)} ${String(r.total).padStart(5)}  ${String(r.proven).padStart(6)}  ` +
+      `${String(r.sv).padStart(2)}  ${String(r.aspects).padStart(7)}  ${r.best == null ? "   —" : String(r.best).padStart(4)}`,
+    );
+  }
+  console.log(`\n${totals.total} starters, ${totals.proven} with an eval-backed rank.`);
+  if (!totals.proven) {
+    console.log("\nNothing is proven yet. The strip still works — every slot explores — but");
+    console.log("there is no shortlist until a battery has run:");
+    console.log("  BASIC_AUTH_USER=… BASIC_AUTH_PASS=… node tests/starter-eval.mjs --limit 5");
+  }
+  console.log("\n  scripts/starters --strip <agent>     what a visitor actually sees");
+  console.log("  scripts/starters --queue <agent>     the whole queue");
+  console.log("  scripts/starters --validate          check every rule");
+});

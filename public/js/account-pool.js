@@ -23,6 +23,8 @@
 
 import { escapeHtml } from "./notifications.js";
 import { poolDataFlowNotice } from "./pool-core.js";
+import { createPoolProvider } from "./pool-provider.js";
+import { listLocalPoolModels, normalizePoolLocalUrl, runLocalPoolJob } from "./pool-local.js";
 
 /** @typedef {import("./account.js").PanelCtx} PanelCtx */
 
@@ -71,6 +73,33 @@ export async function loadPoolView(ctx) {
   wireBack(ctx);
   wireDecisions(ctx);
   wireMint(ctx);
+  wireSharing();
+}
+
+/** The sharer's two controls. The URL is saved as it is typed so the toggle
+ * beside it always acts on what the field shows; changing it while sharing
+ * restarts the loop so the broker re-advertises the new server's models. */
+function wireSharing() {
+  const url = /** @type {HTMLInputElement | null} */ (document.getElementById("poollocalurl"));
+  const box = /** @type {HTMLInputElement | null} */ (document.getElementById("poolshare"));
+  url?.addEventListener("change", async () => {
+    write(LOCAL_URL_KEY, normalizePoolLocalUrl(url.value));
+    if (sharing()) {
+      await setPoolSharing(false);
+      const on = await setPoolSharing(true);
+      if (box) box.checked = on;
+    }
+    const el = document.getElementById("poolshare-status");
+    if (el) el.textContent = shareStatusText();
+  });
+  box?.addEventListener("change", async () => {
+    box.disabled = true;
+    const on = await setPoolSharing(box.checked);
+    box.checked = on;
+    box.disabled = false;
+    const el = document.getElementById("poolshare-status");
+    if (el) el.textContent = shareStatusText();
+  });
 }
 
 /** @param {PanelCtx} ctx */
@@ -166,24 +195,51 @@ function stateLabel(state, outgoing) {
 
 // ---- your own providers + tokens ---------------------------------------------
 
-/** @param {any} view */
+/**
+ * "Your shared model" — the SHARER's own control, working right here.
+ *
+ * This used to say "turn it on over in the Se/cure tier", which read as though
+ * lending compute were a Se/cure-only feature (feedback #31, 2026-07-26). It
+ * never was: the broker only needs a signed-in browser tab that can reach a
+ * local model, and the signed-in Se/rver app is one. Both tiers now carry the
+ * same toggle over the same loop; whichever tab is open does the lending, and
+ * two tabs simply register as two providers under the one pool.
+ * @param {any} view
+ */
 function renderProviders(view) {
-  const online = (view.providers || []).filter((p) => p.online);
+  const providers = view.providers || [];
+  const online = providers.filter((p) => p.online);
+  const here = sharing();
+  const others = online.filter((p) => !here || p.label !== THIS_TAB_LABEL);
   return `
     <p class="section-lbl">Your shared model</p>
+    <p class="muted setting-note">Lend the OpenAI-compatible model running on this
+      machine (Ollama, LM Studio, llama.cpp). The prompts run in <b>this browser tab</b>,
+      against that server — so the tab has to stay open while you share. You can do the
+      same from a <a href="/cure" target="_blank" rel="noopener">Se/cure</a> tab; either
+      tier lends the same pool.</p>
+    <div class="pool-share">
+      <label class="pool-share-url">Local server URL
+        <input id="poollocalurl" type="url" inputmode="url" spellcheck="false"
+               placeholder="http://localhost:11434/v1" value="${escapeHtml(localUrl())}" />
+      </label>
+      <label class="pool-share-toggle">
+        <input id="poolshare" type="checkbox" ${here ? "checked" : ""} />
+        <span>Share my compute</span>
+      </label>
+    </div>
+    <p id="poolshare-status" class="muted setting-note">${escapeHtml(shareStatusText())}</p>
+    ${others
+      .map(
+        (p) => `<p class="muted setting-note">Also online: ${escapeHtml(p.label || "another browser")}${
+          p.models && p.models.length ? ` · ${escapeHtml(p.models.slice(0, 6).join(", "))}` : ""
+        }</p>`,
+      )
+      .join("")}
     ${
-      online.length
-        ? online
-            .map(
-              (p) => `<p class="muted setting-note">Online: ${escapeHtml(p.label || "this browser")}${
-                p.models.length ? ` · ${escapeHtml(p.models.slice(0, 6).join(", "))}` : ""
-              }</p>`,
-            )
-            .join("")
-        : `<p class="muted setting-note">You are not sharing right now. Turn on
-             <b>Share my compute</b> next to your local-server setting in the
-             Se/cure tier (<a href="/cure" target="_blank" rel="noopener">/cure</a>)
-             — that browser tab is what runs the prompts.</p>`
+      !online.length && !here
+        ? `<p class="muted setting-note">You are not sharing right now — nobody can reach your model until you turn this on.</p>`
+        : ""
     }`;
 }
 
@@ -213,6 +269,113 @@ function renderTokens(view) {
     </div>
     <p id="poolminted" class="muted setting-note" hidden></p>
     ${rows}`;
+}
+
+// ---- the sharer's engine: lending this machine's model from Se/rver -----------
+//
+// The loop is a MODULE-LEVEL singleton, not view state: leaving the LLM
+// sharing screen (or the account panel entirely) must not stop the lending the
+// user switched on, and re-entering it must not start a second one. It lives
+// as long as the tab does, which is exactly the promise the copy makes.
+
+const LOCAL_URL_KEY = "dr_pool_local_url"; // this machine's OpenAI-compatible server
+const SHARE_KEY = "dr_pool_share_drs"; // "1" — sharing is on, auto-resumes next visit
+const THIS_TAB_LABEL = "Se/rver browser tab";
+
+/** @type {ReturnType<typeof createPoolProvider> | null} */
+let loop = null;
+/** @type {{state: string, detail?: string, jobs?: number}} */
+let lastStatus = { state: "off" };
+
+/** @param {string} k @param {string} [fallback] */
+function read(k, fallback = "") {
+  try {
+    return localStorage.getItem(k) || fallback;
+  } catch {
+    return fallback; // storage blocked — the setting just won't persist
+  }
+}
+
+/** @param {string} k @param {string} v */
+function write(k, v) {
+  try {
+    localStorage.setItem(k, v);
+  } catch {
+    /* storage blocked — sharing still works for this tab's lifetime */
+  }
+}
+
+/** The local server this tab lends. Empty until the sharer sets one. */
+function localUrl() {
+  return normalizePoolLocalUrl(read(LOCAL_URL_KEY));
+}
+
+/** Is this tab lending right now? The loop is the truth; the flag is intent. */
+function sharing() {
+  return !!(loop && loop.active);
+}
+
+function shareStatusText() {
+  const s = lastStatus;
+  if (s.state === "error") return "⚠ " + (s.detail || "sharing stopped");
+  if (s.state === "job") return "Sharing — running a job for someone now…";
+  if (s.state === "idle")
+    return "Sharing — waiting for work" + (s.jobs ? ` · ${s.jobs} job${s.jobs === 1 ? "" : "s"} served` : "");
+  if (!localUrl()) return "Set the URL of your local server first — sharing lends THAT model.";
+  return "";
+}
+
+/** Build (once) the provider loop for this tab. Both halves of the local-model
+ * conversation come from the shared runner (pool-local.js), so the Se/rver tab
+ * and a Se/cure tab speak the identical wire to a user's own machine. */
+function provider() {
+  if (loop) return loop;
+  loop = createPoolProvider({
+    label: THIS_TAB_LABEL,
+    listModels: () => listLocalPoolModels(localUrl()),
+    runJob: (body) => runLocalPoolJob(localUrl(), body),
+    onStatus: (s) => {
+      lastStatus = s;
+      // Repaint only if the screen happens to be open; the loop outlives it.
+      const el = document.getElementById("poolshare-status");
+      if (el) el.textContent = shareStatusText();
+    },
+  });
+  return loop;
+}
+
+/**
+ * Turn lending on or off. Refuses to start without a local server URL — an
+ * empty one would register a provider that fails every job it claims, which is
+ * worse for the consumer than no capacity at all.
+ * @param {boolean} on
+ * @returns {Promise<boolean>} whether sharing is on afterwards
+ */
+export async function setPoolSharing(on) {
+  if (on && !localUrl()) {
+    lastStatus = { state: "off" };
+    const el = document.getElementById("poolshare-status");
+    if (el) el.textContent = "Set the URL of your local server first — sharing lends THAT model.";
+    return false;
+  }
+  write(SHARE_KEY, on ? "1" : "0");
+  if (on) return provider().start();
+  if (loop) await loop.stop();
+  return false;
+}
+
+/**
+ * Resume lending on app boot for a sharer who left the toggle on — their
+ * explicit, revocable choice, exactly as the Se/cure tab auto-resumes. Called
+ * from the app's boot tail; entirely fail-soft.
+ */
+export function resumePoolSharing() {
+  try {
+    if (read(SHARE_KEY) !== "1" || !localUrl()) return;
+    setPoolSharing(true).catch(() => {});
+  } catch {
+    /* never break boot over it */
+  }
 }
 
 // ---- wiring -------------------------------------------------------------------

@@ -1,4 +1,3 @@
-// @ts-check
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -80,6 +79,33 @@ test("recapForContext re-caps from the reported token count, not by blind halvin
   assert.ok(long.length > 1200 && long.length <= 1360, `unexpected cap ${long.length}`);
   assert.equal(short, "short", "texts already inside the window are untouched");
   assert.ok(recapForContext(["abc"], 0)[0].length > 0, "a missing token count must not throw");
+});
+
+test("recapForContext never leaves an orphaned surrogate at the cut", () => {
+  // The bug this closes: embed-providers.mjs routes EVERY bundler's over-length
+  // recovery through recapForContext, so a plain `.slice(cap)` here reinstates
+  // the lone-surrogate 400 that scripts/embed-truncate.mjs exists to prevent —
+  // and that 400 does not match OVER_LENGTH, so the retry loop cannot clear it.
+  // 👍 is astral (two UTF-16 units), so a cap landing between them orphans one.
+  // The cut is deterministic, so aim at it rather than hoping: with these
+  // arguments the 0.85 floor wins, i.e. cap = floor(len × 0.85). Place the
+  // emoji's FIRST unit exactly at index cap-1 so the slice splits it.
+  const emoji = "👍";
+  const len = 2000;
+  const cap = Math.floor(len * 0.85); // 1700
+  const text = "x".repeat(cap - 1) + emoji + "y".repeat(len - (cap - 1) - 2);
+  assert.equal(text.length, len, "test fixture must be exactly the intended length");
+  assert.ok(text.charCodeAt(cap - 1) >= 0xd800 && text.charCodeAt(cap - 1) <= 0xdbff, "fixture must straddle the cut");
+
+  const [out] = recapForContext([text, "short"], 568, 512);
+  const lastUnit = out.charCodeAt(out.length - 1);
+  assert.ok(
+    !(lastUnit >= 0xd800 && lastUnit <= 0xdbff),
+    `cut left a lone high surrogate at index ${out.length - 1}`,
+  );
+  // Well-formed as a whole, not merely ending cleanly: [...s] iterates code
+  // points, so a lone surrogate anywhere round-trips differently.
+  assert.equal(out, [...out].join(""), "result is not well-formed UTF-16");
 });
 
 test("recapForContext shrinks monotonically so the retry loop converges", () => {
@@ -237,7 +263,7 @@ test("decodeShard restores the passage→paper alignment denseSearch needs", () 
   const d = decodeShard(shard);
   assert.deepEqual(d.docIds, ["2607.00001", "2607.00002", "2607.00001"]);
   assert.equal(d.vectors.length, 3);
-  assert.equal(d.byId.get("2607.00001").title, PAPER.title);
+  assert.equal(d.byId.get("2607.00001")?.title, PAPER.title);
   assert.equal(denseSearch(Float32Array.from([1, 0, 0]), d, 5)[0].id, "2607.00001");
 });
 

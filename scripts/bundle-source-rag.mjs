@@ -50,6 +50,7 @@ import {
   validateSnapshot,
 } from "../public/js/introspect-core.js";
 import { describeProviders, embedAll } from "./embed-providers.mjs";
+import { truncateChars } from "./embed-truncate.mjs";
 
 /** Per-file content hash — the delta key. Same input the chunker sees. */
 const fileHash = (text) => createHash("sha256").update(String(text ?? "")).digest("hex").slice(0, 16);
@@ -182,7 +183,7 @@ async function main() {
     } else {
       const vecs = new Array(pieces.length).fill(null);
       plan.push({ p: f.p, vecs, reused: false });
-      pieces.forEach((text, ci) => toEmbed.push({ p: f.p, ci, text: text.slice(0, MAX_CHUNK_CHARS) }));
+      pieces.forEach((text, ci) => toEmbed.push({ p: f.p, ci, text: truncateChars(text, MAX_CHUNK_CHARS) }));
     }
   }
   const totalChunks = plan.reduce((n, e) => n + e.vecs.length, 0);
@@ -252,7 +253,7 @@ async function main() {
           let shrunk = false;
           for (const it of items) {
             if (it.text.length > 400) {
-              it.text = it.text.slice(0, Math.floor(it.text.length * 0.8));
+              it.text = truncateChars(it.text, Math.floor(it.text.length * 0.8));
               shrunk = true;
             }
           }

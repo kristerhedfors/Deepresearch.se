@@ -116,7 +116,14 @@ export function isPublicAsset(url, method) {
     // rule as workspace-core.js above.
     url.pathname === "/js/pool-core.js" ||
     url.pathname === "/js/pool-provider.js" ||
+    // The local-model runner both tiers lend through (a Se/rver tab shares the
+    // same pool a Se/cure tab does — feedback #31, 2026-07-26).
+    url.pathname === "/js/pool-local.js" ||
     url.pathname === "/js/knowledge-core.js" ||
+    // What Se/cure may honestly CLAIM given the config it was entered with —
+    // the ghost's quips, the greeter, the intro pane and the tier explainer all
+    // read it, so it has to link in the public /cure graph.
+    url.pathname === "/js/secure-posture-core.js" ||
     url.pathname === "/js/drc-rag.js" ||
     // drc-rag.js's import chain: rag.js/chat-rag.js (the reused pure
     // helpers) each import settings.js — all three must be public or the
@@ -134,7 +141,13 @@ export function isPublicAsset(url, method) {
     // umbrella intro, dead composer. The derived module-graph test in
     // assets.test.js now fails `npm test` on this whole class.)
     url.pathname === "/js/websearch-backends-core.js" ||
-    // The search-SOURCE preference behind the web knob's long-press card —
+    // The pluggable EXECUTION-ENVIRONMENT core — the sibling seam, letting a
+    // DREE/1 runner on the user's own machine stand in for the in-browser
+    // Linux VM. /cure/drc.js and drc-research.js both import it, so it is in
+    // the public graph under the same rule as the line above. (Its DRS-side
+    // glue, /js/exec-env.js, is NOT here: only the signed-in app imports that.)
+    url.pathname === "/js/exec-backends-core.js" ||
+    // The search-SOURCE preference behind the "Exa web search" settings knob —
     // /cure/drc.js statically imports it (the same public-graph rule).
     url.pathname === "/js/search-source.js" ||
     url.pathname === "/js/drc-research.js" ||
@@ -171,6 +184,14 @@ export function isPublicAsset(url, method) {
     // sandbox.js but not here, so /js/boot-messages.js 401'd and /cure went
     // dark — no umbrella intro, inert page — for every unauthenticated visitor).
     url.pathname === "/js/boot-messages.js" ||
+    // Starter prompts: /cure/drc.js statically imports /js/starters.js (the
+    // strip renderer), which imports the pure core AND the registry data.
+    // All three are in the public graph — same rule that took /cure dark
+    // twice above, so all three are allowlisted together here rather than
+    // one at a time.
+    url.pathname === "/js/starters.js" ||
+    url.pathname === "/js/starters-core.js" ||
+    url.pathname === "/js/starters-data.js" ||
     // Introspection (developer mode): the shared pure core (imported by
     // /cure/drc.js — same public-graph rule as the modules above) and the
     // committed source-snapshot artifact both tiers fetch. The snapshot is
@@ -206,6 +227,13 @@ export function isPublicAsset(url, method) {
     // the promotional landing (/welcome/) so a signed-out visitor can ask the
     // common questions before signing in. Static content, no secrets.
     url.pathname === "/js/canned-faq.js" ||
+    // The feature-focus timeline's pure core: the bucketing/scale/colour maths
+    // shared by /pulse/timeline.html and the compact card on the landing. Both
+    // are public surfaces (/pulse/ is allowlisted above, /welcome/ is the
+    // signed-out front door), so a 401 here would blank the chart on each —
+    // same public-graph rule as the modules around it. Pure maths over a
+    // committed dataset, no secrets.
+    url.pathname === "/js/pulse-timeline-core.js" ||
     // The shared feedback intent gate (feedback-core.js): a leaf pure module
     // imported by /cure/drc.js (the public DRC graph) so the "feedback" keyword
     // is caught client-side. Same public-graph rule — a 401 here would take the

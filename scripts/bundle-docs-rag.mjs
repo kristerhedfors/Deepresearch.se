@@ -37,6 +37,7 @@ import {
   validateSnapshot,
 } from "../public/js/introspect-core.js";
 import { describeProviders, embedAll } from "./embed-providers.mjs";
+import { truncateChars } from "./embed-truncate.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CORPUS = "public/introspect/docs-corpus.json";
@@ -60,7 +61,7 @@ async function main() {
   for (const f of corpus.files) {
     hashes[f.p] = fileHash(f.t);
     const pieces = chunkSourceText(f.t);
-    pieces.forEach((text, ci) => toEmbed.push({ p: f.p, ci, text: text.slice(0, MAX_CHUNK_CHARS) }));
+    pieces.forEach((text, ci) => toEmbed.push({ p: f.p, ci, text: truncateChars(text, MAX_CHUNK_CHARS) }));
   }
   console.log(`${corpus.files.length} docs, ${toEmbed.length} chunks — ${describeProviders(PROVIDER)} …`);
 

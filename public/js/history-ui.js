@@ -16,6 +16,7 @@ import {
   saveConversation,
   undecryptableConversations,
 } from "./history-store.js";
+import { initPipelineMap, syncPipelineMap } from "./pipeline-map.js";
 import { pinPaneClose, renderProjectsList } from "./projects-ui.js";
 import { loadSettings, settingsLoaded, storageAvailable } from "./settings.js";
 import { applyLoadedConversation, currentConversationId } from "./stream.js";
@@ -47,19 +48,29 @@ export function initHistorySidebar(opts = {}) {
 
   historyAvailable().then((ok) => { btn.hidden = !ok; });
 
+  // The pipeline map draws lazily — on expand — so wiring it here costs one
+  // listener whatever mode the visitor is in.
+  initPipelineMap({ getMode: cachedChatMode });
+
   // The SDK-mode showcase gallery lives at the top of this same left library
   // pane, shown ONLY in SDK mode (the green distiller) — the drawer doubles as
   // an SDK build-idea library there. Rendered once per open; a pick prefills
   // the composer (via app.js) and closes the drawer so the brief is ready to
   // send. In any other mode the gallery is hidden and the pane is pure history.
+  // Introspection has its own block in the same pane — the live PIPELINE MAP —
+  // so this function is "flavour the drawer for the current mode", not just the
+  // gallery: each mode-owned block is shown or hidden here.
   function renderShowcase() {
-    if (!showcase) return;
     const mode = cachedChatMode();
     // Flavour the whole drawer by mode (the mode-theme registry's `panel` axis):
     // SDK tints the pane green + shows the build-idea library, introspection
     // tints titanium, Normal is plain history. CSS keys off [data-mode].
     const sidebar = document.getElementById("historysidebar");
     if (sidebar) sidebar.dataset.mode = mode;
+    // Introspection's own drawer block: the live PIPELINE MAP (pipeline-map.js).
+    // Same one-mode-owns-one-block shape as the SDK gallery below it.
+    syncPipelineMap(mode);
+    if (!showcase) return;
     const sdk = mode === "sdk";
     showcase.hidden = !sdk;
     if (!sdk) { showcase.textContent = ""; return; }

@@ -156,6 +156,46 @@ npm test                 # freshness checks name any step you missed
 Never hand-edit the artifacts. New docs/images must be `git add`ed BEFORE
 bundling (`git ls-files` is the walker).
 
+### The emoji-on-the-boundary trap (fixed 2026-07-26 — recognize it anyway)
+
+`npm run bundle:docs-rag` can die on ONE batch with a 400 that names no length
+problem and no bad field:
+
+```
+bundle-docs-rag failed: Berget embeddings 400: {"error":{"message":
+"TextEncodeInput must be Union[TextInputSequence, Tuple[InputSequence, InputSequence]]", …
+```
+
+**Cause.** The bundlers pre-truncate each chunk to `MAX_CHUNK_CHARS` (1200)
+before embedding. A plain `.slice(0, 1200)` can land BETWEEN the two UTF-16
+units of an astral character — a 👍 in a doc table — leaving a lone high
+surrogate, which Berget's HuggingFace tokenizer rejects with the message above.
+Because it is not a "too long" 400, the ×0.8 shrink retry can never clear it,
+and `.slice()` in the shrink path can create a fresh one. It is a landmine any
+prose edit can step on: editing a doc shifts every later chunk boundary. First
+real instance was a 👍 in `docs/WORKSPACES.md` chunk 38.
+
+**Fix, already in place:** `scripts/embed-truncate.mjs` (`truncateChars`, unit
+tests in `scripts/embed-truncate.test.mjs`) backs the cut off by one unit
+rather than orphaning a surrogate; `bundle-docs-rag.mjs`,
+`bundle-source-rag.mjs` and `bundle-owasp-rag.mjs` all truncate through it.
+
+**If you see this error again**, do NOT chase the corpus or the API key —
+find the batch and check the truncated text for a trailing lone surrogate:
+
+```bash
+node -e 'const c=require("./public/introspect/docs-corpus.json");
+import("./public/js/introspect-core.js").then(({chunkSourceText})=>{
+  for(const f of c.files) chunkSourceText(f.t).forEach((t,ci)=>{
+    const s=t.slice(0,1200), u=s.charCodeAt(s.length-1);
+    if(u>=0xD800&&u<=0xDBFF) console.log("orphan surrogate",f.p,"ci="+ci); }); });'
+```
+
+A hit means some new truncation path bypassed `truncateChars`. Note the
+diagnostic asymmetry that makes this confusing: the offending chunk embeds
+**fine** when probed on its own, because a hand probe sends the FULL text and
+the bundler sends the truncated one.
+
 ## Extending
 
 - **New documentation file**: root `*.md` and `docs/*.md` are picked up

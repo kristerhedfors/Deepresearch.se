@@ -67,5 +67,11 @@ export async function loadAgentRegistry(env) {
  */
 export function routingNeedsRegistry(body, developerOn) {
   if (developerOn) return true;
+  // An explicitly ADDRESSED agent (`body.agent`) is the third way routing can
+  // differ, alongside the mode flags and the derived introspection default. It
+  // is opt-in by construction — a request that does not name one never pays the
+  // snapshot load — and naming a nonexistent or ungranted id costs the load and
+  // then resolves to the same agent the table would have given.
+  if (typeof body?.agent === "string" && body.agent.trim()) return true;
   return ["sdk_mode", "orchestrator_mode", "outrospection_mode"].some((f) => body?.[f] === true);
 }

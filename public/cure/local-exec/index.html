@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeepResearch — local execution environment</title>
+  <link rel="icon" href="/favicon.ico?v=4" sizes="48x48">
+  <meta name="theme-color" content="#c3b091">
+  <style>
+    /* Khaki like the tier it serves (public/cure/drc.css) — reaching this page
+       from the /cure settings drawer must feel like staying on /cure. The
+       Se/rver panel links here too; the page is tier-neutral in wording and
+       khaki in palette, same as /cure/local-search/. Self-contained on purpose. */
+    :root {
+      --bg: #c3b091; --panel: #faf6e8; --panel-2: #f0e9d2; --border: #b3a26e;
+      --text: #3d3418; --muted: #75683f; --accent: #7c6a24;
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--text); margin: 0; padding: 1.25rem 1rem 3rem;
+      line-height: 1.55;
+    }
+    main { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+    h1 { font-size: 1.15rem; margin: 0; }
+    a.back {
+      background: rgba(255,255,255,.35); border: 1px solid rgba(255,255,255,.6);
+      color: var(--text); text-decoration: none; font-weight: 600; font-size: .85rem;
+      border-radius: 10px; padding: .45rem .8rem; white-space: nowrap;
+    }
+    section {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 14px; padding: 1rem 1.15rem;
+    }
+    h2 { font-size: 1rem; margin: 0 0 .5rem; }
+    h3 { font-size: .9rem; margin: 1rem 0 .25rem; }
+    p, li { font-size: .92rem; margin: .4rem 0; }
+    ul, ol { padding-left: 1.3rem; margin: .4rem 0; }
+    .privacy-flag {
+      background: var(--panel-2); border-left: 3px solid var(--accent);
+      border-radius: 6px; padding: .5rem .8rem; font-size: .86rem; margin: .5rem 0;
+    }
+    .privacy-flag b { color: var(--accent); }
+    /* Same slash rule as /cure/help/ and /cure/local-search/ — identical font
+       stack and comparable sizes, so the help page's MEASURED value carries
+       over (scripts/slash-gap.mjs, the slash-spacing skill). Not eyeballed. */
+    .sl { margin: 0 -.04em; }
+    .wm { white-space: nowrap; }
+    code { background: var(--panel-2); border-radius: 4px; padding: 0 .3rem; font-size: .85em; }
+    .muted { color: var(--muted); }
+    a { color: var(--accent); }
+    /* One-liner blocks: the command + a copy button on a shared card. */
+    .cmd {
+      display: flex; align-items: stretch; gap: .5rem; margin: .5rem 0;
+    }
+    .cmd pre {
+      flex: 1; margin: 0; padding: .55rem .7rem; overflow-x: auto;
+      background: #2f2a15; color: #efe8c8; border-radius: 8px;
+      font-size: .78rem; line-height: 1.45; white-space: pre;
+    }
+    .cmd button {
+      flex: none; align-self: center;
+      background: var(--panel-2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px;
+      font-size: .78rem; font-weight: 600; padding: .45rem .7rem; cursor: pointer;
+      min-width: 4.6rem;
+    }
+    .cmd button:hover { background: #e7dfc2; }
+    table { border-collapse: collapse; width: 100%; font-size: .85rem; }
+    th, td { text-align: left; padding: .3rem .5rem; border-top: 1px dashed var(--border); vertical-align: top; }
+    th { border-top: 0; color: var(--muted); font-weight: 600; }
+    td code { white-space: nowrap; }
+  </style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>Run commands on your own machine</h1>
+    <a class="back" href="/cure">← Back to the app</a>
+  </div>
+
+  <p>When research needs a shell — running a script, checking a file, testing a
+  snippet — DeepResearch boots a <b>Linux VM inside your browser</b>. That is
+  private by construction, but it is an emulator: slow to start, slow to run,
+  fixed to one disk image, and sealed off from the computer you are actually
+  sitting at.</p>
+
+  <p>The <b>local runner</b> is the alternative. It is a small service you start
+  on your own machine; DeepResearch calls it straight from the browser and every
+  research session gets its own <b>throwaway container</b> — created on the first
+  command, destroyed when you are done. Native speed, any image you like, and
+  your own tools.</p>
+
+  <div class="privacy-flag"><b>Where your commands go.</b> Browser →
+  <code>localhost</code> → a container on your machine. Nothing is sent to
+  deepresearch.se; the site's server is not in this path at all. On the
+  <span class="wm">Se<span class="sl">/</span>cure</span> tier the runner's
+  address and key live only inside your sealed session in this browser.</div>
+
+  <section>
+    <h2>Quick start</h2>
+    <p>You need two things: a <b>container runtime</b> (one of the choices
+    below) and <a href="https://nodejs.org">Node 18+</a>
+    (<code>brew install node</code> on a Mac). Then one line:</p>
+    <div class="cmd">
+      <pre>curl -fsSL https://deepresearch.se/cure/local-exec/runner.mjs -o runner.mjs &amp;&amp; node runner.mjs</pre>
+      <button type="button">Copy</button>
+    </div>
+    <p>It finds whichever runtime you have installed, pulls a small Debian image
+    once, and prints the address to paste back. Then, in
+    <b>Settings → Execution environment</b>:</p>
+    <ol>
+      <li>Environment: <b>Local runner — your machine</b></li>
+      <li>Runner URL: <code>http://localhost:8100</code></li>
+      <li>Press <b>Test connection</b> — it should report the runtime it found.</li>
+      <li>Turn the execution sandbox on and ask something that needs a shell.</li>
+    </ol>
+    <p class="muted">Prefer not to leave a file behind? Pipe it:</p>
+    <div class="cmd">
+      <pre>curl -fsSL https://deepresearch.se/cure/local-exec/runner.mjs | node --input-type=module</pre>
+      <button type="button">Copy</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Pick a container runtime — macOS</h2>
+
+    <h3>Apple's built-in <code>container</code> — nothing to install</h3>
+    <p>macOS 26 and later ship a native <code>container</code> command that gives
+    each container its own lightweight VM. If you have it, the runner picks it up
+    on its own and there is no step here at all. Check with:</p>
+    <div class="cmd">
+      <pre>container --version</pre>
+      <button type="button">Copy</button>
+    </div>
+
+    <h3>Podman — rootless, daemonless, one brew</h3>
+    <p>The lightest thing to install on an older Mac:</p>
+    <div class="cmd">
+      <pre>brew install podman &amp;&amp; podman machine init &amp;&amp; podman machine start</pre>
+      <button type="button">Copy</button>
+    </div>
+
+    <h3>Docker</h3>
+    <p>Docker Desktop, or the leaner CLI-only route through
+    <a href="https://github.com/abiosoft/colima">colima</a>:</p>
+    <div class="cmd">
+      <pre>brew install docker colima &amp;&amp; colima start</pre>
+      <button type="button">Copy</button>
+    </div>
+    <p class="muted">Docker Desktop and
+    <a href="https://orbstack.dev">OrbStack</a> both work as-is —
+    <code>brew install --cask docker</code> or
+    <code>brew install --cask orbstack</code>.</p>
+  </section>
+
+  <section>
+    <h2>Linux</h2>
+    <p>Podman is rootless and usually already packaged:</p>
+    <div class="cmd">
+      <pre>sudo apt install -y podman nodejs   # or: dnf install podman nodejs</pre>
+      <button type="button">Copy</button>
+    </div>
+    <p class="muted">Docker (<code>docker.io</code>) and containerd's
+    <code>nerdctl</code> are detected too — whichever you already run is fine.</p>
+  </section>
+
+  <section>
+    <h2>Windows</h2>
+    <p>Install Docker Desktop (or podman) and Node, then fetch the runner from
+    PowerShell:</p>
+    <div class="cmd">
+      <pre>winget install Docker.DockerDesktop OpenJS.NodeJS</pre>
+      <button type="button">Copy</button>
+    </div>
+    <div class="cmd">
+      <pre>iwr -useb https://deepresearch.se/cure/local-exec/runner.mjs -OutFile runner.mjs; node runner.mjs</pre>
+      <button type="button">Copy</button>
+    </div>
+    <p class="muted">Running inside WSL works the same way and is usually
+    faster — install podman or docker in the distro and use the Linux line.</p>
+  </section>
+
+  <section>
+    <h2>No Node? Run the runner itself in a container</h2>
+    <p>One command, nothing installed on the host but Docker. The runner runs
+    inside a container and drives the host's Docker to create the throwaway
+    machines:</p>
+    <div class="cmd">
+      <pre>docker run --rm -p 8100:8100 -v /var/run/docker.sock:/var/run/docker.sock node:22-alpine sh -c "apk add --no-cache docker-cli curl && curl -fsSL https://deepresearch.se/cure/local-exec/runner.mjs -o /tmp/runner.mjs && HOST=0.0.0.0 node /tmp/runner.mjs"</pre>
+      <button type="button">Copy</button>
+    </div>
+    <div class="privacy-flag"><b>Read this one before you paste it.</b> Mounting
+    the Docker socket gives that container full control of Docker on your
+    machine — which is exactly how it creates the sandboxes, and also why it is
+    not a security boundary against the container itself. Convenient on a
+    development machine; not something to run on a server you care about.</div>
+    <p class="muted">Podman's socket works the same way
+    (<code>-v /run/user/$UID/podman/podman.sock:/var/run/docker.sock</code>).</p>
+  </section>
+
+  <section>
+    <h2>Choose the machine your commands get</h2>
+    <p>Any image with <code>/bin/sh</code> works. Point the runner at the
+    toolchain your research actually needs:</p>
+    <div class="cmd">
+      <pre>IMAGE=python:3.12-slim node runner.mjs</pre>
+      <button type="button">Copy</button>
+    </div>
+    <p>By default the container has <b>no network</b> — it cannot reach the
+    internet, your LAN, or the runner. Open it when you want the agent to be
+    able to install packages, and know what you are opening:</p>
+    <div class="cmd">
+      <pre>NETWORK=bridge IMAGE=python:3.12-slim node runner.mjs</pre>
+      <button type="button">Copy</button>
+    </div>
+    <p>To let the agent see a project directory, mount it — it appears as
+    <code>/mnt</code> inside the container:</p>
+    <div class="cmd">
+      <pre>MOUNT=~/code/my-project node runner.mjs</pre>
+      <button type="button">Copy</button>
+    </div>
+    <p class="muted">Everything the container writes outside a mount disappears
+    with it. A session's machine is kept warm across the whole research turn, so
+    <code>cd</code>, installed packages and written files survive between
+    commands, then it is destroyed.</p>
+  </section>
+
+  <section>
+    <h2>Options</h2>
+    <p>All configuration is environment variables:</p>
+    <table>
+      <tr><th>Variable</th><th>Default</th><th>What it does</th></tr>
+      <tr><td><code>PORT</code></td><td><code>8100</code></td><td>Listen port.</td></tr>
+      <tr><td><code>HOST</code></td><td><code>127.0.0.1</code></td><td>Bind address — localhost only unless you widen it.</td></tr>
+      <tr><td><code>BACKEND</code></td><td><i>auto</i></td><td><code>container</code>, <code>docker</code>, <code>podman</code>, <code>nerdctl</code> — or <code>host</code> for no container at all.</td></tr>
+      <tr><td><code>IMAGE</code></td><td><code>debian:stable-slim</code></td><td>Any image with <code>/bin/sh</code>.</td></tr>
+      <tr><td><code>NETWORK</code></td><td><code>none</code></td><td><code>none</code>, <code>bridge</code> or <code>host</code>.</td></tr>
+      <tr><td><code>API_KEY</code></td><td><i>none</i></td><td>When set, commands must carry it (<code>x-api-key</code>). Paste the same key into the settings drawer.</td></tr>
+      <tr><td><code>MOUNT</code></td><td><i>none</i></td><td>Host directory to mount at <code>/mnt</code>.</td></tr>
+      <tr><td><code>MEMORY</code> / <code>CPUS</code> / <code>PIDS</code></td><td><code>2g</code> / <code>2</code> / <code>512</code></td><td>Per-container limits.</td></tr>
+      <tr><td><code>IDLE_MINUTES</code></td><td><code>30</code></td><td>Destroy a session's machine after this much silence.</td></tr>
+      <tr><td><code>ALLOW_ORIGIN</code></td><td><code>*</code></td><td>CORS origin; tighten to <code>https://deepresearch.se</code> if you like.</td></tr>
+    </table>
+    <h3>Check it's alive</h3>
+    <div class="cmd">
+      <pre>curl -s http://localhost:8100/healthz</pre>
+      <button type="button">Copy</button>
+    </div>
+    <div class="cmd">
+      <pre>curl -s -X POST http://localhost:8100/exec -H 'content-type: application/json' -d '{"command":"uname -a"}'</pre>
+      <button type="button">Copy</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Bring your own runner</h2>
+    <p>The script above is a reference implementation, not the interface. The
+    interface is <b>DREE/1</b>, two endpoints:</p>
+    <table>
+      <tr><th>Endpoint</th><th>Shape</th></tr>
+      <tr><td><code>GET /healthz</code></td><td><code>{ok, protocol:"dree/1", backend, image, ephemeral, network}</code></td></tr>
+      <tr><td><code>POST /exec</code></td><td><code>{command, session?, timeoutMs?, maxStdoutBytes?}</code> → <code>{exitCode, stdout, stderr, truncated?}</code></td></tr>
+    </table>
+    <p>Anything answering those drops straight in: a Firecracker or Cloud
+    Hypervisor pool, a gVisor sandbox, a remote build box over a tunnel, your
+    company's CI runner. <code>session</code> is the only subtlety — commands
+    sharing a session id should reach the same machine, so a research loop keeps
+    its working directory between rounds.</p>
+    <p class="muted">The full specification, the exposure ledger for each choice,
+    and how this fits the two tiers:
+    <a href="/help/#docs/EXECUTION-ENVIRONMENTS.md">the execution-environments
+    documentation</a>.</p>
+  </section>
+
+  <section>
+    <h2>Good to know</h2>
+    <ul>
+      <li><b>Browsers.</b> Chrome, Edge and Firefox allow an HTTPS page to call
+        <code>http://localhost</code>, and the runner answers Chrome's
+        private-network preflight. <b>Safari blocks it</b> as mixed content —
+        use another browser, or put the runner behind a local HTTPS proxy.</li>
+      <li><b>Fail-soft.</b> If the runner is down or unreachable, research falls
+        back to answering without a shell; you get an answer either way, and the
+        status line in Settings tells you which environment actually ran.</li>
+      <li><b>It is a sandbox, not a vault.</b> A container limits what a
+        mistaken (or misled) command can reach; it is not a guarantee against a
+        determined escape. Keep <code>NETWORK=none</code> unless you need
+        otherwise, mount only the directory you meant to, and do not point it at
+        a machine holding things you cannot lose.</li>
+      <li><b>Watch it work.</b> Every command the assistant runs is printed in
+        the runner's console, with its exit code and how long it took.</li>
+      <li><b>Keep it local.</b> The runner binds <code>127.0.0.1</code> and
+        writes nothing to disk. If you expose it beyond localhost, set
+        <code>API_KEY</code> and tighten <code>ALLOW_ORIGIN</code>.</li>
+      <li><b>The browser VM is still there.</b> Switching back is one dropdown;
+        nothing about your research or history changes with it.</li>
+    </ul>
+    <p class="muted">More background on the two-tier privacy model: the
+    <a href="/cure/help/">Se<span class="sl">/</span>cure documentation</a>.</p>
+  </section>
+</main>
+<script>
+  // Copy buttons: notify briefly, then RETURN to the original label (UX-6).
+  for (const btn of document.querySelectorAll(".cmd button")) {
+    btn.addEventListener("click", async () => {
+      const pre = btn.parentElement.querySelector("pre");
+      try {
+        await navigator.clipboard.writeText(pre.textContent);
+        btn.textContent = "Copied ✓";
+      } catch {
+        btn.textContent = "Select it";
+      }
+      setTimeout(() => (btn.textContent = "Copy"), 1200);
+    });
+  }
+</script>
+</body>
+</html>

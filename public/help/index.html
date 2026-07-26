@@ -57,33 +57,20 @@
        measured font at weight 400 AND 700, so one rule covers both. */
     .sl { margin: 0 -.04em; }
     code { background: var(--panel-2); border-radius: 4px; padding: 0 .3rem; font-size: .85em; }
-    /* Tier comparison rows (UX-12): a question label plus one answer per
-       tier, stacked on a phone and three columns from 620px up. Each answer
-       is DIRECT-LABELED with its tier name — identity is never colour alone
-       — and Se/cure always comes first (secure-first, docs/BRANDING.md). */
-    .cmp { margin: .6rem 0; }
-    .cmp-row {
-      display: grid; grid-template-columns: 1fr; gap: .3rem;
-      padding: .6rem 0; border-top: 1px solid var(--border);
-    }
-    .cmp-row:first-child { border-top: 0; }
-    .cmp-q { font-weight: 700; font-size: .9rem; }
-    .cmp-a { font-size: .9rem; border-left: 3px solid transparent; padding-left: .55rem; }
-    .cmp-a.cure { border-left-color: #7c6a24; }
-    .cmp-a.rver { border-left-color: #0d4fa0; }
-    .cmp-a .who { font-weight: 700; white-space: nowrap; }
-    .cmp-a.cure .who { color: #6b5b1f; }
-    .cmp-a.rver .who { color: #0d4fa0; }
-    @media (min-width: 620px) {
-      .cmp-row { grid-template-columns: 9.5rem 1fr 1fr; gap: .6rem; align-items: start; }
-    }
+    /* The tier comparison rows (UX-12) deliberately do NOT live here any
+       more (owner directive, 2026-07-26): this page is the OVERVIEW — it
+       starts from the absolute beginning and links onward — and the paired
+       Se/cure-vs-Se/rver comparison belongs to /architecture/ (with the
+       end-user chooser on /cure/help/ and the written source in
+       docs/WORKSPACES.md §2). Do not re-add a .cmp block here; a second copy
+       is what drifts. */
     .muted { color: var(--muted); }
   </style>
 </head>
 <body>
 <main>
   <div class="top">
-    <h1>How DeepResearch.<b>Se<span class="sl">/</span>rver</b> works</h1>
+    <h1>DeepResearch.<b>Se<span class="sl">/</span>rver</b> documentation</h1>
     <a class="back" href="/rver">← Back to the app</a>
   </div>
 
@@ -95,18 +82,138 @@
   documentation</a> instead. Its storage and privacy story is deliberately
   different: everything stays in the browser.</p>
 
-  <section>
-    <h2>What this site does</h2>
-    <p>You ask a question. The site plans web searches, runs them, reads the
-    results, and writes an answer with numbered citations, like a research
-    assistant on a deadline you choose. The default AI models run at
+  <section id="why">
+    <h2>First, what this project is for</h2>
+    <p>DeepResearch.se is <b>innovation and research into the privacy
+    capabilities of LLM applications</b>. The question it exists to answer:
+    how far can a real, useful research assistant be pushed toward
+    <em>provable</em> privacy — privacy you can check rather than take on
+    trust — and where does that start costing capability? The proof is not a
+    white paper. <b>It is this site</b>, open-sourced whole, so every claim
+    below is one you can verify yourself. It is genuinely experimental and
+    nowhere near production-ready; treat it as a working research
+    instrument.</p>
+
+    <h3>What it brings you</h3>
+    <ul>
+      <li><b>Deep research that shows its work</b> — searches planned, run and
+        cited, on a time budget you set, with the reasoning steps visible as
+        they happen instead of a spinner and a wall of text.</li>
+      <li><b>Two tiers, so privacy is a choice you make rather than a promise
+        you accept</b> — one where the server is never in the data path at
+        all, one where it is and earns its place with capability.</li>
+      <li><b>Research that travels</b> — a workspace can be handed to someone
+        as a single link, with a bounded, revocable allowance inside it, and
+        their findings can come back sealed.</li>
+      <li><b>A real Linux machine in the browser tab</b> — the assistant runs
+        code and reads actual output, and the execution never leaves your
+        device on either tier.</li>
+      <li><b>Models on your terms</b> — EU-hosted by default, US providers if
+        you choose them, your own local server, or a model running on your own
+        device with no prompt leaving it at all.</li>
+      <li><b>More than one kind of agent</b> — a research agent, one that
+        answers from this site's own source, one that builds and publishes
+        small apps, one that plans a team of sub-agents, one that reads the
+        outward feed of what everyone else shipped.</li>
+      <li><b>It is also a tool for your agents</b> — the same pipeline is an
+        MCP endpoint, so Claude, Cursor or anything else that speaks MCP can
+        call it.</li>
+    </ul>
+
+    <h3>See something you like? Take it</h3>
+    <p><b>Adaptability is a primary design goal.</b> The
+    point of open-sourcing this is that you fork the architecture and run it
+    for <em>your</em> domain and <em>your</em> requirements — ideally into an
+    environment already network- and authentication-restricted, so the whole
+    serving chain is yours. What makes that realistic:</p>
+    <ul>
+      <li><b>Zero runtime dependencies.</b> <code>package.json</code> has no
+        <code>dependencies</code> block at all; the Worker imports nothing but
+        <code>node:</code> builtins and its own files. No build step, no
+        bundler, so there is no transitive tree to audit and nothing to
+        break between you and a deploy. The browser libraries that are needed
+        are vendored and served from our own origin — a first visit costs
+        69.7 KiB, everything heavier is gated behind a feature you reach
+        for.</li>
+      <li><b>Frequent refactoring for modularity</b>, as standing practice —
+        ten recorded passes so far. Every large feature is a pure, testable
+        core plus thin orchestration, which is what makes a piece liftable:
+        take the crypto core, the pipeline, the sandbox or the retrieval layer
+        without taking the rest.</li>
+      <li><b>Third-party services are extensions, never core.</b> Adding or
+        removing an integration is one descriptor in a registry and touches no
+        core file — enforced by a test that fails the build if a core module
+        so much as names a service.</li>
+      <li><b>Swap the platform underneath.</b> Every Cloudflare binding is
+        documented with what it is used for and what substitutes for it —
+        static assets, SQLite, an S3-compatible store, any vector database.
+        The README's install walkthrough and its "running outside Cloudflare"
+        section are the map.</li>
+      <li><b>Deterministic by design, so it runs on the models you have.</b>
+        Every planning phase is a plain JSON call — no function calling
+        anywhere in the pipeline — so the whole thing works on models with
+        unreliable tool support, including small ones you host yourself.</li>
+      <li><b>Distil it instead of reading it.</b> Two SDKs ship with the
+        project: 34 modules for building a platform like this one, and an
+        agent specification for building agents on it. Agent Studio, in the
+        app, turns a description into either a new agent or a whole new
+        platform and publishes it live.</li>
+      <li><b>Open interchange standards.</b> The workspace bundle
+        (<b>DRSW/1</b>) and the pipeline structure (<b>DRPL/1</b>) are written
+        as specifications, with this site as their reference implementation —
+        so a workspace or a pipeline you build is not locked to this
+        codebase.</li>
+      <li><b>MIT-licensed, and checkable end to end.</b> The live site is
+        served straight from the public repository, git-connected, so what
+        production runs is what you can read.</li>
+    </ul>
+    <p class="muted">The design in full is
+    <a href="/architecture/">the architecture story</a>; the complete
+    dependency inventory, the privacy model and every other design document
+    are at <a href="/docs/">/docs/</a>. What follows here is the practical
+    manual for the signed-in app.</p>
+  </section>
+
+  <section id="start">
+    <h2>Start here: what this site is</h2>
+    <p><b>It is a research assistant that works from sources, not from
+    memory.</b> You ask a question in plain language — English or Swedish —
+    and instead of answering off the top of its head, the site plans a handful
+    of web searches, runs them, reads what comes back, and writes you an
+    answer with numbered citations you can click. You choose how long it is
+    allowed to spend, from 15 seconds to 10 minutes, and that budget decides
+    how thorough it gets: a quick cited brief at one end, a full research
+    report with sections and tables at the other.</p>
+
+    <p><b>Your first question, end to end.</b> Nothing here needs setting up
+    first; the defaults are the intended way to use the site.</p>
+    <ol>
+      <li>Type the question in the pane at the bottom and press the
+        <b>arrow</b>. (Enter makes a line break — the arrow is the only way to
+        send.)</li>
+      <li>Watch it work: it tells you what it is searching for and which
+        sources it found as it goes, rather than leaving you at a
+        spinner.</li>
+      <li>Read the answer. Citations are numbered and linked; <b>Raw</b>,
+        <b>Copy</b> and <b>PDF</b> sit underneath it.</li>
+      <li>Ask a follow-up. The conversation is kept, so it builds on what
+        came before, and it is saved automatically for you to reopen
+        later.</li>
+    </ol>
+    <p class="muted">Two controls in that pane are worth knowing from the
+    start: the <b>time slider</b> (how long it may spend) and the
+    <b>spiderweb knob</b> (web search on or off). Both are covered under
+    <a href="#input">the input area</a>.</p>
+
+    <p><b>What it is running on.</b> The default AI models run at
     <a href="https://berget.ai" target="_blank" rel="noopener">Berget.ai</a>
     (🇸🇪 EU-hosted). If an administrator has enabled them, you can also
     choose 🇺🇸 Claude or GPT models, which process your conversation at
     Anthropic or OpenAI in the US. <b>Your conversation goes wherever the
-    model you pick resides</b>; the model selector flags each choice with
-    its provider's country so you can tell at a glance. Web searches go
-    through <a href="https://exa.ai" target="_blank" rel="noopener">Exa</a>.</p>
+    model you pick resides</b>; the model selector flags each choice with its
+    provider's country so you can tell at a glance. Web searches go through
+    <a href="https://exa.ai" target="_blank" rel="noopener">Exa</a>.</p>
+
     <div class="privacy-flag"><b>Privacy in one line:</b> what matters is
     <b>where your data goes</b>. Your conversation is processed wherever the
     model you pick lives — Berget in the EU (🇸🇪) by default, Anthropic or
@@ -118,173 +225,131 @@
     on this server at all</b>, the <b>ghost button</b> (upper right) opens
     ghost mode: DeepResearch.<b>Se<span class="sl">/</span>cure</b>, the
     client-side twin of this app where the server is never in the data path
-    (your own API key, browser-local storage).</div>
+    (your own API key, browser-local storage). <a href="#privacy">Privacy, in
+    full</a> is the complete account.</div>
+
+    <h3>Beyond a single question</h3>
+    <p>Cited research is what you get without touching a setting. Everything
+    here is optional, and each has its own section further down this page or
+    its own page:</p>
+    <ul>
+      <li><b>Workspaces</b> (the app still labels them <i>projects</i>) — a
+        named place holding chats, files and notes, with retrieval across all
+        of it, so a body of work accumulates instead of scattering across
+        conversations. See <a href="#history">chat history</a> and
+        <a href="#workspaces">which workspace</a>.</li>
+      <li><b>Attachments</b> — images and documents, read in your browser, and
+        flagged before you send if they carry hidden metadata.
+        See <a href="#input">the input area</a>.</li>
+      <li><b>Other assistants than Deep Research</b> — the chat-mode dropdown
+        swaps in Introspection (answers from this site's own source code),
+        Agent Studio (turns a description into a small published app),
+        Orchestrator (plans a team of sub-agents and runs them), and
+        Outrospection (answers from the outward feed of what everyone else
+        shipped). They are bundled examples of what this platform carries, not
+        separate products. See <a href="#input">the input area</a>.</li>
+      <li><b>Quizzes</b> — ask to be quizzed on anything and the answer
+        becomes an interactive quiz. See <a href="#quizzes">quizzes</a>.</li>
+      <li><b>A Linux machine in the tab</b> — the experimental execution
+        sandbox boots real Debian inside the browser so the assistant can run
+        code and use the actual output. Off by default; see
+        <a href="#settings">settings</a>.</li>
+      <li><b>The pipeline as a tool for other agents</b> — the same research
+        endpoint is exposed over MCP, so Claude, Cursor or any MCP client can
+        call it. <code>POST /mcp</code>, documented in the repository.</li>
+    </ul>
   </section>
 
-  <section>
-    <h2>Se<span class="sl">/</span>cure or Se<span class="sl">/</span>rver: which workspace?</h2>
-    <p>A <b>workspace</b> is a named place holding your chats, files and
-    notes. There are two kinds, and picking the right one is the most
-    consequential choice on this site — so here it is point by point.
-    (The app's buttons still say "project" for the signed-in kind until they
-    are relabelled.)</p>
-    <p><b>The short answer:</b> use a
-    <b>Se<span class="sl">/</span>cure workspace</b> when the material must
-    not be readable by anyone running a server, including us. Use a
-    <b>Se<span class="sl">/</span>rver workspace</b> when you want the site to
-    do the heavy lifting and keep your work for you. One question decides it:
-    <em>would it be a problem if the operator of this site could read
-    this?</em></p>
-
-    <div class="cmp">
-      <div class="cmp-row">
-        <div class="cmp-q">What you need to start</div>
-        <div class="cmp-a cure"><span class="who">Se<span class="sl">/</span>cure:</span>
-          a browser, plus your own AI provider key, your own local model
-          server, a model downloaded to the device, or a link someone lent
-          you that carries borrowed access. No account.</div>
-        <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
-          a Google sign-in and an approved account here.</div>
-      </div>
-      <div class="cmp-row">
-        <div class="cmp-q">Where your work lives</div>
-        <div class="cmp-a cure"><span class="who">Se<span class="sl">/</span>cure:</span>
-          in this browser, and in the share link if you make one. Clearing
-          browser data erases it.</div>
-        <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
-          in your account — in this browser <b>and</b> in this site's cloud
-          storage, always, so it follows you.</div>
-      </div>
-      <div class="cmp-row">
-        <div class="cmp-q">Who can read it</div>
-        <div class="cmp-a cure"><span class="who">Se<span class="sl">/</span>cure:</span>
-          you, and anyone you give both the link and its password. Not this
-          server: the part of the link holding the workspace is never sent to
-          it.</div>
-        <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
-          you, and whoever operates this site. Chats and records rest
-          encrypted, but the server can re-derive the key — and indexed files
-          and a workspace's own chats rest <b>readable</b>, because search
-          needs readable text.</div>
-      </div>
-      <div class="cmp-row">
-        <div class="cmp-q">Who pays for the AI</div>
-        <div class="cmp-a cure"><span class="who">Se<span class="sl">/</span>cure:</span>
-          you do — your key, your machine, or your device. Or whoever lent
-          you the workspace, for as long as they leave the allowance
-          open.</div>
-        <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
-          the account, against this site's quotas.</div>
-      </div>
-      <div class="cmp-row">
-        <div class="cmp-q">Web search</div>
-        <div class="cmp-a cure"><span class="who">Se<span class="sl">/</span>cure:</span>
-          off unless you run your own search service or use a lent search
-          allowance — and then only the search <em>query</em> leaves your
-          browser, never the conversation.</div>
-        <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
-          on, with numbered, domain-diverse sources.</div>
-      </div>
-      <div class="cmp-row">
-        <div class="cmp-q">Maps, Street View, host intelligence, photo geocoding</div>
-        <div class="cmp-a cure"><span class="who">Se<span class="sl">/</span>cure:</span>
-          not available. They need keys a server holds, and a server-held key
-          means a server in the data path.</div>
-        <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
-          available as opt-in switches.</div>
-      </div>
-      <div class="cmp-row">
-        <div class="cmp-q">Files and documents</div>
-        <div class="cmp-a cure"><span class="who">Se<span class="sl">/</span>cure:</span>
-          stay in the browser; searchable locally and mountable into the
-          Linux sandbox.</div>
-        <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
-          uploaded, text-extracted and indexed so answers can draw on them.
-          The originals rest readable in the cloud.</div>
-      </div>
-      <div class="cmp-row">
-        <div class="cmp-q">Across devices</div>
-        <div class="cmp-a cure"><span class="who">Se<span class="sl">/</span>cure:</span>
-          carry the link, or seal a new one. There is no sync, by
-          design.</div>
-        <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
-          automatic — the account syncs.</div>
-      </div>
-      <div class="cmp-row">
-        <div class="cmp-q">Sharing</div>
-        <div class="cmp-a cure"><span class="who">Se<span class="sl">/</span>cure:</span>
-          send the link, and the password by a different channel. Nothing is
-          registered anywhere.</div>
-        <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
-          invite people by workspace link or campaign, and import the sealed
-          conclusions they send back.</div>
-      </div>
-      <div class="cmp-row">
-        <div class="cmp-q">If you lose the password or the link</div>
-        <div class="cmp-a cure"><span class="who">Se<span class="sl">/</span>cure:</span>
-          that workspace is unrecoverable. Nobody can reset it — the same
-          property that makes it private.</div>
-        <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
-          sign in again through Google; nothing is lost.</div>
-      </div>
-      <div class="cmp-row">
-        <div class="cmp-q">Taking it back</div>
-        <div class="cmp-a cure"><span class="who">Se<span class="sl">/</span>cure:</span>
-          a shared link cannot be recalled — but any allowance inside it can
-          be cut to zero instantly, without touching the link.</div>
-        <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
-          delete the workspace, or wipe the account's cloud copies from
-          Settings.</div>
-      </div>
-    </div>
-
-    <h3>Use Se<span class="sl">/</span>cure when</h3>
-    <ul>
-      <li>the material is confidential or belongs to someone who never agreed
-        to it being stored anywhere — a source, a client, a patient, an
-        investigation;</li>
-      <li>you want the privacy to be <b>structural</b> rather than promised: a
-        server cannot log, leak, or be compelled to reveal what never reaches
-        it;</li>
-      <li>you are handing a colleague a ready-to-use research session with no
-        account, no invite, and no record of the handover;</li>
-      <li>you want to lend a <em>bounded</em> capability — someone else's
-        research, paid from your allowance, cut off whenever you like;</li>
-      <li>you are contributing to someone else's research and want to decide,
-        answer by answer, what goes back.</li>
-    </ul>
-
-    <h3>Use Se<span class="sl">/</span>rver when</h3>
-    <ul>
-      <li>the work is useful but not sensitive, and convenience is worth
-        more;</li>
-      <li>you want live web search, maps, Street View, host intelligence or
-        photo geocoding without configuring anything;</li>
-      <li>you have a real document collection and want retrieval across all of
-        it;</li>
-      <li>you want it on your phone and your laptop without carrying links
-        around;</li>
-      <li>you are the one <b>collecting</b> — running a campaign, importing
-        what comes back, merging it.</li>
-    </ul>
-
-    <div class="privacy-flag"><b>The honest trade.</b>
-    Se<span class="sl">/</span>cure costs capability: no hosted search, no
-    maps or host intelligence, no sync, and no recovery if you lose the
-    password. Se<span class="sl">/</span>rver costs exposure: your work sits
-    in a cloud account, indexed material rests readable, and completed
-    exchanges are kept in the site's research log unless you use ghost mode.
-    What makes that checkable rather than a promise is how little there is to
-    trust — one provider, one Worker, and source anyone can read. The
-    research pipeline, the in-browser Linux sandbox, on-device models, and
-    your ability to walk away with your data are the same on both.</div>
-
-    <p class="muted">Full written specification of both kinds, including the
-    exposure tables behind these rows: <code>docs/WORKSPACES.md</code> in the
-    repository, readable in-app at <a href="/docs/">/docs/</a>.</p>
+  <section id="workspaces">
+    <h2>Which workspace: Se<span class="sl">/</span>cure or
+    Se<span class="sl">/</span>rver?</h2>
+    <p>This site ships the same assistant twice, and picking between the two
+    is the most consequential choice you make here. <b>One question decides
+    it:</b> <em>would it be a problem if the operator of this site could read
+    this?</em> If yes, use a
+    <b>Se<span class="sl">/</span>cure workspace</b> — the whole thing rides a
+    single link, stays in your browser, and no server record of it exists
+    anywhere. If no, use a <b>Se<span class="sl">/</span>rver workspace</b>,
+    the signed-in kind this page documents, and get live web search, maps,
+    retrieval at scale and sync across devices in exchange.</p>
+    <p>The honest trade in one line each:
+    <b>Se<span class="sl">/</span>cure</b> costs capability — no hosted
+    search, no maps, no sync, and no recovery if you lose the password.
+    <b>Se<span class="sl">/</span>rver</b> costs exposure — your work sits in
+    a cloud account, indexed material rests readable, and completed exchanges
+    are kept in the site's research log unless you use ghost mode.</p>
+    <p><b>The full comparison lives in one place, so it stays consistent:</b>
+    <a href="/architecture/">the architecture story</a> pairs the two tiers
+    row by row — privacy, capabilities, and what a workspace is, where it
+    rests, who can read it, and what happens when you hand it on. Read that
+    if you are deciding. The
+    <a href="/cure/help/">Se<span class="sl">/</span>cure documentation</a>
+    carries the same chooser written for the no-account side, and
+    <code>docs/WORKSPACES.md</code> §2 is the complete written specification,
+    readable in-app at <a href="/docs/">/docs/</a>.</p>
   </section>
 
-  <section>
+  <section id="map">
+    <h2>Where to read what</h2>
+    <p>The rest of this page is the manual for the signed-in app, control by
+    control:</p>
+    <ul>
+      <li><a href="#why">What this project is for</a> — the research question,
+        what the site brings you, and what to do if you want to take it and
+        adapt it.</li>
+      <li><a href="#start">Start here</a> — what the site is and your first
+        question, end to end.</li>
+      <li><a href="#header">The header</a> — history, new chat, ghost, share,
+        settings, account.</li>
+      <li><a href="#history">Chat history</a> — where conversations live, how
+        the encryption works, and the one exception (chats inside a
+        workspace).</li>
+      <li><a href="#input">The input area</a> — attachments, model selector,
+        chat modes, the web-search knob, the time slider, and the buttons on
+        each answer.</li>
+      <li><a href="#quizzes">Quizzes</a> — testing yourself on a document, a
+        conversation, or a fresh topic.</li>
+      <li><a href="#search">Web search on / off</a> — what each position
+        actually sends, and to whom.</li>
+      <li><a href="#sensitive">Sensitive topics</a> — the two-step workflow,
+        and picking who does the searching.</li>
+      <li><a href="#account">Your account panel</a> — quotas, messages,
+        feedback.</li>
+      <li><a href="#settings">Settings</a> — every switch on your account and
+        what it turns on.</li>
+      <li><a href="#privacy">Privacy, in full</a> — the complete list of what
+        goes where.</li>
+    </ul>
+    <p>Everything else about the project is documented elsewhere, and this is
+    the shortest route to each:</p>
+    <ul>
+      <li><a href="/architecture/"><b>The architecture story</b></a> — how the
+        Worker, the pipeline and the privacy split fit together, with the two
+        tiers paired row by row. <b>Start here if you want to understand the
+        design</b> rather than operate the app.</li>
+      <li><a href="/cure/help/"><b>Se<span class="sl">/</span>cure
+        documentation</b></a> — the no-account, browser-only tier: bring your
+        own AI, borrowed capabilities, share links and replays.</li>
+      <li><a href="/docs/"><b>Repository documentation</b></a> — every design
+        document rendered in-app: the architecture in full, the privacy model,
+        encryption, the workspace and pipeline standards, testing, and the
+        dependency inventory.</li>
+      <li><a href="/build/"><b>About this project</b></a> — what
+        DeepResearch is for, and the use restrictions that come with
+        it.</li>
+      <li><a href="/story/"><b>The build story</b></a> — how the site was
+        built, prompt by prompt, each with its commit.</li>
+      <li><a href="/outrospect/"><b>Outrospection</b></a> — the outward feed
+        this site reads: what everyone else shipped, across seven lenses.</li>
+      <li><a href="/pulse/"><b>Project pulse</b></a> — commits, lines and
+        features over time, and where the work actually went.</li>
+      <li><a href="https://github.com/kristerhedfors/Deepresearch.se" target="_blank" rel="noopener"><b>The source</b></a>
+        — MIT-licensed and complete, including the deployment walkthrough for
+        running your own instance.</li>
+    </ul>
+  </section>
+
+  <section id="header">
     <h2>The header</h2>
     <img src="/help/img/header.png" alt="Header: history and new chat on the left; ghost, share, settings and account buttons on the right" width="390">
     <ul>
@@ -409,7 +474,7 @@
     deliberately no recovery.</p>
   </section>
 
-  <section>
+  <section id="input">
     <h2>The input area</h2>
     <img src="/help/img/composer-on.png" alt="Composer with web search on" width="390">
     <ul>
@@ -496,7 +561,7 @@
     <img src="/help/img/popover.png" alt="The web-search info popover" width="390">
   </section>
 
-  <section>
+  <section id="quizzes">
     <h2>Quizzes — test yourself on anything</h2>
     <p>Ask to be quizzed (<i>"quiz me on this document"</i>, <i>"quiz me on
     the French Revolution with 8 questions"</i>, <i>"förhör mig på
@@ -520,7 +585,7 @@
     </ul>
   </section>
 
-  <section>
+  <section id="search">
     <h2>Web search on / off — and what it means for privacy</h2>
     <img src="/help/img/composer-off.png" alt="Composer with web search off — the slider stays active" width="390">
     <p><b>On</b> (knob blue): the AI plans a few search queries derived from
@@ -547,7 +612,7 @@
     content.</div>
   </section>
 
-  <section>
+  <section id="sensitive">
     <h2>Sensitive topics — a two-step, semi-private workflow</h2>
     <p>Be aware: <b>Exa is not a zero-data-retention service by
     default</b>. The search queries it receives may be retained under Exa's
@@ -590,7 +655,7 @@
     sensitive, keep identifying details out of the chat entirely.</div>
   </section>
 
-  <section>
+  <section id="account">
     <h2>Your account panel</h2>
     <img src="/help/img/account-panel.png" alt="Account and usage panel: 5-hour quota bars and buttons for messages, feedback, full usage, settings, games, documentation and sign out" width="390">
     <ul>
@@ -615,7 +680,7 @@
     </ul>
   </section>
 
-  <section>
+  <section id="settings">
     <h2>Settings</h2>
     <p>Account &amp; usage → <b>Settings</b> holds the on/off switches for
       your account. Each is a single line; press and hold (or click) the
@@ -674,7 +739,7 @@
     </ul>
   </section>
 
-  <section>
+  <section id="privacy">
     <h2>Privacy, in full</h2>
     <ul>
       <li><b>Conversations</b>: processed by your chosen model's provider to

@@ -40,14 +40,40 @@ import {
 
 // What the ghost says as it strolls, in order. Kept short (they float above a
 // moving character) and DELIBERATELY few — just the three most important points
-// of the tier's message, so it's a light touch, not a wall of bubbles: your
-// research runs in THIS browser, the server is never in the path, your key
-// never leaves the tab.
+// of the tier's message, so it's a light touch, not a wall of bubbles.
+//
+// This DEFAULT set describes an unconfigured Se/cure session: no borrowed
+// allowance, no shared compute, nothing but this browser. A session entered
+// with a configuration that routes queries outward passes its own set in
+// (`startGhostWalk({ quips })`, built by securePostureQuips in
+// public/js/secure-posture-core.js) — the ghost must never cheerfully promise
+// "no server's watching" while the session relays prompts to a peer's machine
+// (feedback #31, 2026-07-26). The default stands for the case where it is true.
 export const GHOST_QUIPS = [
   "Everything here stays in this browser. Spooky, right?",
   "No server's watching — cross my heart. 👻",
   "Your API key never leaves this tab.",
 ];
+
+/** Resolve a caller-supplied quip set: an array, a getter (so a set that
+ * depends on a still-arriving configuration is read at SPEAK time rather than
+ * frozen at plan time), or nothing at all → the default set above. Any empty
+ * or non-string-bearing result falls back, so the ghost is never mute.
+ * @param {string[] | (() => string[]) | null | undefined} quips
+ * @returns {string[]} */
+export function resolveQuips(quips) {
+  let list = quips;
+  if (typeof list === "function") {
+    try {
+      list = list();
+    } catch {
+      list = null; // a throwing getter is decoration failing — use the default
+    }
+  }
+  if (!Array.isArray(list)) return GHOST_QUIPS;
+  const clean = list.filter((q) => typeof q === "string" && q.trim());
+  return clean.length ? clean : GHOST_QUIPS;
+}
 
 /** Cycle the quips forever, tolerant of any integer index (negatives, huge).
  * @param {string[]} quips
@@ -97,8 +123,16 @@ export const LEG_MS_MAX = 6000;
  * (defaults to Math.random) so the DOM layer stays dumb and the planning is
  * unit-testable. The ghost starts just off the left edge and every leg moves a
  * real distance (at least `minTravel`) so it always visibly walks.
+ *
+ * Each speaking leg carries BOTH a `quipIdx` (its position in the cycle) and
+ * the resolved `quip` text. The index is the authoritative one: the DOM layer
+ * re-resolves the text when the leg actually speaks, so a quip set that
+ * depends on a configuration still arriving when the stroll was planned (a
+ * pool token connecting, a grant hydrating) corrects itself in the bubble
+ * instead of announcing a stale promise.
  * @param {{ vw:number, ghostW:number, legs?:number, margin?:number,
- *   minTravel?:number, rand?:() => number }} opts */
+ *   minTravel?:number, rand?:() => number,
+ *   quips?: string[] | (() => string[]) }} opts */
 export function planStroll(opts) {
   const vw = Math.max(0, opts.vw || 0);
   const ghostW = Math.max(0, opts.ghostW || 0);
@@ -135,12 +169,14 @@ export function planStroll(opts) {
     // first arrival always speaks, the rest do 75% of the time — life without
     // a wall of bubbles.
     const say = i > 0 && (i === 1 || rand() < 0.75);
+    const idx = say ? quipIdx++ : -1;
     out.push({
       x: target,
       face: facing(cur, target),
       dur,
       say,
-      quip: say ? pickQuip(GHOST_QUIPS, quipIdx++) : "",
+      quipIdx: idx,
+      quip: say ? pickQuip(resolveQuips(opts.quips), idx) : "",
     });
     cur = target;
   }
@@ -359,7 +395,12 @@ let running = false;
  * runs a few legs, then fades out and cleans up. No-op if one is already
  * running, if there's no viewport, or under prefers-reduced-motion (unless
  * `force`, the ?anim=1 replay path, overrides it — mirroring the intro gate).
- * @param {{ force?: boolean }} [opts] */
+ *
+ * `quips` is what the ghost SAYS. Pass a getter rather than an array when the
+ * session's configuration is still settling (the borrowed-allowance and
+ * shared-compute arrival chains are async): every bubble re-reads it, so the
+ * ghost's claims follow the session instead of the moment it started walking.
+ * @param {{ force?: boolean, quips?: string[] | (() => string[]) }} [opts] */
 export function startGhostWalk(opts = {}) {
   if (running) return;
   if (typeof document === "undefined" || typeof window === "undefined") return;
@@ -430,7 +471,7 @@ export function startGhostWalk(opts = {}) {
     // no umbrella — the stroll still runs
   }
 
-  const legs = planStroll({ vw, ghostW });
+  const legs = planStroll({ vw, ghostW, quips: opts.quips });
   // Enter off-screen left.
   wrap.style.transform = `translateX(${-ghostW}px)`;
 
@@ -501,7 +542,7 @@ export function startGhostWalk(opts = {}) {
       freezeStroll();
     }
     clicks++;
-    const msg = clickMessage(GHOST_QUIPS, clicks);
+    const msg = clickMessage(resolveQuips(opts.quips), clicks);
     if (msg == null) {
       retiring = true;
       retire();
@@ -531,7 +572,10 @@ export function startGhostWalk(opts = {}) {
       advanced = true;
       wrap.removeEventListener("transitionend", onTransEnd);
       if (leg.say) {
-        speak(leg.quip);
+        // Re-resolve from the index rather than replaying the text frozen at
+        // plan time: a configuration that arrived mid-stroll (a pool token
+        // connecting) must change what the ghost claims, not just the notice.
+        speak(pickQuip(resolveQuips(opts.quips), leg.quipIdx) || leg.quip);
         legTimer = window.setTimeout(nextLeg, 2900); // linger while it talks
       } else {
         legTimer = window.setTimeout(nextLeg, 500);
