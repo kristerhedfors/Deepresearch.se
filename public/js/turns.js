@@ -15,7 +15,7 @@ import { formatByteSize, mimeForName } from "./bash-core.js";
 import { addFilesToProject, listProjects } from "./projects.js";
 
 export const EMPTY_TEXT =
-  "Ask a research question to get started. I may ask a follow-up to narrow the scope, then search the web and report back with sources. To send the developers feedback, just start your message with the word “feedback” — for example: “feedback: the map view was cut off on my phone”.";
+  "Ask a research question to get started. I may ask a follow-up to narrow the scope, then search the web and report back with sources. Type “/” for the commands that work in every mode — “/feedback” goes straight to the developers, “/help” answers from the documentation.";
 
 // The how-to-give-feedback cue for a REOPENED chat. EMPTY_TEXT above only ever
 // shows on the empty state of a fresh chat; a user who opens an old session
@@ -25,7 +25,7 @@ export const EMPTY_TEXT =
 // is that reminder. It is never persisted to history and is removed the moment
 // a new turn is added (clearEmpty).
 export const FEEDBACK_HINT_TEXT =
-  "Reopened from history. Spotted something off in this chat? Start a message with the word “feedback” to send it to the developers — they read every one.";
+  "Reopened from history. Spotted something off in this chat? Send it to the developers with “/feedback …” (or start a message with the word “feedback”) — they read every one.";
 
 // Whether to show FEEDBACK_HINT_TEXT under a reopened conversation: only when
 // the restored record actually has an answered turn to comment on (an empty or

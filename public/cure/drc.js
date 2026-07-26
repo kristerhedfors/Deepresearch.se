@@ -131,8 +131,10 @@ import {
   unlockCelebrationSize,
   wmHtml,
 } from "/js/drc-page-core.js";
-import { matchCanned } from "/js/canned-faq.js";
-import { feedbackIntent, feedbackPageTag, feedbackScopeOfPrior } from "/js/feedback-core.js";
+import { detectLang, matchCanned } from "/js/canned-faq.js";
+import { feedbackComment, feedbackPageTag, feedbackRequested, feedbackScopeOfPrior } from "/js/feedback-core.js";
+import { slashEffect } from "/js/slash-core.js";
+import { mountSlashMenu } from "/js/slash-menu.js";
 import { spaceIntentMatch } from "/js/space-core.js";
 import { renderMarkdownInto } from "/js/markdown.js";
 import { mountUmbrellaSpinner } from "/js/umbrella-spinner.js";
@@ -149,6 +151,11 @@ let profile = null; // {refHash, blobId, blobKey} — null while the session is 
 let state = emptyDrcState(); // the working state (keys included), from the first keystroke
 let convId = null; // active conversation id
 let sending = false;
+// Set for ONE send by the `/help` slash command (send() below): the turn is a
+// documentation question, so the help docs block is injected even with the
+// developer-mode toggle off. Per-turn, never persisted — a command applies to
+// the message it was typed on, not to the session.
+let helpCommandTurn = false;
 let unsavedHintShown = false;
 
 // The local (keyless) provider's configured base URL — normalized on read so a
@@ -1633,7 +1640,8 @@ function renderMessages() {
     empty.textContent =
       "Hi — I'm an AI research assistant that runs right here in your browser, on your own OpenAI, Groq " +
       "or Berget API key (or a local model you run yourself). My replies are model-generated, so verify " +
-      "anything critical. Ask a research question to get started.";
+      "anything critical. Ask a research question to get started, or type “/” for the commands — " +
+      "“/feedback” reaches the developers, “/help” answers from the documentation.";
     box.appendChild(empty);
     return;
   }
@@ -1727,7 +1735,8 @@ function renderCannedExchange(userText, reply) {
 // ---- Se/cure feedback (the "feedback" keyword → confirm → send) ----------------
 //
 // Se/cure normally never contacts the server. But a message opening with the
-// word "feedback" (feedbackIntent, EN+SV — the SAME gate the Se/rver pipeline
+// word "feedback" — or with the `/feedback` slash command (feedbackRequested,
+// EN+SV — the SAME gate the Se/rver pipeline
 // uses, shared from feedback-core.js) is a report to the developers, not a
 // research question. So instead of researching it we ECHO it, PROMPT for
 // confirmation (UX-4: dismissing a consent dialog is a NO, never a YES), and
@@ -2023,7 +2032,24 @@ async function introspectionContext(conv, latestText) {
   // named files from the snapshot the browser already fetches. The client-side
   // provider embedder can't cheaply re-embed the whole codebase, so retrieval
   // stays a DRS feature; the snapshot block still lets the model answer.)
-  if (state.developerMode !== true) return { block: "", fileProvider: null, snapshot: null };
+  if (state.developerMode !== true) {
+    // …except for a `/help` turn: the command IS the request for the help
+    // layer, so the documentation block goes in even with the toggle off. Only
+    // the docs — no source snapshot, no OWASP, no file provider — because the
+    // user asked how something works, not to read the implementation.
+    if (helpCommandTurn) {
+      try {
+        const texts = conv.messages.filter((m) => m.role === "user").map((m) => m.content);
+        phaseStep("introspect", "Reading the documentation…");
+        const helpDocs = await helpDocsBlockFor(texts, latestText);
+        phaseStep("introspect", helpDocs ? "Documentation read" : "No matching documentation");
+        return { block: helpDocs, fileProvider: null, snapshot: null };
+      } catch {
+        /* fail soft — the turn answers without the docs block */
+      }
+    }
+    return { block: "", fileProvider: null, snapshot: null };
+  }
   try {
     const texts = conv.messages.filter((m) => m.role === "user").map((m) => m.content);
     phaseStep("introspect", "Reading the site's own source…");
@@ -3505,11 +3531,25 @@ async function send(ev) {
   const text = $("input").value.trim();
   if (!text) return;
 
-  // Feedback keyword (EN+SV, the shared gate) → confirm-then-send to the
+  // The `/help` command (owner directive, 2026-07-26 — available in every
+  // agent, and here in every Se/cure session): answer from this site's
+  // DOCUMENTATION. Se/cure already carries the whole help layer offline — the
+  // committed docs corpus is a same-origin static file and retrieval is lexical
+  // in the browser (helpDocsBlockFor) — so the command just turns that block on
+  // for this turn regardless of the developer-mode toggle. No request of any
+  // kind leaves the device that wouldn't have anyway; the server stays out of
+  // the data path exactly as before. Assigned on EVERY send (before the
+  // feedback branch returns) so it can never persist into the next turn.
+  helpCommandTurn = slashEffect(text) === "help";
+
+  // Feedback keyword or the `/feedback` command (EN+SV, the shared gate) →
+  // confirm-then-send to the
   // developers over the DeepResearch token, never researched. Handled BEFORE
-  // provider routing so it works even with no LLM configured.
-  if (feedbackIntent(text)) {
-    startFeedback(text);
+  // provider routing so it works even with no LLM configured. The command
+  // token is stripped (feedbackComment) so the developers read what the user
+  // wrote, and so the confirm dialog echoes the same words that will be sent.
+  if (feedbackRequested(text)) {
+    startFeedback(feedbackComment(text));
     return;
   }
 
@@ -4035,6 +4075,24 @@ $("input").addEventListener("keydown", (e) => {
   }
   e.preventDefault();
   $("form").requestSubmit();
+});
+// SLASH COMMANDS (UX-15) — the SAME typeahead the Se/rver composer mounts
+// (public/js/slash-menu.js), because `/feedback` and `/help` are platform
+// baseline rather than a tier's feature. Mounted AFTER the Enter handler above,
+// which it out-ranks: the menu listens on document in the capture phase, so an
+// Enter that picks a command never also sends the message. The description
+// language follows the repo's EN-default detectLang convention, read from what
+// is being typed and — while that is still just a slash — from the last thing
+// the user wrote in this conversation.
+mountSlashMenu({
+  input: /** @type {HTMLTextAreaElement} */ ($("input")),
+  container: $("composer"),
+  lang: () => {
+    const typed = $("input").value.replace(/^\/\S*/, "").trim();
+    const conv = activeConv();
+    const prior = conv?.messages?.filter((m) => m.role === "user").slice(-1)[0]?.content || "";
+    return detectLang(typed || prior);
+  },
 });
 // Introspection knob (client-local, persisted in the sealed project state):
 // unlocks introspection mode for this browser's conversations, and tints the

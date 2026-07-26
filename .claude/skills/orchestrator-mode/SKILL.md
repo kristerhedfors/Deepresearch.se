@@ -77,6 +77,22 @@ workflow itself is a first-class UI element: a live graph of the team.
 - Meta: chat_logs rows carry `orchestrator: 1` +
   `orchestration: {agents, waves, failed, searches}` — grep these when
   debugging (the chat-logs skill).
+- **When a run dies, look in THREE places (2026-07-26, feedback #26).** A
+  fail-soft node used to leave only a `ctx.log.warn` in Workers Logs and a
+  bare `failed: N`, so "orchestrator crashed" was unanswerable after the fact.
+  Now: (1) `orchestration.failures` in the chat_logs row —
+  `{id, kind, wave, class, ms, note}` per node, capped at
+  `MAX_LOGGED_FAILURES`; (2) `scripts/errors --q _subsystem/orchestrator` —
+  the durable, deduped fix-queue row (`recordSubsystemFailure`), which is the
+  ONLY trace that survives if the run dies before chat.js writes its row;
+  (3) the `agent_update` note, now prefixed with the failure class
+  (`timeout: …`), so the graph says what happened. The classes are
+  `classifyFailure`'s closed set in src/server-errors.js.
+  **A run that leaves NOTHING anywhere did not die on the server** — check
+  `orch.plan` in Workers Logs with no matching `chat.complete`: that pattern
+  means the two-call swarm flow planned, and the BROWSER died before
+  `/api/chat` was ever sent (the on-device model pool is the memory-hungriest
+  thing this product does).
 - **The graph backdrop** (`public/js/graph-backdrop.js`): Orchestrator's
   AGENT BACKGROUND — a hovering, slowly rotating wireframe directed graph
   behind the chat (root baton star + one wireframe symbol per sub-agent:

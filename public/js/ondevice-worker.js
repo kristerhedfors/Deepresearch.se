@@ -9,10 +9,11 @@
 // Protocol (all messages carry `t`):
 //   in:  plan{modelId} · download{modelId} · canceldl{modelId} · delete{modelId}
 //        · list{} · generate{id, modelId, messages, maxTokens, json} · abort{id}
-//        · debug{on}
+//        · unload{} · debug{on}
 //   out: plan{modelId, published, files?, totalBytes?} · progress{modelId, pct,
 //        loaded, total} · downloaded{modelId} · dlerror{modelId, message}
 //        · deleted{modelId} · list{entries} · loadstatus{modelId, status}
+//        · unloaded{}
 //        · token{id, text} · gendone{id, text} · generror{id, message}
 //        · workererror{message} · workerdiag{message}
 
@@ -529,6 +530,15 @@ self.onmessage = async (e) => {
       });
     } else if (msg.t === "abort") {
       stoppers.get(msg.id)?.interrupt();
+    } else if (msg.t === "unload") {
+      // Free the resident model on request (ondevice-engine.js
+      // unloadOnDeviceModel): the page is about to allocate other model
+      // instances and this one is not in use. Interrupt anything still
+      // decoding first — dispose() under a live generation is worse than the
+      // memory it frees. The next generate() reloads lazily.
+      for (const s of stoppers.values()) s.interrupt();
+      await unloadModel();
+      self.postMessage({ t: "unloaded" });
     }
   } catch (err) {
     // A dispatch-level failure must never kill the worker silently.

@@ -181,7 +181,11 @@
     Its queries are the literal strings committed in the lens registry
     (<code>public/js/outrospect-core.js</code>), so what leaves this site is auditable in git;
     the stored rows carry the article and never the reader.
-    Bulk-fill it with <code>npm run outrospect</code>.
+    Each visit also fetches the page text of a few articles that have none yet, so the
+    Outrospection chat mode can quote them word for word with a link to the source; which
+    passage answers a question is decided by a lexical scan here, not by a model, and your
+    question never leaves this site to make that choice.
+    Bulk-fill the headlines with <code>npm run outrospect</code>.
     · <a href="/pulse/">Project pulse</a>
     · <a href="/help/">Documentation</a>
   </footer>
