@@ -204,6 +204,11 @@ export function wmHtml(s) {
  *   embedProvider — the embeddings provider label (project recall), "" = none
  *   embedBorrowed — true when project recall embeds through the server on a
  *                   borrowed `api` allowance (not the user's own key)
+ *   pool          — true when SHARED COMPUTE is in the answer path: the
+ *                   completion is relayed by this site's server to ANOTHER
+ *                   USER's machine, which runs it and can read everything sent
+ *   peerLabel     — how that pool's owner is shown (server-resolved; "" when
+ *                   not known yet)
  *   grantsConnected — true when any borrowed, account-connected allowance
  *                   (web search or LLM) is live in this session
  *   workspaceName — set when this session was opened from a shared secure
@@ -217,6 +222,7 @@ export function wmHtml(s) {
  *                   unspecified; falsy = none. When set the session is NOT
  *                   offline going forward.
  * @param {{provider?: string, viaProxy?: boolean, local?: boolean,
+ *          pool?: boolean, peerLabel?: string,
  *          search?: string|null, embedProvider?: string, embedBorrowed?: boolean,
  *          grantsConnected?: boolean, workspaceName?: string,
  *          workspaceGrants?: boolean|{llm?: boolean, search?: boolean}}} [ctx]
@@ -258,12 +264,19 @@ export function privacyNoticeLines(ctx = {}) {
     "Your chats, API keys and projects rest sealed in THIS browser's storage. The DeepResearch.Se server stores none of them and is in no data path unless a line below says otherwise.",
   );
   const provider = ctx.provider || "your model provider";
+  const peer = ctx.peerLabel || "the pool owner";
   lines.push(
-    ctx.viaProxy
-      ? "Model calls: the conversation text is sent THROUGH the DeepResearch.Se server to Berget on a borrowed, metered, time-limited allowance — the one call path where your text touches the server."
-      : ctx.local
-        ? "Model calls: the model runs on YOUR OWN machine — the conversation never leaves your device, and no third party (this site's server included) is involved."
-        : `Model calls: the conversation text is sent to ${provider}, directly from your browser on your own API key — they can read it; the DeepResearch.Se server is not involved.`,
+    // SHARED COMPUTE first: it is the largest disclosure of the four (relayed
+    // by the server AND read by a named human), so it must never fall through
+    // to the "directly from your browser on your own API key" wording, which
+    // is wrong on both halves.
+    ctx.pool
+      ? `Model calls: shared compute is in the path — the conversation text is sent THROUGH the DeepResearch.Se server (held only while the job runs, never stored or logged) to ${peer}'s own machine, which computes the answer. ${peer} can read everything you send.`
+      : ctx.viaProxy
+        ? "Model calls: the conversation text is sent THROUGH the DeepResearch.Se server to Berget on a borrowed, metered, time-limited allowance — the one call path where your text touches the server."
+        : ctx.local
+          ? "Model calls: the model runs on YOUR OWN machine — the conversation never leaves your device, and no third party (this site's server included) is involved."
+          : `Model calls: the conversation text is sent to ${provider}, directly from your browser on your own API key — they can read it; the DeepResearch.Se server is not involved.`,
   );
   lines.push(
     ctx.search === "self"

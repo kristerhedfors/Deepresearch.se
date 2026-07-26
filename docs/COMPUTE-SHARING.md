@@ -27,6 +27,15 @@ directly.
 > invariant text is NOT changed by this document. §9b's knowledge submit is
 > framed the same way (an explicit, disclosed, user-initiated share — like
 > filing feedback — not a pipeline data path) and awaits the same sign-off.
+> **Update (2026-07-26, feedback #31):** sharing is no longer worded or wired
+> as a Se/cure-only act. The Se/rver panel's LLM sharing screen carries the
+> sharer's OWN local-server URL + "Share my compute" toggle over the same
+> `pool-provider.js` loop (resumed at app boot), and both tiers drive the local
+> model through one shared runner, `public/js/pool-local.js`. Se/cure's
+> standing privacy copy also became a FUNCTION of the session's configuration —
+> `public/js/secure-posture-core.js`, §7b — so the ghost, greeter and intro
+> pane stop promising "nothing leaves this browser" to a session that was
+> opened to route its queries at a peer's machine.
 > **Update (2026-07-25):** MUTUAL CONSENT (§8b) and the sharer's account-panel
 > dashboard both shipped. The dashboard is the **LLM sharing** screen, one
 > level below Settings (`public/js/account-pool.js`), and it carries BOTH
@@ -338,12 +347,27 @@ a held request of tens of seconds a non-issue; the job TTL is set well under it.
 
 ### Provider side (the sharer)
 
-- **Toggle home:** the DRC local-provider row `#localrow`
-  (`public/cure/index.html:282-301`), reflected by `renderLocalRow()`
-  (`public/cure/drc.js:1109`) and persisted next to `state.localBaseUrl`
-  (`public/js/drc-core.js:154`). The signed-in Se/rver account also gets a
-  **"Share my LLM compute"** panel (§8) that carries the same toggle plus the
-  dashboard.
+- **Toggle home — EITHER tier (feedback #31, 2026-07-26).** The broker only
+  needs a signed-in browser tab that can reach a local model, and both tiers
+  have one:
+  - Se/cure: the DRC local-provider row `#localrow`
+    (`public/cure/index.html`), reflected by `renderLocalRow()` and persisted
+    next to `state.localBaseUrl` (`public/js/drc-core.js`).
+  - Se/rver: the **LLM sharing** screen (§8) carries its own local-server URL
+    field + the same toggle (`public/js/account-pool.js`, persisted in
+    `dr_pool_local_url` / `dr_pool_share_drs`, resumed at app boot by
+    `resumePoolSharing`). The loop is a module-level singleton, so leaving the
+    screen does not stop the lending the user switched on.
+
+  Two open tabs simply register as two providers under the one pool — which is
+  what the design already allowed (§3) and now actually happens across tiers.
+- **The local model, once:** `public/js/pool-local.js`
+  (`normalizePoolLocalUrl` / `listLocalPoolModels` / `runLocalPoolJob`) is what
+  both tiers call, so the wire spoken to a user's own machine cannot drift
+  between them. Listing is fail-soft (an unreachable server advertises nothing,
+  which the broker reads as "accepts anything"); running THROWS, which is what
+  the loop wants — a failed job becomes `upstream_error` and the consumer's
+  reserved unit is refunded.
 - **The loop:** new machinery modeled on `recoverAnswer`
   (`public/js/recovery.js:94-150`) — a signal-abortable, fail-soft, hard-capped
   `while` loop. It calls the local model through the existing
@@ -393,6 +417,47 @@ literal THIRD exception and amend the invariant to say three) is cleaner to
 audit but changes a load-bearing, owner-directive sentence. **Neither is written
 into CLAUDE.md by this change** — the code ships behind the recommended framing
 and the disclosure, and the invariant text is left for the owner to amend.
+
+### 7b. What the CONSUMER's tier is allowed to claim (feedback #31, 2026-07-26)
+
+Disclosing the route in the notice is necessary but was not sufficient. Se/cure
+also makes its promise ambiently — the strolling ghost's speech bubbles, the
+first-visit greeter, the intro glass pane, the tier explainer — and that copy
+was UNCONDITIONAL. A user who opened a workspace link carrying a pool token was
+met with "everything here stays in this browser" and "no server's watching —
+cross my heart 👻" while the session was configured to relay every prompt to a
+named stranger's computer. The notice was right and the mascot was wrong, which
+is worse than either alone: the loud surface contradicted the careful one.
+
+The fix is one pure core, `public/js/secure-posture-core.js`, that every
+tier-voice surface reads:
+
+| Posture | When | What the surfaces may say |
+|---|---|---|
+| `local` | the model runs on this device | nothing leaves at all |
+| `direct` | the user's own key, browser → their provider | the server is not in the path |
+| `routed` | a borrowed allowance carries the model calls | the conversation goes THROUGH this server to Berget |
+| `peer` | shared compute is in the answer path | a named person's machine computes it and reads it |
+
+Rules the core encodes, all test-pinned:
+
+- **The largest disclosure wins.** `peer` outranks `routed` outranks `local`, so
+  a session holding both a pool token and an `api` grant is never described as
+  merely borrowed.
+- **`peer` is armed, not just selected.** A connected AND enabled pool token
+  counts, not only a pooled model picked in the dropdown — the reporter's
+  session was routed there by intent before any model was chosen.
+- **What survives everywhere.** Chats, keys and projects really are sealed
+  browser-side in every configuration, so that half of the promise is kept
+  verbatim. Only the claims about what this session SENDS are conditional;
+  overcorrecting into "Se/cure is not private" would be its own lie.
+- **Late arrivals correct themselves.** The grant and pool intakes are async, so
+  the ghost is handed a quip GETTER rather than a frozen list and each bubble
+  re-resolves as it speaks.
+
+`privacyNoticeLines` (`drc-page-core.js`) grew the matching `pool` branch: a
+pooled call used to fall through to "directly from your browser on your own API
+key — the server is not involved", which was wrong on both halves.
 
 Providing (being a provider) is NOT a Se/cure exception: the provider's own data
 never leaves; their browser receives *other* people's prompts and returns
@@ -672,7 +737,9 @@ in `public/cure/drc.js`, owner import view `public/js/account-knowledge.js`.
 | `public/js/pool-provider.js` | The provider poll loop (mirrors `recovery.js`); dependency-injected transport, Node-tested. |
 | `public/js/knowledge-core.js` | Conclusions, ±block curation with undo/redo, the `drskn-bundle` ECIES seal (§9b). |
 | `public/js/account-knowledge.js` | The owner's "Workspace knowledge" import view in the account panel (§9b). |
-| `public/js/account-pool.js` | The sharer dashboard account panel (mirrors `account-feedback.js`) — NOT YET BUILT (endpoints live). |
+| `public/js/pool-local.js` | The LOCAL-MODEL half both tiers lend through — URL normalizer, fail-soft model listing, throwing job runner (§6). |
+| `public/js/secure-posture-core.js` | What Se/cure may honestly claim given the session's config — the posture ranking + the ghost/greeter/pane/explainer copy (§7b). |
+| `public/js/account-pool.js` | The Se/rver **LLM sharing** screen: both halves of mutual consent, the consumer roster, sharing links, AND the sharer's own local-server URL + "Share my compute" toggle (§6, §8). |
 
 Server files re-export any shared pure core per the mirror discipline. This table
 is reflected into `docs/CODE-LAYOUT.md` in the same change that adds the modules.

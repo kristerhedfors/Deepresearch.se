@@ -116,7 +116,14 @@ export function isPublicAsset(url, method) {
     // rule as workspace-core.js above.
     url.pathname === "/js/pool-core.js" ||
     url.pathname === "/js/pool-provider.js" ||
+    // The local-model runner both tiers lend through (a Se/rver tab shares the
+    // same pool a Se/cure tab does — feedback #31, 2026-07-26).
+    url.pathname === "/js/pool-local.js" ||
     url.pathname === "/js/knowledge-core.js" ||
+    // What Se/cure may honestly CLAIM given the config it was entered with —
+    // the ghost's quips, the greeter, the intro pane and the tier explainer all
+    // read it, so it has to link in the public /cure graph.
+    url.pathname === "/js/secure-posture-core.js" ||
     url.pathname === "/js/drc-rag.js" ||
     // drc-rag.js's import chain: rag.js/chat-rag.js (the reused pure
     // helpers) each import settings.js — all three must be public or the
