@@ -122,12 +122,16 @@ bucket_name = "deepresearch-se-storage"
 #     the same failure class as the round-4 cpu_ms rejection and the R2/Vectorize
 #     bindings above (tests/MODEL-EVAL-FINDINGS.md). The container image and the
 #     Durable Object namespace must exist BEFORE these lines are uncommented.
-#  2. Pushing the image needs an API token carrying the Containers permission.
-#     BUILDING it no longer needs a special machine — the agent containers this
-#     repo is developed in now ship a Docker client and `dockerd` (start it with
-#     `dockerd &` if the socket is absent), so the image builds and is fully
-#     VERIFIED in-session by scripts/build-exec-image.sh. The push is the only
-#     step that still needs owner credentials, so the image is referenced by URI.
+#  2. The image is built out of band and referenced by URI. The agent containers
+#     this repo is developed in ship a Docker client and `dockerd` (start it with
+#     `dockerd &` if the socket is absent), so scripts/build-exec-image.sh builds,
+#     VERIFIES (40 checks) and pushes it from a session.
+#
+# STATUS 2026-07-26: the image IS pushed —
+#   registry.cloudflare.com/<account-id>/deepresearch-exec:1  (sha256:f0ddd1ed…)
+# so reason 1's precondition is now met and this block is ready to uncomment.
+# It stays commented until an owner deploys it deliberately: uncommenting is
+# what turns the feature on for every signed-in account.
 #
 # With the block commented out, /api/settings reports `available.exec_container:
 # false`, the Settings picker omits the option, and the feature is invisible —
@@ -139,10 +143,11 @@ bucket_name = "deepresearch-se-storage"
 #   # then uncomment below, set `image` to the pushed URI, and deploy:
 #   npx wrangler deploy
 #
-# The push step needs `Account · Cloudchamber (Containers) · Edit` on the API
-# token — a Workers-only token deploys fine but cannot mint registry credentials
-# (measured 2026-07-26: cloudchamber/me → 403). The script preflights that and
-# names the missing permission rather than failing at the push.
+# The push needs CLOUDFLARE_USER_API_TOKEN — a Cloudflare **User** API token with
+# Workers + Containers edit. The everyday CLOUDFLARE_API_TOKEN is account-owned
+# and cannot reach Containers at all, whatever permissions it carries; `wrangler`
+# only reads CLOUDFLARE_API_TOKEN, so the script overrides it inline. Which token
+# does what, and how to tell them apart: the `deploy` skill.
 #
 # `instance_type` is the cost/capability dial (lite → standard-4); standard-1
 # (1/2 vCPU, 4 GiB, 8 GB disk) is the smallest that comfortably holds the Debian

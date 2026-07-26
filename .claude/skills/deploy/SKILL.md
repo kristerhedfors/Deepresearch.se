@@ -5,7 +5,10 @@ description: >-
   running `npx wrangler deploy`, debugging a deploy that "didn't take", or
   timing a deploy around an eval battery. Covers the push-to-main
   git-connected auto-deploy, direct wrangler deploy and the API token's
-  route-update limitation, live verification probes, and the
+  route-update limitation, WHICH OF THE TWO CLOUDFLARE TOKENS TO USE
+  (`CLOUDFLARE_API_TOKEN` for deploys vs `CLOUDFLARE_USER_API_TOKEN` for
+  anything `wrangler containers …`, and how to tell them apart),
+  live verification probes, and the
   don't-deploy-mid-battery rule. ALSO branch PREVIEW URLs (Workers Builds
   non-production branch builds + `preview_urls` in wrangler.toml — trying an
   isolated feature branch live on its own URL before merge, the dashboard
@@ -48,6 +51,49 @@ Worker + static assets). Everything below was observed empirically
 
 Deploying the SAME commit via both paths is redundant but safe (the
 git-connected deploy just re-deploys identical code).
+
+## Which token does what (2026-07-26) — there are TWO
+
+The session environment carries two Cloudflare credentials, and they are not
+interchangeable. Reach for the right one BEFORE debugging a `Forbidden`.
+
+| Env var | Type | Use it for | Cannot |
+| --- | --- | --- | --- |
+| `CLOUDFLARE_API_TOKEN` | **Account-owned** token | `wrangler deploy`, versions upload, D1/R2/Vectorize bindings — the everyday path | Containers/Cloudchamber (any `wrangler containers …`), zone route updates |
+| `CLOUDFLARE_USER_API_TOKEN` | **User** API token (owner-added 2026-07-26, full Workers + Containers edit) | everything the account token does, **plus** `wrangler containers build/push/images/list` — the container registry | — |
+
+**`wrangler` only ever reads `CLOUDFLARE_API_TOKEN`.** There is no flag for a
+different variable, so a container command has to override it inline:
+
+```bash
+CLOUDFLARE_API_TOKEN="$CLOUDFLARE_USER_API_TOKEN" npx wrangler containers push <tag>
+```
+
+`scripts/build-exec-image.sh` does this itself — it prefers
+`CLOUDFLARE_USER_API_TOKEN` and only falls back to `CLOUDFLARE_API_TOKEN`.
+
+**Telling the two apart at a glance**, since both are 53 chars and neither is
+labelled in `wrangler whoami` beyond "Account API Token":
+
+| Probe | Account token | User token |
+| --- | --- | --- |
+| `GET /user/tokens/verify` | 400 "Invalid API Token" | **200** |
+| `GET /accounts/<id>/workers/scripts` | 200 | 200 |
+| `GET /accounts/<id>/cloudchamber/me` | 401 | 403 |
+| `wrangler containers images list` | `✘ Forbidden` | lists the registry |
+
+The `/user/tokens/verify` row is the reliable discriminator — an account-owned
+token is not a user token and that endpoint rejects it outright.
+
+Two traps this cost real time on:
+
+- **`cloudchamber/me` answers 403 even for the working token**, and the
+  credentials endpoint answers **405 code 10405** ("Method not allowed for this
+  authentication scheme") for *both*. So neither is a usable permission probe —
+  do not preflight on them. `wrangler containers images list` is the honest
+  check: it succeeds only with the user token.
+- Adding the Cloudchamber permission to the *account* token does nothing. The
+  fix was a new **user** token, not more permissions on the old one.
 
 ## ⚠️ Branch pushes deploy to production too (2026-07-08 evening)
 

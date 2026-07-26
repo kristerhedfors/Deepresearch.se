@@ -42,21 +42,30 @@
 # ---- the push, and the permission it needs -----------------------------------
 #
 # `wrangler containers push` mints short-lived registry credentials from the
-# Cloudchamber API. An API token scoped only to Workers dies there with a bare
-# `Forbidden` / `cloudchamber push failed` even though `wrangler deploy` works
-# fine — the token needs the **Containers / Cloudchamber: Edit** permission
-# (Workers Scripts: Edit is NOT enough). Measured 2026-07-26 with a Workers-only
-# token on this account:
+# Cloudchamber API, and the environment's DEFAULT token cannot do that. There
+# are two Cloudflare tokens here and they are not interchangeable (the full
+# table lives in the `deploy` skill):
 #
-#   GET  /accounts/<id>/workers/scripts                     → 200   (control)
-#   GET  /accounts/<id>/cloudchamber/me                      → 403
-#   POST /accounts/<id>/cloudchamber/registries/credentials  → 405, code 10405
+#   CLOUDFLARE_API_TOKEN        account-owned. Deploys Workers. CANNOT touch
+#                               Containers — `wrangler containers …` dies with a
+#                               bare `✘ Forbidden` / `cloudchamber push failed`.
+#   CLOUDFLARE_USER_API_TOKEN   a USER API token (owner-added 2026-07-26, full
+#                               Workers + Containers edit). This is the one that
+#                               pushes.
+#
+# Adding the Cloudchamber permission to the ACCOUNT token does not help — the
+# blocker was the token TYPE, not its permissions. `wrangler` only ever reads
+# `CLOUDFLARE_API_TOKEN`, so the push below overrides that variable inline.
+#
+# Do NOT preflight on the Cloudchamber API. Measured 2026-07-26, both tokens:
+#
+#   GET  /accounts/<id>/cloudchamber/me                      → 401 (account) / 403 (user)
+#   POST /accounts/<id>/cloudchamber/registries/credentials  → 405 code 10405 for BOTH
 #                                    "Method not allowed for this authentication scheme"
 #
-# So the credentials endpoint does NOT answer 403 — it answers 405, and probing
-# for 401/403 there silently passes a token that cannot push. `preflight_push`
-# uses the `cloudchamber/me` GET, which does answer 403, and also treats CF error
-# code 10405 as the same refusal.
+# — i.e. the endpoints that look like permission probes refuse the WORKING token
+# too. `wrangler containers images list` is the only honest check, and that is
+# what preflight_push uses.
 set -euo pipefail
 
 IMAGE_NAME="${IMAGE_NAME:-deepresearch-exec}"
@@ -156,27 +165,47 @@ cmd_verify() {
   '
 }
 
+# The token `wrangler containers …` must run with. Prefers the user token; falls
+# back to the account token so a machine using `wrangler login` (OAuth) or a
+# correctly-scoped single token still works.
+push_token() { printf '%s' "${CLOUDFLARE_USER_API_TOKEN:-${CLOUDFLARE_API_TOKEN:-}}"; }
+
 preflight_push() {
   command -v npx >/dev/null 2>&1 || die "npx not on PATH."
-  local acct="${CLOUDFLARE_ACCOUNT_ID:-}"
-  [ -n "$acct" ] || die "CLOUDFLARE_ACCOUNT_ID is not set."
-  [ -n "${CLOUDFLARE_API_TOKEN:-}" ] || return 0   # OAuth login is fine; let wrangler decide.
-  local code cred
-  code=$(curl -s -o /dev/null -w '%{http_code}' \
-    -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-    "https://api.cloudflare.com/client/v4/accounts/$acct/cloudchamber/me" || echo 000)
-  cred=$(curl -s -X POST \
-    -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H 'content-type: application/json' \
-    -d '{"permissions":["push","pull"]}' \
-    "https://api.cloudflare.com/client/v4/accounts/$acct/cloudchamber/registries/credentials" || echo '')
-  if [ "$code" = "403" ] || [ "$code" = "401" ] || case "$cred" in *10405*) true ;; *) false ;; esac; then
-    die "CLOUDFLARE_API_TOKEN cannot mint container registry credentials (cloudchamber/me → HTTP $code).
-     This token is scoped for Workers but not Containers. In the Cloudflare
-     dashboard → My Profile → API Tokens, add the permission
-         Account · Cloudchamber (Containers) · Edit
-     to the token, or run this push from a machine with \`wrangler login\` (OAuth).
-     Everything else in this script works without it — build and verify already did."
+  [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ] || die "CLOUDFLARE_ACCOUNT_ID is not set."
+  [ -n "$(push_token)" ] || return 0   # OAuth login is fine; let wrangler decide.
+  # The ONE honest probe: it succeeds only with a Containers-capable token.
+  if ! CLOUDFLARE_API_TOKEN="$(push_token)" \
+       npx wrangler containers images list >/dev/null 2>&1; then
+    die "this token cannot reach the container registry.
+     \`wrangler containers images list\` was refused. Set CLOUDFLARE_USER_API_TOKEN
+     to a Cloudflare **User** API token (dashboard → My Profile → API Tokens)
+     with Workers + Containers edit — an ACCOUNT-owned token cannot do this no
+     matter which permissions it carries. Or run from a machine with
+     \`wrangler login\` (OAuth).
+     Build and verify work without it; only the push needs this."
   fi
+}
+
+# The image must be a single plain manifest. BuildKit otherwise publishes an OCI
+# index with an attestation manifest attached, and `docker push` will happily
+# send that — this bit once (2026-07-26): a stale tag pointed at an earlier
+# attestation build and an index reached the registry. Checked locally, before
+# the push, because after the push `docker manifest inspect` serves a CACHED
+# answer and will show the old shape (use `docker buildx imagetools inspect
+# --raw` for a live read).
+assert_single_manifest() {
+  local tag="$1" mt
+  mt=$(docker image inspect "$tag" --format '{{.Descriptor.MediaType}}' 2>/dev/null || echo '')
+  case "$mt" in
+    *index*|*list*)
+      die "$tag is a manifest LIST ($mt), not a single image.
+     Rebuild with --provenance=false --sbom=false (this script's `build` does).
+     A stale tag from an earlier attestation build is the usual cause: run
+       docker rmi -f $tag && $0 build" ;;
+    "") die "cannot read the media type of $tag — is it built?" ;;
+  esac
+  printf 'manifest: %s\n' "$mt"
 }
 
 cmd_push() {
@@ -186,7 +215,8 @@ cmd_push() {
   docker image inspect "$LOCAL_TAG" >/dev/null 2>&1 || die "$LOCAL_TAG not built yet — run: $0 build"
   say "push $tag"
   docker tag "$LOCAL_TAG" "$tag"
-  ( cd "$REPO_ROOT" && npx wrangler containers push "$tag" )
+  assert_single_manifest "$tag"
+  ( cd "$REPO_ROOT" && CLOUDFLARE_API_TOKEN="$(push_token)" npx wrangler containers push "$tag" )
   cat <<EOF
 
 Pushed. To switch the environment ON:

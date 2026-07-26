@@ -11,6 +11,11 @@ has always had. Implemented and unit-tested; the container binding ships
 DISABLED and the whole environment is therefore invisible until an owner enables
 it (§9).*
 
+*Image pushed 2026-07-26 (third change): the container image is built, verified
+by a 40-check battery and pushed to the managed registry — but the binding is
+still commented out, so nothing has yet run against a real Cloudflare Container
+(§9, §10).*
+
 The model choice already spans on-device and cloud. This is the same choice for
 execution: **where the shell commands the agent proposes actually run.** Until
 now there was exactly one answer — a Linux VM emulated inside the browser tab.
@@ -430,24 +435,49 @@ Two findings the battery pinned down, both now guarded:
   attestation manifest and the result becomes a manifest *list*; the managed
   registry wants a single plain manifest.
 
-### The push needs a Containers-scoped token
+### The push needs a USER token, not the deploy token
 
-`wrangler containers push` mints short-lived registry credentials from the
-Cloudchamber API, and a token scoped only to Workers cannot. Measured 2026-07-26
-against this account:
+**Pushed 2026-07-26**: `registry.cloudflare.com/<account-id>/deepresearch-exec:1`,
+digest `sha256:f0ddd1ed…`, 482 MB, confirmed in `wrangler containers images list`.
 
-| Request | Result |
-| --- | --- |
-| `GET /accounts/<id>/workers/scripts` | 200 — the token deploys fine |
-| `GET /accounts/<id>/cloudchamber/me` | 403 |
-| `POST /accounts/<id>/cloudchamber/registries/credentials` | 405, code 10405 "Method not allowed for this authentication scheme" |
+The environment carries two Cloudflare credentials and only one of them can push
+(the full table is in the **deploy** skill):
 
-`wrangler` surfaces this as a bare `✘ Forbidden` / `cloudchamber push failed`
-with no hint at the cause. The fix is to add **Account · Cloudchamber
-(Containers) · Edit** to the API token, or run the push from a machine with
-`wrangler login` (OAuth). Note the credentials endpoint answers **405**, not
-403 — a preflight that probes only for 401/403 there passes a token that cannot
-push, which is why the script probes `cloudchamber/me` instead.
+| Env var | Type | Containers? |
+| --- | --- | --- |
+| `CLOUDFLARE_API_TOKEN` | account-owned | **no** — `wrangler containers …` dies with a bare `✘ Forbidden` |
+| `CLOUDFLARE_USER_API_TOKEN` | **user** API token, Workers + Containers edit | yes |
+
+The blocker was the token **type**, not its permissions: adding Cloudchamber
+Edit to the account-owned token changed nothing. `wrangler` only reads
+`CLOUDFLARE_API_TOKEN`, so the script overrides it inline from
+`CLOUDFLARE_USER_API_TOKEN`.
+
+Do not preflight on the Cloudchamber API — it refuses the *working* token too:
+
+| Request | account token | user token |
+| --- | --- | --- |
+| `GET /user/tokens/verify` | 400 | **200** ← the reliable discriminator |
+| `GET /accounts/<id>/cloudchamber/me` | 401 | 403 |
+| `POST …/cloudchamber/registries/credentials` | 405 code 10405 | 405 code 10405 |
+| `wrangler containers images list` | `✘ Forbidden` | lists the registry |
+
+`wrangler containers images list` is the only honest probe, and is what
+`preflight_push` uses.
+
+### The manifest trap
+
+`docker push` will cheerfully publish an **OCI index with an attestation
+manifest** instead of a plain image, and that is what reached the registry on
+the first attempt here — a tag left over from a build made *before* the
+`--provenance=false --sbom=false` flags were added still pointed at the index.
+Rebuilding with the flags and re-pushing fixed it (`mediaType:
+application/vnd.docker.distribution.manifest.v2+json`).
+
+`assert_single_manifest` now blocks the push on it. Check **locally, before
+pushing** — after a push, `docker manifest inspect` serves a cached answer and
+will show the pre-push shape; `docker buildx imagetools inspect --raw` reads the
+registry live.
 
 ## 10. Still owed
 
@@ -459,12 +489,14 @@ push, which is why the script probes `cloudchamber/me` instead.
   (§9 — the build environment has a daemon) and has not been yet. Verify all
   three, plus the browser-direct call (CORS + private-network preflight) from a
   live page, before treating this as production-ready.
-- **The pushed image.** `scripts/build-exec-image.sh` builds and verifies the
-  Cloudflare Container image in-session (§9), but the push needs a
-  Containers-scoped API token, so nothing has been pushed and the
-  `[[containers]]` block is still commented out. Nothing about the cloud
-  environment has run against a real Cloudflare Container — only against the
-  fake in `src/exec-container.test.js` and the image battery.
+- **The cloud environment has never run.** The image is built, verified and
+  **pushed** (§9), but the `[[containers]]` block is still commented out and no
+  deploy has carried the binding — so nothing has exercised a real Cloudflare
+  Container. Everything known about that path comes from the fake in
+  `src/exec-container.test.js` and the image battery. Enabling it (uncomment,
+  set `image`, deploy) is the next step, and the first real test of container
+  cold start, the `/mount` and `/source` bridges, and the §8 fences against an
+  actual instance.
 - **Apple `container` flag set.** It gets a reduced flag list (no
   `--pids-limit`); confirm `--memory`/`--cpus`/`--network` behave as assumed on
   macOS 26.
