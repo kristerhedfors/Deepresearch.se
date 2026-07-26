@@ -1,0 +1,90 @@
+{
+  "v": 1,
+  "note": "Hand-written topical queries for the arXiv RAG bake-off — the 'is the top of the list any good' family, where many papers are relevant and none is THE answer. Paired EN/SV per CLAUDE.md invariant 6; the Swedish side is idiomatic research Swedish, not a gloss. Graded by an LLM judge in scripts/arxiv-eval.mjs --judge, so the set stays small enough to grade honestly.",
+  "queries": [
+    {
+      "id": "t01",
+      "en": "How can the privacy of user data be preserved when running large language model applications?",
+      "sv": "Hur kan användardatas integritet skyddas när man kör applikationer byggda på stora språkmodeller?",
+      "field": "cs.CR"
+    },
+    {
+      "id": "t02",
+      "en": "What are recent methods for making retrieval-augmented generation more factually reliable?",
+      "sv": "Vilka nya metoder finns för att göra retrieval-augmented generation mer faktamässigt tillförlitlig?",
+      "field": "cs.CL"
+    },
+    {
+      "id": "t03",
+      "en": "Progress on quantum error correction with surface codes and their hardware demonstrations",
+      "sv": "Framsteg inom kvantfelkorrigering med ytkoder och demonstrationer i hårdvara",
+      "field": "quant-ph"
+    },
+    {
+      "id": "t04",
+      "en": "Evidence for dark matter substructure from strong gravitational lensing observations",
+      "sv": "Belägg för mörk materias understruktur från observationer av stark gravitationslinsning",
+      "field": "astro-ph"
+    },
+    {
+      "id": "t05",
+      "en": "Techniques for reducing inference cost of transformer models through sparsity or quantization",
+      "sv": "Tekniker för att minska inferenskostnaden hos transformermodeller genom gleshet eller kvantisering",
+      "field": "cs.LG"
+    },
+    {
+      "id": "t06",
+      "en": "Protein structure prediction and design using deep generative models",
+      "sv": "Prediktion och design av proteinstrukturer med djupa generativa modeller",
+      "field": "q-bio.BM"
+    },
+    {
+      "id": "t07",
+      "en": "Causal inference methods for estimating treatment effects from observational data",
+      "sv": "Metoder för kausal inferens för att skatta behandlingseffekter från observationsdata",
+      "field": "stat.ME"
+    },
+    {
+      "id": "t08",
+      "en": "How do autonomous agents built on language models plan and use external tools?",
+      "sv": "Hur planerar och använder autonoma agenter byggda på språkmodeller externa verktyg?",
+      "field": "cs.AI"
+    },
+    {
+      "id": "t09",
+      "en": "Adversarial attacks and jailbreaks against aligned language models, and defences against them",
+      "sv": "Angrepp och jailbreaks mot alignade språkmodeller, och försvar mot dem",
+      "field": "cs.CR"
+    },
+    {
+      "id": "t10",
+      "en": "Topological phases of matter in two-dimensional materials at finite temperature",
+      "sv": "Topologiska materiefaser i tvådimensionella material vid ändlig temperatur",
+      "field": "cond-mat"
+    },
+    {
+      "id": "t11",
+      "en": "Machine learning approaches to weather and climate forecasting at global scale",
+      "sv": "Maskininlärningsmetoder för väder- och klimatprognoser på global skala",
+      "field": "physics.ao-ph"
+    },
+    {
+      "id": "t12",
+      "en": "Formal verification of neural network robustness guarantees",
+      "sv": "Formell verifiering av robusthetsgarantier för neurala nätverk",
+      "field": "cs.LO"
+    },
+    {
+      "id": "t13",
+      "en": "Economic effects of generative AI adoption on labour markets and productivity",
+      "sv": "Generativ AI:s ekonomiska effekter på arbetsmarknaden och produktiviteten",
+      "field": "econ.GN"
+    },
+    {
+      "id": "t14",
+      "en": "Federated learning under non-IID data with differential privacy guarantees",
+      "sv": "Federerad inlärning med icke-IID-data och garantier för differentiell integritet",
+      "field": "cs.LG"
+    }
+  ]
+}

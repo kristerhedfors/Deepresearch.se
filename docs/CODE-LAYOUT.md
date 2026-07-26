@@ -888,3 +888,28 @@ default) and its setup page `public/cure/local-exec/index.html`
 backdrop, split pure-core/DOM per the pure-core convention); and
 `umbrella-spinner.js` (the Se/cure intro umbrella, shrunk and looped as a
 waiting spinner).
+
+arXiv RAG search database (`public/js/arxiv-rag-core.js` + `scripts/arxiv-*.mjs`
+— a local research database over a year of arXiv, not part of the deployed
+Worker): the pure core owns passage construction (the four embed strategies and
+the sliding-window splitter), the Unicode-aware tokenizer and BM25 index, RRF
+fusion, max-pool doc scoring over the packed int8 matrix (`denseSearchPacked` /
+`packedNorms`), the evaluation metrics, and `recapForContext` — the recovery
+from Berget's hard 512-token rejection. Vector maths is not reimplemented: the
+int8 codec and cosine come from `introspect-core.js`, the project's one
+implementation. Around it, `scripts/arxiv-harvest.mjs` (OAI-PMH bulk harvest,
+month-sharded and resumable), `arxiv-corpus.mjs` (dedup + deterministic
+sampling), `arxiv-berget.mjs` (the Berget-only surfaces — `bge-reranker-v2-m3` and JSON
+chat; embedding moved to the registry below), `arxiv-index.mjs` (the binary index pack),
+`arxiv-search.mjs` (the four retrieval pipelines) and `arxiv-goldset.mjs` +
+`arxiv-eval.mjs` (the query sets and the measured bake-off). The built database
+lives under gitignored `data/`; the code, the query sets and the findings are
+committed. Embedding for EVERY build-time index in the repo — the arXiv database and the
+committed introspection artifacts alike — goes through
+`scripts/embed-providers.mjs`, a two-backend registry (Berget and Hugging Face
+Inference) over the SAME `intfloat/multilingual-e5-large` weights: verified
+cosine 0.9999–1.0000, so the vectors are interchangeable and a build can fail
+over mid-flight instead of dying on an empty wallet. `EMBED_PROVIDER` selects
+`auto` (default), `berget`, `hf` or `both`; the work-stealing pool carries a
+straggler guard so a much slower second backend can never lengthen a run.
+See `docs/ARXIV-RAG.md`.
