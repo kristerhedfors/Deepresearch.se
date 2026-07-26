@@ -17,7 +17,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const LEDGER = process.env.MERGED_LEDGER || join(ROOT, "docs", "MERGED-BRANCHES.md");
@@ -34,17 +34,24 @@ function git(args) {
 //   | `branch` | <sha> | ... | <verdict> | ... |
 // keeping the FIRST occurrence of each branch (§1 confirmed verdicts win over
 // the §3 heuristic inventory, since §1 is written first in the file).
-function parseLedger(text) {
+//
+// The sha cell is optionally backticked: §1 writes `d4fb32d5`, §2/§3 write it
+// bare. Requiring it bare made §1 — the confirmed-verdict section this guard
+// exists to enforce, and the one its precedence rule names — invisible, so
+// every integration recorded there went unwatched.
+export function parseLedger(text) {
   const rows = new Map();
-  const re = /^\|\s*`([^`]+)`\s*\|\s*([0-9a-f]{7,40})\s*\|(.*)\|\s*$/gim;
+  const re = /^\|\s*`([^`]+)`\s*\|\s*`?([0-9a-f]{7,40})`?\s*\|(.*)\|\s*$/gim;
   let m;
   while ((m = re.exec(text))) {
     const branch = m[1].trim();
     if (rows.has(branch)) continue;
     const sha = m[2].trim();
     // The verdict is one of the remaining pipe-separated cells; find the first
-    // that looks like a known verdict word.
-    const cells = m[3].split("|").map((c) => c.trim());
+    // that looks like a known verdict word. §1 bolds it (`**Merged**`) while
+    // §2/§3 write it plain, so emphasis is stripped before the test — matching
+    // only an unbolded cell is the other half of what kept §1 unwatched.
+    const cells = m[3].split("|").map((c) => c.trim().replace(/^[*_]+|[*_]+$/g, "").trim());
     const verdict = cells.find((c) => /^(merged|superseded\??|dropped|review)/i.test(c)) || "";
     rows.set(branch, { branch, sha, verdict });
   }
@@ -139,4 +146,6 @@ function main() {
   process.exit(1);
 }
 
-main();
+// Only when run as the CLI — importing this module (the parser test) must not
+// fetch the remote or exit the process.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
