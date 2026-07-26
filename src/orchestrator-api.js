@@ -22,19 +22,10 @@
 
 import { completeJson } from "./providers.js";
 import { DEFAULT_MODEL } from "./berget.js";
-import { getConfig } from "./config.js";
+import { enforceQuotaAndReserve } from "./endpoint-gate.js";
 import { jsonResponse } from "./http.js";
 import { lastUserMessage, textOf } from "./conversation.js";
-import {
-  effectiveQuota,
-  getUsage,
-  inflightLimitResponse,
-  quotaBlockedResponse,
-  quotaExceeded,
-  recordDefaultModelUsage,
-  releaseInflight,
-  reserveInflight,
-} from "./quota.js";
+import { recordDefaultModelUsage, releaseInflight } from "./quota.js";
 import { classifyFailure, recordSubsystemFailure } from "./server-errors.js";
 import { developerModeEnabled } from "./settings.js";
 import { validateMessages } from "./validation.js";
@@ -79,16 +70,11 @@ export async function handleOrchestratorPlan(request, env, log, identity) {
   // swarm suits, exactly as it decides everything else about the team.
   const swarm = normalizeSwarmCapability(body?.swarm);
 
-  // Same quota gate as /api/chat and /api/bash/step (admins never blocked).
-  const config = await getConfig(env);
-  const usage = await getUsage(env, identity.id, Date.now(), identity.user?.quota_reset_at);
-  const quota = identity.isSecretAdmin || identity.role === "admin" ? null : effectiveQuota(config, identity.user);
-  const blocked = quota ? quotaExceeded(usage, quota) : null;
-  if (blocked) return jsonResponse(quotaBlockedResponse(blocked), 429);
-
-  const reqId = crypto.randomUUID();
-  const reserved = await reserveInflight(env, identity.id, reqId);
-  if (!reserved.ok) return jsonResponse(inflightLimitResponse(reserved), 429);
+  // The shared side-endpoint admission preamble (endpoint-gate.js): the same
+  // quota gate /api/chat applies, then this request's concurrency slot.
+  const gate = await enforceQuotaAndReserve(env, identity);
+  if (gate.response) return gate.response;
+  const reqId = gate.reqId;
 
   const startedAt = Date.now();
   try {
