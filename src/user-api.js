@@ -23,14 +23,20 @@ import { countUnreadUserMessages, listUserMessages, markAllRead } from "./user-m
 // GET /api/models — model catalog for the UI dropdown (filtered + cached in
 // src/berget.js), plus the effective default (admin-configured when valid
 // and up, else the Worker default).
+//
+// The identity is passed through because one provider's menu is per-account:
+// the models this user enabled in the Models agent join the catalog here, which
+// is precisely what makes them selectable in every OTHER agent mode
+// (src/user-models.js).
 /**
  * @param {Env} env
  * @param {Logger} log
+ * @param {Identity} [identity]
  * @returns {Promise<Response>}
  */
-export async function handleModels(env, log) {
+export async function handleModels(env, log, identity) {
   try {
-    const models = await listChatModels(env);
+    const models = await listChatModels(env, identity || null);
     const config = await getConfig(env);
     const configured = adminDefaultModelValid(config, models);
     log.debug("models.list", { count: models.length });

@@ -46,6 +46,11 @@
      .check span under :root.outro-mode so the canvas ✓ and the swapped-in span
      agree. */
   --check-red: #8f1d14;
+  /* The Models agent's ✓ — the amber-recoloured waiting balloon
+     (public/js/mode-spinner.js MODELS_SPINNER.check must match) folds into this
+     dark amber where Normal folds to --check-blue. Applied to the real .check
+     span under :root.models-mode so the canvas ✓ and the swapped-in span agree. */
+  --check-amber: #b8860b;
   --user: #d8edff;
 }
 /* COMPLETE per-mode themes (owner directive, 2026-07-23). Each chat mode is a
@@ -107,6 +112,19 @@
   --muted: #5d584c;
   --accent: #8f1d14;      /* masthead red — links, buttons, focus */
   --user: #f0ebdd;
+}
+/* • Models → AMBER: the workbench. A warm sand field under a workshop yellow,
+     because this is the mode where models are examined before anyone relies on
+     them — a bench, not another research field. */
+:root.models-mode {
+  --bg: #ffd21e;          /* amber — the workbench field */
+  --panel: #fffaf0;
+  --panel-2: #f7efdc;
+  --border: #e3d2a4;
+  --text: #201a08;
+  --muted: #6b5a2c;
+  --accent: #b8860b;      /* dark amber — links, buttons, focus */
+  --user: #fff3cf;
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; overflow-x: hidden; }
@@ -500,6 +518,22 @@ body.term-fg .brand {
   border-bottom-color: rgba(143, 29, 20, .9);
 }
 :root.outro-mode .outro-tag { display: block; }
+/* The Models agent's header tag (chat-mode.js toggles `models-mode`). Like
+   Outrospection's, this theme's field is LIGHT, so the tag is dark-on-warm
+   rather than a pale tag over a saturated field. */
+.models-tag {
+  display: none;
+  align-self: center;
+  margin-top: -.1rem;
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .16em;
+  text-transform: lowercase;
+  color: #6b5a2c;
+  text-shadow: 0 1px 1px rgba(255, 250, 240, .8);
+  pointer-events: none;
+}
+:root.models-mode .models-tag { display: block; }
 .header-right, #composer { pointer-events: auto; }
 #chat {
   flex: 1;
@@ -781,6 +815,7 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
    (mode-spinner.js ORCH_SPINNER), so the canvas ✓ and this span agree. */
 :root.orch-mode .step .check { color: var(--check-violet); }
 :root.outro-mode .step .check { color: var(--check-red); }
+:root.models-mode .step .check { color: var(--check-amber); }
 /* A step settled by run-end (e.g. one still mid-flight when the stream
    dropped and the answer was recovered): finished, but muted — no green
    ✓, since its own result wasn't captured. */
@@ -2729,3 +2764,145 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
   border-top: 1px solid var(--border);
   padding-top: .6rem;
 }
+
+/* ── The Models agent's lifecycle board ──────────────────────────────────────
+   The Models agent's LEFT SIDEBAR: every model this deployment can reach,
+   grouped by lifecycle lane, each card carrying its price and its verification
+   checklist. Left, not right, because it replaces the history drawer — in this
+   agent the models ARE the session, so they occupy the place a session's
+   contents normally do (mode-theme.js `panel: "models"`).
+
+   The cards are deliberately dense on facts and quiet on chrome: the board
+   exists so a price and a check result are read before a model is relied on,
+   and decoration makes both harder to find, not easier. */
+#modelspanel {
+  position: fixed; inset: 0; z-index: 10;
+  background: rgba(60, 45, 5, .35);
+}
+#modelspanel[hidden] { display: none; }
+.mdl-board {
+  position: absolute; top: 0; left: 0; bottom: 0;
+  width: min(400px, 94vw);
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  border-radius: 0 18px 18px 0;
+  box-shadow: 4px 0 30px rgba(60, 45, 5, .28);
+  padding: .9rem 1rem 1rem;
+  display: flex; flex-direction: column; gap: .55rem;
+  overflow-y: auto;
+}
+.mdl-board-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .5rem;
+}
+.mdl-board-head button {
+  background: none; border: 0; color: var(--muted);
+  font-size: 1.4rem; line-height: 1; cursor: pointer; padding: 0 .3rem;
+}
+#modelssearch {
+  width: 100%;
+  padding: .5rem .6rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+}
+.mdl-providers { margin-top: .2rem; }
+.mdl-list { display: flex; flex-direction: column; gap: .5rem; }
+/* A lane header — the lifecycle group, with the one line that explains what
+   the state MEANS. Someone opening this for the first time should not have to
+   infer why a model is in one group and not another. */
+.mdl-lane {
+  display: flex; flex-direction: column;
+  margin-top: .5rem;
+}
+.mdl-lane strong { font-size: .8rem; letter-spacing: .04em; text-transform: uppercase; }
+.mdl-lane-blurb { font-size: .7rem; color: var(--muted); }
+.mdl-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-2);
+  padding: .55rem .65rem;
+  display: flex; flex-direction: column; gap: .25rem;
+}
+/* An enabled model wears the accent edge — the board's answer to "which of
+   these did I turn on", readable at a glance while scrolling. */
+.mdl-card.mdl-enabled { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.mdl-card.mdl-blocked { opacity: .62; }
+.mdl-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: .4rem; }
+.mdl-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .82rem;
+  color: var(--text);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+a.mdl-id:hover { color: var(--accent); text-decoration: underline; }
+.mdl-provider { font-size: .68rem; color: var(--muted); white-space: nowrap; }
+.mdl-badges { display: flex; flex-wrap: wrap; gap: .25rem; }
+.mdl-badge {
+  font-size: .64rem; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: .05rem .4rem;
+}
+.mdl-price { font-size: .78rem; font-weight: 600; color: var(--text); }
+.mdl-est { font-size: .72rem; color: var(--muted); }
+.mdl-why { font-size: .72rem; color: var(--muted); font-style: italic; }
+
+/* THE VERIFICATION CHECKLIST. Three states, three treatments — and crucially
+   the failing state is NOT alarming: a red-alert box would read as "do not
+   use", which is the opposite of what a non-blocking status means. Pass is the
+   accent, fail is a muted strike, untested is a dotted outline that visibly
+   says "nobody asked yet". */
+.mdl-checks { margin-top: .15rem; }
+.mdl-checkboxes { display: flex; flex-wrap: wrap; gap: .2rem; }
+.mdl-check {
+  display: inline-flex; align-items: center; gap: .2rem;
+  font-size: .64rem;
+  border-radius: 5px;
+  padding: .05rem .3rem;
+  border: 1px solid transparent;
+  cursor: help;
+}
+.mdl-check-glyph { font-weight: 700; }
+.mdl-check-pass { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+.mdl-check-fail { color: var(--muted); border-color: var(--border); text-decoration: line-through; }
+.mdl-check-untested { color: var(--muted); border-style: dotted; border-color: var(--border); opacity: .8; }
+.mdl-check-sum { font-size: .68rem; color: var(--muted); margin-top: .2rem; cursor: help; }
+
+.mdl-actions { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .25rem; }
+.mdl-btn {
+  font: inherit; font-size: .78rem;
+  padding: .28rem .7rem;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fffaf0;
+  cursor: pointer;
+}
+.mdl-btn[disabled] { cursor: not-allowed; opacity: .5; }
+.mdl-btn-on { background: transparent; color: var(--accent); }
+.mdl-btn-ghost { background: transparent; color: var(--accent); }
+/* The composer's board button — present only in Models mode (app.js unhides
+   it), styled like the other composer icon buttons. */
+#modelsbtn { font-size: 1.05rem; line-height: 1; }
+/* The inline cards: the same rows rendered inside an answer, where the agent
+   just reasoned about them. Bounded height so a long list never buries the
+   answer text under a catalog. */
+.mdl-embed {
+  margin: .6rem 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-2);
+  padding: .6rem .7rem;
+}
+.mdl-embed-head { font-weight: 600; font-size: .85rem; margin-bottom: .15rem; }
+.mdl-embed-sub { font-size: .72rem; margin: 0 0 .45rem; }
+.mdl-embed-list {
+  display: flex; flex-direction: column; gap: .45rem;
+  max-height: 24rem; overflow-y: auto;
+}
+.mdl-embed-list .mdl-card { background: var(--panel); }

@@ -1097,7 +1097,7 @@ async function seedFiles(fm) {
  * @param {string} path an absolute guest path under /workspace or /mnt/<proj>
  * @returns {Promise<Blob | null>}
  */
-export async function exportFile(path) {
+export async function exportFile(path, exec = execInSandbox) {
   const p = String(path || "");
   // Only round-trip files out of the mount tree — never arbitrary guest paths
   // (the policy predicate lives in bash-core.js next to OUTBOX_PATH).
@@ -1106,7 +1106,7 @@ export async function exportFile(path) {
     return null;
   }
   try {
-    const r = await execInSandbox("base64 -w0 " + shellEscape(p));
+    const r = await exec("base64 -w0 " + shellEscape(p));
     if (r.exitCode !== 0 || !r.stdout) {
       sblog("debug", "sandbox.fs.export", { path: p.slice(0, 120), bytes: 0, ok: false, rc: r.exitCode });
       flushSandboxLog();
@@ -1131,13 +1131,22 @@ export async function exportFile(path) {
 // and round-trips each file out via exportFile (base64-through-exec — the one
 // documented host-read route). Bounded by the bash-core caps, entirely
 // fail-soft (any problem → fewer/no deliverables, never a broken reply).
+//
+// `exec` is the execution environment to collect FROM. It defaults to this
+// module's own VM (with the readiness guard that only makes sense here); the
+// caller passes a local runner's exec instead when that ran the loop
+// (exec-backends-core.js), so the download flow works the same in both — the
+// whole path is the pure bash-core outbox convention plus base64-through-exec,
+// with nothing CheerpX-specific in it.
 /**
+ * @param {((command: string, opts?: any) => Promise<{exitCode: number, stdout: string, stderr: string}>) | null} [exec]
  * @returns {Promise<Array<{ name: string, size: number, blob: Blob }>>}
  */
-export async function collectDeliverables() {
+export async function collectDeliverables(exec = null) {
   try {
-    if (vmState !== "ready" || !cx) return [];
-    const listing = await execInSandbox(outboxListCommand());
+    if (!exec && (vmState !== "ready" || !cx)) return [];
+    const run = exec || execInSandbox;
+    const listing = await run(outboxListCommand());
     if (listing.exitCode !== 0) {
       sblog("debug", "sandbox.fs.deliver", { n: 0, rc: listing.exitCode, ok: false });
       return [];
@@ -1147,7 +1156,7 @@ export async function collectDeliverables() {
     const out = [];
     let bytes = 0;
     for (const f of files) {
-      const blob = await exportFile(OUTBOX_PATH + "/" + f.name);
+      const blob = await exportFile(OUTBOX_PATH + "/" + f.name, run);
       if (blob && blob.size) {
         out.push({ name: f.name, size: blob.size, blob });
         bytes += blob.size;

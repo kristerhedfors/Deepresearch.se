@@ -38,6 +38,8 @@ import { feedbackForcesServerRoute, feedbackIntent } from "./feedback-core.js";
 import { slashEffect } from "./slash-core.js";
 import { aiModelIntent } from "./ai-models.js";
 import { collectDeliverables, ensureSandboxBooted, execInSandbox, resetSandboxIfLacking, sandboxFsSummary, sandboxIdle, sandboxSupported, sblog } from "./sandbox.js";
+import { selectRunner } from "./exec-backends-core.js";
+import { execEnvCfg, localRunnerActive } from "./exec-env.js";
 import { hasPending } from "./attachments.js";
 import {
   addAssistantTurn,
@@ -78,6 +80,7 @@ import {
 import { firstChunks, retrieve } from "./rag.js";
 import { renderQuiz } from "./quiz.js";
 import { mergeSearch, nodeRenderState, renderWorkflow } from "./workflow-viz.js";
+import { renderModelCardsEvent } from "./models-panel.js";
 import { setGraphWorkflow, updateGraphAgent } from "./graph-backdrop.js";
 import { workflowEvent, workflowWaves } from "./orchestrator-core.js";
 // The on-device swarm pre-pass (maybeRunSwarmPrepass): both entry points are
@@ -615,6 +618,16 @@ function handleEvent(turn, evt, acc) {
         setGraphWorkflow(embed.workflow, embed.statuses);
       }
     }
+    else if (s.type === "model_cards" && Array.isArray(s.models) && s.models.length) {
+      // The Models agent ranked the cross-provider catalog against this question
+      // (src/models-agent.js). Render the pickable cards inside the turn, so the
+      // "which model, what does it cost, what has it passed" decision sits next
+      // to the reasoning about it. Not recorded as a persisted embed: the prices
+      // and the verification state are live, and a reopened conversation must
+      // not show yesterday's as if they were current — the board (⚖) re-reads
+      // them on demand.
+      renderModelCardsEvent(turn, s);
+    }
     else if (s.type === "agent_update" && typeof s.id === "string" && turn._wfEmbed) {
       applyAgentUpdate(turn, s.id, {
         status: s.status,
@@ -855,6 +868,14 @@ async function buildChatPayload(opts) {
     // The outward feed (src/outrospect.js) — introspection's mirror image,
     // same capability gate; the server ignores the field when the knob is off.
     payload.outrospection_mode = true;
+  } else if (chatMode === "models") {
+    // The model-lifecycle agent (src/models-agent.js): Hub search forced on for
+    // the turn, and a message about models answered against the live
+    // cross-provider catalog, priced and annotated with what has been verified.
+    // Same capability gate; the server ignores the field when the knob is off.
+    // It replaces no flow, so the turn is an ordinary research turn with the
+    // hub and the catalog in front of it.
+    payload.models_mode = true;
   }
   // Ghost toggle: tells the server to keep this exchange out of the
   // server-side interaction log too (src/chatlog.js) — the same choice
@@ -931,6 +952,13 @@ function sendNeedsMounts(opts) {
   };
 }
 
+/**
+ * The in-browser CheerpX VM as a Runner (exec-backends-core.js) — this tier's
+ * default execution environment, and what selectRunner hands back untouched
+ * unless this device has a local runner configured.
+ */
+const BROWSER_RUNNER = { supported: sandboxSupported, boot: ensureSandboxBooted, exec: execInSandbox };
+
 // PRE-WARM: boot a Linux VM as soon as the user focuses the composer, so the
 // unavoidable ~25s CheerpX cold start elapses while they type instead of
 // after they hit send. Idempotent (gated on sandboxIdle) and strictly best-
@@ -944,6 +972,10 @@ function sendNeedsMounts(opts) {
 export function prewarmSandbox() {
   try {
     if (!bashLiteOn() || !sandboxSupported()) return;
+    // This device runs commands on a local runner — don't stream a Debian image
+    // into a VM that will never execute anything. The runner needs no pre-warm:
+    // its first container starts in well under a second.
+    if (localRunnerActive()) return;
     if (!sandboxIdle()) return; // already booting or booted — nothing to do
     if (hasPending() || activeProject()) return; // would need real per-send mounts
     const withSource = developerModeOn();
@@ -1013,10 +1045,21 @@ async function maybeRunShellLoop(turn, opts) {
     // step prompt knows it's an SDK send (feedback #7, chat_logs #583).
     const sdkSend = cachedChatMode() === "sdk";
     if (sdkSend && !bashIntent(latestUser || "")) return [];
+    // WHERE this send's commands run (public/js/exec-backends-core.js). With no
+    // local runner configured — the default for everyone who never opens the
+    // setting — `runner` IS the browser-VM bridge and every line below behaves
+    // exactly as it did before this seam existed.
+    const localExec = localRunnerActive();
+    const runner = selectRunner(execEnvCfg(), BROWSER_RUNNER, {
+      onLog: (event, fields) => sblog("info", event, fields),
+    });
+
     // Knob on but the page isn't cross-origin isolated (COEP): the sandbox
     // cannot boot. app.js self-heals by reloading once; if we still land here,
     // tell the user plainly instead of silently answering "I can't run code".
-    if (!sandboxSupported()) {
+    // Isolation is a requirement of the in-browser VM (SharedArrayBuffer), not
+    // of execution as such — a local runner is a plain fetch and needs none.
+    if (!localExec && !sandboxSupported()) {
       startGenericStep(turn, "sandbox", "Starting sandbox…");
       finishGenericStep(turn, {
         id: "sandbox",
@@ -1032,20 +1075,31 @@ async function maybeRunShellLoop(turn, opts) {
     // and re-boot with the real provider below. Awaits any in-flight pre-warm
     // to settle first; a no-op when the live VM already has what's needed
     // (notably: a dev-mode pre-warm already carries /src and is kept).
-    await resetSandboxIfLacking(sendNeedsMounts(opts));
+    // Meaningless for a local runner — there is no VM here to hold mounts.
+    if (!localExec) await resetSandboxIfLacking(sendNeedsMounts(opts));
 
     let booted = false;
     let ran = 0;
     // Boot the VM the first (and only the first) time the model asks to run
     // something — surfaced as a turn step so the user sees the (slow) first
-    // boot. Returns whether the sandbox is usable.
+    // boot. Returns whether the sandbox is usable. For a local runner "booting"
+    // is one health probe, so the step is honest about the difference.
     const fileProvider = buildSandboxFileProvider(opts);
     const bootOnce = async () => {
-      startGenericStep(turn, "sandbox", "Booting Linux sandbox…");
+      startGenericStep(turn, "sandbox", localExec ? "Connecting to your local runner…" : "Booting Linux sandbox…");
       // The first boot is slow (a whole Debian streams in), so entertain the
       // step label with rotating quips (public/js/boot-messages.js) until ready.
-      booted = await ensureSandboxBooted(fileProvider, (msg) => updateGenericStep(turn, "sandbox", msg));
-      if (!booted) finishGenericStep(turn, { id: "sandbox", label: "Sandbox unavailable — answering normally" });
+      booted = await runner.boot(fileProvider, (msg) => updateGenericStep(turn, "sandbox", msg));
+      if (!booted) {
+        finishGenericStep(turn, {
+          id: "sandbox",
+          // Name the environment that failed: "unavailable" sends someone
+          // hunting the browser VM when the real fix is `node runner.mjs`.
+          label: localExec
+            ? "Your local runner isn't reachable — answering without a shell. Check it's running, then Test connection in Settings."
+            : "Sandbox unavailable — answering normally",
+        });
+      }
       return booted;
     };
     // The user's research time budget scopes the per-command ceiling: a
@@ -1057,7 +1111,7 @@ async function maybeRunShellLoop(turn, opts) {
       // The transcript keeps only MAX_OUTPUT_CHARS per command, so ask the guest
       // for a bounded slice instead of hauling a whole file across the VM→JS
       // boundary to throw it away (docs/SANDBOX-PERFORMANCE.md).
-      exec: (command) => execInSandbox(command, { timeoutMs: execTimeoutMs, maxStdoutBytes: GUEST_STDOUT_CAP_BYTES }),
+      exec: (command) => runner.exec(command, { timeoutMs: execTimeoutMs, maxStdoutBytes: GUEST_STDOUT_CAP_BYTES }),
       ensureReady: bootOnce,
       sdk: sdkSend,
       // Surface WHICH command is running, live — the user asked to see the
@@ -1082,7 +1136,9 @@ async function maybeRunShellLoop(turn, opts) {
       // attachments instead of pasting file contents. Entirely fail-soft.
       if (wantsOutboxCollect(transcript)) {
         try {
-          const files = await collectDeliverables();
+          // Collect from whichever environment actually ran the loop — the
+          // outbox convention is the runner's, not the browser VM's.
+          const files = await collectDeliverables(localExec ? (cmd) => runner.exec(cmd) : null);
           if (files.length) {
             renderDeliverables(turn, files);
             transcript.push(deliverablesRun(files));
