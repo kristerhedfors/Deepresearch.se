@@ -2513,3 +2513,65 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 .pool-mint input { flex: 1 1 12rem; min-width: 0; }
 .pool-link { word-break: break-all; font-size: .72rem; }
 .pool-flow { margin-top: .8rem; }
+
+/* ---------------------------------------------------------------------------
+   The outward feed as the outrospection session's history (owner directive,
+   2026-07-26 — public/js/outrospect-feed.js). Rendered INTO the chat scroller,
+   newest at the bottom, older pages prepended on demand. It reuses the mode's
+   newsprint variables rather than inventing a palette, so the feed reads as
+   part of the session rather than a widget dropped into it.
+   --------------------------------------------------------------------------- */
+.outro-history { display: flex; flex-direction: column; gap: 0; }
+.outro-list { display: flex; flex-direction: column; }
+.outro-more {
+  align-self: center;
+  margin: .2rem 0 .6rem;
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: .35rem .85rem;
+  cursor: pointer;
+}
+.outro-more:hover { color: var(--text); border-color: var(--muted); }
+.outro-more[hidden] { display: none; }
+.outro-entry {
+  padding: .7rem 0;
+  border-bottom: 1px solid var(--border);
+}
+/* A newly-arrived entry gets the same red rule the /outrospect/ page uses, so
+   "new since you last looked" reads identically on both surfaces. */
+.outro-entry.fresh {
+  border-left: 3px solid var(--accent);
+  padding-left: .7rem;
+  margin-left: -.7rem;
+}
+.outro-kicker {
+  margin: 0 0 .15rem;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+  font-size: .66rem;
+  font-weight: 700;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.outro-new { background: var(--accent); color: #fffdf8; border-radius: 3px; padding: .05rem .3rem; }
+.outro-head { margin: 0 0 .2rem; font-size: 1rem; line-height: 1.25; font-weight: 700; }
+.outro-head a { color: var(--text); text-decoration: none; }
+.outro-head a:hover { color: var(--accent); text-decoration: underline; }
+.outro-teaser { margin: 0 0 .2rem; font-size: .86rem; color: var(--muted); }
+.outro-src { margin: 0; font-size: .7rem; font-weight: 600; color: var(--muted); }
+.outro-intro {
+  margin: .8rem 0 .2rem;
+  font-size: .78rem;
+  font-style: italic;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  padding-top: .6rem;
+}

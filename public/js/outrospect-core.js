@@ -1050,3 +1050,100 @@ export function outrospectionAnswerPrompt(opts = {}) {
     : "Answer in the language the user wrote in (svara på svenska om användaren skriver svenska).";
   return `${head}${lensLine}\n\n${hasItems ? `${grounded}\n\n${quoting}` : empty}\n\n${compare}\n\n${language}`;
 }
+
+// ---------------------------------------------------------------------------
+// THE FEED AS SESSION HISTORY (owner directive, 2026-07-26)
+//
+// Entering the outrospection agent should not show an empty chat. The feed IS
+// the session's history: a blank outrospection session opens with the latest
+// entries already in the transcript, older pages load as you scroll back, and
+// the WHOLE feed — not just the page you can see — is RAG-indexed in the
+// browser so a question retrieves against all of it.
+//
+// That split is the point, and it is why the indexing exists. What the READER
+// gets is the full list, paged. What the MODEL gets is a handful of
+// semantically retrieved items, because 400 items will not fit in a prompt and
+// pretending otherwise would just truncate the feed to whatever happened to be
+// newest. Display and retrieval answer different questions.
+//
+// The index lives in the BROWSER (public/js/rag.js over IndexedDB, the same
+// store attachments and project chats use) and its excerpts ride out inside
+// the outgoing message, exactly like document excerpts do. The server is never
+// sent the index — invariant 4's posture, unchanged: what leaves is a question
+// and the excerpts the user's own browser chose.
+// ---------------------------------------------------------------------------
+
+/** How many items the session opens with, and how many each scroll-back adds. */
+export const FEED_PAGE_SIZE = 40;
+/** How many retrieved items ride out with an outrospection question. */
+export const FEED_RETRIEVE_K = 8;
+
+/**
+ * One page of the feed, counting BACK from the newest. `offset` 0 is the
+ * newest page — the one a blank session opens on.
+ * @param {FeedItem[]} items newest-first (mergeFeed's order)
+ * @param {{ offset?: number, size?: number }} [opts]
+ * @returns {{ page: FeedItem[], more: boolean, nextOffset: number }}
+ */
+export function feedPage(items, { offset = 0, size = FEED_PAGE_SIZE } = {}) {
+  const list = Array.isArray(items) ? items : [];
+  const start = Math.max(0, offset);
+  const page = list.slice(start, start + Math.max(1, size));
+  const nextOffset = start + page.length;
+  return { page, more: nextOffset < list.length, nextOffset };
+}
+
+/**
+ * One item rendered as embeddable text. Deliberately SELF-CONTAINED — title,
+ * lens, source and URL all present — because the chunker may merge two short
+ * items into one chunk, and a retrieved chunk that has lost its URL is an
+ * article the answer cannot cite.
+ * @param {FeedItem} item
+ * @returns {string}
+ */
+export function feedItemIndexText(item) {
+  const lens = lensById(item?.lens);
+  const when = Number.isFinite(item?.first_seen) ? new Date(item.first_seen).toISOString().slice(0, 10) : "";
+  return [
+    `## ${item?.title || "(untitled)"}`,
+    `lens: ${lens ? lens.title : item?.lens || "—"}`,
+    `source: ${item?.source || itemSource(item?.url)}${when ? ` · first seen ${when}` : ""}`,
+    `url: ${item?.url || ""}`,
+    item?.teaser ? `\n${item.teaser}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/**
+ * The whole feed as one indexable document.
+ * @param {FeedItem[]} items
+ * @returns {string}
+ */
+export function feedIndexText(items) {
+  return (Array.isArray(items) ? items : [])
+    .map(feedItemIndexText)
+    .join("\n\n");
+}
+
+/**
+ * The context block an outrospection question carries out, built from what
+ * the BROWSER's index retrieved. Mirrors the document-excerpt blocks the
+ * research path already sends, so the answer model sees one familiar shape.
+ * @param {{ text?: string }[]} matches rag.js retrieve() results
+ * @param {{ limit?: number }} [opts]
+ * @returns {string} "" when nothing was retrieved
+ */
+export function outwardExcerptBlock(matches, { limit = FEED_RETRIEVE_K } = {}) {
+  const texts = (Array.isArray(matches) ? matches : [])
+    .map((m) => (typeof m?.text === "string" ? m.text.trim() : ""))
+    .filter(Boolean)
+    .slice(0, Math.max(1, limit));
+  if (!texts.length) return "";
+  return (
+    "\n\n[OUTWARD FEED — entries retrieved from this browser's index of the feed, " +
+    "matched against the question. These are what other people shipped; cite them by " +
+    "title and url.]\n" +
+    texts.join("\n\n---\n\n")
+  );
+}
