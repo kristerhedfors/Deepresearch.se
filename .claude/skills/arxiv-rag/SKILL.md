@@ -12,15 +12,33 @@ description: >-
   than a fixed budget can express, and bge-reranker-v2-m3 is served behind the
   same 512-token window covering query+document), and the evaluation
   discipline that keeps a RAG bake-off honest — above all that a small corpus
-  saturates every variant to ~98% and measures nothing.
+  saturates every variant to ~98% and measures nothing. The PROVIDER-AGNOSTIC
+  half of that experience — enumeration cross-validation, checkpointing for
+  ephemeral machines, rate-limit citizenship, Vectorize billing and traps, the
+  relevance floor — now lives in the **bulk-corpus-etl** skill.
 ---
 
 # The arXiv RAG search database
 
-A retrieval database over a year of arXiv (~327k papers), embedded with
-Berget `intfloat/multilingual-e5-large`, searched from the CLI. Full design,
-measurements and operating manual: **`docs/ARXIV-RAG.md`**. This skill is the
-working knowledge — what bites, and what not to re-derive.
+A retrieval database over a year of arXiv, embedded with Berget
+`intfloat/multilingual-e5-large`. Full design, measurements and operating
+manual: **`docs/ARXIV-RAG.md`**. This skill is the working knowledge — what
+bites, and what not to re-derive.
+
+> **The generalizable ETL discipline is the `bulk-corpus-etl` skill.** Load that
+> one for anything that would apply to a different corpus: enumerating from two
+> independent sources (and why one cannot detect its own gaps), "kept" vs unique
+> counts, window-boundary bugs, flow control vs failure, incremental upsert as
+> the checkpoint, Vectorize's billing model and serialization traps, and the
+> relevance floor. This skill keeps only what is specific to arXiv.
+
+**Status (2026-07-27): the abstract tier is BUILT AND HOSTED.** 337,768 vectors
+in the `deepresearch-se-arxiv` Vectorize index, covering **99.47%** of the
+independently-enumerated 339,388 papers in the 13-month window; the 1,393
+harvested papers not indexed fell below the 200-char abstract floor. The whole
+build ran in one session: 39 s to enumerate, ~40 min to harvest, 124 min to
+embed and upsert. `src/arxiv-rag.js` serves it and `src/arxiv.js` falls back to
+the live API.
 
 ## The pieces
 
