@@ -176,13 +176,33 @@ interaction hooks, the persisted `embeds` list — strict-checked),
 `recovery.js` (the answer-recovery polling client for server-parked
 answers — `recoverAnswer`'s rolling-deadline poll loop + `ackAnswer`;
 delivery of a recovered answer stays in `stream.js`),
+`session-core.js` (the PURE SESSION REGISTRY — a session is an **agent, a
+workspace and a history** addressed by one id, and a tab merely attaches to
+one. Owns the record shape, the id minting (inside
+`[A-Za-z0-9._-]{1,64}` so it doubles as the `src/exec-container.js`
+container session), the heartbeat LEASE that decides whether a session is
+still held, `attachDecision` for the duplicate-tab case, `pruneRegistry`'s
+bounded store, and above all `resumeTarget` — the rule that stops a second
+tab adopting another tab's in-flight research while still letting a cold
+relaunch collect an answer that finished while the app was gone. Records are
+metadata only: ids, agent, send settings, timestamps, never message text.
+Node-tested),
+`session.js` (its BROWSER half — localStorage `dr_sessions` for the durable
+shared registry, sessionStorage `dr_session_tab` for THIS tab's attachment,
+the heartbeat timer, and the accessors every other client module reads
+instead of a browser-global key: `sessionAgent`, `sessionConfig`,
+`sessionConvId`, `claimResumeTarget`, `takeOverSession`. Every mutator is
+read-modify-write over the live stored value and only ever patches this
+tab's own record, because several tabs share one registry with no lock),
 `pending-answer.js` (the RESUME-ACROSS-RELAUNCH pointer that closes the
 gap `recovery.js` can't: iOS can discard a backgrounded PWA entirely, so
 a cold relaunch loses the in-memory request id `recovery.js` would poll
 with — this writes a metadata-ONLY marker (conversation id, request id,
 settings, timestamp; NEVER message text, and nothing for incognito
 chats) so the next launch collects the answer the server finished while
-the tab was gone),
+the tab was gone. Since 2026-07-27 the marker lives on the SESSION record
+rather than in one browser-global slot — it stays DURABLE, which is what
+keeps the iOS case working; the multi-tab rule is in `resumeTarget`),
 `sse.js` (the pure SSE line-buffer parser `stream.js`'s read loop feeds —
 Node-tested), `message-content.js` (pure builders for the outgoing
 message: labeled document / image-metadata / RAG-excerpt blocks, title

@@ -52,10 +52,30 @@ import { CHAT_MODES, DEFAULT_CHAT_MODE, normalizeChatMode } from "./chat-mode-co
 import { DEV_MODE_CLASS } from "./dev-mode.js";
 import { barTint } from "./mode-theme.js";
 import { nudgeTint } from "./bar-tint.js";
+import { sessionAgent, setSessionAgent } from "./session.js";
 
 export { CHAT_MODES, DEFAULT_CHAT_MODE, normalizeChatMode };
 
-/** The localStorage key caching the picked chat mode for first paint. */
+// THE AGENT IS PER SESSION (owner directive, 2026-07-27). A session is an
+// agent, a workspace and a history (session-core.js), so the mode belongs to
+// the session and two tabs run two agents — which is the point of opening a
+// second tab. Before this the mode was one value for the whole account and the
+// dropdown wrote it globally, so opening a tab could land you in whatever agent
+// another tab had last picked, and a resumed conversation was answered by
+// whichever agent happened to be current.
+//
+// The key below therefore changed ROLE but not name: it is no longer "the
+// mode", it is the SEED — the account's last pick, cached for (a) first paint
+// before any session exists, and (b) the agent a brand-new session starts in.
+// Keeping the name matters: index.html's inline first-paint script reads it
+// directly, and that script's bytes are pinned by a CSP hash
+// (THEME_BOOT_HASH in src/security-headers.js), so leaving it alone avoids a
+// hash recompute for a rename that buys nothing.
+/**
+ * The localStorage key caching the account's picked chat mode — the first-paint
+ * theme and the seed for a new session. The mode a session is actually running
+ * is on the session record; read it with cachedChatMode().
+ */
 export const CHAT_MODE_KEY = "dr_chat_mode";
 /** The root class carrying the green SDK-mode pane tint. */
 export const SDK_MODE_CLASS = "sdk-mode";
@@ -66,13 +86,15 @@ export const OUTRO_MODE_CLASS = "outro-mode";
 /** The root class carrying the amber Models-mode pane tint. */
 export const MODELS_MODE_CLASS = "models-mode";
 /**
- * The mode to paint/send with right now, synchronously — the cached answer used
- * at first paint, before /api/settings resolves. "normal" when nothing is
- * cached or storage is unavailable (the safe default: the ordinary composer
- * pane and plain deep research).
+ * The account's last picked mode — the first-paint theme and the seed a NEW
+ * session starts in. "normal" when nothing is cached or storage is unavailable
+ * (the safe default: the ordinary composer pane and plain deep research).
+ *
+ * Callers wanting "which agent is answering here" want cachedChatMode(); this
+ * is only the seed. app.js passes it to initSession.
  * @returns {string}
  */
-export function cachedChatMode() {
+export function accountChatMode() {
   try {
     const stored = globalThis.localStorage?.getItem(CHAT_MODE_KEY);
     if (stored) return normalizeChatMode(stored);
@@ -83,17 +105,50 @@ export function cachedChatMode() {
 }
 
 /**
- * Cache the picked mode ("normal" is stored too — an explicit Normal pick must
- * survive reloads rather than reading as "nothing chosen"). Fail-soft.
+ * THE mode to paint/send with right now, synchronously — THIS SESSION's agent.
+ * Every send path and every theme read goes through here, which is what makes
+ * two tabs two agents.
+ *
+ * Falls back to the account seed when the session has no agent yet: before
+ * initSession runs (the synchronous first-paint block at the top of app.js) and
+ * whenever storage is unavailable, so private mode still paints and sends
+ * correctly — it just can't remember the pick.
+ * @returns {string}
+ */
+export function cachedChatMode() {
+  try {
+    const mine = sessionAgent();
+    if (mine) return normalizeChatMode(mine);
+  } catch {
+    /* no session yet (first paint) or storage blocked — fall through to the seed */
+  }
+  return accountChatMode();
+}
+
+/**
+ * Record the picked mode on THIS SESSION, and — unless told not to — update the
+ * account seed so the next new tab opens in the same agent. ("normal" is stored
+ * too: an explicit Normal pick must survive reloads rather than reading as
+ * "nothing chosen".) Fail-soft on both.
  * @param {string} mode
+ * @param {{ account?: boolean }} [opts] account:false writes only the session —
+ *   used when adopting a value that came FROM the account, so a per-tab switch
+ *   elsewhere is not overwritten by another tab's boot.
  * @returns {string} the stored (normalized) mode
  */
-export function storeChatMode(mode) {
+export function storeChatMode(mode, opts) {
   const m = normalizeChatMode(mode);
   try {
-    globalThis.localStorage?.setItem(CHAT_MODE_KEY, m);
+    setSessionAgent(m);
   } catch {
-    /* storage unavailable — the theme still applies for this page */
+    /* no session/storage — the theme still applies for this page */
+  }
+  if (!opts || opts.account !== false) {
+    try {
+      globalThis.localStorage?.setItem(CHAT_MODE_KEY, m);
+    } catch {
+      /* storage unavailable */
+    }
   }
   return m;
 }
@@ -103,12 +158,13 @@ export function storeChatMode(mode) {
  * (or none, for normal). Persists unless {persist:false} (the boot-time cached
  * apply is READING the cache, not deciding).
  * @param {string} mode
- * @param {{ persist?: boolean }} [opts]
+ * @param {{ persist?: boolean, account?: boolean }} [opts] account:false records
+ *   the mode on this session only, leaving the account seed alone
  * @returns {string} the applied (normalized) mode
  */
 export function applyChatModeTheme(mode, opts) {
   const m = normalizeChatMode(mode);
-  if (!opts || opts.persist !== false) storeChatMode(m);
+  if (!opts || opts.persist !== false) storeChatMode(m, { account: opts?.account !== false });
   try {
     const root = globalThis.document?.documentElement;
     root?.classList?.toggle(DEV_MODE_CLASS, m === "introspection");
@@ -140,18 +196,39 @@ export function applyChatModeTheme(mode, opts) {
 
 /**
  * Adopt the server's mode once /api/settings resolves. The account's stored
- * `chat_mode` is the authority — it follows the account across devices, and the
- * server has already forced it to "normal" if the modes are unavailable — so
- * this is a plain cache write plus a repaint, with no downgrade rule to get
- * wrong. (It replaced `reconcileChatMode`, which existed only to referee
- * between the local mode pick and the separate developer_mode knob.)
+ * `chat_mode` is the authority for the ACCOUNT DEFAULT — it follows the account
+ * across devices, and the server has already forced it to "normal" if the modes
+ * are unavailable — so there is no downgrade rule on this side.
+ *
+ * What it is NOT, since the agent went per-session (2026-07-27): authority over
+ * a session already in progress. `seed` says which case this is, and app.js
+ * knows because initSession told it:
+ *
+ *   seed: true  — a NEW session (a new tab, or one whose session was taken over).
+ *                 The account's mode is the right agent to open in, so adopt it.
+ *   seed: false — a RESUMED session (this tab reloaded). Its own agent wins;
+ *                 the server value only refreshes the seed for the next new tab.
+ *                 Without this a reload would silently drag the tab back to
+ *                 whatever agent another tab last pushed to the account.
  *
  * A server payload that does not carry `chat_mode` at all — an older or partial
- * response — leaves the cached pick alone rather than resetting it to normal.
+ * response — leaves the pick alone rather than resetting it to normal.
  * @param {{ chat_mode?: string } | null | undefined} serverSettings
- * @returns {string} the effective mode (applied + cached)
+ * @param {{ seed?: boolean }} [opts]
+ * @returns {string} the effective mode for this session
  */
-export function adoptServerChatMode(serverSettings) {
+export function adoptServerChatMode(serverSettings, opts) {
   const named = normalizeChatMode(serverSettings?.chat_mode, "");
+  if (opts?.seed === false) {
+    // Refresh the account seed only; this session keeps the agent it is running.
+    if (named) {
+      try {
+        globalThis.localStorage?.setItem(CHAT_MODE_KEY, named);
+      } catch {
+        /* storage unavailable */
+      }
+    }
+    return applyChatModeTheme(cachedChatMode(), { account: false });
+  }
   return applyChatModeTheme(named || cachedChatMode());
 }

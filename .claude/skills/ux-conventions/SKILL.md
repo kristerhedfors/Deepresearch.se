@@ -1134,3 +1134,47 @@ unauthenticated root branch in `src/index.js`, `public/cure/drc.js`
 before editing any of them; the `intro-baseline` skill is the load trigger.
 Node-tested in `src/intro-phase.test.js` (the cross-surface contract) and
 `src/landing.test.js` (the landing's own structure).
+
+## UX-20 — A second tab starts its own session; it never joins one already in progress
+
+**Rule.** Opening the app in a new tab produces a NEW session — its own agent,
+workspace and history — and never attaches to work another tab is doing. When a
+tab does find itself pointed at a session another live tab holds (a duplicated
+tab, a restored window group), it is given a fresh session so it is usable
+immediately, and it *offers* the alternative rather than taking it: "That chat is
+open in another tab. This tab started a new one." + **Open it here instead**.
+
+**Why.** Reported by the owner, 2026-07-27: opening a second tab dropped straight
+into the first tab's running research, under a different agent. Every ingredient
+was browser-global — one `dr_pending_answer` slot, one account-wide chat mode, one
+set of composer knobs — so a new tab read all three and joined in, then cleared
+the first tab's resume marker and acked the server's parked answer away. Multiple
+tabs were unusable.
+
+**The parts of the rule that are easy to get wrong:**
+
+1. **Silence is never an option in either direction.** A second tab must not
+   silently share a session (two writers on one workspace and one history), and it
+   must not silently refuse to open either. It works, and it says what it did.
+2. **A cold relaunch is NOT a second tab.** The in-flight answer pointer stays
+   DURABLE precisely so an iOS PWA discard + cold relaunch still collects the
+   answer the server finished while the app was gone — the case the feature exists
+   for. The discriminator is the lease: no session held anywhere means every tab
+   died, so the app is coming back; any live lease means this is a sibling.
+   Getting this backwards either re-breaks multi-tab or throws away finished
+   research.
+3. **A conversation carries its agent.** Reopening a chat resumes the agent that
+   produced it, scoped to that session — never to the account, or reopening a chat
+   in one tab would move another tab's agent.
+4. **Seeds, not shared state.** The account's mode and the device's last-used send
+   settings still decide what a NEW session opens with, so "it remembers where I
+   left things" holds. They stop being live shared state between open tabs.
+5. **Taking over reloads.** The agent, the workspace mount and the history all
+   hang off the session id and the boot is what wires them, so a takeover
+   re-enters the boot rather than re-deriving in place.
+
+**Canonical implementation:** `public/js/session-core.js` (the pure rules —
+`resumeTarget`, `attachDecision`, the lease; Node-tested in
+`session-core.test.js`), `public/js/session.js` (the two stores + the heartbeat),
+and `public/js/app.js` (the boot order, `offerSessionTakeover`, `persistKnobs`).
+The other-sessions list is `history-ui.js` `sessionsBlock`.

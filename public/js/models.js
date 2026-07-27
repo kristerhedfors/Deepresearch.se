@@ -1,5 +1,7 @@
-// Model dropdown: catalog from /api/models, selection persisted in
-// localStorage. If the catalog can't load, the dropdown stays hidden and
+// Model dropdown: catalog from /api/models, the pick recorded on the SESSION
+// (session.js) with the legacy `model` localStorage key kept as the device SEED —
+// what a brand-new tab opens on. Before 2026-07-27 the pick was browser-global,
+// so reloading one tab adopted whatever model another tab had last chosen. If the catalog can't load, the dropdown stays hidden and
 // the server default applies. Models the provider reports as down render
 // disabled and become selectable again when they come back. Each option is
 // flag-prefixed with its provider's country of processing (data goes where
@@ -15,6 +17,7 @@
 
 import { labelWithFlag, regionForModelEntry } from "./provider-region.js";
 import { cachedOnDeviceModels, onDeviceEnabled } from "./ondevice-drs.js";
+import { sessionConfig, setSessionConfig } from "./session.js";
 
 let sel;
 let onChange = () => {};
@@ -22,11 +25,26 @@ let knownModels = []; // /api/models entries, for vision capability lookup
 let onDeviceEntries = []; // downloaded on-device models ({id,label,value,cachedBytes})
 let serverDefault = "";
 
+/**
+ * Record a model pick: the SESSION (what this tab sends with) plus the device
+ * seed (what a new tab opens on). Fail-soft on the seed — private mode must not
+ * break the dropdown.
+ * @param {string} id
+ */
+function rememberModel(id) {
+  setSessionConfig({ model: id });
+  try {
+    localStorage.setItem("model", id);
+  } catch {
+    /* the session copy is what the send reads anyway */
+  }
+}
+
 export function initModels(selectEl, opts = {}) {
   sel = selectEl;
   onChange = opts.onChange || onChange;
   sel.addEventListener("change", () => {
-    localStorage.setItem("model", sel.value);
+    rememberModel(sel.value);
     onChange();
   });
   loadModels();
@@ -68,7 +86,7 @@ export function visionFallback() {
  */
 export function selectModel(id) {
   sel.value = id;
-  localStorage.setItem("model", id);
+  rememberModel(id);
   onChange();
 }
 
@@ -170,7 +188,15 @@ function render() {
     sel.appendChild(og);
   }
   const selectable = (id) => [...sel.options].some((o) => o.value === id && !o.disabled);
-  const saved = localStorage.getItem("model");
+  // This SESSION's model first, the device seed second: a reload restores what
+  // THIS tab was using, and only a brand-new session falls back to the seed.
+  const saved = sessionConfig().model || (() => {
+    try {
+      return localStorage.getItem("model");
+    } catch {
+      return null;
+    }
+  })();
   // Never auto-default to on-device: without an explicit pick the server
   // default applies, so nobody lands on a phone-speed model by surprise.
   const pick = saved && selectable(saved) ? saved

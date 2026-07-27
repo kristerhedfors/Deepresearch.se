@@ -35,9 +35,13 @@ import {
   usesRemoteRunner,
 } from "./exec-backends-core.js";
 import { execContainerAvailable } from "./settings.js";
+import { currentSessionId } from "./session.js";
 
 const CFG_KEY = "dr_exec_env";
-/** The per-tab session id that keeps one conversation on ONE machine (below). */
+/**
+ * LEGACY per-tab session slot, kept only as the fallback in execSessionId below
+ * (the app session id is the authority since 2026-07-27).
+ */
 const SESSION_KEY = "dr_exec_session";
 
 // ---- the browser-local config ------------------------------------------------
@@ -94,17 +98,38 @@ export function serverContainerActive() {
 
 /**
  * The execution session id — the thing that keeps ONE conversation's commands on
- * ONE machine. Held in sessionStorage, so:
- *   - consecutive sends in this tab reach the same container: the agent's `cd`,
- *     its installed files and the ~11 MB /src seed survive from send to send
- *     (the stamp guard in src/exec-container.js then makes the re-mount free),
- *   - a new tab is a new machine, and closing the tab abandons the old one to
- *     the runner's idle reaper — ephemeral by construction, not by promise.
- * Falls back to a fresh id per call when storage is blocked (private mode),
- * which costs a cold container per send but never an error.
+ * ONE machine. Since 2026-07-27 this IS the app's session id (session.js): a
+ * session is an agent, a WORKSPACE and a history, and this is the workspace half
+ * on the remote-runner backends. So:
+ *   - consecutive sends in this session reach the same container: the agent's
+ *     `cd`, its installed files and the ~11 MB /src seed survive from send to
+ *     send (the stamp guard in src/exec-container.js then makes the re-mount
+ *     free),
+ *   - a new tab is a new session and therefore a new machine, and ending the
+ *     session abandons the old one to the runner's idle reaper — ephemeral by
+ *     construction, not by promise,
+ *   - and the container, the conversation and the agent now share ONE identity
+ *     rather than three that merely happened to line up. `session_id` on
+ *     /api/chat is the same value.
+ *
+ * The id is minted inside `[A-Za-z0-9._-]{1,64}` so it survives
+ * src/exec-container.js's sanitizeSession verbatim (pinned by a test in
+ * session-core.test.js) — a malformed one would silently cost a fresh container.
+ *
+ * The legacy `dr_exec_session` sessionStorage slot is still read as a FALLBACK
+ * for the one case with no session: a page that somehow calls this before
+ * session.js initializes. Falls back to a fresh id per call when storage is
+ * blocked (private mode), which costs a cold container per send but never an
+ * error.
  * @returns {string}
  */
 export function execSessionId() {
+  try {
+    const sid = currentSessionId();
+    if (sid) return sid;
+  } catch {
+    /* no session yet — fall through to the legacy per-tab slot */
+  }
   try {
     const existing = sessionStorage.getItem(SESSION_KEY);
     if (existing) return existing;
