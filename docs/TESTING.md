@@ -153,7 +153,19 @@ the contract document names actually exists.
 
 Additional server suites cover the request/routing and infra seams:
 `mcp.js` (the PURE JSON-RPC / MCP protocol helpers, asserted to load
-WITHOUT pulling in the pipeline), `model-routing.js` (the shared
+WITHOUT pulling in the pipeline), and the three modules behind connecting an
+external client to it — `mcp-key.js` (the bearer credential: the
+`mck1.<payload>.<hex sig>` wire shape, a mint→verify round-trip preserving the
+claims, a fresh unguessable `jti` per mint, and rejection of expired, tampered,
+malformed, wrong-prefix and foreign-secret keys), `mcp-api.js` (resolving a key
+to its account against a mocked D1: no bearer and another family's bearer both
+fall through to the identity gate, while revocation, rotation, the master
+switch, and a non-active or deleted account each stop a live key immediately),
+and `mcp-config.js` (the per-account exposure policy: the catalog mirrors the
+tool list `mcp.js` serves exactly, unreadable input degrades to the
+everything-exposed default that preceded it, out-of-range budgets are clamped
+rather than honoured, the master switch outranks every individual tool row, and
+`filterMcpTools` drops uncatalogued names) — `model-routing.js` (the shared
 `resolveJsonModel` split-routing decision `chat.js` and `mcp.js` both
 delegate to), `pipeline.js` + `pipeline-inputs.js` (the flow's pure
 pieces — `normalizeTriage`, `collectConflicts`,
