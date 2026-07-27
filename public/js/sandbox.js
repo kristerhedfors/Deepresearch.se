@@ -32,8 +32,8 @@
 // testable logic lives in public/js/bash-core.js instead.
 
 import { buildSeedScript, planMounts, shellEscape } from "./sandbox-files.js";
-import { feedCommand, feedResult, feedStatus, feedTerminal, setTerminalInputSink } from "./agent-backdrop.js";
-import { createBootMessageRotator, formatBootProgress } from "./boot-messages.js";
+import { feedCommand, feedResult, feedStatus, feedTerminal, feedTerminalLine, setTerminalInputSink } from "./agent-backdrop.js";
+import { bootLogLine, createBootMessageRotator, formatBootProgress } from "./boot-messages.js";
 import {
   DEFAULT_EXEC_TIMEOUT_MS,
   MIN_EXEC_TIMEOUT_MS,
@@ -190,14 +190,33 @@ function startBootQuips() {
  * frozen on the caller's initial "Booting…" string (the 2026-07-13 regression
  * this comment now guards against). The sink is harmless to leave: a warm
  * re-request never ticks, and the next boot overwrites it. resetSandbox clears
- * it on a full teardown. */
-function stopBootQuips() {
+ * it on a full teardown.
+ *
+ * `outcome` is how the boot ENDED ("ready — …", "boot failed: …"), committed to
+ * the terminal pane as a permanent line. Every caller that ends a real boot
+ * passes one; the internal call from startBootQuips passes none (nothing has
+ * ended — it is only clearing a prior timer). Without it the pane went silent
+ * the instant the boot finished OR failed, which is feedback #42: the header
+ * icon still said Linux was running and there was nothing behind the chat.
+ * @param {string} [outcome]
+ */
+function stopBootQuips(outcome) {
+  // Was a boot actually in flight? Only then is there an outcome to record —
+  // this is what keeps the line from doubling when two stoppers fire for the
+  // same boot (the timeout path stops the ticker and then calls resetSandbox,
+  // which stops it again).
+  const wasBooting = !!bootQuipTimer;
   if (bootQuipTimer) { clearInterval(bootQuipTimer); bootQuipTimer = null; }
-  // Drop the terminal pane's boot-progress line: the boot is over (ready,
-  // failed, timed out or torn down) and the VM's own output — or nothing at
-  // all — is the truth from here. Safe on the startBootQuips path too, which
-  // calls this first and then paints a fresh tick immediately.
-  try { feedStatus(""); } catch { /* decoration — never break the boot */ }
+  // Drop the REPLACEABLE boot-progress line — the boot is over (ready, failed,
+  // timed out or torn down) — and replace it with a permanent one saying how it
+  // ended, so the transcript the stage lines built stays readable and a boot
+  // that never came up says so instead of showing an empty pane.
+  try {
+    feedStatus("");
+    if (wasBooting && outcome) {
+      feedTerminalLine(bootLogLine(outcome, _bootT0 ? Date.now() - _bootT0 : 0));
+    }
+  } catch { /* decoration — never break the boot */ }
 }
 
 // ---- client telemetry (reaches Workers Logs via /api/client-log) -----------
@@ -398,7 +417,18 @@ function setStatus(s) {
   // turns a "booting sandbox" hang from a mystery into "stuck at connecting
   // disk…".
   _bootStage = s;
-  sblog("debug", "sandbox.boot_stage", { stage: s, ms: _bootT0 ? Date.now() - _bootT0 : 0 });
+  const ms = _bootT0 ? Date.now() - _bootT0 : 0;
+  sblog("debug", "sandbox.boot_stage", { stage: s, ms });
+  // The TERMINAL PANE gets the stage as a permanent line, so by the time Linux
+  // is up the pane holds a real transcript of the boot rather than the single
+  // replaceable progress line the ticker overwrites (feedback #42: that line
+  // was cleared the moment the boot ended and the pane fell back to "no output
+  // yet"). Gated on the ticker so this only ever runs for a boot in flight —
+  // "ready"/"error" are set after stopBootQuips and get their closing line from
+  // there instead, and a non-boot setStatus never writes to the log at all.
+  if (bootQuipTimer) {
+    try { feedTerminalLine(bootLogLine(s, ms)); } catch { /* decoration */ }
+  }
 }
 
 export function showSandbox() {
@@ -476,7 +506,8 @@ export function ensureSandboxBooted(fileProvider = null, onBootMessage = null) {
   if (typeof onBootMessage === "function") _bootOnMessage = onBootMessage;
   if (bootPromise) return bootPromise;
   bootPromise = withBootTimeout(bootVM(fileProvider)).catch((err) => {
-    stopBootQuips();
+    const reason = (/** @type {any} */ (err))?.message || String(err);
+    stopBootQuips("boot failed: " + String(reason).slice(0, 120));
     const msg = (/** @type {any} */ (err))?.message || String(err);
     console.error("[sandbox] boot failed", err);
     stopBootWatchdog();
@@ -537,7 +568,7 @@ function withBootTimeout(boot) {
         sblog("warn", "sandbox.boot_timeout", { stage: _bootStage, ms: _bootT0 ? Date.now() - _bootT0 : 0 });
         setFsSummary({ ...(sandboxFsSummary() || {}), err: "boot timed out at " + _bootStage });
         flushSandboxLog();
-        try { stopBootQuips(); } catch { /* ignore */ }
+        try { stopBootQuips("boot timed out at " + _bootStage); } catch { /* ignore */ }
         try { stopBootWatchdog(); } catch { /* ignore */ }
         // CheerpX has no abort — discard the wedged instance so a retry re-boots.
         try { resetSandbox("boot_timeout"); } catch { /* ignore */ }
@@ -567,7 +598,9 @@ export function sandboxIdle() {
  */
 export function resetSandbox(reason = "") {
   try { stopBootWatchdog(); } catch { /* ignore */ }
-  try { stopBootQuips(); } catch { /* ignore */ }
+  // Only says anything when this teardown interrupted a live boot; a stopper
+  // that already ran for this boot (the timeout path) leaves nothing to add.
+  try { stopBootQuips("sandbox stopped" + (reason ? " (" + reason + ")" : "")); } catch { /* ignore */ }
   _bootOnMessage = null; // full teardown — drop the sink (stopBootQuips no longer does)
   vmState = "off";
   bootPromise = null;
@@ -839,7 +872,9 @@ async function bootVM(fileProvider = null) {
   // prompt. readData reads the current cxReadFunc on every call, so this stays
   // valid across execInSandbox's temporary console swaps.
   setTerminalInputSink(readData);
-  stopBootQuips(); // booted — hand the notification bar back to the real steps
+  // Booted — hand the notification bar back to the real steps, and close the
+  // terminal pane's boot transcript with a line that stays (feedback #42).
+  stopBootQuips("ready — Linux is running in this browser tab");
   setStatus("ready");
   vmState = "ready";
   // Boot resolved — silence the stall watchdog before the (forever) shell loop.
@@ -919,11 +954,23 @@ async function bootVM(fileProvider = null) {
   // line behind a real tty before exec'ing bash. sed is idempotent (the
   // patched line no longer starts with `mesg`) and the root overlay persists,
   // so after the first boot this is a no-op; `;` (not `&&`) so a sed failure
-  // can never block the shell itself.
+  // can never block the shell itself. The match allows leading whitespace and
+  // covers the bashrc pair too: the narrower version missed the line this image
+  // actually ships, so the error was still the FIRST thing the terminal pane
+  // showed (feedback #42 — with the pane otherwise empty, it was the only
+  // thing).
+  //
+  // Then a one-line banner, so a user who brings the terminal forward sees a
+  // machine that says what it is instead of a bare prompt. It is the guest's
+  // own output (uname), printed by the guest — not a caption the page draws
+  // over it.
+  const profiles = "/root/.profile /root/.bashrc /etc/profile /etc/bash.bashrc";
   const loginShell =
-    `for f in /root/.profile /etc/profile; do ` +
-    `[ -f "$f" ] && sed -i 's/^mesg /tty -s \\&\\& mesg /' "$f" 2>/dev/null; ` +
-    `done; exec /bin/bash --login`;
+    `for f in ${profiles}; do ` +
+    `[ -f "$f" ] && sed -i 's/^\\([ \\t]*\\)mesg /\\1tty -s \\&\\& mesg /' "$f" 2>/dev/null; ` +
+    `done; ` +
+    `echo "DeepResearch sandbox — $(uname -srm) — running entirely in this browser tab."; ` +
+    `exec /bin/bash --login`;
   (async () => {
     while (vmState === "ready") {
       try {

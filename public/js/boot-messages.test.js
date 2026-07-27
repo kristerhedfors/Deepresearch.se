@@ -10,6 +10,7 @@ import {
   BOOT_MESSAGE_INTERVAL_MS,
   BOOT_STAGE_COUNT,
   BOOT_STAGE_STEPS,
+  bootLogLine,
   createBootMessageRotator,
   formatBootProgress,
 } from "./boot-messages.js";
@@ -98,4 +99,37 @@ test("formatBootProgress: unknown/early stage holds at step 1, never negative ti
   assert.match(line, /1\/6/, "unknown stage holds at step 1");
   assert.match(line, /· 0s/, "negative elapsed clamps to 0s");
   assert.match(line, /starting up…/, "empty stage gets a friendly label");
+});
+
+// ---- bootLogLine: the PERMANENT boot-log lines (feedback #42) --------------
+
+test("bootLogLine: stamps the stage with elapsed seconds", () => {
+  assert.equal(bootLogLine("connecting disk…", 900), "[  0.9s] connecting disk…");
+  assert.equal(bootLogLine("mounting files…", 12_340), "[ 12.3s] mounting files…");
+});
+
+test("bootLogLine: the stamp column is fixed so the log lines up", () => {
+  const widths = new Set(
+    [0, 900, 9_800, 65_000].map((ms) => bootLogLine("x", ms).indexOf("] ")),
+  );
+  assert.equal(widths.size, 1, "the ] column must not move across plausible boot times");
+});
+
+test("bootLogLine: closing phrases are lines too, not just stage names", () => {
+  assert.match(bootLogLine("boot failed: disk unreachable", 4_000), /boot failed: disk unreachable$/);
+  assert.match(bootLogLine("boot timed out at connecting disk…", 90_000), /^\[ 90\.0s\]/);
+});
+
+test("bootLogLine: nothing to say → nothing committed", () => {
+  // An empty label must not push a blank line into the terminal log.
+  assert.equal(bootLogLine("", 1000), "");
+  assert.equal(bootLogLine("   ", 1000), "");
+  assert.equal(bootLogLine(null, 1000), "");
+  assert.equal(bootLogLine(undefined, 1000), "");
+});
+
+test("bootLogLine: bad/negative elapsed clamps to 0.0s", () => {
+  assert.equal(bootLogLine("ready", -50), "[  0.0s] ready");
+  assert.equal(bootLogLine("ready", NaN), "[  0.0s] ready");
+  assert.equal(bootLogLine("ready", /** @type {any} */ ("nope")), "[  0.0s] ready");
 });
