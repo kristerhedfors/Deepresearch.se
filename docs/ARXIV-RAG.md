@@ -12,11 +12,19 @@ number below came out of `scripts/arxiv-eval.mjs`; where a pipeline was tried
 and lost, it is written down as tried and lost rather than quietly dropped.
 
 Status: **experimental, and no longer local-only.** The database is built and
-evaluated from the CLI, and since 2026-07-26 its abstract tier is also **hosted
-in Vectorize** (`deepresearch-se-arxiv`, the `ARXIV_INDEX` binding) and served
-from the Worker by `src/arxiv-rag.js` — the procedure and its cost are in
+evaluated from the CLI, and its abstract tier is **hosted in Vectorize**
+(`deepresearch-se-arxiv`, the `ARXIV_INDEX` binding), served from the Worker by
+`src/arxiv-rag.js` — the procedure and its cost are in
 [Serving it from the Worker](#serving-it-from-the-worker-the-hosted-tier).
-The full-text tier remains a decision memo (§9), not a build.
+The full-text tier remains a decision memo (§9), not a whole-corpus build,
+though its per-paper warm path now runs through a LaTeXML DOM extractor
+(`scripts/arxiv-html.mjs`).
+
+**The hosted tier was FILLED on 2026-07-27: 337,768 vectors**, covering 99.47%
+of the 339,388 papers an independent enumeration lists for the window. The whole
+build took one session — 39 s to enumerate, ~40 min to harvest, 124 min to embed
+and upsert — and §10 records what it cost to learn. The provider-agnostic
+lessons are the **bulk-corpus-etl** skill.
 
 **arXiv IS searchable from `/api/chat` as of 2026-07-26 — through a different
 door.** `src/arxiv.js` is a live-API search source in the pipeline's registry:
@@ -74,7 +82,9 @@ harvest ─→ corpus ─→ passages ─→ embed ─→ int8 pack ─┐
 | Corpus | `scripts/arxiv-corpus.mjs` | dedup, filter, deterministic sampling |
 | Build | `scripts/arxiv-index.mjs` | passages → embeddings → binary pack |
 | Search | `scripts/arxiv-search.mjs` | four retrieval pipelines; `dense_rerank` is the default, `--deep` adds the full-text stage |
-| Full text | `scripts/arxiv-fulltext.mjs` | tier 2: LaTeX → section chunks → per-paper blob, warmed on demand |
+| Full text | `scripts/arxiv-fulltext.mjs` | tier 2: HTML (then LaTeX) → section chunks → per-paper blob, warmed on demand |
+| HTML sections | `scripts/arxiv-html.mjs` | the build-side LaTeXML extractor (cheerio over `ltx_*`): keeps `<math alttext>` as LaTeX, drops the bibliography, handles LaTeXML's nesting structurally, and `htmlTitleAbstract` supplies tier 1's title/abstract/authors from the same fetch. The core's regex `htmlSections` stays the Worker-native fallback |
+| Enumeration | `scripts/arxiv-gcs.mjs` | ids from the PUBLIC `gs://arxiv-dataset/` mirror — no credentials, no rate limit: **339,388 papers in 39 s** vs ~15 h for OAI-PMH. Its metadata dump is stale (2020), so abstracts come from the HTML rendering instead |
 | Gold set | `scripts/arxiv-goldset.mjs` | LLM-written needle queries, EN+SV |
 | Bake-off | `scripts/arxiv-eval.mjs` | every variant, both query families |
 | Pure core | `public/js/arxiv-rag-core.js` | passages, BM25, RRF, pooling, metrics |
@@ -88,10 +98,24 @@ pipeline that was measured is the pipeline that runs.
 
 arXiv's Atom query API caps a result set near 30k rows and pages 100 at a
 time. OAI-PMH has no such cap: `ListRecords` streams 1000 records per page
-behind a resumption token. A year of all-of-arXiv is ~460k records, which the
-harvester pulls in ~13 month-shards at concurrency 3 in about 25 minutes.
+behind a resumption token. A year of all-of-arXiv is ~460k records, pulled in
+13 month-shards.
 
-Two things about the feed cost real time to discover, and both are load-bearing:
+**Rate, corrected 2026-07-27.** The harvester ran at concurrency 3 with a 1 s
+inter-page pause — about **9× arXiv's published limit** of one request every
+three seconds on a single connection, counted across the query API, OAI-PMH and
+RSS together. The defaults are now compliant (`--concurrency 1 --pause 3000`).
+Wall-clock at that rate is not a fixed number: the same harvest measured
+~2.6 min/page while arXiv was throttling this IP (≈15 h for a year) and
+completed the whole year in **~40 minutes** the following day. Plan it as an
+unattended job and do not calibrate from a run taken during flow control.
+
+Enumeration is a separate question from harvesting, and OAI-PMH is the wrong
+tool for it: `scripts/arxiv-gcs.mjs` lists the same window from a public mirror
+in **39 seconds**, which is what makes cross-validating the harvest cheap
+enough to do every time (§10.2).
+
+Three things about the feed cost real time to discover, and all are load-bearing:
 
 - **`from`/`until` filter on the datestamp, not the submission date.** A
   one-year window also returns decade-old papers that got a v2 last week —
@@ -104,9 +128,18 @@ So the submission month is taken from the **arXiv ID's `YYMM` prefix**, which
 is the only trustworthy source. Old-style ids (`cs/0503001`) carry no `YYMM`
 and are pre-2007 anyway, so the same rule drops them.
 
+- **The two axes must be reconciled at the boundary.** Filtering on datestamp
+  while selecting on id-month means a window that starts mid-month silently
+  under-covers that month: papers submitted earlier in it are in-window by id
+  and never requested. This cost 48.1% of the oldest month and reported itself
+  as a successful run — see §10.2. `planWindow` now snaps the start to the
+  first of the month.
+
 Records also arrive more than once — a paper updated inside the window appears
 in every month shard that touched it — so dedup by id is mandatory rather
-than defensive.
+than defensive. It also means the harvester's own "kept" counter is **not** a
+document count: one run kept 339,263 records that deduplicated to 327,742
+papers.
 
 ---
 
@@ -863,3 +896,133 @@ Two ways to fill it, and the second is nicer:
 
 **Recommendation: accrue forward, and let on demand cover the tail.** It needs
 one cron block, no new bindings, no AWS, and no conversation with arXiv.
+
+---
+
+## 10. The hosted build — what actually happened (2026-07-26/27)
+
+§1 records the first CLI build. This section records filling the **hosted**
+tier, because most of it was learned by getting it wrong first. The
+provider-agnostic version of these lessons is the **bulk-corpus-etl** skill;
+this is the arXiv-specific log.
+
+### 10.1 The numbers
+
+| | |
+|---|---|
+| Enumerated (GCS listing) | **339,388** papers, 13 shards, **39 seconds** |
+| Harvested (OAI-PMH) | **350,682** records kept → **339,161 unique** |
+| Indexed | **337,768** vectors (1,393 below the 200-char abstract floor) |
+| Coverage vs enumeration | **99.47%** |
+| Harvest time | ~40 min |
+| Embed + upsert time | **123.7 min** at ~23 vectors/s |
+| Cost | ~€3 of Berget embeddings + ~$3-4/month Vectorize |
+
+### 10.2 Two enumerations, because one cannot check itself
+
+The harvest reported `339,263 in-window papers kept` and exited 0. Diffing its
+ids against the GCS listing month by month found **48.1% of the oldest month
+missing** (11,432 of 23,780) while every other month sat at ~0.1%.
+
+The cause was a boundary between two notions of "in window": the fetch window
+filtered on **datestamp** from `today − 12 months` (a mid-month date), while the
+keep filter admitted a whole **id-month**. Papers submitted earlier in that
+month were in-window by id and never requested — so nothing errored and the
+run's own totals were self-consistent.
+
+Fixed by snapping the window start to the first of the month
+(`planWindow`, regression-tested). Re-harvesting that shard took it from 3,495
+to 14,914 papers and lifted overlap from 96.52% to **99.88%**.
+
+Two corollaries worth keeping:
+
+- **"Kept" is not "unique".** The same run's 339,263 kept were 327,742 unique —
+  a paper revised in-window appears in every shard it touched.
+- **Compare by subgroup.** The totals looked like agreement to 0.04%. Only the
+  per-month breakdown exposed the hole.
+
+### 10.3 The channels, and which is for what
+
+- **`gs://arxiv-dataset/` is public — no credentials at all.** Plain HTTPS
+  against the JSON API; no gsutil, no service account, no Kaggle token, no
+  requester-pays. It gives **enumeration** (and PDFs), 1000 objects per page.
+- **Its metadata dump is stale.** `metadata-v5/arxiv-metadata-oai.json` is
+  4.5 GB last updated **2020-08-19** while the PDF tree is current. Freshness is
+  a property of the path, not the bucket — building abstracts from it would have
+  produced a six-year-old index that looked fine.
+- **Abstracts come from OAI-PMH**, the sanctioned bulk metadata channel:
+  ~354 requests for 339k abstracts versus 339,388 per-paper fetches. arXiv asks
+  bulk users off the per-document endpoints, and the request math agrees.
+- **`arxiv.org/html/<id>` is for on-demand full text** — and it carries title,
+  abstract and body together (`htmlTitleAbstract`), which makes it the fallback
+  when OAI has not covered a paper. The one field it lacks is the primary
+  **category**.
+- **`s3://arxiv/` is the requester-pays bucket**: 9.2 TB of tarballs, ~$110 for a
+  year's egress or near-free processed in us-east-1. Only needed for full text at
+  whole-corpus scale.
+
+### 10.4 Rate limits are a design input
+
+arXiv's terms ask for **one request every three seconds on a single connection**,
+counted across the query API, OAI-PMH and RSS together, and there is **no paid
+tier** — bulk access is open, commercial projects need no MOU, and the only
+escalation is asking support. Two defects came out of reading it:
+
+- the harvester defaulted to ~9× that rate (concurrency 3, 1 s pause);
+- the live search source could issue 9 requests per user turn (3 searches × 3
+  ladder rungs), now capped at 4 and pinned by a test.
+
+And **flow control is not failure**. A flat 20 s retry × 8 attempts killed a
+working harvest 29 pages into a shard; 503/429 on a bulk sweep means "slow down"
+and can persist for many minutes. It now has a generous ceiling with progressive
+backoff, while genuine errors keep a short one.
+
+Throughput is not a constant either: the same harvest measured ~2.6 min/page
+during a throttle (≈15 h for a year) and ~40 min for the whole year the next
+day. Do not design around a number taken while blocked — and note that ~30
+exploratory requests over ~40 minutes earned a multi-hour block.
+
+### 10.5 Building from a machine that dies
+
+The container is ephemeral and `data/` is gitignored, so `scripts/arxiv-vectorize.mjs`
+embeds and upserts **incrementally**, checkpointing after each batch: Vectorize
+is the durable store and a re-run skips what is already pushed. This was
+exercised for real — a transient `Please check your internet connection` from
+wrangler killed the run at batch 346 of a 123-minute build, and the next round
+resumed from the checkpoint, re-embedded nothing, and finished.
+
+Two bugs found in that checkpoint, both invisible because dedup kept the
+*result* correct:
+
+- rewriting a JSON array of every id after each batch is O(corpus) per batch;
+- the "already migrated" marker still parsed, so the migration branch
+  re-appended the whole id set every run (33,632 ids → 369,952 lines).
+
+### 10.6 The relevance floor, and why not cosine
+
+Dense retrieval always returns its nearest neighbours, so a partial index
+answers off-topic questions with confident nonsense. `src/arxiv-rag.js` applies
+a floor on the **cross-encoder score**, measured across three corpus sizes:
+
+| query | 512 papers | 26,624 | 337,768 |
+|---|---|---|---|
+| "how do multiple LLM agents collaborate…" | cos 0.8517 / rr 0.166 | 0.7890 / 0.830 | 0.8040 / **0.965** |
+| "critical temperature of graphene superconductivity" | 0.8503 / 0.054 | 0.7703 / 0.365 | 0.8025 / 0.974 |
+| "best pizza recipe napoletana dough hydration" | 0.7925 / 0.00002 | 0.7112 / 0.00005 | 0.7268 / **0.0002** |
+
+As the corpus grew and matches got dramatically better, the **cosine went down**
+while the rerank score rose ~6×. A cosine threshold would have been tuned to
+noise and drifted with every upsert. The floor is 0.01 — 0.1 was tried and kept
+only 1 of 20 candidates on a genuinely on-topic query — and it is applied only
+when the reranker actually scored, since a fallback order carries no comparable
+numbers.
+
+### 10.7 What is still unverified
+
+- **The doc's 87% recall@1 does not describe the hosted path.** Vectorize caps
+  `topK` at 20 with `returnMetadata: "all"`, so the rerank pool is 20, not the
+  50 that figure was measured at. Re-run the eval against the hosted index
+  before quoting a number for it.
+- **The bench gate has not run** against a deployment carrying this source.
+- **~20 rows have no primary category** — the ones imported via the GCS+HTML
+  path before the OAI harvest completed.

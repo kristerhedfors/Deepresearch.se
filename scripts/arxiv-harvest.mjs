@@ -100,6 +100,19 @@ export function planWindow(todayISO, months) {
   const start = new Date(today);
   start.setUTCFullYear(start.getUTCFullYear() - Math.floor(months / 12));
   start.setUTCMonth(start.getUTCMonth() - (months % 12));
+  // Snap to the FIRST of the start month. The id-month filter below admits a
+  // whole `YYMM`, so a datestamp window beginning mid-month silently
+  // under-covers its own oldest month: papers submitted before that day are
+  // in-window by id but are never fetched, and nothing errors.
+  //
+  // Measured 2026-07-26/27 — this is not theoretical. A 12-month harvest from
+  // 2026-07-27 started at 2025-07-27 and returned 3,495 papers for id-month
+  // 2507, where the GCS enumeration (scripts/arxiv-gcs.mjs) lists 23,780:
+  // **48.1% of the oldest month was missing**, against ~0.1% for every other
+  // month. The harvest reported "339,263 in-window papers kept" and looked
+  // like a success. Cross-checking the two independent enumerations is what
+  // found it.
+  start.setUTCDate(1);
   const iso = (/** @type {Date} */ d) => d.toISOString().slice(0, 10);
   /** @type {Array<{ id: string, from: string, until: string }>} */
   const shards = [];

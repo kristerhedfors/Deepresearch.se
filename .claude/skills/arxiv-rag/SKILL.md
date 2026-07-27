@@ -12,15 +12,33 @@ description: >-
   than a fixed budget can express, and bge-reranker-v2-m3 is served behind the
   same 512-token window covering query+document), and the evaluation
   discipline that keeps a RAG bake-off honest — above all that a small corpus
-  saturates every variant to ~98% and measures nothing.
+  saturates every variant to ~98% and measures nothing. The PROVIDER-AGNOSTIC
+  half of that experience — enumeration cross-validation, checkpointing for
+  ephemeral machines, rate-limit citizenship, Vectorize billing and traps, the
+  relevance floor — now lives in the **bulk-corpus-etl** skill.
 ---
 
 # The arXiv RAG search database
 
-A retrieval database over a year of arXiv (~327k papers), embedded with
-Berget `intfloat/multilingual-e5-large`, searched from the CLI. Full design,
-measurements and operating manual: **`docs/ARXIV-RAG.md`**. This skill is the
-working knowledge — what bites, and what not to re-derive.
+A retrieval database over a year of arXiv, embedded with Berget
+`intfloat/multilingual-e5-large`. Full design, measurements and operating
+manual: **`docs/ARXIV-RAG.md`**. This skill is the working knowledge — what
+bites, and what not to re-derive.
+
+> **The generalizable ETL discipline is the `bulk-corpus-etl` skill.** Load that
+> one for anything that would apply to a different corpus: enumerating from two
+> independent sources (and why one cannot detect its own gaps), "kept" vs unique
+> counts, window-boundary bugs, flow control vs failure, incremental upsert as
+> the checkpoint, Vectorize's billing model and serialization traps, and the
+> relevance floor. This skill keeps only what is specific to arXiv.
+
+**Status (2026-07-27): the abstract tier is BUILT AND HOSTED.** 337,768 vectors
+in the `deepresearch-se-arxiv` Vectorize index, covering **99.47%** of the
+independently-enumerated 339,388 papers in the 13-month window; the 1,393
+harvested papers not indexed fell below the 200-char abstract floor. The whole
+build ran in one session: 39 s to enumerate, ~40 min to harvest, 124 min to
+embed and upsert. `src/arxiv-rag.js` serves it and `src/arxiv.js` falls back to
+the live API.
 
 ## The pieces
 
@@ -42,7 +60,37 @@ are 335 MB.
 
 ## arXiv feed facts you should not re-derive
 
-- **Use OAI-PMH, not the Atom query API.** The query API caps a result set
+**Enumerate from the GCS mirror, not from OAI-PMH (2026-07-26).** `gs://arxiv-dataset/`
+— the bucket behind the Kaggle `Cornell-University/arxiv` dataset — is **publicly
+readable with no credentials at all**: plain HTTPS against the JSON API, no
+gsutil, no service account, no Kaggle token, and no requester-pays (that is the
+separate `s3://arxiv/`, which does bill the downloader). `scripts/arxiv-gcs.mjs`
+lists `arxiv/arxiv/pdf/<YYMM>/` and reads ids off the object names.
+
+Measured: **339,388 unique papers across 13 shards in 39 seconds.** The OAI
+harvest reported **339,670** for the same window (§1), so two entirely
+independent enumerations agree to **0.08%** — which is the reason to trust
+either. Against ~15 hours and a harvest that died 29 pages in under sustained
+503 flow control, this is not a marginal improvement.
+
+Two traps:
+
+- **The mirror's metadata dump is STALE.** `metadata-v5/arxiv-metadata-oai.json`
+  is 4.5 GB of titles and abstracts last updated **2020-08-19**. Only the PDF
+  tree is kept current (2607 objects were dated 2026-07-12). The bucket looks
+  like a complete metadata solution and is not.
+- So abstracts come from **`arxiv.org/html/<id>`**, which carries title,
+  abstract, authors AND body — `htmlTitleAbstract` in `scripts/arxiv-html.mjs`.
+  One fetch per paper serves both tiers, and neither OAI-PMH nor the
+  rate-limited query API is touched. Verified end to end: 6/6 papers yielded
+  both tiers from one fetch, and 20/24 became indexed vectors (the shortfall is
+  the documented ~87% HTML coverage — three 404s and one sub-200-char abstract).
+  The one field the rendering does NOT carry is the primary **category**; the
+  submission date is recoverable from the GCS object's own `updated` timestamp,
+  the archive is not. Fill it from OAI or the abs page if a build needs facets.
+
+- **Use OAI-PMH, not the Atom query API** *(for metadata harvesting; for
+  ENUMERATION prefer GCS above).* The query API caps a result set
   near 30k rows and pages 100 at a time. `https://oaipmh.arxiv.org/oai`
   `ListRecords&metadataPrefix=arXiv` streams 1000/page behind a resumption
   token with no cap. Roughly 460k records for a year of all-of-arXiv.
@@ -214,6 +262,35 @@ and a non-greedy `<section>…</section>` match ends at the CHILD's closing tag 
 which swallows the child's prose into the parent AND loses the child. Split on
 the opening tag instead (what `htmlSections` does), the same shape as
 `latexSections`.
+
+**Two extractors, on purpose (2026-07-26).** `scripts/arxiv-html.mjs`
+(`htmlSectionsDom`, cheerio over LaTeXML's `ltx_*` classes) is what the
+full-text warm path uses; `htmlSections` in the core stays regex-only so the
+ingestion path remains runnable inside a Worker (§9.9) and is the fallback.
+Adding cheerio breaks no invariant because **no `src/` module imports
+`arxiv-rag-core.js`** — `scripts/` is its only consumer, so it is a
+devDependency, not a Worker runtime dep. Measured over 9 real papers:
+
+- **Mathematics survives.** LaTeXML puts the original LaTeX in
+  `<math alttext="…">`; the regex core strips the element. Math was present in
+  3 of 9 papers' output there vs **9 of 9** with the DOM. On a corpus where the
+  answer is often the formula, this is the reason to bother.
+- **+11% prose** (451,621 vs 406,703 chars) *while also discarding* 66,235 chars
+  of bibliography, so genuine-prose gain is nearer +27%.
+- **The bibliography leak was a real bug in shipped code** — a citation list
+  indexed as prose yields chunks that can only match author surnames, and it was
+  16% of the core's output. Now dropped in BOTH extractors.
+- Cost ~100 ms/paper vs ~4 ms, irrelevant against ~5 s of embedding.
+
+**There is no mature arXiv-HTML-specific parser to take off the shelf** — worth
+knowing before someone goes looking. `ar5iv` *produces* this HTML (a LaTeXML
+service), it does not parse it. The mature general options are Python:
+Trafilatura drops mathematical formulas entirely (disqualifying), Docling brings
+models and a heavy install. A battle-tested DOM library aimed at the `ltx_*`
+contract is the real answer. When extending it, add to `UNIT_SELECTOR` rather
+than special-casing: a first version selected only
+section/subsection/subsubsection and silently dropped `.ltx_appendix`, which
+read as a regression on papers carrying appendices.
 
 Two LaTeX-assembly traps, both found by breaking a real paper:
 

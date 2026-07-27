@@ -7,11 +7,11 @@ import { titleOverlap } from "./arxiv-goldset.mjs";
 
 test("planWindow shards the window by month, newest first", () => {
   const p = planWindow("2026-07-26", 12);
-  assert.equal(p.start, "2025-07-26");
+  assert.equal(p.start, "2025-07-01");
   assert.equal(p.end, "2026-07-26");
   assert.equal(p.shards[0].id, "2026-07");
   assert.equal(p.shards[0].until, "2026-07-26", "the newest shard stops at today, not month end");
-  assert.equal(p.shards.at(-1).from, "2025-07-26", "the oldest shard starts at the window edge");
+  assert.equal(p.shards.at(-1).from, "2025-07-01", "the oldest shard starts at the FIRST of its month");
   // Shards must tile the window without a gap.
   for (let i = 0; i < p.shards.length - 1; i++) {
     assert.equal(p.shards[i].from, p.shards[i + 1].until, `gap between ${p.shards[i + 1].id} and ${p.shards[i].id}`);
@@ -110,4 +110,30 @@ test("titleOverlap is the gold set's leak guard", () => {
   assert.equal(titleOverlap("Differentially private retrieval for scientific corpora", title), 1);
   assert.ok(titleOverlap("How can literature search protect user privacy guarantees?", title) < 0.5);
   assert.equal(titleOverlap("", title), 0);
+});
+
+test("the datestamp window fully covers every id-month it admits", () => {
+  // THE REGRESSION. The id filter accepts a whole YYMM, so a datestamp window
+  // starting mid-month leaves that month half-unfetched with no error at all.
+  // Measured 2026-07-27: a 12-month harvest from 2026-07-27 began at
+  // 2025-07-27 and returned 3,495 papers for id-month 2507, where the GCS
+  // enumeration lists 23,780 — 48.1% missing, against ~0.1% for every other
+  // month, while the run reported "339,263 in-window papers kept".
+  for (const today of ["2026-07-27", "2026-07-26", "2026-01-15", "2026-03-31", "2025-12-01"]) {
+    const p = planWindow(today, 12);
+    const oldestShard = p.shards.at(-1);
+    // Every id-month admitted must be one the shards actually cover from its
+    // first day, so the oldest shard has to start on a month boundary.
+    assert.ok(oldestShard.from.endsWith("-01"), `${today}: oldest shard starts mid-month (${oldestShard.from})`);
+    const oldestIdMonth = oldestShard.from.slice(2, 4) + oldestShard.from.slice(5, 7);
+    assert.ok(
+      p.idMonths.has(oldestIdMonth),
+      `${today}: oldest shard ${oldestShard.from} has no matching id-month`,
+    );
+    // And no admitted id-month may fall before the window starts.
+    for (const m of p.idMonths) {
+      const asDate = `20${m.slice(0, 2)}-${m.slice(2)}-01`;
+      assert.ok(asDate >= p.start, `${today}: id-month ${m} predates the window start ${p.start}`);
+    }
+  }
 });
