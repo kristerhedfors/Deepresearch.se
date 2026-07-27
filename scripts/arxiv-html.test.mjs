@@ -8,7 +8,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { htmlSectionsDom, isLatexmlHtml } from "./arxiv-html.mjs";
+import { htmlSectionsDom, htmlTitleAbstract, isLatexmlHtml } from "./arxiv-html.mjs";
 
 const PAPER = `<!DOCTYPE html><html><body><article class="ltx_document">
   <div class="ltx_abstract"><h6 class="ltx_title">Abstract</h6>
@@ -104,5 +104,36 @@ test("htmlSectionsDom", async (t) => {
       <h2 class="ltx_title">1 Tiny</h2><div class="ltx_para"><p class="ltx_p">Too short.</p></div>
     </section></article>`;
     assert.deepEqual(htmlSectionsDom(thin), []);
+  });
+});
+
+test("htmlTitleAbstract supplies tier 1 from the same fetch as tier 2", async (t) => {
+  const TITLED = PAPER.replace(
+    '<article class="ltx_document">',
+    '<article class="ltx_document"><h1 class="ltx_title ltx_title_document">The Bystander Effect in Multi-Agent Reasoning</h1><div class="ltx_authors"><span class="ltx_personname">Dahlia Shehata</span><span class="ltx_personname">Ming Li</span></div>',
+  );
+
+  await t.test("reads the document title and the abstract body", () => {
+    // This is what makes the GCS route complete: that mirror enumerates every
+    // id in seconds but its metadata dump is frozen at 2020, so recent
+    // abstracts have to come from the rendering.
+    const { title, abstract, authors } = htmlTitleAbstract(TITLED);
+    assert.equal(title, "The Bystander Effect in Multi-Agent Reasoning");
+    assert.match(abstract, /^We study whether more agents reason better/);
+    // Authors feed the source registry's citable metadata line.
+    assert.deepEqual(authors, ["Dahlia Shehata", "Ming Li"]);
+  });
+
+  await t.test("drops the literal word 'Abstract' from the abstract text", () => {
+    assert.ok(!htmlTitleAbstract(TITLED).abstract.startsWith("Abstract"));
+  });
+
+  await t.test("never throws; missing pieces come back empty", () => {
+    assert.deepEqual(htmlTitleAbstract(""), { title: "", abstract: "", authors: [] });
+    assert.deepEqual(htmlTitleAbstract(null), { title: "", abstract: "", authors: [] });
+    assert.deepEqual(htmlTitleAbstract("<html><body><p>stub</p></body></html>"), { title: "", abstract: "", authors: [] });
+    // A paper with a title but no abstract section still yields the title.
+    const noAbs = '<article class="ltx_document"><h1 class="ltx_title ltx_title_document">Only A Title</h1></article>';
+    assert.deepEqual(htmlTitleAbstract(noAbs), { title: "Only A Title", abstract: "", authors: [] });
   });
 });

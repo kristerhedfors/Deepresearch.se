@@ -75,7 +75,8 @@ harvest ─→ corpus ─→ passages ─→ embed ─→ int8 pack ─┐
 | Build | `scripts/arxiv-index.mjs` | passages → embeddings → binary pack |
 | Search | `scripts/arxiv-search.mjs` | four retrieval pipelines; `dense_rerank` is the default, `--deep` adds the full-text stage |
 | Full text | `scripts/arxiv-fulltext.mjs` | tier 2: HTML (then LaTeX) → section chunks → per-paper blob, warmed on demand |
-| HTML sections | `scripts/arxiv-html.mjs` | the build-side LaTeXML extractor (cheerio over `ltx_*`): keeps `<math alttext>` as LaTeX, drops the bibliography, handles LaTeXML's nesting structurally. The core's regex `htmlSections` stays the Worker-native fallback |
+| HTML sections | `scripts/arxiv-html.mjs` | the build-side LaTeXML extractor (cheerio over `ltx_*`): keeps `<math alttext>` as LaTeX, drops the bibliography, handles LaTeXML's nesting structurally, and `htmlTitleAbstract` supplies tier 1's title/abstract/authors from the same fetch. The core's regex `htmlSections` stays the Worker-native fallback |
+| Enumeration | `scripts/arxiv-gcs.mjs` | ids from the PUBLIC `gs://arxiv-dataset/` mirror — no credentials, no rate limit: **339,388 papers in 39 s** vs ~15 h for OAI-PMH. Its metadata dump is stale (2020), so abstracts come from the HTML rendering instead |
 | Gold set | `scripts/arxiv-goldset.mjs` | LLM-written needle queries, EN+SV |
 | Bake-off | `scripts/arxiv-eval.mjs` | every variant, both query families |
 | Pure core | `public/js/arxiv-rag-core.js` | passages, BM25, RRF, pooling, metrics |

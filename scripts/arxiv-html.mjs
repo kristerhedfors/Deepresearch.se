@@ -105,6 +105,49 @@ export function htmlSectionsDom(html) {
 }
 
 /**
+ * The paper's title and abstract from its HTML rendering — tier 1's inputs,
+ * from the same fetch tier 2 already pays for.
+ *
+ * This is what makes the GCS route complete (scripts/arxiv-gcs.mjs): the GCS
+ * mirror enumerates every id in seconds but its metadata dump is frozen at
+ * 2020, so recent abstracts have to come from somewhere. They are right here in
+ * the rendering, which means a corpus can be built with no OAI-PMH sweep and no
+ * call to the rate-limited query API — one request per paper serving both tiers.
+ *
+ * Authors come along because the source registry's citable metadata line uses
+ * them. What the rendering does NOT carry is the primary CATEGORY: a corpus
+ * built purely from GCS + HTML has an empty category field, which is a real
+ * (small) gap versus an OAI-harvested row — the submission DATE is recoverable
+ * from the GCS object's own `updated` timestamp, but the archive is not. Fill it
+ * from OAI or the abs page if a build needs category facets.
+ *
+ * @param {string} html
+ * @returns {{ title: string, abstract: string, authors: string[] }}
+ */
+export function htmlTitleAbstract(html) {
+  const source = typeof html === "string" ? html : "";
+  const empty = { title: "", abstract: "", authors: /** @type {string[]} */ ([]) };
+  if (!source.trim()) return empty;
+  try {
+    const $ = cheerio.load(source);
+    $("script, style").remove();
+    const title = $(".ltx_title_document").first().text().replace(/\s+/g, " ").trim();
+    const abs = $(".ltx_abstract").first().clone();
+    abs.find(".ltx_title").remove(); // the literal word "Abstract"
+    const authors = $(".ltx_personname")
+      .map((_, el) => $(el).text().replace(/\s+/g, " ").trim())
+      // LaTeXML sometimes puts affiliations and emails inside personname; keep
+      // the first line, which is the name.
+      .get()
+      .map((s) => s.split(/\s{2,}|,\s*(?=[A-Z][a-z]+\s+(?:University|Institute|Lab))/)[0].trim())
+      .filter((s) => s && s.length < 80);
+    return { title, abstract: abs.text().replace(/\s+/g, " ").trim(), authors: [...new Set(authors)] };
+  } catch {
+    return empty;
+  }
+}
+
+/**
  * Does this look like LaTeXML output at all? Used to decide whether the DOM
  * extractor is even applicable before spending a parse on it — arXiv serves
  * some ids as a stub or an error page.
