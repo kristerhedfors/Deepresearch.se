@@ -232,8 +232,8 @@ export function activeKeys(order, byKey) {
 
 /**
  * The `n` busiest subjects over the whole history, by the current metric.
- * Twenty-eight curves at once is unreadable, so this is what both surfaces
- * open on.
+ * The full taxonomy drawn at once is unreadable (it has passed thirty
+ * subjects), so this is what both surfaces open on.
  *
  * @param {string[]} order
  * @param {Record<string, {commits?: number, added?: number, removed?: number}>} byKey

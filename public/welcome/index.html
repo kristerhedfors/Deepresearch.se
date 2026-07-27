@@ -833,7 +833,7 @@
   const VW = 1000, LP = 46, RP = 14, TP = 10, PLOT_H = 230;
   const plotW = VW - LP - RP, plotBottom = TP + PLOT_H, H = plotBottom + 28;
   const METRIC = "commits";
-  // Twenty-eight chips is four-plus rows on a phone — more page than the chart
+  // A chip per subject is four-plus rows on a phone — more page than the chart
   // it controls. Show the busiest handful and keep the rest one tap away.
   const CHIPS_SHOWN = 12;
 
@@ -937,7 +937,7 @@
 
       document.getElementById("fcTop").addEventListener("click", () => setCurves(topKeys(ORDER, BYKEY, METRIC, 6)));
       // "All" turns on chips that may be behind the "more" fold — reveal them,
-      // or the strip would show six ticks for twenty-eight drawn curves.
+      // or the strip would show six ticks for every drawn curve.
       document.getElementById("fcAll").addEventListener("click", () => {
         if (hiddenCount && more.getAttribute("aria-expanded") !== "true") more.click();
         setCurves(offered);

@@ -22,7 +22,10 @@
 // curated set of additional well-separated hues. Past eight simultaneously
 // visible series the palette leans on the legend + direct end-labels + the
 // table view as the secondary encoding (the documented mitigation), which the
-// timeline page ships; by default it shows only the busiest handful.
+// timeline page ships; by default it shows only the busiest handful. A hue
+// added here is checked by OKLab distance against every existing one, not by
+// eye: the bar is the palette's own closest pre-existing pair (search/storage,
+// ~0.034), and no addition may tighten it.
 
 /**
  * @typedef {Object} Subject
@@ -41,6 +44,13 @@ export const SUBJECTS = /** @type {Subject[]} */ ([
     color: "#2a78d6", // slot 1 · blue
     blurb: "In-browser Linux VM + bash-lite agent (CheerpX, COEP, boot, terminal).",
     test: /\b(sandbox|bash[- ]?(lite|core|agent)|cheerpx|\bvm\b|vm console|terminal|\bboot\b|boot[- ](stage|hang|messages|bar|chain)|exec (bridge|engine|timeout)|shell transcript|fenced[- ]block|\/src\b[^:]*\b(mount|sandbox|seed|seeding))\b/,
+  },
+  {
+    key: "execenv",
+    label: "Execution environments",
+    color: "#00c2a8", // extended · turquoise
+    blurb: "WHERE the agent's shell runs (DREE/1): the browser VM, a runner on your own machine, a per-session Cloudflare container.",
+    test: /\b(execution environment(s)?|exekveringsmilj[öo](er|n)?|exec[- ]?container|cloudflare container|container image|dree|local runner|own machine|cloud execution|remote shell)\b/,
   },
   {
     key: "ondevice",
@@ -76,6 +86,13 @@ export const SUBJECTS = /** @type {Subject[]} */ ([
     color: "#eb6834", // slot 6 · orange
     blurb: "Hugging Face Hub search as a research source.",
     test: /\b(hugging[- ]?face|\bhf\b|hfintent|hf hub|hub[- ]implied|model card)\b/,
+  },
+  {
+    key: "arxiv",
+    label: "arXiv corpus & RAG",
+    color: "#1f4e79", // extended · deep navy
+    blurb: "A year of arXiv harvested, embedded and searched: the index build, the full-text tier, the retrieval bake-offs.",
+    test: /\b(arxiv|oai-pmh|preprint|f[öo]rtryck|vectorize (index|checkpoint)|rerank(er|ing|ed)?|omrankning|goldset|gold[- ]set|full-?text (tier|search|fetch|eval)|corpus (harvest|build))\b/,
   },
   {
     key: "grants",
@@ -127,6 +144,20 @@ export const SUBJECTS = /** @type {Subject[]} */ ([
     test: /\b(agent-pair|distillsdk|\bsdk\b|drpl|pair-(cli|studio|generator|architecture)|manifest|interchange|stackless|baseplate|exec-engine module|vm toolchain)\b/,
   },
   {
+    key: "agents",
+    label: "Agent platform & Studio",
+    color: "#586e26", // extended · moss (the Agent Studio green family)
+    blurb: "Agents as data: the Agents SDK, agent specs and their capability block, the registry, Agent Studio.",
+    test: /\b(agent studio|agent builder|agents? sdk|agent[- ](spec|registry|platform|card|team|flavour|flavor)|agentspec|default agents?|standardagent(er)?|capability block|f[öo]rm[åa]gebl?ock|agents\.json|an agent is|agents are)\b/,
+  },
+  {
+    key: "starters",
+    label: "Starter prompts",
+    color: "#e0479e", // extended · fuchsia
+    blurb: "The four opening questions on an empty chat and the cross-agent queue that ranks them.",
+    test: /\b(starter[- ]?prompts?|starter (strip|queue|eval|evaluation)|opening questions|startprompt(en|er|erna|ar|arna)?|startfr[åa]g(a|an|or|orna)?|[öo]ppningsfr[åa]g(a|an|or|orna)?)\b/,
+  },
+  {
     key: "orchestrator",
     label: "Orchestrator & swarm",
     color: "#7048e8", // extended · violet-blue (the mode's own theme family)
@@ -146,6 +177,13 @@ export const SUBJECTS = /** @type {Subject[]} */ ([
     color: "#c05780", // extended · mulberry
     blurb: "Help mode, the docs-first layer of introspection, the docs corpus, skills.",
     test: /(^docs?\b|^docs?[:(]|\bhelp[- ]mode\b|help interface|\bdocs? (corpus|first|page|split)\b|documentation|\/help\b|docs-corpus|\breadme\b|\bskills?\b|\bguide\b|dokument)/,
+  },
+  {
+    key: "articles",
+    label: "Articles & outreach",
+    color: "#7e5109", // extended · dark gold
+    blurb: "The written pieces about the project — the LinkedIn series, the article collection view.",
+    test: /\b(article(s)?|linkedin|artikel(n|serie|serien|samling(en)?)?|blogg?(post|inl[äa]gg)?|outreach)\b/,
   },
   {
     key: "tests",
