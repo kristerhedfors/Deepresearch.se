@@ -17,11 +17,11 @@ uncommented.*
 
 *LIVE, and now the MAIN environment (2026-07-27, owner directive). The deploy
 carried the binding: production reports `available.exec_container: true` and the
-container has run for real — `chat_logs` #677 ran eight commands in it and the
+container has run for real. `chat_logs` #677 ran eight commands in it, and the
 guest reported Debian 13 (Trixie), kernel `6.18.36-cloudflare-firecracker`,
 x86_64 AMD EPYC, 7.3 GB disk, 2.1 GB RAM, hostname `cloudchamber`. **On
 Se/rver the cloud container is what a user gets unless they choose otherwise**;
-the in-browser VM is the fallback where there is no other option — Se/cure,
+the in-browser VM is the fallback where there is no other option: Se/cure,
 a deploy without the binding, and anyone who picks it deliberately. The
 "nothing has run against a real Cloudflare Container" caveat this document
 carried until 2026-07-27 is retired.*
@@ -66,7 +66,7 @@ refusal is in code rather than in convention — twice:
   hand-edited sealed state naming the backend cannot reach the endpoint either.
 
 **Which one you get if you never open the setting** (2026-07-27): on **Se/rver**,
-the cloud container whenever the deploy carries the binding — it is the fastest
+the cloud container whenever the deploy carries the binding. It is the fastest
 by an order of magnitude, needs no setup, and the server is inside that tier's
 trust boundary anyway (owner directive, 2026-07-24; cloud storage on Se/rver is
 already implicit for the same reason). Everywhere else — **Se/cure** in every
@@ -75,8 +75,8 @@ in-browser VM, which needs nothing and exists everywhere.
 
 One function decides this and nothing else re-decides it:
 `defaultExecBackend({tier, container})` in `public/js/exec-backends-core.js`.
-An unchosen config normalizes to the sentinel `EXEC_AUTO` — the ABSENCE of a
-pick, deliberately not a row in either picker — and `resolveExecBackend` turns
+An unchosen config normalizes to the sentinel `EXEC_AUTO` (the ABSENCE of a
+pick, deliberately not a row in either picker), and `resolveExecBackend` turns
 it into a real environment at the point of use. **An explicit pick always
 wins**, including an explicit "in-browser Linux VM": distinguishing "chose the
 browser" from "never chose" is the whole reason the sentinel exists. The tier
@@ -84,7 +84,7 @@ gate applies to the default exactly as it applies to an explicit pick, so the
 flip cannot leak the container into Se/cure. Pinned by
 `exec-backends-core.test.js`.
 
-The browser VM stays fully supported — it is the only environment that works
+The browser VM stays fully supported. It is the only environment that works
 with no account, no setup and no server, which is what makes Se/cure's posture
 possible at all. Nothing about the environment choice changes conversations,
 history, storage or the pipeline.

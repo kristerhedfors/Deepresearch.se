@@ -252,7 +252,7 @@ const MAX_SWARM_RESULT_CHARS = 8000;
  * small, whitelisted shape for the chat log — untrusted, so every field is
  * typed and bounded. Undefined (dropped by JSON.stringify) when absent.
  * @param {any} d
- * @returns {{ coi: boolean|null, bl: boolean, sb: boolean, ran: number, css: string, sab: boolean, ua: string, fs: ({ n: number, b: number, proj: boolean, drop: number, ms: number, err: string } | undefined), sw: ({ died: 0|1, kind: string, phase: string, round: number, members: number, conc: number, mb: number, cls: string, ago: number } | undefined) } | undefined}
+ * @returns {{ coi: boolean|null, bl: boolean, sb: boolean, ran: number, css: string, sab: boolean, ua: string, xb: string, fs: ({ n: number, b: number, proj: boolean, drop: number, ms: number, err: string } | undefined), sw: ({ died: 0|1, kind: string, phase: string, round: number, members: number, conc: number, mb: number, cls: string, ago: number } | undefined) } | undefined}
  */
 export function sanitizeClientDiag(d) {
   if (!d || typeof d !== "object") return undefined;

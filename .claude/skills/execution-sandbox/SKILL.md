@@ -69,7 +69,7 @@ DRC (`DeepResearch.Se/cure`).
 >
 > This matters because most of THIS SKILL is about the browser VM: CheerpX,
 > COEP/SharedArrayBuffer, the ~25 s cold boot, the 10-100x cold-block cost
-> model, the device mounts, the exec-marker protocol, every incident below.
+> model, the device mounts, the exec-marker protocol, and every incident below.
 > **None of it applies to a cloud-container send.** Before you quote a cost,
 > a boot time, or a failure mode, establish which environment you are talking
 > about — `client_diag.xb` in the chat log says so per request
