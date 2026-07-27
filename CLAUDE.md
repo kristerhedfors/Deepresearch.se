@@ -219,6 +219,22 @@ loop: the **feature-maintenance** skill.
    module. Do NOT "simplify" this back by wiring a service straight into
    `chat.js`, `settings.js`, `validation.js`, `prompts.js` or `types.d.ts`.
    Full boundary: `docs/ARCHITECTURE.md` §4.2a.
+8. **The INTRO PHASE is a controlled, approved baseline** (owner directive,
+   2026-07-26). The landing page at `600c7300` is the ACCEPTED front door —
+   **we are not going back to an earlier landing; work BUILDS ON this one.**
+   The whole first-visit sequence is tightly controlled: `/` serves the
+   landing IN PLACE (never a redirect) → the `#wintro` overlay (name →
+   tagline → does/doesn't, ≤6 bullets) → one mascot beat → the page and its
+   doors, every one of them reachable signed out → inside a tier, one intro
+   animation, one greeter, then the COMPOSER (no promotional pane
+   auto-opens). No language model is in the intro; the signed-out helper is
+   the badged prepackaged responder. Nothing new is inserted into this
+   sequence, and no part of it changes, without the same commit amending
+   **`docs/INTRO-BASELINE.md`** (the spec: §2 the surfaces, §3 the
+   first-visit keys, §4 the twelve rules, §5 how each is ensured) and its
+   contract tests `src/intro-phase.test.js` + `src/landing.test.js`. Load
+   the **intro-baseline** skill before touching any of it; UX-19 is the
+   interaction rule.
 
 > **Plan status (current): this Cloudflare account is on Workers PAID** —
 > `wrangler.toml` sets `[limits] cpu_ms = 300_000` (5 min CPU/request). Do
@@ -407,6 +423,7 @@ Features & surfaces:
 - **publish-app** — the admin/CLI bridge (`scripts/publish-app`, `PUT /api/build/:slug`) that publishes an already-built bundle (sandbox outbox, hand-assembled files) into sdk-mode's `/app/<slug>/` without a chat/tool loop.
 - **help-docs** — help mode, the documentation-first layer of introspection: the docs corpus/index, docs-first routing.
 - **publish-research** — publishing frozen replays at `DeepResearch.Se/cure/<slug>`; slugs must complete the phrase.
+- **intro-baseline** — the APPROVED landing page and the tightly-controlled new-visitor intro phase (invariant 8): the ordered sequence, the first-visit keys, the twelve rules, and the contract tests. Load it before editing the landing, either tier's first run, or anything a stranger meets first.
 - **ui-notes** — client UI/UX conventions: rendering, attachments, static pages, the public (no-auth) surface.
 - **ux-conventions** — the numbered registry of codified UX interaction rules (UX-1 …); add an entry per new decision.
 - **slash-spacing** — measuring the wordmark slash gap (`scripts/slash-gap.mjs`); never eyeball `.sl` margins.

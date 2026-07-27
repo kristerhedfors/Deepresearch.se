@@ -1072,3 +1072,65 @@ handler — no content gate; `setLayerMode`'s `ensureLayer()`+`render()`;
 `composePaneLines`, `EMPTY_PANE_LINE`), fed by `public/js/sandbox.js`'s boot
 ticker. Node-tested in `agent-backdrop-core.test.js` ("hasPaneContent counts a
 live status line", "composePaneLines … never renders blank").
+
+---
+
+## UX-19 — A first-time visitor walks ONE fixed sequence; nothing new is inserted into it
+
+**Rule.** The path from a stranger's first request to a usable composer is a
+**named, ordered, documented sequence** — not a place where surfaces
+accumulate. When a change would put anything new in front of a first-time
+visitor (a modal, a tour, a second overlay, a banner, a consent card, another
+animation), it is **not** a UI addition; it is an amendment to the intro
+contract. The sequence itself:
+
+1. `/` serves the landing **in place** — no redirect, so the URL a visitor was
+   given is the URL they read the introduction at.
+2. The first-visit overlay: **name → tagline → does/doesn't → one dismiss.**
+   Introduce before you contrast; six bullets and ~140 words is the ceiling.
+3. One mascot beat, pointing at exactly one door, with the background inert
+   behind its bubble (UX-1 dismissal, UX-3 first-visit-only).
+4. The page itself, then the doors — every one of them reachable **signed
+   out**.
+5. Inside a tier: one intro animation, one greeter, then the **composer**. No
+   promotional pane auto-opens.
+
+**Why.** Everything between a stranger and the thing they came for is paid for
+by the stranger, and the cost is invisible to whoever adds the next step —
+each addition looks small from inside the change that introduces it. The
+sequence above was arrived at through repeated correction: the does/doesn't
+grid landed on nothing until the site introduced itself first (feedback #32);
+Se/cure's glass pane used to auto-open and now doesn't (2026-07-12 onboarding
+directive); the umbrella intro's "seen" flag had to be re-versioned because a
+stalled animation had already consumed the one first visit browsers get. None
+of that survives being re-litigated one well-meaning addition at a time, so it
+is written down instead.
+
+**The mechanics (match all of these):**
+
+1. **Decoration never blocks.** Every animation in the sequence is skippable,
+   watchdogged, wrapped, and fail-soft; the chat UI paints regardless; nothing
+   downstream awaits it. A hidden-chrome guard that waits on an animation is
+   the failure mode, not the pattern (`public/cure/index.html`'s head carries
+   no inline script, and says why).
+2. **A first-visit layer is marked seen only after it actually PLAYED.** Set
+   the flag from the completion handler, never at the gate: a module that
+   fails to load must not burn the visit.
+3. **Suppression is a triple, and the override is `?anim=1`.**
+   `prefers-reduced-motion`, already-seen, and a deep link each suppress;
+   `?anim=1` (and `?anim=rev`) force through all three, and are the supported
+   way to re-watch or verify.
+4. **No language model in the intro.** A signed-out visitor's questions get
+   the prepackaged responder, badged so it can never be mistaken for the
+   research model.
+5. **Every door is public.** A link the intro offers that answers 401 is a
+   broken intro.
+
+**Canonical implementation:** `public/welcome/index.html` (the root landing,
+`#wintro`, `#mascot`/`#mbubble`, the `#askdemo` canned helper), the
+unauthenticated root branch in `src/index.js`, `public/cure/drc.js`
+(`afterUmbrella`, `showGhostSay`, the umbrella gate) and `public/js/app.js`
+(the balloon gate). **Specification:** `docs/INTRO-BASELINE.md` — read it
+before editing any of them; the `intro-baseline` skill is the load trigger.
+Node-tested in `src/intro-phase.test.js` (the cross-surface contract) and
+`src/landing.test.js` (the landing's own structure).

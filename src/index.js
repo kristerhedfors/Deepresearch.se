@@ -546,6 +546,11 @@ async function route(request, env, url, log, ctx, requestId) {
     // stays deepresearch.se. It is also reachable directly at /welcome/; both
     // tiers are one tap away from it (the ghost button → /cure, sign in →
     // /rver).
+    //
+    // IN PLACE, never a redirect: this is rule R2 of the controlled intro
+    // phase (docs/INTRO-BASELINE.md), pinned by src/landing.test.js. The root
+    // has flipped to a 302 before; flipping it again is a deliberate edit to
+    // that document and its tests, not a routing tidy-up.
     if (url.pathname === "/" && (request.method === "GET" || request.method === "HEAD")) {
       return { response: await serveAsset(request, env, url.origin + "/welcome/") };
     }
