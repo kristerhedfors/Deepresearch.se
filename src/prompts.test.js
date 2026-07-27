@@ -346,16 +346,34 @@ describe("bashAgentPrompt", () => {
   // Feedback #7 (2026-07-24): an Agent Studio build turn heredoc'd the app into
   // the sandbox and nothing shipped — the step model must know the build
   // assistant has direct file tools and decline plain build instructions.
-  test("sdkMode steers file creation to the Agents SDK build tools, and only then", () => {
+  test("sdkMode steers file creation to the Agent SDK build tools, and only then", () => {
     const on = bashAgentPrompt({ sdkMode: true });
     assert.match(on, /AGENT STUDIO/);
     assert.match(on, /write_file/);
     assert.match(on, /publish_app/);
     assert.match(on, /NEVER published/);
-    assert.match(on, /reply SHELL_DONE immediately/);
+    // Feedback #7 stands: the app's files are never written in the sandbox.
+    assert.match(on, /do NOT write the app's files here/);
     const off = bashAgentPrompt();
     assert.doesNotMatch(off, /AGENT STUDIO/);
     assert.doesNotMatch(off, /write_file/);
+  });
+
+  // Feedback #41 (2026-07-27): the owner asked Agent Studio for a build,
+  // expected it to look around and work in the shell, and saw no sandbox
+  // action — feedback #7's fix had over-corrected into "reply SHELL_DONE
+  // immediately" on every build turn. Recon is now the expected use, and the
+  // no-shipping rule above is what keeps the two compatible.
+  test("sdkMode asks for RECONNAISSANCE over /src rather than an immediate SHELL_DONE", () => {
+    const on = bashAgentPrompt({ sdkMode: true });
+    assert.match(on, /RECONNAISSANCE/);
+    assert.doesNotMatch(on, /reply SHELL_DONE immediately/);
+    // It must name where to look: both SDKs and the Se/cure reference source.
+    assert.match(on, /\/src\/sdk\/AGENTS\.json/);
+    assert.match(on, /pair-cli\.mjs/);
+    assert.match(on, /drc-\*\.js/);
+    // …and stay bounded, so a build turn doesn't become a repo tour.
+    assert.match(on, /2-4 quick, targeted commands/);
   });
 });
 
@@ -753,11 +771,33 @@ describe("SDK build prompts", () => {
       assert.match(p, /do NOT stop to ask first/);
     });
 
-    test(`${name} frames SDK mode as distilling this site (esp. Se/cure) into a flavour`, () => {
+    test(`${name} frames Agent Studio as building out of this site (esp. Se/cure)`, () => {
       const p = build();
-      assert.match(p, /DistillSDK/);
+      assert.match(p, /Agent Studio/);
       assert.match(p, /Se\/cure/);
-      assert.match(p, /flavour/i);
+    });
+
+    // Feedback #41 (2026-07-27): a single-agent request was built AND described
+    // as a Platform SDK distillation. The prompt decides which SDK the model
+    // thinks it is using — and therefore which one it names to the user.
+    test(`${name} names the Agent SDK for one agent and the Platform SDK for a platform`, () => {
+      const agent = build({ target: "agent" });
+      assert.match(agent, /THE AGENT SDK IS THE METHOD/);
+      assert.doesNotMatch(agent, /THE PLATFORM SDK IS THE METHOD/);
+      const platform = build({ target: "platform" });
+      assert.match(platform, /THE PLATFORM SDK IS THE METHOD/);
+      assert.doesNotMatch(platform, /THE AGENT SDK IS THE METHOD/);
+      // Unspecified falls to the agent — the common Agent Studio ask.
+      assert.match(build(), /THE AGENT SDK IS THE METHOD/);
+    });
+
+    // The codename is INTERNAL (the DRC/DRS rule). It leaked to the user
+    // precisely because it was in the prompt: whatever briefs the model is
+    // what the model repeats back.
+    test(`${name} uses the public SDK names only — no internal codename`, () => {
+      for (const target of ["agent", "platform", undefined]) {
+        assert.doesNotMatch(build({ target }), /DistillSDK/i, String(target));
+      }
     });
 
     // Feedback #7 (2026-07-24, chat_logs #583): a build wrote its files into
@@ -774,7 +814,7 @@ describe("SDK build prompts", () => {
   test("the tool prompt names write_file/publish_app as the only shipping path (never a shell)", () => {
     const p = sdkBuildToolPrompt();
     assert.match(p, /ONLY way files ship/);
-    assert.match(p, /never route file creation through a shell/);
+    assert.match(p, /the sandbox publishes nothing/);
   });
 });
 

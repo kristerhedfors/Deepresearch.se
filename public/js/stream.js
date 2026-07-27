@@ -34,7 +34,7 @@ import { onDeviceIdFromValue } from "./ondevice-core.js";
 import { loadOnDeviceEngine, onDeviceModelLabel } from "./ondevice-drs.js";
 import { runDrcResearch } from "./drc-research.js";
 import { runShellLoop, shellCommandLabel } from "./bash-agent.js";
-import { GUEST_STDOUT_CAP_BYTES, bashIntent, deliverablesRun, execTimeoutForBudget, wantsOutboxCollect } from "./bash-core.js";
+import { GUEST_STDOUT_CAP_BYTES, bashIntent, deliverablesRun, execTimeoutForBudget, shellPrePassPurpose, wantsOutboxCollect } from "./bash-core.js";
 import { feedbackForcesServerRoute, feedbackIntent } from "./feedback-core.js";
 import { slashEffect } from "./slash-core.js";
 import { aiModelIntent } from "./ai-models.js";
@@ -1041,13 +1041,19 @@ async function maybeRunShellLoop(turn, opts) {
     // on the way to a canned acknowledgment or a documentation answer.)
     if (latestUser && (feedbackIntent(latestUser) || slashEffect(latestUser))) return [];
     if (latestUser && aiModelIntent(latestUser) && !bashIntent(latestUser)) return [];
-    // Agent Studio (SDK mode): building is the BUILD tools' job (write_file /
-    // publish_app — files created in the sandbox are never published), so a
-    // plain build instruction skips the slow sandbox pre-pass entirely. Only an
-    // explicit shell ask (bashIntent, EN+SV) still runs the loop — and then the
-    // step prompt knows it's an SDK send (feedback #7, chat_logs #583).
+    // Agent Studio (SDK mode): shipping is still exclusively the BUILD tools'
+    // job (write_file / publish_app — files created in the sandbox are never
+    // published, feedback #7 / chat_logs #583), but a build turn DOES get a
+    // shell now: the owner asked for a build, expected the agent to look around
+    // and work in the shell, and got no sandbox action at all because that
+    // earlier fix skipped the pre-pass on every plain build instruction
+    // (feedback #41). The pre-pass runs as RECONNAISSANCE over the source
+    // mounted at /src — bashAgentPrompt's sdkMode branch carries the brief and
+    // caps it at a few commands, and the transcript reaches the build framed as
+    // context only. Costs a cold boot (~25 s) before a build on a sandbox-
+    // enabled device; that is the deliberate trade.
     const sdkSend = cachedChatMode() === "sdk";
-    if (sdkSend && !bashIntent(latestUser || "")) return [];
+    const purpose = shellPrePassPurpose({ sdkMode: sdkSend, shellAsk: bashIntent(latestUser || "") });
     // WHERE this send's commands run (public/js/exec-backends-core.js). With no
     // local runner configured — the default for everyone who never opens the
     // setting — `runner` IS the browser-VM bridge and every line below behaves
@@ -1106,7 +1112,12 @@ async function maybeRunShellLoop(turn, opts) {
           ? "Starting your Linux container…"
           : remoteExec
             ? "Connecting to your local runner…"
-            : "Booting Linux sandbox…",
+            // Agent Studio's recon pre-pass: say what the shell is for, so the
+            // build turn's sandbox work is visible rather than a mystery pause
+            // (feedback #41 — "I see no sandbox action").
+            : purpose === "recon"
+              ? "Booting Linux sandbox to look around the source…"
+              : "Booting Linux sandbox…",
       );
       // The first boot is slow (a whole Debian streams in), so entertain the
       // step label with rotating quips (public/js/boot-messages.js) until ready.

@@ -131,6 +131,36 @@ export function bashIntent(text) {
   return SHELL_PATTERNS.some((re) => re.test(t));
 }
 
+// Does an AGENT STUDIO (SDK-mode) send run the shell pre-pass? Feedback #41
+// (2026-07-27): the owner asked for a build and expected the agent to look
+// around and work in the shell — there was none, because feedback #7's fix
+// (sandbox files never ship, so don't route a build through heredocs) had been
+// implemented as "skip the sandbox entirely on any plain build turn".
+//
+// The two hold together once the sandbox is read as a WORKBENCH: a build turn
+// DOES get a shell — for reconnaissance over the source mounted at /src (both
+// SDKs, the Se/cure reference) and for running or testing snippets — while
+// shipping stays exclusively with write_file/publish_app. bashAgentPrompt's
+// sdkMode branch carries that brief and caps it at a few commands, and the
+// transcript rides into the build framed as context only (shellReplyMessages
+// { sdkBuild: true }), which is what stops the model treating it as shipped.
+//
+// The cost is real and deliberate: a cold VM boot (~25 s) now precedes a build
+// on a device with the sandbox knob on. Callers that have no sandbox at all
+// never reach here — the knob is checked first.
+/**
+ * What the shell pre-pass is FOR on this send — `"recon"` on an Agent Studio
+ * build turn (look around /src, then hand the findings to the build tools),
+ * `"task"` when the user actually asked for shell work, `"skip"` never here
+ * (the caller's own skips — knob off, feedback text, a pure model question —
+ * are checked before this).
+ * @param {{ sdkMode: boolean, shellAsk: boolean }} o
+ * @returns {"recon" | "task"}
+ */
+export function shellPrePassPurpose({ sdkMode, shellAsk }) {
+  return sdkMode && !shellAsk ? "recon" : "task";
+}
+
 // The intent patterns. English and Swedish are kept side by side, one pair
 // per concept, so parity is auditable at a glance (and enforced by the
 // parity unit test). Typos mirror the English typo sets per invariant 6.

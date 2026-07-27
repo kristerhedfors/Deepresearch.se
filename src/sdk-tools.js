@@ -23,6 +23,7 @@ export {
   buildFilesSummary,
   buildSdkContextBlock,
   buildSecureSourceDigest,
+  buildTargetFor,
   makeFileLineScanner,
   manifestFromSnapshot,
   parseFileBlocks,

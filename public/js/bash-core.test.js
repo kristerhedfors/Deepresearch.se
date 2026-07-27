@@ -17,6 +17,7 @@ import {
   OUTBOX_PATH,
   bashIntent,
   buildShellTranscript,
+  shellPrePassPurpose,
   buildStepUserMessage,
   base64ToBytes,
   concatChunks,
@@ -886,6 +887,34 @@ describe("isExportablePath", () => {
     }
     for (const bad of ["/etc/passwd", "/workspace", "/mntx/evil", "workspace/a", "", null]) {
       assert.equal(isExportablePath(/** @type {any} */ (bad)), false, String(bad));
+    }
+  });
+});
+
+// Feedback #41 (2026-07-27): the owner asked Agent Studio for a build and
+// expected the agent to look around in the shell. There was none — feedback
+// #7's "sandbox files never ship" fix had been implemented as "skip the
+// sandbox on any plain build turn", which threw out the reconnaissance with
+// the shipping.
+describe("the Agent Studio shell pre-pass (feedback #41)", () => {
+  test("a plain build turn gets a RECON shell; an explicit shell ask is a task", () => {
+    assert.equal(shellPrePassPurpose({ sdkMode: true, shellAsk: false }), "recon");
+    assert.equal(shellPrePassPurpose({ sdkMode: true, shellAsk: true }), "task");
+    // Outside Agent Studio nothing changes: the model still decides per turn.
+    assert.equal(shellPrePassPurpose({ sdkMode: false, shellAsk: false }), "task");
+    assert.equal(shellPrePassPurpose({ sdkMode: false, shellAsk: true }), "task");
+  });
+
+  test("a build instruction is not a shell ask — in English or Swedish", () => {
+    // The pair that produced the regression: neither phrasing trips bashIntent,
+    // so before this fix both skipped the sandbox outright.
+    const builds = [
+      "Build a single-purpose legal-research agent in deep blue",
+      "Bygg en enkel juridisk researchagent i mörkblått",
+    ];
+    for (const b of builds) {
+      assert.equal(bashIntent(b), false, b);
+      assert.equal(shellPrePassPurpose({ sdkMode: true, shellAsk: bashIntent(b) }), "recon", b);
     }
   });
 });

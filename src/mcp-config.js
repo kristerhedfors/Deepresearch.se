@@ -57,7 +57,7 @@ export const MCP_TOOL_CATALOG = [
     id: "sdk_list_modules",
     group: "Platform SDK",
     label: "sdk_list_modules",
-    blurb: "Lists the DistillSDK module registry — id, title and dependencies for each buildable module.",
+    blurb: "Lists the Platform SDK module registry — id, title and dependencies for each buildable module.",
     def: true,
   },
   {

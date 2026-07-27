@@ -22,6 +22,29 @@ shareable `/app/<slug>/` URL. Green is the mode's color (the composer pane + the
 > `docs/AGENT-PLATFORM.md`) — an agent IS its chat-input-pane controls, theme,
 > animations, examples and share-link quota.
 
+> **WHICH SDK builds this, and what it is CALLED (feedback #41, 2026-07-27).**
+> Two owner corrections to one build, both now enforced in code:
+>
+> 1. **Public terminology is "Platform SDK" and "Agent SDK".** DistillSDK is
+>    the Platform SDK's INTERNAL codename (the DRC/DRS rule, now written into
+>    `docs/BRANDING.md`) — it must not appear in any string the model reads,
+>    because whatever briefs the model is what the model repeats to the user.
+>    It had leaked as the SSE step label *"SDK mode — distilling a flavour
+>    with DistillSDK"*. Unit tests in `sdk-core.test.js`,
+>    `agent-spec-core.test.js` and `prompts.test.js` now fail on the codename
+>    in a model-visible string.
+> 2. **A single agent is an AGENT SDK build, not a Platform SDK distillation.**
+>    `buildTargetFor(text)` (sdk-core.js) classifies the ask —
+>    deterministic, EN+SV, **`agent` is the default**, `platform` only on an
+>    explicit whole-platform ask ("hela plattformen", "the entire site",
+>    "both tiers", "a clone of the site"). The target drives all four
+>    surfaces at once: the step label the user watches
+>    ("Agent Studio — building an agent with the Agent SDK"), the context
+>    block's method paragraph, `SDK_METHOD_NOTE` in the build prompts, and —
+>    on an agent build only — `buildAgentSdkDigest()`, which puts the
+>    AgentSpec vocabulary (rendered from the live registries, so it cannot
+>    drift) and the shipped specs in front of the model.
+>
 > **The TWO-SDK division (owner directive, 2026-07-24).** The project has two
 > distinct SDKs and Agent Studio sits at their seam. The **Agents SDK**
 > (`docs/AGENT-PLATFORM.md`, `sdk/AGENTS.json`, `public/js/agent-spec-core.js`)
@@ -34,8 +57,22 @@ shareable `/app/<slug>/` URL. Green is the mode's color (the composer pane + the
 > `sdk_*` tools) as the METHOD when a request distills a whole platform rather
 > than a single agent. Files created in the sandbox are NEVER published
 > (feedback #7, chat_logs #583) — the bash step prompt, the build prompts, and
-> the transcript framing all say so, and the DRS client skips the sandbox
-> pre-pass on plain build turns (stream.js maybeRunShellLoop).
+> the transcript framing all say so.
+>
+> **The sandbox is a WORKBENCH, not a shipping channel — and a build turn DOES
+> use it (feedback #41, 2026-07-27).** Feedback #7's fix had been implemented
+> as "skip the sandbox pre-pass on any plain build turn", so the owner asked
+> for a build, expected the agent to look around in the shell, and saw no
+> sandbox action at all. Both hold together now: the pre-pass RUNS on a build
+> turn as **reconnaissance** (`shellPrePassPurpose` in bash-core.js →
+> `stream.js maybeRunShellLoop`; the boot step reads "Booting Linux sandbox to
+> look around the source…"), and `bashAgentPrompt({sdkMode:true})` briefs it to
+> read both SDKs and the Se/cure source under `/src`, run
+> `node /src/sdk/pair-cli.mjs agents|list`, and test snippets — capped at 2-4
+> commands — while writing the app's files there stays forbidden. Cost: a cold
+> VM boot (~25 s) now precedes a build on a sandbox-enabled device. That is the
+> deliberate trade; if it proves too slow in practice, narrow the recon, don't
+> restore the blanket skip.
 
 ## The plant identity + the mode-theme registry (2026-07-19)
 

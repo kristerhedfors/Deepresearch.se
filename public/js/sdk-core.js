@@ -397,7 +397,7 @@ export const SDK_TOOLS = [
   {
     name: "sdk_list_modules",
     description:
-      "List DistillSDK's module catalog (sdk/MANIFEST.json) grouped by layer — every buildable module with its id, capability class (C/S/B/X/D), and name. The same output as `node sdk/pair-cli.mjs list`, no shell needed.",
+      "List the Platform SDK's module catalog (sdk/MANIFEST.json) grouped by layer — every buildable module with its id, capability class (C/S/B/X/D), and name. The same output as `node sdk/pair-cli.mjs list`, no shell needed.",
     input_schema: { type: "object", properties: {}, required: [] },
   },
   {
@@ -670,40 +670,120 @@ export function buildSecureSourceDigest(snapshot, opts = {}) {
   return ["Se/cure reference SOURCE (the original to distill — study it before building):", "", sections.join("\n\n")].join("\n");
 }
 
+// ---- WHICH SDK builds this? (feedback #41, 2026-07-27) ----------------------
+//
+// The project has TWO SDKs and Agent Studio sits at their seam (the two-SDK
+// division, owner directive 2026-07-24). Which one is the METHOD depends on
+// what the user asked for, and getting it wrong is a real defect: a request
+// for ONE agent ("a single-purpose legal-research agent") was answered as a
+// Platform-SDK distillation, which is the method for standing up a whole new
+// DeepResearch-like PLATFORM.
+//
+//   agent     → the AGENT SDK (sdk/AGENTS.json + agent-spec-core.js): an agent
+//               is DATA — a spec declaring its composer controls, theme,
+//               animations, examples, quota and capability block. THE DEFAULT:
+//               most Agent Studio asks are one agent.
+//   platform  → the PLATFORM SDK (sdk/MANIFEST.json + sdk/skills/): the module
+//               catalog that rebuilds the Se/cure + Se/rver pair itself. The
+//               EXCEPTION — only when the ask really is a whole platform.
+//
+// Deterministic and typo-tolerant with FULL Swedish parity (invariant 6); the
+// parity is pinned by a unit test. Classified from the user's own words, never
+// from a model call, so the routing stays reproducible.
+export const BUILD_TARGETS = /** @type {const} */ (["agent", "platform"]);
+
+// One EN/SV pair per concept, side by side so the parity is auditable.
+const PLATFORM_PATTERNS = [
+  // the word itself. EN: platform(s) — SV: plattform(en/ar/arna), typo "platform".
+  // The Swedish form deliberately has NO leading word boundary: compounding is
+  // the norm there ("researchplattform", "forskningsplattform"), so requiring
+  // one would give Swedish narrower coverage than English (invariant 6).
+  /\bplatforms?\b/,
+  /plat+form(en|ar|arna|s)?\b/,
+  // "the whole/entire site|platform|product|system|stack"
+  /\b(whole|entire|complete|full)\s+(site|website|platform|product|system|stack|app suite)\b/,
+  /\bhel(a|t)\s+(sajten|sajt|siten|webbplatsen|webbplats|sidan|plattformen|plattform|systemet|system|produkten|produkt)\b/,
+  // "both tiers" / "Se/cure and Se/rver"
+  /\bboth tiers\b|\bse\s*\/?\s*cure and se\s*\/?\s*rver\b/,
+  /\bbåda\s+(nivåerna|tjänsterna|tierna|delarna)\b|\bse\s*\/?\s*cure och se\s*\/?\s*rver\b/,
+  // "a clone / my own version / a new instance of the site"
+  /\b(clone|copy|replica|own version|new instance|new deployment)\b[^.\n]{0,30}\b(site|website|platform|deepresearch)\b/,
+  /\b(klon|kopia|egen version|ny instans|ny version)\b[^.\n]{0,30}\b(sajt(en)?|siten|webbplats(en)?|plattform(en)?|deepresearch)\b/,
+  // "full stack" / "end-to-end system"
+  /\bfull[- ]stack\b|\bend[- ]to[- ]end (system|product)\b/,
+  /\bfullstack\b|\bkomplett (system|produkt)\b/,
+];
+
+/**
+ * Which SDK is the method for this build? `agent` unless the request plainly
+ * describes a whole platform. Classified on the user's message text.
+ * @param {string} text the build instruction (the latest user message)
+ * @returns {"agent" | "platform"}
+ */
+export function buildTargetFor(text) {
+  const t = String(text || "").toLowerCase();
+  if (!t.trim()) return "agent";
+  return PLATFORM_PATTERNS.some((re) => re.test(t)) ? "platform" : "agent";
+}
+
 /**
  * The SDK-mode context block appended to the conversation (the introspection-
  * block pattern): orients ANY answer model — tool-capable or not — about what
- * SDK mode IS (distilling the original site, especially the client-side Se/cure
- * tier, into a new FLAVOUR published lovable-style), the DistillSDK catalog and
- * where its skills live, the deployed Se/cure source to study, the privacy
- * invariants a Se/cure-derived flavour must uphold, and (for the deterministic
- * path) the FILE-block emission convention.
+ * Agent Studio IS, WHICH SDK is the method for this particular build (the
+ * Agent SDK for one agent, the Platform SDK for a whole platform), the
+ * deployed Se/cure source to study, the privacy invariants a Se/cure-derived
+ * flavour must uphold, and (for the deterministic path) the FILE-block
+ * emission convention.
+ *
+ * PUBLIC TERMINOLOGY (owner directive, feedback #41): everything the model
+ * reads — and therefore everything it echoes back to the user — says
+ * "Platform SDK" and "Agent SDK". The codename DistillSDK is an INTERNAL name
+ * (the DRC/DRS rule) and must not appear in model- or user-visible copy.
  * @param {any | null} manifest
- * @param {{ toolMode?: boolean, buildUrl?: string | null, secureDigest?: string }} [opts]
+ * @param {{ toolMode?: boolean, buildUrl?: string | null, secureDigest?: string,
+ *           target?: "agent" | "platform", agentBlock?: string }} [opts]
  * @returns {string}
  */
 export function buildSdkContextBlock(manifest, opts = {}) {
+  const platform = opts.target === "platform";
   const parts = [
-    "SDK mode: DistillSDK — distill this site into a new flavour",
+    platform
+      ? "Agent Studio: build a PLATFORM with the Platform SDK"
+      : "Agent Studio: build an AGENT with the Agent SDK",
     "=".repeat(66),
-    "The user is in SDK mode (Agent Studio): they want you to DESIGN AND BUILD a runnable collection of files, published at a live URL, by DISTILLING this site into a new FLAVOUR — a single agent, or an entire platform. The Platform SDK (DistillSDK, sdk/ in this repo) is the method: it describes this site's Se/cure + Se/rver platform as 34 buildable modules, each with a skill playbook (sdk/skills/<id>/SKILL.md) you can read for implementation guidance. The site itself — above all the client-side Se/cure tier — is the original you distill from.",
+    platform
+      ? "The user is in Agent Studio and asked for a whole PLATFORM — a new DeepResearch-like product, not a single agent. The PLATFORM SDK is the method: it describes this site's Se/cure + Se/rver platform as buildable modules (sdk/MANIFEST.json), each with a skill playbook (sdk/skills/<id>/SKILL.md) you can read for implementation guidance. The site itself — above all the client-side Se/cure tier — is the original you distill from. Name the Platform SDK, never an internal codename, when you describe your method."
+      : "The user is in Agent Studio and asked for ONE AGENT — a single-purpose flavour of this platform, not a new platform. The AGENT SDK is the method: in it an agent is DATA, not code — a spec (sdk/AGENTS.json) declaring what the agent IS (its chat-input-pane controls, theme, intro/loading animations, seed examples, share-link quota) and what it DOES (its capability block: answer phase, prompt set, tool classes, context blocks, search and routing policy, gates, bounds, emitted events). Design your agent the way an AgentSpec describes one — decide those axes deliberately and say which you chose — then BUILD it as a self-contained app. The Platform SDK (the module catalog below) is the OTHER SDK: it builds a whole platform, so reach for it only for the platform-level machinery your agent sits on, and do not present it as the method here. Name the Agent SDK, never an internal codename, when you describe your method.",
     "",
     "The Se/cure tier (the original most flavours distill from): a fully client-side research assistant. The server is in NO data path — the browser talks to LLM/search providers DIRECTLY using the user's own API keys, the research pipeline runs in the page, and any state stays browser-local. Its deployed reference source:",
     SECURE_SOURCE_REFS.map((p) => `  - ${p}`).join("\n"),
     "",
     "PRIVACY INVARIANTS a Se/cure-derived flavour MUST uphold (this is the point of Se/cure — do not weaken them): no server round-trip for conversation content; provider calls go browser→provider directly; secrets (API keys) live only in memory/this device and never appear in any log or third-party request; outbound requests to third parties carry the minimum (a query, a coordinate) — never the conversation or identity. State the privacy posture of what you built, plainly, in the reply.",
   ];
+  // The Agent SDK's own material leads on an agent build — the shipped specs
+  // are the worked examples of the shape the model is asked to design in.
+  if (!platform && opts.agentBlock) {
+    parts.push("", opts.agentBlock);
+  }
   if (opts.secureDigest) {
     parts.push("", opts.secureDigest);
   }
   if (manifest) {
-    parts.push("", "DistillSDK module catalog (sdk/MANIFEST.json) — use it to STRUCTURE the flavour:", renderList(manifest));
+    parts.push(
+      "",
+      platform
+        ? "Platform SDK module catalog (sdk/MANIFEST.json) — use it to STRUCTURE the platform:"
+        : "Platform SDK module catalog (sdk/MANIFEST.json) — the OTHER SDK, for reference: the platform machinery an agent can sit on. Borrow a module where the agent genuinely needs it; the Agent SDK above is still the method.",
+      renderList(manifest),
+    );
   } else {
-    parts.push("", "(The DistillSDK manifest could not be loaded from the deployed snapshot — distill from the Se/cure source and describe the build honestly without it.)");
+    parts.push("", "(The Platform SDK manifest could not be loaded from the deployed snapshot — build from the Se/cure source and describe the build honestly without it.)");
   }
   parts.push(
     "",
-    "FLAVOUR: distill freely — a minimal single-purpose research client, a themed or domain-specific variant, a stripped-down single-file build, a different UI entirely. Study the Se/cure source and the relevant SDK modules/skills for HOW the tier does browser-direct calls and its pipeline, then build YOUR flavour; you need not copy the source verbatim. For requests that go beyond the SDK's scope, still build them well — the SDK guides, it never blocks.",
+    platform
+      ? "FLAVOUR: distill freely — a stripped-down two-tier product, a themed or domain-specific platform, a different UI entirely. Study the Se/cure source and the relevant Platform SDK modules/skills for HOW the tier does browser-direct calls and its pipeline, then build YOUR platform; you need not copy the source verbatim. For requests that go beyond the SDK's scope, still build them well — the SDK guides, it never blocks."
+      : "THE AGENT: single-purpose and opinionated — it does ONE job well. Study the Se/cure source for HOW a browser-direct, client-side agent actually calls its provider and runs its pipeline in the page, then build YOUR agent; you need not copy the source verbatim. For requests that go beyond either SDK's scope, still build them well — the SDK guides, it never blocks.",
   );
   if (opts.buildUrl) {
     parts.push("", `This conversation already published a build at ${opts.buildUrl} — iterate on it (republishing keeps the same URL).`);
@@ -712,8 +792,10 @@ export function buildSdkContextBlock(manifest, opts = {}) {
     parts.push(
       "",
       opts.secureDigest
-        ? "The Se/cure source DIGEST above is your starting material — study it first; distilling is your job, so don't over-plan. read_file a listed source path only for detail the digest skeleton omits (prioritize the actual Se/cure source over the SKILL.md playbooks, which are secondary guidance); sdk_plan/sdk_show are optional. Then stage each file with write_file and call publish_app ONCE."
-        : "Plan with the sdk_* tools, read the relevant sdk/skills/<id>/SKILL.md playbooks and the Se/cure reference source with grep_source / read_file / list_files before building; stage each file with write_file; publish_app ONCE.",
+        ? `The Se/cure source DIGEST above is your starting material — study it first; building is your job, so don't over-plan. read_file a listed source path only for detail the digest skeleton omits${platform ? " (prioritize the actual Se/cure source over the SKILL.md playbooks, which are secondary guidance); the sdk_* tools plan the module order and are optional" : " — for the Agent SDK's own definition read sdk/AGENTS.json or docs/AGENT-PLATFORM.md; the sdk_* tools plan Platform SDK modules and are rarely what an agent build needs"}. Then stage each file with write_file and call publish_app ONCE.`
+        : platform
+          ? "Plan with the sdk_* tools, read the relevant sdk/skills/<id>/SKILL.md playbooks and the Se/cure reference source with grep_source / read_file / list_files before building; stage each file with write_file; publish_app ONCE."
+          : "Read the Agent SDK's definition (sdk/AGENTS.json, docs/AGENT-PLATFORM.md) and the Se/cure reference source with grep_source / read_file / list_files before building; stage each file with write_file; publish_app ONCE.",
     );
   } else {
     parts.push(
