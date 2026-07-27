@@ -28,6 +28,7 @@
 import { loadArticlesView } from "./account-articles.js";
 import { loadFeedbackView } from "./account-feedback.js";
 import { loadKnowledgeView } from "./account-knowledge.js";
+import { loadMcpView } from "./account-mcp.js";
 import { loadMessagesView } from "./account-messages.js";
 import { loadPoolView } from "./account-pool.js";
 import { loadSettingsView, loadShareView } from "./account-settings.js";
@@ -123,6 +124,7 @@ const VIEW_TITLES = {
   share: "Share a Se/cure workspace",
   articles: "Article collection",
   llmsharing: "LLM sharing",
+  mcp: "MCP server",
 };
 
 /**
@@ -151,6 +153,14 @@ function showView(ctx, view) {
   // not the summary, because that is where it hangs.
   if (view === "llmsharing") {
     loadPoolView(ctx);
+    return;
+  }
+  // Also one level below Settings: WHAT this account exposes over MCP, and the
+  // key an external client (Claude Code, Cursor) connects with. A whole screen
+  // of its own — a credential, a tool list and a spend dial — so Settings gives
+  // it a door rather than a knob, and its back-link returns there.
+  if (view === "mcp") {
+    loadMcpView(ctx);
     return;
   }
   if (view === "share") {

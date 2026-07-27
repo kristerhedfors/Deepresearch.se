@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeepResearch.Se — connect an MCP client</title>
+  <link rel="icon" href="/favicon.ico?v=4" sizes="48x48">
+  <meta name="theme-color" content="#0f1115">
+  <meta name="description" content="Point Claude Code, Cursor, or any MCP client at DeepResearch.se's research pipeline.">
+  <style>
+    /* Self-contained, like the other standalone public pages (/cure/help/,
+       /cure/local-search/). This one serves the SERVER tier, so it takes the
+       app's dark palette rather than Se/cure's khaki — a reader arriving here
+       is on their way to a signed-in Settings screen. */
+    :root {
+      --bg: #0f1115; --panel: #171a21; --panel-2: #1e222b; --border: #2b3140;
+      --text: #e6e8ee; --muted: #98a0b3; --accent: #7aa2f7;
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--text); margin: 0; padding: 1.25rem 1rem 3rem; line-height: 1.55;
+    }
+    main { max-width: 780px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+    h1 { font-size: 1.15rem; margin: 0; }
+    a.back {
+      background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+      text-decoration: none; font-weight: 600; font-size: .85rem;
+      border-radius: 10px; padding: .45rem .8rem; white-space: nowrap;
+    }
+    section { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 1rem 1.15rem; }
+    h2 { font-size: 1rem; margin: 0 0 .5rem; }
+    h3 { font-size: .9rem; margin: 1rem 0 .25rem; }
+    p, li { font-size: .92rem; margin: .4rem 0; }
+    ul, ol { padding-left: 1.3rem; margin: .4rem 0; }
+    code { background: var(--panel-2); border-radius: 4px; padding: 0 .3rem; font-size: .85em; }
+    .muted { color: var(--muted); }
+    a { color: var(--accent); }
+    /* The wordmark's slash spacing: same font stack and comparable size as
+       /cure/help/, whose value was MEASURED (scripts/slash-gap.mjs — the
+       slash-spacing skill). Carried over, not eyeballed. */
+    .sl { margin: 0 -.04em; }
+    .wm { white-space: nowrap; }
+    .cmd { display: flex; align-items: stretch; gap: .5rem; margin: .5rem 0; }
+    .cmd pre {
+      flex: 1; margin: 0; padding: .55rem .7rem; overflow-x: auto;
+      background: #0b0d11; color: #d7e0f5; border: 1px solid var(--border);
+      border-radius: 8px; font-size: .78rem; line-height: 1.45; white-space: pre;
+    }
+    .cmd button {
+      flex: none; align-self: center; background: var(--panel-2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px; font-size: .78rem;
+      font-weight: 600; padding: .45rem .7rem; cursor: pointer; min-width: 4.6rem;
+    }
+    .cmd button:hover { background: #262c38; }
+    .note {
+      background: var(--panel-2); border-left: 3px solid var(--accent);
+      border-radius: 6px; padding: .5rem .8rem; font-size: .86rem; margin: .5rem 0;
+    }
+    table { border-collapse: collapse; width: 100%; font-size: .85rem; }
+    th, td { text-align: left; padding: .35rem .5rem; border-top: 1px dashed var(--border); vertical-align: top; }
+    th { border-top: 0; color: var(--muted); font-weight: 600; }
+    td code { white-space: nowrap; }
+  </style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>Connect an MCP client</h1>
+    <a class="back" href="https://deepresearch.se/rver">← Back to the app</a>
+  </div>
+
+  <p>DeepResearch.<b>Se<span class="sl">/</span>rver</b> is also an
+  <a href="https://modelcontextprotocol.io" target="_blank" rel="noopener">MCP</a>
+  server. Point <b>Claude Code</b> — or Cursor, or anything that speaks MCP — at
+  it and your agent gets the same deep-research run the chat does: it plans
+  search angles, searches the web, audits its own coverage for gaps, and
+  synthesizes an answer built only from the sources it found, with citations.</p>
+
+  <section>
+    <h2>1. Mint a key</h2>
+    <p>Sign in at <a href="https://deepresearch.se/rver">deepresearch.se</a>, open
+    <b>Settings</b> (the gear icon) → <b>MCP server</b> → <b>Mint key</b>.</p>
+    <p>The key is shown once. It authorizes the MCP endpoint and nothing else —
+    it is not a login, and it cannot read your chats, projects, files, history or
+    account. Minting again replaces it; <b>Revoke</b> kills it on the next call.</p>
+  </section>
+
+  <section>
+    <h2>2. Add the server</h2>
+    <p>Claude Code, one line — paste your key where the placeholder is:</p>
+    <div class="cmd">
+      <pre>claude mcp add --transport http deepresearch https://mcp.deepresearch.se/mcp --header "Authorization: Bearer YOUR_KEY"</pre>
+      <button type="button">Copy</button>
+    </div>
+    <p>Settings → MCP server has the same line with your key already spliced in.
+    Check it took:</p>
+    <div class="cmd">
+      <pre>claude mcp list</pre>
+      <button type="button">Copy</button>
+    </div>
+
+    <h3>Other clients</h3>
+    <p>Anything that reads an <code>mcpServers</code> block (Cursor, Claude
+    Desktop, most agent SDKs):</p>
+    <div class="cmd">
+      <pre>{
+  "mcpServers": {
+    "deepresearch": {
+      "type": "http",
+      "url": "https://mcp.deepresearch.se/mcp",
+      "headers": { "Authorization": "Bearer YOUR_KEY" }
+    }
+  }
+}</pre>
+      <button type="button">Copy</button>
+    </div>
+    <p class="muted">Transport is Streamable HTTP (JSON-RPC 2.0 over a single
+    POST). The bare origin — <code>https://mcp.deepresearch.se</code> — answers
+    too, since clients disagree about whether the configured URL includes the
+    path.</p>
+  </section>
+
+  <section>
+    <h2>3. Choose what it may reach</h2>
+    <p>Settings → MCP server is also where you decide what a connected agent
+    sees. Every tool has a switch; a tool switched off vanishes from the client's
+    tool list and is refused if the client calls it anyway.</p>
+    <table>
+      <tr><th>Tool</th><th>What it does</th></tr>
+      <tr>
+        <td><code>deep_research</code></td>
+        <td>Runs the full pipeline and returns a cited answer. <b>This is the one
+        that spends</b> — each call draws on your research quota.</td>
+      </tr>
+      <tr>
+        <td><code>sdk_list_modules</code><br><code>sdk_show_module</code></td>
+        <td>Browse the Platform SDK's module registry — what each buildable
+        module contains and depends on.</td>
+      </tr>
+      <tr>
+        <td><code>sdk_plan</code><br><code>sdk_validate</code></td>
+        <td>Order modules into a dependency-correct build plan, and check a built
+        tree against the manifest.</td>
+      </tr>
+    </table>
+    <p>The same screen sets the research defaults a call gets when your agent
+    doesn't say — time budget, whether to search the web, which model — and
+    whether the agent may override them at all. Locking the budget is the blunt
+    cap on what a single call can cost.</p>
+    <div class="note">Exposure lives on your account, not in the key. Narrow it
+    and every key you have issued is narrowed on its next call, with nothing to
+    re-issue. A key holder can see the effects; they can never change them.</div>
+  </section>
+
+  <section>
+    <h2>What crosses the wire</h2>
+    <p>Be clear-eyed about this, because it is the opposite of the
+    <a href="/cure">Se<span class="sl">/</span>cure</a> tier's promise: an MCP
+    call is a <b>Se<span class="sl">/</span>rver</b> call. The question you send
+    reaches this server, goes upstream to the model and the search provider, and
+    is recorded in the same full-visibility interaction log every chat is. The
+    answer comes back over the same connection.</p>
+    <p>If a research question must never rest on a server, it does not belong on
+    this endpoint —
+    <a href="/cure">DeepResearch.<b>Se<span class="sl">/</span>cure</b></a> is the
+    tier where the server is in no data path at all.</p>
+    <p class="muted">Fuller detail: the
+    <a href="/docs/PRIVACY-MODEL.md">privacy model</a> and the
+    <a href="/help/">documentation</a>.</p>
+  </section>
+
+  <section>
+    <h2>If it won't connect</h2>
+    <ul>
+      <li><b>401 with a JSON-RPC error</b> — the key is expired, revoked, or the
+      MCP server is switched off for your account. Settings → MCP server says
+      which; mint a new key if in doubt.</li>
+      <li><b>A sign-in page instead of JSON</b> — no key reached the server. The
+      header must be exactly <code>Authorization: Bearer &lt;key&gt;</code>; check
+      your client didn't drop or rename it.</li>
+      <li><b>No tools listed</b> — everything is switched off, or the master
+      switch is. Same screen.</li>
+      <li><b>A tool call says "Unknown tool"</b> — that tool is not exposed.
+      Clients cache tool lists; reconnect after switching one on.</li>
+      <li><b>"Research quota exceeded"</b> — MCP calls share your account's
+      quota with the chat. It says when it resets.</li>
+    </ul>
+  </section>
+</main>
+<script>
+  // Copy buttons: notify briefly, then RETURN to the original label (UX-6).
+  for (const btn of document.querySelectorAll(".cmd button")) {
+    btn.addEventListener("click", async () => {
+      const pre = btn.parentElement.querySelector("pre");
+      try {
+        await navigator.clipboard.writeText(pre.textContent);
+        btn.textContent = "Copied ✓";
+      } catch {
+        btn.textContent = "Select it";
+      }
+      setTimeout(() => (btn.textContent = "Copy"), 1200);
+    });
+  }
+</script>
+</body>
+</html>

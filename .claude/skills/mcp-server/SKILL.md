@@ -2,16 +2,23 @@
 name: mcp-server
 description: >-
   Load when working on the MCP server surface — the site exposed AS a tool
-  other agents (Claude, Cursor, any MCP client) can call — or when touching
-  src/mcp.js, the POST /mcp route, the deep_research tool, its input schema,
-  the JSON-RPC 2.0 / Streamable-HTTP protocol handling (initialize /
-  tools/list / tools/call / notifications/initialized), or debugging an MCP
-  client that can't connect or call the tool. Covers the file-layout rule
-  (pure protocol helpers static, pipeline dynamic-imported), how a tool call
-  reuses chat.js's per-request setup (quota gate, model routing, usage/billing
+  other agents (Claude Code, Cursor, any MCP client) can call — or when
+  touching src/mcp.js, the POST /mcp route, the deep_research tool, its input
+  schema, or the JSON-RPC 2.0 / Streamable-HTTP protocol handling (initialize
+  / tools/list / tools/call / notifications/initialized). ALSO the go-to for
+  CONNECTING an external client: "connect Claude Code", "claude mcp add", the
+  MCP KEY bearer credential (src/mcp-key.js — mint/rotate/revoke, and why it
+  is never a login and not a Se/rver token), the dedicated mcp.deepresearch.se
+  host and its public setup page public/connect/, and the per-account EXPOSURE
+  configuration behind Settings → "MCP server" (src/mcp-config.js,
+  src/mcp-api.js, public/js/account-mcp.js, /api/mcp/config + /api/mcp/key) —
+  which tools an account exposes, the research defaults, and the override
+  policy. Covers the file-layout rule (pure protocol helpers static, pipeline
+  dynamic-imported), the catalog⇔tool-list mirror test, how a tool call reuses
+  chat.js's per-request setup (quota gate, model routing, usage/billing
   recording), how to add or change a tool, the shared seams
-  (model-routing.js, billing.js), and the validation ladder (mcp.test.js →
-  live JSON-RPC probe).
+  (model-routing.js, billing.js), the validation ladder, and debugging an MCP
+  client that can't connect or whose tool call is refused.
 ---
 
 # The MCP server — DeepResearch as a tool (`POST /mcp`)
@@ -40,15 +47,86 @@ implements exactly the methods a minimal server needs:
 
 - `initialize` → `initializeResult()` (reports `PROTOCOL_VERSION`,
   `SERVER_INFO`, `capabilities: { tools: {} }`)
-- `tools/list` → `toolsListResult()` (`DEEP_RESEARCH_TOOL` + `SDK_MCP_TOOLS`)
+- `tools/list` → `toolsListResult(config)` (`ALL_MCP_TOOLS` = `DEEP_RESEARCH_TOOL`
+  + `SDK_MCP_TOOLS`, filtered by the account's exposure config)
 - `tools/call` → `handleToolCall()` → `runDeepResearch()`
 - `notifications/initialized` → no-op ack (a notification has no `id`, so it
   returns no response body)
 
-The route is wired in `src/index.js` (`if (url.pathname === "/mcp" &&
-request.method === "POST")` → `handleMcp(...)`) **AFTER the identity gate**,
-so MCP inherits the SAME access control as the rest of the site: break-glass
-Basic Auth via header works, a signed-in session works too.
+## Getting in: the two auth paths and the `mcp.` host
+
+The route is wired in `src/index.js` twice, deliberately, and both sides ask
+the same `isMcpEndpoint(url, method)` predicate (`src/mcp-config.js`) so they
+can never disagree about what the endpoint is:
+
+- **Below the identity gate** (`routeApi`) — a signed-in session or the
+  break-glass Basic header, exactly as before.
+- **Above it** — an **MCP key** (`src/mcp-key.js`), the bearer credential an
+  external client carries because it has no cookie jar. `src/mcp-api.js`'s
+  `resolveMcpKeyIdentity` resolves it, and the router consults that function
+  for this endpoint and nothing else. Its three outcomes matter: `null` (no
+  key — fall through to the gate), `{identity, config}`, and `{error}` — a
+  key that was PRESENTED and refused must come back as a 401 JSON-RPC error,
+  never the sign-in HTML, or the client reports a transport failure and its
+  user hunts the wrong problem.
+
+**An MCP key is never a login**, and that is structural, not a promise:
+`identify()` reads a `Basic` header and the `dr_session` cookie, so an
+`mck1.` bearer cannot satisfy it in any position (test-pinned in
+`src/mcp-key.test.js`, alongside the cross-family forgery matrix). It is
+also deliberately **not** the Se/rver token — that family's closed
+upstream-only vocabulary exists to protect Se/cure, whereas a key acts for a
+Se/rver account inside the trust boundary. One key per account; minting
+rotates, revoking rewrites the stored `jti` the token must match. The token
+is returned once at mint and never stored (only `jti` + a six-character
+hint), so "I lost it" is answered by minting again, not by reading it back.
+
+Production also serves the endpoint on **`mcp.deepresearch.se`** (a
+`custom_domain` route in `wrangler.toml`, provisioned through the Workers
+custom-domains API — `PUT /accounts/<id>/workers/domains` with
+`{environment, hostname, service, zone_id}`, which creates the DNS record and
+the certificate; the host answered within ~20 s).
+
+> **Declare it in `wrangler.toml` or lose it.** Observed 2026-07-26: the
+> domain was created by API, an unrelated merge to `main` auto-deployed from
+> a `wrangler.toml` that did not list it, and **the deploy removed the
+> domain** — the host went unreachable until it was re-created. The API call
+> and the config entry are not alternatives; a domain missing from `routes`
+> does not survive the next deploy.
+
+Same Worker, same code path. On that host the BARE
+ORIGIN answers too — clients disagree about whether the configured URL
+includes the path, and a wrong-URL 404 is the commonest way an MCP setup
+fails — and a `GET` serves the public setup page `public/connect/`
+(allowlisted in `src/assets.js`). `src/canonical.js` leaves the host alone:
+it only rewrites `http` → `https` and strips `www.`.
+
+## What is exposed: per-account configuration
+
+`src/mcp-config.js` is a pure leaf owning WHAT the surface offers, edited in
+Settings → **MCP server** (`public/js/account-mcp.js`, one level below the
+gear icon's Settings, the same treatment as LLM sharing) through
+`GET`/`PUT /api/mcp/config` and `POST`/`DELETE /api/mcp/key`.
+
+- `MCP_TOOL_CATALOG` **mirrors the served tool list exactly** —
+  `src/mcp-config.test.js` fails the build when they drift, so a tool cannot
+  ship on this surface without a switch to turn it off. Adding a tool means
+  adding a catalog entry in the same change.
+- The config is read at CALL time and lives on the ACCOUNT, not in the token:
+  narrowing takes effect on the next call for every outstanding key, with
+  nothing to re-issue. The config endpoints are behind the identity gate, so
+  a key holder can see the effects and never change them.
+- `tools/list` is filtered by it and `tools/call` ENFORCES it (a client that
+  cached an older listing still cannot reach a switched-off tool — reported
+  as unknown-tool, since from the caller's side it does not exist).
+- `resolveResearchArgs` reconciles a `deep_research` call's arguments with the
+  account's defaults and override policy before `runDeepResearch` sees them.
+  Asymmetry worth keeping: a caller may always DECLINE web search, and can
+  never switch it back on.
+
+Defaults are "everything exposed, site defaults, no key" — byte-for-byte the
+behaviour that existed before the configuration did, so an account that never
+opens the screen sees no change.
 
 ## The load-bearing file-layout rule
 
@@ -59,8 +137,9 @@ pipeline**. So the module is split by import weight:
   envelope builders (`jsonRpcResult`, `jsonRpcError`, `toolResult`),
   `initializeResult`, `toolsListResult`, the RPC error-code constants, and
   `DEEP_RESEARCH_TOOL` (the tool schema). The only static imports are leaf
-  modules: `http.js` (`jsonResponse`) and `model-routing.js`
-  (`resolveJsonModel`) — neither pulls the pipeline graph in.
+  modules: `http.js` (`jsonResponse`), `model-routing.js`
+  (`resolveJsonModel`) and `mcp-config.js` (the exposure seam) — none of
+  which pulls the pipeline graph in.
 - **Inside `tools/call` — DYNAMIC `import()`:** the pipeline and its deps
   (`pipeline.js`, `berget.js`, `budget.js`, `validation.js`, `providers.js`,
   `config.js`, `quota.js`, `billing.js`) are imported *inside*
@@ -109,8 +188,10 @@ The tool's input schema (`DEEP_RESEARCH_TOOL.inputSchema`): required
   read the new arg in `runDeepResearch` with a fail-soft default, and update
   the `tools/list` assertion in `mcp.test.js`. Keep descriptions written for
   an LLM caller (they're what the client model sees).
-- **Add ANOTHER tool:** add its schema constant at the top, return it from
-  `toolsListResult()`, and branch on `parsed.params.name` in
+- **Add ANOTHER tool:** add its schema constant at the top, put it in
+  `ALL_MCP_TOOLS`, add its `MCP_TOOL_CATALOG` entry in `src/mcp-config.js`
+  **in the same change** (the mirror test fails otherwise — and an account
+  needs a way to switch it off), and branch on `parsed.params.name` in
   `handleToolCall` — which already dispatches the `sdk_*` family by
   `SDK_TOOL_NAMES` membership before falling through to `deep_research`;
   anything matching neither is method-not-found. Any heavy work its handler
@@ -126,17 +207,31 @@ The tool's input schema (`DEEP_RESEARCH_TOOL.inputSchema`): required
 
 ## Validation ladder
 
-1. **Unit** — `node --test src/mcp.test.js`: the pure protocol helpers
-   (parse/envelope/initialize/tools-list/tool-result) and the
-   loads-without-the-pipeline guarantee. `npm run typecheck` (the file is
-   `// @ts-check`).
-2. **Live JSON-RPC probe** against the deployed site (break-glass Basic
-   Auth header). Sanity sequence: `initialize` → `tools/list` (expect
-   `deep_research` + the four `sdk_*` tools, with schemas) → `tools/call` with a cheap
+1. **Unit** — `node --test src/mcp.test.js src/mcp-config.test.js
+   src/mcp-key.test.js src/mcp-api.test.js`: the pure protocol helpers and
+   the loads-without-the-pipeline guarantee; the catalog⇔tool-list mirror
+   and the argument resolution; the key's crypto, the not-a-login pin and
+   the cross-family forgery matrix; key resolution (revoked / rotated /
+   disabled account / surface off) and the config endpoints.
+   `npm run typecheck` (all four are `// @ts-check`).
+2. **Live JSON-RPC probe** against the deployed site. Sanity sequence:
+   `initialize` → `tools/list` (expect `deep_research` + the four `sdk_*`
+   tools, with schemas) → `tools/call` with a cheap
    `{question, time_budget_s: 15}` and confirm a cited answer comes back
-   and the spend lands in the usage totals. See the **live-verify** skill
-   for `wrangler tail` / `x-request-id` correlation and the **access-control**
+   and the spend lands in the usage totals. Run it BOTH ways — with the
+   break-glass Basic header on `/mcp`, and with a minted key against
+   `https://mcp.deepresearch.se/mcp` — since only the second exercises
+   the above-the-gate path and the custom domain. Then check the negatives:
+   revoke the key and confirm the next call is a 401 JSON-RPC error (not
+   HTML), and switch a tool off and confirm it vanishes from `tools/list`
+   AND is refused on `tools/call`. See the **live-verify** skill for
+   `wrangler tail` / `x-request-id` correlation and the **access-control**
    skill for the Basic Auth credentials.
+   ```bash
+   curl -sS https://mcp.deepresearch.se/mcp -H "content-type: application/json" \
+     -H "Authorization: Bearer $MCP_KEY" \
+     -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+   ```
 3. If the change touched the pipeline path, the pipeline's own checks apply
    — see **pipeline-architecture**.
 

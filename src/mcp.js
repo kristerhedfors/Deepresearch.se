@@ -7,9 +7,17 @@
 // three methods a minimal server needs (`initialize`, `tools/list`,
 // `tools/call`) plus a no-op ack for `notifications/initialized`.
 //
-// The route is wired in src/index.js AFTER the identity gate, so MCP inherits
-// the SAME access control as the rest of the site (break-glass Basic Auth via
-// header works; a signed-in session works too).
+// TWO WAYS IN, both resolving to a real account before this module runs:
+//   - Behind the identity gate (src/index.js routeApi), so a signed-in browser
+//     session or the break-glass Basic secrets work exactly as they always did.
+//   - With an MCP KEY (src/mcp-key.js) — the bearer credential an external
+//     client such as Claude Code carries, resolved above the gate by
+//     src/mcp-api.js's resolveMcpKeyIdentity and scoped to this endpoint alone.
+//
+// WHAT is exposed is per-account configuration (src/mcp-config.js, edited in
+// Settings → "MCP server"): the tool list is filtered by it, dispatch enforces
+// it, and the research tool's arguments are reconciled against the account's
+// defaults and override policy.
 //
 // FILE LAYOUT — deliberate, so src/mcp.test.js can unit-test the protocol
 // without loading the pipeline: the PURE JSON-RPC helpers, envelope builders,
@@ -30,6 +38,10 @@ import { resolveJsonModel } from "./model-routing.js";
 // file-layout rule intact; only the SNAPSHOT loading (tools/call time) is a
 // dynamic import of ./introspect.js below.
 import { SDK_TOOLS, SDK_TOOL_NAMES, manifestFromSnapshot, runSdkTool, snapshotFileCheck } from "./sdk-tools.js";
+// WHAT this server exposes is per-account configuration (Settings → "MCP
+// server"). A pure leaf module — catalog, parse, filter, argument resolution —
+// so this static import keeps the file-layout rule above intact.
+import { defaultMcpConfig, filterMcpTools, parseMcpConfig, resolveResearchArgs, toolExposed } from "./mcp-config.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -129,9 +141,20 @@ export const SDK_MCP_TOOLS = SDK_TOOLS.map(({ name, description, input_schema })
   inputSchema: input_schema,
 }));
 
-// The `tools/list` result: the research pipeline plus the SDK manifest tools.
-export function toolsListResult() {
-  return { tools: [DEEP_RESEARCH_TOOL, ...SDK_MCP_TOOLS] };
+// Every tool this server CAN serve, in a stable order. What a given caller
+// actually sees is this list filtered by the account's exposure config —
+// src/mcp-config.js's catalog mirrors it exactly, a correspondence its unit
+// test enforces, so no tool can ship without a switch to turn it off.
+export const ALL_MCP_TOOLS = [DEEP_RESEARCH_TOOL, ...SDK_MCP_TOOLS];
+
+// The `tools/list` result, narrowed to what this account exposes. Called with
+// no argument it reports the full set (the default config) — which is what an
+// identity with no account row, notably the break-glass operator, gets.
+/**
+ * @param {import('./mcp-config.js').McpConfig} [config]
+ */
+export function toolsListResult(config) {
+  return { tools: filterMcpTools(config || defaultMcpConfig(), ALL_MCP_TOOLS) };
 }
 
 // Build an MCP tools/call result envelope (text content + isError flag).
@@ -228,13 +251,19 @@ export async function handleMcp(request, env, log, identity, ctx, requestId) {
     return new Response(null, { status: 202 });
   }
 
+  // WHAT this caller sees. A signed-in account's exposure config governs both
+  // the listing and the dispatch below; an identity with no D1 row (the
+  // break-glass operator) has nowhere to store one and gets the full default
+  // set, exactly as before this configuration existed.
+  const config = identity?.user ? parseMcpConfig(identity.user.settings_json) : defaultMcpConfig();
+
   switch (parsed.method) {
     case "initialize":
       return jsonResponse(jsonRpcResult(parsed.id, initializeResult()));
     case "tools/list":
-      return jsonResponse(jsonRpcResult(parsed.id, toolsListResult()));
+      return jsonResponse(jsonRpcResult(parsed.id, toolsListResult(config)));
     case "tools/call":
-      return handleToolCall(parsed, env, log, identity, ctx, requestId);
+      return handleToolCall(parsed, env, log, identity, ctx, requestId, config);
     default:
       return jsonResponse(
         jsonRpcError(parsed.id, RPC_METHOD_NOT_FOUND, `Method not found: ${parsed.method}`),
@@ -242,7 +271,8 @@ export async function handleMcp(request, env, log, identity, ctx, requestId) {
   }
 }
 
-// tools/call dispatcher. Only `deep_research` exists; anything else is an
+// tools/call dispatcher: the SDK manifest family, then `deep_research`;
+// anything else — including a tool this account does not expose — is an
 // invalid-params error. The tool itself fails soft: any pipeline error comes
 // back as an MCP result with isError:true (a protocol-level success carrying
 // a tool-level failure), never a transport error.
@@ -253,11 +283,23 @@ export async function handleMcp(request, env, log, identity, ctx, requestId) {
  * @param {Identity} identity
  * @param {ExecutionContext} ctx
  * @param {string} requestId
+ * @param {import('./mcp-config.js').McpConfig} config this account's exposure config
  */
-async function handleToolCall(parsed, env, log, identity, ctx, requestId) {
+async function handleToolCall(parsed, env, log, identity, ctx, requestId, config) {
   const { id, params } = parsed;
   const name = params?.name;
   const args = params?.arguments && typeof params.arguments === "object" ? params.arguments : {};
+
+  // Exposure is enforced on the CALL, not just on the listing: a client that
+  // cached an older tools/list (or guessed a name) must not be able to reach a
+  // tool the account has since switched off. Reported as method-not-found
+  // rather than as a permission error — from the caller's side an unexposed
+  // tool simply does not exist on this server.
+  if (typeof name === "string" && !toolExposed(config, name)) {
+    return jsonResponse(
+      jsonRpcError(id, RPC_INVALID_PARAMS, `Unknown tool: ${name}`),
+    );
+  }
 
   // The SDK manifest tools: pure reads over the deployed source snapshot's
   // sdk/MANIFEST.json (the same artifact introspection mode runs on). They
@@ -288,8 +330,14 @@ async function handleToolCall(parsed, env, log, identity, ctx, requestId) {
     );
   }
 
+  // The account's defaults and override policy decide the effective arguments:
+  // what the caller sent wins only where the account allows it (src/mcp-config.js
+  // resolveResearchArgs). Resolved here so the failure path below logs the run
+  // that was actually attempted, not the run that was asked for.
+  const research = resolveResearchArgs(config, args);
+
   try {
-    const text = await runDeepResearch(env, log, identity, requestId, args, question);
+    const text = await runDeepResearch(env, log, identity, requestId, research, question);
     return jsonResponse(jsonRpcResult(id, toolResult(text, false)));
   } catch (err) {
     const message = (/** @type {any} */ (err))?.message || String(err);
@@ -305,7 +353,7 @@ async function handleToolCall(parsed, env, log, identity, ctx, requestId) {
       conversation: [{ role: "user", content: question }],
       status: "error",
       error: message,
-      web_search: args.web_search !== false,
+      web_search: research.web_search,
     });
     return jsonResponse(jsonRpcResult(id, toolResult("Research failed: " + message, true)));
   }
@@ -324,7 +372,9 @@ async function handleToolCall(parsed, env, log, identity, ctx, requestId) {
  * @param {Logger} log
  * @param {Identity} identity
  * @param {string} requestId
- * @param {any} args the tool-call arguments (already shape-checked upstream)
+ * @param {{ time_budget_s: number, web_search: boolean, model: string | undefined }} args
+ *   the EFFECTIVE arguments — the caller's, already reconciled with this
+ *   account's defaults and override policy (src/mcp-config.js)
  * @param {string} question
  * @returns {Promise<string>} the answer text (with a Sources list appended)
  */
@@ -371,18 +421,22 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
   }
   const config = await getConfig(env);
 
-  const body = { messages: conversation, model: typeof args.model === "string" ? args.model : undefined };
+  // `args.model` is the account's default or the caller's pick, whichever the
+  // exposure config allowed; the admin default only fills in when neither said.
+  const body = { messages: conversation, model: args.model || undefined };
   if (!body.model && adminDefaultModelValid(config, catalog)) body.model = config.default_model;
   const resolved = resolveModel(body, catalog, env, log);
   if ("error" in resolved) throw new Error(resolved.error);
   const model = resolved.model;
   const jsonModel = resolveJsonModel(catalog, model, DEFAULT_MODEL);
 
-  // Budget: default 120s, clamped to the slider range then the site max —
-  // exactly chat.js's two-step clamp.
-  let budgetS = clampBudget(args.time_budget_s ?? 120);
+  // Budget: the effective value (already inside the tool schema's window),
+  // clamped to the slider range then the site max — exactly chat.js's two-step
+  // clamp, which is what stops an account default from outrunning a later
+  // lowering of the site maximum.
+  let budgetS = clampBudget(args.time_budget_s);
   budgetS = Math.min(budgetS, config.max_time_budget_s);
-  const webSearch = args.web_search !== false; // default on
+  const webSearch = args.web_search;
 
   // Research quota — the SAME gate /api/chat enforces (src/chat.js). Admins
   // are never blocked; every regular user is checked against their four-window

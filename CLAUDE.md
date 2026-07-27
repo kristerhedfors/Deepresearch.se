@@ -379,7 +379,7 @@ Pipeline & models:
 - **add-research-source** — integrating a new deep-research source end to end (intent, registry, SSE visibility, validation).
 - **local-web-search** — running your own web-search service as an Exa alternative, configurable in both tiers.
 - **sse-protocol** — the `/api/chat` SSE event vocabulary, forward-compatibility rule, and the inline-quiz event.
-- **mcp-server** — the site exposed AS an MCP `deep_research` tool (`POST /mcp`, hand-rolled JSON-RPC 2.0).
+- **mcp-server** — the site exposed AS an MCP `deep_research` tool (`POST /mcp`, hand-rolled JSON-RPC 2.0); connecting Claude Code via an MCP key on `mcp.deepresearch.se`, and the per-account exposure config under Settings → MCP server.
 - **integrations** — external providers and the enrichment pattern (Berget, Anthropic, OpenAI, Exa, Nominatim, Shodan, Maps, HF).
 
 Privacy, storage & grants:
