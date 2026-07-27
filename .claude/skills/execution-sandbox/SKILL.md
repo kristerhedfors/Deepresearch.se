@@ -441,19 +441,44 @@ CONTENT has to be real too, not only the switch that reveals it.**
 - **The one line the user could see was an error.** `cx.setCustomConsole` is
   attached only at the END of the boot, so no kernel output ever reaches the
   pane; the whole steady-state content was bash's `mesg: ttyname failed` plus a
-  bare prompt. The `sed` guard meant to suppress that missed the line this image
-  ships (it anchored on `^mesg ` and covered only `/root/.profile` +
-  `/etc/profile`) — now it allows leading whitespace and covers `/root/.bashrc`
-  + `/etc/bash.bashrc` too. The login shell also `echo`s a one-line banner
-  (`DeepResearch sandbox — $(uname -srm) — running entirely in this browser
-  tab.`) so a terminal brought forward says what it is. It is the GUEST's own
-  output, printed by the guest — not a caption the page draws over it.
+  bare prompt. The login shell now `echo`s a one-line banner (`DeepResearch
+  sandbox — $(uname -srm) — running entirely in this browser tab.`) so a
+  terminal brought forward says what it is. It is the GUEST's own output,
+  printed by the guest — not a caption the page draws over it.
+
+  The `sed` guard for the `mesg` line was widened at the same time (leading
+  whitespace allowed; `/root/.bashrc` + `/etc/bash.bashrc` added to
+  `/root/.profile` + `/etc/profile`) and **the line still prints** — verified on
+  a booted VM, so its source is none of those four files and remains
+  unidentified. Left as-is: with the transcript in place it is one line out of
+  nine rather than half the pane's content. Worth a `grep -rn mesg /etc /root`
+  in the guest next time someone has a VM open.
+
+Verified against `wrangler dev --remote` on the branch (production bindings, the
+fix not yet deployed). The pane after a 10 s boot:
+
+```
+[  0.4s] loading CheerpX…
+[  1.2s] connecting disk…
+[  2.4s] preparing files…
+[  2.4s] starting Linux…
+[  4.1s] mounting files…
+[ 10.1s] ready — Linux is running in this browser tab
+DeepResearch sandbox — Linux 4.15.0-54-cheerpx i386 — running entirely in this browser tab.
+mesg: ttyname failed: No such file or directory
+root@:~#
+```
 
 Regression cover: `tests/e2e/terminal-pane.spec.js` (run with
 `--config=sandbox.pw.config.js`) asserts a pane with a boot behind it is never
-idle, holds more than one line, and carries the stamped log. No CSS change →
-**no handshake bump**. **Still owed:** on-device confirmation on iOS that a real
-cold boot leaves a readable transcript behind the chat.
+idle, holds more than one line, and carries the stamped log. It fails against
+the deployed pre-fix build and passes here. That config's proxy now sets
+`bypass: "127.0.0.1,localhost"` — pointing `BASE_URL` at a local `wrangler dev`
+is how a sandbox branch gets verified BEFORE merge, and the agent proxy cannot
+route to loopback (the cross-origin CheerpX runtime and disk still go through
+it, which is the only reason the proxy is configured). No CSS change → **no
+handshake bump**. **Still owed:** on-device confirmation on iOS that a real cold
+boot leaves a readable transcript behind the chat.
 
 ### Modes with a graph too: the cycle covers every combination (2026-07-26)
 

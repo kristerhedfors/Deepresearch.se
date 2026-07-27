@@ -42,8 +42,16 @@ export default defineConfig({
       executablePath: "/opt/pw-browsers/chromium",
       ...(process.env.HTTPS_PROXY ? { args: ["--ssl-version-max=tls1.2"] } : {}),
     },
+    // `bypass` keeps a LOCAL target reachable: pointing BASE_URL at a
+    // `wrangler dev` on 127.0.0.1 is how a branch gets verified before it is
+    // merged and deployed, and the agent proxy cannot route to loopback. The
+    // cross-origin CheerpX runtime + disk still go through the proxy, which is
+    // the only reason it is configured at all.
     ...(process.env.HTTPS_PROXY
-      ? { proxy: { server: process.env.HTTPS_PROXY }, ignoreHTTPSErrors: true }
+      ? {
+          proxy: { server: process.env.HTTPS_PROXY, bypass: "127.0.0.1,localhost" },
+          ignoreHTTPSErrors: true,
+        }
       : {}),
     viewport: { width: 1280, height: 900 },
   },
