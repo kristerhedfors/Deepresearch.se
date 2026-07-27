@@ -43,10 +43,11 @@ break the request). Search/round caps come from the time-budget planner
 
 **Sources plug in via registries, never via pipeline edits** (2026-07
 refactor for parallel-session safety): auxiliary search sources (HF Hub,
-future ones) are entries in `src/search-sources.js` iterated by the
-generic `runAuxSearches` (per-request caps, cross-wave dedup,
+arXiv, future ones) are entries in `src/search-sources.js` iterated by the
+generic `startAuxSearches` (per-request caps, cross-wave dedup,
 provider-named `search_start`/`search_done` events, `state.aux[<id>]`
-buckets); pre-pipeline enrichments (Shodan, Maps) are entries in
+buckets, dispatched concurrently with the Exa leg; a source the message
+names by name LEADS instead — `leadIntent`, ARCHITECTURE.md §4.3c); pre-pipeline enrichments (Shodan, Maps) are entries in
 `src/enrichment.js`'s `ENRICHMENTS` run once via `runEnrichments`. The
 planner-vocabulary notes and platform diversity keys also come from the
 search-source registry (`sourcePromptNotes`, `platformDiversityKey`).

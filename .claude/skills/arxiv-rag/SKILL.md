@@ -217,6 +217,32 @@ query's vocabulary coverage of the index, so English could fuse and Swedish
 could skip it. Unnecessary — the lexical arm is not something to include
 conditionally, it is something to leave out.
 
+### Served-tier latency: an inherited timeout, not a slow index
+
+The pipeline that measures well offline still has to run inside a search wave,
+where its latency is the user's. Reported 2026-07-27 (feedback #44): "the arXiv
+searches took close to a minute."
+
+Nothing in the retrieval was slow. `src/arxiv-rag.js` called `embedTexts`,
+which is **shared with document indexing and defaults to a 60 s timeout** —
+correct for a user watching an upload bar, catastrophic in a wave, where one
+slow embedding call holds the whole search. Two things hid it:
+
+- The dense tier had **no whole-call budget** at all; only the reranker was
+  bounded.
+- `src/arxiv.js`'s ladder budget is measured from *before* the dense tier runs,
+  so an overrunning dense tier also silently consumed the live-API fallback's
+  budget — the fallback broke out having made zero requests, and the log said
+  `arxiv.ladder_budget` rather than anything about embeddings.
+
+The rule to carry forward: **anything called from inside a search wave states
+its own timeout rather than inheriting one from a batch/offline path**, and a
+tier with several legs states a budget across all of them, not per leg. The
+served tier is now embed 6 s + Vectorize query 6 s + rerank 6 s, whole call
+12 s, with the rerank skipped (dense order kept) once the earlier legs have
+spent it. Vectorize's `query` takes no `AbortSignal`, so its bound is a
+`Promise.race` — the only bound available.
+
 ## Rebuild recipes
 
 ```bash

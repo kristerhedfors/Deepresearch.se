@@ -5,7 +5,7 @@
 // concatenated planner prompt notes, and platform diversity keying.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { SEARCH_SOURCES, platformDiversityKey, sourcePromptNotes } from "./search-sources.js";
+import { SEARCH_SOURCES, leadSourceIds, platformDiversityKey, sourcePromptNotes } from "./search-sources.js";
 
 // The registry is the parallel-work seam: every source integrates as data
 // here, and the pipeline/prompts/sources modules only iterate. These tests
@@ -31,6 +31,11 @@ describe("SEARCH_SOURCES registry contract", () => {
       }
       // diversityHost and diversityKeyOf come as a pair.
       assert.equal(!!s.diversityHost, typeof s.diversityKeyOf === "function", `${s.id}: diversityHost/diversityKeyOf pair`);
+      if (s.leadIntent) assert.equal(typeof s.leadIntent, "function", `${s.id}: leadIntent`);
+      if (s.leadMaxPerRequest != null) {
+        assert.ok(Number.isInteger(s.leadMaxPerRequest) && s.leadMaxPerRequest >= 1, `${s.id}: leadMaxPerRequest`);
+        assert.ok(s.leadIntent, `${s.id}: leadMaxPerRequest without a leadIntent can never apply`);
+      }
     }
   });
 
@@ -38,7 +43,56 @@ describe("SEARCH_SOURCES registry contract", () => {
     for (const s of SEARCH_SOURCES) {
       assert.equal(typeof s.intent(""), "boolean");
       assert.equal(typeof s.intent(null), "boolean");
+      if (s.leadIntent) {
+        assert.equal(typeof s.leadIntent(""), "boolean");
+        assert.equal(typeof s.leadIntent(null), "boolean");
+      }
     }
+  });
+
+  test("leadIntent is strictly narrower than intent", () => {
+    // Leading DISPLACES web search, so the tier that triggers it must be
+    // "the message names this source", never "the message asks something this
+    // source could serve" (feedback #44). A source whose leadIntent fired
+    // where its intent did not would silently take a turn it was not asked
+    // for — this pins the containment on every entry's own vocabulary.
+    for (const s of SEARCH_SOURCES) {
+      if (!s.leadIntent) continue;
+      for (const probe of [
+        `search ${s.id} for something`,
+        `what does ${s.service} say about diffusion models`,
+        "what does the latest research say about llm swarm reasoning",
+        "senaste forskningen om språkmodeller",
+        "hello",
+        "",
+      ]) {
+        if (s.leadIntent(probe)) assert.ok(s.intent(probe), `${s.id}: leads but does not engage on "${probe}"`);
+      }
+    }
+  });
+});
+
+describe("leadSourceIds", () => {
+  test("names the sources a message asks for BY NAME, in registry order", () => {
+    // feedback #44: "if asked for arXiv explicitly, start there and do only
+    // arxiv unless called for otherwise."
+    assert.deepEqual(leadSourceIds("find arXiv research mentioning linux"), ["arxiv"]);
+    assert.deepEqual(leadSourceIds("sök på arxiv efter artiklar om linux"), ["arxiv"]);
+  });
+
+  test("an ordinary question leads nothing — the common case is unchanged", () => {
+    for (const s of [
+      "what does the latest research say about llm swarm reasoning",
+      "who won the election",
+      "",
+      null,
+    ]) {
+      assert.deepEqual(leadSourceIds(s), []);
+    }
+  });
+
+  test("naming a second place to look stands the lead down", () => {
+    assert.deepEqual(leadSourceIds("check arxiv and the web for this"), []);
   });
 });
 

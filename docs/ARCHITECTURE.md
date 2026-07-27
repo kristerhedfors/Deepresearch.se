@@ -267,7 +267,7 @@ flowchart LR
 | Exa | `POST https://api.exa.ai/search`, `POST …/contents` | `x-api-key: EXA_API_KEY` | Web search — `numResults`/`type` scale with the time budget (§4.3b); `/contents` is the (currently disabled, §4.2) full-text fetch |
 | A results-page CASCADE + the result pages themselves | `GET` each configured source in order — DuckDuckGo's no-JS HTML, Marginalia, optionally Bing's RSS output — then a plain `GET` per result page (`src/websearch-cf.js`) | none | The Cloudflare-originating search backend: the Worker IS the search engine. A cascade because no single source answers every caller — DuckDuckGo returns an empty anti-bot shell to datacenter IPs (measured 2026-07-25). Bounded (8 s per source, 8 s per page, ≤5 pages, 3 at a time) and fail-soft — an exhausted cascade returns null and falls back to Exa |
 | Hugging Face Hub | Hub search APIs (`src/hf.js`) | `HUGGINGFACE_API_TOKEN` (optional) | Models/datasets/papers as citable sources when the question targets HF (`hfIntent`), via the search-source registry |
-| arXiv | `GET https://export.arxiv.org/api/query` (`src/arxiv.js`), Atom 1.0 | none — public and free | Preprints as citable sources when a question asks about scientific literature (`arxivIntent`), via the same registry. Queried as fielded `abs:"…" AND abs:"…"` terms: a quoted phrase in the catch-all `all:` field silently returns zero, and unquoted words there are OR, not AND. Rate-limited to 1 request / 3 s with no paid tier, hence the hosted tier below |
+| arXiv | `GET https://export.arxiv.org/api/query` (`src/arxiv.js`), Atom 1.0 | none — public and free | Preprints as citable sources when a question asks about scientific literature (`arxivIntent`), via the same registry — and when the message NAMES arXiv (`arxivLeadIntent`) the source LEADS: the Exa leg stands down for that request (§4.3c). Queried as fielded `abs:"…" AND abs:"…"` terms: a quoted phrase in the catch-all `all:` field silently returns zero, and unquoted words there are OR, not AND. Rate-limited to 1 request / 3 s with no paid tier, hence the hosted tier below |
 | — (no third party) | `ARXIV_INDEX` Vectorize index (`src/arxiv-rag.js`) | binding | The DENSE tier of the same source: the arXiv corpus embedded once and searched in-account, so arXiv leaves the request path entirely and the user's question reaches only the embedding call. Falls back to the live API when unbound, erroring, or below the relevance floor (`docs/ARXIV-RAG.md`) |
 | Hugging Face router | `GET https://router.huggingface.co/v1/models`, `POST …/v1/chat/completions` (`src/hf-inference.js`) | `HUGGINGFACE_API_TOKEN` (**required** — inference is billed) | The one OPEN provider catalog: browsed with prices in the Models agent, and — once an account enables a model — a fourth answer/synthesis provider (`hf:*` ids). OpenAI-compatible, so no stream adapter |
 | Shodan | REST API (`src/shodan.js`) | `SHODAN_API_KEY` (optional) | Opt-in host-intelligence enrichment (`shodan_mcp` knob) — an **extension**, registered in `src/extensions.js` (§4.2a); the core does not depend on it |
@@ -534,10 +534,11 @@ JSON-hardening layer) falls back: substantial question →
    case-insensitively, capped at `plan.maxSearches`, then run
    **concurrently** (`Promise.all`) against Exa at a depth that scales with
    the time budget (§4.3b). Auxiliary sources from the
-   **search-source registry** (`src/search-sources.js`) run alongside Exa
-   when their intent gate fires — today the Hugging Face Hub
-   (models/datasets/papers, `src/hf.js`) and **arXiv** (preprints,
-   `src/arxiv.js`, served from the hosted Vectorize corpus when
+   **search-source registry** (`src/search-sources.js`) run alongside Exa —
+   concurrently with it, not after — when their intent gate fires, and
+   *instead* of it when the message names one of them (§4.3c). Today that is
+   the Hugging Face Hub (models/datasets/papers, `src/hf.js`) and **arXiv**
+   (preprints, `src/arxiv.js`, served from the hosted Vectorize corpus when
    `ARXIV_INDEX` is bound and from the live API otherwise —
    `src/arxiv-rag.js`, `docs/ARXIV-RAG.md`). Results feed the **source
    registry** (`src/sources.js`): deduped by URL, numbered in arrival order
@@ -836,6 +837,53 @@ is the canonical fix). Fixed on two levels, deliberately not either/or:
 Round 8's confirmation battery re-ran the pre-fix baseline queries against
 the deployed fix and verified the domain cap holding in practice (see
 `tests/MODEL-EVAL-FINDINGS.md`'s round 7/8 entries).
+
+### 4.3c Naming a source makes it lead the wave (`src/search-sources.js`)
+
+A registry source normally runs *alongside* Exa. A source the message names
+**by name** instead LEADS the request: the Exa leg stands down and that
+source spends the wave's whole breadth itself.
+
+Added 2026-07-27 from feedback #44 — "I explicitly asked for an arxiv search
+but a lot of web search was done first for unknown reason; if asked for arXiv
+explicitly, start there and do only arxiv unless called for otherwise". The
+run behind it (`chat_logs` #694) answered "find arXiv research mentioning
+linux" with nine Exa queries and 32 sources, several of them arXiv's own help
+pages and third-party arXiv mirrors.
+
+The mechanism is one optional pair on the registry entry, consumed generically
+by the pipeline (`leadSourceIds` → `leadingSources` → `startAuxSearches`), so
+adding or removing a source still touches no orchestrator file:
+
+- `leadIntent(text)` — strictly narrower than `intent`: does the message
+  *name* this source? Pinned as a containment property in
+  `search-sources.test.js`, because a source that led where it did not even
+  engage would silently take a turn nobody gave it. It also stands down when
+  the message names somewhere else too ("check arxiv **and the web**"), which
+  is the "unless called for otherwise" half of the rule.
+- `leadMaxPerRequest` — the per-request ceiling while leading (arXiv: 4 vs its
+  ordinary 2). Higher on purpose: with the web leg down, covering a single
+  angle would leave the turn thinner than not leading at all. The extra
+  searches are distinct angles, chosen by the source's own `pickQuery` and
+  deduped across waves as usual.
+
+**Fail-soft, like every helper phase (invariant 2):** a leading source that
+contributes nothing releases the lead — the Exa leg runs for the same batch
+and later waves are ordinary waves. "Only arXiv" can never become "no
+sources at all".
+
+Two related fixes landed with it, both visible in the same run:
+
+- **`pickQuery` now receives the user's message.** The old rule — "the angle
+  with the most terms surviving noise-stripping" — picks the planner's
+  *narrowest* sub-angle on a broad request, which is how "find arXiv research
+  mentioning linux" became a search for `linux performance optimization`.
+  Angles are now scored on how much of the user's own topic they cover first,
+  and only then on how far they narrow away from it.
+- **The aux wave is dispatched before the Exa leg is awaited.** It used to run
+  strictly after, putting every auxiliary source's latency straight onto the
+  user's wall clock. Results are still absorbed in a fixed order (web, then
+  registry order), so `[n]` numbering stays deterministic.
 
 ### 4.4 SSE protocol
 

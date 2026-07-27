@@ -134,6 +134,14 @@ const CACHE_TTL_S = 3600;
 // The registry entry's maxPerRequest, declared here so the rate-limit budget
 // (see MAX_ATTEMPTS) lives in one place rather than being split across files.
 export const ARXIV_MAX_PER_REQUEST = 2;
+// The ceiling when arXiv LEADS the turn (the user named it — arxivLeadIntent).
+// Higher because the web leg is standing down: the wave's whole breadth is
+// this source's job, and a turn that covers one angle of an explicitly-arXiv
+// question is the failure being fixed, not a saving. Worst case on arXiv
+// itself is still bounded — the dense tier keeps arXiv out of the request path
+// entirely, and on the live-API fallback the ladder aborts on the first
+// 429/503 rather than walking through a throttle (see the header).
+export const ARXIV_LEAD_MAX_PER_REQUEST = 4;
 
 // ---- intent ----------------------------------------------------------------
 // An arXiv id anywhere in the message, or the site/word itself. "Preprint"
@@ -199,6 +207,39 @@ export function arxivIntent(text) {
   return research && ARXIV_TOPIC.test(s);
 }
 
+// Words that name some OTHER place to look. When the message asks for arXiv
+// *and* the web (or the hub, or the news), it is not asking for arXiv only —
+// that is the "unless called for otherwise" half of the reported rule, and it
+// is what keeps "compare the arxiv paper with what the blogs say" from losing
+// its blogs. Swedish carries the same breadth (invariant 6).
+const ARXIV_ALSO_ELSEWHERE =
+  /\bweb\b|\bwebsites?\b|\bwebbe?n?\b|\bwebbsökning(?:ar|en|arna)?\b|\bwebbplats(?:er|en|erna)?\b|\bsajt(?:er|en)?\b|\binternet(?:et)?\b|\bnyheter(?:na)?\b|\bnews\b|\bblogg?(?:s|ar|en|arna)?\b|\bonline\b|\belsewhere\b|\bother sources\b|\bandra källor\b|\bgithub\b|\bhugging ?face\b|\bhf\b/i;
+
+/**
+ * Does this message ask for arXiv AS THE PLACE TO LOOK — so that arXiv should
+ * LEAD the turn and the generic web leg should stand down?
+ *
+ * Reported (feedback #44, 2026-07-27): "I explicitly asked for an arxiv search
+ * but a lot of web search was done first for unknown reason — if asked for
+ * arXiv explicitly, start there and do only arxiv unless called for
+ * otherwise." The run behind it (chat_logs #694) spent nine Exa queries and
+ * 32 sources on "find arXiv research mentioning linux", several of them
+ * arXiv's own help pages and third-party arXiv mirrors, while the archive
+ * itself was searched as an afterthought.
+ *
+ * This is deliberately NARROWER than arxivIntent: naming the archive is a
+ * different act from asking a research question that arXiv happens to serve.
+ * Only the explicit tier leads, and only when no other place is named too.
+ *
+ * @param {unknown} text
+ */
+export function arxivLeadIntent(text) {
+  const s = String(text || "");
+  if (!s) return false;
+  if (!ARXIV_EXPLICIT.test(s)) return false;
+  return !ARXIV_ALSO_ELSEWHERE.test(s);
+}
+
 // ---- query building --------------------------------------------------------
 // Noise stripped before the AND query is built. Three classes, each of which
 // produced junk or a zero-hit query in a live probe:
@@ -238,6 +279,11 @@ const NOISE = new Set([
   // same question producing two different searches
   "say", "says", "said", "saying", "show", "shows", "showing", "shown",
   "know", "think", "regarding", "concerning", "according",
+  // "find arXiv research MENTIONING linux" (feedback #44) AND-ed abs:"mentioning"
+  // into the query — a word about the asking, in the exact position where the
+  // topic word should have been.
+  "mention", "mentions", "mentioned", "mentioning", "featuring", "involving",
+  "covering", "discussing", "describing", "relating", "related", "concerns",
   // Generic research nouns/verbs that appear in a majority of arXiv abstracts
   // and so add no discrimination to an AND query — but WOULD consume one of
   // the ladder's 4 term slots, crowding out a real topic word.
@@ -290,6 +336,9 @@ const NOISE = new Set([
   "angående", "kring", "gällande", "enligt", "finns", "blir", "fler", "flera",
   "hos", "inom", "mellan", "under", "över", "genom", "utan", "genom",
   "artiklarna", "publikationerna", "framstegen", "studierna",
+  "nämner", "nämns", "nämnde", "nämnda", "nämnt", "omnämner", "omnämnda",
+  "handlar", "berör", "rörande", "beskriver", "diskuterar", "relaterad",
+  "relaterade",
   "modell", "modeller", "modellen", "modellerna", "metod", "metoder",
   "metoden", "ansats", "ramverk", "ramverket", "teknik", "tekniker",
   "system", "systemet", "systemen", "överträffar", "presterar",
@@ -675,21 +724,61 @@ export async function arxivSearch(env, log, query, { skipKeys } = {}) {
 
 // ---- registry glue ---------------------------------------------------------
 /**
- * Which of the wave's planned queries arXiv searches. The most TOPIC-bearing
- * angle wins — the query that survives noise-stripping with the most distinct
- * terms — because a fielded AND query is only as good as the topic words left
- * in it. Ties keep the batch's own order (the planner's first angle is its
- * primary one).
- * @param {string[]} batch
+ * How well one planned angle serves the user's ACTUAL topic, as a pair
+ * compared `covered` first (more is better), then `extra` (less is better).
+ *
+ * `extra` carries the fallback in its sign: with no user topic to compare
+ * against — or with an angle that overlaps it nowhere, which is what a gap
+ * round's follow-up on an entity learned from the web looks like — it is
+ * `-terms.length`, so "fewest extras" reduces to the ORIGINAL rule, "the most
+ * topic-bearing angle wins".
+ *
+ * @param {string} query
+ * @param {Set<string>} wanted the user's own topic terms
+ * @returns {{ covered: number, extra: number }}
  */
-export function arxivPickQuery(batch) {
+function arxivAngleScore(query, wanted) {
+  const terms = arxivTerms(query);
+  if (!wanted.size) return { covered: 0, extra: -terms.length };
+  let covered = 0;
+  for (const t of terms) if (wanted.has(t)) covered++;
+  if (!covered) return { covered: 0, extra: -terms.length };
+  return { covered, extra: terms.length - covered };
+}
+
+/**
+ * Which of the wave's planned queries arXiv searches: the angle that covers
+ * the most of the USER'S OWN topic with the fewest terms narrowing away from
+ * it. Ties keep the batch's own order (the planner's first angle is its
+ * primary one).
+ *
+ * The `topic` argument is why this exists. "Most topic-bearing angle" alone —
+ * the rule this replaces — reads "most terms survive noise-stripping", which
+ * on a broad request picks the planner's NARROWEST sub-angle. Reported
+ * (feedback #44, 2026-07-27): asked to "find arXiv research mentioning
+ * linux", it searched `linux performance optimization` — the user called that
+ * "surprisingly narrow", and it is: of the wave's nine angles it is the one
+ * that adds two topics the user never asked for. Scoring against the user's
+ * own terms picks `arxiv research papers linux` instead, which is the request.
+ *
+ * A richer question is unaffected: for "latest on LLM swarm reasoning", the
+ * angle `llm swarm reasoning agents benchmark` covers all three user terms and
+ * still beats the contentless `what are the latest papers`. Coverage comes
+ * first precisely so specificity is only ever penalised when it is drifting.
+ *
+ * @param {string[]} batch
+ * @param {string} [topic] the latest user message — the pipeline passes it;
+ *   callers that have none get the original rule (see arxivAngleScore).
+ */
+export function arxivPickQuery(batch, topic = "") {
   const list = Array.isArray(batch) ? batch.filter((q) => typeof q === "string") : [];
   if (!list.length) return "";
+  const wanted = new Set(arxivTerms(topic));
   let best = list[0];
-  let bestScore = arxivTerms(list[0]).length;
+  let bestScore = arxivAngleScore(list[0], wanted);
   for (const q of list.slice(1)) {
-    const score = arxivTerms(q).length;
-    if (score > bestScore) {
+    const score = arxivAngleScore(q, wanted);
+    if (score.covered > bestScore.covered || (score.covered === bestScore.covered && score.extra < bestScore.extra)) {
       best = q;
       bestScore = score;
     }

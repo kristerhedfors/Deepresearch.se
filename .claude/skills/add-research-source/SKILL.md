@@ -137,12 +137,15 @@ product name, an entity class), teach the PROMPTS too
 
 A source plugs into the pipeline as ONE entry in `SEARCH_SOURCES`
 (`src/search-sources.js`) — the file's header documents the full entry
-contract (`id`, `intent`, `search`, `service`, `dedupKey`,
-`maxPerRequest`, `promptNote`, `diversityHost`/`diversityKeyOf`). The
-generic orchestration lives ONCE in `pipeline.js`'s `runAuxSearches`
-(wave timing after the Exa batch, per-request caps, cross-wave dedup,
-`search_start`/`search_done` emission with the source's `service` name,
-fail-soft, `addSources`) and is identical for every source. Consequences:
+contract (`id`, `intent`, `leadIntent`, `search`, `service`, `pickQuery`,
+`dedupKey`, `maxPerRequest`, `leadMaxPerRequest`, `promptNote`,
+`diversityHost`/`diversityKeyOf`). The generic orchestration lives ONCE in
+`pipeline.js`'s `startAuxSearches` (wave planning, per-request caps,
+cross-wave dedup, `search_start`/`search_done` emission with the source's
+`service` name, fail-soft, `addSources`) and is identical for every source.
+The aux wave is DISPATCHED before the Exa leg is awaited, so the two run
+concurrently — a source's latency is not added to the user's wall clock.
+Consequences:
 
 - Do NOT add source-specific code to `pipeline.js`, `prompts.js`,
   `sources.js`, or `chat.js` — they iterate the registry and must never
@@ -157,6 +160,26 @@ fail-soft, `addSources`) and is identical for every source. Consequences:
   `platformDiversityKey()` generically.
 - Per-request state lives under `state.aux[<id>]` (created by the
   orchestrator) — never new top-level `state` fields.
+- **Asking for a source BY NAME is its own tier** (`leadIntent`, added
+  2026-07-27 from feedback #44: "I explicitly asked for an arxiv search but
+  a lot of web search was done first — if asked for arXiv explicitly, start
+  there and do only arxiv unless called for otherwise"). When it matches,
+  the source LEADS: the Exa leg stands down for the whole request and the
+  source spends the wave's breadth itself, up to `leadMaxPerRequest` distinct
+  angles instead of one. Three rules keep this from eating ordinary research:
+  it must be **strictly narrower than `intent`** (pinned by
+  `search-sources.test.js` — naming the source, not asking something the
+  source could serve); it must **stand down when the message names somewhere
+  else too** ("check arxiv and the web"), which is the "unless called for
+  otherwise" half; and the orchestrator **releases the lead** when the
+  leading source contributes nothing, re-running the web leg for the same
+  batch, so "only X" can never become "no sources at all" (invariant 2).
+  Give it EN+SV parity like every other gate (invariant 6).
+- `pickQuery(batch, topic)` receives the latest user message as `topic`.
+  Scoring the planner's angles against what the user ACTUALLY asked is what
+  stops a source picking the wave's narrowest sub-angle: asked to "find
+  arXiv research mentioning linux", the pre-`topic` rule ("most terms
+  survive noise-stripping") searched `linux performance optimization`.
 - Pre-pipeline ENRICHMENTS (the knob-gated, third-party shape — Shodan,
   Google Maps) are a DIFFERENT seam and, since 2026-07-25, an **extension**,
   not core (CLAUDE.md invariant 7): one descriptor in `src/extensions.js`

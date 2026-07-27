@@ -479,15 +479,22 @@ export function parseLooseJson(s) {
 // and src/rag.js embeds queries server-side. Same timeout discipline as
 // completeJson — an unbounded fetch to Berget has already bitten this
 // project once (see the round 2 note above).
+// 60 s is sized for the INDEXING call: a batch of document chunks, on a path
+// where the user is watching a progress bar and a slow embedder is better than
+// a failed upload. It is far too long for a call made INSIDE a search wave —
+// one hung embedding request there stalls the whole wave for a minute (the
+// arXiv dense tier did exactly that, feedback #44). Such callers pass their
+// own, much shorter `timeoutMs`.
 const EMBED_TIMEOUT_MS = 60_000;
 
 /**
  * @param {import('./types.js').Env} env
  * @param {string[]} texts
- * @param {{ model?: string }} [opts]
+ * @param {{ model?: string, timeoutMs?: number }} [opts]
  * @returns {Promise<{ vectors: any[], usage: any | null, model: string }>}
  */
-export async function embedTexts(env, texts, { model } = {}) {
+export async function embedTexts(env, texts, { model, timeoutMs } = {}) {
+  const budget = typeof timeoutMs === "number" && timeoutMs > 0 ? timeoutMs : EMBED_TIMEOUT_MS;
   const resp = await fetch(embeddingsUrl(env), {
     method: "POST",
     headers: {
@@ -498,7 +505,7 @@ export async function embedTexts(env, texts, { model } = {}) {
       model: model || embedModel(env),
       input: texts,
     }),
-    signal: AbortSignal.timeout(EMBED_TIMEOUT_MS),
+    signal: AbortSignal.timeout(budget),
   });
   if (!resp.ok) {
     const detail = await resp.text().catch(() => "");

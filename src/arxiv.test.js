@@ -9,8 +9,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  ARXIV_LEAD_MAX_PER_REQUEST,
   ARXIV_MAX_PER_REQUEST,
   arxivAttempts,
+  arxivLeadIntent,
   arxivCacheKey,
   arxivDistinctiveness,
   arxivDiversityKey,
@@ -368,6 +370,121 @@ test("arxivPickQuery prefers the most topic-bearing angle", () => {
   // Ties keep the planner's own ordering (its first angle is the primary one).
   assert.equal(arxivPickQuery(["graphene sheets", "silicon wafers"]), "graphene sheets");
   assert.equal(arxivPickQuery([]), "");
+});
+
+test("arxivPickQuery scores the planner's angles against the USER's topic", async (t) => {
+  // feedback #44 (2026-07-27) verbatim: asked to "find arXiv research
+  // mentioning linux", the source searched `linux performance optimization` —
+  // "surprisingly narrow", and it is: of the wave's nine angles it is the one
+  // that adds two topics nobody asked for. These are the actual planned
+  // queries from that run (chat_logs #694).
+  const BATCH = [
+    "arxiv research papers linux",
+    "latest arxiv papers on linux security",
+    "arxiv papers linux kernel development",
+    "arxiv papers linux performance optimization",
+    "linux kernel security vulnerabilities arxiv 2026",
+  ];
+
+  await t.test("picks the angle that is the user's question, not a sub-topic of it", () => {
+    assert.equal(
+      arxivPickQuery(BATCH, "find arXiv research mentioning linux"),
+      "arxiv research papers linux",
+    );
+  });
+
+  await t.test("a narrower angle still wins when it COVERS more of what was asked", () => {
+    // Coverage first, extras second — so specificity is only ever penalised
+    // when it drifts off the question.
+    assert.equal(
+      arxivPickQuery(
+        ["arxiv papers linux", "arxiv papers linux kernel security vulnerabilities"],
+        "linux kernel security research",
+      ),
+      "arxiv papers linux kernel security vulnerabilities",
+    );
+  });
+
+  await t.test("no overlap at all falls back to the original most-terms rule", () => {
+    // A gap round's follow-up on an entity learned from the web overlaps the
+    // user's own wording nowhere; the pre-existing rule is what should apply.
+    assert.equal(
+      arxivPickQuery(["what are the latest papers", "cve-2026-1234 kernel exploit chain"], "linux"),
+      "cve-2026-1234 kernel exploit chain",
+    );
+  });
+
+  await t.test("Swedish parity: the same scoring on a Swedish question", () => {
+    assert.equal(
+      arxivPickQuery(
+        ["arxiv artiklar om linux", "arxiv artiklar linux prestandaoptimering"],
+        "hitta forskning på arXiv som nämner linux",
+      ),
+      "arxiv artiklar om linux",
+    );
+  });
+});
+
+test("arxivTerms strips words about the ASKING, not the topic", () => {
+  // "mentioning" AND-ed abs:"mentioning" into the query in feedback #44's run,
+  // in the exact slot the topic word should have taken.
+  assert.deepEqual(arxivTerms("find arXiv research mentioning linux"), ["linux"]);
+  assert.deepEqual(arxivTerms("papers discussing graphene"), ["graphene"]);
+  // Swedish parity (invariant 6).
+  assert.deepEqual(arxivTerms("hitta forskning som nämner linux"), ["linux"]);
+  assert.deepEqual(arxivTerms("artiklar som handlar om grafen"), ["grafen"]);
+});
+
+test("arxivLeadIntent — naming the archive makes it the place to look", async (t) => {
+  // feedback #44: "if asked for arXiv explicitly, start there and do only
+  // arxiv unless called for otherwise."
+  await t.test("fires when the message names arXiv and nowhere else", () => {
+    for (const s of [
+      "find arXiv research mentioning linux",
+      "search arxiv for diffusion model papers",
+      "summarize arxiv.org/abs/2606.09730",
+      "arXiv:2606.09730 please",
+      "any preprints on post-quantum cryptography",
+      // Swedish parity (invariant 6).
+      "sök på arxiv efter artiklar om linux",
+      "finns det något förtryck om detta",
+    ]) {
+      assert.equal(arxivLeadIntent(s), true, s);
+    }
+  });
+
+  await t.test("stands down when the message names somewhere else too", () => {
+    for (const s of [
+      "compare the arxiv paper with what the blogs say",
+      "check arxiv and the web for this",
+      "arxiv plus any github implementations",
+      "arxiv och nyheter om detta",
+      "sök på arxiv och webben",
+    ]) {
+      assert.equal(arxivLeadIntent(s), false, s);
+    }
+  });
+
+  await t.test("is strictly NARROWER than arxivIntent — a research question does not lead", () => {
+    for (const s of [
+      "what does the latest research say about llm swarm reasoning",
+      "senaste forskningen om språkmodeller",
+      "are there studies on graphene superconductivity",
+    ]) {
+      assert.equal(arxivIntent(s), true, `intent: ${s}`);
+      assert.equal(arxivLeadIntent(s), false, `lead: ${s}`);
+    }
+  });
+
+  await t.test("junk in → false, never a throw", () => {
+    for (const s of ["", null, undefined, 42, {}]) assert.equal(arxivLeadIntent(s), false);
+  });
+});
+
+test("the lead ceiling is higher than the ordinary one", () => {
+  // With the web leg standing down, covering one angle would leave an
+  // explicitly-arXiv turn thinner than the un-led one was.
+  assert.ok(ARXIV_LEAD_MAX_PER_REQUEST > ARXIV_MAX_PER_REQUEST);
 });
 
 test("arxivTermKey", () => {
