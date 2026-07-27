@@ -1153,9 +1153,9 @@ tabs were unusable.
 
 **The parts of the rule that are easy to get wrong:**
 
-1. **Silence is never an option in either direction.** A second tab must not
-   silently share a session (two writers on one workspace and one history), and it
-   must not silently refuse to open either. It works, and it says what it did.
+1. **Neither sharing nor refusing may be silent.** A second tab must not quietly
+   join a session — that is two writers on one workspace and one history — and it
+   must not sit there unusable either. It opens, and it says what it did.
 2. **A cold relaunch is NOT a second tab.** The in-flight answer pointer stays
    DURABLE precisely so an iOS PWA discard + cold relaunch still collects the
    answer the server finished while the app was gone — the case the feature exists
