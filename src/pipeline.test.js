@@ -285,23 +285,49 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // gate; without it the knob would still search when off. The call carries
     // the user's picked SOURCE — which engine runs it — but the gate is what
     // decides whether it runs at all.
-    assert.match(
-      src,
-      /if \(policy\.web\) \{[\s\S]*webSearch\(env, log, query, state\.plan\.searchDepth, \{ source: state\.searchSource \|\| "" \}\)/,
-    );
-    assert.match(src, /if \(policy\.web\) \{[\s\S]*state\.searchCount \+= batch\.length/);
+    const runSearches = src.slice(src.indexOf("async function runSearches"), src.indexOf("async function runWebLeg"));
+    assert.match(runSearches, /const web = policy\.web && !lead\.length;/);
+    assert.match(runSearches, /if \(web\) await runWebLeg\(ctx, batch, round\);/);
+    const webLeg = src.slice(src.indexOf("async function runWebLeg"), src.indexOf("const MAX_AUX_SEARCHES_DEFAULT"));
+    assert.match(webLeg, /webSearch\(env, log, query, state\.plan\.searchDepth, \{ source: state\.searchSource \|\| "" \}\)/);
+    assert.match(webLeg, /state\.searchCount \+= batch\.length/);
   });
 
-  test("runAuxSearches runs regardless of the knob (outside the Exa gate)", () => {
-    // The aux wave (HF Hub & co) must NOT be inside the Exa gate, so it still
-    // fires with web search off — depth over available sources. It has its own
-    // declaration (`search.auxSources`), which is a different question.
-    const runSearches = src.slice(src.indexOf("async function runSearches"), src.indexOf("async function runAuxSearches"));
-    assert.match(runSearches, /await runAuxSearches\(ctx, batch, round\);/);
-    // The aux call sits after the closing brace of the Exa block, not within it.
-    const auxIdx = runSearches.indexOf("await runAuxSearches");
-    const gateIdx = runSearches.indexOf("if (policy.web)");
-    assert.ok(gateIdx >= 0 && auxIdx > gateIdx, "aux call comes after the Exa gate");
+  test("the aux wave runs regardless of the knob, and CONCURRENTLY with Exa", () => {
+    // Two properties in one shape. (a) The aux wave (HF Hub & co) must NOT be
+    // inside the Exa gate, so it still fires with web search off — depth over
+    // available sources. It has its own declaration (`search.auxSources`),
+    // which is a different question. (b) It is DISPATCHED before the Exa leg
+    // is awaited: running the two serially put every aux source's latency
+    // straight onto the user's wall clock (feedback #44, "the arXiv searches
+    // took close to a minute").
+    const runSearches = src.slice(src.indexOf("async function runSearches"), src.indexOf("async function runWebLeg"));
+    const startIdx = runSearches.indexOf("const auxWave = startAuxSearches(ctx, batch, round, lead);");
+    const webIdx = runSearches.indexOf("if (web) await runWebLeg(ctx, batch, round);");
+    const finishIdx = runSearches.indexOf("const auxItems = await auxWave();");
+    assert.ok(startIdx >= 0 && webIdx > startIdx, "aux wave is dispatched before the Exa leg is awaited");
+    assert.ok(finishIdx > webIdx, "aux results are absorbed after the Exa leg, so numbering stays deterministic");
+    // The dispatch itself is outside any `web` gate.
+    assert.ok(startIdx < runSearches.indexOf("if (web)"), "aux dispatch is not inside the Exa gate");
+  });
+
+  test("a source the user names by NAME leads the wave, and the lead fails soft", () => {
+    // feedback #44: "if asked for arXiv explicitly, start there and do only
+    // arxiv unless called for otherwise". A leading source displaces the web
+    // leg; a lead that finds nothing releases so "only X" can never become
+    // "no sources at all" (invariant 2).
+    const runSearches = src.slice(src.indexOf("async function runSearches"), src.indexOf("async function runWebLeg"));
+    assert.match(runSearches, /const lead = leadingSources\(ctx\);/);
+    assert.match(runSearches, /const web = policy\.web && !lead\.length;/);
+    assert.match(
+      runSearches,
+      /if \(lead\.length && !auxItems && policy\.web\) \{[\s\S]*auxLeadReleased = true;[\s\S]*await runWebLeg\(ctx, batch, round\);/,
+    );
+    // Generic: the rule for what counts as naming a source lives in that
+    // source's module; the orchestrator reads ids only.
+    const leading = src.slice(src.indexOf("function leadingSources(ctx)"), src.indexOf("function startAuxSearches"));
+    assert.match(leading, /return leadSourceIds\(ctx\.lastUser\);/);
+    assert.doesNotMatch(leading, /arxiv|\bhf\b|hugging/i);
   });
 
   test("web-off short-circuits to the model answer ONLY when no other source applies", () => {
@@ -322,9 +348,9 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // The forceAux seam itself: runAuxSearch skips a source whose intent is
     // false UNLESS the state listed its id. Generic — the pipeline reads ids
     // off the state and never names one.
-    const runAux = src.slice(src.indexOf("async function runAuxSearch(ctx, source"));
-    assert.match(runAux, /forceAux[\s\S]*\.includes\(source\.id\)/);
-    assert.match(runAux, /if \(!batch\.length \|\| \(!forced && !source\.intent\(ctx\.lastUser\)\)\) return;/);
+    const plan = src.slice(src.indexOf("function planAuxSource(ctx, source"), src.indexOf("async function runOneAuxSearch"));
+    assert.match(plan, /forceAux[\s\S]*\.includes\(source\.id\)/);
+    assert.match(plan, /if \(!batch\.length \|\| \(!forced && !leading && !source\.intent\(ctx\.lastUser\)\)\) return \[\];/);
   });
 
   test("a forced source survives the developer-mode source-research path (feedback #36)", () => {
@@ -360,10 +386,15 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // feedback #36: "the Models pipeline should be even more inclined to search
     // hf". The override is read off the state by id — core names no source —
     // and only ever RAISES the registry's own default.
-    const runAux = src.slice(src.indexOf("async function runAuxSearch(ctx, source"));
-    assert.match(runAux, /state\)\.auxMaxPerRequest\?\.\[source\.id\]/);
-    assert.match(runAux, /typeof override === "number" && override > 0 \? override : \(source\.maxPerRequest \?\? MAX_AUX_SEARCHES_DEFAULT\)/);
-    assert.match(runAux, /if \(st\.count >= cap\) return;/);
+    const plan = src.slice(src.indexOf("function planAuxSource(ctx, source"), src.indexOf("async function runOneAuxSearch"));
+    assert.match(plan, /state\)\.auxMaxPerRequest\?\.\[source\.id\]/);
+    assert.match(plan, /typeof override === "number" && override > 0 \? override : \(declared \?\? MAX_AUX_SEARCHES_DEFAULT\)/);
+    // …and the registry's own ceilings — the ordinary one, and the higher one
+    // a source declares for when it LEADS (feedback #44) — are what `declared`
+    // resolves to, never a number written into the orchestrator.
+    assert.match(plan, /const declared = \(leading \? source\.leadMaxPerRequest \?\? source\.maxPerRequest : source\.maxPerRequest\);/);
+    // The cap is spent, never exceeded: `want` is what remains of it.
+    assert.match(plan, /const want = Math\.max\(0, leading \? cap - st\.count : Math\.min\(1, cap - st\.count\)\);/);
   });
 
   test("an introspection agent's `search.web: false` does not disarm the knob", () => {

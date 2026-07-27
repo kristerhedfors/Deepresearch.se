@@ -984,9 +984,10 @@ the search phase.
 - **Pipeline wiring:** via the search-source REGISTRY
   (`src/search-sources.js` — see the **add-research-source** skill): one
   entry declaring intent/search/service/dedupKey/promptNote/diversity;
-  the generic orchestrator (`pipeline.js` `runAuxSearches`) runs it AFTER
-  each wave's Exa batch (source numbering stays deterministic) on the
-  wave's first planned query, capped at 3 waves/request, deduped across
+  the generic orchestrator (`pipeline.js` `startAuxSearches`) runs it
+  CONCURRENTLY with each wave's Exa batch and absorbs its results after it
+  (source numbering stays deterministic) on the wave's most on-topic
+  planned query, capped at 3 waves/request, deduped across
   waves by term key, emitting `search_start`/`search_done` with
   `source:"hf"` / `service:"Hugging Face Hub"` so the client card names
   the provider. Caps 4 models + 4 datasets + 3 papers per search.

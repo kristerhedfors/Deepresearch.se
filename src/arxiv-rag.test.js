@@ -7,6 +7,7 @@
 // answering an off-topic question with confident nonsense.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { arxivRagAvailable, arxivRagItem, arxivRagSearch, arxivRerank, arxivRerankDoc } from "./arxiv-rag.js";
 
@@ -198,6 +199,49 @@ test("arxivRagSearch", async (t) => {
     globalThis.fetch = stubFetch(env);
     const items = await arxivRagSearch(env, log, "llm agents");
     assert.equal(items.length, 2);
+  });
+
+  // feedback #44 (2026-07-27): "the arXiv searches took close to a minute".
+  // This tier runs inside a search wave, so every leg of it must be bounded —
+  // and the leg that actually bit was an inherited default, not a slow index.
+  await t.test("the embedding call is bounded to THIS tier's budget, not the indexing default", async () => {
+    // embedTexts defaults to 60 s because it is sized for document indexing.
+    // Inside a search wave that is a minute of the user's time on one hung
+    // request, which is exactly what was reported.
+    let ms = null;
+    const env = fakeEnv({ matches: [match("a", "A")] });
+    globalThis.fetch = async (url, init) => {
+      if (String(url).includes("/embeddings")) {
+        // An AbortSignal's remaining budget is not readable, so this half only
+        // confirms the call is signalled at all; the ceiling itself is pinned
+        // below, where it is stated.
+        ms = init?.signal ? "bounded" : null;
+        return new Response(JSON.stringify({ data: [{ embedding: new Array(1024).fill(0.01) }] }), { status: 200 });
+      }
+      return new Response("{}", { status: 200 });
+    };
+    await arxivRagSearch(env, log, "llm agents");
+    assert.equal(ms, "bounded");
+    // The budget itself is stated in the module, so a later edit that drops it
+    // back to the inherited default fails here.
+    const src = readFileSync(new URL("./arxiv-rag.js", import.meta.url), "utf8");
+    assert.match(src, /const EMBED_TIMEOUT_MS = \d{4};/);
+    assert.match(src, /embedTexts\(env, \[QUERY_PREFIX \+ text\], \{ timeoutMs: EMBED_TIMEOUT_MS \}\)/);
+  });
+
+  await t.test("a hanging index lookup gives up instead of holding the wave", async () => {
+    // Vectorize's query takes no abort signal, so the bound is a race.
+    const src = readFileSync(new URL("./arxiv-rag.js", import.meta.url), "utf8");
+    assert.match(src, /withTimeout\(\s*env\.ARXIV_INDEX\.query\(qvec, \{ topK: CANDIDATES, returnMetadata: "all" \}\),\s*QUERY_TIMEOUT_MS,/);
+  });
+
+  await t.test("the rerank is skipped rather than started when the call is already over budget", async () => {
+    // Reranking is worth +15/+17 recall@1 points, but not another 6 s on a
+    // call that has already spent its budget — the dense order is the
+    // fail-soft result.
+    const src = readFileSync(new URL("./arxiv-rag.js", import.meta.url), "utf8");
+    assert.match(src, /spent > TOTAL_BUDGET_MS - RERANK_TIMEOUT_MS/);
+    assert.match(src, /arxiv_rag\.rerank_skipped/);
   });
 
   await t.test("an empty index reports zero rather than failing", async () => {

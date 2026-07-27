@@ -22,9 +22,11 @@
 // runAuxSearches and is identical for every source.
 
 import {
+  ARXIV_LEAD_MAX_PER_REQUEST,
   ARXIV_MAX_PER_REQUEST,
   arxivDiversityKey,
   arxivIntent,
+  arxivLeadIntent,
   arxivPickQuery,
   arxivPromptNote,
   arxivSearch,
@@ -55,6 +57,22 @@ import { hfDiversityKey, hfIntent, hfPickQuery, hfPromptNote, hfSearch, hfTermKe
  *   Pure predicate on the LATEST USER MESSAGE deciding whether this source
  *   fires at all. Must be cheap and conservative; when false the source is
  *   fully invisible (no step, no event, no fetch).
+ * @property {(text: string) => boolean} [leadIntent]
+ *   Pure predicate, strictly narrower than `intent`: does the message name
+ *   THIS source as the place to look? When it matches, the source LEADS the
+ *   turn — the generic web (Exa) leg stands down, and this source spends the
+ *   wave's whole breadth, up to `leadMaxPerRequest` angles instead of one.
+ *   Optional: a source that declares none never leads, which is the default.
+ *   Fail-soft is the orchestrator's (pipeline.js): a leading source that finds
+ *   NOTHING releases the lead and the web leg runs after all, so "arXiv only"
+ *   can never mean "no sources at all". Asking for a source by name is a
+ *   different act from asking a question that source happens to serve — keep
+ *   this tier to the explicit naming, or every research question silently
+ *   loses web search.
+ * @property {number} [leadMaxPerRequest]
+ *   The per-request search ceiling while LEADING (defaults to maxPerRequest).
+ *   Higher is the point: with the web leg down, covering only one of the
+ *   wave's angles leaves the turn thinner than the un-led one was.
  * @property {(env: import('./types.js').Env, log: import('./types.js').Logger, query: string, opts: { skipKeys?: Set<string> }) => Promise<SearchSourceResult>} search
  *   The timeout-bounded, fail-soft client call. `skipKeys` is the set of
  *   attempt keys earlier waves consumed (skip them — don't re-fetch the
@@ -64,9 +82,12 @@ import { hfDiversityKey, hfIntent, hfPickQuery, hfPromptNote, hfSearch, hfTermKe
  *   the search events as `service` (e.g. "Hugging Face Hub" — the UI must
  *   always make clear WHICH provider a card came from; plain web cards say
  *   "Web search").
- * @property {(batch: string[]) => string} [pickQuery]
+ * @property {(batch: string[], topic: string) => string} [pickQuery]
  *   Picks which of the wave's planned queries this source searches
- *   (default batch[0]). hf picks the most entity/identifier-bearing one —
+ *   (default batch[0]). `topic` is the latest user message, so a source can
+ *   score the planner's angles against what was actually asked — arxiv does,
+ *   because the planner's narrowest angle is not the user's question
+ *   (feedback #44). hf picks the most entity/identifier-bearing one instead —
  *   the web→hub insight flow (a gap query learned from web results, like a
  *   CVE id, is exactly what the hub can answer).
  * @property {(query: string) => string} [dedupKey]
@@ -106,6 +127,11 @@ export const SEARCH_SOURCES = [
   {
     id: "arxiv",
     intent: arxivIntent,
+    // Naming the archive makes it the place to look, not merely a place —
+    // feedback #44, "if asked for arXiv explicitly, start there and do only
+    // arxiv unless called for otherwise".
+    leadIntent: arxivLeadIntent,
+    leadMaxPerRequest: ARXIV_LEAD_MAX_PER_REQUEST,
     search: arxivSearch,
     service: "arXiv",
     pickQuery: arxivPickQuery,
@@ -127,6 +153,19 @@ export const SEARCH_SOURCES = [
 /** @returns {string} */
 export function sourcePromptNotes() {
   return SEARCH_SOURCES.map((s) => s.promptNote || "").join("");
+}
+
+// The ids of every source the message names as THE place to look, in registry
+// order. Empty for an ordinary question — the common case, and the one where
+// nothing about the wave changes. pipeline.js consumes this generically and
+// never names a source (invariant: adding or removing a source touches no
+// orchestrator file).
+/**
+ * @param {string} text the latest user message
+ * @returns {string[]}
+ */
+export function leadSourceIds(text) {
+  return SEARCH_SOURCES.filter((s) => typeof s.leadIntent === "function" && s.leadIntent(text)).map((s) => s.id);
 }
 
 // Platform-aware diversity key override, consulted by sources.js's

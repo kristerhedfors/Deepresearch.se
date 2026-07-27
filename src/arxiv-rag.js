@@ -50,6 +50,26 @@ const RERANK_MODEL = "BAAI/bge-reranker-v2-m3";
 const RERANK_DOC_CHARS = 900;
 const CANDIDATES = 20; // the Vectorize returnMetadata:"all" ceiling
 const RERANK_TIMEOUT_MS = 6000;
+// ---- the time budget, and why it is stated here at all ---------------------
+// This tier runs INSIDE a search wave, so its latency is the user's latency.
+// Reported (feedback #44, 2026-07-27): "the arXiv searches took close to a
+// minute". The cause was not this module's own work — it was the DEFAULT it
+// inherited. `embedTexts` is sized for document INDEXING and carries a 60 s
+// timeout; one slow embedding call therefore stalled a whole arXiv search for
+// up to a minute while the pipeline waited. Nothing bounded it: neither this
+// function nor arxiv.js's ladder budget (which is measured from before the
+// dense tier runs, so a slow dense tier silently ate the live-API fallback's
+// budget as well).
+//
+// So the tier now states its own bounds. Three legs, each bounded, and a
+// whole-call budget that stops the LAST leg from being started at all when the
+// earlier ones already overspent:
+//   embed 6 s + Vectorize 6 s + rerank 6 s, whole call 12 s.
+// Every expiry is a fail-soft degrade, never an error: a dead embedder returns
+// null (arxiv.js uses the live API), an expired rerank keeps the dense order.
+const EMBED_TIMEOUT_MS = 6000;
+const QUERY_TIMEOUT_MS = 6000;
+const TOTAL_BUDGET_MS = 12_000;
 const MAX_ABSTRACT_CHARS = 420; // presentation cut, matches the live tier
 // The relevance floor, applied to the CROSS-ENCODER score. Dense retrieval
 // always returns its nearest neighbours, however far away they are — ask a
@@ -93,6 +113,24 @@ const MAX_ABSTRACT_CHARS = 420; // presentation cut, matches the live tier
 // missing, and silently dropping everything would be worse than passing the
 // dense order on.
 const RERANK_FLOOR = 0.01;
+
+/**
+ * Bound a promise that has no abort support of its own — Vectorize's `query`
+ * takes no signal, so a race against a timer is the only bound available. The
+ * losing promise is left to settle unobserved (a Worker isolate discards it);
+ * what matters is that the wave stops waiting.
+ * @template T
+ * @param {Promise<T>} promise
+ * @param {number} ms
+ * @param {string} what
+ * @returns {Promise<T>}
+ */
+function withTimeout(promise, ms, what) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${what} timed out after ${ms}ms`)), ms)),
+  ]);
+}
 
 /**
  * Is the dense tier available in this deployment?
@@ -223,16 +261,29 @@ export async function arxivRagSearch(env, log, query, { limit = 5 } = {}) {
   const text = String(query || "").trim();
   if (!text) return null;
   try {
-    const { vectors } = await embedTexts(env, [QUERY_PREFIX + text]);
+    const { vectors } = await embedTexts(env, [QUERY_PREFIX + text], { timeoutMs: EMBED_TIMEOUT_MS });
     const qvec = vectors?.[0];
     if (!Array.isArray(qvec)) return null;
-    const res = await env.ARXIV_INDEX.query(qvec, { topK: CANDIDATES, returnMetadata: "all" });
+    const res = await withTimeout(
+      env.ARXIV_INDEX.query(qvec, { topK: CANDIDATES, returnMetadata: "all" }),
+      QUERY_TIMEOUT_MS,
+      "vectorize query",
+    );
     const matches = res?.matches || [];
     if (!matches.length) {
       log.info("arxiv_rag.search", { results: 0, duration_ms: Date.now() - started });
       return [];
     }
-    const { ordered, scored } = await arxivRerank(env, log, text, matches);
+    // Out of budget → keep the dense order rather than spending another 6 s on
+    // a cross-encoder. Reranking is worth +15/+17 recall@1 points, but not at
+    // the price this tier was reported for.
+    const spent = Date.now() - started;
+    const overBudget = spent > TOTAL_BUDGET_MS - RERANK_TIMEOUT_MS;
+    if (overBudget) log.warn("arxiv_rag.rerank_skipped", { spent_ms: spent });
+    /** @type {{ ordered: any[], scored: boolean }} */
+    const { ordered, scored } = overBudget
+      ? { ordered: matches, scored: false }
+      : await arxivRerank(env, log, text, matches);
     // The floor only applies when the cross-encoder actually scored: a
     // fallback order carries no comparable numbers, and dropping everything on
     // the strength of absent scores would turn a degraded result into no

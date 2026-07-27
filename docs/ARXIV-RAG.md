@@ -486,6 +486,20 @@ floor. Cost at this corpus size is about **$3-4/month** (Vectorize bills
 `(stored_vectors + monthly_queries) × dimensions`, so the index size is charged
 once per month rather than per query) plus a one-time ~€3 of Berget embeddings.
 
+**The served tier states its own time budget** (added 2026-07-27). It runs
+inside a search wave, so its latency is the user's latency, and every leg is
+bounded: embed 6 s, Vectorize query 6 s, rerank 6 s, whole call 12 s — the
+rerank is skipped rather than started once the earlier legs have spent the
+budget, keeping the dense order instead. That exists because of what it
+replaced. `embedTexts` is shared with document indexing and defaults to a
+**60 s** timeout, which is right for a user watching an upload progress bar
+and catastrophic inside a wave: one slow embedding call held an arXiv search
+for close to a minute (feedback #44, 2026-07-27). Nothing caught it, because
+`arxiv.js`'s ladder budget is measured from *before* the dense tier runs — so
+an overrunning dense tier silently consumed the live-API fallback's budget as
+well. Any future call made from inside a wave should pass its own `timeoutMs`
+rather than inherit an indexing default.
+
 Rebuilding the evaluation:
 
 ```bash

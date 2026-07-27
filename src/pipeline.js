@@ -63,7 +63,7 @@ import {
 } from "./conversation.js";
 import { runEnrichments } from "./enrichment.js";
 import { fetchContents, webSearch } from "./exa.js";
-import { SEARCH_SOURCES } from "./search-sources.js";
+import { SEARCH_SOURCES, leadSourceIds } from "./search-sources.js";
 import { getModelProfile } from "./model-profiles.js";
 import { addUsage } from "./quota.js";
 import { addSources, backfillOverflowSources, sourceDigest } from "./sources.js";
@@ -2023,56 +2023,89 @@ async function jsonPhase(ctx, { label, statKey, messages, maxTokens, recordStat 
  * @param {number} round 1 for the initial wave, then one per gap round.
  */
 async function runSearches(ctx, queries, round) {
-  const { env, log, emit, state } = ctx;
+  const { log, state } = ctx;
   const policy = searchPolicyFor(state);
   const batch = takeSearchBatch(state, queries, policy.maxQueries ?? Infinity);
   if (!batch.length) return;
 
+  // A source the user named as THE place to look LEADS this wave: the generic
+  // web leg stands down and that source spends the wave's whole breadth. See
+  // leadingSources for the rule and its fail-soft release.
+  const lead = leadingSources(ctx);
+
   // The web-search knob gates EXA ONLY (owner directive 2026-07-18). The
-  // auxiliary sources (HF Hub & co, runAuxSearches below) and the depth
+  // auxiliary sources (HF Hub & co, startAuxSearches below) and the depth
   // budget that plans this wave are independent of it: with the knob off the
   // wave still runs the aux sources over the planned angles — depth governs
   // how deep the research goes over whatever sources ARE available. Only the
   // Exa leg (the query-to-a-third-party leg the knob is about) is skipped.
-  if (policy.web) {
-    state.searchCount += batch.length;
-    // Every search event names its provider (`source` slug + `service` display
-    // name): the client's cards must always make clear WHICH provider ran a
-    // search — a user report showed hub and web searches rendering identically.
-    for (const query of batch) emit({ status: { type: "search_start", round, query, source: "web", service: "Web search" } });
-    // …and every search honours the source the user's "Exa web
-    // search" setting selects (state.searchSource — "" = whatever the site is
-    // configured to use).
-    const results = await Promise.all(
-      batch.map((query) => webSearch(env, log, query, state.plan.searchDepth, { source: state.searchSource || "" })),
-    );
-    for (let i = 0; i < batch.length; i++) {
-      const query = batch[i];
-      const result = results[i];
-      recordPhase(ctx.model, "search", result.durationMs);
-      // A cache hit (result.cached) cost nothing at Exa; count it so the user
-      // isn't billed/quota-charged for a repeated search (chat.js subtracts
-      // these when recording Exa cost and search usage). It still counts as a
-      // logical search for the maxSearches cap and the activity UI — the angle
-      // was still covered.
-      if (result.cached) state.cachedSearchCount = (state.cachedSearchCount || 0) + 1;
-      emit({
-        status: {
-          type: "search_done",
-          round,
-          query,
-          source: "web",
-          service: "Web search",
-          results: result.resultCount,
-          duration_ms: result.durationMs,
-          sources: result.sources,
-          cached: !!result.cached,
-        },
-      });
-      addSources(state, result.items);
-    }
+  const web = policy.web && !lead.length;
+
+  // Planned and DISPATCHED before the Exa batch is awaited, so the two legs
+  // overlap instead of queueing. They used to run strictly after it, which put
+  // every aux source's latency straight onto the user's wall clock — one of
+  // the three complaints in feedback #44 ("the arXiv searches took close to a
+  // minute"). Results are still absorbed in a fixed order (web, then registry
+  // order) so source numbering stays deterministic.
+  const auxWave = startAuxSearches(ctx, batch, round, lead);
+  if (web) await runWebLeg(ctx, batch, round);
+  const auxItems = await auxWave();
+
+  // Fail-soft on the lead itself (invariant 2): "only arXiv" must never become
+  // "no sources at all". A leading source that contributed nothing releases
+  // the lead — the web leg runs for this same batch, and later waves are
+  // ordinary waves again.
+  if (lead.length && !auxItems && policy.web) {
+    /** @type {any} */ (state).auxLeadReleased = true;
+    log.info("search.lead_released", { sources: lead, round });
+    await runWebLeg(ctx, batch, round);
   }
-  await runAuxSearches(ctx, batch, round);
+}
+
+/**
+ * The Exa leg of one wave: every planned query, concurrently.
+ * @param {PipelineCtx} ctx
+ * @param {string[]} batch
+ * @param {number} round
+ */
+async function runWebLeg(ctx, batch, round) {
+  const { env, log, emit, state } = ctx;
+  state.searchCount += batch.length;
+  // Every search event names its provider (`source` slug + `service` display
+  // name): the client's cards must always make clear WHICH provider ran a
+  // search — a user report showed hub and web searches rendering identically.
+  for (const query of batch) emit({ status: { type: "search_start", round, query, source: "web", service: "Web search" } });
+  // …and every search honours the source the user's "Exa web
+  // search" setting selects (state.searchSource — "" = whatever the site is
+  // configured to use).
+  const results = await Promise.all(
+    batch.map((query) => webSearch(env, log, query, state.plan.searchDepth, { source: state.searchSource || "" })),
+  );
+  for (let i = 0; i < batch.length; i++) {
+    const query = batch[i];
+    const result = results[i];
+    recordPhase(ctx.model, "search", result.durationMs);
+    // A cache hit (result.cached) cost nothing at Exa; count it so the user
+    // isn't billed/quota-charged for a repeated search (chat.js subtracts
+    // these when recording Exa cost and search usage). It still counts as a
+    // logical search for the maxSearches cap and the activity UI — the angle
+    // was still covered.
+    if (result.cached) state.cachedSearchCount = (state.cachedSearchCount || 0) + 1;
+    emit({
+      status: {
+        type: "search_done",
+        round,
+        query,
+        source: "web",
+        service: "Web search",
+        results: result.resultCount,
+        duration_ms: result.durationMs,
+        sources: result.sources,
+        cached: !!result.cached,
+      },
+    });
+    addSources(state, result.items);
+  }
 }
 
 // Auxiliary search sources (src/search-sources.js) alongside a wave's Exa
@@ -2100,30 +2133,90 @@ async function runSearches(ctx, queries, round) {
 // (search_done with 0 results). Platform-aware diversity keying in
 // sources.js keeps the per-origin cap meaningful for admitted sources.
 const MAX_AUX_SEARCHES_DEFAULT = 3;
+
 /**
- * @param {PipelineCtx} ctx
- * @param {string[]} batch The wave's Exa queries (already deduped/capped).
- * @param {number} round
+ * One planned aux search: which source runs which of the wave's angles, and
+ * which attempt keys its own ladder should skip. Planning is separated from
+ * running so the whole wave can be dispatched at once (and so the bookkeeping
+ * — counts, cross-wave dedup — is committed in a deterministic order however
+ * the fetches resolve).
+ * @typedef {{ source: import('./search-sources.js').SearchSource, query: string, key: string, skipKeys: Set<string> }} AuxPlan
  */
-async function runAuxSearches(ctx, batch, round) {
+
+/**
+ * The sources LEADING this request: those the latest user message names as the
+ * place to look (registry `leadIntent`). A leading source displaces the web
+ * leg and spends the wave's whole breadth itself.
+ *
+ * Reported (feedback #44, 2026-07-27): "I explicitly asked for an arxiv search
+ * but a lot of web search was done first for unknown reason — if asked for
+ * arXiv explicitly, start there and do only arxiv unless called for
+ * otherwise."
+ *
+ * Generic by construction, like the rest of the registry loop: the rule for
+ * what counts as naming a source lives in that source's module, this reads
+ * only ids. `auxLeadReleased` is the fail-soft latch runSearches sets when a
+ * lead found nothing — after that the request is an ordinary one.
+ * @param {PipelineCtx} ctx
+ * @returns {string[]}
+ */
+function leadingSources(ctx) {
+  const { state } = ctx;
+  if (/** @type {any} */ (state).auxLeadReleased) return [];
+  // An agent that declines the auxiliary sources cannot be led by one.
+  if (!searchPolicyFor(state).auxSources) return [];
+  return leadSourceIds(ctx.lastUser);
+}
+
+/**
+ * Plan and DISPATCH this wave's auxiliary searches, returning the awaiter that
+ * absorbs their results. Split in two so the caller can overlap them with the
+ * Exa leg; call the returned function to finish the wave.
+ * @param {PipelineCtx} ctx
+ * @param {string[]} batch The wave's planned queries (already deduped/capped).
+ * @param {number} round
+ * @param {string[]} [lead] ids of the sources leading this request.
+ * @returns {() => Promise<number>} resolves to the number of items contributed.
+ */
+function startAuxSearches(ctx, batch, round, lead = []) {
   // An agent may decline the auxiliary sources entirely (`search.auxSources:
   // false`) — the Se/cure spec does, because a client-tier agent has no
   // server-side source registry to reach. Every server-tier agent that gets
   // this far declares true, so the loop below is unchanged today.
-  if (!searchPolicyFor(ctx.state).auxSources) return;
+  if (!searchPolicyFor(ctx.state).auxSources) return async () => 0;
+  /** @type {AuxPlan[]} */
+  const plans = [];
   for (const source of SEARCH_SOURCES) {
-    await runAuxSearch(ctx, source, batch, round);
+    plans.push(...planAuxSource(ctx, source, batch, lead.includes(source.id)));
   }
+  // The provider identity rides as source/service (not baked into the query
+  // text): the client renders the service name on the card, so hub and web
+  // searches are visibly distinct.
+  for (const p of plans) {
+    ctx.emit({ status: { type: "search_start", round, query: p.key || p.query, source: p.source.id, service: p.source.service } });
+  }
+  const running = plans.map((p) => runOneAuxSearch(ctx, p));
+  return async () => {
+    const results = await Promise.all(running);
+    let items = 0;
+    for (let i = 0; i < plans.length; i++) {
+      absorbAuxResult(ctx, plans[i], results[i], round);
+      items += results[i].items.length;
+    }
+    return items;
+  };
 }
 
 /**
+ * Which angles one source takes this wave, with its bookkeeping committed.
  * @param {PipelineCtx} ctx
  * @param {import('./search-sources.js').SearchSource} source
  * @param {string[]} batch
- * @param {number} round
+ * @param {boolean} leading
+ * @returns {AuxPlan[]}
  */
-async function runAuxSearch(ctx, source, batch, round) {
-  const { env, log, emit, state } = ctx;
+function planAuxSource(ctx, source, batch, leading) {
+  const { state } = ctx;
   // A source normally fires only when the message engages it. `state.forceAux`
   // is the one override: a mode whose whole identity IS a source (the agent
   // built around it) lists that source's id and it runs every turn. Generic by
@@ -2131,76 +2224,131 @@ async function runAuxSearch(ctx, source, batch, round) {
   // like the rest of the registry loop.
   const forced = Array.isArray(/** @type {any} */ (state).forceAux)
     && /** @type {any} */ (state).forceAux.includes(source.id);
-  if (!batch.length || (!forced && !source.intent(ctx.lastUser))) return;
+  if (!batch.length || (!forced && !leading && !source.intent(ctx.lastUser))) return [];
   state.aux ||= {};
   const st = (state.aux[source.id] ||= { count: 0, ran: new Set() });
   // How many searches this source gets THIS request. The source's own
-  // maxPerRequest is the default; `state.auxMaxPerRequest` raises it for a mode
-  // that leans on the source harder than an incidental mention does (the Models
-  // agent — feedback #36's "the Models pipeline should be even more inclined to
-  // search hf for answers"). Read generically: ids come off the state, and the
+  // maxPerRequest is the default; a LEADING source declares its own, higher
+  // ceiling (leadMaxPerRequest — the web leg is standing down, so covering one
+  // angle would leave the turn thinner than not leading at all); and
+  // `state.auxMaxPerRequest` overrides both for a mode that leans on the
+  // source harder than an incidental mention does (the Models agent —
+  // feedback #36's "the Models pipeline should be even more inclined to search
+  // hf for answers"). Read generically: ids come off the state, and the
   // cross-wave dedup below still stops repeat searches, so a raised cap buys
   // DISTINCT queries, never the same one twice.
   const override = /** @type {any} */ (state).auxMaxPerRequest?.[source.id];
-  const cap = typeof override === "number" && override > 0 ? override : (source.maxPerRequest ?? MAX_AUX_SEARCHES_DEFAULT);
-  if (st.count >= cap) return;
-  // The wave's most on-topic query for THIS source (pickQuery — e.g. hf
-  // prefers the entity/identifier-bearing angle over the generic one, the
-  // web→hub insight flow); batch[0] when the source doesn't care.
-  const query = source.pickQuery ? source.pickQuery(batch) : batch[0];
-  const key = source.dedupKey ? source.dedupKey(query) : query.toLowerCase().trim();
-  if (st.ran.has(key)) return;
-  // Snapshot BEFORE adding this key: `skipKeys` tells the source which
-  // search attempts earlier waves already consumed (its ladder skips them —
-  // no re-fetching identical result sets), while the fresh key itself must
-  // stay searchable this call.
-  const skipKeys = new Set(st.ran);
-  st.ran.add(key);
-  st.count++;
-
-  // The provider identity rides as source/service (not baked into the query
-  // text): the client renders the service name on the card, so hub and web
-  // searches are visibly distinct.
-  const shownQuery = key || query;
-  emit({ status: { type: "search_start", round, query: shownQuery, source: source.id, service: source.service } });
-  /** @type {import('./search-sources.js').SearchSourceItem[]} */
-  let items = [];
-  let durationMs = 0;
-  try {
-    const r = await source.search(env, log, query, { skipKeys });
-    items = r.items;
-    durationMs = r.durationMs;
-    // Attempts the source consumed (hit or miss) — recorded so later waves
-    // whose ladders would collapse to the same attempt skip it instead of
-    // re-fetching the same repos (the three-identical-hub-searches trace).
-    for (const k of r.usedKeys || []) st.ran.add(k);
-  } catch (/** @type {any} */ err) {
-    log.warn(`${source.id}.search_failed`, { error: err?.message || String(err) });
+  const declared = (leading ? source.leadMaxPerRequest ?? source.maxPerRequest : source.maxPerRequest);
+  const cap = typeof override === "number" && override > 0 ? override : (declared ?? MAX_AUX_SEARCHES_DEFAULT);
+  // A leading source takes as many of the wave's angles as its ceiling allows;
+  // every other source takes one per wave, as before.
+  const want = Math.max(0, leading ? cap - st.count : Math.min(1, cap - st.count));
+  if (!want) return [];
+  const keyOf = (/** @type {string} */ q) => (source.dedupKey ? source.dedupKey(q) : String(q).toLowerCase().trim());
+  // Snapshot BEFORE this wave's keys are added: `skipKeys` tells the source
+  // which search attempts earlier waves already consumed (its ladder skips
+  // them — no re-fetching identical result sets), while the fresh keys
+  // themselves must stay searchable this call.
+  const before = new Set(st.ran);
+  /** @type {AuxPlan[]} */
+  const plans = [];
+  // The wave's most on-topic angles for THIS source (pickQuery — arxiv scores
+  // the planner's angles against what the user actually asked; hf prefers the
+  // entity/identifier-bearing one, the web→hub insight flow); batch[0] when
+  // the source doesn't care. Each pick is removed from the pool, so a leading
+  // source's several searches are DISTINCT angles rather than the same one.
+  let pool = batch.filter((q) => !st.ran.has(keyOf(q)));
+  while (plans.length < want && pool.length) {
+    const query = source.pickQuery ? source.pickQuery(pool, ctx.lastUser) : pool[0];
+    const key = keyOf(query);
+    pool = pool.filter((q) => keyOf(q) !== key);
+    if (st.ran.has(key)) continue;
+    st.ran.add(key);
+    st.count++;
+    plans.push({ source, query, key, skipKeys: before });
   }
+  // A wave's picks run CONCURRENTLY, so each one's ladder must also skip its
+  // siblings' keys — otherwise two of them can collapse onto the same rung and
+  // fetch identical results.
+  const picked = plans.map((p) => p.key);
+  for (const p of plans) p.skipKeys = new Set([...before, ...picked.filter((k) => k !== p.key)]);
+  return plans;
+}
+
+/**
+ * Run one planned aux search. Fail-soft: a throwing source degrades to an
+ * empty result, never an errored wave.
+ * @param {PipelineCtx} ctx
+ * @param {AuxPlan} plan
+ * @returns {Promise<{ items: import('./search-sources.js').SearchSourceItem[], durationMs: number, usedKeys: string[] }>}
+ */
+async function runOneAuxSearch(ctx, plan) {
+  const { env, log } = ctx;
+  try {
+    const r = await plan.source.search(env, log, plan.query, { skipKeys: plan.skipKeys });
+    return { items: r.items || [], durationMs: r.durationMs || 0, usedKeys: r.usedKeys || [] };
+  } catch (/** @type {any} */ err) {
+    log.warn(`${plan.source.id}.search_failed`, { error: err?.message || String(err) });
+    return { items: [], durationMs: 0, usedKeys: [] };
+  }
+}
+
+/**
+ * Absorb one finished aux search into the registry. Called in plan order, so
+ * source numbering (citations) is deterministic however the fetches resolved.
+ * @param {PipelineCtx} ctx
+ * @param {AuxPlan} plan
+ * @param {{ items: import('./search-sources.js').SearchSourceItem[], durationMs: number, usedKeys: string[] }} result
+ * @param {number} round
+ */
+function absorbAuxResult(ctx, plan, result, round) {
+  const { emit, state } = ctx;
+  const st = /** @type {any} */ (state.aux)[plan.source.id];
+  // Attempts the source consumed (hit or miss) — recorded so later waves
+  // whose ladders would collapse to the same attempt skip it instead of
+  // re-fetching the same repos (the three-identical-hub-searches trace).
+  for (const k of result.usedKeys) st.ran.add(k);
   emit({
     status: {
       type: "search_done",
       round,
-      query: shownQuery,
-      source: source.id,
-      service: source.service,
-      results: items.length,
-      duration_ms: durationMs,
-      sources: items.map((i) => ({ title: i.title, url: i.url })),
+      query: plan.key || plan.query,
+      source: plan.source.id,
+      service: plan.source.service,
+      results: result.items.length,
+      duration_ms: result.durationMs,
+      sources: result.items.map((i) => ({ title: i.title, url: i.url })),
     },
   });
-  // Registry-capacity reserve (once per source): aux sources run AFTER the
-  // wave's Exa batch, so at generous budgets the wave's web results can fill
-  // plan.maxSources BEFORE the hub items arrive — a probe showed hub
-  // artifacts landing in overflow and never reaching the digest, so the
+  // Registry-capacity reserve (once per source): the wave's web results can
+  // fill plan.maxSources BEFORE the aux items are absorbed — a probe showed
+  // hub artifacts landing in overflow and never reaching the digest, so the
   // synthesis could not cite them at all for a question that explicitly
   // asked about the platform. The first time a source actually contributes
   // items, widen the registry by up to one search's worth so its results
   // compete for real slots instead of leftovers.
-  if (items.length && !st.reserved) {
+  if (result.items.length && !st.reserved) {
     st.reserved = true;
-    state.plan.maxSources += Math.min(items.length, 8);
+    state.plan.maxSources += Math.min(result.items.length, 8);
   }
-  addSources(state, items);
+  addSources(state, result.items);
+}
+
+/**
+ * One source, one wave, awaited — the single-source entry point the
+ * source-research path uses (it has no Exa leg to overlap with).
+ * @param {PipelineCtx} ctx
+ * @param {import('./search-sources.js').SearchSource} source
+ * @param {string[]} batch
+ * @param {number} round
+ */
+async function runAuxSearch(ctx, source, batch, round) {
+  const plans = planAuxSource(ctx, source, batch, false);
+  if (!plans.length) return;
+  for (const p of plans) {
+    ctx.emit({ status: { type: "search_start", round, query: p.key || p.query, source: p.source.id, service: p.source.service } });
+  }
+  const results = await Promise.all(plans.map((p) => runOneAuxSearch(ctx, p)));
+  for (let i = 0; i < plans.length; i++) absorbAuxResult(ctx, plans[i], results[i], round);
 }
 
