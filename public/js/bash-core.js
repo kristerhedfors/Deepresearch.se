@@ -7,9 +7,13 @@
 // files created in the sandbox are never published; shipping goes through
 // Agent Studio's build tools (sdk-core.js BUILD_TOOLS).
 //
-// The sandbox is a JavaScript x86 Linux emulator (CheerpX) that boots IN THE
-// BROWSER (public/js/sandbox.js) — the server never runs a shell — so the
-// agentic loop is client-orchestrated. The model proposes shell commands in a
+// WHERE the commands run is a CHOICE (public/js/exec-backends-core.js): the
+// in-browser CheerpX x86 emulator (public/js/sandbox.js), a DREE/1 runner on
+// the user's own machine, or — Se/rver only, and its DEFAULT since 2026-07-27 —
+// an ephemeral Cloudflare container. The loop below is client-ORCHESTRATED in
+// every case (the browser drives the rounds and calls the executor), which is
+// what lets Se/cure keep the server out of the data path entirely; on Se/rver's
+// default the commands themselves do run on the server. The model proposes shell commands in a
 // plain fenced ```bash block (a TEXT convention — NO function calling,
 // invariant 1, so this works on any model in the catalog), the browser sandbox
 // runs them, the output feeds back, and it loops until the model is done. The
@@ -145,9 +149,12 @@ export function bashIntent(text) {
 // transcript rides into the build framed as context only (shellReplyMessages
 // { sdkBuild: true }), which is what stops the model treating it as shipped.
 //
-// The cost is real and deliberate: a cold VM boot (~25 s) now precedes a build
-// on a device with the sandbox knob on. Callers that have no sandbox at all
-// never reach here — the knob is checked first.
+// The cost depends entirely on WHERE the commands run, and on Se/rver that is
+// the server-side Cloudflare container by default (2026-07-27) — a native
+// Firecracker microVM with a ~1-3 s cold start, so recon before a build is
+// cheap. It is only the in-browser CheerpX VM (Se/cure, a deploy without the
+// container binding, or a deliberate pick) that pays the ~25 s emulated boot.
+// Callers with no sandbox at all never reach here — the knob is checked first.
 /**
  * What the shell pre-pass is FOR on this send — `"recon"` on an Agent Studio
  * build turn (look around /src, then hand the findings to the build tools),

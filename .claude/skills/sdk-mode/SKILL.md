@@ -69,10 +69,13 @@ shareable `/app/<slug>/` URL. Green is the mode's color (the composer pane + the
 > look around the source…"), and `bashAgentPrompt({sdkMode:true})` briefs it to
 > read both SDKs and the Se/cure source under `/src`, run
 > `node /src/sdk/pair-cli.mjs agents|list`, and test snippets — capped at 2-4
-> commands — while writing the app's files there stays forbidden. Cost: a cold
-> VM boot (~25 s) now precedes a build on a sandbox-enabled device. That is the
-> deliberate trade; if it proves too slow in practice, narrow the recon, don't
-> restore the blanket skip.
+> commands — while writing the app's files there stays forbidden. **The cost is
+> small, because Agent Studio is a Se/rver mode and Se/rver's default execution
+> environment is the server-side Cloudflare container** (~1-3 s cold start,
+> native speed — `docs/EXECUTION-ENVIRONMENTS.md`). Only a build on the
+> in-browser CheerpX VM pays the ~25 s emulated boot, and that is now the
+> fallback rather than the norm. If recon ever does prove too slow, narrow it —
+> don't restore the blanket skip.
 
 ## The plant identity + the mode-theme registry (2026-07-19)
 

@@ -23,6 +23,9 @@ import { formatConversation, lastUserMessage, textOf } from "./conversation.js";
 import { enforceQuotaAndReserve } from "./endpoint-gate.js";
 import { jsonResponse } from "./http.js";
 import { bashAgentPrompt } from "./prompts.js";
+
+/** The execution environments a request may name — mirrors EXEC_BACKENDS in public/js/exec-backends-core.js. */
+const EXEC_ENVS = ["browser", "local", "cloudflare"];
 import { bergetCost, recordUsage, releaseInflight } from "./quota.js";
 import { modeCarriesSource, resolveBodyChatMode } from "./chat-modes.js";
 import { bashLiteEnabled, chatModesAvailable, storedChatMode } from "./settings.js";
@@ -111,7 +114,19 @@ export async function handleBashStep(request, env, log, identity) {
         // rides on it): the Agent Studio build assistant ships files with its
         // own direct tools, so the step model must not build the app in the
         // sandbox (feedback #7).
-        { role: "system", content: bashAgentPrompt({ sourceMounted: sourceMounted, sdkMode: body?.sdk_mode === true }) },
+        // exec_env (client-declared, prompt-shaping only — no capability rides
+        // on it, and it is matched against a closed vocabulary so an arbitrary
+        // string can never reach the prompt): WHERE the commands will run, so
+        // the step model is not briefed on the browser emulator's cost model
+        // while its commands run natively in the cloud container.
+        {
+          role: "system",
+          content: bashAgentPrompt({
+            sourceMounted: sourceMounted,
+            sdkMode: body?.sdk_mode === true,
+            env: EXEC_ENVS.includes(body?.exec_env) ? String(body.exec_env) : "",
+          }),
+        },
         { role: "user", content: userContent },
       ],
       { model: DEFAULT_MODEL },

@@ -52,9 +52,31 @@ description: >-
 # Execution sandbox (bash-lite)
 
 An EXPERIMENTAL, opt-in, default-OFF capability: when a message "wants a
-shell", a real x86 Linux boots **in the browser** (CheerpX WASM), an agentic
-loop runs commands in it, and the real output feeds the answer. Present on
-**both** tiers — DRS (`DeepResearch.Se/rver`) and DRC (`DeepResearch.Se/cure`).
+shell", a real x86 Linux runs the agentic loop's commands and the real output
+feeds the answer. Present on **both** tiers — DRS (`DeepResearch.Se/rver`) and
+DRC (`DeepResearch.Se/cure`).
+
+> ### WHERE it runs — read this before reasoning about cost or behaviour
+>
+> **Since 2026-07-27 the main environment is the SERVER-SIDE Cloudflare
+> container**, not the browser VM (owner directive). It is live
+> (`available.exec_container: true` in production), native speed, and proven —
+> `chat_logs` #677 ran eight commands in a Firecracker microVM (Debian 13,
+> `6.18.36-cloudflare-firecracker`, 7.3 GB disk, 2.1 GB RAM). On **Se/rver** a
+> user who never opens the setting gets it; the in-browser CheerpX VM is the
+> **fallback** — Se/cure always, a deploy without the binding, and anyone who
+> picks it deliberately.
+>
+> This matters because most of THIS SKILL is about the browser VM: CheerpX,
+> COEP/SharedArrayBuffer, the ~25 s cold boot, the 10-100x cold-block cost
+> model, the device mounts, the exec-marker protocol, every incident below.
+> **None of it applies to a cloud-container send.** Before you quote a cost,
+> a boot time, or a failure mode, establish which environment you are talking
+> about — `client_diag.xb` in the chat log says so per request
+> (`browser` | `local` | `cloudflare`), and `defaultExecBackend` in
+> `public/js/exec-backends-core.js` is the one place the default is decided.
+> The full spec is `docs/EXECUTION-ENVIRONMENTS.md`; the sections below are the
+> browser VM's own manual.
 
 In the two-SDK division (owner directive, 2026-07-24) this sandbox is the
 **integrated Linux environment of the DeepResearch Agents SDK**
@@ -101,8 +123,11 @@ client skips the sandbox pre-pass on plain build turns).
 
 ## The load-bearing idea
 
-The sandbox executes **client-side** (the server never runs a shell), so the
-loop is **client-orchestrated**. It respects invariant 1 (NO function calling):
+The loop is **client-orchestrated** — the browser drives the rounds and calls
+whichever executor the environment seam handed it. (That is not the same as
+"the server never runs a shell": on Se/rver's default the commands run in the
+server-side container. It is Se/cure, whose two environments are the browser VM
+and the user's own machine, where the server is in no part of this path.) It respects invariant 1 (NO function calling):
 the model proposes commands in a plain fenced ```bash block (a text
 convention), parsed by `parseShellRequest` — never a tool call. It is fully
 **fail-soft**: no cross-origin isolation, a boot failure, or a loop error all
@@ -147,18 +172,25 @@ denies the capability even with a transcript in front of it.
 | DRC loop + prompt + knob | `public/js/drc-research.js` (`runDrcShellPass`, `drcBashAgentPrompt`), `public/js/drc-core.js` (`bashLite` state). The knob lives in the DRC **settings view** (`#settingsview` in `public/cure/index.html`, opened by the header's gear `gearbtn` → `openSettings` in `drc.js`) alongside the API keys (since 2026-07-11; the account view keeps only the no-accounts explainer) — the left drawer is chats+projects only. Plain `.toggle-track` styling (no spiderweb) in `drc.css` |
 | **WHERE the commands run** (2026-07-26) | `public/js/exec-backends-core.js` — the shared pure core + the **DREE/1** wire (`GET /healthz`, `POST /exec`), `probeRunner`, `makeLocalRunner`, `makeContainerRunner`, and `selectRunner`, which hands back the in-browser-VM bridge UNCHANGED unless a remote environment is fully configured AND allowed in the caller's tier. Se/rver config + gear-panel section: `public/js/exec-env.js` (browser-local `dr_exec_env`, per DEVICE). Se/cure: `state.execBackend` + `renderExecBackend()` in `drc.js`. Reference runner + setup page: `public/cure/local-exec/`. THIRD environment, Se/rver only: `src/exec-container.js` (`/api/exec/*`, the `ExecSandbox` Durable Object, `container/Dockerfile`, `scripts/build-exec-image.sh`, the `EXEC_SANDBOX` binding). Full spec + exposure ledger + what is still owed: `docs/EXECUTION-ENVIRONMENTS.md` |
 
-## Choosing the execution environment (2026-07-26)
+## Choosing the execution environment (2026-07-26; default flipped 2026-07-27)
 
-The VM below is the DEFAULT, not the only option. A user may point either tier
-at a **DREE/1 runner** on their own machine instead — a container per research
-session, at native speed — and a signed-in user may instead pick the **cloud
-container**, one ephemeral Cloudflare Container per session driven by the
-`ExecSandbox` Durable Object (`src/exec-container.js`), same wire at
-`/api/exec/*`. Four things to keep straight when working here:
+Three environments, one seam. The **cloud container** — one ephemeral
+Cloudflare Container per session driven by the `ExecSandbox` Durable Object
+(`src/exec-container.js`), wire at `/api/exec/*` — is the DEFAULT on Se/rver.
+A user may instead point either tier at a **DREE/1 runner** on their own
+machine, or pick the **in-browser VM** the rest of this skill documents. Four
+things to keep straight when working here:
 
-1. **The default path must stay byte-identical.** `selectRunner` returns the
-   browser bridge for absent config, an unknown backend id, or a `local` pick
-   with no URL. Pinned by `exec-backends-core.test.js`; don't weaken it.
+1. **The default is resolved in ONE place, and an explicit pick always wins.**
+   An unchosen config normalizes to the sentinel `EXEC_AUTO` ("no pick yet" —
+   deliberately not a row in either picker), and `resolveExecBackend` /
+   `defaultExecBackend({tier, container})` turn it into a real environment:
+   the cloud container on Se/rver when the deploy carries the binding, the
+   browser VM otherwise. `selectRunner` still returns the browser bridge
+   UNCHANGED for Se/cure, for a deploy without the binding, for a caller that
+   does not state its tier, for an explicit `browser` pick, and for a `local`
+   pick with no URL. Pinned by `exec-backends-core.test.js`; don't weaken it,
+   and don't re-decide the default anywhere else.
 2. **Some VM machinery is VM-specific and is skipped for a remote runner** —
    the COEP/isolation gate (isolation is a SharedArrayBuffer requirement, not
    an execution one), the pre-warm, `resetSandboxIfLacking`, and the CheerpX
@@ -178,10 +210,10 @@ container**, one ephemeral Cloudflare Container per session driven by the
    and `/api/exec/*` sits behind the identity gate Se/cure has no identity to
    pass. Both are pinned by tests. Don't add a "just for testing" bypass — this
    is the boundary that keeps Se/cure's deliberate server-touching exceptions
-   at two (invariant 4). Also note the cloud container has **never run for
-   real**: no deploy has carried the `EXEC_SANDBOX` binding, so everything
-   known about it comes from `src/exec-container.test.js`'s fake and the image
-   battery.
+   at two (invariant 4) — and it now also gates the DEFAULT, not just an
+   explicit pick, which is why `resolveExecBackend` takes the tier. The cloud
+   container **has run for real** since 2026-07-27 (`chat_logs` #677); what is
+   still unmeasured about it is listed in `docs/EXECUTION-ENVIRONMENTS.md` §10.
 
 ## The flow
 
@@ -515,6 +547,13 @@ verify `SharedArrayBuffer` exists in the target browser. Flipping the DRS knob
 reloads the page so the shell comes back isolated.
 
 ## Command performance — what is cheap and what is not
+
+**This whole section is the BROWSER VM's cost model.** It is extreme and very
+specific — a WASM x86 emulator on a network-streamed disk — and essentially
+none of it describes the cloud container or a local runner, which are ordinary
+native machines. `bashAgentPrompt` picks the matching guidance per send from
+the `exec_env` the client reports (`execSpeedNote` in `src/prompts.js`), so
+don't fold these rules back into the shared text.
 
 Measurements and guidance: **`docs/SANDBOX-PERFORMANCE.md`**. How to reproduce,
 extend, and read them — plus the traps that make a run silently measure nothing

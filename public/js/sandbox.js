@@ -4,7 +4,9 @@
 // static type surface. The pure, testable logic lives in bash-core.js.
 //
 // A JavaScript x86 emulator (CheerpX) boots a small Debian Linux
-// ENTIRELY IN THIS BROWSER — the server never runs a shell. This module owns
+// ENTIRELY IN THIS BROWSER. (This module is ONE of three execution
+// environments — see exec-backends-core.js; Se/rver defaults to the server-side
+// container instead. Nothing here ever touches the server.) This module owns
 // the VM lifecycle and exposes two things the rest of the app uses:
 //
 //   - a floating terminal panel (xterm.js) the user can OPT to open to watch

@@ -153,6 +153,21 @@ export const EXEC_BACKENDS = [
   },
 ];
 
+/**
+ * The id a config carries when the user has NOT chosen an environment. It is
+ * deliberately not one of EXEC_BACKENDS — it is not a place commands can run,
+ * it is the absence of a pick — so it never appears as a row in either tier's
+ * picker; `resolveExecBackend` turns it into a real one.
+ *
+ * 2026-07-27 (owner directive): an unresolved pick USED to mean the in-browser
+ * VM everywhere. The server-side Cloudflare container is now the main execution
+ * environment — it is live, native-speed, and proven in production (chat_logs
+ * #677 ran eight commands in a Firecracker microVM) — so on Se/rver an unset
+ * config resolves to it. Se/cure is untouched: the container is Se/rver-only by
+ * the tier gate below, so a Se/cure caller still resolves to the browser VM.
+ */
+export const EXEC_AUTO = "auto";
+
 /** The tiers a backend may be offered in — everything, unless it says otherwise. */
 const DEFAULT_TIERS = ["secure", "server"];
 
@@ -184,20 +199,50 @@ export function execBackendsFor(tier, avail = {}) {
 /**
  * Normalize a raw (sealed-state, localStorage or form-derived) execution
  * environment config into the shape the runner factory and both settings UIs
- * use. Mirrors normalizeSearchBackend in drc-page-core.js: an unknown backend
- * falls back to the safe default ("browser" — the tier's original behavior), the
- * base URL loses its trailing slashes, and the key is trimmed.
+ * use. Mirrors normalizeSearchBackend in drc-page-core.js: an absent or unknown
+ * backend falls back to EXEC_AUTO — "no pick yet", which resolveExecBackend
+ * turns into the tier's default environment — the base URL loses its trailing
+ * slashes, and the key is trimmed.
  * @param {{backend?: string, baseUrl?: string, key?: string}|null|undefined} cfg
  * @returns {{backend: string, baseUrl: string, key: string}}
  */
 export function normalizeExecBackend(cfg) {
   cfg = cfg || {};
-  const known = EXEC_BACKENDS.some((b) => b.id === cfg.backend);
+  const known = cfg.backend === EXEC_AUTO || EXEC_BACKENDS.some((b) => b.id === cfg.backend);
   return {
-    backend: known ? String(cfg.backend) : "browser",
+    backend: known ? String(cfg.backend) : EXEC_AUTO,
     baseUrl: String(cfg.baseUrl || "").trim().replace(/\/+$/, ""),
     key: String(cfg.key || "").trim(),
   };
+}
+
+/**
+ * The environment a tier runs in when the user has not chosen one. Se/rver
+ * prefers the cloud container whenever this deploy carries the binding
+ * (`/api/settings` `available.exec_container`); everything else — Se/cure, a
+ * caller that did not state its tier, a deploy without the container — gets the
+ * in-browser VM, which needs nothing and is available everywhere.
+ * @param {{ tier?: string, container?: boolean }} [opts]
+ * @returns {string} a concrete EXEC_BACKENDS id
+ */
+export function defaultExecBackend(opts = {}) {
+  const serverTier = (execBackend("cloudflare")?.tiers || []).includes(String(opts.tier || ""));
+  return serverTier && opts.container === true ? "cloudflare" : "browser";
+}
+
+/**
+ * A normalized config with EXEC_AUTO resolved to the concrete environment this
+ * caller will actually use. Every question further down ("is this the
+ * container?", "which runner?", "what does the status line say?") asks the
+ * RESOLVED config, so there is exactly one place the default is decided.
+ * @param {{backend?: string, baseUrl?: string, key?: string}|null|undefined} cfg
+ * @param {{ tier?: string, container?: boolean }} [opts]
+ * @returns {{backend: string, baseUrl: string, key: string}}
+ */
+export function resolveExecBackend(cfg, opts = {}) {
+  const norm = normalizeExecBackend(cfg);
+  if (norm.backend !== EXEC_AUTO) return norm;
+  return { ...norm, backend: defaultExecBackend(opts) };
 }
 
 /**
@@ -219,14 +264,18 @@ export function usesLocalRunner(cfg) {
  * one place and testable without a browser.
  * @param {{backend: string}} cfg
  * @param {string} [tier] "secure" | "server"
+ * @param {{ container?: boolean }} [opts] whether this deploy carries the container binding
  * @returns {boolean}
  */
-export function usesServerContainer(cfg, tier) {
-  if (!cfg || cfg.backend !== "cloudflare") return false;
+export function usesServerContainer(cfg, tier, opts = {}) {
   // An EXPLICIT tier match, deliberately not backendInTier's "allowed unless it
   // says otherwise": a caller that forgot to state its tier must land on the
-  // safe side of this particular question, not the permissive one.
-  return (execBackend("cloudflare")?.tiers || []).includes(String(tier || ""));
+  // safe side of this particular question, not the permissive one. Resolving
+  // first means an UNSET config reaches the container on Se/rver — that is the
+  // default flip, and it passes through this same gate rather than around it.
+  const serverTier = (execBackend("cloudflare")?.tiers || []).includes(String(tier || ""));
+  if (!serverTier) return false;
+  return resolveExecBackend(cfg, { tier, container: opts.container }).backend === "cloudflare";
 }
 
 /**
@@ -236,10 +285,11 @@ export function usesServerContainer(cfg, tier) {
  * the deliverables.
  * @param {{backend: string, baseUrl?: string}} cfg
  * @param {string} [tier]
+ * @param {{ container?: boolean }} [opts] whether this deploy carries the container binding
  * @returns {boolean}
  */
-export function usesRemoteRunner(cfg, tier) {
-  return usesLocalRunner(/** @type {any} */ (cfg)) || usesServerContainer(cfg, tier);
+export function usesRemoteRunner(cfg, tier, opts = {}) {
+  return usesLocalRunner(/** @type {any} */ (cfg)) || usesServerContainer(cfg, tier, opts);
 }
 
 /**
@@ -600,12 +650,12 @@ export function makeContainerRunner(deps = {}) {
  *
  * @param {{backend?: string, baseUrl?: string, key?: string}|null|undefined} rawCfg
  * @param {Runner} browserRunner the tier's sandbox.js trio
- * @param {{fetch?: typeof fetch, session?: string, tier?: string, onLog?: (event: string, fields: any) => void}} [deps]
+ * @param {{fetch?: typeof fetch, session?: string, tier?: string, container?: boolean, onLog?: (event: string, fields: any) => void}} [deps]
  * @returns {Runner}
  */
 export function selectRunner(rawCfg, browserRunner, deps = {}) {
   const cfg = normalizeExecBackend(rawCfg);
-  if (usesServerContainer(cfg, deps.tier)) return makeContainerRunner(deps);
+  if (usesServerContainer(cfg, deps.tier, { container: deps.container })) return makeContainerRunner(deps);
   if (!usesLocalRunner(cfg)) return browserRunner;
   return makeLocalRunner(cfg, deps);
 }

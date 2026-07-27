@@ -49,7 +49,7 @@ import {
 } from "./bash-core.js";
 import { AI_MODEL_NOT_A_PACKAGE_NOTE, AI_MODEL_RESEARCH_NOTE, aiModelIntent } from "./ai-models.js";
 import { ensureSandboxBooted, execInSandbox, sandboxSupported } from "./sandbox.js";
-import { selectRunner } from "./exec-backends-core.js";
+import { resolveExecBackend, selectRunner } from "./exec-backends-core.js";
 import {
   INTROSPECTION_TOOLS,
   MAX_READ_TOTAL_CHARS,
@@ -83,6 +83,18 @@ function pickRunner(execCfg) {
   // it — hand-edited, or carried in from a shared workspace — falls back to the
   // browser VM here rather than quietly putting Se/cure content on the wire.
   return selectRunner(execCfg, BROWSER_RUNNER, { tier: "secure" });
+}
+
+/**
+ * WHICH of Se/cure's two environments this config resolves to — the id the step
+ * prompt describes, so the model is not told it is driving a browser emulator
+ * while its commands run natively on the user's own machine. Resolved against
+ * Se/cure's own tier, so it can only ever be "browser" or "local".
+ * @param {any} execCfg
+ * @returns {string}
+ */
+function pickRunnerBackend(execCfg) {
+  return resolveExecBackend(execCfg, { tier: "secure" }).backend;
 }
 
 // ---- the research time budget (the /cure slider — Se/rver's slider, mirrored) ----
@@ -302,14 +314,22 @@ export const drcDirectPromptWeb = ({ reportTier = "standard" } = {}) =>
   ANTI_INJECTION +
   (DRC_DIRECT_DEPTH[reportTier] || "");
 
-// The bash-lite agent step prompt (DRC's offline in-browser Linux sandbox —
-// the client-side counterpart of src/prompts.js bashAgentPrompt). Mirrors the
-// fenced-block convention: propose the next commands in a ```bash block, or
-// SHELL_DONE when finished. NO function calling.
-/** @param {{sourceMounted?: boolean}} [opts] */
+// The bash-lite agent step prompt (DRC's offline sandbox — the client-side
+// counterpart of src/prompts.js bashAgentPrompt). Mirrors the fenced-block
+// convention: propose the next commands in a ```bash block, or SHELL_DONE when
+// finished. NO function calling.
+//
+// Se/cure has TWO possible environments and never a third: the in-browser VM,
+// or a DREE/1 runner on the user's OWN machine. The server-side container is
+// Se/rver-only by the tier gate, so unlike the DRS prompt this one never
+// describes it. `env` is the resolved backend id; anything unrecognised falls
+// back to the browser wording, whose rules are strictly more restrictive.
+/** @param {{sourceMounted?: boolean, env?: string}} [opts] */
 export const drcBashAgentPrompt = (opts = {}) =>
   `You drive a Linux command-line sandbox for DeepResearch.Se/cure, Deepresearch.se's client-side mode. Today's date: ${today()}.\n` +
-  "A minimal Debian Linux runs entirely in the user's browser (a WASM x86 emulator). You are root; common tools are available (coreutils, grep/sed/awk, bash, python3, bc). There is NO network — treat the sandbox as OFFLINE and compute from local tools only.\n" +
+  (opts.env === "local"
+    ? "A Linux container runs NATIVELY on the user's own machine, reached through a small service they started (real hardware speed) — no data leaves their computer. You are root inside it; common tools are available (coreutils, grep/sed/awk, bash, python3, bc). Assume NO network — treat the sandbox as OFFLINE and compute from local tools only.\n"
+    : "A minimal Debian Linux runs entirely in the user's browser (a WASM x86 emulator). You are root; common tools are available (coreutils, grep/sed/awk, bash, python3, bc). There is NO network — treat the sandbox as OFFLINE and compute from local tools only.\n") +
   (opts.sourceMounted
     ? "INTROSPECTION (developer mode is on): the complete source tree of the Deepresearch.se site itself is mounted read-only at /src (also reachable as /workspace/source) — e.g. /src/src/pipeline.js, /src/public/js/app.js, /src/CLAUDE.md. When the user asks about the site's own code, source, implementation, or wants it explored, ls/cat/grep -rn under /src; never claim the source is unavailable.\n"
     : "") +
@@ -485,7 +505,10 @@ async function runDrcShellPass({ provider, apiKey, jsonModel, question, context,
         jsonModel,
         // In DRC the fileProvider exists ONLY for introspection (drc.js) —
         // its presence means the boot mounts the source tree at /src.
-        [{ role: "system", content: drcBashAgentPrompt({ sourceMounted: !!fileProvider }) }, { role: "user", content: userMsg }],
+        [
+          { role: "system", content: drcBashAgentPrompt({ sourceMounted: !!fileProvider, env: pickRunnerBackend(execCfg) }) },
+          { role: "user", content: userMsg },
+        ],
         { signal, baseUrl },
       );
       if (!res.ok || !res.body) return { commands: [], done: true, reasoning: "" };

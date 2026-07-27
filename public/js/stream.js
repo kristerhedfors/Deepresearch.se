@@ -24,7 +24,7 @@ import {
   updateGenericStep,
 } from "./activity.js";
 import { balloonTaskDone } from "./balloon.js";
-import { bashLiteOn } from "./settings.js";
+import { bashLiteOn, execContainerAvailable } from "./settings.js";
 import { cachedChatMode } from "./chat-mode.js";
 import { modeCarriesSource } from "./chat-mode-core.js";
 import { getSearchSource } from "./search-source.js";
@@ -40,7 +40,7 @@ import { slashEffect } from "./slash-core.js";
 import { aiModelIntent } from "./ai-models.js";
 import { collectDeliverables, ensureSandboxBooted, execInSandbox, resetSandboxIfLacking, sandboxFsSummary, sandboxIdle, sandboxSupported, sblog } from "./sandbox.js";
 import { selectRunner } from "./exec-backends-core.js";
-import { execEnvCfg, execSessionId, remoteRunnerActive } from "./exec-env.js";
+import { execEnvCfg, execEnvResolved, execSessionId, remoteRunnerActive } from "./exec-env.js";
 import { hasPending } from "./attachments.js";
 import {
   addAssistantTurn,
@@ -1050,8 +1050,9 @@ async function maybeRunShellLoop(turn, opts) {
     // (feedback #41). The pre-pass runs as RECONNAISSANCE over the source
     // mounted at /src — bashAgentPrompt's sdkMode branch carries the brief and
     // caps it at a few commands, and the transcript reaches the build framed as
-    // context only. Costs a cold boot (~25 s) before a build on a sandbox-
-    // enabled device; that is the deliberate trade.
+    // context only. What it costs depends on the environment: on Se/rver the
+    // default is the cloud container (~1-3 s cold start), so recon is nearly
+    // free; only the in-browser VM pays the ~25 s emulated boot.
     const sdkSend = cachedChatMode() === "sdk";
     const purpose = shellPrePassPurpose({ sdkMode: sdkSend, shellAsk: bashIntent(latestUser || "") });
     // WHERE this send's commands run (public/js/exec-backends-core.js). With no
@@ -1059,11 +1060,17 @@ async function maybeRunShellLoop(turn, opts) {
     // setting — `runner` IS the browser-VM bridge and every line below behaves
     // exactly as it did before this seam existed.
     const remoteExec = remoteRunnerActive();
-    const containerExec = execEnvCfg().backend === "cloudflare";
+    // RESOLVED, not raw: an untouched setting is the cloud container on Se/rver
+    // (exec-env.js execEnvResolved), so this must ask the same question
+    // selectRunner does or the two disagree about which environment ran.
+    const containerExec = execEnvResolved().backend === "cloudflare";
     const runner = selectRunner(execEnvCfg(), BROWSER_RUNNER, {
       // Se/rver's tier: the server-side container is selectable HERE and
       // nowhere else (exec-backends-core.js selectRunner, invariant 4).
       tier: "server",
+      // Availability gates the default: without the binding an untouched
+      // setting stays on the browser VM (exec-backends-core defaultExecBackend).
+      container: execContainerAvailable(),
       // One machine per conversation, not per send: the agent's working
       // directory, its files and the mounted source tree survive from send to
       // send (public/js/exec-env.js execSessionId).
@@ -1148,6 +1155,9 @@ async function maybeRunShellLoop(turn, opts) {
       exec: (command) => runner.exec(command, { timeoutMs: execTimeoutMs, maxStdoutBytes: GUEST_STDOUT_CAP_BYTES }),
       ensureReady: bootOnce,
       sdk: sdkSend,
+      // Tell the step model which machine it is driving (browser emulator vs a
+      // native container) so its command choices match the real cost model.
+      execEnv: execEnvResolved().backend,
       // Surface WHICH command is running, live — the user asked to see the
       // actual command, not just "executing command". onExec fires just before
       // each command runs (`$ ls -la /workspace`), clipped to one line.
@@ -1898,6 +1908,12 @@ export async function sendMessage(text, opts) {
       // coi:false with the header served can be pinned to browser support.
       sab: typeof SharedArrayBuffer !== "undefined",
       ua: (() => { try { return (navigator.userAgent || "").slice(0, 140); } catch { return ""; } })(),
+      // WHERE the commands ran (or would have): the RESOLVED environment id,
+      // never the runner's URL. Without it a transcript in the chat log cannot
+      // be attributed to an environment — which is how the browser VM went on
+      // reading as "the sandbox" long after the cloud container became the
+      // main one (2026-07-27).
+      xb: (() => { try { return execEnvResolved().backend; } catch { return ""; } })(),
       // The last sandbox filesystem-mount summary (public/js/sandbox.js) — so a
       // mount problem shows in the chat log meta (src/chatlog.js) even without
       // the debug beacon: files mounted (n), bytes (b), a project mount (proj),

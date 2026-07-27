@@ -13,8 +13,18 @@ it (§9).*
 
 *Image pushed 2026-07-26 (third change): the container image is built, verified
 by a 40-check battery and pushed to the managed registry, and the binding is now
-uncommented. No deploy has carried it yet, so nothing has run against a real
-Cloudflare Container (§9, §10).*
+uncommented.*
+
+*LIVE, and now the MAIN environment (2026-07-27, owner directive). The deploy
+carried the binding: production reports `available.exec_container: true` and the
+container has run for real — `chat_logs` #677 ran eight commands in it and the
+guest reported Debian 13 (Trixie), kernel `6.18.36-cloudflare-firecracker`,
+x86_64 AMD EPYC, 7.3 GB disk, 2.1 GB RAM, hostname `cloudchamber`. **On
+Se/rver the cloud container is what a user gets unless they choose otherwise**;
+the in-browser VM is the fallback where there is no other option — Se/cure,
+a deploy without the binding, and anyone who picks it deliberately. The
+"nothing has run against a real Cloudflare Container" caveat this document
+carried until 2026-07-27 is retired.*
 
 The model choice already spans on-device and cloud. This is the same choice for
 execution: **where the shell commands the agent proposes actually run.** Until
@@ -24,11 +34,11 @@ choice exposes.
 
 ## 1. The three environments
 
-| | **In-browser Linux VM** (default) | **Local runner** | **Cloud container** (Se/rver only) |
+| | **In-browser Linux VM** (fallback) | **Local runner** | **Cloud container** (Se/rver only — the DEFAULT there) |
 |---|---|---|---|
 | What it is | Debian under CheerpX, an x86 emulator compiled to WebAssembly | A container/micro-VM on the user's own machine, behind a small HTTP service | An ephemeral Cloudflare Container, one per conversation, driven by a Durable Object |
 | Setup | none | one command (§3) | none |
-| Speed | emulated: ~25 s cold boot, seconds-to-minutes per CPU-bound command | native | native; ~1–3 s container cold start |
+| Speed | emulated: ~25 s cold boot, seconds-to-minutes per CPU-bound command | native | **native; ~1–3 s container cold start** — the reason it is the default |
 | Image | one, streamed (`docs/SANDBOX-LOCAL-IMAGE.md`) | any image with `/bin/sh` | ours, built from `container/Dockerfile` |
 | Network | none (CheerpX networking is Tailscale-only and unused) | `none` by default, opt-in `bridge`/`host` | none (`enableInternet:false`) |
 | Sees the user's files | only what the page mounts (`sandbox-files.js`) | only what the user mounts (`MOUNT=`) | only what the page pushes (§2a) |
@@ -55,8 +65,37 @@ refusal is in code rather than in convention — twice:
 - `/api/exec/*` lives behind the identity gate. Se/cure has no identity, so a
   hand-edited sealed state naming the backend cannot reach the endpoint either.
 
-The browser VM stays the default and stays supported. Nothing about the
-environment choice changes conversations, history, storage or the pipeline.
+**Which one you get if you never open the setting** (2026-07-27): on **Se/rver**,
+the cloud container whenever the deploy carries the binding — it is the fastest
+by an order of magnitude, needs no setup, and the server is inside that tier's
+trust boundary anyway (owner directive, 2026-07-24; cloud storage on Se/rver is
+already implicit for the same reason). Everywhere else — **Se/cure** in every
+case, a deploy without the binding, a caller that does not state its tier — the
+in-browser VM, which needs nothing and exists everywhere.
+
+One function decides this and nothing else re-decides it:
+`defaultExecBackend({tier, container})` in `public/js/exec-backends-core.js`.
+An unchosen config normalizes to the sentinel `EXEC_AUTO` — the ABSENCE of a
+pick, deliberately not a row in either picker — and `resolveExecBackend` turns
+it into a real environment at the point of use. **An explicit pick always
+wins**, including an explicit "in-browser Linux VM": distinguishing "chose the
+browser" from "never chose" is the whole reason the sentinel exists. The tier
+gate applies to the default exactly as it applies to an explicit pick, so the
+flip cannot leak the container into Se/cure. Pinned by
+`exec-backends-core.test.js`.
+
+The browser VM stays fully supported — it is the only environment that works
+with no account, no setup and no server, which is what makes Se/cure's posture
+possible at all. Nothing about the environment choice changes conversations,
+history, storage or the pipeline.
+
+**Which environment ran is recorded.** `client_diag.xb` (a closed vocabulary —
+`browser` | `local` | `cloudflare`, never a URL) rides on every `/api/chat` and
+lands in the `chat_logs` meta, so a transcript can be attributed to the machine
+that produced it. Before 2026-07-27 the diagnostic recorded whether a sandbox
+COULD run and how many commands it ran, but never WHERE — which is how "the
+sandbox is the browser VM" went on reading as true here long after it stopped
+being the common case.
 
 ## 2. DREE/1 — the wire
 
@@ -497,12 +536,13 @@ registry live.
   (§9 — the build environment has a daemon) and has not been yet. Verify all
   three, plus the browser-direct call (CORS + private-network preflight) from a
   live page, before treating this as production-ready.
-- **The cloud environment has never run.** The image is built, verified and
-  pushed, and the binding is uncommented (§9) — but no deploy has carried it, so
-  nothing has exercised a real Cloudflare Container. Everything known about that
-  path comes from the fake in `src/exec-container.test.js` and the image
-  battery. The first deploy is the first real test of container cold start, the
-  `/mount` and `/source` bridges, and the §8 fences against an actual instance.
+- ~~**The cloud environment has never run.**~~ Closed 2026-07-27: a deploy
+  carried the binding, `available.exec_container` is `true` in production, and
+  real sessions have run in it (`chat_logs` #677 — eight commands, guest
+  self-reporting Debian 13 on `6.18.36-cloudflare-firecracker`). What remains
+  unmeasured is listed under "Owed by the cloud container specifically" below —
+  cold-start latency, the `/mount` and `/source` bridges against a live page,
+  and the §8 fences against an actual instance.
 - **Apple `container` flag set.** It gets a reduced flag list (no
   `--pids-limit`); confirm `--memory`/`--cpus`/`--network` behave as assumed on
   macOS 26.
@@ -516,16 +556,16 @@ registry live.
 
 ### Owed by the cloud container specifically
 
-- **Nothing has run in a real container yet.** The Durable Object is proven
-  against a double that mimics the documented API (`exec` throws until running,
-  `output()` reads once, a killed process resolves), and the endpoints are proven
-  end to end in unit tests. The image itself is now built, battery-verified and
-  pushed, and the binding is uncommented (§9) — what is still missing is a
-  **deploy carrying it**, so no container has ever been started. Before treating
-  it as production-ready: deploy, then verify a cold start's real latency, that
-  `bash -lc` finds the whole toolchain, that a 120 s command is killed cleanly,
-  that the `/src` seed lands 782 files, and that the stamp guard skips the second
-  send.
+- **It runs; most of it is still unmeasured.** The deploy landed and real
+  sessions have executed in a real container (§10 above), so the toolchain and
+  the basic exec path are no longer theoretical — `chat_logs` #677 ran
+  `uname`/`df`/`lsb_release` and friends and got a genuine Firecracker guest
+  back. Still unverified against a live instance: cold-start latency as a
+  number, that a 120 s command is killed cleanly, that the `/src` seed lands its
+  782 files, and that the stamp guard skips the second send. Do those before
+  calling the environment production-ready, and note that it is now the
+  **default** on Se/rver, so a regression here is no longer a minority path —
+  it is what most signed-in shell sends hit.
 - **Cost per session is unmeasured.** Instance-seconds are billed; the fences in
   §8 bound them but no figure has been observed. Measure before offering it
   widely.

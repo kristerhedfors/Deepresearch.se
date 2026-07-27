@@ -283,10 +283,59 @@ export const synthPrompt = ({ hasShell = false, hasSource = false, reportTier = 
 //     because the previous fix over-corrected into "reply SHELL_DONE
 //     immediately" on any build turn. Reconnaissance is now the expected use:
 //     read the SDKs and the Se/cure source at /src, run the CLI, test snippets.
-/** @param {{ sourceMounted?: boolean, sdkMode?: boolean }} [opts] @returns {string} */
+/**
+ * WHERE the commands actually run (2026-07-27). This prompt used to state, flatly,
+ * that the sandbox is "a WASM x86 emulator in the user's browser" and then spend a
+ * whole block on that emulator's very unusual cost model. Since the server-side
+ * Cloudflare container became the MAIN environment, that description is wrong for
+ * most sends: those commands run natively in a Firecracker microVM where process
+ * spawns and cold binaries are ordinary costs, not 10-100x cliffs. Telling a model
+ * to contort around a cost model that does not apply makes it write worse commands.
+ * The environment id is resolved on the client (exec-backends-core.js) and rides on
+ * the step request; an unknown/absent value falls back to the browser VM's wording,
+ * which is the conservative direction — its rules are strictly more restrictive.
+ * @param {string} [env] "browser" | "local" | "cloudflare"
+ * @returns {string}
+ */
+const execEnvironmentNote = (env) => {
+  if (env === "cloudflare")
+    return "A Debian Linux runs NATIVELY in an ephemeral container this platform starts for the conversation (a Firecracker microVM — real hardware speed, several GB of disk and RAM, one CPU). You are root; common tools are available (coreutils, grep/sed/awk, bash, python3, and standard math via python3 or bc). The container has no internet access — treat the sandbox as OFFLINE and compute from local tools only. It is thrown away when the conversation ends, so nothing you install persists beyond it.\n";
+  if (env === "local")
+    return "A Linux container runs NATIVELY on the user's own machine, reached through a small service they started (real hardware speed). You are root inside it; common tools are available (coreutils, grep/sed/awk, bash, python3, and standard math via python3 or bc). Assume no network access — treat the sandbox as OFFLINE and compute from local tools only.\n";
+  return "A minimal Debian-based Linux runs entirely in the user's browser (a WASM x86 emulator). You are root; common tools are available (coreutils, grep/sed/awk, bash, python3, and standard math via python3 or bc). There is no reliable network access — treat the sandbox as OFFLINE and compute from local tools only.\n";
+};
+
+/**
+ * The SPEED block. The emulator's cost model is extreme and specific, so it gets
+ * the long treatment; a native environment gets the short, ordinary advice —
+ * batching still pays (each round-trip is a model call) and returned bytes are
+ * still capped, but nothing else on the emulator list applies.
+ * @param {string} [env]
+ * @returns {string}
+ */
+const execSpeedNote = (env) => {
+  if (env === "cloudflare" || env === "local")
+    return (
+      "SPEED (this environment is a real machine — ordinary command sense applies):\n" +
+      "- Put several steps in ONE command line (`a; b; c`) rather than spreading them over turns: every round-trip costs a model call, which dwarfs the commands themselves.\n" +
+      "- Return only what you need. Output beyond a few KB is cut off before you see it, so reduce IN the sandbox with `head -c`, `head -n`, `grep`, `wc -l`, `cut`, `sort -u` rather than dumping a whole file.\n" +
+      "- Bound anything open-ended (`timeout 20 <command>`); a command that runs too long still ends the turn's shell.\n"
+    );
+  return (
+    "SPEED (this emulator is slow in specific ways — these choices matter a lot):\n" +
+    "- Put several steps in ONE command line (`a; b; c`) rather than spreading them over turns: each round-trip has a fixed overhead far larger than a simple command.\n" +
+    "- Prefer ONE process over many. `grep -rl pat dir/` instead of `find dir/ -exec grep -l pat {} \\;` (same answer, ~50x faster); `seq 1 50` instead of a loop calling an external command 50 times. Shell builtins (echo, test/[, pwd, arithmetic) are effectively free; every external binary you spawn is not.\n" +
+    "- Return only what you need. Reading a file is cheap; sending it back is not. Use `head -c`, `head -n`, `tail`, `grep`, `wc -l`, `cut`, `sort -u` to reduce IN the sandbox rather than dumping a whole file and reading it yourself. Output beyond a few KB is cut off anyway.\n" +
+    "- The FIRST use of any binary is much slower than later uses (it streams off a remote disk), so a heavyweight tool for a small job is a bad trade: awk/sed/grep beat starting python3 for simple text work. Reuse what you have already run.\n" +
+    "- Never run an open-ended search over the whole filesystem (`grep -r` / `find` from `/`, `/usr`, or `/usr/share`). Point it at the specific directory you care about. If a command may be slow, bound it: `timeout 20 <command>` (it cannot be relied on to stop a runaway, but it helps).\n" +
+    "- Do not probe for tools you do not need; checking for a command that is absent is one of the slowest things you can do. Just run the tool you intend to use and handle failure.\n"
+  );
+};
+
+/** @param {{ sourceMounted?: boolean, sdkMode?: boolean, env?: string }} [opts] @returns {string} */
 export const bashAgentPrompt = (opts = {}) =>
   `You drive a Linux command-line sandbox for Deepresearch.se. Today's date: ${today()}.\n` +
-  "A minimal Debian-based Linux runs entirely in the user's browser (a WASM x86 emulator). You are root; common tools are available (coreutils, grep/sed/awk, bash, python3, and standard math via python3 or bc). There is no reliable network access — treat the sandbox as OFFLINE and compute from local tools only.\n" +
+  execEnvironmentNote(opts.env) +
   "If the user attached files, they are mounted read-write and persist across sessions: this chat's files are in /workspace/ and the active project's files in /workspace/<projectname>/ (a symlink to a /mnt mount). Run `cat /workspace/INDEX.txt` first to see what's available; if it is missing, no files were attached. Read them as inputs and write any results under /workspace/.\n" +
   (opts.sourceMounted
     ? "INTROSPECTION (developer mode is on): the complete source tree of the Deepresearch.se site itself is mounted read-only at /src (also reachable as /workspace/source) — e.g. /src/src/pipeline.js, /src/public/js/app.js, /src/CLAUDE.md. When the user asks about the site's own code, source, implementation, or wants it explored, ls/cat/grep -rn under /src; never claim the source is unavailable.\n" +
@@ -303,19 +352,10 @@ export const bashAgentPrompt = (opts = {}) =>
   "1. To run commands: write a short (one sentence) plan, then a single fenced ```bash code block containing the commands to run this turn — one command per line, no prose inside the block. A here-document (e.g. `cat > file << 'EOF'` … lines … `EOF`) is the way to write a multi-line file and counts as ONE command; keep its whole body, including the closing terminator on its own line, inside the block. Keep each turn small (1-3 commands) and use the output shown to you before deciding the next turn.\n" +
   "2. When you have everything the answer needs (or the task cannot be done in an offline shell): reply with the single line SHELL_DONE and no code block.\n" +
   "Rules: commands must be non-interactive (no editors, pagers, or prompts — add flags like -y, pipe to cat, or use printf/heredocs). Do not attempt network access. Never fabricate output — rely only on the real results shown to you. Stop (SHELL_DONE) as soon as further commands would not improve the answer; do not loop.\n" +
-  // Cost guidance, from measurements in docs/SANDBOX-PERFORMANCE.md. This is a
-  // WASM x86 emulator on a network-streamed disk, so the cost model is nothing
-  // like a real machine's: process spawns and returned bytes dominate, and a
-  // command that runs too long cannot be interrupted — the VM is discarded and
-  // the rest of the turn loses its shell. Prevention is the only lever there,
-  // which is why it is stated to the model rather than enforced in code.
-  "SPEED (this emulator is slow in specific ways — these choices matter a lot):\n" +
-  "- Put several steps in ONE command line (`a; b; c`) rather than spreading them over turns: each round-trip has a fixed overhead far larger than a simple command.\n" +
-  "- Prefer ONE process over many. `grep -rl pat dir/` instead of `find dir/ -exec grep -l pat {} \\;` (same answer, ~50x faster); `seq 1 50` instead of a loop calling an external command 50 times. Shell builtins (echo, test/[, pwd, arithmetic) are effectively free; every external binary you spawn is not.\n" +
-  "- Return only what you need. Reading a file is cheap; sending it back is not. Use `head -c`, `head -n`, `tail`, `grep`, `wc -l`, `cut`, `sort -u` to reduce IN the sandbox rather than dumping a whole file and reading it yourself. Output beyond a few KB is cut off anyway.\n" +
-  "- The FIRST use of any binary is much slower than later uses (it streams off a remote disk), so a heavyweight tool for a small job is a bad trade: awk/sed/grep beat starting python3 for simple text work. Reuse what you have already run.\n" +
-  "- Never run an open-ended search over the whole filesystem (`grep -r` / `find` from `/`, `/usr`, or `/usr/share`). Point it at the specific directory you care about. If a command may be slow, bound it: `timeout 20 <command>` (it cannot be relied on to stop a runaway, but it helps).\n" +
-  "- Do not probe for tools you do not need; checking for a command that is absent is one of the slowest things you can do. Just run the tool you intend to use and handle failure.\n" +
+  // Cost guidance, from measurements in docs/SANDBOX-PERFORMANCE.md — but ONLY
+  // the browser emulator has that cost model (execSpeedNote above); a native
+  // environment gets ordinary advice instead.
+  execSpeedNote(opts.env) +
   AI_MODEL_NOT_A_PACKAGE_NOTE +
   ANTI_INJECTION_NOTE;
 
