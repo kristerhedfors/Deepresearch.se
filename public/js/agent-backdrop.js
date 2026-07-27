@@ -881,6 +881,32 @@ export function feedStatus(text) {
   } catch { /* the backdrop is decoration — never break the caller */ }
 }
 
+/**
+ * Commit ONE permanent line to the terminal pane's log — used for the boot
+ * transcript (sandbox.js: a line per boot stage, then a closing ready/failed
+ * line). Unlike feedStatus, which owns a single replaceable line that the boot
+ * ticker overwrites and then CLEARS, these stay.
+ *
+ * Feedback #42 is why this exists: with only the replaceable line, the instant
+ * the boot ended the pane snapped back to EMPTY_PANE_LINE, and a boot that
+ * FAILED left the pane blank while the header icon still claimed Linux was
+ * running — "button looks pressed but no terminal in background". A boot that
+ * happened must leave a trace.
+ * @param {unknown} text a one-line entry; empty is ignored
+ */
+export function feedTerminalLine(text) {
+  try {
+    const line = clampLine(text);
+    if (!line) return;
+    flushTermTail(); // land it below the live prompt, not above it
+    ensureLayer();
+    pushLines(model, TERM_CHANNEL, [line]);
+    render();
+    syncClipTimer();
+    if (hasBackdropContent()) revealTermBtn();
+  } catch { /* the backdrop is decoration — never break the caller */ }
+}
+
 /** Show a proposed command (`$ cmd`) on the given agent's channel. */
 export function feedCommand(channel, command) {
   flushTermTail(); // land the command below the live prompt, not above it
