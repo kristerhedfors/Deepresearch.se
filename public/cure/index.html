@@ -66,6 +66,11 @@
     </div>
   </header>
 
+  <!-- INTRO BASELINE: the greeter below, the #intro pane at the foot of this
+       file, and the umbrella intro that precedes both are Se/cure's leg of the
+       controlled new-visitor intro phase — specified in docs/INTRO-BASELINE.md
+       §2.7, enforced by src/intro-phase.test.js. Change them together with the
+       document. -->
   <!-- The "little fella" first-visit greeter: after the umbrella intro the
        ghost explains the Se/cure tier and points at the account button (the
        menu holding docs + the door to Se/rver). First visit only; dismisses
@@ -874,7 +879,9 @@
     </aside>
   </div>
 
-  <!-- ---- first-visit glass pane: the landing, condensed ---- -->
+  <!-- ---- first-visit glass pane: the landing, condensed ----
+       Intro-phase surface — docs/INTRO-BASELINE.md §2.7. It no longer
+       auto-opens (2026-07-12 onboarding directive); the wordmark opens it. -->
   <div id="intro" hidden>
     <div class="intro-card">
       <h1>DeepResearch.<b><span class="wm">Se<span class="sl">/</span>cure</span></b> <span class="tier">deep research secure</span></h1>
