@@ -21,6 +21,7 @@ import {
   MIN_REMOTE_EXEC_TIMEOUT_MS,
   REMOTE_EXEC_TIMEOUT_MS,
   execBackend,
+  execConnectLog,
   makeLocalRunner,
   newExecSession,
   normalizeExecBackend,
@@ -533,4 +534,37 @@ test("a health body that diagnoses itself is relayed verbatim", async () => {
   assert.equal(probe.reachable, false);
   // The settings UI shows this line as-is, so a real explanation must survive.
   assert.equal(probe.error, "This deploy has no container binding.");
+});
+
+// ---- execConnectLog: the terminal pane's connect vocabulary ------------------
+// A remote environment narrates nothing (boot is a probe, exec is a fetch), so
+// the pane behind the chat stayed empty on every send whose commands ran there
+// — feedback #43, once the cloud container became Se/rver's default. These are
+// the lines the browser VM would have written for itself.
+
+test("execConnectLog names the environment from the registry", () => {
+  const c = execConnectLog("cloudflare");
+  assert.match(c.open, /connecting to the cloud container/);
+  assert.match(c.ready, /commands run in the cloud container/);
+  assert.match(c.failed, /could not reach the cloud container/);
+
+  const l = execConnectLog("local");
+  assert.match(l.open, /connecting to the local runner/);
+  assert.match(l.ready, /commands run in the local runner/);
+});
+
+test("execConnectLog says a shell was lost, not just that something failed", () => {
+  // The empty-pane failure mode is the one feedback #42 and #43 both landed on:
+  // a lit-up terminal icon over a blank pane. The failed line has to say, in the
+  // pane itself, that there is no shell behind this answer.
+  assert.match(execConnectLog("cloudflare").failed, /answering without a shell/);
+});
+
+test("execConnectLog degrades rather than throwing on an unknown backend", () => {
+  for (const bad of ["", null, undefined, "made-up", 7]) {
+    const c = execConnectLog(/** @type {any} */ (bad));
+    assert.match(c.open, /remote runner/);
+    assert.equal(typeof c.ready, "string");
+    assert.equal(typeof c.failed, "string");
+  }
 });

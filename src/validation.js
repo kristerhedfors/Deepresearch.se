@@ -252,7 +252,7 @@ const MAX_SWARM_RESULT_CHARS = 8000;
  * small, whitelisted shape for the chat log — untrusted, so every field is
  * typed and bounded. Undefined (dropped by JSON.stringify) when absent.
  * @param {any} d
- * @returns {{ coi: boolean|null, bl: boolean, sb: boolean, ran: number, css: string, sab: boolean, ua: string, xb: string, fs: ({ n: number, b: number, proj: boolean, drop: number, ms: number, err: string } | undefined), sw: ({ died: 0|1, kind: string, phase: string, round: number, members: number, conc: number, mb: number, cls: string, ago: number } | undefined) } | undefined}
+ * @returns {{ coi: boolean|null, bl: boolean, sb: boolean, ran: number, css: string, sab: boolean, ua: string, xb: string, fs: ({ n: number, b: number, proj: boolean, drop: number, ms: number, err: string } | undefined), sw: ({ died: 0|1, kind: string, phase: string, round: number, members: number, conc: number, mb: number, cls: string, ago: number } | undefined), xd: ({ boot: 0|1, ms: number, cmds: number, term: number, err: string } | undefined) } | undefined}
  */
 export function sanitizeClientDiag(d) {
   if (!d || typeof d !== "object") return undefined;
@@ -283,6 +283,45 @@ export function sanitizeClientDiag(d) {
     // is dropped here and the crash stays invisible, which is exactly the hole
     // feedback #26 reported.
     sw: sanitizeSwarmDiag(d.sw),
+    // What the shell pass actually DID in the environment `xb` names — see
+    // sanitizeExecDiag.
+    xd: sanitizeExecDiag(d.xd),
+  };
+}
+
+/** The failure tokens `xd.err` may carry — mirrors the assignments in stream.js maybeRunShellLoop. */
+const EXEC_DIAG_ERRORS = ["", "no-isolation", "boot-failed", "error"];
+
+/**
+ * Whitelist the EXECUTION diagnostic (public/js/stream.js execDiag) — the
+ * outcome of one send's shell pass, bounded and untrusted like every other
+ * client_diag block.
+ *
+ * `xb` records WHERE a send's commands would run and `meta.shell` records WHAT
+ * ran; neither says whether the environment came up, how long that cost, or
+ * whether any of it reached the user's terminal pane. Feedback #43 was reported
+ * from exactly that blind spot: chat_logs #690 shows `xb:"cloudflare"` and one
+ * successful `ls /`, and nothing in the row could confirm or refute the user's
+ * actual complaint — that the terminal behind the chat stayed empty. It can now.
+ *
+ * Counters and closed-vocabulary tokens only. No command text, no runner URL,
+ * no filenames (invariant 4). Undefined when the send ran no shell pass, so an
+ * ordinary chat's meta is byte-identical to before.
+ * @param {any} d
+ * @returns {{ boot: 0|1, ms: number, cmds: number, term: number, err: string } | undefined}
+ */
+export function sanitizeExecDiag(d) {
+  if (!d || typeof d !== "object") return undefined;
+  const count = (/** @type {any} */ v, /** @type {number} */ max) =>
+    Number.isFinite(v) ? Math.max(0, Math.min(max, Math.trunc(v))) : 0;
+  return {
+    boot: d.boot === 1 || d.boot === true ? 1 : 0,
+    // 10 minutes is well past the slowest boot this project has recorded (an
+    // ~80 s CheerpX cold start with a /src seed), so anything above it is noise.
+    ms: count(d.ms, 600_000),
+    cmds: count(d.cmds, 200),
+    term: count(d.term, 10_000),
+    err: EXEC_DIAG_ERRORS.includes(d.err) ? String(d.err) : "",
   };
 }
 

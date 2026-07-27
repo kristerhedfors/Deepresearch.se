@@ -145,11 +145,32 @@ export function shellLogSummary(transcript) {
 // instead of just a count. Empty output lines are dropped so a no-output
 // command reads cleanly.
 /**
+ * The environments `client_diag.xb` may name, in the words a debugging session
+ * wants to read. Mirrors EXEC_DIAG_BACKENDS in src/validation.js.
+ */
+/** @type {Record<string, string>} */
+const EXEC_ENV_NAMES = {
+  browser: "in-browser VM",
+  local: "local runner",
+  cloudflare: "cloud container",
+};
+
+/**
  * @param {Array<{ command: string, exitCode: number, stdout: string, stderr: string }>} shell
+ * @param {unknown} [env] client_diag.xb — WHERE the commands ran
  * @returns {string}
  */
-export function formatShellForLog(shell) {
-  const lines = [`TOOLS: bash-lite ran ${shell.length} command${shell.length === 1 ? "" : "s"}`];
+export function formatShellForLog(shell, env) {
+  // Naming the environment on the headline is the cheap half of what feedback
+  // #43 cost: the log recorded which machine ran the commands (client_diag.xb),
+  // but only inside the META one-liner's JSON, so the readable view said
+  // "bash-lite ran 1 command" whether that happened in the browser or on the
+  // server. Silent when a row predates `xb` rather than guessing an environment.
+  const where = EXEC_ENV_NAMES[String(env || "")] || "";
+  const lines = [
+    `TOOLS: bash-lite ran ${shell.length} command${shell.length === 1 ? "" : "s"}` +
+      (where ? ` in the ${where}` : ""),
+  ];
   for (const c of shell) {
     lines.push(`  $ ${c.command}   (exit ${c.exitCode})`);
     const body = String(c.stdout || "").replace(/\s+$/, "");
@@ -307,7 +328,7 @@ export function formatChatLogsText(logs) {
       // meta rides along) so the commands/output aren't buried in the META
       // one-liner — the "understand exactly what the agent ran" view.
       if (l.meta && Array.isArray(l.meta.shell) && l.meta.shell.length) {
-        lines.push(formatShellForLog(l.meta.shell));
+        lines.push(formatShellForLog(l.meta.shell, l.meta.client_diag?.xb));
       }
       if (l.meta) lines.push(`META: ${JSON.stringify(l.meta)}`);
       return lines.join("\n");

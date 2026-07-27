@@ -91,6 +91,8 @@
 // sits ABOVE the composer (the CSS raises the viewport) so it's visible, not
 // hidden behind the input.
 
+import { execConnectLog } from "./exec-backends-core.js";
+import { bootLogLine } from "./boot-messages.js";
 import {
   CHANNEL_CLIP_MS,
   LAYER_CONVO,
@@ -916,4 +918,74 @@ export function feedCommand(channel, command) {
 /** Show a finished command's raw stdout/stderr on the given agent's channel. */
 export function feedResult(channel, run) {
   feed(pushResult, channel, run);
+}
+
+// ---- mirroring a REMOTE execution environment -------------------------------
+//
+// Everything above is fed by public/js/sandbox.js: the in-browser VM pushes its
+// boot stages, its raw console bytes and every command it runs, so the pane is
+// a live view of that VM by construction.
+//
+// A REMOTE environment — the user's own DREE/1 runner, or Se/rver's cloud
+// container — narrates nothing. exec-backends-core.js's Runner is a health
+// probe and a fetch, so a send whose commands ran there left the pane empty:
+// the icon on screen, the button working, and "[ sandbox terminal idle — no
+// output yet ]" behind a chat whose answer had just been written from real
+// command output. Feedback #43, with chat_logs #690 as the proof
+// (`xb:"cloudflare"`, `ran:1`, one `ls /`). It became the common case on
+// 2026-07-27, when the container became Se/rver's default environment.
+//
+// Both tiers select their runner through the same core, so both need the same
+// mirror: Se/rver drives it from public/js/stream.js's shell pass, Se/cure from
+// public/cure/drc.js's onStatus handler. It lives here because this is the
+// module that owns the pane, and because a mirror that drifted from what the
+// browser VM writes would be worse than none.
+
+/**
+ * A terminal-pane mirror for ONE remote shell pass, writing in the same
+ * vocabulary sandbox.js does: stamped `[  1.2s] …` lines for the connect,
+ * `$ cmd` prompts, and the raw stdout/stderr beneath them.
+ *
+ * Every method is fail-soft and the whole thing is decoration — it must never
+ * be able to break a send (invariant 2).
+ *
+ * @param {string} backend the resolved EXEC_BACKENDS id ("local" | "cloudflare")
+ * @param {string} [channel] the backdrop channel (one per agent)
+ */
+export function remoteTerminalMirror(backend, channel = "shell") {
+  const t0 = Date.now();
+  const words = execConnectLog(backend);
+  let writes = 0;
+  /** @param {string} label */
+  const commit = (label) => {
+    try {
+      feedTerminalLine(bootLogLine(label, Date.now() - t0));
+      writes++;
+    } catch { /* decoration — never break the caller */ }
+  };
+  return {
+    /** The connect is starting — commit a line BEFORE the probe, so a runner
+     * that never answers still leaves a record of what was being reached. */
+    open() { commit(words.open); },
+    /** Live, replaceable progress while the environment comes up (mounting
+     * files, seeding /src) — the same line the VM's boot ticker paints. */
+    status(/** @type {unknown} */ msg) { try { feedStatus(msg); } catch { /* decoration */ } },
+    /** The connect ended: drop the replaceable line, commit how it went. */
+    settled(/** @type {boolean} */ ok) {
+      try { feedStatus(""); } catch { /* decoration */ }
+      commit(ok ? words.ready : words.failed);
+    },
+    /** A command, in FULL — this is a terminal, not a step label. */
+    command(/** @type {string} */ cmd) {
+      try { feedCommand(channel, cmd); writes++; } catch { /* decoration */ }
+    },
+    /** A finished command's raw output — the half that makes the pane a
+     * terminal rather than a list of commands. */
+    result(/** @type {any} */ run) {
+      try { feedResult(channel, run); writes++; } catch { /* decoration */ }
+    },
+    /** How many times this pass wrote to the pane — Se/rver folds it into
+     * client_diag.xd.term so an empty pane is answerable from the chat log. */
+    get writes() { return writes; },
+  };
 }

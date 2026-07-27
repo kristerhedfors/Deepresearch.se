@@ -12,6 +12,7 @@ import {
   resolveShellTranscript,
   resolveSwarmResults,
   sanitizeClientDiag,
+  sanitizeExecDiag,
   sanitizeSwarmDiag,
   sanitizeFsSummary,
 } from "./validation.js";
@@ -432,5 +433,58 @@ describe("sanitizeClientDiag / sanitizeFsSummary", () => {
     assert.equal(fs.ms, 600000); // clamped to max
     assert.equal(fs.err.length, 200); // sliced
     assert.equal(fs.extra, undefined);
+  });
+
+  // ---- the EXECUTION diagnostic (xd) ---------------------------------------
+  // Feedback #43: commands ran in the cloud container, the answer was written
+  // from their output, and the terminal pane stayed on "idle — no output yet".
+  // The chat log could say WHERE (xb) and WHAT (meta.shell) but not whether the
+  // environment came up or whether anything reached the pane — so the user's
+  // actual complaint was unanswerable from the row. This block is that answer.
+
+  test("nested exec diag survives sanitizing and is bounded", () => {
+    const out = sanitizeClientDiag({
+      xd: { boot: 1, ms: 1400, cmds: 3, term: 9, err: "" },
+    });
+    assert.equal(out.xd.boot, 1);
+    assert.equal(out.xd.ms, 1400);
+    assert.equal(out.xd.cmds, 3);
+    assert.equal(out.xd.term, 9); // the pane got lines — the #43 symptom, refuted
+    assert.equal(out.xd.err, "");
+    // A send with no shell pass carries no block at all, so an ordinary chat's
+    // meta is unchanged.
+    assert.equal(sanitizeClientDiag({}).xd, undefined);
+  });
+
+  test("exec diag reproduces the feedback #43 shape: commands ran, pane empty", () => {
+    const out = sanitizeExecDiag({ boot: 1, ms: 900, cmds: 1, term: 0, err: "" });
+    assert.equal(out.boot, 1);
+    assert.equal(out.cmds, 1);
+    // term:0 with cmds:1 IS the bug signature — a booted environment that ran a
+    // command while the terminal pane was written to zero times.
+    assert.equal(out.term, 0);
+  });
+
+  test("exec diag clamps counters and closes the error vocabulary", () => {
+    const out = sanitizeExecDiag({
+      boot: "yes", ms: 1e9, cmds: 9999, term: 1e6,
+      err: "'; DROP TABLE", note: "the user asked about their divorce",
+    });
+    assert.equal(out.boot, 0); // only 1/true is 1
+    assert.equal(out.ms, 600_000); // clamped to ten minutes
+    assert.equal(out.cmds, 200);
+    assert.equal(out.term, 10_000);
+    assert.equal(out.err, ""); // unknown token falls back
+    // No key may carry model- or user-authored text (invariant 4): no command,
+    // no runner URL, no filename.
+    assert.deepEqual(Object.keys(out).sort(), ["boot", "cmds", "err", "ms", "term"]);
+    assert.equal(sanitizeExecDiag("x"), undefined);
+    assert.equal(sanitizeExecDiag(null), undefined);
+  });
+
+  test("exec diag keeps each real failure token", () => {
+    for (const err of ["no-isolation", "boot-failed", "error"]) {
+      assert.equal(sanitizeExecDiag({ err }).err, err);
+    }
   });
 });

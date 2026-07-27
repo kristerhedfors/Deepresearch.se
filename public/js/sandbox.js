@@ -313,7 +313,14 @@ function setFsSummary(s) {
 // Fire-and-forget: beacon the buffered events to the Worker. Survives page
 // teardown (sendBeacon) and never throws. On /cure (no auth) the POST simply
 // fails and is swallowed — file mounting is a DRS feature.
-function flushSandboxLog() {
+//
+// EXPORTED since 2026-07-27 because every call site below is inside this
+// module's own boot/exec paths — i.e. inside the BROWSER VM. A send that runs
+// its commands on a remote runner still pushes that runner's breadcrumbs into
+// the buffer (stream.js hands selectRunner an `onLog` that calls sblog), but
+// nothing here ever fired, so they died in the ring buffer. stream.js flushes
+// at the end of a remote shell pass.
+export function flushSandboxLog() {
   if (!_fsLog.length) return;
   const events = _fsLog.splice(0, _fsLog.length);
   try {
