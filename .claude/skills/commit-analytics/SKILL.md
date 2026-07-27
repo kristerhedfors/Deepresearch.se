@@ -236,10 +236,47 @@ series stays legible (the page defaults to the busiest six). The shallow session
 clone only sees recent days — `git fetch --unshallow origin` first for the full
 range. Same `/pulse/` allowlist covers it.
 
+### Adding a subject to the taxonomy
+
+A refresh that only re-runs the builder makes the newest months look like chore
+work: the tagger has no pattern for a feature area that did not exist at the
+last pass, so the current focus lands in the untagged tail. Check for that
+before curating anything — `--audit`'s untagged list, newest first, is the
+signal. The 2026-07-27 pass found the last three days almost entirely untagged
+and added five subjects (`arxiv`, `execenv`, `agents`, `starters`, `articles`),
+taking untagged from 13% to 10%. The steps:
+
+1. **Measure the candidate before adding it.** Draft the RegExp, run it over
+   `git log --no-merges --pretty=%ad%x09%s`, and read every line it matches —
+   both the recall (how many commits) and the false positives. Two candidates
+   were rejected this way: a bare `vectorize` swept in pre-arXiv binding
+   commits (tightened to `vectorize (index|checkpoint)`), and `cost` matched 10
+   commits of which only 2 were untagged, so it earned nothing. The bar for a
+   new subject is roughly the smallest existing one (`publish`, 4 commits).
+2. **Prefer a precise phrase over a broad word.** `\bagent\b` would swallow
+   bash-agent, sub-agent and browsing-agent commits; `agent studio|agents? sdk|
+   agent[- ](spec|registry|platform)|capability block` does not.
+3. **Check the colour by measurement, not by eye.** Convert every existing hue
+   plus the candidate to OKLab and require the addition not to tighten the
+   palette's closest pre-existing pair (`search`/`storage`, ~0.034). At thirty-
+   plus series the hue space is genuinely crowded; a candidate that fails is
+   replaced, not squeezed in.
+4. **Swedish forms in the same change**, with a parity test case per subject —
+   the `SV_PARITY` table in `pulse-themes.test.mjs`. Watch the definite plural:
+   `startprompt(er)?` does not match *startprompterna* (the `\b` fails on the
+   trailing `na`), which is exactly how that test earned its place.
+5. **Additions only.** A new key is invisible to returning visitors until they
+   pick it, which is fine; renaming or dropping one silently deletes it from
+   their saved selection. Insert it next to its thematic neighbour (order is the
+   legend/stacking order) and say so in the commit message.
+
 ### The curve picker (which curves are active)
 
-Twenty-five subjects cannot be read at once, so **choosing** is the page's
-primary interaction, not a refinement of it. The `Curves` block under the chart
+The full taxonomy cannot be read at once (it passed thirty subjects in July
+2026), so **choosing** is the page's primary interaction, not a refinement of
+it. The count in the page's own help text is written from the loaded registry
+at boot, not by hand — that sentence drifted twice (25 → 28 → 33) before it
+was wired up, so don't reintroduce a hard-coded number there. The `Curves` block under the chart
 is both the legend and the control — the full rule, and the reasoning, is
 **UX-13** in the `ux-conventions` skill. What matters when editing this page:
 
