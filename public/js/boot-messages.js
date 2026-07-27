@@ -100,3 +100,25 @@ export function formatBootProgress(stage, elapsedMs) {
   const label = stage && stage !== "booting" ? stage : "starting up…";
   return `Booting Linux · ${label} ${bar} ${step}/${BOOT_STAGE_COUNT} · ${secs}s`;
 }
+
+/**
+ * PURE: one PERMANENT boot-log line for the terminal pane — e.g.
+ * "[  0.9s] connecting disk…".
+ *
+ * formatBootProgress renders the single REPLACEABLE status line the ticker
+ * overwrites each second; this renders lines that are COMMITTED to the terminal
+ * log and stay there. Feedback #42: with only the replaceable line, the moment
+ * the boot ended (or failed) the status was cleared and the pane fell straight
+ * back to "no output yet" — the user had watched a Linux boot and the terminal
+ * kept no record of it at all. Committing a line per stage, plus a closing one,
+ * means the pane always holds a real transcript of how the machine came up.
+ * @param {unknown} label the stage name, or a closing phrase ("boot failed: …")
+ * @param {number} elapsedMs milliseconds since boot start
+ * @returns {string} the line, or "" for an empty label (nothing to commit)
+ */
+export function bootLogLine(label, elapsedMs) {
+  const text = String(label == null ? "" : label).trim();
+  if (!text) return "";
+  const secs = Math.max(0, Number(elapsedMs) || 0) / 1000;
+  return `[${secs.toFixed(1).padStart(5, " ")}s] ${text}`;
+}
