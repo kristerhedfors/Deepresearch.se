@@ -1246,9 +1246,9 @@ consent act — and it is excluded from the account-wide wipe. Endpoints:
 A second, public product tier at `DeepResearch.Se/cure` where the server
 is in NO data path at all. There are no accounts: the browser calls the
 user's OWN CORS-capable providers directly with the user's key (OpenAI,
-Anthropic, Groq, Hugging Face and Berget as named shortcuts — Hugging Face
-being the one whose catalog is OPEN, so the model list comes from the live
-router marketplace rather than a curated handful — plus ANY other
+Anthropic, Groq, Hugging Face and Berget as named shortcuts — Hugging Face the
+one whose catalog is OPEN, so its model list comes from the live router
+marketplace rather than a list this repo picked — plus ANY other
 OpenAI-compatible endpoint — a hosted service, or a model server on the
 user's own machine), runs the whole research pipeline client-side
 (`public/js/drc-research.js` — the same triage → harvest → gap → synthesis

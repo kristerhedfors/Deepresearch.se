@@ -122,19 +122,20 @@ timeline through the pure core `/js/pulse-timeline-core.js` (the same one
 `/architecture/` embeds). Neither may be re-inlined or re-implemented.
 
 The two diagrams name **providers**, so they go stale when the provider set
-does — and a wrong diagram on the front door is worse than a plain one. When
-editing either, keep the `<desc>`, both `alt` attributes (landing *and*
-`/architecture/`) and the `/architecture/` comparison table in step, and
-**measure** the result rather than eyeballing it: render the SVG and check each
-`<text>` node's `getBBox()` against its host `<rect>`, the same discipline the
-slash-spacing skill applies to the wordmark. Both files use the same four-box
-provider geometry (`x` = 8/110/212/314, 96 wide) so the tiers line up when read
-side by side. The named boxes are a legible SELECTION, not the full registry —
-Groq ships and works in Se/cure but is deliberately off the diagrams
-(2026-07-27), because four boxes is what fits and Hugging Face's open catalog
-is the architecturally interesting case. R11 is satisfied by the escape-hatch
-row ("…or ANY other OpenAI-compatible endpoint"), which keeps the selection
-from reading as a boundary.
+does — and a wrong diagram on the front door is worse than a plain one. Four
+things move together when either is edited: the `<desc>`, both `alt` attributes
+(landing *and* `/architecture/`), and the `/architecture/` comparison table.
+Then **measure** the result instead of eyeballing it — render the SVG and check
+each `<text>` node's `getBBox()` against its host `<rect>`, the same discipline
+slash-spacing applies to the wordmark. Both files share one four-box provider
+geometry (`x` = 8/110/212/314, 96 wide) so the tiers line up when read side by
+side.
+
+The named boxes are a legible SELECTION, not the full registry: Groq ships and
+works in Se/cure but sits off the diagrams deliberately (2026-07-27), because
+four boxes is what fits and Hugging Face's open catalog is the more interesting
+case. What keeps that selection from reading as a boundary — and R11 with it —
+is the escape-hatch row, "…or ANY other OpenAI-compatible endpoint".
 
 ### 2.5 The prepackaged ask demo — `#askdemo`
 
