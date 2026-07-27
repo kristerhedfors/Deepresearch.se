@@ -259,8 +259,8 @@ taking untagged from 13% to 10%. The steps:
 3. **Check the colour by measurement, not by eye.** Convert every existing hue
    plus the candidate to OKLab and require the addition not to tighten the
    palette's closest pre-existing pair (`search`/`storage`, ~0.034). At thirty-
-   plus series the hue space is genuinely crowded; a candidate that fails is
-   replaced, not squeezed in.
+   plus series the hue space is crowded; replace a candidate that fails rather
+   than squeezing it in.
 4. **Swedish forms in the same change**, with a parity test case per subject —
    the `SV_PARITY` table in `pulse-themes.test.mjs`. Watch the definite plural:
    `startprompt(er)?` does not match *startprompterna* (the `\b` fails on the
@@ -276,9 +276,10 @@ The full taxonomy cannot be read at once (it passed thirty subjects in July
 2026), so **choosing** is the page's primary interaction, not a refinement of
 it. The count in the page's own help text is written from the loaded registry
 at boot, not by hand — that sentence drifted twice (25 → 28 → 33) before it
-was wired up, so don't reintroduce a hard-coded number there. The `Curves` block under the chart
-is both the legend and the control — the full rule, and the reasoning, is
-**UX-13** in the `ux-conventions` skill. What matters when editing this page:
+was wired up, so don't reintroduce a hard-coded number there. The `Curves`
+block under the chart is both the legend and the control — the full rule, and
+the reasoning, is **UX-13** in the `ux-conventions` skill. What matters when
+editing this page:
 
 | Gesture | Effect |
 |---|---|
