@@ -54,7 +54,32 @@ const CASES = [
   ["security: mechanical secret-leak prevention — scanner + pre-push hook (P-2)", ["security"]],
   ["auth: canonicalize www -> apex so Google OAuth redirect_uri matches", ["access"]],
   ["DistillSDK: core design docs (DESIGN, MANIFEST, ROADMAP, README)", ["sdk"]],
+  ["arXiv RAG: harvester, index builder, search CLI, pipeline bake-off", ["arxiv"]],
+  ["Record the cosine-vs-rerank measurement at two corpus sizes", ["arxiv"]],
+  ["Execution environments: run the agent's shell on your own machine", ["execenv"]],
+  ["Add a server-side execution environment: one ephemeral container per session", ["execenv"]],
+  ["Agent platform: define, preview, prove and share agents through the SDK", ["agents", "sdk"]],
+  ["Stage 5: the capability block becomes executed, not merely declared", ["agents"]],
+  ["Cross-agent starter-prompt queue and evaluation system", ["starters"]],
+  ["Refocus intro LinkedIn article on the research/innovation purpose", ["articles"]],
 ];
+
+// Swedish forms must tag the same subject as their English counterpart — the
+// same EN/SV parity discipline the product's routing gates are held to.
+const SV_PARITY = [
+  ["Exekveringsmiljöer: kör agentens skal på din egen maskin", "execenv"],
+  ["Omrankning av arXiv-träffar mätt mot cosinus", "arxiv"],
+  ["Standardagenter blir data i registret, inte kod", "agents"],
+  ["Startprompterna rankas nu tvärs över agenterna", "starters"],
+  ["Artikelserien på LinkedIn får en ny ingång", "articles"],
+];
+
+for (const [line, key] of SV_PARITY) {
+  test(`Swedish parity: ${line.slice(0, 40)}… → ${key}`, () => {
+    assert.ok(tagCommit(line).includes(key),
+      `expected "${key}" in [${tagCommit(line).join(", ")}] for: ${line}`);
+  });
+}
 
 for (const [line, mustHave] of CASES) {
   test(`tags: ${line.slice(0, 48)}…`, () => {

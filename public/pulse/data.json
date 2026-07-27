@@ -1,15 +1,15 @@
 {
-  "generated": "2026-07-26T07:02:52.893Z",
+  "generated": "2026-07-27T10:58:27.765Z",
   "repo": "kristerhedfors/deepresearch.se",
   "range": {
     "from": "2026-07-04",
-    "to": "2026-07-25"
+    "to": "2026-07-27"
   },
   "totals": {
-    "commits": 976,
-    "added": 260067,
-    "removed": 54769,
-    "features": 121
+    "commits": 1117,
+    "added": 330961,
+    "removed": 62882,
+    "features": 133
   },
   "commits": [
     {
@@ -5867,6 +5867,852 @@
       "a": 4,
       "r": 4,
       "f": 0
+    },
+    {
+      "t": "2026-07-26T09:26:03+02:00",
+      "a": 351,
+      "r": 81,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T09:26:25+02:00",
+      "a": 1350,
+      "r": 181,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T09:29:22+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 1
+    },
+    {
+      "t": "2026-07-26T09:45:21+02:00",
+      "a": 2689,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T09:45:21+02:00",
+      "a": 2694,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T09:45:21+02:00",
+      "a": 2695,
+      "r": 7,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T09:53:23+02:00",
+      "a": 353,
+      "r": 15,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T10:03:49+02:00",
+      "a": 3096,
+      "r": 125,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T10:05:32+02:00",
+      "a": 3398,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T10:09:19+02:00",
+      "a": 379,
+      "r": 269,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T10:10:05+02:00",
+      "a": 324,
+      "r": 33,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T10:13:16+02:00",
+      "a": 26,
+      "r": 19,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T10:14:17+02:00",
+      "a": 993,
+      "r": 20,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T10:14:17+02:00",
+      "a": 998,
+      "r": 25,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T10:15:06+02:00",
+      "a": 51,
+      "r": 63,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T10:15:15+02:00",
+      "a": 19,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T10:15:37+02:00",
+      "a": 304,
+      "r": 17,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T10:17:18+02:00",
+      "a": 14,
+      "r": 2,
+      "f": 1
+    },
+    {
+      "t": "2026-07-26T10:22:05+02:00",
+      "a": 1,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T10:22:12+02:00",
+      "a": 118,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T10:22:12+02:00",
+      "a": 121,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T10:24:18+02:00",
+      "a": 105,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T10:34:58+02:00",
+      "a": 274,
+      "r": 223,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T10:40:06+02:00",
+      "a": 3536,
+      "r": 148,
+      "f": 1
+    },
+    {
+      "t": "2026-07-26T10:44:10+02:00",
+      "a": 7,
+      "r": 7,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T10:48:03+02:00",
+      "a": 561,
+      "r": 44,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T10:49:26+02:00",
+      "a": 1320,
+      "r": 74,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T10:50:10+02:00",
+      "a": 7,
+      "r": 7,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T10:51:51+02:00",
+      "a": 6,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T10:56:01+02:00",
+      "a": 238,
+      "r": 16,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T11:03:45+02:00",
+      "a": 169,
+      "r": 17,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T11:06:49+02:00",
+      "a": 526,
+      "r": 109,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T11:09:04+02:00",
+      "a": 769,
+      "r": 12,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T11:10:24+02:00",
+      "a": 1,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T11:20:59+02:00",
+      "a": 55,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T11:22:20+02:00",
+      "a": 5,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T11:24:18+02:00",
+      "a": 21,
+      "r": 20,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T11:32:40+02:00",
+      "a": 1093,
+      "r": 60,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T11:38:38+02:00",
+      "a": 371,
+      "r": 81,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T11:39:47+02:00",
+      "a": 159,
+      "r": 19,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T12:14:18+02:00",
+      "a": 2,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T12:30:28+02:00",
+      "a": 67,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T12:37:58+02:00",
+      "a": 7,
+      "r": 7,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T12:38:33+02:00",
+      "a": 156,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T12:55:50+02:00",
+      "a": 5,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T13:00:17+02:00",
+      "a": 92,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T13:05:15+02:00",
+      "a": 1,
+      "r": 1,
+      "f": 1
+    },
+    {
+      "t": "2026-07-26T13:09:27+02:00",
+      "a": 3916,
+      "r": 177,
+      "f": 1
+    },
+    {
+      "t": "2026-07-26T13:09:27+02:00",
+      "a": 3923,
+      "r": 184,
+      "f": 1
+    },
+    {
+      "t": "2026-07-26T13:35:07+02:00",
+      "a": 138,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T13:35:55+02:00",
+      "a": 1253,
+      "r": 137,
+      "f": 1
+    },
+    {
+      "t": "2026-07-26T13:40:30+02:00",
+      "a": 180,
+      "r": 17,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T13:48:05+02:00",
+      "a": 1109,
+      "r": 320,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T13:48:08+02:00",
+      "a": 336,
+      "r": 225,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T13:54:30+02:00",
+      "a": 5,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T13:54:53+02:00",
+      "a": 6,
+      "r": 7,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T13:55:08+02:00",
+      "a": 15,
+      "r": 15,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T14:01:44+02:00",
+      "a": 200,
+      "r": 153,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T14:06:31+02:00",
+      "a": 7,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T14:14:44+02:00",
+      "a": 3629,
+      "r": 2032,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T14:14:48+02:00",
+      "a": 2246,
+      "r": 33,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T14:16:44+02:00",
+      "a": 707,
+      "r": 201,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T14:16:50+02:00",
+      "a": 142,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T14:19:04+02:00",
+      "a": 1446,
+      "r": 19,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T14:20:00+02:00",
+      "a": 770,
+      "r": 35,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T14:21:21+02:00",
+      "a": 6,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T14:29:50+02:00",
+      "a": 7,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T14:30:06+02:00",
+      "a": 36,
+      "r": 16,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T14:31:44+02:00",
+      "a": 7,
+      "r": 7,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T14:33:04+02:00",
+      "a": 21,
+      "r": 21,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T14:36:50+02:00",
+      "a": 9,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T14:38:14+02:00",
+      "a": 967,
+      "r": 27,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T14:40:28+02:00",
+      "a": 9,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T14:44:42+02:00",
+      "a": 9,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T14:48:00+02:00",
+      "a": 9,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T14:48:40+02:00",
+      "a": 6,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T15:00:57+02:00",
+      "a": 1,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T15:06:10+02:00",
+      "a": 345,
+      "r": 66,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T15:10:31+02:00",
+      "a": 4,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T15:13:52+02:00",
+      "a": 28,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T15:14:43+02:00",
+      "a": 0,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T15:15:35+02:00",
+      "a": 1,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T15:26:25+02:00",
+      "a": 9,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T15:47:45+02:00",
+      "a": 159,
+      "r": 68,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T15:57:28+02:00",
+      "a": 216,
+      "r": 73,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T16:02:15+02:00",
+      "a": 85,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T16:15:15+02:00",
+      "a": 4,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T16:27:29+02:00",
+      "a": 2,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T17:59:36+02:00",
+      "a": 1202,
+      "r": 7,
+      "f": 1
+    },
+    {
+      "t": "2026-07-26T18:03:45+02:00",
+      "a": 2678,
+      "r": 179,
+      "f": 1
+    },
+    {
+      "t": "2026-07-26T18:10:09+02:00",
+      "a": 286,
+      "r": 35,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T18:14:38+02:00",
+      "a": 741,
+      "r": 43,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T18:15:29+02:00",
+      "a": 168,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T18:18:31+02:00",
+      "a": 10,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T18:20:02+02:00",
+      "a": 29,
+      "r": 32,
+      "f": 1
+    },
+    {
+      "t": "2026-07-26T18:28:04+02:00",
+      "a": 69,
+      "r": 10,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T18:38:34+02:00",
+      "a": 13,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T19:04:28+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T19:07:17+02:00",
+      "a": 1,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T19:10:45+02:00",
+      "a": 833,
+      "r": 14,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T19:36:44+02:00",
+      "a": 15,
+      "r": 8,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T19:41:27+02:00",
+      "a": 25,
+      "r": 7,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T19:48:35+02:00",
+      "a": 1,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T19:58:02+02:00",
+      "a": 16,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T20:01:21+02:00",
+      "a": 60,
+      "r": 24,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T20:28:38+02:00",
+      "a": 26,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T20:33:21+02:00",
+      "a": 7,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T21:40:37+02:00",
+      "a": 311,
+      "r": 32,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T21:42:21+02:00",
+      "a": 1,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T22:03:25+02:00",
+      "a": 874,
+      "r": 226,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T22:25:50+02:00",
+      "a": 179,
+      "r": 66,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T22:29:14+02:00",
+      "a": 22,
+      "r": 15,
+      "f": 1
+    },
+    {
+      "t": "2026-07-26T22:33:09+02:00",
+      "a": 39,
+      "r": 24,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T22:34:58+02:00",
+      "a": 49,
+      "r": 45,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T22:56:41+02:00",
+      "a": 3,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T23:12:32+02:00",
+      "a": 1324,
+      "r": 737,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T23:21:49+02:00",
+      "a": 356,
+      "r": 47,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T23:22:47+02:00",
+      "a": 14,
+      "r": 12,
+      "f": 0
+    },
+    {
+      "t": "2026-07-26T23:40:19+02:00",
+      "a": 451,
+      "r": 70,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T00:48:54+02:00",
+      "a": 3,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T00:55:37+02:00",
+      "a": 260,
+      "r": 30,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T00:57:42+02:00",
+      "a": 604,
+      "r": 31,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T01:05:25+02:00",
+      "a": 299,
+      "r": 72,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T01:06:26+02:00",
+      "a": 8,
+      "r": 8,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T01:06:46+02:00",
+      "a": 3,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T01:09:28+02:00",
+      "a": 820,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T01:09:39+02:00",
+      "a": 2604,
+      "r": 67,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T01:15:24+02:00",
+      "a": 21,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T01:18:07+02:00",
+      "a": 2,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T11:23:57+02:00",
+      "a": 3,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T11:24:42+02:00",
+      "a": 17,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T11:35:02+02:00",
+      "a": 522,
+      "r": 75,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T11:54:40+02:00",
+      "a": 2191,
+      "r": 124,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T11:56:09+02:00",
+      "a": 465,
+      "r": 119,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T11:57:29+02:00",
+      "a": 327,
+      "r": 32,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T12:11:14+02:00",
+      "a": 45,
+      "r": 12,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T12:15:05+02:00",
+      "a": 4,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T12:16:39+02:00",
+      "a": 15,
+      "r": 15,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T12:21:45+02:00",
+      "a": 2,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T12:40:27+02:00",
+      "a": 4,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T12:55:32+02:00",
+      "a": 1375,
+      "r": 158,
+      "f": 1
     }
   ],
   "days": [
@@ -7086,6 +7932,169 @@
         "feedback: classify a first-message \"feedback …\" as generic developer feedback"
       ],
       "summary": "The Agents SDK grew a capability layer: a spec now declares what an agent does — answer phase, tools, gates, bounds — and mode routing became registry-driven, with a prompts axis for the voice it speaks in. Outrospection shipped as the fifth chat mode alongside its /outrospect/ feed, and Orchestrator gained swarm reasoning across N in-browser Bonsai models. Google Maps and Shodan were separated out as extensions behind the registry seam (invariant 7), web search gained a Cloudflare-hosted own-search backend plus a source picker on the web knob, and the landing page returned to the root. Rounded out by the Anthropic Opus 5 catalog bump, doc-reader comment mode, the street-view game's bilingual grammar and camera projection, a sandbox performance battery, and a wide docs reconciliation around workspaces as the centrepiece.",
+      "curated": true
+    },
+    {
+      "date": "2026-07-26",
+      "commits": 119,
+      "added": 61300,
+      "removed": 7345,
+      "features": 11,
+      "subjects": [
+        "Terminal icon owns the graph too: cycle every visible combination",
+        "Clean the mode-collapse doc prose and regenerate the artifacts",
+        "Terminal pane: the switch always responds, and it shows the boot (feedback #38)",
+        "Collapse the developer_mode knob into the chat mode",
+        "Ledger the sixth 2026-07-26 merge queue (PRs #308-#309)",
+        "Reconcile the docs with the now-enabled binding, and Clean the touched prose",
+        "Clean the #XP docs, fix the types, refresh the four artifacts",
+        "Enable the cloud execution environment on this branch (NOT deployed)",
+        "Push the exec-container image; codify which Cloudflare token does what",
+        "Tag starter prompts with #XP-<nn> so feedback ties back to one starter",
+        "Correct the battery's check count: 40, not 37",
+        "Build and verify the exec-container image; record what still blocks the push",
+        "Ledger PR #307: the arXiv branch is genuinely done now",
+        "Stop the vectorize checkpoint re-appending itself every run",
+        "Be patient with arXiv flow control instead of giving up",
+        "Record live branches so a survey stops mistaking them for candidates",
+        "Correct the arXiv branch verdict: it is live, not merged",
+        "Make the vectorize checkpoint append-only",
+        "Record the cosine-vs-rerank measurement at two corpus sizes",
+        "Serve arXiv from a hosted Vectorize index, not the rate-limited API",
+        "Ledger the outrospection feed branch as superseded",
+        "Ledger the arXiv search source integration",
+        "Ledger the fifth 2026-07-26 merge queue (PRs #305-#306)",
+        "Keep arXiv requests inside the published rate limit",
+        "Clean the new execution-environment prose and rebuild the four artifacts",
+        "Note arXiv's probing cost in the integrations skill",
+        "Cache arXiv responses at the edge for an hour",
+        "Models agent: gray out unshipped on-device models, keep the hub search on every path",
+        "Pick arXiv query terms by distinctiveness; stop on 429",
+        "Add a server-side execution environment: one ephemeral container per session",
+        "Add arXiv as a pipeline search source",
+        "Ledger the fourth 2026-07-26 merge queue (PRs #303-#304)",
+        "docs: Clean the pass-11 CODE-LAYOUT prose, regenerate artifacts",
+        "docs: mirror pass 11 into the layout map, manifest and refactor register",
+        "refactor: share the side-endpoint admission preamble as endpoint-gate.js",
+        "refactor: share the DEFAULT_MODEL spend recorder into quota.js",
+        "Ledger the third 2026-07-26 merge queue (PRs #294-#302)",
+        "Regenerate artifacts over the reconciled tree",
+        "Fix typecheck: drop a stray // @ts-check from the arXiv core test file",
+        "Merge main into the arxiv-html-fulltext branch, and stop the ts-check break recurring",
+        "Regenerate introspection artifacts after merging main",
+        "arXiv full text: fetch arXiv's HTML rendering first — and the build is Cloudflare-native",
+        "Regenerate artifacts over the reconciled tree",
+        "Regenerate introspection artifacts after merging main",
+        "Merge origin/main (PR #298) and rebuild the four artifacts",
+        "Merge origin/main (PR #297) and rebuild the four artifacts",
+        "Merge origin/main (PR #296) and rebuild the four artifacts",
+        "arXiv full-text tier: on-demand two-stage search, and its measured ceiling",
+        "Merge origin/main (PR #295) and rebuild the four artifacts",
+        "Clean the prose this branch touched and rebuild all four artifacts",
+        "docs: Clean the new documentation prose (anti-ai-smell pass)",
+        "Correct the pipeline-map docs and codify the two counting rules it cost",
+        "Clean the inspector's doc prose and rebuild the introspection artifacts",
+        "Regenerate the introspection artifacts after rebasing onto the latest main",
+        "Orchestrator: tap a workflow node to see inside it, live (feedback #35)",
+        "Introspection: a live pipeline map in the left drawer (feedback #34)",
+        "Raise the Hugging Face agent to a Models agent: providers below it, a lifecycle above",
+        "Execution environments: run the agent's shell on your own machine",
+        "docs+fix: research pitch opens the documentation; comment chrome stops covering the header",
+        "Embedding providers: switch between Berget and Hugging Face on one model",
+        "Add the Hugging Face agent: an open model catalog, priced before you start it",
+        "Ledger the second 2026-07-26 merge queue",
+        "Keep Groq: four named providers in Se/cure, plus the custom endpoint",
+        "docs: clean the code-layout prose for the shared timeline core",
+        "Clean the F-19 prose: drop an unverified superlative",
+        "Clean the maintenance-owners row and rebuild all four artifacts",
+        "docs: make /help/ the overview, leave the tier comparison to /architecture/",
+        "Se/cure: Anthropic replaces Groq, and the custom endpoint becomes visible",
+        "Open F-19: track MCP's stateless protocol revision (feedback #33)",
+        "landing: introduce the site in the first-visit overlay, add the feature-focus timeline",
+        "Fix the build story page stalling on \"Loading…\" forever",
+        "Add the Hugging Face agent: an open model catalog, priced before you start it",
+        "Regenerate the introspection artifacts to include the new guard test",
+        "Ledger the eight merged branches, and fix the guard that could not read them",
+        "Ledger PR #287 and register it as the shared-compute owner",
+        "arXiv RAG: full-text build decision memo (docs/ARXIV-RAG.md §9)",
+        "Regenerate introspection artifacts after merging main",
+        "Fix conflict markers shipped into the landing page, and guard against a repeat",
+        "Regenerate artifacts after merging main",
+        "arXiv RAG: Experiment B at full scale settles the retrieval pipeline",
+        "pulse timeline: end-label every shown curve; tag orchestrator/outrospection/feedback focus",
+        "Shared compute: lend from Se/rver too, and stop over-promising in Se/cure",
+        "Clean the Berget pricing-units note and refresh the introspection artifacts",
+        "Record PR #277 as the swarm-memory/crash-capture owner and ledger the branch",
+        "arXiv RAG: record Experiment A — which text to embed",
+        "Regenerate the docs RAG index after the merge",
+        "Outrospection: the outward feed IS the session's history, indexed locally",
+        "Stage 7: a spec the repo did not commit is safe to resolve",
+        "Fix 1e6-inflated Berget costs: normalize catalog prices to EUR per token",
+        "Stage 6: an agent is addressable by id, not only as a mode's default",
+        "Rebuild the introspection and docs artifacts for the starter-prompt queue",
+        "Regenerate artifacts after merging main",
+        "Outrospection quotes the articles, not just their headlines",
+        "Starter prompt evaluation mode: a Settings knob that turns the strip into a cross-agent review batch",
+        "Cross-agent starter-prompt queue and evaluation system",
+        "Stage 5: the capability block becomes executed, not merely declared",
+        "Regenerate artifacts after merging main",
+        "Catch orchestrator crashes, bound the in-browser swarm, and add slash commands",
+        "Move the Exa-or-our-Worker search choice off the web knob into settings",
+        "Docs: measure what the agent capability block actually executes, and stage the road to a flexible Agent Studio",
+        "Bound the in-browser swarm and wire the crash breadcrumb through to the log",
+        "Docs: measure what the agent capability block actually executes, and stage the road to a flexible Agent Studio",
+        "Fix the dead /help/#history anchor",
+        "Fold the on-device model list behind a one-line disclosure (feedback #27)",
+        "Regenerate the artifacts with the new files tracked",
+        "Slash commands: /feedback and /help in every agent",
+        "Docs: lead the privacy copy with data residency, not encryption",
+        "Starter prompt evaluation mode: a Settings knob that turns the strip into a cross-agent review batch",
+        "docs: surface the repository documentation reader from the Documentation view",
+        "Checkpoint 2: swarm-runtime bounds + slash-command docs (still in progress)",
+        "Comment mode on the page the app calls \"documentation\" (/help/)",
+        "arXiv RAG: harvester, index builder, search CLI, pipeline bake-off",
+        "Checkpoint: orchestrator crash capture + slash commands (work in progress)",
+        "Cross-agent starter-prompt queue and evaluation system",
+        "docs: add the complete dependency inventory (docs/DEPENDENCIES.md)",
+        "Cross-agent starter-prompt queue and evaluation system",
+        "Bundle the snapshot with the two new files tracked",
+        "pulse: refresh all three datasets; make the timeline's curves tap-choosable",
+        "Outrospection mode: go and look before answering, and always carry the lenses"
+      ],
+      "summary": "The arXiv corpus became a live research source: a harvester, index builder and search CLI, then an on-demand full-text tier and a hosted Vectorize index behind an hour-long edge cache, with the retrieval bake-offs (which text to embed, cosine versus rerank at two corpus sizes) recorded as decisions rather than opinions. Execution environments turned into a choice — the agent's shell can run in the browser VM, on a runner on your own machine, or in an ephemeral Cloudflare container per session. The Hugging Face agent shipped and was then raised to a Models agent: an open catalog priced before you start it, switchable embedding providers, and Anthropic replacing Groq in Se/cure. Also: a cross-agent starter-prompt queue with an evaluation mode, orchestrator crash capture with a bounded in-browser swarm and slash commands, Outrospection indexing the outward feed locally, the agent capability block becoming executed instead of merely declared, a live pipeline map in the introspection drawer, and a first-visit introduction plus this feature-focus timeline on the landing page.",
+      "curated": true
+    },
+    {
+      "date": "2026-07-27",
+      "commits": 22,
+      "added": 9594,
+      "removed": 768,
+      "features": 1,
+      "subjects": [
+        "pulse: five new subjects for the feature-focus timeline, and refresh all three datasets",
+        "Ledger the tenth 2026-07-27 merge queue (PRs #317-#319)",
+        "Ledger the cloud-vms-docs rule-break, and land its orphaned fix",
+        "Name the three MCP-connection suites in TESTING.md",
+        "fix(validation): declare client_diag.xb in the sanitizer's return type; clean the touched doc prose",
+        "Clean the UX-20 prose and regenerate all four introspection artifacts",
+        "Record the live verification of the terminal transcript, and reach loopback",
+        "Terminal pane: a boot leaves a transcript, not a cleared line (feedback #42)",
+        "fix(exec): make the server-side container the default environment, and correct every source that still called the browser VM the sandbox",
+        "Isolate each browser tab into its own session (agent + workspace + history)",
+        "fix(agent-studio): build one agent with the Agent SDK, name both SDKs publicly, and give a build turn its shell back",
+        "Ledger the ninth 2026-07-26 merge queue (PRs #314-#316)",
+        "Ledger the eighth 2026-07-26 merge queue (PRs #312-#313)",
+        "Record why the mcp. custom domain must be declared in wrangler.toml",
+        "MCP: connect Claude Code with an account-minted key, and make what we expose configurable",
+        "Mark the landing page as the approved baseline and specify the intro phase",
+        "Clean the UX-11 amendment (drop a throat-clearing opener)",
+        "Clean the spec prose and rebuild the RAG indexes",
+        "Document the cloud execution environment and the other recent surfaces",
+        "Link the DRSW/1 and DRPL/1 standards, and serve the node discovery file",
+        "Documentation comment mode: the rail is opened, not automatic (feedback #40)",
+        "Ledger the seventh 2026-07-26 merge queue (PRs #310-#311)"
+      ],
+      "summary": "The server-side container became the default execution environment, and every source that still called the browser VM 'the sandbox' was corrected to match. Each browser tab now isolates into its own session — agent, workspace and history — and the terminal pane leaves a boot transcript instead of clearing the line (feedback #38, #42). Agent Studio builds one agent with the Agents SDK and both SDKs are named publicly; MCP gained account-minted keys with a configurable exposure; the landing page was marked the approved baseline with the whole intro phase specified; and this feature-focus timeline learned five new subjects (arXiv, execution environments, the agent platform, starter prompts, articles) so the newest work stops reading as chore commits.",
       "curated": true
     }
   ]

@@ -203,8 +203,8 @@
       shape of attention, not an exact ledger.
     </p>
     <p class="muted" style="margin:.1rem 0 .5rem">
-      <b>Choosing curves.</b> Twenty-five subjects at once is unreadable, so the chart starts on
-      the busiest six. Tap any subject under <b>Curves</b> to add or drop its curve, or tap the
+      <b>Choosing curves.</b> <span id="subjcount">Every subject</span> at once is unreadable, so
+      the chart starts on the busiest six. Tap any subject under <b>Curves</b> to add or drop its curve, or tap the
       curve in the chart itself to zoom in on that one subject alone; press and hold either to do
       the same, and hold again to bring the rest back. <b>Top 6</b>, <b>All</b>, <b>None</b> and
       <b>Invert</b> reset the whole set. What you pick is kept in this browser, so the page opens
@@ -776,6 +776,10 @@
       SUBJ = new Map(d.subjects.map((s) => [s.key, s]));
       ORDER = d.subjects.map((s) => s.key);
       COMMITS = normalizeCommits(d.commits);
+      // The help text's subject count comes from the registry, never from
+      // hand-written prose — it drifted twice (25 → 28 → 33) while the
+      // taxonomy grew. Static fallback stands if the dataset never loads.
+      if (ORDER.length) el("subjcount").textContent = `All ${ORDER.length} subjects`;
       if (!COMMITS.length) { el("chart").innerHTML = '<p class="muted">No commit history yet.</p>'; return; }
       FULL = [COMMITS[0].ms, COMMITS[COMMITS.length - 1].ms];
       view = FULL.slice();
