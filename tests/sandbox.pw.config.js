@@ -1,10 +1,12 @@
-// Dedicated Playwright config for the sandbox live-validation spec
-// (e2e/sandbox.spec.js). The default config's projects (mocked/live) filter by
-// filename and would exclude this spec, so it gets its own single project that
+// Dedicated Playwright config for the sandbox live-validation specs
+// (e2e/sandbox.spec.js — does it boot and run; e2e/terminal-pane.spec.js — what
+// the user SEES of it). The default config's projects (mocked/live) filter by
+// filename and would exclude both, so they get their own single project that
 // reuses the same live-site `use` block (agent proxy, re-signing CA, TLS 1.2
 // cap, pre-installed Chromium, break-glass Basic Auth).
 //
 //   npx playwright test --config=sandbox.pw.config.js
+//   npx playwright test --config=sandbox.pw.config.js e2e/terminal-pane.spec.js
 
 import { defineConfig } from "@playwright/test";
 
@@ -16,7 +18,7 @@ if (!user || !pass) {
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: /sandbox\.spec\.js/,
+  testMatch: /(sandbox|terminal-pane)\.spec\.js/,
   fullyParallel: false,
   workers: 1,
   retries: 0,

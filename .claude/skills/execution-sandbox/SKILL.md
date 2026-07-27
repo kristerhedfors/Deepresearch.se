@@ -403,8 +403,57 @@ Three coordinated changes, all in the backdrop + its feed:
 
 New pure exports (`agent-backdrop-core.js`, Node-tested): `hasPaneContent`,
 `composePaneLines`, `EMPTY_PANE_LINE`. No CSS change → **no handshake bump**.
-**Still owed:** on-device confirmation that tapping the icon during a real cold
-boot on iOS shows the progress line in the terminal pane.
+
+### The boot leaves a transcript, not a cleared line (2026-07-27)
+
+**Feedback #42, the follow-on to #38: "still the terminal is invisible now,
+button looks pressed but no terminal in background."** Reproduced live in
+Chromium against production (prime `dr_bash_lite=1`, load, tap `#termbtn`
+immediately, sample the pane every 6 s). The switch and the boot line both
+worked — and then this happened:
+
+```
+AT LOAD    [ sandbox terminal idle — no output yet ]
+t+6s       Booting Linux · mounting files… ▮▮▮▮▮▯ 5/6 · 4s — Teaching your tab…
+t+12s      [ sandbox terminal idle — no output yet ]     ← boot_done at 9.8 s
+t+18s…     mesg: ttyname failed: No such file or directory
+           root@:~#
+```
+
+Three findings, one fix each. **Same lesson as #38, one layer down: the pane's
+CONTENT has to be real too, not only the switch that reveals it.**
+
+- **A replaceable line is not a record.** `feedStatus` owns ONE line that the
+  ticker overwrites and `stopBootQuips()` then CLEARS — so the instant the boot
+  ended the pane snapped back to `EMPTY_PANE_LINE`, and a boot that **failed**
+  left it blank forever while `#termbtn` still claimed Linux was running. Now
+  `setStatus` also commits a **permanent** line per stage through the new
+  `agent-backdrop.js` **`feedTerminalLine()`**, gated on `bootQuipTimer` so only
+  a boot in flight writes to the log. The pure formatter is `bootLogLine(label,
+  elapsedMs)` in `boot-messages.js` (Node-tested) → `[  0.9s] connecting disk…`.
+- **Every boot announces how it ended.** `stopBootQuips(outcome)` takes the
+  closing line — `ready — Linux is running in this browser tab`, `boot failed:
+  …`, `boot timed out at …`, `sandbox stopped (…)` — and commits it. It records
+  the outcome only when a ticker was actually running, which is what keeps the
+  line from doubling when the timeout path stops the ticker and then calls
+  `resetSandbox`. The internal `stopBootQuips()` at the top of `startBootQuips`
+  passes nothing: it is clearing a prior timer, not ending a boot.
+- **The one line the user could see was an error.** `cx.setCustomConsole` is
+  attached only at the END of the boot, so no kernel output ever reaches the
+  pane; the whole steady-state content was bash's `mesg: ttyname failed` plus a
+  bare prompt. The `sed` guard meant to suppress that missed the line this image
+  ships (it anchored on `^mesg ` and covered only `/root/.profile` +
+  `/etc/profile`) — now it allows leading whitespace and covers `/root/.bashrc`
+  + `/etc/bash.bashrc` too. The login shell also `echo`s a one-line banner
+  (`DeepResearch sandbox — $(uname -srm) — running entirely in this browser
+  tab.`) so a terminal brought forward says what it is. It is the GUEST's own
+  output, printed by the guest — not a caption the page draws over it.
+
+Regression cover: `tests/e2e/terminal-pane.spec.js` (run with
+`--config=sandbox.pw.config.js`) asserts a pane with a boot behind it is never
+idle, holds more than one line, and carries the stamped log. No CSS change →
+**no handshake bump**. **Still owed:** on-device confirmation on iOS that a real
+cold boot leaves a readable transcript behind the chat.
 
 ### Modes with a graph too: the cycle covers every combination (2026-07-26)
 

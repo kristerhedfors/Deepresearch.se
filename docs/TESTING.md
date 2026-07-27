@@ -630,15 +630,24 @@ npm run test:live     # 5 tests, real Berget tokens + one Exa run
 
 ### Sandbox specs (own configs, not in the mocked/live projects)
 
-Three specs drive a real CheerpX VM in Chromium and are matched by their own
+Four specs drive a real CheerpX VM in Chromium and are matched by their own
 configs, so the default projects do not pick them up:
 
 ```bash
 cd tests
-npx playwright test --config=sandbox.pw.config.js                          # the iOS "sandbox not ready" regression
+npx playwright test --config=sandbox.pw.config.js                          # both sandbox specs
+npx playwright test --config=sandbox.pw.config.js e2e/sandbox.spec.js      # the iOS "sandbox not ready" regression
+npx playwright test --config=sandbox.pw.config.js e2e/terminal-pane.spec.js  # what the user SEES of the boot
 npx playwright test --config=sandbox-perf.pw.config.js -g "performance"    # command-cost battery (~2 min)
 npx playwright test --config=sandbox-perf.pw.config.js -g "agent trace"    # one turn, every event timestamped
 ```
+
+- **`terminal-pane.spec.js`** covers the pane rather than the VM: it primes the
+  cached sandbox knob so `#termbtn` is revealed at first paint, taps it during
+  the cold boot, and asserts the pane holds a real boot transcript afterwards —
+  never the `sandbox terminal idle` placeholder, and never silence when the boot
+  failed. That silence was feedback #42 ("button looks pressed but no terminal
+  in background"), the follow-on to #38.
 
 - **`sandbox-perf.spec.js`** times ~45 one-liners in a booted VM, each run
   several times so the report separates cold (first run, streaming the binary's
