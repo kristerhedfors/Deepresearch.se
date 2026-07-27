@@ -10,11 +10,15 @@
 // 2026-07-23); and Berget (api.berget.ai) serves origin-reflecting CORS
 // with POST + Authorization allowed on /chat/completions and /models
 // (probed live 2026-07-11 — it used to have no browser CORS, which is why
-// it was originally excluded here). So the user's browser can call all
-// four with the user's own API key and Deepresearch's server is never in
-// the request path at all.
+// it was originally excluded here); and Hugging Face's router
+// (router.huggingface.co) serves `*` on its OpenAI-compatible endpoints
+// too (probed live 2026-07-27: preflight OK for authorization +
+// content-type, /models 200 even unauthenticated, and both streaming and
+// response_format json_object work on the wire). So the user's browser can
+// call all five with the user's own API key and Deepresearch's server is
+// never in the request path at all.
 //
-// The four named providers are the SHIPPED shortcuts, not the boundary:
+// The five named providers are the SHIPPED shortcuts, not the boundary:
 // the keyless `local` entry below takes ARBITRARY OpenAI-compatible base
 // URLs, so any other service speaking that wire (or a model the user runs
 // themselves) is reachable without a registry change.
@@ -26,6 +30,15 @@
 // `wire: "anthropic"` and the four wire functions branch on it, so
 // everything downstream keeps consuming OpenAI-shaped SSE. Adapt at the
 // wire, don't fork the pipeline — the same rule the server seam follows.
+//
+// Hugging Face joined on 2026-07-27, and is the one entry whose catalog is
+// OPEN: the other four serve a handful of models this repo curated, while
+// the HF router fronts a marketplace (127 models on the live probe). The
+// server tier meets that openness with the Models agent — browse, price,
+// enable per account (src/hf-inference.js, src/model-catalog.js). Se/cure
+// has no account to hang an allowance on, so it meets it the way it meets
+// every other catalog here: the live /models fetch filtered by
+// `modelFilter`, and the user picks. Same wire, different gate.
 //
 // Same registry discipline as the server seam: one declarative entry per
 // provider (id, label, base URL, wire dialect + param quirks, a JSON-phase
@@ -48,8 +61,9 @@ export const bergetCatalogFilter = (/** @type {string} */ id) =>
 
 // Per-provider wire quirks, mirroring what the server clients learned:
 // OpenAI's GPT-5 family wants max_completion_tokens + reasoning_effort
-// (src/openai.js); Groq and Berget speak plain OpenAI chat completions
-// (Berget: the same wire src/berget.js drives server-side); Anthropic
+// (src/openai.js); Groq, Hugging Face and Berget speak plain OpenAI chat
+// completions (Berget: the same wire src/berget.js drives server-side;
+// Hugging Face: the same wire src/hf-inference.js drives); Anthropic
 // speaks its own Messages API and is adapted at the wire
 // (`wire: "anthropic"`).
 /**
@@ -175,6 +189,52 @@ export const DRC_PROVIDERS = [
     // Anthropic-only one.
   },
   {
+    id: "huggingface",
+    label: "Hugging Face",
+    // The router, not huggingface.co: one OpenAI-compatible front door over
+    // every inference provider serving a model (together, novita, deepinfra,
+    // …), so the wire is the same one OpenAI/Groq/Berget speak.
+    base: "https://router.huggingface.co/v1",
+    // hf_… — HF's user access tokens. Distinct from every other prefix here,
+    // so it cannot collide (it used to live in FOREIGN_KEY_SHAPES below as a
+    // key we recognized but could not serve; the entry moved up here when the
+    // provider shipped).
+    keyPattern: /^hf_/,
+    // The fixed cheap model for the JSON planning phases — the client-side
+    // mirror of split model routing. Picked on evidence, not vibes: probed
+    // live 2026-07-27 against the three obvious cheap candidates, this one
+    // returned bare `{"ok":true,"lang":"en"}` while Qwen3-8B spent the whole
+    // token budget on reasoning_content and never emitted an object, and
+    // gpt-oss-20b answered but padded it with reasoning. A planning phase
+    // that returns no JSON is a phase that fail-softs away, so the model that
+    // just answers wins.
+    jsonModel: "meta-llama/Llama-3.1-8B-Instruct",
+    // Shown until (or in place of) a live /models fetch. Ids present on the
+    // live router at the time of writing; the router's catalog turns over
+    // faster than any other entry's, which is exactly why the live fetch is
+    // the normal path and this is only the fallback.
+    fallbackModels: [
+      "zai-org/GLM-5.2",
+      "deepseek-ai/DeepSeek-V4-Pro",
+      "moonshotai/Kimi-K2.6",
+      "openai/gpt-oss-120b",
+      "meta-llama/Llama-3.1-8B-Instruct",
+    ],
+    // HF ids are bare `owner/model` repo paths, so require the slash the way
+    // the Berget filter does. Curation here means dropping what is not a chat
+    // model you would pick to answer with: quantized weight drops (-gguf) the
+    // router cannot serve as chat, the safety classifiers (Llama-Guard,
+    // gpt-oss-safeguard), and un-instruction-tuned base checkpoints. The
+    // vision-language models (Qwen3-VL-…) are kept — they ARE chat models.
+    modelFilter: (id) =>
+      id.includes("/") && !/(gguf|guard|-base-pt|embed|rerank|whisper|tts|moderation)/i.test(id),
+    // Plain OpenAI chat completions.
+    params: (maxTokens) => ({ max_tokens: maxTokens }),
+    // No `embed`: the router serves no /embeddings route at all (probed
+    // 2026-07-27 — 404), so a Hugging-Face-only session runs without
+    // client-side RAG, like an Anthropic-, Groq- or Berget-only one.
+  },
+  {
     id: "berget",
     label: "Berget",
     base: "https://api.berget.ai/v1",
@@ -208,12 +268,12 @@ export const DRC_PROVIDERS = [
     // through drc-rag.js, its vectors are 1024-dim (double the sealed
     // localStorage footprint of OpenAI's 512), and the wire is unverified
     // without a live key — a deliberate later step, not an oversight.
-    // Until then a Berget-only session runs without RAG, like Anthropic
-    // and Groq.
+    // Until then a Berget-only session runs without RAG, like Anthropic,
+    // Groq and Hugging Face.
   },
   {
     // ANY OpenAI-compatible endpoint — this is the escape hatch that keeps
-    // the three named providers above from being the boundary. Point it at a
+    // the named providers above from being the boundary. Point it at a
     // model server the user runs (Ollama, LM Studio, llama.cpp; localhost
     // included, because browsers treat http://localhost as a
     // potentially-trustworthy origin, so an https page may call it) or at any
@@ -312,13 +372,14 @@ export function serverTokenLlmProvider(origin) {
 // these (never a wrong provider), and foreignDrcKeyHint gives the key
 // panel an honest one-liner instead of silence. Kept in sync with the
 // prefixes scripts/scan-secrets already knows.
-export const FOREIGN_KEY_SHAPES = [
-  {
-    pattern: /^hf_/,
-    label: "Hugging Face",
-    hint: "That looks like a Hugging Face token — not a chat provider this app can call.",
-  },
-];
+//
+// EMPTY since 2026-07-27: its only entry was hf_…, and Hugging Face is now
+// a registry provider, so the hint would have been a lie. The mechanism
+// stays — it is how the NEXT recognized-but-unserved prefix gets an honest
+// message instead of silence, and an empty list simply makes
+// foreignDrcKeyHint return null for everything.
+/** @type {Array<{pattern: RegExp, label: string, hint: string}>} */
+export const FOREIGN_KEY_SHAPES = [];
 
 /**
  * The honest message for a recognized-but-not-built-in key shape, or null
@@ -366,7 +427,8 @@ export function poolLlmProvider(origin) {
 
 /**
  * Identify the provider a pasted API key belongs to by its prefix
- * (sk_ber_… → Berget, sk-ant-… → Anthropic, gsk_… → Groq, sk-… minus
+ * (sk_ber_… → Berget, sk-ant-… → Anthropic, gsk_… → Groq, hf_… → Hugging
+ * Face, sk-… minus
  * sk-ant-… → OpenAI), or null for an unrecognized shape — the key panel's one-field UX: the
  * provider dropdown follows the detected prefix automatically, and stays
  * user-pickable for keys no pattern knows. The patterns are mutually
@@ -683,9 +745,11 @@ export async function drcEmbed(provider, apiKey, texts, { signal, baseUrl, kind 
 }
 
 // One OpenAI-compatible chat-completions payload; `json` asks for JSON mode
-// (all three providers support response_format json_object — Berget's
-// catalog reports json_mode on every text model — so the pipeline's
-// no-function-calling rule holds here too).
+// (every OpenAI-wire provider here accepts response_format json_object —
+// Berget's catalog reports json_mode on every text model; the HF router
+// accepts the param though many of its serving providers only honour it
+// loosely — so the pipeline's no-function-calling rule holds here too, with
+// extractJson below hardening what comes back).
 /**
  * @param {DrcProvider} provider
  * @param {string} model
@@ -1082,7 +1146,8 @@ export function filterAndSortModels(data, modelFilter) {
     // (zai-org/GLM-5.2 landed as a borrowed session's DEFAULT while dark,
     // 2026-07-15, test point #10). Same treatment as the DRS dropdown's
     // `up === false` disable; fail-open when the field is absent (OpenAI,
-    // Anthropic and Groq /models entries carry no `status`).
+    // Anthropic and Groq /models entries carry no top-level `status`, and
+    // Hugging Face's sits one level down, per serving provider).
     .filter((m) => m?.status?.up !== false)
     .map((m) => m?.id)
     .filter((id) => typeof id === "string" && modelFilter(id))

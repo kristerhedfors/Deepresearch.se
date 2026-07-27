@@ -9,7 +9,7 @@
 // over four self-contained, Node-tested modules:
 //   /js/drc-core.js      — secret → derived ids/keys, the sealed state
 //   /js/drc-providers.js — the CORS-capable provider registry (OpenAI, Anthropic,
-//                            Groq, Berget + any OpenAI-compatible endpoint)
+//                            Groq, Hugging Face, Berget + any OpenAI-compatible endpoint)
 //   /js/drc-research.js  — the client-side deep-research pipeline
 //   /js/drc-store.js     — BROWSER-LOCAL sealed-state storage (the seam)
 //
@@ -913,7 +913,7 @@ async function handlePublicationLink() {
     workStatus(
       "This is a published research replay" +
         (pub.description ? " — " + pub.description : "") +
-        ". Ask a follow-up to continue it: replies run on YOUR API key (OpenAI, Anthropic, Groq or Berget — or " +
+        ". Ask a follow-up to continue it: replies run on YOUR API key (OpenAI, Anthropic, Hugging Face or Berget — or " +
         "any OpenAI-compatible endpoint you point it at), straight " +
         "from this browser.",
     );
@@ -1158,7 +1158,7 @@ async function saveState() {
 
 // ONE input for the key + a provider dropdown that follows the pasted
 // key's prefix automatically (sk-… OpenAI, sk-ant-… Anthropic, gsk_… Groq,
-// sk_ber_… Berget —
+// hf_… Hugging Face, sk_ber_… Berget —
 // detectDrcProvider); unknown prefixes leave the dropdown to the user.
 // Saved keys are listed below with per-provider remove buttons.
 function renderKeysPanel() {
@@ -1787,7 +1787,7 @@ function renderMessages() {
     empty.className = "empty";
     empty.textContent =
       "Hi — I'm an AI research assistant that runs right here in your browser, on your own OpenAI, Anthropic, " +
-      "Groq or Berget API key — or any OpenAI-compatible endpoint, a model you run yourself included. My replies " +
+      "Hugging Face or Berget API key — or any OpenAI-compatible endpoint, a model you run yourself included. My replies " +
       "are model-generated, so verify " +
       "anything critical. Ask a research question to get started, or type “/” for the commands — " +
       "“/feedback” reaches the developers, “/help” answers from the documentation.";
@@ -2042,7 +2042,8 @@ function newChat() {
 // ---- client-side RAG (drc-rag.js): recall before the pipeline, index after ------------
 
 // The embedding hookup for client-side RAG. Two ways to get one:
-//   1. A stored OWN key that serves embeddings (OpenAI today — Anthropic and Groq have none).
+//   1. A stored OWN key that serves embeddings (OpenAI today — Anthropic, Groq
+//      and the Hugging Face router have none).
 //   2. A borrowed `api` grant on the proxy / Se/rver-token provider — the
 //      SAME grant that lends completions now proxies /embeddings to Berget's
 //      e5 model on the server key (owner directive, 2026-07-17), so a keyless

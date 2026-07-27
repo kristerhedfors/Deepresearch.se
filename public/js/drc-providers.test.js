@@ -15,6 +15,7 @@ import {
   drcProvider,
   drcToolRun,
   filterAndSortModels,
+  FOREIGN_KEY_SHAPES,
   foreignDrcKeyHint,
   listDrcModels,
   oaiChunksFromAnthropicEvent,
@@ -30,16 +31,26 @@ import {
 } from "./drc-providers.js";
 
 test("the registry holds the CORS-capable providers plus the keyless custom entry", () => {
-  assert.deepEqual(DRC_PROVIDERS.map((p) => p.id), ["openai", "anthropic", "groq", "berget", "local"]);
+  assert.deepEqual(DRC_PROVIDERS.map((p) => p.id), [
+    "openai",
+    "anthropic",
+    "groq",
+    "huggingface",
+    "berget",
+    "local",
+  ]);
   assert.equal(drcProvider("openai").label, "OpenAI");
   assert.equal(drcProvider("anthropic").label, "Anthropic"); // joined 2026-07-26
   assert.equal(drcProvider("groq").label, "Groq");
+  assert.equal(drcProvider("huggingface").label, "Hugging Face"); // joined 2026-07-27
   assert.equal(drcProvider("berget").label, "Berget"); // CORS confirmed live 2026-07-11
   // Only Anthropic speaks a foreign wire; the rest are OpenAI chat completions.
   assert.equal(drcProvider("anthropic").wire, "anthropic");
-  for (const id of ["openai", "groq", "berget", "local"]) assert.equal(drcProvider(id).wire, undefined);
+  for (const id of ["openai", "groq", "huggingface", "berget", "local"]) {
+    assert.equal(drcProvider(id).wire, undefined);
+  }
   // The keyless entry is the "arbitrary OpenAI-compatible endpoint" escape
-  // hatch — the three named providers are shortcuts, not the boundary.
+  // hatch — the named providers are shortcuts, not the boundary.
   assert.equal(drcProvider("local").keyless, true);
   assert.match(drcProvider("local").label, /OpenAI-compatible/);
   for (const p of DRC_PROVIDERS) {
@@ -77,11 +88,14 @@ test("detectDrcProvider identifies a pasted key by its prefix", () => {
   assert.equal(detectDrcProvider("gsk_abc123").id, "groq");
   // Berget: sk_ber_… (underscore — never collides with OpenAI's sk-).
   assert.equal(detectDrcProvider("sk_ber_abc123").id, "berget");
+  // Hugging Face: hf_… — a real entry since 2026-07-27, so a token that used
+  // to be waved off as foreign now routes to its own provider.
+  assert.equal(detectDrcProvider("hf_abc123").id, "huggingface");
+  assert.equal(detectDrcProvider("  hf_abc123\n").id, "huggingface");
   // Whitespace from a paste is forgiven.
   assert.equal(detectDrcProvider("  sk_ber_abc123\n").id, "berget");
   // Unknown shapes stay the user's call — no guess.
   assert.equal(detectDrcProvider("sk_abc123"), null); // underscore but not Berget's
-  assert.equal(detectDrcProvider("hf_abc123"), null);
   assert.equal(detectDrcProvider(""), null);
   assert.equal(detectDrcProvider(null), null);
 });
@@ -103,12 +117,18 @@ test("an Anthropic sk-ant-… key is NEVER claimed by OpenAI's sk- pattern", () 
   assert.equal(detectDrcProvider("sk-proj-abc123").id, "openai");
 });
 
-test("foreignDrcKeyHint names a recognized-but-not-built-in key shape", () => {
-  assert.match(foreignDrcKeyHint("hf_abc123"), /Hugging Face/);
-  assert.match(foreignDrcKeyHint("  hf_abc123\n"), /Hugging Face/);
-  // EVERY registry provider's shape gets NO foreign hint — Anthropic is a
-  // real entry now, so its key must not be waved off as foreign, and Groq
-  // (which stayed) never was.
+test("foreignDrcKeyHint never contradicts the registry", () => {
+  // The list is EMPTY since 2026-07-27: its only entry was hf_…, and Hugging
+  // Face became a real provider, so the "not a chat provider this app can
+  // call" hint would now be a lie. This is the invariant that matters and it
+  // outlives the current emptiness — no shape may be called foreign while a
+  // registry entry claims it.
+  for (const shape of FOREIGN_KEY_SHAPES) {
+    const claimed = DRC_PROVIDERS.some((p) => p.keyPattern && p.keyPattern.test(shape.pattern.source.replace(/^\^/, "")));
+    assert.equal(claimed, false, shape.label + " is a registry provider — it cannot also be foreign");
+  }
+  // EVERY registry provider's shape gets NO foreign hint.
+  assert.equal(foreignDrcKeyHint("hf_abc123"), null); // a real provider now
   assert.equal(foreignDrcKeyHint("sk-ant-api03-abc123"), null);
   assert.equal(foreignDrcKeyHint("gsk_abc123"), null);
   assert.equal(foreignDrcKeyHint("sk-abc123"), null);
@@ -132,6 +152,8 @@ test("the embedding config is the SMALL, dimension-reduced choice", () => {
   assert.equal(openai.embed.dimensions, 512);
   assert.equal(drcProvider("anthropic").embed, undefined); // Anthropic serves no /embeddings
   assert.equal(drcProvider("groq").embed, undefined); // nor does Groq
+  // The HF router has no /embeddings route at all (probed 2026-07-27: 404).
+  assert.equal(drcProvider("huggingface").embed, undefined);
   // Berget serves /embeddings (e5) but joining RAG needs the passage:/query:
   // prefix convention + 1024-dim storage — deliberately not declared yet.
   assert.equal(drcProvider("berget").embed, undefined);
@@ -141,6 +163,7 @@ test("drcEmbedProvider: the first embeddings-capable provider with a key", () =>
   assert.equal(drcEmbedProvider({}), null);
   assert.equal(drcEmbedProvider({ anthropic: "sk-ant" }), null); // an Anthropic-only session has no RAG
   assert.equal(drcEmbedProvider({ groq: "gsk" }), null); // a Groq-only one neither
+  assert.equal(drcEmbedProvider({ huggingface: "hf_x" }), null); // nor a Hugging-Face-only one
   assert.equal(drcEmbedProvider({ berget: "bk" }), null); // a Berget-only session too (no embed entry yet)
   assert.equal(drcEmbedProvider({ openai: "sk" }).id, "openai");
   assert.equal(drcEmbedProvider({ openai: "sk", anthropic: "sk-ant" }).id, "openai");
@@ -151,9 +174,16 @@ test("configuredDrcProviders follows the stored keys", () => {
   assert.deepEqual(configuredDrcProviders({}).map((p) => p.id), []);
   assert.deepEqual(configuredDrcProviders({ anthropic: "sk-ant" }).map((p) => p.id), ["anthropic"]);
   assert.deepEqual(configuredDrcProviders({ openai: "sk", groq: "gsk" }).map((p) => p.id), ["openai", "groq"]);
+  assert.deepEqual(configuredDrcProviders({ huggingface: "hf_x" }).map((p) => p.id), ["huggingface"]);
   assert.deepEqual(
-    configuredDrcProviders({ openai: "sk", anthropic: "sk-ant", groq: "gsk", berget: "bk" }).map((p) => p.id),
-    ["openai", "anthropic", "groq", "berget"],
+    configuredDrcProviders({
+      openai: "sk",
+      anthropic: "sk-ant",
+      groq: "gsk",
+      huggingface: "hf_x",
+      berget: "bk",
+    }).map((p) => p.id),
+    ["openai", "anthropic", "groq", "huggingface", "berget"],
   );
   assert.deepEqual(configuredDrcProviders({ berget: "bk" }).map((p) => p.id), ["berget"]);
   assert.deepEqual(configuredDrcProviders({ openai: "" }).map((p) => p.id), []);
@@ -190,6 +220,17 @@ test("buildDrcPayload carries each provider's wire quirks", () => {
   assert.equal(groq.max_completion_tokens, undefined);
   assert.equal(groq.response_format, undefined);
   assert.equal(groq.stream, true);
+
+  // Hugging Face: the plain OpenAI wire too — max_tokens, and the JSON-mode
+  // param the router accepts (extractJson hardens what actually comes back).
+  const hf = buildDrcPayload(drcProvider("huggingface"), "meta-llama/Llama-3.1-8B-Instruct", msgs, {
+    json: true,
+    maxTokens: 900,
+  });
+  assert.equal(hf.max_tokens, 900);
+  assert.equal(hf.max_completion_tokens, undefined);
+  assert.equal(hf.reasoning_effort, undefined);
+  assert.deepEqual(hf.response_format, { type: "json_object" });
 
   const berget = buildDrcPayload(drcProvider("berget"), "mistralai/Mistral-Small-3.2-24B-Instruct-2506", msgs, {
     json: true,
@@ -354,6 +395,20 @@ test("model filters are CURATED: recent language models only", () => {
   assert.equal(groq.modelFilter("whisper-large-v3"), false);
   assert.equal(groq.modelFilter("llama-guard-3-8b"), false);
   assert.equal(groq.modelFilter("gemma2-9b-it"), false);
+
+  // Hugging Face: bare owner/model repo paths from the router's open catalog
+  // (ids from the live probe, 2026-07-27). The filter drops what is not a
+  // chat model you would answer with, and keeps the vision-language ones.
+  const hf = drcProvider("huggingface");
+  assert.equal(hf.modelFilter("zai-org/GLM-5.2"), true);
+  assert.equal(hf.modelFilter("meta-llama/Llama-3.1-8B-Instruct"), true);
+  assert.equal(hf.modelFilter("deepseek-ai/DeepSeek-V4-Pro"), true);
+  assert.equal(hf.modelFilter("Qwen/Qwen3-VL-30B-A3B-Instruct"), true); // vision chat stays
+  assert.equal(hf.modelFilter("prism-ml/Ternary-Bonsai-27B-gguf"), false); // weight drop
+  assert.equal(hf.modelFilter("meta-llama/Llama-Guard-4-12B"), false); // classifier
+  assert.equal(hf.modelFilter("openai/gpt-oss-safeguard-20b"), false); // classifier
+  assert.equal(hf.modelFilter("baidu/ERNIE-4.5-VL-424B-A47B-Base-PT"), false); // base checkpoint
+  assert.equal(hf.modelFilter("gpt-5.6-terra"), false); // no slash: not an HF repo id
 
   // Berget's catalog is small and already curated — the filter's job is
   // excluding its non-chat modalities (ids from the live catalog 2026-07-11).

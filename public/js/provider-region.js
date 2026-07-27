@@ -9,6 +9,16 @@
 // only the user knows where THAT one is hosted, so claiming a country would be
 // a guess.
 //
+// Hugging Face is the one FEDERATED entry: router.huggingface.co is a US front
+// door that dispatches onward to whichever inference provider serves the model
+// (together, novita, deepinfra, …), which may sit elsewhere again. The flag
+// states what is certain — the conversation reaches a US endpoint — and is
+// deliberately not a claim about the second hop. The serving provider is named
+// per model in the Models agent (src/hf-inference.js `servedBy`), which is
+// where that detail belongs; without an entry here an HF model rendered with
+// NO badge at all, which read as "nothing leaves the browser" and was worse
+// than an honest partial answer.
+//
 // Pure, dependency-free and SHARED so the mapping lives in exactly one place:
 // the DRS composer dropdown (`models.js`), the /cure provider picker + model
 // dropdown (`cure/drc.js`, `cure/index.html`), and the introspection route
@@ -22,12 +32,14 @@ export const PROVIDER_REGIONS = {
   openai: { country: "United States", flag: "🇺🇸" },
   anthropic: { country: "United States", flag: "🇺🇸" },
   groq: { country: "United States", flag: "🇺🇸" },
+  // The router's own front door; the onward serving provider varies (see above).
+  huggingface: { country: "United States", flag: "🇺🇸" },
 };
 
 /**
  * The processing region for a provider key ("berget" | "openai" |
- * "anthropic" | "groq"), or null for an unknown / local / custom one (render
- * no flag). Never throws.
+ * "anthropic" | "groq" | "huggingface"), or null for an unknown / local /
+ * custom one (render no flag). Never throws.
  * @param {unknown} providerKey
  * @returns {Region | null}
  */

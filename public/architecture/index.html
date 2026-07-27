@@ -144,7 +144,7 @@
     <div class="pair">
       <figure>
         <div class="diagram">
-        <img src="/architecture/path-secure.svg" alt="The Se/cure data path: the browser calls OpenAI, Anthropic, Groq, Berget.ai or any other OpenAI-compatible endpoint directly on the user's own keys; the server only serves static files and is not in the data path">
+        <img src="/architecture/path-secure.svg" alt="The Se/cure data path: the browser calls OpenAI, Anthropic, Hugging Face, Berget.ai or any other OpenAI-compatible endpoint directly on the user's own keys; the server only serves static files and is not in the data path">
         </div>
         <figcaption><span class="wm cure">DeepResearch.<b>Se<span class="sl">/</span>cure</b></span> —
         the browser orchestrates.
@@ -152,7 +152,7 @@
       </figure>
       <figure>
         <div class="diagram">
-        <img src="/architecture/path-server.svg" alt="The Se/rver data path: browser to Cloudflare Worker to providers, with D1 and R2 stores beside the Worker">
+        <img src="/architecture/path-server.svg" alt="The Se/rver data path: browser to Cloudflare Worker to providers — Berget.ai, key-gated Claude and GPT, Hugging Face's open catalog, and Exa search — with D1 and R2 stores beside the Worker">
         </div>
         <figcaption><span class="wm rver">DeepResearch.<b>Se<span class="sl">/</span>rver</b></span> —
         the Worker orchestrates.
@@ -226,7 +226,7 @@
         <tr>
           <th>API keys</th>
           <td class="drc-c">Your own keys, pasted once, living <em>inside</em> the sealed state in your browser. Each key is sent only to its own provider, straight from the browser.</td>
-          <td class="drs-c">Server-side secrets (Berget, Anthropic, OpenAI, Exa, Maps, Shodan). Users never handle a key; keys never appear in any log.</td>
+          <td class="drs-c">Server-side secrets (Berget, Anthropic, OpenAI, Hugging Face, Exa, Maps, Shodan). Users never handle a key; keys never appear in any log.</td>
         </tr>
         <tr>
           <th>What third parties see</th>
@@ -274,12 +274,12 @@
         </tr>
         <tr>
           <th>Models</th>
-          <td class="drc-c">CORS-capable providers only, because the browser must be able to call them directly: OpenAI, Anthropic, Groq and Berget as named shortcuts, plus any other OpenAI-compatible endpoint you point it at — a hosted service or a model server on your own machine. Split routing survives: JSON phases run on each provider's fixed cheap JSON model.</td>
-          <td class="drs-c">The full Berget catalog plus key-gated Claude and GPT answer models; JSON planning phases always on the fixed reliable model (split routing).</td>
+          <td class="drc-c">CORS-capable providers only, because the browser must be able to call them directly: OpenAI, Anthropic, Hugging Face, Groq and Berget as named shortcuts, plus any other OpenAI-compatible endpoint you point it at — a hosted service or a model server on your own machine. Hugging Face is the open one: its router fronts a marketplace, so the model list fills from the live catalog rather than a handful picked for you. Split routing survives: JSON phases run on each provider's fixed cheap JSON model.</td>
+          <td class="drs-c">The full Berget catalog, key-gated Claude and GPT answer models, and any Hugging Face model this account enabled — the open catalog is browsed, priced and turned on in the Models agent, then appears in every agent's dropdown. JSON planning phases always on the fixed reliable model (split routing).</td>
         </tr>
         <tr>
           <th>Documents &amp; RAG</th>
-          <td class="drc-c">Project &amp; chat RAG, browser-direct embeddings on your key (OpenAI small/512-dim by design; Berget too; a session on a provider that serves no embeddings — Anthropic, Groq, or most custom endpoints — simply runs without RAG, fail-soft).</td>
+          <td class="drc-c">Project &amp; chat RAG, browser-direct embeddings on your key (OpenAI small/512-dim by design; Berget too; a session on a provider that serves no embeddings — Anthropic, Groq, Hugging Face, or most custom endpoints — simply runs without RAG, fail-soft).</td>
           <td class="drs-c">Attachments (pdf/docx/images with metadata extraction), project files, chat RAG, with embeddings via the Worker's <code>/api/embed</code> proxy.</td>
         </tr>
         <tr>

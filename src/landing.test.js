@@ -63,6 +63,27 @@ describe("the landing page at /", () => {
     assert.match(LANDING, /MIT licence/);
   });
 
+  test("the capability list names the open Hugging Face catalog", () => {
+    // Added 2026-07-27. Before it, the ONLY Hugging Face mention a visitor met
+    // was Hub *search*, listed among the enrichment integrations — which read
+    // as "we can look models up", not "we can run them". The Models agent made
+    // the second true, so the front door has to say it.
+    const FEAT = LANDING.slice(LANDING.indexOf('<ul class="feat">'), LANDING.indexOf("</ul>", LANDING.indexOf('<ul class="feat">')));
+    assert.match(FEAT, /Hugging Face/, "the capability list must name Hugging Face as a model provider");
+    assert.match(FEAT, /Models agent/, "…and say what promotes a model out of that open catalog");
+  });
+
+  test("the architecture diagrams' alt text matches the providers they draw", () => {
+    // The alt text is the diagram for anyone who cannot see it, and it drifted
+    // silently for as long as it named Groq — a provider the SVG stopped
+    // drawing. Pin both directions on both tiers.
+    const secureAlt = /alt="The Se\/cure data path:[^"]*"/.exec(LANDING)?.[0] || "";
+    const serverAlt = /alt="The Se\/rver data path:[^"]*"/.exec(LANDING)?.[0] || "";
+    assert.match(secureAlt, /Hugging Face/, "the Se/cure alt text names the drawn providers");
+    assert.doesNotMatch(secureAlt, /Groq/, "…and not one the diagram no longer draws");
+    assert.match(serverAlt, /Hugging Face/, "the Se/rver alt text names the drawn providers");
+  });
+
   test("names Se/cure before Se/rver in the paired architecture block", () => {
     const secure = LANDING.indexOf("path-secure.svg");
     const server = LANDING.indexOf("path-server.svg");

@@ -311,7 +311,7 @@ What a Se/cure workspace can do, and what powers it:
 | Capability | Powered by | Server in the path? |
 |---|---|---|
 | Deep research pipeline (triage → harvest → gap → synthesis → validation) | `public/js/drc-research.js`, client-side | no |
-| Answers from the user's own provider | browser-direct to OpenAI / Anthropic / Groq / Berget — or any other OpenAI-compatible endpoint — with the user's key | no |
+| Answers from the user's own provider | browser-direct to OpenAI / Anthropic / Groq / Hugging Face / Berget — or any other OpenAI-compatible endpoint — with the user's key | no |
 | Answers with no third party at all | the keyless `local` provider (Ollama / LM Studio / llama.cpp) | no |
 | Answers on a downloaded model | WebGPU + OPFS weights (`docs/BONSAI-27B-PHONE-INFERENCE.md`) | no |
 | Live web search | the metered web-search grant (query only) | **yes — query only**, exception 1 |

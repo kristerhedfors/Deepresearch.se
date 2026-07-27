@@ -108,7 +108,7 @@ watchdog fires `arrive()` if `transitionend` is swallowed.
 | 4 | `#focuscard` — "What it has been working on" | The compact feature-focus timeline: chips as the legend/picker, `Busiest 6` / `All` / `None`, a link through to the full page. Hidden until the dataset parses. |
 | 5 | "What this project is for" | The mission: privacy capabilities of LLM applications, stated precisely as a **deep-research security architecture**; the two tiers as the proof; still experimental; the build story as a pointer, not a lead. |
 | 6 | "The architecture, in short" | One question, two data paths — the five deterministic phases, then the paired **Se/cure** and **Se/rver** diagrams, then the link to `/architecture/`. |
-| 7 | "Some of what it does" | `ul.feat` — the capability list. |
+| 7 | "Some of what it does" | `ul.feat` — the capability list. Additive by R1: entries join it as capabilities ship (the **open model catalog** entry arrived 2026-07-27 with Hugging Face). No cap on its length — the ≤6 rule is the overlay's (R4), not this list's. |
 | 8 | "Open source, MIT" | GitHub, the licence, the 80 % framing, and the claim that makes the page checkable: the site deploys straight from the repo. |
 | 9 | `#askdemo` — "Questions before you sign in?" | The prepackaged answers (§2.5). |
 | 10 | `.links` | The doors onward (§2.6). |
@@ -120,6 +120,21 @@ timeline through the pure core `/js/pulse-timeline-core.js` (the same one
 `/pulse/timeline.html` uses), the diagrams through the standalone files
 `/architecture/path-secure.svg` and `path-server.svg` (the same two
 `/architecture/` embeds). Neither may be re-inlined or re-implemented.
+
+The two diagrams name **providers**, so they go stale when the provider set
+does — and a wrong diagram on the front door is worse than a plain one. When
+editing either, keep the `<desc>`, both `alt` attributes (landing *and*
+`/architecture/`) and the `/architecture/` comparison table in step, and
+**measure** the result rather than eyeballing it: render the SVG and check each
+`<text>` node's `getBBox()` against its host `<rect>`, the same discipline the
+slash-spacing skill applies to the wordmark. Both files use the same four-box
+provider geometry (`x` = 8/110/212/314, 96 wide) so the tiers line up when read
+side by side. The named boxes are a legible SELECTION, not the full registry —
+Groq ships and works in Se/cure but is deliberately off the diagrams
+(2026-07-27), because four boxes is what fits and Hugging Face's open catalog
+is the architecturally interesting case. R11 is satisfied by the escape-hatch
+row ("…or ANY other OpenAI-compatible endpoint"), which keeps the selection
+from reading as a boundary.
 
 ### 2.5 The prepackaged ask demo — `#askdemo`
 

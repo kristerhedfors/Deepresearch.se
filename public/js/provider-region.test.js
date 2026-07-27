@@ -11,13 +11,22 @@ import {
   regionForProvider,
 } from "./provider-region.js";
 
-test("Berget is Sweden; OpenAI/Anthropic/Groq are the US", () => {
+test("Berget is Sweden; OpenAI/Anthropic/Groq/Hugging Face are the US", () => {
   assert.equal(regionForProvider("berget").country, "Sweden");
   assert.equal(regionForProvider("berget").flag, "🇸🇪");
-  for (const id of ["openai", "anthropic", "groq"]) {
+  for (const id of ["openai", "anthropic", "groq", "huggingface"]) {
     assert.equal(regionForProvider(id).country, "United States");
     assert.equal(regionForProvider(id).flag, "🇺🇸");
   }
+});
+
+test("an enabled Hugging Face model carries a badge, not silence", () => {
+  // The regression this pins: with no `huggingface` entry, an accepted
+  // open-catalog model rendered in the composer dropdown with NO flag — the
+  // same rendering a local/on-device option gets, which says "nothing leaves
+  // this browser". It does leave. The router is a US front door.
+  assert.equal(regionForModelEntry({ provider: "huggingface" }).flag, "🇺🇸");
+  assert.equal(regionForModelEntry({ provider: "huggingface" }).country, "United States");
 });
 
 test("provider key match is case-insensitive", () => {
