@@ -516,11 +516,11 @@ boot leaves a readable transcript behind the chat.
 
 **Feedback #43, the third round: "terminal commands did not show up in
 background this time neither: [ sandbox terminal idle — no output yet ]".** The
-#42 fix was fine and still is — it just does not apply, because the commands
+#42 fix was fine and still is; it just does not apply, because the commands
 were never in the browser VM.
 
 **The pane is fed from inside `sandbox.js`.** Boot stages, raw console bytes,
-`execInSandbox`'s commands and their output — all pushed by the VM as it works.
+`execInSandbox`'s commands and their output: all pushed by the VM as it works.
 That makes the pane a live view of the browser VM *by construction*, and it is
 precisely why it silently stopped being a live view of anything else. A Runner
 over DREE/1 (`exec-backends-core.js`) is a health probe and a `fetch`; it
@@ -539,8 +539,8 @@ META: … "client_diag":{"bl":true,"sb":true,"ran":1,"xb":"cloudflare", …}
 
 `xb:"cloudflare"` + `ran:1` = a command really ran, on the server, while the
 pane behind the answer said it had never seen anything. **Read `xb` before
-theorising about the sandbox** — three feedback rounds on "the terminal is
-empty" and only the third one was about the browser VM at all.
+theorising about the sandbox.** Three feedback rounds on "the terminal is
+empty", and only the third one was about the browser VM at all.
 
 The fix, and the shape worth reusing:
 
@@ -556,7 +556,7 @@ The fix, and the shape worth reusing:
 - **`execConnectLog(backend)`** names the environment from the `EXEC_BACKENDS`
   registry, so the pane cannot claim the wrong machine. A failed connect commits
   "could not reach the … — answering without a shell" instead of leaving a blank
-  field under a lit-up icon — #42's lesson owed to environments with no boot.
+  field under a lit-up icon: #42's lesson, owed to environments with no boot.
 - **`onResult` was already in `bash-core.js`'s driver** and unused by Se/rver;
   the VM's own feed had made it unnecessary. Check the seam you need before
   adding one.
@@ -568,10 +568,10 @@ just unmirrored, it is unlogged):
   pass. `xb` says where, `meta.shell` says what, and nothing said whether any of
   it reached the pane. `cmds > 0` with `term: 0` IS the #43 signature, now
   checkable from a row. (`stream.js` had a `let ran = 0` counter it incremented
-  and never read — that became `xd.cmds`.)
+  and never read; that became `xd.cmds`.)
 - **`sblog` never flushed on a remote send.** `selectRunner` takes an `onLog`
   and both tiers wire it to `sblog`, but every `flushSandboxLog()` call site
-  lived inside `sandbox.js`'s browser-VM paths — so `exec.runner_ready` /
+  lived inside `sandbox.js`'s browser-VM paths, so `exec.runner_ready` /
   `_unreachable` / `_mounted` were recorded into a 300-entry ring buffer and
   died with the tab. It is exported now and the remote pass flushes it.
 - The readable chat-log view said `bash-lite ran 1 command` whether that
@@ -579,7 +579,7 @@ just unmirrored, it is unlogged):
 
 **Verification, and a technique worth keeping.** `tests/e2e/terminal-remote.spec.js`
 (`--config=sandbox.pw.config.js`) drives the whole remote path with the step
-model, the DREE/1 runner and `/api/chat` all intercepted — deterministic, free,
+model, the DREE/1 runner and `/api/chat` all intercepted: deterministic, free,
 no VM, seconds not minutes. It uses the LOCAL backend because a local runner's
 base URL is client-configured and therefore interceptable, while `/api/exec` is
 same-origin and needs a real deploy binding; both flow through the identical
@@ -588,7 +588,7 @@ string and passes with the fix.
 
 To verify a CLIENT-side fix before it deploys, without a `wrangler dev`: load
 the live page but `page.route("**/js/<module>.js")` each changed module to the
-working-tree file. Real browser, real module graph, real page — your code. That
+working-tree file. Real browser, real module graph, real page, your code. That
 is how both cases above were confirmed green pre-merge:
 
 ```
