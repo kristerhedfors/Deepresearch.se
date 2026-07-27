@@ -18,7 +18,7 @@ if (!user || !pass) {
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: /(sandbox|terminal-pane)\.spec\.js/,
+  testMatch: /(sandbox|terminal-pane|terminal-remote)\.spec\.js/,
   fullyParallel: false,
   workers: 1,
   retries: 0,

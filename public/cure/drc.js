@@ -105,7 +105,7 @@ import { runBackendSearch as runDirectBackendSearch } from "/js/websearch-backen
 import { normalizeExecBackend, probeRunner, resolveExecBackend, runnerStatusLine, usesLocalRunner } from "/js/exec-backends-core.js";
 import { EXA_SETTING_INFO, exaStatusText, getExaEnabled, getSearchSource, setExaEnabled } from "/js/search-source.js";
 import { ensureSandboxBooted, sandboxIdle, sandboxSupported, setSandboxImage } from "/js/sandbox.js";
-import { hideTerminalIcon, showTerminalIcon } from "/js/agent-backdrop.js";
+import { hideTerminalIcon, remoteTerminalMirror, showTerminalIcon } from "/js/agent-backdrop.js";
 import {
   DOCS_CORPUS_PATH,
   OWASP_CORPUS_PATH,
@@ -3884,6 +3884,23 @@ async function send(ev) {
   let shown = "";
   let errMsg = null;
   let result = null;
+  // Mirror a LOCAL-RUNNER shell pass into the terminal pane. The in-browser VM
+  // narrates itself from public/js/sandbox.js; a DREE/1 runner on the user's
+  // machine narrates nothing, so with the runner picked the pane behind the
+  // chat stayed on "idle — no output yet" while real commands ran on real
+  // hardware. That is Se/rver's feedback #43 in this tier's clothes — the same
+  // seam (exec-backends-core.js selectRunner), the same empty pane — fixed here
+  // before anyone had to report it twice. Null on the browser VM, so the
+  // default path is untouched.
+  const execMirror = usesLocalRunner(execBackendCfg())
+    ? remoteTerminalMirror(execBackendCfg().backend)
+    : null;
+  // Opened LAZILY, on the first sandbox phase — which the shared loop emits
+  // from ensureReady, i.e. only once the model has actually proposed a command.
+  // Opening it up front would put "connecting to the local runner…" behind
+  // every message, including the ones that never wanted a shell.
+  let execOpened = 0;
+  let execRan = 0;
   try {
     result = await runDrcResearch({
       providerId,
@@ -3932,7 +3949,24 @@ async function send(ev) {
           // A bash-lite sandbox command finished — append its full transcript
           // (command + exit + output) to the running (sandbox) step's body.
           appendShellRun(s.run);
+          // …and, on a local runner, into the terminal pane too. The command
+          // goes in with its result rather than ahead of it: onResult is the
+          // only status that carries the command in FULL (onExec's phase label
+          // is clipped for the step line), and a terminal wants the real one.
+          if (execMirror) {
+            execRan++;
+            execMirror.command(s.run?.command || "");
+            execMirror.result(s.run);
+          }
         } else if (s.type === "phase") {
+          // The sandbox phase starting IS "the shell pass engaged" — open the
+          // pane's record here, and reveal the header icon, which
+          // prewarmDrcSandbox deliberately skips when a runner is configured
+          // (there is no VM to pre-warm, so nothing used to show the icon).
+          if (execMirror && s.phase === "sandbox") {
+            if (!execOpened) { execOpened = 1; showTerminalIcon(); execMirror.open(); }
+            if (s.label) execMirror.status(s.label);
+          }
           // A new phase starts a new step (✓-ing the previous); the same phase
           // re-labels in place. `label` carries a live line (e.g. a rotating
           // sandbox-boot quip); otherwise the phase's static label.
@@ -3966,6 +4000,12 @@ async function send(ev) {
   } catch (err) {
     errMsg = err?.message || "The request failed.";
   }
+  // Close the pane's record of a local-runner pass. A sandbox phase that opened
+  // and then ran nothing means ensureReady came back false — the runner was not
+  // reachable — so the pane says that in words rather than holding an opening
+  // line forever. The empty-pane half of feedback #42's lesson, applied to the
+  // environment that has no boot ticker of its own.
+  if (execMirror && execOpened) execMirror.settled(execRan > 0);
   finishPhaseSteps();
 
   const answer = result?.answer || shown;

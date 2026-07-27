@@ -622,6 +622,36 @@ export function runnerLabel(cfg) {
 }
 
 /**
+ * The TERMINAL PANE's vocabulary for a remote environment's connect sequence —
+ * the three lines a browser-VM boot would have written for itself.
+ *
+ * The in-browser VM narrates its own startup into the terminal backdrop from
+ * inside public/js/sandbox.js: a stamped line per boot stage and a closing one
+ * saying how it ended (feedback #42). A remote runner has no such narration —
+ * `boot()` is one health probe and `exec()` is a plain fetch — so when the
+ * cloud container became the DEFAULT environment (2026-07-27) the pane behind
+ * the chat went permanently empty on the path most sends now take. That is
+ * feedback #43: a `ls /` really ran in a container, the answer was written from
+ * its output, and the terminal said "idle — no output yet".
+ *
+ * Kept here, pure, rather than as literals at the two call sites, because the
+ * environment's NAME has to come from the same registry the picker renders —
+ * a pane that says "local runner" while the commands went to a container is
+ * the same class of lie the diagnostic gap was.
+ *
+ * @param {string} backend an EXEC_BACKENDS id
+ * @returns {{ open: string, ready: string, failed: string }} labels for bootLogLine
+ */
+export function execConnectLog(backend) {
+  const name = (execBackend(String(backend || ""))?.short || "remote runner").toLowerCase();
+  return {
+    open: `connecting to the ${name}…`,
+    ready: `ready — commands run in the ${name}`,
+    failed: `could not reach the ${name} — answering without a shell`,
+  };
+}
+
+/**
  * The SERVER-SIDE container as a Runner (src/exec-container.js): the same DREE/1
  * client pointed at this site instead of at localhost. No URL and no key — the
  * address is `/api/exec` and the authority is the session cookie — and it is the

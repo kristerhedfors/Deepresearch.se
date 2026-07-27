@@ -39,8 +39,9 @@ import { GUEST_STDOUT_CAP_BYTES, bashIntent, deliverablesRun, execTimeoutForBudg
 import { feedbackForcesServerRoute, feedbackIntent } from "./feedback-core.js";
 import { slashEffect } from "./slash-core.js";
 import { aiModelIntent } from "./ai-models.js";
-import { collectDeliverables, ensureSandboxBooted, execInSandbox, resetSandboxIfLacking, sandboxFsSummary, sandboxIdle, sandboxSupported, sblog } from "./sandbox.js";
+import { collectDeliverables, ensureSandboxBooted, execInSandbox, flushSandboxLog, resetSandboxIfLacking, sandboxFsSummary, sandboxIdle, sandboxSupported, sblog } from "./sandbox.js";
 import { selectRunner } from "./exec-backends-core.js";
+import { remoteTerminalMirror } from "./agent-backdrop.js";
 import { execEnvCfg, execEnvResolved, execSessionId, remoteRunnerActive } from "./exec-env.js";
 import { hasPending } from "./attachments.js";
 import {
@@ -1052,11 +1053,46 @@ function latestUserText() {
   return "";
 }
 
+// ---- the terminal backdrop on a REMOTE execution environment ----------------
+//
+// The pane behind the chat is fed from inside public/js/sandbox.js — the boot
+// stages, the raw console bytes, every command execInSandbox runs. That is the
+// IN-BROWSER VM narrating itself, and a remote runner narrates nothing, so a
+// send whose commands ran in the cloud container left the pane empty (feedback
+// #43). remoteTerminalMirror (public/js/agent-backdrop.js) is the mirror both
+// tiers use; this seam is the one place on Se/rver that knows which environment
+// selectRunner picked, so it is where the mirror is driven from. Only the
+// REMOTE path is mirrored — mirroring the browser VM too would double every
+// line it already feeds itself.
+
+/**
+ * The last send's EXECUTION diagnostic, folded into /api/chat as
+ * `client_diag.xd` (src/validation.js sanitizeExecDiag).
+ *
+ * `xb` already says WHERE a send's commands would run, and `meta.shell` says
+ * WHAT ran. Between them sat the question feedback #43 actually raised — did
+ * the environment come up, how long did that take, and did anything reach the
+ * terminal pane — which nothing in the log could answer, because every existing
+ * sandbox breadcrumb (`fs`, the sblog stream) is written by the browser VM and
+ * is therefore silent on the path that had the bug. Counters and a closed
+ * vocabulary only; no command text and no runner URL (invariant 4).
+ * @type {{boot: number, ms: number, cmds: number, term: number, err: string} | null}
+ */
+let lastExecDiag = null;
+
+/** The last send's exec diagnostic, or undefined when no shell pass engaged. */
+function execDiag() {
+  return lastExecDiag || undefined;
+}
+
 /**
  * @param {object} turn the assistant turn (activity target)
  * @returns {Promise<Array<{command: string, exitCode: number, stdout: string, stderr: string}>>}
  */
 async function maybeRunShellLoop(turn, opts) {
+  // A fresh send reports only its OWN shell pass: a turn that needs no shell
+  // must not inherit the previous turn's numbers into its chat log.
+  lastExecDiag = null;
   try {
     if (!bashLiteOn()) return []; // knob off — feature disabled, nothing to do
     // Skip the (slow, mobile-costly) offline sandbox for a PURE AI-model
@@ -1116,12 +1152,21 @@ async function maybeRunShellLoop(turn, opts) {
       onLog: (event, fields) => sblog("info", event, fields),
     });
 
+    // From here on a shell pass genuinely engaged, so this send gets an exec
+    // diagnostic in its chat log even if nothing ends up running.
+    const diag = { boot: 0, ms: 0, cmds: 0, term: 0, err: "" };
+    lastExecDiag = diag;
+    // Mirror the run into the terminal pane when it happens somewhere the pane
+    // cannot see for itself. Null on the browser VM — sandbox.js feeds that one.
+    const mirror = remoteExec ? remoteTerminalMirror(execEnvResolved().backend) : null;
+
     // Knob on but the page isn't cross-origin isolated (COEP): the sandbox
     // cannot boot. app.js self-heals by reloading once; if we still land here,
     // tell the user plainly instead of silently answering "I can't run code".
     // Isolation is a requirement of the in-browser VM (SharedArrayBuffer), not
     // of execution as such — a local runner is a plain fetch and needs none.
     if (!remoteExec && !sandboxSupported()) {
+      diag.err = "no-isolation";
       startGenericStep(turn, "sandbox", "Starting sandbox…");
       finishGenericStep(turn, {
         id: "sandbox",
@@ -1150,6 +1195,11 @@ async function maybeRunShellLoop(turn, opts) {
     // this page is never asked to fetch it (see buildSandboxFileProvider).
     const fileProvider = buildSandboxFileProvider(opts, { sourceMode: containerExec ? "server" : "bytes" });
     const bootOnce = async () => {
+      const bootT0 = Date.now();
+      // Open the pane's record of this connect BEFORE the probe, so a runner
+      // that never answers leaves a line saying what was being reached rather
+      // than the empty pane feedback #42 and #43 both landed on.
+      mirror?.open();
       startGenericStep(
         turn,
         "sandbox",
@@ -1166,7 +1216,17 @@ async function maybeRunShellLoop(turn, opts) {
       );
       // The first boot is slow (a whole Debian streams in), so entertain the
       // step label with rotating quips (public/js/boot-messages.js) until ready.
-      booted = await runner.boot(fileProvider, (msg) => updateGenericStep(turn, "sandbox", msg));
+      booted = await runner.boot(fileProvider, (msg) => {
+        updateGenericStep(turn, "sandbox", msg);
+        // The same live line the browser VM's boot ticker paints (mounting
+        // files, seeding /src): without it the pane holds only the opening
+        // stamp while a container mounts an 11 MB source tree.
+        mirror?.status(msg);
+      });
+      diag.boot = booted ? 1 : 0;
+      diag.ms = Date.now() - bootT0;
+      if (!booted) diag.err = "boot-failed";
+      mirror?.settled(booted);
       if (!booted) {
         finishGenericStep(turn, {
           id: "sandbox",
@@ -1202,8 +1262,18 @@ async function maybeRunShellLoop(turn, opts) {
       onExec: (command) => {
         ran++;
         updateGenericStep(turn, "sandbox", `Sandbox › $ ${shellCommandLabel(command)}`);
+        // The pane gets the FULL command, not the clipped step label — this is
+        // a terminal, and `$ ls -la /workspace` truncated at the step's width
+        // is not what the user tapped the icon to read.
+        mirror?.command(command);
       },
+      // The raw output, as soon as each command finishes — the half that makes
+      // the pane a terminal rather than a list of commands. onResult has been
+      // in bash-core.js's driver all along (Se/cure files it into its sandbox
+      // step); the browser VM's own feed meant this seam never needed it.
+      onResult: (run) => mirror?.result(run),
     });
+    diag.cmds = ran;
     // Only report a finished step if we actually booted and ran (a message the
     // model judged not to need a shell shows no sandbox activity at all). The
     // finished step is EXPANDABLE: every command in full with its exit code and
@@ -1228,8 +1298,20 @@ async function maybeRunShellLoop(turn, opts) {
         } catch { /* deliverables are decoration on the answer — never break it */ }
       }
     }
+    if (mirror) {
+      diag.term = mirror.writes;
+      // The runner's own breadcrumbs (exec.runner_ready / _unreachable /
+      // _mounted / _source_failed, fed through onLog above) were reaching
+      // sblog's ring buffer and dying there: every flush point lives inside
+      // sandbox.js's browser-VM boot and exec paths, so on a remote runner
+      // nothing ever shipped them to /api/client-log. A send that reached a
+      // remote environment now flushes what it learned about it.
+      try { flushSandboxLog(); } catch { /* telemetry is never load-bearing */ }
+    }
     return transcript;
   } catch (err) {
+    if (lastExecDiag) lastExecDiag.err = "error";
+    try { flushSandboxLog(); } catch { /* telemetry is never load-bearing */ }
     try { finishGenericStep(turn, { id: "sandbox", label: "Sandbox error — answering normally" }); } catch {}
     return [];
   }
@@ -1952,6 +2034,14 @@ export async function sendMessage(text, opts) {
       // reading as "the sandbox" long after the cloud container became the
       // main one (2026-07-27).
       xb: (() => { try { return execEnvResolved().backend; } catch { return ""; } })(),
+      // WHAT HAPPENED in that environment (maybeRunShellLoop): whether it came
+      // up (boot) and how long that took (ms), how many commands ran (cmds),
+      // how many lines reached the terminal pane (term), and a closed-vocabulary
+      // failure token (err). `xb` says where and `meta.shell` says what — this
+      // is the middle that was missing when feedback #43 reported a terminal
+      // that stayed empty while commands really ran. Absent for a send with no
+      // shell pass, so an ordinary chat's log is unchanged.
+      xd: execDiag(),
       // The last sandbox filesystem-mount summary (public/js/sandbox.js) — so a
       // mount problem shows in the chat log meta (src/chatlog.js) even without
       // the debug beacon: files mounted (n), bytes (b), a project mount (proj),

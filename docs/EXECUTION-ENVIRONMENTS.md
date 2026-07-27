@@ -97,6 +97,33 @@ COULD run and how many commands it ran, but never WHERE — which is how "the
 sandbox is the browser VM" went on reading as true here long after it stopped
 being the common case.
 
+**And what happened in it.** `client_diag.xd` carries the outcome of the send's
+shell pass: `boot` (did the environment come up), `ms` (how long that took),
+`cmds` (commands executed), `term` (lines written to the terminal pane), and
+`err` (`no-isolation` | `boot-failed` | `error`). Counters and closed
+vocabularies only: no command text, no runner URL, no filenames. It is absent
+from a send that ran no shell pass, so an ordinary chat's meta is unchanged.
+
+The gap it closes is specific. `xb` says where and `meta.shell` says what;
+between them sat the question feedback #43 actually raised (*did any of this
+reach the terminal pane*), and nothing in the row could answer it, because every
+other sandbox breadcrumb (`client_diag.fs`, the `sblog` event stream) is written
+by the browser VM and is therefore silent on exactly the path that had the bug.
+`cmds > 0` with `term: 0` is that bug's signature, checkable from a chat log
+instead of reproducible only by asking the user to try again.
+
+The readable chat-log view (`?format=text`) also names the environment on the
+shell headline now (`TOOLS: bash-lite ran 1 command in the cloud container`)
+rather than leaving it inside the `META` one-liner's JSON.
+
+**A remote runner's own breadcrumbs now ship.** `selectRunner` takes an `onLog`
+callback and both tiers point it at `sblog`, but every flush of that buffer
+lived inside `sandbox.js`'s browser-VM boot and exec paths, so
+`exec.runner_ready`, `exec.runner_unreachable`, `exec.runner_mounted` and
+friends were being recorded into a 300-entry ring buffer and dying with the tab.
+A send that reached a remote environment flushes it (`flushSandboxLog`, exported
+for this), so those events land in Workers Logs like the VM's always have.
+
 ## 2. DREE/1 — the wire
 
 `DREE` = DeepResearch Execution Environment. Two required endpoints; the client
@@ -316,8 +343,47 @@ burns. Se/rver derives it from `sessionStorage` (`execSessionId()` in
   sandbox…"), and so does the failure line. "Unavailable" sends someone hunting
   the wrong machine.
 
+- The **terminal pane is mirrored explicitly**, because a remote environment
+  cannot fill it by accident; see below.
+
 All of the above is keyed on `remoteRunnerActive()` — *any* non-browser
 environment — rather than on the local runner specifically.
+
+### The terminal pane has to be told
+
+The pane behind the chat (the `#termbtn` switch brings it forward) is fed from
+*inside* `public/js/sandbox.js`: the VM pushes its boot stages, its raw console
+bytes and every command `execInSandbox` runs. The pane is a live view of the
+browser VM **by construction**, which is exactly why it silently stopped being a
+live view of anything else. A Runner over DREE/1 is a health probe and a fetch;
+it narrates nothing.
+
+While the browser VM was the default this was invisible. The 2026-07-27 flip
+made the cloud container the default environment on Se/rver, and the pane went
+empty on the path most sends now take: commands running, their output writing
+the answer, and the terminal reading `[ sandbox terminal idle — no output yet ]`
+behind it. That is feedback #43, and `chat_logs` #690 is the receipt:
+`client_diag.xb: "cloudflare"`, `ran: 1`, `meta.shell` holding a real `ls /`.
+
+So the mirror is explicit, and it lives with the pane rather than with the
+runner: `remoteTerminalMirror(backend)` in `public/js/agent-backdrop.js`, driven
+by whichever tier's shell pass knows what `selectRunner` picked — `stream.js`
+`maybeRunShellLoop` on Se/rver, the `onStatus` handler in `public/cure/drc.js`
+on Se/cure. It writes the same vocabulary the VM writes for itself: a stamped
+connect line (`execConnectLog` in `exec-backends-core.js`, named from the
+`EXEC_BACKENDS` registry so the pane can never claim the wrong machine), then
+`$ cmd` and its raw output, then a closing line saying whether the environment
+came up. A connect that fails says so in the pane instead of leaving a blank
+field under a lit-up icon. That is what feedback #42 established for the VM's
+boot, owed here to the environments that have no boot.
+
+Only the remote path is mirrored. Mirroring the browser VM too would print
+every command twice.
+
+Regression cover: `tests/e2e/terminal-remote.spec.js` (run under
+`--config=sandbox.pw.config.js`) drives the whole path with the step model, the
+runner and `/api/chat` all intercepted, so it is deterministic and free, and
+asserts both that a run reaches the pane and that an unreachable runner says so.
 
 ## 5. Exposure ledger
 

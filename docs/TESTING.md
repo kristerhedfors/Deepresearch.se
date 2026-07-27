@@ -647,9 +647,10 @@ configs, so the default projects do not pick them up:
 
 ```bash
 cd tests
-npx playwright test --config=sandbox.pw.config.js                          # both sandbox specs
+npx playwright test --config=sandbox.pw.config.js                          # all three sandbox specs
 npx playwright test --config=sandbox.pw.config.js e2e/sandbox.spec.js      # the iOS "sandbox not ready" regression
 npx playwright test --config=sandbox.pw.config.js e2e/terminal-pane.spec.js  # what the user SEES of the boot
+npx playwright test --config=sandbox.pw.config.js e2e/terminal-remote.spec.js  # …when the commands run elsewhere
 npx playwright test --config=sandbox-perf.pw.config.js -g "performance"    # command-cost battery (~2 min)
 npx playwright test --config=sandbox-perf.pw.config.js -g "agent trace"    # one turn, every event timestamped
 ```
@@ -660,6 +661,17 @@ npx playwright test --config=sandbox-perf.pw.config.js -g "agent trace"    # one
   never the `sandbox terminal idle` placeholder, and never silence when the boot
   failed. That silence was feedback #42 ("button looks pressed but no terminal
   in background"), the follow-on to #38.
+
+- **`terminal-remote.spec.js`** covers the same pane when the commands run
+  somewhere it cannot see for itself: a local runner or the cloud container,
+  which narrate nothing (feedback #43). Unlike its sibling it boots no VM and
+  spends nothing: the step model, the DREE/1 runner and `/api/chat` are all
+  intercepted, so a canned command really travels the remote path and the spec
+  asserts it reaches the pane. It uses the LOCAL backend because a local
+  runner's base URL is client-configured and therefore interceptable, while
+  `/api/exec` is same-origin and would need a real deploy binding. Both flow
+  through the identical seam. A second case aborts the runner and asserts the
+  pane says so rather than going blank under a lit-up icon.
 
 - **`sandbox-perf.spec.js`** times ~45 one-liners in a booted VM, each run
   several times so the report separates cold (first run, streaming the binary's

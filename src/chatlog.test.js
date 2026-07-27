@@ -284,6 +284,39 @@ test("formatShellForLog singularizes a lone command and drops empty output", () 
   assert.doesNotMatch(block, /\n {4}\n/);
 });
 
+// Feedback #43 cost a round of guessing partly because the readable view said
+// "bash-lite ran 1 command" whether that happened in the browser or on the
+// server — the environment was recorded, but only inside the META one-liner's
+// JSON. The headline now says which machine ran them.
+test("formatShellForLog names the execution environment on the headline", () => {
+  const shell = [{ command: "ls /", exitCode: 0, stdout: "bin\n", stderr: "" }];
+  assert.match(formatShellForLog(shell, "cloudflare"), /ran 1 command in the cloud container/);
+  assert.match(formatShellForLog(shell, "local"), /ran 1 command in the local runner/);
+  assert.match(formatShellForLog(shell, "browser"), /ran 1 command in the in-browser VM/);
+});
+
+test("formatShellForLog stays silent about an environment it wasn't told", () => {
+  // Rows logged before client_diag.xb existed must not be given an invented
+  // environment — a wrong machine name is worse than no machine name.
+  const shell = [{ command: "ls /", exitCode: 0, stdout: "", stderr: "" }];
+  for (const env of [undefined, null, "", "made-up"]) {
+    assert.match(formatShellForLog(shell, env), /ran 1 command$/m);
+  }
+});
+
+test("formatChatLogsText carries the environment through from client_diag", () => {
+  // The exact shape of chat_logs #690, the row behind feedback #43.
+  const meta = {
+    shell: [{ command: "ls /", exitCode: 0, stdout: "bin\nboot\n", stderr: "" }],
+    client_diag: { xb: "cloudflare", ran: 1 },
+    queries: [],
+  };
+  const text = formatChatLogsText([
+    projectChatLog({ ...ROW, meta_json: JSON.stringify(meta) }, { full: true }),
+  ]);
+  assert.match(text, /TOOLS: bash-lite ran 1 command in the cloud container/);
+});
+
 test("formatChatLogsText surfaces shell tool calls above the META line", () => {
   const meta = { shell: [{ command: "whoami", exitCode: 0, stdout: "root", stderr: "" }], queries: [] };
   const text = formatChatLogsText([
