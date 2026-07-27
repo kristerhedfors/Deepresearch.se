@@ -31,7 +31,7 @@
 // import of the CheerpX ESM) — there is no Node-testable surface, so the pure,
 // testable logic lives in public/js/bash-core.js instead.
 
-import { buildSeedScript, planMounts, shellEscape } from "./sandbox-files.js";
+import { buildSeedScript, planMounts, sandboxOverlayIds, shellEscape } from "./sandbox-files.js";
 import { feedCommand, feedResult, feedStatus, feedTerminal, feedTerminalLine, setTerminalInputSink } from "./agent-backdrop.js";
 import { bootLogLine, createBootMessageRotator, formatBootProgress } from "./boot-messages.js";
 import {
@@ -92,6 +92,26 @@ let _imagePrefetch = false;
 export function setSandboxImage(url, prefetch = false) {
   _imageUrl = typeof url === "string" ? url : "";
   _imagePrefetch = !!prefetch;
+}
+
+// The SESSION this VM's workspace belongs to (session.js, set by app.js before
+// any boot — same seam as setSandboxImage). Empty = the un-sessioned default:
+// one shared persistent overlay, exactly as before sessions existed.
+//
+// WHY A SETTER AND NOT AN IMPORT: this module is inside the /cure public module
+// graph and session.js is not, so importing the session registry here would 401
+// the entire Se/cure tier — the recurring public-graph failure class (see the
+// execution-sandbox skill). A plain string crosses the seam instead, which also
+// keeps the VM tier-neutral: Se/cure can pass its own workspace id.
+let _sessionId = "";
+
+/**
+ * Bind the VM's workspace to a session. Must be called BEFORE the boot it should
+ * affect — bootVM reads it at device-creation time. Idempotent + fail-soft.
+ * @param {string} sid the session id, or "" for the shared default
+ */
+export function setSandboxSession(sid) {
+  _sessionId = typeof sid === "string" ? sid : "";
 }
 
 /**
@@ -765,8 +785,43 @@ async function bootVM(fileProvider = null) {
     }
   }
   if (!blockDevice) blockDevice = await CheerpX.CloudDevice.create(DISK_URL);
-  const blockCache = await CheerpX.IDBDevice.create(usingLocalImage ? cacheIdFor(_imageUrl) : IDB_CACHE_ID);
-  const overlayDevice = await CheerpX.OverlayDevice.create(blockDevice, blockCache);
+  // PER-SESSION WORKSPACE (owner directive, 2026-07-27: "workspaces in ephemeral
+  // VMs isolated to a session as well"). Two tabs used to share ONE persistent
+  // overlay — two writers on one ext2 filesystem — and one session's files were
+  // visible to the next.
+  //
+  // The shape of the problem: OverlayDevice(base, blockCache) uses a single
+  // IndexedDB as BOTH the image's block cache and the layer guest writes land
+  // in. Giving each session its own single cache would therefore re-stream the
+  // whole Debian disk per session (the expensive half of a cold boot — 24 s bare,
+  // see docs/SANDBOX-PERFORMANCE.md). So we STACK instead: the shared image cache
+  // stays warm underneath, and a small per-session layer takes the writes.
+  //
+  // OverlayDevice-over-OverlayDevice is NOT verified on the pinned CheerpX 1.2.6.
+  // It is therefore attempted and FALLS BACK to the single shared cache — the
+  // exact pre-session behaviour — if the stack won't build, per this subsystem's
+  // fail-soft contract. A working stack isolates the workspace; a failing one
+  // costs isolation, never the boot.
+  const ids = sandboxOverlayIds(usingLocalImage ? cacheIdFor(_imageUrl) : IDB_CACHE_ID, _sessionId);
+  const blockCache = await CheerpX.IDBDevice.create(ids.imageCacheId);
+  let overlayDevice = await CheerpX.OverlayDevice.create(blockDevice, blockCache);
+  if (ids.sessionCacheId) {
+    try {
+      const sessionCache = await CheerpX.IDBDevice.create(ids.sessionCacheId);
+      const stacked = await CheerpX.OverlayDevice.create(overlayDevice, sessionCache);
+      // Only adopt the stack once it is fully built: a half-created device must
+      // never reach Linux.create (the same staging rule as the file mounts).
+      overlayDevice = stacked;
+      sblog("info", "sandbox.overlay", { session: _sessionId, mode: "nested", cache: ids.sessionCacheId });
+    } catch (err) {
+      sblog("warn", "sandbox.overlay_nested_failed", {
+        session: _sessionId,
+        error: String(/** @type {any} */ (err)?.message || err).slice(0, 200),
+      });
+    }
+  } else {
+    sblog("info", "sandbox.overlay", { session: "", mode: "shared", cache: ids.imageCacheId });
+  }
 
   const mounts = [
     { type: "ext2", dev: overlayDevice, path: "/" },

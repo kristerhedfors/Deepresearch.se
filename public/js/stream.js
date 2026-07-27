@@ -25,7 +25,8 @@ import {
 } from "./activity.js";
 import { balloonTaskDone } from "./balloon.js";
 import { bashLiteOn, execContainerAvailable } from "./settings.js";
-import { cachedChatMode } from "./chat-mode.js";
+import { applyChatModeTheme, cachedChatMode } from "./chat-mode.js";
+import { currentSessionId, setSessionConvId } from "./session.js";
 import { modeCarriesSource } from "./chat-mode-core.js";
 import { getSearchSource } from "./search-source.js";
 import { buildIntrospectionBlock, introspectionActive, maybeRepoPathMention, SNAPSHOT_PATH, validateSnapshot } from "./introspect-core.js";
@@ -54,7 +55,7 @@ import {
   setText,
 } from "./turns.js";
 import { decryptBytes, deleteConversation, listConversations, loadConversation, saveConversation } from "./history-store.js";
-import { clearPending, readPending, writePending } from "./pending-answer.js";
+import { clearPending, writePending } from "./pending-answer.js";
 import { indexChatTurns, siblingChatDocs } from "./chat-rag.js";
 import {
   activeProject,
@@ -121,6 +122,11 @@ import { ackAnswer, recoverAnswer } from "./recovery.js";
  * @property {string} model
  * @property {?number} budgetS
  * @property {boolean} webSearch
+ * @property {string} [chatMode] WHICH AGENT produced this conversation. Added
+ *   2026-07-27: without it, reopening a chat continued it under whatever agent
+ *   the tab happened to be in — an Agent Studio build silently answered as plain
+ *   Deep Research. Optional on purpose, so records written before this keep
+ *   today's behaviour (the tab's current agent) instead of snapping to Normal.
  * @property {Array<{id: string, name: string}>} ragDocs
  * @property {import("./embeds.js").EmbedEntry[]} embeds
  * @property {?string} projectId
@@ -272,6 +278,15 @@ function openConversationRecord(id, record) {
   // (and leaving one, a plain conversation leaves it).
   convProjectId = record.projectId || null;
   setActiveProject(convProjectId);
+  // A conversation carries the AGENT that produced it (2026-07-27), so reopening
+  // an Agent Studio build keeps answering as Agent Studio instead of silently
+  // continuing as plain Deep Research. Scoped to this session, never to the
+  // account seed: reopening a chat in one tab must not move another tab's agent.
+  // Records written before `chatMode` existed leave the session's agent alone.
+  if (record.chatMode) applyChatModeTheme(record.chatMode, { account: false });
+  // The session now points at this conversation, so a later boot resuming this
+  // session reopens the right history.
+  setSessionConvId(id);
   // Finishing a reloaded quiz re-persists the conversation — with the
   // record's own metadata, not a stale (or empty) previous send's.
   lastSendOpts = { model: record.model || "", budgetS: record.budgetS ?? null, webSearch: record.webSearch !== false };
@@ -313,6 +328,10 @@ async function persistConversation(opts) {
         model: opts?.model || "",
         budgetS: opts?.budgetS ?? null,
         webSearch: opts?.webSearch !== false,
+        // The agent that produced this conversation, so reopening it resumes the
+        // same one (openConversationRecord). Read live rather than from opts:
+        // this is the session's current agent, which is what actually answered.
+        chatMode: cachedChatMode(),
         ragDocs: convRagDocs,
         embeds: getEmbeds(),
         projectId: convProjectId,
@@ -322,6 +341,7 @@ async function persistConversation(opts) {
       },
     );
     onHistoryChange(currentId);
+    setSessionConvId(currentId); // this session is on this conversation
   } catch {
     // See comment above — history storage being unavailable must never
     // surface as a chat error.
@@ -366,6 +386,7 @@ export function clearHistory() {
 // the incognito flag are the caller's to handle.
 function resetConversationMeta() {
   currentId = null;
+  setSessionConvId(null); // this session is no longer on a stored conversation
   convTitle = null;
   convCreatedAt = null;
   convRagDocs = [];
@@ -463,16 +484,27 @@ function armPendingRecovery(requestId, opts) {
   });
 }
 
-// Called once on boot (app.js): if a previous session left an in-flight
-// answer that a full app relaunch interrupted, reopen that conversation and
-// poll the server-parked answer back. This is what lets a long research run
-// survive the PWA being discarded while backgrounded — it finished on the
-// server, and here the next launch collects it. Returns true if it resumed
-// something. Fail-soft: any problem clears the pointer and returns false so
-// boot proceeds normally.
-export async function resumePendingAnswer({ onLoad } = {}) {
+// Called once on boot (app.js): if a session left an in-flight answer that a full
+// app relaunch interrupted, reopen that conversation and poll the server-parked
+// answer back. This is what lets a long research run survive the PWA being
+// discarded while backgrounded — it finished on the server, and here the next
+// launch collects it. Returns true if it resumed something. Fail-soft: any
+// problem clears the pointer and returns false so boot proceeds normally.
+//
+// The TARGET IS PASSED IN, not read here (2026-07-27). Deciding which in-flight
+// answer a boot may claim is a multi-tab question — a second tab must not adopt
+// the research a live tab is running, while a cold relaunch must still collect
+// what finished while the app was gone — so it is answered once, in
+// session-core.js resumeTarget, and app.js hands the verdict down. This function
+// only executes it.
+/**
+ * @param {{sid: string, pending: import('./pending-answer.js').PendingPointer} | null} target
+ * @param {{onLoad?: (record: any) => void}} [opts]
+ * @returns {Promise<boolean>}
+ */
+export async function resumePendingAnswer(target, { onLoad } = {}) {
   if (inFlight) return false; // a live send is already going — don't fight it
-  const pending = readPending();
+  const pending = target?.pending;
   if (!pending) return false;
 
   let record = null;
@@ -865,6 +897,12 @@ async function buildChatPayload(opts) {
   // iteration keeps its /app/<slug>/ URL.
   const chatMode = cachedChatMode();
   payload.chat_mode = chatMode;
+  // WHICH SESSION this request belongs to. The same id names the agent, the
+  // workspace and the history (session-core.js), and the server already treats
+  // it as the workspace half: src/exec-container.js keys one ephemeral container
+  // per (user, session). Sending it here means a request, its container and its
+  // conversation agree on one identity instead of three coincidences.
+  payload.session_id = currentSessionId();
   if (chatMode === "sdk" && convBuildSlug) payload.build_slug = convBuildSlug;
   // Ghost toggle: tells the server to keep this exchange out of the
   // server-side interaction log too (src/chatlog.js) — the same choice
