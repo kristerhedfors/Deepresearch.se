@@ -35,6 +35,12 @@ export function isPublicAsset(url, method) {
     url.pathname.startsWith("/build/") ||
     url.pathname.startsWith("/story/") ||
     url.pathname.startsWith("/architecture/") ||
+    // The MCP setup page (/connect/, and the whole of the dedicated mcp. host):
+    // how to point Claude Code or any other MCP client at this site's research
+    // pipeline. Public on purpose — it is setup instructions, and the person
+    // reading them is typically looking at a terminal, not a signed-in tab. The
+    // page tells you where to mint a key; it never contains one.
+    url.pathname.startsWith("/connect/") ||
     // The documentation viewer (/docs/): renders every repo doc from the
     // committed docs-corpus.json. The docs are de-smelled in place by the
     // Clean step in the doc pipelines, so there is one authoritative version.

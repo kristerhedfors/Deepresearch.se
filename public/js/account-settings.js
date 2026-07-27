@@ -185,6 +185,16 @@ export async function loadSettingsView(ctx) {
       <p class="muted setting-note">Share your own local model with other people, or use
         someone else's. Both directions ask you first, once per person, and remember the answer.</p>
     </div>
+    <!-- Same treatment, same reason: the MCP server is a credential, a tool
+         list and a spend dial, which is a screen rather than a knob. -->
+    <div class="settings-item">
+      <div class="settings-row">
+        <span class="settings-label">MCP server</span>
+        <button id="mcpsettingsbtn" type="button">Open</button>
+      </div>
+      <p class="muted setting-note">Connect Claude Code — or any MCP client — to this
+        account's research pipeline, and choose exactly which tools it may reach.</p>
+    </div>
     <p class="muted setting-note">To send the developers feedback, start a chat
       message with the word <b>“feedback”</b> (for example “feedback: the map view
       was cut off”). It's routed straight to the developers — there's no switch to
@@ -192,6 +202,7 @@ export async function loadSettingsView(ctx) {
     ${note ? `<p class="muted setting-note">${note}</p>` : ""}`;
   document.getElementById("settingsbackbtn").addEventListener("click", () => ctx.show("summary"));
   document.getElementById("llmsharingbtn")?.addEventListener("click", () => ctx.show("llmsharing"));
+  document.getElementById("mcpsettingsbtn")?.addEventListener("click", () => ctx.show("mcp"));
   wireSettingPopovers(ctx.body);
   wireSandboxKnob(ctx);
   wireModeKnob(ctx);
