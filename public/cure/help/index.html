@@ -324,16 +324,24 @@
     <p>Open the settings drawer (the <b>gear icon</b> in the header) and paste
     an API key. The provider is detected from the key itself
     (<code>sk-…</code> OpenAI, <code>sk-ant-…</code> Anthropic,
-    <code>gsk_…</code> Groq, <code>sk_ber_…</code> Berget). Your browser then
+    <code>gsk_…</code> Groq, <code>hf_…</code> Hugging Face,
+    <code>sk_ber_…</code> Berget). Your browser then
     calls that provider
     <b>directly</b>; the conversation travels from your device to your
     provider and nowhere else.</p>
     <ul>
-      <li><b>OpenAI, Anthropic, Groq, Berget</b> — the four named shortcuts,
+      <li><b>OpenAI, Anthropic, Hugging Face, Groq, Berget</b> — the five named
+        shortcuts,
         whose APIs a browser can call directly. The key is yours, the usage is
         billed to you, and the provider's own data policies apply to what it
         receives.</li>
-      <li><b>Any other OpenAI-compatible endpoint</b> — those four are
+      <li><b>Hugging Face is the open one.</b> The other four serve a handful of
+        models picked for you; the Hugging Face router fronts a marketplace, so
+        the model dropdown fills from its live catalog and you choose from it.
+        Worth knowing where the conversation ends up: the router is a US front
+        door that hands the request on to whichever inference provider serves
+        that model.</li>
+      <li><b>Any other OpenAI-compatible endpoint</b> — those five are
         shortcuts, not the boundary. Point Se<span class="sl">/</span>cure at
         any service speaking that wire by its base URL, or at a server on your
         own machine (Ollama, LM Studio, llama.cpp), where no key is needed.

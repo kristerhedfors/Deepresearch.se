@@ -129,7 +129,8 @@ this one.
    - `public/js/provider-region.js` — the country flag is keyed by
      `provider` ("anthropic"/"openai"), not model id.
    - `public/js/drc-providers.js` (the `/cure` tier's client-side registry)
-     — only wires CORS-capable providers: OpenAI, Anthropic, Groq, Berget,
+     — only wires CORS-capable providers: OpenAI, Anthropic, Groq, Hugging
+     Face, Berget,
      plus the keyless `local` entry that takes any OpenAI-compatible base URL.
      Since 2026-07-26 Anthropic IS wired here, so a Claude
      catalog bump has to follow into this file too: `fallbackModels` and

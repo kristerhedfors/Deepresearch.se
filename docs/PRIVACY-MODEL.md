@@ -42,7 +42,7 @@ any client that sends the flag. DRC — "deep research secure", the
 public CLIENT-side tier at `/cure` — extends the strict tier to a whole
 surface, structurally: no accounts, and the server is in NO data path
 at all. The browser calls the user's own CORS-capable providers
-(OpenAI, Anthropic, Groq, Berget — or, since 2026-07-15, ANY other
+(OpenAI, Anthropic, Groq, Hugging Face, Berget — or, since 2026-07-15, ANY other
 OpenAI-compatible endpoint, the keyless `local` provider entry; point that
 at a server on the user's OWN machine — Ollama / LM Studio / llama.cpp —
 and NO third party receives the conversation at all) directly, runs the
