@@ -11,9 +11,12 @@ This document is the plan, the measurements, and the operating manual. Every
 number below came out of `scripts/arxiv-eval.mjs`; where a pipeline was tried
 and lost, it is written down as tried and lost rather than quietly dropped.
 
-Status: **experimental, local-only.** The database is built and searched from
-the CLI, and its vectors are not hosted anywhere a Worker can reach — see
-[What this is for](#7-what-this-is-for).
+Status: **experimental, and no longer local-only.** The database is built and
+evaluated from the CLI, and since 2026-07-26 its abstract tier is also **hosted
+in Vectorize** (`deepresearch-se-arxiv`, the `ARXIV_INDEX` binding) and served
+from the Worker by `src/arxiv-rag.js` — the procedure and its cost are in
+[Serving it from the Worker](#serving-it-from-the-worker-the-hosted-tier).
+The full-text tier remains a decision memo (§9), not a build.
 
 **arXiv IS searchable from `/api/chat` as of 2026-07-26 — through a different
 door.** `src/arxiv.js` is a live-API search source in the pipeline's registry:
@@ -23,8 +26,10 @@ join the numbered source registry like any other. That closed the reported gap
 bare `arxiv.org/pdf/…` URL with no title, and never asked arXiv). The two tiers
 are complementary, not competing: the live API does keyword-AND retrieval over
 current metadata, this database does dense retrieval plus a cross-encoder
-rerank over a frozen year — measurably better recall, once §7's hosting
-question is answered. The registry entry is the seam the RAG tier slots into.
+rerank over a frozen year — measurably better recall. That registry entry was
+the seam the RAG tier slotted into: `src/arxiv-rag.js` now serves the hosted
+index when it is bound, and `src/arxiv.js` falls back to the live API whenever
+it is absent, errors, or returns nothing above the relevance floor.
 
 ---
 

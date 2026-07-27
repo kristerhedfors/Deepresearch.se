@@ -52,15 +52,17 @@
 //
 // ---- availability ----------------------------------------------------------
 //
-// The EXEC_SANDBOX binding is OPTIONAL and, by default, ABSENT: wrangler.toml
-// ships the container + Durable Object block COMMENTED OUT, because a binding
-// whose resource does not exist yet fails EVERY deploy outright (the same
-// failure class as the round-4 cpu_ms incident and the R2/Vectorize bindings —
-// see wrangler.toml and tests/MODEL-EVAL-FINDINGS.md). Without the binding this
-// module reports the environment unavailable, /api/settings says so, and the
-// client hides the option — exactly how the Shodan and Maps knobs behave
-// without their keys. The enable procedure is in wrangler.toml next to the
-// commented block and in docs/EXECUTION-ENVIRONMENTS.md §9.
+// The EXEC_SANDBOX binding is OPTIONAL. A binding whose resource does not exist
+// yet fails EVERY deploy outright (the same failure class as the round-4 cpu_ms
+// incident and the R2/Vectorize bindings — see wrangler.toml and
+// tests/MODEL-EVAL-FINDINGS.md), so the container + Durable Object block shipped
+// commented out until the image existed. It exists now and the block is
+// uncommented (2026-07-26), but no deploy has carried it, so the binding is
+// still absent in production. Without it this module reports the environment
+// unavailable, /api/settings says so, and the client hides the option — exactly
+// how the Shodan and Maps knobs behave without their keys. The DEPLOY is the
+// switch; the procedure is in wrangler.toml next to the block and in
+// docs/EXECUTION-ENVIRONMENTS.md §9.
 
 import { jsonResponse } from "./http.js";
 import { buildTar, planSourceMount } from "../public/js/sandbox-files.js";

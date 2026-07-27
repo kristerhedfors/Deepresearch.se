@@ -32,10 +32,10 @@ export interface Env {
   /**
    * Durable Object namespace for the SERVER-SIDE execution environment — one
    * ephemeral Cloudflare Container per research session (src/exec-container.js).
-   * OPTIONAL and absent by default: wrangler.toml ships the container + DO
-   * block commented out, because a binding whose resource doesn't exist fails
-   * every deploy. Absent means the environment reports itself unavailable and
-   * the Settings picker omits it.
+   * OPTIONAL: the binding only exists where wrangler.toml declares the
+   * container + DO block AND a deploy has carried it, because a binding whose
+   * resource doesn't exist fails every deploy. Absent means the environment
+   * reports itself unavailable and the Settings picker omits it.
    */
   EXEC_SANDBOX?: DurableObjectNamespace;
   /** Display-only: the instance type the health body reports, when set. */

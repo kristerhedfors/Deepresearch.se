@@ -414,7 +414,7 @@ Feedback, boards & testing loops:
 
 Features & surfaces:
 
-- **execution-sandbox** — the in-browser Linux sandbox + bash-lite agent: COEP isolation, the fenced-block loop, file mounts. ALSO the choice of WHERE commands run (`docs/EXECUTION-ENVIRONMENTS.md`): the DREE/1 seam that lets a container runner on the user's own machine replace the browser VM.
+- **execution-sandbox** — the in-browser Linux sandbox + bash-lite agent: COEP isolation, the fenced-block loop, file mounts. ALSO the choice of WHERE commands run (`docs/EXECUTION-ENVIRONMENTS.md`): the DREE/1 seam and its three environments — the browser VM, a runner on the user's own machine, and (Se/rver only, because it is the one with the server in the data path) an ephemeral Cloudflare Container per session.
 - **introspection** — introspection mode (`chat_mode: "introspection"`; the `developer_mode` knob it replaced): the committed snapshot + rag artifacts, both tiers' wiring.
 - **models-agent** — the amber Models agent and the model LIFECYCLE it owns (discovered → evaluated → enabled): the provider-agnostic catalog (`src/model-catalog.js`, the ALLOWANCE), the established verification checks (`src/model-checks.js` — status, never blockers), the mode's enrichment (forced Hub search + the EN/SV lifecycle gate + the priced catalog block + the `model_cards` event), `/api/models/{catalog,verify,enable,disable}`, the per-account record, and the left-sidebar board that promotes a model into every OTHER mode's dropdown.
 - **outrospection** — introspection's mirror image: the FIFTH chat mode (answers from the outward feed) and the feed page at `/outrospect/`: the seven-lens registry, the offline scan + per-visit refresh that fill it, and the feedback STRATEGY lane.
