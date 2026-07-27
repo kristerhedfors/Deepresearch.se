@@ -13,6 +13,27 @@ compatibility_date = "2026-07-04"
 routes = [
   { pattern = "deepresearch.se", custom_domain = true },
   { pattern = "www.deepresearch.se", custom_domain = true },
+  # The dedicated MCP host (added 2026-07-26). External MCP clients — Claude
+  # Code, Cursor, any agent SDK — are pointed at https://mcp.deepresearch.se/mcp
+  # and authenticate with an account-minted MCP key (src/mcp-key.js). It is the
+  # SAME Worker and the same code path as /mcp on the apex; the separate host
+  # exists so a machine credential is pasted against a machine endpoint, and so
+  # the bare origin can also answer (clients disagree about whether the
+  # configured URL includes the path — src/mcp-config.js isMcpEndpoint). A GET
+  # serves the public setup page (public/connect/). src/canonical.js leaves this
+  # host alone: it only rewrites http → https and strips `www.`.
+  #
+  # Provisioned 2026-07-26 through the Workers custom-domains API with the
+  # account API token (`PUT /accounts/<id>/workers/domains` with
+  # {environment, hostname, service, zone_id}); Cloudflare creates the DNS
+  # record and the certificate, and the host answered within ~20 s.
+  #
+  # THIS LINE IS LOAD-BEARING, observed the hard way the same day: the domain
+  # was provisioned by API, an UNRELATED merge to main auto-deployed from a
+  # wrangler.toml that did not declare it, and the deploy REMOVED it — the host
+  # went unreachable until it was re-created. A custom domain that is not in
+  # this list does not survive the next deploy.
+  { pattern = "mcp.deepresearch.se", custom_domain = true },
 ]
 
 # Per-version PREVIEW URLs (branch previews — see the **deploy** skill):

@@ -1085,11 +1085,44 @@ can compose with them:
   `sdk_list_modules`, `sdk_show_module`, `sdk_plan` and `sdk_validate`,
   so an agent can plan against `sdk/MANIFEST.json` without shelling into
   the sandbox (the **sdk-mode** skill).
-- **Auth**: the route is wired *after* the identity gate, so MCP inherits
-  the same access control as the rest of the site (break-glass Basic Auth
-  header, or a signed-in session). Usage is recorded through the same
-  `usage_events` path; completed exchanges land in the same interaction
-  log (channel `mcp`).
+- **Auth — two ways in, both resolving to a real account.** The route is
+  wired *after* the identity gate, so a signed-in session and the
+  break-glass Basic Auth header work exactly as they always did. External
+  clients cannot carry either — Claude Code has no cookie jar — so an
+  account mints an **MCP key** (`src/mcp-key.js`), a bearer credential
+  resolved *above* the gate by `src/mcp-api.js`'s
+  `resolveMcpKeyIdentity`, for this endpoint and nothing else.
+
+  A key is **never a login**: `src/auth.js`'s `identify()` reads a `Basic`
+  header and the `dr_session` cookie, and an `mck1.` bearer is neither, so
+  `/admin`, `/api/admin/*` and every data-bearing `/api/*` route are out of
+  reach by construction — the same structural argument the Se/rver token
+  makes, pinned the same way by unit tests. It is deliberately *not* the
+  Se/rver token: that family carries the upstream-services-only guarantee
+  because it exists to protect Se/cure, whereas an MCP key acts for a
+  signed-in Se/rver account inside the trust boundary (invariant 4). One key
+  per account; minting again rotates, and revoking rewrites the stored `jti`
+  the token must match, so an outstanding copy dies on its next call.
+- **What is exposed is per-account configuration** (`src/mcp-config.js`,
+  edited in Settings → *MCP server*, `GET`/`PUT /api/mcp/config` +
+  `POST`/`DELETE /api/mcp/key`): one switch per tool over a catalog that
+  mirrors the served tool list (a unit test fails the build when the two
+  drift), a master switch, the research defaults a call gets when the
+  caller doesn't say, and whether a caller may override the model and
+  budget at all. It is read at CALL time and lives on the account, not in
+  the token — narrowing exposure takes effect on the next call for every
+  outstanding key, with nothing to re-issue — and the config endpoints sit
+  behind the identity gate, so a key holder can see the effects but never
+  change them. `tools/list` is filtered by it and `tools/call` enforces it,
+  so a client that cached an older listing still cannot reach a tool that
+  has since been switched off.
+- **Host**: production also serves the endpoint on the dedicated
+  `mcp.deepresearch.se` custom domain (same Worker, same code path), where
+  the bare origin answers as well as `/mcp` — clients disagree about
+  whether the configured URL includes the path — and a `GET` serves the
+  public setup page `public/connect/`. Usage is recorded through the same
+  `usage_events` path against the same quota; completed exchanges land in
+  the same interaction log (channel `mcp`).
 
 ## 8. The games seam (`src/games.js`)
 

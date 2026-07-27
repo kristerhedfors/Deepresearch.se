@@ -42,7 +42,10 @@ stores accounts, real-cost research quotas, the chat interaction log, and
 feedback threads. R2 and Vectorize hold encrypted cloud history and document RAG
 — implicit on this tier, so the tier is the choice rather than a per-account
 knob. An `/admin` console shows usage and approves users. The pipeline is also
-exposed as an MCP tool (`POST /mcp`, `deep_research`).
+exposed as an MCP tool (`POST /mcp`, `deep_research`) — point Claude Code or any
+other MCP client at `mcp.deepresearch.se` with an account-minted key, and choose
+which tools it may reach under Settings → MCP server ([setup
+instructions](https://mcp.deepresearch.se/)).
 
 The chat itself has several **modes**, each a pre-bundled agent over the same
 platform: Deep Research (the default), Introspection (the site answering
@@ -60,7 +63,7 @@ browser / PWA / MCP client ── Google OIDC session ──> Worker (src/index.
     │     ├── LLMs           src/providers.js → berget.js | anthropic.js | openai.js | hf-inference.js
     │     ├── web search     src/exa.js | src/websearch-cf.js (+ src/search-sources.js: hf.js, arxiv.js)
     │     └── enrichments    src/enrichment.js (via src/extensions.js: shodan.js, maps-enrichment.js)
-    ├── POST /mcp            src/mcp.js (deep_research + sdk_* tools)
+    ├── POST /mcp            src/mcp.js (deep_research + sdk_* tools; MCP key or session)
     ├── POST /api/exec/*     src/exec-container.js (DREE/1 → one container per session)
     ├── /admin, /api/admin/* admin console (usage, users, chatlogs, feedback)
     ├── D1  (accounts, quotas, config, chat_logs, feedback, answer recovery, game saves)
