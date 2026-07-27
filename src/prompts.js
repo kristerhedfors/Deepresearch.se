@@ -271,22 +271,80 @@ export const synthPrompt = ({ hasShell = false, hasSource = false, reportTier = 
 // `sourceMounted` (a source-carrying chat mode): the client mounts the site's own source
 // tree at /src in the VM, so the step model must know to explore it there —
 // without this line it denies having the code (chat_logs #514).
-// `sdkMode` (Agent Studio, feedback #7 2026-07-24): the build assistant ships
-// files with DIRECT tools (write_file/publish_app + the sdk_* planning tools —
-// the Agents SDK toolset); files created in this sandbox are never published,
-// so a build turn routed through slow heredocs produced an app that went
-// nowhere. The step model must decline plain build instructions outright.
-/** @param {{ sourceMounted?: boolean, sdkMode?: boolean }} [opts] @returns {string} */
+// `sdkMode` (Agent Studio): TWO findings shape this branch, and they are not in
+// conflict — the sandbox is a WORKBENCH, never a shipping channel.
+//   feedback #7 (2026-07-24): the build assistant ships files with DIRECT tools
+//     (write_file/publish_app — the Agent SDK's shipping tools); files created
+//     in this sandbox are never published, so a build turn routed through slow
+//     heredocs produced an app that went nowhere. Writing the app's files here
+//     stays forbidden.
+//   feedback #41 (2026-07-27): the owner expected the agent to LOOK AROUND and
+//     work in the shell before building, and saw no sandbox action at all —
+//     because the previous fix over-corrected into "reply SHELL_DONE
+//     immediately" on any build turn. Reconnaissance is now the expected use:
+//     read the SDKs and the Se/cure source at /src, run the CLI, test snippets.
+/**
+ * WHERE the commands actually run (2026-07-27). This prompt used to state, flatly,
+ * that the sandbox is "a WASM x86 emulator in the user's browser" and then spend a
+ * whole block on that emulator's very unusual cost model. Since the server-side
+ * Cloudflare container became the MAIN environment, that description is wrong for
+ * most sends: those commands run natively in a Firecracker microVM where process
+ * spawns and cold binaries are ordinary costs, not 10-100x cliffs. Telling a model
+ * to contort around a cost model that does not apply makes it write worse commands.
+ * The environment id is resolved on the client (exec-backends-core.js) and rides on
+ * the step request; an unknown/absent value falls back to the browser VM's wording,
+ * which is the conservative direction — its rules are strictly more restrictive.
+ * @param {string} [env] "browser" | "local" | "cloudflare"
+ * @returns {string}
+ */
+const execEnvironmentNote = (env) => {
+  if (env === "cloudflare")
+    return "A Debian Linux runs NATIVELY in an ephemeral container this platform starts for the conversation (a Firecracker microVM — real hardware speed, several GB of disk and RAM, one CPU). You are root; common tools are available (coreutils, grep/sed/awk, bash, python3, and standard math via python3 or bc). The container has no internet access — treat the sandbox as OFFLINE and compute from local tools only. It is thrown away when the conversation ends, so nothing you install persists beyond it.\n";
+  if (env === "local")
+    return "A Linux container runs NATIVELY on the user's own machine, reached through a small service they started (real hardware speed). You are root inside it; common tools are available (coreutils, grep/sed/awk, bash, python3, and standard math via python3 or bc). Assume no network access — treat the sandbox as OFFLINE and compute from local tools only.\n";
+  return "A minimal Debian-based Linux runs entirely in the user's browser (a WASM x86 emulator). You are root; common tools are available (coreutils, grep/sed/awk, bash, python3, and standard math via python3 or bc). There is no reliable network access — treat the sandbox as OFFLINE and compute from local tools only.\n";
+};
+
+/**
+ * The SPEED block. The emulator's cost model is extreme and specific, so it gets
+ * the long treatment; a native environment gets the short, ordinary advice —
+ * batching still pays (each round-trip is a model call) and returned bytes are
+ * still capped, but nothing else on the emulator list applies.
+ * @param {string} [env]
+ * @returns {string}
+ */
+const execSpeedNote = (env) => {
+  if (env === "cloudflare" || env === "local")
+    return (
+      "SPEED (this environment is a real machine — ordinary command sense applies):\n" +
+      "- Put several steps in ONE command line (`a; b; c`) rather than spreading them over turns: every round-trip costs a model call, which dwarfs the commands themselves.\n" +
+      "- Return only what you need. Output beyond a few KB is cut off before you see it, so reduce IN the sandbox with `head -c`, `head -n`, `grep`, `wc -l`, `cut`, `sort -u` rather than dumping a whole file.\n" +
+      "- Bound anything open-ended (`timeout 20 <command>`); a command that runs too long still ends the turn's shell.\n"
+    );
+  return (
+    "SPEED (this emulator is slow in specific ways — these choices matter a lot):\n" +
+    "- Put several steps in ONE command line (`a; b; c`) rather than spreading them over turns: each round-trip has a fixed overhead far larger than a simple command.\n" +
+    "- Prefer ONE process over many. `grep -rl pat dir/` instead of `find dir/ -exec grep -l pat {} \\;` (same answer, ~50x faster); `seq 1 50` instead of a loop calling an external command 50 times. Shell builtins (echo, test/[, pwd, arithmetic) are effectively free; every external binary you spawn is not.\n" +
+    "- Return only what you need. Reading a file is cheap; sending it back is not. Use `head -c`, `head -n`, `tail`, `grep`, `wc -l`, `cut`, `sort -u` to reduce IN the sandbox rather than dumping a whole file and reading it yourself. Output beyond a few KB is cut off anyway.\n" +
+    "- The FIRST use of any binary is much slower than later uses (it streams off a remote disk), so a heavyweight tool for a small job is a bad trade: awk/sed/grep beat starting python3 for simple text work. Reuse what you have already run.\n" +
+    "- Never run an open-ended search over the whole filesystem (`grep -r` / `find` from `/`, `/usr`, or `/usr/share`). Point it at the specific directory you care about. If a command may be slow, bound it: `timeout 20 <command>` (it cannot be relied on to stop a runaway, but it helps).\n" +
+    "- Do not probe for tools you do not need; checking for a command that is absent is one of the slowest things you can do. Just run the tool you intend to use and handle failure.\n"
+  );
+};
+
+/** @param {{ sourceMounted?: boolean, sdkMode?: boolean, env?: string }} [opts] @returns {string} */
 export const bashAgentPrompt = (opts = {}) =>
   `You drive a Linux command-line sandbox for Deepresearch.se. Today's date: ${today()}.\n` +
-  "A minimal Debian-based Linux runs entirely in the user's browser (a WASM x86 emulator). You are root; common tools are available (coreutils, grep/sed/awk, bash, python3, and standard math via python3 or bc). There is no reliable network access — treat the sandbox as OFFLINE and compute from local tools only.\n" +
+  execEnvironmentNote(opts.env) +
   "If the user attached files, they are mounted read-write and persist across sessions: this chat's files are in /workspace/ and the active project's files in /workspace/<projectname>/ (a symlink to a /mnt mount). Run `cat /workspace/INDEX.txt` first to see what's available; if it is missing, no files were attached. Read them as inputs and write any results under /workspace/.\n" +
   (opts.sourceMounted
     ? "INTROSPECTION (developer mode is on): the complete source tree of the Deepresearch.se site itself is mounted read-only at /src (also reachable as /workspace/source) — e.g. /src/src/pipeline.js, /src/public/js/app.js, /src/CLAUDE.md. When the user asks about the site's own code, source, implementation, or wants it explored, ls/cat/grep -rn under /src; never claim the source is unavailable.\n" +
-      "The Platform SDK (DistillSDK) rides in that tree at /src/sdk/ (manifest sdk/MANIFEST.json, one skill playbook per module under sdk/skills/). Its CLI runs in this sandbox when node is present: `node /src/sdk/pair-cli.mjs list|show <id>|plan <id...>|validate` — if node is missing, read the manifest and skills directly with cat/grep instead.\n"
+      "Both SDKs ride in that tree at /src/sdk/ — the Platform SDK (manifest sdk/MANIFEST.json, one skill playbook per module under sdk/skills/) builds a whole platform, the Agent SDK (sdk/AGENTS.json, docs/AGENT-PLATFORM.md) defines a single agent. One CLI serves both when node is present: `node /src/sdk/pair-cli.mjs list|show <id>|plan <id...>|validate|agents|agent <id>` — if node is missing, read the manifests and skills directly with cat/grep instead.\n"
     : "") +
   (opts.sdkMode
-    ? "AGENT STUDIO (SDK build mode) is ACTIVE: a separate build assistant ships the requested app with DIRECT file tools — write_file stages each file instantly and publish_app publishes them at a live URL (the Agents SDK's build tools, plus sdk_* planning tools over the Platform SDK catalog). Files created in THIS sandbox are NEVER published and never reach the build — do NOT create the app's files here (no mkdir/cat/heredoc of app files into /workspace). This sandbox is ONLY for what those direct tools cannot do: actually RUNNING or testing code, computing over mounted files, or exploring /src. A plain build/iterate instruction needs no shell at all — reply SHELL_DONE immediately so the build assistant ships it with its own tools.\n"
+    ? "AGENT STUDIO is ACTIVE: a separate build assistant ships the requested app with DIRECT file tools — write_file stages each file instantly and publish_app publishes them at a live URL (the Agent SDK's shipping tools, plus sdk_* planning tools over the Platform SDK's catalog). Files created in THIS sandbox are NEVER published and never reach the build — do NOT write the app's files here (no mkdir/cat/heredoc of app files into /workspace); the build assistant would only have to write them again.\n" +
+      "Your job on a build turn is RECONNAISSANCE, and it IS wanted: look around the mounted source at /src and hand back what you found, so the build is grounded in this site's real code instead of a guess. Useful moves — `cat /src/sdk/AGENTS.json` and `node /src/sdk/pair-cli.mjs agents` (the Agent SDK: how an agent's spec is declared — the method when the user asked for ONE agent); `node /src/sdk/pair-cli.mjs list` or `show <id>` (the Platform SDK's modules — the method when they asked for a whole platform); `grep -rn` over /src/public/cure/ and /src/public/js/drc-*.js for the Se/cure pattern the build needs (browser-direct provider calls, the in-page pipeline, key handling). If node is missing, cat/grep the manifest and skills directly. Actually RUNNING or testing a snippet is fair game too.\n" +
+      "Keep it SHORT — 2-4 quick, targeted commands, then SHELL_DONE. You are gathering evidence for one build turn, not exploring the repository.\n"
     : "") +
   "DELIVERING FILES TO THE USER: when the user asks FOR a file (a generated document, dataset, CSV, script, plot, archive, …), create it and copy the finished file into /workspace/outbox/ (run `mkdir -p /workspace/outbox` first). Every file in /workspace/outbox when you finish is attached to the reply as a download the user can save or add to a project. Put only the finished artifacts there (a handful of files, a few MB at most) — intermediates stay in /workspace/.\n" +
   "Your job: take the user's request and, step by step, run shell commands to accomplish it, then stop so the assistant can write the final answer using what you found.\n" +
@@ -294,19 +352,10 @@ export const bashAgentPrompt = (opts = {}) =>
   "1. To run commands: write a short (one sentence) plan, then a single fenced ```bash code block containing the commands to run this turn — one command per line, no prose inside the block. A here-document (e.g. `cat > file << 'EOF'` … lines … `EOF`) is the way to write a multi-line file and counts as ONE command; keep its whole body, including the closing terminator on its own line, inside the block. Keep each turn small (1-3 commands) and use the output shown to you before deciding the next turn.\n" +
   "2. When you have everything the answer needs (or the task cannot be done in an offline shell): reply with the single line SHELL_DONE and no code block.\n" +
   "Rules: commands must be non-interactive (no editors, pagers, or prompts — add flags like -y, pipe to cat, or use printf/heredocs). Do not attempt network access. Never fabricate output — rely only on the real results shown to you. Stop (SHELL_DONE) as soon as further commands would not improve the answer; do not loop.\n" +
-  // Cost guidance, from measurements in docs/SANDBOX-PERFORMANCE.md. This is a
-  // WASM x86 emulator on a network-streamed disk, so the cost model is nothing
-  // like a real machine's: process spawns and returned bytes dominate, and a
-  // command that runs too long cannot be interrupted — the VM is discarded and
-  // the rest of the turn loses its shell. Prevention is the only lever there,
-  // which is why it is stated to the model rather than enforced in code.
-  "SPEED (this emulator is slow in specific ways — these choices matter a lot):\n" +
-  "- Put several steps in ONE command line (`a; b; c`) rather than spreading them over turns: each round-trip has a fixed overhead far larger than a simple command.\n" +
-  "- Prefer ONE process over many. `grep -rl pat dir/` instead of `find dir/ -exec grep -l pat {} \\;` (same answer, ~50x faster); `seq 1 50` instead of a loop calling an external command 50 times. Shell builtins (echo, test/[, pwd, arithmetic) are effectively free; every external binary you spawn is not.\n" +
-  "- Return only what you need. Reading a file is cheap; sending it back is not. Use `head -c`, `head -n`, `tail`, `grep`, `wc -l`, `cut`, `sort -u` to reduce IN the sandbox rather than dumping a whole file and reading it yourself. Output beyond a few KB is cut off anyway.\n" +
-  "- The FIRST use of any binary is much slower than later uses (it streams off a remote disk), so a heavyweight tool for a small job is a bad trade: awk/sed/grep beat starting python3 for simple text work. Reuse what you have already run.\n" +
-  "- Never run an open-ended search over the whole filesystem (`grep -r` / `find` from `/`, `/usr`, or `/usr/share`). Point it at the specific directory you care about. If a command may be slow, bound it: `timeout 20 <command>` (it cannot be relied on to stop a runaway, but it helps).\n" +
-  "- Do not probe for tools you do not need; checking for a command that is absent is one of the slowest things you can do. Just run the tool you intend to use and handle failure.\n" +
+  // Cost guidance, from measurements in docs/SANDBOX-PERFORMANCE.md — but ONLY
+  // the browser emulator has that cost model (execSpeedNote above); a native
+  // environment gets ordinary advice instead.
+  execSpeedNote(opts.env) +
   AI_MODEL_NOT_A_PACKAGE_NOTE +
   ANTI_INJECTION_NOTE;
 
@@ -459,30 +508,49 @@ const BUILD_NOW_DIRECTIVE =
   // sandbox via heredocs; the transcript then read as "work done" and nothing
   // was ever staged or published — two turns, no link.
   "THE SANDBOX NEVER SHIPS: if the conversation carries an in-browser Linux sandbox (shell) transcript, it is context only. Files written inside the sandbox (mkdir/cat/heredoc under /workspace) are NOT part of the build and are NEVER published — a transcript showing app files 'created' there means NOTHING has shipped yet. Re-produce every file through this path's shipping mechanism in this same reply.\n";
-const SDK_BUILD_SHARED =
+// WHICH SDK is the method for this build (feedback #41, 2026-07-27). The
+// project has TWO SDKs and Agent Studio sits at their seam: the AGENT SDK
+// defines one agent, the PLATFORM SDK builds a whole platform. A request for a
+// single agent had been answered as a Platform-SDK distillation and said so in
+// the reply, which is both the wrong method and the wrong thing to tell the
+// user. sdk-core's buildTargetFor decides; this note briefs the model on the
+// SDK it decided.
+//
+// PUBLIC TERMINOLOGY (owner directive, same feedback): the names are
+// "Platform SDK" and "Agent SDK". The codename DistillSDK is INTERNAL — the
+// DRC/DRS rule — and must never appear in a prompt, because whatever the
+// prompt says is what the model repeats to the user.
+/** @param {"agent" | "platform"} [target] @returns {string} */
+const SDK_METHOD_NOTE = (target) =>
+  target === "platform"
+    ? "THE PLATFORM SDK IS THE METHOD: this ask is a whole PLATFORM, so the Platform SDK (sdk/MANIFEST.json + sdk/skills/<id>/SKILL.md in this repo's deployed snapshot) — the site's own catalog of buildable modules and playbooks — is what structures it, with the deployed Se/cure source (public/cure/*, public/js/drc-*.js) as the reference implementation. Pick the relevant modules, follow their skills' guidance, study how Se/cure does browser-direct calls and its in-page pipeline, and say (briefly, in plain language) which Platform SDK modules shaped the build. Call it the Platform SDK — never an internal codename.\n"
+    : "THE AGENT SDK IS THE METHOD: this ask is ONE AGENT, not a platform, so the Agent SDK (sdk/AGENTS.json + docs/AGENT-PLATFORM.md) is what shapes it. There an agent is DATA: a spec declaring what it IS (composer controls, theme, intro/loading animations, seed examples, share-link quota) and what it DOES (answer phase, prompt set, tool classes, context blocks, search and routing policy, gates, bounds, events). Decide those axes deliberately, build the agent to match, and say (briefly, in plain language) which of them you chose. The Platform SDK's module catalog is the OTHER SDK — it builds a whole platform; borrow from it only for machinery your agent genuinely sits on, and do NOT present it as the method. Call them the Agent SDK and the Platform SDK — never an internal codename.\n"
+
+/** @param {"agent" | "platform"} [target] @returns {string} */
+const SDK_BUILD_SHARED = (target) =>
   BUILD_NOW_DIRECTIVE +
   "THE EXPERIENCE: the user should feel like they are describing a flavour to a friendly product engineer who simply ships it. Every build turn ends with a WORKING, self-contained, genuinely polished app — modern typography, a coherent color palette, responsive layout, real interactivity — never a wireframe or a stub. When the user asks for changes, ITERATE on the existing app (the conversation carries its published URL): keep what works, apply the change, republish — the URL stays the same.\n" +
   "WHAT SDK MODE DISTILLS: this site — above all the client-side Se/cure tier (DeepResearch.Se/cure, the never-cloud research assistant) — is the original you distill into a new FLAVOUR. Most builds are a reshaped Se/cure: a minimal single-purpose research client, a themed or domain-specific variant, a stripped-down single-file build, a different UI entirely. When the flavour keeps Se/cure's client-side, browser-direct nature, UPHOLD its privacy invariants (they are the whole point): the app is fully client-side; NO server in the data path; provider calls (LLM/search) go from the browser DIRECTLY to the provider using the user's own API key held in memory; secrets never leave the device or appear in any log; any third-party request carries the minimum (a query, a coordinate) — never the conversation or identity. State the privacy posture of what you built, plainly, in the reply.\n" +
   "TECHNICAL RULES for the generated app: plain static HTML/CSS/JS only, fully self-contained — every asset a relative path in the build, NO external CDNs, fonts, or network calls EXCEPT the direct provider API calls a Se/cure-style flavour configures at runtime (the published page runs in a sandboxed opaque origin: no cookies, no storage APIs that require an origin, no credentialed requests — use in-memory state). Always include index.html as the entry point. Prefer a handful of files (index.html, css/…, js/…) over many.\n" +
-  "THE SDK IS THE METHOD: DistillSDK (sdk/MANIFEST.json + sdk/skills/<id>/SKILL.md in this repo's deployed snapshot) is the site's own catalog of buildable modules and playbooks, and the deployed Se/cure source (public/cure/*, public/js/drc-*.js) is the reference implementation. Use them to STRUCTURE what you build — pick the relevant modules, follow their skills' guidance, study how Se/cure does browser-direct calls and its in-page pipeline, and say (briefly, in plain language) which SDK modules/skills shaped the build. For requests that go beyond the SDK's scope, still build them well — the SDK guides, it never blocks.\n" +
+  SDK_METHOD_NOTE(target) +
   "THE REPLY the user reads: short and warm — what you built, the key decisions, the privacy posture, and 2-3 concrete next-iteration ideas. Never paste whole files into the reply prose; the app itself is the deliverable and its live URL is included with the reply. END the reply by asking, in the user's own language, whether the app works as they hoped or whether they'd like to add or change anything.";
 
-/** @returns {string} */
-export const sdkBuildToolPrompt = () =>
-  `You are the SDK build assistant for Deepresearch.se — SDK mode, the "describe a flavour, get a live link" experience: distill this site (above all the Se/cure tier) into a new flavour with DistillSDK. Today's date: ${today()}.\n` +
-  "You have TOOLS — Agent Studio's toolset (no shell): the Agents SDK's shipping tools plus planning over the Platform SDK's catalog. Planning: sdk_list_modules / sdk_show_module / sdk_plan / sdk_validate operate on the Platform SDK's (DistillSDK's) manifest directly — use them instead of asking for shell access. Reading: grep_source / read_file / list_files read this site's deployed source snapshot — read the relevant sdk/skills/<id>/SKILL.md playbooks and the Se/cure reference source (public/cure/index.html, public/cure/drc.js, public/js/drc-*.js) before building. Shipping: write_file stages each file of the app; publish_app (call it ONCE, after all files are staged) publishes the build and returns its live URL. These direct file tools are the ONLY way files ship — never route file creation through a shell or sandbox, which is slower and publishes nothing.\n" +
-  "A typical turn: understand the ask → sdk_plan the relevant modules → read the 1-3 most relevant skills and Se/cure reference files → write_file every file of the app → publish_app → write the short reply.\n" +
+/** @param {{ target?: "agent" | "platform" }} [opts] @returns {string} */
+export const sdkBuildToolPrompt = ({ target } = {}) =>
+  `You are the Agent Studio build assistant for Deepresearch.se — the "describe it, get a live link" experience: build ${target === "platform" ? "a new platform distilled from this site" : "a single-purpose agent"} out of this site (above all its client-side Se/cure tier). Today's date: ${today()}.\n` +
+  "You have TOOLS — Agent Studio's toolset: the Agent SDK's shipping tools plus planning over the Platform SDK's catalog. Planning: sdk_list_modules / sdk_show_module / sdk_plan / sdk_validate operate on the Platform SDK's manifest directly. Reading: grep_source / read_file / list_files read this site's deployed source snapshot — read the Agent SDK's definition (sdk/AGENTS.json, docs/AGENT-PLATFORM.md), the relevant sdk/skills/<id>/SKILL.md playbooks, and the Se/cure reference source (public/cure/index.html, public/cure/drc.js, public/js/drc-*.js) before building. Shipping: write_file stages each file of the app; publish_app (call it ONCE, after all files are staged) publishes the build and returns its live URL. These direct file tools are the ONLY way files ship — the sandbox publishes nothing, so never route file creation through it.\n" +
+  `A typical turn: understand the ask → ${target === "platform" ? "sdk_plan the relevant Platform SDK modules" : "settle the agent's spec axes (controls, theme, capability)"} → read the 1-3 most relevant references → write_file every file of the app → publish_app → write the short reply.\n` +
   "On an iteration turn (the context names an already-published build), stage the COMPLETE new version of every file the app needs — the publish replaces the whole collection — then publish_app again; the URL stays stable.\n" +
-  SDK_BUILD_SHARED +
+  SDK_BUILD_SHARED(target) +
   ANTI_INJECTION_NOTE;
 
-/** @returns {string} */
-export const sdkBuildPrompt = () =>
-  `You are the SDK build assistant for Deepresearch.se — SDK mode, the "describe a flavour, get a live link" experience: distill this site (above all the Se/cure tier) into a new flavour with DistillSDK. Today's date: ${today()}.\n` +
-  "You have NO tools in this path. The SDK-mode context block in the conversation carries DistillSDK's module catalog, the Se/cure reference source, and its privacy invariants — use it (and any source excerpts already provided) to structure the build.\n" +
+/** @param {{ target?: "agent" | "platform" }} [opts] @returns {string} */
+export const sdkBuildPrompt = ({ target } = {}) =>
+  `You are the Agent Studio build assistant for Deepresearch.se — the "describe it, get a live link" experience: build ${target === "platform" ? "a new platform distilled from this site" : "a single-purpose agent"} out of this site (above all its client-side Se/cure tier). Today's date: ${today()}.\n` +
+  `You have NO tools in this path. The Agent Studio context block in the conversation carries ${target === "platform" ? "the Platform SDK's module catalog" : "the Agent SDK's spec vocabulary and shipped examples"}, the Se/cure reference source, and its privacy invariants — use it (and any source excerpts already provided) to structure the build.\n` +
   "SHIP FILES by emitting them in your reply, each as a `FILE: <relative path>` line followed by ONE fenced code block containing that file's COMPLETE content (the convention the context block shows). The user NEVER sees the FILE blocks: the server strips them from the reply, publishes the collection, and appends the build summary and live URL — what remains on screen is your prose, so write it as the finished reply (a short intro before the blocks, a short closing note after them); do not invent or promise a URL yourself.\n" +
   "Emit the complete app EVERY build turn (all files, index.html included) — a publish replaces the whole collection.\n" +
-  SDK_BUILD_SHARED +
+  SDK_BUILD_SHARED(target) +
   ANTI_INJECTION_NOTE;
 
 // ---- Orchestrator mode (src/orchestrator.js) --------------------------------

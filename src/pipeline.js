@@ -112,6 +112,7 @@ import {
   buildSdkContextBlock,
   buildSecureSourceDigest,
   makeFileLineScanner,
+  buildTargetFor,
   manifestFromSnapshot,
   parseFileBlocks,
   runSdkTool,
@@ -121,6 +122,10 @@ import {
   stripFileBlocks,
 } from "./sdk-tools.js";
 import { publishBuild } from "./build-pub.js";
+// The Agent SDK's definition core — Agent Studio's method when the ask is ONE
+// agent (feedback #41). Read out of the SAME snapshot the build already loaded,
+// so what the model designs against is by construction the deployed registry.
+import { agentsFromSnapshot, buildAgentSdkDigest } from "../public/js/agent-spec-core.js";
 import { feedbackRequested, feedbackComment, buildFeedbackContext, cannedFeedbackAck, feedbackImagesFromParts, feedbackScope } from "./feedback.js";
 import { parseUseCaseRef } from "./testpoints.js";
 import { loadSourceSnapshot } from "./introspect.js";
@@ -889,11 +894,25 @@ async function sdkSnapshot(ctx) {
 /** @param {PipelineCtx} ctx */
 async function runSdkBuild(ctx) {
   const { state } = ctx;
-  ctx.step("plan", "SDK mode…");
-  ctx.stepDone("plan", "SDK mode — distilling a flavour with DistillSDK");
+  ctx.step("plan", "Agent Studio…");
+  // WHICH SDK is the method (feedback #41): one agent → the Agent SDK, a whole
+  // platform → the Platform SDK. Classified deterministically from the user's
+  // own words (sdk-core buildTargetFor, EN+SV), so the step the user watches
+  // names the same SDK the model is briefed on — and neither says the internal
+  // codename.
+  const target = buildTargetFor(ctx.cleanLastUser);
+  ctx.stepDone(
+    "plan",
+    target === "platform"
+      ? "Agent Studio — building a platform with the Platform SDK"
+      : "Agent Studio — building an agent with the Agent SDK",
+  );
   const snapshot = await sdkSnapshot(ctx);
   const manifest = manifestFromSnapshot(snapshot);
   if (!manifest) ctx.log.warn("sdk.manifest_missing", {});
+  // The Agent SDK's own material rides on an agent build (fail-soft: no
+  // registry in the snapshot just means the digest is omitted).
+  const agentBlock = target === "agent" ? buildAgentSdkDigest(agentsFromSnapshot(snapshot)) : "";
   // Deterministically gather the actual Se/cure reference source (a bounded
   // digest of the real files, straight from the snapshot) and put it in front
   // of the model on BOTH paths. Without this the deterministic fallback saw
@@ -904,6 +923,7 @@ async function runSdkBuild(ctx) {
   const toolsOn = introspectionToolsAvailable(ctx);
   ctx.log.info("sdk.build_gate", {
     tools: toolsOn,
+    target,
     model: ctx.model,
     manifest: !!manifest,
     snapshot_files: snapshot?.files?.length || 0,
@@ -912,13 +932,13 @@ async function runSdkBuild(ctx) {
   });
   if (toolsOn) {
     try {
-      return await runSdkBuildTools(ctx, snapshot, manifest, secureDigest);
+      return await runSdkBuildTools(ctx, snapshot, manifest, secureDigest, { target, agentBlock });
     } catch (/** @type {any} */ err) {
       ctx.log.warn("sdk.tools_failed", { model: ctx.model, error: err?.message || String(err) });
       // fall through to the deterministic FILE-block path
     }
   }
-  return runSdkBuildDeterministic(ctx, manifest, secureDigest);
+  return runSdkBuildDeterministic(ctx, manifest, secureDigest, { target, agentBlock });
 }
 
 /**
@@ -959,8 +979,9 @@ const sdkBuildTitle = (ctx) => ctx.cleanLastUser.replace(/\s+/g, " ").trim().sli
 // sdkReplyTail (+ SDK_ITERATION_QUESTION / endsWithQuestion) lives in
 // pipeline-inputs.js — the feedback-#13 closing shape both build paths share.
 
-/** @param {PipelineCtx} ctx @param {any} snapshot @param {any} manifest @param {string} secureDigest */
-async function runSdkBuildTools(ctx, snapshot, manifest, secureDigest) {
+/** @param {PipelineCtx} ctx @param {any} snapshot @param {any} manifest @param {string} secureDigest
+ *  @param {{ target: "agent" | "platform", agentBlock: string }} sdk which SDK is the method */
+async function runSdkBuildTools(ctx, snapshot, manifest, secureDigest, sdk) {
   const readBudget = { used: 0 };
   /** @type {Map<string, string>} */
   const staged = new Map();
@@ -969,7 +990,7 @@ async function runSdkBuildTools(ctx, snapshot, manifest, secureDigest) {
   let calls = 0;
   const fileCheck = snapshotFileCheck(snapshot);
   const buildSlug = /** @type {any} */ (ctx.state).buildSlug;
-  ctx.step("source", "Distilling with DistillSDK…");
+  ctx.step("source", sdk.target === "platform" ? "Building with the Platform SDK…" : "Building with the Agent SDK…");
 
   // The snapshot readers (read the real Se/cure source) only make sense with a
   // snapshot to read; the SDK planning tools + build tools always ride.
@@ -1000,13 +1021,19 @@ async function runSdkBuildTools(ctx, snapshot, manifest, secureDigest) {
     // without it the model treats sandbox-heredoc'd files as already shipped
     // and stages nothing (feedback #7, chat_logs #583).
     (ctx.shellBlock ? `${shellReplyMessages(ctx.shellBlock, { sdkBuild: true })[0].content}\n\n` : "") +
-    buildSdkContextBlock(manifest, { toolMode: true, buildUrl: buildSlug ? `/app/${buildSlug}/` : null, secureDigest }) +
+    buildSdkContextBlock(manifest, {
+      toolMode: true,
+      buildUrl: buildSlug ? `/app/${buildSlug}/` : null,
+      secureDigest,
+      target: sdk.target,
+      agentBlock: sdk.agentBlock,
+    }) +
     "\n\nBuild it now: the Se/cure source digest above is your starting material — read_file only for detail it omits, stage every file with write_file, publish_app once, then write the short reply.";
 
   const startedAt = Date.now();
   const result = await anthropicToolRun(ctx.env, {
     model: ctx.model,
-    system: phasePrompt(ctx.state, "build", "answer-tools")(),
+    system: phasePrompt(ctx.state, "build", "answer-tools")({ target: sdk.target }),
     userContent: userText,
     tools,
     maxRounds: capBound(ctx.state.capability, "maxRounds", MAX_SDK_TOOL_ROUNDS),
@@ -1090,8 +1117,9 @@ async function runSdkBuildTools(ctx, snapshot, manifest, secureDigest) {
   ctx.stepDone("synth", "Report drafted");
 }
 
-/** @param {PipelineCtx} ctx @param {any} manifest @param {string} secureDigest */
-async function runSdkBuildDeterministic(ctx, manifest, secureDigest) {
+/** @param {PipelineCtx} ctx @param {any} manifest @param {string} secureDigest
+ *  @param {{ target: "agent" | "platform", agentBlock: string }} [sdk] which SDK is the method */
+async function runSdkBuildDeterministic(ctx, manifest, secureDigest, sdk = { target: "agent", agentBlock: "" }) {
   const buildSlug = /** @type {any} */ (ctx.state).buildSlug;
   // The FILE-block convention + catalog/Se/cure reference (incl. the source
   // digest) ride the conversation (the introspection-enrichment append pattern)
@@ -1101,6 +1129,8 @@ async function runSdkBuildDeterministic(ctx, manifest, secureDigest) {
     toolMode: false,
     buildUrl: buildSlug ? `/app/${buildSlug}/` : null,
     secureDigest,
+    target: sdk.target,
+    agentBlock: sdk.agentBlock,
   });
   const convo = /** @type {Conversation} */ (withAppendedText(ctx.conversation, block));
   ctx.step("synth", "Building the app…");
@@ -1159,7 +1189,7 @@ async function runSdkBuildDeterministic(ctx, manifest, secureDigest) {
   });
   const draft =
     (await streamCompletion(buffered, [
-      { role: "system", content: phasePrompt(ctx.state, "build", "answer")() },
+      { role: "system", content: phasePrompt(ctx.state, "build", "answer")({ target: sdk.target }) },
       ...shellReplyMessages(ctx.shellBlock, { sdkBuild: true }),
       ...withImageNudge(convo),
     ])) || "";

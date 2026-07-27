@@ -1101,7 +1101,7 @@ export function findAgent(reg, id) {
 
 /** @param {any} reg @returns {string} */
 export function renderAgentList(reg) {
-  const lines = ["Agents (sdk/AGENTS.json) — DistillSDK flavours of the Se/cure + Se/rver pair:", ""];
+  const lines = ["Agents (sdk/AGENTS.json) — the Agent SDK's shipped specs, flavours of the Se/cure + Se/rver pair:", ""];
   for (const a of reg?.agents || []) {
     const ctrls = (a.controls || []).map((/** @type {any} */ c) => c.id || c.type).join(", ");
     lines.push(`  ${a.id}  (${a.platform})  ${a.name}`);
@@ -1109,6 +1109,51 @@ export function renderAgentList(reg) {
     lines.push(`      controls: ${ctrls}`);
   }
   return lines.join("\n").trimEnd();
+}
+
+/**
+ * The AGENT SDK digest Agent Studio puts in front of the build model when the
+ * user asked for ONE AGENT (feedback #41, 2026-07-27 — a single-agent request
+ * had been answered as a Platform SDK distillation). It teaches the shape an
+ * agent is DEFINED in — rendered from the live vocabularies in this module, so
+ * it cannot drift from what a spec may actually declare — and shows the
+ * shipped specs as worked examples.
+ *
+ * Pure and bounded: no I/O, and the agent list is the only part that grows
+ * with the registry.
+ * @param {any} reg the parsed sdk/AGENTS.json (agentsFromSnapshot), or null
+ * @returns {string}
+ */
+export function buildAgentSdkDigest(reg) {
+  /** @param {Record<string, any>} o */
+  const keys = (o) => Object.keys(o).join(" | ");
+  const parts = [
+    "The AGENT SDK (sdk/AGENTS.json, docs/AGENT-PLATFORM.md) — how an agent is DEFINED here:",
+    "",
+    "An agent is DATA, not code: a spec that SELECTS from shipped behaviour. Design yours along these axes, and say in the reply which you chose.",
+    "",
+    "WHAT IT IS (the chat-input pane the user meets):",
+    `  controls   — ordered, from: ${CONTROL_TYPES.join(" | ")}`,
+    "  theme      — --agent-accent / --agent-accent-soft / --agent-bg / --agent-fg",
+    `  intro + loading — the greeting and the waiting symbol; backdrop: ${BACKDROP_KINDS.join(" | ")}`,
+    "  examples   — the seed prompts an empty chat offers",
+    `  quota      — a share link's metered budget (windows: ${QUOTA_WINDOWS.join(" | ")})`,
+    `  platform   — ${PLATFORM_TYPES.join(" | ")} (client = Se/cure-style, no server in the data path)`,
+    "",
+    "WHAT IT DOES (the capability block — spec 0.2.0):",
+    `  answerPhase   — ${keys(ANSWER_PHASES)}`,
+    `  promptSet     — ${keys(PROMPT_SETS)}`,
+    `  tools         — ${keys(TOOL_CLASSES)}   (fallback for models without tool use: ${TOOL_FALLBACKS.join(" | ")})`,
+    `  contextBlocks — ${keys(CONTEXT_BLOCKS)}`,
+    `  events        — ${keys(CAPABILITY_EVENTS)}`,
+    `  gates         — ${Object.keys(GATE_IDS).join(" | ")}`,
+    "  bounds        — maxRounds / maxTokens / timeoutMs",
+    "",
+    "RULES a spec must respect (they are the platform's invariants, not style): the answer phase and its tools are SELECTED, never newly defined; the planning phases stay on the fixed reliable model while the answer runs on the user's pick; a client-platform agent keeps the server out of the data path; every deterministic intent gate must take Swedish and English equally.",
+  ];
+  const list = renderAgentList(reg);
+  if (reg?.agents?.length) parts.push("", "Shipped specs, as worked examples:", "", list);
+  return parts.join("\n");
 }
 
 // ---- the composer model + markup (the "an agent IS its composer" renderer) ---

@@ -27,6 +27,7 @@ import {
   DEFAULT_RUNNER_URL,
   SERVER_EXEC_BASE,
   execBackendsFor,
+  resolveExecBackend,
   newExecSession,
   normalizeExecBackend,
   probeRunner,
@@ -47,9 +48,10 @@ const SESSION_KEY = "dr_exec_session";
 // ---- the browser-local config ------------------------------------------------
 
 /**
- * This device's execution-environment choice, normalized. Defaults to the
- * in-browser VM — including when storage is unavailable (private mode), which
- * is the safe direction: the tier's original behavior.
+ * This device's execution-environment choice, normalized but NOT resolved: an
+ * untouched setting reads as EXEC_AUTO, which is what the picker needs in order
+ * to distinguish "never chosen" from "deliberately picked the browser VM".
+ * Everything that asks WHERE COMMANDS RUN wants `execEnvResolved()` instead.
  * @returns {{backend: string, baseUrl: string, key: string}}
  */
 export function execEnvCfg() {
@@ -76,6 +78,18 @@ export function setExecEnvCfg(cfg) {
   return clean;
 }
 
+/**
+ * This device's choice with the default RESOLVED — the concrete environment the
+ * next send will actually use. On Se/rver an untouched setting is the cloud
+ * container whenever this deploy carries the binding (owner directive,
+ * 2026-07-27: server-side execution is the main environment); without the
+ * binding, and on any other tier, it stays the in-browser VM.
+ * @returns {{backend: string, baseUrl: string, key: string}}
+ */
+export function execEnvResolved() {
+  return resolveExecBackend(execEnvCfg(), { tier: "server", container: execContainerAvailable() });
+}
+
 /** Whether this device is set up to run commands on a local runner. */
 export function localRunnerActive() {
   return usesLocalRunner(execEnvCfg());
@@ -88,12 +102,12 @@ export function localRunnerActive() {
  * the CheerpX mount reset, and which environment collects the deliverables.
  */
 export function remoteRunnerActive() {
-  return usesRemoteRunner(execEnvCfg(), "server");
+  return usesRemoteRunner(execEnvCfg(), "server", { container: execContainerAvailable() });
 }
 
 /** Whether this device is set up to run commands in the server-side container. */
 export function serverContainerActive() {
-  return execEnvCfg().backend === "cloudflare" && execContainerAvailable();
+  return execEnvResolved().backend === "cloudflare";
 }
 
 /**
@@ -209,8 +223,12 @@ export function execEnvSettingsMarkup() {
   // The cloud container is offered only when this deploy actually carries the
   // container binding (/api/settings `available.exec_container`) — the same
   // hide-when-unavailable discipline as the key-gated extension knobs.
+  // An untouched setting has no id of its own, so the picker shows the row it
+  // RESOLVES to — otherwise the panel would claim the browser VM while the cloud
+  // container is what actually runs.
+  const shown = resolveExecBackend(cfg, { tier: "server", container: execContainerAvailable() }).backend;
   const options = execBackendsFor("server", { container: execContainerAvailable() })
-    .map((b) => `<option value="${b.id}"${b.id === cfg.backend ? " selected" : ""}>${b.label}</option>`)
+    .map((b) => `<option value="${b.id}"${b.id === shown ? " selected" : ""}>${b.label}</option>`)
     .join("");
   return `
     <div class="settings-item" id="execenvrow">
@@ -229,7 +247,7 @@ export function execEnvSettingsMarkup() {
         <label class="setting-note">API key <span class="muted">(optional)</span>
           <input id="execenvkey" type="password" autocomplete="off" placeholder="only if your runner needs one" value="${escapeAttr(cfg.key)}" style="width:100%;margin-top:.2rem"></label>
       </div>
-      <button type="button" id="execenvtest"${cfg.backend === "browser" ? " hidden" : ""} style="align-self:flex-start;margin-top:.4rem">Test connection</button>
+      <button type="button" id="execenvtest"${shown === "browser" ? " hidden" : ""} style="align-self:flex-start;margin-top:.4rem">Test connection</button>
       <p id="execenvstatus" class="muted setting-note"></p>
     </div>`;
 }
@@ -309,5 +327,5 @@ export function wireExecEnvSettings() {
     show("Checking " + (cfg.backend === "cloudflare" ? "this platform's container service" : probeCfg.baseUrl) + " …");
     show(runnerStatusLine(await probeRunner(probeCfg)));
   });
-  show(execEnvStatusText(execEnvCfg()));
+  show(execEnvStatusText(execEnvResolved()));
 }

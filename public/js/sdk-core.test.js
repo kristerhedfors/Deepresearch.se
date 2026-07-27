@@ -4,7 +4,7 @@
 // The manifest-operation helpers themselves (validate/close/order/render) are
 // covered by sdk/pair-cli.test.mjs, which re-imports the same functions
 // through the CLI façade — one implementation, two suites' entry points.
-import test from "node:test";
+import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   BUILD_TOOLS,
@@ -16,6 +16,7 @@ import {
   buildFilesSummary,
   buildSdkContextBlock,
   buildSecureSourceDigest,
+  buildTargetFor,
   makeFileLineScanner,
   manifestFromSnapshot,
   parseFileBlocks,
@@ -178,20 +179,77 @@ test("headlines + summaries: legible activity labels", () => {
   assert.deepEqual(buildFilesSummary([["index.html", "<h1>x</h1>"]]), ["index.html (10 bytes)"]);
 });
 
-test("buildSdkContextBlock: DistillSDK catalog + Se/cure reference + privacy invariants; convention for the no-tools path only", () => {
+test("buildSdkContextBlock: Platform SDK catalog + Se/cure reference + privacy invariants; convention for the no-tools path only", () => {
   const m = manifestFromSnapshot(snapshot());
-  const detBlock = buildSdkContextBlock(m, { toolMode: false });
-  assert.match(detBlock, /DistillSDK module catalog/);
+  const detBlock = buildSdkContextBlock(m, { toolMode: false, target: "platform" });
+  assert.match(detBlock, /Platform SDK module catalog/);
   assert.match(detBlock, /public\/cure\/drc\.js/); // points at the real Se/cure source to distill
   assert.match(detBlock, /PRIVACY INVARIANTS/);
   assert.match(detBlock, /flavour/i);
   assert.match(detBlock, /FILE: index\.html/); // deterministic path teaches the convention
-  const toolBlock = buildSdkContextBlock(m, { toolMode: true, buildUrl: "/app/x-1234/" });
+  const toolBlock = buildSdkContextBlock(m, { toolMode: true, buildUrl: "/app/x-1234/", target: "platform" });
   assert.doesNotMatch(toolBlock, /FILE: index\.html/);
   assert.match(toolBlock, /sdk_\* tools/); // tool path names the planners
   assert.match(toolBlock, /grep_source/); // tool path names the snapshot readers
   assert.match(toolBlock, /\/app\/x-1234\//);
   assert.match(buildSdkContextBlock(null, {}), /could not be loaded/);
+});
+
+// Feedback #41 (2026-07-27): a request for ONE agent ("a single-purpose
+// legal-research agent") was built — and described to the user — as a Platform
+// SDK distillation, which is the method for standing up a whole platform.
+describe("which SDK builds this (feedback #41)", () => {
+  test("buildTargetFor defaults to the agent and takes a platform ask in EN and SV", () => {
+    // The default: an ordinary Agent Studio ask is ONE agent.
+    assert.equal(buildTargetFor("Build a single-purpose legal-research agent in deep blue"), "agent");
+    assert.equal(buildTargetFor("bygg en enkel researchassistent i mörkblått"), "agent");
+    assert.equal(buildTargetFor(""), "agent");
+    assert.equal(buildTargetFor("make me a todo app"), "agent");
+
+    // Swedish parity, one case per EN concept (invariant 6).
+    const platform = [
+      ["build me a whole research platform", "bygg en hel researchplattform"],
+      ["I want the entire site, my own copy", "jag vill ha hela sajten, en egen kopia"],
+      ["distil both tiers into a new product", "destillera båda nivåerna till en ny produkt"],
+      ["give me a clone of the deepresearch site", "ge mig en klon av deepresearch-sajten"],
+      ["a full-stack version of this", "en fullstack-version av det här"],
+    ];
+    for (const [en, sv] of platform) {
+      assert.equal(buildTargetFor(en), "platform", `EN: ${en}`);
+      assert.equal(buildTargetFor(sv), "platform", `SV: ${sv}`);
+    }
+  });
+
+  test("an agent build is briefed on the Agent SDK, a platform build on the Platform SDK", () => {
+    const m = manifestFromSnapshot(snapshot());
+    const agent = buildSdkContextBlock(m, { toolMode: true, target: "agent", agentBlock: "AGENT-REGISTRY-DIGEST" });
+    assert.match(agent, /build an AGENT with the Agent SDK/);
+    assert.match(agent, /AGENT SDK is the method/i);
+    assert.match(agent, /AGENT-REGISTRY-DIGEST/); // the Agent SDK's own material rides along
+    // The Platform SDK is still offered, but explicitly as the OTHER SDK.
+    assert.match(agent, /the OTHER SDK/);
+
+    const platform = buildSdkContextBlock(m, { toolMode: true, target: "platform", agentBlock: "AGENT-REGISTRY-DIGEST" });
+    assert.match(platform, /build a PLATFORM with the Platform SDK/);
+    assert.match(platform, /PLATFORM SDK is the method/i);
+    assert.doesNotMatch(platform, /AGENT-REGISTRY-DIGEST/); // not the method here
+  });
+
+  // The codename is INTERNAL (the DRC/DRS rule). Whatever the context block
+  // says is what the model repeats to the user — which is exactly how
+  // "distilling a flavour with DistillSDK" reached the owner's screen.
+  test("no internal codename reaches the model in any variant of the block", () => {
+    const m = manifestFromSnapshot(snapshot());
+    for (const target of /** @type {const} */ (["agent", "platform"])) {
+      for (const toolMode of [true, false]) {
+        const block = buildSdkContextBlock(m, { toolMode, target, agentBlock: "x" });
+        assert.doesNotMatch(block, /DistillSDK/i, `${target}/${toolMode}`);
+      }
+    }
+    assert.doesNotMatch(buildSdkContextBlock(null, {}), /DistillSDK/i);
+    // The tool descriptions are read by the model AND by MCP clients.
+    for (const t of SDK_TOOLS) assert.doesNotMatch(t.description, /DistillSDK/i, t.name);
+  });
 });
 
 test("sourceSkeleton: keeps the shape-bearing lines per language, drops the body", () => {

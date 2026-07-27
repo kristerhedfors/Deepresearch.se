@@ -8,13 +8,16 @@
 //
 // fetch is injected everywhere, so it runs in `node --test` with no network.
 
-import { test } from "node:test";
+import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
 import {
   DEFAULT_RUNNER_URL,
   DREE_PROTOCOL,
+  EXEC_AUTO,
   EXEC_BACKENDS,
+  defaultExecBackend,
+  resolveExecBackend,
   MIN_REMOTE_EXEC_TIMEOUT_MS,
   REMOTE_EXEC_TIMEOUT_MS,
   execBackend,
@@ -70,10 +73,75 @@ test("the default runner URL is the reference runner's localhost port", () => {
 
 // ---- normalization ----------------------------------------------------------
 
-test("normalizeExecBackend falls back to the browser VM for anything unknown", () => {
-  assert.deepEqual(normalizeExecBackend(null), { backend: "browser", baseUrl: "", key: "" });
-  assert.equal(normalizeExecBackend({ backend: "wat" }).backend, "browser");
+test("normalizeExecBackend falls back to EXEC_AUTO — 'no pick yet' — for anything unknown", () => {
+  assert.deepEqual(normalizeExecBackend(null), { backend: EXEC_AUTO, baseUrl: "", key: "" });
+  assert.equal(normalizeExecBackend({ backend: "wat" }).backend, EXEC_AUTO);
   assert.equal(normalizeExecBackend({ backend: "local" }).backend, "local");
+  // An explicit pick is never rewritten — including an explicit browser VM,
+  // which is what makes "chose the browser" distinguishable from "never chose".
+  assert.equal(normalizeExecBackend({ backend: "browser" }).backend, "browser");
+  assert.equal(normalizeExecBackend({ backend: EXEC_AUTO }).backend, EXEC_AUTO);
+});
+
+// 2026-07-27 owner directive: the server-side Cloudflare container is the MAIN
+// execution environment — live, native-speed, proven in production (chat_logs
+// #677 ran eight commands in a Firecracker microVM). An untouched setting on
+// Se/rver therefore resolves to it, while Se/cure is unchanged.
+describe("the resolved default environment", () => {
+  test("an untouched setting is the cloud container on Se/rver, the browser VM everywhere else", () => {
+    const auto = normalizeExecBackend(null);
+    assert.equal(resolveExecBackend(auto, { tier: "server", container: true }).backend, "cloudflare");
+    // No binding on this deploy → the environment does not exist to default to.
+    assert.equal(resolveExecBackend(auto, { tier: "server", container: false }).backend, "browser");
+    // Se/cure never reaches the container: the tier gate is what forbids it,
+    // and it applies to the DEFAULT exactly as it applies to an explicit pick.
+    assert.equal(resolveExecBackend(auto, { tier: "secure", container: true }).backend, "browser");
+    // A caller that does not state its tier lands on the safe side.
+    assert.equal(resolveExecBackend(auto, { container: true }).backend, "browser");
+  });
+
+  test("an explicit pick always wins over the default", () => {
+    const opts = { tier: "server", container: true };
+    assert.equal(resolveExecBackend({ backend: "browser" }, opts).backend, "browser");
+    assert.equal(resolveExecBackend({ backend: "local", baseUrl: "http://x" }, opts).backend, "local");
+  });
+
+  test("selectRunner routes an untouched Se/rver setting to the container, Se/cure to the browser", () => {
+    const browser = { boot: async () => true, exec: async () => ({ exitCode: 0, stdout: "", stderr: "" }), reset: () => {} };
+    // The flip: no config at all, Se/rver, container available → NOT the browser bridge.
+    assert.notEqual(selectRunner(null, browser, { tier: "server", container: true }), browser);
+    // Every other combination still hands back the browser bridge UNCHANGED —
+    // the "default path stays byte-identical" rule, now scoped to the tiers and
+    // deploys that genuinely have no other environment.
+    assert.equal(selectRunner(null, browser, { tier: "server", container: false }), browser);
+    assert.equal(selectRunner(null, browser, { tier: "secure", container: true }), browser);
+    assert.equal(selectRunner(null, browser, {}), browser);
+    assert.equal(selectRunner({ backend: "browser" }, browser, { tier: "server", container: true }), browser);
+  });
+
+  test("usesServerContainer and usesRemoteRunner agree with the resolver", () => {
+    assert.equal(usesServerContainer(normalizeExecBackend(null), "server", { container: true }), true);
+    assert.equal(usesServerContainer(normalizeExecBackend(null), "server", { container: false }), false);
+    assert.equal(usesServerContainer(normalizeExecBackend(null), "secure", { container: true }), false);
+    assert.equal(usesRemoteRunner(normalizeExecBackend(null), "server", { container: true }), true);
+    assert.equal(usesRemoteRunner(normalizeExecBackend(null), "secure", { container: true }), false);
+  });
+
+  test("defaultExecBackend is the one place the direction is decided", () => {
+    assert.equal(defaultExecBackend({ tier: "server", container: true }), "cloudflare");
+    assert.equal(defaultExecBackend({ tier: "server" }), "browser");
+    assert.equal(defaultExecBackend({ tier: "secure", container: true }), "browser");
+    assert.equal(defaultExecBackend(), "browser");
+  });
+
+  // EXEC_AUTO is the ABSENCE of a pick, not a place — so it must never appear
+  // as a row a user could select in either tier's picker.
+  test("EXEC_AUTO is never offered as a pickable environment", () => {
+    for (const tier of ["secure", "server"]) {
+      const ids = execBackendsFor(tier, { container: true }).map((b) => b.id);
+      assert.ok(!ids.includes(EXEC_AUTO), tier);
+    }
+  });
 });
 
 test("normalizeExecBackend trims trailing slashes and whitespace", () => {

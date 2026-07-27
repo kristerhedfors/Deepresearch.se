@@ -102,7 +102,7 @@ import { wireBarTint } from "/js/bar-tint.js";
 import { DRC_RECENT_TURNS, ensureDrcRag, indexDrcChatTurns, retrieveDrcContext } from "/js/drc-rag.js";
 import { runDrcResearch } from "/js/drc-research.js";
 import { runBackendSearch as runDirectBackendSearch } from "/js/websearch-backends-core.js";
-import { normalizeExecBackend, probeRunner, runnerStatusLine, usesLocalRunner } from "/js/exec-backends-core.js";
+import { normalizeExecBackend, probeRunner, resolveExecBackend, runnerStatusLine, usesLocalRunner } from "/js/exec-backends-core.js";
 import { EXA_SETTING_INFO, exaStatusText, getExaEnabled, getSearchSource, setExaEnabled } from "/js/search-source.js";
 import { ensureSandboxBooted, sandboxIdle, sandboxSupported, setSandboxImage } from "/js/sandbox.js";
 import { hideTerminalIcon, showTerminalIcon } from "/js/agent-backdrop.js";
@@ -2782,7 +2782,10 @@ function renderSearchBackend() {
 
 /** The sealed exec-environment config, normalized (exec-backends-core.js). */
 function execBackendCfg() {
-  return normalizeExecBackend(state && state.execBackend);
+  // Resolved against Se/cure's OWN tier: the cloud container is Se/rver-only, so
+  // an untouched setting here is always the in-browser VM — the tier's original
+  // behaviour, unchanged by the 2026-07-27 Se/rver default flip.
+  return resolveExecBackend(state && state.execBackend, { tier: "secure" });
 }
 
 /** Reflects the sealed exec config into the settings section and wires edits. */

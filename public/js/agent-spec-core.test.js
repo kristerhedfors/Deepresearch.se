@@ -11,6 +11,7 @@ import { dirname, join } from "node:path";
 import {
   BACKDROP_KINDS,
   CONTROL_TYPES,
+  TOOL_CLASSES,
   CONTROL_REGISTRY,
   PLATFORM_TYPES,
   QUOTA_WINDOWS,
@@ -25,6 +26,7 @@ import {
   agentsFromSnapshot,
   findAgent,
   renderAgentList,
+  buildAgentSdkDigest,
   renderAgentShow,
   composerMarkup,
   composerModel,
@@ -272,4 +274,32 @@ test("backdrop is a closed per-agent axis: validated, resolved, rendered", () =>
   const reg = realRegistry();
   assert.equal(findAgent(reg, "research").backdrop.kind, "terminal");
   assert.equal(findAgent(reg, "under-construction").backdrop.kind, "none");
+});
+
+// Feedback #41 (2026-07-27): a request for ONE agent was answered as a
+// Platform SDK distillation. Agent Studio now briefs the build model on the
+// AGENT SDK instead — this digest is that briefing, rendered from the live
+// vocabularies so it cannot drift from what a spec may actually declare.
+test("buildAgentSdkDigest teaches the spec shape from the live vocabularies", () => {
+  const digest = buildAgentSdkDigest(realRegistry());
+  assert.match(digest, /The AGENT SDK/);
+  assert.match(digest, /sdk\/AGENTS\.json/);
+  // WHAT IT IS — every control type a spec may name is offered.
+  for (const c of CONTROL_TYPES) assert.ok(digest.includes(c), `control: ${c}`);
+  // WHAT IT DOES — the capability axes (spec 0.2.0).
+  for (const key of ["answerPhase", "promptSet", "tools", "contextBlocks", "events", "gates", "bounds"]) {
+    assert.ok(digest.includes(key), `axis: ${key}`);
+  }
+  for (const t of Object.keys(TOOL_CLASSES)) assert.ok(digest.includes(t), `tool class: ${t}`);
+  // The shipped specs ride as worked examples…
+  assert.match(digest, /Shipped specs, as worked examples/);
+  assert.match(digest, /research/);
+  // …and the internal codename never does (the DRC/DRS rule): this text goes
+  // straight into the model's context, and the model repeats what it reads.
+  assert.doesNotMatch(digest, /DistillSDK/i);
+  assert.doesNotMatch(renderAgentList(realRegistry()), /DistillSDK/i);
+  // Fail-soft: no registry in the snapshot still yields the spec vocabulary.
+  const bare = buildAgentSdkDigest(null);
+  assert.match(bare, /The AGENT SDK/);
+  assert.doesNotMatch(bare, /Shipped specs/);
 });

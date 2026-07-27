@@ -7,9 +7,13 @@
 // files created in the sandbox are never published; shipping goes through
 // Agent Studio's build tools (sdk-core.js BUILD_TOOLS).
 //
-// The sandbox is a JavaScript x86 Linux emulator (CheerpX) that boots IN THE
-// BROWSER (public/js/sandbox.js) — the server never runs a shell — so the
-// agentic loop is client-orchestrated. The model proposes shell commands in a
+// WHERE the commands run is a CHOICE (public/js/exec-backends-core.js): the
+// in-browser CheerpX x86 emulator (public/js/sandbox.js), a DREE/1 runner on
+// the user's own machine, or — Se/rver only, and its DEFAULT since 2026-07-27 —
+// an ephemeral Cloudflare container. The loop below is client-ORCHESTRATED in
+// every case (the browser drives the rounds and calls the executor), which is
+// what lets Se/cure keep the server out of the data path entirely; on Se/rver's
+// default the commands themselves do run on the server. The model proposes shell commands in a
 // plain fenced ```bash block (a TEXT convention — NO function calling,
 // invariant 1, so this works on any model in the catalog), the browser sandbox
 // runs them, the output feeds back, and it loops until the model is done. The
@@ -129,6 +133,39 @@ export function bashIntent(text) {
   const t = String(text || "").toLowerCase();
   if (!t.trim()) return false;
   return SHELL_PATTERNS.some((re) => re.test(t));
+}
+
+// Does an AGENT STUDIO (SDK-mode) send run the shell pre-pass? Feedback #41
+// (2026-07-27): the owner asked for a build and expected the agent to look
+// around and work in the shell — there was none, because feedback #7's fix
+// (sandbox files never ship, so don't route a build through heredocs) had been
+// implemented as "skip the sandbox entirely on any plain build turn".
+//
+// The two hold together once the sandbox is read as a WORKBENCH: a build turn
+// DOES get a shell — for reconnaissance over the source mounted at /src (both
+// SDKs, the Se/cure reference) and for running or testing snippets — while
+// shipping stays exclusively with write_file/publish_app. bashAgentPrompt's
+// sdkMode branch carries that brief and caps it at a few commands, and the
+// transcript rides into the build framed as context only (shellReplyMessages
+// { sdkBuild: true }), which is what stops the model treating it as shipped.
+//
+// The cost depends entirely on WHERE the commands run, and on Se/rver that is
+// the server-side Cloudflare container by default (2026-07-27) — a native
+// Firecracker microVM with a ~1-3 s cold start, so recon before a build is
+// cheap. It is only the in-browser CheerpX VM (Se/cure, a deploy without the
+// container binding, or a deliberate pick) that pays the ~25 s emulated boot.
+// Callers with no sandbox at all never reach here — the knob is checked first.
+/**
+ * What the shell pre-pass is FOR on this send — `"recon"` on an Agent Studio
+ * build turn (look around /src, then hand the findings to the build tools),
+ * `"task"` when the user actually asked for shell work, `"skip"` never here
+ * (the caller's own skips — knob off, feedback text, a pure model question —
+ * are checked before this).
+ * @param {{ sdkMode: boolean, shellAsk: boolean }} o
+ * @returns {"recon" | "task"}
+ */
+export function shellPrePassPurpose({ sdkMode, shellAsk }) {
+  return sdkMode && !shellAsk ? "recon" : "task";
 }
 
 // The intent patterns. English and Swedish are kept side by side, one pair

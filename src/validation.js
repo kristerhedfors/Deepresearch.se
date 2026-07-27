@@ -252,7 +252,7 @@ const MAX_SWARM_RESULT_CHARS = 8000;
  * small, whitelisted shape for the chat log — untrusted, so every field is
  * typed and bounded. Undefined (dropped by JSON.stringify) when absent.
  * @param {any} d
- * @returns {{ coi: boolean|null, bl: boolean, sb: boolean, ran: number, css: string, sab: boolean, ua: string, fs: ({ n: number, b: number, proj: boolean, drop: number, ms: number, err: string } | undefined), sw: ({ died: 0|1, kind: string, phase: string, round: number, members: number, conc: number, mb: number, cls: string, ago: number } | undefined) } | undefined}
+ * @returns {{ coi: boolean|null, bl: boolean, sb: boolean, ran: number, css: string, sab: boolean, ua: string, xb: string, fs: ({ n: number, b: number, proj: boolean, drop: number, ms: number, err: string } | undefined), sw: ({ died: 0|1, kind: string, phase: string, round: number, members: number, conc: number, mb: number, cls: string, ago: number } | undefined) } | undefined}
  */
 export function sanitizeClientDiag(d) {
   if (!d || typeof d !== "object") return undefined;
@@ -264,6 +264,14 @@ export function sanitizeClientDiag(d) {
     css: typeof d.css === "string" ? d.css.slice(0, 16) : "",
     sab: d.sab === true,
     ua: typeof d.ua === "string" ? d.ua.slice(0, 140) : "",
+    // WHICH execution environment this send resolved to — a closed vocabulary
+    // (browser | local | cloudflare), never a URL, so a user's own runner
+    // address never reaches a log. Added 2026-07-27: the diagnostic recorded
+    // whether a sandbox COULD run and how many commands it ran, but never
+    // WHERE, so a transcript could not be attributed to an environment at all
+    // — the gap that let "the browser VM is the sandbox" survive after the
+    // cloud container became the main one.
+    xb: EXEC_DIAG_BACKENDS.includes(d.xb) ? String(d.xb) : "",
     // The last sandbox filesystem-mount summary (public/js/sandbox.js
     // sandboxFsSummary): whether files mounted, how many, total bytes, a
     // project mount, dropped count, boot ms, and any error — so a mount
@@ -277,6 +285,9 @@ export function sanitizeClientDiag(d) {
     sw: sanitizeSwarmDiag(d.sw),
   };
 }
+
+/** The execution environments `xb` may name — mirrors EXEC_BACKENDS in public/js/exec-backends-core.js. */
+const EXEC_DIAG_BACKENDS = ["browser", "local", "cloudflare"];
 
 /** The run phases a breadcrumb may name — mirrors RUN_PHASES in public/js/ondevice-core.js. */
 const SWARM_DIAG_PHASES = ["start", "spawn", "diverge", "critique", "converge", "synthesis", "done"];

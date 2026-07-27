@@ -33,6 +33,31 @@ The acronyms DRC/DRS are INTERNAL names (code identifiers, CLAUDE.md,
 skills, commit messages) and must not appear in user-facing copy
 (2026-07-12 directive: having a third name pair confuses readers).
 
+## The two SDKs: Platform SDK and Agent SDK (2026-07-27 directive)
+
+**The public names are the Platform SDK and the Agent SDK.** They are the two
+SDKs distilled from this repo, and Agent Studio sits at their seam:
+
+- The **Platform SDK** builds a whole DeepResearch-like platform — the module
+  catalog `sdk/MANIFEST.json` plus one skill playbook per module.
+- The **Agent SDK** defines a single agent — the spec registry
+  `sdk/AGENTS.json`, `docs/AGENT-PLATFORM.md`, `public/js/agent-spec-core.js`.
+
+**DistillSDK is the Platform SDK's INTERNAL codename**, with exactly the same
+split as DRC/DRS: fine in code identifiers, comments, CLAUDE.md, skills and
+commit messages; never in user-facing copy. That includes **prompts and
+context blocks**, which is the trap this rule was written for: whatever
+briefs the model is what the model repeats to the user. The codename reached
+a live answer as the step label "distilling a flavour with DistillSDK"
+(feedback #41), which was wrong twice over: the internal name, and the wrong
+SDK for a single-agent build. `sdk-core.js`, `agent-spec-core.js` and
+`prompts.js` carry unit tests asserting the codename appears in no
+model-visible string.
+
+Where an existing published text launched the codename deliberately (the
+Swedish article series in `public/js/account-articles*.js`) it stays as
+written; it is a dated record, not live UI.
+
 ## Workspace, not "project" (2026-07-25 directive)
 
 **A named place where research happens is a WORKSPACE, in both tiers.** The
