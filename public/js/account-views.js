@@ -92,7 +92,9 @@ export function settingSelectRow({ id, label, options, value, disabled, popId, i
 
 // The Chat mode picker's dropdown options (account-views + the composer #modesel
 // share the underlying chat-mode.js state). Kept in sync with CHAT_MODES.
-const CHAT_MODE_OPTIONS = [
+// Exported because it is the ONE agent-label table: history-ui.js's live-session
+// list names each session's agent from it rather than keeping a second copy.
+export const CHAT_MODE_OPTIONS = [
   { value: "normal", label: "Deep Research" },
   { value: "introspection", label: "Introspection" },
   { value: "sdk", label: "Agent Studio" },

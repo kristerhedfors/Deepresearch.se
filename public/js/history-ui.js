@@ -6,6 +6,8 @@
 // offering a feature that silently can't persist anything.
 
 import { cachedChatMode } from "./chat-mode.js";
+import { CHAT_MODE_OPTIONS } from "./account-views.js";
+import { currentSessionId, liveSessions, takeOverSession } from "./session.js";
 import { renderShowcaseGallery } from "./sdk-showcase.js";
 import { escapeHtml } from "./notifications.js";
 import {
@@ -174,9 +176,60 @@ export function initHistorySidebar(opts = {}) {
   const TRASH_SVG =
     '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
 
+  /** The display label for an agent id, from the one shared table. */
+  function agentLabel(id) {
+    return CHAT_MODE_OPTIONS.find((o) => o.value === id)?.label || "Deep Research";
+  }
+
+  /**
+   * The OTHER sessions open in this browser (session-core.js listSessions) —
+   * added 2026-07-27 with per-session isolation. Now that a new tab is a new
+   * session rather than a second view of the same one, the sessions have to be
+   * discoverable from somewhere, and the history drawer is where "which
+   * conversation am I in" is already answered.
+   *
+   * Only sessions with a conversation are listed: an empty one has nothing to
+   * show and nothing to go back to. Labels are the AGENT plus whether another tab
+   * is currently on it — no titles, because a session record deliberately holds
+   * no message-derived text (privacy invariant 4); the title comes from the
+   * conversation row when the session is opened.
+   * @returns {string} HTML, or "" when this is the only session
+   */
+  function sessionsBlock() {
+    const mine = currentSessionId();
+    const others = liveSessions().filter((s) => s.sid !== mine && s.convId);
+    if (!others.length) return "";
+    const rows = others
+      .map(
+        (s) => `
+      <button type="button" class="session-row" data-sid="${escapeHtml(s.sid)}">
+        <span class="session-row-agent">${escapeHtml(agentLabel(s.agent))}</span>
+        <span class="session-row-state">${s.busy ? "researching" : s.held ? "open in another tab" : "idle"}</span>
+      </button>`,
+      )
+      .join("");
+    return `<div class="session-group"><p class="session-group-h">Other sessions</p>${rows}</div>`;
+  }
+
+  /** Wire the session rows: picking one moves THIS tab onto that session. */
+  function wireSessionRows() {
+    list.querySelectorAll(".session-row").forEach((el) => {
+      el.addEventListener("click", () => {
+        const target = /** @type {HTMLElement} */ (el).dataset.sid;
+        // Reload rather than re-derive: the agent, the workspace mount and the
+        // history all hang off the session id, and app.js's boot is what wires
+        // them. takeOverSession has already moved this tab's attachment, so the
+        // reload comes back on the chosen session.
+        if (target && takeOverSession(target)) location.reload();
+      });
+    });
+  }
+
   function renderList(items) {
+    const sessions = sessionsBlock();
     if (!items.length) {
-      list.innerHTML = '<p class="muted">No saved conversations yet.</p>';
+      list.innerHTML = sessions + '<p class="muted">No saved conversations yet.</p>';
+      wireSessionRows();
       return;
     }
     const activeId = currentConversationId();
@@ -187,7 +240,7 @@ export function initHistorySidebar(opts = {}) {
     // iOS Safari (2026-07-08 device incident; Linux WebKit can't
     // reproduce it). The strip is mounted lazily by attachSwipe when a
     // swipe or hover actually happens, and removed again on close.
-    list.innerHTML = items
+    list.innerHTML = sessions + items
       .map(
         (c) => `
       <div class="history-item${c.id === activeId ? " active" : ""}" data-id="${c.id}">
@@ -199,6 +252,7 @@ export function initHistorySidebar(opts = {}) {
       )
       .join("");
 
+    wireSessionRows();
     list.querySelectorAll(".history-item").forEach(attachSwipe);
     list.querySelectorAll(".history-open").forEach((el) => {
       el.addEventListener("click", () => {

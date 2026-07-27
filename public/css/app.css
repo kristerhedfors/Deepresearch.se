@@ -6,7 +6,7 @@
      that cached assets before the no-cache policy never revalidate on
      their own — 2026-07-08 incident, second file class after JS modules).
      Bump BOTH here and in app.js when they must move together. */
-  --css-version: h53;
+  --css-version: h54;
   --bg: #6fc3fd;
   --panel: #f2f9ff;
   --panel-2: #e2f1ff;
@@ -2997,3 +2997,66 @@ a.mdl-id:hover { color: var(--accent); text-decoration: underline; }
   max-height: 24rem; overflow-y: auto;
 }
 .mdl-embed-list .mdl-card { background: var(--panel); }
+
+/* The duplicate-tab notice (`.session-notice`, public/js/app.js
+   offerSessionTakeover). Shown when this tab was attached to a session ANOTHER
+   live tab holds — a duplicated tab, or a restored window group. The tab has
+   already been given a fresh session and is fully usable, so this is a passive
+   status strip with an offer, never a modal that blocks it (UX-19). Docked above
+   the composer rather than over it so it cannot swallow a tap on the input. */
+.session-notice {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 5.5rem);
+  z-index: 9;
+  display: flex; align-items: center; gap: .6rem;
+  max-width: min(560px, calc(100vw - 1.5rem));
+  padding: .5rem .6rem .5rem .8rem;
+  font-size: .82rem; line-height: 1.4;
+  background: var(--panel); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 6px 24px rgba(4, 30, 60, .28);
+}
+.session-notice-act {
+  flex: none; padding: .3rem .7rem; font-size: .8rem;
+  border-radius: 8px; border: 1px solid var(--accent);
+  background: transparent; color: var(--accent); cursor: pointer;
+}
+.session-notice-act:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.session-notice-close {
+  flex: none; width: 1.6rem; height: 1.6rem; padding: 0;
+  display: grid; place-items: center;
+  font-size: 1.05rem; line-height: 1;
+  border: 0; border-radius: 8px;
+  background: transparent; color: var(--muted); cursor: pointer;
+}
+.session-notice-close:hover { color: var(--fg); }
+@media (prefers-reduced-motion: no-preference) {
+  .session-notice { animation: session-notice-in .18s ease-out; }
+}
+@keyframes session-notice-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* "Other sessions" in the history drawer (public/js/history-ui.js
+   sessionsBlock). Since per-session isolation (2026-07-27) a new tab is a new
+   session, so the other live sessions need to be reachable from somewhere; this
+   is that list. A row names the AGENT and its state — never a title, because a
+   session record holds no message-derived text by design. */
+.session-group { margin: 0 0 .75rem; }
+.session-group-h {
+  margin: 0 0 .35rem; padding: 0 .15rem;
+  font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--muted);
+}
+.session-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: .6rem;
+  width: 100%; margin: 0 0 .25rem; padding: .45rem .6rem;
+  text-align: left; font-size: .84rem;
+  background: rgba(255, 255, 255, .35);
+  border: 1px solid var(--border); border-radius: 10px;
+  color: var(--fg); cursor: pointer;
+}
+.session-row:hover { background: rgba(255, 255, 255, .55); }
+.session-row-agent { font-weight: 600; }
+.session-row-state { flex: none; font-size: .74rem; color: var(--muted); }

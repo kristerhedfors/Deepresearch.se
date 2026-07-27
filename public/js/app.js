@@ -25,13 +25,22 @@ import { refreshProjects, setActiveProject } from "./projects.js";
 import { initProjectsUi } from "./projects-ui.js";
 import { bashLiteOn, chatModesAvailable, loadSettings, setChatMode } from "./settings.js";
 import { releaseExecSession } from "./exec-env.js";
-import { adoptServerChatMode, applyChatModeTheme, cachedChatMode } from "./chat-mode.js";
+import { accountChatMode, adoptServerChatMode, applyChatModeTheme, cachedChatMode } from "./chat-mode.js";
+import {
+  claimResumeTarget,
+  detachSession,
+  heartbeatNow,
+  initSession,
+  sessionConfig,
+  setSessionConfig,
+  takeOverSession,
+} from "./session.js";
 import { modeCarriesSource } from "./chat-mode-core.js";
 import { applyModeBackdrop } from "./mode-backdrop.js";
 import { barTint } from "./mode-theme.js";
 import { wireBarTint } from "./bar-tint.js";
 import { cachedSandboxMode, clearIsolationGuard, isolateForSandbox, storeSandboxMode } from "./sandbox-mode.js";
-import { setSandboxImage } from "./sandbox.js";
+import { setSandboxImage, setSandboxSession } from "./sandbox.js";
 import { hideTerminalIcon, showTerminalIcon } from "./agent-backdrop.js";
 import {
   initIntrospectUi,
@@ -46,7 +55,6 @@ import { onDeckAsk } from "./imagedeck.js";
 import { pullNewer, syncToServer } from "./sync.js";
 import { initHistorySidebar } from "./history-ui.js";
 import { initModels, selectedModelId, selectModel } from "./models.js";
-import { readPending } from "./pending-answer.js";
 import {
   clearHistory,
   conversationAsText,
@@ -83,13 +91,61 @@ const send = document.getElementById("send");
 // `?.` because a click cannot land before then.
 let starters = null;
 
+/**
+ * A guarded localStorage read — used for the legacy browser-global keys that are
+ * now only SEEDS for a new session (`model`, `budget_s`, `web_search`). Storage
+ * can throw outright in private mode, and a boot must never die on a seed.
+ * @param {string} k
+ * @returns {string | null}
+ */
+function safeLocal(k) {
+  try {
+    return localStorage.getItem(k);
+  } catch {
+    return null;
+  }
+}
+
+// ---- THE SESSION (session.js / session-core.js) --------------------------
+// Resolved FIRST, before anything reads a mode or a knob, because a session IS
+// the agent + the workspace + the history and every one of those is read below.
+//
+// This is what makes several tabs usable (owner report, 2026-07-27): a new tab
+// gets a NEW session rather than joining whatever the last tab was doing. The
+// seeds are the account's cached pick and this device's last-used send settings,
+// so a fresh tab still opens in the agent and at the budget you left — it just
+// stops SHARING them live with every other tab.
+const sessionBoot = initSession({
+  agent: accountChatMode(),
+  config: {
+    model: safeLocal("model") || "",
+    budgetS: parseInt(safeLocal("budget_s") || "", 10) || null,
+    webSearch: safeLocal("web_search") !== "off",
+  },
+});
+// Keep the VM's per-session overlay pointed at this session (sandbox-files.js
+// sandboxOverlayIds). Set before any boot — bootVM reads it at device time,
+// exactly like setSandboxImage.
+setSandboxSession(sessionBoot.sid);
+// Closing the tab hands the session back immediately instead of making the next
+// tab wait out the lease's stale window. pagehide (not unload) is the event iOS
+// actually delivers; the stale window remains the real guarantee for a crash.
+window.addEventListener("pagehide", () => detachSession());
+// A tab returning to the foreground may have missed many heartbeats while
+// backgrounded (timers are throttled or frozen); beat at once so it is not
+// briefly mistaken for a dead tab by a sibling deciding what it may resume.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) heartbeatNow();
+});
+
 // Chat-mode theme (Normal / Introspection titanium / SDK green) — applied
-// FIRST, synchronously, from the local cache (chat-mode.js) so a returning
+// FIRST, synchronously, from this SESSION's agent (chat-mode.js) so a returning
 // introspection- or SDK-mode user (a PWA relaunch reads the device-cached
 // shell before /api/settings answers) paints the right pane tint with no
 // flash. The server's authoritative chat_mode is adopted below once
-// loadSettings() resolves. { persist: false }: this is reading the cache, not
-// making a new decision.
+// loadSettings() resolves — and only as a seed for a NEW session, so a reload
+// cannot drag this tab into another tab's agent. { persist: false }: this is
+// reading the session, not making a new decision.
 applyChatModeTheme(cachedChatMode(), { persist: false });
 // The mode's agent BACKGROUND (mode-theme.js `backdrop` axis): mount the
 // rotating workflow graph behind the chat in Orchestrator mode; terminal
@@ -184,12 +240,18 @@ const account = initAccountPanel();
 // deliberately not awaited — the app is fully usable while it runs.
 loadSettings()
   .then((s) => {
-    // Adopt the server's stored chat mode — the authoritative copy, so a mode
-    // picked on another device lands here. It is a plain cache write plus a
-    // repaint: the server has already forced it to Normal if the modes are
-    // unavailable, so there is no downgrade rule on this side. The dropdown and
-    // the agent backdrop mirror the result.
-    const effective = adoptServerChatMode(s);
+    // Adopt the server's stored chat mode — the authoritative copy of the
+    // ACCOUNT DEFAULT, so a mode picked on another device lands here. The server
+    // has already forced it to Normal if the modes are unavailable, so there is
+    // no downgrade rule on this side. The dropdown and the agent backdrop mirror
+    // the result.
+    //
+    // `seed` is what keeps sessions isolated: a NEW session opens in the
+    // account's agent, while a session this tab RESUMED across a reload keeps
+    // the agent it is running. Without that distinction a reload would pull the
+    // tab into whatever agent another tab last pushed to the account — half of
+    // the reported "I get another agent in the new tab" symptom.
+    const effective = adoptServerChatMode(s, { seed: sessionBoot.status !== "resumed" });
     syncModeSelect(effective);
     applyModeBackdrop(effective);
     // Reconcile the local sandbox-knob cache with the server's authoritative
@@ -246,8 +308,15 @@ const budgetVal = document.getElementById("budgetval");
 const budgetTime = document.getElementById("budgettime");
 const budgetTierEl = document.getElementById("budgettier");
 let budgetS = 60;
-const savedBudget = parseInt(localStorage.getItem("budget_s"), 10);
-if (savedBudget >= BUDGET_MIN_S && savedBudget <= BUDGET_MAX_S) budgetS = savedBudget;
+// From THIS SESSION (seeded, on a new session, from the device's last-used value
+// — see the session block at the top). Before 2026-07-27 these knobs were read
+// and written as browser-global localStorage, so loading a conversation in one
+// tab silently retuned every other tab's next send (applyRecordSettings wrote
+// budget_s / web_search / model straight to localStorage).
+const savedBudget = sessionConfig().budgetS;
+if (Number.isFinite(savedBudget) && savedBudget >= BUDGET_MIN_S && savedBudget <= BUDGET_MAX_S) {
+  budgetS = /** @type {number} */ (savedBudget);
+}
 budgetSlider.value = secondsToPos(budgetS);
 const updateBudgetVal = () => {
   const tier = budgetTier(budgetS);
@@ -255,10 +324,32 @@ const updateBudgetVal = () => {
   budgetTierEl.textContent = tier.label;
   budgetVal.title = "Research time target · " + tier.desc;
 };
+/**
+ * Record the composer knobs. TWO destinations, deliberately:
+ *   - the SESSION, which is what the next send in this tab reads, and
+ *   - the device SEED (the legacy `budget_s` / `web_search` keys), which is only
+ *     what a brand-new tab opens at, so "it remembers where I left the slider"
+ *     still holds across tabs and relaunches.
+ * `seed:false` writes the session alone — used when the values came from a
+ * loaded conversation, which is that session's business and must not become
+ * every future tab's default.
+ * @param {{ seed?: boolean }} [opts]
+ */
+function persistKnobs(opts) {
+  setSessionConfig({ budgetS, webSearch: webSearchBox.checked });
+  if (opts?.seed === false) return;
+  try {
+    localStorage.setItem("budget_s", String(budgetS));
+    localStorage.setItem("web_search", webSearchBox.checked ? "on" : "off");
+  } catch {
+    /* private mode — the session copy above is what the send uses anyway */
+  }
+}
+
 budgetSlider.addEventListener("input", () => {
   budgetS = posToSeconds(Number(budgetSlider.value));
   updateBudgetVal();
-  localStorage.setItem("budget_s", String(budgetS));
+  persistKnobs();
 });
 updateBudgetVal();
 
@@ -272,9 +363,9 @@ updateBudgetVal();
 // output depth. It therefore no longer disables/dims when search is off.
 
 const webSearchBox = document.getElementById("websearch");
-webSearchBox.checked = localStorage.getItem("web_search") !== "off";
+webSearchBox.checked = sessionConfig().webSearch;
 webSearchBox.addEventListener("change", () => {
-  localStorage.setItem("web_search", webSearchBox.checked ? "on" : "off");
+  persistKnobs();
 });
 
 // WHO runs the searches is NOT this knob's business (owner directive,
@@ -635,10 +726,12 @@ function applyRecordSettings(record) {
     budgetS = record.budgetS;
     budgetSlider.value = secondsToPos(budgetS);
     updateBudgetVal();
-    localStorage.setItem("budget_s", String(budgetS));
   }
   webSearchBox.checked = record.webSearch !== false;
-  localStorage.setItem("web_search", webSearchBox.checked ? "on" : "off");
+  // seed:false — a loaded conversation's settings belong to THIS session only.
+  // Writing them to the device seed is exactly the cross-tab clobber this
+  // change removes: opening an old chat here must not retune a new tab there.
+  persistKnobs({ seed: false });
   refreshSdkBuildChip(record.buildSlug || null); // this conversation's own build, if any
   syncCopyState(); // …and the loaded conversation is copyable
 }
@@ -690,17 +783,69 @@ function setSendMode(streaming) {
   send.title = streaming ? "Stop generating" : "Send";
 }
 
-// Resume-across-relaunch: if a previous session kicked off research and was
-// discarded (a backgrounded PWA iOS reclaimed) before the answer arrived,
-// reopen that conversation and poll the server-parked answer back. The
-// research finished on the server regardless (src/chat.js's ctx.waitUntil);
-// this collects it. Fire-and-forget and fail-soft — never blocks boot. The
-// button reflects the streaming state so a tap Stops rather than sends,
-// resetting whatever the outcome.
-if (readPending()) setSendMode(true);
-resumePendingAnswer({ onLoad: applyRecordSettings })
+// Resume-across-relaunch: if a session kicked off research and was discarded (a
+// backgrounded PWA iOS reclaimed) before the answer arrived, reopen that
+// conversation and poll the server-parked answer back. The research finished on
+// the server regardless (src/chat.js's ctx.waitUntil); this collects it.
+// Fire-and-forget and fail-soft — never blocks boot. The button reflects the
+// streaming state so a tap Stops rather than sends, resetting whatever the
+// outcome.
+//
+// claimResumeTarget() — NOT a bare read of a global pointer — is what makes this
+// safe with several tabs open (the reported bug, 2026-07-27). It hands back only
+// an answer THIS tab may collect: its own session's, or, when no other tab is
+// alive, an orphaned one (the cold-relaunch case this whole feature exists for).
+// A second tab opened alongside a running one gets null and boots into its own
+// fresh session instead of hijacking the research, clearing the other tab's
+// marker and acking the server's parked copy away. The full rule is
+// session-core.js resumeTarget.
+const resumeAim = claimResumeTarget();
+if (resumeAim) setSendMode(true);
+resumePendingAnswer(resumeAim, { onLoad: applyRecordSettings })
   .catch(() => {})
   .finally(() => setSendMode(false));
+
+// The duplicate-tab case: this tab was attached to a session that ANOTHER live
+// tab holds (initSession status "held" — a duplicated tab, or a restored window
+// group). It has already been given a fresh session so it is usable right now;
+// the notice just offers the alternative, because silently sharing one session
+// would mean two writers on one workspace and one history (owner's choice-not-
+// silent-share rule, 2026-07-27).
+if (sessionBoot.status === "held" && sessionBoot.heldSid) offerSessionTakeover(sessionBoot.heldSid);
+
+/**
+ * Offer to move this tab onto a session another tab is holding. Rendered with
+ * the existing notice affordance rather than a modal: the tab already works, so
+ * this must never block it (UX-18 — a visible control always does something).
+ * @param {string} target the held session id
+ */
+function offerSessionTakeover(target) {
+  const bar = document.createElement("div");
+  bar.className = "session-notice";
+  bar.setAttribute("role", "status");
+  const label = document.createElement("span");
+  label.textContent = "That chat is open in another tab. This tab started a new one.";
+  const take = document.createElement("button");
+  take.type = "button";
+  take.className = "session-notice-act";
+  take.textContent = "Open it here instead";
+  const dismiss = document.createElement("button");
+  dismiss.type = "button";
+  dismiss.className = "session-notice-close";
+  dismiss.setAttribute("aria-label", "Dismiss");
+  dismiss.textContent = "×";
+  bar.append(label, take, dismiss);
+  take.addEventListener("click", () => {
+    // Taking over reloads: the agent, the workspace mount and the history all
+    // hang off the session id, and re-deriving them in place would mean
+    // re-running most of this file. A reload re-enters initSession, which now
+    // finds the session attached to THIS tab.
+    if (takeOverSession(target)) location.reload();
+    else bar.remove(); // the other tab ended it in the meantime
+  });
+  dismiss.addEventListener("click", () => bar.remove());
+  document.body.appendChild(bar);
+}
 
 // ---- First-visit privacy notice (acknowledgement kept in a cookie) --------
 
@@ -896,7 +1041,7 @@ input.addEventListener("keydown", (e) => {
 // every module was current. If the marker doesn't match, fetch the
 // stylesheet with cache:"reload" (bypasses AND overwrites the cached
 // entry) and swap the link so the fresh rules apply without a reload.
-const CSS_VERSION = "h53";
+const CSS_VERSION = "h54";
 try {
   const seen = getComputedStyle(document.documentElement).getPropertyValue("--css-version").trim();
   if (seen !== CSS_VERSION) {
@@ -1001,14 +1146,14 @@ initTestpoints({
     },
     setSearch: (on) => {
       webSearchBox.checked = !!on;
-      localStorage.setItem("web_search", on ? "on" : "off");
+      persistKnobs();
     },
     setBudget: (sec) => {
       if (!Number.isFinite(sec)) return;
       budgetS = Math.min(Math.max(sec, BUDGET_MIN_S), BUDGET_MAX_S);
       budgetSlider.value = secondsToPos(budgetS);
       updateBudgetVal();
-      localStorage.setItem("budget_s", String(budgetS));
+      persistKnobs();
     },
     selectModel: (m) => selectModel(m),
   },

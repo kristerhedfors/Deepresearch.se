@@ -548,3 +548,38 @@ export function sourceStamp(entries) {
   for (const e of entries) mix(e.path + ":" + e.bytes.length + ";");
   return (h >>> 0).toString(16).padStart(8, "0") + "-" + entries.length;
 }
+
+/**
+ * The IndexedDB device ids the VM's root filesystem is built from, for ONE
+ * session.
+ *
+ * "Workspaces in ephemeral VMs must be isolated to a session as well" (owner
+ * directive, 2026-07-27). The constraint that shapes this: CheerpX's
+ * `OverlayDevice(base, blockCache)` takes ONE IndexedDB and uses it as both the
+ * base image's block cache AND the layer every guest write lands in — which is
+ * why sandbox.js's `cacheIdFor` warns that block N means different bytes across
+ * images. So a per-session write layer cannot just reuse the shared cache id,
+ * and giving each session its own single cache would re-stream the whole Debian
+ * disk per session.
+ *
+ * Hence the NESTED-overlay plan these two ids name: one shared, warm image cache
+ * plus a small per-session write layer stacked on top, so isolation costs a few
+ * hundred KB of session writes rather than a cold disk stream. `OverlayDevice`
+ * over an `OverlayDevice` is UNVERIFIED on the pinned CheerpX 1.2.6, so
+ * sandbox.js attempts the stack and falls back to the single shared cache —
+ * today's exact behaviour — if it won't build, per this subsystem's fail-soft
+ * contract. This function is only the naming, which is the part testable in
+ * Node.
+ *
+ * The session layer is namespaced UNDER the image cache id on purpose: a
+ * different disk image means different blocks, so one session's writes against
+ * image A must never be layered onto image B.
+ * @param {string} imageCacheId the shared per-image cache id (sandbox.js cacheIdFor)
+ * @param {string | null | undefined} sid the session id, or empty for the
+ *   un-sessioned default (one shared persistent overlay, as before)
+ * @returns {{imageCacheId: string, sessionCacheId: string | null}}
+ */
+export function sandboxOverlayIds(imageCacheId, sid) {
+  if (typeof sid !== "string" || sid === "") return { imageCacheId, sessionCacheId: null };
+  return { imageCacheId, sessionCacheId: imageCacheId + "-ws-" + sid };
+}
