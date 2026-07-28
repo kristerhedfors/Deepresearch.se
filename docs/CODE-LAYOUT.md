@@ -176,6 +176,21 @@ interaction hooks, the persisted `embeds` list — strict-checked),
 `recovery.js` (the answer-recovery polling client for server-parked
 answers — `recoverAnswer`'s rolling-deadline poll loop + `ackAnswer`;
 delivery of a recovered answer stays in `stream.js`),
+`unanswered-core.js` (what happens to a question whose send produced NO
+answer — an empty completion, a failed route, an unrecoverable drop, or
+Stop before the first token. `markUnanswered` KEEPS the question in the
+conversation and appends an assistant marker (`unansweredMarker`) saying it
+went unanswered; `stream.js`'s `settleUnanswered` is the one caller, on
+every such path in all three routes (server, private introspection,
+on-device). It used to pop the question instead — but the question BUBBLE
+stays on screen either way, so popping desynced what the user reads from
+what the model gets: feedback #45 was a question that died on a phone
+before reaching the server, followed by a "Try again" the model could only
+answer with "the original question never reached this conversation". The
+marker is an ASSISTANT turn so roles stay strictly alternating, and it
+states only what happened — resolving the retry back to its question is
+`conversation.js` `previousUserText` and `introspect-core.js`
+`retrievalQuery`, not prompt-stuffing. Node-tested),
 `session-core.js` (the PURE SESSION REGISTRY — a session is an **agent, a
 workspace and a history** addressed by one id, and a tab merely attaches to
 one. Owns the record shape, the id minting (inside
@@ -279,7 +294,12 @@ routing accessors are Node-tested, the DOM glue verified live) over the shared
 `introspect-core.js` pure core (the EN+SV intent gate, the sticky
 conversation-mode gate, the source-RAG chunker / int8 vector codec /
 retrieval, and the capped context-block builder — the one implementation
-behind `src/introspect.js` and both tiers' clients),
+behind `src/introspect.js` and both tiers' clients; also the EN+SV
+back-reference gate `backReferenceIntent` and `retrievalQuery`, which
+decides what a turn RETRIEVES for: normally the latest message, but a bare
+back-reference — "read those", and since feedback #45 the retry family
+"try again" / "försök igen" — names no subject of its own, so it resolves
+to the question it points back at instead of embedding its own two words),
 `source-peek.js` (SOURCE PEEK — in developer mode every inline-code repo
 path an answer cites (`src/pipeline.js`, `agent-spec-core.js:34-45`) becomes
 a tap target opening that file from the committed source snapshot in a

@@ -50,6 +50,7 @@ import {
   runSourceReadLoop,
   backReferenceIntent,
   resolveReferencedPaths,
+  retrievalQuery,
   toolStepHeadline,
   toolResultLines,
   MAX_FILES_PER_ROUND,
@@ -885,6 +886,52 @@ test("backReferenceIntent: Swedish parity — same breadth as English", () => {
   }
 });
 
+// Feedback #45: a send died before it reached the server, the user typed "Try
+// again", and retrieval embedded those two words — so the model was handed
+// excerpts about nothing and said the original question "never reached this
+// conversation". A retry IS a back-reference; it just never looked like one.
+test("backReferenceIntent: English retry follow-ups (feedback #45)", () => {
+  for (const s of [
+    "Try again",
+    "try again",
+    "again",
+    "again please",
+    "do it again",
+    "run that again",
+    "send this again",
+    "ask it again",
+    "retry",
+    "resend",
+    "redo",
+    "once more time",
+    "one more time",
+    "try again, but just the auth part",
+  ]) {
+    assert.equal(backReferenceIntent(s), true, s);
+  }
+});
+
+test("backReferenceIntent: Swedish retry parity — same breadth as English", () => {
+  for (const s of [
+    "Försök igen",
+    "försök igen",
+    "igen",
+    "om igen",
+    "testa igen",
+    "prova igen",
+    "kör igen",
+    "skicka det igen",
+    "fråga igen",
+    "gör om det",
+    "gör om",
+    "en gång till",
+    "på nytt",
+    "försök igen, men bara auth-delen",
+  ]) {
+    assert.equal(backReferenceIntent(s), true, s);
+  }
+});
+
 test("backReferenceIntent: ordinary new questions do NOT trip it", () => {
   for (const s of [
     "Security assessment",
@@ -894,9 +941,47 @@ test("backReferenceIntent: ordinary new questions do NOT trip it", () => {
     "Visa mig arkitekturen",
     // A long message that merely contains a continuation word is a real ask.
     "Please review the entire authentication subsystem and continue only if you find something concrete worth reporting in detail here.",
+    // The retry patterns must not swallow real questions that merely contain
+    // "again" / "igen" somewhere, or begin with one of their verbs.
+    "Do you rebuild the index again on every deploy, and what does that cost?",
+    "Explain why the stream reconnects again after a stall",
+    "How does image recognition work here?",
+    "Igenkänning av bilder — hur fungerar det?",
+    "Trying again and again is what the retry loop does — where is it implemented?",
+    "Send me the architecture overview",
+    "Ask the planner for a second angle",
   ]) {
     assert.equal(backReferenceIntent(s), false, s);
   }
+});
+
+test("retrievalQuery: a plain question retrieves for itself", () => {
+  assert.equal(retrievalQuery(["How does auth work?"]), "How does auth work?");
+  assert.equal(retrievalQuery(["first thing", "How does auth work?"]), "How does auth work?");
+  // No prior question to fall back on — a first message can't back-reference.
+  assert.equal(retrievalQuery(["try again"]), "try again");
+  assert.equal(retrievalQuery([]), "");
+});
+
+// The feedback #45 shape end to end: the question that produced no answer is
+// what the retry must retrieve for, not the words "Try again".
+test("retrievalQuery: a retry resolves to the question it retries", () => {
+  const q = "How does the quota window work?";
+  assert.equal(retrievalQuery([q, "Try again"]), `${q}\nTry again`);
+  assert.equal(retrievalQuery([q, "Försök igen"]), `${q}\nFörsök igen`);
+  // The retry's own qualifier is kept, so it can still steer retrieval.
+  assert.equal(
+    retrievalQuery([q, "try again, but just the D1 part"]),
+    `${q}\ntry again, but just the D1 part`,
+  );
+});
+
+test("retrievalQuery: walks past a CHAIN of back-references", () => {
+  const q = "Where is the session cookie signed?";
+  assert.equal(retrievalQuery([q, "try again", "again"]), `${q}\nagain`);
+  assert.equal(retrievalQuery([q, "try again", "read those", "igen"]), `${q}\nigen`);
+  // Nothing but back-references behind it: fall back to the literal message.
+  assert.equal(retrievalQuery(["try again", "again"]), "again");
 });
 
 test("resolveReferencedPaths: pulls the paths the most recent prior turn named", () => {
