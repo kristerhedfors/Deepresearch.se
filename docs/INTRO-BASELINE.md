@@ -105,7 +105,7 @@ watchdog fires `arrive()` if `transitionend` is swallowed.
 | 1 | Header bar | The wordmark, the **ghost button** (→ `/cure`), the **account button** (→ `/login`). The front door wears the app's own chrome. |
 | 2 | Hero | Logo, `DeepResearch.se`, the tagline — plans its own searches, checks coverage, cites, within a time budget. |
 | 3 | Promo video | `/llm-assiterad-utveckling.mp4`, autoplay-muted-loop. |
-| 4 | `#focuscard` — "What it has been working on" | The compact feature-focus timeline: chips as the legend/picker, `Busiest 6` / `All` / `None`, a link through to the full page. Hidden until the dataset parses. |
+| 4 | `#focuscard` — "What work has been done and when" | The compact feature-focus timeline: chips as the legend/picker, `Busiest 6` / `All` / `None`, a link through to the full page. Hidden until the dataset parses. |
 | 5 | "What this project is for" | The mission: privacy capabilities of LLM applications, stated precisely as a **deep-research security architecture**; the two tiers as the proof; still experimental; the build story as a pointer, not a lead. |
 | 6 | "The architecture, in short" | One question, two data paths — the five deterministic phases, then the paired **Se/cure** and **Se/rver** diagrams, then the link to `/architecture/`. |
 | 7 | "Some of what it does" | `ul.feat` — the capability list. Additive by R1: entries join it as capabilities ship (the **open model catalog** entry arrived 2026-07-27 with Hugging Face). No cap on its length — the ≤6 rule is the overlay's (R4), not this list's. |
