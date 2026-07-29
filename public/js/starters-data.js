@@ -132,6 +132,12 @@ export const ASPECTS = {
     "quiz", "converter", "dashboard", "platform-distill", "minimal-client",
     "role-play", "summarizer", "comparison-tool", "sv-study", "game",
   ],
+  palaeogenomics: [
+    "geo-radius", "sv-samples", "haplogroup", "sv-population", "mammoth-megafauna",
+    "coverage-quality", "dating", "contamination", "sedadna", "sv-method",
+    "deextinction", "preservation", "population-history", "corpus-limits", "method-caveats",
+    "proteomics", "literature-frontier", "reference-panel", "sv-dating", "isotopes",
+  ],
   "under-construction": [
     "purpose", "tier-choice", "controls", "theme", "examples",
     "capability", "prompts", "search-policy", "gates", "bounds",
@@ -590,6 +596,67 @@ export const STARTERS = {
         text: "Hjälp mig sätta rimliga gränser för hur länge och hur djupt den här agenten får arbeta på en enskild fråga." },
       { id: "unc-sv-harled", xp: 179, lang: "sv", aspect: "derive",
         text: "Vilken befintlig agent bör jag utgå från för det jag vill bygga, och exakt vad skulle jag behöva ändra?" },
+    ],
+    // =====================================================================
+    // palaeogenomics — ancient DNA. The taxonomy splits the way the agent's
+    // two legs split, and that split IS the editorial rule here: a starter is
+    // either a STRUCTURED question the sample corpus can answer exactly (a
+    // region, a date window, a haplogroup, a coverage floor) or a LITERATURE
+    // question Europe PMC can answer with papers. A starter that straddles
+    // both gets a worse answer than either leg would give alone, because the
+    // corpus block and the citations end up arguing about different things.
+    //
+    // Every entry names its caveat-bearing subject deliberately: coverage,
+    // dating, contamination and reference panels are where non-specialists go
+    // wrong in this field, so the openers put them in front of the user rather
+    // than waiting for a follow-up. Unranked — no eval run has scored this
+    // queue yet (invariant 5: a rank cites the run that produced it).
+    // =====================================================================
+    palaeogenomics: [
+      { id: "pal-geo-gotland", xp: 218, lang: "en", aspect: "geo-radius",
+        text: "Which published ancient individuals lie within 300 km of Gotland, and how do they spread across the Neolithic and the Bronze Age?" },
+      { id: "pal-sv-uppland", xp: 219, lang: "sv", aspect: "sv-samples",
+        text: "Vilka forntida individer i databasen kommer från Uppland, hur väl täckta är deras genom och vilka studier publicerade dem?" },
+      { id: "pal-haplo-r1b", xp: 220, lang: "en", aspect: "haplogroup",
+        text: "How many individuals in the corpus carry Y-haplogroup R1b, where were they found, and what date range do they span?" },
+      { id: "pal-sv-mtdna", xp: 221, lang: "sv", aspect: "sv-population",
+        text: "Hur många individer i databasen har mtDNA-haplogrupp U5, var kommer de ifrån, och vad brukar det kopplas till?" },
+      { id: "pal-mammoth-oldest", xp: 222, lang: "en", aspect: "mammoth-megafauna",
+        text: "How old is the oldest sequenced mammoth genome, what condition was that sample in, and what sets the limit on going older?" },
+      { id: "pal-coverage", xp: 223, lang: "en", aspect: "coverage-quality",
+        text: "Which ancient individuals in the corpus have the highest coverage, and what analyses does that coverage actually make possible?" },
+      { id: "pal-sv-wrangel", xp: 224, lang: "sv", aspect: "sv-samples",
+        text: "Vad visade arvsmassan hos de sista mammutarna på Wrangelön om inavel, och hur säkra är slutsatserna om deras utdöende?" },
+      { id: "pal-dating", xp: 225, lang: "en", aspect: "dating",
+        text: "How is an ancient sample dated, and when a paper reports a calibrated range, what exactly is being calibrated against what?" },
+      { id: "pal-contamination", xp: 226, lang: "en", aspect: "contamination",
+        text: "How do laboratories tell authentic ancient DNA from modern contamination, and how strong is that evidence in practice?" },
+      { id: "pal-sedadna", xp: 227, lang: "en", aspect: "sedadna",
+        text: "What can sedimentary ancient DNA recover that skeletal remains cannot, and how far back in time has it been pushed so far?" },
+      { id: "pal-sv-kol14", xp: 228, lang: "sv", aspect: "sv-dating",
+        text: "Hur fungerar kol-14-datering av benmaterial, och varför skiljer sig okalibrerad ålder från kalibrerad?" },
+      { id: "pal-deextinction", xp: 229, lang: "en", aspect: "deextinction",
+        text: "What would actually be required to bring back the woolly mammoth, and which of those steps have been demonstrated rather than proposed?" },
+      { id: "pal-preservation", xp: 230, lang: "en", aspect: "preservation",
+        text: "Why does permafrost preserve DNA so much better than temperate soil, and what is the practical age limit in each setting?" },
+      { id: "pal-yamnaya", xp: 231, lang: "en", aspect: "population-history",
+        text: "What does the genetic evidence say about the Yamnaya expansion into Europe, and which sampled individuals carry that argument?" },
+      { id: "pal-sv-skandinavien", xp: 232, lang: "sv", aspect: "sv-population",
+        text: "Vad visar forntida DNA om vilka befolkningar som levde i Skandinavien före jordbruket, och hur många individer bygger bilden på?" },
+      { id: "pal-corpus-gaps", xp: 233, lang: "en", aspect: "corpus-limits",
+        text: "Which regions and periods are thinly represented in the ancient-sample corpus, and what does that absence mean for a claim about them?" },
+      { id: "pal-ignore-flag", xp: 234, lang: "en", aspect: "method-caveats",
+        text: "Which individuals in the corpus are flagged as unusable, why were they flagged, and what goes wrong in a result that includes them?" },
+      { id: "pal-proteomics", xp: 235, lang: "en", aspect: "proteomics",
+        text: "Where does ancient protein evidence reach further back than ancient DNA, and what can it resolve that sequence data cannot?" },
+      { id: "pal-sv-neandertal", xp: 236, lang: "sv", aspect: "sv-method",
+        text: "Vilka rön finns om neandertalarnas genetiska bidrag till dagens människor, och hur mäter man en sådan andel?" },
+      { id: "pal-reference-panel", xp: 237, lang: "en", aspect: "reference-panel",
+        text: "Why does an ancestry analysis need present-day reference populations, and how much does the choice of panel change the answer?" },
+      { id: "pal-isotopes", xp: 238, lang: "en", aspect: "isotopes",
+        text: "What do strontium and oxygen isotopes add to a genetic study of an individual, and where do the two lines of evidence disagree?" },
+      { id: "pal-sv-databas", xp: 239, lang: "sv", aspect: "corpus-limits",
+        text: "Vilka delar av världen är dåligt representerade i databasen över forntida individer, och hur påverkar det slutsatserna?" },
     ],
   },
 };

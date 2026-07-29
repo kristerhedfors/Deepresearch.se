@@ -135,14 +135,19 @@ test("sdk/AGENTS.json is a valid registry", () => {
   assert.deepEqual(validateAgentRegistry(reg), []);
 });
 
-test("the eight shipped agents are present with the expected identities", () => {
+test("the nine shipped agents are present with the expected identities", () => {
   const reg = realRegistry();
   const ids = reg.agents.map((a) => a.id).sort();
   // Six DEFAULT agents — one per Se/rver chat mode — plus the two client-tier
-  // entries: the Se/cure archetype and the template you copy.
+  // entries (the Se/cure archetype and the template you copy) and one DERIVED
+  // agent: palaeogenomics is bound to no chat mode and is reached by id alone,
+  // which is what a domain agent should cost the platform.
   assert.deepEqual(ids, [
-    "agent-builder", "introspection", "models", "orchestrator", "outrospection", "research", "secure", "under-construction",
+    "agent-builder", "introspection", "models", "orchestrator", "outrospection", "palaeogenomics", "research", "secure", "under-construction",
   ]);
+  // …and it stays out of the mode table: no `defaults` row addresses it, so no
+  // chat mode can resolve to it and the six modes route exactly as before.
+  assert.equal(reg.defaults.some((r) => r.agent === "palaeogenomics"), false);
   assert.equal(findAgent(reg, "research").platform, "server");
   assert.equal(findAgent(reg, "secure").platform, "client");
   // The mode is the RUNNING app's id: Agent Studio's spec id stays
