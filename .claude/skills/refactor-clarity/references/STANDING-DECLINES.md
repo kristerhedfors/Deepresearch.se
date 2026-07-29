@@ -52,6 +52,11 @@ diverges — cut it and move the row here to the pass ledger.
 | `anthropicModels` / `openaiModels` | `src/anthropic.js`, `src/openai.js` | Home | Ten-line bodies differing only in the module-local `MODELS` list and the `provider` literal — the `adjustResultResponse` shape, and it would be cut if a sink existed. None does: `berget.js` owns the pricing helpers both import but is the Berget CLIENT, not a catalog utility; `model-catalog.js` is the semantic fit but imports `hf-inference.js`, so pointing two provider clients at it drags a third provider into both graphs. `hf-inference.js`'s third variant is genuinely different (already-EUR prices, per-model `vision`), so this is a two-copy candidate, not three | 2026-07-29 |
 | Grant-subsystem adjust/reserve blocks | `websearch.js`, `proxy.js`, `server-grants.js`, `pool.js` | Verbatim | The 7-line runs the block scan surfaces around `resolveQuotaPatch` and `reserveUnit` are the SAME table-name-parameterized meter helpers declined in five consecutive passes (the row above); their pure parts already live in `grant-http.js`. The remaining duplication is the D1 statement each owns | 2026-07-29 |
 | `chunkSourceText` vs. `chunkText` | `public/js/introspect-core.js`, `public/js/rag.js` | Verbatim | Same opening five lines of whitespace normalization, then they diverge: one returns strings against a fixed target, the other `Chunk[]` with offsets against caller-supplied bounds. A shared normalizer would be a three-line expression move | 2026-07-29 |
+| `rerankDoc` / `arxivRerankDoc` | `scripts/arxiv-hosted.mjs`, `src/arxiv-rag.js` | Purity | Byte-identical under an apology comment ("Mirrors src/arxiv-rag.js exactly"), and `public/js/arxiv-rag-core.js` is a real sink the script already imports — but the body reads a module-local `RERANK_DOC_CHARS` that the two sites bind DIFFERENTLY: 900 fixed on the server, `Number(process.env.ARXIV_RERANK_DOC_CHARS) \|\| 900` in `scripts/arxiv-berget.mjs`. The `finalePhaseBucket` trap exactly, and the damage is specific: a shared copy would silently ignore the env override, so an eval battery sweeping the rerank window would measure the pipeline it thought it had changed. Sharing needs the cut length as a parameter — a signature change. **No script in the repo imports from `src/` at all**, so that direction is closed regardless | 2026-07-29 |
+| HKDF derive block | `public/js/knowledge-core.js`, `public/js/research-seal-core.js` | Purity | Six byte-identical lines bound to different module-local `HKDF_INFO` labels (`…/drskn knowledge seal v1` vs `…/drcr result seal v1`). The label IS the domain separation that keeps the two sealed formats non-interchangeable, so a shared derive is the one thing this code must not have — same fence as the token families | 2026-07-29 |
+| Place-type word alternation | `public/js/message-content.js` `PLACE_TYPE_WORD_RE`, `src/googlemaps-text.js` `PLACE_TYPE_RE` | Verbatim + Tier + invariant 7 | ~14 lines of EN+SV place nouns under a comment saying the client copy "mirrors the server's extractNearbyPlaceQuery gate". Not byte-identical: the server has `librar(?:y\|ies)\|bibliotek(?:et\|en)?` and the client does not — **the drift has already happened**. Cross-tier besides, and `googlemaps-text.js` is an EXTENSION module (invariant 7), so a core client module may not import it. **Flagged for the owner:** whether "library / bibliotek" should also request device location is a behaviour question, not a refactor | 2026-07-29 |
+| `buffered` ctx spread | `src/orchestrator.js`, `src/pipeline.js` | Purity | Reads and reshapes `ctx`/`ctx.state.plan`; not a pure body, and invariant 2 puts the pipeline's flow off limits | 2026-07-29 |
+| Admin list-endpoint preamble | `src/feedback.js`, `src/server-errors.js` | Verbatim + Bar | Six lines of method/path/limit-clamp/`where`/`binds` before two DIFFERENT D1 queries over two different tables. The same shape as the grant-subsystem blocks above; the shared half (`readJsonBody`, the response helpers) already went to `http.js` in pass 12 | 2026-07-29 |
 | `recordStepUsage` | `src/bash-api.js` vs. `quota.js`'s `recordDefaultModelUsage` | Verbatim | The third copy of the DEFAULT_MODEL spend recorder, and the two identical ones WERE shared (pass 11). This one looks up the catalog through `providers.js` `listChatModels`, not `berget.js` `listModels`. The two are equivalent for a Berget `DEFAULT_MODEL` id, but swapping one for the other is a behaviour-equivalence argument, not a move. **Flagged for the owner:** if the two lookups are meant to be interchangeable here, folding this in is a one-line follow-up | 2026-07-26 |
 
 ## Whole files examined and left alone
@@ -79,6 +84,23 @@ diverges — cut it and move the row here to the pass ledger.
 - **`public/js/orchestrator-core.js`** — authored as a textbook class-X core;
   validate / normalize / waves / prompts / clamp / merge / events are all
   exported and pure already.
+- **`public/js/watch-core.js`** (2,690 lines) — the largest client module in the
+  repo and none of it is tangling: a parts catalogue with per-dimension
+  provenance, then banded sections for the compatibility engine, the spec
+  maths, the permalink codec and the parametric geometry. Same shape as
+  `googlemaps-text.js` — length is the data, not a defect. Its renderer's
+  matrix band was the pass-13 cut; what is left in `watch-render.js` is
+  shaders, canvas textures and the animation loop, none of it pure.
+- **`src/europepmc.js`, `src/websearch-cf.js`, `src/watch.js`,
+  `public/js/aadr-core.js`, the `demo-core`/`demo-embed` and
+  `space-core`/`space-embed` pairs, `public/js/unanswered-core.js`,
+  `public/js/starters-core.js` + `starters-data.js`** — the subsystems that
+  arrived between passes 12 and 13, surveyed and left alone. Every one shipped
+  factored: `europepmc.js` and `websearch-cf.js` carry explicit `// ---- pure`
+  band headers ahead of their fetching halves with the pure parts already
+  exported and tested, `watch.js` is a façade the `facade-contract.test.js`
+  guard now polices, and the `-core`/`-embed` pairs were authored with the
+  split already made.
 - **`src/exec-container.js`, the MCP trio (`mcp-key.js` / `mcp-config.js` /
   `mcp-api.js`), `src/arxiv.js` + `arxiv-rag.js`, `src/drsw-manifest.js`,
   `public/js/session.js` + `session-core.js`** — the subsystems that arrived
