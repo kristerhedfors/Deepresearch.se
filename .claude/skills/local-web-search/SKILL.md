@@ -180,7 +180,7 @@ answers a request it is throttling with **HTTP 200** and a 1 KB page:
 > **Wait For A Moment** — The search engine is currently barraged by queries
 > from bots. Please wait for `N` seconds…
 
-`resp.ok` is true, the card parse finds nothing, and the cascade concluded
+`resp.ok` was true, the card parse found nothing, and the cascade concluded
 "empty" and gave up. Sampled from a session container that was **7 responses in
 10** for an ordinary query, and **6 in 6** under the concurrency a search WAVE
 actually creates — so with `ddg` already dead from a datacenter IP, most queries
@@ -239,8 +239,8 @@ Exa returns highlights SELECTED for the query, so this backend now does too:
 **Measured on 8 fixed real pages, same cached HTML both ways:** mean query-term
 coverage in the excerpt **52% → 91%**.
 
-It is otherwise the same technique as the local browsing agent's `browse`
-engine (Recipe 0). Compare honestly when recommending one:
+The backend is otherwise the same technique as the local browsing agent's
+`browse` engine (Recipe 0). Compare honestly when recommending one:
 
 | | `cloudflare` | local agent (Recipe 0) |
 |---|---|---|

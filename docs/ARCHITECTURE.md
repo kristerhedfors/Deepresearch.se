@@ -290,8 +290,12 @@ Known provider limits baked into the design:
   request-shaping fixes it. Its status is **202**, and that is terminal: every
   measured retry returned the same shell, so the empty-body retry is spent only
   on a plain 200 (2026-07-29). Hence the whole design of the
-  Cloudflare-originating backend: an ordered cascade of sources, each with a
-  retry → anchor-scan-parse ladder, then `null` → Exa fallback.
+  Cloudflare-originating backend: an ordered cascade of sources merged until
+  the result limit is met, then `null` → Exa fallback. A source may carry a
+  retry and a class-free anchor-scan fallback where its markup warrants one
+  (DuckDuckGo does; Marginalia deliberately does not — the scan only ever ran
+  on pages that had no results, and returned the engine's own links as
+  sources).
   `search.cf_serp_empty` on one provider is the cascade working; on every
   provider it is the signal to configure a real backend.
 - A rate limit does not always arrive as a status code. Marginalia answers a
