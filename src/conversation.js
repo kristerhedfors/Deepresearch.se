@@ -68,6 +68,55 @@ export function lastUserMessage(conversation) {
   return [...conversation].reverse().find((m) => m.role === "user");
 }
 
+// The latest user message's text — the ENRICHMENT reading, which is not
+// textOf(): text parts are joined with a space and images leave no marker,
+// because the callers are intent gates matching phrases across a multipart
+// send, not prompt builders describing what was attached.
+//
+// It exists next to textOf for the pre-pipeline enrichments (src/aadr.js,
+// src/models-agent.js, and the same shape introspection uses): they run BEFORE
+// pipeline.js builds its ctx, so they read the conversation directly and
+// cannot reach ctx.cleanLastUser.
+/**
+ * @param {Msg[]} conversation
+ * @returns {string}
+ */
+export function lastUserText(conversation) {
+  for (let i = conversation.length - 1; i >= 0; i--) {
+    const m = conversation[i];
+    if (m?.role !== "user") continue;
+    const content = m.content;
+    if (typeof content === "string") return content;
+    if (Array.isArray(content)) {
+      return content.filter((p) => p?.type === "text").map((p) => p.text || "").join(" ");
+    }
+    return "";
+  }
+  return "";
+}
+
+// Append a context block to a MESSAGE, preserving multipart content (an
+// attached image — a photo of an excavation, a screenshot — must survive the
+// append). The message-level counterpart of withAppendedText below, and
+// deliberately a different shape from it: this one adds a NEW text part rather
+// than editing an existing one, so the block reads as its own labeled section
+// instead of running on from whatever the user typed.
+/**
+ * @param {any} message
+ * @param {string} block
+ * @returns {any}
+ */
+export function appendToLast(message, block) {
+  if (!message) return message;
+  if (typeof message.content === "string") {
+    return { ...message, content: `${message.content}\n\n${block}` };
+  }
+  if (Array.isArray(message.content)) {
+    return { ...message, content: [...message.content, { type: "text", text: block }] };
+  }
+  return message;
+}
+
 // Text of the user message BEFORE the latest one (the prior turn's question),
 // or "" when there is no earlier user turn. Triage's fallback uses it to seed
 // a search from the established topic when the latest message is a bare

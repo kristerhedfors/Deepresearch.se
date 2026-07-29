@@ -20,9 +20,17 @@ zero='0000000000000000000000000000000000000000'
 rc=0
 
 # Pipeline-sensitive files (the P7 bench-gate discipline, docs/TESTING.md):
-# an outgoing change to any of these gets a REMINDER (never a block — the
-# gate needs live creds and a deployment, so it can't run here) that the
+# an outgoing change to any of these gets a REMINDER (never a block) that the
 # scored bench gate applies to it.
+#
+# It is a reminder rather than a block because the gate measures a DEPLOYMENT,
+# so the after-half cannot run until the change is live — not because the gate
+# is unrunnable from a session container. It runs here fine: BASIC_AUTH_USER /
+# BASIC_AUTH_PASS are present, BASE_URL defaults to the live site, and the
+# whole bench chain imports only node built-ins, so tests/node_modules is not
+# needed. Corrected 2026-07-29, when eleven pipeline-sensitive changes had
+# accumulated unmeasured on the belief that no session could run it; the run
+# took about seven minutes. Run it after the merge queue drains.
 bench_sensitive='^src/(pipeline|pipeline-inputs|prompts|budget|model-profiles|schema|triage|answer-stream|notes|sources|search-sources|exa|berget)\.js$'
 bench_hit=""
 
