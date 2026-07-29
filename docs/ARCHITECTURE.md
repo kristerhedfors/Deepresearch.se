@@ -265,7 +265,7 @@ flowchart LR
 | Anthropic | `POST https://api.anthropic.com/v1/messages` | `ANTHROPIC_API_KEY` (optional) | Secondary answer/synthesis models (`claude-*`); Anthropic SSE re-emitted as OpenAI-style SSE by an adapter (`src/anthropic.js`) |
 | OpenAI | `POST https://api.openai.com/v1/chat/completions` | `OPENAI_API_KEY` (optional) | Third answer/synthesis provider (bare `gpt-*`); native OpenAI SSE, wire-params only (`src/openai.js`) |
 | Exa | `POST https://api.exa.ai/search`, `POST …/contents` | `x-api-key: EXA_API_KEY` | Web search — `numResults`/`type` scale with the time budget (§4.3b); `/contents` is the (currently disabled, §4.2) full-text fetch |
-| A results-page CASCADE + the result pages themselves | `GET` each configured source in order — DuckDuckGo's no-JS HTML, Marginalia, optionally Bing's RSS output — then a plain `GET` per result page (`src/websearch-cf.js`) | none | The Cloudflare-originating search backend: the Worker IS the search engine. A cascade because no single source answers every caller — DuckDuckGo returns an empty anti-bot shell to datacenter IPs (measured 2026-07-25). Bounded (8 s per source, 8 s per page, ≤5 pages, 3 at a time) and fail-soft — an exhausted cascade returns null and falls back to Exa |
+| A results-page CASCADE + the result pages themselves | `GET` each configured source in order — DuckDuckGo's no-JS HTML, Marginalia, optionally Bing's RSS output — merging until the result limit is met, then a plain `GET` per result page (`src/websearch-cf.js`) | none | The Cloudflare-originating search backend: the Worker IS the search engine. A cascade because no single source answers every caller — DuckDuckGo returns an empty anti-bot shell to datacenter IPs (measured 2026-07-25). Sources are merged rather than first-wins, results are ranked against the query and page excerpts are selected for it. Bounded (8 s per source, 8 s per page, ≤5 pages, 3 at a time, ≤2 throttle follows) and fail-soft — an exhausted cascade returns null and falls back to Exa |
 | Hugging Face Hub | Hub search APIs (`src/hf.js`) | `HUGGINGFACE_API_TOKEN` (optional) | Models/datasets/papers as citable sources when the question targets HF (`hfIntent`), via the search-source registry |
 | arXiv | `GET https://export.arxiv.org/api/query` (`src/arxiv.js`), Atom 1.0 | none — public and free | Preprints as citable sources when a question asks about scientific literature (`arxivIntent`), via the same registry — and when the message NAMES arXiv (`arxivLeadIntent`) the source LEADS: the Exa leg stands down for that request (§4.3c). Queried as fielded `abs:"…" AND abs:"…"` terms: a quoted phrase in the catch-all `all:` field silently returns zero, and unquoted words there are OR, not AND. Rate-limited to 1 request / 3 s with no paid tier, hence the hosted tier below |
 | — (no third party) | `ARXIV_INDEX` Vectorize index (`src/arxiv-rag.js`) | binding | The DENSE tier of the same source: the arXiv corpus embedded once and searched in-account, so arXiv leaves the request path entirely and the user's question reaches only the embedding call. Falls back to the live API when unbound, erroring, or below the relevance floor (`docs/ARXIV-RAG.md`) |
@@ -287,18 +287,32 @@ Known provider limits baked into the design:
   string, never a failed request.
 - DuckDuckGo's no-JS SERP answers a datacenter IP with an empty anti-bot
   shell — measured across `html.`/`lite.`, GET/POST and both UAs, so no
-  request-shaping fixes it. Hence the whole design of the Cloudflare-originating
-  backend: an ordered cascade of sources, each with a retry → anchor-scan-parse
-  ladder, then `null` → Exa fallback. `search.cf_serp_empty` on one provider is
-  the cascade working; on every provider it is the signal to configure a real
-  backend.
-- The anchor-scan rung of that ladder is bounded on both sides. It rescues a
-  source whose markup changed, but a source that found NOTHING still renders a
-  full page, and its masthead and footer links are the only ones left to scrape
-  — six of them once reached synthesis as the sources for a watch question
-  (feedback #48). So the scan skips the chrome regions and the result must
-  clear a floor (`MIN_FALLBACK_ITEMS`/`MIN_FALLBACK_HOSTS`) before it is
-  believed; below it the provider reports empty and the cascade moves on.
+  request-shaping fixes it. Its status is **202**, and that is terminal: every
+  measured retry returned the same shell, so the empty-body retry is spent only
+  on a plain 200 (2026-07-29). Hence the whole design of the
+  Cloudflare-originating backend: an ordered cascade of sources merged until
+  the result limit is met, then `null` → Exa fallback. A source may carry a
+  retry and a class-free anchor-scan fallback where its markup warrants one
+  (DuckDuckGo does; Marginalia deliberately does not — the scan only ever ran
+  on pages that had no results, and returned the engine's own links as
+  sources).
+  `search.cf_serp_empty` on one provider is the cascade working; on every
+  provider it is the signal to configure a real backend.
+- A rate limit does not always arrive as a status code. Marginalia answers a
+  throttled request with **HTTP 200** and an interstitial ("currently barraged
+  by queries from bots") carrying an `sst` retry token — so it parsed as zero
+  results and ended the cascade, and under the concurrency a search WAVE
+  creates that was most of the wave (measured 2026-07-29). The interstitial is
+  now detected, logged as `search.cf_serp_throttled`, and followed; treat a
+  200-with-no-results from any new source as a possible throttle before
+  concluding the index is empty.
+- Where that anchor scan still runs it is fenced on both sides. A source that
+  found NOTHING still renders a full page, and its masthead and footer links are
+  the only ones left to scrape — six of them once reached synthesis as the sources
+  for a watch question (feedback #48). So the scan skips the chrome regions
+  (`stripChromeRegions`) and its result must clear a floor (`looksLikeResultSet`,
+  `MIN_FALLBACK_ITEMS`/`MIN_FALLBACK_HOSTS`) before it is believed; below it the
+  provider reports empty and the cascade moves on.
   `search.cf_serp_fallback_rejected` is that guard firing.
 - Outbound enrichment requests carry the minimum (a query, a coordinate, a
   host) — never the conversation, filenames, or account identity.
