@@ -105,6 +105,7 @@ Server (`src/`):
 | `tokemon-data.js` | The game core's static DATA tables (Gen-1 provenance): the renamed type chart, moves, species, starters, balls/heal items, spawn/item-drop tables — re-exported through `tokemon.js`, so consumers see one surface |
 | `tokemon-api.js` | The first registered game: `/api/games/tokemon/*` (dispatched via `games.js`) — save persistence (D1 `tokemon_saves`), spawn re-derivation + proximity validation, server-side battle resolution; 503s without D1. Also the street-view AR mode: `…/scene` (a Street View frame at the player's position with spawns projected INTO the imagery, via `googlemaps.js`'s edge-cached POV capture, gated on the per-user `google_maps` knob) and `…/go` (text navigation) |
 | `tokemon-nav.js` | The street-view mode's PURE side (Node-tested): the bilingual text-command grammar (`parseGoCommand` — "go north 200 m" / "continue 50 m" / "gå till Kungsgatan 1" / "look right", EN+SV parity per invariant 6 enforced structurally, since one vocabulary table per word class declares both languages and everything — lookups, the reply-language flag, the parity test — derives from it), spherical geodesy (`destinationPoint`/`bearingBetween`/`absoluteBearing`, which resolves absolute and heading-relative commands alike), and `projectSpawns` (spawns placed inside a Street View frame under the same pinhole camera the imagery was shot with: tangent law → x, camera height over distance → y, 1/distance → size) |
+| `demos.js` | The CAPABILITY-DEMO registry's server FAÇADE: a pure re-export of the ONE shared core `public/js/demo-core.js` (the registry of demonstrable surfaces, the deterministic EN+SV "show me X demo" gate, and the bare-visual-ask inheritance that lets "show me visually" take its subject from the turn before). No endpoint of its own — `pipeline.js` re-runs the SAME gate the chat clients mounted from, so the answer prompts' `spaceScene` / `demoSurface` cannot drift from what is actually displayed beside the reply (feedback #49/#50). Adding a demonstrable surface is one entry in the core |
 | `space.js` | The SPACE-ANIMATIONS domain's server FAÇADE: a pure re-export of the ONE shared core `public/js/space-core.js` (the scene registry — one "animation skill" per common space question, EN+SV — the deterministic `spaceIntent` matcher, zoom math, wireframe mesh builders, feedback validation) plus the domain's two endpoints: PUBLIC `POST /api/space/feedback` (the /space/ showcase gallery's 👍/👎 + short comment; validated against the registry, comment clamped, D1 `space_feedback` rows carry NO identity — the page is public) and admin `GET /api/admin/space-feedback` (newest-first entries + per-scene tallies, `?format=text` for loops). No D1 → 503, only the feedback button degrades — the animations are static assets and keep playing. See the **space-animations** skill and `docs/SPACE-ANIMATIONS.md` |
 | `watch.js` | The NHxx WATCH-BUILDER domain's server FAÇADE: a pure re-export of the ONE shared core `public/js/watch-core.js` (the parts catalogue — 20 NH35/NH36 case families, dials, hands, inserts, chapter rings, crystals, crowns, case backs and straps, all EN+SV — the pre-indexed AliExpress sourcing table, the compatibility engine, the spec-sheet maths, the permalink codec and the parametric geometry builders) plus the domain's one endpoint: PUBLIC `GET /api/watch/catalog`, which answers in four shapes (`?case=`, `?slot=`, `?build=`, or the whole index) so a NON-browser caller — an agent, an MCP client, a shell in the sandbox with `jq` — can ask what a case measures and what to search for without running WebGL. Committed data only: no user input, no account, no D1, and NO outbound call — the AliExpress links are built as strings and never fetched, which `watch.test.js` pins by replacing `globalThis.fetch` with a throwing stub. See `docs/WATCH-BUILDER.md` |
 | `outrospect.js` | OUTROSPECTION — introspection's mirror image (the outward-looking feed at `/outrospect/`): a pure re-export of the ONE shared core `public/js/outrospect-core.js` (the seven-LENS registry — one standing strategic question each: the one big dependency / browser-runnable models / edge RAG / LLM app architecture / provable privacy / agent standards / other deep-research systems, each carrying its own literal Exa queries and EN+SV routing terms per invariant 6 — plus item normalization, `deltaItems`, `mergeFeed`, `stalestLens`, the `?format=text` render) plus the domain's three endpoints: `GET /api/outrospect/feed` (the live D1 stream), `POST /api/outrospect/refresh` (runs ONE lens's searches on behalf of the visiting user, stores the delta, returns what is genuinely new — per-lens cooldown + per-user hourly cap off D1 `outrospect_runs`), and admin `GET /api/admin/outrospect` (feed + run log, `?format=text` for the agent loop). Fail-soft throughout (invariant 2: a dead search backend degrades to zero new items, never a 500); no D1 → the live half reports `live:false` and the page runs on the committed artifact alone. The stored `outrospect_items` rows carry the ARTICLE and never the reader (invariant 4). A refresh also INDEXES a bounded few of the lens's articles (`indexFeedTexts` → the existing Exa `/contents` client → `outrospect_texts`, four per run, capped and deadline-bounded, fail-soft), and the answer path reads them back (`loadTexts`) so a reply can QUOTE the article with its source link — the passages are chosen by the core's deterministic lexical scorer (`selectQuotes`), no model and no embeddings, so the reader's question never leaves the isolate (owner feedback #28). Offline bulk half: `scripts/outrospect-scan.mjs` (`npm run outrospect`) → `public/outrospect/feed.json`; read CLI `scripts/outrospect`. See the **outrospection** skill and `docs/OUTROSPECTION.md` |
@@ -883,11 +884,12 @@ compare/orbits/launch/surface/rings/travel — and a shared
 IntersectionObserver-gated play loop, all behind `mountSpaceScene(host,
 sceneId, {lang, caption, moreLink})` with self-injected `sp-` scoped CSS.
 The gallery mounts it per card, and BOTH tiers' chats mount it across the
-response area when an outgoing question matches a scene
-(`public/js/turns.js` `mountSpaceEmbed` on Se/rver — live sends and stored
-renders, by deterministic re-detection, no embeds-registry entry;
-`public/cure/drc.js` `mountDrcSpaceEmbed` on Se/cure), the research answer
-streaming below. The rendering rule is the domain's identity: background
+response area when an outgoing question matches a scene — since feedback #49
+through the capability-demo registry `public/js/demo-core.js` rather than
+`spaceIntent` directly (`public/js/turns.js` `mountDemoEmbed` on Se/rver —
+live sends and stored renders, by deterministic re-detection, no
+embeds-registry entry; `public/cure/drc.js` `mountDrcSpaceEmbed` on
+Se/cure), the research answer streaming below. The rendering rule is the domain's identity: background
 stars — and only stars (the Sun, Proxima, the light pulse) — get real
 additive glow; every body, craft and figure is unlit wireframe. All
 deterministic logic lives in the shared pure core
@@ -917,7 +919,28 @@ and a separate glass path for the crystal, plus the loop that ticks the
 seconds hand at the NH35's real six beats a second. The render is generated
 FROM the spec sheet — a case's diameter, lug-to-lug and thickness are the
 numbers the mesh is built out of — so the picture cannot drift from the data.
+A chat ask for it ("Seiko watch demo", "visa mig klockbyggaren") mounts a card
+into the page above the reply, through the capability-demo registry below.
 See `docs/WATCH-BUILDER.md`.
+
+The capability-demo registry (`public/js/demo-core.js`, façade `src/demos.js`;
+card renderer `public/js/demo-embed.js`; both allowlisted under the same
+public-module-graph rule as the /cure entries): the deterministic EN+SV gate
+that answers "is this message asking to be SHOWN one of the site's own
+surfaces, and which one?" — feedback #49's *"all individual capabilities
+should be callable like this, show me x demo for instance"*. Two kinds: a
+`space` entry delegates subject matching wholesale to `space-core.js`'s
+`SPACE_MATCHERS` (one space matcher, no drift) and renders inline; a `page`
+entry (`/watch/`) carries its own subject patterns and renders as a link card.
+`demoIntent(text, priorText)` also lets a BARE visual ask ("show me visually",
+"visa visuellt") inherit the subject of the turn before it — feedback #50's
+real sequence. Both chat clients mount from it (`turns.js` `mountDemoEmbed`,
+`drc.js` `mountDrcSpaceEmbed`) and `src/pipeline.js` re-runs the SAME gate to
+set the answer prompts' `spaceScene` / `demoSurface`, so the model leads with
+the shipped tool instead of researching the web for a capability the site
+already has. Decorative-additive throughout: the answer streams below
+regardless, which is what lets the patterns be generous. Adding a
+demonstrable surface is one registry entry — no client or pipeline edit.
 
 Project pulse (`public/pulse/` — public, allowlisted like `/space/`): the
 commit-analytics dashboard. `index.html` (commits / lines / new features as

@@ -28,9 +28,24 @@ checklist.
   `mountSpaceScene(host, sceneId, {lang, caption, moreLink})`, with
   self-injected `sp-` scoped CSS. The gallery mounts it per card; BOTH
   tiers' chats mount it across the response area when the outgoing
-  question matches a scene (`turns.js mountSpaceEmbed` on Se/rver — live +
+  question matches a scene (`turns.js mountDemoEmbed` on Se/rver — live +
   stored renders, deterministic re-detection, no embeds-registry entry;
   `drc.js mountDrcSpaceEmbed` on Se/cure), answer streaming below.
+- The chats reach it through the CAPABILITY-DEMO REGISTRY
+  `public/js/demo-core.js` (façade `src/demos.js`, card renderer
+  `demo-embed.js`), not `spaceIntent` directly — feedback #49, *"all
+  individual capabilities should be callable like this, show me x demo for
+  instance"*. Space entries delegate subject matching straight back to
+  `SPACE_MATCHERS` (one space matcher, no drift); `page` entries like
+  `/watch/` mount a link card instead of a canvas; and `demoIntent(text,
+  priorText)` lets a bare "show me visually" inherit the previous turn's
+  subject (feedback #50's real sequence). **A new demonstrable surface is a
+  registry entry — never a new client or pipeline branch.** Two traps it
+  already cost: a word both languages share ("demo", "animation") cannot
+  decide the message's language, so it is `neutral` and the SUBJECT decides;
+  and a subject that is also a common English verb (`watch`) must require a
+  show verb or a build word beside it, or the card mounts on half the site's
+  conversations.
 - The page `public/space/` is PUBLIC (allowlisted in `src/assets.js` like
   /pulse/, including bare `/space`, the core module AND the embed module —
   the public-module-graph rule: forget the allowlist entry and the page

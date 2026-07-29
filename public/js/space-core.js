@@ -286,6 +286,14 @@ export const SPACE_MATCHERS = [
       /rockets? (blast(ing|s)? ?off|lift(ing|s)? ?off|tak(ing|es?) off)/,
       /launch (of )?a rocket/,
       /(show|visuali[sz]e|animate|draw|render|display)( me| us)?[^.\n]*\brockets?\b/,
+      // Demo phrasings (feedback #50): "Space launch demo" asked for exactly
+      // this scene and matched none of the above, so the chat researched the
+      // web and invented a dataset instead. "launch demo"/"launch animation"
+      // needs a space word beside it — a product launch demo is not this.
+      /\bspace ?(craft )?launch\b/,
+      /\b(orbital|rocket) launch\b/,
+      /launch (demo|animation|simulation|sequence)[^.\n]*\b(rocket|space|orbit)/,
+      /\b(rocket|space|orbit)[^.\n]*launch (demo|animation|simulation|sequence)/,
     ],
     sv: [
       /hur n[åa]r en raket (omloppsbana|rymden)/,
@@ -296,6 +304,11 @@ export const SPACE_MATCHERS = [
       /raket(en)? (lyfter|startar|skjuts upp)/,
       /uppskjutning(en)? av (en )?raket(en)?/,
       /(visa|visualisera|animera|rita|rendera)( mig| oss)?[^.\n]*\braket(en|er|erna)?\b/,
+      // Same demo phrasings as the EN set above (invariant 6).
+      /rymduppskjutning(en|ar|arna)?/,
+      /raket(demo|animation|simulering)/,
+      /uppskjutning[^.\n]*(demo|animation|simulering)/,
+      /(demo|animation|simulering)[^.\n]*uppskjutning/,
     ],
   },
   {
