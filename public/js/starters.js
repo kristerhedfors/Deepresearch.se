@@ -20,7 +20,7 @@
 
 import {
   SLOT_COUNT, agentForMode, resolveQueue, selectStarters, nextCursor, recordStarterUse,
-  evalPool, selectEvalBatch, recordVerdict, verdictReport, MODE_AGENTS,
+  evalPool, selectEvalBatch, recordStartersSeen, MODE_AGENTS,
   starterTag, tagStarterText,
 } from "./starters-core.js";
 import { STARTERS, CANDIDATES } from "./starters-data.js";
@@ -33,8 +33,13 @@ const SIGNAL_KEY = "dr_starter_signal";
 export const EVAL_KEY = "dr_starter_eval";
 /** localStorage key holding the evaluation batch cursor. */
 const EVAL_CURSOR_KEY = "dr_starter_eval_cursor";
-/** localStorage key holding the reviewer's verdicts (id → {v, at, note}). */
-const VERDICT_KEY = "dr_starter_verdicts";
+/** localStorage key holding which starters this browser has already been shown
+ * in evaluation mode (id → count). This is what makes every batch new. */
+const EVAL_SEEN_KEY = "dr_starter_eval_seen";
+/** The retired 👍/👎 store. Read once to seed the seen ledger (a rated starter
+ * was certainly shown), then deleted — an orphaned blob of verdicts nothing
+ * reads would be worse than no record at all. */
+const LEGACY_VERDICT_KEY = "dr_starter_verdicts";
 
 /** What each band means, shown on the chip so a reviewer knows what they are
  * being asked to judge. Without this the batch is just four questions and the
@@ -177,18 +182,23 @@ export function renderStarterStrip({ mount, compose, mode, platform, lang, setMo
 }
 
 /**
- * The evaluation strip: one starter per band, drawn across every agent, with
- * 👍/👎 on each chip and a copy-the-report footer.
+ * The evaluation strip: one starter per band, drawn across every agent.
  *
- * Two behaviours differ from the visitor strip, both deliberate:
+ * Three behaviours differ from the visitor strip, all deliberate:
  *
- *  1. **The batch is STICKY until something in it is rated.** The visitor strip
- *     rotates on every showing because a visitor who read four chips has seen
- *     them. A reviewer has not finished with a chip until they have run it and
- *     judged the answer, which takes a round trip through a whole conversation
- *     — rotating underneath them would lose the item they were half-way
- *     through. So the cursor advances on a RATING, not on a render.
- *  2. **Clicking a chip switches the chat mode to that starter's agent.** The
+ *  1. **New questions every time** (owner directive, 2026-07-29). Every render
+ *     records the four it showed and advances the cursor, and the scheduler
+ *     serves least-seen first — so opening a second empty chat hands the
+ *     reviewer four they have not read, all the way through the pool. The
+ *     batch used to be sticky until something was rated, which was the right
+ *     rule when a rating was what retired it; with the rating gone, sticky
+ *     would just mean the same four forever.
+ *  2. **No 👍/👎.** The reviewer's verdict is a sentence, not a glyph, and it
+ *     belongs in the one queue a human already reads: they start a message
+ *     with "feedback" and say what was wrong. The chip has already put the
+ *     starter's #XP tag in the opening turn, so `src/chat.js` files that tag
+ *     on the feedback entry and the report names the exact starter.
+ *  3. **Clicking a chip switches the chat mode to that starter's agent.** The
  *     batch is cross-agent by design; sending an Agent Studio starter while the
  *     app sits in Deep Research would measure the wrong thing entirely and
  *     look like the starter's fault.
@@ -202,8 +212,8 @@ function renderEvalBatch({ mount, compose, platform, setMode }) {
   if (!pool.length) return 0;
 
   const cursor = Number(readStore(EVAL_CURSOR_KEY, { c: 0 }).c) || 0;
-  const verdicts = readStore(VERDICT_KEY, {});
-  const batch = selectEvalBatch(pool, { cursor, rated: verdicts, count: SLOT_COUNT });
+  const seen = migrateSeenLedger();
+  const batch = selectEvalBatch(pool, { cursor, seen, count: SLOT_COUNT });
   if (!batch.length) return 0;
 
   const wrap = document.createElement("div");
@@ -212,7 +222,9 @@ function renderEvalBatch({ mount, compose, platform, setMode }) {
   const head = document.createElement("p");
   head.className = "starter-eval-head";
   head.textContent =
-    "Evaluation mode — try one, then rate the answer. Each one sends with its #XP tag, so feedback in that chat ties back to it. Turn it off in Settings.";
+    "Evaluation mode — four new questions every time. Try one, then say what you thought " +
+    "by starting a message with “feedback”: each chip sends with its #XP tag, so your note " +
+    "names the exact starter. Turn it off in Settings.";
   wrap.appendChild(head);
 
   const strip = document.createElement("div");
@@ -256,84 +268,67 @@ function renderEvalBatch({ mount, compose, platform, setMode }) {
       compose(tagStarterText(entry.xp, entry.text));
     });
 
-    const rate = document.createElement("div");
-    rate.className = "starter-rate";
-    const current = verdicts[entry.id]?.v || "";
-    for (const [v, glyph, title] of [
-      ["good", "👍", "Good opener — the answer showed what this agent is for"],
-      ["bad", "👎", "Bad opener — vague answer, a clarifying question, or an error"],
-      ["unclear", "•", "Not sure / skip"],
-    ]) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = `starter-vote${current === v ? " on" : ""}`;
-      b.textContent = glyph;
-      b.title = title;
-      b.setAttribute("aria-label", title);
-      b.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        // Tapping the active verdict again clears it — the only undo a
-        // one-tap control can offer.
-        const next = current === v ? "" : v;
-        writeStore(VERDICT_KEY, recordVerdict(readStore(VERDICT_KEY, {}), entry.id, next, { at: Date.now() }));
-        // A rating is what retires this batch: advance so the next render
-        // brings fresh material.
-        writeStore(EVAL_CURSOR_KEY, { c: cursor + 1 });
-        rerender();
-      });
-      rate.appendChild(b);
-    }
-
     cell.appendChild(chip);
-    cell.appendChild(rate);
     strip.appendChild(cell);
   }
   wrap.appendChild(strip);
 
-  // --- footer: how far along, and how to hand the findings back ------------
+  // --- footer: how far through the pool this browser has read --------------
   const foot = document.createElement("div");
   foot.className = "starter-eval-foot";
-  const n = Object.keys(verdicts).length;
+  const readSoFar = pool.filter((e) => (Number(seen[e.id]) || 0) > 0).length;
   const count = document.createElement("span");
-  count.textContent = `${n} rated of ${pool.length}`;
+  // Seen, not rated: the count of what has been READ is the only progress this
+  // browser can honestly report now that the verdicts live in the feedback
+  // queue instead of here.
+  count.textContent = `${readSoFar} of ${pool.length} seen in this browser`;
   foot.appendChild(count);
 
   const skip = document.createElement("button");
   skip.type = "button";
   skip.className = "starter-eval-btn";
-  skip.textContent = "Next batch →";
-  skip.addEventListener("click", () => {
-    writeStore(EVAL_CURSOR_KEY, { c: cursor + 1 });
-    rerender();
-  });
+  skip.textContent = "Four more →";
+  skip.addEventListener("click", () => rerender());
   foot.appendChild(skip);
-
-  const copy = document.createElement("button");
-  copy.type = "button";
-  copy.className = "starter-eval-btn";
-  copy.textContent = "Copy report";
-  copy.disabled = !n;
-  copy.addEventListener("click", async () => {
-    const text = verdictReport(pool, readStore(VERDICT_KEY, {}));
-    try {
-      await navigator.clipboard.writeText(text);
-      copy.textContent = "Copied";
-      setTimeout(() => { copy.textContent = "Copy report"; }, 1500);
-    } catch {
-      // Clipboard blocked (permissions, insecure context): fall back to
-      // showing the report so it can still be selected by hand. Losing the
-      // findings to a silent failure would be the worst outcome here.
-      const pre = document.createElement("pre");
-      pre.className = "starter-eval-report";
-      pre.textContent = text;
-      wrap.appendChild(pre);
-    }
-  });
-  foot.appendChild(copy);
   wrap.appendChild(foot);
 
   mount.appendChild(wrap);
+
+  // Record and advance AFTER rendering, so the next render — this session's
+  // "Four more", a new chat, or tomorrow's visit — cannot reach for these four
+  // again while anything unseen is left. This is the whole "new questions every
+  // time" mechanism; the visitor strip advances on the same principle.
+  writeStore(EVAL_SEEN_KEY, recordStartersSeen(seen, batch));
+  writeStore(EVAL_CURSOR_KEY, { c: cursor + 1 });
+
   return batch.length;
+}
+
+/**
+ * The seen ledger, with one-time migration off the retired verdict store: a
+ * starter someone rated 👍/👎 was certainly shown to them, so it seeds as seen
+ * rather than coming back around as if it were new. The old key is then
+ * removed — leaving a blob nothing reads would be a small lie about where the
+ * verdicts went.
+ * @returns {Record<string, number>}
+ */
+function migrateSeenLedger() {
+  const seen = readStore(EVAL_SEEN_KEY, {});
+  let legacy = null;
+  try {
+    legacy = readStore(LEGACY_VERDICT_KEY, null);
+  } catch {
+    legacy = null;
+  }
+  if (!legacy || typeof legacy !== "object") return seen;
+  const merged = recordStartersSeen(seen, Object.keys(legacy));
+  writeStore(EVAL_SEEN_KEY, merged);
+  try {
+    localStorage.removeItem(LEGACY_VERDICT_KEY);
+  } catch {
+    /* private mode — the merge already happened, the stale key is harmless */
+  }
+  return merged;
 }
 
 /**

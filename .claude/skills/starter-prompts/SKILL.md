@@ -15,8 +15,11 @@ description: >-
   cap, how to run a battery, and how a rank gets promoted with evidence. ALSO
   EVALUATION MODE — the Settings knob "Starter prompt evaluation" that turns the
   strip into a cross-agent review batch (the proven / weak / untried / candidate
-  bands, 👍👎 verdicts, Copy report) — and the CANDIDATES trial pool that new
-  questions are promoted into a queue from. ALSO the #XP-<nn> tag every starter
+  bands, new questions every render off a browser-local seen ledger, no 👍👎:
+  the verdict is a "feedback …" message in the chat the chip opened) — and the
+  CANDIDATES trial pool that new questions are promoted into a queue from,
+  including the rule that a session working on evaluation ADDS new candidates.
+  ALSO the #XP-<nn> tag every starter
   carries, how an evaluation chip sends it so feedback ties back to the exact
   starter, and where the pipeline strips it.
 ---
@@ -44,7 +47,7 @@ inadequate.
 | --- | --- |
 | `public/js/starters-data.js` | The registry — one queue per agent. The authoritative data. |
 | `public/js/starters-core.js` | Pure logic: select, rotate, score, rank, validate, judge prompt. |
-| `public/js/starters.js` | The DOM half — renders the strip, holds the local cursor + click signal. |
+| `public/js/starters.js` | The DOM half — renders the strip, holds the local cursor, click signal and eval seen ledger. |
 | `src/starters.js` | Server/CLI façade (re-export only; the agent-spec.js pattern). |
 | `public/js/starters-core.test.js` | Unit tests + the validator run over the real registry. |
 | `scripts/starters` | Offline CLI: report, queue, strip preview, aspects, shortlist, batch, coverage, validate, `--xp <n>` lookup. |
@@ -242,26 +245,47 @@ across *every* agent, one per band.
 | `untried` | no rank | Most of the registry lives here. |
 | `candidate` | not in a queue | A question we are considering **adding**. |
 
-Each chip is labelled with its `#XP` tag, agent and band, carries 👍/👎, and — on
-Se/rver — **switches the chat mode to its agent before sending**, because a
-cross-agent batch that ran everything as Deep Research would measure the wrong
-thing. On Se/cure the pool is restricted to the `secure` agent, since no mode
-switch exists there.
+Each chip is labelled with its `#XP` tag, agent and band, and — on Se/rver —
+**switches the chat mode to its agent before sending**, because a cross-agent
+batch that ran everything as Deep Research would measure the wrong thing. On
+Se/cure the pool is restricted to the `secure` agent, since no mode switch
+exists there.
 
-Two behaviours differ from the visitor strip on purpose:
+### New questions every time (owner directive, 2026-07-29)
 
-- **The batch is sticky until something is rated.** A reviewer has not finished
-  with a chip until they have run it and judged the answer — a whole round trip
-  — so the cursor advances on a *rating*, not on a render.
-- **Rated entries sink** within their band, so batches spend their slots on
-  what is still unknown. Rating as you go covers the whole 175-entry pool in
-  ~146 batches (unit-tested; a schedule that stranded material would be a bug).
+A reviewer must never be handed a question they have already been handed while
+anything is unread. The mechanism is a browser-local **seen ledger**
+(`dr_starter_eval_seen`, id → times shown):
 
-Verdicts live in `localStorage` (`dr_starter_verdicts`). **Copy report** puts a
-grouped plain-text summary on the clipboard — text rather than a beacon,
-because on Se/cure there is no endpoint this could post to without breaking the
-tier's promise, and a reviewer pasting their own findings is more honest than a
-silent upload.
+- `selectEvalBatch` orders every band **least-seen first** and, while anything
+  in the pool is unseen, will not fill a band's slot with something already
+  shown — a small band (there are only a handful of `weak` starters) runs out
+  first, and its slot goes to the backfill rather than to a repeat. When
+  *nothing* is unseen the restriction lifts and the bands are honoured again on
+  the second pass.
+- `starters.js` records the four **as the strip renders** and advances the
+  cursor, so a new chat, a mode switch or "Four more →" all bring fresh
+  material. This is the opposite of the old rule (sticky until rated), which
+  was right only while a rating was what retired a batch.
+- Unit-tested end to end: batch after batch must not repeat until the whole
+  pool has had one pass, and the pass must strand nothing.
+
+### No 👍/👎 — the verdict is a "feedback" message
+
+The rating buttons are gone (same directive). A tap compressed a whole
+conversation into one glyph and then left it in `localStorage`, where only that
+browser could read it. The judgement now travels the way every other judgement
+in this product does: the reviewer starts a message with **`feedback`** in the
+chat the chip opened, `src/chat.js` files that entry with the starter's `#XP`
+tag on its own line, and it lands in the queue a human already works
+(`scripts/feedback`, the **feedback-loop** skill). One queue, one loop, words
+instead of a glyph — and it works identically on Se/cure, which posts confirmed
+feedback over the Se/rver token.
+
+So when reading where evaluation stands, `scripts/starters --coverage` gives
+the machine ranks and `scripts/feedback` gives the human half. They are
+deliberately not merged into one number: a disagreement between them is a
+finding.
 
 Offline equivalents:
 
@@ -280,7 +304,23 @@ shown to ordinary visitors — evaluation mode is their only surface. Each has a
 - A candidate that reviews well **moves into its agent's queue** with evidence.
 - One that reviews badly is **deleted**, and the reason goes in the ledger.
 
-Aim candidates at gaps, not at variety for its own sake. The current set exists
+Aim candidates at gaps, not at variety for its own sake. The first set exists
 because the first battery left `secure` at zero coverage (no server endpoint
 can drive that tier — a human is the only instrument that reaches it),
 `outrospection` below the floor, and several declared aspects unfilled.
+
+**Every session that works on starter-prompt evaluation adds new candidates**
+(owner directive, 2026-07-29 — the other half of "new questions every time").
+The batch now serves fresh material every render, which means a working
+reviewer reaches the end of the pool; a pool that never grows quietly turns
+into a re-read. Before you finish, run
+
+```bash
+scripts/starters --aspects <agent>       # declared aspects with no starter
+scripts/starters --coverage              # bands per agent
+```
+
+and add a wave aimed at what those two print — the unfilled aspects first, then
+`secure` (still the only tier a machine battery cannot reach), then shapes the
+queues under-serve. Swedish in the same change, as everywhere else (invariant
+6). New numbers continue from `max(xp) + 1`; never reuse one.

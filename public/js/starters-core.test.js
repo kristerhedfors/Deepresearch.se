@@ -16,7 +16,7 @@ import {
   MODE_AGENTS, agentForMode, resolveQueue, agentIds, starterStanding, isProven,
   selectStarters, nextCursor, recordStarterUse, shortlistFor, starterScore, rankStarters,
   starterJudgePrompt, parseJudgeReply, validateStarters, registryReport,
-  EVAL_BANDS, bandOf, evalPool, selectEvalBatch, recordVerdict, verdictReport, coverageReport,
+  EVAL_BANDS, bandOf, evalPool, selectEvalBatch, recordStartersSeen, coverageReport,
   starterTag, parseStarterRef, stripStarterRef, tagStarterText, starterByXp,
 } from "./starters-core.js";
 import { STARTERS, ASPECTS, CANDIDATES } from "./starters-data.js";
@@ -503,21 +503,58 @@ test("consecutive eval batches actually move", () => {
   assert.ok(seen.size >= 16, `5 batches surfaced only ${seen.size} distinct starters`);
 });
 
-test("rating sinks an entry so a reviewer is not asked twice", () => {
+test("a shown starter sinks, so every batch is NEW questions", () => {
+  // The owner directive this pins (2026-07-29): a reviewer must never be handed
+  // a question they have already been handed while anything unread remains.
   const pool = evalPool(STARTERS, { candidates: CANDIDATES });
   const first = selectEvalBatch(pool, { cursor: 0 });
-  let verdicts = {};
-  for (const e of first) verdicts = recordVerdict(verdicts, e.id, "good");
-  const second = selectEvalBatch(pool, { cursor: 1, rated: verdicts });
-  assert.equal(second.filter((e) => verdicts[e.id]).length, 0, "a rated starter should not come back while unrated ones remain");
-  // Rating as you go must eventually cover the pool, or the schedule strands
-  // material a reviewer can never reach.
-  let seen = new Set(); let v = {}; let c = 0;
-  while (seen.size < pool.length && c < 400) {
-    for (const e of selectEvalBatch(pool, { cursor: c, rated: v })) { seen.add(e.id); v = recordVerdict(v, e.id, "good"); }
+  const seen1 = recordStartersSeen({}, first);
+  const second = selectEvalBatch(pool, { cursor: 1, seen: seen1 });
+  assert.equal(second.filter((e) => seen1[e.id]).length, 0, "a shown starter came back while unshown ones remained");
+
+  // The strong form: render after render, nothing repeats until the whole pool
+  // has been through one pass. This is what "new questions every time" means,
+  // and it is also the coverage guarantee — a schedule that strands material is
+  // a bug, not a preference.
+  let seen = {};
+  const distinct = new Set();
+  let c = 0;
+  const rounds = Math.ceil(pool.length / SLOT_COUNT);
+  while (c < rounds) {
+    const batch = selectEvalBatch(pool, { cursor: c, seen, count: SLOT_COUNT });
+    for (const e of batch) {
+      if ((Number(seen[e.id]) || 0) > 0 && distinct.size < pool.length) {
+        assert.fail(`batch ${c} repeated ${e.id} with ${pool.length - distinct.size} starters still unseen`);
+      }
+      distinct.add(e.id);
+    }
+    seen = recordStartersSeen(seen, batch);
     c++;
   }
-  assert.equal(seen.size, pool.length, `the schedule stranded ${pool.length - seen.size} starters`);
+  assert.equal(distinct.size, pool.length, `the schedule stranded ${pool.length - distinct.size} starters`);
+});
+
+test("a fully-read pool starts a second pass instead of going empty", () => {
+  // Once every starter has been shown once the ledger stops discriminating.
+  // The batch must keep working — a reviewer who has been through 175
+  // questions is exactly the one worth serving a second look.
+  const pool = evalPool(STARTERS, { candidates: CANDIDATES });
+  const seen = recordStartersSeen({}, pool.map((e) => e.id), pool.length);
+  const batch = selectEvalBatch(pool, { cursor: 0, seen });
+  assert.equal(batch.length, SLOT_COUNT);
+  assert.deepEqual(batch.map((e) => e.band), EVAL_BANDS, "the bands must still be honoured on a second pass");
+  const twice = recordStartersSeen(seen, batch);
+  const next = selectEvalBatch(pool, { cursor: 1, seen: twice });
+  assert.equal(next.filter((e) => twice[e.id] > 1).length, 0, "the second pass must move too");
+});
+
+test("selectEvalBatch accepts a Set of ids as a seen ledger", () => {
+  // Both shapes a caller might reasonably hold: the browser stores counts, a
+  // test or a CLI may only have ids.
+  const pool = evalPool(STARTERS, { candidates: CANDIDATES });
+  const first = selectEvalBatch(pool, { cursor: 0 });
+  const asSet = new Set(first.map((e) => e.id));
+  assert.equal(selectEvalBatch(pool, { cursor: 1, seen: asSet }).filter((e) => asSet.has(e.id)).length, 0);
 });
 
 test("an eval batch stays full even when a band is empty", () => {
@@ -530,42 +567,31 @@ test("an eval batch stays full even when a band is empty", () => {
   assert.deepEqual(selectEvalBatch([], { cursor: 0 }), []);
 });
 
-test("recordVerdict is pure, and re-tapping the same verdict clears it", () => {
-  const a = recordVerdict({}, "x", "good", { at: 5 });
-  assert.equal(a.x.v, "good");
-  assert.equal(a.x.at, 5);
-  const b = recordVerdict(a, "x", "bad");
-  assert.equal(b.x.v, "bad");
-  assert.deepEqual(a.x.v, "good", "must not mutate the input");
-  assert.equal(recordVerdict(b, "x", "").x, undefined, "an empty verdict clears the entry");
-  assert.deepEqual(recordVerdict({}, "", "good"), {}, "a junk id changes nothing");
+test("recordStartersSeen counts, is pure, and takes entries or bare ids", () => {
+  const a = recordStartersSeen({}, [{ id: "x" }, "y"]);
+  assert.deepEqual(a, { x: 1, y: 1 });
+  const b = recordStartersSeen(a, ["x"]);
+  assert.equal(b.x, 2);
+  assert.equal(a.x, 1, "must not mutate the input");
+  assert.deepEqual(recordStartersSeen({}, [{}, "", null]), {}, "junk entries change nothing");
+  // Growth is capped by dropping the MOST-seen first: they are the entries the
+  // least-seen-first ordering has least use for.
+  const many = recordStartersSeen({ keep: 1, drop: 9 }, [], 1);
+  assert.deepEqual(Object.keys(many), ["keep"]);
 });
 
-test("verdictReport groups by agent and states the totals", () => {
-  const pool = evalPool(STARTERS, { candidates: CANDIDATES });
-  assert.match(verdictReport(pool, {}), /nothing rated yet/);
-  const v = { "int-pipeline": { v: "good" }, "out-edge-rag": { v: "bad", note: "listy" } };
-  const r = verdictReport(pool, v);
-  assert.match(r, /## introspection/);
-  assert.match(r, /## outrospection/);
-  // The #XP tag leads each line: a pasted report and a feedback entry have to
-  // name the starter the same way, or the report cannot be acted on.
-  assert.match(r, /\[GOOD\] #XP-\d+ int-pipeline \(proven\)/);
-  assert.match(r, /\[BAD\] #XP-\d+ out-edge-rag \(weak\)/);
-  assert.match(r, /note: listy/);
-  assert.match(r, /Totals: /);
-});
-
-test("coverageReport keeps machine ranks and human verdicts in separate columns", () => {
+test("coverageReport reports rank bands, and seen when a ledger is supplied", () => {
   const rows = coverageReport(STARTERS, {
     candidates: CANDIDATES,
-    verdicts: { "int-pipeline": { v: "good" }, "int-diagram": { v: "bad" } },
+    seen: { "int-pipeline": 1, "int-diagram": 2 },
   });
   const intro = rows.find((r) => r.agent === "introspection");
-  assert.equal(intro.rated, 2);
-  assert.equal(intro.good, 1);
-  assert.equal(intro.bad, 1);
+  assert.equal(intro.seen, 2);
   assert.ok(intro.proven >= 1 && intro.weak >= 1 && intro.untried > 0);
+  // Human judgement is deliberately NOT a column here: it arrives as feedback
+  // entries citing an #XP tag and is read from the feedback queue, where the
+  // reviewer's own words survive.
+  assert.equal(rows.every((r) => !("good" in r) && !("rated" in r)), true);
   // Every agent must be reachable by evaluation mode, or a queue can never be
   // reviewed at all.
   assert.equal(rows.length, agentIds(STARTERS).length);

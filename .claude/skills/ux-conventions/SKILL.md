@@ -1178,3 +1178,51 @@ tabs were unusable.
 `session-core.test.js`), `public/js/session.js` (the two stores + the heartbeat),
 and `public/js/app.js` (the boot order, `offerSessionTakeover`, `persistKnobs`).
 The other-sessions list is `history-ui.js` `sessionsBlock`.
+
+## UX-21 — A review surface asks for a sentence, not a glyph — and never re-asks
+
+**Rule.** Where the product asks a human to REVIEW something (a starter prompt
+from the evaluation batch, and any surface built like it), two things hold:
+
+- **The verdict is words, in the queue a human already reads.** No 👍/👎 on the
+  item itself. The reviewer replies in the conversation the item opened, with a
+  message starting `feedback`, and the item's identity tag (UX-17) ties the note
+  back to it.
+- **The material is new every time.** The surface records what it has shown and
+  serves least-seen first, so nothing comes back round while anything is unread.
+  Once everything has had one pass it starts a second one, in the same order —
+  it does not go empty and it does not freeze on the last batch.
+
+**Why.** Owner directive, 2026-07-29. The rating pair looked like the cheaper
+ask and was the more expensive one: a tap compresses a whole conversation into
+one bit, and the bit then sits in `localStorage`, where nobody but that browser
+can read it — so the reviewer's actual finding ("the answer was fine but it
+never searched") had nowhere to go. Routing the verdict through the feedback
+keyword costs the reviewer one sentence and gains the loop everything: one
+queue, a human reading it, and a reply path back. The sticky-until-rated batch
+was the matching mistake — it was correct only while a rating was what retired
+a batch, and with the rating gone it would have meant the same four questions
+forever.
+
+**The parts that are easy to get wrong:**
+
+1. **Record on RENDER, not on interaction.** A reviewer who read four questions
+   has read them, whether or not they ran one. Advancing only on a response is
+   how a batch stalls.
+2. **Do not hold a slot open with a repeat.** When a category runs out of unseen
+   material (there are only a handful of `weak` starters), give its slot to a
+   category that still has some. The layout is not worth breaking the rule for.
+3. **The ledger stays local and stays small.** It is "what this browser has been
+   shown", never a beacon — the same promise the visitor strip's pick signal
+   makes — and it is capped, dropping the most-seen entries first.
+4. **The pool has to keep growing.** A surface that serves new material every
+   time will reach the end of a fixed list. Whoever works on it adds to it in
+   the same pass (for starters: `CANDIDATES`, aimed at the gaps
+   `scripts/starters --aspects` and `--coverage` print).
+
+**Canonical implementation:** `public/js/starters-core.js`
+(`selectEvalBatch` + `recordStartersSeen`, Node-tested in
+`starters-core.test.js`) and `public/js/starters.js` `renderEvalBatch` (the
+`dr_starter_eval_seen` ledger, the one-time migration off the retired
+`dr_starter_verdicts` store). The feedback half is `src/chat.js`'s `starter:`
+line on the feedback entry and the **feedback-loop** skill.

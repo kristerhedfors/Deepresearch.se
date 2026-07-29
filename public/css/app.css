@@ -702,8 +702,10 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
 }
 
 /* Evaluation mode (the Settings "Starter prompt evaluation" knob): the strip
-   becomes a cross-agent review batch — each chip carries its agent + band and
-   a 👍/👎 pair, with a footer for progress and handing the findings back. */
+   becomes a cross-agent review batch — each chip carries its #XP tag, agent and
+   band, with a footer showing how far through the pool this browser has read.
+   No rating control: the verdict is a "feedback ..." message in the chat the
+   chip opens, which is where a human already reads them. */
 .starter-eval { margin-top: 1.5rem; }
 .starter-eval-head {
   color: var(--muted); font-size: .8rem; text-align: center; margin: 0 0 .75rem;
@@ -720,14 +722,6 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
 .band-weak { color: #c62828; }
 .band-untried { color: var(--muted); }
 .band-candidate { color: #6a1b9a; }
-.starter-rate { display: flex; gap: .25rem; justify-content: flex-end; }
-.starter-vote {
-  background: transparent; border: 1px solid var(--border); border-radius: 6px;
-  color: var(--muted); cursor: pointer; font-size: .8rem; line-height: 1;
-  padding: .2rem .45rem;
-}
-.starter-vote:hover { background: var(--panel-2); }
-.starter-vote.on { background: var(--panel-2); border-color: var(--accent); color: var(--text); }
 .starter-eval-foot {
   display: flex; align-items: center; justify-content: center; gap: .6rem;
   margin-top: .75rem; font-size: .78rem; color: var(--muted); flex-wrap: wrap;
@@ -739,11 +733,6 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
 }
 .starter-eval-btn:hover:not(:disabled) { background: var(--panel-2); border-color: var(--accent); }
 .starter-eval-btn:disabled { opacity: .5; cursor: default; }
-.starter-eval-report {
-  text-align: left; white-space: pre-wrap; font-size: .72rem; max-height: 16rem;
-  overflow: auto; background: var(--panel); border: 1px solid var(--border);
-  border-radius: 8px; padding: .6rem; margin-top: .6rem;
-}
 
 /* Outrospection's own empty state (owner feedback #28). The mode answers from
    the outward feed rather than from a web search, so the default "I'll search
