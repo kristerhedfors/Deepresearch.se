@@ -50,7 +50,7 @@ the page's visual identity; keep it when adding scenes.
 
 The nine shipped scenes: sun-vs-planets (compare), earth-moon,
 solar-system, iss-orbit, satellites (orbits), rocket-launch (launch —
-gravity turn + stage separation), moon-surface (surface — terrain,
+gravity turn + stage separation, over a visibly curved Earth), moon-surface (surface — terrain,
 astronaut, lander, Earth in the sky), saturn-rings (rings — particles at
 Kepler speeds), nearest-star (travel — the Solar System shrinking toward
 Proxima, with a light pulse crawling the 4.25 ly).
@@ -85,6 +85,67 @@ streams below it. The animation adds to the answer; it never replaces it.
   so the server stays out of the data path.
 - The renderer is dynamic-imported in both chats: conversations that never
   ask about space never load it.
+
+### The answer model is told the animation is there (feedback #46)
+
+The mount is client-side, so for a long time the model writing the reply had
+no idea a scene was playing beside it. Asked to "show me a rocket launch to
+space" it mounted the launch animation and then answered "I can't play videos
+… or display media from the web" — reading that straight off its own
+capabilities line.
+
+`runPipeline` now re-runs the SAME `spaceIntent` matcher over the SAME latest
+user message and puts the matched scene's title on the context as
+`ctx.spaceScene`. The three answer phases — `synthPrompt`, `directPrompt`,
+`searchOffPrompt` — take it as an option, and `capabilitiesTail` swaps the
+"does NOT … display media" sentence for a clause naming the scene on screen
+and telling the model to write the explanation that goes with it. Empty
+string is the default everywhere, so a question that matches no scene
+produces a byte-identical prompt to before.
+
+Because both sides call one shared core over one piece of text, the server's
+belief about what is on screen cannot drift from what the client mounted.
+
+## The launch scene's planet and camera (feedback #46)
+
+The `launch` runner is the one scene drawn from close to a planet's surface,
+and that makes it the one place the archive's usual shortcuts fall over. A
+user who asked to be shown a rocket launch reported seeing no Earth at all:
+the planet was a single thin arc with the starfield painting straight through
+it, indistinguishable from the dashed orbit ring above it, and the camera sat
+1400 km out where a 6371 km sphere barely curves.
+
+Three pieces fix it, all pure and Node-tested in `space-core.test.js`:
+
+- **`spherePatchGrid`** — a lat/long patch centred on the pad, in true sphere
+  coordinates. The ground curving away to the horizon is what reads as a
+  planet; a bare silhouette never will. `surfaceGridFor` (in the renderer)
+  sizes the patch to the camera and caches it per octave, because one spacing
+  cannot serve both ends of the flight: on the pad the horizon is ~900 km
+  away and a coarse grid puts no line inside it, while from orbit a fine one
+  is a solid smear.
+- **`sphereSilhouette`** — the true horizon: the tangent circle R²/D from the
+  centre towards the camera, radius R·√(1−R²/D²). The old flat 2D circle of
+  radius R is only correct looking straight down the axis, so as soon as the
+  view was rotated the ground grid crossed its own horizon. The same call
+  draws the Kármán line at 100 km and the target-orbit ring, each labelled —
+  and the labels are placed in priority order with a minimum gap, since
+  zoomed out all three shells land within a few pixels of each other.
+- **`facesCamera`** — back-face culling for the grid. Without it the far half
+  of the patch draws over the near half and the ground reads as a tangle.
+
+**`launchCamDistKm`** flies the camera instead of leaving it fixed: close
+enough at the pad to see ground under the rocket, widening with altitude,
+then pulling back after insertion until the closed orbit fits the frame —
+"a launch from earth and then out to orbit", which is what the user expected
+to see. It drives `st.camDist` directly and the HUD readout follows it. The
+viewer always wins: touching zoom, pinch or wheel clears `st.autoZoom` for
+good (`takeZoom`), and only the reset button restores it.
+
+Two guards carry over from the rest of the renderer and are easy to lose when
+editing this scene: hand-rolled polylines need the same >2600 px segment cull
+`drawMesh` applies, and nothing here may use `drawGlow` — the ground, the
+horizon and the shells are all unlit wireframe.
 
 ## Adding a scene
 
