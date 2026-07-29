@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeepResearch.se — NHxx watch builder</title>
+  <link rel="icon" href="/favicon.ico?v=4" sizes="48x48">
+  <meta name="theme-color" content="#0a0c11">
+  <meta name="description" content="Mix and match Seiko NH35/NH36 mod parts — cases, dials, hands, bezel inserts, crystals — and see the finished watch in 3D: rotate it, zoom it, check what fits, and get the AliExpress search that sells the part.">
+  <style>
+    /* The builder is a workbench, so the page is dark and the watch is the
+       only bright thing on it. Same panel/chip vocabulary as /space/ — this is
+       a sibling showcase surface, not a new design language. */
+    :root {
+      color-scheme: dark;
+      --bg: #0a0c11; --panel: #11151d; --panel-2: #161b25; --border: #232c3b;
+      --text: #dde5f0; --muted: #8b9bb2; --accent: #7fb4ee; --accent-2: #d8a860;
+      --err: #e0685f; --warn: #d8a860; --ok: #43c78f;
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--text); margin: 0; padding: 1rem 1rem 4rem; line-height: 1.5;
+      background: radial-gradient(1100px 550px at 75% -12%, #131a2c 0%, transparent 62%), var(--bg);
+    }
+    main { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
+    .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+    h1 { font-size: 1.2rem; margin: 0; letter-spacing: .01em; }
+    .sub { color: var(--muted); font-size: .85rem; margin: .3rem 0 0; max-width: 46rem; }
+    .topbtns { display: flex; gap: .5rem; align-items: center; }
+    a.back, button.lang, button.tool {
+      background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.16);
+      color: var(--text); text-decoration: none; font-weight: 600; font-size: .82rem;
+      border-radius: 10px; padding: .42rem .75rem; white-space: nowrap; cursor: pointer;
+    }
+    button.lang.active, button.tool.active { border-color: var(--accent); color: var(--accent); }
+    button.tool:hover, a.back:hover { border-color: var(--accent); }
+
+    .cols { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 1rem; align-items: start; }
+    @media (max-width: 900px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+
+    .stage {
+      background: linear-gradient(180deg, #121724, #0b0e15);
+      border: 1px solid var(--border); border-radius: 16px; overflow: hidden;
+      position: sticky; top: 1rem;
+    }
+    @media (max-width: 900px) { .stage { position: static; } }
+    #view { display: block; width: 100%; height: 460px; touch-action: none; cursor: grab; }
+    #view:active { cursor: grabbing; }
+    .stagebar {
+      display: flex; gap: .4rem; flex-wrap: wrap; padding: .6rem;
+      border-top: 1px solid var(--border); background: rgba(0,0,0,.25);
+    }
+    .hint { color: var(--muted); font-size: .75rem; padding: 0 .7rem .6rem; margin: 0; }
+    .nogl { padding: 2rem 1rem; text-align: center; color: var(--muted); font-size: .9rem; }
+
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: .85rem .9rem; }
+    .panel + .panel { margin-top: .8rem; }
+    .panel h2 { font-size: .78rem; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin: 0 0 .6rem; }
+
+    .slot { border-top: 1px solid var(--border); padding: .6rem 0 .2rem; }
+    .slot:first-of-type { border-top: 0; padding-top: 0; }
+    .slot > .label { font-size: .78rem; color: var(--muted); margin-bottom: .35rem; display: flex; justify-content: space-between; gap: .5rem; }
+    .slot > .label .pick { color: var(--text); font-weight: 600; }
+    .chips { display: flex; flex-wrap: wrap; gap: .32rem; }
+    .chip {
+      background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+      border-radius: 999px; padding: .28rem .6rem; font-size: .76rem; cursor: pointer;
+      display: inline-flex; align-items: center; gap: .34rem;
+    }
+    .chip:hover { border-color: var(--accent); }
+    .chip.on { border-color: var(--accent); color: var(--accent); background: rgba(127,180,238,.1); }
+    .sw { width: .72rem; height: .72rem; border-radius: 50%; border: 1px solid rgba(255,255,255,.35); flex: none; }
+
+    .specs { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: .5rem .8rem; }
+    .spec .k { font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+    .spec .v { font-size: .92rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+    .issue { display: flex; gap: .5rem; font-size: .82rem; padding: .38rem 0; border-top: 1px solid var(--border); }
+    .issue:first-child { border-top: 0; }
+    .issue .tag { font-size: .64rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; padding: .1rem .38rem; border-radius: 5px; height: fit-content; flex: none; }
+    .issue.error .tag { background: rgba(224,104,95,.18); color: var(--err); }
+    .issue.warning .tag { background: rgba(216,168,96,.18); color: var(--warn); }
+    .issue.note .tag { background: rgba(139,155,178,.18); color: var(--muted); }
+    .allgood { color: var(--ok); font-size: .84rem; }
+
+    .src { border-top: 1px solid var(--border); padding: .55rem 0; font-size: .82rem; }
+    .src:first-of-type { border-top: 0; }
+    .src .head { display: flex; justify-content: space-between; gap: .5rem; flex-wrap: wrap; }
+    .src .who { color: var(--muted); font-size: .74rem; }
+    .src .price { color: var(--accent-2); font-weight: 600; font-variant-numeric: tabular-nums; }
+    .src .links { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .3rem; }
+    .src .links a {
+      color: var(--accent); text-decoration: none; font-size: .74rem;
+      border: 1px solid var(--border); border-radius: 8px; padding: .16rem .45rem;
+    }
+    .src .links a:hover { border-color: var(--accent); }
+    .src .warn { color: var(--warn); font-size: .74rem; margin-top: .25rem; }
+
+    .permalink { display: flex; gap: .4rem; margin-top: .5rem; }
+    .permalink input {
+      flex: 1; min-width: 0; background: var(--panel-2); border: 1px solid var(--border);
+      color: var(--muted); border-radius: 9px; padding: .4rem .55rem; font-size: .74rem;
+    }
+    footer { color: var(--muted); font-size: .78rem; text-align: center; margin-top: .6rem; }
+    footer a { color: var(--accent); }
+    .approx { color: var(--muted); font-weight: 400; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="top">
+      <div>
+        <h1 id="h1">NHxx watch builder</h1>
+        <p class="sub" id="sub"></p>
+      </div>
+      <div class="topbtns">
+        <button class="lang" id="lang-en" type="button">EN</button>
+        <button class="lang" id="lang-sv" type="button">SV</button>
+        <a class="back" href="/">← DeepResearch.se</a>
+      </div>
+    </div>
+
+    <div class="cols">
+      <div>
+        <div class="stage">
+          <canvas id="view"></canvas>
+          <div class="stagebar">
+            <button class="tool" id="b-reset" type="button"></button>
+            <button class="tool" id="b-top" type="button"></button>
+            <button class="tool" id="b-pose" type="button"></button>
+            <button class="tool" id="b-lume" type="button"></button>
+            <button class="tool" id="b-png" type="button"></button>
+            <button class="tool" id="b-random" type="button"></button>
+          </div>
+          <p class="hint" id="hint"></p>
+        </div>
+
+        <div class="panel">
+          <h2 id="t-specs"></h2>
+          <div class="specs" id="specs"></div>
+        </div>
+
+        <div class="panel">
+          <h2 id="t-fit"></h2>
+          <div id="issues"></div>
+        </div>
+
+        <div class="panel">
+          <h2 id="t-src"></h2>
+          <div id="sourcing"></div>
+          <div class="permalink">
+            <input id="perma" readonly>
+            <button class="tool" id="b-copy" type="button"></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="picker"></div>
+    </div>
+
+    <footer id="foot"></footer>
+  </main>
+  <script type="module" src="/watch/watch.js"></script>
+</body>
+</html>

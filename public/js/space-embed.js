@@ -25,6 +25,7 @@ import {
   sceneById, zoomToDistance, distanceToZoom, formatKm, clamp,
   sphereMesh, orbitMesh, cylinderMesh, rocketMesh, satelliteMesh,
   astronautMesh, landerMesh, terrainMesh, ringMesh,
+  spherePatchGrid, launchCamDistKm, launchAltKm, sphereSilhouette, facesCamera,
   rotX, rotY, rotZ, worldRot, projectPoint, mulberry32,
 } from "./space-core.js";
 
@@ -155,6 +156,24 @@ function label(ctx, p, text, dy = -8) {
   ctx.fillText(text, p.x + 7, p.y + dy);
 }
 
+/**
+ * The launch scene's ground grid, sized to how much ground the camera can
+ * actually see and cached per octave so a smooth dolly regenerates it only a
+ * few times over the whole flight.
+ */
+function surfaceGridFor(st, camDistKm) {
+  const span = clamp((3 * camDistKm) / st.planetR, 0.01, 0.95);
+  const key = Math.round(Math.log(span) / Math.log(1.35));
+  let grid = st.gridCache.get(key);
+  if (!grid) {
+    grid = spherePatchGrid(st.planetR, Math.PI / 2, Math.pow(1.35, key), 9, 38);
+    // The dolly only ever walks a handful of octaves; keep the cache bounded.
+    if (st.gridCache.size > 12) st.gridCache.clear();
+    st.gridCache.set(key, grid);
+  }
+  return grid;
+}
+
 /** Additive glow — reserved for STARS and light itself (the domain's rule). */
 function drawGlow(ctx, x, y, radius, hue = 45, strength = 1) {
   const r = Math.min(1600, radius);
@@ -261,6 +280,7 @@ const RUNNERS = {
   },
 
   // Gravity turn to orbit, with stage separation. st.u loops 0..1.
+  // (surfaceGridFor sizes the ground grid to the camera — see below.)
   launch(ctx, st, cam, w, h) {
     const cfg = st.scene.config;
     const R = BODIES[cfg.planet].radiusKm;
@@ -270,10 +290,8 @@ const RUNNERS = {
     const phiIns = 1500 / R;
     const rocketState = (uu) => {
       if (uu < insert) {
-        const k = uu / insert;
-        const a = alt * Math.pow(k, 1.7);
-        const phi = phiIns * Math.pow(k, 2.3);
-        return { a, phi };
+        const phi = phiIns * Math.pow(uu / insert, 2.3);
+        return { a: launchAltKm(uu, cfg), phi };
       }
       return { a: alt, phi: phiIns + ((uu - insert) / (1 - insert)) * 1.35 };
     };
@@ -287,23 +305,97 @@ const RUNNERS = {
     const rpos = toWorld(rs);
     // The world is drawn relative to the rocket (camera follows it).
     const rel = (p) => [p[0] - rpos[0], p[1] - rpos[1], p[2] - rpos[2]];
-    // Planet limb: a projected 2D circle (the wireframe sphere would be
-    // chunky at close zoom); plus the target-orbit ring.
-    const pc = projectPoint(worldRot(rel([0, 0, 0]), st), cam);
-    if (pc) {
-      ctx.strokeStyle = "hsl(205 45% 62%)";
+    const siteAng = Math.PI / 2;
+    // The launch site itself, and the ground under it.
+    const sitePos = [R * Math.cos(siteAng), R * Math.sin(siteAng), 0];
+    // The planet's centre in the camera-rotated frame — every bit of planet
+    // geometry below is measured from it.
+    const C = worldRot(rel([0, 0, 0]), st);
+    // Draw a polyline of already-rotated points, dropping the near-camera
+    // segments that would project to multi-thousand-px streaks (drawMesh's
+    // guard, which this hand-rolled path has to repeat).
+    const stroke = (pts, keep) => {
+      ctx.beginPath();
+      let prev = null;
+      let top = null;
+      for (const q of pts) {
+        const p = keep && !keep(q) ? null : projectPoint(q, cam);
+        if (!p) { prev = null; continue; }
+        if (prev && Math.hypot(p.x - prev.x, p.y - prev.y) > 2600) { prev = null; continue; }
+        if (!prev) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+        if (!top || p.y < top.y) top = p;
+        prev = p;
+      }
+      ctx.stroke();
+      return top;
+    };
+    // Surface graticule: the ground around the pad, curving away to the
+    // horizon. Without it the horizon alone reads as one more orbit ring and
+    // the planet is invisible (feedback #46). The far half is culled — it
+    // would otherwise draw straight over the near half.
+    ctx.strokeStyle = "hsl(205 40% 58%)";
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.34;
+    for (const line of surfaceGridFor(st, cam.dist)) {
+      stroke(line.map((pt) => worldRot(rel(pt), st)), (q) => facesCamera(q, C, cam.dist));
+    }
+    ctx.globalAlpha = 1;
+    // The horizon, and the two shells above it. Each is the TRUE silhouette
+    // of its sphere, so the ground grid meets the horizon instead of crossing
+    // it once the view is rotated.
+    const sv = st.lang === "sv";
+    // Zoomed out, the three shells are only a few px apart and their labels
+    // would overlap into mush — so they are placed in priority order and any
+    // that lands on top of one already placed is dropped.
+    const placed = [];
+    const tag = (top, text, alpha) => {
+      if (!top || top.y < 14 || top.y > cam.cy * 2 - 56) return;
+      const y = top.y - 5;
+      if (placed.some((p) => Math.abs(p - y) < 14)) return;
+      placed.push(y);
+      ctx.fillStyle = `rgba(190,212,240,${alpha})`;
+      ctx.font = "11px system-ui, sans-serif";
+      ctx.fillText(text, 12, y);
+    };
+    // The target orbit.
+    ctx.strokeStyle = "hsl(205 45% 62%)";
+    ctx.setLineDash([4, 6]);
+    ctx.globalAlpha = 0.4;
+    ctx.lineWidth = 1;
+    const orbTop = stroke(sphereSilhouette(C, R + alt, cam.dist));
+    ctx.setLineDash([]);
+    // The atmosphere: the Kármán line at 100 km, where "space" begins.
+    ctx.strokeStyle = "hsl(198 50% 66%)";
+    ctx.globalAlpha = 0.3;
+    const karTop = stroke(sphereSilhouette(C, R + 100, cam.dist));
+    // The surface.
+    ctx.strokeStyle = "hsl(205 55% 68%)";
+    ctx.globalAlpha = 0.95;
+    ctx.lineWidth = 1.8;
+    const surfTop = stroke(sphereSilhouette(C, R, cam.dist));
+    ctx.globalAlpha = 1;
+    // Name them, so what is planet and what is orbit is not a guess. Earth
+    // goes first: it is the one the viewer must not miss (feedback #46).
+    tag(surfTop, sv ? "Jorden · yta" : "Earth · surface", 0.7);
+    tag(orbTop, sv ? `målbana · ${formatKm(alt)}` : `target orbit · ${formatKm(alt)}`, 0.45);
+    tag(karTop, sv ? "Kármánlinjen · 100 km" : "Kármán line · 100 km", 0.4);
+    // The pad the rocket left, marked on the ground.
+    const siteQ = worldRot(rel(sitePos), st);
+    const sp = facesCamera(siteQ, C, cam.dist) ? projectPoint(siteQ, cam) : null;
+    if (sp && sp.s > 0) {
+      const m = 5;
+      ctx.strokeStyle = "hsl(30 45% 70%)";
       ctx.globalAlpha = 0.75;
-      ctx.lineWidth = 1.2;
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.arc(pc.x, pc.y, R * pc.s, 0, 2 * Math.PI);
+      ctx.moveTo(sp.x - m, sp.y); ctx.lineTo(sp.x + m, sp.y);
+      ctx.moveTo(sp.x, sp.y - m); ctx.lineTo(sp.x, sp.y + m);
       ctx.stroke();
-      ctx.setLineDash([4, 6]);
-      ctx.globalAlpha = 0.4;
-      ctx.beginPath();
-      ctx.arc(pc.x, pc.y, (R + alt) * pc.s, 0, 2 * Math.PI);
-      ctx.stroke();
-      ctx.setLineDash([]);
       ctx.globalAlpha = 1;
+      // Not once it has slid under the HUD, where it only half-renders.
+      if (u > 0.02 && sp.y + 14 < cam.cy * 2 - 56) {
+        label(ctx, sp, st.lang === "sv" ? "startplats" : "launch site", 14);
+      }
     }
     // Flown trajectory.
     ctx.strokeStyle = "rgba(127,180,238,0.5)";
@@ -503,6 +595,17 @@ function buildSceneState(scene, canvas, lang) {
     st.upperMesh = rocketMesh(0.55);
     st.boosterMesh = cylinderMesh(0.09, 0.5, 8);
     st.loopSec = 26;
+    // The ground around the pad; the limb alone does not read as a planet.
+    // The ground grid is sized to the camera, not fixed: one spacing cannot
+    // serve both ends of the dolly — on the pad a coarse grid has no line
+    // inside the ~900 km horizon, and from orbit a fine one is a solid smear.
+    // Spans are cached per octave so this regenerates a handful of times over
+    // the whole flight rather than every frame.
+    st.planetR = BODIES[scene.config.planet].radiusKm;
+    st.gridCache = new Map();
+    // The camera follows the flight (ground → orbit) until the viewer takes
+    // the zoom control, after which it is theirs.
+    st.autoZoom = true;
   }
   if (scene.kind === "surface") {
     st.terrain = terrainMesh(scene.config.terrainKm, 44, 7, 0.022);
@@ -590,6 +693,17 @@ function draw(st) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
   drawStars(ctx, st, w, h, st.time);
+  // The launch scene flies its own camera — pad to orbit — until the viewer
+  // takes the zoom control (st.autoZoom goes false and stays false).
+  if (st.autoZoom && st.scene.kind === "launch") {
+    const cfg = st.scene.config;
+    const altKm = launchAltKm(st.u, cfg);
+    const d = launchCamDistKm(st.u, altKm, cfg, st.scene.zoomKm);
+    if (d !== st.camDist) {
+      st.camDist = d;
+      if (st.onCamDist) st.onCamDist(d);
+    }
+  }
   const cam = { dist: st.camDist, f: 1.15 * Math.min(w, h), cx: w / 2, cy: h / 2 };
   RUNNERS[st.scene.kind](ctx, st, cam, w, h);
 }
@@ -668,6 +782,18 @@ export function mountSpaceScene(host, sceneOrId, opts = {}) {
     st.camDist = zoomToDistance(st.zoom, scene.zoomKm.min, scene.zoomKm.max);
     distOut.textContent = formatKm(st.camDist);
   };
+  // A viewer touching zoom takes the camera off the launch scene's auto-dolly
+  // for good — their control always wins over the scripted flight.
+  const takeZoom = () => {
+    st.autoZoom = false;
+    syncZoomUi();
+  };
+  // …and while the dolly IS flying, the HUD tracks it.
+  st.onCamDist = (d) => {
+    st.zoom = distanceToZoom(d, scene.zoomKm.min, scene.zoomKm.max);
+    zoomInput.value = String(Math.round(st.zoom * 1000));
+    distOut.textContent = formatKm(d);
+  };
   syncZoomUi();
   playBtn.addEventListener("click", () => {
     st.playing = !st.playing;
@@ -681,13 +807,15 @@ export function mountSpaceScene(host, sceneOrId, opts = {}) {
   });
   zoomInput.addEventListener("input", () => {
     st.zoom = Number(zoomInput.value) / 1000;
-    syncZoomUi();
+    takeZoom();
   });
   resetBtn.addEventListener("click", () => {
     st.zoom = distanceToZoom(scene.zoomKm.start, scene.zoomKm.min, scene.zoomKm.max);
     st.rotX = scene.kind === "surface" ? 0.12 : scene.kind === "compare" ? 0.15 : 0.35;
     st.rotY = 0.5;
     st.time = 0; st.simDays = 0; st.u = 0;
+    // Reset restores the scene as it was mounted — dolly included.
+    if (scene.kind === "launch") st.autoZoom = true;
     syncZoomUi();
   });
 
@@ -716,7 +844,7 @@ export function mountSpaceScene(host, sceneOrId, opts = {}) {
       const d = Math.hypot(a.x - b.x, a.y - b.y);
       if (pinchDist > 0) {
         st.zoom = clamp(st.zoom - (d - pinchDist) * 0.0016, 0, 1);
-        syncZoomUi();
+        takeZoom();
       }
       pinchDist = d;
     }
@@ -727,7 +855,7 @@ export function mountSpaceScene(host, sceneOrId, opts = {}) {
   canvas.addEventListener("wheel", (e) => {
     e.preventDefault();
     st.zoom = clamp(st.zoom + Math.sign(e.deltaY) * 0.02, 0, 1);
-    syncZoomUi();
+    takeZoom();
   }, { passive: false });
 
   // --- language-dependent text ----------------------------------------------

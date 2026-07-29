@@ -20,6 +20,8 @@
 // capability — introspection reads THIS repo's committed source snapshot, so
 // there is no third party, no secret, and no external connection involved.
 
+import { runAncientSampleEnrichment } from "./aadr.js";
+import { capHasContext } from "./agent-spec.js";
 import { extensionEnrichments } from "./extensions.js";
 import { runIntrospectionEnrichment } from "./introspect.js";
 import { runModelsAgentEnrichment } from "./models-agent.js";
@@ -78,6 +80,25 @@ const CORE_ENRICHMENTS = [
     id: "models",
     enabled: (state) => !!(/** @type {any} */ (state).modelsMode),
     run: (c) => runModelsAgentEnrichment(c),
+  },
+  {
+    // The ancient-sample corpus (src/aadr.js): a message asking a STRUCTURED
+    // question about published ancient-DNA individuals — a region, a date
+    // window, a haplogroup, a coverage floor — gets the query's exact rows and
+    // counts folded in. Core, not an extension: the corpus is a build artifact
+    // in this deployment, so there is no third party, no secret and no outbound
+    // connection, exactly like the source snapshot above it.
+    //
+    // Gated on the resolved agent's DECLARED CONTEXT BLOCK rather than on a
+    // mode flag or a knob — the first enrichment to be enabled by an agent
+    // spec alone. That is what keeps this domain capability from spreading
+    // into the platform: no chat mode, no settings toggle, no request field,
+    // and removing the agent from sdk/AGENTS.json turns it off entirely. A
+    // request that never consulted the registry has a null capability and is
+    // therefore never enabled, which is every ordinary Deep Research turn.
+    id: "aadr",
+    enabled: (state) => capHasContext(/** @type {any} */ (state).capability, "ancient-samples"),
+    run: (c) => runAncientSampleEnrichment(c),
   },
 ];
 

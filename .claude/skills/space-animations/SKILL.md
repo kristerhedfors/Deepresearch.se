@@ -80,3 +80,30 @@ canvas painted non-blank catches most of it).
   close zoom builds a canvas-filling radial gradient every frame.
 - Cards animate only while on screen (IntersectionObserver) — nine
   always-running canvases will melt a phone.
+- A planet drawn as `ctx.arc` at radius `R * s` is only right looking
+  straight down the axis. Under any rotation it drifts off the real
+  silhouette, and anything drawn ON the sphere then crosses its own
+  horizon. Use `sphereSilhouette` (the tangent circle) — and cull surface
+  geometry with `facesCamera`, or the far side draws over the near side.
+- A bare limb line does NOT read as a planet: the starfield shows through
+  it and it looks like one more orbit ring. Ground detail is what sells it
+  (`spherePatchGrid`), and it has to be sized to the camera — a grid that
+  works from orbit has no line inside the ~900 km horizon seen from a pad.
+- Feedback naming a scene is usually about what the scene FAILS to show,
+  not the matcher. Check the gate first (it is cheap: `spaceIntent(q)` in
+  a Node one-liner) and don't "fix" a matcher that was already correct.
+- Canvas verdicts need eyes. A "did it paint?" lit-pixel count passes
+  happily on a scene that is drawing the wrong thing — screenshot the
+  stage at several `st.u` values and LOOK. Freeze the loop first
+  (`st.playing = false; st.u = …`) or the shots are non-deterministic.
+
+## When the chat mounts a scene, tell the answer model
+
+The embed is client-side, so the model writing the reply does not know it
+exists. `runPipeline` re-runs `spaceIntent` over the same last user message
+and passes the scene title to the three answer prompts as `spaceScene`
+(`capabilitiesTail` in `src/prompts.js` swaps the "does NOT … display media"
+sentence). Adding a scene needs nothing here — but adding a NEW kind of
+client-mounted visual does, or it ships the feedback #46 bug again: an
+animation playing directly above an answer that apologises for being unable
+to show one.

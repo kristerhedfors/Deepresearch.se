@@ -10,16 +10,25 @@ import {
   DEFAULT_SERP_PROVIDERS,
   HIGHLIGHT_MAX_CHARS,
   SERP_PROVIDERS,
+  THROTTLE_RETRIES,
   cloudflareSearch,
   decodeEntities,
   fetchExcerpt,
+  isChallengePage,
+  looksLikeResultSet,
   normalizeSerpProviders,
   pageText,
   parseDdg,
   parseMarginalia,
+  parseMarginaliaThrottle,
   parseRssItems,
   parseSerpAnchors,
+  queryTerms,
+  rankItems,
+  relevantExcerpt,
+  scoreItem,
   serpSearch,
+  stripChromeRegions,
   stripTags,
   unwrapSerpHref,
 } from "./websearch-cf.js";
@@ -52,6 +61,19 @@ function marginaliaBlock(title, target, description) {
     <h2> <a tabindex="-1" class="title" rel="nofollow external" href="${target}">${title}</a> </h2>
     <p class="description">${description}</p>
   </section>`;
+}
+
+/** Marginalia's rate-limit interstitial: HTTP 200, no results, a retry token. */
+function throttleBody(query, countdown = -57) {
+  return `<html lang="en-US"><head><title>Error</title></head><body>
+    <div class="infobox">
+      <h1>Wait For A Moment</h1>
+      <p>The search engine is currently barraged by queries from bots</p>
+      <p>Please wait for <b id="countdown" data-tr="${countdown}">${countdown}</b> seconds. If your browser supports it,
+       it will refresh on its own. Otherwise, you can use
+       <a href="/search?query=${encodeURIComponent(query)}&amp;sst=S-abc123">this link</a> to manually proceed.
+    </div>
+  </body></html>`;
 }
 
 /** One RSS <item>, the shape Bing's feed output emits. */
@@ -95,6 +117,158 @@ test("pageText keeps the whole document when <main> is too thin to be the articl
   const html = "<body><main>tiny</main><p>The actual body copy lives out here.</p></body>";
   const text = pageText(html);
   assert.ok(text.includes("The actual body copy lives out here."));
+});
+
+test("pageText drops the page furniture that used to BE the excerpt", () => {
+  // The measured failure: Wikipedia's first 1200 characters were its language
+  // sidebar, so synthesis read a list of language names instead of the article.
+  const html =
+    "<body><header>Site masthead</header>" +
+    "<nav>Toggle the table of contents 30 languages Deutsch Español Français 日本語</nav>" +
+    "<p>Preliminary evidence indicates that intermittent fasting may be effective. [12] " +
+    "It is studied for metabolic health.[edit] " +
+    "pad ".repeat(60) +
+    "</p><footer>Privacy policy</footer></body>";
+  const text = pageText(html);
+  assert.ok(text.startsWith("Preliminary evidence indicates"), text.slice(0, 80));
+  assert.ok(!text.includes("Toggle the table of contents"));
+  assert.ok(!text.includes("Site masthead"));
+  assert.ok(!text.includes("Privacy policy"));
+  assert.ok(!/\[\s*12\s*\]|\[edit\]/.test(text)); // citation furniture out too
+});
+
+test("pageText keeps the text when the whole body sits inside stripped furniture", () => {
+  // Stripping must never be able to return an empty excerpt.
+  const html = "<body><nav>" + "The entire article is nested in here. ".repeat(20) + "</nav></body>";
+  assert.ok(pageText(html).includes("The entire article is nested in here."));
+});
+
+test("pageText does not leak stylesheet attributes containing '>' into the text", () => {
+  const html =
+    '<body><link rel="stylesheet" media="(min-width >= 40rem)" href="/a.css" />' +
+    "<p>The article body is the only visible text here. " + "pad ".repeat(60) + "</p></body>";
+  const text = pageText(html);
+  assert.ok(text.startsWith("The article body is the only visible text here."), text.slice(0, 80));
+  assert.ok(!text.includes("40rem"));
+});
+
+test("Marginalia's anchor fallback is fenced — its own pages must never become results", () => {
+  // Measured: on a query the index cannot answer, the class-free anchor scan
+  // returned the engine's About and GitHub links as research sources.
+  //
+  // Two fixes for feedback #48 arrived together: PR #330 removed this fallback,
+  // PR #331 put a floor under it. The floor is what this asserts, because it
+  // rejects the measured case on its own merits (the captured no-results page
+  // yields one link once the chrome is stripped, under MIN_FALLBACK_ITEMS)
+  // while keeping the layout-change rescue the removal would have cost. The
+  // end-to-end proof is "a no-results SERP yields no sources rather than its
+  // own chrome"; this pins the two mechanisms it rests on.
+  const marginalia = SERP_PROVIDERS.find((p) => p.id === "marginalia");
+  assert.equal(typeof marginalia.fallbackParse, "function");
+  assert.equal(looksLikeResultSet([{ url: "https://about.marginalia-search.com/" }]), false);
+  // …and the host filter now covers both of the engine's own domains.
+  const noise = parseSerpAnchors(
+    '<a href="https://about.marginalia-search.com/">About</a><a href="https://old-search.marginalia.nu/x">X</a>' +
+      '<a href="https://example.com/real">Real</a>',
+    5,
+    /^(?:[a-z0-9-]+\.)*(?:marginalia\.nu|marginalia-search\.com)$/i,
+  );
+  assert.deepEqual(noise.map((r) => r.url), ["https://example.com/real"]);
+});
+
+test("queryTerms keeps topic words and drops English AND Swedish stopwords", () => {
+  assert.deepEqual(queryTerms("What are the health effects of intermittent fasting?"), [
+    "health",
+    "effects",
+    "intermittent",
+    "fasting",
+  ]);
+  // Swedish parity: a Swedish query must not reduce to nothing and fall back to
+  // the head of the page (CLAUDE.md invariant 6).
+  assert.deepEqual(queryTerms("Vad är hälsoeffekterna av periodisk fasta?"), [
+    "hälsoeffekterna",
+    "periodisk",
+    "fasta",
+  ]);
+  assert.deepEqual(queryTerms(""), []);
+  assert.equal(queryTerms("a b c d e f g h i j k l m n o p q r s t u v").length <= 12, true);
+});
+
+test("relevantExcerpt selects the passages about the query, not the page's prefix", () => {
+  const text =
+    "Navigation and boilerplate lead the page. " +
+    "Subscribe to our newsletter for updates. " +
+    "Preliminary evidence indicates that intermittent fasting may reduce insulin resistance. " +
+    "Unrelated filler about the weather. ".repeat(10) +
+    "Researchers continue to study fasting and metabolic health.";
+  const out = relevantExcerpt(text, ["intermittent", "fasting", "insulin"], 200);
+  assert.ok(out.includes("Preliminary evidence indicates"), out);
+  assert.ok(!out.startsWith("Navigation and boilerplate"), out);
+  assert.ok(out.length <= 200);
+});
+
+test("relevantExcerpt joins non-adjacent passages with Exa's ellipsis", () => {
+  const filler = "Filler sentence with nothing to say. ".repeat(10);
+  const text = `Fasting improves markers. ${filler} Fasting also affects sleep.`;
+  const out = relevantExcerpt(text, ["fasting"], 120);
+  assert.ok(out.includes(" … "), out);
+  assert.ok(out.includes("Fasting improves markers.") && out.includes("Fasting also affects sleep."), out);
+});
+
+test("relevantExcerpt degrades to the head when nothing matches, and never expands", () => {
+  const text = "A page about something else entirely. ".repeat(50);
+  assert.ok(relevantExcerpt(text, ["quantum", "chromodynamics"], 100).startsWith("A page about"));
+  assert.equal(relevantExcerpt("short text", ["absent"], 500), "short text");
+  assert.equal(relevantExcerpt("", ["x"], 500), "");
+  assert.equal(relevantExcerpt(null, ["x"], 500), "");
+});
+
+test("isChallengePage flags a bot-check body but not a long article that mentions one", () => {
+  assert.equal(isChallengePage("Just a moment..."), true);
+  assert.equal(isChallengePage("Enable JavaScript and cookies to continue"), true);
+  assert.equal(isChallengePage("Checking your browser before accessing the site"), true);
+  assert.equal(isChallengePage(""), false);
+  assert.equal(isChallengePage("An essay on access denied errors. " + "pad ".repeat(200)), false);
+});
+
+test("scoreItem weights title and URL matches above snippet matches", () => {
+  const terms = ["fasting"];
+  assert.equal(scoreItem({ title: "Fasting", url: "https://x.test/a", highlights: [] }, terms), 2);
+  assert.equal(scoreItem({ title: "Diet", url: "https://x.test/fasting", highlights: [] }, terms), 2);
+  assert.equal(scoreItem({ title: "Diet", url: "https://x.test/a", highlights: ["about fasting"] }, terms), 1);
+  assert.equal(scoreItem({ title: "Diet", url: "https://x.test/a", highlights: [] }, terms), 0);
+  assert.equal(scoreItem({ title: "Fasting", url: "https://x.test/a", highlights: [] }, []), 0);
+});
+
+test("rankItems orders by relevance and drops what matches nothing", () => {
+  const items = [
+    { title: "Unrelated blog", url: "https://x.test/weather", highlights: ["nothing to do with it"] },
+    { title: "Notes", url: "https://x.test/n", highlights: ["a page mentioning fasting once"] },
+    { title: "Intermittent fasting", url: "https://en.wikipedia.org/wiki/Intermittent_fasting", highlights: [] },
+  ];
+  const ranked = rankItems(items, ["intermittent", "fasting"]);
+  assert.deepEqual(ranked.map((r) => r.title), ["Intermittent fasting", "Notes"]);
+});
+
+test("rankItems never empties the list — no sources is worse than weak ones", () => {
+  const items = [
+    { title: "A", url: "https://x.test/a", highlights: [] },
+    { title: "B", url: "https://x.test/b", highlights: [] },
+  ];
+  assert.equal(rankItems(items, ["absent"]).length, 2);
+  assert.equal(rankItems([items[0]], ["absent"]).length, 1);
+  assert.deepEqual(rankItems(items, []), items); // no terms: provider order stands
+});
+
+test("parseMarginaliaThrottle reads the interstitial's retry link and countdown", () => {
+  const t = parseMarginaliaThrottle(throttleBody("eu ai act", 3));
+  assert.equal(t.path, "/search?query=eu%20ai%20act&sst=S-abc123"); // &amp; decoded
+  assert.equal(t.waitMs, 3000);
+  // A negative countdown means "go now", not "wait forever".
+  assert.equal(parseMarginaliaThrottle(throttleBody("q", -57)).waitMs, 0);
+  // A normal results page is not a throttle.
+  assert.equal(parseMarginaliaThrottle(marginaliaBlock("A", "https://x.test/a", "s")), null);
+  assert.equal(parseMarginaliaThrottle(""), null);
 });
 
 test("unwrapSerpHref unwraps the redirector, passes direct links, rejects the rest", () => {
@@ -151,9 +325,114 @@ test("parseSerpAnchors is the class-free fallback: outbound links only, no SERP 
   assert.deepEqual(rows[0].highlights, []); // no snippets on the fallback path
 });
 
+// ---- the no-results SERP (feedback #48) --------------------------------------
+//
+// Marginalia answers a query it has nothing for with a full page of chrome and
+// an empty results section. The classed parse finds nothing, and the class-free
+// fallback used to scrape the masthead and footer: the engine's own about and
+// donate pages (on marginalia-search.com, which the marginalia.nu own-host
+// filter did not cover), its GitHub issues, its Twitter profile, the IP
+// database it credits, and the CC licence. All six reached synthesis as the
+// sources for a watch question. The markup below is that page's shape.
+const NO_RESULTS_SERP = `<html><body>
+  <header>
+    <a href="https://about.marginalia-search.com/">About</a>
+    <nav>
+      <a href="https://about.marginalia-search.com/article/supporting/">Donate</a>
+      <a href="https://old-search.marginalia.nu/explore/random">Random</a>
+    </nav>
+  </header>
+  <section id="results"><p>Nothing found. Consider
+    <a href="https://github.com/MarginaliaSearch/MarginaliaSearch/issues">submitting an issue on GitHub</a>.</p>
+  </section>
+  <footer>
+    <section id="legal">
+      <a href="https://twitter.com/MarginaliaNu">@MarginaliaNu</a>
+      <a href="https://lite.ip2location.com/">Free IP Geolocation Database</a>
+      <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC-BY-SA 4.0</a>
+    </section>
+  </footer>
+</body></html>`;
+
+test("stripChromeRegions drops the masthead and footer, keeps the results region", () => {
+  const body = stripChromeRegions(NO_RESULTS_SERP);
+  assert.ok(body.includes('id="results"'));
+  for (const gone of ["about.marginalia-search.com", "twitter.com", "creativecommons.org", "ip2location"]) {
+    assert.ok(!body.includes(gone), `${gone} should not survive the chrome strip`);
+  }
+});
+
+test("looksLikeResultSet: a real result set clears the floor, page leftovers do not", () => {
+  const item = (url) => ({ title: url, url, highlights: [] });
+  assert.equal(looksLikeResultSet([]), false);
+  assert.equal(looksLikeResultSet([item("https://a.com/1"), item("https://b.com/2")]), false); // too few
+  // Enough links, but all from one host — a site's own navigation, not results.
+  assert.equal(
+    looksLikeResultSet([item("https://a.com/1"), item("https://a.com/2"), item("https://a.com/3")]),
+    false,
+  );
+  assert.equal(
+    looksLikeResultSet([item("https://a.com/1"), item("https://b.com/2"), item("https://c.com/3")]),
+    true,
+  );
+});
+
+test("a no-results SERP yields no sources rather than its own chrome (feedback #48)", async () => {
+  const warned = [];
+  const log = { ...noopLog, warn: (event) => warned.push(event) };
+  const out = await cloudflareSearch(log, "wd1863 dial swap reddit", 6, {
+    pages: false,
+    providers: ["marginalia"],
+    doFetch: async () => htmlResponse(NO_RESULTS_SERP),
+  });
+  // null, not a list of the engine's about/donate/licence links: the caller
+  // (src/exa.js) falls back to Exa from here instead of synthesising over
+  // sources that have nothing to do with the question.
+  assert.equal(out, null);
+  assert.ok(warned.includes("search.cf_serp_fallback_rejected"));
+  assert.ok(warned.includes("search.cf_serp_empty"));
+});
+
+test("the own-host filter covers both of Marginalia's domains", () => {
+  const marginalia = SERP_PROVIDERS.find((p) => p.id === "marginalia");
+  const rows = marginalia.fallbackParse(
+    `<a href="https://about.marginalia-search.com/">About</a>
+     <a href="https://www.marginalia.nu/">Marginalia</a>
+     <a href="https://example.com/a">A</a>
+     <a href="https://example.org/b">B</a>
+     <a href="https://example.net/c">C</a>`,
+    10,
+  );
+  assert.deepEqual(rows.map((r) => r.url), [
+    "https://example.com/a",
+    "https://example.org/b",
+    "https://example.net/c",
+  ]);
+});
+
+test("the class-free fallback still rescues a real SERP whose markup changed", async () => {
+  // The case the fallback exists for: results are there, the classes are not.
+  const changed = `<html><body><header><a href="https://about.marginalia-search.com/">About</a></header>
+    <section id="results">
+      <a href="https://example.com/one">One</a>
+      <a href="https://example.org/two">Two</a>
+      <a href="https://example.net/three">Three</a>
+    </section></body></html>`;
+  const out = await cloudflareSearch(noopLog, "q", 6, {
+    pages: false,
+    providers: ["marginalia"],
+    doFetch: async () => htmlResponse(changed),
+  });
+  assert.deepEqual(out.map((r) => r.url), [
+    "https://example.com/one",
+    "https://example.org/two",
+    "https://example.net/three",
+  ]);
+});
+
 // ---- the fetching side -------------------------------------------------------
 
-test("serpSearch retries DuckDuckGo's empty anti-bot shell once, then parses", async () => {
+test("serpSearch retries an empty 200 once, then parses", async () => {
   let calls = 0;
   const doFetch = async () => {
     calls++;
@@ -165,10 +444,74 @@ test("serpSearch retries DuckDuckGo's empty anti-bot shell once, then parses", a
   assert.deepEqual(r.items.map((x) => x.url), ["https://example.com/hit"]);
 });
 
+test("serpSearch does NOT spend the retry on DuckDuckGo's terminal 202 shell", async () => {
+  // Measured: every retry of the datacenter anti-bot shell returns the same
+  // shell, so the beat plus the second round trip taxed every query in every
+  // wave for nothing. A 202 is terminal; only a plain empty 200 is retried.
+  let calls = 0;
+  const doFetch = async () => {
+    calls++;
+    return htmlResponse("<html><body></body></html>", { status: 202 });
+  };
+  const r = await serpSearch(noopLog, "q", 5, doFetch, ["ddg"]);
+  assert.equal(calls, 1);
+  assert.deepEqual(r.items, []);
+});
+
+test("serpSearch follows a throttle interstitial's retry link instead of calling it empty", async () => {
+  // The reported quality bug: Marginalia answers a rate-limited request with
+  // HTTP 200 and "Wait For A Moment", which parsed as zero results and ended
+  // the cascade — so most queries in a wave returned no sources at all.
+  const seen = [];
+  const doFetch = async (url) => {
+    seen.push(String(url));
+    if (!String(url).includes("sst=")) return htmlResponse(throttleBody("q"));
+    return htmlResponse(marginaliaBlock("M", "https://example.org/m", "the result behind the throttle"));
+  };
+  const r = await serpSearch(noopLog, "q", 5, doFetch, ["marginalia"]);
+  assert.deepEqual(r.items.map((x) => x.url), ["https://example.org/m"]);
+  assert.equal(seen.length, 2);
+  // The retry is the interstitial's OWN link, resolved against the provider.
+  assert.ok(seen[1].startsWith("https://old-search.marginalia.nu/search?query=q&sst=S-abc123"));
+});
+
+test("serpSearch gives up on a throttle that never clears, without throwing", async () => {
+  let calls = 0;
+  const doFetch = async () => {
+    calls++;
+    return htmlResponse(throttleBody("q"));
+  };
+  const r = await serpSearch(noopLog, "q", 5, doFetch, ["marginalia"]);
+  assert.deepEqual(r.items, []);
+  assert.equal(calls, THROTTLE_RETRIES + 1); // the original plus its bounded follows
+});
+
 test("serpSearch falls back to the anchor scan when the classed markup changes", async () => {
+  const doFetch = async () =>
+    htmlResponse(
+      "<table>" +
+        ["https://example.com/x", "https://example.org/y", "https://example.net/z"]
+          .map((u) => `<tr><td><a href="${u}">${u}</a></td></tr>`)
+          .join("") +
+        "</table>",
+    );
+  const r = await serpSearch(noopLog, "q", 5, doFetch, ["ddg"]);
+  assert.deepEqual(r.items.map((x) => x.url), [
+    "https://example.com/x",
+    "https://example.org/y",
+    "https://example.net/z",
+  ]);
+});
+
+test("a single stray anchor is not a rescued layout — it is a page with no results", async () => {
+  // The cost the feedback #48 floor accepts, stated as a test so it is a
+  // decision rather than a surprise: a genuinely one-result SERP whose classes
+  // ALSO changed is dropped, and the cascade moves on to the next provider (or
+  // to Exa). Believing it is how six chrome links became sources.
   const doFetch = async () => htmlResponse('<table><tr><td><a href="https://example.com/x">X</a></td></tr></table>');
   const r = await serpSearch(noopLog, "q", 5, doFetch, ["ddg"]);
-  assert.deepEqual(r.items.map((x) => x.url), ["https://example.com/x"]);
+  assert.deepEqual(r.items, []);
+  assert.equal(r.provider, "");
 });
 
 test("serpSearch cascades past a blocked provider to the next one", async () => {
@@ -184,18 +527,43 @@ test("serpSearch cascades past a blocked provider to the next one", async () => 
   const r = await serpSearch(noopLog, "q", 5, doFetch, ["ddg", "marginalia"]);
   assert.equal(r.provider, "marginalia");
   assert.deepEqual(r.items.map((x) => x.url), ["https://example.org/m"]);
-  assert.equal(seen.filter((u) => u.includes("duckduckgo")).length, 2); // tried, retried, moved on
+  assert.equal(seen.filter((u) => u.includes("duckduckgo")).length, 1); // 202 is terminal, moved on
 });
 
-test("serpSearch stops at the first provider that returns anything", async () => {
+test("serpSearch stops as soon as the limit is met", async () => {
   const seen = [];
   const doFetch = async (url) => {
     seen.push(String(url));
-    return htmlResponse(serpBlock("Hit", "https://example.com/hit", "s"));
+    return htmlResponse([
+      serpBlock("A", "https://example.com/a", "s"),
+      serpBlock("B", "https://example.com/b", "s"),
+    ].join("\n"));
   };
-  const r = await serpSearch(noopLog, "q", 5, doFetch, ["ddg", "marginalia", "bing_rss"]);
+  const r = await serpSearch(noopLog, "q", 2, doFetch, ["ddg", "marginalia", "bing_rss"]);
   assert.equal(r.provider, "ddg");
   assert.equal(seen.length, 1); // no needless requests to the rest
+});
+
+test("serpSearch MERGES a thin provider with the next instead of settling for it", async () => {
+  // Two results from one small index is a worse foundation for research than
+  // two plus the next source's — and the extra request is only paid when the
+  // first source came up short.
+  const doFetch = async (url) => {
+    if (String(url).includes("duckduckgo")) return htmlResponse(serpBlock("A", "https://example.com/a", "one"));
+    return htmlResponse([
+      marginaliaBlock("B", "https://example.org/b", "two"),
+      // A URL the first provider already returned must not appear twice.
+      marginaliaBlock("A again", "https://example.com/a", "dup"),
+      marginaliaBlock("C", "https://example.net/c", "three"),
+    ].join("\n"));
+  };
+  const r = await serpSearch(noopLog, "q", 5, doFetch, ["ddg", "marginalia"]);
+  assert.deepEqual(r.items.map((x) => x.url), [
+    "https://example.com/a",
+    "https://example.org/b",
+    "https://example.net/c",
+  ]);
+  assert.equal(r.provider, "ddg,marginalia"); // both contributed, in order
 });
 
 test("serpSearch is fail-soft on a throw, a non-2xx, and a persistently empty cascade", async () => {
@@ -235,15 +603,34 @@ test("cloudflareSearch upgrades SERP snippets to real page excerpts", async () =
   const fetched = [];
   const doFetch = async (url) => {
     if (String(url).includes("duckduckgo.com/html")) return htmlResponse(serp);
+    if (String(url).includes("marginalia")) return htmlResponse("<html><body>no results</body></html>");
     fetched.push(String(url));
     return htmlResponse(`<body><main><p>${"Full page text for " + url + ". "}${"pad ".repeat(80)}</p></main></body>`);
   };
 
-  const items = await cloudflareSearch(noopLog, "a question", 5, { doFetch });
+  const items = await cloudflareSearch(noopLog, "a question", 2, { doFetch });
   assert.equal(items.length, 2);
   assert.deepEqual(fetched, ["https://example.com/1", "https://example.org/2"]);
   assert.ok(items[0].highlights[0].startsWith("Full page text for https://example.com/1."));
   assert.ok(items[1].highlights[0].startsWith("Full page text for https://example.org/2."));
+});
+
+test("fetchExcerpt returns the query-relevant passage, not the page's opening", async () => {
+  const body =
+    "<body><nav>Menu Home About Contact</nav><p>" +
+    "Introductory throat-clearing that answers nothing. ".repeat(20) +
+    "The CPU limit for a Worker on the paid plan is five minutes. " +
+    "More filler after the fact. ".repeat(20) +
+    "</p></body>";
+  const text = await fetchExcerpt("https://x.test/a", async () => htmlResponse(body), ["cpu", "limit", "worker"]);
+  assert.ok(text.includes("The CPU limit for a Worker on the paid plan is five minutes."), text.slice(0, 120));
+  assert.ok(!text.includes("Menu Home About Contact"));
+});
+
+test("fetchExcerpt refuses a bot-check page served as a normal 200", async () => {
+  // Citing "Just a moment…" as a source is worse than having no excerpt.
+  const text = await fetchExcerpt("https://x.test/a", async () => htmlResponse("<body><h1>Just a moment...</h1></body>"), ["cpu"]);
+  assert.equal(text, "");
 });
 
 test("cloudflareSearch keeps the SERP snippet when a page won't load", async () => {
@@ -263,10 +650,11 @@ test("cloudflareSearch skips page fetches entirely when pages are off", async ()
     if (String(url).includes("duckduckgo.com/html")) {
       return htmlResponse(serpBlock("One", "https://example.com/1", "snippet only"));
     }
+    if (String(url).includes("marginalia")) return htmlResponse("<html><body>no results</body></html>");
     pageFetches++;
     return htmlResponse("<body>never read</body>");
   };
-  const items = await cloudflareSearch(noopLog, "q", 5, { doFetch, pages: false });
+  const items = await cloudflareSearch(noopLog, "q", 1, { doFetch, pages: false });
   assert.equal(pageFetches, 0);
   assert.deepEqual(items[0].highlights, ["snippet only"]);
 });

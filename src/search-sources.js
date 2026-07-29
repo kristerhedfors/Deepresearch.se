@@ -32,6 +32,17 @@ import {
   arxivSearch,
   arxivTermKey,
 } from "./arxiv.js";
+import {
+  EUROPEPMC_LEAD_MAX_PER_REQUEST,
+  EUROPEPMC_MAX_PER_REQUEST,
+  europepmcDiversityKey,
+  europepmcIntent,
+  europepmcLeadIntent,
+  europepmcPickQuery,
+  europepmcPromptNote,
+  europepmcSearch,
+  europepmcTermKey,
+} from "./europepmc.js";
 import { hfDiversityKey, hfIntent, hfPickQuery, hfPromptNote, hfSearch, hfTermKey } from "./hf.js";
 
 /**
@@ -143,6 +154,28 @@ export const SEARCH_SOURCES = [
     promptNote: arxivPromptNote,
     diversityHost: "arxiv.org",
     diversityKeyOf: arxivDiversityKey,
+  },
+  {
+    // The life-science literature leg (PubMed / PMC / bioRxiv / medRxiv).
+    // arXiv sits above it and covers almost none of the same ground: genetics,
+    // palaeogenomics and biomedicine publish in journals and on bioRxiv, so
+    // without this a genetics question had only the generic web leg.
+    id: "europepmc",
+    intent: europepmcIntent,
+    leadIntent: europepmcLeadIntent,
+    leadMaxPerRequest: EUROPEPMC_LEAD_MAX_PER_REQUEST,
+    search: europepmcSearch,
+    service: "Europe PMC",
+    pickQuery: europepmcPickQuery,
+    dedupKey: europepmcTermKey,
+    maxPerRequest: EUROPEPMC_MAX_PER_REQUEST,
+    promptNote: europepmcPromptNote,
+    // The hits are DOI URLs, so without a platform key every publisher on
+    // earth would share the single origin `doi.org` and the per-origin cap
+    // would starve the leg to one or two results. Keyed on the registrant
+    // prefix instead, which is the publisher (europepmc.js).
+    diversityHost: "doi.org",
+    diversityKeyOf: europepmcDiversityKey,
   },
 ];
 

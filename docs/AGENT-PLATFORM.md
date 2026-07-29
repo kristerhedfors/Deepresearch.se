@@ -69,8 +69,9 @@ selects an answer phase the platform already implements.
 ## 2. The seven agents we ship
 
 Each is one entry in [`sdk/AGENTS.json`](../sdk/AGENTS.json) — reference specs
-that exist to be copied. **Five are the DEFAULT agents**, one per Se/rver chat
-mode; the other two are the client-tier archetype and the template.
+that exist to be copied. **Six are the DEFAULT agents**, one per Se/rver chat
+mode; two are the client-tier archetype and the template; and one — Palaeogenomics
+— is a DERIVED agent bound to no mode at all, reachable only by id.
 
 | Agent | Mode | Tier | What it is |
 |---|---|---|---|
@@ -82,6 +83,7 @@ mode; the other two are the client-tier archetype and the template.
 | **Models** | `models` | Se/rver | The agent whose subject is the models themselves, and the lifecycle it owns: discovered → evaluated → enabled. It holds the live catalog of every model this deployment can reach across every provider, with each one's price and its verification checklist — and enabling one puts it in every mode's dropdown. |
 | **Secure** | — | Se/cure | The never-cloud tier — runs wholly in your browser, server in no data path, sealed local state. |
 | **Under Construction** | — | Se/cure | A placeholder — the minimal viable agent (composer + send + an honest notice). The template you copy to start a new one. |
+| **Palaeogenomics** | — | Se/rver | Ancient DNA: the published literature (Europe PMC) and a structured query over 20,927 published ancient individuals, kept as two separate legs. Bound to **no chat mode** — addressed by id, `defaults` untouched — and the worked example of a DOMAIN agent that costs the platform one registry entry and one vocabulary member. Its sample block is enabled by the spec's declared `context`, not by a knob ([`PALAEOGENOMICS.md`](PALAEOGENOMICS.md)). |
 
 The **Agent Studio** is where the platform folds back on itself — it is the
 [`pair-studio`](../sdk/skills/pair-studio/SKILL.md) module made real: prompt →

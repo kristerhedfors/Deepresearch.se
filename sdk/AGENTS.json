@@ -930,6 +930,141 @@
         "credits": null,
         "note": "Building is expensive; a share link to a builder gets a tighter default."
       }
+    },
+    {
+      "id": "palaeogenomics",
+      "name": "Palaeogenomics",
+      "tagline": "Ancient DNA research: the published literature and the published individuals, kept apart.",
+      "description": "A research agent for ancient genetics — palaeogenomics, archaeogenetics, ancient metagenomics. It answers from two sources the plain Deep Research turn cannot reach. The literature leg searches Europe PMC (PubMed, PubMed Central, bioRxiv and medRxiv), where this field actually publishes and arXiv does not. The sample leg runs a STRUCTURED query over 20,927 published ancient and present-day individuals repackaged from the Allen Ancient DNA Resource through the Poseidon archives — a region and radius, a date window in BP/BCE/CE, an mtDNA or Y-haplogroup prefix, a coverage floor — and folds the exact matching rows and counts into the answer, so a sample id in the answer is a sample that exists. It excludes Ignore_-flagged individuals by default (the convention for contaminated, duplicated and unusable samples) and says so. Neither leg infers ancestry: the corpus query is filters and counts, not f-statistics, qpAdm or PCA — for those, the analysis belongs in the execution sandbox with the real tools. Its subject matter carries caveats that decide whether a claim holds — coverage, contamination, calibrated versus contextual dates, reference panel — and the agent is built to state them rather than round them away.",
+      "platform": "server",
+      "tier": "Se/rver",
+      "derivesFrom": "research",
+      "theme": {
+        "--agent-accent": "#7d9b76",
+        "--agent-accent-soft": "rgba(150,190,140,0.16)",
+        "--agent-bg": "#101410",
+        "--agent-fg": "#e8efe4"
+      },
+      "intro": {
+        "kind": "fade",
+        "durationMs": 400
+      },
+      "loading": {
+        "kind": "pipeline-phases",
+        "messages": [
+          "Triaging…",
+          "Searching the literature…",
+          "Querying the sample database…",
+          "Checking gaps…",
+          "Synthesising…",
+          "Validating…"
+        ]
+      },
+      "backdrop": {
+        "kind": "terminal"
+      },
+      "controls": [
+        {
+          "type": "prompt-input",
+          "placeholder": "Ask about ancient DNA — a population, a site, a haplogroup, a date range…"
+        },
+        {
+          "type": "model-select",
+          "providers": "all",
+          "allowLocal": false
+        },
+        {
+          "type": "depth-slider",
+          "min": 0,
+          "max": 3,
+          "default": 1,
+          "ticks": [
+            "Quick",
+            "Standard",
+            "Deep",
+            "Exhaustive"
+          ]
+        },
+        {
+          "type": "toggle",
+          "id": "web_search",
+          "label": "Web search",
+          "default": true
+        },
+        {
+          "type": "toggle",
+          "id": "incognito",
+          "label": "Incognito",
+          "default": false
+        },
+        {
+          "type": "attachments",
+          "accept": "*/*",
+          "max": 5
+        },
+        {
+          "type": "mode-select",
+          "modes": [
+            "normal",
+            "introspection",
+            "sdk",
+            "orchestrator",
+            "outrospection"
+          ]
+        },
+        {
+          "type": "send-button"
+        }
+      ],
+      "capability": {
+        "answerPhase": "research",
+        "prompts": "research",
+        "tools": [],
+        "toolFallback": "none",
+        "context": [
+          "ancient-samples"
+        ],
+        "search": {
+          "web": true,
+          "auxSources": true,
+          "maxQueries": null
+        },
+        "routing": {
+          "planModel": "json-default",
+          "answerModel": "user"
+        },
+        "gates": [
+          {
+            "id": "ancient-sample",
+            "langs": [
+              "en",
+              "sv"
+            ]
+          }
+        ],
+        "bounds": {},
+        "emits": [
+          "step",
+          "search"
+        ],
+        "requires": [
+          "developer_mode"
+        ],
+        "team": null
+      },
+      "examples": [
+        "Which published ancient individuals lie within 300 km of Gotland and date between 5000 and 4000 BP?",
+        "Hur många forntida individer i databasen har Y-haplogrupp R1b, och var kommer de ifrån?",
+        "What do the papers say about DNA preservation in permafrost, and how old is the oldest sequenced mammoth?",
+        "Compare the coverage and dating evidence behind the Yamnaya samples in the corpus."
+      ],
+      "generateExamples": true,
+      "quota": {
+        "window": "day",
+        "requests": 50,
+        "credits": null,
+        "note": "Signed-in default window. The sample query costs no upstream call at all — the corpus is a build artifact in this deployment — so only the literature leg and the answer model bill."
+      }
     }
   ]
 }
