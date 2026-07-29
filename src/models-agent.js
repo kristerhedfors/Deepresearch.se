@@ -51,6 +51,9 @@
 // sends AI-derived search terms, exactly as src/hf.js already documents.
 
 import { getConfig } from "./config.js";
+// The last-user-text reading and the multipart-safe block append are shared
+// with the other pre-pipeline enrichments (src/conversation.js).
+import { appendToLast, lastUserText } from "./conversation.js";
 import {
   applyAllowance,
   buildCatalog,
@@ -195,43 +198,4 @@ export async function runModelsAgentEnrichment(c) {
   const block = catalogBlock(rows, IN_CONTEXT);
   if (!block) return conversation;
   return [...conversation.slice(0, -1), appendToLast(conversation[conversation.length - 1], block)];
-}
-
-/**
- * The latest user message's text (the enrichment runs before pipeline.js builds
- * its ctx, so it reads the conversation directly — same as the introspection
- * enrichment does).
- * @param {Conversation} conversation
- * @returns {string}
- */
-function lastUserText(conversation) {
-  for (let i = conversation.length - 1; i >= 0; i--) {
-    const m = conversation[i];
-    if (m?.role !== "user") continue;
-    const content = m.content;
-    if (typeof content === "string") return content;
-    if (Array.isArray(content)) {
-      return content.filter((p) => p?.type === "text").map((p) => p.text || "").join(" ");
-    }
-    return "";
-  }
-  return "";
-}
-
-/**
- * Append a context block to a message, preserving multipart content (an
- * attached image must survive the append).
- * @param {any} message
- * @param {string} block
- * @returns {any}
- */
-function appendToLast(message, block) {
-  if (!message) return message;
-  if (typeof message.content === "string") {
-    return { ...message, content: `${message.content}\n\n${block}` };
-  }
-  if (Array.isArray(message.content)) {
-    return { ...message, content: [...message.content, { type: "text", text: block }] };
-  }
-  return message;
 }

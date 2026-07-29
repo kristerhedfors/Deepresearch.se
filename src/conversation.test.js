@@ -2,7 +2,7 @@
 // view, image counting, last/previous user turn, non-mutating appenders).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { textOf, countImages, lastUserMessage, previousUserText, imagePartsOf, formatConversation, withImageNudge, withAppendedText, withAppendedImage, starterRefOf, withoutStarterTags } from "./conversation.js";
+import { textOf, countImages, lastUserMessage, lastUserText, appendToLast, previousUserText, imagePartsOf, formatConversation, withImageNudge, withAppendedText, withAppendedImage, starterRefOf, withoutStarterTags } from "./conversation.js";
 
 describe("previousUserText", () => {
   test("returns the user message before the latest one", () => {
@@ -82,6 +82,74 @@ describe("lastUserMessage", () => {
   });
   test("undefined when there is no user message at all", () => {
     assert.equal(lastUserMessage([{ role: "assistant", content: "hi" }]), undefined);
+  });
+});
+
+describe("lastUserText", () => {
+  test("returns the latest user turn's string content, ignoring later assistant turns", () => {
+    const convo = [
+      { role: "user", content: "an older question" },
+      { role: "user", content: "vilka prover finns från Gotland?" },
+      { role: "assistant", content: "an answer that must not be read" },
+    ];
+    assert.equal(lastUserText(convo), "vilka prover finns från Gotland?");
+  });
+
+  test("joins multipart text with a space and ignores image parts", () => {
+    const convo = [{
+      role: "user",
+      content: [
+        { type: "text", text: "which model" },
+        { type: "image_url", image_url: { url: "data:," } },
+        { type: "text", text: "is cheapest?" },
+      ],
+    }];
+    // A space, not textOf's newline: the callers are intent gates matching
+    // phrases across the parts, and no "[1 image attached]" marker is added.
+    assert.equal(lastUserText(convo), "which model is cheapest?");
+  });
+
+  test("tolerates missing text, missing messages and non-string content", () => {
+    assert.equal(lastUserText([]), "");
+    assert.equal(lastUserText([{ role: "assistant", content: "no user turn" }]), "");
+    assert.equal(lastUserText([{ role: "user", content: null }]), "", "unknown content shape stops the walk");
+    assert.equal(
+      lastUserText([{ role: "user", content: [{ type: "text" }, { type: "text", text: "b" }] }]),
+      " b",
+      "a text part with no text contributes an empty string",
+    );
+  });
+});
+
+describe("appendToLast", () => {
+  test("appends a blank-line-separated block to string content, non-mutating", () => {
+    const msg = { role: "user", content: "what does this say?" };
+    const out = appendToLast(msg, "SAMPLES: none matched");
+    assert.equal(out.content, "what does this say?\n\nSAMPLES: none matched");
+    assert.equal(msg.content, "what does this say?", "original untouched");
+  });
+
+  test("adds a NEW text part to multipart content so the attachment survives", () => {
+    const msg = {
+      role: "user",
+      content: [
+        { type: "text", text: "what is in this photo?" },
+        { type: "image_url", image_url: { url: "data:," } },
+      ],
+    };
+    const out = appendToLast(msg, "MODELS: …");
+    assert.equal(out.content.length, 3);
+    assert.deepEqual(out.content[2], { type: "text", text: "MODELS: …" });
+    assert.equal(out.content[1].image_url.url, "data:,", "the image part rides along");
+    assert.equal(out.content[0].text, "what is in this photo?", "the typed text is not edited in place");
+    assert.equal(msg.content.length, 2, "original untouched");
+  });
+
+  test("passes through a missing message and an unknown content shape", () => {
+    assert.equal(appendToLast(null, "block"), null);
+    assert.equal(appendToLast(undefined, "block"), undefined);
+    const odd = { role: "user", content: 42 };
+    assert.equal(appendToLast(odd, "block"), odd, "returned unchanged rather than corrupted");
   });
 });
 
