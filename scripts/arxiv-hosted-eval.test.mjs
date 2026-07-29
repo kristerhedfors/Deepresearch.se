@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { expandMonths, needleStats, rankOf } from "./arxiv-hosted-eval.mjs";
+import { ageProfile, expandMonths, idYYMM, needleStats, rankOf } from "./arxiv-hosted-eval.mjs";
 import { rerankDoc } from "./arxiv-hosted.mjs";
 import { RERANK_DOC_CHARS } from "./arxiv-berget.mjs";
 
@@ -92,4 +92,37 @@ test("needleStats ignores errored rows rather than scoring them as misses", () =
   const s = needleStats(rows, "en");
   assert.equal(s.n, 1);
   assert.equal(s.r1, 100);
+});
+
+test("idYYMM reads the submission month from the id, not from metadata", () => {
+  assert.equal(idYYMM("2507.01234"), 2507);
+  assert.equal(idYYMM("2310.00001"), 2310);
+  assert.equal(idYYMM("2601.12345"), 2601);
+  // Old-style ids carry no YYMM and are pre-2007 — excluded, not guessed at.
+  assert.equal(idYYMM("cs/0503001"), 0);
+  assert.equal(idYYMM(""), 0);
+});
+
+test("ageProfile reports the pre-widening share of what was shown", () => {
+  const rows = [
+    { kind: "topical", kept: ["2310.00001", "2401.00002", "2507.00003", "2607.00004"] },
+  ];
+  const a = ageProfile(rows);
+  assert.equal(a.n, 4);
+  assert.equal(a.oldest, "2023-10");
+  assert.equal(a.newest, "2026-07");
+  // Two of four predate the original 13-month window.
+  assert.equal(a.preWindowPct, 50);
+});
+
+test("ageProfile only counts what the run actually showed", () => {
+  // `kept` is post-floor — the list a user sees. Candidates that the floor
+  // dropped must not count toward the age mix.
+  const rows = [
+    { kind: "topical", kept: ["2607.00001"], ordered: ["2607.00001", "2310.99999"] },
+    { kind: "topical", error: "boom", kept: [] },
+  ];
+  const a = ageProfile(rows);
+  assert.equal(a.n, 1);
+  assert.equal(a.preWindowPct, 0);
 });

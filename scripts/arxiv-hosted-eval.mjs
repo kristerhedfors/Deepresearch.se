@@ -170,6 +170,73 @@ async function cmdSample(argv) {
   );
 }
 
+// ---- coverage ---------------------------------------------------------------
+
+/**
+ * Per-MONTH coverage of the hosted index against the independent GCS
+ * enumeration, by sampling ids in each month and asking get_by_ids for them.
+ *
+ * Per-month is the whole point. docs/ARXIV-RAG.md §10.2: a harvest lost 48.1%
+ * of its oldest month, the run exited 0, and the TOTALS agreed with the
+ * enumeration to 0.04% — "only the per-month breakdown exposed the hole".
+ * A single pooled percentage would hide exactly the failure this guards.
+ */
+async function cmdCoverage(argv) {
+  const months = expandMonths(arg(argv, "--months", ""));
+  const perMonth = Number(arg(argv, "--per-month", 150));
+  const seed = arg(argv, "--seed", "coverage-v1");
+  const idsFile = arg(argv, "--ids", "");
+  if (!months.length) throw new Error("--months 2310-2506 required");
+
+  /** @type {Map<string, string[]>} month → ids */
+  const byMonth = new Map(months.map((m) => [m, []]));
+  if (idsFile) {
+    // Reuse an enumeration already on disk rather than re-listing the mirror.
+    for (const id of (await readFile(join(ROOT, idsFile), "utf8")).split("\n")) {
+      const m = id.slice(0, 4);
+      if (byMonth.has(m)) byMonth.get(m).push(id.trim());
+    }
+  } else {
+    for (const m of months) {
+      const ids = await listShard(m);
+      byMonth.set(m, [...ids.keys()]);
+      process.stdout.write(`\r  enumerated ${m}: ${ids.size}   `);
+    }
+    process.stdout.write("\n");
+  }
+
+  console.log(`month    enumerated  sampled  present  coverage`);
+  let worst = { month: "", pct: 101 };
+  let totalSampled = 0;
+  let totalPresent = 0;
+  for (const m of months) {
+    const all = byMonth.get(m) || [];
+    if (!all.length) {
+      console.log(`${m}     ${String(0).padStart(10)}  — no ids enumerated`);
+      continue;
+    }
+    const sample = all
+      .map((id) => ({ id, r: hash01(seed + ":" + id) }))
+      .sort((a, b) => a.r - b.r)
+      .slice(0, perMonth)
+      .map((x) => x.id);
+    let present = 0;
+    for (let i = 0; i < sample.length; i += GET_BY_IDS_BATCH) {
+      const rows = await vectorizeGetByIds(sample.slice(i, i + GET_BY_IDS_BATCH));
+      present += rows.filter((/** @type {any} */ r) => r?.metadata?.t).length;
+    }
+    const pct = Math.round((present / sample.length) * 1000) / 10;
+    totalSampled += sample.length;
+    totalPresent += present;
+    if (pct < worst.pct) worst = { month: m, pct };
+    console.log(
+      `${m}     ${String(all.length).padStart(10)}  ${String(sample.length).padStart(7)}  ${String(present).padStart(7)}  ${pct}%`,
+    );
+  }
+  const overall = Math.round((totalPresent / (totalSampled || 1)) * 1000) / 10;
+  console.log(`\noverall ${overall}% of ${totalSampled} sampled — worst month ${worst.month} at ${worst.pct}%`);
+}
+
 // ---- run --------------------------------------------------------------------
 
 /**
@@ -305,6 +372,93 @@ function reportNeedle(result) {
   }
 }
 
+// ---- compare ----------------------------------------------------------------
+
+/**
+ * Submission month of an arXiv id as a sortable YYMM integer; 0 for old-style
+ * ids. The id prefix is the ONLY trustworthy submission date on this corpus —
+ * the harvested `updated`/datestamp field tracks the last revision, and
+ * <created> tracks the harvest window (docs/ARXIV-RAG.md §3).
+ * @param {string} id
+ */
+export function idYYMM(id) {
+  const m = /^(\d{2})(\d{2})\./.exec(String(id || "").trim());
+  return m ? Number(m[1]) * 100 + Number(m[2]) : 0;
+}
+
+/**
+ * Age profile of what a run actually SHOWED, from the ids alone.
+ *
+ * This exists to test an assumption the widening puts at risk. src/arxiv.js
+ * records that a recency re-sort was tried and lost, and that the softer
+ * "prefer the last 18 months" variant was a NO-OP "because every hit in a
+ * realistic slice is already inside that window (the corpus grows, so relevance
+ * is implicitly recent)". That reasoning holds for a rolling 13-month corpus by
+ * construction. Over 33 months it is a claim about ranking, and this measures
+ * whether it survived.
+ *
+ * @param {any[]} rows
+ * @param {number} topN
+ */
+export function ageProfile(rows, topN = 10) {
+  const months = [];
+  for (const r of rows) {
+    if (r.error) continue;
+    for (const id of (r.kept || []).slice(0, topN)) {
+      const m = idYYMM(id);
+      if (m) months.push(m);
+    }
+  }
+  if (!months.length) return null;
+  months.sort((a, b) => a - b);
+  const fmt = (/** @type {number} */ v) => `20${String(Math.floor(v / 100)).padStart(2, "0")}-${String(v % 100).padStart(2, "0")}`;
+  const median = months[Math.floor(months.length / 2)];
+  // The share that predates the original 13-month window — i.e. results that
+  // only exist because of the widening.
+  const preWindow = months.filter((m) => m < 2507).length;
+  return {
+    n: months.length,
+    median: fmt(median),
+    oldest: fmt(months[0]),
+    newest: fmt(months.at(-1)),
+    preWindowPct: Math.round((preWindow / months.length) * 1000) / 10,
+  };
+}
+
+/**
+ * Side-by-side of two runs: the needle table, then the age shift. Reads only
+ * the saved run files, so it can be re-derived without spending another query.
+ */
+async function cmdCompare(argv) {
+  const runPaths = String(arg(argv, "--runs", "")).split(",").map((s) => s.trim()).filter(Boolean);
+  if (runPaths.length < 2) throw new Error("--runs before.json,after.json required");
+  const runs = [];
+  for (const p of runPaths) runs.push(JSON.parse(await readFile(join(ROOT, p), "utf8")));
+
+  for (const lang of ["en", "sv"]) {
+    console.log(`\nNeedle · ${lang.toUpperCase()}`);
+    console.log("run                    vectors   pool  inPool   r@1    r@5    r@10   MRR");
+    for (const run of runs) {
+      const s = needleStats(run.rows, lang);
+      if (!s) continue;
+      console.log(
+        `${String(run.label).padEnd(22)} ${String(run.vectorCount).padStart(8)}  ${String(run.candidates).padEnd(5)} ` +
+          `${String(s.inPool).padEnd(8)} ${String(s.r1).padEnd(6)} ${String(s.r5).padEnd(6)} ${String(s.r10).padEnd(6)} ${s.mrr}`,
+      );
+    }
+  }
+
+  console.log(`\nAge of what was shown (top 10, topical queries)`);
+  console.log("run                    n     median    oldest    newest    pre-2507");
+  for (const run of runs) {
+    const a = ageProfile((run.rows || []).filter((/** @type {any} */ r) => r.kind === "topical"));
+    if (!a) continue;
+    console.log(
+      `${String(run.label).padEnd(22)} ${String(a.n).padEnd(5)} ${a.median.padEnd(9)} ${a.oldest.padEnd(9)} ${a.newest.padEnd(9)} ${a.preWindowPct}%`,
+    );
+  }
+}
+
 // ---- judge ------------------------------------------------------------------
 
 /**
@@ -417,12 +571,16 @@ async function main() {
   const argv = process.argv.slice(2);
   const cmd = argv[0];
   if (cmd === "sample") return cmdSample(argv);
+  if (cmd === "coverage") return cmdCoverage(argv);
   if (cmd === "run") return cmdRun(argv);
+  if (cmd === "compare") return cmdCompare(argv);
   if (cmd === "judge") return cmdJudge(argv);
   console.log(
     "usage:\n" +
       "  arxiv-hosted-eval.mjs sample --months 2507-2607 --n 400 --out data/eval/carryover.jsonl\n" +
+      "  arxiv-hosted-eval.mjs coverage --months 2310-2506 --ids data/eval/gcs-2310-2506.txt\n" +
       "  arxiv-hosted-eval.mjs run --gold data/eval/gold.json --label before --out data/eval/before.json\n" +
+      "  arxiv-hosted-eval.mjs compare --runs data/eval/before.json,data/eval/after.json\n" +
       "  arxiv-hosted-eval.mjs judge --runs data/eval/before.json,data/eval/after.json",
   );
 }
