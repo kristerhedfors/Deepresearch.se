@@ -83,7 +83,7 @@
 // Near-leaf module: imports only the shared crypto primitives leaf
 // (src/token-crypto.js).
 
-import { b64url, b64urlDecode, safeEqual } from "./token-crypto.js";
+import { b64url, b64urlDecode, hmacRaw, safeEqual } from "./token-crypto.js";
 
 /** @typedef {import('./types.js').Env} Env */
 
@@ -121,20 +121,17 @@ const HEADER_B64 = b64url(new TextEncoder().encode(JSON.stringify({ alg: "HS256"
 
 /**
  * Raw HS256 over the JWS signing input, base64url-encoded (RFC 7515).
- * Fails closed without SESSION_SECRET, mirroring token-crypto.js's sign.
+ * The tag is token-crypto.js's shared primitive (so it fails closed without
+ * SESSION_SECRET like every other family); this family differs only in what it
+ * signs — a JWS signing input, no namespace — and in rendering the bytes
+ * base64url where the `wsk1`/`prg1`/`pt1`/`mck1` families render hex. That
+ * rendering difference is load-bearing: a hex tag can never parse as this
+ * family's segment, and this family's signing input always contains the dot a
+ * namespaced payload never can.
  * @param {Env} env @param {string} signingInput @returns {Promise<string>}
  */
 async function hs256(env, signingInput) {
-  if (!env.SESSION_SECRET) throw new Error("SESSION_SECRET is not configured");
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(String(env.SESSION_SECRET)),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(signingInput));
-  return b64url(new Uint8Array(sig));
+  return b64url(new Uint8Array(await hmacRaw(env, signingInput)));
 }
 
 /**

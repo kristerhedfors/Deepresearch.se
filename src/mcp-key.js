@@ -59,7 +59,7 @@
 // so importing it pulls in no handler graph — which is what lets src/mcp.js
 // stay unit-testable without the pipeline (the file-layout rule).
 
-import { b64url, b64urlDecode, safeEqual, sign } from "./token-crypto.js";
+import { b64url, sign, verifiedClaims } from "./token-crypto.js";
 
 /** @typedef {import('./types.js').Env} Env */
 
@@ -130,22 +130,8 @@ export async function verifyMcpKey(env, token, nowMs = Date.now()) {
   if (parts.length !== 3) return null;
   const [prefix, payload, sig] = parts;
   if (prefix !== MCP_KEY_PREFIX || !payload || !sig) return null;
-  /** @type {string} */
-  let expected;
-  try {
-    expected = await sign(env, NS, payload);
-  } catch {
-    return null; // no SESSION_SECRET — fail closed, like every other family
-  }
-  if (!safeEqual(sig, expected)) return null;
-  /** @type {any} */
-  let claims;
-  try {
-    claims = JSON.parse(new TextDecoder().decode(b64urlDecode(payload)));
-  } catch {
-    return null;
-  }
-  if (!claims || typeof claims !== "object") return null;
+  const claims = await verifiedClaims(env, NS, payload, sig);
+  if (!claims) return null;
   if (claims.v !== 1) return null;
   if (typeof claims.sub !== "string" || !claims.sub) return null;
   if (typeof claims.jti !== "string" || !claims.jti) return null;

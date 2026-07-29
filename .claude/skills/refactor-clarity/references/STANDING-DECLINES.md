@@ -47,6 +47,11 @@ diverges — cut it and move the row here to the pass ledger.
 | `anthropicPartsText` / `partsText` | `public/js/drc-providers.js`, `src/anthropic.js` | Tier | The Se/cure browser mirror of the server's Anthropic wire adapter, deliberate since PR #301 (`drc-providers.js` "carries the browser mirror of `src/anthropic.js`"). Same cross-tier rule as `f32ToB64` | 2026-07-26 |
 | `capacityFor` | `public/js/swarm-runtime.js` | Purity + Bar | Looks like a pure planner beside the pure `swarm-core.js`, but it reads `globalThis.performance.memory` at call time (via `currentHeapRatio`) and is otherwise a field-mapping wrapper over `planSwarmCapacity`, which already lives in the core | 2026-07-26 |
 | `whenLabel`, `refreshStatusLine`, `knownKeys`, `noteLens` | `public/js/outrospect-view.js` | Bar | Genuinely pure, and `outrospect-core.js` is already imported — but they are single-copy and ALREADY exported and covered by `outrospect-view.test.js`, so moving them buys no coverage, no graph tightening and no drift control. Seam type 5's payoff is absent | 2026-07-26 |
+| `esc` (5-char HTML escape) — THIRD site | `public/js/pipeline-map-core.js` joined `agent-spec-core.js` + `workflow-viz.js` | Home | Unchanged reasoning, restated because the count grew: `pipeline-map-core.js` is ALSO a deliberately import-free class-X core (the server reaches it through `src/pipeline.js`), so it is a second module that cannot take a new edge, not a new sink. Three identical copies is not itself an argument — a sink still has to exist | 2026-07-29 |
+| `readCommits` | `scripts/build-pulse.mjs`, `scripts/build-pulse-timeline.mjs` | Verbatim | Sits directly under the already-declined `GENERATED` arrays and fails for the same reason plus its own: the timeline copy drops the hash, skips an unparseable date, tags each subject and sorts. Sharing it means passing the exclusion predicate in — and THAT parameter is the flagged owner question (the two `GENERATED` lists differ deliberately), so the refactor cannot decide it | 2026-07-29 |
+| `anthropicModels` / `openaiModels` | `src/anthropic.js`, `src/openai.js` | Home | Ten-line bodies differing only in the module-local `MODELS` list and the `provider` literal — the `adjustResultResponse` shape, and it would be cut if a sink existed. None does: `berget.js` owns the pricing helpers both import but is the Berget CLIENT, not a catalog utility; `model-catalog.js` is the semantic fit but imports `hf-inference.js`, so pointing two provider clients at it drags a third provider into both graphs. `hf-inference.js`'s third variant is genuinely different (already-EUR prices, per-model `vision`), so this is a two-copy candidate, not three | 2026-07-29 |
+| Grant-subsystem adjust/reserve blocks | `websearch.js`, `proxy.js`, `server-grants.js`, `pool.js` | Verbatim | The 7-line runs the block scan surfaces around `resolveQuotaPatch` and `reserveUnit` are the SAME table-name-parameterized meter helpers declined in five consecutive passes (the row above); their pure parts already live in `grant-http.js`. The remaining duplication is the D1 statement each owns | 2026-07-29 |
+| `chunkSourceText` vs. `chunkText` | `public/js/introspect-core.js`, `public/js/rag.js` | Verbatim | Same opening five lines of whitespace normalization, then they diverge: one returns strings against a fixed target, the other `Chunk[]` with offsets against caller-supplied bounds. A shared normalizer would be a three-line expression move | 2026-07-29 |
 | `recordStepUsage` | `src/bash-api.js` vs. `quota.js`'s `recordDefaultModelUsage` | Verbatim | The third copy of the DEFAULT_MODEL spend recorder, and the two identical ones WERE shared (pass 11). This one looks up the catalog through `providers.js` `listChatModels`, not `berget.js` `listModels`. The two are equivalent for a Berget `DEFAULT_MODEL` id, but swapping one for the other is a behaviour-equivalence argument, not a move. **Flagged for the owner:** if the two lookups are meant to be interchangeable here, folding this in is a one-line follow-up | 2026-07-26 |
 
 ## Whole files examined and left alone
@@ -74,3 +79,14 @@ diverges — cut it and move the row here to the pass ledger.
 - **`public/js/orchestrator-core.js`** — authored as a textbook class-X core;
   validate / normalize / waves / prompts / clamp / merge / events are all
   exported and pure already.
+- **`src/exec-container.js`, the MCP trio (`mcp-key.js` / `mcp-config.js` /
+  `mcp-api.js`), `src/arxiv.js` + `arxiv-rag.js`, `src/drsw-manifest.js`,
+  `public/js/session.js` + `session-core.js`** — the subsystems that arrived
+  between passes 11 and 12, surveyed and left alone. Every one shipped already
+  factored: `exec-container.js` carries an explicit `---- pure helpers ----`
+  band ahead of its HTTP surface and its Durable Object, `mcp-key.js` is a leaf
+  over `token-crypto.js`, `session.js` was authored with its core already
+  carved. `src/chat-modes.js` is a pure façade over
+  `public/js/chat-mode-core.js`, and `src/facade-contract.test.js` (a repo-wide
+  guard that DISCOVERS façades rather than listing them) now makes a
+  re-implemented façade fail the build — so that whole seam type polices itself.

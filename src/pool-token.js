@@ -37,7 +37,7 @@
 //
 // Near-leaf module: imports only the shared crypto primitives leaf.
 
-import { b64url, b64urlDecode, safeEqual, sign } from "./token-crypto.js";
+import { b64url, sign, verifiedClaims } from "./token-crypto.js";
 
 /** @typedef {import('./types.js').Env} Env */
 
@@ -98,21 +98,8 @@ export async function verifyPoolToken(env, token, nowMs = Date.now()) {
   const sig = rest.slice(dot + 1);
   if (!payload || !sig) return null;
 
-  let expected;
-  try {
-    expected = await sign(env, POOL_TOKEN_NS, payload);
-  } catch {
-    return null; // no signing key configured
-  }
-  if (!safeEqual(sig, expected)) return null;
-
-  let claims;
-  try {
-    claims = JSON.parse(new TextDecoder().decode(b64urlDecode(payload)));
-  } catch {
-    return null;
-  }
-  if (!claims || typeof claims !== "object") return null;
+  const claims = await verifiedClaims(env, POOL_TOKEN_NS, payload, sig);
+  if (!claims) return null;
   const { jti, pool, sub, iat, exp } = claims;
   if (typeof jti !== "string" || !jti) return null;
   if (typeof pool !== "string" || !pool) return null;

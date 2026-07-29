@@ -21,7 +21,7 @@ import { chatCompletion, listChatModels } from "./providers.js";
 import { consumeChatStream, DEFAULT_MODEL } from "./berget.js";
 import { formatConversation, lastUserMessage, textOf } from "./conversation.js";
 import { enforceQuotaAndReserve } from "./endpoint-gate.js";
-import { jsonResponse } from "./http.js";
+import { jsonResponse, readJsonBody } from "./http.js";
 import { bashAgentPrompt } from "./prompts.js";
 
 /** The execution environments a request may name — mirrors EXEC_BACKENDS in public/js/exec-backends-core.js. */
@@ -60,13 +60,8 @@ export async function handleBashStep(request, env, log, identity) {
     return jsonResponse({ error: "The execution sandbox is not enabled.", done: true }, 403);
   }
 
-  /** @type {any} */
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonResponse({ error: "Request body must be valid JSON." }, 400);
-  }
+  const { body, response } = await readJsonBody(request);
+  if (response) return response;
   const invalid = validateMessages(body?.messages);
   if (invalid) return jsonResponse({ error: invalid }, 400);
 

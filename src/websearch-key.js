@@ -22,7 +22,7 @@
 // (src/token-crypto.js), so websearch.js and its tests share ONE
 // implementation.
 
-import { b64url, b64urlDecode, safeEqual, sign } from "./token-crypto.js";
+import { b64url, sign, verifiedClaims } from "./token-crypto.js";
 
 const TOKEN_PREFIX = "wsk1"; // versioned wire prefix
 const NS = "websearch."; // HMAC message namespace for grant tokens
@@ -65,21 +65,8 @@ export async function verifyWebSearchToken(env, token, nowMs = Date.now()) {
   const parts = token.split(".");
   if (parts.length !== 3 || parts[0] !== TOKEN_PREFIX) return null;
   const [, payload, sig] = parts;
-  let expected;
-  try {
-    expected = await sign(env, NS, payload);
-  } catch {
-    return null; // no signing key configured
-  }
-  if (!safeEqual(sig, expected)) return null;
-
-  let claims;
-  try {
-    claims = JSON.parse(new TextDecoder().decode(b64urlDecode(payload)));
-  } catch {
-    return null;
-  }
-  if (!claims || typeof claims !== "object") return null;
+  const claims = await verifiedClaims(env, NS, payload, sig);
+  if (!claims) return null;
   const { jti, uid, quota, iat, exp } = claims;
   if (
     typeof jti !== "string" ||

@@ -30,7 +30,7 @@
 // `publishBuild` the pipeline uses, so a manually published app gets the
 // same validation, caps, and CSP-sandboxed serving as one the model built.
 
-import { jsonResponse } from "./http.js";
+import { jsonResponse, readJsonBody } from "./http.js";
 import {
   MAX_BUILD_FILES,
   MAX_BUILD_FILE_BYTES,
@@ -292,13 +292,8 @@ export async function handleBuildDelete(request, env, log, slug) {
 export async function handleBuildManualPublish(request, env, log, identity, slug) {
   if (!env.STORAGE) return jsonResponse({ error: "Builds are not configured on this server." }, 503);
   if (!buildSlugOk(slug)) return jsonResponse({ error: "Invalid slug (lowercase letters, digits, hyphens)." }, 400);
-  /** @type {any} */
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonResponse({ error: "Request body must be valid JSON." }, 400);
-  }
+  const { body, response } = await readJsonBody(request);
+  if (response) return response;
   const title = typeof body?.title === "string" ? body.title : "";
   const files = Array.isArray(body?.files) ? body.files : null;
   if (!files || !files.length) {

@@ -334,3 +334,71 @@ and was wrong, which is how it was found.
   `Response | null` return needs casts or locals. Only 13 of 96 `src/*.test.js`
   opt in, and the closest analogues (`billing.test.js`, `llm-proxy.test.js`) do
   not. Leave a new endpoint test unchecked unless it tests types.
+
+## 12 — 2026-07-29, the inline-block pass
+
+Scope: everything merged since pass 11 (75769134) — about 15.8k inserted lines
+across 133 files in `src`/`public`/`sdk`/`scripts`, including six new
+subsystems: the Cloudflare-container execution backend
+(`src/exec-container.js`), the MCP key/config/API trio, the arXiv search client
+and its RAG retrieval, the DRSW manifest endpoint, the client session lease
+(`session.js` + `session-core.js`), and the chat-mode collapse that retired the
+`developer_mode` knob. **Three cuts.**
+
+`scripts/dup-scan.mjs` returned **fourteen groups, all of them already in
+`STANDING-DECLINES.md`** — the reading pass over the new subsystems returned
+nothing either, because every one of them shipped factored (see the "whole
+files examined" list). All three cuts came from an ad-hoc **line-run scanner**
+built for the pass: normalize away comments and blank lines, hash every window
+of N consecutive lines, report windows appearing in two or more files. That is
+the scan's declared blind spot — inline blocks are not function bodies — and it
+is where pass 11's higher-value cut lived too.
+
+- **`readJsonBody` → `http.js`** (the widest): thirteen endpoint handlers across
+  nine modules carried the same seven-line try/catch around `request.json()`,
+  down to the wording of the 400. Answered like `enforceQuotaAndReserve`: the
+  helper returns the `{body, response}` pair instead of throwing, so each caller
+  keeps its own early return and no site's control flow changes. Every one of
+  the thirteen already imported `http.js`, so the change adds **no graph edge
+  anywhere**. The tolerant token-endpoint readings
+  (`.catch(() => ({}))`, where a missing field is already its own 400) are
+  deliberately untouched. New `src/http.test.js` also covers the three response
+  helpers, which had no direct test.
+- **`scripts/corpus-rag.mjs`**: `bundle-docs-rag.mjs` and `bundle-owasp-rag.mjs`
+  were the same ninety-line program twice, differing in a corpus path, an output
+  path and a "run X first" hint. Drift here is not cosmetic — the two indexes
+  must share ONE format because `src/introspect.js` resolves their text the same
+  way and `src/introspect.test.js` checks the chunk counts line up, so a change
+  to the quantization or the index envelope applied to one copy desynchronizes
+  them silently. Each bundler keeps its header comment, its three values and its
+  own failure label (which names the script the operator ran).
+  `bundle-source-rag.mjs` stays separate: delta rebuilds and a pacing gate the
+  small corpora don't need. `planCorpusChunks` split out and exported so the
+  `(path, chunk index)` planning half is testable with no key and no network.
+- **`hmacRaw` + `verifiedClaims` → `token-crypto.js`**: five token families —
+  `wsk1`, `prg1`/`prx1`, `pt1`, `mck1` and the Se/rver JWT — each carried the
+  same recompute-tag / constant-compare / decode-payload preamble, on the one
+  code path where a subtle fix must not reach four sites out of five. Both
+  additions land in the leaf that already owns exactly this layer and that all
+  five already import, so `server-token.js`'s pinned import list
+  (`src/server-grants.test.js`) is unchanged. `sign` becomes
+  `toHex(await hmacRaw(…))` and `server-token.js`'s `hs256` becomes
+  `b64url(new Uint8Array(await hmacRaw(…)))` — the rendering difference is
+  load-bearing family separation, so it stays at the call site.
+
+**On the fence.** Standing decline 22 says do not merge the families'
+mint/verify, and this pass did not: `verifiedClaims` stops at the cryptography
+and hands back an UNVALIDATED claims object. Each family still parses its own
+wire prefix, passes its OWN namespace in, and validates its own claims — `svc`
+being the standing example. The fence was **restated in the module header and
+in `docs/CODE-LAYOUT.md`, not removed**, with an explicit "do not grow
+`verifiedClaims` toward claim validation". When re-reading a fence, check what
+property it protects rather than how wide its wording is.
+
+**Method lesson.** Committing `dup-scan.mjs` (pass 10) worked: it now returns
+only settled declines, which is what a converged codebase should look like. But
+that also means **the scan alone can no longer find anything** — all three cuts
+this pass were invisible to it. Keep a line-run scan in the survey beside it; it
+finds constants, import clusters and early-return preambles that a
+function-body hash never will. The tell is the same one pass 11 named: the
+duplicated block usually sits under a comment apologizing for itself.
