@@ -45,6 +45,7 @@ import {
   introspectionActive,
   lexicalRetrieveCorpus,
   mentionedSnapshotPaths,
+  retrievalQuery,
   retrieveSourceChunks,
   securityAssessmentIntent,
   validateRagIndex,
@@ -400,6 +401,13 @@ export async function runIntrospectionEnrichment(env, log, step, stepDone, conve
   const texts = userTexts(conversation);
   if (!texts.length) return conversation;
   const latestText = texts[texts.length - 1] || "";
+  // What to RETRIEVE for. Usually the latest message, but a bare back-reference
+  // ("try again", "gör om det") names no subject, so it resolves to the
+  // question it points back at — otherwise the excerpts describe nothing and
+  // the answer is built on them anyway (feedback #45). Named-file inlining and
+  // the block's own latestText stay on the literal message: a retry must not
+  // re-inline files the earlier turn happened to name.
+  const queryText = retrievalQuery(texts);
 
   step("introspect", "Reading the site's own source…");
   const snapshot = await loadSourceSnapshot(env, log);
@@ -416,7 +424,7 @@ export async function runIntrospectionEnrichment(env, log, step, stepDone, conve
   // Dense retrieval for THIS question (fail-soft to []). This is the part that
   // makes the mode phrasing-agnostic. Embed the query ONCE and reuse it for
   // both the source retrieval and (for a security assessment) the OWASP one.
-  const qvec = await embedQuery(env, log, latestText);
+  const qvec = await embedQuery(env, log, queryText);
   const retrieved = await retrieveSource(env, log, qvec, snapshot);
 
   // The full file index is only worth its ~tokens for strong "how are you
@@ -452,7 +460,7 @@ export async function runIntrospectionEnrichment(env, log, step, stepDone, conve
   // pre-enrichment conversation, so it injects state.helpBlock explicitly
   // (the owaspBlock pattern); every other phase rides the appended copy.
   const helpAsk = texts.some((t) => helpIntent(t));
-  const { retrieved: helpDocs, meta: docsMeta, mode: helpMode } = await retrieveHelpDocs(env, log, qvec, latestText, helpAsk);
+  const { retrieved: helpDocs, meta: docsMeta, mode: helpMode } = await retrieveHelpDocs(env, log, qvec, queryText, helpAsk);
   const helpBlock = buildHelpDocsBlock(helpDocs, {
     sources: docsMeta.sources,
     symbols: docsMeta.symbols,
@@ -475,7 +483,7 @@ export async function runIntrospectionEnrichment(env, log, step, stepDone, conve
   let owaspRetrieved = [];
   let owaspMode = "none";
   if (texts.some((t) => securityAssessmentIntent(t))) {
-    const { retrieved: hits, sources, mode } = await retrieveOwasp(env, log, qvec, latestText);
+    const { retrieved: hits, sources, mode } = await retrieveOwasp(env, log, qvec, queryText);
     owaspMode = mode;
     const owaspBlock = buildOwaspReferenceBlock(hits, sources);
     if (owaspBlock) {

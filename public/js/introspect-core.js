@@ -344,12 +344,35 @@ const BACK_REFERENCE_PATTERNS = [
   // Bare continuations — anchored to the START of the message so a long real
   // question that merely CONTAINS "continue" / "the rest" doesn't trip.
   /^\s*(?:go\s+on|go\s+ahead|carry\s+on|keep\s+going|continue|proceed|the\s+rest)\b/i,
-  /^\s*(?:read|do|them|those)\b/i,
+  // A ONE-WORD continuation, and only that: "do", "read", "them", "those" on
+  // their own. It used to be a bare `^(?:read|do|them|those)\b`, which made
+  // every ordinary question opening with "Do you …" a back-reference. That was
+  // survivable while the gate only seeded the read loop with previously-named
+  // paths, but it now also steers RETRIEVAL (retrievalQuery), where pointing a
+  // real question at the previous one is a wrong answer rather than a wasted
+  // seed.
+  /^\s*(?:read|do|them|those)\s*[.!?]*\s*$/i,
   // Swedish parity (invariant 6).
   /\b(?:läs|öppna|kolla(?:\s+på)?|titta\s+på|gå\s+igenom|granska|visa)\s+(?:dem|de(?:\s+där)?|dessa|resten|de\s+andra|de\s+(?:kvarvarande|återstående))\b/i,
   /\b(?:gör|prova|kör)\s+(?:det|de(?:t\s+där)?|så|dem)\b/i,
   /\b(?:de\s+där\s+filerna|alla\s+(?:dem|dessa))\b/i,
   /^\s*(?:fortsätt|kör\s+(?:på|vidare)|gå\s+vidare|resten)\b/i,
+  // RETRY follow-ups (feedback #45). A send that produced no answer is retried
+  // with a message that names no subject of its own — "try again" is the
+  // commonest thing a user types after an error, and it pointed at nothing:
+  // retrieval embedded the literal words and returned excerpts about nothing,
+  // while the read-loop planner anchored on them. Anchored to the start, or to
+  // an explicit "<verb> it again", so a real question that merely contains
+  // "again" is untouched.
+  /^\s*(?:try|do|run|send|ask)?\s*(?:it|that|this)?\s*again\b/i,
+  /^\s*(?:retry|resend|redo)\b/i,
+  /^\s*(?:once|one)\s+more\s+time\b/i,
+  /\b(?:try|run|send|do|ask)\s+(?:it|that|this)\s+again\b/i,
+  // Swedish parity (invariant 6) — "igen" carries the same load as "again",
+  // with the same start-anchoring and the same explicit-verb form.
+  /^\s*(?:försök|testa|prova|kör|skicka|fråga|gör)?\s*(?:om\s+)?(?:det|den|dem|allt)?\s*igen\b/i,
+  /^\s*(?:gör\s+om|en\s+gång\s+till|på\s+nytt|omtag)\b/i,
+  /\b(?:försök|testa|prova|kör|skicka|fråga)\s+(?:det|den|dem|allt)?\s*igen\b/i,
 ];
 
 /**
@@ -381,6 +404,39 @@ export function resolveReferencedPaths(priorTexts, snapshot, cap = 8) {
     if (paths.length) return paths.slice(0, Math.max(1, cap));
   }
   return [];
+}
+
+/**
+ * The text introspection should RETRIEVE for — the dense query behind "Source
+ * excerpts most relevant to this question".
+ *
+ * Normally that is simply the latest user message. But when the latest message
+ * is a bare back-reference it names no subject of its own, so embedding it
+ * retrieves excerpts about nothing: feedback #45 caught this as a retry after
+ * a failed send, where the query was literally "Try again" and the model was
+ * handed three unrelated files to reason from. The referent is the question
+ * the follow-up points back at, so walk back to the most recent user text that
+ * carries one.
+ *
+ * The latest message is JOINED to it rather than replaced, so a retry that
+ * adds a qualifier ("try again, but just the auth part") still steers
+ * retrieval. Falls back to the latest text whenever there is no prior
+ * question — a first message can't be a back-reference to anything.
+ *
+ * @param {string[]} userTexts every user message's text, OLDEST FIRST
+ * @returns {string}
+ */
+export function retrievalQuery(userTexts) {
+  const texts = (Array.isArray(userTexts) ? userTexts : []).map((t) => String(t || ""));
+  const latest = texts.length ? texts[texts.length - 1] : "";
+  if (!backReferenceIntent(latest)) return latest;
+  // Walk past a CHAIN of back-references ("try again" → "try again" → the
+  // question), so a second retry still resolves to the real subject.
+  for (let i = texts.length - 2; i >= 0; i--) {
+    const prior = texts[i];
+    if (prior.trim() && !backReferenceIntent(prior)) return `${prior}\n${latest}`;
+  }
+  return latest;
 }
 
 // ---- the context block -------------------------------------------------------------
