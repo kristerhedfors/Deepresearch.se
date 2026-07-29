@@ -9,7 +9,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { arxivRagAvailable, arxivRagItem, arxivRagSearch, arxivRerank, arxivRerankDoc } from "./arxiv-rag.js";
+import { arxivRagAvailable, arxivRagItem, arxivRagSearch, arxivRerank, arxivRerankDoc, arxivSubmitted } from "./arxiv-rag.js";
 
 const log = { info() {}, warn() {}, error() {}, debug() {} };
 
@@ -70,7 +70,10 @@ test("arxivRagItem mirrors the live tier's item shape", async (t) => {
     const item = arxivRagItem(match("2606.30668", "Emergent Culture in Minimal LLM Systems"));
     assert.equal(item.url, "https://arxiv.org/abs/2606.30668");
     assert.equal(item.title, "Emergent Culture in Minimal LLM Systems");
-    assert.equal(item.highlights[0], "Ada Lovelace, Alan Turing, Grace Hopper et al. · cs.AI · 2026-07-01 · arXiv:2606.30668");
+    // The date is the SUBMISSION month off the id (2606 → 2026-06), not the
+    // stored `d`, which is the last revision — here 2026-07-01. This fixture
+    // is itself the bug: a June paper was being shown as July.
+    assert.equal(item.highlights[0], "Ada Lovelace, Alan Turing, Grace Hopper et al. · cs.AI · 2026-06 · arXiv:2606.30668");
     assert.ok(item.highlights[1].startsWith("Abstract of"));
   });
 
@@ -279,4 +282,44 @@ test("arxivRagSearch", async (t) => {
     assert.equal(await arxivRagSearch(env, log, "   "), null);
     assert.equal(queried, false);
   });
+});
+
+test("arxivSubmitted reads the submission month from the id", () => {
+  // The id prefix is the only trustworthy submission date on this corpus:
+  // arXiv's <created> tracks the harvest window and the stored `d` is the last
+  // revision (docs/ARXIV-RAG.md §3).
+  assert.equal(arxivSubmitted("2310.01234"), "2023-10");
+  assert.equal(arxivSubmitted("2607.00001"), "2026-07");
+  assert.equal(arxivSubmitted(" 2401.99999 "), "2024-01");
+  // Old-style pre-2007 ids carry no YYMM — "" so the caller falls back rather
+  // than inventing a date.
+  assert.equal(arxivSubmitted("cs/0503001"), "");
+  assert.equal(arxivSubmitted(""), "");
+  assert.equal(arxivSubmitted(null), "");
+});
+
+test("arxivRagItem falls back to the stored date when the id carries none", () => {
+  const item = arxivRagItem({ id: "cs/0503001", metadata: { t: "Old paper", c: "cs.AI", d: "2024-02-02" } });
+  assert.ok(item.highlights[0].includes("2024-02-02"), item.highlights[0]);
+});
+
+test("arxivRagItem prefers the submission month over a later revision", () => {
+  // The case the widened window makes real: a 2023 paper revised in 2026 must
+  // not read as 2026 in the one field the synthesis model uses for freshness.
+  const item = arxivRagItem({ id: "2310.00001", metadata: { t: "Older work", c: "cs.LG", d: "2026-07-20" } });
+  assert.ok(item.highlights[0].includes("2023-10"), item.highlights[0]);
+  assert.ok(!item.highlights[0].includes("2026"), item.highlights[0]);
+});
+
+test("the rerank pool stays at Vectorize's measured returnMetadata ceiling", () => {
+  // Pinned because it is easy to "restore" to 20 on the strength of the old
+  // comment (and of src/rag.js, which still assumes 20). Vectorize raised the
+  // returnMetadata:"all" cap to 50; measured over 150 EN+SV needle queries
+  // through this exact path, 20 → 50 bought +4.0 points of English recall@10
+  // and +2.0 Swedish for no extra round trip and no extra rerank latency.
+  // Anything above 50 is rejected by the API unless metadata is dropped.
+  const src = readFileSync(new URL("./arxiv-rag.js", import.meta.url), "utf8");
+  const m = /const CANDIDATES = (\d+);/.exec(src);
+  assert.ok(m, "CANDIDATES must be declared as a literal");
+  assert.equal(Number(m[1]), 50);
 });

@@ -23,15 +23,22 @@
 // it switches it off. Nothing else changes.
 //
 // ---- deviations from docs/ARXIV-RAG.md, and why ----------------------------
-// * **The rerank pool is 20, not 50.** The doc's measured pipeline reranks the
-//   top 50. Vectorize caps topK at 20 when `returnMetadata: "all"` (measured
-//   in src/rag.js against this same account — the published limit of 50 does
-//   not apply to the "all" mode). Fetching 50 ids without metadata and then
-//   reading the text from a second store would restore the pool at the cost of
-//   a second round trip per search; that trade is not obviously worth it and
-//   has not been measured, so the shallower pool is DELIBERATE and its recall
-//   is NOT the doc's 87% until re-measured. Do not quote that number for this
-//   path without running the eval.
+// * **The rerank pool is 50, matching the doc's measured pipeline** (raised
+//   from 20 on 2026-07-29). It was 20 because Vectorize used to cap topK at 20
+//   whenever `returnMetadata: "all"` was requested. That cap has been raised;
+//   probing this index directly (scripts/arxiv-hosted.mjs) now gives:
+//     topK=50  returnMetadata=all  → 200, 50 matches
+//     topK=100 returnMetadata=all  → 400 "max top K is 50"
+//     topK=100 returnMetadata=none → 200, 100 matches
+//   so 50 costs nothing extra: same single round trip, metadata still included,
+//   no second store to read from. Measured over 150 needle queries (EN+SV)
+//   through this exact path, pool 20 → 50 bought +4.0 points of English
+//   recall@10 and +2.0 Swedish, and the cross-encoder leg did not get slower
+//   (median 763 → 779 ms — its cost is request overhead, not document count).
+//   docs/ARXIV-RAG.md §11 has the tables.
+//   Going past 50 means `returnMetadata: "none"` plus a hydrating get_by_ids
+//   pass (20 ids per call) — a second round trip that measured no better, so
+//   it is deliberately not done.
 // * **No BM25 arm**, matching the doc: fusing lexical in made hand-written
 //   queries WORSE in both languages. The live tier is the lexical arm, and it
 //   is a fallback rather than a fusion input.
@@ -48,7 +55,7 @@ const RERANK_MODEL = "BAAI/bge-reranker-v2-m3";
 // 2026-07-26, recorded in the arxiv-rag skill). 900 chars is the cut that
 // keeps a batch from being rejected outright.
 const RERANK_DOC_CHARS = 900;
-const CANDIDATES = 20; // the Vectorize returnMetadata:"all" ceiling
+const CANDIDATES = 50; // Vectorize's returnMetadata:"all" ceiling, measured
 const RERANK_TIMEOUT_MS = 6000;
 // ---- the time budget, and why it is stated here at all ---------------------
 // This tier runs INSIDE a search wave, so its latency is the user's latency.
@@ -141,6 +148,29 @@ export function arxivRagAvailable(env) {
 }
 
 /**
+ * Submission month from an arXiv id ("2310.01234" → "2023-10"), or "" for
+ * old-style pre-2007 ids that carry none.
+ *
+ * The stored `d` metadata is the paper's LAST REVISION (the harvester writes
+ * OAI's <updated>, falling back to the datestamp), not its submission date —
+ * arXiv's <created> is untrustworthy on that feed, so the id prefix is the only
+ * reliable source (docs/ARXIV-RAG.md §3). Over a rolling 13-month window the
+ * difference was cosmetic. Over 33 months it is not: a 2023 paper revised last
+ * month displayed as 2026, in the one field the synthesis model uses to weigh
+ * freshness — and src/arxiv.js's live tier shows the true submission date
+ * (`published`) in the same slot, so the two tiers disagreed about what that
+ * date meant.
+ *
+ * Free to fix: the id is already the vector's key, so no re-indexing is needed.
+ * @param {string} id
+ */
+export function arxivSubmitted(id) {
+  const m = /^(\d{2})(\d{2})\./.exec(String(id || "").trim());
+  if (!m) return "";
+  return `20${m[1]}-${m[2]}`;
+}
+
+/**
  * One Vectorize match → a registry item, or null when the metadata is
  * unusable. Mirrors arxivMapEntry's shape exactly so both tiers produce
  * identical-looking sources.
@@ -161,7 +191,7 @@ export function arxivRagItem(match) {
   const meta = [
     authors.length ? `${shown}${authors.length > 3 ? " et al." : ""}` : "",
     String(m.c || ""),
-    String(m.d || "").slice(0, 10),
+    arxivSubmitted(id) || String(m.d || "").slice(0, 10),
     `arXiv:${id}`,
   ]
     .filter(Boolean)
