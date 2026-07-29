@@ -182,7 +182,7 @@ Stop before the first token. `markUnanswered` KEEPS the question in the
 conversation and appends an assistant marker (`unansweredMarker`) saying it
 went unanswered; `stream.js`'s `settleUnanswered` is the one caller, on
 every such path in all three routes (server, private introspection,
-on-device). It used to pop the question instead — but the question BUBBLE
+on-device). It used to pop the question instead. But the question BUBBLE
 stays on screen either way, so popping desynced what the user reads from
 what the model gets: feedback #45 was a question that died on a phone
 before reaching the server, followed by a "Try again" the model could only
@@ -296,10 +296,11 @@ conversation-mode gate, the source-RAG chunker / int8 vector codec /
 retrieval, and the capped context-block builder — the one implementation
 behind `src/introspect.js` and both tiers' clients; also the EN+SV
 back-reference gate `backReferenceIntent` and `retrievalQuery`, which
-decides what a turn RETRIEVES for: normally the latest message, but a bare
-back-reference — "read those", and since feedback #45 the retry family
-"try again" / "försök igen" — names no subject of its own, so it resolves
-to the question it points back at instead of embedding its own two words),
+decides what a turn RETRIEVES for. Normally that is the latest message,
+but a bare back-reference names no subject of its own — "read those", and
+since feedback #45 the retry family "try again" / "försök igen" — so it
+resolves to the question it points back at instead of embedding its own
+two words),
 `source-peek.js` (SOURCE PEEK — in developer mode every inline-code repo
 path an answer cites (`src/pipeline.js`, `agent-spec-core.js:34-45`) becomes
 a tap target opening that file from the committed source snapshot in a
