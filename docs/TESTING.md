@@ -559,6 +559,14 @@ The `npm ci` step matters beyond CI: the root devDependencies
 so `npm run typecheck` in a fresh clone fails with a confusing `TS2688` until
 someone runs an install.
 
+A second JOB (`e2e`) runs the **browser suite against a Worker started on the
+runner** — `cd tests && npm run test:local`, 63 tests, no credentials and no
+deployment. It installs Chromium, generates the fixtures (Pillow included, or
+the EXIF fixture is skipped and the metadata specs fail on a missing file
+rather than a real defect), and uploads `tests/test-results/` on failure. It is
+a separate job from the unit gate so a browser failure is legible on its own
+and does not delay the fast feedback.
+
 A third step runs the **coverage ratchet** (`npm run coverage:check`,
 `scripts/coverage.mjs`): the suite again under `node --test
 --experimental-test-coverage`, compared against the committed floor
@@ -572,13 +580,61 @@ cheapest next climb with `npm run coverage -- --list`.
 
 ## End-to-end tests (`tests/`)
 
-Playwright suite that runs against the **live site** using the
-break-glass credentials (`BASIC_AUTH_USER` / `BASIC_AUTH_PASS` env vars;
-sent as an `Authorization: Basic` header on every request — the Worker
-never emits a challenge, so Playwright's `httpCredentials` would not
-work). Self-contained npm project of its own (`tests/package.json`) —
-distinct from the root `package.json` above, which only runs the unit
-suite.
+Playwright suite, self-contained npm project of its own
+(`tests/package.json`) — distinct from the root `package.json` above, which
+only runs the unit suite. It has **two targets**.
+
+### Local (added 2026-07-29) — free, credential-less, and what CI runs
+
+```bash
+cd tests && npm install && npm run fixtures
+npm run test:local        # 63 mocked tests, ~1.8 min, nothing spent
+```
+
+`test:local` (`E2E_TARGET=local`) brings up two servers of its own via
+Playwright's `webServer` and points the suite at them:
+
+- **`tests/fake-provider.mjs`** — a dependency-free loopback stand-in for the
+  LLM provider, serving the OpenAI-compatible `/models`,
+  `/chat/completions` and `/embeddings` that `src/berget.js` speaks. It is
+  needed even though the mocked project intercepts `/api/chat` in the browser,
+  because `/api/models` is *never* intercepted (the app fetches a real catalog
+  on every page load and renders nothing without one) and because
+  `e2e/api.spec.js` calls the Worker directly through the request context,
+  past any page route. Its catalog deliberately carries an up vision model, an
+  up non-vision model and a DOWN model, because the specs discover their
+  fixtures from it and silently skip when one is missing.
+- **`wrangler dev -c wrangler.dev.toml`** — the real Worker, local bindings.
+  The separate config is not tidiness: `wrangler.toml`'s `routes` make
+  `wrangler dev` rewrite the inbound Host to the first custom domain (so a
+  request to `127.0.0.1` arrives as `deepresearch.se`), and its `containers`
+  block refuses to start without a Docker daemon. Neither is removable from an
+  `[env.*]` block. See the file's own header.
+
+Two defects had to be fixed before any of it worked, both invisible while the
+suite only ever ran against a deployment:
+
+- **`src/canonical.js` looped on a local origin.** With the Host rewritten to
+  the production domain, the http→https rule fired on every local request,
+  wrangler's dev proxy rewrote the `Location` back, and a browser followed a
+  301 to itself forever. Loopback hosts are now exempt (`canonical.test.js`
+  pins the exemption *and* that it did not widen).
+- **`helpers.js` hard-coded the production origin.** `stripCrossOriginAuth`
+  strips the break-glass header from any origin that is not `BASE_URL`, so a
+  local run lost its `Authorization` on every request and got served the
+  signed-out landing. `playwright.config.js` now publishes the resolved target
+  back into `process.env.BASE_URL`, which fixes that and the nine other specs
+  reading the same variable.
+
+### Remote — against the deployed site or a branch preview
+
+Set `BASE_URL` plus the break-glass credentials (`BASIC_AUTH_USER` /
+`BASIC_AUTH_PASS`, sent as an `Authorization: Basic` header on every request —
+the Worker never emits a challenge, so Playwright's `httpCredentials` would
+not work). This is the original behaviour and is still how the `@live` project
+runs. The config no longer *throws* when credentials are absent: with nothing
+configured it selects the local target, so a first-time `npm test` works
+instead of erroring.
 
 > **The header must not reach cross-origin hosts.** `extraHTTPHeaders`
 > attaches it to *every* request the context makes, third parties

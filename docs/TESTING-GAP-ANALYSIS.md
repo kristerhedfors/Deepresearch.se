@@ -67,7 +67,7 @@ Nothing installs the root devDependencies. In this session's clone
 first contact is a gate people route around. Either add `npm install` to
 SessionStart or make the script self-heal.
 
-### A4 — The free e2e project is never run automatically
+### A4 — The free e2e project is never run automatically — CLOSED 2026-07-29
 
 `npm run test:mocked` is 43 tests, intercepts `/api/chat`, and costs nothing.
 It is also invisible: it needs break-glass credentials, `BASE_URL` defaults to
@@ -79,6 +79,16 @@ There is no way to run the browser suite against a local worker.
 rewrite. That would make the mocked project runnable offline, in CI, and
 against a PR's own preview — which is where it would actually catch
 regressions before they ship.
+
+> **Done 2026-07-29, and it was not only a config change.** `cd tests && npm
+> run test:local` now starts a provider stand-in (`tests/fake-provider.mjs`)
+> and `wrangler dev` on a new `wrangler.dev.toml`, and runs all 63 mocked
+> tests in ~1.8 min with no credentials and no network; CI runs it as its own
+> job. Two real defects surfaced on the way — a redirect LOOP in
+> `src/canonical.js` on any local origin, and `helpers.js` stripping the auth
+> header from a local Worker because it hard-coded the production base — both
+> invisible while the suite only ever ran against a deployment. Details:
+> `docs/TESTING.md` (End-to-end tests) and `docs/TESTING-CAPABILITIES.md` §4.
 
 ### A5 — Committed-artifact drift tests disable themselves
 
@@ -356,10 +366,11 @@ Ordered by (signal gained) ÷ (effort), not by section.
 9. **Invariant census tests** — Swedish-parity discovery, no-function-calling
    allowlist, CODE-LAYOUT mirror (B6), modeled on
    `sql-injection-guard.test.js`. *Days: 1–2.*
-10. **Point Playwright at `wrangler dev`** via `webServer` + `BASE_URL`, and
-    run the mocked project in CI (A4). *Days: 1–2.*
+10. ~~**Point Playwright at `wrangler dev`**~~ **Done 2026-07-29** —
+    `npm run test:local`, 63 tests, in CI, no credentials (A4).
 11. **A try-it batch runner** that executes the action grammar headlessly
-    (A6). Largest payoff of the lot; also the largest build.
+    (A6). Largest payoff of the lot; also the largest build — though smaller
+    now that item 10 built the local Worker it would drive.
     *Days: 3–5.*
 
 Items 1–5, 7 and 8 are done. The remaining ranking, and the

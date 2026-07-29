@@ -152,18 +152,58 @@ Where a T2 module contains logic worth pinning, the established move is to
 extract it into a `*-core.js` and pin the façade. That is a per-module
 judgement, not a campaign.
 
-### T3 — automatable, needs the app running; wired but never run automatically
+### T3 — automatable, needs the app running — ✅ now runs in CI
 
-`npm run test:mocked` is 43 Playwright tests that intercept `/api/chat` and
-cost nothing to run. They are invisible in practice: they need break-glass
-credentials, `BASE_URL` defaults to the live site, and `playwright.config.js`
-declares no `webServer`, so there is no way to run the browser suite against a
-local Worker.
+**Closed 2026-07-29.** `cd tests && npm run test:local` starts the Worker on
+this machine and runs the whole mocked project against it: **63 tests, ~1.8
+minutes, no credentials, no network, nothing spent.** CI runs it on every push
+and pull request as its own job.
 
-`BASE_URL` is already an env override, so pointing the suite at `wrangler dev`
-or at a branch preview URL is a config change, not a rewrite. This is the
-single largest untapped automation in the repo: 43 already-written free tests,
-plus the door to the whole T2 tier.
+Before that the suite was free and already written, and nothing ran it —
+`playwright.config.js` *threw* without production break-glass secrets and
+`BASE_URL` defaulted to the live site, so nobody without production access
+could run a browser test at all.
+
+Four things were in the way, and only the first was the expected one:
+
+1. **No `webServer`.** Now two: `tests/fake-provider.mjs` (a dependency-free
+   loopback stand-in for the LLM provider, serving the OpenAI-compatible
+   `/models`, `/chat/completions` and `/embeddings` that `src/berget.js`
+   speaks) and `wrangler dev` on a new `wrangler.dev.toml`. The provider is
+   needed because `/api/models` is *not* intercepted in the browser — the app
+   fetches a real catalog on every page load — and because
+   `tests/e2e/api.spec.js` calls the Worker directly, past any page route.
+2. **`wrangler.toml` cannot be reused.** Its `routes` make `wrangler dev`
+   rewrite the inbound Host to the first custom domain, so a request to
+   `127.0.0.1` arrives inside the Worker as `deepresearch.se`; and its
+   `containers` block needs a Docker daemon or `wrangler dev` refuses to
+   start. Neither is removable from an `[env.*]`, hence a separate file.
+3. **A redirect loop in `src/canonical.js`.** With the Host rewritten, the
+   http→https canonicalisation fired on every local request, wrangler's dev
+   proxy rewrote the `Location` back to the local origin, and a browser
+   followed a 301 to itself forever. Fixed by exempting loopback hosts, which
+   is correct in its own right — there is no www, no registered OAuth
+   `redirect_uri`, and no https listener on a dev server.
+4. **`helpers.js` hard-coded the production origin.** Ten spec files read
+   `process.env.BASE_URL || "https://deepresearch.se"`, and two uses are
+   load-bearing: `stripCrossOriginAuth` strips the break-glass header from any
+   origin that is not `base` — so a local run lost its Authorization on every
+   request and got the signed-out landing — and the privacy-acknowledgement
+   cookie landed on the wrong origin. The config now publishes the resolved
+   target back into `process.env.BASE_URL`, fixing all ten at once.
+
+Points 3 and 4 are the interesting ones: both were invisible while the suite
+only ever ran against a deployment, and both are the kind of thing that only
+surfaces when the code is asked to run somewhere new.
+
+The **try-it queue** (`src/testpoints.js`) is the same story one level up. It
+defines eleven action types — `newChat`, `compose`, `setSearch`, `setBudget`,
+`selectModel`, `openSettings`, … — and `docs/test-batches/` holds ten curated
+batches. That grammar is close to what a Playwright script does, and the
+batches already mark which points genuinely need hands (`attachments.json` is
+entirely `note`-driven). The split between automatable and human is therefore
+**already encoded in the data**; nothing has read it yet. With a local Worker
+now startable in one command, a headless runner for it has somewhere to run.
 
 The **try-it queue** (`src/testpoints.js`) is the same story one level up. It
 defines eleven action types — `newChat`, `compose`, `setSearch`, `setBudget`,
@@ -234,9 +274,12 @@ Ordered by (risk closed) ÷ (effort), with what was done this pass marked.
    assertion each, and `chat-handler.test.js` uses both. Generalising this to
    every enrichment is the follow-up.
 
-5. **43 free browser tests that nothing runs** (T3 above). *Open.* Highest
-   remaining ratio: the tests exist, the config change is small, and it opens
-   the entire T2 tier.
+5. ~~**Free browser tests that nothing runs**~~ ✅ *closed 2026-07-29.* 63 of
+   them, now on every push and pull request against a Worker started on the
+   runner. It also opens the T2 tier: those 32 never-loaded DOM modules are
+   what a browser test exercises, so coverage there is now a matter of writing
+   cases rather than of building somewhere to run them. The four blockers, two
+   of which were real defects rather than configuration, are in T3 above.
 
 6. **The invariants have almost no mechanical enforcement.** *Open.* The repo
    has exactly one repo-wide invariant test (`sql-injection-guard.test.js`) and
@@ -279,12 +322,16 @@ Class C: it needs an owner checkmark, not a session's opinion.
 
 ## 6. The ordered climb from here
 
-1. **Point Playwright at a local Worker** — `webServer` + `BASE_URL` in
-   `playwright.config.js` — and run the mocked project in CI. Unlocks 43
-   existing free tests and the whole T2 tier. *Days: 1–2.*
+1. ~~**Point Playwright at a local Worker**~~ ✅ **done 2026-07-29** —
+   `npm run test:local`, 63 tests, in CI.
 2. **A try-it batch runner** that executes the eleven-verb action grammar
    headlessly against that Worker, leaving humans only the points the batches
-   already mark as hands-on. *Days: 3–5.*
+   already mark as hands-on. Now the cheapest big win, since the Worker it
+   needs already starts in one command. *Days: 3–5.*
+2b. **Cover the T2 modules through the browser suite.** `stream.js` (2 287
+   lines), `app.js`, the `account-*` panels and `projects-ui.js` are all
+   reachable from a mocked run; the coverage script does not see browser-side
+   execution, so pick these by risk rather than by the number.
 3. **Invariant guard tests**, modelled on `sql-injection-guard.test.js`: a
    no-function-calling allowlist scan (invariant 1), a Swedish-parity census
    that fails when a new `*Intent` export has no parity test (invariant 6), and

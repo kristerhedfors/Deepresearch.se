@@ -21,12 +21,37 @@
 // by src/index.js's `route` before anything else.
 
 /**
+ * Loopback hosts — a `wrangler dev` server, which is plain http by
+ * construction and has no https to send anyone to.
+ *
+ * Without this exemption the rule fires on every local request and the
+ * Location it builds is the SAME url, so a browser pointed at
+ * `http://localhost:8787` follows a 301 to itself forever (observed
+ * 2026-07-29 while wiring the Playwright suite to a local Worker: five hops,
+ * still 301, `url_effective` unchanged). Nothing in the rationale above
+ * applies locally — there is no www, no registered OAuth redirect_uri, and no
+ * https listener — so the correct behaviour is to leave a loopback request
+ * alone. Preview URLs (`*.workers.dev`) are already https and are unaffected.
+ * @param {string} hostname
+ */
+function isLoopback(hostname) {
+  return (
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    hostname === "127.0.0.1" ||
+    hostname === "[::1]" ||
+    hostname === "::1"
+  );
+}
+
+/**
  * The 301 to the canonical https apex, or null when the URL is already
- * canonical (https, non-www).
+ * canonical (https, non-www) or is a local development server.
  * @param {URL} url
  * @returns {Response | null}
  */
 export function canonicalRedirect(url) {
+  if (isLoopback(url.hostname)) return null;
   if (url.protocol !== "https:" || url.hostname.startsWith("www.")) {
     const canonical = new URL(url.toString());
     canonical.protocol = "https:";
