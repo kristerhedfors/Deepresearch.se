@@ -1,6 +1,6 @@
 # The arXiv RAG search database
 
-A retrieval database over **every arXiv paper submitted in the last year**,
+A retrieval database over **every arXiv paper submitted since October 2023**,
 built with Berget models end to end — `intfloat/multilingual-e5-large` for
 embeddings, `BAAI/bge-reranker-v2-m3` for reranking, Mistral Small for the
 planning-shaped calls. It exists to be the substrate for deep research on
@@ -26,6 +26,16 @@ build took one session — 39 s to enumerate, ~40 min to harvest, 124 min to emb
 and upsert — and §10 records what it cost to learn. The provider-agnostic
 lessons are the **bulk-corpus-etl** skill.
 
+**The window was WIDENED to late 2023 on 2026-07-29: 772,658 vectors** over
+submission months 2310–2607, 2.3× the corpus, stopping at 2310 because arXiv's
+LaTeXML HTML rendering — what makes the full-text tier Worker-native (§9.9) —
+only exists from late 2023. §11 is the before/after evaluation, and it is also
+the first measurement of the SERVED path rather than the local pack. Headline:
+the shipped configuration is statistically indistinguishable from before on
+needle queries while covering 2.3× the literature, topical nDCG@10 rose from
+0.740 to 0.857 (EN) and 0.750 to 0.816 (SV), and two-thirds of what a topical
+query returns now predates the old window.
+
 **arXiv IS searchable from `/api/chat` as of 2026-07-26 — through a different
 door.** `src/arxiv.js` is a live-API search source in the pipeline's registry:
 it queries arxiv.org directly, needs no hosted index and no key, and its hits
@@ -45,7 +55,7 @@ it is absent, errors, or returns nothing above the relevance floor.
 
 | | |
 |---|---|
-| Window | arXiv submission months **2507–2607** (harvest datestamps 2025-07-26 → 2026-07-26) |
+| Window | **2310–2607** since 2026-07-29 (§11); this section records the original **2507–2607** build (harvest datestamps 2025-07-26 → 2026-07-26) |
 | Harvested | **339,670** in-window papers, from 457,618 OAI records |
 | Indexed | **326,814** papers (abstracts under 200 chars dropped) |
 | Passages | 326,814 — one vector per paper |
@@ -1146,3 +1156,110 @@ node scripts/arxiv-harvest.mjs --months 13 --keep-months 2310-2506 --out data/ar
 So **`--until` reproduces a past run; it does not slice history.** Tying the
 keep-filter to the fetch window is sound only when the window ends at *now*,
 which is the case `planWindow` was written for.
+
+### 11.4 What the widening cost, and what it bought
+
+The corpus went from **337,768 vectors (13 months, 2507–2607)** to **772,658
+(34 months, 2310–2607)** — 2.3×. 437,073 papers were enumerated for the added
+band and 100% harvested across the two passes; 434,890 cleared the 200-char
+abstract floor and were indexed, and a per-month `get_by_ids` sample puts index
+coverage at **99.6%**, worst month 98.3%.
+
+Everything below runs the SAME 150 EN+SV needle queries, whose gold papers are
+in both indexes, so the only variable is the number of distractors.
+
+#### Needles: the corpus hurts, the pool fixes it
+
+| run | vectors | pool | EN inPool | EN r@1 | EN r@10 | SV inPool | SV r@1 | SV r@10 |
+|---|---|---|---|---|---|---|---|---|
+| before | 337,768 | 20 | 82.0 | 78.7 | 81.3 | 74.0 | 67.3 | 74.0 |
+| after | 772,658 | 20 | 76.7 | 72.0 | 76.7 | 72.0 | 65.3 | 72.0 |
+| **after (shipped)** | **772,658** | **50** | **82.0** | **76.7** | **82.0** | **78.0** | **66.7** | **76.7** |
+
+Paired McNemar over the same queries, which is the right test here — an
+independent binomial CI would call all of this noise:
+
+| comparison | EN r@1 | EN r@10 |
+|---|---|---|
+| corpus 338k → 773k, pool held at 20 | lost 15 / gained 5, **p=0.041** | lost 11 / gained 4, p=0.118 |
+| pool 20 → 50, corpus held at 773k | lost 1 / gained 8, **p=0.039** | lost 0 / gained 8, **p=0.008** |
+| shipped before → shipped now | lost 8 / gained 5, p=0.581 | lost 4 / gained 5, p=1.000 |
+
+So: **widening genuinely degraded needle retrieval at the old pool, raising the
+pool recovered it, and the net shipped change is statistically
+indistinguishable from before while covering 2.3× the literature.** The pool
+step lost *zero* queries on English recall@10 — a strict improvement, not a
+trade.
+
+This is §4.3's corpus-size effect at a scale where it can be measured cleanly:
+recall@1 fell 92.1 → 72.1 over a 16× growth there; here 2.3× costs 6.7 points,
+and the cross-encoder buys it back given enough candidates to work with.
+
+#### The new material is as findable as the old
+
+150 fresh needles whose gold papers are all in the added band, same pipeline:
+
+| set | EN inPool | EN r@1 | EN r@10 | SV r@10 |
+|---|---|---|---|---|
+| carryover (2507–2607) | 82.0 | 76.7 | 82.0 | 76.7 |
+| **new band (2310–2506)** | **84.7** | **72.0** | **82.7** | **78.0** |
+
+Indistinguishable. Before the widening every one of these queries had recall 0
+by construction, and the pipeline answered them with nearest-neighbour
+substitutes from the newer window or fell through to the live arXiv API.
+
+#### Topical questions got BETTER, which is the opposite result
+
+nDCG@10 over the 14 hand-written EN/SV research questions, graded once over the
+pooled candidates of all three runs:
+
+| run | EN nDCG@10 | SV nDCG@10 |
+|---|---|---|
+| before (338k, pool 20) | 0.740 | 0.750 |
+| after (773k, pool 20) | 0.816 | 0.747 |
+| **after (773k, pool 50)** | **0.857** | **0.816** |
+
+The two families disagree because they ask different things. A needle question
+wants one specific paper, so more literature is more distractors. A topical
+question wants a good first page, and more literature is more genuinely
+relevant work to put on it. **Topical is the family that reflects how this
+database is actually used** (§4), so the honest summary of the widening is that
+it improved the realistic case and cost nothing measurable in the specific one.
+
+#### Latency did not regress
+
+Per-leg medians over 328 queries: embed 318–518 ms, Vectorize query 420–527 ms,
+rerank 763–779 ms, whole call 1.5–1.9 s, p95 under 3.3 s. Reranking 50
+documents costs the same as 20 because the cross-encoder call is
+request-overhead-bound at this size, so the deeper pool fits the existing 6 s
+rerank leg and 12 s whole-call budget with nothing to change.
+
+### 11.5 The recency assumption is now false, and that is the open question
+
+`src/arxiv.js` records that a recency re-sort was tried and lost, and that the
+softer "prefer the last 18 months" variant was a **no-op** — "because every hit
+in a realistic slice is already inside that window (the corpus grows, so
+relevance is implicitly recent)". That was true by construction for a rolling
+13-month corpus. Measured over the top 10 of every topical query:
+
+| run | median result | oldest | share predating 2507 |
+|---|---|---|---|
+| before | 2025-12 | 2025-07 | **0%** |
+| after | 2025-01 | 2023-10 | **64.9%** |
+
+**Two-thirds of what a topical query now returns predates the old window, and
+the median result is a year older.** Nothing in the pipeline ranks on recency;
+the synthesis model is expected to weigh freshness from the date in each
+source's metadata line. That makes the date correct-by-default rather than
+cosmetic, which is why `arxivRagItem` now derives the **submission** month from
+the arXiv id instead of showing the stored `d` (the last revision — a 2023
+paper revised last month was displaying as 2026).
+
+What is NOT settled is whether retrieval should now prefer recent work at all.
+The live tier's finding that date re-sorting "demoted the two most on-point
+papers in favour of tangential UAV-swarm papers that happened to be newer" was
+measured on keyword retrieval over a 13-month slice, and does not transfer to a
+reranked pipeline over 34 months. It needs its own measurement — with a query
+set that distinguishes "what is the state of the art" from "what is the
+foundational work" — before anything is changed. Do not add a recency boost on
+the strength of this section alone.

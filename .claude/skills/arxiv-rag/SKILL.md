@@ -32,13 +32,39 @@ bites, and what not to re-derive.
 > the checkpoint, Vectorize's billing model and serialization traps, and the
 > relevance floor. This skill keeps only what is specific to arXiv.
 
-**Status (2026-07-27): the abstract tier is BUILT AND HOSTED.** 337,768 vectors
-in the `deepresearch-se-arxiv` Vectorize index, covering **99.47%** of the
-independently-enumerated 339,388 papers in the 13-month window; the 1,393
-harvested papers not indexed fell below the 200-char abstract floor. The whole
-build ran in one session: 39 s to enumerate, ~40 min to harvest, 124 min to
-embed and upsert. `src/arxiv-rag.js` serves it and `src/arxiv.js` falls back to
-the live API.
+**Status (2026-07-29): the abstract tier is BUILT, HOSTED and WIDENED.**
+**772,658 vectors** over submission months **2310–2607** — 34 months, 2.3× the
+original 13-month build — at **99.6%** per-month index coverage. It stops at
+2310 because arXiv's LaTeXML HTML rendering, which is what makes the full-text
+tier Worker-native, only exists from late 2023; older papers would need the
+3 MB source tarball and gzip+tar, which a Worker cannot do.
+`src/arxiv-rag.js` serves it and `src/arxiv.js` falls back to the live API.
+
+**What the widening measured** (docs/ARXIV-RAG.md §11 — the first evaluation of
+the SERVED path, not the local pack):
+
+- **Needles: corpus pressure is real, and the pool answers it.** At the old
+  pool of 20, 2.3× the corpus cost EN recall@1 78.7 → 72.0 (paired McNemar
+  p=0.041). Raising the pool to 50 recovered it (p=0.039; on r@10 it gained 8
+  queries and lost **zero**, p=0.008). Shipped-before vs shipped-now is
+  statistically indistinguishable (p=0.58) while covering 2.3× the literature.
+- **Topical questions got BETTER**: nDCG@10 EN 0.740 → 0.857, SV 0.750 → 0.816.
+  The families disagree on purpose — a needle question wants one paper, so more
+  literature is more distractors; a topical question wants a good first page,
+  and more literature is more relevant work to fill it. Topical is the family
+  that reflects real use.
+- **The new material is as findable as the old** (new-band needles: EN r@10
+  82.7 vs 82.0 carryover).
+- **Latency did not move.** Reranking 50 documents costs the same as 20.
+- **The recency assumption BROKE.** `src/arxiv.js` says a recency preference was
+  a no-op "because every hit in a realistic slice is already inside that window".
+  Now **64.9%** of a topical query's top 10 predates 2507 and the median result
+  is a year older. Nothing ranks on recency, so the date in each source's
+  metadata line is what the synthesis model weighs — which is why
+  `arxivRagItem` derives the SUBMISSION month from the id rather than showing
+  the stored `d` (last revision). Whether retrieval *should* prefer recent work
+  is still unmeasured; the live tier's tried-and-lost date re-sort was keyword
+  retrieval over 13 months and does not transfer.
 
 ## The pieces
 

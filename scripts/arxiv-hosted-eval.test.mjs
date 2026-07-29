@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ageProfile, expandMonths, idYYMM, needleStats, rankOf } from "./arxiv-hosted-eval.mjs";
 import { rerankDoc } from "./arxiv-hosted.mjs";
+import { bareId } from "./arxiv-crosscheck.mjs";
 import { RERANK_DOC_CHARS } from "./arxiv-berget.mjs";
 
 test("expandMonths walks a YYMM range inclusively", () => {
@@ -125,4 +126,13 @@ test("ageProfile only counts what the run actually showed", () => {
   const a = ageProfile(rows);
   assert.equal(a.n, 1);
   assert.equal(a.preWindowPct, 0);
+});
+
+test("the ids a coverage check sends are normalised to the index's keys", () => {
+  // Regression: `coverage --ids` fed raw enumeration lines (2507.23787v2) to
+  // get_by_ids, which is keyed by the bare id, and reported 0% on every month
+  // — indistinguishable from a lost corpus. The same normalisation was already
+  // needed in arxiv-crosscheck, so it is now imported from one place.
+  assert.equal(bareId("2311.18841v2"), "2311.18841");
+  assert.equal(bareId("2311.18841"), "2311.18841");
 });

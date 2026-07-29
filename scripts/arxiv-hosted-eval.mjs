@@ -48,6 +48,7 @@ import { hitAtK, ndcgAtK, reciprocalRank } from "../public/js/arxiv-rag-core.js"
 import { chatJson } from "./arxiv-berget.mjs";
 import { hash01 } from "./arxiv-corpus.mjs";
 import { listShard } from "./arxiv-gcs.mjs";
+import { bareId } from "./arxiv-crosscheck.mjs";
 import { CANDIDATES, hostedSearch, vectorizeCount, vectorizeGetByIds } from "./arxiv-hosted.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -192,9 +193,16 @@ async function cmdCoverage(argv) {
   const byMonth = new Map(months.map((m) => [m, []]));
   if (idsFile) {
     // Reuse an enumeration already on disk rather than re-listing the mirror.
-    for (const id of (await readFile(join(ROOT, idsFile), "utf8")).split("\n")) {
+    // bareId, NOT the raw line: `arxiv-gcs.mjs --out` writes ids WITH the
+    // version suffix (2507.23787v2) while the index is keyed by the bare id.
+    // Skipping this asks Vectorize for ids that cannot exist and reports 0%
+    // coverage on every month — which reads exactly like a lost corpus. This
+    // is the same normalisation arxiv-crosscheck.mjs needs, so it is imported
+    // rather than rewritten: the bug appeared twice from being written twice.
+    for (const line of (await readFile(join(ROOT, idsFile), "utf8")).split("\n")) {
+      const id = bareId(line);
       const m = id.slice(0, 4);
-      if (byMonth.has(m)) byMonth.get(m).push(id.trim());
+      if (byMonth.has(m)) byMonth.get(m).push(id);
     }
   } else {
     for (const m of months) {
