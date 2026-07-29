@@ -1103,3 +1103,46 @@ of the comparison. And the English needle queries carry 0.63 lexical overlap
 with their paper's abstract against 0.05 for Swedish (reproducing §4.3's 0.68 /
 0.07), so EN and SV absolute numbers are not comparable to each other — only
 each language to itself.
+
+### 11.3 The harvest was 81.5% complete and said nothing
+
+The band 2310–2506 was first harvested as `--months 21 --until 2025-07-01`.
+`scripts/arxiv-crosscheck.mjs` against the GCS enumeration:
+
+| month | expected | harvested | coverage |
+|---|---|---|---|
+| 2310 | 20,705 | 19,542 | 94.4% |
+| 2312 | 17,742 | 16,518 | 93.1% |
+| 2403 | 20,329 | 18,633 | 91.6% |
+| 2406 | 20,096 | 17,847 | 88.8% |
+| 2409 | 20,564 | 17,453 | 84.8% |
+| 2412 | 21,172 | 16,537 | 77.9% |
+| 2503 | 24,352 | 16,796 | 68.8% |
+| 2505 | 24,867 | 15,235 | 61.2% |
+| 2506 | 24,123 | 14,254 | 59.1% |
+| **overall** | **437,073** | **356,182** | **81.5%** |
+
+**The monotonic curve is the diagnosis.** OAI filters on the datestamp, so a
+paper submitted inside the band but revised *after* it is in-window by id and
+never requested. The nearer a month is to the band's end, the less time its
+papers have had to stop being revised — hence a smooth slide from 94.4% to
+59.1% rather than a hole in one place. §10.2's bug was the same two axes
+disagreeing at the window's *start*; fixing that boundary did nothing for this
+one.
+
+Confirmed rather than inferred: every one of the 14,254 harvested 2506-id
+papers has `updated <= 2025-07-01`, none past it. A hard cut at the window
+edge is a boundary bug, not a sampling artefact.
+
+The repair is a second pass over the datestamps *after* the band, keeping only
+the band's id-months — which needed the two axes to become independently
+specifiable (`--keep-months`):
+
+```bash
+node scripts/arxiv-harvest.mjs --months 21 --until 2025-07-01 --out data/arxiv-new
+node scripts/arxiv-harvest.mjs --months 13 --keep-months 2310-2506 --out data/arxiv-rev
+```
+
+So **`--until` reproduces a past run; it does not slice history.** Tying the
+keep-filter to the fetch window is sound only when the window ends at *now*,
+which is the case `planWindow` was written for.
