@@ -53,6 +53,7 @@ import {
 import {
   formatConversation,
   imagePartsOf,
+  lastAssistantText,
   lastUserMessage,
   previousUserText,
   starterRefOf,
@@ -86,6 +87,7 @@ import {
   TRIAGE_SCHEMA,
   VALIDATE_SCHEMA,
   hardenJson,
+  looksLikeClarifyTurn,
   normalizeTriage,
 } from "./triage.js";
 import {
@@ -663,7 +665,14 @@ async function runTriage(ctx) {
       { role: "user", content: `Conversation:\n${convText}\n\nLatest user message:\n${lastUser}` },
     ],
   });
-  const decision = normalizeTriage(hardenJson(TRIAGE_SCHEMA, triage), lastUser, previousUserText(ctx.conversation));
+  const decision = normalizeTriage(
+    hardenJson(TRIAGE_SCHEMA, triage),
+    lastUser,
+    previousUserText(ctx.conversation),
+    // Whether the turn being answered was itself a clarifying question — the
+    // guard against asking twice in a row instead of searching (feedback #47).
+    { priorWasClarify: looksLikeClarifyTurn(lastAssistantText(ctx.conversation)) },
+  );
 
   if (decision.action === "direct") {
     stepDone("plan", "Direct reply (no research needed)", [], { route: "direct" });
