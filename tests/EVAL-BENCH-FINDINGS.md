@@ -353,3 +353,43 @@ artifact — the gate floors its noise bar at 0.15 absolute for exactly this
 reason. Worth re-recording at SAMPLES=4+ when convenient. Discipline and
 verdict semantics: docs/TESTING.md §"The bench gate"; the pre-push hook
 now names the gate when outgoing commits touch pipeline-sensitive files.
+
+## 2026-07-29 — the first gate run since 2026-07-23, clearing eleven owed changes
+
+- bench-gate 2026-07-29 (commit 978ce70a vs baseline b2a5ab6): overall
+  3.278±0.437 vs 3.625±0.042 (delta -0.347, bar ±0.43) → NEUTRAL. Pins:
+  mistralai/Mistral-Small-3.2-24B-Instruct-2506 / judge
+  mistralai/Mistral-Small-3.2-24B-Instruct-2506 / 240s /
+  mh_semiconductor_export,rec_eu_ai_act_timeline,div_openai_safety,con_coffee_health.
+
+Run at SAMPLES=3 (the default) against the live deployment, covering the
+eleven pipeline-sensitive changes that had accumulated unmeasured since the
+baseline: PRs #295, #298, #301, #305, #307, #319, #322, #324, #329, #331,
+#335 — 106 pipeline-sensitive file changes in total. NEUTRAL is therefore a
+statement about the stack, not about any one of them; a regression in one
+offset by a gain in another would read the same. That is the cost of letting
+the debt accumulate, and the argument for running the gate per queue rather
+than per backlog.
+
+**The delta is one cell, not a drift.** `mh_semiconductor_export` scored
+1.333 / 3.333 / 1.667 across the three samples (77–88 sources each) for
+2.111±0.875 — it alone accounts for the battery's spread, and it was already
+the weakest question at 2.833 in the baseline entry above. The other three
+cells sit at or above their previous values, `rec_eu_ai_act_timeline`
+highest at 4.667±0.272.
+
+**The baseline is the noisier side of this comparison, not the candidate.**
+Its 0.042 SD over n=2 was already recorded above as a 2-sample artifact with
+a standing recommendation to re-record at SAMPLES=4+. Deliberately NOT
+re-recorded here: the discipline re-records on IMPROVED, and a NEUTRAL run
+is not the moment to move the reference. The recommendation stands, and a
+4+-sample re-record would also give `mh_semiconductor_export` enough samples
+to say whether its swing is the question or the pipeline.
+
+**Operational finding: the gate runs from a session container.** It needs
+only `BASIC_AUTH_USER`/`BASIC_AUTH_PASS` (both present), defaults `BASE_URL`
+to the live site, and imports nothing outside node built-ins, so
+`tests/node_modules` being absent does not matter. Sessions had been
+recording it as impossible to run pre-merge; what is impossible is running
+the AFTER half before the change deploys, which is a different constraint.
+Wall clock was about seven minutes for 3 samples × 4 questions.
