@@ -117,6 +117,7 @@ import { handleKnowledgeApi, handleKnowledgeKey, handleKnowledgeSubmit } from ".
 import { getConfig } from "./config.js";
 import { handleSandboxImage, handleSandboxImageConfig } from "./sandbox-image.js";
 import { handleSpaceFeedback } from "./space.js";
+import { handleWatchCatalog } from "./watch.js";
 import { recordServerError } from "./server-errors.js";
 import { isPublicAsset, serveAsset } from "./assets.js";
 import { canonicalRedirect } from "./canonical.js";
@@ -410,6 +411,16 @@ async function route(request, env, url, log, ctx, requestId) {
   // feedback button degrades; the animations keep playing).
   if (request.method === "POST" && url.pathname === "/api/space/feedback") {
     return { response: await handleSpaceFeedback(request, env, log) };
+  }
+  // The NHxx watch builder's pre-indexed parts catalogue (src/watch.js) —
+  // PUBLIC because the /watch/ builder is an unauthenticated showcase page like
+  // /space/ and /pulse/, and because the index is the half of the feature a
+  // NON-browser caller wants: an agent or a shell can ask what a case measures
+  // and what to search for without running WebGL. Committed data only; no user
+  // input, no account, and no outbound call (the AliExpress links are built as
+  // strings, never fetched).
+  if (request.method === "GET" && url.pathname === "/api/watch/catalog") {
+    return { response: handleWatchCatalog(url) };
   }
   // The self-hosted Linux sandbox image (src/sandbox-image.js) — both PUBLIC
   // because they serve BOTH tiers including the server-in-no-data-path DRC
