@@ -76,9 +76,12 @@ const STARTER_EVAL_INFO = `<strong>Starter prompt evaluation</strong><br>
   four openers for the mode you are in, you get four drawn across <b>every</b>
   agent — one already known to work, one that scored badly, one never tested,
   and one new idea we are considering adding. Each is labelled so you know what
-  you are judging. Tapping one switches to its agent and sends it; then rate the
-  answer 👍 or 👎. Ratings stay in this browser — <b>Copy report</b> hands them
-  back when you are ready. Leave it off for the normal opening questions.`;
+  you are judging, and you get <b>new questions every time</b>: nothing comes
+  back round while there is something you have not read. Tapping one switches to
+  its agent and sends it. To say what you thought, start a message with
+  <b>“feedback”</b> in that same chat — the question was sent with its
+  <b>#XP</b> tag, so your note names the exact starter and reaches the
+  developers with it. Leave it off for the normal opening questions.`;
 
 /**
  * Fetches fresh settings and renders the Settings sub-view: the cloud
@@ -218,7 +221,7 @@ export async function loadSettingsView(ctx) {
   // no capability check — just the knob, its status line, and a re-render of
   // the strip so the change is visible on the empty chat behind the panel.
   wireSimpleKnob("starterevalknob", "starterevalstatus", (on) => setEvalMode(on), {
-    on: "Evaluation mode is on — the empty chat now offers a cross-agent review batch you can rate.",
+    on: "Evaluation mode is on — the empty chat now offers four new cross-agent questions each time. Reply to one with a message starting “feedback”.",
     off: "Evaluation mode is off — the empty chat shows the normal opening questions.",
   });
   // Exa web search: a BROWSER-LOCAL knob (search-source.js localStorage), not

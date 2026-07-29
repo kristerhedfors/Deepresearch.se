@@ -613,49 +613,49 @@ export const STARTERS = {
     // queue yet (invariant 5: a rank cites the run that produced it).
     // =====================================================================
     palaeogenomics: [
-      { id: "pal-geo-gotland", xp: 196, lang: "en", aspect: "geo-radius",
+      { id: "pal-geo-gotland", xp: 218, lang: "en", aspect: "geo-radius",
         text: "Which published ancient individuals lie within 300 km of Gotland, and how do they spread across the Neolithic and the Bronze Age?" },
-      { id: "pal-sv-uppland", xp: 197, lang: "sv", aspect: "sv-samples",
+      { id: "pal-sv-uppland", xp: 219, lang: "sv", aspect: "sv-samples",
         text: "Vilka forntida individer i databasen kommer från Uppland, hur väl täckta är deras genom och vilka studier publicerade dem?" },
-      { id: "pal-haplo-r1b", xp: 198, lang: "en", aspect: "haplogroup",
+      { id: "pal-haplo-r1b", xp: 220, lang: "en", aspect: "haplogroup",
         text: "How many individuals in the corpus carry Y-haplogroup R1b, where were they found, and what date range do they span?" },
-      { id: "pal-sv-mtdna", xp: 199, lang: "sv", aspect: "sv-population",
+      { id: "pal-sv-mtdna", xp: 221, lang: "sv", aspect: "sv-population",
         text: "Hur många individer i databasen har mtDNA-haplogrupp U5, var kommer de ifrån, och vad brukar det kopplas till?" },
-      { id: "pal-mammoth-oldest", xp: 200, lang: "en", aspect: "mammoth-megafauna",
+      { id: "pal-mammoth-oldest", xp: 222, lang: "en", aspect: "mammoth-megafauna",
         text: "How old is the oldest sequenced mammoth genome, what condition was that sample in, and what sets the limit on going older?" },
-      { id: "pal-coverage", xp: 201, lang: "en", aspect: "coverage-quality",
+      { id: "pal-coverage", xp: 223, lang: "en", aspect: "coverage-quality",
         text: "Which ancient individuals in the corpus have the highest coverage, and what analyses does that coverage actually make possible?" },
-      { id: "pal-sv-wrangel", xp: 202, lang: "sv", aspect: "sv-samples",
+      { id: "pal-sv-wrangel", xp: 224, lang: "sv", aspect: "sv-samples",
         text: "Vad visade arvsmassan hos de sista mammutarna på Wrangelön om inavel, och hur säkra är slutsatserna om deras utdöende?" },
-      { id: "pal-dating", xp: 203, lang: "en", aspect: "dating",
+      { id: "pal-dating", xp: 225, lang: "en", aspect: "dating",
         text: "How is an ancient sample dated, and when a paper reports a calibrated range, what exactly is being calibrated against what?" },
-      { id: "pal-contamination", xp: 204, lang: "en", aspect: "contamination",
+      { id: "pal-contamination", xp: 226, lang: "en", aspect: "contamination",
         text: "How do laboratories tell authentic ancient DNA from modern contamination, and how strong is that evidence in practice?" },
-      { id: "pal-sedadna", xp: 205, lang: "en", aspect: "sedadna",
+      { id: "pal-sedadna", xp: 227, lang: "en", aspect: "sedadna",
         text: "What can sedimentary ancient DNA recover that skeletal remains cannot, and how far back in time has it been pushed so far?" },
-      { id: "pal-sv-kol14", xp: 206, lang: "sv", aspect: "sv-dating",
+      { id: "pal-sv-kol14", xp: 228, lang: "sv", aspect: "sv-dating",
         text: "Hur fungerar kol-14-datering av benmaterial, och varför skiljer sig okalibrerad ålder från kalibrerad?" },
-      { id: "pal-deextinction", xp: 207, lang: "en", aspect: "deextinction",
+      { id: "pal-deextinction", xp: 229, lang: "en", aspect: "deextinction",
         text: "What would actually be required to bring back the woolly mammoth, and which of those steps have been demonstrated rather than proposed?" },
-      { id: "pal-preservation", xp: 208, lang: "en", aspect: "preservation",
+      { id: "pal-preservation", xp: 230, lang: "en", aspect: "preservation",
         text: "Why does permafrost preserve DNA so much better than temperate soil, and what is the practical age limit in each setting?" },
-      { id: "pal-yamnaya", xp: 209, lang: "en", aspect: "population-history",
+      { id: "pal-yamnaya", xp: 231, lang: "en", aspect: "population-history",
         text: "What does the genetic evidence say about the Yamnaya expansion into Europe, and which sampled individuals carry that argument?" },
-      { id: "pal-sv-skandinavien", xp: 210, lang: "sv", aspect: "sv-population",
+      { id: "pal-sv-skandinavien", xp: 232, lang: "sv", aspect: "sv-population",
         text: "Vad visar forntida DNA om vilka befolkningar som levde i Skandinavien före jordbruket, och hur många individer bygger bilden på?" },
-      { id: "pal-corpus-gaps", xp: 211, lang: "en", aspect: "corpus-limits",
+      { id: "pal-corpus-gaps", xp: 233, lang: "en", aspect: "corpus-limits",
         text: "Which regions and periods are thinly represented in the ancient-sample corpus, and what does that absence mean for a claim about them?" },
-      { id: "pal-ignore-flag", xp: 212, lang: "en", aspect: "method-caveats",
+      { id: "pal-ignore-flag", xp: 234, lang: "en", aspect: "method-caveats",
         text: "Which individuals in the corpus are flagged as unusable, why were they flagged, and what goes wrong in a result that includes them?" },
-      { id: "pal-proteomics", xp: 213, lang: "en", aspect: "proteomics",
+      { id: "pal-proteomics", xp: 235, lang: "en", aspect: "proteomics",
         text: "Where does ancient protein evidence reach further back than ancient DNA, and what can it resolve that sequence data cannot?" },
-      { id: "pal-sv-neandertal", xp: 214, lang: "sv", aspect: "sv-method",
+      { id: "pal-sv-neandertal", xp: 236, lang: "sv", aspect: "sv-method",
         text: "Vilka rön finns om neandertalarnas genetiska bidrag till dagens människor, och hur mäter man en sådan andel?" },
-      { id: "pal-reference-panel", xp: 215, lang: "en", aspect: "reference-panel",
+      { id: "pal-reference-panel", xp: 237, lang: "en", aspect: "reference-panel",
         text: "Why does an ancestry analysis need present-day reference populations, and how much does the choice of panel change the answer?" },
-      { id: "pal-isotopes", xp: 216, lang: "en", aspect: "isotopes",
+      { id: "pal-isotopes", xp: 238, lang: "en", aspect: "isotopes",
         text: "What do strontium and oxygen isotopes add to a genetic study of an individual, and where do the two lines of evidence disagree?" },
-      { id: "pal-sv-databas", xp: 217, lang: "sv", aspect: "corpus-limits",
+      { id: "pal-sv-databas", xp: 239, lang: "sv", aspect: "corpus-limits",
         text: "Vilka delar av världen är dåligt representerade i databasen över forntida individer, och hur påverkar det slutsatserna?" },
     ],
   },
@@ -750,6 +750,78 @@ export const CANDIDATES = [
   { id: "cand-agb-sv-verktyg", xp: 195, agent: "agent-builder", aspect: "sv-agent", lang: "sv",
     text: "Bygg och publicera en enkel svensk stavnings- och grammatikhjälp där jag klistrar in text och får rättelser med förklaring.",
     note: "Swedish build request end to end. Agent Studio's Swedish path has never been evaluated." },
+
+  // --- the 2026-07-29 wave ---------------------------------------------------
+  //
+  // Evaluation mode now serves NEW questions every render (owner directive), so
+  // the pool has to keep gaining material or the reviewer walks the same 175 to
+  // the end and stops. This wave is aimed, not decorative:
+  //
+  //   · The three aspects still declared with no starter anywhere —
+  //     models/pick-a-model, models/fine-tune, orchestrator/sv-multi. An unused
+  //     aspect is a way in nobody has tried; filling it here means a bad idea
+  //     gets reviewed before it can reach a visitor's strip.
+  //   · `secure` again gets the largest share, for the same reason as the first
+  //     wave: no server endpoint can drive that tier, so a human reviewer is
+  //     the only instrument that reaches it and every one of its questions is
+  //     worth more than a machine-scored one elsewhere.
+  //   · Shapes the queues under-serve: a starter that asks the agent to say it
+  //     CANNOT do something, and openers written as a task rather than a
+  //     question (the two failure modes the editorial rule names).
+
+  // --- models: the two aspects nothing has ever filled ----------------------
+  { id: "cand-mod-pick", xp: 196, agent: "models", aspect: "pick-a-model", lang: "en",
+    text: "I write Swedish legal summaries and I care about accuracy far more than speed. Pick one model from the catalogue for me and defend the choice.",
+    note: "pick-a-model is declared but empty — the most obvious thing a newcomer wants from a Models agent. Does it commit to ONE, or hedge into a table?" },
+  { id: "cand-mod-finetune", xp: 197, agent: "models", aspect: "fine-tune", lang: "en",
+    text: "I have about 2,000 support tickets with good answers. Is fine-tuning a small open model actually worth it here, or should I use retrieval instead?",
+    note: "fine-tune is declared but empty. Tests whether the agent will argue AGAINST the thing the question proposes when retrieval is the better answer." },
+  { id: "cand-mod-sv-liten", xp: 198, agent: "models", aspect: "small-models", lang: "sv",
+    text: "Vilken liten öppen modell klarar svenska bäst om den ska köras på en vanlig laptop, och hur mycket sämre blir den än en stor molnmodell?",
+    note: "Swedish + small-model routing, and it demands a magnitude for the trade-off rather than a verdict. The models queue has one small-models starter and it is English." },
+
+  // --- orchestrator: the last unfilled aspect in the registry ---------------
+  { id: "cand-orc-sv-multi", xp: 199, agent: "orchestrator", aspect: "sv-multi", lang: "sv",
+    text: "Vi ska anställa en utvecklare i Sverige. Sätt en agent på lön och marknad, en på anställningsformer och regler, och en på var kandidaterna faktiskt finns.",
+    note: "sv-multi is the registry's last declared-but-empty aspect. Swedish AND an explicit team assignment — does the plan phase decompose in Swedish as cleanly?" },
+
+  // --- secure: the tier only a human can evaluate ---------------------------
+  { id: "cand-sec-cannot", xp: 200, agent: "secure", aspect: "explainer", lang: "en",
+    text: "Tell me three things this browser-only version genuinely cannot do that the signed-in one can, and why the limit exists.",
+    note: "An opener that asks the agent to state its OWN limits. The queue is full of questions it can answer well; this one is only good if the answer is honest." },
+  { id: "cand-sec-workspace", xp: 201, agent: "secure", aspect: "workspace-share", lang: "en",
+    text: "I want to send a colleague a working copy of this assistant with my prompts but not my API key. Walk me through exactly what they receive.",
+    note: "Workspace distribution is the centrepiece concept and the queue asks about it once. 'Exactly what they receive' is the part a vague answer will skip." },
+  { id: "cand-sec-sv-offline", xp: 202, agent: "secure", aspect: "offline", lang: "sv",
+    text: "Jag sitter på ett flygplan utan internet. Vad av det här fungerar fortfarande, och vad slutar fungera direkt?",
+    note: "Swedish + a concrete situation instead of an abstract privacy question. Tests whether the offline story survives being asked about plainly." },
+  { id: "cand-sec-attach", xp: 203, agent: "secure", aspect: "attachments", lang: "en",
+    text: "If I attach a PDF of a signed contract here, trace where that file goes, byte by byte, until it reaches the model.",
+    note: "The attachment path is where a privacy claim is easiest to get subtly wrong. 'Byte by byte' leaves no room for a reassuring summary." },
+
+  // --- research: shapes the queue under-serves ------------------------------
+  { id: "cand-res-cannot", xp: 204, agent: "research", aspect: "unanswerable", lang: "en",
+    text: "What will the Riksbank's policy rate be in December next year? Tell me straight if that is not knowable, and what the best available proxy is.",
+    note: "The queue has one unanswerable starter. This one baits a confident forecast and rewards refusing it — the opposite of what most starters reward." },
+  { id: "cand-res-sv-jamfor", xp: 205, agent: "research", aspect: "consumer-sv", lang: "sv",
+    text: "Jag ska välja mellan att hyra och köpa en lägenhet i Göteborg de närmaste fem åren. Räkna på det med aktuella siffror och säg vad som lönar sig.",
+    note: "Swedish consumer decision that needs live numbers AND arithmetic on them. The research queue's Swedish entries mostly ask for facts, not a calculation." },
+
+  // --- introspection: ask it to be specific about its own weak spots --------
+  { id: "cand-int-sv-arkitektur", xp: 206, agent: "introspection", aspect: "sv-arch", lang: "sv",
+    text: "Förklara på svenska hur en fråga färdas genom systemet, från att jag trycker skicka till att svaret börjar strömma tillbaka.",
+    note: "The end-to-end walkthrough in Swedish. int-pipeline scores well in English; nothing has checked whether the source excerpts survive the translation." },
+  { id: "cand-int-regress", xp: 207, agent: "introspection", aspect: "testing", lang: "en",
+    text: "Show me a part of this codebase where the tests would not catch a real bug, and say what test is missing.",
+    note: "Introspection describing its own test coverage critically. A generic answer about testing means the retrieval did not actually read anything." },
+
+  // --- agent-builder: the two ends of 'too vague to build' ------------------
+  { id: "cand-agb-vague", xp: 208, agent: "agent-builder", aspect: "single-purpose", lang: "en",
+    text: "Make me something that helps me stop losing track of small promises I make to people during the day. You choose the form and publish it.",
+    note: "Deliberately under-specified but with a real problem in it. Does Agent Studio ship SOMETHING, or hand the vagueness back as questions (chat_logs #584)?" },
+  { id: "cand-agb-remix", xp: 209, agent: "agent-builder", aspect: "distill-secure", lang: "en",
+    text: "Take the browser-only version of this site and turn it into a private reading assistant for research papers, then publish it and give me the link.",
+    note: "The distil-Se/cure-into-a-flavour path, which is the mode's stated core purpose, asked as one instruction. The queue asks for it more abstractly." },
 ];
 
 export default STARTERS;

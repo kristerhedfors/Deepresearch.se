@@ -161,10 +161,15 @@ a mode switch, with the rotation cursor and pick counts kept in
 evaluation* on (browser-local, `dr_starter_eval`) the same module renders a
 cross-agent REVIEW BATCH instead — one starter per band (proven / weak /
 untried / candidate, the last from `starters-data.js`'s `CANDIDATES` trial
-pool), each labelled, each carrying a 👍/👎 whose verdicts stay local and leave
-via a *Copy report* button; a chip switches the chat mode to its own agent
-before sending, and prepends that starter's `#XP-<nn>` tag to the message so a
-later feedback note is tied to the exact starter (the ordinary visitor strip
+pool), each labelled. The batch serves NEW questions on every render (owner
+directive, 2026-07-29): a browser-local seen ledger (`dr_starter_eval_seen`,
+id → times shown) makes `selectEvalBatch` order every band least-seen first,
+and the four rendered are recorded as the strip is shown, so nothing comes back
+round while anything is unread. There is no rating control — the reviewer's
+verdict is a `feedback …` message in the chat the chip opened, which is the
+queue a human already reads. A chip switches the chat mode to its own agent
+before sending, and prepends that starter's `#XP-<nn>` tag to the message so
+that feedback note is tied to the exact starter (the ordinary visitor strip
 never tags — the pick signal stays local; `src/pipeline.js` strips the tag
 before any model call, and `src/chat.js` puts it on the chat-log row and the
 feedback entry) — see the **starter-prompts** skill), `stream.js` (conversation history + `/api/chat`

@@ -206,7 +206,8 @@ if (has("--batch")) {
       if (e.note) console.log(`   testing: ${e.note}`);
       console.log("");
     });
-    console.log("Advance --cursor for the next batch. This is what the Settings knob serves.");
+    console.log("Advance --cursor for the next batch. This is what the Settings knob serves — in the browser");
+    console.log("it also remembers what it has shown, so a reviewer gets new questions every time.");
   });
   process.exit(0);
 }
@@ -226,6 +227,11 @@ if (has("--coverage")) {
     }
     const t = rows.reduce((a, r) => ({ untried: a.untried + r.untried, total: a.total + r.total }), { untried: 0, total: 0 });
     console.log(`\n${t.untried} of ${t.total} starters have never been evaluated (bands: ${EVAL_BANDS.join(", ")}).`);
+    // Machine ranks are the only judgement this table holds. Human review of a
+    // starter arrives as a feedback entry citing its #XP tag — the evaluation
+    // strip no longer keeps verdicts of its own, so that queue is where the
+    // reviewer's own words are.
+    console.log("Human verdicts live in the feedback queue: scripts/feedback (each entry carries the starter's #XP tag).");
   });
   process.exit(0);
 }
