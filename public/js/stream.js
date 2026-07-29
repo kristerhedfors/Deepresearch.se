@@ -55,7 +55,7 @@ import {
   setError,
   setText,
 } from "./turns.js";
-import { decryptBytes, deleteConversation, listConversations, loadConversation, saveConversation } from "./history-store.js";
+import { decryptBytes, listConversations, loadConversation, saveConversation } from "./history-store.js";
 import { clearPending, writePending } from "./pending-answer.js";
 import { indexChatTurns, siblingChatDocs } from "./chat-rag.js";
 import {
@@ -101,6 +101,7 @@ import {
   setEmbeds,
 } from "./embeds.js";
 import { ackAnswer, recoverAnswer } from "./recovery.js";
+import { markUnanswered } from "./unanswered-core.js";
 
 /**
  * Per-send options, captured from the composer (app.js) and threaded into
@@ -444,25 +445,37 @@ async function deliverRecoveredAnswer(turn, recovered, requestId, opts) {
   await persistConversation(opts);
 }
 
-// A send that produced NO answer at all (empty completion, or a drop we
-// couldn't recover): revert the unanswered question so a retry starts clean,
-// and keep the encrypted record consistent with that. armPendingRecovery may
-// have already persisted the question at stream start, so — unlike a plain
-// pop — reconcile the stored record too: re-persist the reverted history for
-// a follow-up, or delete the just-created record for a lone first message.
-async function abandonUnanswered(opts) {
+// A send that produced NO answer at all — an empty completion, a route that
+// failed, a drop we couldn't recover, or Stop pressed before the first token.
+//
+// The question STAYS in the conversation and an assistant marker records that
+// it went unanswered (unanswered-core.js carries the full rationale). This
+// used to pop the question instead, "so a retry starts clean" — but the
+// question bubble stays on screen either way, so popping desynced what the
+// user reads from what the model gets. Feedback #45: a question died on a
+// phone before it ever reached the server, the user typed "Try again", and the
+// model reported — correctly — that "the original question never reached this
+// conversation" while it sat right there above the composer.
+//
+// Keeping it is also what the deterministic back-reference machinery resolves
+// against: triage's previousUserText fallback and introspection's
+// retrievalQuery both read the question a bare "try again" points back at.
+//
+// The encrypted record follows the same history: armPendingRecovery may have
+// persisted the question already at stream start, so re-persist to attach the
+// marker. Nothing is deleted any more — the conversation now always holds at
+// least the question, and a lone first message that failed is exactly the one
+// a user is most likely to come back for.
+/**
+ * @param {any} opts
+ * @param {import("./unanswered-core.js").UnansweredReason} reason
+ */
+async function settleUnanswered(opts, reason) {
   clearPending();
-  history.pop();
   pruneEmbeds(); // any embeds of the answer that never landed go with it
+  markUnanswered(history, reason);
   if (!currentId) return; // nothing was persisted (incognito, or never armed)
-  if (history.length) {
-    await persistConversation(opts); // follow-up: store the reverted history
-  } else {
-    const id = currentId;
-    resetConversationMeta(); // the discarded conversation is gone; next send starts fresh
-    try { await deleteConversation(id); } catch { /* best effort */ }
-    onHistoryChange(id);
-  }
+  await persistConversation(opts);
 }
 
 // Arm resume-across-relaunch for the in-flight send: persist the question to
@@ -1606,7 +1619,7 @@ async function runPrivateIntrospection(turn, opts, signal, gen, route, snap) {
     } else {
       finishGenericStep(turn, { id: "introspect", label: "Private introspection produced no answer" });
       setError(turn, "No response received.");
-      await abandonUnanswered(opts);
+      await settleUnanswered(opts, "empty");
     }
   } catch (e) {
     if (gen !== generation) return;
@@ -1620,15 +1633,13 @@ async function runPrivateIntrospection(turn, opts, signal, gen, route, snap) {
         await persistConversation(opts);
       } else {
         setError(turn, "Stopped before any response arrived.");
-        history.pop();
-        pruneEmbeds();
+        await settleUnanswered(opts, "stopped");
       }
       return;
     }
     finishGenericStep(turn, { id: "introspect", label: "Private route failed" });
     setError(turn, (e?.message || "The private request failed.") + " (Your key, browser-direct — nothing was sent to this site's server.)");
-    history.pop();
-    pruneEmbeds();
+    await settleUnanswered(opts, "failed");
   } finally {
     inFlight = false;
     collapseActivity(turn);
@@ -1745,7 +1756,7 @@ async function runOnDeviceExchange(turn, opts, signal, gen, modelId) {
     } else {
       finishGenericStep(turn, { id: "ondevice", label: "The on-device model produced no answer" });
       setError(turn, "No response received.");
-      await abandonUnanswered(opts);
+      await settleUnanswered(opts, "empty");
     }
   } catch (e) {
     if (gen !== generation) return;
@@ -1759,15 +1770,13 @@ async function runOnDeviceExchange(turn, opts, signal, gen, modelId) {
         await persistConversation(opts);
       } else {
         setError(turn, "Stopped before any response arrived.");
-        history.pop();
-        pruneEmbeds();
+        await settleUnanswered(opts, "stopped");
       }
       return;
     }
     finishGenericStep(turn, { id: "ondevice", label: "On-device run failed" });
     setError(turn, (e?.message || "The on-device model failed.") + " (On-device — your question was not sent anywhere.)");
-    history.pop();
-    pruneEmbeds();
+    await settleUnanswered(opts, "failed");
   } finally {
     engRef?.onLoadStatus(null);
     inFlight = false;
@@ -2074,8 +2083,7 @@ export async function sendMessage(text, opts) {
       const err = await res.json().catch(() => ({ error: "Request failed (" + res.status + ")" }));
       if (gen === generation) {
         setError(turn, err.error || "Something went wrong.");
-        history.pop();
-        pruneEmbeds();
+        await settleUnanswered(opts, "failed");
       }
       return;
     }
@@ -2112,7 +2120,7 @@ export async function sendMessage(text, opts) {
       await persistConversation(opts);
     } else if (isTyping(turn)) {
       setError(turn, "No response received.");
-      await abandonUnanswered(opts);
+      await settleUnanswered(opts, "empty");
     }
   } catch (e) {
     if (e?.name === "AbortError") {
@@ -2164,8 +2172,7 @@ async function handleStopped(turn, acc, requestId, opts) {
     await persistConversation(opts);
   } else {
     setError(turn, "Stopped before any response arrived.");
-    history.pop();
-    pruneEmbeds();
+    await settleUnanswered(opts, "stopped");
   }
 }
 
@@ -2272,8 +2279,8 @@ async function handleNetworkFailure(turn, e, acc, requestId, wasHidden, gen, opt
     });
     await persistConversation(opts);
   } else {
-    // Nothing arrived at all — drop the question so a retry starts clean
-    // (and reconcile the record armPendingRecovery may have persisted).
-    await abandonUnanswered(opts);
+    // Nothing arrived at all — keep the question (it is still on screen) with
+    // a marker saying so, the same way the partial above keeps its own.
+    await settleUnanswered(opts, "dropped");
   }
 }

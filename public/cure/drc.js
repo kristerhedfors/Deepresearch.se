@@ -118,6 +118,7 @@ import {
   introspectionActive,
   lexicalRetrieveCorpus,
   lexicalRetrieveOwasp,
+  retrievalQuery,
   securityAssessmentIntent,
   validateSnapshot,
 } from "/js/introspect-core.js";
@@ -2205,7 +2206,7 @@ async function introspectionContext(conv, latestText) {
       try {
         const texts = conv.messages.filter((m) => m.role === "user").map((m) => m.content);
         phaseStep("introspect", "Reading the documentation…");
-        const helpDocs = await helpDocsBlockFor(texts, latestText);
+        const helpDocs = await helpDocsBlockFor(texts, retrievalQuery(texts));
         phaseStep("introspect", helpDocs ? "Documentation read" : "No matching documentation");
         return { block: helpDocs, fileProvider: null, snapshot: null };
       } catch {
@@ -2216,6 +2217,11 @@ async function introspectionContext(conv, latestText) {
   }
   try {
     const texts = conv.messages.filter((m) => m.role === "user").map((m) => m.content);
+    // What the docs/OWASP retrieval matches on: the latest message, unless it
+    // is a bare back-reference ("try again"), which resolves to the question it
+    // retries — the same widening the server tier applies (feedback #45). The
+    // block's own latestText stays literal, so named-file inlining is unchanged.
+    const queryText = retrievalQuery(texts);
     phaseStep("introspect", "Reading the site's own source…");
     const snap = await loadSnapshotOnce();
     if (!snap) return { block: "", fileProvider: null, snapshot: null };
@@ -2230,12 +2236,12 @@ async function introspectionContext(conv, latestText) {
     // HELP layer: the documentation passages relevant to this question (the
     // docs-first layer of help mode — retrieved OFFLINE via lexical TF-IDF over
     // the committed docs corpus), with symbol references resolved to the source.
-    const helpDocs = await helpDocsBlockFor(texts, latestText);
+    const helpDocs = await helpDocsBlockFor(texts, queryText);
     if (helpDocs) block += helpDocs;
     // Security assessment: also append the OWASP Top 10 reference (retrieved
     // OFFLINE via lexical TF-IDF over the committed corpus), so DRC classifies
     // findings against — and quotes — the real OWASP text with no server call.
-    const owasp = await owaspBlockFor(texts, latestText);
+    const owasp = await owaspBlockFor(texts, queryText);
     if (owasp) block += owasp;
     // The sandbox boots lazily; if it does, the whole tree lands at /src.
     const fileProvider = async () => ({ session: [], project: null, source: { files: snap.files } });
