@@ -82,6 +82,20 @@ export function previousUserText(conversation) {
   return users.length >= 2 ? textOf(users[users.length - 2].content) : "";
 }
 
+// Text of the most recent assistant message — the reply the latest user
+// message is answering. Triage reads it to notice that it has already asked a
+// clarifying question (src/triage.js looksLikeClarifyTurn): the request the
+// client sends carries only roles and content, so the previous turn's ROUTE is
+// not in it, and the reply itself is the only trace of it.
+/**
+ * @param {Msg[]} conversation
+ * @returns {string}
+ */
+export function lastAssistantText(conversation) {
+  const last = [...conversation].reverse().find((m) => m?.role === "assistant");
+  return last ? textOf(last.content) : "";
+}
+
 // Image parts of a message's multimodal content (empty for string content).
 /**
  * @param {Msg} [message]

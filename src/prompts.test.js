@@ -630,6 +630,31 @@ describe("directPrompt / searchOffPrompt", () => {
     assert.match(searchOffPrompt({ hasShell: true }), /DID run shell commands/);
   });
 
+  test("spaceScene flips the capabilities tail so the model does not deny showing visuals", () => {
+    // Default: unchanged, byte-identical to a run without the feature.
+    assert.equal(directPrompt(), directPrompt({ spaceScene: "" }));
+    assert.match(directPrompt(), /does NOT run code/);
+    // Feedback #46: the user asked to be shown a rocket launch, the animation
+    // mounted above the reply, and the model still answered "I can't play
+    // videos ... or display media from the web". The tail must now say the
+    // opposite, and name the scene being shown.
+    const withScene = directPrompt({ spaceScene: "A rocket's road to orbit" });
+    assert.doesNotMatch(withScene, /does NOT run code/);
+    assert.match(withScene, /A rocket's road to orbit/);
+    assert.match(withScene, /ALREADY displayed with your reply/);
+    assert.match(withScene, /Do NOT say you cannot show visuals, play videos or display media/);
+    assert.match(withScene, /do NOT offer to describe one instead/);
+    // Threaded through the other two answer phases.
+    assert.match(searchOffPrompt({ spaceScene: "Standing on the Moon" }), /Standing on the Moon/);
+    assert.match(synthPrompt({ spaceScene: "Standing on the Moon" }), /Standing on the Moon/);
+    assert.match(synthPrompt({ spaceScene: "Standing on the Moon" }), /ALREADY displayed with this answer/);
+    assert.equal(synthPrompt(), synthPrompt({ spaceScene: "" }));
+    // It composes with the sandbox clause rather than replacing it.
+    const both = directPrompt({ hasShell: true, spaceScene: "Standing on the Moon" });
+    assert.match(both, /DID run shell commands/);
+    assert.match(both, /Standing on the Moon/);
+  });
+
   describe("capabilities grounding", () => {
     const p = directPrompt();
 

@@ -814,6 +814,165 @@ export function ringMesh(rIn, rOut, count = 5, segs = 96) {
   return out;
 }
 
+/**
+ * A patch of the sphere's lat/long graticule centred on the launch site, as
+ * 3D polylines. The launch scene draws the planet at close range, where the
+ * whole-sphere mesh is unusably chunky and the bare silhouette arc reads as
+ * just another orbit ring (feedback #46: "I did not see earth"). A local grid
+ * curving away to the limb is what makes the surface read as ground.
+ *
+ * The site sits at `siteAng` in the xy plane; the patch spans ±`span` radians
+ * of arc around it, `lines` grid lines each way.
+ *
+ * @param {number} R planet radius (km)
+ * @param {number} siteAng launch-site angle in the xy plane (radians)
+ * @param {number} span angular half-width of the patch (radians)
+ * @param {number} [lines] grid lines per axis
+ * @param {number} [steps] segments per line
+ * @returns {number[][][]} polylines, each an array of [x,y,z] points
+ */
+export function spherePatchGrid(R, siteAng, span, lines = 7, steps = 26) {
+  // Orthonormal frame at the site: n points out through it, e1/e2 span the
+  // tangent plane (e1 along the flight direction, e2 across it).
+  const n = [Math.cos(siteAng), Math.sin(siteAng), 0];
+  const e1 = [Math.sin(siteAng), -Math.cos(siteAng), 0];
+  const e2 = [0, 0, 1];
+  // A point at angular offsets (a, b) from the site, exactly on the sphere.
+  /** @param {number} a @param {number} b @returns {number[]} */
+  const at = (a, b) => {
+    const v = [
+      n[0] + e1[0] * Math.tan(a) + e2[0] * Math.tan(b),
+      n[1] + e1[1] * Math.tan(a) + e2[1] * Math.tan(b),
+      n[2] + e1[2] * Math.tan(a) + e2[2] * Math.tan(b),
+    ];
+    const len = Math.hypot(v[0], v[1], v[2]) || 1;
+    return [(R * v[0]) / len, (R * v[1]) / len, (R * v[2]) / len];
+  };
+  /** @type {number[][][]} */
+  const out = [];
+  for (let i = 0; i < lines; i++) {
+    const t = lines === 1 ? 0 : (i / (lines - 1)) * 2 - 1; // -1..1
+    const c = t * span;
+    /** @type {number[][]} */
+    const alongA = [];
+    /** @type {number[][]} */
+    const alongB = [];
+    for (let j = 0; j <= steps; j++) {
+      const s = ((j / steps) * 2 - 1) * span;
+      alongA.push(at(s, c));
+      alongB.push(at(c, s));
+    }
+    out.push(alongA, alongB);
+  }
+  return out;
+}
+
+/**
+ * True silhouette (horizon) of a sphere of radius `R` centred at `C`, as seen
+ * by the renderer's camera — which sits at [0,0,camDist] in the same rotated,
+ * rocket-relative frame the runner projects from.
+ *
+ * The tangent points form a circle: it lies R²/D from the centre towards the
+ * camera, with radius R·√(1−R²/D²). Drawing that instead of a flat 2D circle
+ * of radius R is what makes the horizon agree with the surface grid drawn on
+ * the sphere — the flat approximation drifts as soon as the view is rotated,
+ * and the grid then visibly crosses its own horizon.
+ *
+ * @param {number[]} C sphere centre in the camera-rotated frame
+ * @param {number} R sphere radius (km)
+ * @param {number} camDist camera distance along +z (km)
+ * @param {number} [segs] polyline segments
+ * @returns {number[][]} closed polyline of [x,y,z] points (empty if the camera is inside)
+ */
+export function sphereSilhouette(C, R, camDist, segs = 96) {
+  const ax = [-C[0], -C[1], camDist - C[2]]; // centre → camera
+  const D = Math.hypot(ax[0], ax[1], ax[2]);
+  if (!(D > R)) return [];
+  const n = [ax[0] / D, ax[1] / D, ax[2] / D];
+  // Any vector not parallel to n gives the first basis direction.
+  const seed = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+  const u1 = [
+    seed[1] * n[2] - seed[2] * n[1],
+    seed[2] * n[0] - seed[0] * n[2],
+    seed[0] * n[1] - seed[1] * n[0],
+  ];
+  const u1n = Math.hypot(u1[0], u1[1], u1[2]) || 1;
+  u1[0] /= u1n; u1[1] /= u1n; u1[2] /= u1n;
+  const u2 = [
+    n[1] * u1[2] - n[2] * u1[1],
+    n[2] * u1[0] - n[0] * u1[2],
+    n[0] * u1[1] - n[1] * u1[0],
+  ];
+  const off = (R * R) / D;            // centre → silhouette plane
+  const rad = R * Math.sqrt(1 - (R * R) / (D * D));
+  const cx = C[0] + n[0] * off, cy = C[1] + n[1] * off, cz = C[2] + n[2] * off;
+  /** @type {number[][]} */
+  const out = [];
+  for (let i = 0; i <= segs; i++) {
+    const t = (2 * Math.PI * i) / segs;
+    const c = Math.cos(t) * rad, s = Math.sin(t) * rad;
+    out.push([cx + u1[0] * c + u2[0] * s, cy + u1[1] * c + u2[1] * s, cz + u1[2] * c + u2[2] * s]);
+  }
+  return out;
+}
+
+/**
+ * Is a point on a sphere's surface facing the camera? Used to hide the half
+ * of the launch site's surface grid that lies behind the planet — without it
+ * the far side draws over the near side and the ground reads as a tangle.
+ *
+ * @param {number[]} p point on the sphere, camera-rotated frame
+ * @param {number[]} C sphere centre, same frame
+ * @param {number} camDist camera distance along +z
+ * @returns {boolean}
+ */
+export function facesCamera(p, C, camDist) {
+  const nx = p[0] - C[0], ny = p[1] - C[1], nz = p[2] - C[2];
+  const vx = -p[0], vy = -p[1], vz = camDist - p[2];
+  return nx * vx + ny * vy + nz * vz > 0;
+}
+
+/**
+ * Altitude (km) at flight progress `u`: a gravity-turn climb that flattens as
+ * it approaches the target, then coasts at orbital altitude past insertion.
+ * Shared by the renderer and the camera dolly so the two cannot drift apart.
+ *
+ * @param {number} u flight progress 0..1
+ * @param {{orbitAltKm: number, insertT: number}} cfg scene config
+ * @returns {number} altitude in km
+ */
+export function launchAltKm(u, cfg) {
+  if (u >= cfg.insertT) return cfg.orbitAltKm;
+  return cfg.orbitAltKm * Math.pow(Math.max(0, u) / cfg.insertT, 1.7);
+}
+
+/**
+ * The launch scene's camera distance (km) when it is following the flight
+ * rather than the zoom slider. Feedback #46 asked to see "a launch from earth
+ * and then out to orbit": start close enough that the pad and the ground are
+ * legible, widen with altitude, then pull back after orbital insertion so the
+ * closed path around the planet fits in frame.
+ *
+ * @param {number} u flight progress 0..1
+ * @param {number} altKm current altitude (km)
+ * @param {{orbitAltKm: number, insertT: number}} cfg scene config
+ * @param {{min: number, max: number, start: number}} zoomKm scene zoom range
+ * @returns {number} camera distance in km, clamped to the scene's range
+ */
+export function launchCamDistKm(u, altKm, cfg, zoomKm) {
+  const insert = cfg.insertT;
+  // Climb: from just off the pad to roughly the start distance at orbit alt.
+  const climb = zoomKm.min * 1.6 + (altKm / cfg.orbitAltKm) * (zoomKm.start - zoomKm.min * 1.6);
+  let d = climb;
+  if (u > insert) {
+    // Orbit reveal: widen until the whole planet plus the orbit is in frame.
+    const k = Math.min(1, (u - insert) / (1 - insert));
+    const wide = Math.min(zoomKm.max, 22000);
+    d = climb + (1 - Math.pow(1 - k, 2)) * (wide - climb);
+  }
+  return Math.max(zoomKm.min, Math.min(zoomKm.max, d));
+}
+
 // ---------------------------------------------------------------------------
 // Feedback validation — shared between the page (client-side pre-check) and
 // the public POST /api/space/feedback endpoint (src/space.js). The row a
