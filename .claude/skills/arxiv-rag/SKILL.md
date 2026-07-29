@@ -12,7 +12,14 @@ description: >-
   than a fixed budget can express, and bge-reranker-v2-m3 is served behind the
   same 512-token window covering query+document), and the evaluation
   discipline that keeps a RAG bake-off honest — above all that a small corpus
-  saturates every variant to ~98% and measures nothing. The PROVIDER-AGNOSTIC
+  saturates every variant to ~98% and measures nothing. ALSO the go-to for
+  EVALUATING a change to the corpus or the retrieval pipeline: measuring the
+  SERVED path rather than the local pack (they are different pipelines, and
+  the published recall figures described the wrong one), carryover gold sets
+  sampled by id so the measurement cannot select for papers that retrieve
+  well, paired McNemar rather than an independent binomial CI at n=150, and
+  why needle and topical results disagree by construction when a corpus grows.
+  The PROVIDER-AGNOSTIC
   half of that experience — enumeration cross-validation, checkpointing for
   ephemeral machines, rate-limit citizenship, Vectorize billing and traps, the
   relevance floor — now lives in the **bulk-corpus-etl** skill.
@@ -20,7 +27,7 @@ description: >-
 
 # The arXiv RAG search database
 
-A retrieval database over a year of arXiv, embedded with Berget
+A retrieval database over arXiv since late 2023, embedded with Berget
 `intfloat/multilingual-e5-large`. Full design, measurements and operating
 manual: **`docs/ARXIV-RAG.md`**. This skill is the working knowledge — what
 bites, and what not to re-derive.
@@ -32,13 +39,39 @@ bites, and what not to re-derive.
 > the checkpoint, Vectorize's billing model and serialization traps, and the
 > relevance floor. This skill keeps only what is specific to arXiv.
 
-**Status (2026-07-27): the abstract tier is BUILT AND HOSTED.** 337,768 vectors
-in the `deepresearch-se-arxiv` Vectorize index, covering **99.47%** of the
-independently-enumerated 339,388 papers in the 13-month window; the 1,393
-harvested papers not indexed fell below the 200-char abstract floor. The whole
-build ran in one session: 39 s to enumerate, ~40 min to harvest, 124 min to
-embed and upsert. `src/arxiv-rag.js` serves it and `src/arxiv.js` falls back to
-the live API.
+**Status (2026-07-29): the abstract tier is BUILT, HOSTED and WIDENED.**
+**772,658 vectors** over submission months **2310–2607** — 34 months, 2.3× the
+original 13-month build — at **99.6%** per-month index coverage. It stops at
+2310 because arXiv's LaTeXML HTML rendering, which is what makes the full-text
+tier Worker-native, only exists from late 2023; older papers would need the
+3 MB source tarball and gzip+tar, which a Worker cannot do.
+`src/arxiv-rag.js` serves it and `src/arxiv.js` falls back to the live API.
+
+**What the widening measured** (docs/ARXIV-RAG.md §11 — the first evaluation of
+the SERVED path, not the local pack):
+
+- **Needles: corpus pressure is real, and the pool answers it.** At the old
+  pool of 20, 2.3× the corpus cost EN recall@1 78.7 → 72.0 (paired McNemar
+  p=0.041). Raising the pool to 50 recovered it (p=0.039; on r@10 it gained 8
+  queries and lost **zero**, p=0.008). Shipped-before vs shipped-now is
+  statistically indistinguishable (p=0.58) while covering 2.3× the literature.
+- **Topical questions got BETTER**: nDCG@10 EN 0.740 → 0.857, SV 0.750 → 0.816.
+  The families disagree on purpose — a needle question wants one paper, so more
+  literature is more distractors; a topical question wants a good first page,
+  and more literature is more relevant work to fill it. Topical is the family
+  that reflects real use.
+- **The new material is as findable as the old** (new-band needles: EN r@10
+  82.7 vs 82.0 carryover).
+- **Latency did not move.** Reranking 50 documents costs the same as 20.
+- **The recency assumption BROKE.** `src/arxiv.js` says a recency preference was
+  a no-op "because every hit in a realistic slice is already inside that window".
+  Now **64.9%** of a topical query's top 10 predates 2507 and the median result
+  is a year older. Nothing ranks on recency, so the date in each source's
+  metadata line is what the synthesis model weighs — which is why
+  `arxivRagItem` derives the SUBMISSION month from the id rather than showing
+  the stored `d` (last revision). Whether retrieval *should* prefer recent work
+  is still unmeasured; the live tier's tried-and-lost date re-sort was keyword
+  retrieval over 13 months and does not transfer.
 
 ## The pieces
 
@@ -51,6 +84,9 @@ the live API.
 | `scripts/arxiv-berget.mjs` | the Berget-only surfaces (rerank, JSON chat) |
 | `scripts/arxiv-index.mjs` | the binary index pack, resumable |
 | `scripts/arxiv-search.mjs` | the four retrieval pipelines, plus `--deep` (the full-text stage) |
+| `scripts/arxiv-hosted.mjs` | the Vectorize REST client + a faithful replay of the SERVED path (`src/arxiv-rag.js`) |
+| `scripts/arxiv-hosted-eval.mjs` | `sample` / `coverage` / `run` / `compare` / `judge` — the hosted index's own bake-off |
+| `scripts/arxiv-crosscheck.mjs` | per-month diff of a harvest against a GCS enumeration |
 | `scripts/arxiv-fulltext.mjs` | tier 2: LaTeX → section chunks → one blob per paper, warmed on demand |
 | `scripts/arxiv-fulltext-eval.mjs` | the two-stage-vs-flat measurement behind §9.8 |
 | `scripts/arxiv-goldset.mjs`, `arxiv-topical-queries.json`, `arxiv-eval.mjs`, `arxiv-report.mjs` | the measured bake-off |
@@ -59,6 +95,37 @@ Built data lives under gitignored `data/`. Never commit it — the vectors alone
 are 335 MB.
 
 ## arXiv feed facts you should not re-derive
+
+**`--until` reproduces a past run; it does NOT slice history (2026-07-29).**
+This is the single most expensive trap in the harvester. `planWindow` ties the
+id-month keep-filter to the datestamp fetch window, which is correct only when
+`until` is today: a paper submitted inside the window then necessarily has its
+datestamp inside it too. Carving a historical band breaks that. OAI filters on
+the **datestamp**, so a paper submitted 2025-06 and revised in 2026 is
+in-window by id and is never REQUESTED.
+
+Harvesting 2310–2506 as `--months 21 --until 2025-07-01` came back **73.5%
+complete**, and the loss was graded — 2506 at 59.1%, 2411 at 79.9%, 2402 at
+92.1% — because the band's most recent months have had the least time to stop
+being revised. Nothing errored. Confirmed rather than inferred: all 14,254
+harvested 2506-id papers had `updated <= 2025-07-01`, none past it, a hard cut
+at the window edge.
+
+The repair is a SECOND PASS over the datestamps after the band, keeping only
+the band's id-months — which is what `--keep-months` exists for:
+
+```bash
+node scripts/arxiv-harvest.mjs --months 21 --until 2025-07-01 --out data/arxiv-new   # the band
+node scripts/arxiv-harvest.mjs --months 13 --keep-months 2310-2506 --out data/arxiv-rev  # its later revisions
+```
+
+**Cross-check every harvest, per month, with `scripts/arxiv-crosscheck.mjs`.**
+It diffs harvested ids against a GCS enumeration by month and warns under 95%.
+Run it against real data before trusting it — the first run reported 0% on
+every month because `arxiv-gcs.mjs --out` writes ids WITH the version suffix
+(`2507.23787v2`) while harvested records use the bare id. Both sides normalise
+now, but the lesson generalises: a verification tool that has never been run on
+real data is not yet a verification tool.
 
 **Enumerate from the GCS mirror, not from OAI-PMH (2026-07-26).** `gs://arxiv-dataset/`
 — the bucket behind the Kaggle `Cornell-University/arxiv` dataset — is **publicly
@@ -191,6 +258,60 @@ because the corpus is English). That silently handed BM25 a large head start
 and made it look like the English winner. Always measure query-vs-body overlap
 before believing a lexical retriever's score on a synthetic set, and keep a
 hand-written graded set as the tiebreaker.
+
+### Before/after: how to judge a change to the CORPUS or the pipeline
+
+Added 2026-07-29, from widening the window 13 → 34 months. A change of this
+kind is judged on four axes, and they can disagree — reporting only one is how
+a regression gets shipped as a win.
+
+**1. Hold everything but one variable, and use a CARRYOVER gold set.** The
+needles must be papers present in *both* indexes, so the only thing that
+changed is the number of distractors. Sample them by id from the independent
+enumeration (`arxiv-hosted-eval.mjs sample`), never by querying the index.
+
+**2. Test paired, with McNemar — not an independent binomial CI.** At n=150 the
+binomial 95% CI is about ±6.7 points, which calls almost every real effect
+noise. The runs share their queries, so the discordant pairs are the evidence:
+
+```js
+// for each query: hit@k before vs after → count b (lost) and c (gained)
+// two-sided exact binomial at p=0.5 over the b+c discordant pairs
+```
+
+Measured this way, effects that looked like noise separated cleanly:
+
+| comparison | verdict |
+|---|---|
+| corpus 338k → 773k, pool held at 20 | EN r@1 lost 15 / gained 5 — **p=0.041**, real |
+| pool 20 → 50, corpus held at 773k | EN r@10 gained 8, lost **0** — **p=0.008** |
+| shipped-before → shipped-now | p=0.581 — indistinguishable |
+
+**3. Needle and topical WILL disagree, and topical is the one that matters.**
+Widening the corpus made needles worse and topical better:
+
+| | EN needle r@1 | EN topical nDCG@10 |
+|---|---|---|
+| before | 78.7 | 0.740 |
+| after (shipped) | 76.7 | 0.857 |
+
+Not a contradiction. A needle question wants one specific paper, so more
+literature is more distractors; a topical question wants a good first page, and
+more literature is more genuinely relevant work to fill it. §4 already says
+topical "reflects how the database will actually be used" — so a corpus change
+that trades needle recall for topical nDCG is a win, and the reverse is not.
+
+**4. Measure what changed about the RESULTS, not just the scores.** `compare`
+prints an age profile (`ageProfile`, submission month from the id) because the
+widening moved the median result from 2025-12 to 2025-01 and took the share of
+results predating the old window from 0% to **64.9%**. No score would have
+shown that, and it is what invalidated the "relevance is implicitly recent"
+assumption in `src/arxiv.js`.
+
+**Also: verify the corpus before believing any of it.** A 73.5%-complete index
+produces confident numbers. Run `arxiv-crosscheck.mjs` (harvest vs enumeration,
+per month) and `arxiv-hosted-eval.mjs coverage` (index vs enumeration, per
+month) FIRST, and only then the retrieval evaluation.
 
 ## The settled pipeline
 
@@ -361,3 +482,82 @@ Two things to carry over when you do:
   demoted the best papers and the softer bucketed variant was a no-op**) was
   measured on keyword retrieval. Re-measure before importing that conclusion
   into a reranked pipeline; do not assume it transfers.
+
+## Measuring the HOSTED index (not the local pack)
+
+`scripts/arxiv-eval.mjs` measures the binary pack. **That is a different
+pipeline from the one users hit**, and quoting its numbers for production is
+how §10.7 ended up flagged as unverified for two days. Use
+`scripts/arxiv-hosted-eval.mjs`, which replays `src/arxiv-rag.js` over the
+Vectorize REST API.
+
+```bash
+node scripts/arxiv-hosted-eval.mjs sample   --months 2507-2607 --n 600 --out data/eval/carryover.jsonl
+node scripts/arxiv-goldset.mjs --corpus-file data/eval/carryover.jsonl --queries 150 --out data/eval/gold.json
+node scripts/arxiv-hosted-eval.mjs run      --gold data/eval/gold.json --label before --pool 20
+node scripts/arxiv-hosted-eval.mjs coverage --months 2310-2506 --ids data/eval/gcs-2310-2506.txt
+node scripts/arxiv-hosted-eval.mjs compare  --runs data/eval/before.json,data/eval/after.json
+node scripts/arxiv-hosted-eval.mjs judge    --runs data/eval/before.json,data/eval/after.json
+```
+
+**Sample gold papers by ID from an independent enumeration, never by querying
+the index.** Querying selects papers that retrieve well and inflates every
+number you then report. `sample` takes ids from the GCS listing and hydrates
+them through `get_by_ids`, which also costs zero arXiv requests — usable while
+a harvest owns the whole rate budget.
+
+**Read `inPool` before anything else.** It is the share of gold papers dense
+retrieval put in front of the cross-encoder at all, and everything right of it
+is bounded by it. Measured at 337,768 vectors: EN inPool 82.0 / r@10 81.3 —
+i.e. the reranker was finding nearly everything it was shown, and the POOL was
+the entire constraint. That is the number that moves when a corpus grows.
+
+### Vectorize limits, measured 2026-07-29
+
+The old "topK caps at 20 with `returnMetadata: all`" is **no longer true**, and
+`src/arxiv-rag.js` had been reranking a fifth of the available candidates
+because of it (`src/rag.js` still assumes 20 and deserves the same check):
+
+| request | result |
+|---|---|
+| `topK=50  returnMetadata=all` | 200, 50 matches |
+| `topK=100 returnMetadata=all` | 400 "max top K is 50 … retry with returnMetadata=indexed" |
+| `topK=100 returnMetadata=none` | 200, 100 matches |
+| `topK=200 returnMetadata=none` | 400 "max top K is 100" |
+| `get_by_ids` with 100 ids | 400 "40007 too many ids in payload; max id count is 20" |
+
+Raising the pool 20 → 50 bought **+4.0 points of EN recall@10 and +2.0 SV** for
+no extra round trip, and the cross-encoder leg did NOT get slower (median 763 →
+779 ms) because its cost is request overhead, not document count. Going past 50
+needs `returnMetadata: "none"` plus a hydrating `get_by_ids` pass at 20 ids per
+call — measured no better, so it is deliberately not done.
+
+**`vectorCount` is eventually consistent.** It lagged the upsert stream by ~6k
+vectors / ~2 min during a fill. Never use it to decide a build is complete —
+sample `get_by_ids` against an independent enumeration instead.
+
+**Parallelise a fill by partitioning shards, not by editing the script.** Four
+`arxiv-vectorize.mjs` processes over disjoint shard directories, each with its
+own `--work` checkpoint, took the fill from ~23/s to ~95/s. Seed each group's
+`pushed.txt` from any earlier run so nothing is embedded twice. Per batch the
+time splits roughly embed 5.7 s / `npx wrangler` spawn 2 s / upload 9 s, so the
+upload is the bottleneck and it is byte-bound — do NOT "optimise" it by
+rounding the floats, which would make new vectors differ from old ones and
+confound any before/after measurement.
+
+## The failure mode this subsystem actually has
+
+Not crashes — **work that reports success while doing nothing, or less than
+asked.** Every incident recorded here is this shape:
+
+- a harvest missing 48.1% of a month, exiting 0 (§10.2);
+- a harvest missing 26.5% of a band, exiting 0 (`--until`, above);
+- `--pause` parsed, validated, and never passed to `harvestShard`;
+- `--corpus` pointed at the harvest root printing `done — 0 vectors`;
+- a rerank failing soft and SILENTLY, so a whole bake-off reported numbers for
+  a pipeline that never ran (§5);
+- a cross-check comparing two incompatible id spellings and reporting 0%.
+
+So: make every "nothing to do" path loud, cross-validate against an
+independent source rather than the run's own counters, and run a new
+verification tool against known-good data before believing its verdict.

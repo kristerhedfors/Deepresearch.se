@@ -6,7 +6,7 @@ description: >-
   make it searchable from the Worker", "build the full corpus", "why is the
   harvest slow / getting throttled / missing papers", or when running a
   multi-hour ETL from an ephemeral container. The provider-agnostic discipline
-  distilled from taking arXiv from zero to 337,768 hosted vectors: why a single
+  distilled from taking arXiv from zero to 772,658 hosted vectors: why a single
   enumeration cannot detect its own gaps (a 48% hole in one month reported
   itself as success), why "records kept" is not "unique documents", the
   window-boundary bug class, rate-limit citizenship and how flow control
@@ -99,6 +99,36 @@ assert.ok(oldestShard.from.endsWith("-01"));
 for (const m of idMonths) assert.ok(monthStart(m) >= plan.start);
 ```
 
+### 3a. The same class at the OTHER end: a historical slice (2026-07-29)
+
+Fixing the start boundary does not fix the end. Re-run the same two axes with
+an end date **in the past** and the hole reappears, larger and graded:
+
+- fetch window: **datestamp** in `[2023-10-01, 2025-07-01)`;
+- keep filter: id-months `2310…2506`.
+
+A document submitted 2025-06 and revised in 2026 has a 2026 datestamp. It is
+in-window by id, and it is **never requested**. Result: 73.5% coverage, and the
+loss rises monotonically toward the recent end of the band — 2506 at 59.1%,
+2411 at 79.9%, 2402 at 92.1% — because recent documents have had the least time
+to stop being revised. Nothing errored, and the run's own counters were
+self-consistent.
+
+Two rules fall out:
+
+- **An "as of" parameter reproduces a past run; it does not slice history.**
+  Tying the keep-filter to the fetch window is only sound when the window ends
+  at *now*, which is the case the author had in mind.
+- **Slicing a historical band needs a SECOND pass** over the mutation axis
+  *after* the band, keeping only the band's selection axis. So the selection
+  and fetch axes must be independently specifiable — build that seam in from
+  the start (`--keep-months` here), because retrofitting it means re-harvesting.
+
+The diagnostic that settles it costs nothing and needs no network: look at the
+mutation timestamps you *did* collect. Every one of the 14,254 collected
+2506 records had `updated <= 2025-07-01` with none past it — a hard cut at the
+window edge is a boundary bug, not a sampling artefact.
+
 ## 4. Rate limits: read the terms, and know flow control from failure
 
 - **Read the published limit before designing throughput.** arXiv's terms ask
@@ -168,10 +198,27 @@ restart.
   ~$0.16/mo storage + ~$3/mo at 10k queries; marginal cost per query ~$0.00001.
   Check the worked example in the docs rather than inferring from a summary:
   the per-query reading is off by orders of magnitude.
-- **`returnMetadata: "all"` caps `topK` at 20**, below the documented 50. If the
-  retrieval design wants a deeper rerank pool, either accept the shallower pool
-  (and stop quoting recall numbers measured at the deeper one) or fetch ids
-  without metadata and read text from a second store.
+- **Re-probe the `topK` ceilings; they move.** `returnMetadata: "all"` capped
+  `topK` at 20 when this was first written and caps it at **50** as of
+  2026-07-29 — so a pipeline built against the old limit had been reranking a
+  fifth of the candidates available to it, for free, until someone measured
+  again. Probe rather than infer, and let the API's own rejection text tell you:
+
+  | request | result |
+  |---|---|
+  | `topK=50  returnMetadata=all` | 200, 50 matches |
+  | `topK=100 returnMetadata=all` | 400 "max top K is 50 … retry with returnMetadata=indexed" |
+  | `topK=100 returnMetadata=none` | 200, 100 matches |
+  | `topK=200 returnMetadata=none` | 400 "max top K is 100" |
+  | `get_by_ids` with 100 ids | 400 "40007 too many ids in payload; max id count is 20" |
+
+  Going deeper than the metadata ceiling means ids-only plus a hydrating
+  `get_by_ids` pass — a second round trip. Measure whether the recall is worth
+  it instead of assuming either way.
+- **A deeper rerank pool may be nearly free in latency.** Cross-encoder cost at
+  this scale is request overhead, not document count: 20 → 50 documents moved
+  the median rerank leg 763 → 779 ms. Check before rejecting a bigger pool on
+  latency grounds.
 - **Vectors must be plain arrays.** Embedders return `Float32Array`, and
   `JSON.stringify` turns a typed array into an OBJECT (`{"0":0.1,…}`). The
   service rejects it with the unhelpful `failed to parse upsert vectors request
@@ -182,7 +229,18 @@ restart.
   the caller renders. Cut long text to what a downstream reranker can actually
   read.
 - **The vector count lags**: `vectorize info` reports `processedUpToMutation`,
-  so a just-finished upsert reads low for a while. Not a failure.
+  so a just-finished upsert reads low for a while. Not a failure — but it also
+  means **`vectorCount` cannot verify a build is complete.** Measured drift
+  during a fill: ~6k vectors / ~2 min behind the local checkpoint. Verify by
+  sampling ids against an independent enumeration instead.
+- **Parallelise a fill by partitioning the input, not by rewriting the loader.**
+  N processes over disjoint shard directories, each with its own checkpoint
+  file, took a fill from ~23/s to ~95/s with no change to the upsert code. Seed
+  every partition's checkpoint from any earlier run so nothing is embedded
+  twice. Time per batch split roughly embed 5.7 s / CLI spawn 2 s / upload 9 s,
+  so the upload dominates and is byte-bound. **Do not shrink it by rounding the
+  floats** — new vectors would then differ from old ones and confound any
+  before/after measurement of the index.
 
 ## 8. Serving: dense retrieval fails DISHONESTLY
 
@@ -242,3 +300,37 @@ were wrong at some point in this build:
   primary category; the bulk-API rows do);
 - any recall figure's provenance — a number measured with a 50-candidate rerank
   pool does not transfer to a 20-candidate one.
+- **whether the numbers describe the SERVED path or a local one.** These are
+  different pipelines and only one of them is what users get. Here the local
+  pack's 87% recall@1 / 96% recall@10 was 78.7% / 81.3% through the deployed
+  path — and the gap went unnoticed for days because nothing had ever run a
+  query set against production.
+
+## 11. The failure mode to design against
+
+Across this whole build, almost nothing crashed. What went wrong was **work
+that reported success while doing nothing, or less than asked**:
+
+| symptom | reality |
+|---|---|
+| harvest exits 0, totals agree to 0.04% | 48.1% of one month missing |
+| harvest exits 0, counters self-consistent | 26.5% of the band missing (§3a) |
+| flag parsed and validated | never passed to the function that uses it |
+| loader prints `done — 0 vectors` | pointed one directory above the shards |
+| rerank "succeeds" every time | failing soft and silently; the eval measured a pipeline that never ran |
+| verifier reports 0% coverage | comparing two incompatible id spellings |
+| waiter never fires | its own command line matched the pattern it was grepping for |
+
+The design rules that fall out:
+
+- **Make every "nothing to do" path loud.** An empty input directory, a
+  zero-length work list, a filter that matched nothing — these are almost
+  always mistakes at this scale, and they must exit non-zero, not print `done`.
+- **Never verify a run with its own counters.** Cross-validate against an
+  independent source, broken down by subgroup; a pooled total hides exactly the
+  holes worth finding.
+- **Run a new verification tool against known-good data first.** A verifier
+  that has never been exercised is an untested assertion, and its first real
+  verdict is as likely to be its own bug as a finding.
+- **Fail-soft must still be loud.** Degrading is correct; degrading silently
+  turns a measurement into fiction.

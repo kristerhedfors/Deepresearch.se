@@ -726,6 +726,33 @@ plus one of its own: judge capability on the phase timeline, not the
 web-search counters — the modes that retrieve from source or from the outward
 feed legitimately show zero searches. See the **starter-prompts** skill.
 
+A fifth measures RETRIEVAL rather than answers — the **hosted arXiv eval**
+(`scripts/arxiv-hosted-eval.mjs`, added 2026-07-29). It exists because
+`scripts/arxiv-eval.mjs` measures the local binary pack with a 50-candidate
+rerank pool, while the Worker queries Vectorize: **different pipelines**, and
+the published 87% recall@1 / 96% recall@10 turned out to describe the one users
+do not hit (the served path measured 78.7% / 81.3% before the pool was
+corrected). It replays `src/arxiv-rag.js` over the Vectorize REST API and has
+five subcommands — `sample` (build a gold corpus by sampling ids from the
+independent GCS enumeration and hydrating via `get_by_ids`, never by querying
+the index, which would select for papers that retrieve well), `coverage`
+(per-month index coverage against that enumeration), `run`, `compare` and
+`judge` (topical grades pooled across runs and graded once, so a before/after
+delta measures retrieval rather than the judge).
+
+Its disciplines are the ledger ones plus three specific to retrieval: a
+carryover gold set whose papers exist in both indexes so only the distractor
+count varies; **paired McNemar** rather than an independent binomial CI, since
+at n=150 the latter's ±6.7-point interval calls almost every real effect noise;
+and reporting needle AND topical, which disagree by construction when a corpus
+grows — more literature is more distractors for "find this paper" and more
+relevant work for "give me a good first page". The served time budget is
+deliberately NOT enforced during a run: under it a slow leg silently drops the
+rerank, and the table would then average two pipelines. Latency is measured and
+reported instead. Unit tests for the pure logic are in
+`scripts/arxiv-hosted-eval.test.mjs` and `scripts/arxiv-crosscheck.test.mjs`;
+see the **arxiv-rag** skill.
+
 ## The bench gate (routine, for pipeline-sensitive changes)
 
 The rubric bench doubles as a routine merge gate — the P7 discipline from

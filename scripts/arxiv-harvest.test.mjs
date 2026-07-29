@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { decodeEntities, idMonth, parsePage, parseRecord, parseArgs, planWindow } from "./arxiv-harvest.mjs";
+import { decodeEntities, expandIdMonths, idMonth, parseArgs, parsePage, parseRecord, planWindow } from "./arxiv-harvest.mjs";
 import { hash01 } from "./arxiv-corpus.mjs";
 import { titleOverlap } from "./arxiv-goldset.mjs";
 
@@ -136,4 +136,28 @@ test("the datestamp window fully covers every id-month it admits", () => {
       assert.ok(asDate >= p.start, `${today}: id-month ${m} predates the window start ${p.start}`);
     }
   }
+});
+
+test("expandIdMonths walks a YYMM range inclusively", () => {
+  assert.deepEqual(expandIdMonths("2310-2401"), ["2310", "2311", "2312", "2401"]);
+  assert.equal(expandIdMonths("2310-2506").length, 21);
+  assert.deepEqual(expandIdMonths("2401,2402"), ["2401", "2402"]);
+  assert.deepEqual(expandIdMonths(""), []);
+});
+
+test("--keep-months decouples the id filter from the datestamp window", () => {
+  // The trap this exists for: planWindow ties the keep-filter to the fetch
+  // window, which is right when `until` is today (a paper submitted in the
+  // window always has its datestamp in it) and wrong for a historical band.
+  // Harvesting datestamps 2023-10..2025-07 while keeping id-months 2310..2507
+  // never REQUESTS a 2506 paper revised in 2026, so it is silently absent —
+  // measured at 59.1% coverage for 2506 against 92.1% for 2402.
+  const args = parseArgs(["--months", "13", "--keep-months", "2310-2506"]);
+  assert.equal(args.keepMonths, "2310-2506");
+  const months = new Set(expandIdMonths(args.keepMonths));
+  // The second pass sweeps datestamps AFTER the band, keeping only the band.
+  assert.ok(months.has("2506"));
+  assert.ok(months.has("2310"));
+  assert.ok(!months.has("2507"), "2507 is already indexed and must not be re-kept");
+  assert.ok(!months.has("2607"));
 });

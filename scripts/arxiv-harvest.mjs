@@ -67,7 +67,7 @@ export function parseArgs(argv) {
   // concurrency 3 + 1 s pause ran about 9x the published rate. One connection
   // with a 3 s pause is the documented limit; raise --concurrency/--pause only
   // if arXiv support has granted this project a higher rate.
-  const out = { months: 12, set: "", out: "data/arxiv", concurrency: 1, pauseMs: 3000, until: "", maxPages: 0 };
+  const out = { months: 12, set: "", out: "data/arxiv", concurrency: 1, pauseMs: 3000, until: "", maxPages: 0, keepMonths: "" };
   for (let i = 0; i < argv.length; i++) {
     const [flag, inline] = argv[i].split("=");
     const value = () => (inline !== undefined ? inline : argv[++i]);
@@ -76,6 +76,7 @@ export function parseArgs(argv) {
     else if (flag === "--out") out.out = String(value());
     else if (flag === "--concurrency") out.concurrency = Number(value());
     else if (flag === "--pause") out.pauseMs = Number(value());
+    else if (flag === "--keep-months") out.keepMonths = String(value());
     else if (flag === "--until") out.until = String(value());
     else if (flag === "--max-pages") out.maxPages = Number(value());
     else if (flag === "--help" || flag === "-h") out.help = true;
@@ -136,6 +137,33 @@ export function planWindow(todayISO, months) {
     m.setUTCMonth(m.getUTCMonth() + 1);
   }
   return { start: iso(start), end: iso(today), shards, idMonths: new Set(idMonths) };
+}
+
+/**
+ * "2310-2506" -> every YYMM in between, inclusive; also accepts a comma list.
+ * Walks months rather than comparing strings, so 2312 -> 2401 is not a gap.
+ * @param {string} spec
+ * @returns {string[]}
+ */
+export function expandIdMonths(spec) {
+  const text = String(spec || "").trim();
+  if (!text) return [];
+  if (text.includes(",")) return text.split(",").map((s) => s.trim()).filter(Boolean);
+  const m = /^(\d{2})(\d{2})-(\d{2})(\d{2})$/.exec(text);
+  if (!m) return [text];
+  const out = [];
+  let year = Number(m[1]);
+  let month = Number(m[2]);
+  for (let guard = 0; guard < 600; guard++) {
+    out.push(String(year).padStart(2, "0") + String(month).padStart(2, "0"));
+    if (year === Number(m[3]) && month === Number(m[4])) return out;
+    month++;
+    if (month > 12) {
+      month = 1;
+      year = (year + 1) % 100;
+    }
+  }
+  return out;
 }
 
 /**
@@ -279,7 +307,7 @@ async function fetchOai(url, log) {
 
 /**
  * @param {{ id: string, from: string, until: string }} shard
- * @param {{ set: string, outDir: string, idMonths: Set<string>, maxPages: number }} opts
+ * @param {{ set: string, outDir: string, idMonths: Set<string>, maxPages: number, pauseMs?: number }} opts
  */
 async function harvestShard(shard, opts) {
   const stateFile = join(opts.outDir, "state", `${shard.id}.json`);
@@ -367,11 +395,27 @@ async function harvestShard(shard, opts) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    console.log("usage: node scripts/arxiv-harvest.mjs [--months 12] [--set cs] [--out data/arxiv] [--concurrency 1] [--pause 3000] [--until YYYY-MM-DD] [--max-pages N]");
+    console.log("usage: node scripts/arxiv-harvest.mjs [--months 12] [--set cs] [--out data/arxiv] [--concurrency 1] [--pause 3000] [--until YYYY-MM-DD] [--keep-months 2310-2506] [--max-pages N]");
     return;
   }
   const today = args.until || new Date().toISOString().slice(0, 10);
   const plan = planWindow(today, args.months);
+  // --keep-months DECOUPLES the id-month filter from the datestamp window.
+  //
+  // planWindow ties them together, which is right when `until` is today: every
+  // paper submitted in the window necessarily has its datestamp in the window
+  // too. It is WRONG for carving a historical band. Harvesting datestamps
+  // 2023-10-01..2025-07-01 and keeping id-months 2310..2507 silently drops
+  // every paper submitted in the band but REVISED after it — and the loss is
+  // graded, worst in the band's most recent months, because those have had the
+  // least time to stop being revised. Measured 2026-07-29: 2506 came back
+  // 59.1% complete and 2402 92.1%, and every harvested 2506 paper had
+  // `updated <= 2025-07-01` exactly, with none past it.
+  //
+  // The fix is a second pass over the datestamps AFTER the band, keeping only
+  // the band's id-months:
+  //   --months 13 --keep-months 2310-2506        (datestamps 2025-07 -> today)
+  if (args.keepMonths) plan.idMonths = new Set(expandIdMonths(args.keepMonths));
   const outDir = join(ROOT, args.out);
   await mkdir(join(outDir, "raw"), { recursive: true });
   await mkdir(join(outDir, "state"), { recursive: true });
@@ -387,7 +431,11 @@ async function main() {
     for (;;) {
       const shard = queue.shift();
       if (!shard) return;
-      const r = await harvestShard(shard, { set: args.set, outDir, idMonths: plan.idMonths, maxPages: args.maxPages });
+      // pauseMs MUST be forwarded: it was parsed and validated but never
+      // reached harvestShard, which silently fell back to its own 3000 default.
+      // Harmless at the default, but it meant raising --pause to be politer
+      // (or during a throttle) did nothing at all.
+      const r = await harvestShard(shard, { set: args.set, outDir, idMonths: plan.idMonths, maxPages: args.maxPages, pauseMs: args.pauseMs });
       kept += r.kept;
       seen += r.seen;
     }
