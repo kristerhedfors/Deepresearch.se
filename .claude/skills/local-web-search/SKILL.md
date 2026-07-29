@@ -167,6 +167,38 @@ next to the checkbox. Do not quietly promote it to a default.
 Adding a source is one entry in `SERP_PROVIDERS` (`{id, label, url, parse}`,
 optional `fallbackParse`/`retryEmpty`/`restricted`) plus a pure parser test.
 
+**The zero-results page is its own failure mode (feedback #48, 2026-07-29).**
+A source that finds nothing does not answer with an empty document — it
+answers 200 with its whole layout intact and an empty results region. The
+classed parser sees no results and hands over to `fallbackParse`, the
+class-free anchor scan, which then has nothing to scrape but the page's own
+furniture. On Marginalia that is six links: its about and donate pages, its
+GitHub issues, its Twitter profile, the IP database it credits, and the CC
+licence. All six were passed to synthesis as the sources for a question about
+a watch, and the answer spent its length explaining that the sources were
+about a search engine.
+
+Three things had to be true at once, and each is worth checking when adding a
+source:
+
+- **The own-host filter must cover every domain the operator uses.** It was
+  `marginalia.nu`; the chrome links point at `marginalia-search.com`, so the
+  engine's own pages passed the "is this us?" test as outbound results.
+- **Chrome is not results.** `stripChromeRegions` drops `<header>`, `<nav>`,
+  `<footer>` and `<aside>` before the anchor scan. Results never live there.
+- **The fallback needs a floor.** `looksLikeResultSet` requires
+  `MIN_FALLBACK_ITEMS` (3) links across `MIN_FALLBACK_HOSTS` (2) distinct
+  hosts before the scan is believed. A changed layout still has all its
+  results and clears this easily; a no-results page does not. The cost, pinned
+  by its own test, is that a genuinely one-result SERP whose classes ALSO
+  changed is dropped — cheap next to inventing sources.
+
+Verify a new source against a query it has NOTHING for, not only one that
+works. `curl` the SERP, count the `card`/result blocks (zero), then run the
+body through `cloudflareSearch` with an injected fetch and confirm it returns
+`null`. `search.cf_serp_fallback_rejected` in Workers Logs is the guard doing
+its job; `search.cf_serp_fallback_parse` is the rescue actually rescuing.
+
 It is otherwise the same technique as the local browsing agent's `browse`
 engine (Recipe 0). Compare honestly when recommending one:
 

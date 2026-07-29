@@ -292,6 +292,14 @@ Known provider limits baked into the design:
   ladder, then `null` → Exa fallback. `search.cf_serp_empty` on one provider is
   the cascade working; on every provider it is the signal to configure a real
   backend.
+- The anchor-scan rung of that ladder is bounded on both sides. It rescues a
+  source whose markup changed, but a source that found NOTHING still renders a
+  full page, and its masthead and footer links are the only ones left to scrape
+  — six of them once reached synthesis as the sources for a watch question
+  (feedback #48). So the scan skips the chrome regions and the result must
+  clear a floor (`MIN_FALLBACK_ITEMS`/`MIN_FALLBACK_HOSTS`) before it is
+  believed; below it the provider reports empty and the cascade moves on.
+  `search.cf_serp_fallback_rejected` is that guard firing.
 - Outbound enrichment requests carry the minimum (a query, a coordinate, a
   host) — never the conversation, filenames, or account identity.
 

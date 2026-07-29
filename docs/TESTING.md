@@ -204,7 +204,8 @@ and the re-exported core parsers/dispatch over a mocked fetch; its client-core
 sibling `public/js/websearch-backends-core.js` covers the browser-facing
 `(log, resolved, query, depth)` contract directly), `websearch-cf.js` (the
 Cloudflare-originating backend: the pure SERP/entity/page-text parsers, the
-class-free anchor fallback, the anti-bot-shell retry, and the whole
+class-free anchor fallback and the floor that stops it believing a
+no-results page's chrome, the anti-bot-shell retry, and the whole
 SERP→page-excerpt flow over an INJECTED fetch — including every fail-soft
 path, since "degrades instead of erroring the search wave" is the contract
 that matters), `public/js/search-source.js` (the shared user pick: the

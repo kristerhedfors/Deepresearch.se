@@ -13,6 +13,7 @@ import {
   cloudflareSearch,
   decodeEntities,
   fetchExcerpt,
+  looksLikeResultSet,
   normalizeSerpProviders,
   pageText,
   parseDdg,
@@ -20,6 +21,7 @@ import {
   parseRssItems,
   parseSerpAnchors,
   serpSearch,
+  stripChromeRegions,
   stripTags,
   unwrapSerpHref,
 } from "./websearch-cf.js";
@@ -151,6 +153,111 @@ test("parseSerpAnchors is the class-free fallback: outbound links only, no SERP 
   assert.deepEqual(rows[0].highlights, []); // no snippets on the fallback path
 });
 
+// ---- the no-results SERP (feedback #48) --------------------------------------
+//
+// Marginalia answers a query it has nothing for with a full page of chrome and
+// an empty results section. The classed parse finds nothing, and the class-free
+// fallback used to scrape the masthead and footer: the engine's own about and
+// donate pages (on marginalia-search.com, which the marginalia.nu own-host
+// filter did not cover), its GitHub issues, its Twitter profile, the IP
+// database it credits, and the CC licence. All six reached synthesis as the
+// sources for a watch question. The markup below is that page's shape.
+const NO_RESULTS_SERP = `<html><body>
+  <header>
+    <a href="https://about.marginalia-search.com/">About</a>
+    <nav>
+      <a href="https://about.marginalia-search.com/article/supporting/">Donate</a>
+      <a href="https://old-search.marginalia.nu/explore/random">Random</a>
+    </nav>
+  </header>
+  <section id="results"><p>Nothing found. Consider
+    <a href="https://github.com/MarginaliaSearch/MarginaliaSearch/issues">submitting an issue on GitHub</a>.</p>
+  </section>
+  <footer>
+    <section id="legal">
+      <a href="https://twitter.com/MarginaliaNu">@MarginaliaNu</a>
+      <a href="https://lite.ip2location.com/">Free IP Geolocation Database</a>
+      <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC-BY-SA 4.0</a>
+    </section>
+  </footer>
+</body></html>`;
+
+test("stripChromeRegions drops the masthead and footer, keeps the results region", () => {
+  const body = stripChromeRegions(NO_RESULTS_SERP);
+  assert.ok(body.includes('id="results"'));
+  for (const gone of ["about.marginalia-search.com", "twitter.com", "creativecommons.org", "ip2location"]) {
+    assert.ok(!body.includes(gone), `${gone} should not survive the chrome strip`);
+  }
+});
+
+test("looksLikeResultSet: a real result set clears the floor, page leftovers do not", () => {
+  const item = (url) => ({ title: url, url, highlights: [] });
+  assert.equal(looksLikeResultSet([]), false);
+  assert.equal(looksLikeResultSet([item("https://a.com/1"), item("https://b.com/2")]), false); // too few
+  // Enough links, but all from one host — a site's own navigation, not results.
+  assert.equal(
+    looksLikeResultSet([item("https://a.com/1"), item("https://a.com/2"), item("https://a.com/3")]),
+    false,
+  );
+  assert.equal(
+    looksLikeResultSet([item("https://a.com/1"), item("https://b.com/2"), item("https://c.com/3")]),
+    true,
+  );
+});
+
+test("a no-results SERP yields no sources rather than its own chrome (feedback #48)", async () => {
+  const warned = [];
+  const log = { ...noopLog, warn: (event) => warned.push(event) };
+  const out = await cloudflareSearch(log, "wd1863 dial swap reddit", 6, {
+    pages: false,
+    providers: ["marginalia"],
+    doFetch: async () => htmlResponse(NO_RESULTS_SERP),
+  });
+  // null, not a list of the engine's about/donate/licence links: the caller
+  // (src/exa.js) falls back to Exa from here instead of synthesising over
+  // sources that have nothing to do with the question.
+  assert.equal(out, null);
+  assert.ok(warned.includes("search.cf_serp_fallback_rejected"));
+  assert.ok(warned.includes("search.cf_serp_empty"));
+});
+
+test("the own-host filter covers both of Marginalia's domains", () => {
+  const marginalia = SERP_PROVIDERS.find((p) => p.id === "marginalia");
+  const rows = marginalia.fallbackParse(
+    `<a href="https://about.marginalia-search.com/">About</a>
+     <a href="https://www.marginalia.nu/">Marginalia</a>
+     <a href="https://example.com/a">A</a>
+     <a href="https://example.org/b">B</a>
+     <a href="https://example.net/c">C</a>`,
+    10,
+  );
+  assert.deepEqual(rows.map((r) => r.url), [
+    "https://example.com/a",
+    "https://example.org/b",
+    "https://example.net/c",
+  ]);
+});
+
+test("the class-free fallback still rescues a real SERP whose markup changed", async () => {
+  // The case the fallback exists for: results are there, the classes are not.
+  const changed = `<html><body><header><a href="https://about.marginalia-search.com/">About</a></header>
+    <section id="results">
+      <a href="https://example.com/one">One</a>
+      <a href="https://example.org/two">Two</a>
+      <a href="https://example.net/three">Three</a>
+    </section></body></html>`;
+  const out = await cloudflareSearch(noopLog, "q", 6, {
+    pages: false,
+    providers: ["marginalia"],
+    doFetch: async () => htmlResponse(changed),
+  });
+  assert.deepEqual(out.map((r) => r.url), [
+    "https://example.com/one",
+    "https://example.org/two",
+    "https://example.net/three",
+  ]);
+});
+
 // ---- the fetching side -------------------------------------------------------
 
 test("serpSearch retries DuckDuckGo's empty anti-bot shell once, then parses", async () => {
@@ -166,9 +273,31 @@ test("serpSearch retries DuckDuckGo's empty anti-bot shell once, then parses", a
 });
 
 test("serpSearch falls back to the anchor scan when the classed markup changes", async () => {
+  const doFetch = async () =>
+    htmlResponse(
+      "<table>" +
+        ["https://example.com/x", "https://example.org/y", "https://example.net/z"]
+          .map((u) => `<tr><td><a href="${u}">${u}</a></td></tr>`)
+          .join("") +
+        "</table>",
+    );
+  const r = await serpSearch(noopLog, "q", 5, doFetch, ["ddg"]);
+  assert.deepEqual(r.items.map((x) => x.url), [
+    "https://example.com/x",
+    "https://example.org/y",
+    "https://example.net/z",
+  ]);
+});
+
+test("a single stray anchor is not a rescued layout — it is a page with no results", async () => {
+  // The cost the feedback #48 floor accepts, stated as a test so it is a
+  // decision rather than a surprise: a genuinely one-result SERP whose classes
+  // ALSO changed is dropped, and the cascade moves on to the next provider (or
+  // to Exa). Believing it is how six chrome links became sources.
   const doFetch = async () => htmlResponse('<table><tr><td><a href="https://example.com/x">X</a></td></tr></table>');
   const r = await serpSearch(noopLog, "q", 5, doFetch, ["ddg"]);
-  assert.deepEqual(r.items.map((x) => x.url), ["https://example.com/x"]);
+  assert.deepEqual(r.items, []);
+  assert.equal(r.provider, "");
 });
 
 test("serpSearch cascades past a blocked provider to the next one", async () => {

@@ -185,8 +185,56 @@ function pushItem(out, seen, ownHosts, limit, rawHref, rawTitle, rawSnippet) {
 }
 
 const DDG_HOSTS = /^(?:[a-z0-9-]+\.)*(?:duckduckgo\.com|duck\.co)$/i;
-const MARGINALIA_HOSTS = /^(?:[a-z0-9-]+\.)*marginalia\.nu$/i;
+// Marginalia is served from BOTH of its operator's domains: the search
+// endpoint on marginalia.nu, the about/donate pages the SERP chrome links to
+// on marginalia-search.com. Matching only the first let the second through the
+// own-host filter as if it were a result (feedback #48).
+const MARGINALIA_HOSTS = /^(?:[a-z0-9-]+\.)*(?:marginalia\.nu|marginalia-search\.com)$/i;
 const BING_HOSTS = /^(?:[a-z0-9-]+\.)*(?:bing\.com|microsoft\.com|msn\.com)$/i;
+
+// The page regions that are the SERP's furniture rather than its results.
+// Stripped before the class-free anchor scan below: a link in the masthead or
+// the footer is navigation, funding, a social profile or a license notice, and
+// is never something the query found.
+const CHROME_REGION = /<(header|footer|nav|aside)\b[^>]*>[\s\S]*?<\/\1>/gi;
+
+/**
+ * Drops the chrome regions from a SERP document, leaving the part of the page
+ * that can carry results. Pure.
+ * @param {string} html
+ * @returns {string}
+ */
+export function stripChromeRegions(html) {
+  return String(html).replace(CHROME_REGION, " ");
+}
+
+// The floor the class-free parse must clear to be believed. It exists to tell
+// the two cases it otherwise cannot distinguish apart: a SERP whose markup
+// changed (many results, many hosts — still worth keeping) versus a SERP with
+// NO results, whose few surviving links are stray chrome (feedback #48, where
+// six such links reached synthesis as "sources"). A real result page clears
+// this comfortably; a no-results page does not.
+export const MIN_FALLBACK_ITEMS = 3;
+export const MIN_FALLBACK_HOSTS = 2;
+
+/**
+ * Whether a class-free anchor parse looks like an actual result set rather
+ * than the leftovers of a page that found nothing. Pure.
+ * @param {SearchItem[]} items
+ * @returns {boolean}
+ */
+export function looksLikeResultSet(items) {
+  if (!Array.isArray(items) || items.length < MIN_FALLBACK_ITEMS) return false;
+  const hosts = new Set();
+  for (const item of items) {
+    try {
+      hosts.add(new URL(item.url).hostname.toLowerCase());
+    } catch {
+      /* an unparseable URL simply contributes no host */
+    }
+  }
+  return hosts.size >= MIN_FALLBACK_HOSTS;
+}
 
 // ---- one parser per SERP provider --------------------------------------------
 
@@ -215,11 +263,18 @@ export function parseDdg(html, limit) {
 }
 
 /**
- * The class-free fallback parse: scan every anchor, keep the outbound ones.
- * Markup classes are the brittle part of SERP scraping, so when the classed
- * parse comes back empty (a layout change, a different endpoint's table
- * markup) this still yields usable results — titles and URLs, no snippets.
- * Pure.
+ * The class-free fallback parse: scan every anchor OUTSIDE the page's chrome,
+ * keep the outbound ones. Markup classes are the brittle part of SERP
+ * scraping, so when the classed parse comes back empty (a layout change, a
+ * different endpoint's table markup) this still yields usable results —
+ * titles and URLs, no snippets.
+ *
+ * The chrome strip is what keeps it honest. Every SERP carries outbound links
+ * that are not results — the engine's about and donate pages, its social
+ * profile, the license of the data it credits — and on a page that found
+ * NOTHING those are the only links left to scrape. Six of them were once
+ * handed to synthesis as the sources for a watch question (feedback #48). They
+ * live in the masthead and the footer; results do not. Pure.
  * @param {string} html
  * @param {number} limit
  * @param {RegExp} [ownHosts]
@@ -231,7 +286,8 @@ export function parseSerpAnchors(html, limit, ownHosts = DDG_HOSTS) {
   const seen = new Set();
   const re = /<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
   let m;
-  while ((m = re.exec(String(html)))) {
+  const body = stripChromeRegions(html);
+  while ((m = re.exec(body))) {
     if (!stripTags(m[2])) continue; // an icon/image link, not a result
     if (pushItem(out, seen, ownHosts, limit, m[1], m[2], "")) break;
   }
@@ -392,9 +448,15 @@ async function runProvider(log, provider, query, limit, doFetch) {
     if (rows.length) return rows;
     if (provider.fallbackParse) {
       const anchors = provider.fallbackParse(body, limit);
-      if (anchors.length) {
+      // Believed only when it looks like a result set. A handful of stray
+      // links on a page that found nothing is not an unrecognised layout —
+      // it is a no-results page, and passing it on invents sources.
+      if (looksLikeResultSet(anchors)) {
         safeLog(log).warn("search.cf_serp_fallback_parse", { provider: provider.id, results: anchors.length });
         return anchors;
+      }
+      if (anchors.length) {
+        safeLog(log).warn("search.cf_serp_fallback_rejected", { provider: provider.id, anchors: anchors.length });
       }
     }
     if (attempt + 1 < attempts) await new Promise((r) => setTimeout(r, 800));

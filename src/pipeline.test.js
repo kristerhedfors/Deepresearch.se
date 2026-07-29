@@ -10,12 +10,109 @@ import { readFileSync } from "node:fs";
 import { isTransientConnectStatus, contextOverflowMessage } from "./answer-stream.js";
 import { collectConflicts } from "./pipeline-inputs.js";
 import { searchPolicyFor } from "./pipeline.js";
-import { normalizeTriage } from "./triage.js";
+import { looksLikeClarifyTurn, normalizeTriage } from "./triage.js";
+import { lastAssistantText } from "./conversation.js";
+
+describe("looksLikeClarifyTurn", () => {
+  // What the pipeline actually emitted on the reported conversation
+  // (feedback #47): runClarify streams the question alone, nothing else.
+  test("recognises the clarifying questions this pipeline emits", () => {
+    for (const turn of [
+      "What is the street address you'd like me to research?",
+      "What kind of news are you looking for in Andalucia? (e.g., latest events, sports, politics, weather)",
+      'Could you clarify what you mean by "Happy mews"? For example:\n\n1. A place or business\n2. Positive news\n3. Something else',
+    ]) {
+      assert.equal(looksLikeClarifyTurn(turn), true, turn.slice(0, 40));
+    }
+  });
+
+  // Swedish parity by construction, not by phrase list (CLAUDE.md invariant 6):
+  // the gate keys on punctuation and markdown structure, never on English
+  // wording, so it must behave identically on the Swedish forms.
+  test("holds for Swedish exactly as for English", () => {
+    assert.equal(looksLikeClarifyTurn("Vilken gatuadress vill du att jag undersöker?"), true);
+    assert.equal(looksLikeClarifyTurn("Vilken typ av nyheter är du ute efter i Andalusien?"), true);
+    assert.equal(
+      looksLikeClarifyTurn("## Nyheter i Andalusien\n\nDe senaste rapporterna visar [1] att läget är lugnt. Vill du veta mer?"),
+      false,
+    );
+  });
+
+  test("an answer is not a clarification, however it ends", () => {
+    // A synthesized answer: headings and numbered citations, and it may well
+    // end by offering to dig further — that offer is not a question to the
+    // pipeline, and treating it as one would suppress a legitimate clarify.
+    assert.equal(
+      looksLikeClarifyTurn("## The launch\n\nThe rocket lifted off at dawn [1]. Want me to research the next one?"),
+      false,
+    );
+    assert.equal(looksLikeClarifyTurn("The bezel measures 38.9mm [4]. Shall I look for more?"), false);
+    assert.equal(looksLikeClarifyTurn("A".repeat(800) + "?"), false); // too long to be a question alone
+    assert.equal(looksLikeClarifyTurn("Here is the answer."), false); // asks nothing
+    assert.equal(looksLikeClarifyTurn(""), false);
+    assert.equal(looksLikeClarifyTurn(undefined), false);
+  });
+
+  test("the unanswered-send marker is not read as a clarification", () => {
+    // The marker a failed send leaves behind (feedback #45's fix): it states
+    // something, it does not ask.
+    assert.equal(
+      looksLikeClarifyTurn("[The question above went unanswered — it was stopped before any answer arrived.]"),
+      false,
+    );
+  });
+
+  test("lastAssistantText reads the turn being replied to", () => {
+    const conversation = [
+      { role: "user", content: "news in andalucia" },
+      { role: "assistant", content: "What kind of news?" },
+      { role: "user", content: "Search web!" },
+    ];
+    assert.equal(lastAssistantText(conversation), "What kind of news?");
+    assert.equal(looksLikeClarifyTurn(lastAssistantText(conversation)), true);
+    assert.equal(lastAssistantText([{ role: "user", content: "first message" }]), "");
+  });
+});
 
 describe("normalizeTriage", () => {
   test("clarify with a real question is preserved and trimmed", () => {
     const result = normalizeTriage({ action: "clarify", question: "  which region?  " }, "some question");
     assert.deepEqual(result, { action: "clarify", question: "which region?" });
+  });
+
+  // Feedback #47: three clarifying turns in a row, web search explicitly on,
+  // not one query run. One question is help; the second is a loop.
+  test("a second clarification in a row becomes a search instead", () => {
+    const clarify = { action: "clarify", question: "What kind of news are you looking for?" };
+    // First time through, the question stands.
+    assert.deepEqual(normalizeTriage(clarify, "news in andalucia", "", { priorWasClarify: false }), {
+      action: "clarify",
+      question: "What kind of news are you looking for?",
+    });
+    // Asked once already: search rather than ask again.
+    const escaped = normalizeTriage(clarify, "news in andalucia", "", { priorWasClarify: true });
+    assert.equal(escaped.action, "research");
+    assert.deepEqual(escaped.queries, ["news in andalucia"]);
+  });
+
+  test("the escaped clarification seeds from the prior turn for a bare follow-up", () => {
+    // "Search web!" carries no topic of its own — the established one does.
+    const escaped = normalizeTriage(
+      { action: "clarify", question: "What would you like me to search for?" },
+      "Search web!",
+      "news in andalucia",
+      { priorWasClarify: true },
+    );
+    assert.deepEqual(escaped, { action: "research", queries: ["news in andalucia"] });
+  });
+
+  test("the escaped clarification never answers directly with nothing to say", () => {
+    // Too short to search and no prior turn: the normal fallback would answer
+    // directly, but the user has already been asked once, so search anyway.
+    const escaped = normalizeTriage({ action: "clarify", question: "Which one?" }, "reddit", "", {
+      priorWasClarify: true,
+    });
+    assert.deepEqual(escaped, { action: "research", queries: ["reddit"] });
   });
 
   test("clarify with a blank question falls through to the fallback logic", () => {

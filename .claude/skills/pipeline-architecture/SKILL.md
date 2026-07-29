@@ -23,7 +23,14 @@ direct call, so it is deterministic and works on any JSON-mode model:
 1. **Triage** (JSON mode): direct reply | one clarifying question | research
    plan with 2–4 queries covering different angles — plus the question's
    `complexity` and, for non-simple questions, 2–5 `subquestions` (see
-   "Question decomposition" below).
+   "Question decomposition" below). **One** clarifying question: a second in a
+   row is converted to a search (`normalizeTriage`'s `priorWasClarify`, from
+   `looksLikeClarifyTurn` over the previous assistant turn — the request body
+   carries roles and content only, so the reply text is the sole trace of the
+   last turn's route). A user who answers a clarification with something else
+   has already told you asking is not working; three of them in a row, with
+   web search explicitly on and not one query run, is what feedback #47
+   reported.
 2. **Search wave**: planned queries via Exa, deduped, capped by the
    budget plan (`plan.maxSearches`).
 3. **Gap check** (JSON, rounds set by the plan): audit coverage (per

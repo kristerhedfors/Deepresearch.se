@@ -114,12 +114,87 @@ export function hardenJson(schema, value) {
  * @param {string} [priorUser] The previous user turn's text ("" when none).
  * @returns {TriageDecision}
  */
-export function normalizeTriage(triage, lastUser, priorUser = "") {
+// A clarification this pipeline asked is emitted ALONE (pipeline.js
+// runClarify streams the question and nothing else), so it is short, it asks
+// something, and it carries none of a synthesized answer's furniture — no
+// headings, no numbered citations. That is the whole signal available: the
+// client posts back roles and content only, so the previous turn's route is
+// not in the request and its reply text is the only trace of it.
+//
+// Deliberately language-agnostic — it keys on punctuation and markdown
+// structure, never on English phrasing — so it holds for Swedish exactly as it
+// does for English (CLAUDE.md invariant 6), which the parity test pins.
+const CLARIFY_MAX_CHARS = 700;
+
+/**
+ * Whether an assistant turn looks like a clarifying question rather than an
+ * answer. Pure.
+ * @param {string} text
+ * @returns {boolean}
+ */
+export function looksLikeClarifyTurn(text) {
+  const s = String(text || "").trim();
+  if (!s.includes("?")) return false;
+  if (s.length > CLARIFY_MAX_CHARS) return false;
+  if (/(^|\n)#{1,6}\s/.test(s)) return false; // a heading: a synthesized answer
+  if (/\[\d+\]/.test(s)) return false; // a numbered citation: an answer with sources
+  return true;
+}
+
+/**
+ * The model-free triage fallback: seed a search from the conversation without
+ * asking anything. Used both when triage's JSON is unusable and when a second
+ * clarification in a row has to be escaped (see normalizeTriage).
+ * @param {string} lastUser
+ * @param {string} priorUser
+ * @param {{ forceResearch?: boolean }} [opts]
+ * @returns {TriageDecision}
+ */
+function seedFromConversation(lastUser, priorUser, { forceResearch = false } = {}) {
+  // A SHORT latest message in an ongoing conversation is almost always a
+  // pure back-reference ("undersök saken", "det då?") with no searchable
+  // content of its own, so seed the search from the prior question (the
+  // established, self-contained topic) rather than the referential phrase.
+  // A LONGER follow-up is deliberately left as-is: it carries its own
+  // content words (e.g. "…hur det ser ut för sd" — the entity "sd" is right
+  // there), which a fuzzy search can use, so replacing it with the prior
+  // topic would only DROP that focus.
+  const cur = lastUser.trim();
+  const prior = (priorUser || "").trim();
+  const looksLikeFollowup = cur.length < 40 && cur.split(/\s+/).filter(Boolean).length <= 6;
+  if (prior && looksLikeFollowup) {
+    return { action: "research", queries: [prior.slice(0, 300)] };
+  }
+  if (cur.length >= 12) return { action: "research", queries: [cur.slice(0, 300)] };
+  // Too short to search and nothing to resolve against. Normally that means
+  // answer directly; on the escape path there is no direct answer to give —
+  // the user has already been asked once — so search what there is.
+  if (!forceResearch) return { action: "direct" };
+  const query = cur || prior;
+  return query ? { action: "research", queries: [query.slice(0, 300)] } : { action: "direct" };
+}
+
+/**
+ * @param {any} triage
+ * @param {string} lastUser
+ * @param {string} [priorUser]
+ * @param {{ priorWasClarify?: boolean }} [opts]
+ * @returns {TriageDecision}
+ */
+export function normalizeTriage(triage, lastUser, priorUser = "", { priorWasClarify = false } = {}) {
   // The optional quiz flag (triage's fail-soft backup for quizIntent —
   // see TRIAGE_SCHEMA) rides along on direct/research decisions; lenient
   // strict-boolean extraction so it survives the raw (schema-miss) path.
   const quiz = triage?.quiz === true ? { quiz: true } : {};
   if (triage?.action === "clarify" && typeof triage.question === "string" && triage.question.trim()) {
+    // One clarifying question is help; two in a row is a loop. The user
+    // answered the first one with something else — a new topic, an
+    // instruction, an exasperated "search the web!" — and asking again spends
+    // another turn without searching anything. Reported as exactly that
+    // (feedback #47: three clarifying turns in a row with web search
+    // explicitly on, and not one query run). So a second clarification
+    // becomes a search, seeded from the conversation without a model.
+    if (priorWasClarify) return seedFromConversation(lastUser, priorUser, { forceResearch: true });
     return { action: "clarify", question: triage.question.trim() };
   }
   if (triage?.action === "research") {
@@ -146,26 +221,11 @@ export function normalizeTriage(triage, lastUser, priorUser = "") {
   if (triage?.action === "direct") return { action: "direct", ...quiz };
 
   // Triage failed to produce usable JSON — decide a fallback WITHOUT a model.
-  // A SHORT latest message in an ongoing conversation is almost always a
-  // pure back-reference ("undersök saken", "det då?") with no searchable
-  // content of its own, so seed the search from the prior question (the
-  // established, self-contained topic) rather than the referential phrase.
-  // A LONGER follow-up is deliberately left as-is: it carries its own
-  // content words (e.g. "…hur det ser ut för sd" — the entity "sd" is right
-  // there), which a fuzzy search can use, so replacing it with the prior
-  // topic would only DROP that focus. The real fix for an ugly unresolved
-  // query is triage itself producing a clean one (triagePrompt's
-  // FOLLOWUP_RESOLUTION_RULE + per-model JSON reliability, model-profiles.js)
-  // — this fallback only runs on the rare parse-failure path and just avoids
-  // the worst case (a bare pronoun going to the web). A short message with no
-  // prior context has nothing to resolve against, so answer directly.
-  const cur = lastUser.trim();
-  const prior = (priorUser || "").trim();
-  const looksLikeFollowup = cur.length < 40 && cur.split(/\s+/).filter(Boolean).length <= 6;
-  if (prior && looksLikeFollowup) {
-    return { action: "research", queries: [prior.slice(0, 300)] };
-  }
-  return cur.length >= 12
-    ? { action: "research", queries: [cur.slice(0, 300)] }
-    : { action: "direct" };
+  // The real fix for an ugly unresolved query is triage itself producing a
+  // clean one (triagePrompt's FOLLOWUP_RESOLUTION_RULE + per-model JSON
+  // reliability, model-profiles.js); this path only runs on the rare
+  // parse-failure and just avoids the worst case (a bare pronoun going to the
+  // web). A short message with no prior context has nothing to resolve
+  // against, so answer directly.
+  return seedFromConversation(lastUser, priorUser);
 }
