@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { diffByMonth, monthOf } from "./arxiv-crosscheck.mjs";
+import { bareId, diffByMonth, monthOf } from "./arxiv-crosscheck.mjs";
 
 test("monthOf takes the month from the id prefix", () => {
   assert.equal(monthOf("2310.01234"), "2310");
@@ -52,4 +52,25 @@ test("diffByMonth reports a month present in only one side", () => {
   assert.equal(rows[0].harvested, 0);
   assert.equal(rows[0].missing, 2);
   assert.equal(rows[0].coverage, 0);
+});
+
+test("bareId strips the version suffix the mirror listing carries", () => {
+  // gcs-*.txt lines look like "2507.23787v2"; harvested records and
+  // listShard() keys look like "2507.23787". Comparing them unnormalised makes
+  // the sets disjoint and reports total failure.
+  assert.equal(bareId("2507.23787v2"), "2507.23787");
+  assert.equal(bareId("2310.00001v12"), "2310.00001");
+  assert.equal(bareId("2310.00001"), "2310.00001");
+  assert.equal(bareId(" 2401.5v1 "), "2401.5");
+  assert.equal(bareId(null), "");
+});
+
+test("diffByMonth matches across the two id spellings once normalised", () => {
+  const rows = diffByMonth(
+    new Map([["2311", new Set(["2311.1", "2311.2"].map(bareId))]]),
+    new Map([["2311", new Set(["2311.1v2", "2311.2v1"].map(bareId))]]),
+  );
+  assert.equal(rows[0].missing, 0);
+  assert.equal(rows[0].extra, 0);
+  assert.equal(rows[0].coverage, 100);
 });

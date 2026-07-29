@@ -28,11 +28,27 @@ function arg(argv, flag, dflt) {
 }
 
 /**
+ * An arXiv id without its version suffix.
+ *
+ * The two sides of this diff spell ids differently and neither is wrong:
+ * `scripts/arxiv-gcs.mjs --out` writes `2507.23787v2` (the mirror lists one
+ * object per VERSION, and the version is worth keeping), while `listShard()`'s
+ * keys and every harvested record use the bare `2507.23787`. Comparing them
+ * unnormalised makes the two sets disjoint, which this tool reports as 0%
+ * coverage and `extra == harvested` — a false alarm that looks exactly like
+ * total harvest failure.
+ * @param {string} id
+ */
+export function bareId(id) {
+  return String(id || "").trim().replace(/v\d+$/, "");
+}
+
+/**
  * Month of an arXiv id, or "" when it carries none.
  * @param {string} id
  */
 export function monthOf(id) {
-  const m = /^(\d{2})(\d{2})\./.exec(String(id || "").trim());
+  const m = /^(\d{2})(\d{2})\./.exec(bareId(id));
   return m ? m[1] + m[2] : "";
 }
 
@@ -72,7 +88,7 @@ async function main() {
   /** @type {Map<string, Set<string>>} */
   const expected = new Map();
   for (const line of (await readFile(idsFile, "utf8")).split("\n")) {
-    const id = line.trim();
+    const id = bareId(line);
     const m = monthOf(id);
     if (!m) continue;
     if (!expected.has(m)) expected.set(m, new Set());
@@ -92,7 +108,7 @@ async function main() {
       } catch {
         continue; // a torn last line from an interrupted harvest
       }
-      const id = String(row?.id || "");
+      const id = bareId(row?.id);
       const m = monthOf(id);
       if (!m) continue;
       if (!harvested.has(m)) harvested.set(m, new Set());
