@@ -106,6 +106,7 @@ import { toolsForRun } from "./tool-sets.js";
 import { runOrchestration } from "./orchestrator.js";
 import { runOutrospection } from "./outrospect.js";
 import { spaceIntent, sceneById } from "./space.js";
+import { demoIntent } from "./demos.js";
 import { anthropicConfigured, anthropicToolRun, isAnthropicModel } from "./anthropic.js";
 import { runIntrospectionTool } from "./introspect-tools.js";
 import {
@@ -191,16 +192,30 @@ import {
  */
 
 /**
- * The title of the /space/ scene the chat clients mount for this question, or
- * "" when none matches — the answer prompts' `spaceScene` input. English
- * titles: this feeds a prompt, not the UI (the embed captions itself in the
- * matched language).
+ * The demo surface the chat clients mount for this question — the answer
+ * prompts' `spaceScene` / `demoSurface` inputs, one of which is set and never
+ * both. `spaceScene` is a /space/ animation playing INLINE; `demoSurface` is a
+ * page surface (the /watch/ builder) offered as a card beside the reply. The
+ * two prompt clauses differ because the affordances do: one is a thing the
+ * user is already looking at, the other a thing they can open.
+ *
+ * English titles: these feed a prompt, not the UI (both mounts caption
+ * themselves in the matched language). `prior` carries the turn before, so a
+ * bare "show me visually" resolves the same way here as it does in the client
+ * (demo-core.js demoIntent — one gate, no drift).
+ *
  * @param {string} text the latest user message
- * @returns {string}
+ * @param {string} [prior] the user message before it
+ * @returns {{spaceScene: string, demoSurface: string}}
  */
-function spaceSceneTitle(text) {
-  const scene = sceneById(spaceIntent(text));
-  return scene ? scene.title.en : "";
+function demoSurfaces(text, prior = "") {
+  const m = demoIntent(text, prior);
+  if (!m) return { spaceScene: "", demoSurface: "" };
+  if (m.kind === "space") {
+    const scene = sceneById(m.sceneId);
+    return { spaceScene: scene ? scene.title.en : "", demoSurface: "" };
+  }
+  return { spaceScene: "", demoSurface: m.title.en };
 }
 
 /**
@@ -227,6 +242,7 @@ function spaceSceneTitle(text) {
  *   shellBlock: string,
  *   hasSource: boolean,
  *   spaceScene: string,
+ *   demoSurface: string,
  *   lastUser: string,
  *   convText: string,
  *   cleanLastUser: string,
@@ -403,14 +419,19 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
     // answer prompts flip their capabilities line (hasSource) to use that
     // source instead of denying it — the "Code examples from site" fix.
     hasSource: !!(/** @type {any} */ (state).introspectionCount),
-    // Both chat clients mount a playable /space/ animation above the reply
-    // when the outgoing question matches a scene (turns.js mountSpaceEmbed,
-    // drc.js mountDrcSpaceEmbed). The server re-runs the SAME deterministic
-    // matcher over the SAME text so the answer prompts know the visual is
-    // there — otherwise the capabilities line has the model apologising for
-    // being unable to show anything while the animation plays beside it
-    // (feedback #46). No matcher drift is possible: one shared core.
-    spaceScene: spaceSceneTitle(textOf(lastUserMessage(convo)?.content)),
+    // Both chat clients mount one of the site's own surfaces above the reply
+    // when the outgoing question asks to be shown it (turns.js mountDemoEmbed,
+    // drc.js mountDrcSpaceEmbed): a playable /space/ animation inline, or a
+    // card into a page surface like the /watch/ builder. The server re-runs the
+    // SAME deterministic gate over the SAME text so the answer prompts know
+    // what is displayed — otherwise the capabilities line has the model
+    // apologising for being unable to show anything while the animation plays
+    // beside it (feedback #46), or researching the web for a capability this
+    // site ships (feedback #49). No matcher drift is possible: one shared core.
+    ...demoSurfaces(
+      textOf(lastUserMessage(convo)?.content),
+      previousUserText(convo),
+    ),
     lastUser: textOf(lastUserMessage(convo)?.content),
     convText: formatConversation(convo),
     // The CLEAN question + context — from the PRE-enrichment conversation, so
@@ -639,7 +660,7 @@ async function runWithoutSearch(ctx) {
   // (searchOffPrompt's sourceless depth ladder; default "standard" is the
   // long-standing byte-identical prompt).
   await streamCompletion(ctx, [
-    { role: "system", content: phasePrompt(ctx.state, "direct", "answer-search-off")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: ctx.state.plan.reportTier, spaceScene: ctx.spaceScene }) },
+    { role: "system", content: phasePrompt(ctx.state, "direct", "answer-search-off")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: ctx.state.plan.reportTier, spaceScene: ctx.spaceScene, demoSurface: ctx.demoSurface }) },
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
@@ -755,7 +776,7 @@ async function runQuizGeneration(ctx, quizReq) {
 /** @param {PipelineCtx} ctx */
 async function runDirectReply(ctx) {
   await streamCompletion(ctx, [
-    { role: "system", content: phasePrompt(ctx.state, "research", "answer-direct")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, spaceScene: ctx.spaceScene }) },
+    { role: "system", content: phasePrompt(ctx.state, "research", "answer-direct")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, spaceScene: ctx.spaceScene, demoSurface: ctx.demoSurface }) },
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
@@ -1785,7 +1806,7 @@ async function runSynthesis(ctx) {
     // reportTier scales the OUTPUT's structure/comprehensiveness with the
     // slider (brief → standard → extended → full) — see budget.js
     // reportTierFor and prompts.js REPORT_TIER_STRUCTURE.
-    { role: "system", content: phasePrompt(ctx.state, "research", "answer")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: plan.reportTier, spaceScene: ctx.spaceScene }) },
+    { role: "system", content: phasePrompt(ctx.state, "research", "answer")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: plan.reportTier, spaceScene: ctx.spaceScene, demoSurface: ctx.demoSurface }) },
     {
       role: "user",
       content: imageParts.length ? [{ type: "text", text: synthText }, ...imageParts] : synthText,

@@ -48,7 +48,7 @@ import {
   addAssistantTurn,
   addUserBubble,
   isTyping,
-  mountSpaceEmbed,
+  mountDemoEmbed,
   renderDeliverables,
   renderStoredConversation,
   resetForRevision,
@@ -139,6 +139,27 @@ import { markUnanswered } from "./unanswered-core.js";
 // ---- Conversation state -------------------------------------------------
 
 const history = []; // {role, content} pairs sent to the API
+
+// The most recent user message as plain text, images and document parts
+// dropped. Only the demo gate needs it (mountDemoEmbed's priorText, so a bare
+// "show me visually" inherits the subject of the turn before it), which is why
+// it tolerates both content shapes and never throws.
+/** @param {Array<{role: string, content: any}>} msgs @returns {string} */
+function lastUserText(msgs) {
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    if (!m || m.role !== "user") continue;
+    if (typeof m.content === "string") return m.content;
+    if (Array.isArray(m.content)) {
+      return m.content
+        .filter((p) => p && p.type === "text" && typeof p.text === "string")
+        .map((p) => p.text)
+        .join(" ");
+    }
+    return "";
+  }
+  return "";
+}
 
 // Large documents attached to this conversation (RAG-indexed — see
 // public/js/rag.js): follow-up questions keep retrieving from them, so
@@ -1919,6 +1940,9 @@ export async function sendMessage(text, opts) {
   const feedbackSend = feedbackForcesServerRoute(text);
   if (feedbackSend && onDeviceIdFromValue(opts.model)) opts = { ...opts, model: "" };
   const content = await buildOutgoingUserContent(text, opts);
+  // Read BEFORE the push: a bare "show me visually" takes its subject from
+  // the turn before it (turns.js mountDemoEmbed, feedback #50).
+  const priorUserText = lastUserText(history);
   history.push({ role: "user", content });
   // Captured for out-of-band persistence (a quiz finished after this stream
   // ends re-persists with the same metadata — see quizHooks).
@@ -1926,10 +1950,11 @@ export async function sendMessage(text, opts) {
   const imageUrls = opts.images.map((a) => a.dataUrl);
   addUserBubble(text, imageUrls, opts.docs.map((d) => d.name));
   const turn = addAssistantTurn(text, imageUrls);
-  // A space-visual ask mounts its playable wireframe scene across the
-  // response area (feedback #18) — everywhere except Agent Studio, whose
-  // answer area is a build flow. The research answer still streams below.
-  if (cachedChatMode() !== "sdk") mountSpaceEmbed(turn, text);
+  // An ask to be SHOWN one of the site's own surfaces mounts it across the
+  // response area — a /space/ scene inline (feedback #18), a page surface like
+  // the /watch/ builder as a card (feedback #49) — everywhere except Agent
+  // Studio, whose answer area is a build flow. The answer still streams below.
+  if (cachedChatMode() !== "sdk") mountDemoEmbed(turn, text, priorUserText);
   let acc = "";
   inFlight = true;
   // Reset introspection's live pipeline map to this send: the browser-side

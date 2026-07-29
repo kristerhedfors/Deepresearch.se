@@ -1226,3 +1226,59 @@ forever.
 `dr_starter_eval_seen` ledger, the one-time migration off the retired
 `dr_starter_verdicts` store). The feedback half is `src/chat.js`'s `starter:`
 line on the feedback entry and the **feedback-loop** skill.
+
+---
+
+## UX-22 — If the site ships a tool that answers the request, the chat offers the tool — it does not research around it
+
+**Rule.** When a message asks to be SHOWN something the site already builds —
+"Seiko watch demo", "space launch demo", "visa mig klockbyggaren" — the reply
+carries the surface itself: a `/space/` scene mounts inline as a playable
+canvas, a page surface like the `/watch/` builder mounts as a card one tap into
+it. Three things hold:
+
+- **The routing is a registry, not a branch.** `public/js/demo-core.js` owns the
+  gate and the list of demonstrable surfaces. Adding one is an entry; no client
+  file and no pipeline file changes.
+- **The answer model is told what is on screen.** `src/pipeline.js` re-runs the
+  SAME gate and sets `spaceScene` (playing) or `demoSurface` (offered), so the
+  reply leads with the tool instead of reading its own "does NOT display media"
+  line back to a user who is looking at a rendered animation.
+- **It is additive, never a replacement.** The research answer streams below
+  regardless. That is what makes a generous matcher safe: a false positive
+  costs a card the user ignores, never an answer.
+
+**Why.** Feedback #49 and #50, 2026-07-29, minutes apart in the same demo
+session. "Seiko watch demo" ran a full research pass, found four irrelevant
+sources and reported "no usable information" — on the day the NHxx watch
+builder shipped. "Space launch demo" → "Show me visually" produced an ASCII bar
+chart of a dataset the sandbox invented, with the launch animation unmounted
+because the matcher had `rocket launch` but not `space launch`. Neither is a
+model failure — the routing was never asked. The reporter generalised it in one
+line: *"all individual capabilities should be callable like this, show me x
+demo for instance."*
+
+**The parts that are easy to get wrong:**
+
+1. **A bare follow-up has no subject of its own.** "Show me visually" is the
+   second half of a request. Resolve it against the previous user message
+   (`demoIntent(text, priorText)`) — and ONLY when the message is nothing but
+   the ask, so a real question is never answered with the last turn's surface.
+2. **A shared word cannot pick the language.** "demo", "animation" and
+   "demonstration" are the same in Swedish and English. Treating them as
+   either language's pattern makes the language whichever set was tested first;
+   they are `neutral`, and the subject decides (invariant 6 still applies to
+   every other pattern).
+3. **A subject that is also a common verb needs a companion.** `watch` fires
+   only beside a show verb or a build word, or the card mounts on "watch out
+   for rate limits". The unambiguous forms (`nh35`, `watch builder`,
+   `klockbyggare`) fire alone.
+4. **Match the mount to the surface.** A canvas-and-caption embeds; a page with
+   its own state, permalink and tables gets a card. Inlining the second one
+   puts a second copy of the page inside a chat turn.
+
+**Canonical implementation:** `public/js/demo-core.js` (`DEMOS`, `demoIntent`,
+Node-tested in `demo-core.test.js`), the card renderer
+`public/js/demo-embed.js`, the mounts `turns.js mountDemoEmbed` /
+`drc.js mountDrcSpaceEmbed`, and the prompt half in `src/pipeline.js`
+`demoSurfaces` → `src/prompts.js` `demoSurfaceNote`.

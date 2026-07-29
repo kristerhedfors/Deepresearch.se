@@ -9,7 +9,7 @@ import { downloadReport } from "./report.js";
 import { renderMapEmbed, renderStreetViewEmbed, renderStreetViewFrames } from "./activity.js";
 import { renderQuiz } from "./quiz.js";
 import { renderWorkflow } from "./workflow-viz.js";
-import { spaceIntentMatch } from "./space-core.js";
+import { demoIntent } from "./demo-core.js";
 import { mountModeSpinner } from "./mode-spinner.js";
 import { formatByteSize, mimeForName } from "./bash-core.js";
 import { addFilesToProject, listProjects } from "./projects.js";
@@ -78,33 +78,41 @@ function addFeedbackHint() {
   chat.appendChild(hint);
 }
 
-// A question with a tailored space animation (the /space/ archive's scenes —
-// space-core.js spaceIntentMatch, EN+SV) mounts the playable wireframe canvas
-// across the response area, above the streamed answer text, with the scene's
-// curated factual reply as its caption (feedback #18: "show a moonshot from
-// space between earth and moon" should animate, not just cite photos). Purely
-// decorative-additive: the research answer still streams below, and the mount
-// is DERIVED from the question — deterministic re-detection, so reloaded (and
-// pre-feature) conversations get it too without an embeds-registry entry.
-// The renderer is dynamic-imported: most conversations never ask about space,
-// and the module graph stays lean. Fail-soft — never breaks a turn.
+// A question that asks to be SHOWN one of the site's own built surfaces
+// (demo-core.js demoIntent, EN+SV) mounts it above the streamed answer text.
+// Two shapes, per the registry's two kinds: a /space/ scene becomes the
+// playable wireframe canvas across the response area with the scene's curated
+// factual reply as its caption (feedback #18: "show a moonshot from space
+// between earth and moon" should animate, not just cite photos); a page
+// surface like the /watch/ builder becomes a card linking into it (feedback
+// #49: "Seiko watch demo" researched the web instead of opening the builder
+// that answers it — "all individual capabilities should be callable like
+// this"). `priorText` lets a bare "Show me visually" inherit the subject of
+// the turn before it (feedback #50).
+//
+// Purely decorative-additive: the research answer still streams below, and the
+// mount is DERIVED from the question — deterministic re-detection, so reloaded
+// (and pre-feature) conversations get it too without an embeds-registry entry.
+// The renderers are dynamic-imported: most conversations ask for neither, and
+// the module graph stays lean. Fail-soft — never breaks a turn.
 /**
  * @param {Turn} turn
  * @param {string} questionText the user message the turn answers
+ * @param {string} [priorText] the user message before it, for bare visual asks
  */
-export function mountSpaceEmbed(turn, questionText) {
+export function mountDemoEmbed(turn, questionText, priorText = "") {
   try {
-    const m = spaceIntentMatch(questionText);
+    const m = demoIntent(questionText, priorText);
     if (!m || !turn?.el || turn._spaceEmbed) return;
     const host = document.createElement("div");
-    host.className = "space-embed-host";
+    host.className = m.kind === "space" ? "space-embed-host" : "demo-card-host";
     turn.el.insertBefore(host, turn.content);
     turn._spaceEmbed = host;
-    import("./space-embed.js")
-      .then(({ mountSpaceScene }) => {
-        if (!mountSpaceScene(host, m.id, { lang: m.lang, caption: true, moreLink: true })) host.remove();
-      })
-      .catch(() => host.remove());
+    const mount = m.kind === "space"
+      ? import("./space-embed.js").then(({ mountSpaceScene }) =>
+        mountSpaceScene(host, m.sceneId || "", { lang: m.lang, caption: true, moreLink: true }))
+      : import("./demo-embed.js").then(({ mountDemoCard }) => mountDemoCard(host, m));
+    mount.then((ok) => { if (!ok) host.remove(); }).catch(() => host.remove());
   } catch { /* decorative — never break the turn */ }
 }
 
@@ -148,8 +156,12 @@ export function renderStoredConversation(messages, embeds = [], opts = {}) {
   clearChatDom();
   /** @type {{text: string, imageUrls: string[]}} */
   let lastUser = { text: "", imageUrls: [] };
+  // The user message BEFORE lastUser — a bare "show me visually" reloads with
+  // the same animation it was answered with live (mountDemoEmbed's priorText).
+  let priorUser = "";
   messages.forEach((m, i) => {
     if (m.role === "user") {
+      priorUser = lastUser.text;
       lastUser = splitUserContent(m.content);
       addUserBubble(lastUser.text, lastUser.imageUrls);
     } else if (m.role === "assistant" && typeof m.content === "string") {
@@ -157,7 +169,7 @@ export function renderStoredConversation(messages, embeds = [], opts = {}) {
       // works the same as it does on a live turn.
       const turn = addAssistantTurn(lastUser.text, lastUser.imageUrls);
       setText(turn, m.content);
-      mountSpaceEmbed(turn, lastUser.text);
+      mountDemoEmbed(turn, lastUser.text, priorUser);
       for (const e of embeds) {
         if (e?.msgIndex !== i) continue;
         if (e.kind === "streetview_embed") {

@@ -268,6 +268,38 @@ wrong should be told what exists.
 
 ---
 
+## 6a. Reachable from the chat (feedback #49)
+
+The builder shipped, and the same day a demo session typed **"Seiko watch
+demo"** into the chat. It got a full research pass over the open web that
+found four irrelevant sources and concluded there was *"no usable information
+about Seiko watch demos"* — while the tool that answers exactly that question
+sat one route away. The report did not stop at the one case: *"all individual
+capabilities should be callable like this, show me x demo for instance."*
+
+So the builder has an entry in the capability-demo registry
+(`public/js/demo-core.js`, façade `src/demos.js`) as a `page` surface. When
+the deterministic EN+SV gate fires, both tiers' chats mount a card into
+`/watch/` above the reply, and `src/pipeline.js` re-runs the same gate to set
+the answer prompts' `demoSurface` — so the model opens by naming the tool and
+pointing at the link instead of researching the web for a capability this site
+ships.
+
+A card, not an embed: `/watch/` is a WebGL builder with its own catalogue,
+permalink codec and sourcing table. Inlining it would put a second copy of the
+page inside a chat turn; the card says the capability exists and takes the
+reader one tap into it. (The `/space/` scenes DO embed — they are a canvas and
+a caption — which is why the registry distinguishes the two kinds.)
+
+The subject patterns are deliberately asymmetric. `watch` is a common English
+verb, so the bare noun never fires on its own — it needs a build/mod word or a
+show verb beside it ("watch out for rate limits" must stay a research
+question). The movement families (`nh35`/`nh36`/`nh38`), `watch builder` and
+`klockbyggare` are unmistakable and fire alone. `demo-core.test.js` pins both
+directions.
+
+---
+
 ## 7. Testing
 
 `public/js/watch-core.test.js` (70 checks) and `src/watch.test.js` (11) run in

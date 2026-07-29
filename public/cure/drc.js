@@ -147,7 +147,7 @@ import { detectLang, matchCanned } from "/js/canned-faq.js";
 import { feedbackComment, feedbackPageTag, feedbackRequested, feedbackScopeOfPrior } from "/js/feedback-core.js";
 import { slashEffect } from "/js/slash-core.js";
 import { mountSlashMenu } from "/js/slash-menu.js";
-import { spaceIntentMatch } from "/js/space-core.js";
+import { demoIntent } from "/js/demo-core.js";
 import { renderMarkdownInto } from "/js/markdown.js";
 import { mountUmbrellaSpinner } from "/js/umbrella-spinner.js";
 
@@ -1811,37 +1811,58 @@ function renderMessages() {
   }
   const conv = activeConv();
   let prevUserText = "";
+  let priorUserText = "";
   messages.forEach((m, i) => {
-    // A space-visual ask re-mounts its wireframe scene above the stored
-    // answer (feedback #18) — deterministic re-detection from the question,
-    // the same rule the live send path applies, so reloads keep the canvas.
-    if (m.role === "assistant") mountDrcSpaceEmbed(box, prevUserText);
-    if (m.role === "user") prevUserText = typeof m.content === "string" ? m.content : "";
+    // A demo ask re-mounts its surface above the stored answer (feedback #18,
+    // #49) — deterministic re-detection from the question, the same rule the
+    // live send path applies, so reloads keep the canvas or the card.
+    if (m.role === "assistant") mountDrcSpaceEmbed(box, prevUserText, { priorText: priorUserText });
+    if (m.role === "user") {
+      priorUserText = prevUserText;
+      prevUserText = typeof m.content === "string" ? m.content : "";
+    }
     box.appendChild(messageEl(m.role, m.content, { conv, index: i }));
   });
   box.scrollTop = box.scrollHeight;
 }
 
-// A space-visual ask ("show a moonshot from space between earth and moon",
-// "visa jorden och månen") mounts the /space/ archive's playable wireframe
-// scene across the response area, above the answer text (feedback #18) — the
-// Se/cure twin of the Se/rver app's turns.js mountSpaceEmbed. The renderer is
-// dynamic-imported so the module graph only pays for it when a scene actually
-// matches; it's a same-origin static asset, so the server stays out of the
-// data path. Fail-soft: never breaks a message render.
-function mountDrcSpaceEmbed(host, questionText, { before = null } = {}) {
+// An ask to be SHOWN one of the site's own surfaces mounts it across the
+// response area, above the answer text — the Se/cure twin of the Se/rver app's
+// turns.js mountDemoEmbed, over the same registry (demo-core.js). A /space/
+// scene renders inline as a playable wireframe canvas ("show a moonshot from
+// space between earth and moon", "visa jorden och månen" — feedback #18); a
+// page surface like the /watch/ builder renders as a card linking into it
+// (feedback #49). `priorText` lets a bare "show me visually" inherit the
+// subject of the turn before it (feedback #50).
+//
+// Both renderers are dynamic-imported so the module graph only pays for one
+// when a demo actually matches; they are same-origin static assets, so the
+// server stays out of the data path. Fail-soft: never breaks a message render.
+// The user message before the one being sent, as plain text — the demo gate's
+// `priorText`. Called with the outgoing turn already pushed onto the
+// conversation, so it skips the last entry.
+function drcPriorUserText(conv) {
+  const msgs = (conv?.messages || []).slice(0, -1);
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (msgs[i]?.role !== "user") continue;
+    return typeof msgs[i].content === "string" ? msgs[i].content : "";
+  }
+  return "";
+}
+
+function mountDrcSpaceEmbed(host, questionText, { before = null, priorText = "" } = {}) {
   try {
-    const m = spaceIntentMatch(questionText || "");
+    const m = demoIntent(questionText || "", priorText || "");
     if (!m) return;
     const box = document.createElement("div");
-    box.className = "space-embed-host";
+    box.className = m.kind === "space" ? "space-embed-host" : "demo-card-host";
     if (before && before.parentNode) before.parentNode.insertBefore(box, before);
     else host.appendChild(box);
-    import("/js/space-embed.js")
-      .then(({ mountSpaceScene }) => {
-        if (!mountSpaceScene(box, m.id, { lang: m.lang, caption: true, moreLink: true })) box.remove();
-      })
-      .catch(() => box.remove());
+    const mount = m.kind === "space"
+      ? import("/js/space-embed.js").then(({ mountSpaceScene }) =>
+        mountSpaceScene(box, m.sceneId, { lang: m.lang, caption: true, moreLink: true }))
+      : import("/js/demo-embed.js").then(({ mountDemoCard }) => mountDemoCard(box, m));
+    mount.then((ok) => { if (!ok) box.remove(); }).catch(() => box.remove());
   } catch { /* decorative — never break the chat */ }
 }
 
@@ -3877,9 +3898,10 @@ async function send(ev) {
   const live = document.createElement("div");
   live.className = "msg assistant streaming";
   $("chat").appendChild(live);
-  // A space-visual ask mounts its playable wireframe scene above the incoming
-  // answer (feedback #18); the research answer still streams below it.
-  mountDrcSpaceEmbed($("chat"), text, { before: live });
+  // A demo ask mounts its surface above the incoming answer — the /space/
+  // wireframe scene (feedback #18) or a page card (feedback #49); the research
+  // answer still streams below it.
+  mountDrcSpaceEmbed($("chat"), text, { before: live, priorText: drcPriorUserText(conv) });
   // The research steps render inline, just above this send's answer (matching
   // the DRS app's activity placement) — not in the composer footer.
   beginPhaseSteps(live);

@@ -76,6 +76,12 @@ export function isPublicAsset(url, method) {
     // dynamic-import it — /cure included, so it must be public (a 401 here
     // would kill the /space page's module graph for signed-out visitors).
     url.pathname === "/js/space-embed.js" ||
+    // The capability-demo registry and its card renderer: the gate that routes
+    // "show me X demo" to a built surface, and the card it mounts (feedback
+    // #49). Both tiers import them from the chat — /cure included, so they ride
+    // the same public-module-graph rule as space-embed.js above.
+    url.pathname === "/js/demo-core.js" ||
+    url.pathname === "/js/demo-embed.js" ||
     // DRC — the no-account client-side tier at /cure: the page, its
     // modules, and the vault/SSE primitives it reuses. Only FILES (with
     // an extension) match here: extensionless paths under /cure/ are page

@@ -32,7 +32,7 @@ the page's visual identity; keep it when adding scenes.
 | Shared pure core | `public/js/space-core.js` | The scene registry, the `spaceIntent` / `spaceIntentMatch` EN+SV matcher, zoom math (`zoomToDistance` / `distanceToZoom`), `formatKm`, all mesh builders, `validateSpaceFeedback`. Node-tested (`space-core.test.js`), no imports, served publicly (the page imports it — the /cure public-module-graph rule applies). |
 | Embeddable renderer | `public/js/space-embed.js` | The playable canvas itself — stage, HUD, pointer interaction, the per-kind scene runners, a shared play loop with IntersectionObserver gating — behind one call: `mountSpaceScene(host, sceneId, {lang, caption, moreLink})`. Injects its own `sp-` scoped CSS, so any host page can mount a scene. Served publicly (the /space page statically imports it; both chats dynamic-import it). |
 | The page | `public/space/index.html` + `public/space/space.js` | Markup/styling + the gallery chrome: cards mounting scenes via the embed renderer, chips, ask-box, language toggle, feedback POST. |
-| Chat embeds | `public/js/turns.js` `mountSpaceEmbed` (Se/rver) · `public/cure/drc.js` `mountDrcSpaceEmbed` (Se/cure) | A chat question that matches a scene mounts the animation across the response area, above the streamed answer — see "The chat embed" below. |
+| Chat embeds | `public/js/turns.js` `mountDemoEmbed` (Se/rver) · `public/cure/drc.js` `mountDrcSpaceEmbed` (Se/cure) | A chat question that matches a scene mounts the animation across the response area, above the streamed answer — see "The chat embed" below. |
 | Server façade | `src/space.js` | Re-exports the core; owns `POST /api/space/feedback` (public) and `GET /api/admin/space-feedback` (admin, `?format=text`). |
 | Storage | `src/db.js` `space_feedback` | One row per verdict: ts, scene, verdict, comment. Deliberately no identity column. |
 
@@ -67,15 +67,31 @@ månen" — with a guard keeping the bare "moonshot" metaphor out (it needs a
 space word alongside). `spaceIntentMatch` returns `{ id, lang }` so a
 mount can pick its caption language from which pattern set fired.
 
+Feedback #50 (2026-07-29) added the DEMO phrasings to `rocket-launch`. A demo
+session typed "Space launch demo", matched nothing — the set had `rocket
+launch` but not `space launch` — and got a web-research pass that invented a
+launch dataset in the sandbox instead of the animation that answers it. The
+new patterns are `space launch`, `orbital launch`, and `launch
+demo|animation|simulation|sequence` when a space word sits beside it (a
+product launch demo is not this scene), with `rymduppskjutning`,
+`raketanimation` and the `uppskjutning`+demo forms as the Swedish parity set.
+
 ## The chat embed (feedback #18)
 
-Both tiers' chats run the same gate on every outgoing question. On a match,
+Both tiers' chats run the same gate on every outgoing question — since
+feedback #49 through the capability-demo registry `public/js/demo-core.js`,
+which delegates all space subject matching straight back to `SPACE_MATCHERS`
+(one space matcher, no drift) and adds two things around it: page surfaces
+like the `/watch/` builder, which mount as a link card rather than a canvas,
+and `priorText` — a bare "show me visually" inherits the subject of the turn
+before it, which is how feedback #50's real sequence ("Space launch demo" →
+"Show me visually") reaches the launch scene. On a match,
 the scene mounts full-width at the top of the response area — the playable
 canvas with HUD and corner notes, the scene's curated bilingual `reply` as
 a caption, and a link to the `/space/` archive — while the research answer
 streams below it. The animation adds to the answer; it never replaces it.
 
-- Se/rver: `public/js/turns.js` `mountSpaceEmbed`, called on the live send
+- Se/rver: `public/js/turns.js` `mountDemoEmbed`, called on the live send
   (`stream.js`, skipped in Agent Studio) and on stored-conversation
   renders. The mount is DERIVED from the question by re-detection — no
   embeds-registry entry — so reloaded and pre-feature conversations get it
@@ -94,9 +110,9 @@ space" it mounted the launch animation and then answered "I can't play videos
 … or display media from the web" — reading that straight off its own
 capabilities line.
 
-`runPipeline` now re-runs the SAME `spaceIntent` matcher over the SAME latest
-user message and puts the matched scene's title on the context as
-`ctx.spaceScene`. The three answer phases — `synthPrompt`, `directPrompt`,
+`runPipeline` now re-runs the SAME gate over the SAME latest user message
+(through `demoSurfaces`, and so through the same registry the clients mount
+from) and puts the matched scene's title on the context as `ctx.spaceScene`. The three answer phases — `synthPrompt`, `directPrompt`,
 `searchOffPrompt` — take it as an option, and `capabilitiesTail` swaps the
 "does NOT … display media" sentence for a clause naming the scene on screen
 and telling the model to write the explanation that goes with it. Empty
