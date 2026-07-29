@@ -279,7 +279,7 @@ async function fetchOai(url, log) {
 
 /**
  * @param {{ id: string, from: string, until: string }} shard
- * @param {{ set: string, outDir: string, idMonths: Set<string>, maxPages: number }} opts
+ * @param {{ set: string, outDir: string, idMonths: Set<string>, maxPages: number, pauseMs?: number }} opts
  */
 async function harvestShard(shard, opts) {
   const stateFile = join(opts.outDir, "state", `${shard.id}.json`);
@@ -387,7 +387,11 @@ async function main() {
     for (;;) {
       const shard = queue.shift();
       if (!shard) return;
-      const r = await harvestShard(shard, { set: args.set, outDir, idMonths: plan.idMonths, maxPages: args.maxPages });
+      // pauseMs MUST be forwarded: it was parsed and validated but never
+      // reached harvestShard, which silently fell back to its own 3000 default.
+      // Harmless at the default, but it meant raising --pause to be politer
+      // (or during a throttle) did nothing at all.
+      const r = await harvestShard(shard, { set: args.set, outDir, idMonths: plan.idMonths, maxPages: args.maxPages, pauseMs: args.pauseMs });
       kept += r.kept;
       seen += r.seen;
     }

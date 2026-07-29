@@ -115,6 +115,15 @@ export function vectorLine(paper, values) {
  */
 async function* corpusRows(dir, skip, limit) {
   const files = (await readdir(dir)).filter((f) => f.endsWith(".jsonl")).sort().reverse();
+  // A corpus directory with no shards in it is ALWAYS a mistake, and a silent
+  // one: the run pushes nothing, prints "done — 0 vectors" and exits 0. The
+  // natural way to hit it is passing the harvester's --out root (data/arxiv-new)
+  // instead of its raw/ subdirectory. docs/ARXIV-RAG.md §10.2 records a
+  // 48%-missing harvest that "reported itself as a successful run"; this is the
+  // same shape, so it fails loudly instead.
+  if (!files.length) {
+    throw new Error(`No .jsonl shards in ${dir} — did you mean ${dir.replace(/\/$/, "")}/raw ?`);
+  }
   const seen = new Set();
   let yielded = 0;
   for (const file of files) {

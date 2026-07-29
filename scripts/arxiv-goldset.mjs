@@ -54,8 +54,23 @@ Respond with JSON: {"en": "...", "sv": "..."}`;
  * @param {string} title
  */
 export function titleOverlap(query, title) {
+  return lexicalOverlap(query, title);
+}
+
+/**
+ * Fraction of the query's content words that also appear in `text`.
+ *
+ * Named generically because the title is the WRONG thing to measure alone.
+ * docs/ARXIV-RAG.md §4.3: the shipped needle set looked clean at 0.30 mean
+ * title overlap, but the model writes from the ABSTRACT and kept 0.68 of its
+ * vocabulary — which silently handed BM25 a large head start and made it look
+ * like the English winner. Always measure against the body too.
+ * @param {string} query
+ * @param {string} text
+ */
+export function lexicalOverlap(query, text) {
   const q = new Set(tokenize(query).filter((t) => t.length > 3));
-  const t = new Set(tokenize(title).filter((t) => t.length > 3));
+  const t = new Set(tokenize(text).filter((t) => t.length > 3));
   if (!q.size || !t.size) return 0;
   let shared = 0;
   for (const w of q) if (t.has(w)) shared++;
@@ -95,7 +110,11 @@ async function main() {
   const seed = get("--seed", "arxiv-rag-v1");
 
   const corpusFile = get("--corpus-file", "");
-  const corpus = await loadCorpus(corpusFile ? { file: corpusFile } : { sample: sampleSize, seed });
+  // --dir picks WHICH harvest to draw needles from. Without it a second corpus
+  // (a widened window harvested into its own directory) could only be sampled
+  // by first materialising a corpus file, which defeats loadCorpus's sampler.
+  const dir = get("--dir", "");
+  const corpus = await loadCorpus(corpusFile ? { file: corpusFile } : { sample: sampleSize, seed, ...(dir ? { dir } : {}) });
   console.log(`Corpus sample: ${corpus.length} papers`);
 
   // The needle papers are drawn from the SAME sample the index is built over,
