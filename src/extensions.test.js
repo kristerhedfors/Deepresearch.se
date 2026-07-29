@@ -283,14 +283,19 @@ describe("core purity", () => {
   test("the enrichment runner reaches its integrations only via the registry", () => {
     const src = readFileSync(new URL("../src/enrichment.js", import.meta.url), "utf8");
     const imports = [...src.matchAll(/from\s+"(\.\/[\w.-]+)"/g)].map((m) => m[1]);
-    // extensions.js is the ONLY door to a third-party integration. The other
-    // two are CORE enrichments, which the registry has always been allowed to
-    // import directly: introspection reads this repo's own committed snapshot,
-    // and models-agent.js is the Models agent's own mode behaviour over this
+    // extensions.js is the ONLY door to a third-party integration. The rest are
+    // CORE enrichments, which the registry has always been allowed to import
+    // directly: introspection reads this repo's own committed snapshot,
+    // models-agent.js is the Models agent's own mode behaviour over this
     // platform's own model landscape — the same standing this project already
-    // gives the Hub as a core SEARCH SOURCE (src/search-sources.js). Neither
-    // has a knob, a per-request state slice, or an extension descriptor, which
-    // is the registry's own test for membership (see CORE_ENRICHMENTS).
-    assert.deepEqual(imports, ["./extensions.js", "./introspect.js", "./models-agent.js"]);
+    // gives the Hub as a core SEARCH SOURCE (src/search-sources.js) — and
+    // aadr.js reads a corpus artifact built into this deployment. None has a
+    // knob, a per-request state slice, or an extension descriptor, which is the
+    // registry's own test for membership (see CORE_ENRICHMENTS).
+    //
+    // agent-spec.js is not an enrichment at all: it is the capability reader
+    // the aadr entry is GATED on, and importing it is what lets an enrichment
+    // be switched on by an agent spec instead of by a mode flag.
+    assert.deepEqual(imports, ["./aadr.js", "./agent-spec.js", "./extensions.js", "./introspect.js", "./models-agent.js"]);
   });
 });
