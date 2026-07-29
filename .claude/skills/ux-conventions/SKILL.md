@@ -1254,9 +1254,9 @@ sources and reported "no usable information" — on the day the NHxx watch
 builder shipped. "Space launch demo" → "Show me visually" produced an ASCII bar
 chart of a dataset the sandbox invented, with the launch animation unmounted
 because the matcher had `rocket launch` but not `space launch`. Neither is a
-model failure: both are the routing never being asked. The note that came with
-them is the rule's real statement — *"all individual capabilities should be
-callable like this, show me x demo for instance."*
+model failure — the routing was never asked. The reporter generalised it in one
+line: *"all individual capabilities should be callable like this, show me x
+demo for instance."*
 
 **The parts that are easy to get wrong:**
 

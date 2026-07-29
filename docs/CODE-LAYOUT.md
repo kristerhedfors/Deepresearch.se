@@ -939,8 +939,8 @@ real sequence. Both chat clients mount from it (`turns.js` `mountDemoEmbed`,
 set the answer prompts' `spaceScene` / `demoSurface`, so the model leads with
 the shipped tool instead of researching the web for a capability the site
 already has. Decorative-additive throughout: the answer streams below
-regardless, which is what lets the patterns be generous. Adding a
-demonstrable surface is one registry entry — no client or pipeline edit.
+regardless, which is what lets the patterns be generous. A new surface costs
+one registry entry and no edit anywhere else.
 
 Project pulse (`public/pulse/` — public, allowlisted like `/space/`): the
 commit-analytics dashboard. `index.html` (commits / lines / new features as

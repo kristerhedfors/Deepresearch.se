@@ -273,10 +273,9 @@ wrong should be told what exists.
 The builder shipped, and the same day a demo session typed **"Seiko watch
 demo"** into the chat. It got a full research pass over the open web that
 found four irrelevant sources and concluded there was *"no usable information
-about Seiko watch demos"* — while the tool that answers the question exactly
-sat one route away. The note that came with the report generalised it: *"all
-individual capabilities should be callable like this, show me x demo for
-instance."*
+about Seiko watch demos"* — while the tool that answers exactly that question
+sat one route away. The report did not stop at the one case: *"all individual
+capabilities should be callable like this, show me x demo for instance."*
 
 So the builder has an entry in the capability-demo registry
 (`public/js/demo-core.js`, façade `src/demos.js`) as a `page` surface. When
