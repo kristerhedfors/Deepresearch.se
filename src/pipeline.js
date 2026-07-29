@@ -103,6 +103,7 @@ import { capBound, capSearch } from "./agent-spec.js";
 import { toolsForRun } from "./tool-sets.js";
 import { runOrchestration } from "./orchestrator.js";
 import { runOutrospection } from "./outrospect.js";
+import { spaceIntent, sceneById } from "./space.js";
 import { anthropicConfigured, anthropicToolRun, isAnthropicModel } from "./anthropic.js";
 import { runIntrospectionTool } from "./introspect-tools.js";
 import {
@@ -188,6 +189,19 @@ import {
  */
 
 /**
+ * The title of the /space/ scene the chat clients mount for this question, or
+ * "" when none matches — the answer prompts' `spaceScene` input. English
+ * titles: this feeds a prompt, not the UI (the embed captions itself in the
+ * matched language).
+ * @param {string} text the latest user message
+ * @returns {string}
+ */
+function spaceSceneTitle(text) {
+  const scene = sceneById(spaceIntent(text));
+  return scene ? scene.title.en : "";
+}
+
+/**
  * Writes one SSE event (a delta chunk, a status wrapper, or an error).
  * The vocabulary is documented as import('./types.js').SseEvent; typed
  * loosely here because the pipeline also emits registry-driven events
@@ -210,6 +224,7 @@ import {
  *   reinforceJsonOnly: boolean,
  *   shellBlock: string,
  *   hasSource: boolean,
+ *   spaceScene: string,
  *   lastUser: string,
  *   convText: string,
  *   cleanLastUser: string,
@@ -386,6 +401,14 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
     // answer prompts flip their capabilities line (hasSource) to use that
     // source instead of denying it — the "Code examples from site" fix.
     hasSource: !!(/** @type {any} */ (state).introspectionCount),
+    // Both chat clients mount a playable /space/ animation above the reply
+    // when the outgoing question matches a scene (turns.js mountSpaceEmbed,
+    // drc.js mountDrcSpaceEmbed). The server re-runs the SAME deterministic
+    // matcher over the SAME text so the answer prompts know the visual is
+    // there — otherwise the capabilities line has the model apologising for
+    // being unable to show anything while the animation plays beside it
+    // (feedback #46). No matcher drift is possible: one shared core.
+    spaceScene: spaceSceneTitle(textOf(lastUserMessage(convo)?.content)),
     lastUser: textOf(lastUserMessage(convo)?.content),
     convText: formatConversation(convo),
     // The CLEAN question + context — from the PRE-enrichment conversation, so
@@ -614,7 +637,7 @@ async function runWithoutSearch(ctx) {
   // (searchOffPrompt's sourceless depth ladder; default "standard" is the
   // long-standing byte-identical prompt).
   await streamCompletion(ctx, [
-    { role: "system", content: phasePrompt(ctx.state, "direct", "answer-search-off")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: ctx.state.plan.reportTier }) },
+    { role: "system", content: phasePrompt(ctx.state, "direct", "answer-search-off")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: ctx.state.plan.reportTier, spaceScene: ctx.spaceScene }) },
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
@@ -723,7 +746,7 @@ async function runQuizGeneration(ctx, quizReq) {
 /** @param {PipelineCtx} ctx */
 async function runDirectReply(ctx) {
   await streamCompletion(ctx, [
-    { role: "system", content: phasePrompt(ctx.state, "research", "answer-direct")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource }) },
+    { role: "system", content: phasePrompt(ctx.state, "research", "answer-direct")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, spaceScene: ctx.spaceScene }) },
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
@@ -1753,7 +1776,7 @@ async function runSynthesis(ctx) {
     // reportTier scales the OUTPUT's structure/comprehensiveness with the
     // slider (brief → standard → extended → full) — see budget.js
     // reportTierFor and prompts.js REPORT_TIER_STRUCTURE.
-    { role: "system", content: phasePrompt(ctx.state, "research", "answer")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: plan.reportTier }) },
+    { role: "system", content: phasePrompt(ctx.state, "research", "answer")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: plan.reportTier, spaceScene: ctx.spaceScene }) },
     {
       role: "user",
       content: imageParts.length ? [{ type: "text", text: synthText }, ...imageParts] : synthText,

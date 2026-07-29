@@ -13,6 +13,11 @@ import {
   distanceToZoom,
   formatKm,
   clamp,
+  spherePatchGrid,
+  sphereSilhouette,
+  facesCamera,
+  launchAltKm,
+  launchCamDistKm,
   projectPoint,
   rotY,
   mulberry32,
@@ -114,6 +119,9 @@ const PARITY = [
       // The second verbatim reported query (feedback #18, chat_logs #615).
       "show a rocket launching into space",
       "show me a rocket lifting off",
+      // Verbatim from feedback #46 — the scene DID mount for this, so the
+      // gate was never the bug there; the planet and the reply were.
+      "Show me a rocket launch to space",
     ],
     sv: [
       "Hur når en raket omloppsbana?", "hur fungerar en raket", "raketuppskjutning", "hur kommer raketer ut i rymden", "hur nar en raket rymden",
@@ -318,4 +326,105 @@ test("worldRot: yaw-then-pitch composition matches rotX(rotY(v)) and leaves zero
   const st = { rotX: 0.35, rotY: 0.5 };
   assert.deepEqual(worldRot(v, st), rotX(rotY(v, st.rotY), st.rotX));
   assert.deepEqual(worldRot(v, { rotX: 0, rotY: 0 }), v);
+});
+
+// --- the launch scene's planet + camera (feedback #46) ---------------------
+// The scene used to draw Earth as one thin arc that the starfield showed
+// straight through, so a viewer asking for "a rocket launch to space" saw no
+// planet at all. These cover the geometry that replaced it.
+
+test("spherePatchGrid: every point lies exactly on the sphere, centred on the site", () => {
+  const R = 6371;
+  const site = Math.PI / 2;
+  const grid = spherePatchGrid(R, site, 0.3, 5, 12);
+  assert.equal(grid.length, 10); // one line each way per grid line
+  for (const line of grid) {
+    assert.equal(line.length, 13);
+    for (const p of line) {
+      assert.ok(Math.abs(Math.hypot(p[0], p[1], p[2]) - R) < 1e-6, "point off the sphere");
+    }
+  }
+  // The patch straddles the launch site: some point is very near it.
+  const sitePos = [R * Math.cos(site), R * Math.sin(site), 0];
+  const nearest = Math.min(...grid.flat().map((p) => Math.hypot(p[0] - sitePos[0], p[1] - sitePos[1], p[2] - sitePos[2])));
+  assert.ok(nearest < 1, `patch is not centred on the site (nearest ${nearest})`);
+});
+
+test("sphereSilhouette: tangent circle sits between centre and camera, and is empty from inside", () => {
+  const R = 6371;
+  const C = [0, -R, 0];       // planet centre, camera-rotated frame
+  const camDist = 1000;
+  const pts = sphereSilhouette(C, R, camDist, 48);
+  assert.equal(pts.length, 49);
+  const D = Math.hypot(-C[0], -C[1], camDist - C[2]);
+  for (const p of pts) {
+    // Every silhouette point is on the sphere...
+    const r = Math.hypot(p[0] - C[0], p[1] - C[1], p[2] - C[2]);
+    assert.ok(Math.abs(r - R) < 1e-6, "silhouette point off the sphere");
+    // ...and its line of sight is tangent there (radius ⟂ view ray).
+    const dot = (p[0] - C[0]) * -p[0] + (p[1] - C[1]) * -p[1] + (p[2] - C[2]) * (camDist - p[2]);
+    assert.ok(Math.abs(dot) < 1e-6, "silhouette point is not a tangent point");
+  }
+  // Ring radius is the classic R·√(1−R²/D²). The polyline is closed — its
+  // last point repeats the first, so the centroid is taken over the unique
+  // points only.
+  const uniq = pts.slice(0, -1);
+  const mid = [
+    uniq.reduce((a, p) => a + p[0], 0) / uniq.length,
+    uniq.reduce((a, p) => a + p[1], 0) / uniq.length,
+    uniq.reduce((a, p) => a + p[2], 0) / uniq.length,
+  ];
+  const rad = Math.hypot(pts[0][0] - mid[0], pts[0][1] - mid[1], pts[0][2] - mid[2]);
+  assert.ok(Math.abs(rad - R * Math.sqrt(1 - (R * R) / (D * D))) < 1e-3);
+  // A camera inside the sphere has no horizon.
+  assert.deepEqual(sphereSilhouette([0, 0, 0], R, R - 1), []);
+});
+
+test("facesCamera: near side visible, far side culled, horizon is the boundary", () => {
+  const R = 6371;
+  const C = [0, -R, 0];
+  const camDist = 1000;
+  // Unit vector from the sphere centre towards the camera at [0,0,camDist].
+  const ax = [-C[0], -C[1], camDist - C[2]];
+  const D = Math.hypot(ax[0], ax[1], ax[2]);
+  const n = ax.map((v) => v / D);
+  const near = [C[0] + n[0] * R, C[1] + n[1] * R, C[2] + n[2] * R];
+  const far = [C[0] - n[0] * R, C[1] - n[1] * R, C[2] - n[2] * R];
+  assert.equal(facesCamera(near, C, camDist), true);
+  assert.equal(facesCamera(far, C, camDist), false);
+  // The origin is where the rocket sits — on the surface with the view ray
+  // tangent to it, i.e. exactly on the horizon, so it is not "facing".
+  assert.equal(facesCamera([0, 0, 0], C, camDist), false);
+});
+
+test("launchAltKm: rises from the pad to the target and holds after insertion", () => {
+  const cfg = { orbitAltKm: 400, insertT: 0.72 };
+  assert.equal(launchAltKm(0, cfg), 0);
+  assert.equal(launchAltKm(cfg.insertT, cfg), 400);
+  assert.equal(launchAltKm(1, cfg), 400);
+  // Monotonic through the climb.
+  let prev = -1;
+  for (let u = 0; u <= cfg.insertT; u += 0.04) {
+    const a = launchAltKm(u, cfg);
+    assert.ok(a >= prev, "altitude went backwards");
+    prev = a;
+  }
+});
+
+test("launchCamDistKm: starts near the pad, widens with altitude, pulls back for the orbit", () => {
+  const cfg = { orbitAltKm: 400, insertT: 0.72 };
+  const zoomKm = { min: 40, max: 60000, start: 1400 };
+  const pad = launchCamDistKm(0, 0, cfg, zoomKm);
+  const climbing = launchCamDistKm(0.4, launchAltKm(0.4, cfg), cfg, zoomKm);
+  const inserted = launchCamDistKm(cfg.insertT, 400, cfg, zoomKm);
+  const wide = launchCamDistKm(1, 400, cfg, zoomKm);
+  assert.ok(pad < 120, `pad view too far out (${pad})`);
+  assert.ok(climbing > pad && climbing < inserted, "does not widen with altitude");
+  assert.ok(Math.abs(inserted - zoomKm.start) < 1, "insertion should sit at the scene's start distance");
+  assert.ok(wide > 6371, "orbit reveal must clear the planet's radius");
+  // Always inside the scene's own zoom range.
+  for (let u = 0; u <= 1; u += 0.05) {
+    const d = launchCamDistKm(u, launchAltKm(u, cfg), cfg, zoomKm);
+    assert.ok(d >= zoomKm.min && d <= zoomKm.max, `dolly left the zoom range at u=${u}`);
+  }
 });
