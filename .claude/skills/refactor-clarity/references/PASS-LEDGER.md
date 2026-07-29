@@ -402,3 +402,68 @@ this pass were invisible to it. Keep a line-run scan in the survey beside it; it
 finds constants, import clusters and early-return preambles that a
 function-body hash never will. The tell is the same one pass 11 named: the
 duplicated block usually sits under a comment apologizing for itself.
+
+## 13 — 2026-07-29, the enrichment-and-renderer pass
+
+Diffed from `b3e68a0e` (pass 12's own commit, earlier the same day). A lot of
+new surface had landed since: the palaeogenomics agent
+(`src/aadr.js` + `public/js/aadr-core.js` + `src/europepmc.js`), the NHxx watch
+builder (`watch-core.js` 2,690 lines, `watch-render.js` 1,107, `src/watch.js`),
+the Cloudflare web-search backend (`websearch-cf.js`), and the
+demo/space embed pairs. **Two cuts.**
+
+`dup-scan` returned eighteen groups; sixteen were already in
+`STANDING-DECLINES.md` and the two new ones supplied one cut and one decline.
+`line-scan --run 8` produced seventy-nine runs, most of them import clusters —
+the declared cost of that scan. The reading pass over the new subsystems found
+the second cut and nothing else, because every one of them shipped factored.
+
+- **`lastUserText` + `appendToLast` → `src/conversation.js`**: `src/aadr.js`
+  and `src/models-agent.js` each carried both, byte-identical, 23 lines. The
+  sink is textbook — `conversation.js` opens by declaring itself "utilities
+  over the OpenAI-style message array" and already holds `lastUserMessage`,
+  `previousUserText`, `lastAssistantText` and the two non-mutating appenders,
+  so `lastUserText` is a missing sibling rather than a new role. On the home
+  gate's part (b): neither enrichment imported it, but `enrichment.js` is
+  reached from `pipeline.js`, which imports `conversation.js` already, so the
+  new edges add no module to the bundle. **`enrichment.js` itself is not the
+  sink** even though it owns the enrichment contract — it imports both
+  enrichments, so the edge would be circular. `appendToLast` moved with its
+  message-level signature intact and the one-line
+  `[...conversation.slice(0, -1), …]` wrapper stayed at both call sites;
+  lifting it to a conversation-level helper would have been a signature change,
+  which is the verbatim gate. New tests pin the two properties the copies
+  existed for: the SPACE join (not `textOf`'s newline, and no image marker,
+  because the callers are intent gates matching a phrase across parts) and the
+  new-text-part append that lets an attached photo survive.
+- **The matrix band → `public/js/watch-math.js`**: 143 lines of column-major
+  4×4 maths, the camera and the sRGB→linear conversion, sitting among
+  `watch-render.js`'s WebGL orchestration under a section header that already
+  named them as a unit. Single-copy — so this is seam type 1, not type 2, and
+  the payoff is coverage: the band was unreachable from any test because the
+  module needs a GL context and imports its core by served path. **The sink is
+  a new leaf and deliberately not `watch-core.js`**, which the Worker imports
+  through the `src/watch.js` façade to serve `/api/watch/catalog`; camera
+  matrices are dead weight in a JSON endpoint. 20 tests assert known points
+  rather than array contents, since wrong matrix code still renders — including
+  the degenerate `eye === center` case, where the two `|| 1` guards are all
+  that stand between the scene and a NaN matrix that blanks it.
+
+**The trap this pass nearly walked into.** `/watch/` is a PUBLIC surface and
+`src/assets.js` allowlists its module graph FILE BY FILE. A new static import
+of `watch-render.js` that is not in that list 401s for signed-out visitors and
+kills the page — and nothing in the suite goes red. Add the allowlist entry in
+the same commit as any client split under a public surface (`/space/`,
+`/watch/`, `/cure/`, the demo embeds); it belongs on the finishing checklist
+next to `SECURE_SOURCE_REFS`.
+
+**Method lesson.** The two new dup-scan groups split cleanly on ONE question:
+does the shared body read a module-local constant, and do the two sites bind it
+to the same value? `lastUserText`/`appendToLast` read nothing and were cut;
+`rerankDoc`/`arxivRerankDoc` read `RERANK_DOC_CHARS`, which is a fixed 900 on
+the server and env-overridable in the eval scripts, and were declined. That is
+the `finalePhaseBucket` trap for the third pass running, and it now has a
+sharper tell than "read the body": **when two copies of a body look identical,
+diff their CONSTANTS before anything else.** The same question also settled the
+`HKDF_INFO` pair in one step, where the differing constant is the domain
+separation itself.

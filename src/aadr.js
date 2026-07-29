@@ -57,6 +57,9 @@ import {
   querySamples,
   sampleBlock,
 } from "../public/js/aadr-core.js";
+// The last-user-text reading and the multipart-safe block append are shared
+// with the other pre-pipeline enrichments (src/conversation.js).
+import { appendToLast, lastUserText } from "./conversation.js";
 
 export {
   SAMPLES_PATH,
@@ -168,43 +171,4 @@ export async function runAncientSampleEnrichment(c) {
   // remembered sample ids instead.
   const block = sampleBlock(d, query, res);
   return [...conversation.slice(0, -1), appendToLast(conversation[conversation.length - 1], block)];
-}
-
-/**
- * The latest user message's text. The enrichment runs before pipeline.js builds
- * its ctx, so it reads the conversation directly — the same as the
- * introspection and Models enrichments.
- * @param {Conversation} conversation
- * @returns {string}
- */
-function lastUserText(conversation) {
-  for (let i = conversation.length - 1; i >= 0; i--) {
-    const m = conversation[i];
-    if (m?.role !== "user") continue;
-    const content = m.content;
-    if (typeof content === "string") return content;
-    if (Array.isArray(content)) {
-      return content.filter((p) => p?.type === "text").map((p) => p.text || "").join(" ");
-    }
-    return "";
-  }
-  return "";
-}
-
-/**
- * Append a context block to a message, preserving multipart content (an
- * attached photo of an excavation must survive the append).
- * @param {any} message
- * @param {string} block
- * @returns {any}
- */
-function appendToLast(message, block) {
-  if (!message) return message;
-  if (typeof message.content === "string") {
-    return { ...message, content: `${message.content}\n\n${block}` };
-  }
-  if (Array.isArray(message.content)) {
-    return { ...message, content: [...message.content, { type: "text", text: block }] };
-  }
-  return message;
 }

@@ -115,7 +115,7 @@ Server (`src/`):
 | `validation.js` | Request validation (messages, images) + model/vision resolution, plus the untrusted-client-input sanitizers (`resolveShellTranscript`, `sanitizeClientDiag`, `sanitizeFsSummary`) shared with `chat.js`. Validates what EVERY request has and must not grow a field per integration — an extension sanitizes its own body fields in its `resolveState` hook (2026-07-25) |
 | `model-routing.js` | The shared split-model-routing decision (`resolveJsonModel` — JSON planning phases stay on the fixed reliable model): a leaf module (imports nothing) so `chat.js` and `mcp.js` share ONE implementation instead of a verbatim copy |
 | `billing.js` | The shared split-billing spend math for a completed request (`summarizeSpend` — the up-to-three-model-bucket token/cost totals COLLAPSED into one figure, each priced at its own catalog rate; `spendByModel` — the SAME buckets kept APART, one attribution row per model that spent, feeding the `usage_model_events` ledger so a user's spend stays attributable to the model that drove it; `exaCost` — searches at their depth-tier price plus the `/contents` fetch surcharge): a leaf module (only the pure cost primitives from `quota.js`/`budget.js`) so `chat.js` and `mcp.js` share ONE implementation instead of both re-inlining it (`mcp.js` pulls it in via its dynamic-import block so the pipeline still stays out of `mcp.test.js`) |
-| `conversation.js` | Message-array utilities (textOf, image parts, formatting); re-exports `starterRefOf`/`withoutStarterTags` from `public/js/starters-core.js` — the `#XP-<nn>` starter tag the pipeline reads for the record and strips before any model call |
+| `conversation.js` | Message-array utilities (textOf, image parts, formatting, the non-mutating appenders); re-exports `starterRefOf`/`withoutStarterTags` from `public/js/starters-core.js` — the `#XP-<nn>` starter tag the pipeline reads for the record and strips before any model call. Also the two helpers the PRE-PIPELINE enrichments share (`src/aadr.js`, `src/models-agent.js`, which run before `pipeline.js` builds its ctx and so cannot reach `ctx.cleanLastUser`): `lastUserText`, the intent-gate reading of the latest user turn (text parts joined with a SPACE, no image marker — deliberately not `textOf`), and `appendToLast`, a multipart-safe append of a context block that adds a NEW text part so an attached photo survives it |
 | `budget.js` | Time-budget planner: per-model EWMA stats, plan, deadline checks — plus the report-comprehensiveness tiers (`reportTierFor`: the slider buys OUTPUT depth too, brief → standard → extended → full; the plan carries the tier and its synthesis/validation token caps, and prompts.js turns it into per-tier report structure; triage-`simple` questions are capped at the standard shape by `applyComplexityToPlan` — seam-battery evidence, EVAL-BENCH-FINDINGS 2026-07-15) |
 | `model-profiles.js` | Evidence-driven per-model overrides (priors, JSON reinforcement, validation skip) |
 | `berget.js` | Berget client (primary provider): streaming + JSON-mode completions (both fetch calls time-bounded — invariant 2), model catalog (incl. raw per-token pricing) |
@@ -919,6 +919,14 @@ and a separate glass path for the crystal, plus the loop that ticks the
 seconds hand at the NH35's real six beats a second. The render is generated
 FROM the spec sheet — a case's diameter, lug-to-lug and thickness are the
 numbers the mesh is built out of — so the picture cannot drift from the data.
+Its arithmetic sits one module further out in `public/js/watch-math.js` (the
+third allowlisted file): the column-major 4×4 matrices,
+`perspective`/`lookAt`/`modelMatrix`/`normalMatrix` and the sRGB→linear colour
+conversion. They are split off because the renderer around them needs a GL
+context to load, so nothing in it can be Node-tested, and wrong matrix maths
+still renders — just wrongly. They are not in `watch-core.js`: the Worker
+imports that core to serve `/api/watch/catalog`, and a JSON endpoint has no
+use for a camera.
 A chat ask for it ("Seiko watch demo", "visa mig klockbyggaren") mounts a card
 into the page above the reply, through the capability-demo registry below.
 See `docs/WATCH-BUILDER.md`.

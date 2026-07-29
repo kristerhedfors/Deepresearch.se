@@ -63,12 +63,15 @@ export function isPublicAsset(url, method) {
     url.pathname.startsWith("/space/") ||
     url.pathname === "/js/space-core.js" ||
     // The NHxx watch builder (/watch/): a public showcase surface like /space/,
-    // reachable from both tiers without an account. Its two shared modules ride
-    // along under the same public-module-graph rule as the /cure entries — a
-    // 401 on either would kill the page for signed-out visitors.
+    // reachable from both tiers without an account. Its three shared modules
+    // ride along under the same public-module-graph rule as the /cure entries —
+    // a 401 on any of them would kill the page for signed-out visitors, and
+    // watch-math.js is a static import of watch-render.js, so it is as
+    // load-bearing as the other two.
     url.pathname === "/watch" ||
     url.pathname.startsWith("/watch/") ||
     url.pathname === "/js/watch-core.js" ||
+    url.pathname === "/js/watch-math.js" ||
     url.pathname === "/js/watch-render.js" ||
     // The embeddable scene renderer (stage + HUD + runners), split out of the
     // /space/ page so chat answers can mount a scene too (feedback #18):
