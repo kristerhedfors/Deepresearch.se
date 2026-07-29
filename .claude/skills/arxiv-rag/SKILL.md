@@ -12,7 +12,14 @@ description: >-
   than a fixed budget can express, and bge-reranker-v2-m3 is served behind the
   same 512-token window covering query+document), and the evaluation
   discipline that keeps a RAG bake-off honest — above all that a small corpus
-  saturates every variant to ~98% and measures nothing. The PROVIDER-AGNOSTIC
+  saturates every variant to ~98% and measures nothing. ALSO the go-to for
+  EVALUATING a change to the corpus or the retrieval pipeline: measuring the
+  SERVED path rather than the local pack (they are different pipelines, and
+  the published recall figures described the wrong one), carryover gold sets
+  sampled by id so the measurement cannot select for papers that retrieve
+  well, paired McNemar rather than an independent binomial CI at n=150, and
+  why needle and topical results disagree by construction when a corpus grows.
+  The PROVIDER-AGNOSTIC
   half of that experience — enumeration cross-validation, checkpointing for
   ephemeral machines, rate-limit citizenship, Vectorize billing and traps, the
   relevance floor — now lives in the **bulk-corpus-etl** skill.
@@ -20,7 +27,7 @@ description: >-
 
 # The arXiv RAG search database
 
-A retrieval database over a year of arXiv, embedded with Berget
+A retrieval database over arXiv since late 2023, embedded with Berget
 `intfloat/multilingual-e5-large`. Full design, measurements and operating
 manual: **`docs/ARXIV-RAG.md`**. This skill is the working knowledge — what
 bites, and what not to re-derive.
@@ -251,6 +258,60 @@ because the corpus is English). That silently handed BM25 a large head start
 and made it look like the English winner. Always measure query-vs-body overlap
 before believing a lexical retriever's score on a synthetic set, and keep a
 hand-written graded set as the tiebreaker.
+
+### Before/after: how to judge a change to the CORPUS or the pipeline
+
+Added 2026-07-29, from widening the window 13 → 34 months. A change of this
+kind is judged on four axes, and they can disagree — reporting only one is how
+a regression gets shipped as a win.
+
+**1. Hold everything but one variable, and use a CARRYOVER gold set.** The
+needles must be papers present in *both* indexes, so the only thing that
+changed is the number of distractors. Sample them by id from the independent
+enumeration (`arxiv-hosted-eval.mjs sample`), never by querying the index.
+
+**2. Test paired, with McNemar — not an independent binomial CI.** At n=150 the
+binomial 95% CI is about ±6.7 points, which calls almost every real effect
+noise. The runs share their queries, so the discordant pairs are the evidence:
+
+```js
+// for each query: hit@k before vs after → count b (lost) and c (gained)
+// two-sided exact binomial at p=0.5 over the b+c discordant pairs
+```
+
+Measured this way, effects that looked like noise separated cleanly:
+
+| comparison | verdict |
+|---|---|
+| corpus 338k → 773k, pool held at 20 | EN r@1 lost 15 / gained 5 — **p=0.041**, real |
+| pool 20 → 50, corpus held at 773k | EN r@10 gained 8, lost **0** — **p=0.008** |
+| shipped-before → shipped-now | p=0.581 — indistinguishable |
+
+**3. Needle and topical WILL disagree, and topical is the one that matters.**
+Widening the corpus made needles worse and topical better:
+
+| | EN needle r@1 | EN topical nDCG@10 |
+|---|---|---|
+| before | 78.7 | 0.740 |
+| after (shipped) | 76.7 | 0.857 |
+
+Not a contradiction. A needle question wants one specific paper, so more
+literature is more distractors; a topical question wants a good first page, and
+more literature is more genuinely relevant work to fill it. §4 already says
+topical "reflects how the database will actually be used" — so a corpus change
+that trades needle recall for topical nDCG is a win, and the reverse is not.
+
+**4. Measure what changed about the RESULTS, not just the scores.** `compare`
+prints an age profile (`ageProfile`, submission month from the id) because the
+widening moved the median result from 2025-12 to 2025-01 and took the share of
+results predating the old window from 0% to **64.9%**. No score would have
+shown that, and it is what invalidated the "relevance is implicitly recent"
+assumption in `src/arxiv.js`.
+
+**Also: verify the corpus before believing any of it.** A 73.5%-complete index
+produces confident numbers. Run `arxiv-crosscheck.mjs` (harvest vs enumeration,
+per month) and `arxiv-hosted-eval.mjs coverage` (index vs enumeration, per
+month) FIRST, and only then the retrieval evaluation.
 
 ## The settled pipeline
 

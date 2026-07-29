@@ -987,8 +987,8 @@ backdrop, split pure-core/DOM per the pure-core convention); and
 waiting spinner).
 
 arXiv RAG search database (`public/js/arxiv-rag-core.js` + `scripts/arxiv-*.mjs`
-— a local research database over a year of arXiv, not part of the deployed
-Worker): the pure core owns passage construction (the four embed strategies and
+— a research database over arXiv since late 2023; the build tooling is not part
+of the deployed Worker, though `src/arxiv-rag.js` serves the resulting index): the pure core owns passage construction (the four embed strategies and
 the sliding-window splitter), the Unicode-aware tokenizer and BM25 index, RRF
 fusion, max-pool doc scoring over the packed int8 matrix (`denseSearchPacked` /
 `packedNorms`), the evaluation metrics, and `recapForContext` — the recovery

@@ -6,7 +6,7 @@ description: >-
   make it searchable from the Worker", "build the full corpus", "why is the
   harvest slow / getting throttled / missing papers", or when running a
   multi-hour ETL from an ephemeral container. The provider-agnostic discipline
-  distilled from taking arXiv from zero to 337,768 hosted vectors: why a single
+  distilled from taking arXiv from zero to 772,658 hosted vectors: why a single
   enumeration cannot detect its own gaps (a 48% hole in one month reported
   itself as success), why "records kept" is not "unique documents", the
   window-boundary bug class, rate-limit citizenship and how flow control

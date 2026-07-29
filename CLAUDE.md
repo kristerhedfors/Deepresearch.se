@@ -276,7 +276,7 @@ live — that's where this project's real bugs have come from (the
 **live-verify** skill). Editing tracked text or source can stale the
 committed introspection artifacts — `npm test` names the drift; fix with
 `npm run bundle` / `bundle:rag` / `bundle:docs` / `bundle:docs-rag`, never by
-hand. What each suite covers, the e2e fixtures/quirks, and the three eval
+hand. What each suite covers, the e2e fixtures/quirks, and the five eval
 harnesses (model-matrix, rubric bench, HF bench — append-only ledgers, don't
 deploy mid-battery): **`docs/TESTING.md`**.
 
@@ -430,5 +430,5 @@ Features & surfaces:
 - **space-animations** — the public /space/ archive of playable wireframe animations (one "animation skill" per common space question, EN+SV matched): the only-stars-glow rendering rule, real-scale zoom, the gallery feedback queue.
 - **tokemon-game** — the games registry seam + the Tokemon AR game (Pokémon Gen-1 mechanics verbatim, no invented rules).
 - **commit-analytics** — the public `/pulse` dashboard and its `npm run pulse` refresh workflow.
-- **arxiv-rag** — the arXiv RAG search database (a year of arXiv, Berget-embedded; 337,768 vectors hosted in Vectorize since 2026-07-27): the OAI-PMH bulk-harvest pattern, the GCS enumeration mirror, the binary index pack, the three Berget serving limits that break long builds, the LaTeXML full-text extractor, and the evaluation discipline that keeps a RAG bake-off honest.
+- **arxiv-rag** — the arXiv RAG search database (arXiv since late 2023, Berget-embedded; 772,658 vectors hosted in Vectorize, widened from 13 to 34 months on 2026-07-29): the OAI-PMH bulk-harvest pattern and the `--until` trap that silently under-harvests a historical band, the GCS enumeration mirror, the binary index pack, the three Berget serving limits that break long builds, the LaTeXML full-text extractor, and the evaluation discipline that keeps a RAG bake-off honest — including how to measure the SERVED path (not the local pack) and judge a corpus change with paired significance.
 - **bulk-corpus-etl** — the PROVIDER-AGNOSTIC discipline for turning any large external corpus into a hosted, searchable vector index: enumerating from two independent sources (one cannot detect its own gaps — a 48% hole reported itself as success), "kept" vs unique counts, the window-boundary bug class, rate-limit citizenship and flow-control-is-not-failure, checkpointing that survives an ephemeral machine, Vectorize's billing model and serialization traps, and the relevance floor that stops dense retrieval answering off-topic questions with confident nonsense.
