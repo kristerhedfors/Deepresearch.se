@@ -29,7 +29,7 @@
 // them through any outage.
 
 import { getConfig } from "./config.js";
-import { jsonResponse } from "./http.js";
+import { jsonResponse, readJsonBody } from "./http.js";
 import {
   applyAllowance,
   buildCatalog,
@@ -138,13 +138,8 @@ export async function handleModelCatalog(env, log, identity, url) {
 export async function handleModelVerify(request, env, log, identity) {
   const anon = needsAccount(identity);
   if (anon) return anon;
-  /** @type {any} */
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonResponse({ error: "Request body must be valid JSON." }, 400);
-  }
+  const { body, response } = await readJsonBody(request);
+  if (response) return response;
   const id = typeof body?.id === "string" ? body.id : "";
   if (!id) return jsonResponse({ error: "id is required." }, 400);
 
@@ -205,13 +200,8 @@ export async function handleModelVerify(request, env, log, identity) {
 export async function handleModelEnable(request, env, log, identity) {
   const anon = needsAccount(identity);
   if (anon) return anon;
-  /** @type {any} */
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonResponse({ error: "Request body must be valid JSON." }, 400);
-  }
+  const { body, response } = await readJsonBody(request);
+  if (response) return response;
   const id = typeof body?.id === "string" ? body.id : "";
   if (!id) return jsonResponse({ error: "id is required." }, 400);
 
@@ -273,13 +263,8 @@ export async function handleModelEnable(request, env, log, identity) {
 export async function handleModelDisable(request, env, log, identity) {
   const anon = needsAccount(identity);
   if (anon) return anon;
-  /** @type {any} */
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonResponse({ error: "Request body must be valid JSON." }, 400);
-  }
+  const { body, response } = await readJsonBody(request);
+  if (response) return response;
   const id = typeof body?.id === "string" ? body.id : "";
   if (!id) return jsonResponse({ error: "id is required." }, 400);
   const list = await removeAcceptedModel(env, identity, id);

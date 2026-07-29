@@ -28,7 +28,7 @@
 
 import { CHAT_MODES, DEFAULT_CHAT_MODE, normalizeChatMode } from "./chat-modes.js";
 import { getDb } from "./db.js";
-import { jsonResponse } from "./http.js";
+import { jsonResponse, readJsonBody } from "./http.js";
 import {
   extensionAvailability,
   extensionPayloadExtras,
@@ -438,13 +438,8 @@ export async function handleSettingsPut(request, env, log, identity) {
   if (!identity.user) {
     return jsonResponse({ error: "Settings need a signed-in account (not break-glass)." }, 403);
   }
-  /** @type {any} */
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonResponse({ error: "Request body must be valid JSON." }, 400);
-  }
+  const { body, response } = await readJsonBody(request);
+  if (response) return response;
   const present = KNOB_KEYS.filter((key) => body?.[key] !== undefined);
   // The picked mode, from either the current field or the legacy boolean. Kept
   // separate from `present` because it is the one setting that is not a boolean.

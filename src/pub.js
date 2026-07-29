@@ -23,7 +23,7 @@
 // from these very messages) and "continuing" is just typing a follow-up
 // on the visitor's own key.
 
-import { jsonResponse } from "./http.js";
+import { jsonResponse, readJsonBody } from "./http.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -138,13 +138,8 @@ export async function handlePubWrite(request, env, log, slug) {
     return new Response(null, { status: 204 });
   }
   if (request.method !== "PUT") return jsonResponse({ error: "Not found." }, 404);
-  /** @type {any} */
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonResponse({ error: "Request body must be valid JSON." }, 400);
-  }
+  const { body, response } = await readJsonBody(request);
+  if (response) return response;
   const checked = validatePublication(body);
   if ("error" in checked) return jsonResponse({ error: checked.error }, 400);
   const json = JSON.stringify(checked.pub);

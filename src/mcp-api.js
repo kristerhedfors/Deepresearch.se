@@ -24,7 +24,7 @@
 
 import { getUserById } from "./accounts.js";
 import { getDb } from "./db.js";
-import { jsonResponse } from "./http.js";
+import { jsonResponse, readJsonBody } from "./http.js";
 import { mergeStoredSettings } from "./settings.js";
 import { MCP_TOOL_CATALOG, applyConfigPatch, isMcpHost, normalizeConfigPatch, parseMcpConfig } from "./mcp-config.js";
 import { MCP_KEY_TTL_S, bearerToken, looksLikeMcpKey, mintMcpKey, verifyMcpKey } from "./mcp-key.js";
@@ -200,13 +200,8 @@ export async function handleMcpConfigGet(url, identity) {
 export async function handleMcpConfigPut(request, env, url, log, identity) {
   const denied = requireAccount(identity);
   if (denied) return denied;
-  /** @type {any} */
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonResponse({ error: "Request body must be valid JSON." }, 400);
-  }
+  const { body, response } = await readJsonBody(request);
+  if (response) return response;
   const normalized = normalizeConfigPatch(body);
   if (!normalized.ok) return jsonResponse({ error: normalized.error }, 400);
 

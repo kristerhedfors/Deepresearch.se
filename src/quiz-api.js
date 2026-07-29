@@ -14,7 +14,7 @@
 
 import { completeJson, DEFAULT_MODEL } from "./berget.js";
 import { enforceQuotaAndReserve } from "./endpoint-gate.js";
-import { jsonResponse } from "./http.js";
+import { jsonResponse, readJsonBody } from "./http.js";
 import { quizGradePrompt } from "./prompts.js";
 import { recordDefaultModelUsage, releaseInflight } from "./quota.js";
 import { normalizeGradeResults, validateGradeItems } from "./quiz.js";
@@ -34,12 +34,8 @@ export async function handleQuizGrade(request, env, log, identity) {
   if (!env.BERGET_API_TOKEN) {
     return jsonResponse({ error: "Server not configured: BERGET_API_TOKEN secret is missing." }, 500);
   }
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonResponse({ error: "Request body must be valid JSON." }, 400);
-  }
+  const { body, response } = await readJsonBody(request);
+  if (response) return response;
   const { items, error } = validateGradeItems(body);
   if (typeof error === "string" || !items) return jsonResponse({ error }, 400);
 

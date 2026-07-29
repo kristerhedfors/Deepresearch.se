@@ -23,7 +23,7 @@
 import { completeJson } from "./providers.js";
 import { DEFAULT_MODEL } from "./berget.js";
 import { enforceQuotaAndReserve } from "./endpoint-gate.js";
-import { jsonResponse } from "./http.js";
+import { jsonResponse, readJsonBody } from "./http.js";
 import { lastUserMessage, textOf } from "./conversation.js";
 import { recordDefaultModelUsage, releaseInflight } from "./quota.js";
 import { classifyFailure, recordSubsystemFailure } from "./server-errors.js";
@@ -56,13 +56,8 @@ export async function handleOrchestratorPlan(request, env, log, identity) {
     return jsonResponse({ plan: null, reason: "capability" }, 403);
   }
 
-  /** @type {any} */
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonResponse({ error: "Request body must be valid JSON." }, 400);
-  }
+  const { body, response } = await readJsonBody(request);
+  if (response) return response;
   const invalid = validateMessages(body?.messages);
   if (invalid) return jsonResponse({ error: invalid }, 400);
 

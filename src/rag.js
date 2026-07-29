@@ -33,7 +33,7 @@
 
 import { embedModel, embedTexts, eurPerTokenFromBerget, rawModelEntry } from "./berget.js";
 import { getConfig } from "./config.js";
-import { jsonResponse } from "./http.js";
+import { jsonResponse, readJsonBody } from "./http.js";
 import {
   effectiveQuota,
   getUsage,
@@ -229,13 +229,8 @@ export async function handleEmbed(request, env, log, identity) {
   if (!env.BERGET_API_TOKEN) {
     return jsonResponse({ error: "Server not configured: BERGET_API_TOKEN secret is missing." }, 500);
   }
-  /** @type {any} */
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonResponse({ error: "Request body must be valid JSON." }, 400);
-  }
+  const { body, response } = await readJsonBody(request);
+  if (response) return response;
   const texts = body?.texts;
   if (!Array.isArray(texts) || !texts.length || texts.length > MAX_EMBED_TEXTS) {
     return jsonResponse({ error: `Expected 1-${MAX_EMBED_TEXTS} texts.` }, 400);
@@ -330,12 +325,8 @@ async function ragIndex(request, env, log, identity, uid, available) {
   if (!cloudStorageEnabled(env, identity)) {
     return jsonResponse({ error: "Cloud storage is not available for this account." }, 403);
   }
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonResponse({ error: "Request body must be valid JSON." }, 400);
-  }
+  const { body, response } = await readJsonBody(request);
+  if (response) return response;
   const parsed = validateRagIndexPayload(body);
   if (parsed.error) return jsonResponse({ error: parsed.error }, 400);
   const { docId, name, chunks, vectors, dims } = /** @type {RagIndexPayload} */ (parsed);
@@ -405,13 +396,8 @@ async function ragQuery(request, env, log, identity, uid, available) {
   if (!cloudStorageEnabled(env, identity)) {
     return jsonResponse({ error: "Cloud storage is not available for this account." }, 403);
   }
-  /** @type {any} */
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonResponse({ error: "Request body must be valid JSON." }, 400);
-  }
+  const { body, response } = await readJsonBody(request);
+  if (response) return response;
   const query = typeof body?.query === "string" ? body.query.trim().slice(0, MAX_QUERY_CHARS) : "";
   if (!query) return jsonResponse({ error: "Expected a query string." }, 400);
   const docIds = Array.isArray(body.docIds) ? body.docIds.filter(idOk).slice(0, 20) : [];
