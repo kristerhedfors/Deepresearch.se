@@ -8,12 +8,14 @@ description: >-
   MUST be preserved (byte-identical behavior, the load-bearing invariants, the
   institutional comments, module-graph constraints, public import surfaces),
   where this repo's seams actually are, the survey → extract → verify workflow
-  built on the committed duplicate scanner `scripts/dup-scan.mjs`, and the
+  built on the committed scanners `scripts/dup-scan.mjs` (duplicate function
+  bodies) and `scripts/line-scan.mjs` (duplicate line runs, so inline blocks and
+  constants are visible too), and the
   finishing checklist (docs mirror, `SECURE_SOURCE_REFS` + `sdk/MANIFEST.json`
   reference lists — both drift SILENTLY — then `npm run bundle` and
   `bundle:rag`). Also load when moving a file named in either of those two
   lists, since nothing goes red if you forget them. The decline register
-  (`references/STANDING-DECLINES.md`) and the ten-pass record
+  (`references/STANDING-DECLINES.md`) and the twelve-pass record
   (`references/PASS-LEDGER.md`) live beside this file — read the register
   before surveying so you do not re-derive a settled decline.
 ---
@@ -35,7 +37,7 @@ registry of small matchers (`googlemaps-text.js`) or a 1000-line
 runner-per-shape file (`maps-enrichment.js`) is inherent complexity, not
 tangling.
 
-**Calibrate your expectations from the record.** Ten whole-repo passes since
+**Calibrate your expectations from the record.** Twelve whole-repo passes since
 2026-07-12 have yielded between one and six cuts each, and the seventh yielded
 exactly one. New subsystems now arrive already factored, because their authors
 follow this same skill. **A pass that ends with one cut and a page of reasoned
@@ -188,19 +190,28 @@ In descending value. Each has a worked instance in `references/PASS-LEDGER.md`.
    ```bash
    node scripts/dup-scan.mjs                # duplicate bodies across files, ≥4 lines
    node scripts/dup-scan.mjs --collisions   # + same-name-different-body (never unify blind)
+   node scripts/line-scan.mjs               # duplicate runs of 6 consecutive lines, anywhere
+   node scripts/line-scan.mjs --run 8       # only the long ones
    git diff --stat <last-pass-sha>..HEAD -- src public/js public/cure sdk
    wc -l src/*.js public/js/*.js | sort -rn | head -20
    ```
 
-   The scan is the high-yield step (pass eight: three reasoning fan-outs
-   returned "nothing left", then the scan found two real cuts) — reasoning
-   predicts which duplications *should* exist, the scan finds the ones that
-   *do*. **Its blind spots are real, so the reading pass still happens:** it
-   sees only function bodies of four-plus lines, so repeated *inline blocks*
-   (the six that became `grant-http.js`), constants, and single-copy
-   helper-in-orchestrator seams (type 3 above) are invisible to it. Read the
-   modules that grew since the last pass, and read every scan hit before
-   believing it.
+   The scans are the high-yield step (pass eight: three reasoning fan-outs
+   returned "nothing left", then a scan found two real cuts) — reasoning
+   predicts which duplications *should* exist, the scans find the ones that
+   *do*. **Run both.** `dup-scan` hashes function BODIES, so repeated *inline
+   blocks* (the six that became `grant-http.js`), constants and import clusters
+   are structurally invisible to it; `line-scan` hashes runs of consecutive
+   significant lines wherever they sit, and catches exactly those. By pass 12
+   `dup-scan` returned only entries already in `STANDING-DECLINES.md` — the
+   converged state — while all three of that pass's cuts came from `line-scan`.
+   It is the noisier of the two by construction (two files importing the same
+   six symbols is a real duplicate run and not a refactor), so read every hit.
+
+   **Neither scan sees a single-copy helper-in-orchestrator seam (type 3
+   above), so the reading pass still happens:** read the modules that grew since
+   the last pass. And grep the apology — a duplicated block usually sits under a
+   comment naming its siblings (`grep -rn "Same .* as /api" src/`).
 
 4. **Extract one module at a time, and commit after each.** Create the new
    module (bodies *and* their comments verbatim), import them back, re-export
@@ -276,6 +287,6 @@ Do all of it in the same commit range, in this order. The first two drift
 
 - **`references/STANDING-DECLINES.md`** — every settled decline, the gate it
   failed, and the pass that settled it. Read before surveying; append after.
-- **`references/PASS-LEDGER.md`** — the ten passes to date, what each cut, and
+- **`references/PASS-LEDGER.md`** — the twelve passes to date, what each cut, and
   the method lessons they produced. Read when you want a worked instance of a
   seam type, or the last pass's SHA to diff from.
