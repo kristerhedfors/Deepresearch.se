@@ -178,8 +178,7 @@ licence. All six were passed to synthesis as the sources for a question about
 a watch, and the answer spent its length explaining that the sources were
 about a search engine.
 
-Three things had to be true at once, and each is worth checking when adding a
-source:
+Three things had to be true at once. Check each when adding a source:
 
 - **The own-host filter must cover every domain the operator uses.** It was
   `marginalia.nu`; the chrome links point at `marginalia-search.com`, so the
@@ -196,8 +195,9 @@ source:
 Verify a new source against a query it has NOTHING for, not only one that
 works. `curl` the SERP, count the `card`/result blocks (zero), then run the
 body through `cloudflareSearch` with an injected fetch and confirm it returns
-`null`. `search.cf_serp_fallback_rejected` in Workers Logs is the guard doing
-its job; `search.cf_serp_fallback_parse` is the rescue actually rescuing.
+`null`. In Workers Logs, `search.cf_serp_fallback_rejected` means the guard
+turned a scan away; `search.cf_serp_fallback_parse` means a real layout change
+was rescued.
 
 It is otherwise the same technique as the local browsing agent's `browse`
 engine (Recipe 0). Compare honestly when recommending one:
