@@ -12,6 +12,7 @@
     "bundle:docs-rag": "node scripts/bundle-docs-rag.mjs",
     "fetch:owasp": "node scripts/fetch-owasp.mjs",
     "bundle:owasp-rag": "node scripts/bundle-owasp-rag.mjs",
+    "bundle:aadr": "node scripts/aadr-build.mjs",
     "verify:owasp": "node scripts/verify-owasp-quotes.mjs",
     "outrospect": "node scripts/outrospect-scan.mjs",
     "pulse": "node scripts/build-pulse.mjs",

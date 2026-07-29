@@ -222,6 +222,7 @@ export const CONTEXT_BLOCKS = {
   "outward-feed": { label: "Outward feed", desc: "the stored lens feed of what everyone else shipped (src/outrospect.js)", serverOnly: true },
   "owasp": { label: "OWASP reference", desc: "the OWASP Top 10 block retrieved for a security-assessment ask" },
   "model-catalog": { label: "Model catalog", desc: "the live cross-provider model catalog — priced and annotated with verification state — folded in for a model ask (src/model-catalog.js catalogBlock)", serverOnly: true },
+  "ancient-samples": { label: "Ancient samples", desc: "a structured query over the committed ancient-DNA sample corpus — geography, date window, haplogroup prefix, coverage floor — folded in as exact rows and counts (src/aadr.js)", serverOnly: true },
 };
 
 /** The model buckets a phase may run on. `json-default` is the fixed reliable
@@ -237,6 +238,7 @@ export const GATE_IDS = {
   "lens": { label: "Lens", desc: "which standing lens does this ask belong under? (outrospect-core lensMatch)" },
   "quiz": { label: "Quiz", desc: "is this an ask for a quiz? (src/quiz.js quizIntent)" },
   "model-lifecycle": { label: "Model lifecycle", desc: "is this ask about choosing, pricing, evaluating or starting a model? (src/models-agent.js modelIntent)" },
+  "ancient-sample": { label: "Ancient sample", desc: "is this ask a structured query over the ancient-DNA sample corpus, rather than a question about the literature? (public/js/aadr-core.js ancientSampleIntent)" },
   // Listed for completeness, but PLATFORM BASELINE and so declared by no
   // shipped spec: the gate — the bare keyword or the `/feedback` command —
   // runs before any agent's answer phase, and the slash commands it is half of
@@ -403,6 +405,24 @@ export function capSearch(cap, requested = {}) {
  */
 export function capHasTool(cap, cls) {
   return Array.isArray(cap?.tools) && /** @type {string[]} */ (cap?.tools).includes(cls);
+}
+
+/**
+ * Whether a capability selects a CONTEXT BLOCK. A null capability selects none,
+ * so a request that never consulted the registry gets a plain research turn.
+ *
+ * Narrowing still holds, in the form it takes for a set rather than a number: a
+ * declaration can only select from CONTEXT_BLOCKS, every member of which names
+ * a retrieval path the platform already ships, and validateCapability refuses a
+ * `serverOnly` block to a client-tier agent. So the worst a hostile block list
+ * can do is fold in context the platform was already willing to fold in for
+ * some agent — never reach data no agent may read.
+ * @param {AgentCapability | null | undefined} cap
+ * @param {string} block a key of CONTEXT_BLOCKS
+ * @returns {boolean}
+ */
+export function capHasContext(cap, block) {
+  return Array.isArray(cap?.context) && /** @type {string[]} */ (cap?.context).includes(block);
 }
 
 /**

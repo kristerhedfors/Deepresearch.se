@@ -43,6 +43,7 @@ export {
   TOOL_FALLBACKS,
   agentsFromSnapshot,
   capBound,
+  capHasContext,
   capHasTool,
   capSearch,
   composerMarkup,

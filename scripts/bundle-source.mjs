@@ -44,6 +44,11 @@ const EXCLUDE = [
   /^public\/vendor\//,
   /^public\/icons\//,
   /^public\/introspect\//,
+  // The ancient-sample corpus (scripts/aadr-build.mjs) — a 2 MB generated DATA
+  // artifact, not source. Bundling it would grow the snapshot every session
+  // reads by a fifth and put 20,927 tab-separated rows in front of a model
+  // asked how the site works.
+  /^public\/aadr\//,
   /(^|\/)package-lock\.json$/,
   /^tests\/fixtures\//,
 ];

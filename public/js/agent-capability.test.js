@@ -288,8 +288,9 @@ test("the closed vocabularies stay closed", () => {
   assert.deepEqual(Object.keys(ANSWER_PHASES), ["research", "source-research", "build", "workflow", "feed", "direct"]);
   assert.deepEqual(Object.keys(TOOL_CLASSES), ["source-read", "sdk-plan", "build-publish", "shell"]);
   assert.deepEqual(TOOL_FALLBACKS, ["read-loop", "file-blocks", "none"]);
-  assert.deepEqual(Object.keys(GATE_IDS), ["external-source", "lens", "quiz", "model-lifecycle", "feedback"]);
+  assert.deepEqual(Object.keys(GATE_IDS), ["external-source", "lens", "quiz", "model-lifecycle", "ancient-sample", "feedback"]);
   assert.ok(Object.keys(CONTEXT_BLOCKS).includes("source-snapshot"));
+  assert.ok(Object.keys(CONTEXT_BLOCKS).includes("ancient-samples"));
   assert.ok(Object.keys(CAPABILITY_EVENTS).includes("agent_update"));
   assert.ok(Object.keys(CAPABILITY_REQUIREMENTS).includes("developer_mode"));
   for (const bad of ["answerPhase", "emits", "context", "requires"]) {
