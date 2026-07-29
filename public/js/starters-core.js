@@ -801,9 +801,25 @@ export function registryReport(reg) {
 //   untried   — no rank at all. The bulk of the registry lives here.
 //   candidate — not in a queue yet: a question we are considering ADDING.
 //
-// One from each band, every batch, rotating within the band so the reviewer is
-// never asked the same thing twice while anything unrated remains. That is the
-// "schedule": coverage by construction rather than by remembering to vary it.
+// NEW QUESTIONS EVERY TIME (owner directive, 2026-07-29). A reviewer opening
+// an empty chat must be handed material they have not been handed before —
+// re-serving the same four is how a review batch quietly stops producing
+// information. So the caller keeps a SEEN ledger (id → how many times this
+// browser has been shown it) and the scheduler orders every band by that count
+// ascending: never-shown first, then once-shown, and so on. The four shown are
+// recorded and the cursor advances on every RENDER, so the next empty chat is
+// fresh by construction rather than by remembering to vary it. When the whole
+// pool has been through one pass the ordering simply moves to the next tier —
+// a second look at 175 starters is a real review task, not a repeat.
+//
+// There is deliberately no 👍/👎 on a chip. Rating a starter from the strip
+// asked a reviewer to compress a whole conversation into one tap, and the
+// verdict then sat in localStorage where nobody but that browser could read
+// it. The judgement now travels the way every other judgement in this product
+// does: the reviewer starts a message with "feedback", the chip has already
+// prepended the starter's #XP tag to the opening turn, and src/chat.js records
+// that tag as its own line on the feedback entry. One queue, one loop, words
+// instead of a glyph.
 
 /** The four bands an evaluation batch draws one chip from, in slot order. */
 export const EVAL_BANDS = ["proven", "weak", "untried", "candidate"];
@@ -861,21 +877,45 @@ export function evalPool(reg, opts = {}) {
 }
 
 /**
+ * How many times this browser has already been shown a starter, from a seen
+ * ledger in either shape a caller might hold one: a Set of ids (shown once) or
+ * a map of id → count. Anything else reads as never shown.
+ * @param {Set<string>|Record<string, number>|null|undefined} seen
+ * @returns {(id: string) => number}
+ */
+function seenLookup(seen) {
+  if (seen instanceof Set) return (id) => (seen.has(id) ? 1 : 0);
+  if (seen && typeof seen === "object") {
+    return (id) => {
+      const v = Number(/** @type {any} */ (seen)[id]);
+      return Number.isFinite(v) && v > 0 ? v : 0;
+    };
+  }
+  return () => 0;
+}
+
+/**
  * One evaluation batch: `count` starters, one per band in EVAL_BANDS order,
  * drawn across every agent.
  *
- * Within a band, entries the reviewer has ALREADY rated go to the back — a
- * batch should spend its four slots on things we do not know yet. When a band
- * is empty (nothing weak, say, because nothing has been scored below the floor
- * yet) its slot is backfilled from the band with the most unrated material
- * left, so the reviewer always gets four chips rather than a short strip that
- * silently means "no data here".
+ * Within a band, entries are ordered by how many times this browser has been
+ * shown them — never-shown first, then once-shown, and so on. That is what
+ * makes every batch NEW: the caller records the four it rendered, so the next
+ * render cannot reach for them again while anything unseen is left. It also
+ * degrades honestly rather than stopping: once the whole pool has had one pass
+ * the same rule serves the second pass, in the same order, instead of
+ * returning an empty strip or repeating whichever four sit first.
  *
- * Deterministic in (pool, cursor, rated): the same inputs give the same batch,
+ * When a band is empty (nothing weak, say, because nothing has been scored
+ * below the floor yet) its slot is backfilled from the band with the most
+ * unseen material left, so the reviewer always gets four chips rather than a
+ * short strip that silently means "no data here".
+ *
+ * Deterministic in (pool, cursor, seen): the same inputs give the same batch,
  * so a reviewer can be handed the exact batch they saw.
  *
  * @param {Array<any>} pool  from evalPool()
- * @param {{cursor?:number, count?:number, rated?:Set<string>|Record<string,any>}} [opts]
+ * @param {{cursor?:number, count?:number, seen?:Set<string>|Record<string,number>}} [opts]
  * @returns {Array<any>}
  */
 export function selectEvalBatch(pool, opts = {}) {
@@ -883,10 +923,7 @@ export function selectEvalBatch(pool, opts = {}) {
   const list = Array.isArray(pool) ? pool : [];
   if (!count || !list.length) return [];
   const cursor = Math.trunc(opts.cursor ?? 0) || 0;
-  const ratedRaw = opts.rated;
-  const rated = ratedRaw instanceof Set
-    ? ratedRaw
-    : new Set(Object.keys(ratedRaw && typeof ratedRaw === "object" ? ratedRaw : {}));
+  const timesSeen = seenLookup(opts.seen);
 
   const rot = (/** @type {Array<any>} */ arr) => {
     if (!arr.length) return arr;
@@ -921,12 +958,21 @@ export function selectEvalBatch(pool, opts = {}) {
     return out;
   };
 
-  /** A band's entries: unrated first (a batch should spend its slots on what
-   * we do not know), each half spread across agents and advanced by cursor. */
+  /** A band's entries, least-seen first (a batch should spend its slots on
+   * what this reviewer has not been shown), each tier spread across agents and
+   * advanced by cursor. */
   const bandQueue = (/** @type {string} */ band) => {
     const all = list.filter((e) => e.band === band);
-    return interleaveByAgent(all.filter((e) => !rated.has(e.id)))
-      .concat(interleaveByAgent(all.filter((e) => rated.has(e.id))));
+    /** @type {Map<number, Array<any>>} */
+    const tiers = new Map();
+    for (const e of all) {
+      const n = timesSeen(e.id);
+      if (!tiers.has(n)) tiers.set(n, []);
+      (tiers.get(n) || []).push(e);
+    }
+    return [...tiers.keys()]
+      .sort((a, b) => a - b)
+      .flatMap((n) => interleaveByAgent(tiers.get(n) || []));
   };
 
   const queues = new Map(EVAL_BANDS.map((b) => [b, bandQueue(b)]));
@@ -939,9 +985,9 @@ export function selectEvalBatch(pool, opts = {}) {
   // first in registry order, and a reviewer gets four research questions in a
   // batch meant to survey seven agents. Falls back to repeating an agent
   // rather than returning a short batch.
-  const takeFrom = (/** @type {string} */ band) => {
+  const takeFrom = (/** @type {string} */ band, /** @type {boolean} */ unseenOnly) => {
     const q = queues.get(band) || [];
-    const free = q.filter((x) => !used.has(x.id));
+    const free = q.filter((x) => !used.has(x.id) && (!unseenOnly || !timesSeen(x.id)));
     const e = free.find((x) => !usedAgents.has(x.agent)) || free[0];
     if (!e) return false;
     used.add(e.id);
@@ -950,20 +996,32 @@ export function selectEvalBatch(pool, opts = {}) {
     return true;
   };
 
+  // One per band — but only while that band still holds something this reviewer
+  // has not read. A SMALL band runs out first (there are only a handful of weak
+  // starters), and re-serving its one remaining entry to hold the band's slot
+  // would break the directive for the sake of a layout: the slot goes to the
+  // backfill below, which spends it on unseen material instead. Once NOTHING is
+  // unseen anywhere, the restriction lifts and the bands are honoured again on
+  // the second pass.
+  const anyUnseen = list.some((e) => !timesSeen(e.id));
   for (const band of EVAL_BANDS) {
     if (picked.length >= count) break;
-    takeFrom(band);
+    takeFrom(band, anyUnseen);
   }
 
-  // Backfill from whichever band still has the most unrated material — an
+  // Backfill from whichever band still has the most unseen material — an
   // empty band must not shorten the batch.
   while (picked.length < count) {
     const best = EVAL_BANDS
-      .map((b) => ({ b, left: (queues.get(b) || []).filter((x) => !used.has(x.id) && !rated.has(x.id)).length }))
+      .map((b) => ({ b, left: (queues.get(b) || []).filter((x) => !used.has(x.id) && !timesSeen(x.id)).length }))
       .sort((a, b) => b.left - a.left)[0];
-    if (best && best.left > 0 && takeFrom(best.b)) continue;
-    // Nothing unrated anywhere: fall back to anything at all, then give up.
-    const any = list.find((x) => !used.has(x.id));
+    if (best && best.left > 0 && takeFrom(best.b, true)) continue;
+    // Everything has been seen at least once: fall back to the least-seen
+    // entry left rather than to registry order, so a second pass through the
+    // pool moves the same way the first one did.
+    const any = [...list]
+      .filter((x) => !used.has(x.id))
+      .sort((a, b) => timesSeen(a.id) - timesSeen(b.id) || String(a.id).localeCompare(String(b.id)))[0];
     if (!any) break;
     used.add(any.id);
     picked.push(any);
@@ -973,91 +1031,60 @@ export function selectEvalBatch(pool, opts = {}) {
 }
 
 /**
- * Record a reviewer's verdict on a starter. Pure — returns a new map.
- * `verdict` is "good" | "bad" | "unclear"; anything else clears the entry, so
- * a mis-tap can be undone by tapping the same button again at the call site.
- * @param {Record<string, {v:string, at?:number, note?:string}>} verdicts
- * @param {string} id
- * @param {string} verdict
- * @param {{at?:number, note?:string}} [meta]
- * @returns {Record<string, {v:string, at?:number, note?:string}>}
+ * Record that a batch was SHOWN. Pure — returns a new ledger (id → how many
+ * times this browser has been handed that starter), which is the whole state
+ * evaluation mode keeps. It is browser-local and stays that way for the same
+ * reason the visitor strip's pick signal does: Se/cure's promise is that the
+ * page does not phone home, and "which questions this reviewer has read" is
+ * exactly the sort of quiet beacon that promise dies of. The reviewer's actual
+ * findings travel by the feedback keyword instead, where a human reads them.
+ *
+ * Growth is capped by dropping the MOST-seen entries first — they are the ones
+ * the ordering has least use for, since everything is served least-seen first.
+ *
+ * @param {Record<string, number>} seen
+ * @param {Array<string|{id?:string}>} entries  ids, or the batch entries themselves
+ * @param {number} [max]  how many starters to remember
+ * @returns {Record<string, number>}
  */
-export function recordVerdict(verdicts, id, verdict, meta = {}) {
-  const next = { ...(verdicts || {}) };
-  if (typeof id !== "string" || !id) return next;
-  if (verdict !== "good" && verdict !== "bad" && verdict !== "unclear") {
-    delete next[id];
-    return next;
+export function recordStartersSeen(seen, entries, max = 400) {
+  const next = { ...(seen || {}) };
+  for (const e of Array.isArray(entries) ? entries : []) {
+    const id = typeof e === "string" ? e : (typeof e?.id === "string" ? e.id : "");
+    if (!id) continue;
+    next[id] = Math.min(99, (Number(next[id]) || 0) + 1);
   }
-  next[id] = {
-    v: verdict,
-    ...(Number.isFinite(meta.at) ? { at: meta.at } : {}),
-    ...(typeof meta.note === "string" && meta.note ? { note: meta.note.slice(0, 400) } : {}),
-  };
+  const keys = Object.keys(next);
+  if (keys.length > max) {
+    keys
+      .sort((a, b) => (next[b] - next[a]) || a.localeCompare(b))
+      .slice(0, keys.length - max)
+      .forEach((k) => delete next[k]);
+  }
   return next;
 }
 
 /**
- * Turn a verdict map into the plain-text report a reviewer hands back (the
- * "Copy report" action). Text rather than a beacon: on Se/cure there is no
- * endpoint this could post to without breaking the tier's promise, and on
- * Se/rver a reviewer pasting their own findings is both simpler and more
- * honest than a silent upload.
- *
- * @param {Array<any>} pool  from evalPool()
- * @param {Record<string, {v:string, note?:string}>} verdicts
- * @returns {string}
- */
-export function verdictReport(pool, verdicts) {
-  const byId = new Map((Array.isArray(pool) ? pool : []).map((e) => [e.id, e]));
-  const rows = Object.entries(verdicts || {});
-  if (!rows.length) return "Starter evaluation: nothing rated yet.";
-  /** @type {Record<string,string>} */
-  const mark = { good: "GOOD", bad: "BAD", unclear: "UNCLEAR" };
-  const lines = ["Starter evaluation — human verdicts", ""];
-  /** @type {Map<string, Array<{id:string, e:any, v:any}>>} */
-  const byAgent = new Map();
-  for (const [id, v] of rows) {
-    const e = byId.get(id);
-    const agent = e?.agent || "(unknown)";
-    if (!byAgent.has(agent)) byAgent.set(agent, []);
-    (byAgent.get(agent) || []).push({ id, e, v });
-  }
-  for (const [agent, items] of [...byAgent.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0])))) {
-    lines.push(`## ${agent}`);
-    for (const { id, e, v } of items.sort((a, b) => a.id.localeCompare(b.id))) {
-      // The #XP tag leads each line: it is the identity the chip put in front
-      // of the message, so a pasted report and a feedback entry name the
-      // starter the same way.
-      const tag = starterTag(e?.xp);
-      lines.push(`- [${mark[v.v] || v.v}] ${tag ? `${tag} ` : ""}${id} (${e?.band || "?"})`);
-      if (e?.text) lines.push(`      ${e.text}`);
-      if (v.note) lines.push(`      note: ${v.note}`);
-    }
-    lines.push("");
-  }
-  const counts = rows.reduce((/** @type {Record<string,number>} */ a, [, v]) => ({ ...a, [v.v]: (a[v.v] || 0) + 1 }), {});
-  lines.push(`Totals: ${Object.entries(counts).map(([k, n]) => `${n} ${k}`).join(", ")}`);
-  return lines.join("\n");
-}
-
-/**
  * Where the evaluation actually stands, per agent and per band — the answer to
- * "what have we still not covered". Machine ranks and human verdicts are kept
- * SEPARATE columns rather than blended: they measure different things, and a
- * disagreement between them is a finding, not noise to average away.
+ * "what have we still not covered", and (given a seen ledger) how far one
+ * reviewer has got through the pool.
+ *
+ * Machine ranks are the only judgement stored here. HUMAN judgement is not a
+ * column in this table at all: it arrives as feedback entries citing an #XP
+ * tag, and it is read from the feedback queue (`scripts/feedback`), where the
+ * reviewer's own words survive. Blending the two into one number would lose
+ * the disagreements, which are the findings.
  *
  * @param {any} reg
- * @param {{candidates?:Array<any>, verdicts?:Record<string,{v:string}>}} [opts]
- * @returns {Array<{agent:string,total:number,proven:number,weak:number,untried:number,candidates:number,rated:number,good:number,bad:number}>}
+ * @param {{candidates?:Array<any>, seen?:Record<string,number>|Set<string>}} [opts]
+ * @returns {Array<{agent:string,total:number,proven:number,weak:number,untried:number,candidates:number,seen:number}>}
  */
 export function coverageReport(reg, opts = {}) {
   const pool = evalPool(reg, { candidates: opts.candidates });
-  const verdicts = opts.verdicts || {};
+  const timesSeen = seenLookup(opts.seen);
   const agents = [...new Set(pool.map((e) => e.agent))];
   return agents.map((agent) => {
     const mine = pool.filter((e) => e.agent === agent);
-    const rated = mine.filter((e) => verdicts[e.id]);
     return {
       agent,
       total: mine.filter((e) => e.band !== "candidate").length,
@@ -1065,9 +1092,7 @@ export function coverageReport(reg, opts = {}) {
       weak: mine.filter((e) => e.band === "weak").length,
       untried: mine.filter((e) => e.band === "untried").length,
       candidates: mine.filter((e) => e.band === "candidate").length,
-      rated: rated.length,
-      good: rated.filter((e) => verdicts[e.id].v === "good").length,
-      bad: rated.filter((e) => verdicts[e.id].v === "bad").length,
+      seen: mine.filter((e) => timesSeen(e.id) > 0).length,
     };
   });
 }

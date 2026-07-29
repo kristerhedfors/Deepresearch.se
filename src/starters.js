@@ -51,8 +51,7 @@ export {
   bandOf,
   evalPool,
   selectEvalBatch,
-  recordVerdict,
-  verdictReport,
+  recordStartersSeen,
   coverageReport,
 } from "../public/js/starters-core.js";
 

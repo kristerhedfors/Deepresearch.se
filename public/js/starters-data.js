@@ -683,6 +683,78 @@ export const CANDIDATES = [
   { id: "cand-agb-sv-verktyg", xp: 195, agent: "agent-builder", aspect: "sv-agent", lang: "sv",
     text: "Bygg och publicera en enkel svensk stavnings- och grammatikhjälp där jag klistrar in text och får rättelser med förklaring.",
     note: "Swedish build request end to end. Agent Studio's Swedish path has never been evaluated." },
+
+  // --- the 2026-07-29 wave ---------------------------------------------------
+  //
+  // Evaluation mode now serves NEW questions every render (owner directive), so
+  // the pool has to keep gaining material or the reviewer walks the same 175 to
+  // the end and stops. This wave is aimed, not decorative:
+  //
+  //   · The three aspects still declared with no starter anywhere —
+  //     models/pick-a-model, models/fine-tune, orchestrator/sv-multi. An unused
+  //     aspect is a way in nobody has tried; filling it here means a bad idea
+  //     gets reviewed before it can reach a visitor's strip.
+  //   · `secure` again gets the largest share, for the same reason as the first
+  //     wave: no server endpoint can drive that tier, so a human reviewer is
+  //     the only instrument that reaches it and every one of its questions is
+  //     worth more than a machine-scored one elsewhere.
+  //   · Shapes the queues under-serve: a starter that asks the agent to say it
+  //     CANNOT do something, and openers written as a task rather than a
+  //     question (the two failure modes the editorial rule names).
+
+  // --- models: the two aspects nothing has ever filled ----------------------
+  { id: "cand-mod-pick", xp: 196, agent: "models", aspect: "pick-a-model", lang: "en",
+    text: "I write Swedish legal summaries and I care about accuracy far more than speed. Pick one model from the catalogue for me and defend the choice.",
+    note: "pick-a-model is declared but empty — the most obvious thing a newcomer wants from a Models agent. Does it commit to ONE, or hedge into a table?" },
+  { id: "cand-mod-finetune", xp: 197, agent: "models", aspect: "fine-tune", lang: "en",
+    text: "I have about 2,000 support tickets with good answers. Is fine-tuning a small open model actually worth it here, or should I use retrieval instead?",
+    note: "fine-tune is declared but empty. Tests whether the agent will argue AGAINST the thing the question proposes when retrieval is the better answer." },
+  { id: "cand-mod-sv-liten", xp: 198, agent: "models", aspect: "small-models", lang: "sv",
+    text: "Vilken liten öppen modell klarar svenska bäst om den ska köras på en vanlig laptop, och hur mycket sämre blir den än en stor molnmodell?",
+    note: "Swedish + small-model routing, and it demands a magnitude for the trade-off rather than a verdict. The models queue has one small-models starter and it is English." },
+
+  // --- orchestrator: the last unfilled aspect in the registry ---------------
+  { id: "cand-orc-sv-multi", xp: 199, agent: "orchestrator", aspect: "sv-multi", lang: "sv",
+    text: "Vi ska anställa en utvecklare i Sverige. Sätt en agent på lön och marknad, en på anställningsformer och regler, och en på var kandidaterna faktiskt finns.",
+    note: "sv-multi is the registry's last declared-but-empty aspect. Swedish AND an explicit team assignment — does the plan phase decompose in Swedish as cleanly?" },
+
+  // --- secure: the tier only a human can evaluate ---------------------------
+  { id: "cand-sec-cannot", xp: 200, agent: "secure", aspect: "explainer", lang: "en",
+    text: "Tell me three things this browser-only version genuinely cannot do that the signed-in one can, and why the limit exists.",
+    note: "An opener that asks the agent to state its OWN limits. The queue is full of questions it can answer well; this one is only good if the answer is honest." },
+  { id: "cand-sec-workspace", xp: 201, agent: "secure", aspect: "workspace-share", lang: "en",
+    text: "I want to send a colleague a working copy of this assistant with my prompts but not my API key. Walk me through exactly what they receive.",
+    note: "Workspace distribution is the centrepiece concept and the queue asks about it once. 'Exactly what they receive' is the part a vague answer will skip." },
+  { id: "cand-sec-sv-offline", xp: 202, agent: "secure", aspect: "offline", lang: "sv",
+    text: "Jag sitter på ett flygplan utan internet. Vad av det här fungerar fortfarande, och vad slutar fungera direkt?",
+    note: "Swedish + a concrete situation instead of an abstract privacy question. Tests whether the offline story survives being asked about plainly." },
+  { id: "cand-sec-attach", xp: 203, agent: "secure", aspect: "attachments", lang: "en",
+    text: "If I attach a PDF of a signed contract here, trace where that file goes, byte by byte, until it reaches the model.",
+    note: "The attachment path is where a privacy claim is easiest to get subtly wrong. 'Byte by byte' leaves no room for a reassuring summary." },
+
+  // --- research: shapes the queue under-serves ------------------------------
+  { id: "cand-res-cannot", xp: 204, agent: "research", aspect: "unanswerable", lang: "en",
+    text: "What will the Riksbank's policy rate be in December next year? Tell me straight if that is not knowable, and what the best available proxy is.",
+    note: "The queue has one unanswerable starter. This one baits a confident forecast and rewards refusing it — the opposite of what most starters reward." },
+  { id: "cand-res-sv-jamfor", xp: 205, agent: "research", aspect: "consumer-sv", lang: "sv",
+    text: "Jag ska välja mellan att hyra och köpa en lägenhet i Göteborg de närmaste fem åren. Räkna på det med aktuella siffror och säg vad som lönar sig.",
+    note: "Swedish consumer decision that needs live numbers AND arithmetic on them. The research queue's Swedish entries mostly ask for facts, not a calculation." },
+
+  // --- introspection: ask it to be specific about its own weak spots --------
+  { id: "cand-int-sv-arkitektur", xp: 206, agent: "introspection", aspect: "sv-arch", lang: "sv",
+    text: "Förklara på svenska hur en fråga färdas genom systemet, från att jag trycker skicka till att svaret börjar strömma tillbaka.",
+    note: "The end-to-end walkthrough in Swedish. int-pipeline scores well in English; nothing has checked whether the source excerpts survive the translation." },
+  { id: "cand-int-regress", xp: 207, agent: "introspection", aspect: "testing", lang: "en",
+    text: "Show me a part of this codebase where the tests would not catch a real bug, and say what test is missing.",
+    note: "Introspection describing its own test coverage critically. A generic answer about testing means the retrieval did not actually read anything." },
+
+  // --- agent-builder: the two ends of 'too vague to build' ------------------
+  { id: "cand-agb-vague", xp: 208, agent: "agent-builder", aspect: "single-purpose", lang: "en",
+    text: "Make me something that helps me stop losing track of small promises I make to people during the day. You choose the form and publish it.",
+    note: "Deliberately under-specified but with a real problem in it. Does Agent Studio ship SOMETHING, or hand the vagueness back as questions (chat_logs #584)?" },
+  { id: "cand-agb-remix", xp: 209, agent: "agent-builder", aspect: "distill-secure", lang: "en",
+    text: "Take the browser-only version of this site and turn it into a private reading assistant for research papers, then publish it and give me the link.",
+    note: "The distil-Se/cure-into-a-flavour path, which is the mode's stated core purpose, asked as one instruction. The queue asks for it more abstractly." },
 ];
 
 export default STARTERS;
