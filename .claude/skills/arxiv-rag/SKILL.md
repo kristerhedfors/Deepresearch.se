@@ -51,6 +51,9 @@ the live API.
 | `scripts/arxiv-berget.mjs` | the Berget-only surfaces (rerank, JSON chat) |
 | `scripts/arxiv-index.mjs` | the binary index pack, resumable |
 | `scripts/arxiv-search.mjs` | the four retrieval pipelines, plus `--deep` (the full-text stage) |
+| `scripts/arxiv-hosted.mjs` | the Vectorize REST client + a faithful replay of the SERVED path (`src/arxiv-rag.js`) |
+| `scripts/arxiv-hosted-eval.mjs` | `sample` / `coverage` / `run` / `compare` / `judge` — the hosted index's own bake-off |
+| `scripts/arxiv-crosscheck.mjs` | per-month diff of a harvest against a GCS enumeration |
 | `scripts/arxiv-fulltext.mjs` | tier 2: LaTeX → section chunks → one blob per paper, warmed on demand |
 | `scripts/arxiv-fulltext-eval.mjs` | the two-stage-vs-flat measurement behind §9.8 |
 | `scripts/arxiv-goldset.mjs`, `arxiv-topical-queries.json`, `arxiv-eval.mjs`, `arxiv-report.mjs` | the measured bake-off |
@@ -59,6 +62,37 @@ Built data lives under gitignored `data/`. Never commit it — the vectors alone
 are 335 MB.
 
 ## arXiv feed facts you should not re-derive
+
+**`--until` reproduces a past run; it does NOT slice history (2026-07-29).**
+This is the single most expensive trap in the harvester. `planWindow` ties the
+id-month keep-filter to the datestamp fetch window, which is correct only when
+`until` is today: a paper submitted inside the window then necessarily has its
+datestamp inside it too. Carving a historical band breaks that. OAI filters on
+the **datestamp**, so a paper submitted 2025-06 and revised in 2026 is
+in-window by id and is never REQUESTED.
+
+Harvesting 2310–2506 as `--months 21 --until 2025-07-01` came back **73.5%
+complete**, and the loss was graded — 2506 at 59.1%, 2411 at 79.9%, 2402 at
+92.1% — because the band's most recent months have had the least time to stop
+being revised. Nothing errored. Confirmed rather than inferred: all 14,254
+harvested 2506-id papers had `updated <= 2025-07-01`, none past it, a hard cut
+at the window edge.
+
+The repair is a SECOND PASS over the datestamps after the band, keeping only
+the band's id-months — which is what `--keep-months` exists for:
+
+```bash
+node scripts/arxiv-harvest.mjs --months 21 --until 2025-07-01 --out data/arxiv-new   # the band
+node scripts/arxiv-harvest.mjs --months 13 --keep-months 2310-2506 --out data/arxiv-rev  # its later revisions
+```
+
+**Cross-check every harvest, per month, with `scripts/arxiv-crosscheck.mjs`.**
+It diffs harvested ids against a GCS enumeration by month and warns under 95%.
+Run it against real data before trusting it — the first run reported 0% on
+every month because `arxiv-gcs.mjs --out` writes ids WITH the version suffix
+(`2507.23787v2`) while harvested records use the bare id. Both sides normalise
+now, but the lesson generalises: a verification tool that has never been run on
+real data is not yet a verification tool.
 
 **Enumerate from the GCS mirror, not from OAI-PMH (2026-07-26).** `gs://arxiv-dataset/`
 — the bucket behind the Kaggle `Cornell-University/arxiv` dataset — is **publicly
@@ -361,3 +395,82 @@ Two things to carry over when you do:
   demoted the best papers and the softer bucketed variant was a no-op**) was
   measured on keyword retrieval. Re-measure before importing that conclusion
   into a reranked pipeline; do not assume it transfers.
+
+## Measuring the HOSTED index (not the local pack)
+
+`scripts/arxiv-eval.mjs` measures the binary pack. **That is a different
+pipeline from the one users hit**, and quoting its numbers for production is
+how §10.7 ended up flagged as unverified for two days. Use
+`scripts/arxiv-hosted-eval.mjs`, which replays `src/arxiv-rag.js` over the
+Vectorize REST API.
+
+```bash
+node scripts/arxiv-hosted-eval.mjs sample   --months 2507-2607 --n 600 --out data/eval/carryover.jsonl
+node scripts/arxiv-goldset.mjs --corpus-file data/eval/carryover.jsonl --queries 150 --out data/eval/gold.json
+node scripts/arxiv-hosted-eval.mjs run      --gold data/eval/gold.json --label before --pool 20
+node scripts/arxiv-hosted-eval.mjs coverage --months 2310-2506 --ids data/eval/gcs-2310-2506.txt
+node scripts/arxiv-hosted-eval.mjs compare  --runs data/eval/before.json,data/eval/after.json
+node scripts/arxiv-hosted-eval.mjs judge    --runs data/eval/before.json,data/eval/after.json
+```
+
+**Sample gold papers by ID from an independent enumeration, never by querying
+the index.** Querying selects papers that retrieve well and inflates every
+number you then report. `sample` takes ids from the GCS listing and hydrates
+them through `get_by_ids`, which also costs zero arXiv requests — usable while
+a harvest owns the whole rate budget.
+
+**Read `inPool` before anything else.** It is the share of gold papers dense
+retrieval put in front of the cross-encoder at all, and everything right of it
+is bounded by it. Measured at 337,768 vectors: EN inPool 82.0 / r@10 81.3 —
+i.e. the reranker was finding nearly everything it was shown, and the POOL was
+the entire constraint. That is the number that moves when a corpus grows.
+
+### Vectorize limits, measured 2026-07-29
+
+The old "topK caps at 20 with `returnMetadata: all`" is **no longer true**, and
+`src/arxiv-rag.js` had been reranking a fifth of the available candidates
+because of it (`src/rag.js` still assumes 20 and deserves the same check):
+
+| request | result |
+|---|---|
+| `topK=50  returnMetadata=all` | 200, 50 matches |
+| `topK=100 returnMetadata=all` | 400 "max top K is 50 … retry with returnMetadata=indexed" |
+| `topK=100 returnMetadata=none` | 200, 100 matches |
+| `topK=200 returnMetadata=none` | 400 "max top K is 100" |
+| `get_by_ids` with 100 ids | 400 "40007 too many ids in payload; max id count is 20" |
+
+Raising the pool 20 → 50 bought **+4.0 points of EN recall@10 and +2.0 SV** for
+no extra round trip, and the cross-encoder leg did NOT get slower (median 763 →
+779 ms) because its cost is request overhead, not document count. Going past 50
+needs `returnMetadata: "none"` plus a hydrating `get_by_ids` pass at 20 ids per
+call — measured no better, so it is deliberately not done.
+
+**`vectorCount` is eventually consistent.** It lagged the upsert stream by ~6k
+vectors / ~2 min during a fill. Never use it to decide a build is complete —
+sample `get_by_ids` against an independent enumeration instead.
+
+**Parallelise a fill by partitioning shards, not by editing the script.** Four
+`arxiv-vectorize.mjs` processes over disjoint shard directories, each with its
+own `--work` checkpoint, took the fill from ~23/s to ~95/s. Seed each group's
+`pushed.txt` from any earlier run so nothing is embedded twice. Per batch the
+time splits roughly embed 5.7 s / `npx wrangler` spawn 2 s / upload 9 s, so the
+upload is the bottleneck and it is byte-bound — do NOT "optimise" it by
+rounding the floats, which would make new vectors differ from old ones and
+confound any before/after measurement.
+
+## The failure mode this subsystem actually has
+
+Not crashes — **work that reports success while doing nothing, or less than
+asked.** Every incident recorded here is this shape:
+
+- a harvest missing 48.1% of a month, exiting 0 (§10.2);
+- a harvest missing 26.5% of a band, exiting 0 (`--until`, above);
+- `--pause` parsed, validated, and never passed to `harvestShard`;
+- `--corpus` pointed at the harvest root printing `done — 0 vectors`;
+- a rerank failing soft and SILENTLY, so a whole bake-off reported numbers for
+  a pipeline that never ran (§5);
+- a cross-check comparing two incompatible id spellings and reporting 0%.
+
+So: make every "nothing to do" path loud, cross-validate against an
+independent source rather than the run's own counters, and run a new
+verification tool against known-good data before believing its verdict.
