@@ -144,13 +144,16 @@ datacenter IP, DuckDuckGo's no-JS endpoint answers **HTTP 202 with an empty
 anti-bot shell**: verified from a session container against `html.` and
 `lite.`, GET and POST, bot UA and browser UA — every combination, zero
 results. The agent works because it runs on a person's own machine. So the
-backend tries an ORDERED LIST of sources until one answers
-(`SERP_PROVIDERS` + `search.cf_serp`):
+backend tries an ORDERED LIST of sources, MERGING their results until the
+caller's limit is met (`SERP_PROVIDERS` + `search.cf_serp`). It stopped at the
+first source that returned *anything* until 2026-07-29; two results from one
+small index is a worse foundation for research than two plus the next source's,
+and the extra request is only paid when the first source came up short.
 
 | id | source | measured from a datacenter IP | default |
 |---|---|---|---|
 | `ddg` | DuckDuckGo no-JS HTML | 202 anti-bot shell, 0 results | on (works where egress is accepted) |
-| `marginalia` | Marginalia, an independent index | 200, clean card markup, real results | on |
+| `marginalia` | Marginalia, an independent index | 200 card markup with real results — **or a 200 throttle interstitial**, see below | on |
 | `bing_rss` | Bing's `&format=rss` output | 200, well-formed feed, good results | **off — see below** |
 
 Also probed and rejected: Mojeek (403), Qwant's API (403), Startpage (an
@@ -165,10 +168,79 @@ may use them is the operator's call, and the admin panel quotes the restriction
 next to the checkbox. Do not quietly promote it to a default.
 
 Adding a source is one entry in `SERP_PROVIDERS` (`{id, label, url, parse}`,
-optional `fallbackParse`/`retryEmpty`/`restricted`) plus a pure parser test.
+optional `fallbackParse`/`retryEmpty`/`restricted`/`throttle`+`origin`) plus a
+pure parser test.
 
-It is otherwise the same technique as the local browsing agent's `browse`
-engine (Recipe 0). Compare honestly when recommending one:
+### A RATE LIMIT DOES NOT ALWAYS ARRIVE AS A STATUS CODE (2026-07-29)
+
+The cause of the reported "web search quality issues" on this backend, and the
+first thing to check when a new source looks like an empty index. Marginalia
+answers a request it is throttling with **HTTP 200** and a 1 KB page:
+
+> **Wait For A Moment** — The search engine is currently barraged by queries
+> from bots. Please wait for `N` seconds…
+
+`resp.ok` was true, the card parse found nothing, and the cascade concluded
+"empty" and gave up. Sampled from a session container that was **7 responses in
+10** for an ordinary query, and **6 in 6** under the concurrency a search WAVE
+actually creates — so with `ddg` already dead from a datacenter IP, most queries
+in a wave returned no sources at all while looking like a legitimately empty
+index. Following the `sst` retry link the interstitial itself hands out took the
+same battery from **3/10 to 9/10**.
+
+So: `throttle` (a pure parser returning `{path, waitMs}`) + `origin` on the
+provider, `THROTTLE_RETRIES` follows, the countdown clamped by
+`THROTTLE_MAX_WAIT_MS` (it is advisory and routinely NEGATIVE, meaning "go
+now"). When you add a source, **treat a 200 carrying no results as a possible
+throttle before believing the index is empty** — check the body, not the status.
+
+Two more things measured in the same pass, both about not fabricating results:
+
+- **`marginalia` deliberately has NO `fallbackParse`.** The class-free anchor
+  scan is insurance against DuckDuckGo's shifting table markup; on Marginalia it
+  only ever ran on a page that HAD no results, and then returned the engine's own
+  About/GitHub/footer links as research sources (reproduced on a Swedish query
+  the index cannot answer). No results is the honest answer — the cascade moves
+  on and `exa.js` falls back to Exa. `MARGINALIA_HOSTS` covers both
+  `marginalia.nu` and `marginalia-search.com` for the same reason.
+- **DuckDuckGo's 202 is TERMINAL.** Every measured retry returned the same
+  shell, so the empty-body retry (the 800 ms beat plus a second round trip, paid
+  on every query in every wave) is now spent only on a plain 200.
+
+### AN EXCERPT IS NOT A PREFIX (2026-07-29)
+
+The other half of the quality gap, and the one that applied to *every* result of
+*every* query. `fetchExcerpt` used to hand synthesis `pageText(html).slice(0,
+1200)` — the first 1200 characters of the page, which on a real article is the
+part before the article. Measured verbatim: Wikipedia's *Intermittent fasting*
+excerpt was its language sidebar ("Toggle the table of contents … 30 languages
+العربية Asturianu …"), and WebMD's opened with 230 characters of category menu.
+
+Exa returns highlights SELECTED for the query, so this backend now does too:
+
+- `pageText` strips the page furniture (`nav`/`header`/`footer`/`aside`/`form`),
+  citation markers (`[12]`, `[edit]`), and `link`/`meta` tags — the last because
+  a `media="(min-width >= 40rem)"` attribute defeats a naive `<[^>]*>` strip and
+  leaks `= 40rem)" rel="stylesheet"` into the excerpt as if it were prose. It
+  keeps the unstripped text if stripping would leave nothing.
+- `queryTerms` drops English **and Swedish** stopwords (invariant 6 — a Swedish
+  query must not reduce to nothing and silently fall back to the page head).
+- `relevantExcerpt` scores sentences by distinct-term coverage and joins the
+  winning passages with Exa's own `" … "`, degrading to the head when nothing
+  matches.
+- `isChallengePage` refuses a bot-check body served as a normal 200 — citing
+  "Just a moment…" as a source is worse than having no excerpt.
+- `rankItems`/`scoreItem` order results by query relevance (title and URL
+  matches count double) behind a **relevance floor** that drops zero-match
+  results — but only while at least two matching ones remain, because no sources
+  is worse than weak ones. `SERP_OVERFETCH` asks each source for more than the
+  caller wants so the floor has something to discard.
+
+**Measured on 8 fixed real pages, same cached HTML both ways:** mean query-term
+coverage in the excerpt **52% → 91%**.
+
+The backend is otherwise the same technique as the local browsing agent's
+`browse` engine (Recipe 0). Compare honestly when recommending one:
 
 | | `cloudflare` | local agent (Recipe 0) |
 |---|---|---|
@@ -193,6 +265,16 @@ answer is a real backend (Recipe 1/2), not another retry.
 class-free anchor scan is carrying it — results without snippets, so fix the
 parser before it degrades further.
 
+`search.cf_serp_throttled {provider, attempt}` is a source rate-limiting us and
+the retry being followed; paired with `search.cf_serp_throttle_recovered` that
+is the machinery working, and a few per wave is normal. `search.cf_serp_throttled
+{gave_up:true}` means the follows were exhausted — a burst of those is the
+signal that this deployment is asking one small index for more than it will
+give, and the answer is another source in `cf_serp` or a real backend
+(Recipe 1/2). `search.cf_serp {provider}` is a comma-separated list once more
+than one source contributes, and its `dropped` count is what the relevance floor
+discarded.
+
 **Verify it without switching the site over:** `/admin` → Web search service →
 *Test search* → **Against: Cloudflare-originating**. That runs one real search
 through this backend whatever the site is configured to use.
@@ -205,6 +287,16 @@ verified separately as a parse + fetch. NOT verified: behaviour from
 Cloudflare's own egress IPs, which differ from this container's — expect the
 cascade to matter there too, and check `search.cf_serp` after the first
 deploy.
+
+**Re-verified 2026-07-29** against the live sources after the quality fixes: a
+12-query concurrent wave returned sources for 11, with 3 throttle interstitials
+detected where the old code would have recorded 3 silent empties; excerpt
+coverage 52% → 91% on 8 fixed pages. **Read the throttle rate as a moving
+target** — it is bursty and load-dependent, so a single wave proves little in
+either direction (one paired 30-query run scored 83% both before and after
+simply because Marginalia was not throttling at the time). Measure the
+MECHANISM — the `search.cf_serp_throttled` / `_throttle_recovered` counters —
+not the end-to-end rate, when you want a number that reproduces.
 
 ---
 
