@@ -61,3 +61,16 @@ jobs:
       # public/ with DOM lib), strict, opt-in per file via // @ts-check.
       - name: Type-check
         run: npm run typecheck
+
+      # The coverage RATCHET (scripts/coverage.mjs). Re-runs the suite under
+      # node's built-in coverage and fails if the measured numbers fall below
+      # docs/coverage-baseline.json — so the untested surface can shrink but
+      # not quietly grow back. It also fails, with no tolerance, when a module
+      # that WAS reached by some test stops being reached at all.
+      #
+      # Deliberately a separate step after the plain run: a coverage-
+      # instrumented suite is slower and its failures read differently, and a
+      # red ratchet on a green suite should say "coverage regressed", not
+      # "tests failed". Raise the floor with `npm run coverage -- --save`.
+      - name: Coverage ratchet
+        run: npm run coverage:check

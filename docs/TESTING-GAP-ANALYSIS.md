@@ -327,16 +327,32 @@ Ordered by (signal gained) ÷ (effort), not by section.
    `../public/js/*` imports rather than listing them, so a new façade is
    covered the day it lands. 17 pairs pinned. What it caught is in the note
    below.
-5. **Shared test helpers** — `d1.js`, `fetch.js`, `env.js` — and migrate the
-   twelve fakes onto them (C1, C2). *Days: 1–2, and it unblocks 6 and 7.*
-6. **A `runPipeline` harness** on the DRC-research pattern: mock provider,
-   mock search, in-memory env, assert phase order, the fail-soft ladder, and
-   budget exhaustion (B1). The single biggest coverage win in the repo.
-   *Days: 2–3.*
-7. **A request-layer suite** over `index.js` and `chat.js`: route matrix, auth
-   gates, and the incognito suppression promise (B2). *Days: 1–2.*
-8. **Turn on `--experimental-test-coverage`** and record a baseline (C3).
-   *Hours: 1.*
+5. ~~**Shared test helpers**~~ **Done 2026-07-29** — `src/test-helpers/`
+   provides `d1.js`, `fetch.js` and `env.js`, tested by
+   `src/test-helpers.test.js`. The capability none of the twelve hand-rolled
+   fakes had is RECORDING: the D1 fake captures every statement with its
+   bindings, which is what lets a test assert a *negative* — that some
+   statement never ran. Migrating the existing twelve onto it is mechanical
+   follow-up, deliberately not done in the same pass. Closes C1/C2's
+   structural half.
+6. **A `runPipeline` harness** — *partially done 2026-07-29.* The harness now
+   exists (`src/chat-handler.test.js` drives the whole pipeline through
+   `handleChat` against a fake provider), taking `pipeline.js` from 44.64% to
+   65.30%. What it does NOT yet cover is the multi-round path: search → gap
+   check → second round → validation, and budget exhaustion. That is now
+   writing cases against an existing harness rather than building one.
+7. ~~**A request-layer suite** over `index.js` and `chat.js`~~
+   **Done 2026-07-29** — `src/chat-handler.test.js` + `src/index.test.js`.
+   `chat.js` 26.05% → 90.12%, `index.js` never-loaded → 73.83%. **The
+   incognito suppression promise now has a test** — see the note below.
+8. ~~**Turn on `--experimental-test-coverage`** and record a baseline~~
+   **Done 2026-07-29** — `scripts/coverage.mjs`, `npm run coverage`, floor
+   committed at `docs/coverage-baseline.json`, ratchet (`coverage:check`)
+   wired into CI. Section B's import-graph inference is now a measured
+   number, and the measurement counts never-loaded modules as zero rather
+   than omitting them (Node's own "all files" line read 81.50% on a tree with
+   18 146 lines in modules no test had ever loaded). Full analysis:
+   `docs/TESTING-CAPABILITIES.md`.
 9. **Invariant census tests** — Swedish-parity discovery, no-function-calling
    allowlist, CODE-LAYOUT mirror (B6), modeled on
    `sql-injection-guard.test.js`. *Days: 1–2.*
@@ -346,8 +362,36 @@ Ordered by (signal gained) ÷ (effort), not by section.
     (A6). Largest payoff of the lot; also the largest build.
     *Days: 3–5.*
 
-Item 8 is still an hour's work and worth doing next; it would replace this
-document's import-graph inference with a measured number.
+Items 1–5, 7 and 8 are done. The remaining ranking, and the
+capability-by-capability view of what can be automated at all, is
+`docs/TESTING-CAPABILITIES.md` §6.
+
+### What items 5–8 turned up (2026-07-29)
+
+- **Every `src/` module is now loaded by at least one test.** All 32
+  remaining never-loaded modules are in `public/js/`, and they are DOM glue.
+  That is a clean line: the whole server surface is automatable with no human
+  input and no credential, and the untested remainder sits precisely at the
+  browser boundary — which is a Playwright job (item 10), not a unit-test one.
+  Adding `index.test.js` alone moved eight `src/` modules out of the
+  never-loaded set, because loading the entrypoint loads what it routes to.
+- **The B2 finding was right about the seam and lucky about the behaviour.**
+  The incognito promise had no test; it also turned out to be correctly
+  implemented. The tests pin it in both directions plus its exact boundary
+  (usage accounting is NOT suppressed — it is a promise about the interaction
+  log, not about becoming invisible) and that it keys on the boolean `true`
+  rather than on truthiness.
+- **A fail-soft edge worth an owner decision, recorded rather than changed.**
+  `getDb` (`src/db.js`) applies the schema with an uncaught
+  `await db.batch(statements)`, so a database that ERRORS — as opposed to one
+  that is absent, which is handled and documented — propagates out of the
+  handler and becomes a 500. That is fail-closed, and for a binding gating
+  auth and quotas that may well be the right direction: degrading to "no
+  database" means degrading to "no quota enforcement", and callers treat a
+  null `db` as "no restriction". The test documents the behaviour with a
+  comment saying why, rather than asserting an aspiration. Class C drift under
+  the docs-drift-validation skill: it needs an owner checkmark, not a
+  session's opinion.
 
 ### What items 1–4 turned up (2026-07-25)
 

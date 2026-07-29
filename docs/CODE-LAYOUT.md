@@ -1088,3 +1088,17 @@ over mid-flight instead of dying on an empty wallet. `EMBED_PROVIDER` selects
 `auto` (default), `berget`, `hf` or `both`; the work-stealing pool carries a
 straggler guard so a much slower second backend can never lengthen a run.
 See `docs/ARXIV-RAG.md`.
+
+Test helpers (`src/test-helpers/`) — not product code, and therefore not rows
+in the table above, but part of the `src/` tree and worth finding. Three
+modules the unit suite builds on: `d1.js` (one D1 fake, replacing fifteen
+hand-rolled ones of fifteen different fidelities — it does not parse SQL, it
+matches on it, RECORDS every statement with its bindings so a test can assert
+that some statement never ran, and can be told to fail on a pattern),
+`fetch.js` (an outbound-request recorder, so "no outbound request carried the
+user's identity" is one assertion rather than an ad-hoc check per suite), and
+`env.js` (the `env`/`log`/`identity`/`ctx`/`assets`/`R2` factories that make
+every `(request, env, log, identity)` handler in `src/` reachable from a unit
+test without a browser, a credential, or the network). Tested by
+`src/test-helpers.test.js`; excluded from the coverage measurement in
+`scripts/coverage.mjs`. See `docs/TESTING-CAPABILITIES.md`.

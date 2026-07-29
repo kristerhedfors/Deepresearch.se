@@ -12,6 +12,12 @@ surface reviewed as a system — what is automated, what is covered, and
 the ordered list of what is missing. This file says what exists; that
 one says what does not.
 
+A second companion, `docs/TESTING-CAPABILITIES.md` (2026-07-29), adds the
+axis neither had: capability × how automatable it is, MEASURED rather than
+inferred (`npm run coverage`), with the five testability tiers, a
+capability-by-capability classification, and the coverage ratchet that keeps
+the untested surface from growing back.
+
 ## Unit tests (`src/*.test.js`, `public/js/*.test.js`, `public/games/*/js/*.test.js`)
 
 Node's built-in test runner (`node:test` + `node:assert/strict` — no
@@ -496,6 +502,30 @@ These run in Node unmodified since `File`, `Blob`,
 `DecompressionStream`, and `TextDecoder` are all standard Node globals
 — no DOM needed for this subset of client code.
 
+**The request layer** (added 2026-07-29, on the shared helpers in
+`src/test-helpers/` — see `docs/CODE-LAYOUT.md`). Three suites that call the
+Worker's own entry points rather than their extracted pieces:
+
+- `test-helpers.test.js` — the fakes themselves. A fake that silently
+  misbehaves turns other suites green for the wrong reason, so they get the
+  same treatment as production code.
+- `chat-handler.test.js` — `handleChat` end to end against a fake Berget
+  (a `/models` catalog plus a `/chat/completions` that answers JSON-mode
+  planning calls with an object and streamed calls with an SSE body). Pins the
+  invariants the request path *promises*: the **incognito** chat-log
+  suppression in both directions and its exact boundary (invariant 4), that no
+  outbound request carries the user's identity and no log line carries the
+  provider secret (invariant 4), that the JSON planning phases stay on
+  `DEFAULT_MODEL` while synthesis follows the user's pick (invariant 3), the
+  fail-soft ladder (invariant 2), and the SSE frame contract. Took
+  `src/chat.js` from 26% to 90% line coverage.
+- `index.test.js` — the `fetch` handler: the identity gate is fail-closed
+  across a representative slice of `/api/*` (an unknown path answers 401, not
+  404, so the route table cannot be enumerated unauthenticated), the security
+  headers and request id are on every response, and a crash becomes a clean
+  500 that leaks no stack, message, or secret. Written as properties of the
+  ENVELOPE rather than a route-by-route table, which would rot at route 94.
+
 ```bash
 npm test            # from the repo root: node --test src/*.test.js public/js/*.test.js
                     #                     public/games/*/js/*.test.js
@@ -528,6 +558,17 @@ The `npm ci` step matters beyond CI: the root devDependencies
 (`typescript`, `@cloudflare/workers-types`) are never installed automatically,
 so `npm run typecheck` in a fresh clone fails with a confusing `TS2688` until
 someone runs an install.
+
+A third step runs the **coverage ratchet** (`npm run coverage:check`,
+`scripts/coverage.mjs`): the suite again under `node --test
+--experimental-test-coverage`, compared against the committed floor
+`docs/coverage-baseline.json`. It fails when line/branch/function coverage
+falls more than 0.5% below the baseline, and fails with NO tolerance when a
+module that was reached by some test stops being reached at all. It is a
+separate step from `npm test` on purpose: a red ratchet on a green suite
+should read "coverage regressed", not "tests failed". Raise the floor in the
+same commit as a real gain with `npm run coverage -- --save`; find the
+cheapest next climb with `npm run coverage -- --list`.
 
 ## End-to-end tests (`tests/`)
 
