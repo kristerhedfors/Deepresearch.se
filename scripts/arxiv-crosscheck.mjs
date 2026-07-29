@@ -81,7 +81,10 @@ export function diffByMonth(harvested, expected) {
 
 async function main() {
   const argv = process.argv.slice(2);
-  const rawDir = join(ROOT, arg(argv, "--raw", "data/arxiv-new/raw"));
+  // Comma-separated, because a correctly harvested band is TWO passes: the
+  // band's own datestamps plus the later revisions of the same id-months
+  // (see --keep-months). Checking either alone under-reports.
+  const rawDirs = String(arg(argv, "--raw", "data/arxiv-new/raw")).split(",").map((d) => join(ROOT, d.trim()));
   const idsFile = join(ROOT, arg(argv, "--ids", ""));
   if (!arg(argv, "--ids", "")) throw new Error("--ids <enumeration file> required");
 
@@ -97,9 +100,12 @@ async function main() {
 
   /** @type {Map<string, Set<string>>} */
   const harvested = new Map();
-  const files = (await readdir(rawDir)).filter((f) => f.endsWith(".jsonl"));
+  const files = [];
+  for (const dir of rawDirs) {
+    for (const f of (await readdir(dir)).filter((x) => x.endsWith(".jsonl"))) files.push(join(dir, f));
+  }
   for (const f of files) {
-    const rl = createInterface({ input: createReadStream(join(rawDir, f)), crlfDelay: Infinity });
+    const rl = createInterface({ input: createReadStream(f), crlfDelay: Infinity });
     for await (const line of rl) {
       if (!line.trim()) continue;
       let row;
