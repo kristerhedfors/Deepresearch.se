@@ -1033,10 +1033,73 @@ numbers.
 
 ### 10.7 What is still unverified
 
-- **The doc's 87% recall@1 does not describe the hosted path.** Vectorize caps
-  `topK` at 20 with `returnMetadata: "all"`, so the rerank pool is 20, not the
-  50 that figure was measured at. Re-run the eval against the hosted index
-  before quoting a number for it.
+- ~~**The doc's 87% recall@1 does not describe the hosted path.**~~ **Measured
+  on 2026-07-29 — see §11.** It does not, and the gap was bigger than the pool
+  difference alone: 78.7% recall@1 and 81.3% recall@10 in English through the
+  served path. The stated cause was also wrong. Vectorize no longer caps `topK`
+  at 20 with `returnMetadata: "all"`; the cap is 50, so the pool was needlessly
+  shallow rather than unavoidably so. `src/rag.js` still assumes 20 and is worth
+  the same check.
 - **The bench gate has not run** against a deployment carrying this source.
 - **~20 rows have no primary category** — the ones imported via the GCS+HTML
   path before the OAI harvest completed.
+
+---
+
+## 11. Widening the window to late 2023 — measured before and after
+
+The corpus was a rolling 13 months (submission months 2507–2607). This section
+records extending it back to **2310**, and the before/after evaluation that
+judged whether the extra material cost retrieval quality.
+
+Two questions had to be answered separately, because they have different
+answers:
+
+1. **Does a bigger corpus make the existing papers harder to find?** §4.3 says
+   it should — plain dense recall@1 fell 92.1 → 72.1 going from 20k to 327k
+   units. Measured with a needle set drawn from papers that are in **both**
+   indexes, so the only thing that changes is the number of distractors.
+2. **Is the new material actually retrievable?** A widened window that indexes
+   440k papers nobody can surface is not a widened window.
+
+### 11.1 Why late 2023, and not five years
+
+`arxiv.org/html/<id>` — arXiv's LaTeXML rendering — has only existed since late
+2023. It is what makes the full-text tier cheap and Worker-native (§9.9: 0.43 MB
+per paper, no gzip, no tar, no credentials), and papers older than it fall back
+to the 3.07 MB source tarball, which needs gzip+tar and cannot run inside a
+Worker. Stopping at 2310 keeps the whole corpus inside the tier that already
+works, rather than buying abstract coverage the depth tier cannot follow.
+
+Nothing else in the stack objected. `--months` already validated to 120,
+`planWindow` already shards by month and snaps to the 1st, Vectorize's 10M
+per-index limit is 13× away, and the embedding bill for the addition was ~€3.
+
+### 11.2 The instrument
+
+`scripts/arxiv-hosted-eval.mjs` — a harness for the **hosted** path, because
+`scripts/arxiv-eval.mjs` measures the local binary pack and the two are not the
+same pipeline. It replays `src/arxiv-rag.js` over the Vectorize REST API: the
+same `query: ` prefix, the same topK, the same cross-encoder over
+`title. abstract` cut to 900 chars, the same 0.01 floor applied only when the
+reranker actually scored.
+
+Three decisions in it are load-bearing:
+
+- **The needle papers are sampled uniformly from the GCS enumeration and then
+  hydrated through `get_by_ids`.** Sampling by *querying* the index would have
+  selected papers that retrieve well and inflated every number in this section.
+- **Topical grades are pooled across runs and graded once.** Grading each run
+  separately would give the same paper different labels depending on which
+  index returned it, and the delta would measure the judge.
+- **The served time budget is deliberately not enforced.** Under it a slow leg
+  silently drops the rerank, and an eval that did that would average two
+  pipelines together — the failure §5 warns about. Latency is measured instead.
+
+Two caveats bound what the numbers mean. The queries are written from the
+index's stored 900-char abstract copies rather than full abstracts, which
+slightly flatters the pipeline in absolute terms but is identical on both sides
+of the comparison. And the English needle queries carry 0.63 lexical overlap
+with their paper's abstract against 0.05 for Swedish (reproducing §4.3's 0.68 /
+0.07), so EN and SV absolute numbers are not comparable to each other — only
+each language to itself.
