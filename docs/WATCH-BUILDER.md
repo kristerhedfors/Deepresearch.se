@@ -51,9 +51,9 @@ And, decisively, what it does **not** carry:
   says it in as many words: *"a missing tool is a failed research pass, not a
   slow one."*
 
-So the honest finding is that **nothing in the sandbox can render a watch**, and
-nothing can be added to it at run time. That is not a gap to route around — it
-is the answer. Which leads to the second question.
+So **nothing in the sandbox can render a watch**, and nothing can be added to it
+at run time. Rather than a gap to route around, that settles the second
+question.
 
 ### 1.2 What actually produces the required outcome
 
@@ -64,7 +64,7 @@ rule out most of the plausible pipelines:
 | Approach | Verdict |
 |---|---|
 | Render server-side (Blender/POV-Ray) and serve a PNG | **No.** Not installed, not installable, and it gives one fixed angle. Rotation would mean a render round-trip per frame. |
-| Pre-render a turntable — N frames per configuration, scrub between them | **No.** The catalogue has 20 cases × 15 dials × 8 hand sets × 7 finishes × 7 inserts before the other four slots. Pre-rendering the product of that is not a large job, it is an impossible one. |
+| Pre-render a turntable — N frames per configuration, scrub between them | **No.** The catalogue has 20 cases × 15 dials × 8 hand sets × 7 finishes × 7 inserts before the other four slots, so the product runs to millions of configurations. |
 | Server-side headless GL (`gl` npm package, SwiftShader) | **No.** A native dependency and a build step, both of which invariant 5 forbids, and still a frame per interaction. |
 | Ship a 3D asset per part (glTF) and a viewer | **No.** Hundreds of authored assets to make and host, and every dimension in them would be divorced from the catalogue's millimetres — change a spec, and the model silently disagrees. |
 | **Generate the geometry in JavaScript from the catalogue and draw it with WebGL in the reader's browser** | **Yes.** |
@@ -78,13 +78,13 @@ thickness and lug width are the numbers the mesh is built out of, so the picture
 cannot drift from the data. And it is a natural fit for the repo's existing
 shape — `/space/` already renders interactive 3D from a Node-tested pure core.
 
-**So what is the sandbox toolchain good for on this feature?** Node — which the
-image does carry — is what runs `npm test`, and the test suite is where the
-geometry is actually verified: 81 checks over the catalogue's integrity, the
-compatibility rules and the mesh builders, none of which need a browser. `jq`
-against `GET /api/watch/catalog` is how an agent or a shell asks what a case
-measures without rendering anything. That is the useful answer to "which tooling
-is useful": the sandbox verifies and queries; the browser renders.
+The sandbox toolchain still earns its keep, on the half that needs no browser.
+Node — which the image does carry — runs `npm test`, and the test suite is where
+the geometry is actually verified: 81 checks over the catalogue's integrity, the
+compatibility rules and the mesh builders. `jq` against
+`GET /api/watch/catalog` is how an agent or a shell asks what a case measures
+without rendering anything. The sandbox verifies and queries; the browser
+renders.
 
 ### 1.3 Sources
 
@@ -177,8 +177,9 @@ steel), a Fresnel term, a circumferential brush streak for brushed and blasted
 finishes, and a separate glass path for the crystal that is nearly invisible
 face-on and bright at glancing angles, the way an AR-coated sapphire behaves.
 
-**The seconds hand ticks at six beats a second**, because the NH35 runs at
-21,600 A/h and a smooth sweep would be the wrong watch.
+One detail that is not geometry at all: the seconds hand ticks six times a
+second, because the NH35 runs at 21,600 A/h and a smooth sweep would be the
+wrong watch.
 
 ---
 
