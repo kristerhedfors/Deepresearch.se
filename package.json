@@ -6,6 +6,8 @@
   "scripts": {
     "test": "node --test src/*.test.js public/js/*.test.js public/games/*/js/*.test.js sdk/*.test.mjs scripts/*.test.mjs tests/*.test.js",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.public.json --noEmit",
+    "coverage": "node scripts/coverage.mjs",
+    "coverage:check": "node scripts/coverage.mjs --check",
     "bundle": "node scripts/bundle-source.mjs",
     "bundle:rag": "node scripts/bundle-source-rag.mjs",
     "bundle:docs": "node scripts/bundle-docs.mjs",

@@ -1,0 +1,1587 @@
+{
+  "generated_by": "npm run coverage -- --save",
+  "modules": 262,
+  "unloaded_modules": 33,
+  "total_lines": 108071,
+  "unloaded_lines": 15441,
+  "totals": {
+    "line": 71.93,
+    "branch": 71.71,
+    "func": 64.91,
+    "loaded_share": 85.71
+  },
+  "by_module": {
+    "src/aadr.js": {
+      "lines": 211,
+      "line": 98.1,
+      "branch": 78.43,
+      "func": 100
+    },
+    "src/accounts.js": {
+      "lines": 204,
+      "line": 69.95,
+      "branch": 40,
+      "func": 44.44
+    },
+    "src/admin-api.js": {
+      "lines": 471,
+      "line": 31.49,
+      "branch": 100,
+      "func": 0
+    },
+    "src/admin-boards.js": {
+      "lines": 198,
+      "line": 100,
+      "branch": 83.33,
+      "func": 100
+    },
+    "src/agent-link.js": {
+      "lines": 77,
+      "line": 100,
+      "branch": 95.45,
+      "func": 50
+    },
+    "src/agent-registry.js": {
+      "lines": 64,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "src/agent-spec.js": {
+      "lines": 70,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "src/ai-models.js": {
+      "lines": 20,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "src/alerts.js": {
+      "lines": 162,
+      "line": 88.2,
+      "branch": 86.67,
+      "func": 28.57
+    },
+    "src/answer-stream.js": {
+      "lines": 277,
+      "line": 77.17,
+      "branch": 56.76,
+      "func": 66.67
+    },
+    "src/answers.js": {
+      "lines": 184,
+      "line": 79.78,
+      "branch": 86.96,
+      "func": 57.14
+    },
+    "src/anthropic.js": {
+      "lines": 500,
+      "line": 86.37,
+      "branch": 77.55,
+      "func": 76.92
+    },
+    "src/arxiv-rag.js": {
+      "lines": 341,
+      "line": 100,
+      "branch": 81.18,
+      "func": 100
+    },
+    "src/arxiv.js": {
+      "lines": 839,
+      "line": 98.81,
+      "branch": 94.84,
+      "func": 94.12
+    },
+    "src/assets.js": {
+      "lines": 467,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "src/auth.js": {
+      "lines": 319,
+      "line": 89.94,
+      "branch": 85.94,
+      "func": 72.22
+    },
+    "src/bash-agent.js": {
+      "lines": 35,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "src/bash-api.js": {
+      "lines": 191,
+      "line": 33.16,
+      "branch": 100,
+      "func": 0
+    },
+    "src/berget.js": {
+      "lines": 561,
+      "line": 92.68,
+      "branch": 84.26,
+      "func": 78.79
+    },
+    "src/billing.js": {
+      "lines": 119,
+      "line": 100,
+      "branch": 95.24,
+      "func": 100
+    },
+    "src/board.js": {
+      "lines": 231,
+      "line": 100,
+      "branch": 95.89,
+      "func": 100
+    },
+    "src/budget.js": {
+      "lines": 469,
+      "line": 100,
+      "branch": 89.77,
+      "func": 100
+    },
+    "src/build-pub.js": {
+      "lines": 316,
+      "line": 98.73,
+      "branch": 81.82,
+      "func": 92.86
+    },
+    "src/canonical.js": {
+      "lines": 40,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "src/chat-modes.js": {
+      "lines": 26,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "src/chat.js": {
+      "lines": 1195,
+      "line": 90.12,
+      "branch": 50.83,
+      "func": 70.59
+    },
+    "src/chatlog.js": {
+      "lines": 453,
+      "line": 90.71,
+      "branch": 89.47,
+      "func": 93.33
+    },
+    "src/config.js": {
+      "lines": 473,
+      "line": 79.87,
+      "branch": 54.17,
+      "func": 57.14
+    },
+    "src/conversation.js": {
+      "lines": 217,
+      "line": 99.07,
+      "branch": 97.1,
+      "func": 100
+    },
+    "src/db.js": {
+      "lines": 516,
+      "line": 100,
+      "branch": 100,
+      "func": 80
+    },
+    "src/demos.js": {
+      "lines": 25,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "src/drsw-manifest.js": {
+      "lines": 106,
+      "line": 100,
+      "branch": 75,
+      "func": 100
+    },
+    "src/edge-cache.js": {
+      "lines": 64,
+      "line": 100,
+      "branch": 88.89,
+      "func": 100
+    },
+    "src/endpoint-gate.js": {
+      "lines": 69,
+      "line": 100,
+      "branch": 92.31,
+      "func": 100
+    },
+    "src/enrichment.js": {
+      "lines": 140,
+      "line": 96.4,
+      "branch": 85.71,
+      "func": 57.14
+    },
+    "src/europepmc.js": {
+      "lines": 534,
+      "line": 100,
+      "branch": 88.89,
+      "func": 100
+    },
+    "src/exa.js": {
+      "lines": 325,
+      "line": 76.85,
+      "branch": 44.12,
+      "func": 57.89
+    },
+    "src/exec-container.js": {
+      "lines": 882,
+      "line": 84.68,
+      "branch": 74.34,
+      "func": 85.11
+    },
+    "src/extensions.js": {
+      "lines": 309,
+      "line": 98.38,
+      "branch": 100,
+      "func": 90.32
+    },
+    "src/features.js": {
+      "lines": 368,
+      "line": 87.47,
+      "branch": 95,
+      "func": 83.33
+    },
+    "src/feedback.js": {
+      "lines": 1139,
+      "line": 74.87,
+      "branch": 92.63,
+      "func": 73.81
+    },
+    "src/games.js": {
+      "lines": 108,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "src/geocode.js": {
+      "lines": 109,
+      "line": 70.37,
+      "branch": 28.57,
+      "func": 16.67
+    },
+    "src/google.js": {
+      "lines": 246,
+      "line": 82.04,
+      "branch": 28.95,
+      "func": 88.89
+    },
+    "src/googlemaps-blocks.js": {
+      "lines": 575,
+      "line": 97.74,
+      "branch": 90.74,
+      "func": 100
+    },
+    "src/googlemaps-text.js": {
+      "lines": 1714,
+      "line": 99.94,
+      "branch": 88.71,
+      "func": 100
+    },
+    "src/googlemaps.js": {
+      "lines": 891,
+      "line": 58.88,
+      "branch": 58,
+      "func": 44
+    },
+    "src/grant-http.js": {
+      "lines": 112,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "src/hf-inference.js": {
+      "lines": 426,
+      "line": 80.94,
+      "branch": 80.56,
+      "func": 66.67
+    },
+    "src/hf.js": {
+      "lines": 659,
+      "line": 89.82,
+      "branch": 84.26,
+      "func": 86.96
+    },
+    "src/history-key.js": {
+      "lines": 65,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "src/http.js": {
+      "lines": 88,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "src/index.js": {
+      "lines": 964,
+      "line": 73.83,
+      "branch": 25.51,
+      "func": 71.43
+    },
+    "src/introspect-tools.js": {
+      "lines": 32,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "src/introspect.js": {
+      "lines": 530,
+      "line": 87.33,
+      "branch": 65.98,
+      "func": 90.91
+    },
+    "src/knowledge.js": {
+      "lines": 259,
+      "line": 98.45,
+      "branch": 65.71,
+      "func": 36.84
+    },
+    "src/llm-proxy.js": {
+      "lines": 172,
+      "line": 94.74,
+      "branch": 72.73,
+      "func": 44.44
+    },
+    "src/log.js": {
+      "lines": 72,
+      "line": 100,
+      "branch": 94.44,
+      "func": 100
+    },
+    "src/login.js": {
+      "lines": 246,
+      "line": 51.43,
+      "branch": 100,
+      "func": 20
+    },
+    "src/maps-enrichment.js": {
+      "lines": 1179,
+      "line": 35.91,
+      "branch": 100,
+      "func": 15.38
+    },
+    "src/mcp-api.js": {
+      "lines": 295,
+      "line": 98.3,
+      "branch": 78.57,
+      "func": 91.67
+    },
+    "src/mcp-config.js": {
+      "lines": 370,
+      "line": 99.46,
+      "branch": 98.29,
+      "func": 100
+    },
+    "src/mcp-key.js": {
+      "lines": 180,
+      "line": 100,
+      "branch": 85.71,
+      "func": 100
+    },
+    "src/mcp.js": {
+      "lines": 609,
+      "line": 46.88,
+      "branch": 100,
+      "func": 63.64
+    },
+    "src/model-catalog.js": {
+      "lines": 362,
+      "line": 74.24,
+      "branch": 81.67,
+      "func": 84.21
+    },
+    "src/model-checks.js": {
+      "lines": 377,
+      "line": 94.68,
+      "branch": 62.92,
+      "func": 91.89
+    },
+    "src/model-profiles.js": {
+      "lines": 160,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "src/model-routing.js": {
+      "lines": 25,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "src/models-agent.js": {
+      "lines": 238,
+      "line": 64.98,
+      "branch": 91.67,
+      "func": 50
+    },
+    "src/models-api.js": {
+      "lines": 280,
+      "line": 44.8,
+      "branch": 100,
+      "func": 0
+    },
+    "src/notes.js": {
+      "lines": 192,
+      "line": 100,
+      "branch": 93.51,
+      "func": 100
+    },
+    "src/openai.js": {
+      "lines": 199,
+      "line": 98.48,
+      "branch": 72.73,
+      "func": 84.62
+    },
+    "src/orchestrator-api.js": {
+      "lines": 151,
+      "line": 41.33,
+      "branch": 100,
+      "func": 50
+    },
+    "src/orchestrator.js": {
+      "lines": 538,
+      "line": 78.58,
+      "branch": 49.18,
+      "func": 65.22
+    },
+    "src/outrospect.js": {
+      "lines": 882,
+      "line": 98.64,
+      "branch": 80.31,
+      "func": 94.74
+    },
+    "src/panels.js": {
+      "lines": 285,
+      "line": 84.15,
+      "branch": 100,
+      "func": 77.78
+    },
+    "src/pipeline-inputs.js": {
+      "lines": 235,
+      "line": 100,
+      "branch": 95.45,
+      "func": 100
+    },
+    "src/pipeline.js": {
+      "lines": 2408,
+      "line": 65.39,
+      "branch": 36.9,
+      "func": 49.21
+    },
+    "src/pool-token.js": {
+      "lines": 111,
+      "line": 100,
+      "branch": 91.67,
+      "func": 100
+    },
+    "src/pool.js": {
+      "lines": 1323,
+      "line": 82.22,
+      "branch": 70.92,
+      "func": 47.87
+    },
+    "src/prompt-sets.js": {
+      "lines": 126,
+      "line": 100,
+      "branch": 90,
+      "func": 100
+    },
+    "src/prompts.js": {
+      "lines": 850,
+      "line": 98.12,
+      "branch": 90.53,
+      "func": 96.77
+    },
+    "src/providers.js": {
+      "lines": 237,
+      "line": 91.53,
+      "branch": 76.47,
+      "func": 66.67
+    },
+    "src/proxy-grant.js": {
+      "lines": 119,
+      "line": 100,
+      "branch": 91.67,
+      "func": 100
+    },
+    "src/proxy.js": {
+      "lines": 684,
+      "line": 97.07,
+      "branch": 74.39,
+      "func": 56.86
+    },
+    "src/pub.js": {
+      "lines": 158,
+      "line": 100,
+      "branch": 79.63,
+      "func": 85.71
+    },
+    "src/quiz-api.js": {
+      "lines": 83,
+      "line": 41.46,
+      "branch": 100,
+      "func": 0
+    },
+    "src/quiz.js": {
+      "lines": 236,
+      "line": 100,
+      "branch": 91.46,
+      "func": 100
+    },
+    "src/quota.js": {
+      "lines": 700,
+      "line": 92.56,
+      "branch": 91.84,
+      "func": 93.33
+    },
+    "src/rag.js": {
+      "lines": 525,
+      "line": 51.91,
+      "branch": 86.49,
+      "func": 21.05
+    },
+    "src/run-as.js": {
+      "lines": 189,
+      "line": 98.94,
+      "branch": 88.1,
+      "func": 100
+    },
+    "src/sandbox-image.js": {
+      "lines": 165,
+      "line": 97.56,
+      "branch": 85.96,
+      "func": 100
+    },
+    "src/schema.js": {
+      "lines": 154,
+      "line": 100,
+      "branch": 97.53,
+      "func": 100
+    },
+    "src/sdk-tools.js": {
+      "lines": 42,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "src/search-sources.js": {
+      "lines": 220,
+      "line": 100,
+      "branch": 92.31,
+      "func": 100
+    },
+    "src/security-headers.js": {
+      "lines": 110,
+      "line": 98.17,
+      "branch": 66.67,
+      "func": 100
+    },
+    "src/security-risks.js": {
+      "lines": 319,
+      "line": 85.53,
+      "branch": 95,
+      "func": 83.33
+    },
+    "src/server-errors.js": {
+      "lines": 497,
+      "line": 96.57,
+      "branch": 76.11,
+      "func": 90.48
+    },
+    "src/server-grants.js": {
+      "lines": 695,
+      "line": 98.41,
+      "branch": 69.02,
+      "func": 64.29
+    },
+    "src/server-token.js": {
+      "lines": 198,
+      "line": 98.98,
+      "branch": 90.48,
+      "func": 100
+    },
+    "src/settings.js": {
+      "lines": 508,
+      "line": 78.5,
+      "branch": 100,
+      "func": 78.95
+    },
+    "src/shodan-enrichment.js": {
+      "lines": 67,
+      "line": 63.64,
+      "branch": 100,
+      "func": 0
+    },
+    "src/shodan.js": {
+      "lines": 377,
+      "line": 64.36,
+      "branch": 87.5,
+      "func": 54.55
+    },
+    "src/slash.js": {
+      "lines": 26,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "src/sources.js": {
+      "lines": 166,
+      "line": 100,
+      "branch": 94.12,
+      "func": 100
+    },
+    "src/space.js": {
+      "lines": 128,
+      "line": 50.39,
+      "branch": 100,
+      "func": 0
+    },
+    "src/starters.js": {
+      "lines": 59,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "src/storage.js": {
+      "lines": 330,
+      "line": 47.72,
+      "branch": 100,
+      "func": 0
+    },
+    "src/testpoints.js": {
+      "lines": 742,
+      "line": 77.46,
+      "branch": 93.96,
+      "func": 71.43
+    },
+    "src/tokemon-api.js": {
+      "lines": 534,
+      "line": 68.48,
+      "branch": 75.96,
+      "func": 60
+    },
+    "src/tokemon-data.js": {
+      "lines": 190,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "src/tokemon-nav.js": {
+      "lines": 473,
+      "line": 100,
+      "branch": 96.75,
+      "func": 96.77
+    },
+    "src/tokemon.js": {
+      "lines": 1141,
+      "line": 97.02,
+      "branch": 78.73,
+      "func": 98.59
+    },
+    "src/token-crypto.js": {
+      "lines": 136,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "src/tool-sets.js": {
+      "lines": 86,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "src/triage.js": {
+      "lines": 232,
+      "line": 100,
+      "branch": 96.23,
+      "func": 100
+    },
+    "src/user-api.js": {
+      "lines": 262,
+      "line": 42.15,
+      "branch": 100,
+      "func": 0
+    },
+    "src/user-messages.js": {
+      "lines": 99,
+      "line": 59.18,
+      "branch": 100,
+      "func": 0
+    },
+    "src/user-models.js": {
+      "lines": 363,
+      "line": 86.46,
+      "branch": 88.52,
+      "func": 70
+    },
+    "src/validation.js": {
+      "lines": 382,
+      "line": 100,
+      "branch": 97.59,
+      "func": 100
+    },
+    "src/vault.js": {
+      "lines": 141,
+      "line": 99.29,
+      "branch": 83.33,
+      "func": 100
+    },
+    "src/watch.js": {
+      "lines": 225,
+      "line": 100,
+      "branch": 90,
+      "func": 100
+    },
+    "src/websearch-backends.js": {
+      "lines": 142,
+      "line": 100,
+      "branch": 100,
+      "func": 75
+    },
+    "src/websearch-cf.js": {
+      "lines": 920,
+      "line": 99.56,
+      "branch": 87.82,
+      "func": 92
+    },
+    "src/websearch-key.js": {
+      "lines": 84,
+      "line": 97.59,
+      "branch": 90.48,
+      "func": 100
+    },
+    "src/websearch.js": {
+      "lines": 549,
+      "line": 99.09,
+      "branch": 66.13,
+      "func": 50
+    },
+    "public/js/aadr-core.js": {
+      "lines": 906,
+      "line": 98.34,
+      "branch": 81.9,
+      "func": 92.5
+    },
+    "public/js/account-articles-full.js": {
+      "lines": 18,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "public/js/account-articles.js": {
+      "lines": 421,
+      "line": 99.29,
+      "branch": 100,
+      "func": 66.67
+    },
+    "public/js/account-feedback.js": {
+      "lines": 169,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/account-knowledge.js": {
+      "lines": 171,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/account-mcp.js": {
+      "lines": 421,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/account-messages.js": {
+      "lines": 168,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/account-pool.js": {
+      "lines": 450,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/account-settings.js": {
+      "lines": 539,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/account-views.js": {
+      "lines": 564,
+      "line": 65.01,
+      "branch": 51.06,
+      "func": 46.67
+    },
+    "public/js/account.js": {
+      "lines": 206,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/activity-core.js": {
+      "lines": 184,
+      "line": 93.99,
+      "branch": 86.36,
+      "func": 93.33
+    },
+    "public/js/activity.js": {
+      "lines": 827,
+      "line": 27.24,
+      "branch": 100,
+      "func": 0
+    },
+    "public/js/admin.js": {
+      "lines": 1519,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/agent-backdrop-core.js": {
+      "lines": 665,
+      "line": 100,
+      "branch": 95.77,
+      "func": 100
+    },
+    "public/js/agent-backdrop.js": {
+      "lines": 992,
+      "line": 47.23,
+      "branch": 100,
+      "func": 0
+    },
+    "public/js/agent-preview.js": {
+      "lines": 167,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/agent-spec-core.js": {
+      "lines": 1327,
+      "line": 99.47,
+      "branch": 80.46,
+      "func": 97.01
+    },
+    "public/js/ai-models.js": {
+      "lines": 117,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "public/js/app.js": {
+      "lines": 1231,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/arxiv-rag-core.js": {
+      "lines": 672,
+      "line": 99.11,
+      "branch": 84.38,
+      "func": 96.3
+    },
+    "public/js/attachments.js": {
+      "lines": 336,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/balloon-intro.js": {
+      "lines": 606,
+      "line": 37.19,
+      "branch": 100,
+      "func": 66.67
+    },
+    "public/js/balloon-spinner.js": {
+      "lines": 338,
+      "line": 39.47,
+      "branch": 100,
+      "func": 75
+    },
+    "public/js/balloon.js": {
+      "lines": 496,
+      "line": 38.18,
+      "branch": 100,
+      "func": 57.14
+    },
+    "public/js/bar-tint.js": {
+      "lines": 136,
+      "line": 100,
+      "branch": 89.66,
+      "func": 100
+    },
+    "public/js/bash-agent.js": {
+      "lines": 116,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "public/js/bash-core.js": {
+      "lines": 890,
+      "line": 100,
+      "branch": 94.79,
+      "func": 100
+    },
+    "public/js/boot-messages.js": {
+      "lines": 125,
+      "line": 100,
+      "branch": 90.48,
+      "func": 100
+    },
+    "public/js/canned-faq.js": {
+      "lines": 340,
+      "line": 100,
+      "branch": 91.18,
+      "func": 100
+    },
+    "public/js/chat-mode-core.js": {
+      "lines": 131,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "public/js/chat-mode.js": {
+      "lines": 235,
+      "line": 91.45,
+      "branch": 70,
+      "func": 83.33
+    },
+    "public/js/chat-rag.js": {
+      "lines": 166,
+      "line": 89.7,
+      "branch": 91.89,
+      "func": 81.82
+    },
+    "public/js/deeplink-core.js": {
+      "lines": 90,
+      "line": 97.75,
+      "branch": 85,
+      "func": 100
+    },
+    "public/js/demo-core.js": {
+      "lines": 311,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "public/js/demo-embed.js": {
+      "lines": 97,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/dev-mode.js": {
+      "lines": 67,
+      "line": 96.97,
+      "branch": 80,
+      "func": 100
+    },
+    "public/js/doc-comment-gate.js": {
+      "lines": 104,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/docs-comments-core.js": {
+      "lines": 315,
+      "line": 100,
+      "branch": 94.74,
+      "func": 100
+    },
+    "public/js/docs-comments.js": {
+      "lines": 611,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/docs-viewer.js": {
+      "lines": 124,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/docs.js": {
+      "lines": 391,
+      "line": 90.26,
+      "branch": 80.77,
+      "func": 88.46
+    },
+    "public/js/drc-core.js": {
+      "lines": 294,
+      "line": 99.32,
+      "branch": 94.92,
+      "func": 100
+    },
+    "public/js/drc-page-core.js": {
+      "lines": 375,
+      "line": 100,
+      "branch": 94.96,
+      "func": 100
+    },
+    "public/js/drc-providers.js": {
+      "lines": 1183,
+      "line": 98.14,
+      "branch": 76.67,
+      "func": 86.76
+    },
+    "public/js/drc-rag.js": {
+      "lines": 234,
+      "line": 97,
+      "branch": 79.41,
+      "func": 100
+    },
+    "public/js/drc-research.js": {
+      "lines": 1133,
+      "line": 89.75,
+      "branch": 80.69,
+      "func": 87.3
+    },
+    "public/js/drc-store.js": {
+      "lines": 111,
+      "line": 93.64,
+      "branch": 100,
+      "func": 87.5
+    },
+    "public/js/embeds.js": {
+      "lines": 144,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/exec-backends-core.js": {
+      "lines": 692,
+      "line": 99.13,
+      "branch": 85.63,
+      "func": 85.29
+    },
+    "public/js/exec-env.js": {
+      "lines": 332,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/exif.js": {
+      "lines": 294,
+      "line": 96.25,
+      "branch": 74.76,
+      "func": 100
+    },
+    "public/js/feedback-attach.js": {
+      "lines": 108,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/feedback-core.js": {
+      "lines": 427,
+      "line": 100,
+      "branch": 97.37,
+      "func": 100
+    },
+    "public/js/graph-backdrop.js": {
+      "lines": 386,
+      "line": 58.44,
+      "branch": 62.5,
+      "func": 59.09
+    },
+    "public/js/history-store.js": {
+      "lines": 424,
+      "line": 37.35,
+      "branch": 100,
+      "func": 0
+    },
+    "public/js/history-ui.js": {
+      "lines": 642,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/image-downscale.js": {
+      "lines": 41,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/imagedeck.js": {
+      "lines": 313,
+      "line": 62.5,
+      "branch": 90.91,
+      "func": 57.14
+    },
+    "public/js/introspect-core.js": {
+      "lines": 1966,
+      "line": 99.64,
+      "branch": 86.06,
+      "func": 99.12
+    },
+    "public/js/introspect-ui.js": {
+      "lines": 467,
+      "line": 49.79,
+      "branch": 89.66,
+      "func": 28.57
+    },
+    "public/js/knowledge-core.js": {
+      "lines": 403,
+      "line": 100,
+      "branch": 85.19,
+      "func": 100
+    },
+    "public/js/markdown.js": {
+      "lines": 415,
+      "line": 56.04,
+      "branch": 96.55,
+      "func": 70.59
+    },
+    "public/js/message-content.js": {
+      "lines": 525,
+      "line": 97.71,
+      "branch": 95.03,
+      "func": 97.37
+    },
+    "public/js/mode-backdrop.js": {
+      "lines": 56,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/mode-spinner.js": {
+      "lines": 108,
+      "line": 76.64,
+      "branch": 100,
+      "func": 0
+    },
+    "public/js/mode-theme.js": {
+      "lines": 292,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "public/js/models-core.js": {
+      "lines": 249,
+      "line": 100,
+      "branch": 94.12,
+      "func": 100
+    },
+    "public/js/models-panel.js": {
+      "lines": 488,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/models.js": {
+      "lines": 209,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/notifications.js": {
+      "lines": 42,
+      "line": 87.8,
+      "branch": 66.67,
+      "func": 60
+    },
+    "public/js/ondevice-core.js": {
+      "lines": 1027,
+      "line": 99.51,
+      "branch": 94.94,
+      "func": 100
+    },
+    "public/js/ondevice-drs.js": {
+      "lines": 450,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/ondevice-engine.js": {
+      "lines": 684,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/ondevice-worker.js": {
+      "lines": 548,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/opfs.js": {
+      "lines": 159,
+      "line": 46.2,
+      "branch": 100,
+      "func": 0
+    },
+    "public/js/orchestrator-core.js": {
+      "lines": 431,
+      "line": 100,
+      "branch": 90.36,
+      "func": 100
+    },
+    "public/js/outrospect-core.js": {
+      "lines": 1150,
+      "line": 99.74,
+      "branch": 91.29,
+      "func": 100
+    },
+    "public/js/outrospect-feed.js": {
+      "lines": 305,
+      "line": 51.64,
+      "branch": 87.5,
+      "func": 18.18
+    },
+    "public/js/outrospect-view.js": {
+      "lines": 407,
+      "line": 63.55,
+      "branch": 87.67,
+      "func": 56.25
+    },
+    "public/js/pending-answer.js": {
+      "lines": 106,
+      "line": 94.29,
+      "branch": 100,
+      "func": 25
+    },
+    "public/js/pipeline-map-core.js": {
+      "lines": 528,
+      "line": 99.62,
+      "branch": 94.44,
+      "func": 100
+    },
+    "public/js/pipeline-map.js": {
+      "lines": 165,
+      "line": 74.39,
+      "branch": 72.73,
+      "func": 70
+    },
+    "public/js/plant-spinner.js": {
+      "lines": 614,
+      "line": 46.33,
+      "branch": 97.67,
+      "func": 73.33
+    },
+    "public/js/pool-core.js": {
+      "lines": 209,
+      "line": 100,
+      "branch": 93.44,
+      "func": 100
+    },
+    "public/js/pool-local.js": {
+      "lines": 99,
+      "line": 100,
+      "branch": 76.47,
+      "func": 71.43
+    },
+    "public/js/pool-provider.js": {
+      "lines": 167,
+      "line": 93.37,
+      "branch": 81.4,
+      "func": 81.25
+    },
+    "public/js/project-context.js": {
+      "lines": 105,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "public/js/projects-ui.js": {
+      "lines": 535,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/projects.js": {
+      "lines": 383,
+      "line": 35.86,
+      "branch": 100,
+      "func": 0
+    },
+    "public/js/provider-region.js": {
+      "lines": 82,
+      "line": 100,
+      "branch": 93.33,
+      "func": 100
+    },
+    "public/js/proxy-bundle.js": {
+      "lines": 118,
+      "line": 100,
+      "branch": 93.1,
+      "func": 100
+    },
+    "public/js/pulse-timeline-core.js": {
+      "lines": 344,
+      "line": 99.71,
+      "branch": 89.66,
+      "func": 100
+    },
+    "public/js/quiz.js": {
+      "lines": 402,
+      "line": 100,
+      "branch": 91.46,
+      "func": 100
+    },
+    "public/js/rag.js": {
+      "lines": 541,
+      "line": 51.91,
+      "branch": 86.49,
+      "func": 21.05
+    },
+    "public/js/recovery.js": {
+      "lines": 159,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/report.js": {
+      "lines": 356,
+      "line": 39.44,
+      "branch": 96.88,
+      "func": 66.67
+    },
+    "public/js/research-seal-core.js": {
+      "lines": 274,
+      "line": 99.27,
+      "branch": 91.07,
+      "func": 100
+    },
+    "public/js/sandbox-files.js": {
+      "lines": 586,
+      "line": 99.32,
+      "branch": 78.63,
+      "func": 95.24
+    },
+    "public/js/sandbox-mode.js": {
+      "lines": 122,
+      "line": 93.39,
+      "branch": 82.61,
+      "func": 100
+    },
+    "public/js/sandbox.js": {
+      "lines": 1445,
+      "line": 33.66,
+      "branch": 12.5,
+      "func": 0
+    },
+    "public/js/sdk-core.js": {
+      "lines": 813,
+      "line": 98.77,
+      "branch": 81.55,
+      "func": 97.87
+    },
+    "public/js/sdk-plant.js": {
+      "lines": 247,
+      "line": 29.67,
+      "branch": 100,
+      "func": 14.29
+    },
+    "public/js/sdk-showcase.js": {
+      "lines": 243,
+      "line": 80.58,
+      "branch": 88.89,
+      "func": 85.71
+    },
+    "public/js/search-source.js": {
+      "lines": 130,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "public/js/secure-posture-core.js": {
+      "lines": 200,
+      "line": 98.99,
+      "branch": 98.04,
+      "func": 100
+    },
+    "public/js/session-core.js": {
+      "lines": 602,
+      "line": 100,
+      "branch": 96.77,
+      "func": 100
+    },
+    "public/js/session.js": {
+      "lines": 415,
+      "line": 63.04,
+      "branch": 73.68,
+      "func": 33.33
+    },
+    "public/js/settings.js": {
+      "lines": 192,
+      "line": 78.5,
+      "branch": 100,
+      "func": 78.95
+    },
+    "public/js/slash-core.js": {
+      "lines": 218,
+      "line": 100,
+      "branch": 97.44,
+      "func": 100
+    },
+    "public/js/slash-menu.js": {
+      "lines": 174,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/source-peek-core.js": {
+      "lines": 214,
+      "line": 99.53,
+      "branch": 90.43,
+      "func": 100
+    },
+    "public/js/source-peek.js": {
+      "lines": 333,
+      "line": 44.28,
+      "branch": 100,
+      "func": 0
+    },
+    "public/js/space-core.js": {
+      "lines": 1038,
+      "line": 99.52,
+      "branch": 89.1,
+      "func": 97.37
+    },
+    "public/js/space-embed.js": {
+      "lines": 894,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/sse.js": {
+      "lines": 35,
+      "line": 100,
+      "branch": 91.67,
+      "func": 100
+    },
+    "public/js/starters-core.js": {
+      "lines": 1099,
+      "line": 99,
+      "branch": 84.65,
+      "func": 98.91
+    },
+    "public/js/starters-data.js": {
+      "lines": 828,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "public/js/starters.js": {
+      "lines": 367,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "public/js/stream.js": {
+      "lines": 2312,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/swarm-core.js": {
+      "lines": 541,
+      "line": 100,
+      "branch": 91.25,
+      "func": 100
+    },
+    "public/js/swarm-runtime.js": {
+      "lines": 860,
+      "line": 90.69,
+      "branch": 81.01,
+      "func": 81.97
+    },
+    "public/js/sync.js": {
+      "lines": 244,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/testpoints-core.js": {
+      "lines": 278,
+      "line": 98.56,
+      "branch": 93.33,
+      "func": 100
+    },
+    "public/js/testpoints.js": {
+      "lines": 573,
+      "line": 77.46,
+      "branch": 93.96,
+      "func": 71.43
+    },
+    "public/js/timescale.js": {
+      "lines": 55,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "public/js/turns.js": {
+      "lines": 679,
+      "line": 35.55,
+      "branch": 100,
+      "func": 7.41
+    },
+    "public/js/umbrella-spinner.js": {
+      "lines": 682,
+      "line": 31.72,
+      "branch": 91.3,
+      "func": 62.5
+    },
+    "public/js/unanswered-core.js": {
+      "lines": 85,
+      "line": 100,
+      "branch": 100,
+      "func": 100
+    },
+    "public/js/vault-core.js": {
+      "lines": 221,
+      "line": 100,
+      "branch": 95.83,
+      "func": 100
+    },
+    "public/js/vault.js": {
+      "lines": 287,
+      "line": 99.29,
+      "branch": 83.33,
+      "func": 100
+    },
+    "public/js/watch-core.js": {
+      "lines": 2691,
+      "line": 98.92,
+      "branch": 92.31,
+      "func": 100
+    },
+    "public/js/watch-render.js": {
+      "lines": 1108,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
+    "public/js/websearch-backends-core.js": {
+      "lines": 237,
+      "line": 97.03,
+      "branch": 71.26,
+      "func": 63.16
+    },
+    "public/js/workflow-viz.js": {
+      "lines": 585,
+      "line": 88.87,
+      "branch": 74.89,
+      "func": 77.08
+    },
+    "public/js/workspace-core.js": {
+      "lines": 435,
+      "line": 100,
+      "branch": 88.19,
+      "func": 100
+    }
+  }
+}

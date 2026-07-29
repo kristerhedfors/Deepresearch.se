@@ -61,3 +61,66 @@ jobs:
       # public/ with DOM lib), strict, opt-in per file via // @ts-check.
       - name: Type-check
         run: npm run typecheck
+
+      # The coverage RATCHET (scripts/coverage.mjs). Re-runs the suite under
+      # node's built-in coverage and fails if the measured numbers fall below
+      # docs/coverage-baseline.json — so the untested surface can shrink but
+      # not quietly grow back. It also fails, with no tolerance, when a module
+      # that WAS reached by some test stops being reached at all.
+      #
+      # Deliberately a separate step after the plain run: a coverage-
+      # instrumented suite is slower and its failures read differently, and a
+      # red ratchet on a green suite should say "coverage regressed", not
+      # "tests failed". Raise the floor with `npm run coverage -- --save`.
+      - name: Coverage ratchet
+        run: npm run coverage:check
+
+  # The browser suite, against a Worker started on the runner — no credentials,
+  # no deployment, no tokens spent. Closes gap A4 in
+  # docs/TESTING-GAP-ANALYSIS.md: these 63 tests already existed and were free,
+  # and nothing ran them, because the config required production break-glass
+  # secrets and defaulted to the live site.
+  #
+  # Two servers come up (tests/playwright.config.js `webServer`): a
+  # dependency-free provider stand-in (tests/fake-provider.mjs) and
+  # `wrangler dev` on wrangler.dev.toml. Separate job from the unit tests so a
+  # browser failure is legible on its own and does not delay the fast gate.
+  e2e:
+    name: e2e (mocked, local Worker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install e2e dependencies
+        working-directory: tests
+        run: npm ci
+
+      - name: Install Chromium
+        working-directory: tests
+        run: npx playwright install --with-deps chromium
+
+      # The fixtures are generated, not committed. Pillow is only needed for
+      # the EXIF JPEG; without it make_fixtures.py skips that one file and the
+      # metadata specs fail on a missing fixture rather than on a real defect.
+      - name: Build fixtures
+        working-directory: tests
+        run: |
+          python3 -m pip install --quiet --break-system-packages pillow
+          npm run fixtures
+
+      - name: Playwright (mocked project, local Worker)
+        working-directory: tests
+        run: npm run test:local
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: tests/test-results/
+          retention-days: 7
