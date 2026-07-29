@@ -360,7 +360,7 @@ is where pass 11's higher-value cut lived too.
   helper returns the `{body, response}` pair instead of throwing, so each caller
   keeps its own early return and no site's control flow changes. Every one of
   the thirteen already imported `http.js`, so the change adds **no graph edge
-  anywhere** — the cheapest possible home. The tolerant token-endpoint readings
+  anywhere**. The tolerant token-endpoint readings
   (`.catch(() => ({}))`, where a missing field is already its own 400) are
   deliberately untouched. New `src/http.test.js` also covers the three response
   helpers, which had no direct test.
@@ -392,9 +392,8 @@ and hands back an UNVALIDATED claims object. Each family still parses its own
 wire prefix, passes its OWN namespace in, and validates its own claims — `svc`
 being the standing example. The fence was **restated in the module header and
 in `docs/CODE-LAYOUT.md`, not removed**, with an explicit "do not grow
-`verifiedClaims` toward claim validation". A shared crypto step under an intact
-fence is the opposite of the merge the fence forbids; when re-reading a fence,
-check what property it protects rather than how wide its wording is.
+`verifiedClaims` toward claim validation". When re-reading a fence, check what
+property it protects rather than how wide its wording is.
 
 **Method lesson.** Committing `dup-scan.mjs` (pass 10) worked: it now returns
 only settled declines, which is what a converged codebase should look like. But
