@@ -916,16 +916,17 @@ because a watch is very nearly all solids of revolution. The GL half is
 `public/js/watch-render.js` (also allowlisted): shaders, the orbit camera,
 the painted dial/insert/rehaut canvas textures, a small metal shading model
 and a separate glass path for the crystal, plus the loop that ticks the
-seconds hand at the NH35's real six beats a second. Its arithmetic sits one
-module further out in `public/js/watch-math.js` (the third allowlisted file):
-the column-major 4×4 matrices, `perspective`/`lookAt`/`modelMatrix`/
-`normalMatrix` and the sRGB→linear colour conversion, split off so they are
-Node-testable — the renderer around them needs a GL context to load, and
-wrong matrix maths still renders, just wrongly. Not in `watch-core.js`,
-because the Worker imports that core to serve `/api/watch/catalog` and a JSON
-endpoint has no use for a camera. The render is generated
+seconds hand at the NH35's real six beats a second. The render is generated
 FROM the spec sheet — a case's diameter, lug-to-lug and thickness are the
 numbers the mesh is built out of — so the picture cannot drift from the data.
+Its arithmetic sits one module further out in `public/js/watch-math.js` (the
+third allowlisted file): the column-major 4×4 matrices,
+`perspective`/`lookAt`/`modelMatrix`/`normalMatrix` and the sRGB→linear colour
+conversion. They are split off because the renderer around them needs a GL
+context to load, so nothing in it can be Node-tested, and wrong matrix maths
+still renders — just wrongly. They are not in `watch-core.js`: the Worker
+imports that core to serve `/api/watch/catalog`, and a JSON endpoint has no
+use for a camera.
 A chat ask for it ("Seiko watch demo", "visa mig klockbyggaren") mounts a card
 into the page above the reply, through the capability-demo registry below.
 See `docs/WATCH-BUILDER.md`.

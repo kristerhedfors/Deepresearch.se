@@ -15,7 +15,7 @@ description: >-
   reference lists — both drift SILENTLY — then `npm run bundle` and
   `bundle:rag`). Also load when moving a file named in either of those two
   lists, since nothing goes red if you forget them. The decline register
-  (`references/STANDING-DECLINES.md`) and the twelve-pass record
+  (`references/STANDING-DECLINES.md`) and the thirteen-pass record
   (`references/PASS-LEDGER.md`) live beside this file — read the register
   before surveying so you do not re-derive a settled decline.
 ---
@@ -37,10 +37,10 @@ registry of small matchers (`googlemaps-text.js`) or a 1000-line
 runner-per-shape file (`maps-enrichment.js`) is inherent complexity, not
 tangling.
 
-**Calibrate your expectations from the record.** Twelve whole-repo passes since
-2026-07-12 have yielded between one and six cuts each, and the seventh yielded
-exactly one. New subsystems now arrive already factored, because their authors
-follow this same skill. **A pass that ends with one cut and a page of reasoned
+**Calibrate your expectations from the record.** Thirteen whole-repo passes
+since 2026-07-12 have yielded between one and six cuts each, and the seventh
+yielded exactly one. New subsystems now arrive already factored, because their
+authors follow this same skill. **A pass that ends with one cut and a page of reasoned
 declines is a successful pass**, not a shortfall — and the declines are the
 durable output, because they are what makes pass N+1 cheap.
 
@@ -241,7 +241,7 @@ Do all of it in the same commit range, in this order. The first two drift
 - [ ] **The public-module-graph allowlist** (`src/assets.js`) — a client split
       under a NO-AUTH surface (`/space/`, `/watch/`, `/cure/`, the demo embeds)
       must add the new file, which is allowlisted path by path. Miss it and the
-      module 401s for signed-out visitors and takes the page down with it —
+      module 401s for signed-out visitors, taking the page down with it —
       silently, because no test covers a file that did not exist. Pass 13's
       `watch-math.js` needed the entry in the same commit as the split.
 - [ ] **`sdk/MANIFEST.json` `reference` paths** — `sdk_validate` /
@@ -293,6 +293,6 @@ Do all of it in the same commit range, in this order. The first two drift
 
 - **`references/STANDING-DECLINES.md`** — every settled decline, the gate it
   failed, and the pass that settled it. Read before surveying; append after.
-- **`references/PASS-LEDGER.md`** — the twelve passes to date, what each cut, and
+- **`references/PASS-LEDGER.md`** — the thirteen passes to date, what each cut, and
   the method lessons they produced. Read when you want a worked instance of a
   seam type, or the last pass's SHA to diff from.
