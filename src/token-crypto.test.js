@@ -2,13 +2,16 @@
 // implementation behind auth.js's toHex/safeEqual and the websearch-key.js /
 // proxy-grant.js token modules. The properties exercised here: the base64url
 // codec round-trips arbitrary bytes without padding chars, toHex renders
-// deterministically, safeEqual is exact and type-strict, and `sign` is
-// namespace-separated, deterministic, and fail-closed without SESSION_SECRET.
+// deterministically, safeEqual is exact and type-strict, `sign` is
+// namespace-separated, deterministic, and fail-closed without SESSION_SECRET,
+// `hmacRaw` is the one tag both renderings are built from, and
+// `verifiedClaims` stops at the cryptography — it hands back an UNVALIDATED
+// claims object and rejects a tag from another namespace.
 // (Each token family's own mint/verify stays covered by websearch-key.test.js
 // and proxy-grant.test.js.)
 import test from "node:test";
 import assert from "node:assert/strict";
-import { b64url, b64urlDecode, toHex, safeEqual, sign } from "./token-crypto.js";
+import { b64url, b64urlDecode, hmacRaw, toHex, safeEqual, sign, verifiedClaims } from "./token-crypto.js";
 
 const SECRET = "d0a2d4e838e1c1c7c65fef7b784c9623ee113f8aab5da9aab9d62f8a311109de";
 const env = { SESSION_SECRET: SECRET };
@@ -68,4 +71,57 @@ test("sign is deterministic and namespace-separated", async () => {
 
 test("sign without SESSION_SECRET throws (fail closed)", async () => {
   await assert.rejects(() => sign({}, "websearch.", "payload"), /SESSION_SECRET/);
+});
+
+test("hmacRaw is the tag both renderings are built from", async () => {
+  const raw = await hmacRaw(env, "websearch." + "payload");
+  assert.ok(raw instanceof ArrayBuffer);
+  assert.equal(raw.byteLength, 32); // SHA-256
+  // sign() IS this tag rendered hex — the property that lets src/server-token.js
+  // share the primitive while rendering it base64url instead.
+  assert.equal(toHex(raw), await sign(env, "websearch.", "payload"));
+});
+
+test("hmacRaw without SESSION_SECRET throws (fail closed)", async () => {
+  await assert.rejects(() => hmacRaw({}, "anything"), /SESSION_SECRET/);
+});
+
+// verifiedClaims is the tag-check + payload-decode step every family's verify
+// opens with. It stops at the cryptography: what it returns is an unvalidated
+// claims object, and each family checks its own claims afterwards.
+const payloadOf = (obj) => b64url(new TextEncoder().encode(JSON.stringify(obj)));
+
+test("verifiedClaims returns the decoded claims for a well-signed payload", async () => {
+  const payload = payloadOf({ jti: "a", svc: "web", exp: 42 });
+  const sig = await sign(env, "proxytoken.", payload);
+  assert.deepEqual(await verifiedClaims(env, "proxytoken.", payload, sig), { jti: "a", svc: "web", exp: 42 });
+});
+
+test("verifiedClaims rejects a tag from another namespace", async () => {
+  const payload = payloadOf({ jti: "a" });
+  const sig = await sign(env, "websearch.", payload);
+  assert.equal(await verifiedClaims(env, "proxytoken.", payload, sig), null);
+  assert.deepEqual(await verifiedClaims(env, "websearch.", payload, sig), { jti: "a" });
+});
+
+test("verifiedClaims rejects a tampered payload, a wrong tag, and junk", async () => {
+  const payload = payloadOf({ jti: "a" });
+  const sig = await sign(env, "pool.", payload);
+  assert.equal(await verifiedClaims(env, "pool.", payloadOf({ jti: "b" }), sig), null);
+  assert.equal(await verifiedClaims(env, "pool.", payload, "0".repeat(64)), null);
+  assert.equal(await verifiedClaims(env, "pool.", payload, ""), null);
+});
+
+test("verifiedClaims returns null — never throws — on an undecodable payload", async () => {
+  const notJson = b64url(new TextEncoder().encode("not json at all"));
+  assert.equal(await verifiedClaims(env, "pool.", notJson, await sign(env, "pool.", notJson)), null);
+  // A well-formed JSON payload that is not an OBJECT is rejected too: every
+  // family's claim checks assume they were handed one.
+  const scalar = payloadOf(7);
+  assert.equal(await verifiedClaims(env, "pool.", scalar, await sign(env, "pool.", scalar)), null);
+});
+
+test("verifiedClaims fails closed with no signing key, rather than throwing", async () => {
+  const payload = payloadOf({ jti: "a" });
+  assert.equal(await verifiedClaims({}, "pool.", payload, "0".repeat(64)), null);
 });
