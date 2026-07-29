@@ -3,10 +3,6 @@
 The ancient-DNA research agent, and the two data legs it runs on. Shipped
 2026-07-29.
 
-This document covers what the agent is, the two sources it reaches that no
-other agent reaches, the design decisions that are easy to get wrong in this
-domain, and what it deliberately does not do.
-
 ## 1. What it is
 
 `palaeogenomics` is an agent in `sdk/AGENTS.json` — data, not code. It derives
