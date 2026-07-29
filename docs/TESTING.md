@@ -12,6 +12,12 @@ surface reviewed as a system — what is automated, what is covered, and
 the ordered list of what is missing. This file says what exists; that
 one says what does not.
 
+A second companion, `docs/TESTING-CAPABILITIES.md` (2026-07-29), adds the
+axis neither had: capability × how automatable it is, MEASURED rather than
+inferred (`npm run coverage`), with the five testability tiers, a
+capability-by-capability classification, and the coverage ratchet that keeps
+the untested surface from growing back.
+
 ## Unit tests (`src/*.test.js`, `public/js/*.test.js`, `public/games/*/js/*.test.js`)
 
 Node's built-in test runner (`node:test` + `node:assert/strict` — no
@@ -496,6 +502,30 @@ These run in Node unmodified since `File`, `Blob`,
 `DecompressionStream`, and `TextDecoder` are all standard Node globals
 — no DOM needed for this subset of client code.
 
+**The request layer** (added 2026-07-29, on the shared helpers in
+`src/test-helpers/` — see `docs/CODE-LAYOUT.md`). Three suites that call the
+Worker's own entry points rather than their extracted pieces:
+
+- `test-helpers.test.js` — the fakes themselves. A fake that silently
+  misbehaves turns other suites green for the wrong reason, so they get the
+  same treatment as production code.
+- `chat-handler.test.js` — `handleChat` end to end against a fake Berget
+  (a `/models` catalog plus a `/chat/completions` that answers JSON-mode
+  planning calls with an object and streamed calls with an SSE body). Pins the
+  invariants the request path *promises*: the **incognito** chat-log
+  suppression in both directions and its exact boundary (invariant 4), that no
+  outbound request carries the user's identity and no log line carries the
+  provider secret (invariant 4), that the JSON planning phases stay on
+  `DEFAULT_MODEL` while synthesis follows the user's pick (invariant 3), the
+  fail-soft ladder (invariant 2), and the SSE frame contract. Took
+  `src/chat.js` from 26% to 90% line coverage.
+- `index.test.js` — the `fetch` handler: the identity gate is fail-closed
+  across a representative slice of `/api/*` (an unknown path answers 401, not
+  404, so the route table cannot be enumerated unauthenticated), the security
+  headers and request id are on every response, and a crash becomes a clean
+  500 that leaks no stack, message, or secret. Written as properties of the
+  ENVELOPE rather than a route-by-route table, which would rot at route 94.
+
 ```bash
 npm test            # from the repo root: node --test src/*.test.js public/js/*.test.js
                     #                     public/games/*/js/*.test.js
@@ -529,15 +559,82 @@ The `npm ci` step matters beyond CI: the root devDependencies
 so `npm run typecheck` in a fresh clone fails with a confusing `TS2688` until
 someone runs an install.
 
+A second JOB (`e2e`) runs the **browser suite against a Worker started on the
+runner** — `cd tests && npm run test:local`, 63 tests, no credentials and no
+deployment. It installs Chromium, generates the fixtures (Pillow included, or
+the EXIF fixture is skipped and the metadata specs fail on a missing file
+rather than a real defect), and uploads `tests/test-results/` on failure. It is
+a separate job from the unit gate so a browser failure is legible on its own
+and does not delay the fast feedback.
+
+A third step runs the **coverage ratchet** (`npm run coverage:check`,
+`scripts/coverage.mjs`): the suite again under `node --test
+--experimental-test-coverage`, compared against the committed floor
+`docs/coverage-baseline.json`. It fails when line/branch/function coverage
+falls more than 0.5% below the baseline, and fails with NO tolerance when a
+module that was reached by some test stops being reached at all. It is a
+separate step from `npm test` on purpose: a red ratchet on a green suite
+should read "coverage regressed", not "tests failed". Raise the floor in the
+same commit as a real gain with `npm run coverage -- --save`; find the
+cheapest next climb with `npm run coverage -- --list`.
+
 ## End-to-end tests (`tests/`)
 
-Playwright suite that runs against the **live site** using the
-break-glass credentials (`BASIC_AUTH_USER` / `BASIC_AUTH_PASS` env vars;
-sent as an `Authorization: Basic` header on every request — the Worker
-never emits a challenge, so Playwright's `httpCredentials` would not
-work). Self-contained npm project of its own (`tests/package.json`) —
-distinct from the root `package.json` above, which only runs the unit
-suite.
+Playwright suite, self-contained npm project of its own
+(`tests/package.json`) — distinct from the root `package.json` above, which
+only runs the unit suite. It has **two targets**.
+
+### Local (added 2026-07-29) — free, credential-less, and what CI runs
+
+```bash
+cd tests && npm install && npm run fixtures
+npm run test:local        # 63 mocked tests, ~1.8 min, nothing spent
+```
+
+`test:local` (`E2E_TARGET=local`) brings up two servers of its own via
+Playwright's `webServer` and points the suite at them:
+
+- **`tests/fake-provider.mjs`** — a dependency-free loopback stand-in for the
+  LLM provider, serving the OpenAI-compatible `/models`,
+  `/chat/completions` and `/embeddings` that `src/berget.js` speaks. It is
+  needed even though the mocked project intercepts `/api/chat` in the browser,
+  because `/api/models` is *never* intercepted (the app fetches a real catalog
+  on every page load and renders nothing without one) and because
+  `e2e/api.spec.js` calls the Worker directly through the request context,
+  past any page route. Its catalog deliberately carries an up vision model, an
+  up non-vision model and a DOWN model, because the specs discover their
+  fixtures from it and silently skip when one is missing.
+- **`wrangler dev -c wrangler.dev.toml`** — the real Worker, local bindings.
+  The separate config is not tidiness: `wrangler.toml`'s `routes` make
+  `wrangler dev` rewrite the inbound Host to the first custom domain (so a
+  request to `127.0.0.1` arrives as `deepresearch.se`), and its `containers`
+  block refuses to start without a Docker daemon. Neither is removable from an
+  `[env.*]` block. See the file's own header.
+
+Two defects had to be fixed before any of it worked, both invisible while the
+suite only ever ran against a deployment:
+
+- **`src/canonical.js` looped on a local origin.** With the Host rewritten to
+  the production domain, the http→https rule fired on every local request,
+  wrangler's dev proxy rewrote the `Location` back, and a browser followed a
+  301 to itself forever. Loopback hosts are now exempt (`canonical.test.js`
+  pins the exemption *and* that it did not widen).
+- **`helpers.js` hard-coded the production origin.** `stripCrossOriginAuth`
+  strips the break-glass header from any origin that is not `BASE_URL`, so a
+  local run lost its `Authorization` on every request and got served the
+  signed-out landing. `playwright.config.js` now publishes the resolved target
+  back into `process.env.BASE_URL`, which fixes that and the nine other specs
+  reading the same variable.
+
+### Remote — against the deployed site or a branch preview
+
+Set `BASE_URL` plus the break-glass credentials (`BASIC_AUTH_USER` /
+`BASIC_AUTH_PASS`, sent as an `Authorization: Basic` header on every request —
+the Worker never emits a challenge, so Playwright's `httpCredentials` would
+not work). This is the original behaviour and is still how the `@live` project
+runs. The config no longer *throws* when credentials are absent: with nothing
+configured it selects the local target, so a first-time `npm test` works
+instead of erroring.
 
 > **The header must not reach cross-origin hosts.** `extraHTTPHeaders`
 > attaches it to *every* request the context makes, third parties

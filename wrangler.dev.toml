@@ -1,0 +1,80 @@
+# LOCAL DEVELOPMENT / E2E config — never deployed.
+#
+# `npx wrangler dev -c wrangler.dev.toml` runs the same Worker (src/index.js,
+# the same ./public assets) on localhost with local simulated bindings, so the
+# Playwright "mocked" project can run against a Worker on this machine instead
+# of against production. Nothing here reaches Cloudflare: no account, no API
+# token, no network.
+#
+# It is a SEPARATE file rather than an environment inside wrangler.toml
+# because two of the things it must NOT have are top-level keys that an
+# `[env.*]` block cannot remove:
+#
+#  1. `routes`. This is the load-bearing one and it is not obvious. With
+#     custom-domain routes declared, `wrangler dev` rewrites the inbound Host
+#     to the FIRST route's hostname — so a request to http://127.0.0.1:8788/
+#     arrives inside the Worker as `http://deepresearch.se/`. src/canonical.js
+#     then correctly 301s that plain-http request to the https apex, wrangler's
+#     dev proxy rewrites the Location back to the local origin, and the browser
+#     follows a 301 to itself forever. (Diagnosed 2026-07-29 from the Worker's
+#     own request log: `"host":"deepresearch.se"` on a request made to
+#     127.0.0.1.) Without routes the Host stays `localhost`, which
+#     src/canonical.js exempts as loopback.
+#  2. `containers` / the ExecSandbox Durable Object. Building the container
+#     image needs a Docker daemon; without one `wrangler dev` refuses to start
+#     at all. The server-side execution environment is simply unavailable
+#     locally, exactly as it is on any deploy that has not carried the binding.
+#
+# Also deliberately absent: the two Vectorize bindings. Vectorize has no local
+# implementation — wrangler warns and the binding does nothing — so leaving
+# them out keeps the startup output honest. The consequence is that server-side
+# RAG and the arXiv dense tier report themselves unavailable locally, which is
+# the same degraded mode as a deployment without the indexes.
+#
+# What DOES work locally: static assets, the identity gate and break-glass
+# Basic Auth, D1 (a local SQLite file under .wrangler/), R2 (local files), and
+# the whole request/routing layer. That is everything the mocked e2e project
+# needs, because it intercepts /api/chat itself.
+
+name = "deepresearch-se-dev"
+main = "src/index.js"
+compatibility_date = "2026-07-04"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = true
+
+# Local-only, non-secret by construction. These are not credentials to
+# anything: they authenticate a browser to a Worker running on this machine,
+# against a database that is a scratch file in .wrangler/. The e2e config
+# (tests/playwright.config.js) uses the same two values when it starts this
+# server, and nothing else accepts them.
+[vars]
+LOG_LEVEL = "info"
+ADMIN_USER = "e2e"
+ADMIN_PASS = "e2e-local-worker-no-secret"
+SESSION_SECRET = "local-dev-session-secret-not-used-anywhere-else"
+HISTORY_KEY_SECRET = "local-dev-history-key-secret-not-used-anywhere-else"
+
+# The provider. BERGET_URL is the test-only override src/berget.js already
+# documents; here it points at tests/fake-provider.mjs, a dependency-free
+# loopback server speaking the OpenAI-compatible surface (/models,
+# /chat/completions, /embeddings). Playwright starts it alongside this Worker.
+#
+# The token has to be PRESENT or handleChat answers 500 before reaching any
+# logic ("Server not configured"); its value is never checked by the fake.
+# Together these make a local run fully self-contained: no key, no network,
+# no spend, and a deterministic model catalog — which the app needs on every
+# page load, since /api/models is not intercepted in the browser.
+BERGET_API_TOKEN = "local-fake-provider-no-token-needed"
+BERGET_URL = "http://127.0.0.1:8799/v1"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "deepresearch-se-dev"
+database_id = "local-dev-only"
+
+[[r2_buckets]]
+binding = "STORAGE"
+bucket_name = "deepresearch-se-storage-dev"
