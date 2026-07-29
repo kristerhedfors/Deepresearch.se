@@ -4,6 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   MAX_REF_CHARS,
   highlightLines,
@@ -204,4 +205,56 @@ test("highlightLines line count matches the source line count", () => {
   const lines = highlightLines(src, "js");
   assert.equal(lines.length, src.split("\n").length);
   assert.deepEqual(lines[1], []); // the blank line
+});
+
+// ---- the popover type scale (feedback #51, 2026-07-29) -----------------------
+//
+// The view half's CSS lives as a string in source-peek.js, which is DOM glue
+// and can't be imported under node --test — so this reads it off disk, the
+// same way starters-core.test.js and agent-capability.test.js read their
+// artifacts. What it guards is the regression the feedback reported: the
+// panel had drifted to seven unrelated font sizes, which measured out as
+// four near-identical steps, and #spk-md's headings had no size at all (they
+// fell through to the UA defaults because the `.md` class it carried is only
+// ever styled as `.content.md`). Both come back the moment someone adds a
+// raw font-size, so both are asserted rather than described.
+
+const peekCss = readFileSync(new URL("./source-peek.js", import.meta.url), "utf8");
+const peekFontSizes = [...peekCss.matchAll(/font-size:\s*([^;}]+)/g)].map((m) => m[1].trim());
+
+test("every popover font-size is a scale token or a heading/code ratio", () => {
+  assert.ok(peekFontSizes.length > 5, "expected the popover CSS to declare font sizes");
+  for (const value of peekFontSizes) {
+    const ok = /^var\(--spk-(ui|doc)\)$/.test(value) || /^\d*\.?\d+em$/.test(value);
+    assert.ok(ok, `raw font-size "${value}" — use var(--spk-ui) / var(--spk-doc) or an em ratio`);
+  }
+});
+
+test("the scale defines exactly the two roles, in rem", () => {
+  for (const name of ["--spk-ui", "--spk-doc"]) {
+    assert.match(peekCss, new RegExp(`${name}:\\s*\\.?\\d*\\.?\\d+rem;`), `${name} must be defined in rem`);
+  }
+  // Chrome and the code listing share one size, so the code — the thing the
+  // popover exists to show — is never smaller than the header above it.
+  const uses = (n) => peekCss.split(`var(--${n})`).length - 1;
+  assert.ok(uses("spk-ui") >= 5, "--spk-ui should carry the header, picker and code listing");
+  assert.ok(uses("spk-doc") >= 2, "--spk-doc should carry the note and the markdown body");
+});
+
+test("rendered markdown sizes its own headings rather than inheriting UA defaults", () => {
+  for (const h of ["h1", "h2", "h3"]) {
+    assert.match(
+      peekCss,
+      new RegExp(`#spk-md ${h}[^{]*\\{[^}]*font-size`),
+      `#spk-md ${h} needs an explicit font-size — UA defaults render it 2x the body text`,
+    );
+  }
+  // The tier's own markdown ratios (css/app.css .content.md) — kept in step so
+  // a doc reads the same in the popover as in an answer bubble.
+  assert.match(peekCss, /#spk-md h1 \{ font-size: 1\.25em; \}/);
+  assert.match(peekCss, /#spk-md h2 \{ font-size: 1\.15em; \}/);
+});
+
+test("the markdown box does not claim a tier stylesheet that never matches it", () => {
+  assert.doesNotMatch(peekCss, /box\.className = "md"/);
 });

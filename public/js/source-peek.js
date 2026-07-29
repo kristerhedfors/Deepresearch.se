@@ -90,6 +90,17 @@ export function wireSourcePeek(root) {
 
 // Titanium palette on purpose — the popover is part of introspection's
 // identity (TIN's white/slate), distinct from either tier's chrome.
+//
+// ONE TYPE SCALE for the whole panel (feedback #51, 2026-07-29). It used to
+// carry seven unrelated sizes (.72/.74/.76/.8/.82/.85/.86rem) that measured
+// out as four near-identical steps inside 1.3px of each other — read as
+// inconsistency rather than hierarchy — and the code listing was the
+// SMALLEST text in a popover whose entire job is showing code. Two roles
+// now, and only two: `--spk-ui` for chrome and code, `--spk-doc` for prose.
+// Rendered markdown layers its heading ratios on top of --spk-doc and
+// nothing else does. Keep it that way: a new raw font-size here is the bug
+// coming back, and the type-scale guard in source-peek-core.test.js fails
+// the build on one.
 const CSS = `
 .spk-ref { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
 .spk-ref:hover, .spk-ref:focus-visible { text-decoration-style: solid; outline: none; }
@@ -100,6 +111,8 @@ const CSS = `
 }
 #spk-overlay[hidden] { display: none; }
 #spk-panel {
+  --spk-ui: .8rem;
+  --spk-doc: .875rem;
   display: flex; flex-direction: column; overflow: hidden;
   width: min(860px, 100%); max-height: min(52rem, 100%);
   color: #2a2f36; background: linear-gradient(165deg, #fdfdfe 0%, #f1f3f6 100%);
@@ -113,30 +126,32 @@ const CSS = `
 }
 #spk-path {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: .8rem; font-weight: 600; word-break: break-all; margin-right: auto;
+  font-size: var(--spk-ui); font-weight: 600; word-break: break-all; margin-right: auto;
 }
+/* Same size as the path — the badge is set apart by its muted colour and
+   chip background, not by being a third of a step smaller than everything. */
 #spk-head .spk-badge {
-  font-size: .72rem; color: #48505a; background: rgba(140, 150, 162, .16);
+  font-size: var(--spk-ui); color: #48505a; background: rgba(140, 150, 162, .16);
   border-radius: 6px; padding: .1rem .4rem; white-space: nowrap;
 }
 #spk-head button {
   border: 1px solid #c6ccd4; background: linear-gradient(#ffffff, #e8ebef);
   color: #2a2f36; border-radius: 8px; padding: .25rem .55rem;
-  font-size: .76rem; cursor: pointer;
+  font-size: var(--spk-ui); cursor: pointer;
 }
 #spk-body { overflow: auto; overscroll-behavior: contain; flex: 1; }
-#spk-body .spk-note { padding: .9rem; font-size: .85rem; line-height: 1.5; }
+#spk-body .spk-note { padding: .9rem; font-size: var(--spk-doc); line-height: 1.5; }
 #spk-body .spk-note code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   background: rgba(140, 150, 162, .18); border-radius: 4px; padding: 0 .25em;
 }
 .spk-pick { display: block; width: 100%; text-align: left; border: 0; cursor: pointer;
-  background: none; padding: .45rem .9rem; font-size: .82rem; color: #2a2f36;
+  background: none; padding: .45rem .9rem; font-size: var(--spk-ui); color: #2a2f36;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .spk-pick:hover, .spk-pick:focus-visible { background: rgba(140, 150, 162, .14); outline: none; }
 #spk-code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: .74rem; line-height: 1.45; padding: .5rem 0 .75rem; min-width: max-content;
+  font-size: var(--spk-ui); line-height: 1.45; padding: .5rem 0 .75rem; min-width: max-content;
 }
 .spk-line { display: flex; white-space: pre; }
 .spk-line.spk-hl { background: rgba(255, 213, 128, .38); }
@@ -149,13 +164,31 @@ const CSS = `
 .spk-lt .s { color: #1f6b3a; }
 .spk-lt .k { color: #7a3ea0; font-weight: 600; }
 .spk-lt .n { color: #a05a1f; }
-#spk-md { padding: .4rem .95rem .9rem; font-size: .86rem; line-height: 1.55; }
+/* The rendered-markdown view. Its headings MUST size themselves here: the
+   box used to be tagged .md in the hope of inheriting the tier's markdown
+   styles, but every one of those rules is scoped .content.md, so none ever
+   matched and the headings fell through to the UA defaults — an h1 rendered
+   at 2em (27.5px against 13.8px body text) and, worse, an inline code span
+   inside an h2 compounded to 19px while the identical span in a paragraph
+   sat at 12.7px. Same element, same document, 50% apart. The ratios below
+   mirror .content.md in css/app.css so a doc reads the same in the popover
+   as it does in an answer bubble; keep the two in step. */
+#spk-md { padding: .4rem .95rem .9rem; font-size: var(--spk-doc); line-height: 1.55; }
+#spk-md > :first-child { margin-top: 0; }
+#spk-md > :last-child { margin-bottom: 0; }
+#spk-md p, #spk-md ul, #spk-md ol { margin: .5em 0; }
+#spk-md ul, #spk-md ol { padding-left: 1.4em; }
 #spk-md img { max-width: 100%; height: auto; }
 #spk-md pre { overflow-x: auto; background: rgba(140, 150, 162, .12); border-radius: 8px; padding: .6rem; }
-#spk-md code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
+#spk-md code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; }
 #spk-md table { display: block; overflow-x: auto; border-collapse: collapse; }
 #spk-md th, #spk-md td { border: 1px solid #d7dce2; padding: .25rem .5rem; }
-#spk-md h1, #spk-md h2, #spk-md h3 { line-height: 1.25; }
+#spk-md blockquote { border-left: 3px solid #d7dce2; margin: .5em 0; padding-left: .7em; color: #5a626c; }
+#spk-md hr { border: 0; border-top: 1px solid #d7dce2; }
+#spk-md h1, #spk-md h2, #spk-md h3, #spk-md h4 { margin: .8em 0 .4em; line-height: 1.25; }
+#spk-md h1 { font-size: 1.25em; }
+#spk-md h2 { font-size: 1.15em; }
+#spk-md h3, #spk-md h4 { font-size: 1.05em; }
 @media (prefers-reduced-motion: no-preference) {
   #spk-panel { animation: spk-in .18s ease-out; }
   @keyframes spk-in { from { transform: translateY(10px); opacity: 0; } }
@@ -286,7 +319,10 @@ function showFileBody() {
   if (isMd && mdMode) {
     const box = document.createElement("div");
     box.id = "spk-md";
-    box.className = "md";
+    // No `md` class: every tier rule for it is scoped `.content.md`, so the
+    // tag matched nothing on either tier while reading as if the tier styled
+    // this box — which is how the headings ended up at UA defaults (#51).
+    // #spk-md styles itself, per this module's own no-tier-stylesheet rule.
     renderMarkdownInto(box, text);
     bodyEl.replaceChildren(box);
     bodyEl.scrollTop = 0;
