@@ -29,6 +29,7 @@ import { loadArticlesView } from "./account-articles.js";
 import { loadFeedbackView } from "./account-feedback.js";
 import { loadKnowledgeView } from "./account-knowledge.js";
 import { loadMcpView } from "./account-mcp.js";
+import { loadMemoryView } from "./account-memory.js";
 import { loadMessagesView } from "./account-messages.js";
 import { loadPoolView } from "./account-pool.js";
 import { loadSettingsView, loadShareView } from "./account-settings.js";
@@ -121,6 +122,7 @@ export function initAccountPanel() {
 // Anything unlisted falls back to "Account & usage".
 const VIEW_TITLES = {
   settings: "Settings",
+  memory: "Memory",
   share: "Share a Se/cure workspace",
   articles: "Article collection",
   llmsharing: "LLM sharing",
@@ -132,7 +134,7 @@ const VIEW_TITLES = {
  * its controls. The summary/full views render synchronously from the
  * cached /api/me; the rest fetch their own data.
  * @param {PanelCtx} ctx
- * @param {"summary"|"full"|"messages"|"settings"|"llmsharing"|"share"|"feedback"|"games"|"docs"|"articles"} view
+ * @param {"summary"|"full"|"messages"|"settings"|"memory"|"llmsharing"|"share"|"feedback"|"games"|"docs"|"articles"} view
  */
 function showView(ctx, view) {
   if (ctx.title) ctx.title.textContent = VIEW_TITLES[view] || "Account & usage";
@@ -161,6 +163,13 @@ function showView(ctx, view) {
   // it a door rather than a knob, and its back-link returns there.
   if (view === "mcp") {
     loadMcpView(ctx);
+    return;
+  }
+  // Also one level below Settings: the account's memory — the switch that
+  // fills it, the notes themselves, and the download/reset pair. Its back-link
+  // returns to Settings for the same reason as the two above.
+  if (view === "memory") {
+    loadMemoryView(ctx);
     return;
   }
   if (view === "share") {

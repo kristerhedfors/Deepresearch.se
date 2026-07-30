@@ -15,7 +15,7 @@ import {
   storedChatMode,
 } from "./settings.js";
 
-const DEFAULTS = { shodan_mcp: false, google_maps: false, bash_lite_mcp: false, chat_mode: "normal" };
+const DEFAULTS = { shodan_mcp: false, google_maps: false, bash_lite_mcp: false, memory: false, chat_mode: "normal" };
 
 test("parseSettings defaults: every knob off", () => {
   assert.deepEqual(parseSettings(null), DEFAULTS);
@@ -66,7 +66,7 @@ test("cloudStorageEnabled is availability, nothing else: binding AND user row", 
 
 test("parseSettings drops unknown keys", () => {
   const s = parseSettings('{"shodan_mcp":true,"evil":"x"}');
-  assert.deepEqual(Object.keys(s).sort(), ["bash_lite_mcp", "chat_mode", "google_maps", "shodan_mcp"]);
+  assert.deepEqual(Object.keys(s).sort(), ["bash_lite_mcp", "chat_mode", "google_maps", "memory", "shodan_mcp"]);
 });
 
 test("parseSettings: a legacy stored feedback_mode flag is dropped like any unknown key", () => {

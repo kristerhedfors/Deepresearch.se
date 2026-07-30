@@ -22,6 +22,7 @@
  * @property {boolean} [shodan_mcp]
  * @property {boolean} [google_maps]
  * @property {boolean} [bash_lite_mcp]
+ * @property {boolean} [memory]
  * @property {string} [chat_mode]
  * @property {string} [maps_embed_key]
  * @property {{storage?: boolean, rag?: boolean, shodan?: boolean, google_maps?: boolean, bash_lite?: boolean, developer?: boolean, exec_container?: boolean}} [available]
@@ -144,6 +145,13 @@ export function bashLiteOn() {
   return settings?.bash_lite_mcp === true;
 }
 
+// Whether this account is building a memory (src/memory.js). Default off, and
+// off is also the honest answer before /api/settings has resolved — a screen
+// that flashed "on" and corrected itself would misreport what is being stored.
+export function memoryOn() {
+  return settings?.memory === true;
+}
+
 // The account's stored chat mode — the authoritative copy of the pick, which is
 // why it follows the account across devices. chat-mode.js holds the
 // localStorage CACHE of it for first paint; this is the value that replaces the
@@ -188,4 +196,9 @@ export function execContainerAvailable() {
 /** @param {boolean} on */
 export function setBashLiteMcp(on) {
   return updateSetting({ bash_lite_mcp: on });
+}
+
+/** @param {boolean} on @returns {Promise<Settings|null>} truthy on success */
+export function setMemory(on) {
+  return updateSetting({ memory: on });
 }

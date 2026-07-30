@@ -70,6 +70,7 @@ import { handleFeedbackApi, handleServerTokenFeedback } from "./feedback.js";
 import { handleOutrospectFeed, handleOutrospectRefresh } from "./outrospect.js";
 import { handleTryRedirect } from "./testpoints.js";
 import { bashLiteEnabled, handleSettingsGet, handleSettingsPut } from "./settings.js";
+import { handleMemoryDelete, handleMemoryExport, handleMemoryGet } from "./memory.js";
 import {
   handleModelCatalog,
   handleModelDisable,
@@ -793,6 +794,19 @@ async function routeApi(request, env, url, log, identity, ctx, requestId) {
   }
   if (url.pathname === "/api/settings" && request.method === "PUT") {
     return handleSettingsPut(request, env, log, identity);
+  }
+  // Account memory (src/memory.js): the durable note graph behind Settings →
+  // Memory. Se/rver-tier only and account-scoped — every handler refuses a
+  // break-glass identity, which is also what keeps a Se/rver TOKEN out (it can
+  // never satisfy the signed-in gate; the server-token guarantee).
+  if (url.pathname === "/api/memory" && request.method === "GET") {
+    return handleMemoryGet(env, identity);
+  }
+  if (url.pathname === "/api/memory/export" && request.method === "GET") {
+    return handleMemoryExport(env, identity);
+  }
+  if (url.pathname === "/api/memory" && request.method === "DELETE") {
+    return handleMemoryDelete(env, identity);
   }
   // The Models agent's LIFECYCLE surface (src/models-api.js): explore every
   // provider's catalog, evaluate a model against the established checks, and

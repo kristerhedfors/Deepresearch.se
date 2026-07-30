@@ -15,7 +15,7 @@ import { classifyChatError, raiseAlert } from "./alerts.js";
 import { heartbeatAnswer, markAnswerRunning, saveAnswer } from "./answers.js";
 import { recordChatLog, shellLogSummary } from "./chatlog.js";
 import { addUserMessage } from "./user-messages.js";
-import { adminDefaultModelValid, DEFAULT_MODEL } from "./berget.js";
+import { adminDefaultModelValid, completeJson, DEFAULT_MODEL } from "./berget.js";
 import { resolveJsonModel as resolveJsonPhaseModel } from "./model-routing.js";
 import { exaCost, spendByModel, summarizeSpend } from "./billing.js";
 // Re-exported so chat.test.js (and any importer) keeps getting it from here.
@@ -51,9 +51,9 @@ import {
   validateMessages,
 } from "./validation.js";
 import { extensionLogMeta, resolveExtensionState } from "./extensions.js";
-import { bashLiteEnabled, chatModesAvailable, extensionEnabledMap, storedChatMode } from "./settings.js";
+import { bashLiteEnabled, chatModesAvailable, extensionEnabledMap, memoryEnabled, storedChatMode } from "./settings.js";
 import { modeCarriesSource, resolveBodyChatMode, routingNeedsRegistry } from "./chat-modes.js";
-import { lastUserMessage, textOf } from "./conversation.js";
+import { lastUserMessage, lastUserText, textOf } from "./conversation.js";
 import { buildSlugOk } from "./build-pub.js";
 import { normalizeSwarmCapability } from "./orchestrator-api.js";
 import { loadAgentRegistry } from "./agent-registry.js";
@@ -63,6 +63,7 @@ import { slashEffect } from "./slash.js";
 import { recordUseCaseFeedback } from "./testpoints.js";
 import { getDb } from "./db.js";
 import { normalizeSearchSource } from "./websearch-backends.js";
+import { runMemoryExtraction } from "./memory.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -802,6 +803,34 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             // chatlogs scan find feedback even when the entry write failed.
             feedback: state.feedback ? 1 : 0,
           },
+        });
+      }
+      // ACCOUNT MEMORY (src/memory.js): distil this finished turn into the
+      // account's durable note graph. Runs LAST and entirely off the answer's
+      // critical path — the reply has already streamed — and it is fail-soft
+      // inside runMemoryExtraction, so a memory that fails to learn changes
+      // nothing about what the user received (invariant 2). One JSON call on
+      // the fixed jsonModel, no tools (invariants 1 and 3), and it is skipped
+      // whole for an incognito turn: the ghost promise has to cover a record
+      // that outlives the chat-log row it already covers.
+      if (memoryEnabled(env, identity) && !incognito) {
+        await runMemoryExtraction({
+          env,
+          log,
+          identity,
+          incognito,
+          enabled: true,
+          question: lastUserText(conversation),
+          answer: answer.text,
+          jsonPhase: ({ system, user, maxTokens }) =>
+            completeJson(
+              env,
+              [
+                { role: "system", content: system },
+                { role: "user", content: user },
+              ],
+              { model: jsonModel, maxTokens },
+            ),
         });
       }
       // Feedback pipeline (pipeline.js runFeedbackCapture): the message was a
