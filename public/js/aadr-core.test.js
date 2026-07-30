@@ -107,6 +107,17 @@ test("ancientSampleIntent", async (t) => {
     ]) assert.equal(ancientSampleIntent(s), true, s);
   });
 
+  await t.test("fires when the only query-shape word is one the \\b trap killed", () => {
+    // "äldre än" starts in ä, so under ASCII `\b` this alternative could never
+    // match and the gate fell through to false — silently, because every other
+    // probe above carries a second, ASCII-initial shape word ("hur många",
+    // "visa", "vilka"). See src/swedish-boundary.test.js.
+    for (const s of [
+      "forntida individer äldre än 3000 år",
+      "haplogrupper äldre än bronsåldern",
+    ]) assert.equal(ancientSampleIntent(s), true, s);
+  });
+
   await t.test("fires on the dataset by name", () => {
     for (const s of ["what is in the AADR", "poseidon package for Rasmussen 2010", "vad är AADR"]) {
       assert.equal(ancientSampleIntent(s), true, s);

@@ -1611,12 +1611,15 @@ as bespoke subsystems:
   theme, animations, example questions, share-link quota — and, since spec
   0.2.0, its **capability block** (what it does: answer phase, tool set,
   context blocks, search/routing policy, gates, bounds, emitted events,
-  required knob, sub-agent team). Copy a spec, change those, validate. Seven
-  agents ship today: the five DEFAULTS, one per chat mode — `research`
+  required knob, sub-agent team). Copy a spec, change those, validate. Nine
+  agents ship today: the six DEFAULTS, one per chat mode — `research`
   (`normal`), `introspection`, `agent-builder` (Agent Studio, mode `sdk`),
-  `orchestrator` and `outrospection` — plus `secure` (the Se/cure archetype)
-  and `under-construction`, the template to copy. The registry's ordered
-  `defaults` table is what `/api/chat` routes on.
+  `orchestrator`, `outrospection` and `models` — plus `secure` (the Se/cure
+  archetype), `under-construction` (the template to copy) and
+  `palaeogenomics`, a DOMAIN agent bound to no mode at all and reached by id
+  (`docs/PALAEOGENOMICS.md`). The registry's ordered
+  `defaults` table is what `/api/chat` routes on; the per-agent detail is
+  `docs/AGENT-PLATFORM.md` §2.
 - **DeepResearch Platform SDK** (`sdk/MANIFEST.json`, `docs/DISTILLSDK.md`)
   — 34 modules, one buildable skill each, for distilling a whole
   DeepResearch.se-like platform. Module ids map back to the repo files that
@@ -1626,16 +1629,23 @@ as bespoke subsystems:
 description of finished work. Several surfaces already have their Platform-SDK
 module — `execution-sandbox`, `introspection-help`, `decision-boards`,
 `publish-replays`, `games-shelf`, `mcp-surface`, `grant-bridge`,
-`symbol-language`, `pair-studio`, `agent-platform`. Orchestrator and Outrospection modes now have their
-AgentSpec entry and route through the registry (2026-07-25), though neither has
-a Platform-SDK module yet. Others are still bespoke code with no SDK module and
-no AgentSpec entry: **on-device inference** (`public/js/ondevice-*.js`,
+`symbol-language`, `pair-studio`, `agent-platform`. Orchestrator, Outrospection
+and Models modes now have their AgentSpec entry and route through the registry
+(2026-07-25/26), as does the mode-less `palaeogenomics` domain agent — but none
+of the four has a Platform-SDK module yet. Others are still bespoke code with no
+SDK module and no AgentSpec entry: **on-device inference** (`public/js/ondevice-*.js`,
 `docs/BONSAI-27B-PHONE-INFERENCE.md` — since 2026-07-25 it also powers
 Orchestrator's `swarm` node kind, `docs/SWARM-REASONING.md`: N tiny Bonsai
 models reasoning in parallel browser workers, planned through
 `POST /api/orchestrator/plan` and merged server-side), **compute sharing**
 (`src/pool.js`, `src/pool-token.js`, `docs/COMPUTE-SHARING.md`), **workspace
-knowledge** (`src/knowledge.js`), the **quiz** surface (`src/quiz.js`) and the
+knowledge** (`src/knowledge.js`), the **quiz** surface (`src/quiz.js`), the
+**capability-demo registry and the NHxx watch builder** it drives
+(`public/js/demo-core.js`, `watch-core.js`, `watch-chat-core.js`, façades
+`src/demos.js`, `src/watch.js`, `src/watch-chat.js`, `src/watch-tools.js`,
+`docs/WATCH-BUILDER.md`, 2026-07-30 — the newest surface, and the clearest case
+of one that should have been a spec: a conversational builder over a committed
+catalogue is a flavour, not a subsystem) and the
 **execution-environment seam** (`public/js/exec-backends-core.js`,
 `src/exec-container.js`, `docs/EXECUTION-ENVIRONMENTS.md`, 2026-07-26 — the
 DREE/1 wire letting either a runner on the user's own machine or an ephemeral

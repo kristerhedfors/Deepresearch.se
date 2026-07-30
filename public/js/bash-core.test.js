@@ -98,6 +98,9 @@ describe("bashIntent — Swedish parity", () => {
       "använd terminalen för att beräkna sha256",
       "kör de här kommandona i en linux-vm",
       "räkna ut det här åt mig",
+      // "åt mig" as the ONLY object word: it starts in å, so ASCII `\b` made
+      // that alternative unmatchable (src/swedish-boundary.test.js).
+      "beräkna åt mig",
       "kör beräkningen det här",
       "exekvera snutten och visa utdata",
     ]) {

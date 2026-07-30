@@ -9,8 +9,11 @@ The short version:
 
 - **Zero runtime npm dependencies.** `package.json` has no `dependencies`
   block. `src/` imports nothing but `node:*` builtins and its own files. There
-  is no build step and no bundler, so there is no transitive tree to audit
-  (invariant 5 in `CLAUDE.md`).
+  is no build step and no bundler, so nothing that ships has a transitive tree
+  to audit (invariant 5 in `CLAUDE.md`). **Three dev-only packages, 25 in the
+  lockfile** — the tree arrived with `cheerio` on 2026-07-27 and is reachable
+  only from one offline harvest script, never from `src/`, `public/` or the
+  deploy (§5).
 - **Seven third-party JavaScript libraries**, all hand-vendored into
   `public/vendor/` and served same-origin. 41.25 MiB on disk, of which 34.82
   MiB is the two on-device-inference WASM blobs that only load when a user
@@ -21,8 +24,9 @@ The short version:
   intent is that nothing third-party executes from a host we do not control;
   we are not there yet.
 
-Sizes and hashes below were measured against the working tree on 2026-07-26.
-Re-measure with the commands in §7.
+Sizes and hashes below were measured against the working tree on 2026-07-26;
+§5's package counts were re-checked 2026-07-30. Re-measure with the commands in
+§7.
 
 ---
 
@@ -210,20 +214,34 @@ None of these ship. The deploy uploads `src/` and `public/` as plain files.
 |---|---|---|---|
 | `typescript` | root `devDependencies` | latest | `npm run typecheck` — zero-build-step `tsc --noEmit`, opt-in per file via `// @ts-check` |
 | `@cloudflare/workers-types` | root `devDependencies` | latest | Worker globals for that typecheck |
+| `cheerio` | root `devDependencies` | ^1.2.0 | The LaTeXML-aware DOM walk in `scripts/arxiv-html.mjs`, the arXiv full-text extractor (added 2026-07-27). Offline harvest tooling only — nothing it touches is served or deployed |
 | `@playwright/test` | `tests/devDependencies` | ^1.49.0 | End-to-end tests against the live site |
 | `wrangler` | invoked via `npx`; pinned in `instances/lite` | ^3.60.0 there | Deploy and local dev |
 | Node.js | — | 22 in CI | Test runner only (`node:test`, no framework). The Worker runs on workerd. |
 | Python 3 | — | any | `tests/make_fixtures.py`, run once to build e2e fixtures |
 | Vale | `.claude/skills/anti-ai-smell/vale/` | optional | Prose linting for the docs de-smell pass |
 
-The root lockfile resolves to **3 packages** total. `instances/lite` is a
-distilled instance with its own three dev dependencies and, like the parent,
-no runtime ones.
+The root lockfile resolves to **25 packages**: three direct devDependencies
+plus the 22 `cheerio` brings with it (`parse5`, `htmlparser2`, `domutils`,
+`undici` and friends). It was 3 until 2026-07-27. That is worth stating
+plainly, because it is the first transitive tree this project has had at all,
+and because it means `npm test` no longer runs on a bare checkout: without an
+`npm install` the arXiv extractor's suite fails with `ERR_MODULE_NOT_FOUND`,
+not a test assertion. `instances/lite` is a distilled instance with its own
+three dev dependencies and, like the parent, no runtime ones.
+
+The tree is dev-only and stays that way. Nothing above is imported by `src/`,
+by anything under `public/`, or by the deploy. `cheerio` is reachable from one
+offline harvest script and its unit test, so a compromise there reaches a
+maintainer's laptop, not a visitor's browser. That is the boundary invariant 5
+draws: zero runtime dependencies is absolute, dev tooling is argued case by
+case (§8.1), and the audit substitute for the vendored tree (§7) does not apply
+here because none of it ships.
 
 CI (`.github/workflows/ci.yml`) runs `npm ci` + `npm test` + `npm run
-typecheck` on Node 22 with no credentials and no network. The e2e and eval
-harnesses are deliberately not run there — they spend provider tokens and need
-break-glass auth.
+typecheck` on Node 22 with no credentials, and no network beyond that install.
+The e2e and eval harnesses are deliberately not run there — they spend provider
+tokens and need break-glass auth.
 
 ---
 
@@ -314,3 +332,22 @@ If a library does earn its place:
 For an update to an existing library, the same steps apply plus a check of the
 upstream changelog against `SECURITY-RISKS.md` R-10 — DOMPurify most of all,
 since it is the sole XSS defence while the CSP is off.
+
+### 8.1 A DEV-only package is a different question
+
+The steps above are about a library the browser loads. A package used only by
+offline tooling — `cheerio` is the one precedent — never reaches a visitor, so
+vendoring and CSP do not apply and the bar is about the maintainer's machine
+instead:
+
+1. **It must be unreachable from what ships.** Nothing in `src/` or `public/`
+   may import it, directly or transitively. If the feature needs it at
+   request time, it is a runtime dependency and invariant 5 refuses it.
+2. **Pin it and say why.** A caret range in root `devDependencies`, plus a row
+   in §5 naming the one script that uses it.
+3. **Account for the lockfile.** Update the package count in §5 and the summary
+   bullet at the top; a jump from 3 to 25 is the kind of thing that should be
+   visible in a diff rather than discovered later.
+4. **Say what it costs the suite.** `cheerio` is why `npm test` needs an
+   `npm install` first; if a new package changes how the suite is run, that
+   belongs in `CLAUDE.md`'s Tests block and `docs/TESTING.md`.

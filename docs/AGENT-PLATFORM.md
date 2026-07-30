@@ -66,7 +66,7 @@ Both levels are **data**. Deriving a new agent is: copy one spec, change those
 fields, validate. No code change — including for what it does, as long as it
 selects an answer phase the platform already implements.
 
-## 2. The seven agents we ship
+## 2. The nine agents we ship
 
 Each is one entry in [`sdk/AGENTS.json`](../sdk/AGENTS.json) — reference specs
 that exist to be copied. **Six are the DEFAULT agents**, one per Se/rver chat
@@ -98,8 +98,8 @@ though six of its entries are now bound to a mode (§4).
 | The list | Where it lives | What it is | Its entries |
 |---|---|---|---|
 | **Tiers** | the product | The two halves of the platform, split by where the data goes | Se/cure (client, server in no data path), Se/rver (signed-in, cloud) |
-| **Chat modes** | `public/js/chat-mode.js` `CHAT_MODES`, mirrored in `public/js/mode-theme.js` | What the pipeline *does* with a turn — picked in the dropdown | `normal` (Deep Research), `introspection`, `sdk` (Agent Studio), `orchestrator`, `outrospection`, `models` (Models) |
-| **Agents** | `sdk/AGENTS.json` | Reference AgentSpecs — templates to copy | Research, Introspection, Agent Studio, Orchestrator, Outrospection, Models, Secure, Under Construction |
+| **Chat modes** | `public/js/chat-mode-core.js` `CHAT_MODES` (re-exported by `chat-mode.js`, façade `src/chat-modes.js`), mirrored in `public/js/mode-theme.js` | What the pipeline *does* with a turn — picked in the dropdown | `normal` (Deep Research), `introspection`, `sdk` (Agent Studio), `orchestrator`, `outrospection`, `models` (Models) |
+| **Agents** | `sdk/AGENTS.json` | Reference AgentSpecs — templates to copy | Research, Introspection, Agent Studio, Orchestrator, Outrospection, Models, Secure, Under Construction, Palaeogenomics |
 | **Routes** | `public/js/stream.js` `sendMessage` | Where a send is *computed* — not chosen directly, inferred from the model pick and the knobs | server pipeline (`/api/chat`), on-device (`ondevice::` Bonsai), private introspection (own key, browser-direct) |
 
 The fourth row is the one with no user-facing name, and the omission caused a
@@ -118,7 +118,8 @@ The relationships, in one line each:
   defining property is structural (the server is in no data path), and a
   client-platform spec cannot opt into a server data path (PA-4).
 - **An agent picks a mode**, via the `mode` field and the `mode-select`
-  control; all five ids are selectable. Since spec 0.2.0 it also picks an
+  control; all six ids are selectable, and leaving `mode` unset is legal too —
+  that is what makes `palaeogenomics` reachable by id alone. Since spec 0.2.0 it also picks an
   **answer phase**, via `capability.answerPhase` (§3.1) — so a spec can reach
   any execution semantics the platform already implements, and the `defaults`
   table (§4) is what binds a mode to the agent that IS it. What a spec still

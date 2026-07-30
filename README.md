@@ -467,18 +467,25 @@ URI from step 4. Note that client-disconnect detection doesn't fire in
 ## Tests
 
 ```bash
-npm test              # unit suite: node --test src/*.test.js public/js/*.test.js sdk/*.test.mjs scripts/*.test.mjs (no deps)
+npm install           # once: the unit suite needs the root devDependencies
+npm test              # unit suite: node --test src/*.test.js public/js/*.test.js
+                      #   public/games/*/js/*.test.js sdk/*.test.mjs scripts/*.test.mjs tests/*.test.js
 npm run typecheck     # tsc --noEmit on src/ + public/ (checked JSDoc, dev-only)
 
 cd tests && npm install && npm run fixtures   # Playwright E2E, once
-npm run test:mocked   # free — /api/chat & friends intercepted
+npm run test:local    # free, no credentials — against a Worker on this machine
+npm run test:mocked   # free — against the live site, /api/chat & friends intercepted
 npm run test:live     # spends real tokens against the live site
 ```
 
-The E2E suite runs against the live site using the break-glass credentials
-(`BASIC_AUTH_USER`/`BASIC_AUTH_PASS` env vars). Three eval harnesses live
-in `tests/` (`eval:models`, `eval:bench`, `eval:hf`) with append-only
-findings ledgers — see `docs/ARCHITECTURE.md` §12 and CLAUDE.md.
+The E2E suite has two targets. `test:local` brings up its own Worker and a
+loopback stand-in for the LLM provider, so it needs no credentials and nothing
+deployed — that is the one CI runs. `test:mocked` and `test:live` go against
+the deployed site with the break-glass credentials
+(`BASIC_AUTH_USER`/`BASIC_AUTH_PASS` env vars). Five eval harnesses have
+append-only findings ledgers: `eval:models`, `eval:bench`, `eval:hf` and
+`eval:starters` in `tests/`, plus `scripts/arxiv-hosted-eval.mjs` for
+retrieval — see `docs/TESTING.md`, `docs/ARCHITECTURE.md` §12 and CLAUDE.md.
 
 ## Logging
 
@@ -488,11 +495,14 @@ via `[observability]` (dashboard: Worker → Logs), live via
 `npx wrangler tail`. Workers Logs never carry secrets or chat content;
 user text appears at `debug` only. Separately, and by explicit disclosed
 design, the D1 `chat_logs` interaction log stores each completed exchange's
-full question and answer for debugging, unless the conversation used the
-ghost/incognito toggle. See `docs/ARCHITECTURE.md` §9.
+full question and answer for debugging, unless the request carries
+`incognito: true` — the API promise that suppresses the row. (The ghost
+button is not that switch: since 2026-07-10 it is the door to
+DeepResearch.**Se/cure**, the structurally stronger anonymity.) See
+`docs/ARCHITECTURE.md` §9 and `docs/PRIVACY-MODEL.md`.
 
 ## License
 
-[MIT](LICENSE). The vendored libraries in `public/vendor/` (marked,
-DOMPurify, jsPDF, pdf.js, xterm.js, transformers.js) keep their own
-licenses.
+[MIT](LICENSE). The seven vendored libraries in `public/vendor/` (marked,
+DOMPurify, mermaid, jsPDF, pdf.js, xterm.js, transformers.js) keep their own
+licenses — `docs/DEPENDENCIES.md` §1 lists each one's version and license.

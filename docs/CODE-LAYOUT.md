@@ -255,6 +255,14 @@ summary's Settings button OR directly via the header's gear icon,
 `account-feedback.js` (the Feedback dialogue-threads view — thread
 screenshots render as thumbnails off the per-image endpoint, and each
 reply box carries the `feedback-attach.js` widget),
+`account-mcp.js` (the Settings → **MCP server** view, 2026-07-26: mint /
+rotate / revoke this account's one MCP key, choose which tools the `/mcp`
+surface exposes and whether a caller may override the research defaults, and
+copy the ready-made client config. The key is shown ONCE at mint — the view
+holds no copy afterwards, which is why rotating is the only recovery — and
+the panel states plainly that an MCP call is Se/rver-tier traffic: logged in
+the account's name, on the account's quota. Server side:
+`src/mcp-key.js` + `src/mcp-config.js`),
 `account-articles.js` (the admin-only "Article collection" view — the
 article series about the project as pure data + a pure HTML builder,
 Node-tested; each entry carries a `body` abstract/intent plus an optional
@@ -740,7 +748,12 @@ DRC's page is `public/cure/` (`index.html` + `drc.js` wiring +
 logo vortex untwisting into wireframe 3D umbrellas, pure
 timeline/geometry core Node-tested, replay with `?anim=1`, pace =
 2.5× base × the admin's `anim_speed` config slider (public
-`GET /api/anim`); the landing
+`GET /api/anim`) — and `ghostwalk.js`, the ambient strolling ghost that takes
+over after the intro: dynamically imported by `drc.js` so it costs the first
+paint nothing, and split the usual way, with the stroll/turn/idle state machine
+as a pure core Node-tested from `public/js/ghostwalk.test.js` while the module
+itself owns the canvas. A click promotes the ambient stroll into a real play
+(the same mascot beat the landing page runs, `docs/INTRO-BASELINE.md`); the landing
 page carries the sibling first-visit onboarding — the does/doesn't
 pane and the ghost mascot pointing out the ghost button, inline in
 `public/welcome/index.html` — see the **ui-notes** skill):

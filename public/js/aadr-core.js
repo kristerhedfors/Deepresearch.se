@@ -238,8 +238,12 @@ const SAMPLE_SUBJECT =
 
 /** The query SHAPE — asking for a set of things rather than for an explanation.
  * Requires a counting/listing/locating verb or an explicit filter clause. */
+// The Swedish half uses lookaround boundaries, not `\b`: JS defines `\b` over
+// [A-Za-z0-9_], so `\bäldre än\b` can never match — the boundary before "ä"
+// needs a word character and there isn't one. Invariant 6 dies silently under
+// `\b` because the English half keeps matching. Same trap as europepmc.js.
 const SAMPLE_QUERY_SHAPE =
-  /\b(how many|list|show|find|which|what|where|search|count|sorted?|filter\w*|between|within|near|older than|younger than|dated?|coverage|from the database|in the dataset)\b|\b(hur många|lista|visa|hitta|sök|vilka|vilken|var\b|räkna|sorter\w*|filtrer\w*|mellan|inom|nära|äldre än|yngre än|daterad?e?|täckning|i databasen|i datasetet)\b/i;
+  /\b(how many|list|show|find|which|what|where|search|count|sorted?|filter\w*|between|within|near|older than|younger than|dated?|coverage|from the database|in the dataset)\b|(?<![\p{L}\p{N}_])(hur många|lista|visa|hitta|sök|vilka|vilken|var(?![\p{L}\p{N}_])|räkna|sorter\w*|filtrer\w*|mellan|inom|nära|äldre än|yngre än|daterad?e?|täckning|i databasen|i datasetet)(?![\p{L}\p{N}_])/iu;
 
 /** Naming the dataset itself. */
 const SAMPLE_NAMED = /\b(aadr|allen ancient dna resource|poseidon|reich lab|\.janno\b|sample (?:database|table)|provdatabas\w*)\b/i;

@@ -30,8 +30,13 @@ export const CANNED_LABEL = {
 // Swedish diacritics OR a common Swedish function/topic word ⇒ answer in
 // Swedish. Kept deliberately small and high-precision: a stray word won't flip
 // an otherwise-English question, and the fallback is always English.
+// Lookaround boundaries, not `\b`: JS defines `\b` over [A-Za-z0-9_], so an
+// alternative that STARTS or ENDS in "å/ä/ö" is dead under `\b` — "är",
+// "åtkomst" and the "hallå" branch of hall[åa] all were. Harmless here (the
+// leading [åäö] alternative catches every one of them), but the same shape is
+// load-bearing at line 204 below, so both are written the safe way.
 const SV_HINT =
-  /[åäö]|\b(vad|hur|är|jag|kan|vem|varför|vilka|vilket|hej|tja|tjena|hall[åa]|tack|och|inte|det|här|den|dem|källkod|gratis|kostar|logga|konto|åtkomst|nyckel|integritet|sparar|lagra[rs]?|språk|svenska|fungerar|bygg[dt]|skillnad|säker|hjälp)\b/i;
+  /[åäö]|(?<![\p{L}\p{N}_])(vad|hur|är|jag|kan|vem|varför|vilka|vilket|hej|tja|tjena|hall[åa]|tack|och|inte|det|här|den|dem|källkod|gratis|kostar|logga|konto|åtkomst|nyckel|integritet|sparar|lagra[rs]?|språk|svenska|fungerar|bygg[dt]|skillnad|säker|hjälp)(?![\p{L}\p{N}_])/iu;
 
 /**
  * @param {string} text
@@ -201,7 +206,10 @@ const ENTRIES = [
       /\b(?:how do i|can i|where do i)\b.*\b(?:sign|log|register|get access|get in|join)\b/i,
       /\b(?:account|register|sign\s?up|invite|approval|access)\b/i,
       /\b(?:logga|loggar)\s+in\b/i,
-      /\b(?:konto|registrera|åtkomst|inbjud\w*|godkänn\w*|tillgång)\b/i,
+      // Lookaround, not `\b` — "åtkomst" starts in a non-ASCII letter, so under
+      // `\b` this pattern silently never fired for the commonest Swedish word
+      // for access.
+      /(?<![\p{L}\p{N}_])(?:konto|registrera|åtkomst|inbjud\w*|godkänn\w*|tillgång)(?![\p{L}\p{N}_])/iu,
       /\bhur\s+(?:loggar|kommer)\s+jag\s+(?:in|åt)\b/i,
     ],
     answer: (_tier, lang) =>
@@ -238,7 +246,9 @@ const ENTRIES = [
       /\b(?:which|what)\b.*\b(?:tiers?|versions?)\b.*\b(?:use|pick|choose)\b/i,
       /\b(?:the\s+)?(?:two\s+)?tiers\b/i,
       /\b(?:skillnad\w*)\b.*\b(?:se\/?cure|se\/?rver|nivå\w*|version\w*)\b/i,
-      /\bvilken\s+(?:nivå|version)\b/i,
+      // Lookahead, not `\b` — "nivå" ends in a non-ASCII letter, so "vilken
+      // nivå" (the plainest way to ask) never matched.
+      /(?<![\p{L}\p{N}_])vilken\s+(?:nivå|version)(?![\p{L}\p{N}_])/iu,
     ],
     answer: (_tier, lang) =>
       lang === "sv"
