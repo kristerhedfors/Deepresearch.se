@@ -78,6 +78,19 @@ import {
   dialLayout,
   bezelLayout,
   mm,
+  outlineSlopeFor,
+  slopeOf,
+  knurl,
+  placeRadial,
+  flankRadiusAt,
+  silhouetteZ,
+  lugMesh,
+  SHELL_ARCHETYPES,
+  CRYSTAL_FAMILIES,
+  crystalFamily,
+  DIAL_METRICS,
+  layoutBoxes,
+  layoutCollisions,
 } from "../public/js/watch-core.js";
 
 export {
@@ -125,6 +138,19 @@ export {
   dialLayout,
   bezelLayout,
   mm,
+  outlineSlopeFor,
+  slopeOf,
+  knurl,
+  placeRadial,
+  flankRadiusAt,
+  silhouetteZ,
+  lugMesh,
+  SHELL_ARCHETYPES,
+  CRYSTAL_FAMILIES,
+  crystalFamily,
+  DIAL_METRICS,
+  layoutBoxes,
+  layoutCollisions,
 };
 
 /**
