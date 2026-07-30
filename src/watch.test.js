@@ -292,69 +292,6 @@ describe("case and dial geometry", () => {
         for (const [id, n] of edges) {
           assert.equal(n % 2, 0, `${c.id}/${name}: edge ${id} is shared by ${n} triangles`);
         }
-// The RENDERER's material table (public/js/watch-materials.js).
-//
-// The renderer itself cannot be loaded here — it needs a WebGL context — but
-// the question feedback #56 actually asked ("leather shouldn't be shiny like a
-// mirror surface", "lighting looks odd, especially for bezel inserts") is a
-// question about a lookup table, and a lookup table is testable. What these
-// pin is the PHYSICAL SPLIT: a conductor's specular is coloured and strong, a
-// dielectric's is neutral and a few percent, and no resolver can put a strap
-// on the wrong side of that line. The look itself still has to be judged in a
-// browser; these stop it regressing back into one shared response.
-
-import {
-  ANISO_AXIAL,
-  ANISO_CIRCUMFERENTIAL,
-  ANISO_GRAIN,
-  ANISO_KNURL,
-  ANISO_NONE,
-  ANISO_RADIAL,
-  DEFAULT_COLORS,
-  FALLBACK_MATERIAL,
-  MATERIALS,
-  crystalMaterial,
-  dialMaterialId,
-  dialRelief,
-  finishMaterialId,
-  insertMaterialId,
-  markerIsApplied,
-  materialFor,
-  meshMaterialId,
-  strapMaterialId,
-  tintedF0,
-} from "../public/js/watch-materials.js";
-import { CRYSTALS, DIALS, INSERTS, STRAPS, FINISHES } from "./watch.js";
-
-const lum = ([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
-const MODES = [ANISO_NONE, ANISO_CIRCUMFERENTIAL, ANISO_AXIAL, ANISO_RADIAL, ANISO_KNURL, ANISO_GRAIN];
-
-describe("watch materials: the table itself", () => {
-  test("every entry is in range and says why it is what it is", () => {
-    for (const [id, m] of Object.entries(MATERIALS)) {
-      assert.ok(m.rough > 0 && m.rough <= 1, `${id} roughness`);
-      assert.ok(m.metal >= 0 && m.metal <= 1, `${id} metalness`);
-      assert.ok(m.reflect > 0 && m.reflect <= 1, `${id} reflectance`);
-      assert.ok((m.aniso || 0) >= 0 && (m.aniso || 0) <= 0.95, `${id} anisotropy`);
-      assert.ok(MODES.indexOf(m.anisoMode || 0) >= 0, `${id} brush mode`);
-      assert.ok([0, 1, 2].indexOf(m.axis || 0) >= 0, `${id} axis`);
-      assert.ok((m.env === undefined ? 0.25 : m.env) <= 1, `${id} env`);
-      assert.ok(typeof m.note === "string" && m.note.length > 20, `${id} note`);
-    }
-  });
-
-  test("conductors reflect a lot and colour it; dielectrics reflect a little and do not", () => {
-    for (const [id, m] of Object.entries(MATERIALS)) {
-      // 0.2 is the line tintedF0 itself draws: above it a material's specular
-      // is tinted by its own colour, below it the specular is white. The two
-      // partial metals here (anodised aluminium, the metallic dial finishes)
-      // are films OVER metal and belong on the conductor side of that line.
-      if (m.metal >= 0.2) {
-        assert.ok(m.reflect >= 0.15, `${id} is a metal but barely reflects`);
-      } else if (!m.glass) {
-        // The whole leather-is-not-a-mirror fix: a dielectric's F0 is a few
-        // percent. Anything above 0.09 is a metal wearing a costume.
-        assert.ok(m.reflect <= 0.09, `${id} is a dielectric with a metal's F0`);
       }
     }
   });
@@ -682,6 +619,78 @@ describe("watch materials: the table itself", () => {
       assert.ok(PLATFORMS.skx);
     } finally {
       globalThis.fetch = real;
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The RENDERER's material table (public/js/watch-materials.js).
+//
+// The renderer itself cannot be loaded here — it needs a WebGL context — but
+// the question feedback #56 actually asked ("leather shouldn't be shiny like a
+// mirror surface", "lighting looks odd, especially for bezel inserts") is a
+// question about a lookup table, and a lookup table is testable. What these
+// pin is the PHYSICAL SPLIT: a conductor's specular is coloured and strong, a
+// dielectric's is neutral and a few percent, and no resolver can put a strap
+// on the wrong side of that line. The look itself still has to be judged in a
+// browser; these stop it regressing back into one shared response.
+
+import {
+  ANISO_AXIAL,
+  ANISO_CIRCUMFERENTIAL,
+  ANISO_GRAIN,
+  ANISO_KNURL,
+  ANISO_NONE,
+  ANISO_RADIAL,
+  DEFAULT_COLORS,
+  FALLBACK_MATERIAL,
+  MATERIALS,
+  crystalMaterial,
+  dialMaterialId,
+  dialRelief,
+  finishMaterialId,
+  insertMaterialId,
+  markerIsApplied,
+  materialFor,
+  meshMaterialId,
+  strapMaterialId,
+  tintedF0,
+} from "../public/js/watch-materials.js";
+import { INSERTS, STRAPS, FINISHES } from "./watch.js";
+
+const lum = ([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+const MODES = [ANISO_NONE, ANISO_CIRCUMFERENTIAL, ANISO_AXIAL, ANISO_RADIAL, ANISO_KNURL, ANISO_GRAIN];
+
+describe("watch materials: the table itself", () => {
+  test("every entry is in range and says why it is what it is", () => {
+    for (const [id, m] of Object.entries(MATERIALS)) {
+      assert.ok(m.rough > 0 && m.rough <= 1, `${id} roughness`);
+      assert.ok(m.metal >= 0 && m.metal <= 1, `${id} metalness`);
+      assert.ok(m.reflect > 0 && m.reflect <= 1, `${id} reflectance`);
+      assert.ok((m.aniso || 0) >= 0 && (m.aniso || 0) <= 0.95, `${id} anisotropy`);
+      assert.ok(MODES.indexOf(m.anisoMode || 0) >= 0, `${id} brush mode`);
+      assert.ok([0, 1, 2].indexOf(m.axis || 0) >= 0, `${id} axis`);
+      assert.ok((m.env === undefined ? 0.25 : m.env) <= 1, `${id} env`);
+      assert.ok(typeof m.note === "string" && m.note.length > 20, `${id} note`);
+    }
+  });
+
+  test("conductors reflect a lot and colour it; dielectrics reflect a little and do not", () => {
+    for (const [id, m] of Object.entries(MATERIALS)) {
+      // 0.2 is the line tintedF0 itself draws: above it a material's specular
+      // is tinted by its own colour, below it the specular is white. The two
+      // partial metals here (anodised aluminium, the metallic dial finishes)
+      // are films OVER metal and belong on the conductor side of that line.
+      if (m.metal >= 0.2) {
+        assert.ok(m.reflect >= 0.15, `${id} is a metal but barely reflects`);
+      } else if (!m.glass) {
+        // The whole leather-is-not-a-mirror fix: a dielectric's F0 is a few
+        // percent. Anything above 0.09 is a metal wearing a costume.
+        assert.ok(m.reflect <= 0.09, `${id} is a dielectric with a metal's F0`);
+      }
+    }
+  });
+
   test("no rough dielectric picks up the environment the way a bezel does", () => {
     // A metal's `env` is not glossiness — the shader blurs the environment by
     // roughness before it gets there, which is exactly why bead-blasted steel
