@@ -144,6 +144,26 @@ export const SPACE_SCENES = [
     config: { planet: "earth", orbitAltKm: 400, stageT: 0.38, insertT: 0.72 },
   },
   {
+    id: "starship-launch",
+    kind: "launch",
+    // The tower catch is what separates this card from the rocket one at a
+    // glance, so the tower — not one more 🚀 — is the icon.
+    emoji: "🗼",
+    title: { en: "Starship: hot-stage and a tower catch", sv: "Starship: hetseparation och tornfångst" },
+    question: { en: "How does Starship reach orbit?", sv: "Hur når Starship omloppsbana?" },
+    reply: {
+      en: "Starship flies the same climb-then-turn-sideways problem as any rocket, but throws nothing away. The full stack is about 121 m tall and 9 m wide: a Super Heavy booster of 71 m under a 52 m Ship. Thirty-three Raptor engines lift it; near 70 km the Ship lights its own six engines while still attached — hot-staging — and pushes itself off the booster. The booster then flips, burns back toward the coast it came from, and is caught in mid-air by the launch tower's arms about seven minutes after liftoff, while the Ship keeps accelerating to roughly 7.8 km/s for a low orbit near 200 km. The craft and tower here are enlarged to stay visible; the altitudes and the order of events are the real ones.",
+      sv: "Starship löser samma problem som varje raket — stig och vrid sedan i sidled — men kastar ingenting. Hela ekipaget är cirka 121 m högt och 9 m brett: en Super Heavy-bottensteg på 71 m under ett 52 m långt Ship. Trettiotre Raptormotorer lyfter det; kring 70 km tänder Ship sina egna sex motorer medan det fortfarande sitter fast — hetseparation — och trycker sig loss från bottensteget. Bottensteget vänder sedan, brinner tillbaka mot kusten det kom ifrån och fångas i luften av startornets armar ungefär sju minuter efter lyft, medan Ship fortsätter accelerera till omkring 7,8 km/s för en låg bana kring 200 km. Farkosten och tornet är förstorade för att synas; höjderna och händelseförloppet är de verkliga.",
+    },
+    zoomKm: { min: 40, max: 60000, start: 1400 },
+    // Timed so the ORDER is true — hot-stage, then the booster is caught, then
+    // the Ship inserts — with enough tail left for the orbit reveal.
+    config: {
+      planet: "earth", orbitAltKm: 200, stageT: 0.26, insertT: 0.66,
+      craft: "starship", tower: true, catchT: 0.56, catchCamKm: 110,
+    },
+  },
+  {
     id: "moon-surface",
     kind: "surface",
     emoji: "🌙",
@@ -274,6 +294,52 @@ export const SPACE_MATCHERS = [
       /satelliter (kretsar|runt|kring|cirklar) (runt |kring )?jorden/,
       /gps-?satelliter/,
       /geostation[äa]r/,
+    ],
+  },
+  // Starship BEFORE the generic rocket (first match wins): a question naming
+  // Starship wants the Starship scene even when it also says "rocket launch".
+  // Feedback #53 asked for exactly this and matched nothing at all, so "Now
+  // launch a starship" was researched on the web instead of animated.
+  {
+    id: "starship-launch",
+    en: [
+      /how do(es)? (a |the )?starships? (reach|get (in)?to|fly to|make it to) (orbit|space)/,
+      /how do(es)? (a |the )?starships? work/,
+      /launch(ing)? (a |the )?starship/,
+      /starships? (blast(ing|s)? ?off|lift(ing|s)? ?off|tak(ing|es?) off)/,
+      /\bstarship\b[^.\n]*\b(demo|animation|simulation|sequence)\b/,
+      /\b(demo|animation|simulation|sequence)\b[^.\n]*\bstarship\b/,
+      // The two BROAD patterns — Starship beside a launch word, and Starship
+      // behind a show verb. Both carry the sci-fi guard as a leading lookahead
+      // over the whole message, because "the starship Enterprise launches"
+      // puts the disqualifying word BEFORE the trigger, where a trailing
+      // lookahead would never see it. The narrow patterns above and below are
+      // SpaceX-specific already and need no guard.
+      /^(?!.*\b(enterprise|troopers)\b).*\bstarship\b[^.\n]*\b(launch(es|ing)?|orbit|lift ?off|blast ?off)\b/,
+      /^(?!.*\b(enterprise|troopers)\b).*(show|visuali[sz]e|animate|draw|render|display)( me| us)?[^.\n]*\bstarship\b/,
+      /\bsuper ?heavy\b/,
+      /\bmechazilla\b/,
+      /hot ?stag(e|ing)/,
+      /\b(tower|chopstick) catch\b/,
+      /catch(es|ing)? the (booster|rocket) (with|in)/,
+    ],
+    sv: [
+      /hur n[åa]r starship (omloppsbana|rymden)/,
+      /hur fungerar starship/,
+      /starship[- ]?uppskjutning(en)?/,
+      /skjut(a|er)? upp (en |ett )?starship/,
+      /starship(en)? (lyfter|startar|skjuts upp)/,
+      /uppskjutning(en)? av (en |ett )?starship/,
+      /\bstarship\b[^.\n]*(demo|animation|simulering)/,
+      /(demo|animation|simulering)[^.\n]*\bstarship\b/,
+      // The same two broad patterns as the EN set, same guard (invariant 6).
+      /^(?!.*(enterprise|troopers)).*\bstarship\b[^.\n]*(uppskjutning|omloppsbana|skjuts upp|lyfter)/,
+      /^(?!.*(enterprise|troopers)).*(visa|visualisera|animera|rita|rendera)( mig| oss)?[^.\n]*\bstarship\b/,
+      /\bsuper ?heavy\b/,
+      /\bmechazilla\b/,
+      /hetseparation/,
+      /tornf[åa]ngst/,
+      /f[åa]nga(r|s)? (bottensteget|boostern)/,
     ],
   },
   {
@@ -642,6 +708,171 @@ export function rocketMesh(h) {
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// Starship (feedback #53). The generic rocketMesh cannot stand in for it: the
+// silhouette IS the explanation here — a flat-topped booster with grid fins,
+// a hot-stage vent ring, and a finned ship with a blunt nose. The proportions
+// below are the real vehicle's, normalised so the FULL STACK is height h:
+// Super Heavy 71 m and Ship 52 m of a ~121 m stack (the interstage overlaps),
+// 9 m across. Everything is drawn enlarged for visibility like the other
+// launch craft, but the ratios between the parts stay true.
+
+/** Full stack height in metres — 71 m of booster + 52 m of ship, less the
+ *  ~2 m the interstage overlaps. */
+export const STARSHIP_STACK_M = 121;
+/** Fraction of the full stack taken by the Super Heavy booster. */
+export const SUPER_HEAVY_FRAC = 71 / STARSHIP_STACK_M;
+/** Fraction of the full stack taken by the Ship. */
+export const STARSHIP_SHIP_FRAC = 52 / STARSHIP_STACK_M;
+
+/**
+ * The Ship (Starship upper stage) pointing +y, base at y=0, total height h:
+ * a 9 m-wide barrel, a blunt ogive nose, two forward flaps and two aft flaps,
+ * and a ring of six Raptor bells below the base.
+ */
+/** @param {number} h @returns {Mesh} */
+export function starshipShipMesh(h) {
+  const r = h * 0.086; // 9 m across a ~52 m ship.
+  /** @type {Mesh} */
+  const out = { verts: [], edges: [] };
+  // Barrel, to the start of the nose.
+  pushMesh(out, cylinderMesh(r, h * 0.66, 8));
+  // Blunt ogive nose: an intermediate ring, then the tip — a single cone
+  // reads as a pencil, and the blunt nose is half of what makes it a Ship.
+  const midY = h * 0.87, midR = r * 0.58;
+  const mid = out.verts.length;
+  for (let j = 0; j < 8; j++) {
+    const th = (2 * Math.PI * j) / 8;
+    out.verts.push([midR * Math.cos(th), midY, midR * Math.sin(th)]);
+  }
+  for (let j = 0; j < 8; j++) {
+    out.edges.push([mid + j, mid + ((j + 1) % 8)]);
+    out.edges.push([8 + j, mid + j]);
+  }
+  const tip = out.verts.length;
+  out.verts.push([0, h, 0]);
+  for (let j = 0; j < 8; j++) out.edges.push([mid + j, tip]);
+  // Four flaps: two forward (high, short) and two aft (low, long), on ±z so
+  // the side-on view the launch camera holds shows their span.
+  /** @param {number} y0 @param {number} y1 @param {number} span @param {number} chord */
+  const flap = (y0, y1, span, chord) => {
+    for (const dir of [1, -1]) {
+      const a = out.verts.length;
+      out.verts.push(
+        [0, y0, dir * r],
+        [0, y0 + chord, dir * r],
+        [0, y1, dir * (r + span)],
+        [0, y0 + chord * 0.35, dir * (r + span)],
+      );
+      out.edges.push([a, a + 1], [a + 1, a + 2], [a + 2, a + 3], [a + 3, a]);
+    }
+  };
+  flap(h * 0.6, h * 0.72, r * 0.85, h * 0.14);
+  flap(h * 0.06, h * 0.2, r * 1.15, h * 0.2);
+  // Six Raptor bells as a ring under the base.
+  const bell = out.verts.length;
+  for (let j = 0; j < 6; j++) {
+    const th = (2 * Math.PI * j) / 6;
+    out.verts.push([r * 0.55 * Math.cos(th), -h * 0.045, r * 0.55 * Math.sin(th)]);
+  }
+  for (let j = 0; j < 6; j++) out.edges.push([bell + j, bell + ((j + 1) % 6)]);
+  return out;
+}
+
+/**
+ * The Super Heavy booster pointing +y, base at y=0, total height h: a barrel
+ * of the same 9 m width, four grid fins near the top, a flat interstage rim
+ * (no cone — it is what the Ship sits on), and the 33-Raptor base ring.
+ */
+/** @param {number} h @returns {Mesh} */
+export function superHeavyMesh(h) {
+  const r = h * 0.127; // 9 m across a ~71 m booster.
+  /** @type {Mesh} */
+  const out = { verts: [], edges: [] };
+  pushMesh(out, cylinderMesh(r, h, 8));
+  // Four grid fins: small rectangles standing off the barrel near the top.
+  for (let k = 0; k < 4; k++) {
+    const th = (Math.PI / 2) * k + Math.PI / 4;
+    const ux = Math.cos(th), uz = Math.sin(th);
+    const y0 = h * 0.86, y1 = h * 0.95;
+    const a = out.verts.length;
+    out.verts.push(
+      [ux * r, y0, uz * r], [ux * r * 1.5, y0, uz * r * 1.5],
+      [ux * r * 1.5, y1, uz * r * 1.5], [ux * r, y1, uz * r],
+    );
+    out.edges.push([a, a + 1], [a + 1, a + 2], [a + 2, a + 3], [a + 3, a]);
+  }
+  // The 33 Raptors: an outer ring and an inner ring, not 33 bells — at this
+  // scale that is a smudge. Two rings read as an engine cluster.
+  for (const [rad, n, y] of [[r * 0.82, 12, -h * 0.035], [r * 0.4, 6, -h * 0.03]]) {
+    const base = out.verts.length;
+    for (let j = 0; j < n; j++) {
+      const th = (2 * Math.PI * j) / n;
+      out.verts.push([rad * Math.cos(th), y, rad * Math.sin(th)]);
+    }
+    for (let j = 0; j < n; j++) out.edges.push([base + j, base + ((j + 1) % n)]);
+  }
+  return out;
+}
+
+/**
+ * The full Starship stack pointing +y, base at y=0, total height h: Super
+ * Heavy with the Ship stacked on it, at their true height ratio.
+ */
+/** @param {number} h @returns {Mesh} */
+export function starshipStackMesh(h) {
+  /** @type {Mesh} */
+  const out = { verts: [], edges: [] };
+  const shipH = h * STARSHIP_SHIP_FRAC;
+  pushMesh(out, superHeavyMesh(h * SUPER_HEAVY_FRAC));
+  // The Ship's base sits down inside the interstage, so the two stages overlap
+  // by ~2 m and the stack tops out at exactly h rather than 71 + 52.
+  pushMesh(out, starshipShipMesh(shipH), [0, h - shipH, 0]);
+  return out;
+}
+
+/**
+ * The catch tower ("Mechazilla") standing at the pad, base at y=0, height h:
+ * a square lattice mast and the two arms that close around a returning
+ * booster. `armSpread` 0 = closed on the booster, 1 = open and waiting.
+ */
+/** @param {number} h @param {number} [armSpread] @returns {Mesh} */
+export function launchTowerMesh(h, armSpread = 1) {
+  const w = h * 0.075;
+  /** @type {Mesh} */
+  const out = { verts: [], edges: [] };
+  // Four legs + the horizontal bracing that makes it read as a lattice.
+  const legs = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+  const base = out.verts.length;
+  for (const [sx, sz] of legs) out.verts.push([sx * w, 0, sz * w]);
+  for (const [sx, sz] of legs) out.verts.push([sx * w, h, sz * w]);
+  for (let j = 0; j < 4; j++) {
+    out.edges.push([base + j, base + 4 + j]);
+    out.edges.push([base + j, base + ((j + 1) % 4)]);
+    out.edges.push([base + 4 + j, base + 4 + ((j + 1) % 4)]);
+  }
+  for (let i = 1; i < 6; i++) {
+    const y = (h * i) / 6;
+    const ring = out.verts.length;
+    for (const [sx, sz] of legs) out.verts.push([sx * w, y, sz * w]);
+    for (let j = 0; j < 4; j++) out.edges.push([ring + j, ring + ((j + 1) % 4)]);
+  }
+  // The two catch arms, reaching out on +x at about three quarters height.
+  const ay = h * 0.74;
+  const gap = w * (0.55 + armSpread * 1.5);
+  for (const dir of [1, -1]) {
+    const a = out.verts.length;
+    out.verts.push(
+      [w, ay, dir * gap * 0.5],
+      [w + h * 0.3, ay, dir * gap],
+      [w + h * 0.3, ay + h * 0.035, dir * gap],
+      [w, ay + h * 0.035, dir * gap * 0.5],
+    );
+    out.edges.push([a, a + 1], [a + 1, a + 2], [a + 2, a + 3], [a + 3, a]);
+  }
+  return out;
+}
+
 /**
  * A wireframe satellite: cuboid bus, two panelled solar wings along ±x, an
  * antenna mast with a small dish ring on +y. `s` is the wingspan.
@@ -943,6 +1174,66 @@ export function facesCamera(p, C, camDist) {
   const nx = p[0] - C[0], ny = p[1] - C[1], nz = p[2] - C[2];
   const vx = -p[0], vy = -p[1], vz = camDist - p[2];
   return nx * vx + ny * vy + nz * vz > 0;
+}
+
+/** Earth's standard gravitational parameter, km³/s². */
+export const EARTH_MU = 398600.4418;
+
+/**
+ * Circular orbital speed (km/s) at an altitude above Earth — sqrt(mu / r).
+ * The launch scenes quote it in their readout, and the two scenes insert at
+ * different altitudes (400 km → 7.7 km/s, 200 km → 7.8), so it is computed
+ * rather than written into each scene's strings.
+ *
+ * @param {number} altKm altitude above the surface
+ * @returns {number} speed in km/s
+ */
+export function orbitSpeedKms(altKm) {
+  return Math.sqrt(EARTH_MU / (BODIES.earth.radiusKm + altKm));
+}
+
+/**
+ * How far downrange (km) a launch scene's craft has travelled by insertion.
+ * The runner turns it into a ground angle; the booster's return path has to
+ * use the SAME number or it would fly back to the wrong spot.
+ */
+export const LAUNCH_DOWNRANGE_KM = 1500;
+
+/**
+ * The booster's boostback path, for the launch scenes that fly one home
+ * (`cfg.catchT`). Returns how far through the return it is (`k`, 0..1), its
+ * altitude, and its ground angle — at k=1 both are zero, which is the pad.
+ * Pure, and shared by the renderer and the camera so the view cannot cut to
+ * a booster that is somewhere else.
+ *
+ * @param {number} u flight progress 0..1
+ * @param {{planet: keyof typeof BODIES, orbitAltKm: number, stageT: number, insertT: number, catchT: number}} cfg
+ * @returns {{k: number, a: number, phi: number}}
+ */
+export function boosterReturnState(u, cfg) {
+  const R = BODIES[cfg.planet].radiusKm;
+  const sepA = launchAltKm(cfg.stageT, cfg);
+  const sepPhi = (LAUNCH_DOWNRANGE_KM / R) * Math.pow(cfg.stageT / cfg.insertT, 2.3);
+  const k = clamp((u - cfg.stageT) / (cfg.catchT - cfg.stageT), 0, 1);
+  // Coasts a little higher after separation, then descends to the pad while
+  // its ground angle walks back to the launch site's own.
+  const a = Math.max(0, sepA * (1 + 0.25 * Math.sin(Math.PI * k)) * (1 - k * k));
+  return { k, a, phi: sepPhi * (1 - k) };
+}
+
+/**
+ * Whether the view should be riding the returning booster rather than the
+ * Ship. A launch broadcast cuts to the booster for the catch and back again,
+ * and without that cut the catch happens far off-frame: the camera follows
+ * the Ship, which by then is a thousand kilometres downrange.
+ *
+ * @param {number} u flight progress 0..1
+ * @param {{stageT: number, catchT: number}} cfg
+ * @returns {boolean}
+ */
+export function isCatchView(u, cfg) {
+  if (cfg.catchT == null) return false;
+  return u >= cfg.stageT + (cfg.catchT - cfg.stageT) * 0.5 && u <= cfg.catchT + 0.09;
 }
 
 /**

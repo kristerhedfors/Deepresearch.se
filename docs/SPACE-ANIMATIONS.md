@@ -48,12 +48,20 @@ the page's visual identity; keep it when adding scenes.
 - `config` — kind-specific (bodies to compare, orbiter lists with real
   `orbitKm`/`periodDays`/`inclinationDeg`, ring extents, star distance…)
 
-The nine shipped scenes: sun-vs-planets (compare), earth-moon,
+The ten shipped scenes: sun-vs-planets (compare), earth-moon,
 solar-system, iss-orbit, satellites (orbits), rocket-launch (launch —
-gravity turn + stage separation, over a visibly curved Earth), moon-surface (surface — terrain,
+gravity turn + stage separation, over a visibly curved Earth),
+starship-launch (launch — hot-staging and a tower catch; see below),
+moon-surface (surface — terrain,
 astronaut, lander, Earth in the sky), saturn-rings (rings — particles at
 Kepler speeds), nearest-star (travel — the Solar System shrinking toward
 Proxima, with a light pulse crawling the 4.25 ly).
+
+Both launch scenes share the one `launch` runner, and everything specific to
+Starship hangs off its `config` — `craft: "starship"`, `tower`, `catchT`,
+`catchCamKm`. A launch scene with none of those keys renders exactly as
+rocket-launch always did. Add the next launch variant the same way; do not
+fork the runner.
 
 `SPACE_MATCHERS` is the deterministic question gate: first match wins, and
 per invariant 6 every scene has Swedish patterns with the same breadth as
@@ -75,6 +83,26 @@ new patterns are `space launch`, `orbital launch`, and `launch
 demo|animation|simulation|sequence` when a space word sits beside it (a
 product launch demo is not this scene), with `rymduppskjutning`,
 `raketanimation` and the `uppskjutning`+demo forms as the Swedish parity set.
+
+Feedback #53 (2026-07-30) added the `starship-launch` scene. The same session
+that liked the rocket animation typed "Now launch a starship", matched nothing
+at all, and got a web-research pass that opened by apologising for being unable
+to launch rockets — one turn after the site had animated exactly that. Two
+things were missing: a gate (there was no Starship subject anywhere) and a
+scene, because Starship is not the generic rocket. Nothing is discarded, and
+the booster comes home. The matcher is registered AHEAD of `rocket-launch` so
+the specific subject wins when a question names both, and its two broad
+patterns carry the sci-fi guard as a LEADING lookahead over the whole message:
+"the starship Enterprise launches" puts the disqualifying word before the
+trigger, where a trailing lookahead would never see it.
+
+The camera needed a cut. Staged naively it followed the Ship throughout, so the
+tower catch, the beat the scene exists for, played out a thousand kilometres
+off-frame. `isCatchView`/`boosterReturnState` move the view and the dolly onto
+the returning booster for the descent and back afterwards, the way a launch
+broadcast does. Ground structures also take a size cap (`R * 0.015`): held at
+constant SCREEN size like the craft, the tower became a 1,000 km spike off
+Earth's limb once the orbit reveal pulled the camera out to 21,840 km.
 
 ## The chat embed (feedback #18)
 

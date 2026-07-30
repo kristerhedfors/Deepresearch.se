@@ -24,8 +24,12 @@ import {
   BODIES, LIGHT_YEAR_KM,
   sceneById, zoomToDistance, distanceToZoom, formatKm, clamp,
   sphereMesh, orbitMesh, cylinderMesh, rocketMesh, satelliteMesh,
+  starshipStackMesh, starshipShipMesh, superHeavyMesh, launchTowerMesh,
+  SUPER_HEAVY_FRAC,
   astronautMesh, landerMesh, terrainMesh, ringMesh,
-  spherePatchGrid, launchCamDistKm, launchAltKm, sphereSilhouette, facesCamera,
+  spherePatchGrid, launchCamDistKm, launchAltKm, orbitSpeedKms,
+  boosterReturnState, isCatchView, LAUNCH_DOWNRANGE_KM,
+  sphereSilhouette, facesCamera,
   rotX, rotY, rotZ, worldRot, projectPoint, mulberry32,
 } from "./space-core.js";
 
@@ -287,7 +291,7 @@ const RUNNERS = {
     const alt = cfg.orbitAltKm;
     const u = st.u;
     const insert = cfg.insertT;
-    const phiIns = 1500 / R;
+    const phiIns = LAUNCH_DOWNRANGE_KM / R;
     const rocketState = (uu) => {
       if (uu < insert) {
         const phi = phiIns * Math.pow(uu / insert, 2.3);
@@ -303,8 +307,19 @@ const RUNNERS = {
     };
     const rs = rocketState(u);
     const rpos = toWorld(rs);
-    // The world is drawn relative to the rocket (camera follows it).
-    const rel = (p) => [p[0] - rpos[0], p[1] - rpos[1], p[2] - rpos[2]];
+    // The world is drawn relative to whatever the view is riding. Normally
+    // that is the craft, but a scene that flies its booster home cuts to the
+    // booster for the catch — otherwise the catch plays out a thousand km
+    // off-frame while the camera watches the Ship.
+    const caught = cfg.catchT != null && u >= cfg.catchT;
+    // The catch label and the pad's own "launch site" label land on the same
+    // spot — the booster is IN the tower — so only one of them is ever drawn.
+    const showCatchLabel = caught && u < cfg.catchT + 0.12;
+    const bs = cfg.catchT != null ? boosterReturnState(u, cfg) : null;
+    const bpos = bs ? toWorld(bs) : null;
+    const onBooster = bs != null && isCatchView(u, cfg);
+    const anchor = onBooster ? bpos : rpos;
+    const rel = (p) => [p[0] - anchor[0], p[1] - anchor[1], p[2] - anchor[2]];
     const siteAng = Math.PI / 2;
     // The launch site itself, and the ground under it.
     const sitePos = [R * Math.cos(siteAng), R * Math.sin(siteAng), 0];
@@ -393,7 +408,7 @@ const RUNNERS = {
       ctx.stroke();
       ctx.globalAlpha = 1;
       // Not once it has slid under the HUD, where it only half-renders.
-      if (u > 0.02 && sp.y + 14 < cam.cy * 2 - 56) {
+      if (u > 0.02 && !showCatchLabel && sp.y + 14 < cam.cy * 2 - 56) {
         label(ctx, sp, st.lang === "sv" ? "startplats" : "launch site", 14);
       }
     }
@@ -415,6 +430,29 @@ const RUNNERS = {
     const vAng = Math.atan2(vel[0], vel[1]);
     const size = Math.max(0.07, st.camDist * 0.045);
     const staged = u >= cfg.stageT;
+    // The catch tower at the pad, drawn at the SAME enlarged `size` as the
+    // craft so the two keep their true proportions to each other (a real
+    // tower is a little taller than the stack). Its arms are open while the
+    // booster is away and closed once it has been caught.
+    // Ground structures are enlarged like the craft, but only up to a point:
+    // held at constant SCREEN size all the way out to the orbit reveal, the
+    // tower becomes a 1,000 km spike off Earth's limb. Past that cap it
+    // shrinks into the pad marker, which is the honest thing at that distance.
+    const groundSize = Math.min(size, R * 0.015);
+    if (cfg.tower && st.towerMesh) {
+      const towerPos = rel(sitePos);
+      drawMesh(ctx, st, cam, caught ? st.towerClosed : st.towerMesh, {
+        scale: groundSize, pos: towerPos, stroke: "hsl(30 32% 62%)", alpha: 0.8, width: 1,
+      });
+      // Name the catch where it happens, for the moment it happens — the
+      // readout at the bottom is easy to miss while watching the descent.
+      if (showCatchLabel) {
+        const tp = projectPoint(worldRot(towerPos, st), cam);
+        if (tp && tp.s > 0 && tp.y > 20 && tp.y + 14 < cam.cy * 2 - 56) {
+          label(ctx, tp, sv ? "bottensteget fångat" : "booster caught", 14);
+        }
+      }
+    }
     const rocket = staged ? st.upperMesh : st.fullMesh;
     // Center the unit-height mesh, orient it along the velocity, then scale.
     const oriented = {
@@ -424,15 +462,20 @@ const RUNNERS = {
       }),
       edges: rocket.edges,
     };
+    const craftPos = rel(rpos);
     drawMesh(ctx, st, cam, oriented, {
-      pos: [0, 0, 0], stroke: "hsl(30 55% 72%)", alpha: 0.95, width: 1.2,
+      pos: craftPos, stroke: "hsl(30 55% 72%)", alpha: 0.95, width: 1.2,
     });
     // Wireframe exhaust while thrusting (lines, not light).
     if (u < insert) {
       ctx.strokeStyle = "hsl(38 70% 70%)";
       ctx.globalAlpha = 0.7;
       ctx.beginPath();
-      const tail = projectPoint(worldRot([Math.sin(vAng) * -size * 0.45, Math.cos(vAng) * -size * 0.45, 0], st), cam);
+      const tail = projectPoint(worldRot([
+        craftPos[0] + Math.sin(vAng) * -size * 0.45,
+        craftPos[1] + Math.cos(vAng) * -size * 0.45,
+        craftPos[2],
+      ], st), cam);
       if (tail) {
         const jitter = Math.sin(st.time * 40) * 3;
         ctx.moveTo(tail.x - 3, tail.y);
@@ -443,8 +486,20 @@ const RUNNERS = {
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
-    // The separated booster arcs back down for a while.
-    if (staged && u < cfg.stageT + 0.22) {
+    // Boostback and the catch: the booster flips, burns back toward the pad it
+    // left, and is then HELD at the tower — it never falls away. That return
+    // is the whole point of the vehicle, so it plays out in full.
+    if (bs && staged) {
+      drawMesh(ctx, st, cam, st.boosterMesh, {
+        // Sitting in the tower it is a ground structure too, and takes the cap.
+        scale: caught ? groundSize : size,
+        pos: rel(bpos),
+        // Flips engines-first to burn back, and is upright again for the catch.
+        tilt: Math.sin(Math.PI * bs.k) * 2.6,
+        stroke: "hsl(30 32% 58%)",
+        alpha: caught ? 0.85 : 0.7,
+      });
+    } else if (!bs && staged && u < cfg.stageT + 0.22) {
       const k = (u - cfg.stageT) / 0.22;
       const ss = rocketState(cfg.stageT);
       const bs = { a: ss.a * (1 - k * k), phi: ss.phi + k * 0.01 };
@@ -456,11 +511,23 @@ const RUNNERS = {
     // Readout: altitude + phase.
     ctx.fillStyle = "rgba(190,212,240,0.7)";
     ctx.font = "11px system-ui, sans-serif";
-    const phase = u < cfg.stageT
-      ? (st.lang === "sv" ? "steg 1 — gravitationssväng" : "stage 1 — gravity turn")
-      : u < insert
-        ? (st.lang === "sv" ? "steg 2 — mot banfart" : "stage 2 — building orbital speed")
-        : (st.lang === "sv" ? "i omloppsbana · 7,7 km/s" : "in orbit · 7.7 km/s");
+    // The insertion speed is the real circular-orbit speed for this scene's
+    // altitude, not a constant: 400 km gives 7.7 km/s, 200 km gives 7.8.
+    const vOrb = orbitSpeedKms(alt).toFixed(1);
+    const inOrbit = sv ? `i omloppsbana · ${vOrb.replace(".", ",")} km/s` : `in orbit · ${vOrb} km/s`;
+    const phase = cfg.craft === "starship"
+      ? (u < cfg.stageT
+        ? (sv ? "Super Heavy — 33 Raptormotorer" : "Super Heavy — 33 Raptor engines")
+        : u < cfg.catchT
+          ? (sv ? "hetseparation — bottensteget vänder hem" : "hot-stage — booster burning back")
+          : u < insert
+            ? (sv ? "bottensteget fångat — Ship mot banfart" : "booster caught — Ship building orbital speed")
+            : inOrbit)
+      : u < cfg.stageT
+        ? (sv ? "steg 1 — gravitationssväng" : "stage 1 — gravity turn")
+        : u < insert
+          ? (sv ? "steg 2 — mot banfart" : "stage 2 — building orbital speed")
+          : inOrbit;
     // Bottom-left, above the HUD (the corner notes own the top edge).
     ctx.fillText(`${st.lang === "sv" ? "höjd" : "alt"} ${formatKm(rs.a)} · ${phase}`, 10, h - 48);
   },
@@ -591,9 +658,19 @@ function buildSceneState(scene, canvas, lang) {
     st.daysPerSec = 365.25 * 0.45; // light crosses in ~9.5 s at ×1
   }
   if (scene.kind === "launch") {
-    st.fullMesh = rocketMesh(1);
-    st.upperMesh = rocketMesh(0.55);
-    st.boosterMesh = cylinderMesh(0.09, 0.5, 8);
+    if (scene.config.craft === "starship") {
+      // The stack is one unit tall like rocketMesh(1), so the camera dolly and
+      // the `size` scaling below need no special case.
+      st.fullMesh = starshipStackMesh(1);
+      st.upperMesh = starshipShipMesh(1 - SUPER_HEAVY_FRAC);
+      st.boosterMesh = superHeavyMesh(SUPER_HEAVY_FRAC);
+      st.towerMesh = launchTowerMesh(1.2);
+      st.towerClosed = launchTowerMesh(1.2, 0);
+    } else {
+      st.fullMesh = rocketMesh(1);
+      st.upperMesh = rocketMesh(0.55);
+      st.boosterMesh = cylinderMesh(0.09, 0.5, 8);
+    }
     st.loopSec = 26;
     // The ground around the pad; the limb alone does not read as a planet.
     // The ground grid is sized to the camera, not fixed: one spacing cannot
@@ -697,8 +774,16 @@ function draw(st) {
   // takes the zoom control (st.autoZoom goes false and stays false).
   if (st.autoZoom && st.scene.kind === "launch") {
     const cfg = st.scene.config;
-    const altKm = launchAltKm(st.u, cfg);
-    const d = launchCamDistKm(st.u, altKm, cfg, st.scene.zoomKm);
+    // While the view rides the returning booster, the dolly rides it too —
+    // closing in as it comes down so the tower catch is actually watchable
+    // instead of a two-pixel event at the edge of frame.
+    const onBooster = isCatchView(st.u, cfg);
+    const altKm = onBooster
+      ? boosterReturnState(st.u, cfg).a
+      : launchAltKm(st.u, cfg);
+    const d = onBooster
+      ? Math.max(st.scene.zoomKm.min, cfg.catchCamKm ?? st.scene.zoomKm.min * 1.6)
+      : launchCamDistKm(st.u, altKm, cfg, st.scene.zoomKm);
     if (d !== st.camDist) {
       st.camDist = d;
       if (st.onCamDist) st.onCamDist(d);
