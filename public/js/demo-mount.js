@@ -145,19 +145,23 @@ export async function mountDemoSurface(host, turn = {}) {
     }
 
     if (watchOpenedIn(userTexts)) {
-      const { watchThread } = await import("./watch-chat-core.js");
+      const { watchThread, builderLink } = await import("./watch-chat-core.js");
       const state = watchThread(userTexts);
       if (state.active) {
         host.className = "watch-embed-host";
         const { mountWatchBuild } = await import("./watch-embed.js");
         if (mountWatchBuild(host, state, { lang: state.lang, onCommand: commandSender })) return true;
         // No WebGL here. Degrade to the card: the builder still exists, this
-        // device just cannot draw it in the turn.
+        // device just cannot draw it in the turn — and the card carries THIS
+        // build's permalink, so the app opens on the watch the conversation
+        // reached rather than on the default one (feedback #56).
         const entry = demoById("watch");
         if (!entry) return false;
         host.className = "demo-card-host";
         const { mountDemoCard } = await import("./demo-embed.js");
-        return !!mountDemoCard(host, { ...entry, kind: "page", lang: state.lang });
+        return !!mountDemoCard(host, {
+          ...entry, kind: "page", lang: state.lang, path: builderLink(state.code || state.build),
+        });
       }
     }
 

@@ -573,6 +573,56 @@ export function isWatchTalk(text) {
 }
 
 // ---------------------------------------------------------------------------
+// CONTINUATION. A thread has to survive the turn a clarifying question
+// produces, and that turn is watch talk in intent but not in vocabulary.
+//
+// WHY (feedback #55, 2026-07-30). The logged session ran: "Build me a fancy
+// seiko watch" → (the assistant asks: features, or looks?) → "Features". Even
+// with the widened gate opening turn 1, `isWatchTalk("features")` is false and
+// the thread would close on the very turn the user was complaining about — *"I
+// see no watch animation"*. But the close rule earns its keep (an unrelated
+// question must never be answered with a watch bolted onto it), so it is not
+// loosened: instead a bare FRAGMENT — an answer, not a new question — buys the
+// thread exactly ONE turn of grace, and a second non-watch turn closes it.
+//
+// Deterministic and deliberately narrow, the same shape as demo-core.js's
+// isBareShowAsk: short, no question mark, no interrogative or imperative
+// opener, and not an ask for some OTHER surface. EN + SV at equal breadth
+// (invariant 6), with the diacritic-dropped spellings and no trailing \b next
+// to å/ä/ö.
+
+const CONTINUATION_MAX_WORDS = 5;
+const CONTINUATION_MAX_CHARS = 44;
+
+// A message that OPENS like a new question or a new instruction is a topic
+// change however short it is — "compare both", "hitta källor".
+const NEW_TOPIC_OPENERS =
+  /^(what|whats|why|how|when|where|who|whose|which|can|could|would|should|do|does|did|is|are|was|were|tell|explain|compare|search|find|list|give|show|write|draw|summari[sz]e|translate|define|calculate|check|help|make|build|design|create|open|go|continue|stop|thanks?|thank you)\b/;
+const NEW_TOPIC_OPENERS_SV =
+  /^(vad|vem|vems|vilken|vilket|vilka|varf[öo]r|hur|n[äa]r|var|kan|kunde|skulle|[äa]r|var det|ber[äa]tta|f[öo]rklara|j[äa]mf[öo]r|s[öo]k|hitta|lista|ge|visa|skriv|rita|sammanfatta|[öo]vers[äa]tt|definiera|r[äa]kna|kolla|hj[äa]lp|g[öo]r|bygg|designa|skapa|[öo]ppna|forts[äa]tt|sluta|tack)\b/;
+
+/**
+ * Is this message a bare CONTINUATION of the exchange in progress — an answer
+ * to what was just asked ("Features", "the blue one", "båda två") rather than a
+ * new subject? Only ever consulted while a thread is already open, and only
+ * once in a row.
+ * @param {unknown} text
+ * @returns {boolean}
+ */
+export function isContinuationFragment(text) {
+  const t = normalize(text).replace(/[.!,;:]+$/g, "").trim();
+  if (!t || t.length > CONTINUATION_MAX_CHARS) return false;
+  if (t.includes("?")) return false;
+  if (t.split(" ").filter(Boolean).length > CONTINUATION_MAX_WORDS) return false;
+  if (NEW_TOPIC_OPENERS.test(t) || NEW_TOPIC_OPENERS_SV.test(t)) return false;
+  // An ask for a different surface ends this one — "show me visually" after a
+  // space scene is that scene's, not the watch's.
+  const other = demoIntent(t);
+  if (other && other.id !== "watch") return false;
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // The conversation. DERIVED state, never stored — the same rule the space
 // embed and the demo card follow, so a reloaded conversation rebuilds the
 // identical watch from the identical messages and no registry can drift.
@@ -605,6 +655,9 @@ export function watchThread(userTexts) {
     view: {}, code: "", turn: 0, opened: false, recognized: false,
     reset: false, randomized: false,
   };
+  // Whether the PREVIOUS turn already spent the one continuation grace. Any
+  // real watch talk hands it back.
+  let graceSpent = false;
   for (let i = 0; i < texts.length; i++) {
     const text = texts[i];
     const m = demoIntent(text, i > 0 ? texts[i - 1] : "");
@@ -612,13 +665,25 @@ export function watchThread(userTexts) {
     const talk = isWatchTalk(text);
     if (!state.active && !isAsk) continue;
     if (!isAsk && !talk) {
+      if (state.active && !graceSpent && isContinuationFragment(text)) {
+        // A clarifying answer ("Features"). The build is untouched and the
+        // reply says so; the render stays on screen (feedback #55).
+        graceSpent = true;
+        state = {
+          ...state, changes: [], view: {}, turn: state.turn + 1,
+          opened: false, recognized: false, reset: false, randomized: false,
+        };
+        continue;
+      }
       // The thread ends here — and stays ended until another explicit ask.
+      graceSpent = false;
       state = {
         ...state, active: false, changes: [], view: {},
         opened: false, recognized: false, reset: false, randomized: false,
       };
       continue;
     }
+    graceSpent = false;
     const opening = isAsk && !state.active;
     const parsed = parseWatchCommand(text, opening ? DEFAULT_BUILD : state.build, { seed: i + 1 });
     state = {
@@ -781,6 +846,26 @@ export function suggestCommands(build, lang = "en", turn = 0) {
 }
 
 /**
+ * The permalink into the FULL builder for a build — the app door.
+ *
+ * WHY IT IS ITS OWN FUNCTION (feedback #56, 2026-07-30): *"building through the
+ * chatbot interface is unavoidably clunky and the wrong approach — send user to
+ * the app immediately."* The owner kept both surfaces, so the inline card LEADS
+ * with this link rather than trailing it, and the hash carries the build the
+ * turn is showing, so the app opens on that exact watch and nothing is retyped.
+ * Same shape `/watch/` writes back into its own address bar (public/watch/
+ * watch.js), so the round trip is a fact rather than a convention.
+ *
+ * @param {Record<string, string> | string | null | undefined} build a build, or an
+ *   already-encoded permalink code
+ * @returns {string}
+ */
+export function builderLink(build) {
+  const code = typeof build === "string" ? build : encodeBuild(normalizeBuild(build));
+  return code ? `/watch/#${encodeURIComponent(code)}` : "/watch/";
+}
+
+/**
  * The one-line spec a caption can carry: case diameter × lug-to-lug × thick,
  * lug width, and the parts-cost band.
  * @param {Record<string, string> | null | undefined} build
@@ -835,6 +920,10 @@ export function watchPromptBlock(state) {
     `Dimensions — case ${mm(spec.caseDia, spec.approxDims)}, lug-to-lug ${mm(spec.l2l, spec.approxDims)}, thickness ${mm(spec.thick, spec.approxDims)}, lug width ${mm(spec.lugW, spec.approxDims)}, ${spec.wr} m water resistance, movement ${spec.movement} (${spec.bph} A/h, ${spec.reserveH} h reserve), parts cost about USD ${spec.priceUsd.low}–${spec.priceUsd.high}.`,
     `Changed by this message — ${changed}.`,
     `Fit check — ${problems}.`,
+    // Deliberately NOT the URL itself: the permalink code is one long opaque
+    // string per slot, and a model told the URL pastes the URL. The card
+    // already carries it as a button; the model only needs to know it exists.
+    "Full builder — the card LEADS with an \"Open the full builder\" button that opens THIS exact build in the standalone app, with every slot, the sources and where to buy the parts. Point at that button by name (never print a URL) if the user sounds like they want more control than typing gives them; never say they have to leave the chat to change something.",
     "OPEN by saying what this turn changed (or, on the first turn, what the render shows), in one or two sentences. Then answer whatever else was asked, and close by offering two or three further commands the user could type — name real parts from the build list above. If the fit check reports an error, say so plainly and say which part to change. NEVER say you cannot show, render, build or animate a watch: the render is on screen.",
   ].join("\n");
 }

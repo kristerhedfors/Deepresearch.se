@@ -17,9 +17,11 @@
 
 export {
   WATCH_SLOT_KEYS,
+  builderLink,
   changeSummary,
   commandFor,
   commandVocabulary,
+  isContinuationFragment,
   isWatchTalk,
   parseWatchCommand,
   randomBuild,
