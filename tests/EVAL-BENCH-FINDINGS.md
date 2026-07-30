@@ -490,3 +490,64 @@ that rests on a large candidate SD as unproven.
 Cost note for whoever picks this up: SAMPLES=5 is ~12 minutes and four
 questions of real Berget traffic, and it runs fine from a session container
 (see the 2026-07-29 operational note above).
+
+## 2026-07-30 (SAMPLES=5, third run of the day) — the drift is persistent, and the baseline level was once real
+
+- bench-gate 2026-07-30 (commit 0027034e vs baseline b2a5ab6): overall
+  2.867±0.319 vs 3.625±0.042 (delta -0.758, bar ±0.25) → **REGRESSION**. Pins:
+  mistralai/Mistral-Small-3.2-24B-Instruct-2506 / judge
+  mistralai/Mistral-Small-3.2-24B-Instruct-2506 / 240s /
+  mh_semiconductor_export,rec_eu_ai_act_timeline,div_openai_safety,con_coffee_health.
+  5 of 5 samples complete.
+
+Run after PR #342 deployed. #342 is not the cause: its classifier is inert
+(`SUBQ_FANOUT_ENABLED` is still `false`, verified at merge), and 2.867 sits
+inside the run-to-run spread already observed on unchanged code.
+
+**Four measurements of the current pipeline now exist**, and they agree that
+it is below the baseline while disagreeing substantially with each other:
+
+| date | commit | n | overall | verdict |
+|---|---|---:|---|---|
+| 07-23 | `b2a5ab6` | 2 | 3.625±0.042 | *(baseline)* |
+| 07-29 | `978ce70a` | 3 | 3.278±0.437 | NEUTRAL |
+| 07-30 | `4f248922` | 2 | 2.667±0.250 | REGRESSION |
+| 07-30 | `6d894c35` | 4 | 3.146±0.069 | REGRESSION |
+| 07-30 | `0027034e` | 5 | 2.867±0.319 | REGRESSION |
+
+Mean of the four post-baseline runs ≈ **2.99**, range 2.667–3.278. Every one
+is below 3.625; three of four exceed their own bar. **The drift is real and
+persistent, and no single PR explains it** — it was already present at
+`978ce70a`, before #340 and #342, and the intervening changes are mostly not
+pipeline-sensitive at all.
+
+**The baseline level was genuinely achieved once, so this is not merely a bad
+reference.** The 07-23 entry above records per-question values (mh 2.833, rec
+5.0, div 3.111, coffee 4.0 → 3.736), independently in the same band as the
+3.625 baseline. Two separate historical measurements sat near 3.6–3.7; four
+consecutive current ones sit near 3.0. That is a ~0.6–0.7 fall in answer
+quality on this battery, not a measurement artifact.
+
+**Run-to-run spread on unchanged code is ~0.6**, which is larger than most
+single-PR effects this gate is meant to catch. Until that is reduced — more
+samples, more questions, or a judge with less variance — the gate can detect
+a drift of this size but cannot attribute it.
+
+### What should happen next, in order
+
+1. **Bisect by deployment.** Run SAMPLES=5 against deployments of older
+   commits, halving the range from `b2a5ab6` to here. This is the only method
+   that attributes the drift, and it is the one thing a session cannot do
+   unilaterally: it means serving OLD CODE from production for ~12 minutes per
+   probe. That is an owner decision, not a session's.
+2. **Do not re-record the baseline** until the drift is explained. Re-recording
+   now would make the regressed level the reference and permanently hide it.
+3. **Do not revert #340 or #342.** Both were checked and neither is implicated.
+
+Suspects worth checking first, on the grounds that they change what the
+pipeline *retrieves* rather than what it says: the web-search backend rework
+(PRs #330/#331, 2026-07-29 — throttle following, a relevance floor that drops
+zero-match results, and a merged cascade), and the arXiv source becoming a
+LEAD source that displaces the web leg for questions naming it (PR #324).
+Both landed in the window where the drop appears, and both change the sources
+synthesis reads.
