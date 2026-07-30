@@ -440,3 +440,53 @@ Recommended before anything is reverted: re-run at SAMPLES=5+ and, if the
 regression reproduces, bisect by deploying #340's revert rather than reasoning
 about it. Not re-recording the baseline either way — a REGRESSION run must
 never become the reference.
+
+## 2026-07-30 (SAMPLES=5) — the regression is REAL, PREDATES #340, and was masked by noise
+
+- bench-gate 2026-07-30 (commit 6d894c35 vs baseline b2a5ab6): overall
+  3.146±0.069 vs 3.625±0.042 (delta -0.479, bar ±0.15) → **REGRESSION**. Pins:
+  mistralai/Mistral-Small-3.2-24B-Instruct-2506 / judge
+  mistralai/Mistral-Small-3.2-24B-Instruct-2506 / 240s /
+  mh_semiconductor_export,rec_eu_ai_act_timeline,div_openai_safety,con_coffee_health.
+  4 of 5 samples complete (sample 4 scored 3/4 questions and was dropped from
+  the battery means).
+
+Run to discriminate the previous entry's n=2 REGRESSION. It does, and it
+overturns the attribution in that entry rather than confirming it.
+
+**The magnitude halved as samples rose** — delta -0.958 at n=2, -0.479 at
+n=4 — and every cell came up (`con_coffee_health` 2.222 → 3.533,
+`mh_semiconductor_export` 2.0 → 2.5). So the n=2 run was pessimistic, exactly
+as its own entry suspected. What did NOT go away is the gap itself.
+
+**#340 is not the cause, and the evidence is the 07-29 run.** That run scored
+3.278±0.437 at commit `978ce70a` — *before* #340 existed — which is
+statistically the same place as today's 3.146±0.069. Two independent runs on
+either side of #340 land at ~3.15–3.28. The 07-29 run was recorded NEUTRAL
+only because its own samples disagreed (SD 0.437), which inflated its bar to
+±0.432 and swallowed a -0.347 delta. Tighten the sampling and the same code
+reads REGRESSION.
+
+So the finding is not "#340 regressed the pipeline". It is:
+
+> The pipeline has been ~0.4–0.5 below the 2026-07-23 baseline for at least a
+> day, across 100+ pipeline-sensitive changes, and the gate could not see it
+> because a noisy run computes its own permission to pass.
+
+**That is a defect in how the bar is derived**, not only a scoring drift: the
+noise bar is computed from the candidate's own sample spread, so an unstable
+run is judged leniently and a stable one strictly. A run that cannot reproduce
+itself should not thereby earn a wider pass. Recorded here rather than changed
+— altering the verdict rule is a judgement about what the gate is for, and
+belongs to the owner.
+
+**Do not revert #340 on this evidence.** The drift predates it. What the
+numbers justify is: (1) keep the baseline as-is, since re-recording now would
+enshrine the regressed level as the reference; (2) find the drift by running
+the gate at SAMPLES=5 against a deployment of an OLDER commit, bisecting the
+~100 changes rather than reasoning about them; (3) treat any future NEUTRAL
+that rests on a large candidate SD as unproven.
+
+Cost note for whoever picks this up: SAMPLES=5 is ~12 minutes and four
+questions of real Berget traffic, and it runs fine from a session container
+(see the 2026-07-29 operational note above).
