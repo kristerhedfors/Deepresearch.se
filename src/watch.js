@@ -140,6 +140,8 @@ import {
   DIAL_METRICS,
   layoutBoxes,
   layoutCollisions,
+  crownRadiusFor,
+  crownSeat,
 } from "../public/js/watch-core.js";
 
 export {
@@ -249,6 +251,8 @@ export {
   DIAL_METRICS,
   layoutBoxes,
   layoutCollisions,
+  crownRadiusFor,
+  crownSeat,
 };
 
 /**

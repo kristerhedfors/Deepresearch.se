@@ -159,6 +159,9 @@ describe("GET /api/watch/catalog", () => {
 import {
   DIALS,
   CRYSTALS,
+  // Aliased: the catalogue suite further down this file imports CROWNS too,
+  // and two top-level bindings of one name is a SyntaxError.
+  CROWNS as CROWN_STYLES,
   PLATFORMS,
   buildMeshes,
   caseProfile,
@@ -191,7 +194,12 @@ function triangles(mesh) {
   return out;
 }
 
-/** Möller–Trumbore; the ray parameter, or null for a miss. */
+/**
+ * Möller–Trumbore. Returns null for a miss, otherwise `{ t, exiting }` — the
+ * ray parameter and whether the ray left the solid through this face, read off
+ * the triangle's winding (every builder here winds counter-clockwise seen from
+ * outside).
+ */
 function rayHit(o, d, tri) {
   const [a, b, c] = tri;
   const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
@@ -207,7 +215,34 @@ function rayHit(o, d, tri) {
   const v = (d[0] * q[0] + d[1] * q[1] + d[2] * q[2]) * inv;
   if (v < -1e-9 || u + v > 1 + 1e-9) return null;
   const t = (e2[0] * q[0] + e2[1] * q[1] + e2[2] * q[2]) * inv;
-  return t > 1e-7 ? t : null;
+  if (!(t > 1e-7)) return null;
+  const n = [
+    e1[1] * e2[2] - e1[2] * e2[1],
+    e1[2] * e2[0] - e1[0] * e2[2],
+    e1[0] * e2[1] - e1[1] * e2[0],
+  ];
+  return { t, exiting: d[0] * n[0] + d[1] * n[1] + d[2] * n[2] > 0 };
+}
+
+/**
+ * How many of a merged mesh's closed solids contain `pt` — a generalised
+ * winding number, counting exits minus entries.
+ *
+ * Plain crossing PARITY, which the watertightness test uses, is the wrong tool
+ * here: the case mesh is a union of overlapping solids (shell, bezel ring,
+ * crown boss, crown guards) and a point inside two of them crosses an even
+ * number of faces, reading as "outside".
+ */
+function solidDepth(pt, faces) {
+  const raw = [0.3123, 0.8461, 0.4329];
+  const L = Math.hypot(raw[0], raw[1], raw[2]);
+  const d = raw.map((v) => v / L);
+  let w = 0;
+  for (const t of faces) {
+    const h = rayHit(pt, d, t);
+    if (h) w += h.exiting ? 1 : -1;
+  }
+  return w;
 }
 
 /** Vertices of a mesh as [x, y, z]. */
@@ -415,6 +450,73 @@ describe("case and dial geometry", () => {
       guarded.meshes.case.positions.length > bare.meshes.case.positions.length,
       "crown guards are not modelled",
     );
+  });
+
+  test("the crown MEETS the case on every shell archetype and every crown style", () => {
+    // The regression this pins, found in a headless-Chromium render: on the
+    // shroud shell the crown floated clear of the case with daylight behind
+    // it. Two causes, both invisible to a check that only looked at the SKX.
+    //
+    //   1. The crown was seated at the flank's widest POINT. On a stepped
+    //      flank that point is a corner — the Tuna's shroud lip — so the flank
+    //      across the crown's own footprint ran 19.8 → 23.3 mm and the barrel
+    //      hung over the undercut. It now seats on the widest PLATEAU.
+    //   2. A flank curves away above and below wherever the crown sits, so a
+    //      barrel can only ever kiss it along one line. The case now carries a
+    //      crown BOSS, the tube collar a real case is machined with.
+    //
+    // The assertion is per-shell and mesh-driven: sample the crown's own inner
+    // surface across its footprint and require every sample to be inside the
+    // case solid. Against the previous geometry this reports 50 gaps.
+    for (const c of CASES) {
+      for (const crown of CROWN_STYLES) {
+        const r = buildMeshes({ ...DEFAULT_BUILD, case: c.id, crown: crown.id }, { segments: 64 });
+        const faces = triangles(r.meshes.case);
+        const geo = r.geo;
+        const out = Math.hypot(r.crownTransform.x, r.crownTransform.z);
+        const ca = Math.cos(geo.crownAngle);
+        const sa = Math.sin(geo.crownAngle);
+        const crownH = geo.crownR * (crown.style === "onion" ? 2.1 : crown.style === "fluted" ? 1.7 : 1.85);
+        // The barrel's inner face — the part that has to find metal.
+        const face = out - crownH / 2;
+        for (let s = -3; s <= 3; s++) {
+          const dy = (geo.crownR * 0.62 * s) / 3;
+          for (const dz of [-geo.crownR * 0.5, 0, geo.crownR * 0.5]) {
+            const pt = [face * ca - dz * sa, geo.crownY + dy, face * sa + dz * ca];
+            assert.ok(
+              solidDepth(pt, faces) > 0,
+              `${c.id}/${crown.id}: the crown floats — its inner face at height ${geo.crownY + dy} is outside the case`,
+            );
+          }
+        }
+        // And the seat itself: the flank must not fall away underneath the
+        // crown's footprint, which is the condition the shroud violated.
+        const k = outlineFor(c.shell)(geo.crownAngle);
+        for (let s = -2; s <= 2; s++) {
+          const y = geo.crownY + (geo.crownR * s) / 2;
+          assert.ok(
+            flankRadiusAt(geo.outer, y) * k >= geo.crownFlank - 1e-9,
+            `${c.id}: the seat's flank minimum is not the minimum across the crown's footprint`,
+          );
+        }
+        assert.ok(geo.crownY > 0 && geo.crownY < geo.bezelSeatY, `${c.id}: the crown fouls the bezel`);
+      }
+    }
+  });
+
+  test("the lug tip ends at the catalogue's lug-to-lug and publishes where a strap meets it", () => {
+    for (const c of CASES) {
+      const r = buildMeshes({ ...DEFAULT_BUILD, case: c.id }, { segments: 24 });
+      const tipZ = Math.max(...verts(r.meshes.lugs).map((p) => p[2]));
+      assert.ok(Math.abs(tipZ - c.dims.l2l / 2) < 1e-6, `${c.id}: the lug tip is not at lug-to-lug/2`);
+      // The spring bar sits at the centre of the rounded tip, INBOARD of it —
+      // a strap that starts at the tip itself starts past the lug.
+      const a = r.strapAnchor;
+      assert.ok(a.z < tipZ && a.z > tipZ - 3, `${c.id}: the strap anchor is not in the lug's rounded end`);
+      assert.equal(a.width, c.dims.lugW, `${c.id}: the anchor is not the catalogue's lug width`);
+      assert.ok(a.y > 0 && a.y < c.dims.thick * 0.5, `${c.id}: the anchor is not on the lug's axis`);
+      assert.ok(a.thickness > 0.4 && a.thickness < c.dims.thick, `${c.id}: implausible lug thickness`);
+    }
   });
 
   test("a flat crystal is FLAT, and the four families are different solids", () => {
