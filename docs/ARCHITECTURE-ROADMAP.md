@@ -434,7 +434,13 @@ degrades to accepting the draft.
 > behind `SUBQ_FANOUT_ENABLED = false` (`src/budget.js`) until the bench
 > gate (`tests/bench-gate.mjs`) proves it, exactly as this section
 > demanded ("only pays off once §5.0 can prove it"); enabling it is also
-> §6's migration trigger.
+> §6's migration trigger. **Outside evidence, 2026-07-30:** Google DeepMind ×
+> MIT's scaling study puts the gain from centrally orchestrated parallel
+> decomposition at +80.9% on decomposable tasks and the loss at −39…−70% on
+> genuinely sequential ones, which is the split this fan-out already encodes
+> (comparison/survey only; multihop stays serial). It raises the prior that
+> the flag pays off — it does not replace the bench gate. See
+> `docs/AGENTIC-GRAPHS.md` §3/§5.1.
 
 For the most generous budgets, triage can already produce multi-angle
 plans; the next step is letting it produce *sub-questions*, each running
