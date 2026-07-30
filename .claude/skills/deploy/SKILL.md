@@ -192,6 +192,32 @@ preview-link comment/status, (b) production did NOT flip —
 `npx wrangler deployments list` shows no new production deployment from
 that push, only `npx wrangler versions list` shows the new version.
 
+> ### MEASURED 2026-07-30: the setup is NOT in effect — branch pushes go LIVE
+>
+> That verification was run on PR #345 and it FAILED. Pushing a feature
+> branch (`claude/seiko-feedback-parallelism-qathq8`) produced a **production
+> deployment at 100% traffic**, not a preview version:
+>
+> - `npx wrangler deployments list` showed a new production deployment whose
+>   timestamp matched the branch push to the second, while `origin/main` had
+>   not moved.
+> - Behavioural proof: `https://deepresearch.se/js/watch-materials.js`
+>   returned **200** for a file that existed only on that branch, and the
+>   branch's new UI strings were live on the public site.
+> - Every push in that session behaved the same way, so this is the standing
+>   behaviour, not a one-off.
+>
+> **Assume, until an owner confirms otherwise in the dashboard, that any push
+> to any branch ships to production.** Do not treat a feature-branch push as
+> private. Say so in the PR when a branch is not ready to be public, and run
+> the `deployments list` check above rather than trusting the preview story.
+> The Cloudflare PR comment is no help here — it says "Deployment successful"
+> and links a `…/production/builds/…` URL in both cases.
+>
+> The remedy is still the one-time dashboard change above (Production branch =
+> `main`, plus enabling non-production branch builds). An API token cannot
+> make it; only the owner can, from the dashboard.
+
 ## Verify a deploy is actually live (don't trust the upload message)
 
 There is no version endpoint on the site. Verify behaviorally: probe
