@@ -393,3 +393,50 @@ to the live site, and imports nothing outside node built-ins, so
 recording it as impossible to run pre-merge; what is impossible is running
 the AFTER half before the change deploys, which is a different constraint.
 Wall clock was about seven minutes for 3 samples × 4 questions.
+
+## 2026-07-30 — REGRESSION verdict, and why it should not be acted on alone
+
+- bench-gate 2026-07-30 (commit 4f248922 vs baseline b2a5ab6): overall
+  2.667±0.25 vs 3.625±0.042 (delta -0.958, bar ±0.30) → **REGRESSION**. Pins:
+  mistralai/Mistral-Small-3.2-24B-Instruct-2506 / judge
+  mistralai/Mistral-Small-3.2-24B-Instruct-2506 / 240s /
+  mh_semiconductor_export,rec_eu_ai_act_timeline,div_openai_safety,con_coffee_health.
+
+Run immediately after PR #340 deployed. Exit code 2. Reported rather than
+smoothed over — this is the first REGRESSION the gate has returned.
+
+**The narrow diagnosis points at PR #340 and the evidence contradicts it.**
+`src/pipeline.js` and `src/prompts.js` are the only pipeline-sensitive files
+changed since the NEUTRAL run earlier the same day, and both changes are
+#340's. But #340's prompt additions are provably inert without an active
+watch thread — `directPrompt() === directPrompt({ watchBuild: "" })` holds for
+all three answer prompts, checked directly at merge — and none of the four
+pinned questions (semiconductors, the EU AI Act, OpenAI safety, coffee) opens
+one. So the mechanism by which #340 could move these four scores is not
+visible, which is a reason to distrust the attribution rather than the
+verdict.
+
+**Three runs of this battery now disagree with each other more than the bar
+they are judged against.** 3.625±0.042 (n=2, 07-23), 3.278±0.437 (n=3,
+07-29), 2.667±0.25 (n=2, 07-30) — a spread of ~0.96 across runs whose code
+differences are, for these questions, close to inert. Per-cell the pattern is
+mixed rather than systemic: `div_openai_safety` went UP (2.667 → 3.0) while
+`rec_eu_ai_act_timeline` fell 1.33 and `con_coffee_health` fell 1.44. A
+uniform pipeline regression does not usually raise one cell.
+
+The likelier candidates are the two this harness cannot hold still: the LIVE
+environment (the bench drives real search and real provider load end to end,
+and the web-search backend changed materially in PRs #330/#331 the day
+before), and judge variance at n=2–3, which the gate's own header warns is
+"±2+ per cell and never trustworthy alone".
+
+**What this run does establish**, independent of the verdict: the battery at
+SAMPLES=2–3 cannot resolve a change of this size. Its noise bar is computed
+from the same two samples it is judging, so a run that happens to agree with
+itself produces a tight bar and a confident verdict, which is exactly how the
+07-23 baseline came to carry an SD of 0.042.
+
+Recommended before anything is reverted: re-run at SAMPLES=5+ and, if the
+regression reproduces, bisect by deploying #340's revert rather than reasoning
+about it. Not re-recording the baseline either way — a REGRESSION run must
+never become the reference.
