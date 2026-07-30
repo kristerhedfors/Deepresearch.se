@@ -6515,7 +6515,8 @@ function clamp(v, lo, hi) {
  *   towerR: number, boreR: number, boreBotR: number, apertureR: number, dialR: number,
  *   insertInner: number, insertOuter: number,
  *   seatFloorY: number, floorY: number, domeH: number, caseTopY: number, crystalTop: number,
- *   crownY: number, hasBezel: boolean }} CaseGeometry
+ *   crownR: number, crownAngle: number, crownY: number, crownFlank: number,
+ *   hasBezel: boolean }} CaseGeometry
  */
 
 /**
@@ -6530,9 +6531,10 @@ function clamp(v, lo, hi) {
  * the crown plant themselves on it via `flankRadiusAt`.
  * @param {any} caseEntry
  * @param {any} crystalEntry
+ * @param {any} [crownEntry] only affects where/how big the crown seat is
  * @returns {CaseGeometry}
  */
-export function caseProfile(caseEntry, crystalEntry) {
+export function caseProfile(caseEntry, crystalEntry, crownEntry) {
   const plat = PLATFORMS[/** @type {keyof typeof PLATFORMS} */ (caseEntry.platform)] || PLATFORMS.native;
   const D = caseEntry.dims.dia;
   const R = D / 2;
@@ -6628,18 +6630,18 @@ export function caseProfile(caseEntry, crystalEntry) {
   const fam = CRYSTAL_FAMILIES[crystalFamily(crystalEntry)];
   const domeH = clamp(fam.thick * fam.proudF, 0.5, Math.max(0.6, T * 1.12 - bezelTopY));
 
-  // The crown belongs at the flank's CREST, which is where a real one is
-  // machined in. Found rather than guessed, so it lands right on every
-  // archetype — and never at y = 0, where the bottom rim can be the widest
-  // point (the Tuna's shroud is).
-  let crownY = T * 0.45;
-  let crest = -1;
-  for (const p of outer) {
-    if (p.y > T * 0.12 && p.y < bezelSeatY && p.r > crest) {
-      crest = p.r;
-      crownY = p.y;
-    }
-  }
+  // Where the CROWN seats. Not the flank's widest POINT: on a stepped flank
+  // that point is a corner, and a crown planted on a corner hangs over the
+  // undercut beneath it. A headless-Chromium render of the Tuna showed exactly
+  // that — the crown floating clear of the case with daylight behind it,
+  // because the shroud's widest point is the lip where the profile jumps from
+  // 0.845 R to R, and the flank across the crown's own footprint ran from
+  // 19.8 mm to 23.3 mm. So seat it on the widest PLATEAU: the height whose
+  // flank MINIMUM across the crown's footprint is largest.
+  const crownR = crownRadiusFor(caseEntry, crownEntry);
+  const crownAngle = ((caseEntry.crown.hour || 3) / 12) * Math.PI * 2 - Math.PI / 2;
+  const outline = outlineFor(caseEntry.shell);
+  const seat = crownSeat(outer, outline, crownAngle, crownR, bezelSeatY, T);
 
   return {
     profile,
@@ -6662,9 +6664,61 @@ export function caseProfile(caseEntry, crystalEntry) {
     domeH,
     caseTopY,
     crystalTop: bezelTopY + domeH,
-    crownY,
+    crownR,
+    crownAngle,
+    crownY: seat.y,
+    /** The flank's MINIMUM radius across the crown's footprint, at its angle. */
+    crownFlank: seat.flank,
     hasBezel,
   };
+}
+
+/**
+ * The barrel radius of a crown on this case, mm. Shared by `caseProfile`
+ * (which seats the crown) and `buildMeshes` (which builds it), so the two can
+ * never disagree about the size of the thing being seated.
+ * @param {any} caseEntry
+ * @param {any} [crownEntry]
+ * @returns {number}
+ */
+export function crownRadiusFor(caseEntry, crownEntry) {
+  const base = caseEntry && caseEntry.shell === "dress" ? 1.5 : 1.9;
+  return base * (crownEntry && crownEntry.style === "onion" ? 1.15 : 1);
+}
+
+/**
+ * Seat a crown of radius `crownR` on a flank: the height whose flank minimum
+ * across the crown's own vertical footprint is largest, searched between the
+ * case-back bevel and far enough below the bezel seat that the crown cannot
+ * foul the rotating bezel.
+ * @param {ProfilePoint[]} outer
+ * @param {(theta: number) => number} outline
+ * @param {number} angle the crown's angle, radians
+ * @param {number} crownR
+ * @param {number} seatY the bezel seat height
+ * @param {number} T case thickness
+ * @returns {{ y: number, flank: number }}
+ */
+export function crownSeat(outer, outline, angle, crownR, seatY, T) {
+  const k = outline(angle);
+  const lo = Math.min(T * 0.16 + crownR * 0.5, seatY * 0.5);
+  const hi = Math.max(lo + 0.1, seatY - crownR * 0.6);
+  let bestY = lo;
+  let bestMin = -Infinity;
+  for (let i = 0; i <= 60; i++) {
+    const y = lo + ((hi - lo) * i) / 60;
+    let min = Infinity;
+    // Sampled densely enough that this really is the minimum: a coarse grid
+    // steps over a waist and reports a seat the flank does not actually hold.
+    for (let s = -6; s <= 6; s++) {
+      min = Math.min(min, flankRadiusAt(outer, y + (crownR * s) / 6) * k);
+    }
+    if (min > bestMin + 1e-9) {
+      bestMin = min;
+      bestY = y;
+    }
+  }
+  return { y: bestY, flank: bestMin };
 }
 
 // ---------------------------------------------------------------------------
@@ -7407,7 +7461,7 @@ export function buildMeshes(build, opts) {
   const { parts } = resolveBuild(build);
   const cs = parts.case;
   const plat = PLATFORMS[/** @type {keyof typeof PLATFORMS} */ (cs.platform)] || PLATFORMS.native;
-  const geo = caseProfile(cs, parts.crystal);
+  const geo = caseProfile(cs, parts.crystal, parts.crown);
   const dialR = plat.dialDia / 2;
   const outline = outlineFor(cs.shell);
   const slope = outlineSlopeFor(cs.shell);
@@ -7440,6 +7494,17 @@ export function buildMeshes(build, opts) {
   // Bury the root 1.6 mm inside the flank so the lug and the case READ as one
   // machined block; never let it start outside the silhouette.
   const zRoot = Math.max(0.5, Math.min(zSurface - 1.6, zTip - 2));
+  // Where the SPRING BAR sits: the centre of the lug tip's rounded end, which
+  // is where a drilled lug is actually drilled. Published so a strap can be
+  // built to meet the lug instead of guessing at `l2l / 2` and starting a
+  // third of a millimetre past it, a millimetre and a half high.
+  const lugTipRadius = Math.max(0.25, (T * 0.4 - T * 0.09) / 2);
+  const strapAnchor = {
+    z: zTip - Math.min(lugTipRadius, (zTip - zRoot) * 0.45),
+    y: (T * 0.4 + T * 0.09) / 2,
+    width: cs.dims.lugW,
+    thickness: T * 0.4 - T * 0.09,
+  };
   for (const sx of [-1, 1]) {
     for (const sz of [-1, 1]) {
       const lug = lugMesh({
@@ -7470,9 +7535,11 @@ export function buildMeshes(build, opts) {
   // CROWN. A real crown is knurled, and the flutes are modelled — a barrel with
   // `flutes` rounded ribs cut into it, a domed outer face and a tube that
   // reaches INTO the flank instead of hovering beside it.
-  const crownAngle = (cs.crown.hour / 12) * Math.PI * 2 - Math.PI / 2;
+  // Angle and radius come from the geometry that SEATED the crown, so the
+  // thing being built and the seat it was placed against cannot drift apart.
+  const crownAngle = geo.crownAngle;
   const crownStyle = (parts.crown && parts.crown.style) || "coin";
-  const crownR = (cs.shell === "dress" ? 1.5 : 1.9) * (crownStyle === "onion" ? 1.15 : 1);
+  const crownR = geo.crownR;
   const crownH = crownR * (crownStyle === "onion" ? 2.1 : crownStyle === "fluted" ? 1.7 : 1.85);
   const flutes = crownStyle === "fluted" ? 14 : crownStyle === "onion" ? 12 : 30;
   const cut = knurl(flutes, crownStyle === "coin" ? 0.06 : 0.13);
@@ -7498,9 +7565,12 @@ export function buildMeshes(build, opts) {
           { r: 0, y: yIn },
         ];
   const crown = lathe(grip, crownSeg, cut.k, cut.dk);
+  // `geo.crownFlank` is the flank's MINIMUM radius across the crown's own
+  // footprint, not the radius at its centreline — a crown seated against the
+  // centreline hovers over whatever the flank does above and below it.
+  const crownFlank = geo.crownFlank;
+  const crownOut = Math.max(crownFlank + crownH * 0.36, R * 1.005);
   // The tube: smooth, unknurled, and long enough to disappear into the flank.
-  const crownFlank = flankRadiusAt(geo.outer, geo.crownY) * outline(crownAngle);
-  const crownOut = Math.max(crownFlank + crownH * 0.36, R * 1.02);
   const embed = crownOut - crownFlank + 0.8;
   mergeMesh(
     crown,
@@ -7520,6 +7590,31 @@ export function buildMeshes(build, opts) {
     y: geo.crownY,
     angle: crownAngle,
   };
+  // The crown BOSS — the tube collar a real case is machined with, and the
+  // thing that makes a crown MEET its case rather than approach it. Seating
+  // alone is not enough: a flank curves away above and below wherever the
+  // crown sits, so the barrel can only ever kiss it along one line. The boss
+  // is part of the CASE, starts inside the barrel and runs in past the flank,
+  // so there is continuous metal at every height the crown occupies — on a
+  // slab-sided MM300 and on the Tuna's stepped shroud alike.
+  const bossR = crownR * 0.95;
+  const bossStart = crownOut - crownH * 0.3;
+  // Stop short of the bore: a boss that punched through would show up inside
+  // the case, which is the bug one layer along.
+  const bossEnd = Math.max(geo.boreR + 0.4, crownFlank - 1.2);
+  const bossLen = Math.max(0.6, bossStart - bossEnd);
+  const boss = lathe(
+    [
+      { r: 0, y: 0 },
+      { r: bossR, y: 0 },
+      { r: bossR, y: bossLen * 0.6 },
+      { r: bossR * 1.18, y: bossLen },
+      { r: 0, y: bossLen },
+    ],
+    Math.max(24, Math.floor(segments / 3)),
+  );
+  placeRadial(boss, crownAngle, bossStart, geo.crownY);
+  mergeMesh(caseMesh, boss);
   // Crown GUARDS are part of the case on the cases that have them, so they are
   // merged into the case body — and their absence is half of why a no-guard
   // conversion case looks different from an SKX.
@@ -7663,6 +7758,7 @@ export function buildMeshes(build, opts) {
     hands,
     geo,
     dialR,
+    strapAnchor,
     apertureR: geo.apertureR,
     layout,
     insertInner,
