@@ -115,6 +115,31 @@ describe("normalizeTriage", () => {
     assert.deepEqual(escaped, { action: "research", queries: ["reddit"] });
   });
 
+  test("a mounted demo surface answers instead of asking what was meant", () => {
+    // Feedback #58: "Lets see a starship launch" mounted the Starship
+    // animation and the reply was "Do you want to see a live launch or a past
+    // one?" — asked over the launch already playing above it. Once a demo is
+    // on screen the ambiguity is answered, so the turn replies directly and
+    // the answer prompt (capabilitiesTail's spaceScene clause) names it.
+    const clarify = { action: "clarify", question: "Live or past?" };
+    assert.deepEqual(
+      normalizeTriage(clarify, "Lets see a starship launch", "", { demoMounted: true }),
+      { action: "direct" },
+    );
+    // Without one, the clarification still stands — this narrows nothing else.
+    assert.deepEqual(normalizeTriage(clarify, "Lets see a starship launch", "", {}), {
+      action: "clarify",
+      question: "Live or past?",
+    });
+    // The two-in-a-row escape still wins: it searches rather than answering
+    // from nothing, and a demo does not change that (feedback #47).
+    assert.equal(
+      normalizeTriage(clarify, "news in andalucia", "", { demoMounted: true, priorWasClarify: true })
+        .action,
+      "research",
+    );
+  });
+
   test("clarify with a blank question falls through to the fallback logic", () => {
     const result = normalizeTriage({ action: "clarify", question: "   " }, "a long enough question here");
     assert.equal(result.action, "research");

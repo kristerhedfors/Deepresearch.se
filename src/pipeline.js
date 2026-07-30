@@ -708,9 +708,15 @@ async function runTriage(ctx) {
     hardenJson(TRIAGE_SCHEMA, triage),
     lastUser,
     previousUserText(ctx.conversation),
-    // Whether the turn being answered was itself a clarifying question — the
-    // guard against asking twice in a row instead of searching (feedback #47).
-    { priorWasClarify: looksLikeClarifyTurn(lastAssistantText(ctx.conversation)) },
+    {
+      // Whether the turn being answered was itself a clarifying question — the
+      // guard against asking twice in a row instead of searching (feedback #47).
+      priorWasClarify: looksLikeClarifyTurn(lastAssistantText(ctx.conversation)),
+      // Whether the client mounted a demo surface for this turn. Asking the
+      // user to narrow what they meant is wrong once the thing they asked for
+      // is already playing above the reply (feedback #58).
+      demoMounted: !!(ctx.spaceScene || ctx.demoSurface || ctx.watchBuild),
+    },
   );
 
   if (decision.action === "direct") {
