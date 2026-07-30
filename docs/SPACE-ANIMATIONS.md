@@ -104,6 +104,36 @@ broadcast does. Ground structures also take a size cap (`R * 0.015`): held at
 constant SCREEN size like the craft, the tower became a 1,000 km spike off
 Earth's limb once the orbit reveal pulled the camera out to 21,840 km.
 
+### The separation frame (feedback #58, second report)
+
+The same session came back with *"separation seems to drop the front part, the
+starship rather than the stage below"* — and it was reading the animation
+correctly. The runner flies ONE trajectory point and that point is the STACK's
+base, so when the drawn mesh switched from the full stack to the Ship alone,
+the Ship was re-anchored from 0.57 of the stack up down to the base: it fell
+more than half its own length in one frame, straight through the booster drawn
+at that same point. `upperStageBaseFrac` and `craftBaseOffset` are the fix —
+the seam the stack is built at, applied as an offset along the vehicle's axis
+once the lower stage is gone. Both launch scenes had it; nothing about the
+trajectories was ever wrong (the Ship's altitude leads the booster's from the
+separation instant onward), only where the vehicle was drawn.
+
+Looking at that frame turned up a second defect in the same beat. The booster's
+boostback flip was applied with `tilt` — `rotX`, which turns ACROSS the flight
+plane — so a booster that should have parted along the stack's 77°-over
+attitude stood bolt upright at separation and only leaned toward the camera
+thereafter. `drawMesh` grew a `roll` option (`rotZ`, the plane the scenes
+actually fly in) and `boosterRollAngle` owns the attitude: the stack's own
+angle at k=0, past engines-first for the burn, upright from `BOOSTER_UPRIGHT_K`
+so it has descent left to fall rather than snapping vertical at the catch.
+
+Method note: the fix and the defect it exposed were both found by freezing the
+loop (`st.playing = false; st.u = …`) and screenshotting either side of
+`stageT` on a deliberately oversized canvas — the craft draws at a constant
+SCREEN fraction, so a bigger canvas is the only way to zoom in on it. The unit
+tests derive the offset from the stack mesh's own vertices rather than a copy
+of the constant, so the drawn position and the drawn shape cannot drift apart.
+
 ## The chat embed (feedback #18)
 
 Both tiers' chats run the same gate on every outgoing question — since

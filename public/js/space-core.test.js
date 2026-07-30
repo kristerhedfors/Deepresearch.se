@@ -21,6 +21,11 @@ import {
   launchGroundAngle,
   launchPitchDeg,
   boosterReturnState,
+  upperStageBaseFrac,
+  craftBaseOffset,
+  boosterRollAngle,
+  BOOSTER_UPRIGHT_K,
+  ROCKET_UPPER_FRAC,
   LAUNCH_DOWNRANGE_KM,
   projectPoint,
   rotY,
@@ -421,6 +426,110 @@ test("starship hot-stages at the altitude its caption claims", () => {
   // The reply says the Ship lights its engines "near 70 km" — stageT is set
   // from that number rather than picked by eye (feedback #58).
   assert.ok(sepKm > 55 && sepKm < 80, `hot-stage altitude should read as ~70 km, got ${sepKm}`);
+});
+
+// Feedback #58's second report: *"separation seems to drop the front part, the
+// starship rather than the stage below"*. The renderer flies ONE trajectory
+// point — the stack's base — so the upper stage must be drawn offset up the
+// vehicle's axis once its booster is gone. Anchored at the base it fell more
+// than half its own length at the staging frame, through the booster still
+// being drawn there.
+
+test("upperStageBaseFrac: the offset is the seam the stack mesh is built at", () => {
+  // Derived from the MESH, not from a copy of the constant: translating the
+  // separated Ship by this fraction has to reproduce the vertices the stack
+  // put it at, or the drawn position and the drawn shape have drifted apart.
+  const h = 1;
+  const frac = upperStageBaseFrac({ craft: "starship" });
+  const stack = starshipStackMesh(h);
+  const ship = starshipShipMesh(h * STARSHIP_SHIP_FRAC);
+  const lifted = ship.verts.map((v) => [v[0], v[1] + frac * h, v[2]]);
+  // Every lifted Ship vertex is one the stack already has (the stack is the
+  // booster's vertices followed by exactly these).
+  const key = (v) => v.map((x) => x.toFixed(9)).join(",");
+  const have = new Set(stack.verts.map(key));
+  for (const v of lifted) {
+    assert.ok(have.has(key(v)), `the separated Ship sits where the stack drew it: ${key(v)}`);
+  }
+  assert.ok(frac > 0.5 && frac < 0.62, `the seam is ~0.57 of the stack up, got ${frac}`);
+  // The generic rocket separates at its own seam, and the two agree with the
+  // mesh sizes the renderer asks for.
+  assert.ok(
+    Math.abs(upperStageBaseFrac({}) - (1 - ROCKET_UPPER_FRAC)) < 1e-12,
+    "a scene with no craft key falls back to the generic rocket's seam",
+  );
+  assert.ok(
+    Math.abs(upperStageBaseFrac({ craft: "starship" }) - (1 - STARSHIP_SHIP_FRAC)) < 1e-12,
+    "and Starship's seam is the Ship's own height down from the nose",
+  );
+});
+
+test("the separated Ship keeps the height it had on the stack", () => {
+  // The regression, stated as the viewer saw it: the Ship's base must not move
+  // at the staging frame. `craftBaseOffset` is where the DRAWN mesh's base
+  // goes; the Ship sits `upperStageBaseFrac` up inside the stack and at 0
+  // inside itself, so adding the two gives the Ship's base either side.
+  const size = 50; // the drawn stack height, in the renderer's km-ish units
+  for (const id of ["rocket-launch", "starship-launch"]) {
+    const cfg = sceneById(id).config;
+    const seam = upperStageBaseFrac(cfg) * size;
+    const eps = 1e-6;
+    const shipBase = (u) =>
+      craftBaseOffset(u, cfg, size) + (u < cfg.stageT ? seam : 0);
+    const before = shipBase(cfg.stageT - eps);
+    const after = shipBase(cfg.stageT + eps);
+    assert.ok(
+      Math.abs(before - after) < 1e-9,
+      `${id}: the Ship's base jumped ${(before - after).toFixed(3)} at separation`,
+    );
+    assert.ok(seam > 0, `${id}: the upper stage rides ABOVE the stack's base`);
+    // …and the piece left behind is the one at the bottom: the drawn mesh's
+    // base RISES to the seam at separation, it does not fall to zero.
+    assert.equal(craftBaseOffset(cfg.stageT - eps, cfg, size), 0, `${id}: stack is base-anchored`);
+    assert.equal(craftBaseOffset(cfg.stageT + eps, cfg, size), seam, `${id}: upper stage is seam-anchored`);
+  }
+  // And the two stage paths never cross once they part: the Ship's altitude
+  // leads the booster's from the separation instant onward, so the piece that
+  // falls away is unambiguously the one below.
+  const cfg = sceneById("starship-launch").config;
+  for (let k = 0; k <= 40; k++) {
+    const u = cfg.stageT + (k / 40) * (cfg.catchT - cfg.stageT);
+    const shipA = launchAltKm(u, cfg);
+    const boosterA = boosterReturnState(u, cfg).a;
+    assert.ok(
+      shipA >= boosterA - 1e-9,
+      `the Ship stays above its booster (u=${u.toFixed(3)}: ship ${shipA}, booster ${boosterA})`,
+    );
+  }
+});
+
+test("boosterRollAngle: parts holding the stack's attitude, upright before the catch", () => {
+  // The craft is oriented by `rotZ(v, -vAng)`, so the booster's attitude at
+  // separation has to be exactly that, or the two halves of one vehicle point
+  // different ways in the frame they part.
+  const sepAng = 1.34; // ~77° over, which is where this scene hot-stages
+  assert.ok(
+    Math.abs(boosterRollAngle(0, sepAng) - -sepAng) < 1e-12,
+    "at separation it holds the attitude it had a frame earlier",
+  );
+  // Upright with descent left to fall — not snapping vertical at the catch.
+  for (const k of [BOOSTER_UPRIGHT_K, 0.9, 1]) {
+    assert.ok(
+      Math.abs(boosterRollAngle(k, sepAng)) < 1e-12,
+      `upright over the pad at k=${k}, got ${boosterRollAngle(k, sepAng)}`,
+    );
+  }
+  // And in between it really does swing past engines-first — that IS the
+  // boostback burn, and a booster that never turns over never burns back.
+  const mid = boosterRollAngle(BOOSTER_UPRIGHT_K / 2, sepAng);
+  assert.ok(mid > Math.PI / 2, `swings past sideways, engines leading — got ${mid} rad`);
+  // Continuous throughout: no frame where it jumps.
+  let prev = boosterRollAngle(0, sepAng);
+  for (let i = 1; i <= 100; i++) {
+    const a = boosterRollAngle(i / 100, sepAng);
+    assert.ok(Math.abs(a - prev) < 0.2, `no jump at k=${i / 100} (${prev} → ${a})`);
+    prev = a;
+  }
 });
 
 test("starship scene: the flight order is hot-stage, then catch, then insertion", () => {
