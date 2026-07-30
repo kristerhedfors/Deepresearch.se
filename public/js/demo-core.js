@@ -15,15 +15,26 @@
 // per-feature afterthought — adding a demonstrable surface means adding an
 // entry here, and every wiring below picks it up.
 //
-// TWO KINDS of surface, because they resolve differently:
+// THREE KINDS of surface, because they resolve differently:
 //
 //   kind: "space"  the /space/ archive — a scene renders INLINE above the
 //                  reply (public/js/space-embed.js). Subject matching is
 //                  delegated wholesale to space-core.js's SPACE_MATCHERS so
 //                  there is exactly one space matcher and no drift.
-//   kind: "page"   a standalone built surface (/watch/) — a link card mounts
-//                  above the reply (public/js/demo-embed.js). Its subject
-//                  patterns live in this module.
+//   kind: "watch"  the NHxx builder — a live 3D render mounts INLINE above the
+//                  reply (public/js/watch-embed.js) and the conversation drives
+//                  it with text commands (public/js/watch-chat-core.js).
+//   kind: "page"   a standalone built surface — a link card mounts above the
+//                  reply (public/js/demo-embed.js). No surface uses this today;
+//                  it stays because the card is also the watch embed's
+//                  no-WebGL fallback, and the next page-only surface needs it.
+//
+// The watch STARTED as kind "page" (feedback #49) and became inline on
+// 2026-07-30, because the card was exactly the wrong shape: "i want the watch
+// builder to be inline so I get the watch animation here and suggestions on
+// what one can change through text commands … every new reply contains a new
+// watch animation with text on what changed" (feedback #52). A link out of the
+// conversation cannot be driven BY the conversation.
 //
 // The gate is DECORATIVE-ADDITIVE, exactly like the space embed it
 // generalises: the research answer still streams below, so a false positive
@@ -130,7 +141,7 @@ export const DEMOS = [
   },
   {
     id: "watch",
-    kind: "page",
+    kind: "watch",
     path: "/watch/",
     title: { en: "The NHxx watch builder", sv: "NHxx-klockbyggaren" },
     blurb: {
@@ -250,7 +261,7 @@ export function demoIntentMatch(text) {
     }
   }
 
-  // 2. Page surfaces: an unmistakable phrase, or a subject with a show verb.
+  // 2. Non-space surfaces: an unmistakable phrase, or a subject with a show verb.
   // A verb that named its language ("visa mig") is the strongest signal the
   // user gave, so its language is tried first and kept; otherwise the language
   // is whichever pattern set the SUBJECT matched, English preferred on a tie
@@ -258,7 +269,7 @@ export function demoIntentMatch(text) {
   const verbLang = showVerbLang(t);
   const order = verbLang === "sv" ? /** @type {const} */ (["sv", "en"]) : /** @type {const} */ (["en", "sv"]);
   for (const d of DEMOS) {
-    if (d.kind !== "page") continue;
+    if (d.kind === "space") continue;
     for (const lang of order) {
       const always = d.always[lang].some((re) => re.test(t));
       const subject = d.subject[lang].some((re) => re.test(t));
@@ -295,10 +306,10 @@ export function demoIntent(text, priorText = "") {
 }
 
 /**
- * The English title fed to the answer prompts when a PAGE demo card is
- * mounted, or "" — the `demoSurface` prompt input, the page-card twin of
- * `spaceScene`. English because it feeds a prompt, not the UI (the card
- * captions itself in the matched language).
+ * The English title fed to the answer prompts when a NON-SPACE surface is
+ * mounted, or "" — the `demoSurface` prompt input, the twin of `spaceScene`.
+ * English because it feeds a prompt, not the UI (every mount captions itself in
+ * the matched language).
  *
  * @param {unknown} text
  * @param {unknown} [priorText]
@@ -306,5 +317,5 @@ export function demoIntent(text, priorText = "") {
  */
 export function demoSurfaceTitle(text, priorText = "") {
   const m = demoIntent(text, priorText);
-  return m && m.kind === "page" ? m.title.en : "";
+  return m && m.kind !== "space" ? m.title.en : "";
 }

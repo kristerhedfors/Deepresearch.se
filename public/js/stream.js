@@ -44,6 +44,7 @@ import { selectRunner } from "./exec-backends-core.js";
 import { remoteTerminalMirror } from "./agent-backdrop.js";
 import { execEnvCfg, execEnvResolved, execSessionId, remoteRunnerActive } from "./exec-env.js";
 import { hasPending } from "./attachments.js";
+import { userTextsOf } from "./demo-mount.js";
 import {
   addAssistantTurn,
   addUserBubble,
@@ -1951,10 +1952,13 @@ export async function sendMessage(text, opts) {
   addUserBubble(text, imageUrls, opts.docs.map((d) => d.name));
   const turn = addAssistantTurn(text, imageUrls);
   // An ask to be SHOWN one of the site's own surfaces mounts it across the
-  // response area — a /space/ scene inline (feedback #18), a page surface like
-  // the /watch/ builder as a card (feedback #49) — everywhere except Agent
-  // Studio, whose answer area is a build flow. The answer still streams below.
-  if (cachedChatMode() !== "sdk") mountDemoEmbed(turn, text, priorUserText);
+  // response area — a /space/ scene inline (feedback #18), the NHxx watch
+  // builder as a live render the conversation drives (feedback #49, #52) —
+  // everywhere except Agent Studio, whose answer area is a build flow. The
+  // whole user side of `history` goes with it (the push above already added
+  // this message) so a watch thread replays its commands in order. The answer
+  // still streams below.
+  if (cachedChatMode() !== "sdk") mountDemoEmbed(turn, text, priorUserText, userTextsOf(history));
   let acc = "";
   inFlight = true;
   // Reset introspection's live pipeline map to this send: the browser-side

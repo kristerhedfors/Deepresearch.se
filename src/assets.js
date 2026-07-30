@@ -79,12 +79,19 @@ export function isPublicAsset(url, method) {
     // dynamic-import it — /cure included, so it must be public (a 401 here
     // would kill the /space page's module graph for signed-out visitors).
     url.pathname === "/js/space-embed.js" ||
-    // The capability-demo registry and its card renderer: the gate that routes
-    // "show me X demo" to a built surface, and the card it mounts (feedback
-    // #49). Both tiers import them from the chat — /cure included, so they ride
-    // the same public-module-graph rule as space-embed.js above.
+    // The capability-demo registry, the shared mount decision, and the two
+    // renderers only IT reaches: the gate that routes "show me X demo" to a
+    // built surface (feedback #49), the link card, and the inline watch builder
+    // the conversation drives with text commands (feedback #52). Both tiers
+    // import them from the chat — /cure included, so they ride the same
+    // public-module-graph rule as space-embed.js above. watch-chat-core.js and
+    // watch-embed.js are dynamic imports of demo-mount.js, which makes them
+    // exactly as load-bearing: a 401 on either and the builder never draws.
     url.pathname === "/js/demo-core.js" ||
     url.pathname === "/js/demo-embed.js" ||
+    url.pathname === "/js/demo-mount.js" ||
+    url.pathname === "/js/watch-chat-core.js" ||
+    url.pathname === "/js/watch-embed.js" ||
     // DRC — the no-account client-side tier at /cure: the page, its
     // modules, and the vault/SSE primitives it reuses. Only FILES (with
     // an extension) match here: extensionless paths under /cure/ are page

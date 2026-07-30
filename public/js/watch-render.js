@@ -944,13 +944,28 @@ export function mountWatch(canvas, opts) {
 
   return {
     setBuild,
-    /** @param {number} v 0 = daylight, 1 = lights out */
+    /** @param {number|boolean} v falsy = daylight, truthy = lights out */
     setLume(v) {
       lumeMode = v ? 1 : 0;
     },
     /** @param {"live"|"1010"} v */
     setPose(v) {
       pose = v;
+    },
+    /**
+     * Start/stop the draw loop without tearing the GL context down. The /watch/
+     * page never needs it — the canvas IS the page — but an inline embed in a
+     * chat turn scrolls off screen, and a stack of them each spinning a
+     * requestAnimationFrame is how a long conversation gets hot. The chat
+     * embed drives this from an IntersectionObserver.
+     * @param {boolean} v
+     */
+    setRunning(v) {
+      const want = !!v;
+      if (want === running) return;
+      running = want;
+      if (running) raf = requestAnimationFrame(loop);
+      else cancelAnimationFrame(raf);
     },
     resetView() {
       yaw = 0.55;

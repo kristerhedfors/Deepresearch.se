@@ -72,6 +72,7 @@ import { BUDGET_MAX_S, BUDGET_MIN_S, budgetTier, fmtBudget, posToSeconds, second
 import { clearChatDom, EMPTY_TEXT, initTurns } from "./turns.js";
 import { initTestpoints } from "./testpoints.js";
 import { initStarters } from "./starters.js";
+import { setDemoCommandSender } from "./demo-mount.js";
 import { parseComposerDeepLink } from "./deeplink-core.js";
 import { mountSlashMenu } from "./slash-menu.js";
 import { detectLang } from "./canned-faq.js";
@@ -1185,6 +1186,16 @@ starters = initStarters({
     autogrow();
     form.requestSubmit();
   },
+});
+
+// The inline watch builder's suggestion chips (public/js/watch-embed.js) send
+// the command they show. Lending it the composer is the whole wiring — without
+// this the chips still render, as read-only hints, which is the degrade a tier
+// that has no composer to lend would get.
+setDemoCommandSender((text) => {
+  input.value = text;
+  autogrow();
+  form.requestSubmit();
 });
 
 // Boot completed: every module linked and every handler above is attached.

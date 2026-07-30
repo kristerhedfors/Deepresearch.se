@@ -244,6 +244,15 @@ const REPORT_TIER_STRUCTURE = {
 const demoSurfaceNote = (title) =>
   `This site SHIPS an interactive tool that answers this request directly — ${title} — and a link to it is ALREADY displayed with this answer. Open by telling the user it exists and what it does, in one or two sentences, and point them to the link beside your reply. Do NOT say the site cannot show or build this, and do NOT present web sources as the only available answer; whatever research follows is secondary to the tool itself.\n`;
 
+// The INLINE builder's note is a whole block rather than a title, because the
+// answer has a job the card never gave it: report what this turn changed, and
+// offer the next commands. The block itself is generated from the live build
+// (public/js/watch-chat-core.js watchPromptBlock) — spec sheet, fit check and
+// delta — so this wrapper only has to place it. Feedback #52, 2026-07-30:
+// "every new reply contains a new watch animation with text on what changed".
+/** @param {string} block @returns {string} */
+const watchBuildNote = (block) => `${block}\n`;
+
 // Phase 4 — synthesis from the numbered source registry (Markdown output).
 // `hasShell` appends one clause telling synthesis it may use the Linux sandbox
 // transcript block (src/bash-agent.js buildShellTranscript) present in the
@@ -252,10 +261,10 @@ const demoSurfaceNote = (title) =>
 // `reportTier` selects the output-structure block above; the default
 // "standard" keeps the prompt byte-identical to the pre-tier version.
 /**
- * @param {{ hasShell?: boolean, hasSource?: boolean, reportTier?: import('./types.js').ReportTier, spaceScene?: string, demoSurface?: string }} [opts]
+ * @param {{ hasShell?: boolean, hasSource?: boolean, reportTier?: import('./types.js').ReportTier, spaceScene?: string, demoSurface?: string, watchBuild?: string }} [opts]
  * @returns {string}
  */
-export const synthPrompt = ({ hasShell = false, hasSource = false, reportTier = "standard", spaceScene = "", demoSurface = "" } = {}) =>
+export const synthPrompt = ({ hasShell = false, hasSource = false, reportTier = "standard", spaceScene = "", demoSurface = "", watchBuild = "" } = {}) =>
   `You are the research assistant for Deepresearch.se. Today's date: ${today()}.\n` +
   "Write a research answer to the user's question using ONLY the numbered sources provided.\n" +
   (hasShell
@@ -268,6 +277,7 @@ export const synthPrompt = ({ hasShell = false, hasSource = false, reportTier = 
     ? `An interactive wireframe animation — "${spaceScene}" — is ALREADY displayed with this answer (the user can play, rotate and zoom it; it is drawn to real astronomical scale). Write the answer as the explanation accompanying it, referring to what it shows; never say you cannot display visuals or offer to describe one instead.\n`
     : "") +
   (demoSurface ? demoSurfaceNote(demoSurface) : "") +
+  (watchBuild ? watchBuildNote(watchBuild) : "") +
   "Format in Markdown (the UI renders it). Use REAL line breaks: a blank line between paragraphs and before every heading, and — critically — put each table on its own lines with a blank line before it and EACH ROW ON ITS OWN LINE (header row, the |---|---| separator row, then one line per data row). Never run a heading or a table onto the end of a sentence.\n" +
   (REPORT_TIER_STRUCTURE[reportTier] || REPORT_TIER_STRUCTURE.standard) +
   "Match the answer's DATA to the question's superlative (2026-07-08 user requirement): when the user asks for the LATEST/newest/most recent, state each item's concrete date (release, update, or publication — source highlights often carry 'updated YYYY-MM-DD'; use it). When the user asks for the FASTEST/quickest/most efficient, give the concrete measurements — tokens/second, latency, speedup factors, steps — with their conditions (hardware, batch, baseline). When asked for the biggest/most popular/best, give the numbers (downloads, parameters, benchmark scores). A superlative claim without its number or date must be flagged as such (\"the source claims X is fastest but reports no figures\") — never presented bare.\n" +
@@ -765,8 +775,14 @@ const CAPABILITIES_NOTE =
  * @param {boolean} [hasSource]
  * @returns {string}
  */
-const capabilitiesTail = (hasShell, hasSource = false, spaceScene = "", demoSurface = "") => {
+const capabilitiesTail = (hasShell, hasSource = false, spaceScene = "", demoSurface = "", watchBuild = "") => {
   const clauses = [];
+  if (watchBuild) {
+    // The inline watch builder: the render is on screen AND the conversation is
+    // its control panel, so the clause is the generated build block itself
+    // (watchBuildNote above) rather than a sentence about a link.
+    clauses.push(watchBuild);
+  }
   if (demoSurface) {
     // The page-surface twin of the spaceScene clause below — same failure
     // mode, different affordance: the tool is one tap away rather than
@@ -808,13 +824,13 @@ const capabilitiesTail = (hasShell, hasSource = false, spaceScene = "", demoSurf
 // put the site's own source in context) each flip the closing capabilities
 // line; both default false so a run without either feature is byte-identical.
 /**
- * @param {{ hasShell?: boolean, hasSource?: boolean, spaceScene?: string, demoSurface?: string }} [opts]
+ * @param {{ hasShell?: boolean, hasSource?: boolean, spaceScene?: string, demoSurface?: string, watchBuild?: string }} [opts]
  * @returns {string}
  */
-export const directPrompt = ({ hasShell = false, hasSource = false, spaceScene = "", demoSurface = "" } = {}) =>
+export const directPrompt = ({ hasShell = false, hasSource = false, spaceScene = "", demoSurface = "", watchBuild = "" } = {}) =>
   "You are the assistant for Deepresearch.se, a deep-research service. Reply directly, helpfully, and concisely." +
   CAPABILITIES_NOTE +
-  capabilitiesTail(hasShell, hasSource, spaceScene, demoSurface) +
+  capabilitiesTail(hasShell, hasSource, spaceScene, demoSurface, watchBuild) +
   ANTI_INJECTION_NOTE;
 
 // The SOURCELESS depth ladder for the search-off answer: the slider still buys
@@ -835,11 +851,11 @@ const SEARCH_OFF_DEPTH = {
 };
 
 /**
- * @param {{ hasShell?: boolean, hasSource?: boolean, reportTier?: import('./types.js').ReportTier, spaceScene?: string, demoSurface?: string }} [opts]
+ * @param {{ hasShell?: boolean, hasSource?: boolean, reportTier?: import('./types.js').ReportTier, spaceScene?: string, demoSurface?: string, watchBuild?: string }} [opts]
  * @returns {string}
  */
-export const searchOffPrompt = ({ hasShell = false, hasSource = false, reportTier = "standard", spaceScene = "", demoSurface = "" } = {}) =>
-  directPrompt({ hasShell, hasSource, spaceScene, demoSurface }) +
+export const searchOffPrompt = ({ hasShell = false, hasSource = false, reportTier = "standard", spaceScene = "", demoSurface = "", watchBuild = "" } = {}) =>
+  directPrompt({ hasShell, hasSource, spaceScene, demoSurface, watchBuild }) +
   " Web search is currently disabled by the user; answer from your general knowledge and note when fresh web data would be needed." +
   (SEARCH_OFF_DEPTH[reportTier] || "");
 
