@@ -728,6 +728,45 @@ suite only ever ran against a deployment:
 > the `main` commit whose e2e run had passed minutes earlier. Re-running the
 > job is the correct response; there is no fix to write.
 
+### Looking at a rendered page from a session container
+
+A session container **can** open a real browser, and several PRs have shipped
+with "not verified in a browser" written into them on the belief that it
+cannot. Chromium is pre-installed under `/opt/pw-browsers/`, which is what
+`PLAYWRIGHT_BROWSERS_PATH` already points at. This matters most for the WebGL
+and canvas surfaces — `/watch/`, `/space/`, the demo mounts — where a unit test
+proves the arithmetic and says nothing about whether the shader compiled.
+
+Three snags, each with its fix (established 2026-07-30 while reviewing PR #345,
+whose own body reported no browser was available):
+
+1. `cd tests && npm install` resolves a Playwright whose pinned browser
+   revision is newer than the one shipped in the image, so `chromium.launch()`
+   fails with *"Executable doesn't exist at …chromium_headless_shell-<n>"*. Do
+   **not** run `npx playwright install`. Pass the shipped binary instead:
+   `executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome"`
+   (check the directory — the revision moves with the image).
+2. WebGL needs software rendering:
+   `args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"]`.
+   With those, `getContext("webgl")` succeeds and the page's shaders really do
+   compile — a compile failure shows up as a console error and a blank canvas,
+   which is exactly the class of break that unit tests cannot see.
+3. `wrangler dev` is the wrong host for a static showcase page: `/watch/` and
+   `/space/` **301 to themselves** locally, while production serves both 200.
+   It is a local asset-routing artifact, not a defect. Serve the directory
+   instead — `cd public && python3 -m http.server 8123` — since these pages are
+   static HTML plus module imports rooted at `/js/`.
+
+**Measure the render; do not only look at it — and do not only count lit
+pixels.** The space-animations rule stands (a lit-pixel count passes happily on
+a scene drawing the wrong thing), so the useful shape is a *paired* measurement
+against `main` rendered at the same viewport. Reading the canvas back through a
+2D copy and histogramming it caught a material regression no test asserted: on
+`main` not one non-background pixel exceeded 235 on all channels, and on the
+branch 25.9% did with 0.46% clipped at 255 — a bracelet that had lost all
+tonal separation. Neither number means anything alone; the pair is the finding.
+Render both, count the same way, and put the two numbers in the PR.
+
 ### Remote — against the deployed site or a branch preview
 
 Set `BASE_URL` plus the break-glass credentials (`BASIC_AUTH_USER` /
@@ -978,3 +1017,18 @@ the ledger line; on IMPROVED, re-record the baseline in the same PR. The gate
 needs the break-glass creds and a live deployment, so the hook only reminds —
 it never blocks. Don't push mid-battery (the model-eval rule): an auto-deploy
 truncates in-flight streams and poisons the run.
+
+> **Before blaming a commit for a REGRESSION, check the judge.**
+> `node rejudge-probe.mjs <eval-bench-results/…> [reps]` replays an archived
+> run's stored answer and stored sources — byte-identical to what the judge saw
+> that day — and re-scores them now. Nothing deploys and no answer is
+> regenerated, so the only variable left is the scoring. Two things it answers
+> cheaply: whether the judge has drifted (score the same text across days), and
+> what the judge's floor noise actually is (score the same text N times in one
+> session). Measured 2026-07-30: **≈0.54 sd per question on text that did not
+> change**, so ≈0.27 on a four-question battery mean. Any baseline claiming a
+> tighter sd than that is reporting a coincidence, not a dispersion — which is
+> what `bench-baseline.json`'s 0.042 at n=2 turned out to be, and why the gate's
+> 0.15 floor has been reading REGRESSION on runs carrying no signal. Record a
+> baseline at **n≥8** or its sd cannot support a verdict.
+> Full working: `tests/EVAL-BENCH-FINDINGS.md`, entry of 2026-07-30 run 5.

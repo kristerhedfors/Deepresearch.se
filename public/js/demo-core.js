@@ -36,6 +36,11 @@
 // watch animation with text on what changed" (feedback #52). A link out of the
 // conversation cannot be driven BY the conversation.
 //
+// Feedback #55 (2026-07-30) then widened the watch gate's VERB half from "show
+// me" to "show me OR make me": "Build me a fancy seiko watch" had mounted
+// nothing at all. See the BUILD-half section below for the two regexes that put
+// it there, and docs/WATCH-BUILDER.md §6c.
+//
 // The gate is DECORATIVE-ADDITIVE, exactly like the space embed it
 // generalises: the research answer still streams below, so a false positive
 // costs a card the user can ignore, never an answer. That is what lets the
@@ -99,6 +104,75 @@ const SHOW_VERBS = {
   ],
 };
 
+// ---------------------------------------------------------------------------
+// The BUILD half of the ask — the second verb family, per surface.
+//
+// WHY (feedback #55, 2026-07-30). "Build me a fancy seiko watch" mounted
+// NOTHING, and the session got a web-research essay about Seiko catalogue
+// models instead of the builder that answers exactly that sentence. Two
+// independent misses put it there, and both are the same mistake:
+//
+//   1. The unmistakable phrase was written `/\bbuild (a|your|my|the) (own
+//      )?watch\b/` — a determiner immediately after the verb — so "build ME a
+//      fancy seiko watch" fell out of it, as does every adjective anyone
+//      actually types.
+//   2. `SHOW_VERBS.en` carried `/\bbuilder?\b/`, which is "builder", never
+//      "build" (the `?` binds the `r`). So the subject+verb path had no verb
+//      either, and the message resolved to null.
+//
+// The report was explicit about the intended default: *"whenever there is talk
+// about building, creating, designing watches I want the default to be to
+// create a watch in every response"*. So a MAKE verb next to a surface's
+// subject mounts it, exactly as a SHOW verb does. Kept per-entry rather than
+// global because "build" is meaningless for a /space/ scene — you look at the
+// Moon, you do not assemble one.
+//
+// Composed from a verb list × an object list rather than written out, because
+// the failure above was precisely a hand-written combination that missed the
+// combinations people type. The object half is required: it is what keeps the
+// nominal "the design of the Seiko 5" from reading as an imperative.
+
+const EN_MAKE =
+  "(build|builds|building|built|design|designs|designing|designed|create|creates|creating|created" +
+  "|make|makes|making|made|assemble|assembles|assembling|customi[sz]e|customi[sz]es|customi[sz]ing|customi[sz]ed" +
+  "|configure|configures|configuring|spec out|put together|puts together|putting together|mod|mods|modding|modded" +
+  "|draw|draws|drawing|drew|sketch|sketches|sketching)";
+// The object a make-verb takes: an optional indirect object, then a determiner
+// or an adjective people actually reach for.
+const EN_OBJ =
+  "(me |us |for me |for us )?(a|an|the|my|your|our|his|her|their|its|one|another|some|own|new|custom|fancy|nice|cool|dream|perfect|proper)";
+
+// Swedish at the same breadth (invariant 6): definite forms, the compound
+// verbs, and the diacritic-dropped spellings a Swede types on a foreign
+// keyboard ([åa] / [äa] / [öo] classes, never a trailing \b next to them).
+const SV_MAKE =
+  "(bygg|bygga|bygger|byggde|byggt|skapa|skapar|skapade|skapat|designa|designar|designade|designat" +
+  "|rita|ritar|ritade|g[öo]ra|g[öo]r|gjorde|gjort|montera|monterar|monterade|s[äa]tt|s[äa]tta|s[äa]tter" +
+  "|modda|moddar|moddade|moddat|anpassa|anpassar|anpassade|skr[äa]ddarsy|skr[äa]ddarsyr" +
+  "|konfigurera|konfigurerar|pl[åa]ta ihop|snickra ihop|fixa|fixar)";
+const SV_OBJ =
+  // No "den"/"det": "gör det" is the most ordinary phrase in Swedish ("do it")
+  // and would fire on any sentence that happened to mention a watch.
+  "(mig |oss |[åa]t mig |[åa]t oss |ihop |upp )?(en|ett|min|mitt|din|ditt|dina|sin|sitt|egen|eget|egna|ny|nytt|nya|fin|fint|fina|cool|coolt|n[åa]gon|n[åa]got)";
+
+/**
+ * A make-verb pattern set for one surface: the verb with a determiner-shaped
+ * object, the verb straight onto one of the surface's own nouns, and the
+ * "I want to build…" wrappers.
+ * @param {string} verbs a regex alternation of the language's make verbs
+ * @param {string} objects a regex alternation of its determiners
+ * @param {string} nouns a regex alternation of the surface's own nouns
+ * @param {string[]} wrappers "i want to", "kan du", …
+ * @returns {RegExp[]}
+ */
+function makeVerbs(verbs, objects, nouns, wrappers) {
+  return [
+    new RegExp(`\\b${verbs} ${objects}\\b`),
+    new RegExp(`\\b${verbs} ${nouns}`),
+    new RegExp(`\\b(${wrappers.join("|")}) ${verbs}\\b`),
+  ];
+}
+
 // A BARE visual ask — "show me visually", "visa visuellt" — names no subject
 // at all. On its own it matches nothing; its subject is the turn before it,
 // which is what makes feedback #50's real sequence work ("Space launch demo"
@@ -120,9 +194,11 @@ const BARE_SHOW = {
 
 // ---------------------------------------------------------------------------
 // The registry. One entry per demonstrable surface. `subject` is the NOUN half
-// of the ask; `always` are phrasings so specific to the surface that they need
-// no verb alongside ("watch builder" is never a research question about
-// horology).
+// of the ask; `action` are the surface's own MAKE verbs, which qualify a
+// subject exactly as a SHOW verb does (feedback #55); `always` are phrasings so
+// specific to the surface that they need no verb alongside ("watch builder" is
+// never a research question about horology); `deny` are the collocations that
+// borrow a subject word for something else ("watchlist") and must not mount it.
 
 export const DEMOS = [
   {
@@ -137,7 +213,9 @@ export const DEMOS = [
     // Subject matching is space-core.js's job (SPACE_MATCHERS). Listed here
     // only so the registry is the complete picture of what can be demoed.
     subject: { en: [], sv: [] },
+    action: { en: [], sv: [] },
     always: { en: [], sv: [] },
+    deny: { en: [], sv: [] },
   },
   {
     id: "watch",
@@ -153,34 +231,77 @@ export const DEMOS = [
     // beside it. The movement families and "watch mod" are unambiguous.
     subject: {
       en: [
-        /\bnh ?3[568]\b/,
+        /\bnh ?3[4568]\b/,
+        /\bnh ?70\b/,
         /\bnhxx\b/,
         /\bseiko\b/,
         /\bwatch(es)?\b/,
         /\bwrist ?watch(es)?\b/,
+        /\bdiver'?s? watch(es)?\b/,
         /\bwatch (mod|modding|movement|case|dial|bezel|lume)\b/,
+        /\b(dial|bezel insert|chapter ring|case ?back|lume)\b/,
       ],
       sv: [
-        /\bnh ?3[568]\b/,
+        /\bnh ?3[4568]\b/,
+        /\bnh ?70\b/,
         /\bnhxx\b/,
         /\bseiko\b/,
         /klock(a|an|or|orna)/,
         /armbandsur|\bur\b/,
         /urtavl(a|an|or)|\bboett(et)?\b|visar(e|na)/,
+        /urverk(et)?|l[üu]nett(en)?|lysmass(a|an)/,
+        /dykarklock(a|an|or)|armbandsklock(a|an|or)/,
       ],
+    },
+    // The MAKE half (feedback #55). A surface's own nouns are listed straight
+    // after the verb too, so "designa urtavlan" and "gör urtavlan svart" — an
+    // object with no determiner, which Swedish takes as a suffix — qualify as
+    // readily as "design a dial".
+    action: {
+      en: makeVerbs(
+        EN_MAKE,
+        EN_OBJ,
+        "(watch|wrist ?watch|seiko|nh ?3[4568]|nhxx|dial|bezel|case ?back|chapter ring|hands|strap|bracelet)",
+        ["i want to", "i wanna", "i'?d like to", "i need to", "help me", "can you", "could you", "let'?s", "lets", "how do i", "how to", "please"],
+      ),
+      sv: makeVerbs(
+        SV_MAKE,
+        SV_OBJ,
+        "(klock|armbandsur|ur(et|tavl|verk|band)|boett|visar|l[üu]nett|band|armband|seiko|nh ?3[4568]|nhxx)",
+        ["jag vill", "jag skulle vilja", "jag beh[öo]ver", "hj[äa]lp mig", "kan du", "skulle du kunna", "l[åa]t oss", "hur g[öo]r man", "hur man", "sn[äa]lla"],
+      ),
     },
     always: {
       en: [
         /\bwatch (builder|configurator|designer)\b/,
         /\bbuild (a|your|my|the) (own )?watch\b/,
         /\bwatch mod(ding)?\b/,
-        /\bnh ?3[568] (mod|build)/,
+        /\bwatch build(s)?\b/,
+        /\bmod(ding)? (a|an|my|the|this|that) seiko\b/,
+        /\bseiko mod(ding)?\b/,
+        /\bnh ?3[4568] (mod|build)/,
       ],
       sv: [
         /klockbyggar(e|en)|klock-?byggare/,
+        /klockbygge(t|n)?|klock-?bygge/,
         /bygg(a)? (en |din |min )?(egen )?klocka/,
         /klockmod(ding)?|moddad? klocka/,
+        /seikomod(d|dning)?|modda (en |min |den )?seiko/,
       ],
+    },
+    // "watchlist" borrows the subject word for a different thing entirely, and
+    // a make verb beside it ("build a watch list") would otherwise mount the
+    // builder on a portfolio question. An `always` phrase still wins over this.
+    deny: {
+      en: [
+        /\bwatch ?lists?\b/,
+        /\bwatchdogs?\b/,
+        /\bwatch (out|this space)\b/,
+        // "watch build" is a real mod-build phrase and "watch the build logs"
+        // is a CI one; the object after it is what tells them apart.
+        /\bwatch (the )?builds? (log|output|status|pipeline|run|fail)/,
+      ],
+      sv: [/bevakningslist(a|an|or|orna)/, /\bvakthund(en|ar)?\b/],
     },
   },
 ];
@@ -261,19 +382,29 @@ export function demoIntentMatch(text) {
     }
   }
 
-  // 2. Non-space surfaces: an unmistakable phrase, or a subject with a show verb.
+  // 2. Non-space surfaces: an unmistakable phrase, or a subject with a verb —
+  // either a SHOW verb ("show me a seiko watch") or the surface's own MAKE verb
+  // ("build me a fancy seiko watch", feedback #55).
+  //
   // A verb that named its language ("visa mig") is the strongest signal the
   // user gave, so its language is tried first and kept; otherwise the language
   // is whichever pattern set the SUBJECT matched, English preferred on a tie
-  // (both sets carry "seiko", only the Swedish one carries "urtavlan").
+  // (both sets carry "seiko", only the Swedish one carries "urtavlan"). A MAKE
+  // verb names its language the same way a show verb does, so a Swedish-only
+  // "designa urtavlan" resolves to sv even though nothing in it is a show verb.
   const verbLang = showVerbLang(t);
   const order = verbLang === "sv" ? /** @type {const} */ (["sv", "en"]) : /** @type {const} */ (["en", "sv"]);
   for (const d of DEMOS) {
     if (d.kind === "space") continue;
+    // A borrowed subject word vetoes the whole entry, in either language:
+    // "build a watch list of stocks" satisfies both the subject and the make
+    // verb, and "watch list" is the only thing in it that is about a watch.
+    if (d.deny.en.some((re) => re.test(t)) || d.deny.sv.some((re) => re.test(t))) continue;
     for (const lang of order) {
       const always = d.always[lang].some((re) => re.test(t));
       const subject = d.subject[lang].some((re) => re.test(t));
-      if (!always && !(subject && verbLang)) continue;
+      const action = d.action[lang].some((re) => re.test(t));
+      if (!always && !(subject && (verbLang || action))) continue;
       return {
         id: d.id,
         kind: d.kind,

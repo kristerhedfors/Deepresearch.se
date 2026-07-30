@@ -235,5 +235,10 @@ tests/starter-eval-results/
 # Local scratch / one-off verification files (should live in the scratchpad dir)
 /scratch_*
 
+# Subagent git worktrees. Claude Code puts an isolated worktree per parallel
+# agent here; they are nested working trees, not repository content, and the
+# harness removes them when the agent finishes.
+.claude/worktrees/
+
 # arXiv RAG working data (harvested corpus + built index shards) — see docs/ARXIV-RAG.md
 data/

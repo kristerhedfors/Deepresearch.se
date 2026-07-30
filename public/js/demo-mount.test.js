@@ -44,6 +44,12 @@ test("watchOpenedIn is the pre-gate: it agrees with the thread it stands in for"
     ["show me a rocket launch from space"],
     ["compare Claude and GPT pricing", "jubilee bracelet"],
     ["nh36 demo", "surprise me", "lights out"],
+    // Feedback #55's conversation, verbatim: the pre-gate has to see the
+    // opening ask, and has to keep seeing it through the clarifying answer.
+    ["Build me a fancy seiko watch"],
+    ["Build me a fancy seiko watch", "Features"],
+    ["Build me a fancy seiko watch", "Features", "make the dial sunburst blue"],
+    ["Bygg mig en fin seiko-klocka", "gör urtavlan svart"],
     [],
   ];
   for (const texts of conversations) {
@@ -69,6 +75,9 @@ test("demoSurfacePossible never blocks a turn that would have mounted something"
     { questionText: "show me a rocket launch from space", userTexts: ["show me a rocket launch from space"] },
     { questionText: "show me visually", priorText: "Space launch demo", userTexts: ["Space launch demo", "show me visually"] },
     { questionText: "svart urtavla", priorText: "visa mig klockbyggaren", userTexts: ["visa mig klockbyggaren", "svart urtavla"] },
+    // Feedback #55: the turn the report was written about — a one-word answer
+    // to a clarifying question, which used to place no host element at all.
+    { questionText: "Features", priorText: "Build me a fancy seiko watch", userTexts: ["Build me a fancy seiko watch", "Features"] },
     { questionText: "what is the capital of France?", userTexts: ["Seiko watch demo", "what is the capital of France?"] },
     { questionText: "compare Claude and GPT pricing", userTexts: ["compare Claude and GPT pricing"] },
   ];

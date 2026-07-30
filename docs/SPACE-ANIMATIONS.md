@@ -131,13 +131,16 @@ The same frame also had the exhaust plume drawn straight down the SCREEN, so
 it pointed off into space the moment the craft pitched over; it trails along
 the vehicle's axis now, from whichever stage is burning.
 
-Two branches fixed the drop independently within minutes of each other —
-`claude/space-launch-feedback-euzzwg` (which also fixed the plume) and this
-one (which also fixed the attitude). They agreed on the diagnosis and differed
-only in where the offset lived: on the mount state as a stored constant, or in
-the core as a function derived from the mesh. The merge kept the core function,
-because that is the version a unit test can check against the stack's own
-vertices, and kept both extra fixes.
+Two workers fixed the drop independently within minutes of each other, on the
+same feedback thread: `claude/space-launch-feedback-euzzwg` (merged as PR #344,
+which also fixed the plume) and `claude/starship-stage-feedback-6jqm1p` (which
+also fixed the attitude). They agreed on the diagnosis and differed only in
+where the offset lived — stored on the mount state as a constant, or derived in
+the core from the mesh. Reconciled to the core function, because that is the
+version a unit test can check against the stack's own vertices, keeping both
+extra fixes. Worth knowing for the next time this happens: git merged the two
+offsets TEXTUALLY, which applied the lift twice and looked plausible in the
+diff. Two independently correct fixes to one line of geometry do not compose.
 
 Method note: the fix and the defect it exposed were both found by freezing the
 loop (`st.playing = false; st.u = …`) and screenshotting either side of

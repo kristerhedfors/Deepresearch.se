@@ -109,9 +109,16 @@ and the page shows it under the spec sheet. The `SOURCES` table in
   [KARAJAN](https://diywatchmod.com/products/silver-tuna-case-for-nh35-nh36-movement) (Tuna),
   [Tandorio](https://tandoriowatch.com/products/tandorio-titanium-turtle-diver) (Turtle),
   [seikomods CT714](https://www.seikomods.com/shop/ct714-skx013-to-mini-turtle-conversion-case-crown-at-3/) (mini Turtle),
-  [Exquisite Timepieces](https://www.exquisitetimepieces.com/blog/all-about-the-seiko-willard/) (6105 Willard),
-  and [AliExpress's own NH35-case reference article](https://www.aliexpress.com/s/wiki-ssr/article/seiko-nh35-size)
-  (crystal materials, crown thread, 316L, clearance).
+  and [Exquisite Timepieces](https://www.exquisitetimepieces.com/blog/all-about-the-seiko-willard/) (6105 Willard).
+
+AliExpress's own `wiki-ssr` "reference articles" were dropped as a source on
+2026-07-30. They are machine-generated and carry outright false claims — the
+NH36 one calls the calibre a Seagull running at 28,800 vph, and it is a Seiko
+Instruments movement running at 21,600. The one crystal claim that rested on
+that page (Hardlex hardness) now cites
+[namokiMODS' crystal comparison](https://www.namokimods.com/blogs/where-to-buy/mineral-hardlex-sapphire-what-crystal-to-choose)
+and is stated as a ranking rather than a number, because Seiko publishes no
+hardness figure for Hardlex.
 
 ---
 
@@ -427,6 +434,86 @@ what an agent calls *instead of* the pipeline reaching for function calling.
 Each has its own exposure switch in `src/mcp-config.js`'s catalog, and junk
 arguments degrade to a described default rather than throwing, because a thrown
 tool is a model that retries the same call forever.
+
+---
+
+## 6c. Building talk, not just demo talk (feedback #55 and #56)
+
+The inline builder shipped, and the next session that wanted one did not get
+it. The message was **"Build me a fancy seiko watch"**; the reply was a
+research essay about the Prospex Marinemaster and the Presage Cocktail Time,
+and the report that followed was one sentence long:
+
+> *"I see no watch animation. Whenever there is talk about building, creating,
+> designing watches I want the default to be to create a watch in every
+> response and take user input for the next animation in the next response in
+> the convo."*
+
+### Why nothing mounted
+
+Two independent misses, both in `public/js/demo-core.js`, and both the same
+mistake — a hand-written combination that missed the combinations people type.
+
+1. The unmistakable phrase was `/\bbuild (a|your|my|the) (own )?watch\b/`: a
+   determiner **immediately** after the verb. "Build **me** a **fancy** seiko
+   watch" has an indirect object and an adjective in that gap, so it fell out.
+2. The subject-plus-verb path had no verb to offer either. `SHOW_VERBS.en`
+   carried `/\bbuilder?\b/`, which matches "builder" and never "build" — the
+   `?` binds the `r`, not the `er`. Nothing in the message was a show verb.
+
+So the gate returned null, no builder mounted, no `watchBuild` block reached
+the answer prompt, and the pipeline researched the open web for the capability
+it was sitting on. That is feedback #49's failure again, one layer in.
+
+### The second verb family
+
+A surface now has a `subject` (the noun), an `always` (phrases that need no
+verb), a `deny` (collocations that borrow a subject word for something else),
+and an **`action`** — its own MAKE verbs, which qualify a subject exactly as a
+SHOW verb does. Build, design, create, make, mod, customise, configure,
+assemble, draw; bygga, designa, skapa, göra, modda, anpassa, montera, rita,
+skräddarsy. `action` is per-entry rather than global because "build" is
+meaningless for a `/space/` scene: you look at the Moon, you do not assemble
+one.
+
+The patterns are **composed** from a verb list times an object list, which is
+the direct answer to how the old one broke. The object half is required — it is
+what keeps the nominal "the design of the Seiko 5" from reading as an
+imperative — and each surface's own nouns are listed straight after the verb
+too, because Swedish suffixes the article onto the noun and "designa urtavlan"
+has no determiner to find.
+
+`deny` is new with this pass and exists for one shape: "build a watch list of
+stocks" satisfies the subject and the verb, and "watch list" is the only thing
+in it about a watch. A denied phrase vetoes the entry in either language.
+
+### The thread survives a clarifying answer
+
+The logged session ran: the ask, then the assistant asking whether "fancy"
+meant features or looks, then the user answering **"Features"**. That one-word
+answer is the turn the report was written about, and `isWatchTalk("features")`
+is false — so even with the gate fixed, the thread would have closed on it.
+
+The close rule is not loosened, because it earns its keep: an unrelated
+question must never be answered with a watch bolted onto it. Instead a bare
+**continuation fragment** buys the thread exactly one turn of grace, and a
+second non-watch turn closes it as before. A fragment is deterministic and
+deliberately narrow, the same shape as `isBareShowAsk`: short, no question
+mark, no interrogative or imperative opener in either language, and not an ask
+for some other surface. Real watch talk hands the grace back, so a long build
+session never runs out of it.
+
+### The app door
+
+The last line of feedback #56 argued the opposite way: *"building through the
+chatbot interface is unavoidably clunky and the wrong approach — send user to
+the app immediately."* The owner kept both, so the inline card now **leads**
+with the link instead of trailing it. `builderLink(build)` renders
+`/watch/#<permalink>` — the same hash `/watch/` writes into its own address bar
+— so the app opens on the exact watch the conversation reached and nothing is
+retyped. The no-WebGL degrade carries it too, and `watchPromptBlock` tells the
+answer the door is there so it can point at it once without claiming the user
+has to leave.
 
 ---
 
