@@ -1,4 +1,4 @@
-# Agentic graphs — what the term means, what is actually claimed, and what this repo should do about it
+# Agentic graphs — what holds up under checking, and what it means for this codebase
 
 *(Research note, 2026-07-30. Written because "agentic graphs" is the current
 loud idea and the request was to check what Boris Cherny says about it before
@@ -105,7 +105,7 @@ them are uncomfortable for the hype:
 
 Three conclusions:
 
-- **Task structure decides, not agent count.** Decomposable work parallelises
+- **Task structure decides, not agent count.** Decomposable work parallelizes
   well; genuinely sequential work is actively damaged by splitting it, because
   coordination overhead eats the reasoning budget.
 - **Centralization is the error control.** An orchestrator that inspects node
@@ -184,6 +184,14 @@ the orchestration shell to Cloudflare Workflows in the same effort, as
 
 ### 5.2 Classify task shape, not just complexity (cheapest new win)
 
+> **Status: shipped 2026-07-30.** Triage emits `decomposition`
+> (`"independent"` | `"sequential"`), and `subquestionsAreIndependent`
+> (`src/pipeline.js`) is what the fan-out now gates on. `multihop` is refused
+> on both paths whatever the classifier says, and an absent field falls back to
+> the old comparison/survey proxy, so behaviour degrades to exactly what it
+> was. It is INERT until §5.1 flips `SUBQ_FANOUT_ENABLED` — this change makes
+> that flip better-targeted, it does not perform it.
+
 Triage already emits `complexity`, and `applyComplexityToPlan` uses it to cap
 depth. The paper's 87%-accurate predictor says the *decomposability* of a task
 is separately measurable and separately decisive. Extend the triage JSON with a
@@ -203,10 +211,22 @@ pure spec work with a reference implementation already in `sdk/drpl.mjs`.
 
 ### 5.4 The genuinely missing half: knowledge-graph memory
 
+> **Status: shipped for the Se/rver tier, 2026-07-30** — the owner directed it
+> in the same session this note was written. Account-scoped memory now exists
+> as `docs/ACCOUNT-MEMORY.md`: durable linked notes stored in Obsidian's shape,
+> downloadable as a vault, opt-in and off by default. The exposure argued for
+> below was written down rather than assumed (`ACCOUNT-MEMORY.md` §4), and the
+> Se/cure answer is the one this section anticipated — **no memory of this
+> kind, and a different design if it is ever wanted there**. Two things this
+> section asked for are still open: RETRIEVAL (notes are written and exported,
+> but nothing reads them back into a request — that changes every answer, so it
+> belongs behind the bench gate as its own change) and the WORKSPACE-scoped
+> form (what shipped is account-scoped).
+
 The *other* sense of "graph" — entity/relation memory that outlives a context
-window — has no implementation here at all. There is RAG, there are projects,
-there are workspaces; there is no linked entity store. The pipeline currently
-forgets everything structural between runs.
+window — had no implementation here at all. There is RAG, there are projects,
+there are workspaces; there was no linked entity store. The pipeline forgot
+everything structural between runs.
 
 The right home is the **workspace**, since the workspace is the unit that
 travels. A workspace-scoped knowledge graph, built by the extraction →
@@ -214,15 +234,18 @@ resolution → summarization → query pattern (which is sound regardless of who
 wrote the PDF), would let research accumulate across sessions instead of
 restarting.
 
-**It needs a privacy ruling before it needs code.** A knowledge graph is not
+**It needed a privacy ruling before it needed code.** A knowledge graph is not
 a cache of what the user already had — it is a distilled, linked, cross-
 referenced summary of everything a workspace ever saw, which is materially
 easier to re-identify from than the raw chats. That makes it a new exposure
-surface and it must earn a row in the `docs/WORKSPACES.md` exposure ledger,
-with an explicit answer for the Se/cure tier (where the server is in no data
-path, so the graph must be built and held client-side or not at all). This is
-the one item here that touches invariant 4, so it goes to the owner before it
-goes into a branch.
+surface, and it needs an explicit answer for the Se/cure tier (where the server
+is in no data path, so the graph must be built and held client-side or not at
+all). This is the one item here that touches invariant 4, which is why it went
+to the owner rather than straight into a branch.
+
+If the workspace-scoped form is built later, that exposure still owes a row in
+the `docs/WORKSPACES.md` ledger — the account-scoped version that shipped is
+governed by `ACCOUNT-MEMORY.md` §4 instead, because nothing about it travels.
 
 ### 5.5 What not to do
 
@@ -247,14 +270,18 @@ goes into a branch.
 
 ## 6. Summary
 
-Agentic graphs are a real and useful vocabulary sitting under an inflated
-claim, with one prominent misattribution at the centre of the current
-discussion. The empirical work that matters says centralize, parallelise only
-what decomposes, verify at the node, and predict the topology from the task.
-This codebase does the first three already and has the fourth half-built. The
-work is to measure the fan-out it has, teach triage to recognise
-decomposable questions, and decide — as a privacy question first — whether
-workspaces should start remembering in a graph.
+"Agentic graph" is a useful piece of vocabulary carrying an inflated claim, and
+the loudest version of that claim rests on a misattribution.
+
+The scaling study is the part worth acting on. It says four things: centralize,
+parallelize only what decomposes, verify at the node, and predict the topology
+from the task rather than guessing it. This codebase does the first three
+already. The fourth is half-built — the fan-out exists and is switched off.
+
+So the near-term work is not architectural. Measure the fan-out that is already
+written, and teach triage to tell a decomposable question from a chained one.
+The knowledge-graph half is a separate question and a privacy one first, which
+is why §5.4 sends it to the owner before it sends it to a branch.
 
 ## Sources
 

@@ -104,7 +104,7 @@ A memory note is a **distilled, linked, cross-referenced summary** of what an
 account researched. That is materially easier to read — and to re-identify a
 person from — than the raw conversations it was built from, even though it
 contains strictly less text. Adding it is a real increase in exposure, not a
-reorganisation of existing exposure, and the three limits below are what bound
+reorganization of existing exposure, and the three limits below are what bound
 it. Each has a test in `src/memory.test.js`.
 
 | Limit | Why it is load-bearing |
