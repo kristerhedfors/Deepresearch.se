@@ -30,6 +30,14 @@ import {
   landerMesh,
   terrainMesh,
   ringMesh,
+  starshipStackMesh,
+  starshipShipMesh,
+  superHeavyMesh,
+  launchTowerMesh,
+  SUPER_HEAVY_FRAC,
+  STARSHIP_SHIP_FRAC,
+  STARSHIP_STACK_M,
+  orbitSpeedKms,
   validateScene,
   validateSpaceFeedback,
   FEEDBACK_COMMENT_MAX,
@@ -126,6 +134,21 @@ const PARITY = [
     sv: [
       "Hur når en raket omloppsbana?", "hur fungerar en raket", "raketuppskjutning", "hur kommer raketer ut i rymden", "hur nar en raket rymden",
       "visa en raket som skjuts upp", "uppskjutningen av en raket",
+    ],
+  },
+  {
+    id: "starship-launch",
+    en: [
+      "How does Starship reach orbit?", "starship launch", "show me a starship launch",
+      // Verbatim from feedback #53 — this matched NOTHING, so the chat
+      // researched SpaceX news instead of animating the launch asked for.
+      "Now launch a starship",
+      "starship demo", "super heavy booster", "the tower catch",
+    ],
+    sv: [
+      "Hur når Starship omloppsbana?", "starshipuppskjutning", "visa en starship som skjuts upp",
+      "skjut upp en starship", "starship-demo", "hur nar starship omloppsbana",
+      "hetseparation", "tornfångst", "tornfangst",
     ],
   },
   {
@@ -260,6 +283,84 @@ test("meshes: every builder produces a sound wireframe", () => {
   assertMeshSound(landerMesh(0.007), "lander");
   assertMeshSound(terrainMesh(1.6, 24, 7), "terrain");
   assertMeshSound(ringMesh(74500, 140220, 5), "rings");
+  assertMeshSound(starshipStackMesh(121), "starship stack");
+  assertMeshSound(starshipShipMesh(52), "starship ship");
+  assertMeshSound(superHeavyMesh(71), "super heavy");
+  assertMeshSound(launchTowerMesh(146), "tower");
+  assertMeshSound(launchTowerMesh(146, 0), "tower, arms closed");
+});
+
+// ---------------------------------------------------------------------------
+// Starship (feedback #53). The scene is a "launch" like the rocket one, so the
+// guards here are about the things a shared runner can quietly get wrong: the
+// stack's real proportions, and the pieces staying inside the unit height the
+// camera dolly assumes.
+
+test("starship meshes: booster and ship keep the real 71 m / 52 m proportions", () => {
+  // 71 m of booster and 52 m of ship, of a stack quoted at ~121 m (the
+  // interstage overlaps, which is why the two fractions sum above 1).
+  assert.equal(STARSHIP_STACK_M, 121);
+  assert.ok(Math.abs(SUPER_HEAVY_FRAC - 71 / 121) < 1e-9);
+  assert.ok(Math.abs(STARSHIP_SHIP_FRAC - 52 / 121) < 1e-9);
+  assert.ok(SUPER_HEAVY_FRAC > STARSHIP_SHIP_FRAC, "the booster is the taller half");
+  assert.ok(SUPER_HEAVY_FRAC + STARSHIP_SHIP_FRAC > 1, "the stages overlap at the interstage");
+});
+
+test("starshipStackMesh: base at the pad, tip within the unit height", () => {
+  const m = starshipStackMesh(1);
+  const ys = m.verts.map((v) => v[1]);
+  const lo = Math.min(...ys), hi = Math.max(...ys);
+  // The engine bells hang a little below y=0 exactly as rocketMesh's do; what
+  // matters is that the stack does not overrun the height the camera scales by.
+  assert.ok(lo > -0.06, `stack dips too far below the pad (${lo})`);
+  assert.ok(hi <= 1 + 1e-9 && hi > 0.9, `stack tip should reach ~1, got ${hi}`);
+});
+
+test("starshipShipMesh: 9 m-wide barrel, flaps reaching past it", () => {
+  const m = starshipShipMesh(52);
+  const halfWidth = Math.max(...m.verts.map((v) => Math.abs(v[2])));
+  const barrelR = 52 * 0.086;
+  assert.ok(halfWidth > barrelR, "the flaps must stand off the barrel");
+  assert.ok(Math.abs(barrelR * 2 - 9) < 0.5, "the barrel is about 9 m across");
+});
+
+test("launchTowerMesh: open arms sit wider than closed ones", () => {
+  const span = (m) => Math.max(...m.verts.map((v) => Math.abs(v[2])));
+  assert.ok(span(launchTowerMesh(1, 1)) > span(launchTowerMesh(1, 0)),
+    "the arms must visibly close on the caught booster");
+});
+
+test("orbitSpeedKms: real circular speeds, and it falls with altitude", () => {
+  // The two launch scenes' insertion altitudes.
+  assert.equal(orbitSpeedKms(400).toFixed(1), "7.7");
+  assert.equal(orbitSpeedKms(200).toFixed(1), "7.8");
+  assert.ok(orbitSpeedKms(200) > orbitSpeedKms(400), "lower orbits are faster");
+});
+
+test("starship scene: the flight order is hot-stage, then catch, then insertion", () => {
+  const s = sceneById("starship-launch");
+  const c = s.config;
+  assert.equal(s.kind, "launch");
+  assert.ok(c.stageT < c.catchT, "the booster separates before it is caught");
+  assert.ok(c.catchT < c.insertT, "the booster is caught before the Ship inserts");
+  assert.ok(c.insertT < 1, "there is animation left for the orbit reveal");
+  assert.equal(c.craft, "starship");
+  assert.ok(c.tower, "the catch tower is what the scene is for");
+});
+
+test("spaceIntent: a Starship question beats the generic rocket scene", () => {
+  // Both subjects present — the specific one must win, which is why the
+  // starship matcher is registered ahead of rocket-launch.
+  assert.equal(spaceIntent("starship rocket launch"), "starship-launch");
+  assert.equal(spaceIntent("show me the starship launch to orbit"), "starship-launch");
+  // …and a plain rocket question is untouched by the new entry.
+  assert.equal(spaceIntent("Show me a rocket launch to space"), "rocket-launch");
+  assert.equal(spaceIntent("Space launch demo"), "rocket-launch");
+});
+
+test("spaceIntent: the sci-fi starships do not mount the launch scene", () => {
+  assert.equal(spaceIntent("show me the starship Enterprise"), null);
+  assert.equal(spaceIntent("visa mig rymdskeppet i Starship Troopers"), null);
 });
 
 test("sphereMesh: radius honored, meridians land on ring vertices", () => {
