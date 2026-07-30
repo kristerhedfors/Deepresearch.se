@@ -2,9 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   WATCH_SLOT_KEYS,
+  builderLink,
   changeSummary,
   commandFor,
   commandVocabulary,
+  isContinuationFragment,
   isWatchTalk,
   parseWatchCommand,
   randomBuild,
@@ -13,7 +15,7 @@ import {
   watchPromptBlock,
   watchThread,
 } from "./watch-chat-core.js";
-import { DEFAULT_BUILD, SLOTS, checkBuild, normalizeBuild, slotOptions } from "./watch-core.js";
+import { DEFAULT_BUILD, SLOTS, checkBuild, decodeBuild, normalizeBuild, slotOptions } from "./watch-core.js";
 
 const DEFAULTS = normalizeBuild(DEFAULT_BUILD);
 
@@ -62,6 +64,75 @@ test("feedback #52: every turn's what-changed text names the parts that moved", 
   // Swedish is the same sentence from the same data — not a second code path.
   const sv = watchThread(["visa mig klockbyggaren", "byt urtavla till Solstråleblå"]);
   assert.equal(changeSummary(sv.changes, "sv", sv), "Urtavla → Solstråleblå");
+});
+
+// ---------------------------------------------------------------------------
+// Feedback #55, 2026-07-30: "I see no watch animation. Whenever there is talk
+// about building, creating, designing watches I want the default to be to
+// create a watch in every response and take user input for the next animation
+// in the next response in the convo."
+
+test("feedback #55: the reported conversation keeps a watch on EVERY turn", () => {
+  // The logged session, verbatim: an opening ask, the assistant asking whether
+  // "fancy" meant features or looks, and the user answering with one word. That
+  // one-word answer is the turn the report was written about.
+  const opening = ["Build me a fancy seiko watch"];
+  assert.equal(watchThread(opening).active, true, "the ask has to open a thread at all");
+  assert.equal(watchThread(opening).opened, true);
+
+  const answered = watchThread([...opening, "Features"]);
+  assert.equal(answered.active, true, "a clarifying answer must not close the thread");
+  assert.equal(answered.recognized, false, "…but it changed nothing, and says so");
+  assert.deepEqual(answered.build, DEFAULTS);
+
+  // And the NEXT instruction lands on the build that is already on screen.
+  const next = watchThread([...opening, "Features", "make the dial sunburst blue"]);
+  assert.equal(next.active, true);
+  assert.equal(next.build.dial, "sunburst-blue");
+  assert.deepEqual(next.changes.map((c) => c.slot), ["dial"]);
+});
+
+test("feedback #55: the same sequence in Swedish", () => {
+  const opening = ["Bygg mig en fin seiko-klocka"];
+  assert.equal(watchThread(opening).active, true);
+  assert.equal(watchThread(opening).lang, "sv");
+  const answered = watchThread([...opening, "Funktioner"]);
+  assert.equal(answered.active, true);
+  const next = watchThread([...opening, "Funktioner", "gör urtavlan svart"]);
+  assert.equal(next.build.dial, "skx-black");
+  assert.equal(next.lang, "sv");
+});
+
+test("the continuation grace is ONE turn, and real watch talk hands it back", () => {
+  // A bare fragment buys the thread a turn; a second non-watch turn closes it,
+  // so a conversation that drifted away does not keep a watch bolted on.
+  assert.equal(watchThread(["Seiko watch demo", "Features"]).active, true);
+  assert.equal(watchThread(["Seiko watch demo", "Features", "the blue one"]).active, false);
+  // A watch command in between resets the grace, so the next fragment is free
+  // again — which is what a real build session looks like.
+  assert.equal(
+    watchThread(["Seiko watch demo", "Features", "pepsi bezel", "Features"]).active,
+    true,
+  );
+});
+
+test("isContinuationFragment: an answer, never a new question", () => {
+  for (const q of ["Features", "funktioner", "the blue one", "både och", "yes", "ja tack", "no"]) {
+    assert.equal(isContinuationFragment(q), true, q);
+  }
+  for (const q of [
+    "what is the capital of France?",           // a question mark and an opener
+    "vad är huvudstaden i Frankrike?",
+    "compare Claude and GPT pricing",           // an imperative opener
+    "jämför Claude och GPT",
+    "tell me about the war in Ukraine",
+    "berätta om kriget i Ukraina",
+    "show me a rocket launch from space",       // another surface's ask
+    "the launch cadence of the three providers", // too long to be an answer
+    "",
+  ]) {
+    assert.equal(isContinuationFragment(q), false, q);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -312,6 +383,38 @@ test("watchPromptBlock reports an unassemblable build as an error to relay", () 
   const block = watchPromptBlock(state);
   assert.match(block, /error\/hands/);
   assert.match(block, /fourth \(24-hour\) hand/);
+});
+
+// ---------------------------------------------------------------------------
+// The app door (feedback #56: "building through the chatbot interface is
+// unavoidably clunky and the wrong approach — send user to the app
+// immediately"). The link the card LEADS with has to open the build the
+// conversation actually reached, or the trip costs the user their work.
+
+test("builderLink carries the current build into the standalone app", () => {
+  const state = watchThread(["Seiko watch demo", "pepsi bezel and a 62MAS case"]);
+  const url = builderLink(state.build);
+  assert.match(url, /^\/watch\/#/);
+  // The hash is the permalink code /watch/ writes into its own address bar, so
+  // decoding it there rebuilds this exact watch.
+  const code = decodeURIComponent(url.slice("/watch/#".length));
+  assert.deepEqual(decodeBuild(code), state.build);
+  // An already-encoded code is accepted as-is (the embed has one on the state).
+  assert.equal(builderLink(state.code), url);
+  // Junk degrades to the plain page rather than to a broken link.
+  for (const junk of [null, undefined, "", 42, {}]) {
+    assert.match(builderLink(/** @type {any} */ (junk)), /^\/watch\/(#|$)/, String(junk));
+  }
+});
+
+test("watchPromptBlock tells the answer the app door exists, without a URL in it", () => {
+  const state = watchThread(["Build me a fancy seiko watch", "pepsi bezel"]);
+  const block = watchPromptBlock(state);
+  assert.match(block, /Full builder —/);
+  assert.match(block, /Open the full builder/);
+  // The permalink is a long opaque code, and a model told a URL prints the URL.
+  // The card carries the link; the prompt only says the button is there.
+  assert.ok(!block.includes("/watch/#"), "the prompt must not hand the model a URL to paste");
 });
 
 test("specLine reports real millimetres in both languages", () => {
