@@ -107,8 +107,11 @@ const ADDRESS_RE = new RegExp(`(?:${WORD}\\s+){1,4}\\d{1,4}[a-zA-Z]?\\b`, "gu");
 // (Maskinistvägen, Storgatan, Björkstigen). No house number needed: a word
 // ending "…vägen"/"…gatan"/etc. is an unambiguous street signal, and people
 // routinely ask about a street without a number ("street view of X in Y").
+// The trailing boundary is a lookahead, not `\b`: JS defines `\b` over
+// [A-Za-z0-9_], so `allé\b` can never match — the boundary after "é" needs a
+// word character on one side and there isn't one. Same trap as europepmc.js.
 const SWEDISH_STREET_TOKEN_RE =
-  /[\p{L}][\p{L}\p{M}-]*(?:vägen|väg|gatan|gata|gränden|gränd|stigen|stig|allén|allé|backen|backe|liden|torget|torg)\b/giu;
+  /[\p{L}][\p{L}\p{M}-]*(?:vägen|väg|gatan|gata|gränden|gränd|stigen|stig|allén|allé|backen|backe|liden|torget|torg)(?![\p{L}\p{N}_])/giu;
 // A STANDALONE English street phrase — 1-3 Capitalized words then a Capitalized
 // street type ("Abbey Road", "Main Street"). Requiring the type word to be
 // capitalized keeps ordinary prose ("down the road") from matching, and the
@@ -148,8 +151,10 @@ const normWord = (w) => (w || "").toLowerCase().replace(/[^\p{L}]/gu, "");
 // resolved the wrong city while the user had named the right one explicitly).
 // Bare words are kept only up to the first intent/filler stopword, so "look
 // like", "ligger i centrum" etc. never read as localities.
+// Lookaround boundaries rather than `\b` — "på" ends in a non-ASCII letter, so
+// `på\b` is dead and only the "pa" fallback would ever have fired.
 const CONNECTOR_LOCALITY_RE =
-  /^\s*(?:,|\b(?:in|i|på|pa|vid|near|kommun)\b)\s*([\p{L}][\p{L}\p{M}'’.-]*(?:\s+[\p{L}][\p{L}\p{M}'’.-]*)?)/iu;
+  /^\s*(?:,|(?<![\p{L}\p{N}_])(?:in|i|på|pa|vid|near|kommun)(?![\p{L}\p{N}_]))\s*([\p{L}][\p{L}\p{M}'’.-]*(?:\s+[\p{L}][\p{L}\p{M}'’.-]*)?)/iu;
 const BARE_LOCALITY_RE =
   /^\s+([\p{L}][\p{L}\p{M}'’.-]*(?:\s+[\p{L}][\p{L}\p{M}'’.-]*)?)/u;
 

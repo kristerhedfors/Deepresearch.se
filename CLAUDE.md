@@ -193,8 +193,14 @@ loop: the **feature-maintenance** skill.
    direction, not an exception to be argued down.
    Full model, endpoints, token families, dated directives:
    `docs/PRIVACY-MODEL.md`.
-5. **Minimal dependencies; evidence-driven exceptions.** No build step, no
-   added runtime deps for the Worker/tests. Per-model overrides
+5. **Minimal dependencies; evidence-driven exceptions.** No build step and
+   **zero RUNTIME deps** — `package.json` has no `dependencies` block and
+   `src/` imports nothing but `node:*` builtins and its own files. Dev-only
+   packages are the narrow exception and are argued one at a time
+   (`docs/DEPENDENCIES.md` §5, §8): `typescript` +
+   `@cloudflare/workers-types` for the typecheck, and since 2026-07-27
+   `cheerio` for one offline harvest script's DOM walk — which is why
+   `npm test` now needs an `npm install` first. Per-model overrides
    (`model-profiles.js`) and any special-casing must trace back to a
    reproduced finding, not a guess.
 6. **Equal Swedish and English support in ALL deterministic intent routing**
@@ -263,15 +269,18 @@ skill's drift greps target it).
 ## Tests
 
 ```bash
-npm test            # unit: node --test src/*.test.js public/js/*.test.js public/games/*/js/*.test.js sdk/*.test.mjs scripts/*.test.mjs
+npm install         # once: the suite needs the root devDependencies (see below)
+npm test            # unit: node --test src/*.test.js public/js/*.test.js public/games/*/js/*.test.js
+                    #                  sdk/*.test.mjs scripts/*.test.mjs tests/*.test.js
 npm run typecheck   # zero-build-step tsc, strict, opt-in per file via // @ts-check
 cd tests && npm install && npm run fixtures   # e2e setup (once)
+npm run test:local                            # Playwright vs a Worker on this machine — free, no creds; what CI runs
 npm run test:mocked                           # Playwright vs live site, /api/chat intercepted (free)
 npm run test:live                             # 5 live tests (real Berget tokens + one Exa run)
 ```
 
-Unit tests (Node's built-in runner, no deps) cover pure logic and mockable
-seams; anything touching a live provider, D1, or the DOM is still verified
+Unit tests (Node's built-in runner, no test framework) cover pure logic and
+mockable seams; anything touching a live provider, D1, or the DOM is still verified
 live — that's where this project's real bugs have come from (the
 **live-verify** skill). Editing tracked text or source can stale the
 committed introspection artifacts — `npm test` names the drift; fix with
@@ -303,7 +312,7 @@ routing policy, gates, bounds, emitted events, required knob, sub-agent
 team. It is a SELECTOR over shipped behaviour, never a definition of new
 behaviour, so the dispatch stays code and the spec stays data (invariant 1
 holds for the routing as for the run); validation enforces invariants 1, 3,
-4 and 6 as rules rather than prose. The five chat modes are the five
+4 and 6 as rules rather than prose. The six chat modes are the six
 **default agents**, bound to their mode by the registry's ordered
 `defaults` table, which is what `/api/chat` routes on
 (`src/agent-registry.js` → `src/chat.js` → `src/pipeline.js`

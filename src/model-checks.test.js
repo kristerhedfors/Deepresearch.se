@@ -19,6 +19,7 @@ import {
   checkSummary,
   checksFor,
   LATENCY_BUDGET_MS,
+  looksSwedish,
   MODEL_CHECKS,
   runCheck,
   runChecks,
@@ -47,6 +48,23 @@ describe("the registry", () => {
       assert.ok(checkById(id), id);
     }
     assert.equal(checkById("nonsense"), null);
+  });
+
+  test("looksSwedish decides the `swedish` verdict without a provider", () => {
+    // The verdict half of the one check that encodes invariant 6. Diacritics
+    // are the strong signal; the function-word list is what catches a Swedish
+    // sentence that happens to avoid å/ä/ö.
+    assert.equal(looksSwedish("Havet är salt eftersom floder för med sig salter."), true);
+    assert.equal(looksSwedish("Det kommer fran floder som transporterar mineraler."), true);
+    assert.equal(looksSwedish("The sea is salty because rivers carry minerals."), false);
+    assert.equal(looksSwedish(""), false);
+    assert.equal(looksSwedish(undefined), false);
+    // "är" only matches because the boundaries are Unicode-aware — under `\b`
+    // this alternative is dead (src/swedish-boundary.test.js). Asserted with a
+    // diacritic-free carrier so the [åäö] branch cannot answer for it.
+    assert.equal(/(?<![\p{L}\p{N}_])är(?![\p{L}\p{N}_])/u.test("havet är blott salt"), true);
+    // Not a substring match: an English word containing a listed word is not Swedish.
+    assert.equal(looksSwedish("Detection matters"), false);
   });
 
   test("the latency budget is a real number the sidebar can quote", () => {

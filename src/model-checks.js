@@ -90,6 +90,28 @@ const PIXEL_PNG =
 /** @param {string} text @returns {import('./types.js').Conversation} */
 const user = (text) => /** @type {any} */ ([{ role: "user", content: text }]);
 
+// Swedish-only characters, or common Swedish function words that are not
+// English words. Deterministic and deliberately crude: no model judges this
+// (invariant 1) — a language detector would be a second opinion dressed up as
+// a measurement. Exported so the `swedish` check's VERDICT is unit-testable
+// without a live provider; the probe around it still needs one.
+//
+// Lookaround boundaries, not `\b`: JS defines `\b` over [A-Za-z0-9_], so
+// `\bär\b` can never match. Harmless in this particular predicate (the [åäö]
+// branch catches every affected word anyway), but a dead alternative is a trap
+// for whoever edits the list next — see src/swedish-boundary.test.js.
+const SWEDISH_FUNCTION_WORDS =
+  /(?<![\p{L}\p{N}_])(och|är|som|för|att|det|från|när|därför|eftersom)(?![\p{L}\p{N}_])/u;
+
+/**
+ * @param {string} text
+ * @returns {boolean} whether the text reads as Swedish
+ */
+export function looksSwedish(text) {
+  const t = String(text || "").toLowerCase();
+  return /[åäö]/.test(t) || SWEDISH_FUNCTION_WORDS.test(t);
+}
+
 /**
  * Drain a streaming completion into text + the delta count, bounded. Uses the
  * pipeline's own shared consumer, so what is measured here is what the pipeline
@@ -184,12 +206,7 @@ export const MODEL_CHECKS = [
     applies: () => true,
     async run(env, model) {
       const { text } = await streamProbe(env, model, user("Svara på svenska i en mening: varför är havet salt?"));
-      // Deterministic and deliberately crude: Swedish-only characters, or
-      // common Swedish function words that are not English words. No model
-      // judges this (invariant 1) — a language detector would be a second
-      // opinion dressed up as a measurement.
-      const t = text.toLowerCase();
-      const swedish = /[åäö]/.test(t) || /\b(och|är|som|för|att|det|från|när|därför|eftersom)\b/.test(t);
+      const swedish = looksSwedish(text);
       return { pass: swedish && text.trim().length > 0, note: swedish ? "answered in Swedish" : "answered, but not in Swedish" };
     },
   },

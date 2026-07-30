@@ -1711,6 +1711,23 @@ describe("buildJumpBlock", () => {
 });
 
 describe("Swedish language parity (audit 2026-07-09) — every gate takes Swedish forms", () => {
+  test("the `\\b` trap (audit 2026-07-30): -allé streets and the 'på' connector", () => {
+    // JS defines `\b` over [A-Za-z0-9_], so `allé\b` and `på\b` were both
+    // unmatchable and failed SILENTLY — the ASCII-tailed siblings ("allén",
+    // "gatan", "i", "pa") kept working, so this suite stayed green. Two
+    // user-visible consequences, both reproduced before the fix:
+    //   extractPlace("Vad finns på Storallé?")            was ""  (no lookup)
+    //   extractPlace("street view Storgatan på Gotland")  was "Storgatan"
+    // — the second is the wrong-city class this file's comments warn about.
+    // The repo-wide guard against the whole class is src/swedish-boundary.test.js.
+    assert.equal(extractPlace("Vad finns på Storallé?"), "Storallé");
+    assert.equal(extractPlace("gatuvy av Lindallé"), "av Lindallé");
+    assert.equal(extractPlace("street view Storgatan på Gotland"), "Storgatan, Gotland");
+    // The ASCII-tailed forms that masked it must keep working.
+    assert.equal(extractPlace("street view of Björkallén"), "Björkallén");
+    assert.equal(extractPlace("Vad finns på Storgatan i Uppsala?"), "Storgatan, Uppsala");
+  });
+
   test("street-view intent: definite form, typo, and the gatubild synonym", () => {
     assert.equal(streetViewIntent("visa gatuvyn tack"), true);
     assert.equal(streetViewIntent("gatvy storgatan"), true);

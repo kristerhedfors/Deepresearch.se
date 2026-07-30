@@ -3,7 +3,7 @@
 The full test-surface enumeration, moved out of CLAUDE.md (2026-07-17).
 The commands and the live-verification rule stay in CLAUDE.md; this file
 is the per-suite detail: what each unit suite covers, the end-to-end
-(Playwright) projects and their fixtures/sandbox quirks, and the three
+(Playwright) projects and their fixtures/sandbox quirks, and the five
 eval harnesses. Keep it current in the same commit that adds a test
 suite (the update-docs skill's drift greps target this file).
 
@@ -18,10 +18,16 @@ inferred (`npm run coverage`), with the five testability tiers, a
 capability-by-capability classification, and the coverage ratchet that keeps
 the untested surface from growing back.
 
-## Unit tests (`src/*.test.js`, `public/js/*.test.js`, `public/games/*/js/*.test.js`)
+## Unit tests (`src/`, `public/js/`, `public/games/`, `sdk/`, `scripts/`, `tests/`)
 
-Node's built-in test runner (`node:test` + `node:assert/strict` — no
-dependency added, matching the project's minimal-dependency stance),
+`npm test` runs six globs: `src/*.test.js`, `public/js/*.test.js`,
+`public/games/*/js/*.test.js`, `sdk/*.test.mjs`, `scripts/*.test.mjs` and
+`tests/*.test.js`. The first three are the Worker and the client, described
+below; the last three are the tooling suites, in their own section at the end.
+
+Node's built-in test runner (`node:test` + `node:assert/strict` — no test
+framework, matching the project's minimal-dependency stance; the suite does
+need `npm install` first, see `docs/DEPENDENCIES.md` §5),
 covering the pure logic and mockable seams that don't need a live
 Berget/Exa/D1: `budget.js`
 (time-tier planning, deadline grace math), `quota.js` (window
@@ -129,8 +135,24 @@ Maps-knob gate on place lookups, `…/scene`'s four fail-soft `available:false`
 reasons, and the overlay decoration — `near` measured from the PLAYER while
 the camera sits at the PANO).
 
-Two REPO-WIDE guards sit alongside the per-module suites, scanning the tree
+Three REPO-WIDE guards sit alongside the per-module suites, scanning the tree
 rather than importing one unit (the `sql-injection-guard.test.js` pattern):
+`swedish-boundary.test.js` (invariant 6's silent killer, added 2026-07-30.
+JavaScript defines `\b` over `[A-Za-z0-9_]`, so a regex alternative that starts
+or ends in `å`/`ä`/`ö` can NEVER match when a `\b` sits against it. `/\bär\b/`
+is dead, and so is the `nivå` half of `/\bvilken\s+(?:nivå|version)\b/`. It
+fails in the worst way available: the English half of a bilingual gate keeps
+matching, so an English-only suite stays green while the Swedish half is inert.
+The guard scans every non-test module under `src/`, `public/js/`,
+`public/cure/` and `public/games/`, parses each `\b(…|…)\b`-shaped group, and
+fails naming every unmatchable alternative and the fix, which is lookaround
+boundaries with the `u` flag: `(?<![\p{L}\p{N}_])…(?![\p{L}\p{N}_])`, the idiom
+`src/europepmc.js:112` names `B`. A second test guards the guard, asserting the
+trap shapes still read as dead so a scanner that stopped matching cannot report
+a clean tree forever. The audit it landed with found ten dead alternatives
+across five modules, two of them user-visible:
+`extractPlace("Vad finns på Storallé?")` returned nothing at all, and
+`"street view Storgatan på Gotland"` dropped the city);
 `artifacts.test.js` (the committed-artifact SET: every `public/introspect/`
 artifact present, git-tracked, over a size floor, and parsing — the existence
 half the self-skipping freshness checks can't cover, plus the doc images the
@@ -298,7 +320,17 @@ pass extracted — `endpoint-gate.js` (the side-endpoint admission preamble),
 `facade-contract.js`, `run-as.js`, `slash.js`, `starter-tag.js` (the `#XP-<nn>`
 tags tying feedback back to one starter), `build-pub.js`, `sandbox-image.js`,
 `static-pages.js`, `landing.js`, `server-errors.js`, `config.js`, `db.js`,
-`google.js`, `log.js` and `sql-injection-guard.js`. **The interchange
+`google.js`, `log.js`, `http.js` (the shared fetch/timeout/JSON helpers every
+outbound client is built on) and `sql-injection-guard.js`. **The domain
+enrichments and surfaces** added since: `aadr.js` (the ancient-sample block —
+corpus load through the ASSETS binding, per-binding caching, and the
+declared-context gate that switches it on without a mode or a knob),
+`europepmc.js` (the life-science literature leg, whose bilingual intent gates
+are where the `\b` trap was first found), `watch.js` (the NHxx catalogue
+endpoint's four answer shapes, with `globalThis.fetch` replaced by a throwing
+stub to pin that the module makes no outbound call) and `watch-tools.js` (the
+six MCP tools over the same cores, including that junk arguments degrade to a
+described default rather than throwing). **The interchange
 standards** get the same treatment, and it is pointed specifically at the gap
 between what a spec claims and what the code does: `drsw-manifest.js` pins that
 `/.well-known/drsw.json` declares the payload kind and version the workspace
@@ -491,6 +523,21 @@ and `account-articles.js`, plus the presentation cores `mode-theme.js`,
 `bar-tint.js`, `graph-backdrop.js`, `plant-spinner.js`, `boot-messages.js`,
 `umbrella-intro.js`, `ghostwalk.js`, `sandbox-mode.js` and `dev-mode.js`.
 
+The demo and watch surfaces are the newest of these. `demo-core.js` covers the
+capability-demo registry — the deterministic EN+SV "show me X demo" gate and the
+bare-visual-ask inheritance that takes its subject from the turn before — and
+`demo-mount.js` covers which module a matched surface fetches; between them they
+pin that the answer prompt and the thing actually displayed cannot disagree
+(feedback #49/#50/#52). `watch-core.js` covers the NHxx parts catalogue, the
+compatibility engine and the permalink codec, `watch-math.js` the parametric
+geometry extracted from the renderer, and `watch-chat-core.js` the bilingual
+command parser plus the conversation walk that opens on a demo ask and CLOSES on
+an unrelated question, so a watch is never bolted onto someone else's answer.
+Also here: `aadr-core.js` (the ancient-sample corpus parse, the date-window and
+radius grammar, and the bilingual intent gates), `chat-mode.js` (the browser
+wrapper over the mode core), `session-core.js`, `starters.js` (the strip's
+rendering over `starters-core.js`) and `unanswered-core.js`.
+
 The games' client cores are tested the same way, one directory over
 (`public/games/*/js/*.test.js`): `street-core.js` — the Tokemon street-view
 pane's presentation logic (the compass line's wrap past north, the spawn
@@ -535,6 +582,44 @@ npm run typecheck   # zero-build-step tsc: src/ (tsconfig.json, Workers types)
                     # + public/ (tsconfig.public.json, DOM lib) — strict,
                     # opt-in per file via // @ts-check; both must stay clean
 ```
+
+### The tooling suites (`sdk/*.test.mjs`, `scripts/*.test.mjs`, `tests/*.test.js`)
+
+Three more globs in the same `npm test` run. None of this ships, but the
+shipped corpora and ledgers are built by it, so a bug here is a bug in the
+data. They get a section because a suite nobody documents is a suite nobody
+maintains.
+
+**`sdk/`** — `pair-cli.test.mjs` pins the Platform SDK's CLI and registry:
+`sdk/MANIFEST.json` parses, every module id resolves to a skill, `plan` orders
+dependencies without cycles, and `validate` enforces the AgentSpec rules
+(invariants 1, 3, 4 and 6 as machine-checked rules rather than prose; see
+`docs/AGENT-PLATFORM.md` §3.1). `drpl.test.mjs` covers the DRPL/1 pipeline
+tooling against `docs/PIPELINE-LANGUAGE.md`.
+
+**`scripts/`** — the corpus and analytics tooling, all pure-logic halves of
+scripts whose network legs are exercised by hand. The arXiv family:
+`arxiv-harvest.test.mjs` (OAI-PMH windowing, including the `--until` boundary
+that silently under-harvested a historical band), `arxiv-gcs.test.mjs` and
+`arxiv-crosscheck.test.mjs` (the two independent enumerations, and why one
+cannot detect its own gaps), `arxiv-fulltext.test.mjs`,
+`arxiv-html.test.mjs` (the LaTeXML-aware DOM walk, and the one suite that needs
+`cheerio`, so a bare checkout fails it on a missing module rather than an
+assertion), `arxiv-hosted-eval.test.mjs`, `corpus-rag.test.mjs`,
+`embed-providers.test.mjs` and `embed-truncate.test.mjs` (the 512-token
+embedder limit that REJECTS rather than truncates). The rest:
+`pulse-themes.test.mjs` + `pulse-time.test.mjs` (the commit-analytics tagger
+and rollups), `dup-scan.test.mjs` + `line-scan.test.mjs` (the refactor-pass
+surveys), `merge-markers.test.mjs` and `check-merged-branches.test.mjs` (the
+merge hygiene guards behind the push hook).
+
+**`tests/`** — the two eval harnesses' pure helpers, unit-tested so a scoring
+change is a caught diff rather than a silently different ledger:
+`bench-score.test.js` (the rubric bench's aggregation and the noise-aware gate
+verdict) and `hf-bench-lib.test.js` (`aggregateHfScores`, including that it
+counts leak-tainted runs separately instead of averaging them in). The
+Playwright specs in `tests/e2e/` are a different runner entirely; next
+section.
 
 This adds to the live-verification convention rather than replacing it:
 anything touching an external provider or D1 (or, on the client side, the

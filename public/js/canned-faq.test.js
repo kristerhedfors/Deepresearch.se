@@ -36,9 +36,12 @@ const PROBES = {
   builtwith: [["How are you built?", "en"], ["what's the tech stack", "en"], ["hur är sajten byggd", "sv"], ["visa din källkod", "sv"]],
   opensource: [["Is it open source?", "en"], ["link to github", "en"], ["öppen källkod?", "sv"]],
   cost: [["How much does it cost?", "en"], ["is it free", "en"], ["vad kostar det", "sv"], ["är det gratis", "sv"]],
-  access: [["How do I sign in?", "en"], ["can i get access", "en"], ["hur loggar jag in", "sv"], ["behöver jag ett konto", "sv"]],
+  // "hur får jag åtkomst" and "vilken nivå" below are the `\b` trap's two live
+  // victims here: both patterns anchor on a word starting or ending in å, which
+  // ASCII `\b` makes unmatchable (src/swedish-boundary.test.js).
+  access: [["How do I sign in?", "en"], ["can i get access", "en"], ["hur loggar jag in", "sv"], ["behöver jag ett konto", "sv"], ["hur får jag åtkomst", "sv"]],
   apikey: [["Where do I put my API key?", "en"], ["which provider do you use", "en"], ["hur lägger jag in api-nyckel", "sv"]],
-  tiers: [["difference between se/cure and se/rver", "en"], ["skillnad mellan se/cure och se/rver", "sv"]],
+  tiers: [["difference between se/cure and se/rver", "en"], ["skillnad mellan se/cure och se/rver", "sv"], ["vilken nivå ska jag välja", "sv"]],
   websearch: [["Can you search the web?", "en"], ["söker du på nätet", "sv"]],
   who: [["Who made this?", "en"], ["who are you", "en"], ["vem ligger bakom det här", "sv"]],
   language: [["Do you speak Swedish?", "en"], ["vilka språk stödjer du", "sv"], ["pratar du svenska", "sv"]],

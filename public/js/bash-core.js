@@ -201,7 +201,9 @@ const SHELL_PATTERNS = [
   // EN: compute/calculate this/the …, work this out, crunch the numbers
   /\b(compute|calculate|crunch|evaluate)\b[^.\n]{0,30}\b(this|the|these|for me)\b/,
   // SV: beräkna/räkna ut det här, kör beräkningen
-  /\b(beräkna|räkna ut|räkna ?ut|evaluera)\b[^.\n]{0,30}\b(det|den|det här|dessa|åt mig)\b/,
+  // Lookaround boundaries, not `\b`: `\båt mig\b` is dead because JS defines
+  // `\b` over [A-Za-z0-9_] and "å" is not in it (invariant 6's silent killer).
+  /(?<![\p{L}\p{N}_])(beräkna|räkna ut|räkna ?ut|evaluera)(?![\p{L}\p{N}_])[^.\n]{0,30}(?<![\p{L}\p{N}_])(det|den|det här|dessa|åt mig)(?![\p{L}\p{N}_])/u,
 
   // pipe/grep/awk/sed and friends spelled out as a request ("pipe this
   // through jq", "grep the file for …") — a strong shell signal in any
