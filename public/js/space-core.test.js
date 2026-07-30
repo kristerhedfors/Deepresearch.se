@@ -320,6 +320,23 @@ test("starshipStackMesh: base at the pad, tip within the unit height", () => {
   assert.ok(hi <= 1 + 1e-9 && hi > 0.9, `stack tip should reach ~1, got ${hi}`);
 });
 
+test("starshipStackMesh: the Ship sits where the renderer lifts it back to", () => {
+  // The launch runner draws the separated Ship lifted by 1 − STARSHIP_SHIP_FRAC
+  // so it keeps the place it held on the stack; drawn at the trajectory point
+  // it snapped down into the booster's place and separation read as the FRONT
+  // falling away (feedback #58). That only holds while the stack really does
+  // seat the Ship's base there, so pin it.
+  const stack = starshipStackMesh(1);
+  const ship = starshipShipMesh(STARSHIP_SHIP_FRAC);
+  const shipLow = Math.min(...ship.verts.map((v) => v[1]));
+  const seatY = 1 - STARSHIP_SHIP_FRAC;
+  // The stack's own copy of the Ship starts at the seat; nothing of the stack
+  // sits between the seat and the booster's engines except the booster.
+  const atSeat = stack.verts.filter((v) => Math.abs(v[1] - (seatY + shipLow)) < 1e-9);
+  assert.ok(atSeat.length > 0, `nothing seated at ${seatY} — the lift would misplace the Ship`);
+  assert.ok(seatY > 0.5 && seatY < 0.62, `the seat is the interstage, got ${seatY}`);
+});
+
 test("starshipShipMesh: 9 m-wide barrel, flaps reaching past it in the camera's plane", () => {
   const m = starshipShipMesh(52);
   const barrelR = 4.5;

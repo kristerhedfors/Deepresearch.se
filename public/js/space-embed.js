@@ -464,9 +464,13 @@ const RUNNERS = {
     // half the stack under the pad at liftoff, which only became visible once
     // the craft was drawn big enough to see (feedback #58). Base-anchored it
     // also matches the booster below, which drew from its base all along.
+    // Once staged, the upper stage keeps the place it held on the stack —
+    // it does not slide down into the booster's. The booster drops away from
+    // beneath it, which is the direction separation actually goes.
+    const lift = staged ? st.upperOffset : 0;
     const oriented = {
       verts: rocket.verts.map((v) => {
-        const r = rotZ(v, -vAng);
+        const r = rotZ([v[0], v[1] + lift, v[2]], -vAng);
         return [r[0] * size, r[1] * size, r[2] * size];
       }),
       edges: rocket.edges,
@@ -480,17 +484,28 @@ const RUNNERS = {
       ctx.strokeStyle = "hsl(38 70% 70%)";
       ctx.globalAlpha = 0.7;
       ctx.beginPath();
-      const tail = projectPoint(worldRot([
-        craftPos[0] + Math.sin(vAng) * -size * 0.04,
-        craftPos[1] + Math.cos(vAng) * -size * 0.04,
+      // Just under whichever engines are lit — the stack's at the base, the
+      // Ship's up where it separated from — and trailing along the vehicle's
+      // OWN axis. Drawn straight down the screen it pointed off into space
+      // once the craft was pitched over, which the bigger craft made obvious.
+      const along = (d) => projectPoint(worldRot([
+        craftPos[0] + Math.sin(vAng) * d,
+        craftPos[1] + Math.cos(vAng) * d,
         craftPos[2],
       ], st), cam);
-      if (tail) {
+      const tail = along((lift - 0.04) * size);
+      const plume = along((lift - 0.34) * size);
+      if (tail && plume) {
         const jitter = Math.sin(st.time * 40) * 3;
-        ctx.moveTo(tail.x - 3, tail.y);
-        ctx.lineTo(tail.x + jitter * 0.3, tail.y + 10 + jitter);
-        ctx.moveTo(tail.x + 3, tail.y);
-        ctx.lineTo(tail.x - jitter * 0.3, tail.y + 12 - jitter);
+        // Perpendicular to the plume, so the two edges straddle the nozzle
+        // whatever attitude the craft is holding.
+        const dx = plume.x - tail.x, dy = plume.y - tail.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const px = -dy / len, py = dx / len;
+        ctx.moveTo(tail.x + px * 3, tail.y + py * 3);
+        ctx.lineTo(plume.x + px * jitter * 0.3, plume.y + py * jitter * 0.3);
+        ctx.moveTo(tail.x - px * 3, tail.y - py * 3);
+        ctx.lineTo(plume.x - px * jitter * 0.3, plume.y - py * jitter * 0.3);
       }
       ctx.stroke();
       ctx.globalAlpha = 1;
@@ -674,12 +689,20 @@ function buildSceneState(scene, canvas, lang) {
       // The Ship keeps the size it had ON the stack once it separates.
       st.upperMesh = starshipShipMesh(STARSHIP_SHIP_FRAC);
       st.boosterMesh = superHeavyMesh(SUPER_HEAVY_FRAC);
+      // Where the upper stage sat ON the stack, as a fraction of stack height.
+      // The trajectory point tracks the vehicle's BASE, so without this the
+      // upper stage snaps down into the booster's place at separation and the
+      // eye reads it as the FRONT falling away — reported exactly that way:
+      // "separation seems to drop the front part, the starship rather than
+      // the stage below" (feedback #58).
+      st.upperOffset = 1 - STARSHIP_SHIP_FRAC;
       st.towerMesh = launchTowerMesh(1.2);
       st.towerClosed = launchTowerMesh(1.2, 0);
     } else {
       st.fullMesh = rocketMesh(1);
       st.upperMesh = rocketMesh(0.55);
       st.boosterMesh = cylinderMesh(0.09, 0.5, 8);
+      st.upperOffset = 0.45;
     }
     st.loopSec = 26;
     // The ground around the pad; the limb alone does not read as a planet.

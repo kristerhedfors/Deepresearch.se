@@ -243,6 +243,13 @@ geometry to be right and broadside:
 - The catch tower is set back along the ground by its own arm reach, so the
   tower and the stack do not draw through each other at liftoff — and the
   returning booster lands in the arms rather than inside the mast.
+- **Separation lifts the upper stage** by `st.upperOffset` — where it sat on
+  the stack. Drawn at the trajectory point it snapped down into the booster's
+  place at staging, and the eye read that as the front section falling away:
+  *"separation seems to drop the front part, the starship rather than the
+  stage below"*. The exhaust follows the same offset and now trails along the
+  vehicle's own axis rather than straight down the screen, which pointed off
+  into space as soon as the craft was pitched over.
 
 ## Pinch to zoom (feedback #58)
 
