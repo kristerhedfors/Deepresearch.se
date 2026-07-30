@@ -105,9 +105,11 @@ Server (`src/`):
 | `tokemon-data.js` | The game core's static DATA tables (Gen-1 provenance): the renamed type chart, moves, species, starters, balls/heal items, spawn/item-drop tables — re-exported through `tokemon.js`, so consumers see one surface |
 | `tokemon-api.js` | The first registered game: `/api/games/tokemon/*` (dispatched via `games.js`) — save persistence (D1 `tokemon_saves`), spawn re-derivation + proximity validation, server-side battle resolution; 503s without D1. Also the street-view AR mode: `…/scene` (a Street View frame at the player's position with spawns projected INTO the imagery, via `googlemaps.js`'s edge-cached POV capture, gated on the per-user `google_maps` knob) and `…/go` (text navigation) |
 | `tokemon-nav.js` | The street-view mode's PURE side (Node-tested): the bilingual text-command grammar (`parseGoCommand` — "go north 200 m" / "continue 50 m" / "gå till Kungsgatan 1" / "look right", EN+SV parity per invariant 6 enforced structurally, since one vocabulary table per word class declares both languages and everything — lookups, the reply-language flag, the parity test — derives from it), spherical geodesy (`destinationPoint`/`bearingBetween`/`absoluteBearing`, which resolves absolute and heading-relative commands alike), and `projectSpawns` (spawns placed inside a Street View frame under the same pinhole camera the imagery was shot with: tangent law → x, camera height over distance → y, 1/distance → size) |
-| `demos.js` | The CAPABILITY-DEMO registry's server FAÇADE: a pure re-export of the ONE shared core `public/js/demo-core.js` (the registry of demonstrable surfaces, the deterministic EN+SV "show me X demo" gate, and the bare-visual-ask inheritance that lets "show me visually" take its subject from the turn before). No endpoint of its own — `pipeline.js` re-runs the SAME gate the chat clients mounted from, so the answer prompts' `spaceScene` / `demoSurface` cannot drift from what is actually displayed beside the reply (feedback #49/#50). Adding a demonstrable surface is one entry in the core |
+| `demos.js` | The CAPABILITY-DEMO registry's server FAÇADE: a pure re-export of the ONE shared core `public/js/demo-core.js` (the registry of demonstrable surfaces, the deterministic EN+SV "show me X demo" gate, and the bare-visual-ask inheritance that lets "show me visually" take its subject from the turn before). No endpoint of its own — `pipeline.js` re-runs the SAME gate the chat clients mounted from, so the answer prompts' `spaceScene` / `demoSurface` / `watchBuild` cannot drift from what is actually displayed beside the reply (feedback #49/#50/#52). THREE kinds of surface now — `space` (inline scene), `watch` (the inline NHxx builder the conversation drives) and `page` (a link card, also the watch's no-WebGL fallback); which one mounts, and which module is fetched for it, is the clients' shared `public/js/demo-mount.js`. Adding a demonstrable surface is one entry in the core |
 | `space.js` | The SPACE-ANIMATIONS domain's server FAÇADE: a pure re-export of the ONE shared core `public/js/space-core.js` (the scene registry — one "animation skill" per common space question, EN+SV — the deterministic `spaceIntent` matcher, zoom math, wireframe mesh builders, feedback validation) plus the domain's two endpoints: PUBLIC `POST /api/space/feedback` (the /space/ showcase gallery's 👍/👎 + short comment; validated against the registry, comment clamped, D1 `space_feedback` rows carry NO identity — the page is public) and admin `GET /api/admin/space-feedback` (newest-first entries + per-scene tallies, `?format=text` for loops). No D1 → 503, only the feedback button degrades — the animations are static assets and keep playing. See the **space-animations** skill and `docs/SPACE-ANIMATIONS.md` |
 | `watch.js` | The NHxx WATCH-BUILDER domain's server FAÇADE: a pure re-export of the ONE shared core `public/js/watch-core.js` (the parts catalogue — 20 NH35/NH36 case families, dials, hands, inserts, chapter rings, crystals, crowns, case backs and straps, all EN+SV — the pre-indexed AliExpress sourcing table, the compatibility engine, the spec-sheet maths, the permalink codec and the parametric geometry builders) plus the domain's one endpoint: PUBLIC `GET /api/watch/catalog`, which answers in four shapes (`?case=`, `?slot=`, `?build=`, or the whole index) so a NON-browser caller — an agent, an MCP client, a shell in the sandbox with `jq` — can ask what a case measures and what to search for without running WebGL. Committed data only: no user input, no account, no D1, and NO outbound call — the AliExpress links are built as strings and never fetched, which `watch.test.js` pins by replacing `globalThis.fetch` with a throwing stub. See `docs/WATCH-BUILDER.md` |
+| `watch-chat.js` | The CONVERSATIONAL watch builder's server FAÇADE: a pure re-export of the ONE shared core `public/js/watch-chat-core.js` — the EN+SV text-command parser (a scored alias index over the catalogue: strong terms fire alone, ambiguous ones like colours need their slot word within 30 characters, longest/nearest match wins), `watchThread` (the conversation walk that opens on a demo ask, carries the build forward across bare commands, and CLOSES on an unrelated question so a watch is never bolted onto someone else's answer), the deterministic `randomBuild` reroll, `suggestCommands` (rotated per turn, and never an offer that would break the fit check), and `watchPromptBlock` (the build + delta + fit verdict handed to the answer model). No endpoint — consumed by `pipeline.js`'s `watchBuild` prompt input and by `watch-tools.js`. Feedback #52 |
+| `watch-tools.js` | The watch builder AS AN MCP TOOL FAMILY (feedback #52: *"Make it an mcp server with a bunch of tools"*) — six tools over the same two cores the inline chat builder runs on, so an agent, a sandbox shell and a chat turn get identical answers: `watch_catalog` (what exists), `watch_case` (one family's real millimetres), `watch_build` (spec sheet + fit + sourcing + permalink), `watch_command` (plain EN/SV commands → new build + exactly what changed + what to try next), `watch_check` (compatibility only) and `watch_sourcing` (brands, price bands, prepared search URLs). Pure: no network, no D1, no model — which is also why they stay a static import in `mcp.js` without breaking its keep-the-pipeline-dynamic file-layout rule. Every tool has an exposure switch in `mcp-config.js`'s catalog, and junk arguments degrade to a described default rather than throwing (a thrown tool is a model that retries forever) |
 | `outrospect.js` | OUTROSPECTION — introspection's mirror image (the outward-looking feed at `/outrospect/`): a pure re-export of the ONE shared core `public/js/outrospect-core.js` (the seven-LENS registry — one standing strategic question each: the one big dependency / browser-runnable models / edge RAG / LLM app architecture / provable privacy / agent standards / other deep-research systems, each carrying its own literal Exa queries and EN+SV routing terms per invariant 6 — plus item normalization, `deltaItems`, `mergeFeed`, `stalestLens`, the `?format=text` render) plus the domain's three endpoints: `GET /api/outrospect/feed` (the live D1 stream), `POST /api/outrospect/refresh` (runs ONE lens's searches on behalf of the visiting user, stores the delta, returns what is genuinely new — per-lens cooldown + per-user hourly cap off D1 `outrospect_runs`), and admin `GET /api/admin/outrospect` (feed + run log, `?format=text` for the agent loop). Fail-soft throughout (invariant 2: a dead search backend degrades to zero new items, never a 500); no D1 → the live half reports `live:false` and the page runs on the committed artifact alone. The stored `outrospect_items` rows carry the ARTICLE and never the reader (invariant 4). A refresh also INDEXES a bounded few of the lens's articles (`indexFeedTexts` → the existing Exa `/contents` client → `outrospect_texts`, four per run, capped and deadline-bounded, fail-soft), and the answer path reads them back (`loadTexts`) so a reply can QUOTE the article with its source link — the passages are chosen by the core's deterministic lexical scorer (`selectQuotes`), no model and no embeddings, so the reader's question never leaves the isolate (owner feedback #28). Offline bulk half: `scripts/outrospect-scan.mjs` (`npm run outrospect`) → `public/outrospect/feed.json`; read CLI `scripts/outrospect`. See the **outrospection** skill and `docs/OUTROSPECTION.md` |
 | `prompt-sets.js` | The PROMPT-SET binding: the one place a capability block's `prompts` name becomes a real system-prompt builder. The pure core declares which sets exist and which of the six closed ROLES (`plan`/`worker`/`answer`/`answer-tools`/`answer-direct`/`answer-search-off`) each fills; this binds set+role → the function in `prompts.js` (plus the two pure ones, `orchestratorPlanPrompt` and `outrospectionAnswerPrompt`). `phasePrompt(state, phase, role)` is the call-site helper every answer phase now goes through, so prompt set and answer phase are INDEPENDENT choices. Total by construction — no state can leave a phase without a prompt; the binding is identity-pinned in `prompt-sets.test.js` |
 | `prompts.js` | All LLM prompt builders |
@@ -927,28 +929,43 @@ context to load, so nothing in it can be Node-tested, and wrong matrix maths
 still renders — just wrongly. They are not in `watch-core.js`: the Worker
 imports that core to serve `/api/watch/catalog`, and a JSON endpoint has no
 use for a camera.
-A chat ask for it ("Seiko watch demo", "visa mig klockbyggaren") mounts a card
-into the page above the reply, through the capability-demo registry below.
-See `docs/WATCH-BUILDER.md`.
+A chat ask for it ("Seiko watch demo", "visa mig klockbyggaren") mounts the
+builder INLINE above the reply and lets the conversation drive it with plain
+text (feedback #52) — `public/js/watch-chat-core.js` is the pure core for
+that half (façade `src/watch-chat.js`, also allowlisted): a scored EN+SV alias
+index over the catalogue turns "pepsi bezel" or "svart urtavla" into a build
+delta, `watchThread` replays a conversation's commands to reach the build a
+given turn was answered with, and `watchPromptBlock` is what the answer model
+is told about it. The DOM/GL half is `public/js/watch-embed.js` (allowlisted):
+`mountWatch`'s stage without the page's panel, plus the what-changed line, the
+spec, the fit warnings and the suggested next commands, degrading to the link
+card where WebGL is unavailable. The same parser is a six-tool MCP family in
+`src/watch-tools.js`. See `docs/WATCH-BUILDER.md`.
 
 The capability-demo registry (`public/js/demo-core.js`, façade `src/demos.js`;
-card renderer `public/js/demo-embed.js`; both allowlisted under the same
-public-module-graph rule as the /cure entries): the deterministic EN+SV gate
-that answers "is this message asking to be SHOWN one of the site's own
-surfaces, and which one?" — feedback #49's *"all individual capabilities
-should be callable like this, show me x demo for instance"*. Two kinds: a
-`space` entry delegates subject matching wholesale to `space-core.js`'s
-`SPACE_MATCHERS` (one space matcher, no drift) and renders inline; a `page`
-entry (`/watch/`) carries its own subject patterns and renders as a link card.
+the shared mount decision `public/js/demo-mount.js`; card renderer
+`public/js/demo-embed.js`; all allowlisted under the same public-module-graph
+rule as the /cure entries): the deterministic EN+SV gate that answers "is this
+message asking to be SHOWN one of the site's own surfaces, and which one?" —
+feedback #49's *"all individual capabilities should be callable like this,
+show me x demo for instance"*. Three kinds: a `space` entry delegates subject
+matching wholesale to `space-core.js`'s `SPACE_MATCHERS` (one space matcher,
+no drift) and renders inline; a `watch` entry renders the NHxx builder inline
+and takes text commands for the rest of the thread; a `page` entry renders a
+link card, which is also the watch's no-WebGL fallback.
 `demoIntent(text, priorText)` also lets a BARE visual ask ("show me visually",
 "visa visuellt") inherit the subject of the turn before it — feedback #50's
-real sequence. Both chat clients mount from it (`turns.js` `mountDemoEmbed`,
-`drc.js` `mountDrcSpaceEmbed`) and `src/pipeline.js` re-runs the SAME gate to
-set the answer prompts' `spaceScene` / `demoSurface`, so the model leads with
-the shipped tool instead of researching the web for a capability the site
-already has. Decorative-additive throughout: the answer streams below
-regardless, which is what lets the patterns be generous. A new surface costs
-one registry entry and no edit anywhere else.
+real sequence. `demo-mount.js` owns which of the three mounts and which module
+is fetched for it, so the two tiers cannot drift (`turns.js`
+`mountDemoEmbed`, `drc.js` `mountDrcSpaceEmbed` keep only their DOM
+placement); its `watchOpenedIn` pre-gate answers "is it worth loading the
+parts catalogue" using demo-core alone, so a conversation that never mentions
+watches never fetches a byte of it. `src/pipeline.js` re-runs the SAME gates to
+set the answer prompts' `spaceScene` / `demoSurface` / `watchBuild`, so the
+model leads with the shipped tool instead of researching the web for a
+capability the site already has. Decorative-additive throughout: the answer
+streams below regardless, which is what lets the patterns be generous. A new
+surface costs one registry entry and no edit anywhere else.
 
 Project pulse (`public/pulse/` — public, allowlisted like `/space/`): the
 commit-analytics dashboard. `index.html` (commits / lines / new features as

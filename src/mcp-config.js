@@ -3,8 +3,8 @@
 // Settings → "MCP server".
 //
 // The MCP surface (src/mcp.js) used to be take-it-or-leave-it: every caller
-// who could satisfy the identity gate saw all five tools with the site's
-// defaults. Once an account can hand a long-lived key to an external agent
+// who could satisfy the identity gate saw every tool the server had with the
+// site's defaults. Once an account can hand a long-lived key to an external agent
 // (src/mcp-key.js), "all of it, always" stops being a reasonable default —
 // someone wiring Claude Code up for SDK planning has no reason to also lend it
 // a research budget, and someone lending research has no reason to expose the
@@ -79,6 +79,48 @@ export const MCP_TOOL_CATALOG = [
     group: "Platform SDK",
     label: "sdk_validate",
     blurb: "Checks a built tree against the manifest's declared files and acceptance criteria.",
+    def: true,
+  },
+  {
+    id: "watch_catalog",
+    group: "Watch builder",
+    label: "watch_catalog",
+    blurb: "Lists the NHxx parts catalogue — the cases with their real millimetres, and each parts family.",
+    def: true,
+  },
+  {
+    id: "watch_case",
+    group: "Watch builder",
+    label: "watch_case",
+    blurb: "One case family in full: diameter, lug-to-lug, thickness, lug width, platform and crown position.",
+    def: true,
+  },
+  {
+    id: "watch_build",
+    group: "Watch builder",
+    label: "watch_build",
+    blurb: "Resolves a build into its spec sheet, compatibility verdict, sourcing rows and permalink.",
+    def: true,
+  },
+  {
+    id: "watch_command",
+    group: "Watch builder",
+    label: "watch_command",
+    blurb: "Drives the builder in plain English or Swedish (\"pepsi bezel\", \"svart urtavla\") and reports what changed.",
+    def: true,
+  },
+  {
+    id: "watch_check",
+    group: "Watch builder",
+    label: "watch_check",
+    blurb: "Compatibility only: can this build be assembled, and what is wrong with it.",
+    def: true,
+  },
+  {
+    id: "watch_sourcing",
+    group: "Watch builder",
+    label: "watch_sourcing",
+    blurb: "Where the parts come from — brands, price bands and prepared search URLs. Contacts nothing.",
     def: true,
   },
 ];

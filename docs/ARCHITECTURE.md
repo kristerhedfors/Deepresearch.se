@@ -1148,13 +1148,18 @@ can compose with them:
   `initialize`, `tools/list`, `tools/call`, plus a no-op ack for
   `notifications/initialized`.
 - **The tools** (`toolsListResult()` = `DEEP_RESEARCH_TOOL` +
-  `SDK_MCP_TOOLS`): `deep_research` — question in; cited, validated,
-  source-diverse answer out; the handler mirrors `chat.js`'s per-request
-  setup and runs the same `runPipeline` (quizzes stay off on this
-  channel) — plus the four Platform-SDK registry tools
+  `SDK_MCP_TOOLS` + `WATCH_MCP_TOOLS`): `deep_research` — question in;
+  cited, validated, source-diverse answer out; the handler mirrors
+  `chat.js`'s per-request setup and runs the same `runPipeline` (quizzes
+  stay off on this channel) — plus the four Platform-SDK registry tools
   `sdk_list_modules`, `sdk_show_module`, `sdk_plan` and `sdk_validate`,
   so an agent can plan against `sdk/MANIFEST.json` without shelling into
-  the sandbox (the **sdk-mode** skill).
+  the sandbox (the **sdk-mode** skill) — plus the six NHxx watch-builder
+  tools `watch_catalog`, `watch_case`, `watch_build`, `watch_command`,
+  `watch_check` and `watch_sourcing` (`src/watch-tools.js`, feedback #52),
+  so an agent can configure and cost a mod build without a browser. Both
+  extra families are pure: committed data and a regex command parser, no
+  network, no D1, no model, nothing to spend.
 - **Auth — two ways in, both resolving to a real account.** The route is
   wired *after* the identity gate, so a signed-in session and the
   break-glass Basic Auth header work exactly as they always did. External

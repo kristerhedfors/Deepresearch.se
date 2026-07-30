@@ -1273,12 +1273,76 @@ demo for instance."*
    only beside a show verb or a build word, or the card mounts on "watch out
    for rate limits". The unambiguous forms (`nh35`, `watch builder`,
    `klockbyggare`) fire alone.
-4. **Match the mount to the surface.** A canvas-and-caption embeds; a page with
-   its own state, permalink and tables gets a card. Inlining the second one
-   puts a second copy of the page inside a chat turn.
+4. **A card is the fallback, not the default.** The first version of this rule
+   said a page with its own state, permalink and tables gets a card, because
+   inlining it would put a second copy of the page inside a chat turn. Feedback
+   #52 rejected that the next day (UX-23): what got inlined was the page's
+   *stage*, not its panel, and the panel's job moved to the conversation. Reach
+   for a card only when there is genuinely nothing to drive — or when the device
+   cannot draw the inline version.
 
 **Canonical implementation:** `public/js/demo-core.js` (`DEMOS`, `demoIntent`,
-Node-tested in `demo-core.test.js`), the card renderer
-`public/js/demo-embed.js`, the mounts `turns.js mountDemoEmbed` /
-`drc.js mountDrcSpaceEmbed`, and the prompt half in `src/pipeline.js`
-`demoSurfaces` → `src/prompts.js` `demoSurfaceNote`.
+Node-tested in `demo-core.test.js`), the shared mount decision
+`public/js/demo-mount.js`, the renderers `public/js/space-embed.js` /
+`public/js/watch-embed.js` / `public/js/demo-embed.js`, the tier mounts
+`turns.js mountDemoEmbed` / `drc.js mountDrcSpaceEmbed`, and the prompt half in
+`src/pipeline.js` `demoSurfaces` → `src/prompts.js` `demoSurfaceNote` /
+`watchBuildNote`.
+
+---
+
+## UX-23 — An inlined tool is driven by the conversation, and every reply says what changed
+
+**Rule.** When a built surface mounts INSIDE a chat turn (UX-22), the chat
+becomes its control panel. Four things hold:
+
+- **Plain text is the input.** No panel of pickers is reproduced in the turn.
+  The message is the command — "pepsi bezel", "svart urtavla", "lights out" —
+  parsed deterministically, EN and SV alike.
+- **Every reply re-renders and states the delta.** The surface appears on each
+  turn of the thread, showing the state that turn's message produced, with a
+  what-changed line on it. The answer model is told the same delta so its prose
+  and the render agree.
+- **The reply offers the next commands.** Suggestions are generated from the
+  live state, are guaranteed to parse (the offer is round-tripped through the
+  parser in a test), never propose a state the tool would then complain about,
+  and rotate so consecutive replies do not repeat.
+- **State is DERIVED from the messages, never stored.** Reopening the
+  conversation replays the same commands to the same state, which rules out
+  unseeded randomness — otherwise a reader reopening it sees something other
+  than what the answer describes.
+
+**Why.** Feedback #52, 2026-07-30, on the card UX-22 describes, which had
+shipped the day before: *"i want the watch builder to be inline so I get the watch animation
+here and suggestions on what one can change through text commands … every new
+reply contains a new watch animation with text on what changed."* A link is
+somewhere else; it cannot be driven by the conversation that produced it, and a
+conversation cannot report what changed in a page it does not own.
+
+**The parts that are easy to get wrong:**
+
+1. **A thread has to CLOSE.** Carrying the surface forward across follow-ups is
+   the feature; carrying it into an unrelated question is a bug. Continue only
+   while each message is recognisably about the tool, and close on the first
+   that is not — then stay closed until another explicit ask.
+2. **An ambiguous value needs its slot word NEARBY, not merely present.** In
+   "blue dial and green bezel" both colours are inside the dial's window;
+   proximity is what decides. Whole-message presence sets the wrong one.
+3. **A suggestion the parser rejects is worse than no suggestion.** Generate
+   offers from the same vocabulary that reads them, and test the round trip over
+   the whole option set in both languages rather than spot-checking.
+4. **Pay for the surface only where it is used.** An inline canvas is an
+   animation loop (gate it on an `IntersectionObserver`) and its data module may
+   be large (gate the dynamic import on a cheap pre-check the caller can make
+   with what it already has). A conversation that never asks must not fetch it.
+5. **Degrade to the card, not to nothing.** If the device cannot render, mount
+   UX-22's link card instead — the tool does still exist.
+
+**Canonical implementation:** `public/js/watch-chat-core.js` (`parseWatchCommand`,
+`watchThread`, `suggestCommands`, `watchPromptBlock`; Node-tested in
+`watch-chat-core.test.js`), the embed `public/js/watch-embed.js`, the pre-gate
+`public/js/demo-mount.js` `watchOpenedIn`, and the prompt half in
+`src/pipeline.js` `demoSurfaces` → `src/prompts.js` `watchBuildNote`. The same
+core is a tool family over MCP as well (`src/watch-tools.js`): if the
+conversation can drive the surface, an agent can drive it too. Full account:
+`docs/WATCH-BUILDER.md` §6b.

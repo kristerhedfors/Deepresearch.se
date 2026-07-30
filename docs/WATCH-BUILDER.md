@@ -278,18 +278,14 @@ sat one route away. The report did not stop at the one case: *"all individual
 capabilities should be callable like this, show me x demo for instance."*
 
 So the builder has an entry in the capability-demo registry
-(`public/js/demo-core.js`, façade `src/demos.js`) as a `page` surface. When
-the deterministic EN+SV gate fires, both tiers' chats mount a card into
-`/watch/` above the reply, and `src/pipeline.js` re-runs the same gate to set
-the answer prompts' `demoSurface` — so the model opens by naming the tool and
-pointing at the link instead of researching the web for a capability this site
-ships.
+(`public/js/demo-core.js`, façade `src/demos.js`). When the deterministic EN+SV
+gate fires, both tiers' chats mount it above the reply, and `src/pipeline.js`
+re-runs the same gate so the answer knows it is there — instead of researching
+the web for a capability this site ships.
 
-A card, not an embed: `/watch/` is a WebGL builder with its own catalogue,
-permalink codec and sourcing table. Inlining it would put a second copy of the
-page inside a chat turn; the card says the capability exists and takes the
-reader one tap into it. (The `/space/` scenes DO embed — they are a canvas and
-a caption — which is why the registry distinguishes the two kinds.)
+The first version mounted a **card** linking into `/watch/`, on the reasoning
+that a WebGL builder with its own catalogue, permalink codec and sourcing table
+is a page rather than a canvas. §6b is what happened to that reasoning.
 
 The subject patterns are deliberately asymmetric. `watch` is a common English
 verb, so the bare noun never fires on its own — it needs a build/mod word or a
@@ -300,10 +296,148 @@ directions.
 
 ---
 
+## 6b. Driven BY the chat (feedback #52)
+
+The card was the wrong shape, and the next day's report said why in one
+sentence:
+
+> *"i want the watch builder to be inline so I get the watch animation here and
+> suggestions on what one can change through text commands. Make it an mcp
+> server with a bunch of tools and every new reply contains a new watch
+> animation with text on what changed"*
+
+Every clause of that is a different objection to a link. A link is somewhere
+else; it cannot be *driven by* the conversation that produced it, and a
+conversation cannot report what changed in a page it does not own. So the
+builder moved into the turn.
+
+### The thread
+
+A watch **thread** is derived, never stored — `watchThread(userTexts)` in
+`public/js/watch-chat-core.js` walks the user side of a conversation and returns
+the build as it stands at the turn being answered. It
+
+- **opens** on a demo ask (§6a's gate, unchanged, so "Seiko watch demo" and
+  "visa mig klockbyggaren" open it exactly as they used to open the card),
+- **carries forward** while each following message is watch talk, applying its
+  commands to the build the previous turn ended on,
+- **closes** on a message that is neither, and stays closed until another
+  explicit ask.
+
+Closing matters as much as opening. A conversation that asks for a watch and
+then asks about something else must not get a watch bolted onto the second
+answer, and "watch talk" is deliberately narrow: a slot word, a part name, a
+view command, or a reset. Every one of the three is a unit test.
+
+Being derived is what makes a reload honest. There is no embeds-registry entry
+and no stored build; the same messages replay to the same watch, which is also
+why the reroll ("surprise me", "slumpa") is a seeded xorshift rather than
+`Math.random()` — a reader reopening the conversation has to see the watch the
+answer describes. The reroll also **repairs** itself: a rolled build that the
+compatibility engine rejects is scanned slot by slot for an option that strictly
+reduces the error count, so a demo never opens on a watch that cannot be
+assembled. Random retries did not converge — a GMT movement needs the one
+four-hand set, which a coin flip finds about never.
+
+### The commands
+
+`parseWatchCommand(text, build)` is a scored alias index over the catalogue, no
+model in it. Two tiers of term:
+
+- **strong** — unique enough across the whole catalogue to set its slot with no
+  slot word anywhere: "pepsi", "jubilee", "snowflake", "62MAS", "mini turtle".
+- **weak** — real names that are ambiguous alone, above all the colours, since
+  "black" is a dial, an insert *and* a finish. These count only within 30
+  characters of one of their slot's words.
+
+Ties break on the longest match, which is what makes "mini turtle" beat
+"turtle" and "sunburst blue" beat "blue" without an ordering rule to maintain.
+Weak terms are additionally scored by **proximity**, because in *"blue dial and
+green bezel"* both colours sit inside the dial's window and only the distance
+says which one the dial was meant to be.
+
+Two traps this cost real time on, both worth knowing before extending the table:
+
+- **The Swedish `\b`.** `/\bblå\b/` never fires — `å` is not an ASCII word
+  character, so there is no boundary after it (invariant 6; the
+  **palaeogenomics** skill is the standing reference). The pattern that works is
+  a `(?![a-zà-ÿ])` lookahead.
+- **Swedish compounds.** A slot word cannot be seen inside one: `/\bglas\b/`
+  does not match "safirglas", so the compound forms are listed explicitly.
+
+An intra-word hyphen is load-bearing too. Flattening it in "Unsigned,
+screw-down" made that part's own name stop matching the command that names it,
+and the shorter "signed" then matched *inside* "unsigned" and fitted the
+opposite crown.
+
+The suggested next commands are generated the same way round, which is the
+property that makes them trustworthy: `commandFor` renders one uniform shape —
+`change the <slot> to <part>` / `byt <slot> till <part>` — and a unit test
+round-trips **every option in the catalogue, in both languages**, through the
+parser. The uniform phrasing is deliberate: it sidesteps the article and
+definite-form grammar that per-slot wording needs in two languages, and it puts
+the slot word next to the value where the proximity rule wants it. Suggestions
+are also checked against the compatibility engine first, so the tool never
+talks a reader into a build it will then complain about, and they rotate with
+the turn number so consecutive replies do not offer the same three things.
+
+### What the turn shows, and what the model is told
+
+`public/js/watch-embed.js` mounts `mountWatch`'s stage without the page's
+panel: the render, the what-changed line over it, the spec line, the fit
+warnings, the suggestion chips and a link into the full builder at this build's
+permalink. The chips send the command they show when a tier has lent the embed
+its composer (`setDemoCommandSender`, one call per tier at boot); unset, they
+are read-only hints, which still answers the ask. Where WebGL is unavailable the
+mount returns null and the caller falls through to §6a's card — the honest
+degrade, since the builder does still exist.
+
+Two costs the inline version has that the card did not, and their answers: each
+embed is a WebGL context with its own animation loop, so an
+`IntersectionObserver` drives the renderer's `setRunning` and an off-screen
+watch stops drawing; and the parts catalogue is the biggest pure-data module in
+the client, so `demo-mount.js`'s `watchOpenedIn` pre-gate answers "could a
+thread be open here" using `demo-core.js` alone — a conversation that never
+mentions watches never fetches a byte of it.
+
+The model gets `watchPromptBlock` as the answer prompts' `watchBuild` input: the
+full build, its dimensions, what this message changed, and the fit verdict, with
+instructions to open by saying what changed and close by offering further
+commands. That is the *"text on what changed"* half of the request, and it is
+generated from the same build the embed rendered — one core, so the answer
+cannot describe a different watch than the one on screen.
+
+### The tools
+
+The last clause — *"make it an mcp server with a bunch of tools"* — is
+`src/watch-tools.js`: six tools on `POST /mcp`, over the same two cores.
+
+| Tool | Answers |
+|---|---|
+| `watch_catalog` | what exists — the slots, or one family's options in full |
+| `watch_case` | one case family's real millimetres, platform and crown position |
+| `watch_build` | a build → spec sheet, fit check, sourcing rows, permalink |
+| `watch_command` | plain EN/SV commands → new build, exactly what changed, what to try next |
+| `watch_check` | compatibility only |
+| `watch_sourcing` | brands, price bands, prepared search URLs |
+
+No network and no model in any of them, so they cost nothing to run and cannot
+fail soft into nonsense — which is also what keeps invariant 1 intact: these are
+what an agent calls *instead of* the pipeline reaching for function calling.
+Each has its own exposure switch in `src/mcp-config.js`'s catalog, and junk
+arguments degrade to a described default rather than throwing, because a thrown
+tool is a model that retries the same call forever.
+
+---
+
 ## 7. Testing
 
-`public/js/watch-core.test.js` (70 checks) and `src/watch.test.js` (11) run in
-`npm test`. They cover catalogue integrity (unique ids, resolvable references,
+`public/js/watch-core.test.js` (70 checks), `src/watch.test.js` (11),
+`public/js/watch-chat-core.test.js` (the conversational core — thread
+open/carry/close, EN+SV command parity, the whole-catalogue command round trip,
+reroll determinism and repair, the suggestions' validity) and
+`src/watch-tools.test.js` (the MCP family, including that every tool survives
+junk arguments) all run in `npm test`. They cover catalogue integrity (unique ids, resolvable references,
 EN+SV everywhere, plausible millimetres, crystal smaller than case and larger
 than dial), the permalink codec's fail-soft decode, every compatibility rule,
 the spec-sheet maths, the sourcing index's URL shapes, and the geometry: well-
@@ -327,4 +461,10 @@ browser, which is where this project's rendering bugs have always come from
 - Prices are bands from listing surveys, not live. They will drift; the page
   says so.
 - WebGL is required for the 3D view. Without it the page still renders the spec
-  sheet, the fit check and the sourcing links, and says why the canvas is gone.
+  sheet, the fit check and the sourcing links, and says why the canvas is gone;
+  in a chat turn the inline builder degrades to the link card (§6b).
+- The command parser knows the catalogue's vocabulary, not the whole hobby. It
+  covers every part's EN and SV name plus the trade names people actually type,
+  and reports a command it did not recognise rather than guessing — but a phrasing
+  nobody has typed yet will simply miss. The fix is a term in the alias table,
+  not a model in the loop.

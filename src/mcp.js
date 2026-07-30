@@ -38,6 +38,11 @@ import { resolveJsonModel } from "./model-routing.js";
 // file-layout rule intact; only the SNAPSHOT loading (tools/call time) is a
 // dynamic import of ./introspect.js below.
 import { SDK_TOOLS, SDK_TOOL_NAMES, manifestFromSnapshot, runSdkTool, snapshotFileCheck } from "./sdk-tools.js";
+// The NHxx watch builder's tool family (feedback #52: "Make it an mcp server
+// with a bunch of tools"). Pure committed data and a regex parser — no pipeline,
+// no network, no model — so a static import keeps the file-layout rule above
+// intact, exactly as SDK_TOOLS does.
+import { WATCH_TOOLS, WATCH_TOOL_NAMES, runWatchTool } from "./watch-tools.js";
 // WHAT this server exposes is per-account configuration (Settings → "MCP
 // server"). A pure leaf module — catalog, parse, filter, argument resolution —
 // so this static import keeps the file-layout rule above intact.
@@ -141,11 +146,22 @@ export const SDK_MCP_TOOLS = SDK_TOOLS.map(({ name, description, input_schema })
   inputSchema: input_schema,
 }));
 
+// The watch-builder family, same rename (Anthropic's `input_schema` →
+// MCP's `inputSchema`). Exposed over MCP because the ask that made the builder
+// conversational asked for this in the same breath (feedback #52): an agent
+// should be able to configure and cost a build without a browser, which is the
+// same reason GET /api/watch/catalog exists for a shell.
+export const WATCH_MCP_TOOLS = WATCH_TOOLS.map(({ name, description, input_schema }) => ({
+  name,
+  description,
+  inputSchema: input_schema,
+}));
+
 // Every tool this server CAN serve, in a stable order. What a given caller
 // actually sees is this list filtered by the account's exposure config —
 // src/mcp-config.js's catalog mirrors it exactly, a correspondence its unit
 // test enforces, so no tool can ship without a switch to turn it off.
-export const ALL_MCP_TOOLS = [DEEP_RESEARCH_TOOL, ...SDK_MCP_TOOLS];
+export const ALL_MCP_TOOLS = [DEEP_RESEARCH_TOOL, ...SDK_MCP_TOOLS, ...WATCH_MCP_TOOLS];
 
 // The `tools/list` result, narrowed to what this account exposes. Called with
 // no argument it reports the full set (the default config) — which is what an
@@ -271,11 +287,11 @@ export async function handleMcp(request, env, log, identity, ctx, requestId) {
   }
 }
 
-// tools/call dispatcher: the SDK manifest family, then `deep_research`;
-// anything else — including a tool this account does not expose — is an
-// invalid-params error. The tool itself fails soft: any pipeline error comes
-// back as an MCP result with isError:true (a protocol-level success carrying
-// a tool-level failure), never a transport error.
+// tools/call dispatcher: the SDK manifest family, the watch-builder family,
+// then `deep_research`; anything else — including a tool this account does not
+// expose — is an invalid-params error. The tool itself fails soft: any pipeline
+// error comes back as an MCP result with isError:true (a protocol-level success
+// carrying a tool-level failure), never a transport error.
 /**
  * @param {ParsedRpc} parsed
  * @param {Env} env
@@ -316,6 +332,23 @@ async function handleToolCall(parsed, env, log, identity, ctx, requestId, config
       const message = (/** @type {any} */ (err))?.message || String(err);
       log.error("mcp.sdk_tool_failed", { tool: name, error: message });
       return jsonResponse(jsonRpcResult(id, toolResult(`SDK tool failed: ${message}`, true)));
+    }
+  }
+
+  // The watch-builder family: pure reads and a regex command parser over
+  // committed catalogue data. Nothing to load, nothing to reach — the only
+  // failure mode is a name this module does not serve, which the dispatch above
+  // has already excluded, so a throw here means a genuine bug and comes back as
+  // an isError result rather than a transport error.
+  if (typeof name === "string" && WATCH_TOOL_NAMES.has(name)) {
+    try {
+      const text = runWatchTool(name, args);
+      log.info("mcp.watch_tool", { tool: name, user_id: identity?.id });
+      return jsonResponse(jsonRpcResult(id, toolResult(text, false)));
+    } catch (err) {
+      const message = (/** @type {any} */ (err))?.message || String(err);
+      log.error("mcp.watch_tool_failed", { tool: name, error: message });
+      return jsonResponse(jsonRpcResult(id, toolResult(`Watch tool failed: ${message}`, true)));
     }
   }
 

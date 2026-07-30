@@ -28,11 +28,22 @@ description: >-
 `src/mcp.js` exposes the whole deep-research pipeline **as an MCP server**.
 Its headline tool is `deep_research` — question in, cited/validated/
 source-diverse answer out — callable by any MCP client (Claude, Cursor, an
-agent SDK). Alongside it the server re-exposes DistillSDK's four **manifest
-tools** (`sdk_list_modules`, `sdk_show_module`, `sdk_plan`, `sdk_validate`,
-via `SDK_MCP_TOOLS`) so an external agent can plan against the SDK without
-shelling into the execution sandbox. Five tools total; the pipeline one is
+agent SDK). Alongside it the server re-exposes two more families:
+DistillSDK's four **manifest tools** (`sdk_list_modules`, `sdk_show_module`,
+`sdk_plan`, `sdk_validate`, via `SDK_MCP_TOOLS`) so an external agent can plan
+against the SDK without shelling into the execution sandbox, and — since
+2026-07-30, feedback #52 — the NHxx **watch-builder tools** (`watch_catalog`,
+`watch_case`, `watch_build`, `watch_command`, `watch_check`, `watch_sourcing`,
+via `WATCH_MCP_TOOLS` over `src/watch-tools.js`) so an agent can configure and
+cost a mod build without a browser. Eleven tools total; the pipeline one is
 the reason the server exists.
+
+Both extra families are **pure** — committed data, a regex command parser, no
+network, no D1, no model — which is why they are static imports in `mcp.js`
+without breaking its keep-the-pipeline-dynamic file-layout rule, and why they
+cost nothing to expose. Both also fail into an `isError` result rather than a
+transport error, and `watch_*` degrades junk arguments to a described default:
+a tool that throws is a model that retries the same call forever.
 This is the ONE place the pipeline points *outward*: the architecture
 roadmap (`docs/ARCHITECTURE-ROADMAP.md` §3) argues MCP belongs on the
 outbound edge (DeepResearch *as* a tool other agents compose with), NOT as

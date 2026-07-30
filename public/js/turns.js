@@ -9,7 +9,7 @@ import { downloadReport } from "./report.js";
 import { renderMapEmbed, renderStreetViewEmbed, renderStreetViewFrames } from "./activity.js";
 import { renderQuiz } from "./quiz.js";
 import { renderWorkflow } from "./workflow-viz.js";
-import { demoIntent } from "./demo-core.js";
+import { demoSurfacePossible, mountDemoSurface } from "./demo-mount.js";
 import { mountModeSpinner } from "./mode-spinner.js";
 import { formatByteSize, mimeForName } from "./bash-core.js";
 import { addFilesToProject, listProjects } from "./projects.js";
@@ -80,39 +80,42 @@ function addFeedbackHint() {
 
 // A question that asks to be SHOWN one of the site's own built surfaces
 // (demo-core.js demoIntent, EN+SV) mounts it above the streamed answer text.
-// Two shapes, per the registry's two kinds: a /space/ scene becomes the
-// playable wireframe canvas across the response area with the scene's curated
-// factual reply as its caption (feedback #18: "show a moonshot from space
-// between earth and moon" should animate, not just cite photos); a page
-// surface like the /watch/ builder becomes a card linking into it (feedback
-// #49: "Seiko watch demo" researched the web instead of opening the builder
-// that answers it — "all individual capabilities should be callable like
-// this"). `priorText` lets a bare "Show me visually" inherit the subject of
-// the turn before it (feedback #50).
+// Which surface and which renderer is demo-mount.js's single decision, shared
+// with the Se/cure tier so the two cannot drift: a /space/ scene becomes the
+// playable wireframe canvas with the scene's curated factual reply as its
+// caption (feedback #18); the NHxx builder becomes a live 3D render the
+// conversation itself drives with text commands (feedback #49 wired the ask to
+// the builder, #52 moved the builder into the turn).
+//
+// `priorText` lets a bare "Show me visually" inherit the subject of the turn
+// before it (feedback #50); `userTexts` is the whole conversation's user side,
+// which is what lets the watch thread carry a build forward across follow-ups
+// that are commands rather than asks ("pepsi bezel").
 //
 // Purely decorative-additive: the research answer still streams below, and the
-// mount is DERIVED from the question — deterministic re-detection, so reloaded
+// mount is DERIVED from the messages — deterministic re-detection, so reloaded
 // (and pre-feature) conversations get it too without an embeds-registry entry.
-// The renderers are dynamic-imported: most conversations ask for neither, and
-// the module graph stays lean. Fail-soft — never breaks a turn.
+// The renderers are dynamic-imported: most conversations ask for none of them,
+// and the module graph stays lean. Fail-soft — never breaks a turn.
 /**
  * @param {Turn} turn
  * @param {string} questionText the user message the turn answers
  * @param {string} [priorText] the user message before it, for bare visual asks
+ * @param {string[]} [userTexts] every user message up to and including this one
  */
-export function mountDemoEmbed(turn, questionText, priorText = "") {
+export function mountDemoEmbed(turn, questionText, priorText = "", userTexts = []) {
   try {
-    const m = demoIntent(questionText, priorText);
-    if (!m || !turn?.el || turn._spaceEmbed) return;
+    if (!turn?.el || turn._spaceEmbed) return;
+    // Cheap synchronous check first: most turns want no surface, and placing a
+    // host for them only to remove it a microtask later is layout churn — most
+    // visibly when a long history re-renders.
+    if (!demoSurfacePossible({ questionText, priorText, userTexts })) return;
     const host = document.createElement("div");
-    host.className = m.kind === "space" ? "space-embed-host" : "demo-card-host";
     turn.el.insertBefore(host, turn.content);
     turn._spaceEmbed = host;
-    const mount = m.kind === "space"
-      ? import("./space-embed.js").then(({ mountSpaceScene }) =>
-        mountSpaceScene(host, m.sceneId || "", { lang: m.lang, caption: true, moreLink: true }))
-      : import("./demo-embed.js").then(({ mountDemoCard }) => mountDemoCard(host, m));
-    mount.then((ok) => { if (!ok) host.remove(); }).catch(() => host.remove());
+    mountDemoSurface(host, { questionText, priorText, userTexts })
+      .then((ok) => { if (!ok) host.remove(); })
+      .catch(() => host.remove());
   } catch { /* decorative — never break the turn */ }
 }
 
@@ -159,17 +162,22 @@ export function renderStoredConversation(messages, embeds = [], opts = {}) {
   // The user message BEFORE lastUser — a bare "show me visually" reloads with
   // the same animation it was answered with live (mountDemoEmbed's priorText).
   let priorUser = "";
+  // Every user message so far, oldest first: a watch thread rebuilds the exact
+  // build each turn was answered with by replaying its commands (feedback #52).
+  /** @type {string[]} */
+  const userTexts = [];
   messages.forEach((m, i) => {
     if (m.role === "user") {
       priorUser = lastUser.text;
       lastUser = splitUserContent(m.content);
+      userTexts.push(lastUser.text);
       addUserBubble(lastUser.text, lastUser.imageUrls);
     } else if (m.role === "assistant" && typeof m.content === "string") {
       // question/images are threaded through so the PDF report button
       // works the same as it does on a live turn.
       const turn = addAssistantTurn(lastUser.text, lastUser.imageUrls);
       setText(turn, m.content);
-      mountDemoEmbed(turn, lastUser.text, priorUser);
+      mountDemoEmbed(turn, lastUser.text, priorUser, [...userTexts]);
       for (const e of embeds) {
         if (e?.msgIndex !== i) continue;
         if (e.kind === "streetview_embed") {

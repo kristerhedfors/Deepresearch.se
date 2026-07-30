@@ -19,15 +19,16 @@ test("demo registry: every entry is sound and bilingual", () => {
   for (const d of DEMOS) {
     assert.ok(d.id && !ids.has(d.id), `duplicate or missing id: ${d.id}`);
     ids.add(d.id);
-    assert.ok(["space", "page"].includes(d.kind), `unknown kind: ${d.kind}`);
+    assert.ok(["space", "page", "watch"].includes(d.kind), `unknown kind: ${d.kind}`);
     assert.match(d.path, /^\/[a-z]+\/$/, `${d.id}: path is a real surface`);
     for (const field of ["title", "blurb"]) {
       assert.ok(d[field].en && d[field].sv, `${d.id}: ${field} needs EN and SV`);
       assert.notEqual(d[field].en, d[field].sv, `${d.id}: ${field} not translated`);
     }
-    // Invariant 6: Swedish carries the same breadth as English. A page surface
-    // matches on its own patterns, so both sets have to be populated.
-    if (d.kind === "page") {
+    // Invariant 6: Swedish carries the same breadth as English. Every non-space
+    // surface matches on its own patterns, so both sets have to be populated
+    // (space delegates its subject matching to space-core.js).
+    if (d.kind !== "space") {
       assert.ok(d.subject.en.length && d.subject.sv.length, `${d.id}: subject needs both languages`);
       assert.ok(d.always.en.length && d.always.sv.length, `${d.id}: always needs both languages`);
     }
@@ -43,7 +44,10 @@ test("demo registry: every entry is sound and bilingual", () => {
 test("feedback #49: \"Seiko watch demo\" resolves to the watch builder", () => {
   const m = demoIntent("Seiko watch demo");
   assert.equal(m?.id, "watch");
-  assert.equal(m?.kind, "page");
+  // Kind "watch", not "page": feedback #52 moved the builder INTO the turn, so
+  // the ask resolves to an inline render the conversation drives rather than a
+  // card linking out of it.
+  assert.equal(m?.kind, "watch");
   assert.equal(m?.path, "/watch/");
   assert.equal(m?.lang, "en");
 });
