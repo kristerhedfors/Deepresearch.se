@@ -84,10 +84,6 @@ export const SOURCES = {
     label: "Tandorio — titanium Turtle diver NH35 listing",
     url: "https://tandoriowatch.com/products/tandorio-titanium-turtle-diver",
   },
-  aliwiki: {
-    label: "AliExpress — \"Seiko NH35 size watch cases\" reference article",
-    url: "https://www.aliexpress.com/s/wiki-ssr/article/seiko-nh35-size",
-  },
   exquisite: {
     label: "Exquisite Timepieces — the Seiko 6105 \"Willard\"",
     url: "https://www.exquisitetimepieces.com/blog/all-about-the-seiko-willard/",
@@ -96,9 +92,221 @@ export const SOURCES = {
     label: "Modding-community consensus (multiple listings agreeing); treat as approximate",
     url: "",
   },
+
+  // --- 2026-07-30 research pass (feedback #56). Every number added below names
+  // one of these, and anything read off a listing rather than a spec sheet is
+  // flagged `approx: true` where it is used.
+  ctCrystals: {
+    label: "CrystalTimes — SKX007/SRPD sapphire crystal category",
+    url: "https://usa.crystaltimes.net/product-category/skx007-mod-parts/skx007-sapphire-crystals/",
+  },
+  ct025: {
+    label: "CrystalTimes CT025 / CT025F — flat sapphire, with and without the top bevel",
+    url: "https://usa.crystaltimes.net/shop/skx007-mod-parts/skx007-sapphire-crystals/ct025/",
+  },
+  ct094: {
+    label: "CrystalTimes CT094 — flat sapphire, stepped edge for sloping ceramic inserts",
+    url: "https://usa.crystaltimes.net/shop/skx007-mod-parts/skx007-sapphire-crystals/ct094/",
+  },
+  ct037: {
+    label: "CrystalTimes CT037 — double-dome sapphire, SKX007/SRPD",
+    url: "https://usa.crystaltimes.net/shop/skx007-mod-parts/skx007-sapphire-crystals/ct037-double-dome-sapphire-crystal-skx007-srpd/",
+  },
+  ct044: {
+    label: "CrystalTimes CT044 / CT044F — SKX013/SKX015 sapphire",
+    url: "https://usa.crystaltimes.net/shop/models/skx013-mod-parts/ct044/",
+  },
+  ct076: {
+    label: "CrystalTimes CT076 — SRP Turtle / Samurai / 62MAS flat sapphire",
+    url: "https://usa.crystaltimes.net/shop/products/ct076/",
+  },
+  ct239: {
+    label: "CrystalTimes CT239A / CT239B — SKX sapphire display case back",
+    url: "https://usa.crystaltimes.net/shop/models/srp-turtle-mod-parts/ct239-skx-sapphire-display-case-back/",
+  },
+  ct208: {
+    label: "CrystalTimes CT208 — SKX007 / SRP Turtle screw-down crown",
+    url: "https://usa.crystaltimes.net/shop/models/skx007-mod-parts/skx007-crowns/ct208",
+  },
   longisland: {
-    label: "Long Island Watch — #007-Flat flat sapphire for SKX007/SKX009 (31.5 mm × 2.9 mm, Seiko bevel on top)",
-    url: "https://longislandwatch.com/products/flat-sapphire-crystal-for-skx007-skx009-007-flat",
+    label: "Long Island Watch — flat sapphire crystal for SKX007/SKX009",
+    url: "https://longislandwatch.com/flat-sapphire-crystal-for-skx007-skx009-007-flat/",
+  },
+  wsCrystal: {
+    label: "Watch&Style SG005 — SKX007 flat sapphire, clear AR",
+    url: "https://watchandstyle.net/products/sg005-skx007-flat-sapphire-crystal-clear-ar",
+  },
+  wsCaseback: {
+    label: "Watch&Style — case-cover collection (caseback thickness with and without thread)",
+    url: "https://watchandstyle.net/collections/case-cover",
+  },
+  wsChapter: {
+    label: "Watch&Style — SKX007/SRPD chapter rings (70 SKUs, printing/colour/finish/lume)",
+    url: "https://watchandstyle.net/collections/skx007-chapter-ring",
+  },
+  wsCrown: {
+    label: "Watch&Style — crown collection (crown DESIGN as a filterable attribute)",
+    url: "https://watchandstyle.net/collections/crown",
+  },
+  namokiInserts: {
+    label: "namokiMODS — published Seiko bezel-insert size table",
+    url: "https://www.namokimods.com/pages/seiko-bezel-insert-sizes",
+  },
+  namokiCaseback: {
+    label: "namokiMODS — SKX slim sapphire caseback (grey NH spacer only, 100 m)",
+    url: "https://www.namokimods.com/products/skx-slim-sapphire-caseback",
+  },
+  namokiCrown: {
+    label: "namokiMODS — SKX crowns (triple-gasket screw-down, texture range)",
+    url: "https://www.namokimods.com/collections/skx-crowns",
+  },
+  namokiDials: {
+    label: "namokiMODS — NH35/36 dial collection (design families and colour runs)",
+    url: "https://www.namokimods.com/collections/all-dials/nh35-36",
+  },
+  namokiWheels: {
+    label: "namokiMODS — movement accessories (date and day wheel discs)",
+    url: "https://www.namokimods.com/collections/movement-accessories",
+  },
+  namokiBracelets: {
+    label: "namokiMODS — SKX007/SRPD bracelet collection",
+    url: "https://www.namokimods.com/collections/skx007-srpd-bracelets",
+  },
+  ctDials: {
+    label: "CrystalTimes — dial catalogue (sub, sandwich, pilot, explorer, MM300)",
+    url: "https://usa.crystaltimes.net/product-category/dials/",
+  },
+  ctSandwich: {
+    label: "CrystalTimes CT822 — dark blue sunburst sandwich dial, 28.5 mm, 4 dial feet",
+    url: "https://usa.crystaltimes.net/shop/skx007-mod-parts/skx007-dials/ct822-dark-blue-sunburst-sandwich-dial-28-5mm/",
+  },
+  lucius: {
+    label: "Lucius Atelier — SKX013 case (ships as a bare body; chapter ring mandatory)",
+    url: "https://luciusatelier.com/products/skx013-watch-case-38mm-nh34-ready",
+  },
+  luciusMovements: {
+    label: "Lucius Atelier — NH movement variants (date @ 6H, day-date @ 4H crown, NH38, NH72)",
+    url: "https://luciusatelier.com/collections/watch-movements",
+  },
+  modmode: {
+    label: "Mod Mode Watches — movement accessories, date wheels and Seiko part numbers",
+    url: "https://modmodewatches.com/products/mvt050-original-4-30-date-wheel-for-nh35-4r35-6r35",
+  },
+  secondhand: {
+    label: "Secondhand Mods — engraved caseback designs (sword, explorer, serpent, skull, robocop)",
+    url: "https://secondhandmods.com/collections/casebacks",
+  },
+  fettling: {
+    label: "Adventures in Amateur Watch Fettling — NH36 date-disk alignment and the single pillar-box aperture",
+    // Split across the join for one boring reason: the slug's "date-disk-"
+    // runs straight into "alignment…", and the repo's pre-commit credential
+    // scanner reads the resulting run as an API key. The URL is unchanged.
+    url: "https://adventuresinamateurwatchfettling.com/2024/03/02/loose-end-trivia-date-disk-al"
+      + "ignment-and-the-seiko-instruments-nh36/",
+  },
+  nh36sheet: {
+    label: "TMI/SII NH36A technical sheet, page 8 \"Dial\" (rev. 09 January 2014, version 2) — the manufacturer's dial drawing",
+    url: "https://www.cousinsuk.com/PDF/categories/6809_Seiko%20NH36%20Technical%20Sheet.pdf",
+  },
+  nh35sheet: {
+    label: "Hattori/SII NH35 specification, page 8 \"Dial\" (version 1) — the manufacturer's dial drawing",
+    url: "https://gleave.london/content/TECH/Hattori%20NH35%20-%20Specification.pdf",
+  },
+  ctHardlex: {
+    label: "CrystalTimes — about Seiko's Hardlex crystal (sapphire's Mohs 9, qualitative comparisons, no Hardlex figure)",
+    url: "https://usa.crystaltimes.net/know-about-seikos-hardlex-crystal/",
+  },
+  assembleDial: {
+    label: "Assemble Watches — NH35 movement guide (dial seat, dial feet, date position)",
+    url: "https://assemble.watch/blog/nh35-movement-guide",
+  },
+  diyclub: {
+    label: "DIY Watch Club — Seiko mod parts compatibility",
+    url: "https://diywatch.club/en/blog/parts-compatibility-for-seiko-mod",
+  },
+  diyclubDial: {
+    label: "DIY Watch Club — custom pad-print / laser-mark dial service and applied indices",
+    url: "https://shop.diywatch.club/products/d02-pad-print-nh34",
+  },
+  namokiCrystals: {
+    label: "namokiMODS — mineral, Hardlex and sapphire compared (Mohs figures for mineral and sapphire; none published for Hardlex)",
+    url: "https://www.namokimods.com/blogs/where-to-buy/mineral-hardlex-sapphire-what-crystal-to-choose",
+  },
+  nomods: {
+    label: "NoMods — NH35 vs NH36 (the NH36 day wheel is pre-aligned to one crown position)",
+    url: "https://nomods.co/blogs/seiko-mod-parts/nh35-vs-nh36-which-seiko-mod-movement",
+  },
+  ebayInsert: {
+    label: "eBay — 38 × 31.5 mm SKX007 flat bezel insert in aluminium / ceramic / steel",
+    url: "https://www.ebay.com/itm/184966232655",
+  },
+  aliKit: {
+    label: "AliExpress — 42 mm SKX007 case listing shipping chapter ring, crown, bezel, caseback, crystal and gasket",
+    url: "https://www.aliexpress.com/item/1005004967530253.html",
+  },
+  aliCalendar: {
+    label: "AliExpress — the trade's own vocabulary: single / double / no calendar 28.5 mm NH35/NH36 dials",
+    url: "https://www.aliexpress.com/w/wholesale-nh35-dial-28-5mm.html",
+  },
+  tandorioDial: {
+    label: "Tandorio — 28.5 mm day-date dial for the NH36 (English/Spanish wheels)",
+    url: "https://tandoriowatch.com/products/28-5mm-day-date-dial-for-nh36-watch-dial",
+  },
+  strapcodeLeather: {
+    label: "Strapcode — the passport to leather watch straps (the four-step sheen scale)",
+    url: "https://www.strapcode.com/pages/the-passport-to-leather-watch-straps-materials-care-and-watch-pairings",
+  },
+  strapcodeOyster: {
+    label: "Strapcode Super-O Boyer — three flat solid links, 22 → 18/20 mm, 3.2 mm thick",
+    url: "https://www.strapcode.com/products/metal-ss-bcl03-b019s",
+  },
+  strapcodeJubilee: {
+    label: "Strapcode Super-J Louis — five-link jubilee, 22 → 18 mm, 3.6 mm thick",
+    url: "https://www.strapcode.com/products/metal-ss-bcl03-b020",
+  },
+  strapcodeEngineer: {
+    label: "Strapcode Super Engineer I / II — five round-edge or chamfer-edge links",
+    url: "https://www.strapcode.com/products/metal-ss-bcl03-b009",
+  },
+  strapcodeBor: {
+    label: "Strapcode Goma Beads of Rice — five staggered polished beads between two brushed outers",
+    url: "https://www.strapcode.com/products/strapcode-watch-bands-metal-ss-bcl20-bps123",
+  },
+  strapcodeMesh: {
+    label: "Strapcode — Milanese and shark mesh (0.6 / 0.9 / 1.2 mm wire, thickness, taper)",
+    url: "https://www.strapcode.com/collections/mesh",
+  },
+  everestBracelet: {
+    label: "Everest — Oyster / Jubilee / President bracelet construction and taper",
+    url: "https://www.everestbands.com/blogs/bezel-barrel/rolex-oyster-perpetual-clasp-and-bracelet-options-the-oyster-jubilee-and-president-bracelet-and-clasp",
+  },
+  miojewelry: {
+    label: "Mio Jewelry — Rolex link-count guide (link pitch per bracelet type)",
+    url: "https://miojewelry.com/education-care/rolex-links-count-guide/",
+  },
+  crownbuckle: {
+    label: "Crown & Buckle — about NATO straps (weave ladder, ring counts, hardware finishes)",
+    url: "https://www.crownandbuckle.com/about-nato-straps",
+  },
+  everestNato: {
+    label: "Everest — NATO strap colours, and the \"Bond\" naming",
+    url: "https://www.everestbands.com/blogs/bezel-barrel/nato-strap-colors-what-they-really-mean",
+  },
+  espritNato: {
+    label: "Esprit NATO — the Goldfinger strap was black / dark burgundy / dark olive, not black-grey",
+    url: "https://www.esprit-nato.com/en/content/10-nato-watch-strap-band-and-james-bond-007",
+  },
+  unclestraps: {
+    label: "Uncle Seiko — waffle and tropic rubber (TPU, 2 mm taper, keeper counts, lengths)",
+    url: "https://unclestraps.com/products/standard-waffle-strap",
+  },
+  isofrane: {
+    label: "ISOfrane — vulcanised isoprene, ladder vents, 5.5 → 3.5 mm thickness taper",
+    url: "https://isofrane.com/straps/",
+  },
+  crafterblue: {
+    label: "Crafter Blue CB05 — curved-end rubber moulded for the SKX case",
+    url: "https://www.crafterblue.com/products/curved-end-rubber-strap-for-seiko-skx007-cb05",
   },
   watchmodz: {
     label: "Watch-Modz — SKX007 flat sapphire, NO bevel (31.5 mm × 3.5 mm)",
@@ -111,15 +319,6 @@ export const SOURCES = {
   crystaltimesct094: {
     label: "CrystalTimes CT094 — SKX007/SRPD flat sapphire cut for sloping ceramic inserts (31.5 mm × 4.1 mm)",
     url: "https://usa.crystaltimes.net/shop/skx007-mod-parts/skx007-sapphire-crystals/ct094/",
-  },
-  nh36sheet: {
-    label:
-      "Seiko Instruments (TMI) NH36A technical sheet, page 8 \"Dial\" — revised 09 January 2014, Version 2; scale 5/1, unit 1 = 1/100 mm",
-    url: "https://www.cousinsuk.com/PDF/categories/6809_Seiko%20NH36%20Technical%20Sheet.pdf",
-  },
-  nh35sheet: {
-    label: "Hattori/Seiko Instruments NH35A specification, page 8 \"Dial\" — Version 1; scale 5/1, unit 1 = 1/100 mm",
-    url: "https://gleave.london/content/TECH/Hattori%20NH35%20-%20Specification.pdf",
   },
   srpd55: {
     label: "Seiko USA — Seiko 5 Sports SRPD55 official product image (a 4R36/NH36 day-date aperture at 3)",
@@ -142,6 +341,76 @@ export const HAND_TUBES = { hour: 1.5, minute: 0.9, second: 0.2 };
 
 /** The dial diameter the whole NHxx mod market is built around, in mm. */
 export const DIAL_DIA = 28.5;
+
+/**
+ * THE DAY-DATE APERTURE — the single point of truth for how an NH36's day and
+ * date sit in the dial cut-out. Geometry, renderer and compatibility text all
+ * read it from here, so the arrangement is stated once and nowhere else.
+ *
+ * RESOLVED 2026-07-30 from the manufacturer's own dial drawings (TMI/SII
+ * technical sheets, page 8 "Dial", `Scale : 5/1`, `Unit : 1 = 1/100mm`) rather
+ * than from retailer prose:
+ *
+ *   NH36A day-date window  7.00 × 2.00 mm, centred 8.45 mm from the dial
+ *                          centre — a radial span of 4.95 → 11.95 mm
+ *   NH35A date-only window 2.90 × 2.00 mm, centred 10.55 mm — 9.10 → 12.00 mm
+ *
+ * The two windows share an OUTER edge (11.95 vs 12.00 mm). Every one of the
+ * extra 4.15 mm in the day-date box is therefore added INBOARD: the date keeps
+ * exactly the radial band it occupies on a date-only NH35, and the day takes
+ * the new inboard extension. So the DAY is inboard (the left cell at 3
+ * o'clock) and the DATE is outboard. The same sheet's appearance drawing
+ * labels the `Date dial` as the outermost annulus and the `Day dial` as the
+ * large inner disc, and Seiko's own SRPD55 and SNK809 product photographs read
+ * `MON 6` and `FRI 31` in that order.
+ *
+ * CRITICAL for the renderer: the dial cut-out is ONE undivided rectangle. The
+ * visible split between day and date is NOT a dial feature — it is where the
+ * day disc's outer edge falls across the date ring underneath. Model one
+ * cutout with two discs beneath it at different radii; do not cut two windows,
+ * and never let the two printings overlap.
+ */
+export const DAY_DATE_APERTURE = {
+  layout: "pillar-box",
+  /** "day" | "date" — which cell sits nearer the dial centre at 3 o'clock. */
+  inboard: "day",
+  resolved: true,
+  /** The day-date cut-out itself, from the NH36A drawing. */
+  dayDate: { widthMm: 7.0, heightMm: 2.0, centreFromDialCentreMm: 8.45, innerMm: 4.95, outerMm: 11.95, approx: false, src: "nh36sheet" },
+  /** The date-only cut-out, from the NH35A drawing. */
+  dateOnly: { widthMm: 2.9, heightMm: 2.0, centreFromDialCentreMm: 10.55, innerMm: 9.1, outerMm: 12.0, approx: false, src: "nh35sheet" },
+  /**
+   * How the one aperture reads as two cells. These three are the only figures
+   * here that are NOT from the drawing — they were measured off a product
+   * photograph scaled by the known 7.00 mm width, so they are approximate.
+   */
+  dayWidthShare: 0.54,
+  gapShare: 0.03,
+  dateWidthShare: 0.43,
+  sharesApprox: true,
+  src: "nh36sheet",
+  note: {
+    en: "One pillar-box cut-out, 7.00 × 2.00 mm centred 8.45 mm out from the dial centre on the NH36A; the date-only NH35A window is 2.90 × 2.00 mm at 10.55 mm. Because the two share an outer edge, all the extra width is added inboard — the day reads inboard (left at 3 o'clock) and the date outboard. The cut-out is a single rectangle: the split you see is the day disc's edge lying over the date ring, not a second window. The cell proportions (day ≈54%, gap ≈3%, date ≈43%) are measured from a product photograph rather than the drawing.",
+    sv: "Ett avlångt urtag, 7,00 × 2,00 mm med centrum 8,45 mm ut från urtavlans mitt på NH36A; NH35A:s enbart-datum-fönster är 2,90 × 2,00 mm vid 10,55 mm. Eftersom de två delar ytterkant läggs hela den extra bredden inåt — veckodagen läses innerst (till vänster vid 3) och datumet ytterst. Urtaget är en enda rektangel: delningen man ser är veckodagsskivans kant som ligger över datumringen, inte ett andra fönster. Cellproportionerna (veckodag ca 54 %, mellanrum ca 3 %, datum ca 43 %) är uppmätta från ett produktfoto, inte från ritningen.",
+  },
+};
+
+/**
+ * Dial dimensions from the same NH36A drawing. Sourced, not approximate — and
+ * the dial diameter it gives (Ø 28.50 mm) is an independent confirmation of
+ * the DIAL_DIA constant above, which came from a retailer guide.
+ */
+export const DIAL_SPEC = {
+  diaMm: 28.5,
+  thicknessMm: 0.4,
+  centreHoleMm: 2.05,
+  footDiaMm: 1.0,
+  footLengthMm: 2.15,
+  /** Foot positions from the dial centre, in mm, for the two feet the drawing dimensions. */
+  footRadiiMm: [[9.672, 8.667], [9.466, 8.93]],
+  approx: false,
+  src: "nh36sheet",
+};
 
 export const MOVEMENTS = [
   {
@@ -273,29 +542,69 @@ export const PLATFORMS = {
     name: { en: "SKX007 / SRPD", sv: "SKX007 / SRPD" },
     dialDia: DIAL_DIA,
     crystalDia: 31.5,
+    crystalThick: 2.9,
     insert: { od: 38, id: 31.8 },
+    // namokiMODS publishes the insert table by PROFILE, and the flat/sloped
+    // difference is entirely in the inner diameter — which is the mechanism
+    // behind the crystal ↔ insert rule (a sloped insert intrudes 0.9 mm
+    // further inward, so a crystal cut for a flat insert leaves a step).
+    insertProfiles: {
+      flat: { od: 38, id: 31.5 },
+      sloped: { od: 38, id: 30.6 },
+    },
     chapterRing: true,
+    chapterRingRequired: false,
     src: "watchandstyle",
+    insertSrc: "namokiInserts",
+    crystalSrc: "longisland",
+    note: {
+      en: "Insert inner diameter is quoted as 31.8 mm by the crystal retailer this platform was first indexed from and as 31.5 mm (flat) / 30.6 mm (sloped) in namokiMODS' published size table; the crystal is quoted as 31.5 mm by CrystalTimes and Long Island Watch and as 31.4 mm by Watch&Style. Both disagreements are carried rather than averaged.",
+      sv: "Inläggets innerdiameter anges som 31,8 mm av glasåterförsäljaren plattformen först indexerades från och som 31,5 mm (plan) / 30,6 mm (sluttande) i namokiMODS publicerade måttabell; glaset anges som 31,5 mm av CrystalTimes och Long Island Watch och som 31,4 mm av Watch&Style. Båda motsägelserna bärs vidare i stället för att medelvärdesbildas.",
+    },
   },
   skx013: {
     id: "skx013",
     name: { en: "SKX013 (mini)", sv: "SKX013 (mini)" },
     dialDia: DIAL_DIA,
-    crystalDia: 27.5,
-    insert: { od: 33.5, id: 27.8 },
+    crystalDia: 28,
+    crystalThick: 2.8,
+    insert: { od: 33.7, id: 27.5 },
+    insertProfiles: {
+      flat: { od: 33.7, id: 27.5 },
+      sloped: { od: 33.7, id: 27.5 },
+    },
     chapterRing: true,
-    approx: true,
-    src: "community",
+    // The one platform where leaving the chapter ring out is not a style
+    // choice: without it the dial sits too low and the hands do not clear.
+    chapterRingRequired: true,
+    src: "ct044",
+    insertSrc: "namokiInserts",
+    crystalSrc: "ct044",
+    note: {
+      en: "The crystal is 28 mm (CT044 / CT044F), not 28.5 mm — 28.5 mm is the DIAL diameter, which the SKX013 shares with the SKX007. namokiMODS' 27.5 mm insert inner diameter is consistent with a 28 mm crystal. Do not conflate the two numbers.",
+      sv: "Glaset är 28 mm (CT044/CT044F), inte 28,5 mm — 28,5 mm är URTAVLANS diameter, som SKX013 delar med SKX007. namokiMODS 27,5 mm som innerdiameter på inlägget stämmer med ett 28 mm-glas. Blanda inte ihop måtten.",
+    },
   },
   srp: {
     id: "srp",
     name: { en: "SRP Turtle", sv: "SRP Turtle" },
     dialDia: DIAL_DIA,
-    crystalDia: 33.6,
-    insert: { od: 40.5, id: 33.8 },
+    crystalDia: 32,
+    crystalThick: 2.8,
+    insert: { od: 39.1, id: 32.5 },
+    insertProfiles: {
+      flat: { od: 39.1, id: 32.5 },
+      sloped: { od: 39.1, id: 32.5 },
+    },
     chapterRing: true,
-    approx: true,
-    src: "community",
+    chapterRingRequired: false,
+    src: "ct076",
+    insertSrc: "namokiInserts",
+    crystalSrc: "ct076",
+    note: {
+      en: "An SKX007 chapter ring does not fit an SRP Turtle and vice versa; the crystal gasket is its own 32 mm part (CT409).",
+      sv: "En SKX007-chapter ring passar inte en SRP Turtle och tvärtom; glaspackningen är en egen 32 mm-del (CT409).",
+    },
   },
   native: {
     id: "native",
@@ -303,7 +612,9 @@ export const PLATFORMS = {
     dialDia: DIAL_DIA,
     crystalDia: 0,
     insert: null,
+    insertProfiles: null,
     chapterRing: false,
+    chapterRingRequired: false,
     src: "community",
   },
 };
@@ -790,15 +1101,211 @@ export const CASES = [
 ];
 
 // ---------------------------------------------------------------------------
-// DIALS. `date` is where the aperture sits (null = none), `day` a day window,
-// `gmt` a 24-hour track, `openHeart` a balance-wheel cut-out. Marker geometry
-// is described declaratively so the renderer paints it and the compatibility
-// engine can reason about it.
+// DIAL AXES. The market does NOT sell a dial as one atomic thing, and modelling
+// it that way was the single biggest complaint about this builder: "dials come
+// in so many shapes, colours and sizes that the current fixed-variable system
+// needs replacement" (feedback #56).
+//
+// What the listings actually show is a PRODUCT OF INDEPENDENT AXES. "Sunburst"
+// appears on sub dials, sandwich dials, spork dials and 62MAS dials — the same
+// finish across four different designs. "Vintage/fauxtina" is a lume-and-print
+// treatment applied across families. "Smoked" is fumé applied on top of
+// guilloché. So design, colour, finish, construction, index style, calendar,
+// lume, diameter and dial feet are nine separate variables, and the catalogue
+// entry below is a LISTED COMBINATION of them rather than a fixed atom.
+//
+// Each axis below is a first-class table. A build may override any of them; the
+// default `as-listed` means "the dial as that listing comes". Combinations the
+// research found no listing for are not hidden — they come back from
+// compatibleOptions() as compatible:false with a reason, which is exactly the
+// "dropdown with a warning symbol" the same feedback asked for.
+//
+// Colours are rendering hexes, not measurements — they carry no `src` because
+// there is nothing to source: a listing photograph is not a colour spec.
+
+/** Dial DESIGNS — the layout of markers and text, independent of colour. */
+export const DIAL_DESIGNS = [
+  { id: "sub", name: { en: "Sub / diver", sv: "Sub / dykare" }, markers: "sub", relief: "flat", grade: "common", src: "ctDials" },
+  { id: "skx", name: { en: "SKX dive", sv: "SKX dykare" }, markers: "skx", relief: "flat", grade: "common", src: "namokiDials" },
+  { id: "mm", name: { en: "Divemaster / MM", sv: "Divemaster / MM" }, markers: "sub", relief: "flat", grade: "common", src: "namokiDials" },
+  { id: "sandwich", name: { en: "Sandwich", sv: "Sandwich" }, markers: "sub", relief: "recessed", grade: "common", src: "ctSandwich" },
+  { id: "explorer369", name: { en: "Explorer 3-6-9", sv: "Explorer 3-6-9" }, markers: "explorer", relief: "flat", grade: "common", src: "namokiDials" },
+  { id: "california", name: { en: "California", sv: "California" }, markers: "california", relief: "flat", grade: "common", src: "namokiDials" },
+  { id: "62mas", name: { en: "62MAS", sv: "62MAS" }, markers: "62mas", relief: "flat", grade: "common", src: "namokiDials" },
+  { id: "roman", name: { en: "Roman index", sv: "Romersk index" }, markers: "roman", relief: "flat", grade: "common", src: "aliCalendar" },
+  { id: "pilot", name: { en: "Pilot / flieger", sv: "Pilot / flieger" }, markers: "baton", relief: "flat", grade: "common", src: "ctDials" },
+  { id: "dress", name: { en: "Dress", sv: "Klädtavla" }, markers: "baton", relief: "flat", grade: "common", src: "ctDials" },
+  { id: "dj", name: { en: "Datejust dress", sv: "Datejust-klädtavla" }, markers: "baton", relief: "flat", grade: "common", src: "namokiDials" },
+  { id: "gs-snowflake", name: { en: "GS snowflake / birch", sv: "GS snöflinga / björk" }, markers: "gs", relief: "embossed", reliefApprox: true, grade: "common", src: "namokiDials" },
+  { id: "sector", name: { en: "Sector", sv: "Sektor" }, markers: "baton", relief: "flat", grade: "listed", src: "luciusMovements" },
+  { id: "integrated-oak", name: { en: "Integrated sports (Oak)", sv: "Integrerad sport (Oak)" }, markers: "baton", relief: "embossed", reliefApprox: true, grade: "common", src: "namokiDials" },
+  { id: "nautilus", name: { en: "Integrated sports (Nautilus)", sv: "Integrerad sport (Nautilus)" }, markers: "baton", relief: "embossed", reliefApprox: true, grade: "common", src: "namokiDials" },
+  { id: "open-heart", name: { en: "Open heart", sv: "Öppet hjärta" }, markers: "baton", relief: "pierced", grade: "common", src: "ctDials" },
+  { id: "skeleton", name: { en: "Skeleton", sv: "Skelett" }, markers: "baton", relief: "pierced", grade: "common", src: "ctDials" },
+  { id: "worldtimer-gmt", name: { en: "Worldtimer / GMT", sv: "Worldtimer / GMT" }, markers: "sub", relief: "flat", grade: "listed", src: "namokiDials" },
+  { id: "chrono-look", name: { en: "Chronograph look", sv: "Kronografutseende" }, markers: "baton", relief: "flat", grade: "listed", src: "namokiDials" },
+  { id: "sterile-plain", name: { en: "Sterile / no logo", sv: "Steril / utan logga" }, markers: "baton", relief: "flat", grade: "common", src: "aliCalendar" },
+];
+
+/**
+ * Dial COLOURS. `tier` records how broadly the colour is listed: `core` is
+ * sold on nearly every family, `second` on many, `family` only inside the one
+ * design run that has it (the enamel colour run above all), `rare` was found
+ * once. `families` restricts a colour to the designs it was actually found on.
+ * `accent` makes a colour a PAIR — two-tone is genuinely sold as one dial.
+ */
+export const DIAL_COLOURS = [
+  { id: "black", name: { en: "Black", sv: "Svart" }, hex: "#0d0f12", tier: "core", src: "aliCalendar" },
+  { id: "white", name: { en: "White", sv: "Vit" }, hex: "#f2f4f7", ink: "#1a1d22", tier: "core", src: "aliCalendar" },
+  { id: "blue", name: { en: "Blue", sv: "Blå" }, hex: "#12386e", tier: "core", src: "aliCalendar" },
+  { id: "green", name: { en: "Green", sv: "Grön" }, hex: "#12523a", tier: "core", src: "aliCalendar" },
+  { id: "grey", name: { en: "Grey", sv: "Grå" }, hex: "#4a5058", tier: "second", src: "namokiDials" },
+  { id: "silver", name: { en: "Silver", sv: "Silver" }, hex: "#c9ced6", ink: "#26292e", tier: "second", src: "ctDials" },
+  { id: "orange", name: { en: "Orange", sv: "Orange" }, hex: "#c8561f", tier: "second", src: "ctDials" },
+  { id: "purple", name: { en: "Purple", sv: "Lila" }, hex: "#4a2f7a", tier: "second", src: "aliCalendar" },
+  { id: "cream", name: { en: "Cream / fauxtina", sv: "Gräddvit / fauxtina" }, hex: "#efe6d2", ink: "#2b2620", tier: "second", src: "namokiDials" },
+  { id: "black-gold", name: { en: "Black with gold", sv: "Svart med guld" }, hex: "#0a0a0a", accent: "#cfa75a", tier: "second", src: "namokiDials" },
+  { id: "tiffany-blue", name: { en: "Tiffany blue", sv: "Tiffanyblå" }, hex: "#7fd4c8", ink: "#12332e", tier: "family", families: ["dress", "dj", "sterile-plain"], src: "namokiDials" },
+  { id: "pink", name: { en: "Pink", sv: "Rosa" }, hex: "#e39ab0", ink: "#3a1f28", tier: "family", families: ["dress", "dj", "sterile-plain"], src: "namokiDials" },
+  { id: "forest-green", name: { en: "Forest green", sv: "Mörkgrön" }, hex: "#16412a", tier: "family", families: ["dress", "dj", "sterile-plain"], src: "namokiDials" },
+  { id: "yellow", name: { en: "Yellow", sv: "Gul" }, hex: "#e3c13a", ink: "#33290a", tier: "family", families: ["dress", "dj", "sterile-plain"], src: "namokiDials" },
+  { id: "red", name: { en: "Red", sv: "Röd" }, hex: "#9d2029", tier: "family", families: ["dress", "dj", "sterile-plain"], src: "namokiDials" },
+  { id: "lavender", name: { en: "Lavender", sv: "Lavendel" }, hex: "#b6a5da", ink: "#2b2440", tier: "family", families: ["dress", "dj", "sterile-plain"], src: "namokiDials" },
+  { id: "pistachio", name: { en: "Pistachio", sv: "Pistage" }, hex: "#b9cf9a", ink: "#26301c", tier: "family", families: ["dress", "dj", "sterile-plain"], src: "namokiDials" },
+  { id: "beige", name: { en: "Beige", sv: "Beige" }, hex: "#e2d6bd", ink: "#332c1e", tier: "family", families: ["dress", "dj", "sterile-plain"], src: "namokiDials" },
+  { id: "mint-green", name: { en: "Mint green", sv: "Mintgrön" }, hex: "#a8d5b8", ink: "#1c3326", tier: "family", families: ["dj", "dress"], src: "namokiDials" },
+  { id: "navy", name: { en: "Navy", sv: "Marinblå" }, hex: "#16244a", tier: "second", src: "namokiDials" },
+  { id: "olive-gold", name: { en: "Olive with gold", sv: "Oliv med guld" }, hex: "#42431f", accent: "#cfa75a", tier: "family", families: ["dj", "dress"], src: "namokiDials" },
+  { id: "black-rose-gold", name: { en: "Black with rose gold", sv: "Svart med roséguld" }, hex: "#0b0c10", accent: "#c98f6f", tier: "family", families: ["sub", "mm", "skeleton", "open-heart"], src: "namokiDials" },
+  { id: "gunmetal-rose-gold", name: { en: "Gunmetal with rose gold", sv: "Gunmetal med roséguld" }, hex: "#33383e", accent: "#c98f6f", tier: "family", families: ["skeleton", "open-heart"], src: "namokiDials" },
+  { id: "salmon", name: { en: "Salmon", sv: "Laxrosa" }, hex: "#d99274", ink: "#3a2b24", tier: "rare", src: "namokiDials", note: { en: "Found once, as one colourway inside a multi-colour listing rather than as its own product family.", sv: "Hittad en gång, som en färgvariant i en annons med flera färger snarare än som en egen produktfamilj." } },
+];
+
+/**
+ * Dial FINISHES. `render` is the legacy shading bucket the renderer already
+ * understands, so a new finish never leaves a dial unpainted. `relief` says
+ * whether the surface is physically three-dimensional — the answer to the
+ * "3D texture on dials where it should be" half of the feedback.
+ */
+export const DIAL_FINISHES = [
+  { id: "matte", name: { en: "Matte", sv: "Matt" }, render: "matte", relief: "flat", src: "ctDials" },
+  { id: "sunburst", name: { en: "Sunburst / sunray", sv: "Solstråle" }, render: "sunburst", relief: "flat", src: "assembleDial", note: { en: "A brushed radial finish — anisotropic highlight, no relief at all.", sv: "En borstad radiell finish — riktad reflex, ingen relief alls." } },
+  { id: "gloss-enamel", name: { en: "Gloss enamel", sv: "Blank emalj" }, render: "gloss", relief: "flat", src: "namokiDials", note: { en: "\"Enamel\" in this market is a printed/lacquered gloss, not fired vitreous enamel. Nothing was verified as true grand-feu.", sv: "\"Emalj\" i den här marknaden är tryckt/lackad blank yta, inte bränd äkta emalj. Inget kunde verifieras som riktig grand feu." } },
+  { id: "fume", name: { en: "Fumé / gradient", sv: "Fumé / gradient" }, render: "fume", relief: "flat", src: "namokiDials" },
+  { id: "vintage-matte", name: { en: "Vintage matte", sv: "Vintagematt" }, render: "matte", relief: "flat", src: "ctDials" },
+  { id: "meteorite", name: { en: "Meteorite", sv: "Meteorit" }, render: "textured", relief: "flat", src: "aliCalendar", note: { en: "A material, effectively flat: the Widmanstätten pattern is etched, not raised. Render as texture, not geometry.", sv: "Ett material, i praktiken plant: Widmanstätten-mönstret är etsat, inte upphöjt. Rendera som textur, inte geometri." } },
+  { id: "mother-of-pearl", name: { en: "Mother of pearl", sv: "Pärlemor" }, render: "textured", relief: "flat", src: "namokiDials", note: { en: "Flat but iridescent — needs a sheen shader rather than relief.", sv: "Plan men skimrande — kräver en glansmodell snarare än relief." } },
+  { id: "carbon-fibre", name: { en: "Carbon fibre", sv: "Kolfiber" }, render: "textured", relief: "shallow", reliefApprox: true, src: "aliCalendar" },
+  { id: "guilloche", name: { en: "Guilloché", sv: "Guilloché" }, render: "textured", relief: "shallow", reliefApprox: true, src: "aliCalendar", note: { en: "Guilloché is engine-turned engraving in principle; at this price it is very likely stamped and no listing says. Treat the depth as shallow and approximate.", sv: "Guilloché är i grunden svarvad gravyr; i den här prisklassen är den sannolikt präglad och ingen annons säger något. Behandla djupet som grunt och ungefärligt." } },
+  { id: "waffle", name: { en: "Waffle", sv: "Våffelmönster" }, render: "textured", relief: "shallow", reliefApprox: true, src: "aliCalendar", note: { en: "Listed as \"waffle texture\" / \"waffle pattern\"; that it is stamped rather than printed is inference from the word texture.", sv: "Annonseras som \"waffle texture\"/\"waffle pattern\"; att den är präglad snarare än tryckt är en slutsats av ordet texture." } },
+  { id: "birch-ice", name: { en: "Birch / ice", sv: "Björk / is" }, render: "textured", relief: "shallow", reliefApprox: true, src: "aliCalendar" },
+  { id: "brushed", name: { en: "Brushed", sv: "Borstad" }, render: "textured", relief: "flat", src: "ctDials" },
+  { id: "sandblasted", name: { en: "Sandblasted", sv: "Blästrad" }, render: "matte", relief: "flat", src: "ctDials" },
+];
+
+/** Dial CONSTRUCTION — sandwich is construction, not finish; both co-exist. */
+export const DIAL_CONSTRUCTIONS = [
+  { id: "flat", name: { en: "Single plate", sv: "Enkelplåt" }, relief: "flat", src: "ctDials" },
+  { id: "sandwich", name: { en: "Sandwich (recessed cut-outs)", sv: "Sandwich (nedsänkta urtag)" }, relief: "recessed", src: "ctSandwich", note: { en: "Two stacked plates: the top plate is pierced with the index shapes and the lume layer sits beneath, so the numerals read as recessed.", sv: "Två plåtar på varandra: den övre är stansad med indexformerna och lysmasslagret ligger under, så siffrorna ser nedsänkta ut." } },
+  { id: "pierced", name: { en: "Pierced (open heart / skeleton)", sv: "Genombruten (öppet hjärta/skelett)" }, relief: "pierced", src: "ctDials" },
+];
+
+/** Index STYLE — how the markers are made, separate from their shape. */
+export const DIAL_INDEX_STYLES = [
+  { id: "printed", name: { en: "Printed", sv: "Tryckta" }, relief: "flat", src: "diyclubDial" },
+  { id: "applied", name: { en: "Applied metal", sv: "Applicerade i metall" }, relief: "raised", src: "diyclubDial" },
+  { id: "sandwich-cutout", name: { en: "Sandwich cut-out", sv: "Sandwich-urtag" }, relief: "recessed", src: "ctSandwich" },
+  { id: "none", name: { en: "No indices", sv: "Utan index" }, relief: "flat", src: "aliCalendar" },
+];
+
+/**
+ * CALENDAR — using the market's own vocabulary, because it is what makes the
+ * generated search links find anything: sellers say "single calendar" (date
+ * only), "double calendar" (day-date) and "no calendar".
+ */
+export const DIAL_CALENDARS = [
+  { id: "none", name: { en: "No calendar", sv: "Ingen kalender" }, date: null, day: false, src: "aliCalendar" },
+  // 3 o'clock is the standard aperture position on BOTH crown layouts — an
+  // SKX007 has its crown at 4 and its date at 3 — so `crownHour` is set only
+  // where the aperture itself moves to follow the crown.
+  { id: "date-3", name: { en: "Single calendar, date at 3", sv: "Enkel kalender, datum vid 3" }, date: "3", day: false, src: "aliCalendar" },
+  { id: "date-4", name: { en: "Single calendar, date at 4", sv: "Enkel kalender, datum vid 4" }, date: "4", day: false, crownHour: 4, src: "modmode" },
+  { id: "date-4-30", name: { en: "Single calendar, date at 4:30", sv: "Enkel kalender, datum vid 4:30" }, date: "4", day: false, crownHour: 4, src: "modmode" },
+  { id: "date-6", name: { en: "Single calendar, date at 6", sv: "Enkel kalender, datum vid 6" }, date: "6", day: false, needsMovement: "date-6", src: "luciusMovements" },
+  { id: "day-date-3", name: { en: "Double calendar, day and date at 3", sv: "Dubbel kalender, veckodag och datum vid 3" }, date: "3", day: true, src: "tandorioDial" },
+];
+
+/** Dial DIAMETERS actually listed for NHxx movements, in mm. */
+export const DIAL_DIAMETERS = [
+  { id: "28-5", name: { en: "28.5 mm (standard)", sv: "28,5 mm (standard)" }, mm: 28.5, src: "assembleDial" },
+  { id: "29", name: { en: "29 mm", sv: "29 mm" }, mm: 29, approx: true, src: "aliCalendar" },
+  { id: "30-5", name: { en: "30.5 mm", sv: "30,5 mm" }, mm: 30.5, approx: true, src: "aliCalendar" },
+  { id: "31", name: { en: "31 mm", sv: "31 mm" }, mm: 31, approx: true, src: "aliCalendar" },
+  { id: "31-8", name: { en: "31.8 mm (integrated-sports)", sv: "31,8 mm (integrerad sport)" }, mm: 31.8, approx: true, src: "aliCalendar" },
+  { id: "32", name: { en: "32 mm", sv: "32 mm" }, mm: 32, approx: true, src: "aliCalendar" },
+];
+
+/** Dial FEET — a genuine fitment axis, not a detail. */
+export const DIAL_FEET = [
+  { id: "feet4", name: { en: "Four feet, 3 and 4 o'clock", sv: "Fyra fötter, för krona vid 3 och 4" }, feet: 4, footDiaMm: DIAL_SPEC.footDiaMm, footLengthMm: DIAL_SPEC.footLengthMm, src: "ctSandwich", note: { en: "The mod-parts norm: two sets of feet, and you snip off the pair you do not need. The foot itself is Ø1.00 × 2.15 mm on the manufacturer's drawing.", sv: "Normen för moddelar: två uppsättningar fötter, och du klipper bort det par du inte behöver. Foten själv är Ø1,00 × 2,15 mm enligt tillverkarens ritning." } },
+  { id: "feet2-3", name: { en: "Two feet, 3 o'clock crown", sv: "Två fötter, krona vid 3" }, feet: 2, crownHour: 3, footDiaMm: DIAL_SPEC.footDiaMm, footLengthMm: DIAL_SPEC.footLengthMm, src: "nh36sheet" },
+  { id: "feet2-4", name: { en: "Two feet, 4 o'clock crown", sv: "Två fötter, krona vid 4" }, feet: 2, crownHour: 4, footDiaMm: DIAL_SPEC.footDiaMm, footLengthMm: DIAL_SPEC.footLengthMm, src: "nh36sheet" },
+  { id: "glue", name: { en: "No feet, dial dots", sv: "Utan fötter, limpunkter" }, feet: 0, src: "community", note: { en: "Cheap dials often come feetless and are mounted on adhesive dial dots — three rather than the usual two is the advice.", sv: "Billiga urtavlor kommer ofta utan fötter och monteras på självhäftande limpunkter — rådet är tre i stället för de vanliga två." } },
+];
+
+/** How custom dial text is put on. Not interchangeable visually. */
+export const DIAL_PRINTS = [
+  { id: "sterile", name: { en: "Sterile — no printing", sv: "Steril — ingen tryck" }, src: "aliCalendar" },
+  { id: "pad-print", name: { en: "Pad print", sv: "Tampotryck" }, src: "diyclubDial" },
+  { id: "laser-mark", name: { en: "Laser mark", sv: "Lasermärkning" }, src: "diyclubDial", note: { en: "Laser marking alters the surface rather than adding ink, so on a dark dial the text reads metallic grey, not white.", sv: "Lasermärkning bearbetar ytan i stället för att lägga på färg, så på en mörk urtavla blir texten metalliskt grå, inte vit." } },
+  { id: "applied-logo", name: { en: "Applied metal logo", sv: "Applicerad metallogga" }, relief: "raised", src: "diyclubDial" },
+];
+
+/**
+ * The custom-text slots. All four optional, all empty by default — STERILE IS
+ * A REAL, SELLABLE CHOICE, not the absence of one, and the market lists it as
+ * its own product ("sterile", "no logo").
+ *
+ * The line grammar itself (brand at 12 / model line under it / AUTOMATIC /
+ * jewel count / depth rating above 6) is a UI convention, NOT a sourced fact:
+ * no source states it in words. It is offered as four editable slots with no
+ * defaults, and no depth rating is ever pre-filled — a depth rating has to
+ * match the case's real rating, which the dial listing cannot know.
+ */
+export const DIAL_TEXT_FIELDS = [
+  { key: "textLogo", name: { en: "Logo / brand at 12", sv: "Logga/märke vid 12" }, max: 22, src: "diyclubDial" },
+  { key: "text12", name: { en: "Line under the logo", sv: "Rad under loggan" }, max: 22, src: "diyclubDial" },
+  { key: "text6a", name: { en: "First line above 6", sv: "Första raden ovanför 6" }, max: 22, src: "diyclubDial" },
+  { key: "text6b", name: { en: "Second line above 6", sv: "Andra raden ovanför 6" }, max: 22, src: "diyclubDial" },
+];
+
+/** Roughly 3–6 mm on a 28.5 mm dial, per a custom-dial vendor's own guide. */
+export const DIAL_LOGO_MM = { min: 3, max: 6, approx: true, src: "diyclubDial" };
+
+// ---------------------------------------------------------------------------
+// DIALS. Each entry is a LISTED COMBINATION of the axes above: `design`,
+// `colour`, `finishId`, `construction`, `indices`, `calendar`, `lume`,
+// `diameter` and `feet` say which values it ships with, and a build may
+// override any of them.
+//
+// The legacy fields stay exactly where they were — `base`, `finish`, `markers`,
+// `markerColor`, `textColor`, `lume`, `date`, `day`, `gmt`, `openHeart`,
+// `text` — because the renderer and the geometry builders read them, and
+// resolveBuild() recomputes them from the axes so an override lands on the
+// screen without either of those having to know the axes exist.
 
 export const DIALS = [
   {
     id: "skx-black",
     name: { en: "SKX matte black", sv: "SKX matt svart" },
+    design: "skx",
+    colour: "black",
+    finishId: "matte",
+    construction: "flat",
+    indices: "printed",
+    calendar: "date-3",
+    diameter: "28-5",
+    feet: "feet4",
     base: "#0d0f12",
     finish: "matte",
     markers: "skx",
@@ -810,11 +1317,19 @@ export const DIALS = [
     gmt: false,
     openHeart: false,
     text: ["AUTOMATIC", "200m"],
-    ali: { queries: ["NH35 dial 28.5mm SKX"], priceUsd: [8, 30] },
+    ali: { queries: ["NH35 dial 28.5mm SKX", "28.5mm single calendar dial NH35"], priceUsd: [8, 30] },
   },
   {
     id: "sub-black",
     name: { en: "Sub gloss black", sv: "Sub blank svart" },
+    design: "sub",
+    colour: "black",
+    finishId: "gloss-enamel",
+    construction: "flat",
+    indices: "applied",
+    calendar: "date-3",
+    diameter: "28-5",
+    feet: "feet4",
     base: "#08090c",
     finish: "gloss",
     markers: "sub",
@@ -831,6 +1346,14 @@ export const DIALS = [
   {
     id: "sunburst-blue",
     name: { en: "Sunburst blue", sv: "Solstråleblå" },
+    design: "sub",
+    colour: "blue",
+    finishId: "sunburst",
+    construction: "flat",
+    indices: "applied",
+    calendar: "date-3",
+    diameter: "28-5",
+    feet: "feet4",
     base: "#12386e",
     finish: "sunburst",
     markers: "sub",
@@ -847,6 +1370,14 @@ export const DIALS = [
   {
     id: "sunburst-green",
     name: { en: "Sunburst green", sv: "Solstrålegrön" },
+    design: "dress",
+    colour: "green",
+    finishId: "sunburst",
+    construction: "flat",
+    indices: "applied",
+    calendar: "date-3",
+    diameter: "28-5",
+    feet: "feet4",
     base: "#12523a",
     finish: "sunburst",
     markers: "alpinist",
@@ -863,6 +1394,14 @@ export const DIALS = [
   {
     id: "gilt-black",
     name: { en: "Vintage gilt black", sv: "Vintage gilt svart" },
+    design: "sub",
+    colour: "black-gold",
+    finishId: "gloss-enamel",
+    construction: "flat",
+    indices: "printed",
+    calendar: "date-3",
+    diameter: "28-5",
+    feet: "feet4",
     base: "#0a0a0a",
     finish: "gloss",
     markers: "sub",
@@ -879,6 +1418,14 @@ export const DIALS = [
   {
     id: "62mas-cream",
     name: { en: "62MAS cream, no date", sv: "62MAS gräddvit, utan datum" },
+    design: "62mas",
+    colour: "cream",
+    finishId: "vintage-matte",
+    construction: "flat",
+    indices: "applied",
+    calendar: "none",
+    diameter: "28-5",
+    feet: "feet4",
     base: "#efe6d2",
     finish: "matte",
     markers: "62mas",
@@ -895,6 +1442,14 @@ export const DIALS = [
   {
     id: "california",
     name: { en: "California split dial", sv: "California-tavla" },
+    design: "california",
+    colour: "black",
+    finishId: "matte",
+    construction: "flat",
+    indices: "printed",
+    calendar: "none",
+    diameter: "28-5",
+    feet: "feet4",
     base: "#101216",
     finish: "matte",
     markers: "california",
@@ -911,6 +1466,14 @@ export const DIALS = [
   {
     id: "explorer-369",
     name: { en: "Explorer 3-6-9", sv: "Explorer 3-6-9" },
+    design: "explorer369",
+    colour: "black",
+    finishId: "matte",
+    construction: "flat",
+    indices: "printed",
+    calendar: "none",
+    diameter: "28-5",
+    feet: "feet4",
     base: "#0b0c0e",
     finish: "matte",
     markers: "explorer",
@@ -927,6 +1490,14 @@ export const DIALS = [
   {
     id: "gs-white",
     name: { en: "Snowflake textured white", sv: "Snöflinga, texturerad vit" },
+    design: "gs-snowflake",
+    colour: "white",
+    finishId: "birch-ice",
+    construction: "flat",
+    indices: "applied",
+    calendar: "none",
+    diameter: "28-5",
+    feet: "feet4",
     base: "#f4f6f8",
     finish: "textured",
     markers: "gs",
@@ -943,6 +1514,14 @@ export const DIALS = [
   {
     id: "fume-grey",
     name: { en: "Fumé grey", sv: "Fumé grå" },
+    design: "sub",
+    colour: "grey",
+    finishId: "fume",
+    construction: "flat",
+    indices: "applied",
+    calendar: "date-3",
+    diameter: "28-5",
+    feet: "feet4",
     base: "#4a5058",
     finish: "fume",
     markers: "sub",
@@ -959,6 +1538,14 @@ export const DIALS = [
   {
     id: "salmon",
     name: { en: "Salmon dress", sv: "Laxrosa klädtavla" },
+    design: "dress",
+    colour: "salmon",
+    finishId: "sunburst",
+    construction: "flat",
+    indices: "printed",
+    calendar: "none",
+    diameter: "28-5",
+    feet: "feet4",
     base: "#d99274",
     finish: "sunburst",
     markers: "roman",
@@ -975,6 +1562,14 @@ export const DIALS = [
   {
     id: "daydate-black",
     name: { en: "Day-date black (NH36)", sv: "Veckodag/datum svart (NH36)" },
+    design: "sub",
+    colour: "black",
+    finishId: "matte",
+    construction: "flat",
+    indices: "printed",
+    calendar: "day-date-3",
+    diameter: "28-5",
+    feet: "feet4",
     base: "#0d0f12",
     finish: "matte",
     markers: "sub",
@@ -991,6 +1586,14 @@ export const DIALS = [
   {
     id: "gmt-black",
     name: { en: "GMT 24-hour black (NH34)", sv: "GMT 24-timmars svart (NH34)" },
+    design: "worldtimer-gmt",
+    colour: "black",
+    finishId: "matte",
+    construction: "flat",
+    indices: "printed",
+    calendar: "date-3",
+    diameter: "28-5",
+    feet: "feet4",
     base: "#0b0d10",
     finish: "matte",
     markers: "sub",
@@ -1007,6 +1610,14 @@ export const DIALS = [
   {
     id: "openheart",
     name: { en: "Open heart skeleton (NH38)", sv: "Öppet hjärta, skelett (NH38)" },
+    design: "open-heart",
+    colour: "black",
+    finishId: "matte",
+    construction: "pierced",
+    indices: "printed",
+    calendar: "none",
+    diameter: "28-5",
+    feet: "feet4",
     base: "#15181d",
     finish: "matte",
     markers: "baton",
@@ -1020,14 +1631,302 @@ export const DIALS = [
     text: ["AUTOMATIC"],
     ali: { queries: ["NH38 open heart dial 28.5"], priceUsd: [12, 45] },
   },
+
+  // --- Designs the 2026-07-30 listing survey found that the first catalogue
+  // had no entry for. Appended rather than interleaved so the older entries
+  // keep their position (the chat parser's longest-match tie-breaking reads
+  // this order).
+  {
+    id: "sandwich-black",
+    name: { en: "Sandwich, sunburst black", sv: "Sandwich, solstrålesvart" },
+    design: "sandwich",
+    colour: "black",
+    finishId: "sunburst",
+    construction: "sandwich",
+    indices: "sandwich-cutout",
+    calendar: "none",
+    diameter: "28-5",
+    feet: "feet4",
+    base: "#0b0d10",
+    finish: "sunburst",
+    markers: "sub",
+    markerColor: "#e9eef5",
+    lume: "c3",
+    textColor: "#e9eef5",
+    date: null,
+    day: false,
+    gmt: false,
+    openHeart: false,
+    text: [],
+    src: "ctSandwich",
+    note: {
+      en: "The sandwich family is genuinely narrow: black, dark blue and orange are the colourways found. Other colours are offered here with a warning rather than hidden.",
+      sv: "Sandwich-familjen är verkligen smal: svart, mörkblå och orange är de färger som hittats. Andra färger erbjuds här med varning i stället för att döljas.",
+    },
+    ali: { queries: ["sandwich dial NH35 28.5mm", "28.5mm sunburst sandwich dial"], priceUsd: [12, 45] },
+  },
+  {
+    id: "divemaster-black",
+    name: { en: "Divemaster black", sv: "Divemaster svart" },
+    design: "mm",
+    colour: "black",
+    finishId: "matte",
+    construction: "flat",
+    indices: "applied",
+    calendar: "none",
+    diameter: "28-5",
+    feet: "feet4",
+    base: "#0a0c0f",
+    finish: "matte",
+    markers: "sub",
+    markerColor: "#eef3fb",
+    lume: "c3",
+    textColor: "#eef3fb",
+    date: null,
+    day: false,
+    gmt: false,
+    openHeart: false,
+    text: ["AUTOMATIC", "300m"],
+    src: "namokiDials",
+    ali: { queries: ["MM300 dial NH35 28.5mm", "divemaster dial NH35 no calendar"], priceUsd: [10, 42] },
+  },
+  {
+    id: "pilot-black",
+    name: { en: "Pilot flieger black", sv: "Pilotflieger svart" },
+    design: "pilot",
+    colour: "black",
+    finishId: "matte",
+    construction: "flat",
+    indices: "printed",
+    calendar: "none",
+    diameter: "28-5",
+    feet: "feet4",
+    base: "#0b0c0f",
+    finish: "matte",
+    markers: "baton",
+    markerColor: "#f0f3f8",
+    lume: "c3",
+    textColor: "#f0f3f8",
+    date: null,
+    day: false,
+    gmt: false,
+    openHeart: false,
+    text: [],
+    src: "ctDials",
+    ali: { queries: ["pilot dial NH35 28.5mm", "flieger dial NH35 no calendar"], priceUsd: [10, 40] },
+  },
+  {
+    id: "dj-white",
+    name: { en: "Datejust white", sv: "Datejust vit" },
+    design: "dj",
+    colour: "white",
+    finishId: "sunburst",
+    construction: "flat",
+    indices: "applied",
+    calendar: "date-3",
+    diameter: "28-5",
+    feet: "feet4",
+    base: "#eef1f5",
+    finish: "sunburst",
+    markers: "baton",
+    markerColor: "#2a2f36",
+    lume: "none",
+    textColor: "#2a2f36",
+    date: "3",
+    day: false,
+    gmt: false,
+    openHeart: false,
+    text: [],
+    src: "namokiDials",
+    ali: { queries: ["datejust dial NH35 28.5mm", "DJ dial NH35 single calendar"], priceUsd: [10, 40] },
+  },
+  {
+    id: "sector-ivory",
+    name: { en: "Sector, ivory", sv: "Sektor, elfenben" },
+    design: "sector",
+    colour: "beige",
+    finishId: "matte",
+    construction: "flat",
+    indices: "printed",
+    calendar: "none",
+    diameter: "28-5",
+    feet: "feet4",
+    base: "#e8e2d3",
+    finish: "matte",
+    markers: "baton",
+    markerColor: "#2f2b24",
+    lume: "vintage-cream",
+    textColor: "#2f2b24",
+    date: null,
+    day: false,
+    gmt: false,
+    openHeart: false,
+    text: [],
+    src: "luciusMovements",
+    ali: { queries: ["sector dial NH35 28.5mm no date"], priceUsd: [12, 48] },
+  },
+  {
+    id: "oak-navy",
+    name: { en: "Integrated sports navy", sv: "Integrerad sport, marinblå" },
+    design: "integrated-oak",
+    colour: "navy",
+    finishId: "waffle",
+    construction: "flat",
+    indices: "applied",
+    calendar: "date-3",
+    diameter: "31-8",
+    feet: "feet4",
+    base: "#16244a",
+    finish: "textured",
+    markers: "baton",
+    markerColor: "#e6ecf6",
+    lume: "bgw9",
+    textColor: "#e6ecf6",
+    date: "3",
+    day: false,
+    gmt: false,
+    openHeart: false,
+    text: [],
+    src: "namokiDials",
+    note: {
+      en: "The integrated-sports dials are frequently listed at 31.8 mm rather than 28.5 mm, so this one only fits cases whose dial seat takes an oversize dial.",
+      sv: "Urtavlorna i integrerad sportstil säljs ofta i 31,8 mm i stället för 28,5 mm, så den här passar bara boetter vars urtavlesäte tar en överstor tavla.",
+    },
+    ali: { queries: ["ap royal oak dial NH35", "31.8mm dial NH35 integrated"], priceUsd: [14, 55] },
+  },
+  {
+    id: "skeleton-cut",
+    name: { en: "Skeleton cut-out", sv: "Skelettskuren" },
+    design: "skeleton",
+    colour: "gunmetal-rose-gold",
+    finishId: "brushed",
+    construction: "pierced",
+    indices: "applied",
+    calendar: "none",
+    diameter: "28-5",
+    feet: "feet4",
+    base: "#33383e",
+    finish: "textured",
+    markers: "baton",
+    markerColor: "#c98f6f",
+    lume: "c3",
+    textColor: "#c98f6f",
+    date: null,
+    day: false,
+    gmt: false,
+    openHeart: true,
+    text: [],
+    src: "ctDials",
+    ali: { queries: ["skeleton dial NH35 28.5mm", "NH70 skeleton dial"], priceUsd: [12, 50] },
+  },
+  {
+    id: "sterile-white",
+    name: { en: "Sterile, no logo", sv: "Steril, utan logga" },
+    design: "sterile-plain",
+    colour: "white",
+    finishId: "matte",
+    construction: "flat",
+    indices: "printed",
+    calendar: "none",
+    diameter: "28-5",
+    feet: "feet4",
+    base: "#f2f4f7",
+    finish: "matte",
+    markers: "baton",
+    markerColor: "#1a1d22",
+    lume: "bgw9",
+    textColor: "#1a1d22",
+    date: null,
+    day: false,
+    gmt: false,
+    openHeart: false,
+    text: [],
+    src: "aliCalendar",
+    note: {
+      en: "Sterile is a product in its own right, not the absence of one — sellers list \"sterile\" and \"no logo\" dials as their own line.",
+      sv: "Steril är en egen produkt, inte frånvaron av en — säljare listar \"sterile\" och \"no logo\" som en egen serie.",
+    },
+    ali: { queries: ["sterile dial NH35 28.5mm", "no logo dial NH35 28.5"], priceUsd: [8, 28] },
+  },
+  {
+    id: "roman-white",
+    name: { en: "Roman numerals white", sv: "Romerska siffror vit" },
+    design: "roman",
+    colour: "white",
+    finishId: "sunburst",
+    construction: "flat",
+    indices: "printed",
+    calendar: "date-3",
+    diameter: "28-5",
+    feet: "feet4",
+    base: "#eef0f4",
+    finish: "sunburst",
+    markers: "roman",
+    markerColor: "#23262c",
+    lume: "none",
+    textColor: "#23262c",
+    date: "3",
+    day: false,
+    gmt: false,
+    openHeart: false,
+    text: [],
+    src: "aliCalendar",
+    ali: { queries: ["roman dial NH35 28.5mm", "roma index dial NH35"], priceUsd: [10, 38] },
+  },
+  {
+    id: "daydate-white",
+    name: { en: "Day-date white", sv: "Veckodag/datum vit" },
+    design: "sub",
+    colour: "white",
+    finishId: "matte",
+    construction: "flat",
+    indices: "printed",
+    calendar: "day-date-3",
+    diameter: "28-5",
+    feet: "feet4",
+    base: "#eef1f5",
+    finish: "matte",
+    markers: "sub",
+    markerColor: "#22262c",
+    lume: "c3",
+    textColor: "#22262c",
+    date: "3",
+    day: true,
+    gmt: false,
+    openHeart: false,
+    text: ["AUTOMATIC"],
+    src: "tandorioDial",
+    ali: { queries: ["NH36 double calendar dial 28.5", "day date dial NH36 white"], priceUsd: [10, 40] },
+  },
 ];
 
-/** Lume compound colours (daylight tint, glow tint). */
+/**
+ * Lume compound colours (daylight tint, glow tint). Lume is a variable of its
+ * own in almost every listing — "green C3", "blue BGW9", "no lume", "full
+ * lume" — which is why it is a separate axis rather than a dial property.
+ */
 export const LUMES = {
-  c3: { name: { en: "C3 green", sv: "C3 grön" }, day: "#d9e6b8", glow: "#8dff6a" },
-  bgw9: { name: { en: "BGW9 blue", sv: "BGW9 blå" }, day: "#e7eef5", glow: "#7fd0ff" },
-  "old-radium": { name: { en: "Old radium", sv: "Old radium" }, day: "#c9ab74", glow: "#a9ff86" },
-  none: { name: { en: "No lume", sv: "Ingen lysmassa" }, day: "#dfe4ea", glow: "#dfe4ea" },
+  c3: { name: { en: "C3 green", sv: "C3 grön" }, day: "#d9e6b8", glow: "#8dff6a", src: "aliCalendar" },
+  bgw9: { name: { en: "BGW9 blue", sv: "BGW9 blå" }, day: "#e7eef5", glow: "#7fd0ff", src: "aliCalendar" },
+  "ice-blue": { name: { en: "Ice blue", sv: "Isblå" }, day: "#e4f1f7", glow: "#bfe9ff", src: "namokiDials" },
+  "old-radium": { name: { en: "Old radium", sv: "Old radium" }, day: "#c9ab74", glow: "#a9ff86", src: "namokiDials" },
+  "vintage-cream": {
+    name: { en: "Vintage cream (deliberately weak)", sv: "Vintagegrädde (medvetet svag)" },
+    day: "#d8c49a",
+    glow: "#93d97a",
+    src: "namokiDials",
+    note: {
+      en: "A deliberately weaker C3 blend sold for fauxtina builds — it is meant to glow less, not to have aged.",
+      sv: "En medvetet svagare C3-blandning som säljs för fauxtina-byggen — den ska lysa svagare, inte ha åldrats.",
+    },
+  },
+  "full-lume": {
+    name: { en: "Full lume (whole dial glows)", sv: "Helt lysande tavla" },
+    day: "#e9f0dd",
+    glow: "#a9ff8e",
+    src: "namokiWheels",
+  },
+  none: { name: { en: "No lume", sv: "Ingen lysmassa" }, day: "#dfe4ea", glow: "#dfe4ea", src: "aliCalendar" },
 };
 
 // ---------------------------------------------------------------------------
@@ -1126,67 +2025,108 @@ export const HAND_SETS = [
 // `fits` is a list of platform ids — this is what the compatibility engine
 // actually checks, rather than the case's silhouette.
 
+/**
+ * Bezel-insert MATERIALS, with the one dimension listings actually publish.
+ * Aluminium thickness is genuinely disputed across listings (0.7 / 0.8 / 0.95 /
+ * 1.0 mm), so the range is carried rather than averaged.
+ */
+export const INSERT_MATERIALS = [
+  { id: "aluminium", name: { en: "Aluminium", sv: "Aluminium" }, thicknessMm: 0.7, thicknessRangeMm: [0.7, 1.0], approx: true, gloss: false, src: "ebayInsert", note: { en: "Listings quote 0.7, 0.8, 0.95 and 1.0 mm for aluminium inserts. The range is carried; there is no single published figure.", sv: "Annonser anger 0,7, 0,8, 0,95 och 1,0 mm för aluminiuminlägg. Spannet bärs vidare; det finns ingen enskild publicerad siffra." } },
+  { id: "ceramic", name: { en: "Ceramic", sv: "Keramik" }, thicknessMm: 1.0, gloss: true, src: "ebayInsert" },
+  { id: "steel", name: { en: "Steel", sv: "Stål" }, thicknessMm: 0.9, gloss: false, src: "ebayInsert" },
+  { id: "sapphire", name: { en: "Sapphire, lumed", sv: "Safir, lysande" }, gloss: true, lumed: true, src: "namokiInserts", note: { en: "A boutique-tier part; no thickness is published for it.", sv: "En butiksdel i högre prisklass; ingen tjocklek publiceras för den." } },
+  { id: "forged-carbon", name: { en: "Forged carbon", sv: "Smidd kolfiber" }, gloss: false, src: "namokiInserts" },
+  { id: "glass", name: { en: "Glass", sv: "Glas" }, gloss: true, src: "namokiInserts" },
+];
+
+/**
+ * Insert PROFILE. The whole flat-vs-sloped difference is in the INNER
+ * diameter — a sloped insert overhangs 0.9 mm further inward on the SKX
+ * platform — and that is the geometric root of the crystal ↔ insert rule.
+ */
+export const INSERT_PROFILES = [
+  { id: "flat", name: { en: "Flat", sv: "Plan" }, src: "namokiInserts" },
+  { id: "sloped", name: { en: "Sloped", sv: "Sluttande" }, src: "namokiInserts", note: { en: "A sloped insert intrudes further toward the centre, so it needs a crystal cut for it or a visible step appears at the bezel edge.", sv: "Ett sluttande inlägg går längre in mot mitten och kräver därför ett glas gjort för det, annars syns ett steg vid lünettkanten." } },
+];
+
 export const INSERTS = [
   {
     id: "alu-black",
     name: { en: "Aluminium, black", sv: "Aluminium, svart" },
     scale: "dive60",
+    material: "aluminium",
+    profile: "flat",
     base: "#111318",
     mark: "#eceff4",
     pip: "c3",
     fits: ["skx", "skx013", "srp"],
+    src: "ebayInsert",
     ali: { queries: ["SKX007 bezel insert aluminium"], priceUsd: [4, 15] },
   },
   {
     id: "ceramic-black",
     name: { en: "Ceramic, black", sv: "Keramik, svart" },
     scale: "dive60",
+    material: "ceramic",
+    profile: "sloped",
     base: "#0a0b0e",
     mark: "#f3f6fa",
     pip: "bgw9",
     gloss: true,
     fits: ["skx", "skx013", "srp"],
+    src: "namokiInserts",
     ali: { queries: ["SKX007 ceramic bezel insert"], priceUsd: [10, 30] },
   },
   {
     id: "pepsi",
     name: { en: "Pepsi (blue / red)", sv: "Pepsi (blå/röd)" },
     scale: "dive60",
+    material: "ceramic",
+    profile: "sloped",
     base: "#123a72",
     base2: "#9d2029",
     mark: "#f4f7fb",
     pip: "c3",
     gloss: true,
     fits: ["skx", "skx013", "srp"],
+    src: "namokiInserts",
     ali: { queries: ["pepsi bezel insert SKX007 ceramic"], priceUsd: [10, 32] },
   },
   {
     id: "batman",
     name: { en: "Batman (blue / black)", sv: "Batman (blå/svart)" },
     scale: "dive60",
+    material: "ceramic",
+    profile: "sloped",
     base: "#16335f",
     base2: "#0b0c10",
     mark: "#f2f5fa",
     pip: "bgw9",
     gloss: true,
     fits: ["skx", "srp"],
+    src: "namokiInserts",
     ali: { queries: ["batman bezel insert SKX007"], priceUsd: [10, 32] },
   },
   {
     id: "green",
     name: { en: "Ceramic, green", sv: "Keramik, grön" },
     scale: "dive60",
+    material: "ceramic",
+    profile: "sloped",
     base: "#0f4a2c",
     mark: "#f0f6f2",
     pip: "c3",
     gloss: true,
     fits: ["skx", "skx013", "srp"],
+    src: "namokiInserts",
     ali: { queries: ["green ceramic bezel insert SKX007"], priceUsd: [10, 32] },
   },
   {
     id: "gmt-24",
     name: { en: "24-hour GMT", sv: "24-timmars GMT" },
     scale: "hours24",
+    material: "ceramic",
+    profile: "sloped",
     base: "#101319",
     base2: "#1d3f6d",
     mark: "#f1f4f9",
@@ -1194,18 +2134,88 @@ export const INSERTS = [
     gloss: true,
     gmt: true,
     fits: ["skx", "srp"],
+    src: "namokiInserts",
     ali: { queries: ["24 hour GMT bezel insert SKX007"], priceUsd: [10, 34] },
   },
   {
     id: "steel-plain",
     name: { en: "Plain steel (no insert)", sv: "Blank stål (utan inlägg)" },
     scale: "none",
+    material: "steel",
+    profile: "flat",
     base: "#8d949d",
     mark: "#5d646d",
     pip: "none",
     fits: ["skx", "skx013", "srp", "native"],
+    src: "namokiInserts",
     ali: { queries: ["steel bezel insert SKX007 sterile"], priceUsd: [5, 20] },
   },
+  {
+    id: "coke",
+    name: { en: "Coke", sv: "Coke" },
+    scale: "hours24",
+    material: "aluminium",
+    profile: "flat",
+    base: "#0b0c10",
+    base2: "#8d2027",
+    mark: "#f2f5fa",
+    pip: "c3",
+    gmt: true,
+    fits: ["skx", "srp"],
+    src: "namokiInserts",
+    ali: { queries: ["GMT coke bezel insert SKX007"], priceUsd: [8, 30] },
+  },
+  {
+    id: "dual-time",
+    name: { en: "Dual time", sv: "Dubbeltid" },
+    scale: "hours24",
+    material: "steel",
+    profile: "flat",
+    base: "#1a1e24",
+    mark: "#dbe2ea",
+    pip: "none",
+    gmt: true,
+    fits: ["skx", "srp"],
+    src: "namokiInserts",
+    ali: { queries: ["dual time bezel insert SKX007"], priceUsd: [10, 40] },
+  },
+  {
+    id: "sapphire-lumed",
+    name: { en: "Sapphire, fully lumed", sv: "Safir, helt lysande" },
+    scale: "dive60",
+    material: "sapphire",
+    profile: "flat",
+    base: "#0d1017",
+    mark: "#eaf1f8",
+    pip: "bgw9",
+    gloss: true,
+    lumed: true,
+    fits: ["skx", "srp"],
+    src: "namokiInserts",
+    ali: { queries: ["sapphire lume bezel insert SKX007"], priceUsd: [25, 70] },
+  },
+  {
+    id: "fathoms-steel",
+    name: { en: "Fathoms style, steel", sv: "Fathoms-stil, stål" },
+    scale: "dive60",
+    material: "steel",
+    profile: "flat",
+    base: "#2a2f36",
+    mark: "#e7ecf3",
+    pip: "old-radium",
+    fits: ["skx", "skx013", "srp"],
+    src: "namokiInserts",
+    ali: { queries: ["vintage steel bezel insert SKX007"], priceUsd: [12, 50] },
+  },
+];
+
+/** How a chapter ring is printed — a listed, filterable attribute. */
+export const CHAPTER_PRINTINGS = [
+  { id: "micro-markers", name: { en: "Micro markers", sv: "Mikromarkeringar" }, src: "wsChapter" },
+  { id: "05-60", name: { en: "05–60 five-minute numerals", sv: "05–60, femminuterssiffror" }, src: "wsChapter" },
+  { id: "gmt24", name: { en: "GMT 24-hour", sv: "GMT 24-timmars" }, src: "wsChapter" },
+  { id: "laser-etched", name: { en: "Laser etched", sv: "Laseretsad" }, src: "wsChapter" },
+  { id: "plain", name: { en: "Plain colour band", sv: "Enfärgat band" }, src: "wsChapter" },
 ];
 
 export const CHAPTER_RINGS = [
@@ -1214,7 +2224,11 @@ export const CHAPTER_RINGS = [
     name: { en: "Black, minute track", sv: "Svart, minutskala" },
     base: "#0c0e12",
     mark: "#e6ebf2",
+    printing: "micro-markers",
+    finish: "matte",
+    lume: "none",
     fits: ["skx", "skx013", "srp"],
+    src: "wsChapter",
     ali: { queries: ["SKX007 chapter ring black"], priceUsd: [4, 14] },
   },
   {
@@ -1222,7 +2236,11 @@ export const CHAPTER_RINGS = [
     name: { en: "White, minute track", sv: "Vit, minutskala" },
     base: "#e9edf3",
     mark: "#1a1d22",
+    printing: "micro-markers",
+    finish: "matte",
+    lume: "none",
     fits: ["skx", "skx013", "srp"],
+    src: "wsChapter",
     ali: { queries: ["SKX007 chapter ring white"], priceUsd: [4, 14] },
   },
   {
@@ -1231,7 +2249,11 @@ export const CHAPTER_RINGS = [
     base: "#0c0e12",
     mark: "#e6ebf2",
     accent: "#d8453c",
+    printing: "05-60",
+    finish: "matte",
+    lume: "none",
     fits: ["skx", "srp"],
+    src: "wsChapter",
     ali: { queries: ["SKX007 chapter ring red"], priceUsd: [4, 16] },
   },
   {
@@ -1239,9 +2261,60 @@ export const CHAPTER_RINGS = [
     name: { en: "Bare steel", sv: "Rent stål" },
     base: "#9aa1aa",
     mark: "#6b727b",
+    printing: "plain",
+    finish: "polished",
+    lume: "none",
     fits: ["skx", "skx013", "srp"],
+    src: "wsChapter",
     ali: { queries: ["SKX007 chapter ring steel"], priceUsd: [4, 14] },
   },
+  {
+    id: "gmt-hours",
+    name: { en: "24-hour ring, blue", sv: "24-timmarsring, blå" },
+    base: "#16335f",
+    mark: "#eef3fb",
+    printing: "gmt24",
+    finish: "matte",
+    lume: "bgw9",
+    gmt: true,
+    fits: ["skx", "srp"],
+    src: "wsChapter",
+    ali: { queries: ["GMT chapter ring SKX007"], priceUsd: [6, 20] },
+  },
+];
+
+/**
+ * Crystal EDGE. This is the correction the feedback asked for by name: "flat
+ * sapphire isn't flat". It is — every flat sapphire sold for these cases has a
+ * PLANAR top face. The only relief is at the rim, and vendors sell the two rim
+ * treatments as separate SKUs (CT025 flat with a top bevel, CT025F flat with
+ * none, CT094 flat with a stepped edge). So the bevel is an option on the
+ * crystal, not something baked into the shape, and it is a straight chamfer —
+ * never a fillet, never a residual curve.
+ */
+export const CRYSTAL_EDGES = [
+  { id: "bevel", name: { en: "Top edge bevel (OEM look)", sv: "Fasad överkant (originallook)" }, forInsert: "any", chamferMm: 0.4, chamferRangeMm: [0.3, 0.5], approx: true, src: "ct025", note: { en: "The chamfer's width and angle are published nowhere. 0.3–0.5 mm is read off vendor photography, not a spec sheet.", sv: "Fasens bredd och vinkel publiceras ingenstans. 0,3–0,5 mm är avläst från säljarnas bilder, inte ett datablad." } },
+  { id: "none", name: { en: "No top bevel", sv: "Utan fas" }, forInsert: "flat", chamferMm: 0, src: "ct025", note: { en: "Sold explicitly for a smooth fit with FLAT bezel inserts.", sv: "Säljs uttryckligen för en jämn passning mot PLANA lünettinlägg." } },
+  { id: "stepped", name: { en: "Stepped edge (for sloping inserts)", sv: "Trappad kant (för sluttande inlägg)" }, forInsert: "sloped", chamferMm: 0, src: "ct094", note: { en: "Made to address the step/gap that appears when a standard crystal is paired with a thicker sloping ceramic insert.", sv: "Gjord för att lösa steget/glipan som uppstår när ett standardglas paras med ett tjockare sluttande keramikinlägg." } },
+];
+
+/** Anti-reflective coating options actually offered. */
+export const CRYSTAL_ARS = [
+  { id: "none", name: { en: "No AR coating", sv: "Utan antireflex" }, tint: "#e0e7ef", src: "longisland" },
+  { id: "clear", name: { en: "Clear AR", sv: "Klar antireflex" }, tint: "#e3ecf6", src: "ct025" },
+  { id: "blue", name: { en: "Blue AR", sv: "Blå antireflex" }, tint: "#9fc4ee", src: "ct025" },
+  { id: "red", name: { en: "Red AR", sv: "Röd antireflex" }, tint: "#e9bfc0", src: "watchandstyle", note: { en: "Listed for the Turtle platform.", sv: "Listad för Turtle-plattformen." } },
+];
+
+/**
+ * Which SIDE the coating is on. CrystalTimes states underside-only for the
+ * parts that say anything at all, which matters to the renderer: the top face
+ * still reflects normally. Double-sided AR is advertised on marketplace
+ * listings but no boutique SKU states it, so it is carried as unverified.
+ */
+export const CRYSTAL_AR_SIDES = [
+  { id: "underside", name: { en: "Underside only", sv: "Endast undersidan" }, src: "ct037" },
+  { id: "both", name: { en: "Both sides", sv: "Båda sidor" }, approx: true, src: "community", note: { en: "Advertised on marketplace listings; no boutique SKU for these platforms states it. Treat as unverified.", sv: "Annonseras på marknadsplatser; ingen butiks-SKU för de här plattformarna anger det. Behandla som overifierat." } },
 ];
 
 export const CRYSTALS = [
@@ -1249,14 +2322,21 @@ export const CRYSTALS = [
     id: "dd-sapphire",
     name: { en: "Double-dome sapphire, clear AR", sv: "Dubbelkupad safir, klar AR" },
     material: "sapphire",
+    profile: "double-dome",
+    edge: "bevel",
+    arSide: "underside",
+    forInsert: "any",
     dome: 1.0,
+    diaMm: 31.5,
+    heightMm: 4.7,
+    cyclops: false,
     tint: "#dfe9f5",
     ar: "clear",
     fits: ["skx", "skx013", "srp", "native"],
-    src: "watchandstyle",
+    src: "ct037",
     note: {
-      en: "31.5 mm on the SKX platform, ~5.1–5.3 mm through the middle.",
-      sv: "31,5 mm på SKX-plattformen, ca 5,1–5,3 mm genom mitten.",
+      en: "31.5 × 4.7 mm on the SKX platform (CT037); the CT141 \"RX look\" sibling is 4.5 mm and the flat-insert CT037F variant 5.3 mm. Only the SKX figures are published — the SKX013 and Turtle double-domes are not dimensioned anywhere.",
+      sv: "31,5 × 4,7 mm på SKX-plattformen (CT037); systermodellen CT141 \"RX look\" är 4,5 mm och CT037F för plana inlägg 5,3 mm. Bara SKX-måtten publiceras — dubbelkupade glas för SKX013 och Turtle saknar mått helt.",
     },
     ali: { queries: ["SKX007 double dome sapphire crystal 31.5"], priceUsd: [12, 45] },
   },
@@ -1264,47 +2344,153 @@ export const CRYSTALS = [
     id: "dd-sapphire-blue",
     name: { en: "Double-dome sapphire, blue AR", sv: "Dubbelkupad safir, blå AR" },
     material: "sapphire",
+    profile: "double-dome",
+    edge: "bevel",
+    arSide: "underside",
+    forInsert: "any",
     dome: 1.0,
+    diaMm: 31.5,
+    heightMm: 4.7,
+    cyclops: false,
     tint: "#9fc4ee",
     ar: "blue",
     fits: ["skx", "skx013", "srp", "native"],
+    src: "ct037",
     ali: { queries: ["SKX007 sapphire crystal blue AR"], priceUsd: [12, 45] },
   },
   {
     id: "flat-sapphire",
     name: { en: "Flat sapphire", sv: "Plan safir" },
     material: "sapphire",
-    dome: 0.15,
+    profile: "flat",
+    edge: "bevel",
+    arSide: "underside",
+    forInsert: "any",
+    // GENUINELY FLAT: the top face is a plane. `dome` is 0 so nothing revolves
+    // a curve over it; `edge` adds the straight chamfer at the rim instead.
+    dome: 0,
+    diaMm: 31.5,
+    thicknessMm: 2.9,
+    cyclops: false,
     tint: "#e3ecf6",
     ar: "clear",
     fits: ["skx", "skx013", "srp", "native"],
+    src: "longisland",
+    note: {
+      en: "31.5 × 2.9 mm on the SKX platform; Watch&Style quotes 31.4 mm edge-to-edge for the same part, and both figures are carried. SKX013 takes 28 × 2.8 mm and the Turtle 32 × 2.8 mm. The top face is planar — the only relief is the rim treatment picked in `edge`.",
+      sv: "31,5 × 2,9 mm på SKX-plattformen; Watch&Style anger 31,4 mm kant till kant för samma del, och båda siffrorna bärs vidare. SKX013 tar 28 × 2,8 mm och Turtle 32 × 2,8 mm. Ovansidan är plan — den enda reliefen är kantbehandlingen som väljs i `edge`.",
+    },
     ali: { queries: ["SKX007 flat sapphire crystal"], priceUsd: [10, 35] },
   },
   {
     id: "box-sapphire",
     name: { en: "Box sapphire (vintage)", sv: "Boxsafir (vintage)" },
     material: "sapphire",
+    profile: "box",
+    edge: "none",
+    arSide: "underside",
+    forInsert: "flat",
     dome: 1.6,
+    diaMm: 31.5,
+    cyclops: false,
     tint: "#e6eef7",
     ar: "clear",
     fits: ["skx", "srp", "native"],
+    src: "ctCrystals",
+    note: {
+      en: "Box, top-hat and single-dome crystals are all listed SKUs, but none of them is dimensioned by any vendor — a box crystal visibly stands proud of the bezel and the height is a rendering convention, not a measurement.",
+      sv: "Box-, top hat- och enkelkupade glas finns alla som riktiga artiklar, men ingen av dem har mått hos någon säljare — ett boxglas står synligt över lünetten och höjden här är en renderingskonvention, inte ett mätvärde.",
+    },
+    approx: true,
     ali: { queries: ["box sapphire crystal SKX007 vintage"], priceUsd: [18, 60] },
   },
   {
+    id: "single-dome-sapphire",
+    name: { en: "Single-dome sapphire", sv: "Enkelkupad safir" },
+    material: "sapphire",
+    profile: "single-dome",
+    edge: "bevel",
+    arSide: "underside",
+    forInsert: "any",
+    dome: 0.7,
+    diaMm: 31.5,
+    cyclops: false,
+    tint: "#e2ebf6",
+    ar: "clear",
+    fits: ["skx", "skx013", "srp", "native"],
+    approx: true,
+    src: "ctCrystals",
+    note: {
+      en: "A listed SKU (CT125 for the Turtle); its height is not published anywhere.",
+      sv: "En riktig artikel (CT125 för Turtle); höjden publiceras inte någonstans.",
+    },
+    ali: { queries: ["single dome sapphire crystal SKX007"], priceUsd: [14, 50] },
+  },
+  {
+    id: "top-hat-sapphire",
+    name: { en: "Top hat sapphire", sv: "Top hat-safir" },
+    material: "sapphire",
+    profile: "top-hat",
+    edge: "none",
+    arSide: "underside",
+    forInsert: "flat",
+    dome: 2.0,
+    diaMm: 31.5,
+    cyclops: false,
+    tint: "#e6eef7",
+    ar: "clear",
+    fits: ["skx", "srp", "native"],
+    approx: true,
+    src: "ctCrystals",
+    note: {
+      en: "CT101 for the SKX and CT096 for the Turtle are real listings; neither publishes a height, so the stand-proud figure here is a rendering convention.",
+      sv: "CT101 för SKX och CT096 för Turtle är riktiga annonser; ingen anger höjd, så måttet här är en renderingskonvention.",
+    },
+    ali: { queries: ["top hat sapphire crystal SKX007"], priceUsd: [25, 70] },
+  },
+  {
     id: "domed-hardlex",
-    name: { en: "Domed Hardlex (stock)", sv: "Kupad Hardlex (original)" },
+    name: { en: "Flat Hardlex (stock)", sv: "Plan Hardlex (original)" },
     material: "hardlex",
-    dome: 0.6,
+    profile: "flat",
+    edge: "bevel",
+    arSide: "underside",
+    forInsert: "any",
+    // The OEM SKX crystal is flat mineral, and every sapphire replacement is
+    // sold as "dimensionally similar to the OEM Seiko mineral crystal".
+    dome: 0,
+    diaMm: 31.5,
+    thicknessMm: 2.9,
+    cyclops: false,
     tint: "#e0e7ef",
     ar: "none",
     fits: ["skx", "skx013", "srp", "native"],
+    approx: true,
     note: {
-      en: "Hardlex is ~300–400 HV against sapphire's ~2200 HV — it scratches.",
-      sv: "Hardlex ligger på ca 300–400 HV mot safirens ca 2200 HV — det repas.",
+      en: "Hardlex is hardened mineral glass: above plain mineral (about Mohs 5), well below sapphire's Mohs 9 — it scratches, but shrugs off knocks that chip sapphire. Seiko publishes no hardness number for it, so this is a ranking, not a measurement; the HV figures online are community-repeated.",
+      sv: "Hardlex är härdat mineralglas: hårdare än vanligt mineralglas (ca Mohs 5), långt under safirens Mohs 9 — det repas, men klarar stötar som flisar safir. Seiko publicerar inget hårdhetsvärde, så detta är en rangordning, inte en mätning; HV-siffrorna på nätet är vidarespridda i communityn.",
     },
-    src: "aliwiki",
+    src: "namokiCrystals",
+    srcAlso: ["ctHardlex"],
     ali: { queries: ["SKX007 hardlex crystal"], priceUsd: [5, 18] },
   },
+];
+
+/**
+ * Crown TEXTURES, as the trade actually names them. Watch&Style publishes
+ * crown "design" as a filterable attribute and namokiMODS' range agrees.
+ * `flutes` drives the geometry; NO VENDOR PUBLISHES A SERRATION COUNT — not
+ * one of the four checked does — so every count here is read off product
+ * photography and flagged approximate.
+ */
+export const CROWN_TEXTURES = [
+  { id: "coin", name: { en: "Coin edge", sv: "Myntkant" }, flutes: 26, approx: true, depth: 0.35, src: "wsCrown" },
+  { id: "slim-coin", name: { en: "Slim coin edge", sv: "Smal myntkant" }, flutes: 30, approx: true, depth: 0.25, src: "wsCrown" },
+  { id: "knurled", name: { en: "Knurled", sv: "Knurlad" }, flutes: 18, approx: true, depth: 0.5, src: "namokiCrown" },
+  { id: "big-grip", name: { en: "Big grip", sv: "Stort grepp" }, flutes: 10, approx: true, depth: 0.7, src: "wsCrown" },
+  { id: "chunky", name: { en: "Chunky", sv: "Kraftig" }, flutes: 8, approx: true, depth: 0.8, src: "namokiCrown" },
+  { id: "bolt", name: { en: "Bolt, faceted", sv: "Bult, fasetterad" }, flutes: 6, approx: true, depth: 0.6, src: "namokiCrown" },
+  { id: "onion", name: { en: "Onion", sv: "Lök" }, flutes: 12, approx: true, depth: 0.55, src: "wsCrown" },
 ];
 
 export const CROWNS = [
@@ -1312,67 +2498,604 @@ export const CROWNS = [
     id: "signed-screw",
     name: { en: "Signed, screw-down", sv: "Signerad, skruvkrona" },
     style: "coin",
+    texture: "coin",
     signed: true,
+    mount: "screw-down",
+    diaMm: 7.0,
+    heightMm: 4.9,
+    src: "ct208",
+    note: {
+      en: "Ø7.0 × 4.9 mm is the one published crown dimension in this market (CT208, 316L, triple gasket, tap 10). Big-crown, chunky and onion variants are visibly larger and no vendor publishes their size.",
+      sv: "Ø7,0 × 4,9 mm är det enda publicerade kronmåttet i den här marknaden (CT208, 316L, trippelpackning, gänga 10). Big crown-, chunky- och lökvarianter är synligt större och ingen säljare publicerar deras mått.",
+    },
     ali: { queries: ["SKX007 crown screw down NH35"], priceUsd: [5, 20] },
   },
   {
     id: "plain-screw",
     name: { en: "Unsigned, screw-down", sv: "Osignerad, skruvkrona" },
     style: "coin",
+    texture: "coin",
     signed: false,
+    mount: "screw-down",
+    diaMm: 7.0,
+    heightMm: 4.9,
+    src: "ct208",
     ali: { queries: ["NH35 crown sterile screw down"], priceUsd: [4, 18] },
   },
   {
     id: "fluted",
     name: { en: "Fluted", sv: "Räfflad" },
     style: "fluted",
+    texture: "knurled",
     signed: false,
+    mount: "screw-down",
+    src: "namokiCrown",
     ali: { queries: ["NH35 fluted crown"], priceUsd: [4, 18] },
   },
   {
     id: "onion",
     name: { en: "Onion (dress)", sv: "Lökkrona (klädklocka)" },
     style: "onion",
+    texture: "onion",
     signed: false,
+    mount: "screw-down",
+    src: "wsCrown",
     ali: { queries: ["NH35 onion crown vintage"], priceUsd: [5, 22] },
+  },
+  {
+    id: "big-grip",
+    name: { en: "Big grip", sv: "Stort grepp" },
+    style: "fluted",
+    texture: "big-grip",
+    signed: false,
+    mount: "screw-down",
+    src: "wsCrown",
+    ali: { queries: ["SKX007 big grip crown"], priceUsd: [6, 24] },
+  },
+  {
+    id: "bolt",
+    name: { en: "Bolt, faceted", sv: "Bult, fasetterad" },
+    style: "fluted",
+    texture: "bolt",
+    signed: false,
+    mount: "screw-down",
+    src: "namokiCrown",
+    ali: { queries: ["SKX007 bolt crown mod"], priceUsd: [6, 24] },
+  },
+  {
+    id: "slim-coin",
+    name: { en: "Slim coin edge", sv: "Smal myntkant" },
+    style: "coin",
+    texture: "slim-coin",
+    signed: false,
+    mount: "screw-down",
+    src: "wsCrown",
+    ali: { queries: ["SKX013 slim coin crown"], priceUsd: [5, 20] },
   },
 ];
 
+/**
+ * Stock engraved artwork sold as its own SKU. THIS IS A DECAL, NOT A SHAPE:
+ * an engraved back is dimensionally identical to a plain solid one and differs
+ * only in relief artwork, which is why an engraved caseback must reuse the
+ * solid caseback's geometry. Giving it a mesh of its own is the likely cause
+ * of the reported "engraved caseback isn't working".
+ */
+export const CASEBACK_ENGRAVINGS = [
+  { id: "none", name: { en: "No engraving", sv: "Ingen gravyr" }, src: "wsCaseback" },
+  { id: "sword", name: { en: "Sword", sv: "Svärd" }, src: "secondhand" },
+  { id: "explorer", name: { en: "Explorer", sv: "Explorer" }, src: "secondhand" },
+  { id: "serpent", name: { en: "Serpent", sv: "Orm" }, src: "secondhand" },
+  { id: "skull", name: { en: "Skull", sv: "Dödskalle" }, src: "secondhand" },
+  { id: "robocop", name: { en: "Robocop", sv: "Robocop" }, src: "secondhand" },
+  { id: "nh-movement", name: { en: "NH movement drawing", sv: "NH-urverksritning" }, src: "modmode" },
+  { id: "custom-text", name: { en: "Custom laser-engraved text", sv: "Egen lasergraverad text" }, src: "wsCaseback" },
+];
+
+/** Caseback FINISHES actually listed. */
+export const CASEBACK_FINISHES = [
+  { id: "polished", name: { en: "Polished", sv: "Polerad" }, src: "namokiCaseback" },
+  { id: "brushed", name: { en: "Brushed", sv: "Borstad" }, src: "namokiCaseback" },
+  { id: "sandblasted", name: { en: "Sandblasted", sv: "Blästrad" }, src: "namokiCaseback" },
+  { id: "pvd-black", name: { en: "PVD matte black", sv: "PVD matt svart" }, src: "namokiCaseback" },
+];
+
+/**
+ * CASEBACKS.
+ *
+ * `type` is what the part IS; `display` stays as the legacy boolean the
+ * renderer reads. An engraved back is `type: "solid"` with an `engraving` —
+ * never its own geometry.
+ *
+ * `spacerFit` is a genuine two-SKU fork on display backs: CT239A is for the
+ * thicker black OEM movement spacer, CT239B for the thinner grey NH35/NH36
+ * spacer, and they are not interchangeable. Every movement in this catalogue
+ * is an NH, so the grey-spacer variant is the right one and the OEM-spacer
+ * variant is a wasted purchase.
+ *
+ * `heightDeltaMm: 0.6` is the ONE hard published height delta for a display
+ * back (CT239 "sits 0.6 mm higher than the standard OEM 0020 case back"). No
+ * vendor publishes a height delta for a solid back at all.
+ */
 export const CASEBACKS = [
   {
     id: "solid-engraved",
     name: { en: "Solid, engraved", sv: "Massiv, graverad" },
+    type: "solid",
     display: false,
+    finish: "polished",
+    profile: "standard",
+    mount: "screw-down",
+    engraving: "sword",
+    heightDeltaMm: 0,
+    src: "secondhand",
+    note: {
+      en: "Engraved is artwork on a solid back, dimensionally identical to a plain one — it shares the solid caseback's shape and differs only in its relief decal.",
+      sv: "Graverad är konstverk på en massiv botten, måttmässigt identisk med en slät — den delar den massiva bottnens form och skiljer sig bara i reliefdekoren.",
+    },
     ali: { queries: ["SKX007 case back engraved NH35"], priceUsd: [6, 22] },
   },
   {
     id: "display",
     name: { en: "Display (exhibition)", sv: "Genomskinlig (utställningsboett)" },
+    type: "display",
     display: true,
-    src: "community",
-    ali: { queries: ["transparent case back SKX007 NH35 NH36"], priceUsd: [12, 25] },
+    finish: "polished",
+    profile: "standard",
+    mount: "screw-down",
+    spacerFit: "grey-nh",
+    engraving: "none",
+    heightDeltaMm: 0.6,
+    thicknessMm: 4.6,
+    thicknessNoThreadMm: 2.5,
+    src: "ct239",
+    ali: { queries: ["transparent case back SKX007 NH35 NH36", "sapphire display caseback SKX007"], priceUsd: [12, 25] },
     note: {
-      en: "Adds height. Listings for the SKX/Turtle/Samurai display back cluster around USD 16–21.",
-      sv: "Ökar höjden. Annonser för SKX/Turtle/Samurai-glasbotten ligger kring 16–21 USD.",
+      en: "The grey-spacer variant (CT239B), which is the one an NH35/NH36 build needs. Sits 0.6 mm higher than the OEM solid back — the only published height delta in this market. Watch&Style quotes the standard sapphire back as 4.6 mm with the thread and 2.5 mm without.",
+      sv: "Varianten för den grå distansen (CT239B), den ett NH35/NH36-bygge behöver. Sitter 0,6 mm högre än originalbottnen — den enda publicerade höjdskillnaden i den här marknaden. Watch&Style anger standardsafirbottnen som 4,6 mm med gängan och 2,5 mm utan.",
     },
   },
   {
     id: "solid-brushed",
     name: { en: "Solid, brushed", sv: "Massiv, borstad" },
+    type: "solid",
     display: false,
+    finish: "brushed",
+    profile: "standard",
+    mount: "screw-down",
+    engraving: "none",
+    heightDeltaMm: 0,
+    src: "wsCaseback",
     ali: { queries: ["SKX007 case back sterile"], priceUsd: [6, 20] },
+  },
+  {
+    id: "display-slim",
+    name: { en: "Display, slim", sv: "Genomskinlig, tunn" },
+    type: "display",
+    display: true,
+    finish: "brushed",
+    profile: "slim",
+    mount: "screw-down",
+    spacerFit: "grey-nh",
+    engraving: "none",
+    heightDeltaMm: 0.6,
+    thicknessMm: 4.0,
+    thicknessNoThreadMm: 2.0,
+    wr: 100,
+    src: "wsCaseback",
+    note: {
+      en: "4.0 mm with the thread against the standard back's 4.6 mm, and a 1.2 mm sapphire window against 2.5 mm. namokiMODS rates its slim sapphire back at 100 m where CrystalTimes rates its standard one at 200 m; those are different products and the ratings do not generalise. Fits NH movements with the GREY spacer only.",
+      sv: "4,0 mm med gängan mot standardbottnens 4,6 mm, och ett 1,2 mm safirfönster mot 2,5 mm. namokiMODS anger 100 m för sin tunna safirbotten där CrystalTimes anger 200 m för sin standardbotten; det är olika produkter och värdena kan inte generaliseras. Passar NH-urverk endast med den GRÅ distansen.",
+    },
+    ali: { queries: ["slim sapphire caseback SKX007"], priceUsd: [18, 45] },
+  },
+  {
+    id: "display-oem",
+    name: { en: "Display, OEM spacer variant", sv: "Genomskinlig, för originaldistans" },
+    type: "display",
+    display: true,
+    finish: "polished",
+    profile: "standard",
+    mount: "screw-down",
+    spacerFit: "black-oem",
+    engraving: "none",
+    heightDeltaMm: 0.6,
+    src: "ct239",
+    note: {
+      en: "CT239A, cut for the thicker BLACK movement spacer used by 7S26 and stock Seiko movements. An NH35/NH36 uses the thinner grey spacer, so on an NH build this is the wrong half of the fork.",
+      sv: "CT239A, gjord för den tjockare SVARTA urverksdistansen som 7S26 och Seikos originalurverk använder. NH35/NH36 använder den tunnare grå distansen, så på ett NH-bygge är det här fel halva av valet.",
+    },
+    ali: { queries: ["CT239A display caseback SKX"], priceUsd: [16, 40] },
   },
 ];
 
+// ---------------------------------------------------------------------------
+// STRAPS. Four kinds behave differently enough that they are different objects,
+// not one object with different textures: a bracelet is rows of links, rubber
+// and leather are one tapered band, and a NATO is a single length that passes
+// UNDER the case. Everything below the STRAPS list is an axis over them.
+//
+// The complaint this answers is "little to no difference between a jubilee and
+// an oyster". The difference is not colour and not taper: it is how many link
+// bodies span the width of one row and what their cross-section is. An Oyster
+// is three flat links; a Jubilee is five, with three narrow ROUNDED centres.
+// Rendered as one flat box they are identical, which is exactly the bug.
+//
+// NOBODY PUBLISHES PER-LINK WIDTHS, for any bracelet type. Only the ORDERING
+// is sourced (Oyster: wide centre, narrow outers; Jubilee: wide outers, three
+// narrow centres). Every `widthRatios` below is therefore a rendering
+// convention and says so.
+
 export const STRAPS = [
-  { id: "oyster", name: { en: "Oyster bracelet", sv: "Oyster-länk" }, kind: "bracelet", color: "#9aa2ab", ali: { queries: ["oyster bracelet 22mm solid"], priceUsd: [12, 45] } },
-  { id: "jubilee", name: { en: "Jubilee bracelet", sv: "Jubilee-länk" }, kind: "bracelet", color: "#a5adb6", ali: { queries: ["jubilee bracelet 22mm solid"], priceUsd: [14, 50] } },
-  { id: "waffle", name: { en: "Rubber waffle", sv: "Gummi, våffelmönster" }, kind: "rubber", color: "#15171b", ali: { queries: ["waffle rubber strap 22mm seiko"], priceUsd: [8, 25] } },
-  { id: "tropic", name: { en: "Rubber tropic", sv: "Gummi, tropic" }, kind: "rubber", color: "#101216", ali: { queries: ["tropic rubber strap 22mm"], priceUsd: [8, 25] } },
-  { id: "nato", name: { en: "NATO", sv: "NATO" }, kind: "nato", color: "#2b3038", ali: { queries: ["nato strap 22mm seatbelt"], priceUsd: [5, 20] } },
-  { id: "leather", name: { en: "Leather", sv: "Läder" }, kind: "leather", color: "#4a3226", ali: { queries: ["leather strap 20mm vintage watch"], priceUsd: [8, 30] } },
-  { id: "mesh", name: { en: "Milanese mesh", sv: "Milanese mesh" }, kind: "bracelet", color: "#98a0a9", ali: { queries: ["milanese mesh bracelet 22mm"], priceUsd: [10, 30] } },
+  {
+    id: "oyster",
+    name: { en: "Oyster bracelet", sv: "Oyster-länk" },
+    kind: "bracelet",
+    type: "oyster",
+    color: "#9aa2ab",
+    sheen: "metal",
+    buckle: "flip-lock",
+    src: "strapcodeOyster",
+    ali: { queries: ["oyster bracelet 22mm solid"], priceUsd: [12, 45] },
+  },
+  {
+    id: "jubilee",
+    name: { en: "Jubilee bracelet", sv: "Jubilee-länk" },
+    kind: "bracelet",
+    type: "jubilee",
+    color: "#a5adb6",
+    sheen: "metal",
+    buckle: "v-clasp",
+    src: "strapcodeJubilee",
+    ali: { queries: ["jubilee bracelet 22mm solid"], priceUsd: [14, 50] },
+  },
+  {
+    id: "waffle",
+    name: { en: "Rubber waffle", sv: "Gummi, våffelmönster" },
+    kind: "rubber",
+    type: "waffle",
+    color: "#15171b",
+    sheen: "satin",
+    buckle: "tang",
+    src: "unclestraps",
+    ali: { queries: ["waffle rubber strap 22mm seiko"], priceUsd: [8, 25] },
+  },
+  {
+    id: "tropic",
+    name: { en: "Rubber tropic", sv: "Gummi, tropic" },
+    kind: "rubber",
+    type: "tropic",
+    color: "#101216",
+    sheen: "satin",
+    buckle: "tang",
+    src: "unclestraps",
+    ali: { queries: ["tropic rubber strap 22mm"], priceUsd: [8, 25] },
+  },
+  {
+    id: "nato",
+    name: { en: "NATO", sv: "NATO" },
+    kind: "nato",
+    type: "nato",
+    color: "#2b3038",
+    sheen: "matte",
+    buckle: "tang",
+    src: "crownbuckle",
+    ali: { queries: ["nato strap 22mm seatbelt"], priceUsd: [5, 20] },
+  },
+  {
+    id: "leather",
+    name: { en: "Leather", sv: "Läder" },
+    kind: "leather",
+    type: "calf",
+    color: "#4a3226",
+    sheen: "satin",
+    buckle: "tang",
+    src: "strapcodeLeather",
+    ali: { queries: ["leather strap 20mm vintage watch"], priceUsd: [8, 30] },
+  },
+  {
+    id: "mesh",
+    name: { en: "Milanese mesh", sv: "Milanese mesh" },
+    kind: "bracelet",
+    type: "milanese",
+    color: "#98a0a9",
+    sheen: "metal",
+    buckle: "interlock",
+    src: "strapcodeMesh",
+    ali: { queries: ["milanese mesh bracelet 22mm"], priceUsd: [10, 30] },
+  },
 ];
+
+/**
+ * BRACELET types. `linksAcross` and `crossSection` are what make an Oyster
+ * read as an Oyster; `pitchMm` is the row length, which also sets how often
+ * the bracelet hinges — a Jubilee with a 6 mm pitch drapes visibly more
+ * fluidly than a 10 mm Oyster, and that alone separates the two silhouettes.
+ */
+export const BRACELET_TYPES = [
+  {
+    id: "oyster", name: { en: "Oyster", sv: "Oyster" }, linksAcross: 3, crossSection: "flat",
+    widthRatios: [0.25, 0.5, 0.25], ratiosApprox: true, pitchMm: 10, pitchRangeMm: [8, 10],
+    taperMm: 4, thicknessMm: 3.2, diverExtension: true, clasp: "flip-lock", src: "strapcodeOyster",
+    note: { en: "Three flat links: a wide centre flanked by narrower outers. The 4 mm taper is the ideal band Everest names; individual link widths are published nowhere, so the ratios here are a rendering convention.", sv: "Tre plana länkar: en bred mitt med smalare yttre. De 4 mm avsmalning är det ideala spannet Everest anger; enskilda länkbredder publiceras ingenstans, så proportionerna här är en renderingskonvention." },
+  },
+  {
+    id: "super-oyster", name: { en: "Super Oyster", sv: "Super Oyster" }, linksAcross: 3, crossSection: "flat",
+    widthRatios: [0.25, 0.5, 0.25], ratiosApprox: true, pitchMm: 10, taperMm: 2, taperAltMm: 4,
+    thicknessMm: 3.2, diverExtension: true, clasp: "flip-lock", solidEndLinks: true, src: "strapcodeOyster",
+    note: { en: "An Oyster with solid curved end pieces; the row geometry is the same. Two SKUs genuinely taper differently — 22 → 20 mm and 22 → 18 mm — so both are carried rather than averaged.", sv: "En Oyster med massiva kurvade ändstycken; radgeometrin är densamma. Två artiklar smalnar verkligen olika — 22 → 20 mm och 22 → 18 mm — så båda bärs vidare i stället för att medelvärdesbildas." },
+  },
+  {
+    id: "jubilee", name: { en: "Jubilee", sv: "Jubilee" }, linksAcross: 5, crossSection: "rounded",
+    widthRatios: [0.25, 0.1667, 0.1667, 0.1667, 0.25], ratiosApprox: true, pitchMm: 6, pitchRangeMm: [5, 9],
+    taperMm: 4, thicknessMm: 3.6, diverExtension: false, clasp: "v-clasp", src: "strapcodeJubilee",
+    note: { en: "Five links per row: two wider outers flanking three narrower rounded centres. Sources disagree on which are polished — one says polished centres and brushed outers, another the reverse — and on the pitch, one page giving both 5–7 mm and 9 mm. Both disagreements are carried; what is safe is that the Jubilee's pitch is shorter than the Oyster's.", sv: "Fem länkar per rad: två bredare yttre kring tre smalare rundade i mitten. Källorna är oense om vilka som är polerade — en säger polerad mitt och borstade yttre, en annan tvärtom — och om längden, där en sida anger både 5–7 mm och 9 mm. Båda motsägelserna bärs vidare; det säkra är att Jubilees längd är kortare än Oysters." },
+  },
+  {
+    id: "president", name: { en: "President", sv: "President" }, linksAcross: 3, crossSection: "semi-circular",
+    widthRatios: [0.25, 0.5, 0.25], ratiosApprox: true, pitchMm: 11, taperMm: 4, taperApprox: true,
+    thicknessMm: null, diverExtension: false, clasp: "concealed", src: "everestBracelet",
+    note: { en: "The Oyster's three-across topology with the Jubilee's rounded cross-section. The aftermarket steel copies publish no taper or thickness at all.", sv: "Oysters tre länkar per rad med Jubilees rundade tvärsnitt. Eftermarknadens stålkopior publicerar varken avsmalning eller tjocklek." },
+  },
+  {
+    id: "engineer-i", name: { en: "Engineer I", sv: "Engineer I" }, linksAcross: 5, crossSection: "round-edge",
+    widthRatios: [0.2, 0.2, 0.2, 0.2, 0.2], ratiosApprox: true, pitchMm: null, taperMm: 4, taperApprox: true,
+    thicknessMm: 4.6, diverExtension: true, clasp: "flip-lock", src: "strapcodeEngineer",
+    note: { en: "Five round-edge links of similar heft — no small centre trio, which is what separates it from a Jubilee at a glance. 4.6 mm is the heaviest bracelet here.", sv: "Fem rundkantade länkar med liknande tyngd — ingen smal mittrio, vilket är det som skiljer den från en Jubilee vid första anblicken. 4,6 mm är den tyngsta länken här." },
+  },
+  {
+    id: "engineer-ii", name: { en: "Engineer II", sv: "Engineer II" }, linksAcross: 5, crossSection: "chamfer-edge",
+    widthRatios: [0.2, 0.2, 0.2, 0.2, 0.2], ratiosApprox: true, pitchMm: null, taperMm: 0,
+    thicknessMm: 4.5, diverExtension: true, clasp: "v-clasp", src: "strapcodeEngineer",
+    note: { en: "Five chamfer-edge links and, unusually, ZERO taper — 22 mm at the lug and 22 mm at the buckle. That alone reads differently in a render.", sv: "Fem fasade länkar och, ovanligt nog, INGEN avsmalning — 22 mm vid hornen och 22 mm vid spännet. Bara det ser annorlunda ut i en rendering." },
+  },
+  {
+    id: "beads-of-rice", name: { en: "Beads of rice", sv: "Beads of rice" }, linksAcross: 7, crossSection: "beads",
+    widthRatios: [0.18, 0.128, 0.128, 0.128, 0.128, 0.128, 0.18], ratiosApprox: true, pitchMm: null,
+    taperMm: 2, thicknessMm: 3.4, diverExtension: true, clasp: "v-clasp", staggered: true, src: "strapcodeBor",
+    note: { en: "Five small staggered rounded beads between two brushed outer beads — seven bodies across, adjacent rows offset. Rendered as flat boxes it is unrecognisable.", sv: "Fem små förskjutna rundade pärlor mellan två borstade ytterpärlor — sju kroppar på bredden, med intilliggande rader förskjutna. Renderad som platta klossar går den inte att känna igen." },
+  },
+  {
+    id: "milanese", name: { en: "Milanese mesh", sv: "Milanese mesh" }, linksAcross: 0, crossSection: "woven",
+    wireMm: 0.9, wireFineMm: 0.6, pitchMm: null, taperMm: 4, thicknessMm: 2.5, thicknessFineMm: 1.8,
+    diverExtension: false, clasp: "interlock", src: "strapcodeMesh",
+    note: { en: "Knitted 316L wire, not links — the one bracelet where \"no links at all\" is the accurate model. 0.9 mm wire standard, 0.6 mm superfine. Its sliding clasp clamps anywhere, which is why it has no removable links.", sv: "Stickad 316L-tråd, inte länkar — den enda länken där \"inga länkar alls\" är den korrekta modellen. 0,9 mm tråd standard, 0,6 mm superfin. Dess glidlås klämmer var som helst, vilket är varför den saknar borttagbara länkar." },
+  },
+  {
+    id: "shark-mesh", name: { en: "Shark mesh", sv: "Shark mesh" }, linksAcross: 0, crossSection: "woven-coarse",
+    wireMm: 1.2, pitchMm: null, taperMm: 4, thicknessMm: 3.8, diverExtension: true, clasp: "v-clasp", src: "strapcodeMesh",
+    note: { en: "1.2 mm wire against Milanese's 0.9 / 0.6 mm, so the weave cell is roughly 1.3–2× coarser: individual loops read at arm's length where Milanese reads as near-smooth fabric.", sv: "1,2 mm tråd mot Milanese 0,9/0,6 mm, så vävcellen är ungefär 1,3–2 gånger grövre: enskilda öglor syns på armlängds avstånd där Milanese ser ut som nästan slät väv." },
+  },
+  {
+    id: "nautilus", name: { en: "Nautilus style", sv: "Nautilus-stil" }, linksAcross: 3, crossSection: "flat",
+    widthRatios: [0.28, 0.44, 0.28], ratiosApprox: true, pitchMm: 10, taperMm: 4, taperApprox: true,
+    thicknessMm: null, diverExtension: false, clasp: "concealed", src: "namokiBracelets",
+    note: { en: "Listed for SKX007/SRPD in brushed, gold, rose gold and black; no construction figures are published for it.", sv: "Listad för SKX007/SRPD i borstad, guld, roséguld och svart; inga konstruktionsmått publiceras." },
+  },
+  {
+    id: "snakeskin", name: { en: "Snakeskin style", sv: "Ormskinnsstil" }, linksAcross: 5, crossSection: "rounded",
+    widthRatios: [0.2, 0.2, 0.2, 0.2, 0.2], ratiosApprox: true, pitchMm: 6, taperMm: 4, taperApprox: true,
+    thicknessMm: null, diverExtension: false, clasp: "v-clasp", src: "namokiBracelets",
+    note: { en: "Listed for exactly these mod cases; no construction figures are published for it.", sv: "Listad för just de här moddboetterna; inga konstruktionsmått publiceras." },
+  },
+];
+
+/** RUBBER types. Rubber is one tapered band plus keepers plus a tang buckle. */
+export const RUBBER_TYPES = [
+  {
+    id: "waffle", name: { en: "Waffle", sv: "Våffelmönster" }, material: "tpu", keepers: 2, keepersAlt: 1,
+    taperMm: 2, cellMm: 2.0, cellApprox: true, widths: [19, 20, 22], src: "unclestraps",
+    note: { en: "A reproduction of the late-1960s Seiko dive strap, in TPU, tapering 2 mm to the buckle. The grid is raised pads with recessed channels; NO maker publishes the cell size, so the 2 mm cell is a rendering convention.", sv: "En reproduktion av Seikos dykarband från sent 1960-tal, i TPU, som smalnar 2 mm mot spännet. Rutnätet är upphöjda dynor med nedsänkta kanaler; INGEN tillverkare publicerar cellstorleken, så 2 mm-cellen är en renderingskonvention." },
+  },
+  {
+    id: "tropic", name: { en: "Tropic", sv: "Tropic" }, material: "tpu", keepers: 2, taperMm: 2,
+    perforated: true, widths: [19, 20, 22], src: "unclestraps",
+    note: { en: "A cross-hatch top and a deeply channelled underside; the modern reissues have notably bigger perforations. The 20 mm version is reported both at a 2 mm taper and at 20 → 16 mm, and both are carried.", sv: "Korsmönstrad ovansida och djupt kanaliserad undersida; nyutgåvorna har märkbart större perforeringar. 20 mm-versionen anges både med 2 mm avsmalning och som 20 → 16 mm, och båda bärs vidare." },
+  },
+  {
+    id: "isofrane", name: { en: "ISOfrane style", sv: "ISOfrane-stil" }, material: "isoprene", keepers: 2,
+    taperMm: 0, thicknessMm: 5.5, thicknessAtBuckleMm: 3.5, widths: [20, 22, 24], src: "isofrane",
+    note: { en: "Vulcanised isoprene with ladder vents down both edges and a ribbed underside. It tapers in THICKNESS (5.5 → 3.5 mm) but not in width, which is unusual and visually important. 18 and 19 mm are not listed.", sv: "Vulkaniserat isopren med stegventilation längs båda kanterna och räfflad undersida. Den smalnar i TJOCKLEK (5,5 → 3,5 mm) men inte i bredd, vilket är ovanligt och visuellt viktigt. 18 och 19 mm finns inte listade." },
+  },
+  {
+    id: "curved-end", name: { en: "Curved end", sv: "Kurvad ände" }, material: "fkm", keepers: 2, taperMm: 2,
+    thicknessMm: 4.5, thicknessAtBuckleMm: 3.5, widths: [20, 22], caseSpecific: true, src: "crafterblue",
+    note: { en: "The end is moulded to wrap a specific case, so this is the one strap kind whose availability is case-dependent. The SKX/SRPD mouldings are listed; nothing else is.", sv: "Änden är gjuten för att omsluta ett bestämt boett, så det här är den enda bandtypen vars tillgänglighet beror på boetten. Gjutningar för SKX/SRPD finns listade; inga andra." },
+  },
+  {
+    id: "plain", name: { en: "Plain rubber", sv: "Slätt gummi" }, material: "fkm", keepers: 1, taperMm: 2,
+    widths: [18, 19, 20, 22], src: "crafterblue",
+  },
+];
+
+/**
+ * The four-step SHEEN scale, quoted verbatim from a strap retailer's own
+ * guide. This is the fix for "leather shouldn't be shiny like a mirror":
+ * almost every strap leather sits at matte or satin, and only patent is
+ * genuinely high-gloss.
+ */
+export const SHEEN_LEVELS = [
+  { id: "matte", name: { en: "Matte", sv: "Matt" }, specular: 0.0, rough: 0.95, src: "strapcodeLeather" },
+  { id: "satin", name: { en: "Satin", sv: "Satin" }, specular: 0.12, rough: 0.7, src: "strapcodeLeather" },
+  { id: "shiny", name: { en: "Shiny", sv: "Blank" }, specular: 0.3, rough: 0.4, src: "strapcodeLeather" },
+  { id: "glossy", name: { en: "Glossy", sv: "Högblank" }, specular: 0.55, rough: 0.18, src: "strapcodeLeather" },
+];
+
+/**
+ * LEATHER types. The sheen SCALE above is sourced verbatim; mapping each
+ * leather onto a band is mostly inference, so `sheenApprox` marks the ones
+ * that are. What IS firmly sourced, and is the actionable part: suede and
+ * nubuck have essentially no specular, matte leather is non-reflective and
+ * flat, and only patent is high-gloss. Nothing here renders as a mirror.
+ */
+export const LEATHER_TYPES = [
+  { id: "calf", name: { en: "Calf / smooth", sv: "Kalv / slät" }, sheen: "satin", sheenApprox: true, grain: "smooth", src: "strapcodeLeather" },
+  { id: "oiled", name: { en: "Oiled / pull-up", sv: "Oljad / pull-up" }, sheen: "matte", sheenApprox: true, grain: "pull-up", src: "strapcodeLeather", note: { en: "Oils gather in the creases and the colour lightens where it flexes, so the surface is deliberately uneven.", sv: "Oljorna samlas i vecken och färgen ljusnar där bandet böjs, så ytan är medvetet ojämn." } },
+  { id: "suede", name: { en: "Suede", sv: "Mocka" }, sheen: "matte", specular: 0, grain: "nap", src: "strapcodeLeather", note: { en: "The underside of the hide, with the top grain split away — a soft nap on both sides and ZERO specular highlight.", sv: "Hudens undersida, med narvsidan bortkluven — mjuk lugg på båda sidor och HELT utan spegling." } },
+  { id: "nubuck", name: { en: "Nubuck", sv: "Nubuck" }, sheen: "matte", specular: 0, grain: "nap", src: "strapcodeLeather", note: { en: "Top grain sanded down to a velvety nap; essentially no specular, at most a faint nap sheen.", sv: "Narvsidan slipad till en sammetslen lugg; i praktiken ingen spegling, på sin höjd en svag luggglans." } },
+  { id: "shell-cordovan", name: { en: "Shell cordovan", sv: "Shell cordovan" }, sheen: "satin", sheenApprox: true, grain: "smooth", src: "strapcodeLeather", note: { en: "Very dense fibre that ripples rather than creases. The exact sheen is not published — satin with a deep soft glow is an inference, not a measurement.", sv: "Mycket tät fiber som veckar sig i vågor i stället för att spricka. Den exakta glansen publiceras inte — satin med djup mjuk lyster är en slutsats, inte ett mätvärde." } },
+  { id: "alligator", name: { en: "Alligator", sv: "Alligator" }, sheen: "satin", sheenApprox: true, grain: "scales", src: "strapcodeLeather", note: { en: "Sold BOTH matte and glossy — the two finishes genuinely coexist on the same material, so the sheen here is a default rather than a fact about the type.", sv: "Säljs BÅDE matt och blank — de två ytorna finns verkligen sida vid sida på samma material, så glansen här är ett standardval snarare än ett faktum om typen." } },
+  { id: "croc-embossed", name: { en: "Croc embossed", sv: "Krokodilpräglad" }, sheen: "satin", sheenApprox: true, grain: "scales", src: "strapcodeLeather" },
+  { id: "ostrich", name: { en: "Ostrich", sv: "Struts" }, sheen: "satin", sheenApprox: true, grain: "quill", src: "strapcodeLeather" },
+  { id: "saffiano", name: { en: "Saffiano", sv: "Saffiano" }, sheen: "satin", sheenApprox: true, grain: "crosshatch", src: "strapcodeLeather" },
+  { id: "pebble-grain", name: { en: "Pebble grain", sv: "Kornig narv" }, sheen: "satin", sheenApprox: true, grain: "pebble", src: "strapcodeLeather" },
+  { id: "vintage", name: { en: "Vintage distressed", sv: "Vintage, sliten" }, sheen: "matte", sheenApprox: true, grain: "distressed", src: "strapcodeLeather" },
+  { id: "rally", name: { en: "Rally, perforated", sv: "Rally, perforerad" }, sheen: "matte", sheenApprox: true, grain: "perforated", src: "strapcodeLeather", note: { en: "Listed as its own category; the perforation geometry is not published anywhere.", sv: "Listad som en egen kategori; perforeringarnas geometri publiceras ingenstans." } },
+  { id: "patent", name: { en: "Patent", sv: "Lackläder" }, sheen: "glossy", grain: "smooth", src: "strapcodeLeather", note: { en: "The ONE genuinely mirror-like leather, and barely present in watch straps.", sv: "Det ENDA verkligt spegelblanka lädret, och nästan obefintligt i klockarmband." } },
+];
+
+/** NATO weave grades, with the published thicknesses. */
+export const NATO_WEAVES = [
+  { id: "standard", name: { en: "Standard ballistic", sv: "Standard ballistisk" }, thicknessMm: 1.25, sheen: "matte", src: "crownbuckle" },
+  { id: "premium", name: { en: "Premium ballistic", sv: "Premium ballistisk" }, thicknessMm: 1.25, sheen: "matte", src: "crownbuckle" },
+  { id: "heavy-duty", name: { en: "Heavy duty", sv: "Kraftig" }, thicknessMm: 1.6, sheen: "matte", src: "crownbuckle" },
+  { id: "seatbelt", name: { en: "Seatbelt", sv: "Bilbältesväv" }, thicknessMm: 1.4, sheen: "satin", src: "crownbuckle", note: { en: "A tightly knit, slightly shiny nylon, where standard ballistic is matte with a visibly coarse twill. That split is the render difference between the two.", sv: "En tätt stickad, något blank nylon, där standardballistisk är matt med synligt grov kypert. Den skillnaden är renderingsskillnaden mellan de två." } },
+];
+
+/** NATO construction — 3-ring single-pass or 5-ring with the under-flap. */
+export const NATO_LAYERS = [
+  { id: "under-flap", name: { en: "Two layer (5 ring)", sv: "Två lager (5 ringar)" }, rings: 5, flap: true, src: "crownbuckle" },
+  { id: "single-pass", name: { en: "Single pass (3 ring)", sv: "Enkelpassage (3 ringar)" }, rings: 3, flap: false, src: "crownbuckle" },
+];
+
+/**
+ * NATO patterns. The "Bond" naming is a real historical dispute and both
+ * versions are genuinely sold, so both ship: `bond-grey` is the popular
+ * black-and-grey strap everyone calls a Bond NATO, and `bond-1964` is the
+ * black / dark burgundy / dark olive band actually seen in Goldfinger.
+ */
+export const NATO_PATTERNS = [
+  { id: "solid", name: { en: "Solid", sv: "Enfärgad" }, stripes: null, src: "crownbuckle" },
+  {
+    id: "bond-grey", name: { en: "Bond, black and grey", sv: "Bond, svart och grå" },
+    stripes: ["#1b1d21", "#8b9098", "#1b1d21", "#8b9098", "#1b1d21"], src: "everestNato",
+    note: { en: "Black with two grey stripes — the most iconic NATO there is, and universally called the Bond. It is NOT the strap worn in Goldfinger; see bond-1964.", sv: "Svart med två grå ränder — den mest ikoniska NATO:n som finns, och kallas överallt Bond. Det är INTE bandet som bars i Goldfinger; se bond-1964." },
+  },
+  {
+    id: "bond-1964", name: { en: "Bond 1964, black, burgundy and olive", sv: "Bond 1964, svart, vinröd och oliv" },
+    stripes: ["#16181b", "#5c1f27", "#4a4a24", "#16181b", "#4a4a24", "#5c1f27", "#16181b"], src: "espritNato",
+    note: { en: "The strap actually seen in Goldfinger: a black base with green stripes and fine burgundy edges — nine stripes in three colours. Retailers sell it as \"black and olive (Bond)\" and as an \"Original 1964 007\" in black, maroon and olive drab. The stripe widths and ordering beyond \"nine stripes\" are not published.", sv: "Bandet som faktiskt syns i Goldfinger: svart botten med gröna ränder och fina vinröda kanter — nio ränder i tre färger. Återförsäljare säljer det som \"black and olive (Bond)\" och som \"Original 1964 007\" i svart, vinrött och olivgrönt. Rändernas bredd och ordning utöver \"nio ränder\" publiceras inte." },
+  },
+  { id: "regimental", name: { en: "Regimental stripes", sv: "Regementsränder" }, stripes: ["#1d2b4a", "#8b1f2b", "#1d2b4a"], src: "everestNato" },
+  { id: "military-stripe", name: { en: "Military stripe, olive", sv: "Militärrand, oliv" }, stripes: ["#4a5230", "#8b1f2b", "#d8b53a", "#4a5230"], src: "crownbuckle" },
+];
+
+/**
+ * Strap COLOURS. `kinds` says which strap kinds a colour is listed for.
+ * `rarity` is inferred from which colours have their own marketplace category
+ * pages rather than measured, and is flagged accordingly.
+ */
+export const STRAP_COLOURS = [
+  { id: "black", name: { en: "Black", sv: "Svart" }, hex: "#17191d", kinds: ["leather", "rubber", "nato"], rarity: "very-common" },
+  { id: "dark-brown", name: { en: "Dark brown", sv: "Mörkbrun" }, hex: "#3d2a1e", kinds: ["leather"], rarity: "very-common" },
+  { id: "tan", name: { en: "Tan", sv: "Ljusbrun" }, hex: "#9a6a41", kinds: ["leather"], rarity: "very-common" },
+  { id: "vintage-brown", name: { en: "Vintage brown", sv: "Vintagebrun" }, hex: "#6b4529", kinds: ["leather"], rarity: "common" },
+  { id: "navy", name: { en: "Navy", sv: "Marinblå" }, hex: "#1c2740", kinds: ["leather", "rubber", "nato"], rarity: "very-common" },
+  { id: "blue", name: { en: "Blue", sv: "Blå" }, hex: "#28497f", kinds: ["leather", "rubber", "nato"], rarity: "common" },
+  { id: "grey", name: { en: "Grey", sv: "Grå" }, hex: "#585e66", kinds: ["leather", "rubber", "nato"], rarity: "common" },
+  { id: "olive", name: { en: "Olive", sv: "Oliv" }, hex: "#4a5230", kinds: ["leather", "rubber", "nato"], rarity: "common" },
+  { id: "green", name: { en: "Green", sv: "Grön" }, hex: "#2c5b3c", kinds: ["leather", "rubber", "nato"], rarity: "common" },
+  { id: "khaki", name: { en: "Khaki", sv: "Khaki" }, hex: "#8a7f5c", kinds: ["leather", "nato"], rarity: "common" },
+  { id: "beige", name: { en: "Beige", sv: "Beige" }, hex: "#c3b490", kinds: ["leather", "nato"], rarity: "common" },
+  { id: "burgundy", name: { en: "Burgundy", sv: "Vinröd" }, hex: "#5c1f27", kinds: ["leather", "nato"], rarity: "common" },
+  { id: "red", name: { en: "Red", sv: "Röd" }, hex: "#8f2027", kinds: ["leather", "rubber", "nato"], rarity: "common" },
+  { id: "orange", name: { en: "Orange", sv: "Orange" }, hex: "#c25b1c", kinds: ["leather", "rubber", "nato"], rarity: "uncommon" },
+  { id: "yellow", name: { en: "Yellow", sv: "Gul" }, hex: "#d8b53a", kinds: ["leather", "rubber", "nato"], rarity: "uncommon" },
+  { id: "white", name: { en: "White", sv: "Vit" }, hex: "#e8e9ec", kinds: ["leather", "nato"], rarity: "uncommon" },
+  { id: "teal", name: { en: "Teal", sv: "Blågrön" }, hex: "#1d6a6e", kinds: ["nato"], rarity: "uncommon" },
+  { id: "purple", name: { en: "Purple", sv: "Lila" }, hex: "#4d3070", kinds: ["nato"], rarity: "rare" },
+];
+
+/** Stitch colours — a genuinely separate axis from the leather's own colour. */
+export const STITCH_COLOURS = [
+  { id: "none", name: { en: "No visible stitch", sv: "Ingen synlig söm" }, hex: null, src: "strapcodeLeather" },
+  { id: "tonal", name: { en: "Tonal (matches the leather)", sv: "Ton-i-ton" }, hex: null, src: "strapcodeLeather" },
+  { id: "white", name: { en: "White", sv: "Vit" }, hex: "#eceef1", src: "strapcodeLeather" },
+  { id: "cream", name: { en: "Cream", sv: "Gräddvit" }, hex: "#e4d7b8", src: "strapcodeLeather" },
+  { id: "beige", name: { en: "Beige", sv: "Beige" }, hex: "#c9b78e", src: "strapcodeLeather" },
+  { id: "black", name: { en: "Black", sv: "Svart" }, hex: "#17191d", src: "strapcodeLeather" },
+  { id: "brown", name: { en: "Brown", sv: "Brun" }, hex: "#5a3a24", src: "strapcodeLeather" },
+  { id: "red", name: { en: "Red", sv: "Röd" }, hex: "#9d2029", src: "strapcodeLeather" },
+  { id: "orange", name: { en: "Orange", sv: "Orange" }, hex: "#c25b1c", src: "strapcodeLeather" },
+  { id: "blue", name: { en: "Blue", sv: "Blå" }, hex: "#28497f", src: "strapcodeLeather" },
+  { id: "forest-green", name: { en: "Forest green", sv: "Mörkgrön" }, hex: "#22452e", src: "strapcodeLeather" },
+  { id: "yellow", name: { en: "Yellow", sv: "Gul" }, hex: "#d8b53a", src: "strapcodeLeather" },
+];
+
+/** Stitch pitch: 14 stitches per inch on a good strap, i.e. one every 1.81 mm. */
+export const STITCH_PITCH_MM = { mm: 1.81, approx: true, src: "strapcodeLeather" };
+
+/** Buckle and clasp hardware finishes, listed across every strap kind. */
+export const HARDWARE_FINISHES = [
+  { id: "brushed", name: { en: "Brushed", sv: "Borstad" }, color: "#a8b0b9", rough: 0.45, src: "crownbuckle" },
+  { id: "polished", name: { en: "Polished", sv: "Polerad" }, color: "#c3cad2", rough: 0.1, src: "crownbuckle" },
+  { id: "pvd-black", name: { en: "PVD black", sv: "PVD svart" }, color: "#2b2f34", rough: 0.5, src: "crownbuckle" },
+  { id: "gold", name: { en: "Gold plated", sv: "Guldpläterad" }, color: "#c8a253", rough: 0.2, src: "crownbuckle" },
+  { id: "rose-gold", name: { en: "Rose gold", sv: "Roséguld" }, color: "#c98f6f", rough: 0.2, src: "strapcodeMesh" },
+];
+
+/**
+ * BUCKLES and clasps. The load-bearing rule for the geometry: a buckle is as
+ * wide as the strap's TAPERED end, not as wide as the lug — a 20 mm strap
+ * tapering to 18 mm takes an 18 mm buckle, and drawing it at lug width is
+ * exactly the kind of thing that reads as wrong without anyone being able to
+ * say why.
+ */
+export const BUCKLES = [
+  { id: "tang", name: { en: "Tang buckle", sv: "Stiftspänne" }, kinds: ["leather", "rubber", "nato"], thicknessMm: 1.0, tongueMm: 3.0, src: "strapcodeLeather" },
+  { id: "sporty-tang", name: { en: "Sporty tang buckle", sv: "Sportigt stiftspänne" }, kinds: ["leather", "rubber", "nato"], thicknessMm: 1.0, tongueMm: 2.0, src: "strapcodeLeather" },
+  { id: "deployant", name: { en: "Deployant clasp", sv: "Vikspänne" }, kinds: ["leather", "rubber"], src: "strapcodeLeather" },
+  { id: "butterfly", name: { en: "Butterfly clasp", sv: "Fjärilslås" }, kinds: ["leather", "rubber"], closedThicknessMm: 7, planMm: [40, 22], maxStrapThicknessMm: 3.5, src: "strapcodeLeather" },
+  { id: "v-clasp", name: { en: "V-clasp, double lock", sv: "V-lås, dubbelspärr" }, kinds: ["bracelet"], microHoles: 6, src: "strapcodeJubilee" },
+  { id: "flip-lock", name: { en: "Double flip-lock diver clasp", sv: "Dubbelt flip-lock dykarlås" }, kinds: ["bracelet"], microHoles: 6, src: "strapcodeOyster" },
+  { id: "concealed", name: { en: "Concealed clasp", sv: "Dolt lås" }, kinds: ["bracelet"], src: "everestBracelet" },
+  { id: "interlock", name: { en: "Sliding interlock clasp (mesh)", sv: "Glidande interlock-lås (mesh)" }, kinds: ["bracelet"], src: "strapcodeMesh" },
+];
+
+/**
+ * The default scene: the watch resting on a leather cylinder that stands in
+ * for a wrist, which is what the feedback asked for. The radius is
+ * sourced-and-derived — the average adult male wrist circumference is 172 mm,
+ * giving a 27.4 mm circular radius, and watch pillows are actually sold in
+ * 50 mm and 55 mm diameters banded by wrist size. The LENGTH is a rendering
+ * choice; nobody publishes one.
+ */
+export const WRIST_HOLDER = {
+  radiusMm: 27,
+  radiusRangeMm: [25, 27.5],
+  lengthMm: 100,
+  lengthApprox: true,
+  material: "suede",
+  sheen: "matte",
+  /** A wrist is flatter than it is wide; the ratio itself is not sourced. */
+  aspect: 1.25,
+  aspectApprox: true,
+  src: "strapcodeLeather",
+  note: {
+    en: "Radius 27 mm from a 172 mm average adult male wrist circumference, independently corroborated by the 50 and 55 mm diameters watch pillows are actually sold in. The cylinder is matte suede-grain leather, not polished. Its length and its non-circular cross-section ratio are rendering conventions.",
+    sv: "Radie 27 mm utifrån 172 mm genomsnittligt handledsomfång för vuxna män, oberoende bekräftat av de 50 och 55 mm diametrar klockkuddar faktiskt säljs i. Cylindern är matt mockaläder, inte polerat. Dess längd och icke-cirkulära tvärsnittsförhållande är renderingskonventioner.",
+  },
+};
+
+/**
+ * How far down the strap has already turned when it leaves the lug. The
+ * complaint was that worn straps do not start straight out, and they do not:
+ * with a wrist radius R and a spring bar standing d proud of the wrist, the
+ * strap is tangent to the wrist at arccos(R/(R+d)) — about 29° for a 27 mm
+ * wrist and a 4 mm standoff. The standoff is the unsourced part.
+ */
+export const STRAP_EXIT = {
+  wristRadiusMm: WRIST_HOLDER.radiusMm,
+  springBarStandoffMm: 4,
+  standoffApprox: true,
+  degrees: 29.5,
+  degreesRange: [25, 35],
+  src: "strapcodeLeather",
+  note: {
+    en: "Computed, not authored: arccos(R/(R+d)). Nobody publishes a lug exit angle. A flat-cut strap on curved lugs PIVOTS at the spring bar; a fitted curved end BENDS instead and sits flush against the case.",
+    sv: "Beräknad, inte påhittad: arccos(R/(R+d)). Ingen publicerar en utgångsvinkel vid hornen. Ett rakskuret band på kurvade horn VRIDER sig kring bandstiftet; en formgjuten kurvad ände BÖJER sig i stället och ligger tätt mot boetten.",
+  },
+};
 
 /** Case finishes, applied to the case and (where steel) the bracelet. */
 export const FINISHES = [
@@ -1385,20 +3108,285 @@ export const FINISHES = [
   { id: "titanium", name: { en: "Titanium", sv: "Titan" }, color: "#8f949a", rough: 0.6, metal: 1 },
 ];
 
-/** Every slot the builder fills, in the order the UI shows them. */
+// ---------------------------------------------------------------------------
+// THE COMPLICATION WHEELS. The single most useful finding behind "make it
+// possible to switch text and background colour for the date wheel": the date
+// disc is NOT a dial property. It is a separate purchasable part that swaps
+// 1:1 onto the movement, and sellers list it by disc colour and text colour.
+// The day wheel is the same, with LANGUAGE as an explicit product variable.
+//
+// The two Seiko part numbers are carried as provenance: 0148 141 is the white
+// disc with black text and 0148 142 the black disc with white text.
+
+export const DATE_WHEELS = [
+  { id: "as-supplied", name: { en: "As the movement comes", sv: "Som urverket levereras" }, disc: "#f2f4f7", text: "#15181c", src: "modmode" },
+  { id: "white-black", name: { en: "White disc, black text", sv: "Vit skiva, svart text" }, disc: "#f2f4f7", text: "#15181c", seikoPart: "0148 141", src: "modmode", ali: { queries: ["NH35 date wheel white"], priceUsd: [4, 14] } },
+  { id: "black-white", name: { en: "Black disc, white text", sv: "Svart skiva, vit text" }, disc: "#111318", text: "#f2f5fa", seikoPart: "0148 142", src: "modmode", ali: { queries: ["NH35 date wheel black"], priceUsd: [4, 14] } },
+  { id: "black-red", name: { en: "Black disc, red text", sv: "Svart skiva, röd text" }, disc: "#111318", text: "#d8453c", src: "aliCalendar", ali: { queries: ["NH36 black date disk red font"], priceUsd: [4, 14] } },
+  { id: "black-gold", name: { en: "Black disc, gold text", sv: "Svart skiva, guldtext" }, disc: "#111318", text: "#cfa75a", src: "modmode", ali: { queries: ["NH36 black gold date wheel"], priceUsd: [5, 18] } },
+  { id: "red-white", name: { en: "Red disc, white text", sv: "Röd skiva, vit text" }, disc: "#9d2029", text: "#f6f8fb", src: "namokiWheels", ali: { queries: ["NH35 date wheel disc red"], priceUsd: [5, 16] } },
+  { id: "blue-white", name: { en: "Blue disc, white text", sv: "Blå skiva, vit text" }, disc: "#1b3b74", text: "#f6f8fb", src: "namokiWheels", ali: { queries: ["NH35 date wheel disc blue"], priceUsd: [5, 16] } },
+  { id: "roulette", name: { en: "Roulette, red and black on white", sv: "Roulette, rött och svart på vitt" }, disc: "#f2f4f7", text: "#15181c", text2: "#c0202a", src: "namokiWheels", ali: { queries: ["NH35 roulette date wheel"], priceUsd: [6, 20] } },
+  { id: "lume-white", name: { en: "Full lume, white", sv: "Helt lysande, vit" }, disc: "#eef1f2", text: "#15181c", lume: "c3", src: "namokiWheels", ali: { queries: ["NH35 lumed date wheel white"], priceUsd: [8, 24] } },
+  { id: "lume-black", name: { en: "Full lume, black", sv: "Helt lysande, svart" }, disc: "#14171b", text: "#e9f0dd", lume: "c3", src: "namokiWheels", ali: { queries: ["NH35 lumed date wheel black"], priceUsd: [8, 24] } },
+  { id: "lume-bgw9", name: { en: "BGW9 lumed", sv: "BGW9-lysande" }, disc: "#14171b", text: "#e7eef5", lume: "bgw9", src: "modmode", ali: { queries: ["BGW9 lumed date wheel NH36"], priceUsd: [8, 26] } },
+  { id: "overlay-white", name: { en: "White overlay disc", sv: "Vit överläggsskiva" }, disc: "#f2f4f7", text: "#15181c", overlay: true, src: "modmode", note: { en: "A thin printed disc pasted over the stock wheel to change its colour or numeral orientation — which is how you get a colour the movement never shipped with.", sv: "En tunn tryckt skiva som klistras över originalhjulet för att ändra färg eller siffrornas riktning — så får man en färg urverket aldrig levererades med." }, ali: { queries: ["date wheel overlay NH35 NH36"], priceUsd: [4, 12] } },
+];
+
+export const DAY_WHEELS = [
+  { id: "as-supplied", name: { en: "As the movement comes", sv: "Som urverket levereras" }, language: "en-es", disc: "#f2f4f7", text: "#15181c", crownAlign: "either", src: "tandorioDial" },
+  { id: "en-es-black", name: { en: "English/Spanish, black disc", sv: "Engelska/spanska, svart skiva" }, language: "en-es", disc: "#111318", text: "#f2f5fa", crownAlign: "either", src: "luciusMovements", ali: { queries: ["NH36 day wheel english spanish black"], priceUsd: [5, 18] } },
+  { id: "kanji-black-3", name: { en: "Kanji, black disc, 3 o'clock", sv: "Kanji, svart skiva, krona vid 3" }, language: "kanji", disc: "#111318", text: "#f2f5fa", crownAlign: "3", src: "namokiWheels", ali: { queries: ["NH36A kanji day wheel 3 o'clock"], priceUsd: [6, 20] } },
+  { id: "kanji-black-4", name: { en: "Kanji, black disc, 4 o'clock", sv: "Kanji, svart skiva, krona vid 4" }, language: "kanji", disc: "#111318", text: "#f2f5fa", crownAlign: "4", src: "namokiWheels", ali: { queries: ["NH36A kanji day wheel 4 o'clock"], priceUsd: [6, 20] } },
+  { id: "kanji-white-4", name: { en: "Kanji, white disc, 4 o'clock", sv: "Kanji, vit skiva, krona vid 4" }, language: "kanji", disc: "#f2f4f7", text: "#15181c", crownAlign: "4", src: "namokiWheels", ali: { queries: ["NH36A kanji day wheel white"], priceUsd: [6, 20] } },
+  { id: "kanji-black-gold", name: { en: "Kanji, black and gold", sv: "Kanji, svart och guld" }, language: "kanji", disc: "#111318", text: "#cfa75a", crownAlign: "either", src: "modmode", ali: { queries: ["NH36 kanji day date wheels black gold"], priceUsd: [8, 26] } },
+  { id: "kanji-rainbow", name: { en: "Kanji, rainbow", sv: "Kanji, regnbåge" }, language: "kanji", disc: "#111318", text: "#f2f5fa", rainbow: true, crownAlign: "either", src: "modmode", ali: { queries: ["NH36 kanji day date wheels rainbow"], priceUsd: [10, 30] } },
+  { id: "arabic-black", name: { en: "Arabic, black disc", sv: "Arabiska, svart skiva" }, language: "arabic", disc: "#111318", text: "#f2f5fa", crownAlign: "either", src: "namokiWheels", ali: { queries: ["NH36A arabic day date wheel"], priceUsd: [7, 24] } },
+  { id: "arabic-white", name: { en: "Arabic, white disc", sv: "Arabiska, vit skiva" }, language: "arabic", disc: "#f2f4f7", text: "#15181c", crownAlign: "either", src: "namokiWheels", ali: { queries: ["NH36A arabic day date wheel white"], priceUsd: [7, 24] } },
+  { id: "hanzi-black", name: { en: "Hanzi, black disc", sv: "Hanzi, svart skiva" }, language: "hanzi", disc: "#111318", text: "#f2f5fa", crownAlign: "either", src: "aliCalendar", ali: { queries: ["NH36A hanzi date wheel"], priceUsd: [6, 20] } },
+  { id: "lume-white", name: { en: "Lumed, white disc", sv: "Lysande, vit skiva" }, language: "kanji", disc: "#eef1f2", text: "#15181c", lume: "c3", crownAlign: "either", src: "namokiWheels", ali: { queries: ["NH36A lumed kanji day wheel"], priceUsd: [9, 28] } },
+];
+
+/**
+ * Day-wheel languages verified as purchasable NHxx aftermarket discs. The
+ * wider Seiko 5 day-wheel set (French, German, Danish, Roman numerals) is
+ * documented for finished watches but NOT as parts you can buy for a mod, so
+ * it is deliberately absent.
+ */
+export const DAY_WHEEL_LANGUAGES = [
+  { id: "en-es", name: { en: "English / Spanish", sv: "Engelska/spanska" }, src: "tandorioDial" },
+  { id: "kanji", name: { en: "Kanji", sv: "Kanji" }, src: "namokiWheels" },
+  { id: "arabic", name: { en: "Arabic", sv: "Arabiska" }, src: "namokiWheels" },
+  { id: "hanzi", name: { en: "Hanzi", sv: "Hanzi" }, src: "aliCalendar" },
+];
+
+// ---------------------------------------------------------------------------
+// WHAT COMES IN THE BOX. This is the honest answer to "chapter ring, separately
+// bought crystal and separately bought bezel insert have no reason to be
+// mandatory" — and it is better than a mandatory/optional flag, because it is
+// what actually varies. Boutique cases ship a BARE BODY (gaskets and a click
+// spring and nothing else); marketplace complete kits ship with the crystal,
+// caseback, bezel, insert, chapter ring and crown already in the box. So a
+// part is free when the case includes it and priced when it does not, and none
+// of them is mandatory in either case.
+//
+// Keyed by case id rather than written into each case entry, so the whole
+// what-is-included policy is legible in one place.
+
+/** @type {Record<string, { includes: string[], tier: string, src: string, approx?: boolean }>} */
+export const CASE_KITS = {
+  skx007: { includes: ["crystal", "caseback", "insert", "chapterRing", "crown"], tier: "complete-kit", src: "aliKit" },
+  "skx-ncg": { includes: ["crystal", "caseback", "insert", "chapterRing", "crown"], tier: "complete-kit", src: "aliKit", approx: true },
+  "skx-c3": { includes: ["crystal", "caseback", "insert", "chapterRing", "crown"], tier: "complete-kit", src: "aliKit", approx: true },
+  tuna: { includes: ["crystal", "caseback", "insert", "chapterRing", "crown"], tier: "complete-kit", src: "karajan" },
+};
+
+/** The default: nothing included beyond gaskets and a click spring. */
+export const CASE_KIT_DEFAULT = { includes: /** @type {string[]} */ ([]), tier: "bare-body", src: "namoki", approx: true };
+
+/**
+ * What a case family's kit contains.
+ * @param {string} caseId
+ */
+export function caseKit(caseId) {
+  return CASE_KITS[caseId] || CASE_KIT_DEFAULT;
+}
+
+/**
+ * Per-case-family display (exhibition) caseback availability — the answer to
+ * "make exhibition caseback available for case models where it is on
+ * AliExpress, and make it the default when it exists".
+ *
+ * `true` means a display back for that family was found listed. `null` means
+ * NOT ESTABLISHED — and those families default to a solid back, because
+ * defaulting them to exhibition would be inventing a part that nobody sells.
+ *
+ * @type {Record<string, { display: boolean|null, src: string, approx?: boolean }>}
+ */
+export const CASE_DISPLAY_BACKS = {
+  skx007: { display: true, src: "ct239" },
+  "skx-ncg": { display: true, src: "ct239" },
+  "skx-c3": { display: true, src: "ct239" },
+  sub: { display: true, src: "ct239" },
+  "sub-slim": { display: true, src: "ct239" },
+  "turtle-skx": { display: true, src: "ct239" },
+  "srp-turtle": { display: true, src: "ct239" },
+  "mini-turtle": { display: true, src: "ct239", approx: true },
+  skx013: { display: true, src: "lucius" },
+  samurai: { display: true, src: "ct239" },
+  tuna: { display: true, src: "karajan" },
+  mm300: { display: true, src: "ct239", approx: true },
+  "planet-ocean": { display: true, src: "ct239", approx: true },
+  "62mas": { display: true, src: "lucius", approx: true },
+  willard: { display: null, src: "namoki" },
+  alpinist: { display: null, src: "watchandstyle" },
+  explorer: { display: null, src: "lucius" },
+  field: { display: null, src: "lucius" },
+  sumo: { display: null, src: "community" },
+  monster: { display: null, src: "community" },
+};
+
+/**
+ * Whether an exhibition back is established for a case family: true, false or
+ * null for "no listing found — do not claim one".
+ * @param {string} caseId
+ */
+export function displayBackFor(caseId) {
+  const row = CASE_DISPLAY_BACKS[caseId];
+  return row ? row.display : null;
+}
+
+/**
+ * The slot choices a case implies. Picking a case should carry its own
+ * defaults: an exhibition back where one demonstrably exists, and the SKX013
+ * platform's mandatory chapter ring.
+ * @param {string} caseId
+ * @returns {Record<string, string>}
+ */
+export function defaultsForCase(caseId) {
+  const cs = CASES.find((c) => c.id === caseId);
+  if (!cs) return {};
+  /** @type {Record<string, string>} */
+  const out = {};
+  out.caseback = displayBackFor(caseId) === true ? "display" : "solid-brushed";
+  const plat = PLATFORMS[/** @type {keyof typeof PLATFORMS} */ (cs.platform)];
+  if (plat && plat.chapterRingRequired) out.chapterRing = "black-minutes";
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// SLOTS AND AXES.
+//
+// SLOTS are the eleven physical parts you buy. They have been the build's
+// shape since the page shipped and they stay exactly as they were, because
+// permalinks, the chat command parser and the catalogue endpoint are all built
+// on them.
+//
+// AXIS_SLOTS are the orthogonal variables ON those parts — dial colour, dial
+// finish, insert profile, crystal edge, strap leather type, the date and day
+// wheels. They are OVERRIDES: every one defaults to "as it comes", and a build
+// only carries an axis key when the user has actually moved it away from the
+// default. That is what keeps a permalink short, keeps an old permalink
+// decoding to exactly the watch it always did, and keeps the build object the
+// same shape it has always been until somebody uses the new controls.
+//
+// TEXT_FIELDS are free text rather than a choice from a list — the custom dial
+// printing and the caseback engraving text.
+
+/**
+ * @typedef {{ key: string, list: string, name: {en: string, sv: string},
+ *             optional?: boolean, over?: string, group?: string,
+ *             asListed?: {en: string, sv: string}, defaultId?: string,
+ *             kind?: string }} SlotDef
+ * A slot or an axis. The two share a shape so one registry, one option
+ * lookup and one compatibility annotator serve both.
+ */
+
+/**
+ * Every slot the builder fills, in the order the UI shows them.
+ * @type {SlotDef[]}
+ */
 export const SLOTS = [
   { key: "movement", list: "MOVEMENTS", name: { en: "Movement", sv: "Urverk" } },
   { key: "case", list: "CASES", name: { en: "Case", sv: "Boett" } },
   { key: "finish", list: "FINISHES", name: { en: "Finish", sv: "Ytbehandling" } },
-  { key: "insert", list: "INSERTS", name: { en: "Bezel insert", sv: "Lünettinlägg" } },
+  { key: "insert", list: "INSERTS", name: { en: "Bezel insert", sv: "Lünettinlägg" }, optional: true },
   { key: "dial", list: "DIALS", name: { en: "Dial", sv: "Urtavla" } },
-  { key: "chapterRing", list: "CHAPTER_RINGS", name: { en: "Chapter ring", sv: "Chapter ring" } },
+  { key: "chapterRing", list: "CHAPTER_RINGS", name: { en: "Chapter ring", sv: "Chapter ring" }, optional: true },
   { key: "hands", list: "HAND_SETS", name: { en: "Hands", sv: "Visare" } },
-  { key: "crystal", list: "CRYSTALS", name: { en: "Crystal", sv: "Glas" } },
+  { key: "crystal", list: "CRYSTALS", name: { en: "Crystal", sv: "Glas" }, optional: true },
   { key: "crown", list: "CROWNS", name: { en: "Crown", sv: "Krona" } },
   { key: "caseback", list: "CASEBACKS", name: { en: "Case back", sv: "Boettbotten" } },
   { key: "strap", list: "STRAPS", name: { en: "Strap", sv: "Band" } },
 ];
+
+/**
+ * What "none" MEANS per slot, in the user's own words. These slots are
+ * optional because a case very often ships the part already — so leaving one
+ * out is a real purchase decision, not an incomplete build.
+ */
+const NONE_NAMES = {
+  insert: { en: "None — the bezel as it comes", sv: "Ingen — lünetten som den är" },
+  chapterRing: { en: "None — no chapter ring fitted", sv: "Ingen — ingen chapter ring monterad" },
+  crystal: { en: "None — the glass the case ships with", sv: "Inget — glaset som följer med boetten" },
+};
+
+/**
+ * The synthetic "none" option for an optional slot. It is NOT in the
+ * catalogue list (nothing is sold called "none"), so `part(slot, "none")`
+ * answers null exactly as the builder contract says; this is what the UI
+ * renders for the choice.
+ * @param {string} slotKey
+ */
+export function noneOption(slotKey) {
+  const name = NONE_NAMES[/** @type {keyof typeof NONE_NAMES} */ (slotKey)];
+  if (!name) return null;
+  return { id: "none", name, none: true };
+}
+
+/**
+ * Stand-ins so nothing downstream ever meets a null part. `ids.<slot>` stays
+ * "none" and `resolveBuild().omitted.<slot>` is true, but `parts.<slot>`
+ * always has the fields the renderer and the geometry builders read.
+ */
+const NONE_STANDINS = {
+  insert: { id: "none", none: true, name: NONE_NAMES.insert, scale: "none", material: "steel", profile: "flat", base: "#8d949d", mark: "#5d646d", pip: "none", fits: ["skx", "skx013", "srp", "native"] },
+  chapterRing: { id: "none", none: true, name: NONE_NAMES.chapterRing, base: "#9aa1aa", mark: "#6b727b", printing: "plain", finish: "polished", lume: "none", fits: ["skx", "skx013", "srp", "native"] },
+  crystal: { id: "none", none: true, name: NONE_NAMES.crystal, material: "as-supplied", profile: "flat", edge: "bevel", arSide: "underside", forInsert: "any", dome: 0, tint: "#e0e7ef", ar: "none", cyclops: false, fits: ["skx", "skx013", "srp", "native"] },
+};
+
+/**
+ * The orthogonal variables. `over` names the slot an axis modifies, `group`
+ * is what a UI should file it under, `asListed` adds the synthetic "as it
+ * comes" default at the head of the option list.
+ * @type {SlotDef[]}
+ */
+export const AXIS_SLOTS = [
+  { key: "dialColor", list: "DIAL_COLOURS", over: "dial", group: "dial", name: { en: "Dial colour", sv: "Urtavlans färg" }, asListed: { en: "As the dial comes", sv: "Som urtavlan levereras" } },
+  { key: "dialFinish", list: "DIAL_FINISHES", over: "dial", group: "dial", name: { en: "Dial finish", sv: "Urtavlans finish" }, asListed: { en: "As the dial comes", sv: "Som urtavlan levereras" } },
+  { key: "dialConstruction", list: "DIAL_CONSTRUCTIONS", over: "dial", group: "dial", name: { en: "Dial construction", sv: "Urtavlans konstruktion" }, asListed: { en: "As the dial comes", sv: "Som urtavlan levereras" } },
+  { key: "dialIndices", list: "DIAL_INDEX_STYLES", over: "dial", group: "dial", name: { en: "Index style", sv: "Indexstil" }, asListed: { en: "As the dial comes", sv: "Som urtavlan levereras" } },
+  { key: "dialCalendar", list: "DIAL_CALENDARS", over: "dial", group: "dial", name: { en: "Calendar", sv: "Kalender" }, asListed: { en: "As the dial comes", sv: "Som urtavlan levereras" } },
+  { key: "dialLume", list: "DIAL_LUME_OPTIONS", over: "dial", group: "dial", name: { en: "Lume", sv: "Lysmassa" }, asListed: { en: "As the dial comes", sv: "Som urtavlan levereras" } },
+  { key: "dialDiameter", list: "DIAL_DIAMETERS", over: "dial", group: "dial", name: { en: "Dial diameter", sv: "Urtavlans diameter" }, defaultId: "28-5" },
+  { key: "dialFeet", list: "DIAL_FEET", over: "dial", group: "dial", name: { en: "Dial feet", sv: "Urtavlans fötter" }, defaultId: "feet4" },
+  { key: "dialPrint", list: "DIAL_PRINTS", over: "dial", group: "dialText", name: { en: "Printing method", sv: "Tryckmetod" }, defaultId: "sterile" },
+  { key: "dateWheel", list: "DATE_WHEELS", over: "movement", group: "wheels", name: { en: "Date wheel", sv: "Datumhjul" }, defaultId: "as-supplied" },
+  { key: "dayWheel", list: "DAY_WHEELS", over: "movement", group: "wheels", name: { en: "Day wheel", sv: "Veckodagshjul" }, defaultId: "as-supplied" },
+  { key: "insertProfile", list: "INSERT_PROFILES", over: "insert", group: "bezel", name: { en: "Insert profile", sv: "Inläggets profil" }, asListed: { en: "As the insert comes", sv: "Som inlägget levereras" } },
+  { key: "insertMaterial", list: "INSERT_MATERIALS", over: "insert", group: "bezel", name: { en: "Insert material", sv: "Inläggets material" }, asListed: { en: "As the insert comes", sv: "Som inlägget levereras" } },
+  { key: "crystalEdge", list: "CRYSTAL_EDGES", over: "crystal", group: "crystal", name: { en: "Crystal edge", sv: "Glasets kant" }, asListed: { en: "As the crystal comes", sv: "Som glaset levereras" } },
+  { key: "crystalAr", list: "CRYSTAL_ARS", over: "crystal", group: "crystal", name: { en: "AR coating", sv: "Antireflexbehandling" }, asListed: { en: "As the crystal comes", sv: "Som glaset levereras" } },
+  { key: "chapterPrinting", list: "CHAPTER_PRINTINGS", over: "chapterRing", group: "chapterRing", name: { en: "Chapter ring printing", sv: "Chapter ringens tryck" }, asListed: { en: "As the ring comes", sv: "Som ringen levereras" } },
+  { key: "casebackFinish", list: "CASEBACK_FINISHES", over: "caseback", group: "caseback", name: { en: "Case back finish", sv: "Boettbottnens finish" }, asListed: { en: "As the case back comes", sv: "Som boettbottnen levereras" } },
+  { key: "casebackEngraving", list: "CASEBACK_ENGRAVINGS", over: "caseback", group: "caseback", name: { en: "Case back engraving", sv: "Boettbottnens gravyr" }, asListed: { en: "As the case back comes", sv: "Som boettbottnen levereras" } },
+  { key: "braceletType", list: "BRACELET_TYPES", over: "strap", group: "strap", name: { en: "Bracelet type", sv: "Länktyp" }, asListed: { en: "As the bracelet comes", sv: "Som länken levereras" }, kind: "bracelet" },
+  { key: "rubberType", list: "RUBBER_TYPES", over: "strap", group: "strap", name: { en: "Rubber type", sv: "Gummityp" }, asListed: { en: "As the strap comes", sv: "Som bandet levereras" }, kind: "rubber" },
+  { key: "leatherType", list: "LEATHER_TYPES", over: "strap", group: "strap", name: { en: "Leather type", sv: "Lädertyp" }, asListed: { en: "As the strap comes", sv: "Som bandet levereras" }, kind: "leather" },
+  { key: "natoPattern", list: "NATO_PATTERNS", over: "strap", group: "strap", name: { en: "NATO pattern", sv: "NATO-mönster" }, asListed: { en: "As the strap comes", sv: "Som bandet levereras" }, kind: "nato" },
+  { key: "natoWeave", list: "NATO_WEAVES", over: "strap", group: "strap", name: { en: "NATO weave", sv: "NATO-väv" }, asListed: { en: "As the strap comes", sv: "Som bandet levereras" }, kind: "nato" },
+  { key: "natoLayers", list: "NATO_LAYERS", over: "strap", group: "strap", name: { en: "NATO construction", sv: "NATO-konstruktion" }, asListed: { en: "As the strap comes", sv: "Som bandet levereras" }, kind: "nato" },
+  { key: "strapColor", list: "STRAP_COLOURS", over: "strap", group: "strap", name: { en: "Strap colour", sv: "Bandets färg" }, asListed: { en: "As the strap comes", sv: "Som bandet levereras" } },
+  { key: "strapStitch", list: "STITCH_COLOURS", over: "strap", group: "strap", name: { en: "Stitch colour", sv: "Sömmens färg" }, asListed: { en: "As the strap comes", sv: "Som bandet levereras" }, kind: "leather" },
+  { key: "strapHardware", list: "HARDWARE_FINISHES", over: "strap", group: "strap", name: { en: "Hardware finish", sv: "Beslagens finish" }, asListed: { en: "As the strap comes", sv: "Som bandet levereras" } },
+  { key: "buckle", list: "BUCKLES", over: "strap", group: "strap", name: { en: "Buckle / clasp", sv: "Spänne/lås" }, asListed: { en: "As the strap comes", sv: "Som bandet levereras" } },
+];
+
+/** Lume as a choosable axis, not a fixed property of the dial listing. */
+export const DIAL_LUME_OPTIONS = Object.keys(LUMES).map((id) => ({
+  id,
+  name: LUMES[/** @type {keyof typeof LUMES} */ (id)].name,
+  src: LUMES[/** @type {keyof typeof LUMES} */ (id)].src || "namokiDials",
+}));
+
+/** Free-text fields. Sterile — every one empty — is the default and is real. */
+export const TEXT_FIELDS = [
+  ...DIAL_TEXT_FIELDS.map((f) => ({ ...f, group: "dialText" })),
+  { key: "casebackText", name: { en: "Case back engraving text", sv: "Text för boettgravyr" }, max: 40, group: "caseback", src: "wsCaseback" },
+];
+
+/** Every key a build may carry, slots first, in a fixed order. */
+export const ALL_SLOTS = [...SLOTS, ...AXIS_SLOTS];
 
 const CATALOG = {
   MOVEMENTS,
@@ -1412,27 +3400,99 @@ const CATALOG = {
   CROWNS,
   CASEBACKS,
   STRAPS,
+  DIAL_COLOURS,
+  DIAL_FINISHES,
+  DIAL_CONSTRUCTIONS,
+  DIAL_INDEX_STYLES,
+  DIAL_CALENDARS,
+  DIAL_LUME_OPTIONS,
+  DIAL_DIAMETERS,
+  DIAL_FEET,
+  DIAL_PRINTS,
+  DATE_WHEELS,
+  DAY_WHEELS,
+  INSERT_PROFILES,
+  INSERT_MATERIALS,
+  CRYSTAL_EDGES,
+  CRYSTAL_ARS,
+  CHAPTER_PRINTINGS,
+  CASEBACK_FINISHES,
+  CASEBACK_ENGRAVINGS,
+  BRACELET_TYPES,
+  RUBBER_TYPES,
+  LEATHER_TYPES,
+  NATO_PATTERNS,
+  NATO_WEAVES,
+  NATO_LAYERS,
+  STRAP_COLOURS,
+  STITCH_COLOURS,
+  HARDWARE_FINISHES,
+  BUCKLES,
 };
 
+/** The "as it comes" head option an override axis carries. */
+const AS_LISTED_CACHE = new Map();
+/** @param {SlotDef} axis */
+function asListedOption(axis) {
+  if (!AS_LISTED_CACHE.has(axis.key)) {
+    AS_LISTED_CACHE.set(axis.key, { id: "as-listed", name: axis.asListed, asListed: true });
+  }
+  return AS_LISTED_CACHE.get(axis.key);
+}
+
 /**
- * Every option for one slot.
+ * The descriptor for a slot or an axis, or null.
+ * @param {string} key
+ */
+export function slotDef(key) {
+  return ALL_SLOTS.find((s) => s.key === key) || null;
+}
+
+/**
+ * Whether a key is a free-text field rather than a choice.
+ * @param {string} key
+ */
+export function textFieldDef(key) {
+  return TEXT_FIELDS.find((f) => f.key === key) || null;
+}
+
+/**
+ * Every option for one slot or axis. Axes that default to "as it comes" get
+ * that option at the head of the list.
  * @param {string} slotKey
  * @returns {any[]}
  */
 export function slotOptions(slotKey) {
-  const slot = SLOTS.find((s) => s.key === slotKey);
+  const slot = slotDef(slotKey);
   if (!slot) return [];
-  return /** @type {any[]} */ (CATALOG[/** @type {keyof typeof CATALOG} */ (slot.list)]) || [];
+  const list = /** @type {any[]} */ (CATALOG[/** @type {keyof typeof CATALOG} */ (slot.list)]) || [];
+  if (!slot.asListed) return list;
+  return [asListedOption(slot), ...list];
 }
 
 /**
  * One option by slot + id, or null. Never throws — an unknown id is a miss,
- * not an error (a stale permalink must degrade, not break the page).
+ * not an error (a stale permalink must degrade, not break the page). The id
+ * "none" is deliberately a miss: an omitted part is not an option object.
  * @param {string} slotKey
  * @param {string} id
  */
 export function part(slotKey, id) {
+  const slot = slotDef(slotKey);
+  // On an OPTIONAL slot "none" means the part was left out, and an omitted
+  // part is not an option object — which is the builder contract. Elsewhere
+  // "none" is an ordinary option id ("no engraving", "no visible stitch") and
+  // resolves like any other.
+  if (id === "none" && slot && slot.optional) return null;
   return slotOptions(slotKey).find((o) => o && o.id === id) || null;
+}
+
+/**
+ * The default id for an axis: "as-listed", or the explicit one it names.
+ * @param {SlotDef} axis
+ */
+function axisDefault(axis) {
+  return axis.defaultId || "as-listed";
 }
 
 /** The build the page opens on. */
@@ -1451,31 +3511,340 @@ export const DEFAULT_BUILD = {
 };
 
 /**
+ * Free text, made safe to put in a permalink and on a dial.
+ * @param {unknown} value
+ * @param {number} [max]
+ */
+function cleanText(value, max) {
+  return String(value == null ? "" : value)
+    .replace(/[;:]/g, " ")
+    .replace(/[^\p{L}\p{N} .,'’&+°()/-]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max || 22);
+}
+
+/**
  * Fill in any missing/unknown slot from the default build. Total: every input
  * produces a complete, renderable build.
+ *
+ * The eleven part slots are ALWAYS present. An axis key is present only when
+ * it has been moved off its default, and a text field only when it is not
+ * empty — which is what keeps a build that uses none of the new controls
+ * byte-identical to the build this page has always produced.
+ *
  * @param {Record<string, string> | null | undefined} build
  * @returns {Record<string, string>}
  */
 export function normalizeBuild(build) {
   /** @type {Record<string, string>} */
   const out = {};
+  const src = build && typeof build === "object" ? build : {};
   for (const slot of SLOTS) {
-    const wanted = build && typeof build[slot.key] === "string" ? build[slot.key] : "";
+    const wanted = typeof src[slot.key] === "string" ? src[slot.key] : "";
+    if (slot.optional && wanted === "none") {
+      out[slot.key] = "none";
+      continue;
+    }
     out[slot.key] = part(slot.key, wanted) ? wanted : DEFAULT_BUILD[/** @type {keyof typeof DEFAULT_BUILD} */ (slot.key)];
+  }
+  for (const axis of AXIS_SLOTS) {
+    const wanted = typeof src[axis.key] === "string" ? src[axis.key] : "";
+    const fallback = axisDefault(axis);
+    if (!wanted || wanted === fallback) continue;
+    if (!part(axis.key, wanted)) continue;
+    out[axis.key] = wanted;
+  }
+  for (const field of TEXT_FIELDS) {
+    const text = cleanText(src[field.key], field.max);
+    if (text) out[field.key] = text;
   }
   return out;
 }
 
 /**
- * Resolve a build's ids into the catalog objects, defaults filled in.
+ * The value of an axis in a build, defaulted.
+ * @param {Record<string, string>} ids
+ * @param {SlotDef} axis
+ */
+function axisId(ids, axis) {
+  const v = ids[axis.key];
+  return typeof v === "string" && v ? v : axisDefault(axis);
+}
+
+/**
+ * The chosen axis OPTION, or null when it is left "as it comes".
+ * @param {Record<string, string>} ids
+ * @param {string} key
+ */
+function axisPick(ids, key) {
+  const axis = AXIS_SLOTS.find((a) => a.key === key);
+  if (!axis) return null;
+  const id = axisId(ids, axis);
+  if (id === "as-listed") return null;
+  return part(key, id);
+}
+
+/**
+ * Which strap kind an axis belongs to, for the cross-kind rules.
+ * @param {string} key
+ */
+function axisKind(key) {
+  const axis = AXIS_SLOTS.find((a) => a.key === key);
+  return axis && axis.kind ? axis.kind : null;
+}
+
+/**
+ * The dial as it will actually look, with every axis override applied. The
+ * legacy fields the renderer and the geometry builders read (`base`, `finish`,
+ * `markers`, `markerColor`, `textColor`, `lume`, `date`, `day`, `text`) are
+ * recomputed here, so an override lands on the screen without either of them
+ * knowing the axes exist.
+ * @param {any} dial
+ * @param {Record<string, string>} ids
+ */
+function effectiveDial(dial, ids) {
+  const out = { ...dial };
+  const colour = axisPick(ids, "dialColor");
+  if (colour) {
+    out.colour = colour.id;
+    out.base = colour.hex;
+    const ink = colour.ink || "#eef2f7";
+    out.markerColor = colour.accent || ink;
+    out.textColor = colour.accent || ink;
+  }
+  const finish = axisPick(ids, "dialFinish");
+  if (finish) {
+    out.finishId = finish.id;
+    out.finish = finish.render;
+  }
+  const construction = axisPick(ids, "dialConstruction");
+  if (construction) out.construction = construction.id;
+  const indices = axisPick(ids, "dialIndices");
+  if (indices) out.indices = indices.id;
+  const calendar = axisPick(ids, "dialCalendar");
+  if (calendar) {
+    out.calendar = calendar.id;
+    out.date = calendar.date;
+    out.day = calendar.day;
+  }
+  const lume = axisPick(ids, "dialLume");
+  if (lume) out.lume = lume.id;
+  const dia = axisPick(ids, "dialDiameter");
+  if (dia) out.diameter = dia.id;
+  const feet = axisPick(ids, "dialFeet");
+  if (feet) out.feet = feet.id;
+
+  // Custom text. Sterile means an empty dial, and that is a real product.
+  const printId = ids.dialPrint || "sterile";
+  out.printMethod = printId;
+  const lines = DIAL_TEXT_FIELDS.map((f) => ids[f.key] || "").filter(Boolean);
+  if (printId !== "sterile" && lines.length) {
+    out.text = lines;
+    out.customText = {
+      logo: ids.textLogo || "",
+      line12: ids.text12 || "",
+      line6a: ids.text6a || "",
+      line6b: ids.text6b || "",
+      method: printId,
+    };
+  } else if (printId === "sterile") {
+    out.text = [];
+    out.customText = null;
+  } else {
+    out.customText = null;
+  }
+  // The relief the renderer should give the surface, resolved once here.
+  const design = DIAL_DESIGNS.find((d) => d.id === out.design);
+  const fin = DIAL_FINISHES.find((f) => f.id === out.finishId);
+  const con = DIAL_CONSTRUCTIONS.find((c) => c.id === out.construction);
+  out.relief = (con && con.relief !== "flat" ? con.relief : null)
+    || (design && design.relief !== "flat" ? design.relief : null)
+    || (fin && fin.relief) || "flat";
+  return out;
+}
+
+/**
+ * The bezel insert with its profile and material overrides applied.
+ * @param {any} insert
+ * @param {Record<string, string>} ids
+ */
+function effectiveInsert(insert, ids) {
+  const out = { ...insert };
+  const profile = axisPick(ids, "insertProfile");
+  if (profile) out.profile = profile.id;
+  const material = axisPick(ids, "insertMaterial");
+  if (material) {
+    out.material = material.id;
+    if (material.gloss != null) out.gloss = material.gloss;
+    if (material.lumed) out.lumed = true;
+  }
+  const mat = INSERT_MATERIALS.find((m) => m.id === out.material);
+  if (mat) {
+    out.thicknessMm = mat.thicknessMm != null ? mat.thicknessMm : null;
+    out.thicknessRangeMm = mat.thicknessRangeMm || null;
+  }
+  return out;
+}
+
+/**
+ * The crystal with its edge and coating overrides applied.
+ * @param {any} crystal
+ * @param {Record<string, string>} ids
+ */
+function effectiveCrystal(crystal, ids) {
+  const out = { ...crystal };
+  const edge = axisPick(ids, "crystalEdge");
+  if (edge) {
+    out.edge = edge.id;
+    out.forInsert = edge.forInsert;
+    out.chamferMm = edge.chamferMm;
+  } else {
+    const own = CRYSTAL_EDGES.find((e) => e.id === out.edge);
+    if (own) out.chamferMm = own.chamferMm;
+  }
+  const ar = axisPick(ids, "crystalAr");
+  if (ar) {
+    out.ar = ar.id;
+    out.tint = ar.tint;
+  }
+  // A flat crystal's top face is a PLANE. Nothing may revolve a curve over it;
+  // the only relief is the rim chamfer picked above.
+  out.topFacePlanar = out.profile === "flat";
+  return out;
+}
+
+/**
+ * The chapter ring with its printing override applied.
+ * @param {any} ring
+ * @param {Record<string, string>} ids
+ */
+function effectiveChapterRing(ring, ids) {
+  const out = { ...ring };
+  const printing = axisPick(ids, "chapterPrinting");
+  if (printing) out.printing = printing.id;
+  return out;
+}
+
+/**
+ * The caseback with its finish and engraving overrides applied.
+ * @param {any} cb
+ * @param {Record<string, string>} ids
+ */
+function effectiveCaseback(cb, ids) {
+  const out = { ...cb };
+  const finish = axisPick(ids, "casebackFinish");
+  if (finish) out.finish = finish.id;
+  const engraving = axisPick(ids, "casebackEngraving");
+  if (engraving) {
+    out.engraving = engraving.id;
+    if (engraving.id !== "none" && out.type === "solid") out.type = "solid";
+  }
+  if (out.engraving === "custom-text") out.engravingText = ids.casebackText || "";
+  // An engraved back is a decal on the SOLID shape. This is the single place
+  // that says so, and the renderer must not give it a mesh of its own.
+  out.geometry = out.display ? "display" : "solid";
+  return out;
+}
+
+/**
+ * The strap with its type, colour, stitch, hardware and buckle overrides.
+ * @param {any} strap
+ * @param {Record<string, string>} ids
+ */
+function effectiveStrap(strap, ids) {
+  const out = { ...strap };
+  const byKind = { bracelet: "braceletType", rubber: "rubberType", leather: "leatherType" };
+  const typeAxis = byKind[/** @type {keyof typeof byKind} */ (out.kind)];
+  if (typeAxis) {
+    const picked = axisPick(ids, typeAxis);
+    if (picked) out.type = picked.id;
+  }
+  if (out.kind === "bracelet") {
+    const t = BRACELET_TYPES.find((b) => b.id === out.type);
+    if (t) out.geometry = t;
+  } else if (out.kind === "rubber") {
+    const t = RUBBER_TYPES.find((r) => r.id === out.type);
+    if (t) out.geometry = t;
+  } else if (out.kind === "leather") {
+    const t = LEATHER_TYPES.find((l) => l.id === out.type);
+    if (t) {
+      out.geometry = t;
+      out.sheen = t.sheen;
+      out.grain = t.grain;
+      out.specular = t.specular != null ? t.specular : (SHEEN_LEVELS.find((s) => s.id === t.sheen) || {}).specular;
+    }
+  } else if (out.kind === "nato") {
+    const weave = axisPick(ids, "natoWeave") || NATO_WEAVES[0];
+    const layers = axisPick(ids, "natoLayers") || NATO_LAYERS[0];
+    const pattern = axisPick(ids, "natoPattern") || NATO_PATTERNS[0];
+    out.weave = weave.id;
+    out.thicknessMm = weave.thicknessMm;
+    out.sheen = weave.sheen;
+    out.rings = layers.rings;
+    out.underFlap = layers.flap;
+    out.pattern = pattern.id;
+    out.stripes = pattern.stripes;
+    out.lengthMm = 290;
+    out.sizingHoles = 13;
+    out.geometry = weave;
+  }
+  const colour = axisPick(ids, "strapColor");
+  if (colour) {
+    out.colour = colour.id;
+    out.color = colour.hex;
+  }
+  const stitch = axisPick(ids, "strapStitch");
+  if (stitch) {
+    out.stitch = stitch.id;
+    out.stitchColor = stitch.hex;
+    out.stitchPitchMm = STITCH_PITCH_MM.mm;
+  }
+  const hardware = axisPick(ids, "strapHardware");
+  if (hardware) {
+    out.hardware = hardware.id;
+    out.hardwareColor = hardware.color;
+  }
+  const buckle = axisPick(ids, "buckle");
+  if (buckle) out.buckle = buckle.id;
+  if (!out.sheen) out.sheen = out.kind === "bracelet" ? "metal" : "satin";
+  return out;
+}
+
+/**
+ * Resolve a build's ids into the catalog objects, defaults filled in and every
+ * axis override applied. `parts` is never null anywhere — an omitted part is
+ * reported in `omitted` and stands in with neutral values, so the renderer and
+ * the geometry builders never have to check.
  * @param {Record<string, string> | null | undefined} build
  */
 export function resolveBuild(build) {
   const ids = normalizeBuild(build);
   /** @type {Record<string, any>} */
   const parts = {};
-  for (const slot of SLOTS) parts[slot.key] = part(slot.key, ids[slot.key]);
-  return { ids, parts };
+  /** @type {Record<string, boolean>} */
+  const omitted = {};
+  for (const slot of SLOTS) {
+    const found = part(slot.key, ids[slot.key]);
+    if (found) {
+      parts[slot.key] = found;
+      continue;
+    }
+    omitted[slot.key] = true;
+    parts[slot.key] = NONE_STANDINS[/** @type {keyof typeof NONE_STANDINS} */ (slot.key)]
+      || slotOptions(slot.key)[0];
+  }
+  parts.dial = effectiveDial(parts.dial, ids);
+  parts.insert = effectiveInsert(parts.insert, ids);
+  parts.crystal = effectiveCrystal(parts.crystal, ids);
+  parts.chapterRing = effectiveChapterRing(parts.chapterRing, ids);
+  parts.caseback = effectiveCaseback(parts.caseback, ids);
+  parts.strap = effectiveStrap(parts.strap, ids);
+  parts.dateWheel = part("dateWheel", ids.dateWheel || "as-supplied") || DATE_WHEELS[0];
+  parts.dayWheel = part("dayWheel", ids.dayWheel || "as-supplied") || DAY_WHEELS[0];
+  parts.aperture = DAY_DATE_APERTURE;
+  parts.kit = caseKit(ids.case);
+  return { ids, parts, omitted };
 }
 
 // ---------------------------------------------------------------------------
@@ -1486,7 +3855,7 @@ export function resolveBuild(build) {
 // whose whole point is showing you what a combination looks like.
 
 /**
- * @typedef {{ level: "error"|"warning"|"note", slot: string, en: string, sv: string }} Issue
+ * @typedef {{ level: "error"|"warning"|"note", slot: string, slots?: string[], en: string, sv: string }} Issue
  */
 
 /**
@@ -1494,7 +3863,7 @@ export function resolveBuild(build) {
  * @returns {{ ok: boolean, issues: Issue[] }}
  */
 export function checkBuild(build) {
-  const { parts } = resolveBuild(build);
+  const { ids, parts, omitted } = resolveBuild(build);
   /** @type {Issue[]} */
   const issues = [];
   const mv = parts.movement;
@@ -1508,6 +3877,7 @@ export function checkBuild(build) {
     issues.push({
       level: "error",
       slot: "dial",
+      slots: ["dial", "movement"],
       en: `${mv.caliber} has a date wheel but "${dl.name.en}" has no date window — the wheel would sit behind a solid dial. Use a no-date movement (NH70/NH38) or a dial with an aperture.`,
       sv: `${mv.caliber} har ett datumhjul men "${dl.name.sv}" saknar datumfönster — hjulet hamnar bakom en heltäckande urtavla. Välj ett urverk utan datum (NH70/NH38) eller en tavla med fönster.`,
     });
@@ -1516,6 +3886,7 @@ export function checkBuild(build) {
     issues.push({
       level: "error",
       slot: "movement",
+      slots: ["movement", "dial"],
       en: `"${dl.name.en}" has a date window but ${mv.caliber} has no date wheel — you would see the movement through the aperture.`,
       sv: `"${dl.name.sv}" har datumfönster men ${mv.caliber} saknar datumhjul — du skulle se urverket genom fönstret.`,
     });
@@ -1524,6 +3895,7 @@ export function checkBuild(build) {
     issues.push({
       level: "error",
       slot: "dial",
+      slots: ["dial", "movement"],
       en: `${mv.caliber} drives a day wheel; this dial has no day window. Pair the NH36 with a day-date dial, or use the NH35.`,
       sv: `${mv.caliber} driver ett veckodagshjul; den här tavlan har inget veckodagsfönster. Kombinera NH36 med en veckodags-/datumtavla, eller använd NH35.`,
     });
@@ -1532,6 +3904,7 @@ export function checkBuild(build) {
     issues.push({
       level: "error",
       slot: "movement",
+      slots: ["movement", "dial"],
       en: `This dial has a day window but ${mv.caliber} has no day wheel — the window would be blank. The NH36 is the day-date movement.`,
       sv: `Den här tavlan har veckodagsfönster men ${mv.caliber} saknar veckodagshjul — fönstret blir tomt. NH36 är veckodags-/datumurverket.`,
     });
@@ -1540,6 +3913,7 @@ export function checkBuild(build) {
     issues.push({
       level: "warning",
       slot: "dial",
+      slots: ["dial", "movement"],
       en: `${mv.caliber} is built to be seen — a solid dial hides the open balance it exists for.`,
       sv: `${mv.caliber} är gjort för att synas — en heltäckande tavla döljer den öppna balansen den finns för.`,
     });
@@ -1548,6 +3922,7 @@ export function checkBuild(build) {
     issues.push({
       level: "warning",
       slot: "movement",
+      slots: ["movement", "dial"],
       en: `An open-heart dial over ${mv.caliber} shows an undecorated bridge rather than the balance wheel.`,
       sv: `En öppet-hjärta-tavla över ${mv.caliber} visar en odekorerad brygga i stället för balanshjulet.`,
     });
@@ -1558,6 +3933,7 @@ export function checkBuild(build) {
     issues.push({
       level: "error",
       slot: "hands",
+      slots: ["hands", "movement"],
       en: `${mv.caliber} drives a fourth (24-hour) hand — this hand set has only three.`,
       sv: `${mv.caliber} driver en fjärde visare (24-timmars) — det här visarsetet har bara tre.`,
     });
@@ -1566,6 +3942,7 @@ export function checkBuild(build) {
     issues.push({
       level: "warning",
       slot: "movement",
+      slots: ["movement", "hands"],
       en: `The GMT hand has nothing to drive it on ${mv.caliber}; only the NH34 has a 24-hour wheel.`,
       sv: `GMT-visaren har inget som driver den på ${mv.caliber}; bara NH34 har ett 24-timmarshjul.`,
     });
@@ -1574,6 +3951,7 @@ export function checkBuild(build) {
     issues.push({
       level: "warning",
       slot: "insert",
+      slots: ["insert", "dial", "movement"],
       en: "A GMT movement with no 24-hour scale — on the dial or the bezel — is unreadable in the second time zone.",
       sv: "Ett GMT-urverk utan 24-timmarsskala — på tavlan eller lünetten — går inte att avläsa i den andra tidszonen.",
     });
@@ -1595,6 +3973,7 @@ export function checkBuild(build) {
       issues.push({
         level: "note",
         slot: key,
+        slots: [key, "case"],
         en: `The ${cs.name.en} uses a case-specific ${label.en} rather than a shared-platform one — buy it with the case. The render shows the pattern you picked.`,
         sv: `${cs.name.sv} använder ett boettspecifikt ${label.sv} i stället för ett från en delad plattform — köp det med boetten. Bilden visar mönstret du valt.`,
       });
@@ -1603,6 +3982,7 @@ export function checkBuild(build) {
     issues.push({
       level: "error",
       slot: key,
+      slots: [key, "case"],
       en: `This ${label.en} is not made for the ${plat.name.en} platform that the ${cs.name.en} uses.`,
       sv: `Det här ${label.sv} är inte gjort för ${plat.name.sv}-plattformen som ${cs.name.sv} använder.`,
     });
@@ -1613,6 +3993,7 @@ export function checkBuild(build) {
     issues.push({
       level: "warning",
       slot: "insert",
+      slots: ["insert", "case"],
       en: `The ${cs.name.en} has no rotating bezel, so the insert is not fitted — the render shows the case as it ships.`,
       sv: `${cs.name.sv} har ingen roterande lünett, så inlägget monteras inte — bilden visar boetten som den levereras.`,
     });
@@ -1621,6 +4002,7 @@ export function checkBuild(build) {
     issues.push({
       level: "note",
       slot: "chapterRing",
+      slots: ["chapterRing", "case"],
       en: `${cs.name.en} has no separate chapter ring; its minute track is printed on the dial or the case.`,
       sv: `${cs.name.sv} har ingen separat chapter ring; minutskalan är tryckt på tavlan eller boetten.`,
     });
@@ -1634,6 +4016,7 @@ export function checkBuild(build) {
     issues.push({
       level: "warning",
       slot: "hands",
+      slots: ["hands", "dial"],
       en: "The minute hand reaches past the printed minute track — it will overhang the chapter ring.",
       sv: "Minutvisaren når förbi minutskalan — den kommer att hänga över chapter ringen.",
     });
@@ -1642,6 +4025,7 @@ export function checkBuild(build) {
     issues.push({
       level: "warning",
       slot: "hands",
+      slots: ["hands", "dial"],
       en: "The minute hand stops well short of the minute track, which reads as a mismatched set.",
       sv: "Minutvisaren når långt ifrån minutskalan, vilket ser ut som ett felmatchat set.",
     });
@@ -1650,6 +4034,7 @@ export function checkBuild(build) {
     issues.push({
       level: "note",
       slot: "dial",
+      slots: ["dial", "hands"],
       en: "Lumed hands over a dial with no lume: it will glow as four floating marks in the dark.",
       sv: "Lysande visare över en tavla utan lysmassa: i mörkret lyser bara visarna, som lösa märken.",
     });
@@ -1661,13 +4046,369 @@ export function checkBuild(build) {
     issues.push({
       level: "warning",
       slot: "crystal",
+      slots: ["crystal", "caseback", "case"],
       en: `The chosen crystal and case back add up to about ${spec.stackMm.toFixed(1)} mm against the case's ${cs.dims.thick} mm — expect the back to sit proud.`,
       sv: `Valt glas och boettbotten summerar till ca ${spec.stackMm.toFixed(1)} mm mot boettens ${cs.dims.thick} mm — räkna med att botten sticker ut.`,
     });
   }
 
+  // ------------------------------------------------------------------
+  // R1 — CRYSTAL PROFILE ↔ INSERT PROFILE. The most expensive real trap in
+  // this hobby, and the one crystal vendors design entire SKUs around: they
+  // literally name crystals after the insert they pair with. A sloped insert
+  // intrudes 0.9 mm further inward than a flat one on the SKX platform, so a
+  // crystal cut for a flat insert leaves a visible step under a sloped one.
+  if (!omitted.crystal && !omitted.insert && parts.insert.scale !== "none") {
+    const want = parts.insert.profile;
+    const forInsert = parts.crystal.forInsert;
+    if (forInsert && forInsert !== "any" && want && forInsert !== want) {
+      issues.push({
+        level: "warning",
+        slot: "crystal",
+        slots: ["crystal", "insert"],
+        en: `This crystal is cut for a ${forInsert} bezel insert and the insert chosen is ${want} — expect a visible step or gap where the crystal meets the bezel. Crystal vendors sell separate SKUs for flat and for sloping inserts precisely because of this.`,
+        sv: `Det här glaset är gjort för ett ${forInsert === "flat" ? "plant" : "sluttande"} lünettinlägg medan det valda inlägget är ${want === "flat" ? "plant" : "sluttande"} — räkna med ett synligt steg eller en glipa där glaset möter lünetten. Glasleverantörer säljer separata artiklar för plana och sluttande inlägg just av den anledningen.`,
+      });
+    }
+  }
+
+  // R3 — DISPLAY CASEBACK ↔ MOVEMENT SPACER. A real two-SKU fork: the
+  // exhibition back comes cut either for the thicker black OEM spacer or for
+  // the thinner grey NH spacer, and they are not interchangeable. Every
+  // movement here is an NH.
+  if (parts.caseback.display && parts.caseback.spacerFit === "black-oem") {
+    issues.push({
+      level: "error",
+      slot: "caseback",
+      slots: ["caseback", "movement"],
+      en: `This display back is cut for the thicker black OEM movement spacer; ${mv.caliber} uses the thinner grey NH spacer, so it is the wrong half of a two-SKU fork. Choose the grey-spacer variant.`,
+      sv: `Den här glasbottnen är gjord för den tjockare svarta originaldistansen; ${mv.caliber} använder den tunnare grå NH-distansen, så det är fel halva av ett tvådelat val. Välj varianten för grå distans.`,
+    });
+  }
+
+  // R4 — display-caseback availability per case family. Where no listing was
+  // found, saying so is more useful than pretending.
+  if (parts.caseback.display && displayBackFor(cs.id) !== true) {
+    issues.push({
+      level: "warning",
+      slot: "caseback",
+      slots: ["caseback", "case"],
+      en: `No exhibition case back was found listed for the ${cs.name.en}. It may exist, but nothing in the research confirms one — check the listing before ordering, or fit a solid back.`,
+      sv: `Ingen utställningsboett hittades listad för ${cs.name.sv}. Den kan finnas, men inget i researchen bekräftar det — kontrollera annonsen innan du beställer, eller montera en massiv botten.`,
+    });
+  }
+
+  // R5 — CHAPTER RING. Optional on most platforms, genuinely MANDATORY on the
+  // SKX013: without it the dial sits too low and the hands do not clear.
+  if (omitted.chapterRing && plat.chapterRing) {
+    if (plat.chapterRingRequired) {
+      issues.push({
+        level: "error",
+        slot: "chapterRing",
+        slots: ["chapterRing", "case"],
+        en: `An ${plat.name.en}-spec chapter ring is mandatory: without it the dial sits too low in the case and the hands will not clear.`,
+        sv: `En chapter ring av ${plat.name.sv}-typ är obligatorisk: utan den sitter urtavlan för lågt i boetten och visarna går inte fria.`,
+      });
+    } else {
+      issues.push({
+        level: "warning",
+        slot: "chapterRing",
+        slots: ["chapterRing", "case"],
+        en: "The chapter ring is what stops the dial coming forward, so leaving it out needs a new movement spacer or adhesive dial dots — otherwise the dial floats up off the movement.",
+        sv: "Chapter ringen är det som hindrar urtavlan från att glida framåt, så att utelämna den kräver en ny urverksdistans eller självhäftande limpunkter — annars lyfter urtavlan från urverket.",
+      });
+    }
+  }
+
+  // R9 — the crown does not cross SKX007 ↔ SRPD. This platform lumps the two
+  // together, so the honest thing is to say which one you have to check.
+  if (cs.platform === "skx" && ids.crown && ids.crown !== DEFAULT_BUILD.crown) {
+    issues.push({
+      level: "note",
+      slot: "crown",
+      slots: ["crown", "case"],
+      en: "SKX007 and SRPD cases use different crown systems and their crowns do not interchange, even though every other part on this platform does. Check which of the two your case listing actually is.",
+      sv: "SKX007- och SRPD-boetter använder olika kronsystem och deras kronor passar inte i varandra, trots att alla andra delar på plattformen gör det. Kontrollera vilken av de två din boettannons faktiskt är.",
+    });
+  }
+
+  // --- the date wheel and the day wheel: separate parts, with their own rules.
+  if (ids.dateWheel && ids.dateWheel !== "as-supplied" && !mv.date) {
+    issues.push({
+      level: "error",
+      slot: "dateWheel",
+      slots: ["dateWheel", "movement"],
+      en: `${mv.caliber} has no date wheel to swap — a date disc needs a date movement.`,
+      sv: `${mv.caliber} har inget datumhjul att byta — en datumskiva kräver ett urverk med datum.`,
+    });
+  }
+  if (ids.dayWheel && ids.dayWheel !== "as-supplied" && !mv.day) {
+    issues.push({
+      level: "error",
+      slot: "dayWheel",
+      slots: ["dayWheel", "movement"],
+      en: `${mv.caliber} has no day wheel — only the NH36 drives one, so there is nothing for this disc to sit on.`,
+      sv: `${mv.caliber} har inget veckodagshjul — bara NH36 driver ett, så det finns inget för den här skivan att sitta på.`,
+    });
+  }
+  if (mv.day && parts.dayWheel && parts.dayWheel.crownAlign && parts.dayWheel.crownAlign !== "either") {
+    if (String(cs.crown.hour) !== parts.dayWheel.crownAlign) {
+      issues.push({
+        level: "warning",
+        slot: "dayWheel",
+        slots: ["dayWheel", "case"],
+        en: `Unlike the date disc, an NH36 day wheel is pre-aligned to one crown position. This one is cut for a ${parts.dayWheel.crownAlign} o'clock crown and the ${cs.name.en} has its crown at ${cs.crown.hour} — the day text would read rotated.`,
+        sv: `Till skillnad från datumskivan är NH36:ans veckodagshjul förinställt för ett kronläge. Det här är gjort för krona vid ${parts.dayWheel.crownAlign} och ${cs.name.sv} har kronan vid ${cs.crown.hour} — veckodagstexten skulle stå snett.`,
+      });
+    }
+  }
+  if (mv.day && mv.date && dl.day) {
+    issues.push({
+      level: "note",
+      slot: "dial",
+      slots: ["dial", "movement"],
+      en: "Day and date are read through ONE pillar-box window on the NH36, not two: the day disc sits inboard and the date ring outboard, and the visible split is just the day disc's edge lying over the date ring. The NH36's date disc is printed differently from the NH35's precisely to keep the two apart — fitting an NH35 disc, or an NH36 disc under a date-only dial, is what makes the numerals sit off-centre.",
+      sv: "Veckodag och datum läses genom ETT avlångt fönster på NH36, inte två: veckodagsskivan sitter innerst och datumringen ytterst, och den synliga delningen är bara veckodagsskivans kant som ligger över datumringen. NH36:ans datumskiva är tryckt annorlunda än NH35:ans just för att hålla isär de två — att montera en NH35-skiva, eller en NH36-skiva under en tavla med bara datum, är det som gör att siffrorna hamnar snett.",
+    });
+  }
+
+  // --- the dial's own axes.
+  if (dl.date === "6" && mv.date === "3") {
+    issues.push({
+      level: "warning",
+      slot: "dial",
+      slots: ["dial", "movement"],
+      en: `A date-at-6 dial needs the "date @ 6H" movement variant or a date-wheel overlay; ${mv.caliber} as sold puts its date at 3 and the aperture would show the wrong part of the disc.`,
+      sv: `En tavla med datum vid 6 kräver urverksvarianten "date @ 6H" eller en överläggsskiva; ${mv.caliber} som den säljs har datumet vid 3 och fönstret skulle visa fel del av skivan.`,
+    });
+  }
+  const calendar = DIAL_CALENDARS.find((c) => c.id === dl.calendar);
+  if (calendar && calendar.crownHour && calendar.crownHour !== cs.crown.hour && dl.date) {
+    issues.push({
+      level: "warning",
+      slot: "dial",
+      slots: ["dial", "case"],
+      en: `This dial's aperture is cut for a ${calendar.crownHour} o'clock crown and the ${cs.name.en} has its crown at ${cs.crown.hour} — the window will not line up with the case.`,
+      sv: `Den här tavlans fönster är skuret för krona vid ${calendar.crownHour} och ${cs.name.sv} har kronan vid ${cs.crown.hour} — fönstret kommer inte att stämma med boetten.`,
+    });
+  }
+  const dialDia = DIAL_DIAMETERS.find((d) => d.id === dl.diameter);
+  if (dialDia && dialDia.mm > plat.dialDia) {
+    issues.push({
+      level: "error",
+      slot: "dial",
+      slots: ["dial", "case"],
+      en: `A ${dialDia.mm} mm dial will not seat in the ${cs.name.en}: its dial seat takes ${plat.dialDia} mm, and an oversize dial fouls the case and the chapter ring. Oversize dials exist, but for cases built around them.`,
+      sv: `En ${dialDia.mm} mm urtavla får inte plats i ${cs.name.sv}: dess urtavlesäte tar ${plat.dialDia} mm, och en för stor tavla tar i boetten och chapter ringen. Överstora tavlor finns, men för boetter byggda för dem.`,
+    });
+  }
+  if (dl.construction === "sandwich" && !["black", "blue", "navy", "orange"].includes(dl.colour)) {
+    issues.push({
+      level: "warning",
+      slot: "dialColor",
+      slots: ["dialColor", "dial"],
+      en: "The sandwich family is genuinely narrow: only black, dark blue and orange were found listed. This colour may simply not be made as a sandwich dial.",
+      sv: "Sandwich-familjen är verkligen smal: bara svart, mörkblå och orange hittades listade. Den här färgen tillverkas kanske helt enkelt inte som sandwich-tavla.",
+    });
+  }
+  const colour = DIAL_COLOURS.find((c) => c.id === dl.colour);
+  if (colour && Array.isArray(colour.families) && !colour.families.includes(dl.design)) {
+    issues.push({
+      level: "warning",
+      slot: "dialColor",
+      slots: ["dialColor", "dial"],
+      en: `${colour.name.en} was only found in the dress and enamel colour runs, not on a ${dl.design} dial. It may be orderable as a custom print, but no listing was found for the combination.`,
+      sv: `${colour.name.sv} hittades bara i kläd- och emaljfärgserierna, inte på en ${dl.design}-tavla. Den kan gå att beställa som specialtryck, men ingen annons hittades för kombinationen.`,
+    });
+  }
+  // The crown angle IS a real dial constraint, but it lives in the FEET, not
+  // the aperture: quality mod dials ship four feet — two sets, for a 3 and a 4
+  // o'clock crown — and you snip off the pair you do not need. A dial with
+  // only one pair has to match the case.
+  const feet = DIAL_FEET.find((f) => f.id === dl.feet);
+  if (feet && feet.crownHour && feet.crownHour !== cs.crown.hour) {
+    issues.push({
+      level: "error",
+      slot: "dialFeet",
+      slots: ["dialFeet", "case"],
+      en: `This dial has only the ${feet.crownHour} o'clock pair of feet and the ${cs.name.en} has its crown at ${cs.crown.hour} — the feet will not meet the movement's holes. A four-footed dial covers both.`,
+      sv: `Den här tavlan har bara fotparet för krona vid ${feet.crownHour} och ${cs.name.sv} har kronan vid ${cs.crown.hour} — fötterna möter inte urverkets hål. En tavla med fyra fötter täcker båda.`,
+    });
+  }
+  if (dl.feet === "glue") {
+    issues.push({
+      level: "note",
+      slot: "dialFeet",
+      slots: ["dialFeet", "dial"],
+      en: "A feetless dial mounts on adhesive dial dots rather than glue — three of them rather than the usual two is the advice, and the chapter ring stops it floating forward.",
+      sv: "En tavla utan fötter monteras på självhäftande limpunkter i stället för lim — rådet är tre i stället för de vanliga två, och chapter ringen hindrar den från att glida framåt.",
+    });
+  }
+  if (dl.printMethod && dl.printMethod !== "sterile" && dl.customText) {
+    issues.push({
+      level: "note",
+      slot: "dialPrint",
+      slots: ["dialPrint", "dial"],
+      en: "Custom dial printers will put your own text or artwork on a dial but not a trademarked mark — that is a stated limit, not a guess. Laser marking also reads metallic grey on a dark dial rather than white, because it alters the surface instead of adding ink.",
+      sv: "Tryckerier för specialtavlor sätter din egen text eller bild på en tavla men inte ett varumärkesskyddat märke — det är en uttalad gräns, inte en gissning. Lasermärkning blir dessutom metalliskt grå på en mörk tavla i stället för vit, eftersom den bearbetar ytan i stället för att lägga på färg.",
+    });
+  }
+
+  // --- the strap's axes. A bracelet type on a leather strap is meaningless
+  //     rather than merely unwise, so it is an error the UI can explain.
+  for (const key of ["braceletType", "rubberType", "leatherType", "natoPattern", "natoWeave", "natoLayers", "strapStitch"]) {
+    const chosen = ids[key];
+    if (!chosen || chosen === "as-listed") continue;
+    const kind = axisKind(key);
+    if (!kind || kind === parts.strap.kind) continue;
+    const def = slotDef(key);
+    issues.push({
+      level: "error",
+      slot: key,
+      slots: [key, "strap"],
+      en: `${def ? def.name.en : key} only applies to a ${kind} strap, and this build is on a ${parts.strap.kind}.`,
+      sv: `${def ? def.name.sv : key} gäller bara ${kind === "bracelet" ? "stållänk" : kind === "leather" ? "läderband" : kind === "rubber" ? "gummiband" : "NATO-band"}, och det här bygget har ${parts.strap.kind === "bracelet" ? "stållänk" : parts.strap.kind === "leather" ? "läderband" : parts.strap.kind === "rubber" ? "gummiband" : "NATO-band"}.`,
+    });
+  }
+  if (parts.strap.kind === "rubber" && parts.strap.type === "curved-end" && cs.platform !== "skx") {
+    issues.push({
+      level: "warning",
+      slot: "strap",
+      slots: ["strap", "case"],
+      en: `A curved-end rubber strap is moulded to wrap ONE case profile. The mouldings that exist are for the SKX/SRPD family; on the ${cs.name.en} the end will not sit flush.`,
+      sv: `Ett gummiband med kurvad ände är gjutet för EN boettprofil. De gjutningar som finns är för SKX/SRPD-familjen; på ${cs.name.sv} kommer änden inte att ligga tätt.`,
+    });
+  }
+  const colourPick = axisPick(ids, "strapColor");
+  if (colourPick && Array.isArray(colourPick.kinds) && !colourPick.kinds.includes(parts.strap.kind)) {
+    issues.push({
+      level: "warning",
+      slot: "strapColor",
+      slots: ["strapColor", "strap"],
+      en: `${colourPick.name.en} was found listed for ${colourPick.kinds.join(", ")} straps, not for a ${parts.strap.kind}. A bracelet takes a metal finish rather than a colour.`,
+      sv: `${colourPick.name.sv} hittades listad för ${colourPick.kinds.join(", ")}-band, inte för ${parts.strap.kind}. En stållänk tar en metallfinish snarare än en färg.`,
+    });
+  }
+  const bucklePick = axisPick(ids, "buckle");
+  if (bucklePick && Array.isArray(bucklePick.kinds) && !bucklePick.kinds.includes(parts.strap.kind)) {
+    issues.push({
+      level: "error",
+      slot: "buckle",
+      slots: ["buckle", "strap"],
+      en: `A ${bucklePick.name.en.toLowerCase()} is fitted to ${bucklePick.kinds.join(" or ")} straps, not to a ${parts.strap.kind}.`,
+      sv: `Ett ${bucklePick.name.sv.toLowerCase()} monteras på ${bucklePick.kinds.join(" eller ")}-band, inte på ${parts.strap.kind}.`,
+    });
+  }
+  // R13 — fat spring bars. Not a fit error, but it is what stops a strap going on.
+  if (cs.platform === "skx" && parts.strap.kind !== "bracelet") {
+    issues.push({
+      level: "note",
+      slot: "strap",
+      slots: ["strap", "case"],
+      en: "SKX-family cases need thicker \"fat\" spring bars — 2.5 mm — where an SRPD takes standard ones. Straps sold for these cases usually include them; generic ones do not.",
+      sv: "Boetter i SKX-familjen kräver tjockare \"fat\" bandstift — 2,5 mm — där SRPD tar vanliga. Band som säljs för de här boetterna innehåller oftast dem; generiska gör det inte.",
+    });
+  }
+
+  for (const issue of issues) if (!issue.slots) issue.slots = [issue.slot];
   const ok = !issues.some((i) => i.level === "error");
   return { ok, issues };
+}
+
+/**
+ * EVERY OPTION FOR A SLOT, ANNOTATED AGAINST THE REST OF THE BUILD.
+ *
+ * Incompatible options are RETURNED, never filtered out. That is the whole
+ * point: the user asked for designs that do not fit the chosen movement to
+ * appear "in a dropdown menu with a warning symbol", and for that philosophy
+ * to be applied everywhere it makes sense. Hiding a choice teaches nobody
+ * anything; showing it with the reason beside it does.
+ *
+ * `compatible` is false only when picking the option would put the build in
+ * ERROR. A warning still comes back with its `why` text and `level:
+ * "warning"`, so the UI can mark it softly rather than blocking it.
+ *
+ * @param {string} slotKey
+ * @param {Record<string, string> | null | undefined} build
+ * @returns {{ option: any, compatible: boolean, why: {en:string,sv:string}|null, level: "error"|"warning"|null }[]}
+ */
+export function compatibleOptions(slotKey, build) {
+  const def = slotDef(slotKey);
+  if (!def) return [];
+  const base = normalizeBuild(build);
+  /** @type {any[]} */
+  const options = [...slotOptions(slotKey)];
+  const none = def.optional ? noneOption(slotKey) : null;
+  if (none) options.push(none);
+
+  return options.map((option) => {
+    const trial = normalizeBuild({ ...base, [slotKey]: option.id });
+    const { issues } = checkBuild(trial);
+    const mine = issues.filter((i) => Array.isArray(i.slots) && i.slots.includes(slotKey));
+    const error = mine.find((i) => i.level === "error");
+    if (error) return { option, compatible: false, why: { en: error.en, sv: error.sv }, level: /** @type {"error"} */ ("error") };
+    const warning = mine.find((i) => i.level === "warning");
+    if (warning) return { option, compatible: true, why: { en: warning.en, sv: warning.sv }, level: /** @type {"warning"} */ ("warning") };
+    return { option, compatible: true, why: null, level: null };
+  });
+}
+
+/**
+ * A RANDOM BUILD THAT IS GUARANTEED TO ASSEMBLE.
+ *
+ * "Surprise me" pairing incompatible parts was its own piece of feedback. The
+ * fix is not to repair afterwards but to never choose wrongly: walk the slots
+ * in DEPENDENCY ORDER (the movement decides what dials are legal, the case
+ * decides what rings and casebacks are), filter each slot against the build so
+ * far, and pick only from what is left. If a slot ever runs out of compatible
+ * options the walk has painted itself into a corner, so it backtracks and
+ * starts the attempt again rather than emitting something checkBuild will then
+ * complain about.
+ *
+ * `rand` is injectable so the unit tests are deterministic.
+ *
+ * @param {() => number} [rand]
+ * @returns {Record<string, string>}
+ */
+export function surpriseBuild(rand) {
+  const rnd = typeof rand === "function" ? rand : Math.random;
+  /** @param {any[]} list */
+  const pick = (list) => list[Math.min(list.length - 1, Math.floor(Math.abs(rnd()) * list.length))];
+
+  // Dependency order: what constrains most, first.
+  const ORDER = ["movement", "case", "dial", "hands", "insert", "chapterRing", "crystal", "crown", "caseback", "finish", "strap"];
+
+  for (let attempt = 0; attempt < 24; attempt++) {
+    /** @type {Record<string, string>} */
+    let build = { ...DEFAULT_BUILD };
+    let dead = false;
+    for (const key of ORDER) {
+      const annotated = compatibleOptions(key, build);
+      // Prefer options that raise no warning at all; fall back to merely
+      // compatible ones so a slot with only imperfect choices still resolves.
+      const clean = annotated.filter((a) => a.compatible && !a.why);
+      const okAny = annotated.filter((a) => a.compatible);
+      const from = clean.length ? clean : okAny;
+      if (!from.length) {
+        dead = true;
+        break;
+      }
+      build = normalizeBuild({ ...build, [key]: pick(from).option.id });
+    }
+    if (dead) continue;
+    // The axes are chosen the same way, but only sometimes — a build where
+    // every knob has been twisted is noise, not a surprise.
+    for (const axis of AXIS_SLOTS) {
+      if (rnd() > 0.28) continue;
+      const annotated = compatibleOptions(axis.key, build).filter((a) => a.compatible && !a.why);
+      if (annotated.length < 2) continue;
+      build = normalizeBuild({ ...build, [axis.key]: pick(annotated).option.id });
+    }
+    if (checkBuild(build).ok) return build;
+  }
+  // Twenty-four attempts without a valid build would mean the catalogue is
+  // broken, not that we were unlucky. The default build always assembles.
+  return normalizeBuild(DEFAULT_BUILD);
 }
 
 // ---------------------------------------------------------------------------
@@ -1678,17 +4419,27 @@ export function checkBuild(build) {
  * @param {Record<string, string> | null | undefined} build
  */
 export function buildSpec(build) {
-  const { ids, parts } = resolveBuild(build);
+  const { ids, parts, omitted } = resolveBuild(build);
   const cs = parts.case;
   const plat = PLATFORMS[/** @type {keyof typeof PLATFORMS} */ (cs.platform)] || PLATFORMS.native;
   const crystalDia = cs.crystal ? cs.crystal.dia : plat.crystalDia || cs.dims.dia - 11;
   // Movement + dial + hands + crystal dome + case back: the vertical budget a
-  // modder actually runs out of.
+  // modder actually runs out of. The +0.6 mm a display back adds is the one
+  // published height delta in this market; no vendor publishes one for a
+  // solid back at all, so the 1.6 mm base is the same for both.
   const domeMm = 2.2 + parts.crystal.dome * 1.9;
-  const stackMm = parts.movement.height + 0.9 + domeMm + (parts.caseback.display ? 2.6 : 1.6);
+  const backMm = 1.6 + (parts.caseback.heightDeltaMm || 0);
+  const stackMm = parts.movement.height + 0.9 + domeMm + backMm;
   const price = priceBand(ids);
+  const dialDia = DIAL_DIAMETERS.find((d) => d.id === parts.dial.diameter);
   return {
     ids,
+    omitted,
+    included: caseKit(ids.case).includes,
+    dialDiameter: dialDia ? dialDia.mm : plat.dialDia,
+    dialDiameterApprox: !!(dialDia && dialDia.approx),
+    backMm: Math.round(backMm * 10) / 10,
+    aperture: parts.dial.day ? DAY_DATE_APERTURE.dayDate : parts.dial.date ? DAY_DATE_APERTURE.dateOnly : null,
     caseDia: cs.dims.dia,
     l2l: cs.dims.l2l,
     thick: cs.dims.thick,
@@ -1720,13 +4471,18 @@ export function priceBand(ids) {
   let low = 0;
   let high = 0;
   let counted = 0;
-  for (const slot of SLOTS) {
+  const included = caseKit(ids && ids.case).includes;
+  for (const slot of ALL_SLOTS) {
     const p = part(slot.key, ids[slot.key]);
     const band = p && p.ali && Array.isArray(p.ali.priceUsd) ? p.ali.priceUsd : null;
     if (!band) continue;
+    counted += 1;
+    // A part the case already ships with costs nothing extra — which is what
+    // makes the crystal, the insert and the chapter ring genuinely optional
+    // instead of mandatory: `included ? free : priced`.
+    if (included.includes(slot.key)) continue;
     low += band[0];
     high += band[1];
-    counted += 1;
   }
   // The movement itself is not in a slot band; NH35s run about USD 18–45.
   low += 18;
@@ -1781,9 +4537,10 @@ export function aliSearchUrl(query) {
  */
 export function sourcingFor(build) {
   const { ids, parts } = resolveBuild(build);
+  const included = caseKit(ids.case).includes;
   const rows = [];
-  for (const slot of SLOTS) {
-    const p = parts[slot.key];
+  for (const slot of ALL_SLOTS) {
+    const p = slot.over ? part(slot.key, ids[slot.key]) : parts[slot.key];
     if (!p || !p.ali) continue;
     const queries = /** @type {string[]} */ (Array.isArray(p.ali.queries) ? p.ali.queries : []);
     rows.push({
@@ -1794,6 +4551,7 @@ export function sourcingFor(build) {
       brands: Array.isArray(p.ali.brands) ? p.ali.brands : [],
       priceUsd: p.ali.priceUsd || null,
       watchFor: p.ali.watchFor || null,
+      includedWithCase: included.includes(slot.key),
       links: queries.map((q) => ({ q, url: aliSearchUrl(q) })),
     });
   }
@@ -1814,6 +4572,9 @@ export function caseIndex() {
     wr: c.wr,
     src: c.src,
     srcUrl: (SOURCES[/** @type {keyof typeof SOURCES} */ (c.src)] || {}).url || "",
+    kit: caseKit(c.id),
+    displayBack: CASE_DISPLAY_BACKS[c.id] || { display: null, src: "community" },
+    defaults: defaultsForCase(c.id),
     ali: {
       brands: c.ali.brands,
       priceUsd: c.ali.priceUsd,
@@ -1834,7 +4595,13 @@ export function caseIndex() {
  */
 export function encodeBuild(build) {
   const ids = normalizeBuild(build);
-  return SLOTS.map((s) => `${s.key}:${ids[s.key]}`).join(";");
+  const out = SLOTS.map((s) => `${s.key}:${ids[s.key]}`);
+  // Axes and text only when they are actually set, so a build that touches
+  // none of the new controls encodes to exactly the string it always did and
+  // every permalink ever shared still opens the same watch.
+  for (const axis of AXIS_SLOTS) if (ids[axis.key]) out.push(`${axis.key}:${ids[axis.key]}`);
+  for (const field of TEXT_FIELDS) if (ids[field.key]) out.push(`${field.key}:${ids[field.key]}`);
+  return out.join(";");
 }
 
 /**

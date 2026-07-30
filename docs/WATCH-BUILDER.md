@@ -109,9 +109,16 @@ and the page shows it under the spec sheet. The `SOURCES` table in
   [KARAJAN](https://diywatchmod.com/products/silver-tuna-case-for-nh35-nh36-movement) (Tuna),
   [Tandorio](https://tandoriowatch.com/products/tandorio-titanium-turtle-diver) (Turtle),
   [seikomods CT714](https://www.seikomods.com/shop/ct714-skx013-to-mini-turtle-conversion-case-crown-at-3/) (mini Turtle),
-  [Exquisite Timepieces](https://www.exquisitetimepieces.com/blog/all-about-the-seiko-willard/) (6105 Willard),
-  and [AliExpress's own NH35-case reference article](https://www.aliexpress.com/s/wiki-ssr/article/seiko-nh35-size)
-  (crystal materials, crown thread, 316L, clearance).
+  and [Exquisite Timepieces](https://www.exquisitetimepieces.com/blog/all-about-the-seiko-willard/) (6105 Willard).
+
+AliExpress's own `wiki-ssr` "reference articles" were dropped as a source on
+2026-07-30. They are machine-generated and carry outright false claims — the
+NH36 one calls the calibre a Seagull running at 28,800 vph, and it is a Seiko
+Instruments movement running at 21,600. The one crystal claim that rested on
+that page (Hardlex hardness) now cites
+[namokiMODS' crystal comparison](https://www.namokimods.com/blogs/where-to-buy/mineral-hardlex-sapphire-what-crystal-to-choose)
+and is stated as a ranking rather than a number, because Seiko publishes no
+hardness figure for Hardlex.
 
 ---
 
