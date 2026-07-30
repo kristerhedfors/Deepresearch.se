@@ -551,3 +551,80 @@ zero-match results, and a merged cascade), and the arXiv source becoming a
 LEAD source that displaces the web leg for questions naming it (PR #324).
 Both landed in the window where the drop appears, and both change the sources
 synthesis reads.
+
+---
+
+## 2026-07-30, run 5 — and what the judge is actually worth
+
+- bench-gate 2026-07-30 (commit be1930e4 vs baseline b2a5ab6): overall 3.083±0.068 vs 3.625±0.042 (delta -0.542, bar ±0.15) → REGRESSION. Pins: mistralai/Mistral-Small-3.2-24B-Instruct-2506 / judge mistralai/Mistral-Small-3.2-24B-Instruct-2506 / 240s / mh_semiconductor_export,rec_eu_ai_act_timeline,div_openai_safety,con_coffee_health.
+
+Run after PR #344 (space launch) merged, which touches `pipeline.js` and
+`triage.js`. Two of five samples dropped a question to a helper timeout, so the
+battery mean rests on three complete samples.
+
+Five candidate runs now exist: **3.278, 2.667, 3.146, 2.867, 3.083** — mean
+**3.008**, against a baseline of 3.625. The previous entry called the cause
+unattributed and named bisection as the only way forward. Before spending a
+production rollback on that, two cheaper hypotheses were tested directly, and
+one of them changes how every number above should be read.
+
+### The judge was measured instead of assumed
+
+`tests/rejudge-probe.mjs` replays an ARCHIVED answer — stored text, stored
+sources, byte-identical to what the judge saw on the day — and asks the judge
+to score it again. Nothing is deployed and no answer is regenerated, so the
+only thing that can move is the scoring.
+
+**Judge drift is ruled out, in both directions.** Re-judging the 07-29 run's
+answers today: **+0.583** (if anything the judge is now *looser*). Re-judging
+the same day's answers with the same day's judge: **-0.066**. Neither shape
+explains a -0.6 fall, and the cross-day sign is the wrong way round for a
+"stricter judge" story.
+
+**What the probe did establish is that the baseline's dispersion is fiction.**
+Scoring identical text five times gives, per question:
+
+| question | five scores on IDENTICAL text | sd |
+|---|---|---|
+| `div_openai_safety` | 4.33, 3.00, 3.67, 3.00, 3.67 | 0.56 |
+| `mh_semiconductor_export` | 1.67, 1.67, 1.00, 2.33, 1.67 | 0.47 |
+| `rec_eu_ai_act_timeline` | 3.67, 5.00, 5.00, 5.00, 4.33 | 0.60 |
+
+≈**0.54 per question on text that did not change**, so ≈**0.27** on a
+four-question battery mean. The committed baseline records **sd 0.042 at n=2**
+— six times below the noise floor the judge produces on identical input. Two
+draws happened to land 0.084 apart, and that coincidence was frozen into
+`bench-baseline.json` as the reference dispersion.
+
+**So the gate's noise bar is roughly a third of what it should be.** `bar =
+max(1.7 · se, 0.15)`; with the recorded sds the computed `se` is 0.05, so every
+run since has been judged against the **0.15 floor**. Propagating the *measured*
+judge noise instead gives se ≈ 0.25 and a bar of **≈±0.42** for a single
+2-vs-3-sample comparison. Of the five deltas, `-0.347` sits inside that and was
+never evidence of anything.
+
+### The drop is still real — it just cannot be seen in one run
+
+Widening the bar does not make this go away. Pooled across all five runs
+(≈18 samples) the candidate mean is **3.008 ± 0.06**, and even granting the
+baseline the measured sd (SE 0.19 at n=2) the gap is ≈**3σ**. A ~0.6 fall
+happened. What changes is the confidence any *single* run can carry: at this
+judge's variance, one run of 3 samples cannot resolve anything smaller than
+±0.4, which is larger than most single-PR effects this gate exists to catch.
+
+### Revised next steps
+
+1. **Raise the noise-bar floor from 0.15 to ≈0.40, or raise `SAMPLES`.** The
+   floor was set against a fluke sd rather than against measured judge noise.
+   Leaving it means REGRESSION on runs that carry no signal — which is what
+   four of the last five verdicts were, at the confidence actually available.
+   This changes gate verdicts, so it is an owner call, not a session's.
+2. **Bisect by deployment** still attributes the real -0.6, and still costs
+   ~12 minutes of old code in production per probe. Unchanged: owner decision.
+3. **Do not re-record the baseline.** Unchanged, and now doubly so — a
+   re-record at n=2 would freeze another coincidence. Whenever it happens it
+   needs n≥8 to estimate a sd this judge can support.
+4. Suspects unchanged (#330/#331 web-search rework, #324 arXiv as lead source);
+   the drop is fully present in the earliest post-baseline run (07-29,
+   `978ce70a`) and flat across the ~13 merges since, so whatever caused it sits
+   at or before that commit — or outside the repo entirely.

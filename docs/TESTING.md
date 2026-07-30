@@ -1017,3 +1017,18 @@ the ledger line; on IMPROVED, re-record the baseline in the same PR. The gate
 needs the break-glass creds and a live deployment, so the hook only reminds —
 it never blocks. Don't push mid-battery (the model-eval rule): an auto-deploy
 truncates in-flight streams and poisons the run.
+
+> **Before blaming a commit for a REGRESSION, check the judge.**
+> `node rejudge-probe.mjs <eval-bench-results/…> [reps]` replays an archived
+> run's stored answer and stored sources — byte-identical to what the judge saw
+> that day — and re-scores them now. Nothing deploys and no answer is
+> regenerated, so the only variable left is the scoring. Two things it answers
+> cheaply: whether the judge has drifted (score the same text across days), and
+> what the judge's floor noise actually is (score the same text N times in one
+> session). Measured 2026-07-30: **≈0.54 sd per question on text that did not
+> change**, so ≈0.27 on a four-question battery mean. Any baseline claiming a
+> tighter sd than that is reporting a coincidence, not a dispersion — which is
+> what `bench-baseline.json`'s 0.042 at n=2 turned out to be, and why the gate's
+> 0.15 floor has been reading REGRESSION on runs carrying no signal. Record a
+> baseline at **n≥8** or its sd cannot support a verdict.
+> Full working: `tests/EVAL-BENCH-FINDINGS.md`, entry of 2026-07-30 run 5.
