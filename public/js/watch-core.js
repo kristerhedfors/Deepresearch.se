@@ -96,6 +96,35 @@ export const SOURCES = {
     label: "Modding-community consensus (multiple listings agreeing); treat as approximate",
     url: "",
   },
+  longisland: {
+    label: "Long Island Watch — #007-Flat flat sapphire for SKX007/SKX009 (31.5 mm × 2.9 mm, Seiko bevel on top)",
+    url: "https://longislandwatch.com/products/flat-sapphire-crystal-for-skx007-skx009-007-flat",
+  },
+  watchmodz: {
+    label: "Watch-Modz — SKX007 flat sapphire, NO bevel (31.5 mm × 3.5 mm)",
+    url: "https://watch-modz.com/product/skx007-sapphire-clear-ar-flat-no-bevel/",
+  },
+  luciusatelier: {
+    label: "Lucius Atelier — SKX007 double-domed sapphire, micro-bevel (~5.1 mm through the middle)",
+    url: "https://luciusatelier.com/products/skx007-double-domed-sapphire-crystal-micro-bevel",
+  },
+  crystaltimesct094: {
+    label: "CrystalTimes CT094 — SKX007/SRPD flat sapphire cut for sloping ceramic inserts (31.5 mm × 4.1 mm)",
+    url: "https://usa.crystaltimes.net/shop/skx007-mod-parts/skx007-sapphire-crystals/ct094/",
+  },
+  nh36sheet: {
+    label:
+      "Seiko Instruments (TMI) NH36A technical sheet, page 8 \"Dial\" — revised 09 January 2014, Version 2; scale 5/1, unit 1 = 1/100 mm",
+    url: "https://www.cousinsuk.com/PDF/categories/6809_Seiko%20NH36%20Technical%20Sheet.pdf",
+  },
+  nh35sheet: {
+    label: "Hattori/Seiko Instruments NH35A specification, page 8 \"Dial\" — Version 1; scale 5/1, unit 1 = 1/100 mm",
+    url: "https://gleave.london/content/TECH/Hattori%20NH35%20-%20Specification.pdf",
+  },
+  srpd55: {
+    label: "Seiko USA — Seiko 5 Sports SRPD55 official product image (a 4R36/NH36 day-date aperture at 3)",
+    url: "https://seikousa.com/products/srpd55",
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -1888,14 +1917,55 @@ export function outlineFor(shell) {
       const c = Math.abs(Math.cos(t)) / 0.94;
       const s = Math.abs(Math.sin(t));
       const base = 1 / Math.pow(Math.pow(c, n) + Math.pow(s, n), 1 / n);
-      return base * (1 - 0.02 * Math.cos(4 * t));
+      return base * (1 - 0.028 * Math.cos(4 * t));
     };
   }
   if (shell === "shroud") {
     // Tuna: round, with the shroud's four bolt lobes.
-    return (t) => 1 + 0.012 * Math.cos(4 * t);
+    return (t) => 1 + 0.018 * Math.cos(4 * t);
   }
+  // Divers, dress cases and field cases are ROUND in plan — their character is
+  // in the vertical profile (`caseProfile`), not in the plan silhouette, which
+  // is why they share one outline and still render as different watches.
   return () => 1;
+}
+
+/**
+ * The angular DERIVATIVE dk/dθ of `outlineFor(shell)`, by central difference.
+ * `lathe` needs it to tilt the shading normal where the silhouette is not a
+ * circle; without it a cushion case shades exactly like a round one and the
+ * corners only show up in the outline. Numeric rather than analytic so a new
+ * outline can never ship with a stale hand-derived slope.
+ * @param {string} shell
+ * @returns {(theta: number) => number}
+ */
+export function outlineSlopeFor(shell) {
+  return slopeOf(outlineFor(shell));
+}
+
+/**
+ * Central-difference derivative of any radius-modulation function.
+ * @param {(theta: number) => number} fn
+ * @param {number} [h]
+ * @returns {(theta: number) => number}
+ */
+export function slopeOf(fn, h = 1e-4) {
+  return (t) => (fn(t + h) - fn(t - h)) / (2 * h);
+}
+
+/**
+ * A knurl / fluting modulation: `count` rounded ribs cut `depth` deep, as the
+ * radius factor and its exact derivative. Used for the crown's grip and a dive
+ * bezel's coin edge — real modelled serrations, not a texture.
+ * @param {number} count
+ * @param {number} depth fraction of the radius
+ * @returns {{ k: (theta: number) => number, dk: (theta: number) => number }}
+ */
+export function knurl(count, depth) {
+  return {
+    k: (t) => 1 - depth * 0.5 * (1 - Math.cos(count * t)),
+    dk: (t) => -depth * 0.5 * count * Math.sin(count * t),
+  };
 }
 
 /**
@@ -1904,9 +1974,12 @@ export function outlineFor(shell) {
  * @param {ProfilePoint[]} profile
  * @param {number} segments radial subdivisions
  * @param {(theta: number) => number} [radiusAt] outline modulation, default round
+ * @param {(theta: number) => number} [slopeAt] dk/dθ of `radiusAt`; when given
+ *   the shading normal is tilted exactly rather than approximated, which is what
+ *   makes modelled knurling and a cushion's corners actually catch the light
  * @returns {Mesh}
  */
-export function lathe(profile, segments, radiusAt) {
+export function lathe(profile, segments, radiusAt, slopeAt) {
   const mesh = emptyMesh();
   if (!Array.isArray(profile) || profile.length < 2 || segments < 3) return mesh;
   const shape = radiusAt || (() => 1);
@@ -1966,10 +2039,25 @@ export function lathe(profile, segments, radiusAt) {
       const ct = Math.cos(t);
       const st = Math.sin(t);
       mesh.positions.push(ring.p.r * k * ct, ring.p.y, ring.p.r * k * st);
-      // The modulation tilts the surface; approximating the normal with the
-      // unmodulated one is within a couple of degrees for k within ±20 %,
-      // which is all a cushion case uses.
-      mesh.normals.push(ring.nr * ct, ring.ny, ring.nr * st);
+      if (slopeAt) {
+        // Exact normal for the surface (r(u)·k(θ)·cosθ, y(u), r(u)·k(θ)·sinθ):
+        //   N = ( (k'·sinθ + k·cosθ)·y' , −r'·k² , (k·sinθ − k'·cosθ)·y' )
+        // and the ring already carries y' as `nr` and −r' as `ny`. With k ≡ 1
+        // it collapses to the unmodulated normal below, so passing a slope is
+        // never a change of behaviour for a round case — only a correction for
+        // a modulated one (a cushion's corners, a knurled crown's flutes).
+        const dk = slopeAt(t);
+        const nx = (dk * st + k * ct) * ring.nr;
+        const ny = ring.ny * k * k;
+        const nz = (k * st - dk * ct) * ring.nr;
+        const len = Math.hypot(nx, ny, nz) || 1;
+        mesh.normals.push(nx / len, ny / len, nz / len);
+      } else {
+        // The modulation tilts the surface; approximating the normal with the
+        // unmodulated one is within a couple of degrees for k within ±20 %,
+        // which is all a cushion case uses.
+        mesh.normals.push(ring.nr * ct, ring.ny, ring.nr * st);
+      }
       mesh.uvs.push(c / segments, ri / Math.max(1, rings.length - 1));
     }
   }
@@ -2217,90 +2305,605 @@ export function strapMesh(caseEntry, strapEntry) {
 }
 
 // ---------------------------------------------------------------------------
+// Placement and sweep helpers. Everything here is pure arithmetic over meshes
+// the builders above produced — no new primitives, just moving them into place
+// so a part can be MERGED into the solid it belongs to rather than drawn as a
+// floating extra. (The renderer draws a fixed set of mesh keys; a part that
+// wants to be seen has to arrive inside one of them.)
+
+/**
+ * Move a Y-axis lathe onto a RADIAL axis at `angle`, `out` mm from the centre,
+ * `y` mm up — the same transform the renderer applies to the crown, so a part
+ * placed here and a part placed there land in exactly the same spot.
+ *
+ * Local +Y ends up pointing INWARD (toward the case axis), which is why every
+ * radial part below is modelled with its outer face at negative local y.
+ * @param {Mesh} mesh mutated in place
+ * @param {number} angle radians, 0 = +x
+ * @param {number} out distance from the axis, mm
+ * @param {number} y height, mm
+ * @returns {Mesh}
+ */
+export function placeRadial(mesh, angle, out, y) {
+  const ca = Math.cos(angle);
+  const sa = Math.sin(angle);
+  for (let i = 0; i < mesh.positions.length; i += 3) {
+    const x = mesh.positions[i];
+    const py = mesh.positions[i + 1];
+    const pz = mesh.positions[i + 2];
+    mesh.positions[i] = -py * ca - pz * sa + out * ca;
+    mesh.positions[i + 1] = x + y;
+    mesh.positions[i + 2] = -py * sa + pz * ca + out * sa;
+    const nx = mesh.normals[i];
+    const ny = mesh.normals[i + 1];
+    const nz = mesh.normals[i + 2];
+    mesh.normals[i] = -ny * ca - nz * sa;
+    mesh.normals[i + 1] = nx;
+    mesh.normals[i + 2] = -ny * sa + nz * ca;
+  }
+  return mesh;
+}
+
+/**
+ * The outer radius of a case profile at height `y`, by linear interpolation.
+ * Used to plant the lugs and the crown ON the flank instead of near it.
+ * @param {ProfilePoint[]} outer bottom-to-top outer flank points
+ * @param {number} y
+ * @returns {number}
+ */
+export function flankRadiusAt(outer, y) {
+  if (!outer.length) return 0;
+  if (y <= outer[0].y) return outer[0].r;
+  for (let i = 0; i + 1 < outer.length; i++) {
+    const a = outer[i];
+    const b = outer[i + 1];
+    if (y <= b.y) {
+      const span = b.y - a.y;
+      const f = span <= 1e-9 ? 1 : (y - a.y) / span;
+      return a.r + (b.r - a.r) * f;
+    }
+  }
+  return outer[outer.length - 1].r;
+}
+
+/**
+ * Where the silhouette crosses the line x = `x`, i.e. how far along +z a lug at
+ * that x has to start for its root to be BURIED in the flank rather than
+ * hovering beside it. Fixed-point iteration on z = √((R·k(atan2(z,x)))² − x²);
+ * `outline` is the plan modulation, so this is exact for a round case and
+ * converges in a handful of steps for a cushion or a tonneau.
+ * @param {number} x
+ * @param {number} radius the unmodulated flank radius at the lug's height
+ * @param {(theta: number) => number} outline
+ * @returns {number} z ≥ 0 (0 when x is already outside the silhouette)
+ */
+export function silhouetteZ(x, radius, outline) {
+  let z = radius;
+  for (let i = 0; i < 32; i++) {
+    const rr = radius * outline(Math.atan2(z, x));
+    const next = Math.sqrt(Math.max(0, rr * rr - x * x));
+    if (Math.abs(next - z) < 1e-9) return next;
+    z = next;
+  }
+  return z;
+}
+
+/**
+ * One LUG, swept as a solid: a rectangular section that tapers and droops from
+ * a root buried inside the case flank out to a drilled-lug-style ROUNDED tip at
+ * exactly the catalogue's lug-to-lug. This replaces the four axis-aligned boxes
+ * that used to start at a fixed 0.8·R and therefore floated free of any case
+ * whose silhouette was not a circle.
+ * @param {{ x: number, z0: number, z1: number, halfW: number, rootTop: number,
+ *           rootBot: number, tipTop: number, tipBot: number, stations?: number }} o
+ * @returns {Mesh}
+ */
+export function lugMesh(o) {
+  const mesh = emptyMesh();
+  const len = o.z1 - o.z0;
+  if (!(len > 0)) return mesh;
+  const tipHalf = Math.max(0.25, (o.tipTop - o.tipBot) / 2);
+  const rTip = Math.min(tipHalf, len * 0.45);
+  const straight = Math.max(0, len - rTip);
+  const body = o.stations || 8;
+  const round = 6;
+
+  /** @type {{ z: number, cy: number, halfH: number, halfW: number }[]} */
+  const sections = [];
+  /** @param {number} f 0 at the root, 1 at the tip */
+  const at = (f) => {
+    // Cubic-ish ease so the lug leaves the flank tangentially and only then
+    // falls away — a real lug curves, it does not slope in a straight line.
+    const e = f * f * (3 - 2 * f);
+    const top = o.rootTop + (o.tipTop - o.rootTop) * e;
+    const bot = o.rootBot + (o.tipBot - o.rootBot) * e;
+    return { cy: (top + bot) / 2, halfH: (top - bot) / 2 };
+  };
+  for (let i = 0; i <= body; i++) {
+    const f = (i / body) * (straight / len);
+    const { cy, halfH } = at(f);
+    sections.push({ z: o.z0 + f * len, cy, halfH, halfW: o.halfW * (1 - 0.12 * f) });
+  }
+  for (let i = 1; i <= round; i++) {
+    const phi = (i / round) * (Math.PI / 2);
+    const f = (straight + rTip * Math.sin(phi)) / len;
+    const { cy, halfH } = at(Math.min(1, f));
+    const shrink = Math.cos(phi);
+    sections.push({
+      z: o.z0 + Math.min(1, f) * len,
+      cy,
+      halfH: Math.max(1e-3, halfH * shrink),
+      halfW: o.halfW * 0.88 * (0.55 + 0.45 * shrink),
+    });
+  }
+
+  /** Corner order runs counter-clockwise seen from +z, so the caps wind right. */
+  /** @param {{ z: number, cy: number, halfH: number, halfW: number }} s @param {number} k */
+  const corner = (s, k) => {
+    const sx = k === 0 || k === 3 ? -1 : 1;
+    const sy = k < 2 ? -1 : 1;
+    return [o.x + sx * s.halfW, s.cy + sy * s.halfH, s.z];
+  };
+  /** @param {number[]} p @param {number[]} n */
+  const push = (p, n) => {
+    mesh.positions.push(p[0], p[1], p[2]);
+    const l = Math.hypot(n[0], n[1], n[2]) || 1;
+    mesh.normals.push(n[0] / l, n[1] / l, n[2] / l);
+    mesh.uvs.push(0.5, 0.5);
+  };
+  for (let i = 0; i + 1 < sections.length; i++) {
+    const a = sections[i];
+    const b = sections[i + 1];
+    for (let k = 0; k < 4; k++) {
+      const a0 = corner(a, k);
+      const a1 = corner(a, (k + 1) % 4);
+      const b0 = corner(b, k);
+      const b1 = corner(b, (k + 1) % 4);
+      // Face normal from the quad's own edges: the swept faces are not
+      // axis-aligned once the lug tapers and droops.
+      const e1 = [a1[0] - a0[0], a1[1] - a0[1], a1[2] - a0[2]];
+      const e2 = [b0[0] - a0[0], b0[1] - a0[1], b0[2] - a0[2]];
+      const n = [
+        e1[1] * e2[2] - e1[2] * e2[1],
+        e1[2] * e2[0] - e1[0] * e2[2],
+        e1[0] * e2[1] - e1[1] * e2[0],
+      ];
+      const base = mesh.positions.length / 3;
+      push(a0, n);
+      push(a1, n);
+      push(b1, n);
+      push(b0, n);
+      mesh.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    }
+  }
+  // Caps. The root cap is buried inside the case and never seen; it is emitted
+  // anyway so the lug is a closed solid on its own — a hole is a hole even when
+  // something else happens to be in front of it.
+  for (const [s, dir] of /** @type {[any, number][]} */ ([[sections[0], -1], [sections[sections.length - 1], 1]])) {
+    const base = mesh.positions.length / 3;
+    const order = dir > 0 ? [0, 1, 2, 3] : [3, 2, 1, 0];
+    for (const k of order) push(corner(s, k), [0, 0, dir]);
+    mesh.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+  return mesh;
+}
+
+// ---------------------------------------------------------------------------
 // The case silhouette. One parametric profile per shell archetype, driven
 // entirely by the catalogue's millimetres — change a dimension and the render
 // changes with it, which is the point: the picture IS the spec sheet.
 
 /**
- * @param {any} caseEntry
- * @param {any} crystalEntry
- * @returns {{ profile: ProfilePoint[], bezelTopY: number, dialY: number, crystalR: number, bezelR: number, domeH: number, caseTopY: number }}
+ * One entry per shell archetype: the vertical character of the flank, as
+ * fractions of the case radius and thickness. These are what stop an SKX, a
+ * Turtle, a 62MAS and a dress case from reading alike — the plan silhouette
+ * (`outlineFor`) only separates the cushion/tonneau/shroud families, and three
+ * of the six archetypes are round in plan.
+ *
+ * NOT millimetres and not sourced: they are shape ratios of a procedural model,
+ * the same kind of number the profile has always carried. Every actual
+ * DIMENSION in the rendered case still comes from `caseEntry.dims`.
+ * @type {Record<string, { rim: number, seatF: number, topF: number,
+ *   flank: (R: number, T: number, k: { slim: number, beefy: number, reach: number }) => ProfilePoint[] }>}
  */
-export function caseProfile(caseEntry, crystalEntry) {
-  const plat = PLATFORMS[/** @type {keyof typeof PLATFORMS} */ (caseEntry.platform)] || PLATFORMS.native;
-  const R = caseEntry.dims.dia / 2;
-  const T = caseEntry.dims.thick;
-  const crystalR = (caseEntry.crystal ? caseEntry.crystal.dia : plat.crystalDia || caseEntry.dims.dia - 11) / 2;
-  const hasBezel = caseEntry.bezel === "dive120";
-  const bezelR = hasBezel ? R : R * 0.985;
-  const domeH = crystalEntry ? 0.9 + crystalEntry.dome * 1.9 : 1.6;
+export const SHELL_ARCHETYPES = {
+  // A diver's flank is a barrel with a waist: it tucks in above the case-back
+  // bevel and swells back out to a shoulder just under the bezel. How MUCH it
+  // tucks is what separates a slab-sided 300 m case from a slim vintage one,
+  // so the waist is driven by the catalogue's water resistance and thickness.
+  diver: {
+    rim: 0.87,
+    seatF: 0.62,
+    topF: 0.855,
+    flank: (R, T, k) => {
+      const waist = 0.055 * (1.3 - 0.7 * k.beefy) * (1.25 - 0.45 * k.slim);
+      return [
+        { r: R * (0.955 + 0.025 * k.beefy), y: T * (0.10 + 0.03 * k.slim), s: true },
+        { r: R * (1 - waist), y: T * 0.40, s: true },
+        { r: R * 0.998, y: T * (0.50 + 0.06 * k.beefy) },
+        { r: R * 0.99, y: T * 0.62 },
+      ];
+    },
+  },
+  // A cushion is fattest LOW and tucks under as it rises — that undercut is
+  // the whole read of a 6309/Turtle, and it is why the bezel of a Turtle looks
+  // small for the case.
+  cushion: {
+    rim: 0.90,
+    seatF: 0.64,
+    topF: 0.865,
+    flank: (R, T, k) => [
+      { r: R * 0.995, y: T * 0.16, s: true },
+      { r: R * 1.0, y: T * 0.34, s: true },
+      { r: R * (0.95 - 0.02 * (1 - k.slim)), y: T * 0.54, s: true },
+      { r: R * 0.925, y: T * 0.64 },
+    ],
+  },
+  // The Samurai: every surface is a flat meeting another flat. No smoothing
+  // anywhere, and a machined groove partway up the flank.
+  tonneau: {
+    rim: 0.88,
+    seatF: 0.66,
+    topF: 0.855,
+    flank: (R, T) => [
+      { r: R * 0.985, y: T * 0.14 },
+      { r: R * 0.955, y: T * 0.30 },
+      { r: R * 1.0, y: T * 0.50 },
+      { r: R * 0.93, y: T * 0.66 },
+    ],
+  },
+  // The Tuna: a shroud bolted OVER the case, so the profile steps hard outward
+  // at the shroud's bottom lip and the bezel ends up deeply recessed.
+  shroud: {
+    rim: 0.80,
+    seatF: 0.80,
+    topF: 0.90,
+    flank: (R, T) => [
+      { r: R * 0.86, y: T * 0.10 },
+      { r: R * 0.845, y: T * 0.20 },
+      { r: R * 1.0, y: T * 0.30 },
+      { r: R * 1.0, y: T * 0.70 },
+      { r: R * 0.93, y: T * 0.78 },
+      { r: R * 0.86, y: T * 0.80 },
+    ],
+  },
+  // A dress case swells low and tapers to a wide polished bevel at the top —
+  // the opposite order to a diver, which is why the two never read alike even
+  // when both are round in plan.
+  dress: {
+    rim: 0.86,
+    seatF: 0.74,
+    topF: 0.80,
+    flank: (R, T, k) => [
+      { r: R * 0.945, y: T * 0.10, s: true },
+      { r: R * 1.0, y: T * (0.28 + 0.04 * k.reach), s: true },
+      { r: R * 0.955, y: T * 0.60 },
+      { r: R * 0.90, y: T * 0.74 },
+    ],
+  },
+  // A field case has no bezel at all: a straight taper with one bevel, and the
+  // crystal running almost to the case edge.
+  field: {
+    rim: 0.87,
+    seatF: 0.78,
+    topF: 0.84,
+    flank: (R, T) => [
+      { r: R * 0.99, y: T * 0.12, s: true },
+      { r: R * 1.0, y: T * 0.44 },
+      { r: R * 0.985, y: T * 0.70 },
+      { r: R * 0.955, y: T * 0.78 },
+    ],
+  },
+};
 
-  // Heights, from the case back upward. These ratios are what makes an SKX
-  // read as an SKX and a 62MAS as a slim vintage piece; they are tuned so the
-  // rendered silhouette matches the catalogue thickness exactly.
-  const backY = 0;
-  const backEdgeY = T * 0.1;
-  const waistY = T * 0.42;
-  const shoulderY = T * (hasBezel ? 0.6 : 0.72);
-  const bezelTopY = T * (hasBezel ? 0.86 : 0.8);
-  const caseTopY = bezelTopY;
-  const dialY = T * 0.34;
-
-  /** @type {ProfilePoint[]} */
-  const profile = [];
-  const shell = caseEntry.shell;
-  // Case back: a shallow dome into the flank.
-  profile.push({ r: 0, y: backY + (caseEntry.shell === "dress" ? 0.2 : 0.35) });
-  profile.push({ r: R * 0.42, y: backY + 0.12, s: true });
-  profile.push({ r: R * 0.66, y: backY, s: true });
-  profile.push({ r: R * (shell === "shroud" ? 0.86 : 0.8), y: backEdgeY });
-  // Flank.
-  if (shell === "shroud") {
-    profile.push({ r: R * 0.99, y: T * 0.22 });
-    profile.push({ r: R, y: T * 0.62 });
-    profile.push({ r: R * 0.93, y: T * 0.74 });
-    profile.push({ r: bezelR * 0.86, y: T * 0.78 });
-  } else if (shell === "dress" || shell === "field") {
-    profile.push({ r: R * 0.95, y: waistY * 0.8, s: true });
-    profile.push({ r: R, y: shoulderY });
-    profile.push({ r: R * 0.995, y: bezelTopY - 0.35 });
-  } else {
-    profile.push({ r: R * 0.94, y: waistY, s: true });
-    profile.push({ r: R * 0.999, y: shoulderY });
-    profile.push({ r: R * 0.985, y: shoulderY + T * 0.04 });
-  }
-  // Bezel.
-  if (hasBezel) {
-    profile.push({ r: bezelR, y: shoulderY + T * 0.05 });
-    profile.push({ r: bezelR * 0.995, y: bezelTopY });
-    profile.push({ r: crystalR + 0.9, y: bezelTopY });
-  } else {
-    profile.push({ r: bezelR, y: bezelTopY });
-    profile.push({ r: crystalR + 0.7, y: bezelTopY });
-  }
-  return { profile, bezelTopY, dialY, crystalR, bezelR, domeH, caseTopY };
+/** @param {number} v @param {number} lo @param {number} hi */
+function clamp(v, lo, hi) {
+  return v < lo ? lo : v > hi ? hi : v;
 }
 
 /**
- * The crystal: a domed cap sitting on the bezel seat.
+ * @typedef {{ profile: ProfilePoint[], outer: ProfilePoint[], bezelProfile: ProfilePoint[]|null,
+ *   bezelTopY: number, bezelSeatY: number, dialY: number, crystalR: number, bezelR: number,
+ *   towerR: number, boreR: number, boreBotR: number, apertureR: number, dialR: number,
+ *   insertInner: number, insertOuter: number,
+ *   seatFloorY: number, floorY: number, domeH: number, caseTopY: number, crystalTop: number,
+ *   crownY: number, hasBezel: boolean }} CaseGeometry
+ */
+
+/**
+ * The case as a SHELL, not a silhouette. `profile` is a CLOSED cross-section —
+ * outer flank up, over the top, down the case BORE, back along the bottom — so
+ * revolving it produces a solid with an inside. Before this, the case was a
+ * single lathed surface with no inner wall and a hole in the bottom, and from
+ * any angle past the dial edge you looked straight through the watch; the
+ * fragment shader's backface normal flip was the only thing hiding it.
+ *
+ * `outer` is the same flank on its own, bottom rim to bezel seat — the lugs and
+ * the crown plant themselves on it via `flankRadiusAt`.
+ * @param {any} caseEntry
+ * @param {any} crystalEntry
+ * @returns {CaseGeometry}
+ */
+export function caseProfile(caseEntry, crystalEntry) {
+  const plat = PLATFORMS[/** @type {keyof typeof PLATFORMS} */ (caseEntry.platform)] || PLATFORMS.native;
+  const D = caseEntry.dims.dia;
+  const R = D / 2;
+  const T = caseEntry.dims.thick;
+  const L = caseEntry.dims.l2l || D;
+  const crystalR = (caseEntry.crystal ? caseEntry.crystal.dia : plat.crystalDia || D - 11) / 2;
+  const dialR = plat.dialDia / 2;
+  const hasBezel = caseEntry.bezel === "dive120";
+  const arch = SHELL_ARCHETYPES[caseEntry.shell] || SHELL_ARCHETYPES.diver;
+
+  // The three catalogue-derived character scalars every archetype reads. All of
+  // them come from `dims` and `wr`, so two cases that differ in the catalogue
+  // cannot come out of here identical.
+  const k = {
+    slim: clamp((T / D - 0.27) / 0.075, 0, 1),
+    beefy: clamp(((caseEntry.wr || 100) - 100) / 200, 0, 1),
+    reach: clamp((L / D - 0.94) / 0.28, 0, 1),
+  };
+
+  const bezelSeatY = T * arch.seatF;
+  const bezelTopY = T * arch.topF;
+  const caseTopY = bezelTopY;
+  // The dial plane. 40 % of the case height leaves the NH movement's 5.32 mm
+  // underneath it, which is what actually decides this number.
+  const dialY = T * 0.4;
+  const seatFloorY = dialY + 1.15;
+  const floorY = Math.max(0.8, dialY - 3.2);
+
+  // The BORE: the case's inner diameter. It has to clear the dial, and on a
+  // platform whose crystal is smaller than its dial (SKX013) it stays wider
+  // than the crystal seat, which is what puts a real overhanging lip over the
+  // dial edge instead of an impossible inverted rehaut.
+  const boreR = Math.max(dialR + 0.35, crystalR);
+  const boreBotR = boreR + 0.45;
+  const apertureR = Math.min(crystalR, boreR);
+  const towerR = crystalR + 0.5;
+
+  const flank = arch.flank(R, T, k);
+  const rimR = Math.max(R * arch.rim, boreBotR + 0.6);
+  /** @type {ProfilePoint[]} */
+  const outer = [{ r: rimR, y: 0 }];
+  for (const p of flank) if (p.y < bezelSeatY) outer.push(p);
+  outer.push({ r: flank.length ? flank[flank.length - 1].r : R * 0.99, y: bezelSeatY });
+
+  /** @type {ProfilePoint[]} */
+  const profile = [{ r: boreBotR, y: 0 }];
+  for (const p of outer) profile.push(p);
+  if (hasBezel) {
+    // The case carries a raised crystal TOWER that the bezel ring rides around;
+    // the ledge between them is the bezel seat.
+    profile.push({ r: towerR, y: bezelSeatY });
+    profile.push({ r: towerR, y: bezelTopY });
+  } else {
+    profile.push({ r: R * (caseEntry.bezel === "fixed" ? 0.985 : 0.96), y: bezelTopY });
+  }
+  profile.push({ r: crystalR, y: bezelTopY });
+  // Inner wall, top-down: crystal seat well → dial/rehaut seat → bore →
+  // case-back recess → the bottom face, closing the loop on the first point.
+  profile.push({ r: crystalR, y: seatFloorY });
+  if (Math.abs(boreR - crystalR) > 1e-6) profile.push({ r: boreR, y: seatFloorY });
+  profile.push({ r: boreR, y: floorY + 0.5 });
+  profile.push({ r: boreBotR, y: floorY });
+  profile.push({ r: boreBotR, y: 0 });
+
+  /** @type {ProfilePoint[] | null} */
+  let bezelProfile = null;
+  const bezelR = hasBezel ? flankRadiusAt(outer, bezelSeatY) : R * (caseEntry.bezel === "fixed" ? 0.985 : 0.96);
+  // The insert sits INSIDE the bezel, leaving a steel rim at the outer edge.
+  // Both radii live here so the bezel's recess and the insert disc cannot drift
+  // apart into a floating ring.
+  const insertOuter = bezelR * 0.955;
+  const insertInner = Math.min(towerR + 0.25, Math.max(crystalR + 0.15, insertOuter - 0.3));
+  if (hasBezel) {
+    const rimTop = bezelTopY + 0.25;
+    const recessR = Math.min(bezelR - 0.2, insertOuter + 0.2);
+    const inner = towerR + 0.1;
+    const ch = Math.min(0.35, (rimTop - bezelSeatY) * 0.2);
+    bezelProfile = [
+      { r: inner, y: bezelSeatY },
+      { r: bezelR, y: bezelSeatY },
+      { r: bezelR, y: rimTop - ch },
+      { r: bezelR - ch, y: rimTop },
+      { r: recessR, y: rimTop },
+      { r: recessR, y: bezelTopY },
+      { r: inner, y: bezelTopY },
+      { r: inner, y: bezelSeatY },
+    ];
+  }
+
+  // The crystal's PROUD height: the family's sourced thickness times the share
+  // of it that stands above the seat, capped so a box crystal on a slim case
+  // cannot tower over the catalogue's total thickness.
+  const fam = CRYSTAL_FAMILIES[crystalFamily(crystalEntry)];
+  const domeH = clamp(fam.thick * fam.proudF, 0.5, Math.max(0.6, T * 1.12 - bezelTopY));
+
+  // The crown belongs at the flank's CREST, which is where a real one is
+  // machined in. Found rather than guessed, so it lands right on every
+  // archetype — and never at y = 0, where the bottom rim can be the widest
+  // point (the Tuna's shroud is).
+  let crownY = T * 0.45;
+  let crest = -1;
+  for (const p of outer) {
+    if (p.y > T * 0.12 && p.y < bezelSeatY && p.r > crest) {
+      crest = p.r;
+      crownY = p.y;
+    }
+  }
+
+  return {
+    profile,
+    outer,
+    bezelProfile,
+    bezelTopY,
+    bezelSeatY,
+    dialY,
+    crystalR,
+    bezelR,
+    towerR,
+    boreR,
+    boreBotR,
+    apertureR,
+    dialR,
+    insertInner,
+    insertOuter,
+    seatFloorY,
+    floorY,
+    domeH,
+    caseTopY,
+    crystalTop: bezelTopY + domeH,
+    crownY,
+    hasBezel,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// CRYSTALS as real profiles. A flat sapphire is FLAT — a flat top face, a
+// vertical wall and the bevel Seiko puts on the top edge — not a low dome, and
+// a box crystal has near-vertical walls under a flat top rather than a taller
+// version of the same cap. The four families are genuinely different solids.
+//
+// `thick` is the crystal's total thickness in millimetres and carries a source;
+// `proudF` is the share of it standing above the bezel seat, which is a
+// modelling ratio and is flagged as such rather than dressed up as a
+// measurement (no invented millimetres).
+
+/**
+ * @type {Record<string, { id: string, name: {en:string,sv:string}, thick: number,
+ *   proudF: number, approx: boolean, src: string, note?: {en:string,sv:string} }>}
+ */
+export const CRYSTAL_FAMILIES = {
+  flat: {
+    id: "flat",
+    name: { en: "Flat", sv: "Plan" },
+    thick: 2.9,
+    proudF: 0.38,
+    approx: false,
+    src: "longisland",
+    note: {
+      en: "Sources disagree on how thick a flat SKX sapphire is: Long Island Watch's #007-Flat is 31.5 × 2.9 mm with the classic Seiko bevel on top, Watch-Modz's no-bevel cut is 3.5 mm, and CrystalTimes' CT094 for sloping ceramic inserts is 4.1 mm. The bevelled 2.9 mm one is modelled here.",
+      sv: "Källorna är oense om hur tjockt ett plant SKX-safirglas är: Long Island Watch #007-Flat är 31,5 × 2,9 mm med Seikos klassiska fas upptill, Watch-Modz ofasade variant är 3,5 mm och CrystalTimes CT094 för lutande keraminlägg är 4,1 mm. Här modelleras det fasade 2,9 mm-glaset.",
+    },
+  },
+  dome: {
+    id: "dome",
+    name: { en: "Single dome", sv: "Enkelkupad" },
+    thick: 3.7,
+    proudF: 0.5,
+    approx: true,
+    src: "community",
+    note: {
+      en: "Single-dome and stock Hardlex thicknesses are quoted loosely by retailers; treat as approximate.",
+      sv: "Tjockleken på enkelkupade glas och original-Hardlex anges löst av återförsäljarna; behandla som ungefärlig.",
+    },
+  },
+  double: {
+    id: "double",
+    name: { en: "Double dome", sv: "Dubbelkupad" },
+    thick: 5.1,
+    proudF: 0.56,
+    approx: true,
+    src: "luciusatelier",
+    note: {
+      en: "Both faces are curved — a concave underside under a convex top. Lucius Atelier quotes ~5.1 mm through the middle for the SKX007 cut.",
+      sv: "Båda ytorna är kupade — konkav undersida under en konvex ovansida. Lucius Atelier anger ca 5,1 mm genom mitten för SKX007-glaset.",
+    },
+  },
+  box: {
+    id: "box",
+    name: { en: "Box (vintage)", sv: "Box (vintage)" },
+    thick: 4.8,
+    proudF: 0.75,
+    approx: true,
+    src: "community",
+    note: {
+      en: "A box crystal is a slab with near-vertical walls and a flat top, not a dome. No retailer publishes the wall height, so the wall/top split is a modelling ratio.",
+      sv: "Ett boxglas är en kloss med nästan lodräta sidor och plan ovansida, inte en kupol. Ingen återförsäljare publicerar väggens höjd, så förhållandet vägg/ovansida är en modellparameter.",
+    },
+  },
+};
+
+/**
+ * Which crystal family a catalogue entry belongs to. An explicit `shape` wins;
+ * otherwise the catalogue's `dome` scalar names the family, which is exactly
+ * how it has always been used.
+ * @param {any} entry
+ * @returns {string}
+ */
+export function crystalFamily(entry) {
+  if (!entry) return "dome";
+  if (typeof entry.shape === "string" && CRYSTAL_FAMILIES[entry.shape]) return entry.shape;
+  const d = typeof entry.dome === "number" ? entry.dome : 0.6;
+  if (d <= 0.25) return "flat";
+  if (d <= 0.8) return "dome";
+  if (d <= 1.3) return "double";
+  return "box";
+}
+
+/**
+ * The crystal as a closed solid of the given family, spanning exactly
+ * [`y`, `y` + `height`].
  * @param {number} crystalR
- * @param {number} y
- * @param {number} domeH
+ * @param {number} y seat height
+ * @param {number} height total proud height (the old `domeH`)
  * @param {number} segments
+ * @param {string} [family] one of CRYSTAL_FAMILIES; defaults to a single dome
  * @returns {Mesh}
  */
-export function crystalMesh(crystalR, y, domeH, segments) {
+export function crystalMesh(crystalR, y, height, segments, family) {
+  const fam = CRYSTAL_FAMILIES[family || ""] ? family : "dome";
+  const h = height;
+  const top = y + h;
   /** @type {ProfilePoint[]} */
   const profile = [];
-  const rings = 14;
-  // Traversed edge → centre (r shrinking, y rising), which keeps the
-  // counter-clockwise convention the lathe's normals assume.
-  for (let i = 0; i <= rings; i++) {
-    const t = i / rings;
-    const r = crystalR * Math.cos((t * Math.PI) / 2);
-    // A shallow spherical cap, not a hemisphere: dome height sets the sag.
-    const h = domeH * Math.sin((t * Math.PI) / 2);
-    profile.push({ r, y: y + h, s: i > 0 && i < rings });
+  /**
+   * @param {number} rings @param {number} r0 @param {number} y0
+   * @param {number} r1 @param {number} y1 @param {boolean} convex
+   */
+  const arc = (rings, r0, y0, r1, y1, convex) => {
+    // A quarter ellipse from (r0, y0) to (r1, y1); `convex` bulges upward.
+    for (let i = 1; i <= rings; i++) {
+      const t = (i / rings) * (Math.PI / 2);
+      const f = convex ? Math.sin(t) : 1 - Math.cos(t);
+      const g = convex ? 1 - Math.cos(t) : Math.sin(t);
+      profile.push({ r: r0 + (r1 - r0) * g, y: y0 + (y1 - y0) * f, s: i < rings });
+    }
+  };
+
+  if (fam === "flat") {
+    // Flat means flat: a disc with a vertical wall and the bevel Seiko cuts on
+    // the top edge. Nothing about it is a cap.
+    const bevel = Math.min(0.45, h * 0.4, crystalR * 0.06);
+    profile.push({ r: 0, y });
+    profile.push({ r: crystalR, y });
+    profile.push({ r: crystalR, y: top - bevel });
+    profile.push({ r: crystalR - bevel, y: top });
+    profile.push({ r: 0, y: top });
+  } else if (fam === "box") {
+    // Near-vertical walls, then a flat top with a small edge break.
+    profile.push({ r: 0, y });
+    profile.push({ r: crystalR, y });
+    profile.push({ r: crystalR, y: y + h * 0.78 });
+    profile.push({ r: crystalR * 0.985, y: y + h * 0.92 });
+    profile.push({ r: crystalR * 0.95, y: top });
+    profile.push({ r: 0, y: top });
+  } else if (fam === "double") {
+    // Both faces curved: a concave underside, a rim, then a convex top.
+    const sag = h * 0.2;
+    const rim = h * 0.16;
+    profile.push({ r: 0, y: y + sag });
+    arc(6, 0, y + sag, crystalR, y, false);
+    profile.push({ r: crystalR, y: y + rim });
+    arc(10, crystalR, y + rim, 0, top, true);
+  } else {
+    // Single dome: a flat underside, a short rim, a spherical cap on top.
+    const rim = h * 0.22;
+    profile.push({ r: 0, y });
+    profile.push({ r: crystalR, y });
+    profile.push({ r: crystalR, y: y + rim });
+    arc(11, crystalR, y + rim, 0, top, true);
   }
   return lathe(profile, segments);
 }
@@ -2456,18 +3059,199 @@ export const HAND_SHAPES = Object.keys(HAND_OUTLINES);
 // a canvas anywhere.
 
 /**
+ * Where every dial feature sits. Collected in one table because the bug this
+ * replaces was exactly the opposite: a dozen hardcoded fractions spread across
+ * the painter, none of which knew about each other, so the day wheel clipped
+ * the date, the GMT numeral at 3 sat under the date window, and a wide window
+ * ran out past the minute track.
+ *
+ * The APERTURE millimetres come off the manufacturer's dial drawings (TMI/SII
+ * NH36A and NH35A technical sheets, page 8, scale 5/1, unit 1 = 1/100 mm) and
+ * are therefore NOT approximate. Everything else here is a layout ratio of a
+ * procedural model, flagged as such.
+ */
+export const DIAL_METRICS = {
+  /** The dial the millimetres below are quoted on — the drawings' Ø2850. */
+  dialDia: DIAL_DIA,
+
+  /**
+   * THE CUTOUT. One rectangle, whichever movement is under it. The NH36's
+   * day-date box and the NH35's date box share an outer edge (11.95 vs
+   * 12.00 mm); every one of the day-date box's extra 4.15 mm is added INBOARD,
+   * which is the drawing's own proof that the day reads inboard of the date.
+   */
+  aperture: {
+    /** Tangential height of both cutouts, mm. */
+    height: 2.0,
+    /** NH35A "Date window position:3H": 2.90 × 2.00 mm at 10.55 mm. */
+    date: { width: 2.9, centre: 10.55, src: "nh35sheet" },
+    /** NH36A "Day-Date window position:3H": 7.00 × 2.00 mm at 8.45 mm. */
+    dayDate: { width: 7.0, centre: 8.45, src: "nh36sheet" },
+    approx: false,
+    src: "nh36sheet",
+    note: {
+      en: "The dial is cut ONCE. The line a wearer reads as a divider between the day and the date is not on the dial at all — it is where the day disc's outer edge falls over the date ring, so the two never share a millimetre of aperture.",
+      sv: "Urtavlan har EN öppning. Strecket som ser ut som en avdelare mellan veckodag och datum finns inte på urtavlan — det är kanten på veckodagsskivan där den ligger över datumringen, så de två delar aldrig en millimeter av fönstret.",
+    },
+  },
+
+  /**
+   * How the two DISCS divide that one cut, as fractions of its width from the
+   * inboard edge outward. Measured by pixel threshold on an official SRPD55
+   * product image scaled by the drawing's 7.00 mm, so approximate — the drawing
+   * fixes the cut, not where one disc ends and the next begins.
+   */
+  cells: { day: 0.54, gap: 0.03, date: 0.43, approx: true, src: "srpd55" },
+
+  /** Layout ratios of the dial radius. Modelling numbers, not measurements. */
+  markerOuter: 0.87,
+  trackInner: 0.885,
+  trackOuter: 0.945,
+  gmtTrack: 0.66,
+  gmtHandTip: 0.72,
+  heartCentre: 0.44,
+  heartRadius: 0.24,
+  subCentre: 0.46,
+  subRadius: 0.24,
+  logoR: 0.4,
+  textStart: 0.3,
+  textStep: 0.085,
+  textLimit: 0.66,
+  approx: true,
+  src: "community",
+};
+
+/** @type {Record<number, string>} */
+const ROMAN_LABEL = {
+  1: "I", 2: "II", 3: "III", 4: "IV", 5: "V", 6: "VI",
+  7: "VII", 8: "VIII", 9: "IX", 10: "X", 11: "XI", 12: "XII",
+};
+
+/**
+ * A feature reduced to a polar box, so two of them can be asked whether they
+ * touch. `halfAng` is the half-width in radians AT that radius, which is what
+ * makes a wide window near the centre and a narrow marker near the rim
+ * comparable at all.
+ * @typedef {{ id: string, angle: number, halfAng: number, rIn: number, rOut: number }} LayoutBox
+ */
+
+/**
+ * @param {string} id
+ * @param {number} angle
+ * @param {number} rIn
+ * @param {number} rOut
+ * @param {number} halfWidth tangential half-width, as a fraction of the radius
+ * @returns {LayoutBox}
+ */
+function polarBox(id, angle, rIn, rOut, halfWidth) {
+  const r = Math.max(1e-3, (rIn + rOut) / 2);
+  return { id, angle, halfAng: Math.min(Math.PI, Math.atan2(halfWidth, r)), rIn, rOut };
+}
+
+/** @param {number} a @param {number} b shortest angular distance */
+function angleGap(a, b) {
+  const two = Math.PI * 2;
+  let d = Math.abs(((a - b) % two) + two) % two;
+  if (d > Math.PI) d = two - d;
+  return d;
+}
+
+/**
+ * @param {LayoutBox} a
+ * @param {LayoutBox} b
+ */
+function boxesOverlap(a, b) {
+  if (a.rOut <= b.rIn + 1e-9 || b.rOut <= a.rIn + 1e-9) return false;
+  return angleGap(a.angle, b.angle) < a.halfAng + b.halfAng - 1e-9;
+}
+
+/**
+ * The dial's APERTURE, laid out the way the manufacturer's drawing cuts it:
+ * ONE rectangle at 3 o'clock, 7.00 × 2.00 mm centred 8.45 mm out on a day-date
+ * dial and 2.90 × 2.00 mm centred 10.55 mm out on a date-only one.
+ *
+ * The two CELLS inside it are not two windows — they are where the day disc and
+ * the date ring show through the single cut, the day INBOARD and the date
+ * outboard, with the visible "divider" being the day disc's own outer edge.
+ * Cutting two overlapping windows is what produced the reported clipping;
+ * a painter given this should draw one aperture and place two glyphs in it.
+ * @param {any} dial
+ * @param {number} radius mm
+ */
+function apertureLayout(dial, radius) {
+  /** @type {{ kind: string, angle: number, r: number, w: number, h: number, mmW: number, mmH: number,
+   *   cells: { kind: string, r: number, w: number, mmW: number, sample: string }[] }[]} */
+  const out = [];
+  if (!dial || !dial.date) return out;
+  const A = DIAL_METRICS.aperture;
+  const scale = radius / (DIAL_METRICS.dialDia / 2);
+  const angle = ((Number(dial.date) || 3) / 12) * Math.PI * 2;
+  const cut = dial.day ? A.dayDate : A.date;
+  const w = (cut.width * scale) / radius;
+  const h = (A.height * scale) / radius;
+  const r = (cut.centre * scale) / radius;
+  const inner = r - w / 2;
+
+  /** @type {{ kind: string, r: number, w: number, mmW: number, sample: string }[]} */
+  const cells = [];
+  if (dial.day) {
+    // Fractions of the ONE cut, from its inboard edge outward: day, the gap
+    // where the day disc's edge crosses the date ring, then the date. They sum
+    // to the cut, so no two cells can share a millimetre by construction.
+    let at = inner;
+    for (const [kind, frac, sample] of /** @type {[string, number, string][]} */ ([
+      ["day", DIAL_METRICS.cells.day, "MON"],
+      ["gap", DIAL_METRICS.cells.gap, ""],
+      ["date", DIAL_METRICS.cells.date, "31"],
+    ])) {
+      const cw = w * frac;
+      if (kind !== "gap") cells.push({ kind, r: at + cw / 2, w: cw, mmW: cut.width * scale * frac, sample });
+      at += cw;
+    }
+  } else {
+    cells.push({ kind: "date", r, w, mmW: cut.width * scale, sample: "31" });
+  }
+
+  out.push({
+    kind: dial.day ? "daydate" : "date",
+    angle,
+    r,
+    w,
+    h,
+    mmW: cut.width * scale,
+    mmH: A.height * scale,
+    cells,
+  });
+  return out;
+}
+
+/**
  * @param {any} dial
  * @param {number} radius dial radius in mm
+ * @param {{ apertureR?: number }} [opts] the case's VISIBLE opening in mm, when
+ *   it is smaller than the dial (an SKX013's 27.5 mm crystal over a 28.5 mm
+ *   dial); everything is pulled inside it so no feature is printed under the
+ *   case lip
  */
-export function dialLayout(dial, radius) {
+export function dialLayout(dial, radius, opts) {
   const style = dial.markers;
-  /** @type {{ hour: number, angle: number, kind: string, len: number, wid: number }[]} */
+  const apertureR = opts && opts.apertureR ? Math.min(radius, opts.apertureR) : radius;
+  const visible = apertureR / radius;
+  // Every radial fraction below is measured against the VISIBLE disc, so a
+  // smaller aperture shrinks the whole layout instead of hiding its outside.
+  const markerOuter = DIAL_METRICS.markerOuter * visible;
+  const trackInner = DIAL_METRICS.trackInner * visible;
+  const trackOuter = DIAL_METRICS.trackOuter * visible;
+
+  const apertures = apertureLayout(dial, radius);
+  /** @type {LayoutBox[]} */
+  const apertureBoxes = apertures.map((a) =>
+    polarBox(`${a.kind} window`, a.angle, a.r - a.w / 2, a.r + a.w / 2, a.h / 2),
+  );
+
+  /** @type {{ hour: number, angle: number, kind: string, len: number, wid: number, rOuter: number, rInner: number, fit: number }[]} */
   const markers = [];
-  const skip = new Set();
-  if (dial.date === "3") skip.add(3);
-  if (dial.day) skip.add(3);
   for (let h = 1; h <= 12; h++) {
-    if (skip.has(h) && style !== "gs") continue;
     const angle = (h / 12) * Math.PI * 2;
     let kind = "bar";
     let len = 0.13;
@@ -2507,23 +3291,176 @@ export function dialLayout(dial, radius) {
       kind = h % 3 === 0 ? "numeral" : "bar";
       len = 0.13;
     }
-    markers.push({ hour: h, angle, kind, len: len * radius * 2, wid: wid * radius * 2 });
+    len *= visible;
+    wid *= visible;
+    // A printed numeral is as wide as its glyphs, not as wide as a bar. "VIII"
+    // at bar width was reported as a hairline and drawn four characters wide,
+    // which is how roman dials ended up with numerals running into each other.
+    let fit = 1;
+    if (kind === "numeral" || kind === "roman") {
+      const label = kind === "roman" ? ROMAN_LABEL[h] : String(h);
+      wid = len * 0.46 * label.length;
+    }
+    const rOuter = markerOuter;
+    const rInner = markerOuter - len;
+    // `wid` is a fraction of the dial DIAMETER, so half of it in radius units is
+    // the same number — which is exactly the half-width `polarBox` wants.
+    // Nothing may take more than 12.5° of the 30° an hour position owns; a
+    // numeral that would takes a `fit` scale down instead, which is how "VIII"
+    // stops running into "VII" on a roman dial.
+    const rMid = (rOuter + rInner) / 2;
+    const widest = rMid * Math.tan((12.5 * Math.PI) / 180);
+    if (wid > widest) {
+      fit = widest / wid;
+      wid = widest;
+    }
+    const box = polarBox(`marker ${h}`, angle, rInner, rOuter, wid);
+    // A marker under an aperture gives way to it — for EVERY marker style. The
+    // old rule skipped hour 3 by hand and then exempted the Grand-Seiko style
+    // from its own skip, which printed a facet marker under the date window.
+    if (apertureBoxes.some((a) => boxesOverlap(a, box))) continue;
+    markers.push({
+      hour: h,
+      angle,
+      kind,
+      len: len * radius * 2,
+      wid: wid * radius * 2,
+      rOuter,
+      rInner,
+      fit,
+    });
   }
+
   const ticks = [];
   for (let m = 0; m < 60; m++) {
     if (m % 5 === 0) continue;
-    ticks.push({ minute: m, angle: (m / 60) * Math.PI * 2 });
+    ticks.push({ minute: m, angle: (m / 60) * Math.PI * 2, rOuter: trackOuter, rInner: trackInner });
   }
+
+  // The GMT 24-hour track sits inside the hour markers, and any numeral that
+  // would land on an aperture is dropped rather than printed under it.
+  let gmtTrack = null;
+  if (dial.gmt) {
+    const r = DIAL_METRICS.gmtTrack * visible;
+    const half = 0.05 * visible;
+    const numerals = [];
+    for (let h = 0; h < 24; h += 2) {
+      const angle = (h / 24) * Math.PI * 2;
+      const box = polarBox(`gmt ${h}`, angle, r - half, r + half, half);
+      numerals.push({ value: h, angle, skipped: apertureBoxes.some((a) => boxesOverlap(a, box)) });
+    }
+    gmtTrack = { r, half, numerals, handTip: DIAL_METRICS.gmtHandTip * visible };
+  }
+
+  const heart = dial.openHeart
+    ? { angle: (9 / 12) * Math.PI * 2, r: DIAL_METRICS.heartCentre * visible, radius: DIAL_METRICS.heartRadius * visible }
+    : null;
+  const sub = dial.subSeconds
+    ? {
+        angle: ((Number(dial.subSeconds) || 6) / 12) * Math.PI * 2,
+        r: DIAL_METRICS.subCentre * visible,
+        radius: DIAL_METRICS.subRadius * visible,
+      }
+    : null;
+
+  // Printed text goes at 6 o'clock unless something already lives there, in
+  // which case it stacks under the logo at 12 instead of being drawn over a
+  // sub-dial.
+  const lines = Array.isArray(dial.text) ? dial.text.slice(0, 4) : [];
+  const sixTaken = !!(sub && angleGap(sub.angle, Math.PI) < 0.4);
+  const textAngle = sixTaken ? 0 : Math.PI;
+  const room = DIAL_METRICS.textLimit * visible - DIAL_METRICS.textStart * visible;
+  const step = lines.length > 1 ? Math.min(DIAL_METRICS.textStep * visible, room / (lines.length - 1)) : 0;
+  const textLines = lines.map((/** @type {any} */ t, /** @type {number} */ i) => ({
+    text: String(t),
+    angle: textAngle,
+    r: (sixTaken ? 0.5 : DIAL_METRICS.textStart) * visible + step * i,
+    size: 0.033 * visible,
+  }));
+
   return {
     radius,
+    apertureR,
+    visible,
     markers,
     ticks,
+    markerOuter,
+    trackInner,
+    trackOuter,
+    apertures,
+    gmtTrack,
+    heart,
+    sub,
+    logo: { angle: 0, r: DIAL_METRICS.logoR * visible, size: 0.05 * visible },
+    textLines,
     date: dial.date,
     day: dial.day,
     gmt: dial.gmt,
     openHeart: dial.openHeart,
-    text: Array.isArray(dial.text) ? dial.text : [],
+    text: lines,
   };
+}
+
+/**
+ * Every feature of a laid-out dial as a polar box. Exported so the audit is
+ * something a test can run rather than something a reviewer has to eyeball.
+ * @param {ReturnType<typeof dialLayout>} layout
+ * @returns {LayoutBox[]}
+ */
+export function layoutBoxes(layout) {
+  /** @type {LayoutBox[]} */
+  const boxes = [];
+  for (const m of layout.markers) {
+    boxes.push(polarBox(`marker ${m.hour}`, m.angle, m.rInner, m.rOuter, m.wid / (layout.radius * 2)));
+  }
+  for (const a of layout.apertures) {
+    boxes.push(polarBox(`${a.kind} window`, a.angle, a.r - a.w / 2, a.r + a.w / 2, a.h / 2));
+  }
+  if (layout.gmtTrack) {
+    for (const n of layout.gmtTrack.numerals) {
+      if (n.skipped) continue;
+      boxes.push(
+        polarBox(`gmt ${n.value}`, n.angle, layout.gmtTrack.r - layout.gmtTrack.half, layout.gmtTrack.r + layout.gmtTrack.half, layout.gmtTrack.half),
+      );
+    }
+  }
+  if (layout.heart) {
+    boxes.push(polarBox("open heart", layout.heart.angle, layout.heart.r - layout.heart.radius, layout.heart.r + layout.heart.radius, layout.heart.radius));
+  }
+  if (layout.sub) {
+    boxes.push(polarBox("sub-seconds", layout.sub.angle, layout.sub.r - layout.sub.radius, layout.sub.r + layout.sub.radius, layout.sub.radius));
+  }
+  boxes.push(
+    polarBox("logo", layout.logo.angle, layout.logo.r - layout.logo.size, layout.logo.r + layout.logo.size, layout.logo.size * 6),
+  );
+  for (const t of layout.textLines) {
+    boxes.push(polarBox(`text "${t.text}"`, t.angle, t.r - t.size, t.r + t.size, t.size * Math.max(1, t.text.length) * 0.45));
+  }
+  return boxes;
+}
+
+/**
+ * Everything on this dial that collides with something else, or that runs
+ * outside the dial or outside the case's visible opening. An empty array is the
+ * whole point: it is the audit the "day clips into date" report asked for,
+ * expressed as an assertion instead of a look.
+ * @param {ReturnType<typeof dialLayout>} layout
+ * @returns {{ a: string, b: string }[]}
+ */
+export function layoutCollisions(layout) {
+  const boxes = layoutBoxes(layout);
+  /** @type {{ a: string, b: string }[]} */
+  const hits = [];
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      if (boxesOverlap(boxes[i], boxes[j])) hits.push({ a: boxes[i].id, b: boxes[j].id });
+    }
+  }
+  for (const b of boxes) {
+    if (b.rOut > layout.trackInner + 1e-9) hits.push({ a: b.id, b: "minute track" });
+    if (b.rOut > layout.visible + 1e-9) hits.push({ a: b.id, b: "case aperture" });
+  }
+  return hits;
 }
 
 /**
@@ -2565,73 +3502,165 @@ export function buildMeshes(build, opts) {
   const geo = caseProfile(cs, parts.crystal);
   const dialR = plat.dialDia / 2;
   const outline = outlineFor(cs.shell);
+  const slope = outlineSlopeFor(cs.shell);
+  const R = cs.dims.dia / 2;
+  const T = cs.dims.thick;
 
-  const caseMesh = lathe(geo.profile, segments, outline);
+  // The case BODY: a closed shell with an inner wall, so there is no longer a
+  // line of sight from outside the watch through the bottom of the case and out
+  // past the dial edge.
+  const caseMesh = lathe(geo.profile, segments, outline, slope);
+  // A dive bezel is its own ring around the case's crystal tower, ROUND even on
+  // a cushion case (which is how a Turtle is actually built) and carrying real
+  // modelled coin-edge serrations rather than a smooth band.
+  if (geo.bezelProfile) {
+    const coin = knurl(60, 0.011);
+    mergeMesh(caseMesh, lathe(geo.bezelProfile, Math.max(segments, 300), coin.k, coin.dk));
+  }
 
-  // Lugs: four blocks reaching out to the catalogue's lug-to-lug.
+  // LUGS. Each one starts inside the flank at the silhouette radius for its own
+  // x — computed, not assumed — tapers and droops on its way out, and finishes
+  // in a rounded drilled-lug tip exactly at the catalogue's lug-to-lug.
   const lugs = emptyMesh();
-  const lugThk = 2.3;
-  const half = cs.dims.lugW / 2 + lugThk / 2;
-  const reach = cs.dims.l2l / 2;
-  // Start the lug well inside the case wall so it reads as machined from the
-  // same block rather than glued on, and end it exactly at the catalogue's
-  // lug-to-lug — that number IS this geometry.
-  const inner = (cs.dims.dia / 2) * 0.8;
-  const lugLen = Math.max(2, reach - inner);
-  const lugY = cs.dims.thick * 0.3;
+  const lugThk = 1.9 + 0.5 * clamp(((cs.wr || 100) - 100) / 200, 0, 1);
+  const halfX = cs.dims.lugW / 2 + lugThk / 2;
+  const lugTop = T * 0.58;
+  const lugBot = T * 0.16;
+  const flankAtLug = flankRadiusAt(geo.outer, (lugTop + lugBot) / 2);
+  const zSurface = silhouetteZ(halfX + lugThk / 2, flankAtLug, outline);
+  const zTip = cs.dims.l2l / 2;
+  // Bury the root 1.6 mm inside the flank so the lug and the case READ as one
+  // machined block; never let it start outside the silhouette.
+  const zRoot = Math.max(0.5, Math.min(zSurface - 1.6, zTip - 2));
   for (const sx of [-1, 1]) {
     for (const sz of [-1, 1]) {
-      mergeMesh(
-        lugs,
-        box(lugThk, cs.dims.thick * 0.32, lugLen, [sx * half, lugY, sz * (inner + lugLen / 2)]),
-      );
+      const lug = lugMesh({
+        x: sx * halfX,
+        z0: zRoot,
+        z1: zTip,
+        halfW: lugThk / 2,
+        rootTop: lugTop,
+        rootBot: lugBot,
+        tipTop: T * 0.4,
+        tipBot: T * 0.09,
+      });
+      if (sz < 0) {
+        for (let i = 2; i < lug.positions.length; i += 3) lug.positions[i] = -lug.positions[i];
+        for (let i = 2; i < lug.normals.length; i += 3) lug.normals[i] = -lug.normals[i];
+        // Mirroring flips handedness, so the winding has to flip with it or
+        // every −z lug renders inside out.
+        for (let i = 0; i < lug.indices.length; i += 3) {
+          const t = lug.indices[i + 1];
+          lug.indices[i + 1] = lug.indices[i + 2];
+          lug.indices[i + 2] = t;
+        }
+      }
+      mergeMesh(lugs, lug);
     }
   }
-  // Crown. Lathed around Y like everything else; the renderer lays it on its
-  // side and pushes it out to the case flank using the transform below.
+
+  // CROWN. A real crown is knurled, and the flutes are modelled — a barrel with
+  // `flutes` rounded ribs cut into it, a domed outer face and a tube that
+  // reaches INTO the flank instead of hovering beside it.
   const crownAngle = (cs.crown.hour / 12) * Math.PI * 2 - Math.PI / 2;
-  const crownR = cs.shell === "dress" ? 1.5 : 1.9;
-  const crownOut = (cs.dims.dia / 2) * outline(crownAngle) + crownR * 0.75;
-  const crown = lathe(
-    [
-      { r: 0, y: -crownR },
-      { r: crownR * 0.9, y: -crownR },
-      { r: crownR, y: -crownR * 0.55 },
-      { r: crownR, y: crownR * 0.55 },
-      { r: crownR * 0.9, y: crownR },
-      { r: 0, y: crownR },
-    ],
-    Math.max(24, segments / 2),
+  const crownStyle = (parts.crown && parts.crown.style) || "coin";
+  const crownR = (cs.shell === "dress" ? 1.5 : 1.9) * (crownStyle === "onion" ? 1.15 : 1);
+  const crownH = crownR * (crownStyle === "onion" ? 2.1 : crownStyle === "fluted" ? 1.7 : 1.85);
+  const flutes = crownStyle === "fluted" ? 14 : crownStyle === "onion" ? 12 : 30;
+  const cut = knurl(flutes, crownStyle === "coin" ? 0.06 : 0.13);
+  const crownSeg = Math.max(48, flutes * 5);
+  const yOut = -crownH / 2;
+  const yIn = crownH / 2;
+  const grip =
+    crownStyle === "onion"
+      ? [
+          { r: 0, y: yOut },
+          { r: crownR * 0.62, y: yOut },
+          { r: crownR, y: yOut + crownH * 0.42, s: true },
+          { r: crownR * 0.9, y: yIn - crownH * 0.12, s: true },
+          { r: crownR * 0.55, y: yIn },
+          { r: 0, y: yIn },
+        ]
+      : [
+          { r: 0, y: yOut },
+          { r: crownR * 0.74, y: yOut },
+          { r: crownR, y: yOut + crownH * 0.16 },
+          { r: crownR, y: yIn - crownH * 0.12 },
+          { r: crownR * 0.82, y: yIn },
+          { r: 0, y: yIn },
+        ];
+  const crown = lathe(grip, crownSeg, cut.k, cut.dk);
+  // The tube: smooth, unknurled, and long enough to disappear into the flank.
+  const crownFlank = flankRadiusAt(geo.outer, geo.crownY) * outline(crownAngle);
+  const crownOut = Math.max(crownFlank + crownH * 0.36, R * 1.02);
+  const embed = crownOut - crownFlank + 0.8;
+  mergeMesh(
+    crown,
+    lathe(
+      [
+        { r: 0, y: yIn },
+        { r: crownR * 0.44, y: yIn },
+        { r: crownR * 0.44, y: yIn + embed },
+        { r: 0, y: yIn + embed },
+      ],
+      Math.max(24, segments / 3),
+    ),
   );
   const crownTransform = {
     x: Math.cos(crownAngle) * crownOut,
     z: Math.sin(crownAngle) * crownOut,
-    y: cs.dims.thick * 0.45,
+    y: geo.crownY,
     angle: crownAngle,
   };
+  // Crown GUARDS are part of the case on the cases that have them, so they are
+  // merged into the case body — and their absence is half of why a no-guard
+  // conversion case looks different from an SKX.
+  if (cs.crown.guards) {
+    const guardR = crownR * 1.35;
+    for (const side of [-1, 1]) {
+      const guard = lathe(
+        [
+          { r: 0, y: -guardR * 0.9 },
+          { r: guardR * 0.75, y: -guardR * 0.9, s: true },
+          { r: guardR, y: -guardR * 0.2, s: true },
+          { r: guardR * 0.92, y: guardR * 1.5 },
+          { r: 0, y: guardR * 1.5 },
+        ],
+        Math.max(20, segments / 4),
+      );
+      const spread = Math.atan2(crownR * 1.5, Math.max(1, crownFlank));
+      placeRadial(guard, crownAngle + side * spread, crownFlank - guardR * 0.55, geo.crownY);
+      mergeMesh(caseMesh, guard);
+    }
+  }
 
-  // Dial, chapter ring, insert face, crystal. The chapter-ring cone is
-  // traversed outer-top → inner-bottom so its VISIBLE face (the one angled up
-  // toward the crystal) is the one that gets the outward normal.
+  // Dial, rehaut, insert face, crystal. The rehaut spans the dial edge to the
+  // case's VISIBLE opening, which on a platform whose crystal is smaller than
+  // its dial is the bore lip rather than the crystal — the old unconditional
+  // dialR → crystalR cone inverted itself on exactly those platforms.
   const dial = annulus(0, dialR, geo.dialY, segments);
-  // Always modelled, on every platform. Without it the gap between the dial
-  // edge and the crystal seat renders as a black void — the rehaut is a real
-  // part of a real case, whether or not it carries a printed minute track.
-  const chapterRing = cone(dialR - 0.1, geo.dialY + 0.05, geo.crystalR, geo.dialY + 1.15, segments);
-  // The insert sits INSIDE the bezel, leaving a steel rim at the outer edge —
-  // which is what a real bezel looks like and what stops the render reading as
-  // one flat painted disc.
-  const insertInner = geo.crystalR + 0.6;
-  const insertOuter = geo.bezelR * 0.9;
+  const rehautOuter = geo.apertureR;
+  const rehautInner = Math.min(dialR - 0.1, rehautOuter - 0.9);
+  const chapterRing = cone(rehautInner, geo.dialY + 0.05, rehautOuter, geo.seatFloorY, segments);
+  const insertInner = geo.insertInner;
+  const insertOuter = geo.insertOuter;
   const insert =
     cs.bezel === "dive120"
-      ? annulus(insertInner, insertOuter, geo.bezelTopY + 0.02, segments)
+      ? annulus(insertInner, insertOuter, geo.bezelTopY + 0.06, segments)
       : emptyMesh();
-  const crystal = crystalMesh(geo.crystalR, geo.bezelTopY + 0.05, geo.domeH, segments);
+  const crystal = crystalMesh(
+    geo.crystalR,
+    geo.bezelTopY,
+    geo.domeH,
+    segments,
+    crystalFamily(parts.crystal),
+  );
 
-  // Hands.
+  // Hands. A GMT hand is clamped to the 24-hour track the dial actually prints
+  // rather than running past it into the hour markers.
   const hs = parts.hands;
   const handY = geo.dialY + 0.55;
+  const layout = dialLayout(parts.dial, dialR, { apertureR: geo.apertureR });
   /** @type {{ id: string, mesh: Mesh, y: number, color: string }[]} */
   const hands = [];
   const order = /** @type {const} */ (["hour", "minute", "gmt", "second"]);
@@ -2639,7 +3668,9 @@ export function buildMeshes(build, opts) {
   for (const key of order) {
     const shape = /** @type {any} */ (hs.shapes)[key];
     if (!shape) continue;
-    const len = /** @type {any} */ (hs.len)[key] * dialR;
+    let reach = /** @type {any} */ (hs.len)[key];
+    if (key === "gmt" && layout.gmtTrack) reach = Math.min(reach, layout.gmtTrack.handTip);
+    const len = reach * dialR;
     const width = key === "second" ? 0.28 : key === "hour" ? 1.15 : 0.9;
     hands.push({
       id: key,
@@ -2650,15 +3681,50 @@ export function buildMeshes(build, opts) {
     lift += 0.38;
   }
 
-  // Case back — a shallow disc with a rim, seen only from below (or through a
-  // display back, which the renderer tints rather than modelling the movement).
+  // CASE BACK, and the interior it closes onto. The caseback is a solid puck
+  // that plugs the bore; above it sit a movement drum and the dial spacer ring,
+  // so looking into the watch shows a case interior rather than the outside
+  // world through the far wall.
   const caseback = lathe(
     [
-      { r: 0, y: -0.05 },
-      { r: (cs.dims.dia / 2) * 0.62, y: -0.05, s: true },
-      { r: (cs.dims.dia / 2) * 0.66, y: 0.35 },
+      { r: 0, y: -0.35 },
+      { r: geo.boreBotR * 0.72, y: -0.42, s: true },
+      { r: geo.boreBotR - 0.35, y: -0.05, s: true },
+      { r: geo.boreBotR, y: 0.3 },
+      { r: geo.boreBotR, y: geo.floorY - 0.2 },
+      { r: geo.boreR, y: geo.floorY },
+      { r: 0, y: geo.floorY },
     ],
     segments,
+  );
+  const movR = Math.min(geo.boreR - 0.3, (parts.movement && parts.movement.dia ? parts.movement.dia : 27.4) / 2);
+  mergeMesh(
+    caseback,
+    lathe(
+      [
+        { r: 0, y: geo.floorY },
+        { r: movR, y: geo.floorY },
+        { r: movR, y: geo.dialY - 0.45 },
+        { r: 0, y: geo.dialY - 0.45 },
+      ],
+      segments,
+    ),
+  );
+  // The spacer ring: fills the last millimetre between the movement drum and
+  // the bore wall, right under the dial, so a steep viewing angle cannot see
+  // down the side of the movement.
+  mergeMesh(
+    caseback,
+    lathe(
+      [
+        { r: movR - 0.2, y: geo.dialY - 0.9 },
+        { r: geo.boreR, y: geo.dialY - 0.9 },
+        { r: geo.boreR, y: geo.dialY - 0.15 },
+        { r: movR - 0.2, y: geo.dialY - 0.15 },
+        { r: movR - 0.2, y: geo.dialY - 0.9 },
+      ],
+      segments,
+    ),
   );
 
   const strap = strapMesh(cs, parts.strap);
@@ -2669,6 +3735,8 @@ export function buildMeshes(build, opts) {
     hands,
     geo,
     dialR,
+    apertureR: geo.apertureR,
+    layout,
     insertInner,
     insertOuter,
     platform: plat,
