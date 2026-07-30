@@ -25,10 +25,10 @@ import {
   sceneById, zoomToDistance, distanceToZoom, formatKm, clamp,
   sphereMesh, orbitMesh, cylinderMesh, rocketMesh, satelliteMesh,
   starshipStackMesh, starshipShipMesh, superHeavyMesh, launchTowerMesh,
-  SUPER_HEAVY_FRAC,
+  SUPER_HEAVY_FRAC, STARSHIP_SHIP_FRAC,
   astronautMesh, landerMesh, terrainMesh, ringMesh,
-  spherePatchGrid, launchCamDistKm, launchAltKm, orbitSpeedKms,
-  boosterReturnState, isCatchView, LAUNCH_DOWNRANGE_KM,
+  spherePatchGrid, launchCamDistKm, launchAltKm, launchGroundAngle, orbitSpeedKms,
+  boosterReturnState, isCatchView,
   sphereSilhouette, facesCamera,
   rotX, rotY, rotZ, worldRot, projectPoint, mulberry32,
 } from "./space-core.js";
@@ -291,14 +291,7 @@ const RUNNERS = {
     const alt = cfg.orbitAltKm;
     const u = st.u;
     const insert = cfg.insertT;
-    const phiIns = LAUNCH_DOWNRANGE_KM / R;
-    const rocketState = (uu) => {
-      if (uu < insert) {
-        const phi = phiIns * Math.pow(uu / insert, 2.3);
-        return { a: launchAltKm(uu, cfg), phi };
-      }
-      return { a: alt, phi: phiIns + ((uu - insert) / (1 - insert)) * 1.35 };
-    };
+    const rocketState = (uu) => ({ a: launchAltKm(uu, cfg), phi: launchGroundAngle(uu, cfg) });
     const toWorld = (s) => {
       // Planet center at origin; launch site at angle π/2 (up).
       const ang = Math.PI / 2 - s.phi;
@@ -428,7 +421,14 @@ const RUNNERS = {
     const ahead = toWorld(rocketState(Math.min(1, u + eps)));
     const vel = [ahead[0] - rpos[0], ahead[1] - rpos[1], 0];
     const vAng = Math.atan2(vel[0], vel[1]);
-    const size = Math.max(0.07, st.camDist * 0.045);
+    // Big enough to READ as the vehicle it is. Held at a constant fraction of
+    // the camera distance the craft keeps one screen size the whole way up;
+    // at 0.045 that was ~18 px on a phone, which is a smudge — feedback #58,
+    // *"it doesn't look like starship plus booster"*, is what an 18 px stack
+    // looks like. 0.1 is ~40 px, enough for the booster's grid fins and the
+    // Ship's flaps to separate. The cap is what stops the same rule drawing a
+    // 1,500 km rocket across Earth once the orbit reveal pulls the camera out.
+    const size = Math.min(Math.max(0.07, st.camDist * 0.1), R * 0.08);
     const staged = u >= cfg.stageT;
     // The catch tower at the pad, drawn at the SAME enlarged `size` as the
     // craft so the two keep their true proportions to each other (a real
@@ -440,7 +440,12 @@ const RUNNERS = {
     // shrinks into the pad marker, which is the honest thing at that distance.
     const groundSize = Math.min(size, R * 0.015);
     if (cfg.tower && st.towerMesh) {
-      const towerPos = rel(sitePos);
+      // Stood exactly on the pad the tower and the stack draw through each
+      // other and the pair reads as one scribble at liftoff. It is set back
+      // along the ground by its own arm reach — arms pointing downrange, at
+      // the vehicle — which is where a catch tower actually stands.
+      const back = groundSize * 0.34;
+      const towerPos = rel([sitePos[0] - back, sitePos[1], sitePos[2]]);
       drawMesh(ctx, st, cam, caught ? st.towerClosed : st.towerMesh, {
         scale: groundSize, pos: towerPos, stroke: "hsl(30 32% 62%)", alpha: 0.8, width: 1,
       });
@@ -454,10 +459,14 @@ const RUNNERS = {
       }
     }
     const rocket = staged ? st.upperMesh : st.fullMesh;
-    // Center the unit-height mesh, orient it along the velocity, then scale.
+    // Orient the unit-height mesh along the velocity, then scale. The
+    // trajectory point is the vehicle's BASE, not its middle: centring it sank
+    // half the stack under the pad at liftoff, which only became visible once
+    // the craft was drawn big enough to see (feedback #58). Base-anchored it
+    // also matches the booster below, which drew from its base all along.
     const oriented = {
       verts: rocket.verts.map((v) => {
-        const r = rotZ([v[0], v[1] - 0.45, v[2]], -vAng);
+        const r = rotZ(v, -vAng);
         return [r[0] * size, r[1] * size, r[2] * size];
       }),
       edges: rocket.edges,
@@ -472,8 +481,8 @@ const RUNNERS = {
       ctx.globalAlpha = 0.7;
       ctx.beginPath();
       const tail = projectPoint(worldRot([
-        craftPos[0] + Math.sin(vAng) * -size * 0.45,
-        craftPos[1] + Math.cos(vAng) * -size * 0.45,
+        craftPos[0] + Math.sin(vAng) * -size * 0.04,
+        craftPos[1] + Math.cos(vAng) * -size * 0.04,
         craftPos[2],
       ], st), cam);
       if (tail) {
@@ -662,7 +671,8 @@ function buildSceneState(scene, canvas, lang) {
       // The stack is one unit tall like rocketMesh(1), so the camera dolly and
       // the `size` scaling below need no special case.
       st.fullMesh = starshipStackMesh(1);
-      st.upperMesh = starshipShipMesh(1 - SUPER_HEAVY_FRAC);
+      // The Ship keeps the size it had ON the stack once it separates.
+      st.upperMesh = starshipShipMesh(STARSHIP_SHIP_FRAC);
       st.boosterMesh = superHeavyMesh(SUPER_HEAVY_FRAC);
       st.towerMesh = launchTowerMesh(1.2);
       st.towerClosed = launchTowerMesh(1.2, 0);
@@ -904,42 +914,94 @@ export function mountSpaceScene(host, sceneOrId, opts = {}) {
     syncZoomUi();
   });
 
-  // --- pointer interaction: drag to rotate, pinch/wheel to zoom -------------
-  const pointers = new Map();
+  // --- pointer interaction: drag to rotate ----------------------------------
+  // Rotation ONLY. The pinch used to be read from a second pointer here, and
+  // on iOS that path never runs: WebKit treats a second finger as a page
+  // gesture, fires `gesturestart` and CANCELS the pointers, so `pointers`
+  // never reaches size 2. (`touch-action: none` does not help — iOS keeps
+  // pinch-zoom available whatever the page asks, an accessibility decision.)
+  // Reported as feedback #58 — "i cannot zoom by pinching", iPhone, iOS 18.7.
+  // The pinch now lives on the touch/gesture handlers below, which are the
+  // events that DO keep arriving; leaving a pointer-pair pinch beside them
+  // would double-apply on Android, where both families fire.
   let pinchDist = 0;
+  let pinching = false;
+  const pointers = new Map();
   canvas.addEventListener("pointerdown", (e) => {
     canvas.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pointers.size === 2) {
-      const [a, b] = [...pointers.values()];
-      pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
-    }
   });
   canvas.addEventListener("pointermove", (e) => {
     const prev = pointers.get(e.pointerId);
     if (!prev) return;
     const cur = { x: e.clientX, y: e.clientY };
-    if (pointers.size === 1) {
+    // One finger rotates; while two are down the gesture is a pinch and the
+    // scene must not swing around under it.
+    if (pointers.size === 1 && !pinching) {
       st.rotY += (cur.x - prev.x) * 0.006;
       st.rotX = clamp(st.rotX + (cur.y - prev.y) * 0.006, -1.35, 1.35);
     }
     pointers.set(e.pointerId, cur);
-    if (pointers.size === 2) {
-      const [a, b] = [...pointers.values()];
-      const d = Math.hypot(a.x - b.x, a.y - b.y);
-      if (pinchDist > 0) {
-        st.zoom = clamp(st.zoom - (d - pinchDist) * 0.0016, 0, 1);
-        takeZoom();
-      }
-      pinchDist = d;
-    }
   });
-  const drop = (e) => { pointers.delete(e.pointerId); pinchDist = 0; };
+  const drop = (e) => { pointers.delete(e.pointerId); };
   canvas.addEventListener("pointerup", drop);
   canvas.addEventListener("pointercancel", drop);
+
+  // --- pinch to zoom: touch events, with WebKit's gestures as the backstop --
+  /** @param {TouchList} t */
+  const spread = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  canvas.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 2) return;
+    pinching = true;
+    pinchDist = spread(e.touches);
+    e.preventDefault();
+  }, { passive: false });
+  canvas.addEventListener("touchmove", (e) => {
+    if (e.touches.length < 2) return;
+    // THIS is what stops the page zooming instead of the scene on iOS.
+    e.preventDefault();
+    const d = spread(e.touches);
+    if (pinchDist > 0) {
+      st.zoom = clamp(st.zoom - (d - pinchDist) * 0.0016, 0, 1);
+      takeZoom();
+    }
+    pinchDist = d;
+  }, { passive: false });
+  const endPinch = (e) => {
+    if (e.touches && e.touches.length >= 2) return;
+    pinching = false;
+    pinchDist = 0;
+  };
+  canvas.addEventListener("touchend", endPinch);
+  canvas.addEventListener("touchcancel", endPinch);
+  // WebKit's own gesture events, for the case where the fingers were routed
+  // into a gesture and touchmove never saw the pair. Swallowed either way so
+  // a pinch that lands on a scene cannot zoom the whole page instead.
+  let gestureScale = 1;
+  canvas.addEventListener("gesturestart", (e) => {
+    e.preventDefault();
+    gestureScale = e.scale || 1;
+  });
+  canvas.addEventListener("gesturechange", (e) => {
+    e.preventDefault();
+    if (pinchDist > 0) return; // touchmove is already driving it
+    const s = e.scale || 1;
+    if (gestureScale > 0) {
+      st.zoom = clamp(st.zoom - Math.log(s / gestureScale) * 0.55, 0, 1);
+      takeZoom();
+    }
+    gestureScale = s;
+  });
+  canvas.addEventListener("gestureend", (e) => {
+    e.preventDefault();
+    gestureScale = 1;
+  });
+
   canvas.addEventListener("wheel", (e) => {
     e.preventDefault();
-    st.zoom = clamp(st.zoom + Math.sign(e.deltaY) * 0.02, 0, 1);
+    // A trackpad pinch arrives as a ctrl-modified wheel, not as two pointers.
+    const step = e.ctrlKey ? 0.05 : 0.02;
+    st.zoom = clamp(st.zoom + Math.sign(e.deltaY) * step, 0, 1);
     takeZoom();
   }, { passive: false });
 

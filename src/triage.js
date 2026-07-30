@@ -184,10 +184,15 @@ function seedFromConversation(lastUser, priorUser, { forceResearch = false } = {
  * @param {any} triage
  * @param {string} lastUser
  * @param {string} [priorUser]
- * @param {{ priorWasClarify?: boolean }} [opts]
+ * @param {{ priorWasClarify?: boolean, demoMounted?: boolean }} [opts]
  * @returns {TriageDecision}
  */
-export function normalizeTriage(triage, lastUser, priorUser = "", { priorWasClarify = false } = {}) {
+export function normalizeTriage(
+  triage,
+  lastUser,
+  priorUser = "",
+  { priorWasClarify = false, demoMounted = false } = {},
+) {
   // The optional quiz flag (triage's fail-soft backup for quizIntent —
   // see TRIAGE_SCHEMA) rides along on direct/research decisions; lenient
   // strict-boolean extraction so it survives the raw (schema-miss) path.
@@ -201,6 +206,13 @@ export function normalizeTriage(triage, lastUser, priorUser = "", { priorWasClar
     // explicitly on, and not one query run). So a second clarification
     // becomes a search, seeded from the conversation without a model.
     if (priorWasClarify) return seedFromConversation(lastUser, priorUser, { forceResearch: true });
+    // The client already mounted what was asked for — an animation, a builder,
+    // a page card — and it is on screen while this question is being asked.
+    // "Lets see a starship launch" was answered with "do you want to see a live
+    // launch or a past one?" over a playing Starship launch (feedback #58).
+    // The demo IS the answer to the ambiguity, so there is nothing left to
+    // narrow: reply directly, with the surface named in the answer prompt.
+    if (demoMounted) return { action: "direct", ...quiz };
     return { action: "clarify", question: triage.question.trim() };
   }
   if (triage?.action === "research") {

@@ -191,6 +191,72 @@ editing this scene: hand-rolled polylines need the same >2600 px segment cull
 `drawMesh` applies, and nothing here may use `drawGlow` — the ground, the
 horizon and the shells are all unlit wireframe.
 
+## The ascent profile (feedback #58)
+
+The flight is two exponents on the same ascent fraction `x = u / insertT`:
+altitude climbs as `x^LAUNCH_ALT_EXP`, ground track as `x^LAUNCH_TURN_EXP`.
+The **gap between them is the gravity turn** — pitch from vertical is
+`atan(k · x^(TURN − ALT))` — so tuning the turn means moving the gap, not
+either exponent alone.
+
+The first pair (1.7 and 2.3) left a gap of 0.6, which put the vehicle 45°
+over by 2% of the ascent and 68° by 10%: a kink a few kilometres off the pad,
+reported as *"starship turns to[o] early after launch to[o] a steep angle. It
+should turn gradually."* At 1.4 and 3.2 the stack leaves the pad vertical,
+leans ~15° at 8 km, ~43° at 21 km and ~77° at hot-staging.
+
+Three rules hold this together:
+
+- **One ground track.** `launchGroundAngle` is the only definition, read by
+  the craft, its trail and `boosterReturnState`. The exponent used to be a
+  literal `2.3` written out in both the renderer and the booster's return, so
+  changing the turn in one place would have flown the booster home to a spot
+  the Ship never left from.
+- **`launchPitchDeg` is the assertion surface.** Nothing draws with it — the
+  renderer orients the craft along its own velocity — but the pitch is what a
+  viewer sees, so the tests assert on degrees rather than on exponents.
+- **Event times follow from altitudes, not from taste.** `stageT` is set so
+  hot-staging happens at the ~70 km the Starship scene's own reply claims;
+  a test reads the altitude back out of the profile.
+
+Craft are drawn at a constant fraction of the camera distance, so they hold
+one screen size the whole way up. At 0.045 that was ~18 px on a phone — a
+smudge, which is what *"it doesn't look like starship plus booster"* is
+describing. It is 0.1 now (~40 px), capped at 8% of the planet's radius so
+the same rule cannot draw a 1,500 km rocket across Earth once the orbit
+reveal pulls the camera out. The trajectory point is the craft's **base**:
+centring the mesh on it sank half the stack under the pad at liftoff, which
+only became visible once the craft was big enough to see.
+
+At that size the silhouette has to do the explaining, which needs the
+geometry to be right and broadside:
+
+- Both stages are **9 m across**. The booster's radius was written as the
+  diameter fraction (9/71 rather than 4.5/71), so it drew twice the Ship's
+  width and the stack stopped looking like one vehicle.
+- The Ship's flaps and the booster's grid fins sit on **±x**, the plane the
+  launch camera looks across and the craft pitches in. On ±z (and at 45°)
+  they foreshortened into the barrel and the vehicle lost every feature that
+  names it.
+- The **hot-stage vent ring** stands proud of the booster's top, which is
+  what draws the seam between the two stages on the full stack.
+- The catch tower is set back along the ground by its own arm reach, so the
+  tower and the stack do not draw through each other at liftoff — and the
+  returning booster lands in the arms rather than inside the mast.
+
+## Pinch to zoom (feedback #58)
+
+The pinch is read from **touch events**, not from a second pointer. iOS
+Safari treats a second finger on the canvas as a page gesture: it fires
+`gesturestart` and **cancels** the pointers, so a pointer-pair pinch never
+runs there, and `touch-action: none` does not help — WebKit keeps pinch-zoom
+available whatever the page asks. `touchmove` keeps firing throughout, and
+`preventDefault()` on it is what stops the page zooming instead of the scene.
+WebKit's `gesture*` events are handled too, as a backstop and to swallow the
+page zoom; they stand down while `touchmove` is driving. The old pointer-pair
+path is gone rather than kept beside them — on Android both families fire and
+it would have doubled every pinch.
+
 ## Adding a scene
 
 1. Add the registry entry (both languages, sound `zoomKm`) and its

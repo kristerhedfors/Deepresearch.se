@@ -157,9 +157,12 @@ export const SPACE_SCENES = [
     },
     zoomKm: { min: 40, max: 60000, start: 1400 },
     // Timed so the ORDER is true — hot-stage, then the booster is caught, then
-    // the Ship inserts — with enough tail left for the orbit reveal.
+    // the Ship inserts — with enough tail left for the orbit reveal. `stageT`
+    // is set from the ALTITUDE the caption claims rather than picked by eye:
+    // 0.30 of the flight puts hot-staging at 66 km on the ascent profile,
+    // which is the "near 70 km" the reply describes (feedback #58).
     config: {
-      planet: "earth", orbitAltKm: 200, stageT: 0.26, insertT: 0.66,
+      planet: "earth", orbitAltKm: 200, stageT: 0.3, insertT: 0.66,
       craft: "starship", tower: true, catchT: 0.56, catchCamKm: 110,
     },
   },
@@ -732,7 +735,7 @@ export const STARSHIP_SHIP_FRAC = 52 / STARSHIP_STACK_M;
  */
 /** @param {number} h @returns {Mesh} */
 export function starshipShipMesh(h) {
-  const r = h * 0.086; // 9 m across a ~52 m ship.
+  const r = h * (4.5 / 52); // 9 m across a ~52 m ship, as a RADIUS fraction.
   /** @type {Mesh} */
   const out = { verts: [], edges: [] };
   // Barrel, to the start of the nose.
@@ -752,23 +755,26 @@ export function starshipShipMesh(h) {
   const tip = out.verts.length;
   out.verts.push([0, h, 0]);
   for (let j = 0; j < 8; j++) out.edges.push([mid + j, tip]);
-  // Four flaps: two forward (high, short) and two aft (low, long), on ±z so
-  // the side-on view the launch camera holds shows their span.
+  // Four flaps: two forward (high, short) and two aft (low, long), spread on
+  // ±x — the plane the launch camera looks across and the plane the craft
+  // pitches in, so their span is drawn at nearly full width instead of being
+  // foreshortened into the barrel. On ±z the Ship lost its flaps entirely at
+  // the size the scene draws it (feedback #58).
   /** @param {number} y0 @param {number} y1 @param {number} span @param {number} chord */
   const flap = (y0, y1, span, chord) => {
     for (const dir of [1, -1]) {
       const a = out.verts.length;
       out.verts.push(
-        [0, y0, dir * r],
-        [0, y0 + chord, dir * r],
-        [0, y1, dir * (r + span)],
-        [0, y0 + chord * 0.35, dir * (r + span)],
+        [dir * r, y0, 0],
+        [dir * r, y0 + chord, 0],
+        [dir * (r + span), y1, 0],
+        [dir * (r + span), y0 + chord * 0.35, 0],
       );
       out.edges.push([a, a + 1], [a + 1, a + 2], [a + 2, a + 3], [a + 3, a]);
     }
   };
-  flap(h * 0.6, h * 0.72, r * 0.85, h * 0.14);
-  flap(h * 0.06, h * 0.2, r * 1.15, h * 0.2);
+  flap(h * 0.6, h * 0.74, r * 1.0, h * 0.14);
+  flap(h * 0.06, h * 0.22, r * 1.5, h * 0.2);
   // Six Raptor bells as a ring under the base.
   const bell = out.verts.length;
   for (let j = 0; j < 6; j++) {
@@ -786,21 +792,42 @@ export function starshipShipMesh(h) {
  */
 /** @param {number} h @returns {Mesh} */
 export function superHeavyMesh(h) {
-  const r = h * 0.127; // 9 m across a ~71 m booster.
+  // 9 m ACROSS a ~71 m booster, so 4.5 m of radius: 4.5/71. The Ship's own
+  // radius is 4.5/52 — the two stages are the same width, which is half of
+  // what makes the stack read as a stack. Written as the diameter fraction
+  // (9/71) this drew a booster twice the Ship's width, and the silhouette
+  // stopped being Starship's: feedback #58, "it doesn't look like starship
+  // plus booster".
+  const r = h * (4.5 / 71);
   /** @type {Mesh} */
   const out = { verts: [], edges: [] };
   pushMesh(out, cylinderMesh(r, h, 8));
-  // Four grid fins: small rectangles standing off the barrel near the top.
+  // Four grid fins: small rectangles standing off the barrel near the top,
+  // squared to the axes (not offset 45°) so two of them are broadside to the
+  // launch camera. Off-axis they foreshortened into the barrel and the
+  // booster lost the one feature that names it.
   for (let k = 0; k < 4; k++) {
-    const th = (Math.PI / 2) * k + Math.PI / 4;
+    const th = (Math.PI / 2) * k;
     const ux = Math.cos(th), uz = Math.sin(th);
-    const y0 = h * 0.86, y1 = h * 0.95;
+    const y0 = h * 0.85, y1 = h * 0.95;
     const a = out.verts.length;
     out.verts.push(
-      [ux * r, y0, uz * r], [ux * r * 1.5, y0, uz * r * 1.5],
-      [ux * r * 1.5, y1, uz * r * 1.5], [ux * r, y1, uz * r],
+      [ux * r, y0, uz * r], [ux * r * 1.9, y0, uz * r * 1.9],
+      [ux * r * 1.9, y1, uz * r * 1.9], [ux * r, y1, uz * r],
     );
     out.edges.push([a, a + 1], [a + 1, a + 2], [a + 2, a + 3], [a + 3, a]);
+  }
+  // The hot-stage vent ring: the open section the Ship's exhaust blows through
+  // while the two are still attached. It stands a little proud of the barrel,
+  // which is what draws the seam between the stages on the full stack.
+  const vent = out.verts.length;
+  for (let j = 0; j < 8; j++) {
+    const th = (2 * Math.PI * j) / 8;
+    out.verts.push([r * 1.16 * Math.cos(th), h * 0.995, r * 1.16 * Math.sin(th)]);
+  }
+  for (let j = 0; j < 8; j++) {
+    out.edges.push([vent + j, vent + ((j + 1) % 8)]);
+    out.edges.push([8 + j, vent + j]);
   }
   // The 33 Raptors: an outer ring and an inner ring, not 33 bells — at this
   // scale that is a smudge. Two rings read as an engine cluster.
@@ -1200,6 +1227,66 @@ export function orbitSpeedKms(altKm) {
 export const LAUNCH_DOWNRANGE_KM = 1500;
 
 /**
+ * The ascent shape, as two exponents on the same normalised ascent fraction
+ * `x = u / insertT`: altitude climbs as `x^LAUNCH_ALT_EXP`, ground track as
+ * `x^LAUNCH_TURN_EXP`. The GAP between them IS the gravity turn — the pitch
+ * from vertical is `atan(k · x^(TURN − ALT))`, so a wider gap keeps the
+ * vehicle upright longer and tips it over more gradually.
+ *
+ * Feedback #58, *"starship turns to[o] early after launch to[o] a steep
+ * angle. It should turn gradually."* — the gap was 0.6 (1.7 and 2.3), which
+ * had the stack 45° over by 2% of the ascent and 68° over by 10%, a visible
+ * kink a few kilometres off the pad. At 1.8 it leaves the pad vertical, is
+ * ~15° over at 8 km, ~43° at 21 km and ~77° at hot-staging — the real
+ * profile's shape.
+ */
+export const LAUNCH_ALT_EXP = 1.4;
+export const LAUNCH_TURN_EXP = 3.2;
+
+/**
+ * The craft's ground angle (radians from the launch site) at flight progress
+ * `u`: the gravity turn's downrange track while it climbs, then a steady walk
+ * around the planet once it is in orbit. Pure, and the ONE definition of the
+ * ground track — the renderer, the trail and the booster's return all read it,
+ * so the booster cannot fly home to a spot the Ship never left from.
+ *
+ * @param {number} u flight progress 0..1
+ * @param {{planet: keyof typeof BODIES, insertT: number}} cfg scene config
+ * @returns {number} ground angle in radians
+ */
+export function launchGroundAngle(u, cfg) {
+  const phiIns = LAUNCH_DOWNRANGE_KM / BODIES[cfg.planet].radiusKm;
+  if (u < cfg.insertT) {
+    return phiIns * Math.pow(Math.max(0, u) / cfg.insertT, LAUNCH_TURN_EXP);
+  }
+  return phiIns + ((u - cfg.insertT) / (1 - cfg.insertT)) * 1.35;
+}
+
+/**
+ * The pitch the flight path holds at `u`, in degrees from local vertical: 0 is
+ * straight up off the pad, 90 is flying horizontally. Nothing draws with it —
+ * the renderer orients the craft along its own velocity — but it is the
+ * quantity feedback #58 was about, so it is the quantity the tests assert on.
+ *
+ * @param {number} u flight progress 0..1
+ * @param {{planet: keyof typeof BODIES, orbitAltKm: number, insertT: number}} cfg
+ * @returns {number} degrees from local vertical
+ */
+export function launchPitchDeg(u, cfg) {
+  if (u >= cfg.insertT) return 90;
+  const x = Math.max(0, u) / cfg.insertT;
+  if (x <= 0) return 0;
+  const R = BODIES[cfg.planet].radiusKm;
+  const climb = LAUNCH_ALT_EXP * cfg.orbitAltKm * Math.pow(x, LAUNCH_ALT_EXP - 1);
+  const across =
+    (R + launchAltKm(u, cfg)) *
+    (LAUNCH_DOWNRANGE_KM / R) *
+    LAUNCH_TURN_EXP *
+    Math.pow(x, LAUNCH_TURN_EXP - 1);
+  return (Math.atan2(across, climb) * 180) / Math.PI;
+}
+
+/**
  * The booster's boostback path, for the launch scenes that fly one home
  * (`cfg.catchT`). Returns how far through the return it is (`k`, 0..1), its
  * altitude, and its ground angle — at k=1 both are zero, which is the pad.
@@ -1211,9 +1298,8 @@ export const LAUNCH_DOWNRANGE_KM = 1500;
  * @returns {{k: number, a: number, phi: number}}
  */
 export function boosterReturnState(u, cfg) {
-  const R = BODIES[cfg.planet].radiusKm;
   const sepA = launchAltKm(cfg.stageT, cfg);
-  const sepPhi = (LAUNCH_DOWNRANGE_KM / R) * Math.pow(cfg.stageT / cfg.insertT, 2.3);
+  const sepPhi = launchGroundAngle(cfg.stageT, cfg);
   const k = clamp((u - cfg.stageT) / (cfg.catchT - cfg.stageT), 0, 1);
   // Coasts a little higher after separation, then descends to the pad while
   // its ground angle walks back to the launch site's own.
@@ -1247,7 +1333,7 @@ export function isCatchView(u, cfg) {
  */
 export function launchAltKm(u, cfg) {
   if (u >= cfg.insertT) return cfg.orbitAltKm;
-  return cfg.orbitAltKm * Math.pow(Math.max(0, u) / cfg.insertT, 1.7);
+  return cfg.orbitAltKm * Math.pow(Math.max(0, u) / cfg.insertT, LAUNCH_ALT_EXP);
 }
 
 /**

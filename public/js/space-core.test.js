@@ -18,6 +18,10 @@ import {
   facesCamera,
   launchAltKm,
   launchCamDistKm,
+  launchGroundAngle,
+  launchPitchDeg,
+  boosterReturnState,
+  LAUNCH_DOWNRANGE_KM,
   projectPoint,
   rotY,
   mulberry32,
@@ -316,12 +320,36 @@ test("starshipStackMesh: base at the pad, tip within the unit height", () => {
   assert.ok(hi <= 1 + 1e-9 && hi > 0.9, `stack tip should reach ~1, got ${hi}`);
 });
 
-test("starshipShipMesh: 9 m-wide barrel, flaps reaching past it", () => {
+test("starshipShipMesh: 9 m-wide barrel, flaps reaching past it in the camera's plane", () => {
   const m = starshipShipMesh(52);
-  const halfWidth = Math.max(...m.verts.map((v) => Math.abs(v[2])));
-  const barrelR = 52 * 0.086;
-  assert.ok(halfWidth > barrelR, "the flaps must stand off the barrel");
+  const barrelR = 4.5;
   assert.ok(Math.abs(barrelR * 2 - 9) < 0.5, "the barrel is about 9 m across");
+  // The flaps live on ±x, the plane the launch camera looks across and the
+  // craft pitches in. On ±z they were foreshortened to nothing at the size the
+  // scene draws the Ship, which is half of "it doesn't look like starship plus
+  // booster" (feedback #58).
+  const spanX = Math.max(...m.verts.map((v) => Math.abs(v[0])));
+  const spanZ = Math.max(...m.verts.map((v) => Math.abs(v[2])));
+  assert.ok(spanX > barrelR * 1.8, `the flaps must stand well off the barrel, got ${spanX}`);
+  assert.ok(spanX > spanZ * 1.5, "the flap span is broadside to the camera, not edge-on");
+});
+
+test("starship stages are the SAME 9 m width — the stack reads as one vehicle", () => {
+  // Both meshes are asked for the real height of their stage, so the barrel
+  // radius each builds must come out at the same 4.5 m. Writing the booster's
+  // as the DIAMETER fraction (9/71) drew it twice the Ship's width and the
+  // silhouette stopped being Starship's — feedback #58.
+  const barrelR = (mesh) => {
+    // The barrel is the widest ring shared by every height: take the median
+    // radius of the vertices, which the fins/flaps cannot drag far.
+    const rs = mesh.verts.map((v) => Math.hypot(v[0], v[2])).sort((a, b) => a - b);
+    return rs[Math.floor(rs.length / 2)];
+  };
+  const boosterR = barrelR(superHeavyMesh(71));
+  const shipR = barrelR(starshipShipMesh(52));
+  assert.ok(Math.abs(boosterR - 4.5) < 0.3, `booster barrel should be 4.5 m, got ${boosterR}`);
+  assert.ok(Math.abs(shipR - 4.5) < 0.3, `ship barrel should be 4.5 m, got ${shipR}`);
+  assert.ok(Math.abs(boosterR - shipR) < 0.3, "the two stages are the same width");
 });
 
 test("launchTowerMesh: open arms sit wider than closed ones", () => {
@@ -335,6 +363,64 @@ test("orbitSpeedKms: real circular speeds, and it falls with altitude", () => {
   assert.equal(orbitSpeedKms(400).toFixed(1), "7.7");
   assert.equal(orbitSpeedKms(200).toFixed(1), "7.8");
   assert.ok(orbitSpeedKms(200) > orbitSpeedKms(400), "lower orbits are faster");
+});
+
+// The gravity turn, which feedback #58 was about: *"starship turns to[o] early
+// after launch to[o] a steep angle. It should turn gradually."* The profile is
+// two exponents on the ascent fraction; the pitch is what a viewer sees, so the
+// pitch is what these assert on, for BOTH launch scenes.
+
+test("launchPitchDeg: leaves the pad vertical and tips over gradually", () => {
+  for (const id of ["rocket-launch", "starship-launch"]) {
+    const cfg = sceneById(id).config;
+    const at = (u) => launchPitchDeg(u * cfg.insertT, cfg);
+    assert.equal(launchPitchDeg(0, cfg), 0, `${id}: dead vertical on the pad`);
+    // The regression itself: at 2% and 10% of the ascent the old profile was
+    // already 45° and 68° over. Nothing that steep that early again.
+    assert.ok(at(0.02) < 3, `${id}: still vertical just off the pad, got ${at(0.02)}`);
+    assert.ok(at(0.1) < 25, `${id}: barely leaning at a tenth of the climb, got ${at(0.1)}`);
+    // …and it must actually get there: horizontal by insertion, or it never
+    // reaches orbital velocity.
+    assert.ok(at(0.5) > 40 && at(0.5) < 85, `${id}: mid-climb pitch, got ${at(0.5)}`);
+    assert.ok(at(1) > 80, `${id}: nearly horizontal at insertion, got ${at(1)}`);
+    assert.equal(launchPitchDeg(1, cfg), 90, `${id}: flat once in orbit`);
+    // Monotone — a gravity turn never pitches back up.
+    let prev = -1;
+    for (let k = 0; k <= 40; k++) {
+      const p = at(k / 40);
+      assert.ok(p >= prev - 1e-9, `${id}: pitch went backwards at ${k / 40}`);
+      prev = p;
+    }
+  }
+});
+
+test("launchGroundAngle: one ground track, and the booster returns along it", () => {
+  const cfg = sceneById("starship-launch").config;
+  const R = BODIES.earth.radiusKm;
+  assert.equal(launchGroundAngle(0, cfg), 0, "the track starts at the pad");
+  assert.ok(
+    Math.abs(launchGroundAngle(cfg.insertT, cfg) - LAUNCH_DOWNRANGE_KM / R) < 1e-9,
+    "insertion is the scene's downrange distance",
+  );
+  // The booster's separation point is read from the SAME function the craft
+  // flies, so a change to the turn cannot send it home to a spot the Ship
+  // never left from.
+  assert.ok(
+    Math.abs(boosterReturnState(cfg.stageT, cfg).phi - launchGroundAngle(cfg.stageT, cfg)) < 1e-12,
+    "the booster separates where the craft was",
+  );
+  assert.ok(boosterReturnState(cfg.catchT, cfg).phi < 1e-12, "and comes back to the pad");
+  // Downrange grows faster than altitude late in the climb — that IS the turn.
+  const early = launchGroundAngle(cfg.insertT * 0.1, cfg) / launchGroundAngle(cfg.insertT, cfg);
+  assert.ok(early < 0.01, `only ${(early * 100).toFixed(2)}% of the track flown in the first tenth`);
+});
+
+test("starship hot-stages at the altitude its caption claims", () => {
+  const cfg = sceneById("starship-launch").config;
+  const sepKm = launchAltKm(cfg.stageT, cfg);
+  // The reply says the Ship lights its engines "near 70 km" — stageT is set
+  // from that number rather than picked by eye (feedback #58).
+  assert.ok(sepKm > 55 && sepKm < 80, `hot-stage altitude should read as ~70 km, got ${sepKm}`);
 });
 
 test("starship scene: the flight order is hot-stage, then catch, then insertion", () => {
