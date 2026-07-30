@@ -127,6 +127,18 @@ actually fly in) and `boosterRollAngle` owns the attitude: the stack's own
 angle at k=0, past engines-first for the burn, upright from `BOOSTER_UPRIGHT_K`
 so it has descent left to fall rather than snapping vertical at the catch.
 
+The same frame also had the exhaust plume drawn straight down the SCREEN, so
+it pointed off into space the moment the craft pitched over; it trails along
+the vehicle's axis now, from whichever stage is burning.
+
+Two branches fixed the drop independently within minutes of each other —
+`claude/space-launch-feedback-euzzwg` (which also fixed the plume) and this
+one (which also fixed the attitude). They agreed on the diagnosis and differed
+only in where the offset lived: on the mount state as a stored constant, or in
+the core as a function derived from the mesh. The merge kept the core function,
+because that is the version a unit test can check against the stack's own
+vertices, and kept both extra fixes.
+
 Method note: the fix and the defect it exposed were both found by freezing the
 loop (`st.playing = false; st.u = …`) and screenshotting either side of
 `stageT` on a deliberately oversized canvas — the craft draws at a constant
@@ -235,19 +247,19 @@ reported as *"starship turns to[o] early after launch to[o] a steep angle. It
 should turn gradually."* At 1.4 and 3.2 the stack leaves the pad vertical,
 leans ~15° at 8 km, ~43° at 21 km and ~77° at hot-staging.
 
-Three rules hold this together:
+What keeps the turn from drifting again:
 
 - **One ground track.** `launchGroundAngle` is the only definition, read by
   the craft, its trail and `boosterReturnState`. The exponent used to be a
   literal `2.3` written out in both the renderer and the booster's return, so
   changing the turn in one place would have flown the booster home to a spot
   the Ship never left from.
-- **`launchPitchDeg` is the assertion surface.** Nothing draws with it — the
-  renderer orients the craft along its own velocity — but the pitch is what a
-  viewer sees, so the tests assert on degrees rather than on exponents.
-- **Event times follow from altitudes, not from taste.** `stageT` is set so
-  hot-staging happens at the ~70 km the Starship scene's own reply claims;
-  a test reads the altitude back out of the profile.
+- **The tests assert on degrees, not exponents.** Nothing draws with
+  `launchPitchDeg`; the renderer orients the craft along its own velocity. But
+  the pitch is what a viewer sees, so the pitch is what gets pinned.
+- **Event times are read off the altitude.** `stageT` is set so hot-staging
+  happens at the ~70 km the Starship scene's own reply claims, and a test
+  reads that altitude back out of the profile.
 
 Craft are drawn at a constant fraction of the camera distance, so they hold
 one screen size the whole way up. At 0.045 that was ~18 px on a phone — a
@@ -258,8 +270,8 @@ reveal pulls the camera out. The trajectory point is the craft's **base**:
 centring the mesh on it sank half the stack under the pad at liftoff, which
 only became visible once the craft was big enough to see.
 
-At that size the silhouette has to do the explaining, which needs the
-geometry to be right and broadside:
+At that size the silhouette does all the explaining, so the geometry has to be
+both right and broadside:
 
 - Both stages are **9 m across**. The booster's radius was written as the
   diameter fraction (9/71 rather than 4.5/71), so it drew twice the Ship's
@@ -268,23 +280,31 @@ geometry to be right and broadside:
   launch camera looks across and the craft pitches in. On ±z (and at 45°)
   they foreshortened into the barrel and the vehicle lost every feature that
   names it.
-- The **hot-stage vent ring** stands proud of the booster's top, which is
-  what draws the seam between the two stages on the full stack.
+- The **hot-stage vent ring** stands proud of the booster's top, which draws
+  the seam between the two stages on the full stack.
 - The catch tower is set back along the ground by its own arm reach, so the
   tower and the stack do not draw through each other at liftoff — and the
   returning booster lands in the arms rather than inside the mast.
+- **Separation lifts the upper stage** to the seam it sat at on the stack
+  (`craftBaseOffset`) and the booster parts holding the stack's own attitude
+  (`boosterRollAngle`) — "The separation frame" above has the whole story.
+- The **exhaust** burns from `craftPos`, whichever stage that currently is, and
+  trails along the vehicle's own axis rather than straight down the screen,
+  which pointed off into space as soon as the craft was pitched over. It needs
+  no staging logic of its own: the offset moves the craft, and the plume
+  follows the craft.
 
 ## Pinch to zoom (feedback #58)
 
 The pinch is read from **touch events**, not from a second pointer. iOS
 Safari treats a second finger on the canvas as a page gesture: it fires
 `gesturestart` and **cancels** the pointers, so a pointer-pair pinch never
-runs there, and `touch-action: none` does not help — WebKit keeps pinch-zoom
+runs there, and `touch-action: none` does not help: WebKit keeps pinch-zoom
 available whatever the page asks. `touchmove` keeps firing throughout, and
 `preventDefault()` on it is what stops the page zooming instead of the scene.
 WebKit's `gesture*` events are handled too, as a backstop and to swallow the
 page zoom; they stand down while `touchmove` is driving. The old pointer-pair
-path is gone rather than kept beside them — on Android both families fire and
+path is gone rather than kept beside them: on Android both families fire and
 it would have doubled every pinch.
 
 ## Adding a scene
