@@ -192,12 +192,12 @@ export const MATERIALS = {
     note: "Sanded grain side — slightly tighter nap than suede, otherwise the same story.",
   },
   "leather-shell": {
-    rough: 0.3, metal: 0, reflect: 0.05, env: 0.18,
+    rough: 0.3, metal: 0, reflect: 0.05, env: 0.4,
     sheen: 0.1, sheenColor: "#6f4d3a", coat: 0.25, coatRough: 0.25,
     note: "Shell cordovan is glassy for a leather: a real second lobe, but a soft one.",
   },
   "leather-patent": {
-    rough: 0.1, metal: 0, reflect: 0.05, env: 0.4,
+    rough: 0.1, metal: 0, reflect: 0.05, env: 0.95,
     coat: 0.6, coatRough: 0.08,
     note: "The one leather that IS a mirror — because it is a lacquer film over the hide.",
   },
@@ -229,12 +229,12 @@ export const MATERIALS = {
 
   // --- dielectrics: bezel inserts -----------------------------------------
   ceramic: {
-    rough: 0.065, metal: 0, reflect: 0.067, env: 0.45,
+    rough: 0.065, metal: 0, reflect: 0.067, env: 1,
     note: "Glossy and HARD: one small, sharp reflected softbox that travels as you turn it. Never a band across the ring.",
   },
   "aluminium-anodised": {
     rough: 0.46, metal: 0.35, reflect: 0.6,
-    anisoMode: ANISO_RADIAL, axis: 0, grain: 0.03, grainFreq: 20, env: 0.3,
+    anisoMode: ANISO_RADIAL, axis: 0, grain: 0.03, grainFreq: 20, env: 0.75,
     note: "An oxide film over metal: half-metal is right here, but semi-MATTE — the old half-metal was glossy and caught the key light as one hard band.",
   },
 
@@ -245,33 +245,33 @@ export const MATERIALS = {
     note: "Matte paint. Reads flat from every angle, which is what makes the applied indices pop off it.",
   },
   "dial-gloss": {
-    rough: 0.11, metal: 0, reflect: 0.05, env: 0.32,
+    rough: 0.11, metal: 0, reflect: 0.05, env: 1,
     coat: 0.35, coatRough: 0.08,
     note: "Lacquer: a dielectric film, so a bright small highlight over an unchanged dark body.",
   },
   "dial-sunburst": {
     rough: 0.26, metal: 0.85, reflect: 0.58,
-    aniso: 0.88, anisoMode: ANISO_RADIAL, axis: 0, grain: 0.02, grainFreq: 90, env: 0.65,
+    aniso: 0.88, anisoMode: ANISO_RADIAL, axis: 0, grain: 0.02, grainFreq: 90, env: 1,
     note: "A brushed metal disc. The bright bar that sweeps across it is radial anisotropy, not a painted gradient.",
   },
   "dial-fume": {
     rough: 0.17, metal: 0.45, reflect: 0.5,
-    aniso: 0.7, anisoMode: ANISO_RADIAL, axis: 0, env: 0.5, coat: 0.4, coatRough: 0.09,
+    aniso: 0.7, anisoMode: ANISO_RADIAL, axis: 0, env: 1, coat: 0.4, coatRough: 0.09,
     note: "Sunburst under a sprayed, darkening lacquer: the anisotropy stays, a coat lobe goes on top.",
   },
   "dial-textured": {
-    rough: 0.55, metal: 0.35, reflect: 0.5, env: 0.35,
+    rough: 0.55, metal: 0.35, reflect: 0.5, env: 0.8,
     anisoMode: ANISO_GRAIN, grain: 0.05, grainFreq: 34,
     note: "Snowflake/stamped: genuinely three-dimensional, so it gets real relief as well as a rough response.",
   },
   "dial-guilloche": {
-    rough: 0.3, metal: 0.55, reflect: 0.55, env: 0.5,
+    rough: 0.3, metal: 0.55, reflect: 0.55, env: 0.9,
     aniso: 0.3, anisoMode: ANISO_RADIAL, axis: 0,
     note: "Engine-turned metal: cut, not printed, so the pattern is relief and the metal underneath still shines.",
   },
   "chapter-ring": {
     rough: 0.28, metal: 0.7, reflect: 0.58,
-    aniso: 0.5, anisoMode: ANISO_RADIAL, axis: 0, env: 0.7,
+    aniso: 0.5, anisoMode: ANISO_RADIAL, axis: 0, env: 0.95,
     note: "A printed metal rehaut, angled up at the crystal — semi-bright, radially finished.",
   },
   "lume-plate": {
@@ -387,6 +387,61 @@ export function materialFor(id, color) {
     coatRough: spec.coatRough || 0.1,
     glass: !!spec.glass,
   };
+}
+
+// ---------------------------------------------------------------------------
+// ENERGY CONSERVATION WHEN A SOURCE IS BLURRED.
+//
+// Both formulas below are mirrored inline in watch-render.js's fragment
+// shader, which cannot import anything. They live here because they are the
+// two lines that decide whether a metal reads as metal or as white plastic,
+// and because a one-line formula is exactly the kind of thing that gets
+// "simplified" back out by someone who reads it as an arbitrary fudge.
+//
+// The bug they fix, found in a real-browser check of the first version of
+// this renderer (feedback #56 follow-up): a brushed steel bracelet rendered
+// as flat white while the case body beside it stayed correctly grey. Two
+// independent causes, both energy being invented rather than moved:
+//
+//   1. The procedural softbox WIDENED with roughness and stayed just as
+//      bright, so a rough surface received several times the source's power.
+//   2. Each analytic light was a delta source with a normalised GGX lobe,
+//      whose peak goes to infinity as the surface smooths. A curved case
+//      flank puts only a thin band at that peak; the flat, near-parallel
+//      faces of a bracelet link put the WHOLE face there at once.
+//
+// Neither shows up on a dielectric — leather's lobe is already wider than any
+// real source — which is why the leather half of the same frame looked right.
+
+/**
+ * How much a blurred area source dims as it spreads. Power is conserved, so
+ * radiance falls with the solid angle it is spread over, and solid angle goes
+ * as the square of the half-width.
+ * @param {number} hw0 the source's own half-width
+ * @param {number} hw the half-width after roughness blurs it (>= hw0)
+ * @returns {number} 0..1
+ */
+export function softboxEnergy(hw0, hw) {
+  if (!(hw > 0)) return 1;
+  return Math.min(1, (hw0 * hw0) / (hw * hw));
+}
+
+/**
+ * How much a specular lobe dims when it is widened to the angular size of the
+ * source that lights it. `at`/`ab` are the surface's own GGX widths along the
+ * two tangent axes; `amin` is the source's. The result multiplies a lobe
+ * evaluated at the WIDENED widths, so the peak is capped without the total
+ * changing.
+ * @param {number} at
+ * @param {number} ab
+ * @param {number} amin
+ * @returns {number} 0..1
+ */
+export function lobeEnergy(at, ab, amin) {
+  const at2 = Math.max(at, amin);
+  const ab2 = Math.max(ab, amin);
+  if (!(at2 > 0 && ab2 > 0)) return 1;
+  return Math.min(1, (at * ab) / (at2 * ab2));
 }
 
 // ---------------------------------------------------------------------------

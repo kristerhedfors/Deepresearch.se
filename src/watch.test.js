@@ -174,9 +174,11 @@ import {
   dialRelief,
   finishMaterialId,
   insertMaterialId,
+  lobeEnergy,
   markerIsApplied,
   materialFor,
   meshMaterialId,
+  softboxEnergy,
   strapMaterialId,
   tintedF0,
 } from "../public/js/watch-materials.js";
@@ -273,6 +275,52 @@ describe("watch materials: the table itself", () => {
     assert.ok(s.aniso > 0.5, "the sweeping bar IS the anisotropy");
     assert.equal(dialRelief({ finish: "sunburst" }).pattern, "none");
     assert.equal(dialRelief({ finish: "sunburst" }).anisotropy, "radial");
+  });
+});
+
+describe("watch materials: blurring a light must move energy, not add it", () => {
+  // The regression these exist for: a real-browser check of the first version
+  // of this renderer showed a brushed steel bracelet as flat white against a
+  // correctly-grey case. Both causes were energy being invented — the softbox
+  // widening with roughness without dimming, and each analytic light being a
+  // delta source whose GGX peak is unbounded on a flat face. The formulas are
+  // mirrored inline in the fragment shader, which cannot import them.
+  test("a softbox dims as the square of how far it is blurred", () => {
+    assert.equal(softboxEnergy(0.3, 0.3), 1, "unblurred is unchanged");
+    assert.ok(Math.abs(softboxEnergy(0.3, 0.6) - 0.25) < 1e-9, "twice as wide is a quarter as bright");
+    assert.ok(softboxEnergy(0.3, 0.85) < 0.13, "a fully rough surface sees almost none of it");
+    // Monotone, and never a gain — the whole point.
+    let prev = 2;
+    for (let hw = 0.3; hw <= 0.9; hw += 0.05) {
+      const e = softboxEnergy(0.3, hw);
+      assert.ok(e <= 1 && e <= prev + 1e-12, `hw=${hw} gained energy`);
+      prev = e;
+    }
+    assert.equal(softboxEnergy(0.3, 0), 1, "a degenerate width cannot divide by zero");
+  });
+
+  test("widening a lobe to its source caps the peak without adding light", () => {
+    // A surface rougher than the source is untouched — which is why leather,
+    // rubber and nylon in the same frame were never the problem and must not
+    // move now.
+    assert.equal(lobeEnergy(0.36, 0.36, 0.25), 1, "leather's lobe is already wider than the softbox");
+    assert.equal(lobeEnergy(0.27, 0.27, 0.25), 1, "rubber likewise");
+    // The bracelet: rough 0.30 brushed, so the across-grain axis is very
+    // narrow and the peak is what blew out.
+    const a = 0.3 * 0.3;
+    const at = a * 1.72;
+    const ab = a * 0.28;
+    const e = lobeEnergy(at, ab, 0.25);
+    assert.ok(e < 0.1, `brushed steel's peak must come down hard, got ${e}`);
+    // Peak radiance after widening = D(widened) * energy. It has to be finite
+    // and small enough to survive a 2.5-bright key without clipping.
+    const peak = (1 / (Math.PI * Math.max(at, 0.25) * Math.max(ab, 0.25))) * e;
+    assert.ok(peak < 1.0, `capped peak ${peak}`);
+    // A mirror gets essentially nothing from the analytic light: its
+    // highlight is the environment's reflected softbox, which carries the
+    // source's real radiance.
+    assert.ok(lobeEnergy(0.003, 0.003, 0.25) < 1e-3);
+    assert.ok(lobeEnergy(0.1, 0.1, 0) === 1, "a zero-size source is the old delta light");
   });
 });
 
