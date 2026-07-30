@@ -324,6 +324,22 @@ export const SOURCES = {
     label: "Seiko USA — Seiko 5 Sports SRPD55 official product image (a 4R36/NH36 day-date aperture at 3)",
     url: "https://seikousa.com/products/srpd55",
   },
+  dupewatch: {
+    label: "dupe.watch — aftermarket metal bracelet guides (Oyster three-link, Jubilee five-link, mesh)",
+    url: "https://dupe.watch/guides/metal-watch-bracelets",
+  },
+  watchwiki: {
+    label: "Watch Wiki — bracelet link layouts (beads-of-rice, President, Engineer)",
+    url: "https://www.watch-wiki.net/doku.php?id=bracelet",
+  },
+  dryden: {
+    label: "Dryden Watch Co — padded and tapered leather strap listings",
+    url: "https://drydenwatchco.com/products/18mm-20mm-22mm-quick-release-padded-leather-watch-strap-dark-brown",
+  },
+  strapcodebuckle: {
+    label: "Strapcode — #64/#65 classic tang buckle parts listings",
+    url: "https://www.strapcode.com/products/parts-nt-acc-bu-065b",
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -5014,61 +5030,1186 @@ export function extrude(outline, thickness, y) {
   return mesh;
 }
 
+// ---------------------------------------------------------------------------
+// STRAPS, BRACELETS, THE WRIST CYLINDER AND THE BUCKLE.
+//
+// Feedback #56, verbatim: "Straps are made of blocks — little to no difference
+// between jubilee and oyster bracelets, and rubber and leather look weird when
+// made up of blocks", "starting angles of bracelet/strap is off — when worn
+// straps don't start out straight out like they do here … make the default be
+// that it is placed on a leather cylinder holder to simulate a wrist", and
+// "would be nice to have a buckle for straps".
+//
+// All three were true of the same 45 lines: every strap was an identical chain
+// of box() links (10 for a bracelet, 15 for anything else) that left the lug
+// horizontally and ended in mid-air. What replaces it:
+//
+//   * ONE CONSTRUCTION PER FAMILY, from the researched table STRAP_GEOMETRY.
+//     An Oyster is a three-link row, a Jubilee is five links with three
+//     ROUNDED centres offset half a pitch, beads-of-rice is seven, a rubber
+//     strap is a continuous tapering band with real surface relief, leather is
+//     a crowned band with stitching, and a NATO is what a NATO actually is —
+//     one nylon pass running UNDER the case with a second layer folded back
+//     over it, keepers and metal rings.
+//   * A REAL DEPARTURE ANGLE. The band leaves the lug tip already dropping
+//     (STRAP_DRAPE.drop) and curves onto the wrist cylinder along a Hermite
+//     that meets the cylinder TANGENTIALLY, then wraps it to 6 o'clock. No
+//     sample is ever allowed inside the cylinder.
+//   * THE CYLINDER ITSELF, exported as its own mesh and shown by default.
+//   * A pin/tang buckle for leather, rubber and NATO; a fold-over clasp for
+//     bracelets — both sized from the taper, at the width the strap has where
+//     the hardware actually sits.
+//
+// THE RENDERER CONTRACT (public/js/watch-render.js owns every material; this
+// file owns only geometry and the HINT that says what the geometry is made
+// of). buildMeshes() returns:
+//
+//   meshes.strap          the band: bracelet links, rubber, leather, nylon,
+//                         woven mesh. One material for the whole thing.
+//   meshes.strapHardware  buckle, fold-over clasp, NATO rings. ALWAYS steel,
+//                         whatever the band is — a leather strap must not end
+//                         in a leather buckle. Empty for a strap that takes no
+//                         hardware.
+//   meshes.wrist          the leather-covered display cylinder the watch sits
+//                         on. Present BY DEFAULT; buildMeshes(build, { wrist:
+//                         false }) returns it empty so the page can toggle it.
+//                         Axis along X, centred on x = 0.
+//   strapMaterials        { strap, strapHardware, wrist }, each
+//                         { kind, color, rough, metal, brush, useCaseFinish }.
+//                         `kind` is the honest material name — "steel",
+//                         "rubber", "leather", "nylon" — which is what #56's
+//                         "leather shouldn't be shiny like a mirror" needs:
+//                         leather is rough 0.92 / metal 0, and only
+//                         useCaseFinish:true (bracelets) should take the
+//                         case's own finish and brushing.
+//   wrist                 { show, r, cy, len } — the cylinder's own numbers, so
+//                         the page can ground a shadow on it.
+//
+// Nothing here reads the DOM, fetches, or allocates a timer; every builder
+// returns the same plain {positions, normals, uvs, indices} the rest of the
+// file does.
+
+/** How the strap is draped, independent of what it is made of. */
+export const STRAP_DRAPE = {
+  // A 60 mm cylinder — a 188 mm wrist, and also the size of an ordinary
+  // leather display roll. Listing-derived, so approximate by construction.
+  wristR: 30,
+  // How far below horizontal the band already points AS IT LEAVES THE LUG.
+  // The old code left at 0° and that is exactly what "straps don't start out
+  // straight out like they do here" was about.
+  drop: 0.52,
+  src: "community",
+  approx: true,
+};
+
 /**
- * The strap or bracelet, as two arcs curving away from the lugs around an
- * imaginary wrist. A bracelet is a chain of separate links with visible gaps;
- * a rubber, NATO or leather strap is one continuous taper. Modelled rather
- * than faked because a watch head floating with no strap does not read as a
- * finished build — and because the lug width the catalogue carries is exactly
- * what sets its width.
+ * Construction data, one row per strap/bracelet family, keyed by catalogue id
+ * with a fallback row per `kind` so a family the catalogue adds later still
+ * renders as something honest rather than as boxes.
+ *
+ * Every number is read off a retailer listing rather than a drawing, so every
+ * row is `approx: true` and names its `src`. Widths are FRACTIONS of the lug
+ * width (the one dimension the case catalogue really knows); pitches, gaps and
+ * thicknesses are millimetres. `n` is a superellipse exponent: 2 is a fully
+ * round link, 6 is a flat one with a machined edge break.
+ */
+export const STRAP_GEOMETRY = {
+  // --- link bracelets -------------------------------------------------------
+  oyster: {
+    build: "links",
+    close: "clasp",
+    pitch: 9.5,
+    gap: 0.7,
+    thick: 3,
+    taper: 0.18,
+    cols: [
+      { w: 0.245, n: 5.5, h: 0.82, offset: 0 },
+      { w: 0.44, n: 6, h: 1, offset: 0 },
+      { w: 0.245, n: 5.5, h: 0.82, offset: 0 },
+    ],
+    src: "dupewatch",
+    approx: true,
+    note: {
+      en: "Three-link row: one wide flat centre link between two narrower outer links, tapering 22 → 18 mm at the clasp.",
+      sv: "Trelänksrad: en bred platt mittlänk mellan två smalare ytterlänkar, avsmalnande 22 → 18 mm vid låset.",
+    },
+  },
+  jubilee: {
+    build: "links",
+    close: "clasp",
+    // The single most visible difference from an Oyster, and the reason the
+    // pitch is nearly half: a Jubilee row is short, and its three centre links
+    // are rounded and offset half a pitch from the flat outer ones.
+    pitch: 5.6,
+    gap: 0.45,
+    thick: 2.9,
+    taper: 0.18,
+    cols: [
+      { w: 0.215, n: 6, h: 0.95, offset: 0 },
+      { w: 0.115, n: 2, h: 1, offset: 0.5 },
+      { w: 0.115, n: 2, h: 1, offset: 0.5 },
+      { w: 0.115, n: 2, h: 1, offset: 0.5 },
+      { w: 0.215, n: 6, h: 0.95, offset: 0 },
+    ],
+    src: "dupewatch",
+    approx: true,
+    note: {
+      en: "Five-link row: three small rounded polished centre links between two larger brushed outer links.",
+      sv: "Femlänksrad: tre små rundade polerade mittlänkar mellan två större borstade ytterlänkar.",
+    },
+  },
+  "beads-of-rice": {
+    build: "links",
+    close: "clasp",
+    pitch: 4.6,
+    gap: 0.4,
+    thick: 2.7,
+    taper: 0.16,
+    cols: [
+      { w: 0.2, n: 6, h: 0.78, offset: 0 },
+      { w: 0.1, n: 2, h: 1, offset: 0.5 },
+      { w: 0.1, n: 2, h: 1, offset: 0.5 },
+      { w: 0.1, n: 2, h: 1, offset: 0.5 },
+      { w: 0.1, n: 2, h: 1, offset: 0.5 },
+      { w: 0.1, n: 2, h: 1, offset: 0.5 },
+      { w: 0.2, n: 6, h: 0.78, offset: 0 },
+    ],
+    src: "watchwiki",
+    approx: true,
+    note: {
+      en: "Five to seven small rounded centre links — the grains of rice — between larger flat outer links.",
+      sv: "Fem till sju små rundade mittlänkar — risgrynen — mellan större platta ytterlänkar.",
+    },
+  },
+  president: {
+    build: "links",
+    close: "clasp",
+    pitch: 5.2,
+    gap: 0.4,
+    thick: 3.1,
+    taper: 0.14,
+    cols: [
+      { w: 0.21, n: 2, h: 0.85, offset: 0 },
+      { w: 0.42, n: 2, h: 1, offset: 0.5 },
+      { w: 0.21, n: 2, h: 0.85, offset: 0 },
+    ],
+    src: "watchwiki",
+    approx: true,
+    note: {
+      en: "Three semi-circular links, the centre one about twice the width of the outers and offset 50 % from them.",
+      sv: "Tre halvrunda länkar, mittlänken ungefär dubbelt så bred som ytterlänkarna och förskjuten 50 %.",
+    },
+  },
+  engineer: {
+    build: "links",
+    close: "clasp",
+    pitch: 6.4,
+    gap: 0.45,
+    thick: 2.8,
+    taper: 0.14,
+    cols: [
+      { w: 0.172, n: 5, h: 1, offset: 0 },
+      { w: 0.172, n: 5, h: 1, offset: 0.5 },
+      { w: 0.172, n: 5, h: 1, offset: 0 },
+      { w: 0.172, n: 5, h: 1, offset: 0.5 },
+      { w: 0.172, n: 5, h: 1, offset: 0 },
+    ],
+    src: "watchwiki",
+    approx: true,
+    note: {
+      en: "Five links of equal width, flattened and offset 50 % from each other — the sporty five-link.",
+      sv: "Fem länkar av samma bredd, tillplattade och förskjutna 50 % mot varandra — den sportiga femlänken.",
+    },
+  },
+  // --- woven surfaces (NOT discrete links) ----------------------------------
+  mesh: {
+    build: "woven",
+    close: "clasp",
+    thick: 2.1,
+    thickEnd: 2.1,
+    taper: 0.12,
+    weave: { u: 1.1, s: 1.3, depth: 0.16 },
+    src: "dupewatch",
+    approx: true,
+    note: {
+      en: "Milanese is a woven wire surface, not a chain of links — modelled as one continuous band with a fine weave relief.",
+      sv: "Milanese är en vävd trådyta, inte en kedja av länkar — modellerad som ett kontinuerligt band med fin vävrelief.",
+    },
+  },
+  "shark-mesh": {
+    build: "woven",
+    close: "clasp",
+    thick: 3.4,
+    thickEnd: 3.4,
+    taper: 0.1,
+    weave: { u: 2.6, s: 3, depth: 0.45 },
+    src: "dupewatch",
+    approx: true,
+    note: {
+      en: "The same weave as Milanese but coarse and heavy — bigger cells, thicker band.",
+      sv: "Samma väv som Milanese men grov och tung — större celler, tjockare band.",
+    },
+  },
+  // --- rubber ---------------------------------------------------------------
+  waffle: {
+    build: "band",
+    close: "buckle",
+    section: "rubber",
+    thick: 3.4,
+    thickEnd: 2.6,
+    taper: 0.09,
+    keepers: 1,
+    relief: { kind: "waffle", pitch: 2.6, depth: 0.38 },
+    src: "unclestraps",
+    approx: true,
+    note: {
+      en: "A continuous band tapering 22 → 20 mm at the buckle, with the waffle's raised grid standing off the surface.",
+      sv: "Ett kontinuerligt band som avsmalnar 22 → 20 mm vid spännet, med våffelmönstrets upphöjda rutnät.",
+    },
+  },
+  tropic: {
+    build: "band",
+    close: "buckle",
+    section: "rubber",
+    thick: 3.2,
+    thickEnd: 2.4,
+    taper: 0.09,
+    keepers: 1,
+    relief: { kind: "grooves", pitch: 2.2, depth: 0.32 },
+    src: "unclestraps",
+    approx: true,
+    note: {
+      en: "Same taper as the waffle; the pattern is transverse grooves cut across the band rather than a raised grid.",
+      sv: "Samma avsmalning som våfflan; mönstret är tvärgående spår i bandet i stället för ett upphöjt rutnät.",
+    },
+  },
+  // --- leather --------------------------------------------------------------
+  leather: {
+    build: "band",
+    close: "buckle",
+    section: "leather",
+    thick: 3.5,
+    thickEnd: 2,
+    taper: 0.18,
+    keepers: 2,
+    relief: { kind: "stitch", inset: 1.7, pitch: 3.4, depth: 0.22 },
+    src: "dryden",
+    approx: true,
+    note: {
+      en: "Padded and tapered: ≈3.5 mm thick at the lug falling to ≈2 mm at the buckle, 22 → 18 mm wide, stitched along both edges.",
+      sv: "Stoppat och avsmalnande: ≈3,5 mm tjockt vid bandinfästningen ned till ≈2 mm vid spännet, 22 → 18 mm brett, sytt längs båda kanterna.",
+    },
+  },
+  // --- nylon ----------------------------------------------------------------
+  nato: {
+    build: "nato",
+    close: "buckle",
+    section: "nylon",
+    thick: 1.2,
+    thickEnd: 1.2,
+    taper: 0,
+    keepers: 3,
+    src: "crownbuckle",
+    approx: true,
+    note: {
+      en: "One continuous ≈1.2 mm nylon pass running UNDER the case, with the short second layer folded back over it; buckle plus three keeper rings, and the case therefore sits two nylon layers proud of the wrist.",
+      sv: "Ett kontinuerligt ≈1,2 mm nylonband som löper UNDER boetten, med det korta andra lagret vikt tillbaka över det; spänne plus tre hållarringar, och boetten vilar därför två nylonlager ovanför handleden.",
+    },
+  },
+};
+
+/** Fallback row per `kind`, so an unknown id still builds as its material. */
+const STRAP_KIND_FALLBACK = {
+  bracelet: "oyster",
+  rubber: "waffle",
+  leather: "leather",
+  nato: "nato",
+};
+
+/** Tang-buckle stock, from Strapcode's #64/#65 parts listings. */
+export const BUCKLE_STOCK = { plate: 1.4, bar: 1.7, tongue: 2, open: 7, src: "strapcodebuckle", approx: true };
+
+/**
+ * Resolve one strap entry into the numbers the geometry needs. Never throws:
+ * an unknown strap becomes a leather band rather than nothing, because a watch
+ * head floating with no strap does not read as a finished build.
  * @param {any} caseEntry
  * @param {any} strapEntry
+ */
+export function strapPlan(caseEntry, strapEntry) {
+  const key = strapEntry && strapEntry.id;
+  const fallback = STRAP_KIND_FALLBACK[/** @type {keyof typeof STRAP_KIND_FALLBACK} */ ((strapEntry || {}).kind)];
+  const g =
+    STRAP_GEOMETRY[/** @type {keyof typeof STRAP_GEOMETRY} */ (key)] ||
+    STRAP_GEOMETRY[/** @type {keyof typeof STRAP_GEOMETRY} */ (fallback)] ||
+    STRAP_GEOMETRY.leather;
+  const row = /** @type {any} */ (g);
+  const lugW = (caseEntry && caseEntry.dims && caseEntry.dims.lugW) || 20;
+  return {
+    id: key || "leather",
+    build: row.build,
+    close: row.close,
+    section: row.section || "steel",
+    cols: row.cols || null,
+    weave: row.weave || null,
+    relief: row.relief || null,
+    keepers: row.keepers || 0,
+    pitch: row.pitch || 0,
+    gap: row.gap || 0,
+    thick: row.thick,
+    thickEnd: row.thickEnd == null ? row.thick : row.thickEnd,
+    taper: row.taper,
+    // Nylon runs UNDER the case, so on a NATO the watch sits two layers proud
+    // of the wrist and the cylinder has to drop by exactly that much.
+    underCase: row.build === "nato" ? row.thick * 2 + 0.4 : 0,
+    // The nylon is cut a hair under the lug width; everything else fills it.
+    lugW: row.build === "nato" ? lugW - 0.4 : lugW,
+    wristR: STRAP_DRAPE.wristR,
+    drop: STRAP_DRAPE.drop,
+    src: row.src,
+    approx: row.approx === true,
+    note: row.note || null,
+  };
+}
+
+/**
+ * @typedef {{ z: number, y: number, tz: number, ty: number, nz: number, ny: number, s: number }} StrapFrame
+ * @typedef {{ frames: StrapFrame[], total: number, at: (s: number) => StrapFrame }} StrapPath
+ */
+
+/**
+ * Turn a dense polyline in the (z, y) plane into an arc-length-parameterised
+ * path with a continuous frame. The frame's `n` is the out-of-plane axis the
+ * band's thickness stacks along; it is chosen once (pointing away from the
+ * wrist axis) and then carried forward by continuity, which is what stops a
+ * band flipping inside out halfway round the wrist.
+ * @param {{ z: number, y: number }[]} pts
+ * @param {number} seedZ
+ * @param {number} seedY
+ * @returns {StrapPath}
+ */
+function makeStrapPath(pts, seedZ, seedY) {
+  /** @type {StrapFrame[]} */
+  const frames = [];
+  let s = 0;
+  let pnz = 0;
+  let pny = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    const a = pts[Math.max(0, i - 1)];
+    const b = pts[Math.min(pts.length - 1, i + 1)];
+    let tz = b.z - a.z;
+    let ty = b.y - a.y;
+    const tl = Math.hypot(tz, ty) || 1;
+    tz /= tl;
+    ty /= tl;
+    let nz = -ty;
+    let ny = tz;
+    const ref = i === 0 ? nz * seedZ + ny * seedY : nz * pnz + ny * pny;
+    if (ref < 0) {
+      nz = -nz;
+      ny = -ny;
+    }
+    pnz = nz;
+    pny = ny;
+    if (i > 0) s += Math.hypot(p.z - pts[i - 1].z, p.y - pts[i - 1].y);
+    frames.push({ z: p.z, y: p.y, tz, ty, nz, ny, s });
+  }
+  const total = frames.length ? frames[frames.length - 1].s : 0;
+  /** @param {number} q */
+  const at = (q) => {
+    if (!frames.length) return { z: 0, y: 0, tz: 0, ty: -1, nz: 0, ny: 1, s: 0 };
+    if (q <= 0) return frames[0];
+    if (q >= total) return frames[frames.length - 1];
+    let lo = 0;
+    let hi = frames.length - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (frames[mid].s <= q) lo = mid;
+      else hi = mid;
+    }
+    const a = frames[lo];
+    const b = frames[hi];
+    const span = b.s - a.s || 1;
+    const u = (q - a.s) / span;
+    const mix = (/** @type {number} */ x, /** @type {number} */ y) => x + (y - x) * u;
+    const tz = mix(a.tz, b.tz);
+    const ty = mix(a.ty, b.ty);
+    const tl = Math.hypot(tz, ty) || 1;
+    const nz = mix(a.nz, b.nz);
+    const ny = mix(a.ny, b.ny);
+    const nl = Math.hypot(nz, ny) || 1;
+    return { z: mix(a.z, b.z), y: mix(a.y, b.y), tz: tz / tl, ty: ty / tl, nz: nz / nl, ny: ny / nl, s: q };
+  };
+  return { frames, total, at };
+}
+
+/**
+ * Where the wrist cylinder sits for this build. Its top surface is just under
+ * the case back — or under the nylon layers, on a NATO.
+ * @param {any} plan
+ */
+function wristAxis(plan) {
+  return { r: plan.wristR, cy: -(plan.wristR + plan.underCase + 0.15) };
+}
+
+/**
+ * The radius the band's CENTRELINE runs at: the cylinder, plus half the band,
+ * plus enough clearance that the deepest part of the surface relief still does
+ * not cut into the cylinder. A waffle's recessed grid is 0.38 mm deep, and
+ * without this the strap eats the wrist it is lying on.
+ * @param {any} plan
+ */
+function bandRadius(plan) {
+  const depth = plan.weave ? plan.weave.depth : plan.relief ? plan.relief.depth : 0;
+  return wristAxis(plan).r + plan.thick / 2 + depth + 0.05;
+}
+
+/**
+ * WHERE THE STRAP IS BOLTED ON — the spring-bar centre, at 6 and 12 o'clock.
+ *
+ * This is a SEAM with the lug geometry in buildMeshes: the lugs are four boxes
+ * reaching out to `l2l / 2` at height `thick * 0.3`, and the band has to start
+ * on exactly that point or it reads as a floating slab with daylight between
+ * it and the case — which is what a browser render of the old builder showed.
+ * Both sides derive it from the same two catalogue numbers; if the lug code
+ * ever moves, it should move by calling this.
+ *
+ * One case needs more than the catalogue's lug-to-lug: the Tuna's SHROUD is
+ * wider than its lug-to-lug (47 mm across, 44.5 mm lug-to-lug), so anchoring
+ * at `l2l / 2` starts the strap 1.25 mm INSIDE the case wall and buries it.
+ * The anchor is therefore pushed out to clear whatever the shell's outline
+ * really is at the lug angle — for every other case that clamp does nothing.
+ *
+ * @param {any} caseEntry
+ * @returns {{ z: number, y: number, tuck: number }} `tuck` is how far back
+ * toward the case the band starts, so the joint always overlaps. Running a
+ * millimetre and a half INTO the case is deliberate: that end is inside solid
+ * geometry and invisible, whereas stopping a hair short is a visible seam.
+ */
+export function lugAnchor(caseEntry) {
+  const dims = (caseEntry && caseEntry.dims) || { l2l: 44, thick: 12, dia: 40 };
+  // The lug axis is 12/6 o'clock, which is θ = π/2 in the lathe's frame.
+  const wall = (dims.dia / 2) * outlineFor(caseEntry && caseEntry.shell)(Math.PI / 2);
+  return { z: Math.max(dims.l2l / 2, wall + 0.35), y: dims.thick * 0.3, tuck: 1.6 };
+}
+
+/**
+ * One arm of the strap: from the lug tip, bending down over the lug at the
+ * drape's departure angle, onto the wrist cylinder TANGENTIALLY, then wrapped
+ * round it to 6 o'clock.
+ *
+ * The lead-in is a cubic Hermite rather than a straight line because a strap
+ * is stiff at the lug and slack further out; a straight run from the lug tip
+ * to the tangent point plunges at nearly 75° and reads as a broken hinge. Any
+ * sample the Hermite still drops inside the cylinder is pushed back out to its
+ * surface, so the drape can sag but can never sink into the wrist.
+ *
+ * @param {any} caseEntry
+ * @param {any} plan
+ * @param {1 | -1} dir +1 is the 6 o'clock arm, −1 the 12 o'clock (buckle) arm
+ * @param {number} [extend] extra wrap past 6 o'clock, in radians
+ * @returns {StrapPath}
+ */
+export function strapPath(caseEntry, plan, dir, extend) {
+  const w = wristAxis(plan);
+  const rp = bandRadius(plan);
+  const anchor = lugAnchor(caseEntry);
+  const p = { z: dir * anchor.z, y: anchor.y };
+  const dz = p.z;
+  const dy = p.y - w.cy;
+  const d = Math.hypot(dz, dy) || 1;
+  const alpha = Math.atan2(dy, dz);
+  const beta = Math.acos(Math.max(-1, Math.min(0.999, rp / d)));
+  const thetaT = alpha - dir * beta;
+  const t = { z: rp * Math.cos(thetaT), y: w.cy + rp * Math.sin(thetaT) };
+  const d0 = { z: dir * Math.cos(plan.drop), y: -Math.sin(plan.drop) };
+  const dT = { z: dir * Math.sin(thetaT), y: -dir * Math.cos(thetaT) };
+  const len = Math.hypot(t.z - p.z, t.y - p.y);
+  /** @type {{ z: number, y: number }[]} */
+  const pts = [];
+  // Start a shade BEHIND the anchor so the band overlaps the lug instead of
+  // butting against it — a hairline gap here is what read as "detached
+  // floating blocks" in the render.
+  pts.push({ z: p.z - d0.z * anchor.tuck, y: p.y - d0.y * anchor.tuck });
+  const lead = 18;
+  for (let i = 0; i <= lead; i++) {
+    const u = i / lead;
+    const u2 = u * u;
+    const u3 = u2 * u;
+    const h00 = 2 * u3 - 3 * u2 + 1;
+    const h10 = u3 - 2 * u2 + u;
+    const h01 = -2 * u3 + 3 * u2;
+    const h11 = u3 - u2;
+    pts.push({
+      z: h00 * p.z + h10 * len * d0.z + h01 * t.z + h11 * len * dT.z,
+      y: h00 * p.y + h10 * len * d0.y + h01 * t.y + h11 * len * dT.y,
+    });
+  }
+  // Both arms stop at the bottom of the wrist — which is where a clasp or a
+  // buckle really sits — plus whatever tail the caller asked for.
+  const bottom = dir > 0 ? -Math.PI / 2 : Math.PI * 1.5;
+  const span = Math.abs(bottom - thetaT) + (extend || 0);
+  const arcN = Math.max(10, Math.ceil(span / 0.045));
+  for (let i = 1; i <= arcN; i++) {
+    const th = thetaT - dir * span * (i / arcN);
+    pts.push({ z: rp * Math.cos(th), y: w.cy + rp * Math.sin(th) });
+  }
+  for (const q of pts) {
+    const rz = q.z;
+    const ry = q.y - w.cy;
+    const r = Math.hypot(rz, ry);
+    if (r > 1e-6 && r < rp) {
+      q.z = (rz * rp) / r;
+      q.y = w.cy + (ry * rp) / r;
+    }
+  }
+  return makeStrapPath(pts, p.z, p.y - w.cy);
+}
+
+/**
+ * A plain arc around the wrist — the tail that runs past the buckle, the
+ * fold-over clasp's plates, the NATO's keepers.
+ * @param {any} plan
+ * @param {number} r
+ * @param {number} th0
+ * @param {number} th1
+ * @returns {StrapPath}
+ */
+function wristArcPath(plan, r, th0, th1) {
+  const w = wristAxis(plan);
+  const n = Math.max(6, Math.ceil(Math.abs(th1 - th0) / 0.045));
+  /** @type {{ z: number, y: number }[]} */
+  const pts = [];
+  for (let i = 0; i <= n; i++) {
+    const th = th0 + (th1 - th0) * (i / n);
+    pts.push({ z: r * Math.cos(th), y: w.cy + r * Math.sin(th) });
+  }
+  return makeStrapPath(pts, Math.cos(th0), Math.sin(th0));
+}
+
+/**
+ * A straight run in the (z, y) plane — the nylon under a NATO's case back.
+ * @param {{ z: number, y: number }[]} pts
+ * @param {number} seedZ
+ * @param {number} seedY
+ */
+function polyPath(pts, seedZ, seedY) {
+  return makeStrapPath(pts, seedZ, seedY);
+}
+
+/**
+ * A superelliptic cross-section point. `n` = 2 is an ellipse (a rounded
+ * Jubilee centre link, a President half-round); `n` = 6 is a flat link with a
+ * machined edge break.
+ * @param {number} a angle around the section
+ * @param {number} halfW
+ * @param {number} halfT
+ * @param {number} n
+ */
+function superSection(a, halfW, halfT, n) {
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  const p = 2 / Math.max(2, n);
+  return {
+    u: halfW * Math.sign(c) * Math.pow(Math.abs(c), p),
+    v: halfT * Math.sign(s) * Math.pow(Math.abs(s), p),
+  };
+}
+
+/**
+ * Sweep a closed cross-section along a path. This is the one workhorse every
+ * strap family shares: a link is a 6 mm sweep with caps, a rubber strap is a
+ * 90 mm sweep with relief, a clasp plate is a flat sweep. Normals come from
+ * the grid itself (finite differences), which is what makes surface relief —
+ * a waffle grid, a woven cell, a stitch line — actually catch the light
+ * instead of shading as if it were flat.
+ *
+ * @param {StrapPath} path
+ * @param {number} s0
+ * @param {number} s1
+ * @param {{ cols: number, rowLen: number, caps?: boolean,
+ *          section: (a: number, t: number, s: number) => { u: number, v: number } }} o
  * @returns {Mesh}
  */
-export function strapMesh(caseEntry, strapEntry) {
+function sweepTube(path, s0, s1, o) {
   const mesh = emptyMesh();
-  if (!strapEntry) return mesh;
-  const bracelet = strapEntry.kind === "bracelet";
-  const width = caseEntry.dims.lugW;
-  const startZ = caseEntry.dims.l2l / 2;
-  const y0 = caseEntry.dims.thick * 0.3;
-  // A 62 mm wrist radius is about a 195 mm circumference — an ordinary wrist.
-  const wristR = 31;
-  const links = bracelet ? 10 : 15;
-  const thick = bracelet ? 1.6 : 2.2;
-  const step = 0.155;
-  for (const dir of [1, -1]) {
-    for (let i = 0; i < links; i++) {
-      const t = i / links;
-      // Taper toward the clasp: bracelets keep more width than a strap does.
-      const w = width * (1 - (bracelet ? 0.16 : 0.26) * t);
-      const phi = (i + 0.5) * step;
-      // The centre of this link on the wrist arc, measured from the lug tip.
-      const cz = dir * (startZ + wristR * Math.sin(phi));
-      const cy = y0 - wristR * (1 - Math.cos(phi));
-      const segLen = wristR * step * (bracelet ? 0.84 : 1);
-      const link = box(w, thick, segLen, [0, 0, 0]);
-      // Rotate about X so the link's long (+z) axis follows the tangent
-      // (0, −sin φ, dir·cos φ). Solving gives α = φ on one side and π − φ on
-      // the other, which is what makes both arms curve DOWN and away rather
-      // than one of them sweeping up through the case.
-      const alpha = dir > 0 ? phi : Math.PI - phi;
-      const ca = Math.cos(alpha);
-      const sa = Math.sin(alpha);
-      for (let p = 0; p < link.positions.length; p += 3) {
-        const py = link.positions[p + 1];
-        const pz = link.positions[p + 2];
-        link.positions[p + 1] = py * ca - pz * sa + cy;
-        link.positions[p + 2] = py * sa + pz * ca + cz;
-        const ny = link.normals[p + 1];
-        const nz = link.normals[p + 2];
-        link.normals[p + 1] = ny * ca - nz * sa;
-        link.normals[p + 2] = ny * sa + nz * ca;
+  const run = s1 - s0;
+  if (!(run > 0.001)) return mesh;
+  const cols = Math.max(4, Math.round(o.cols));
+  const rows = Math.max(1, Math.ceil(run / Math.max(0.08, o.rowLen)));
+  // HANDEDNESS. The frame's out-of-plane axis is forced to point AWAY from the
+  // wrist on both arms, which makes (x, n, tangent) right-handed on one arm and
+  // left-handed on the other. Traversing the section the other way round on the
+  // left-handed arm is what keeps the outward face outward — without this the
+  // 12 o'clock half of every strap renders inside out and back-face culling
+  // eats it.
+  const seed = path.at(s0);
+  const hand = seed.ny * seed.tz - seed.ty * seed.nz < 0 ? -1 : 1;
+  /** @type {{ ring: number[][], f: StrapFrame }[]} */
+  const grid = [];
+  for (let i = 0; i <= rows; i++) {
+    const s = s0 + (run * i) / rows;
+    const f = path.at(s);
+    /** @type {number[][]} */
+    const ring = [];
+    for (let j = 0; j < cols; j++) {
+      // Reverse the ORDER, never the angle: negating the angle would mirror
+      // the section and put a leather strap's crowned face against the wrist.
+      const jj = hand > 0 ? j : (cols - j) % cols;
+      const sec = o.section((jj / cols) * Math.PI * 2, i / rows, s);
+      ring.push([sec.u, f.y + sec.v * f.ny, f.z + sec.v * f.nz]);
+    }
+    grid.push({ ring, f });
+  }
+  const base = mesh.positions.length / 3;
+  for (let i = 0; i <= rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      const p = grid[i].ring[j];
+      const a = grid[Math.max(0, i - 1)].ring[j];
+      const b = grid[Math.min(rows, i + 1)].ring[j];
+      const c = grid[i].ring[(j + cols - 1) % cols];
+      const e = grid[i].ring[(j + 1) % cols];
+      const di = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+      const dj = [e[0] - c[0], e[1] - c[1], e[2] - c[2]];
+      let nx = dj[1] * di[2] - dj[2] * di[1];
+      let ny = dj[2] * di[0] - dj[0] * di[2];
+      let nz = dj[0] * di[1] - dj[1] * di[0];
+      const nl = Math.hypot(nx, ny, nz) || 1;
+      nx /= nl;
+      ny /= nl;
+      nz /= nl;
+      mesh.positions.push(p[0], p[1], p[2]);
+      mesh.normals.push(nx, ny, nz);
+      mesh.uvs.push(j / cols, i / rows);
+    }
+  }
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      const j1 = (j + 1) % cols;
+      const a = base + i * cols + j;
+      const b = base + i * cols + j1;
+      const c = base + (i + 1) * cols + j1;
+      const d = base + (i + 1) * cols + j;
+      mesh.indices.push(a, b, c, a, c, d);
+    }
+  }
+  if (o.caps !== false) {
+    for (const end of [0, rows]) {
+      const g = grid[end];
+      const sign = end === 0 ? -1 : 1;
+      const cap = mesh.positions.length / 3;
+      for (let j = 0; j < cols; j++) {
+        const p = g.ring[j];
+        mesh.positions.push(p[0], p[1], p[2]);
+        mesh.normals.push(0, sign * g.f.ty, sign * g.f.tz);
+        mesh.uvs.push(0.5 + Math.cos((j / cols) * Math.PI * 2) / 2, 0.5 + Math.sin((j / cols) * Math.PI * 2) / 2);
       }
-      mergeMesh(mesh, link);
+      for (let k = 1; k + 1 < cols; k++) {
+        if (sign > 0) mesh.indices.push(cap, cap + k, cap + k + 1);
+        else mesh.indices.push(cap, cap + k + 1, cap + k);
+      }
     }
   }
   return mesh;
+}
+
+/**
+ * Rigidly place a mesh built in local (x across, y outward, z forward) into a
+ * path frame. Used for every piece of hardware, which is easier to model
+ * upright and then drop onto the wrist than to sweep.
+ * @param {Mesh} mesh
+ * @param {StrapFrame} f
+ * @returns {Mesh}
+ */
+function placeOnPath(mesh, f) {
+  // (x, n, tangent) is left-handed on the 12 o'clock arm — see sweepTube.
+  // Mirroring the local x axis makes the map a proper rotation again, so the
+  // buckle's faces keep pointing outward. Every hardware part is symmetric
+  // across x, so the mirror itself is invisible.
+  const hand = f.ny * f.tz - f.ty * f.nz < 0 ? -1 : 1;
+  for (let i = 0; i < mesh.positions.length; i += 3) {
+    const x = mesh.positions[i];
+    const y = mesh.positions[i + 1];
+    const z = mesh.positions[i + 2];
+    mesh.positions[i] = hand * x;
+    mesh.positions[i + 1] = f.y + y * f.ny + z * f.ty;
+    mesh.positions[i + 2] = f.z + y * f.nz + z * f.tz;
+    const nx = mesh.normals[i];
+    const ny = mesh.normals[i + 1];
+    const nz = mesh.normals[i + 2];
+    mesh.normals[i] = hand * nx;
+    mesh.normals[i + 1] = ny * f.ny + nz * f.ty;
+    mesh.normals[i + 2] = ny * f.nz + nz * f.tz;
+  }
+  return mesh;
+}
+
+/**
+ * A soft square pulse in [0,1] — the plateau of a waffle cell.
+ * @param {number} x
+ */
+function pulse(x) {
+  const f = x - Math.floor(x);
+  const d = 0.5 - Math.abs(f - 0.5);
+  return Math.max(0, Math.min(1, d * 5 - 0.35));
+}
+
+/**
+ * The out-of-plane displacement the surface pattern adds, in millimetres,
+ * signed so it always pushes away from the band's mid-plane.
+ * @param {any} plan
+ * @param {number} u across the band, mm from the centre
+ * @param {number} halfW
+ * @param {number} v out-of-plane, mm
+ * @param {number} halfT
+ * @param {number} s along the band, mm
+ */
+function bandRelief(plan, u, halfW, v, halfT, s) {
+  const face = halfT > 0 ? Math.min(1, Math.abs(v) / halfT) : 0;
+  if (face < 0.35) return 0;
+  const dir = v >= 0 ? 1 : -1;
+  const w = plan.weave;
+  if (w) {
+    return dir * face * w.depth * Math.cos((2 * Math.PI * u) / w.u) * Math.cos((2 * Math.PI * s) / w.s);
+  }
+  const r = plan.relief;
+  if (!r) return 0;
+  if (r.kind === "waffle") {
+    // Raised squares standing off a recessed grid — the pattern IS the strap.
+    return dir * face * r.depth * (pulse(u / r.pitch) * pulse(s / r.pitch) - 0.45);
+  }
+  if (r.kind === "grooves") {
+    const f = s / r.pitch - Math.floor(s / r.pitch);
+    return -dir * face * r.depth * Math.max(0, 1 - Math.abs(f - 0.5) * 5);
+  }
+  if (r.kind === "stitch") {
+    // A groove parallel to each edge with the stitches themselves raised in it.
+    const off = Math.abs(Math.abs(u) - (halfW - r.inset));
+    const line = Math.max(0, 1 - off * 2.2);
+    const bump = 0.5 + 0.5 * Math.cos((2 * Math.PI * s) / r.pitch);
+    return dir * face * r.depth * line * (bump * 1.6 - 0.9);
+  }
+  return 0;
+}
+
+/**
+ * The band's cross-section before relief. Leather is crowned — padded and
+ * domed on top, near flat underneath — which is why it cannot be the same
+ * superellipse as rubber or nylon.
+ * @param {number} a
+ * @param {number} halfW
+ * @param {number} halfT
+ * @param {string} kind
+ */
+function bandSection(a, halfW, halfT, kind) {
+  if (kind === "leather") {
+    // 1.2346 = 2 / (1 + 0.62): the flattened underside would otherwise make a
+    // "3.5 mm" strap 2.8 mm thick.
+    const p = superSection(a, halfW, halfT * 1.2346, 3.2);
+    if (p.v < 0) p.v *= 0.62;
+    return p;
+  }
+  return superSection(a, halfW, halfT, kind === "nylon" ? 8 : 5);
+}
+
+/** How far a section reaches BELOW its mid-line, as a fraction of halfT. */
+const SECTION_UNDERSIDE = { leather: 0.765 };
+
+/**
+ * A pin/tang buckle, modelled in the band's own plane so the strap runs
+ * through the opening the way it does on the wrist. Sized from `width`, which
+ * the caller reads off the taper AT THE POINT THE BUCKLE SITS — feedback #56
+ * asked for a buckle, and a buckle that is not the strap's width there is a
+ * worse answer than none.
+ * @param {number} width
+ * @param {number} thick
+ * @returns {Mesh}
+ */
+export function buckleMesh(width, thick) {
+  const m = emptyMesh();
+  const stock = Math.max(BUCKLE_STOCK.plate, thick * 0.55);
+  const bar = BUCKLE_STOCK.bar;
+  const innerW = width + 0.9;
+  const innerL = BUCKLE_STOCK.open;
+  for (const sx of [-1, 1]) {
+    mergeMesh(m, box(bar, stock, innerL + 2 * bar, [sx * (innerW / 2 + bar / 2), 0, 0]));
+  }
+  for (const sz of [-1, 1]) {
+    mergeMesh(m, box(innerW, stock, bar, [0, 0, sz * (innerL / 2 + bar / 2)]));
+  }
+  // The tongue, hinged on the rear bar and lying across the opening.
+  mergeMesh(m, box(BUCKLE_STOCK.tongue * 0.6, stock * 0.7, innerL * 0.94, [0, stock * 0.28, 0.3]));
+  return m;
+}
+
+/**
+ * A fold-over clasp: the cover plate plus the leaf under it, both swept along
+ * the wrist so they curve with it rather than sitting on it as a slab.
+ * @param {any} plan
+ * @param {number} width
+ * @param {number} q detail factor
+ * @returns {Mesh}
+ */
+function claspMesh(plan, width, q) {
+  const rp = bandRadius(plan);
+  const half = 13 / rp;
+  const cols = Math.max(8, Math.round(16 * q));
+  const cover = wristArcPath(plan, rp + plan.thick * 0.32, -Math.PI / 2 - half, -Math.PI / 2 + half);
+  const leaf = wristArcPath(plan, rp - plan.thick * 0.34, -Math.PI / 2 - half * 0.78, -Math.PI / 2 + half * 0.78);
+  const m = emptyMesh();
+  mergeMesh(
+    m,
+    sweepTube(cover, 0, cover.total, {
+      cols,
+      rowLen: 1.6 / q,
+      section: (a) => superSection(a, width / 2, plan.thick * 0.3, 6),
+    }),
+  );
+  mergeMesh(
+    m,
+    sweepTube(leaf, 0, leaf.total, {
+      cols,
+      rowLen: 1.6 / q,
+      section: (a) => superSection(a, width * 0.42, plan.thick * 0.22, 6),
+    }),
+  );
+  return m;
+}
+
+/**
+ * A keeper — the loop that holds the strap's tail down. Same material as the
+ * band on leather and rubber; a steel ring on a NATO.
+ * @param {number} width
+ * @param {number} thick
+ * @returns {Mesh}
+ */
+function keeperMesh(width, thick) {
+  const m = emptyMesh();
+  const t = 0.9;
+  const d = 2.6;
+  const halfW = width / 2 + 0.55;
+  const halfT = thick / 2 + 0.5;
+  mergeMesh(m, box(halfW * 2 + t * 2, t, d, [0, halfT + t / 2, 0]));
+  mergeMesh(m, box(halfW * 2 + t * 2, t, d, [0, -halfT - t / 2, 0]));
+  for (const sx of [-1, 1]) mergeMesh(m, box(t, halfT * 2, d, [sx * (halfW + t / 2), 0, 0]));
+  return m;
+}
+
+/**
+ * The leather display cylinder the watch is presented on — feedback #56's
+ * "make the default be that it is placed on a leather cylinder holder to
+ * simulate a wrist". Axis along X, capped, with a small chamfer at each end so
+ * the rim is not a razor edge.
+ * @param {any} caseEntry
+ * @param {any} strapEntry
+ * @param {{ segments?: number }} [opts]
+ * @returns {Mesh}
+ */
+export function wristMesh(caseEntry, strapEntry, opts) {
+  const plan = strapPlan(caseEntry, strapEntry || { kind: "leather", id: "leather" });
+  const w = wristAxis(plan);
+  const segs = Math.max(24, Math.round(((opts && opts.segments) || 96) * 0.6));
+  const len = Math.max(52, caseEntry.dims.dia * 2.2);
+  const half = len / 2;
+  const cham = 1.6;
+  /** @type {{ x: number, r: number }[]} */
+  const profile = [
+    { x: -half, r: 0 },
+    { x: -half, r: w.r - cham },
+    { x: -half + cham, r: w.r },
+    { x: half - cham, r: w.r },
+    { x: half, r: w.r - cham },
+    { x: half, r: 0 },
+  ];
+  const mesh = emptyMesh();
+  const cols = segs + 1;
+  for (const p of profile) {
+    for (let c = 0; c < cols; c++) {
+      const th = (c / segs) * Math.PI * 2;
+      const st = Math.sin(th);
+      const ct = Math.cos(th);
+      mesh.positions.push(p.x, w.cy + p.r * st, p.r * ct);
+      mesh.normals.push(0, st, ct);
+      mesh.uvs.push(c / segs, (p.x + half) / len);
+    }
+  }
+  // Cap and chamfer rows want their own normals; recompute them per row from
+  // the profile slope so the flat ends do not shade as part of the barrel.
+  for (let i = 0; i + 1 < profile.length; i++) {
+    const a = profile[i];
+    const b = profile[i + 1];
+    const dx = b.x - a.x;
+    const dr = b.r - a.r;
+    const l = Math.hypot(dx, dr) || 1;
+    const nx = -dr / l;
+    const nr = dx / l;
+    for (const row of [i, i + 1]) {
+      for (let c = 0; c < cols; c++) {
+        const idx = (row * cols + c) * 3;
+        const th = (c / segs) * Math.PI * 2;
+        // Only the flat/chamfer rows are overwritten; the barrel keeps its
+        // purely radial normal, which the two middle rows already have.
+        if (Math.abs(nx) < 0.01) continue;
+        mesh.normals[idx] = nx;
+        mesh.normals[idx + 1] = nr * Math.sin(th);
+        mesh.normals[idx + 2] = nr * Math.cos(th);
+      }
+    }
+  }
+  for (let i = 0; i + 1 < profile.length; i++) {
+    for (let c = 0; c < segs; c++) {
+      const a = i * cols + c;
+      const b = (i + 1) * cols + c;
+      mesh.indices.push(a, b, b + 1, a, b + 1, a + 1);
+    }
+  }
+  return mesh;
+}
+
+/**
+ * The material HINT per strap mesh. Geometry lives here; shading lives in
+ * watch-render.js — this is the seam between them, and the reason feedback
+ * #56's "leather shouldn't be shiny like a mirror" can be answered without the
+ * core knowing what a shader is.
+ * @param {any} strapEntry
+ */
+export function strapMaterialHint(strapEntry) {
+  const kind = !strapEntry
+    ? "leather"
+    : strapEntry.kind === "bracelet"
+      ? "steel"
+      : strapEntry.kind === "nato"
+        ? "nylon"
+        : strapEntry.kind;
+  const band =
+    kind === "steel"
+      ? { kind, color: (strapEntry && strapEntry.color) || "#9aa2ab", rough: 0.4, metal: 1, brush: true, useCaseFinish: true }
+      : kind === "leather"
+        ? { kind, color: (strapEntry && strapEntry.color) || "#4a3226", rough: 0.92, metal: 0, brush: false, useCaseFinish: false }
+        : kind === "rubber"
+          ? { kind, color: (strapEntry && strapEntry.color) || "#15171b", rough: 0.78, metal: 0, brush: false, useCaseFinish: false }
+          : { kind: "nylon", color: (strapEntry && strapEntry.color) || "#2b3038", rough: 0.88, metal: 0, brush: false, useCaseFinish: false };
+  return {
+    strap: band,
+    strapHardware: { kind: "steel", color: "#b6bec7", rough: 0.28, metal: 1, brush: false, useCaseFinish: true },
+    wrist: { kind: "leather", color: "#5b4231", rough: 0.94, metal: 0, brush: false, useCaseFinish: false },
+  };
+}
+
+/**
+ * Build every strap mesh for one build in one pass: the band, its hardware and
+ * the wrist cylinder. `strapMesh` and `strapHardwareMesh` are thin readers of
+ * this so a caller that wants only one still pays for one construction.
+ * @param {any} caseEntry
+ * @param {any} strapEntry
+ * @param {{ segments?: number, wrist?: boolean }} [opts]
+ */
+export function strapAssembly(caseEntry, strapEntry, opts) {
+  const showWrist = !(opts && opts.wrist === false);
+  const materials = strapMaterialHint(strapEntry);
+  const band = emptyMesh();
+  const hardware = emptyMesh();
+  if (!strapEntry || !caseEntry || !caseEntry.dims) {
+    return { band, hardware, wrist: emptyMesh(), materials, wristInfo: { show: false, r: 0, cy: 0, len: 0 }, plan: null };
+  }
+  const plan = strapPlan(caseEntry, strapEntry);
+  const q = Math.max(0.25, Math.min(1, ((opts && opts.segments) || 96) / 96));
+  const w = wristAxis(plan);
+  const lugW = plan.lugW;
+  const bandCols = Math.max(10, Math.round(26 * q));
+  const reliefPitch = plan.weave ? plan.weave.s : plan.relief ? plan.relief.pitch : 0;
+  const rowLen = (reliefPitch ? Math.min(1, reliefPitch / 2.5) : 1.15) / q;
+
+  /** Width at arc length `s` on a path of length `total`, from the taper. */
+  const widthOn = (/** @type {number} */ s, /** @type {number} */ total) =>
+    lugW * (1 - plan.taper * Math.max(0, Math.min(1, total > 0 ? s / total : 0)));
+  const thickOn = (/** @type {number} */ s, /** @type {number} */ total) =>
+    plan.thick + (plan.thickEnd - plan.thick) * Math.max(0, Math.min(1, total > 0 ? s / total : 0));
+
+  /** @param {StrapPath} path @param {number} s0 @param {number} s1 */
+  const contBand = (path, s0, s1) =>
+    sweepTube(path, s0, s1, {
+      cols: bandCols,
+      rowLen,
+      section: (a, _t, s) => {
+        const halfW = widthOn(s, path.total) / 2;
+        const halfT = thickOn(s, path.total) / 2;
+        const p = bandSection(a, halfW, halfT, plan.section);
+        p.v += bandRelief(plan, p.u, halfW, p.v, halfT, s);
+        // A leather strap thins toward the buckle, and a crowned section does
+        // not reach as far below its mid-line as above it. The path is one
+        // fixed radius, so both come off the OUTSIDE — otherwise the strap
+        // lifts off the wrist exactly where it should still be touching.
+        const under = (SECTION_UNDERSIDE[/** @type {keyof typeof SECTION_UNDERSIDE} */ (plan.section)] || 1) * halfT;
+        p.v -= plan.thick / 2 - under;
+        return p;
+      },
+    });
+
+  /** @param {StrapPath} path @param {number} usable */
+  const linkBand = (path, usable) => {
+    const cols = plan.cols || [];
+    const filled = cols.reduce((/** @type {number} */ a, /** @type {any} */ c) => a + c.w, 0);
+    const gapEach = cols.length > 1 ? Math.max(0, 1 - filled) / (cols.length - 1) : 0;
+    /** @type {number[]} */
+    const centres = [];
+    let acc = -0.5;
+    for (const c of cols) {
+      centres.push(acc + c.w / 2);
+      acc += c.w + gapEach;
+    }
+    const secCols = Math.max(6, Math.round(10 * q));
+    const rows = Math.max(1, Math.floor(usable / plan.pitch));
+    for (let ci = 0; ci < cols.length; ci++) {
+      const c = cols[ci];
+      for (let ri = 0; ri < rows; ri++) {
+        const s0 = ri * plan.pitch + (c.offset || 0) * plan.pitch;
+        const s1 = s0 + plan.pitch - plan.gap;
+        if (s1 > usable) continue;
+        mergeMesh(
+          band,
+          sweepTube(path, s0, s1, {
+            cols: secCols,
+            rowLen: Math.max(1, (s1 - s0) / 3),
+            section: (a, _t, s) => {
+              const total = widthOn(s, path.total);
+              const p = superSection(a, (total * c.w) / 2, (plan.thick * (c.h == null ? 1 : c.h)) / 2, c.n);
+              p.u += centres[ci] * total;
+              return p;
+            },
+          }),
+        );
+      }
+    }
+  };
+
+  if (plan.build === "nato") {
+    // The construction that makes a NATO a NATO: ONE strip through both spring
+    // bars and under the case, with a short second layer folded back OVER it,
+    // so the watch rides two nylon layers proud of the wrist.
+    const anchor = lugAnchor(caseEntry);
+    const lugZ = anchor.z;
+    const lugY = anchor.y;
+    const under = -(plan.thick * 1.5 + 0.35);
+    /** @type {{ z: number, y: number }[]} */
+    const bridge = [];
+    for (let i = 0; i <= 26; i++) {
+      const u = i / 26;
+      bridge.push({ z: lugZ * (1 - 2 * u), y: under + (lugY - under) * Math.pow(Math.abs(2 * u - 1), 2.2) });
+    }
+    const bp = polyPath(bridge, 0, 1);
+    mergeMesh(band, contBand(bp, 0, bp.total));
+    // The folded-back flap, lying between the main strip and the case back and
+    // running out past the 12 o'clock lug where it ends free.
+    const flapY = -(plan.thick * 0.5 + 0.15);
+    const fp = polyPath(
+      [
+        { z: lugZ * 0.32, y: flapY },
+        { z: -lugZ - 4, y: flapY },
+      ],
+      0,
+      1,
+    );
+    mergeMesh(
+      band,
+      sweepTube(fp, 0, fp.total, {
+        cols: bandCols,
+        rowLen: 2 / q,
+        section: (a) => bandSection(a, (lugW - 0.6) / 2, plan.thick / 2, plan.section),
+      }),
+    );
+  }
+
+  const armPlus = strapPath(caseEntry, plan, 1, 0);
+  const armMinus = strapPath(caseEntry, plan, -1, 0);
+  const claspArc = plan.close === "clasp" ? 13.5 : 0;
+
+  if (plan.build === "links") {
+    linkBand(armPlus, Math.max(plan.pitch, armPlus.total - claspArc));
+    linkBand(armMinus, Math.max(plan.pitch, armMinus.total - claspArc));
+  } else {
+    const buckleGap = plan.close === "buckle" ? 8 : claspArc;
+    mergeMesh(band, contBand(armPlus, 0, armPlus.total));
+    mergeMesh(band, contBand(armMinus, 0, Math.max(1, armMinus.total - buckleGap)));
+  }
+
+  if (plan.close === "clasp") {
+    mergeMesh(hardware, claspMesh(plan, widthOn(armMinus.total, armMinus.total) + 0.5, q));
+  } else {
+    // The buckle sits at the 12 o'clock arm's end, at the width the taper
+    // leaves the strap there — feedback #56 asked for a buckle, and one that
+    // is not the strap's width where it sits is worse than none.
+    const at = Math.max(0, armMinus.total - 4);
+    const endW = widthOn(at, armMinus.total);
+    const endT = thickOn(at, armMinus.total);
+    mergeMesh(hardware, placeOnPath(buckleMesh(endW, endT), armMinus.at(at)));
+    // The free tail: through the buckle and back over the other arm, so it
+    // runs one thickness further out, with the keepers wrapping it there.
+    const tail = wristArcPath(plan, bandRadius(plan) + plan.thick * 0.95, -Math.PI / 2 + 0.04, -Math.PI / 2 - 0.62);
+    mergeMesh(
+      band,
+      sweepTube(tail, 0, tail.total, {
+        cols: bandCols,
+        rowLen,
+        section: (a, _t, s) => {
+          const p = bandSection(a, endW / 2, endT / 2, plan.section);
+          p.v += bandRelief(plan, p.u, endW / 2, p.v, endT / 2, s + armPlus.total);
+          return p;
+        },
+      }),
+    );
+    for (let k = 0; k < plan.keepers; k++) {
+      const s = tail.total - 3.5 - k * 5.5;
+      if (s < 0.5) continue;
+      const km = placeOnPath(keeperMesh(endW, endT), tail.at(s));
+      // A NATO's keepers are steel rings; a leather or rubber keeper is a loop
+      // of the strap's own material and belongs to the band.
+      mergeMesh(plan.section === "nylon" ? hardware : band, km);
+    }
+  }
+
+  const wristInfo = {
+    show: showWrist,
+    r: w.r,
+    cy: w.cy,
+    len: Math.max(52, caseEntry.dims.dia * 2.2),
+  };
+  return {
+    band,
+    hardware,
+    wrist: showWrist ? wristMesh(caseEntry, strapEntry, opts) : emptyMesh(),
+    materials,
+    wristInfo,
+    plan,
+  };
+}
+
+/**
+ * The strap or bracelet band — the part made of the strap's own material.
+ * Kept as its own export because that is what the renderer draws with the
+ * strap material; the buckle/clasp comes back from strapHardwareMesh.
+ * @param {any} caseEntry
+ * @param {any} strapEntry
+ * @param {{ segments?: number }} [opts]
+ * @returns {Mesh}
+ */
+export function strapMesh(caseEntry, strapEntry, opts) {
+  if (!strapEntry) return emptyMesh();
+  return strapAssembly(caseEntry, strapEntry, opts).band;
+}
+
+/**
+ * The strap's METAL: a pin/tang buckle on leather, rubber and NATO, a
+ * fold-over clasp on a bracelet, plus a NATO's keeper rings. Always steel.
+ * @param {any} caseEntry
+ * @param {any} strapEntry
+ * @param {{ segments?: number }} [opts]
+ * @returns {Mesh}
+ */
+export function strapHardwareMesh(caseEntry, strapEntry, opts) {
+  if (!strapEntry) return emptyMesh();
+  return strapAssembly(caseEntry, strapEntry, opts).hardware;
 }
 
 // ---------------------------------------------------------------------------
@@ -6259,7 +7400,7 @@ export function bezelLayout(insert) {
 
 /**
  * @param {Record<string, string> | null | undefined} build
- * @param {{ segments?: number }} [opts]
+ * @param {{ segments?: number, wrist?: boolean }} [opts]
  */
 export function buildMeshes(build, opts) {
   const segments = (opts && opts.segments) || 96;
@@ -6494,10 +7635,30 @@ export function buildMeshes(build, opts) {
     ),
   );
 
-  const strap = strapMesh(cs, parts.strap);
+  // Strap, hardware and the wrist cylinder. The cylinder is the DEFAULT
+  // presentation (feedback #56); buildMeshes(build, { wrist: false }) drops it.
+  // See the renderer contract above strapMesh for what each key is for.
+  const strapKit = strapAssembly(cs, parts.strap, {
+    segments,
+    wrist: !(opts && opts.wrist === false),
+  });
 
   return {
-    meshes: { case: caseMesh, lugs, crown, dial, chapterRing, insert, crystal, caseback, strap },
+    meshes: {
+      case: caseMesh,
+      lugs,
+      crown,
+      dial,
+      chapterRing,
+      insert,
+      crystal,
+      caseback,
+      strap: strapKit.band,
+      strapHardware: strapKit.hardware,
+      wrist: strapKit.wrist,
+    },
+    strapMaterials: strapKit.materials,
+    wrist: strapKit.wristInfo,
     crownTransform,
     hands,
     geo,
