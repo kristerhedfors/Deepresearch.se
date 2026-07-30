@@ -158,7 +158,16 @@ vec3 studio(vec3 R, float rough) {
   float d = max(abs(dot(R, ku)) * 0.62, abs(dot(R, kv)));
   float hw = mix(uScene.z, 0.85, rough);
   float soft = mix(0.03, 0.70, rough);
-  c += uKeyCol * (1.0 - smoothstep(hw, hw + soft, d)) * step(0.0, dot(R, kd));
+  // Blurring a source spreads its power over a wider solid angle, so its
+  // RADIANCE has to fall by the same factor. Widening the box with roughness
+  // and leaving it just as bright was adding energy in proportion to how
+  // rough the surface was, which is most of why a brushed steel bracelet came
+  // out as white plastic while the curved case beside it stayed legible: a
+  // flat link face sits squarely in the box and has no curvature to roll the
+  // reflection off with. (softboxEnergy in watch-materials.js is the same
+  // formula, unit-tested.)
+  float boxE = (uScene.z * uScene.z) / (hw * hw);
+  c += uKeyCol * boxE * (1.0 - smoothstep(hw, hw + soft, d)) * step(0.0, dot(R, kd));
   return c;
 }
 
@@ -196,15 +205,32 @@ vec2 envBRDF(float rough, float NoV) {
   return vec2(-1.04, 1.04) * a004 + r.zw;
 }
 
+// One light's specular. amin is the SOURCE'S OWN angular size: every light
+// in this rig is an area source — a softbox, a bounce card, a strip — and a
+// directional light with a normalised GGX lobe is a delta source whose peak
+// is unbounded. On a curved case only a thin band ever sits at that peak; on
+// the flat, near-parallel faces of a bracelet link the whole face does at
+// once, and it clipped to white. Widening the lobe to the source and scaling
+// by the ratio of the two lobes' areas MOVES that energy instead of adding
+// it, so a mirror's highlight now comes from the environment (which carries
+// the source's real radiance) and the analytic lights supply shape.
+// (lobeEnergy in watch-materials.js is the same formula, unit-tested.)
 vec3 lobe(vec3 N, vec3 V, vec3 T, vec3 B, vec3 L, vec3 col, vec3 f0,
-          float at, float ab, float NoV) {
+          float at, float ab, float amin, float NoV) {
   float NoL = dot(N, L);
   if (NoL <= 0.0) return vec3(0.0);
+  // max(), not a quadrature sum: this way a surface already rougher than the
+  // source is left EXACTLY untouched rather than approximately so, which is
+  // what guarantees that leather, rubber and nylon — the half of the same
+  // frame that was already judged correct — cannot move at all.
+  float at2 = max(at, amin);
+  float ab2 = max(ab, amin);
+  float energy = (at * ab) / (at2 * ab2);
   vec3 H = normalize(L + V);
   float NoH = max(dot(N, H), 0.0);
   float VoH = max(dot(V, H), 0.0);
-  return col * NoL * dGGX(NoH, dot(T, H), dot(B, H), at, ab)
-       * vSmith(NoV, NoL, sqrt(at * ab)) * fSchlick(f0, VoH);
+  return col * NoL * energy * dGGX(NoH, dot(T, H), dot(B, H), at2, ab2)
+       * vSmith(NoV, NoL, sqrt(at2 * ab2)) * fSchlick(f0, VoH);
 }
 
 // The mark struck into a signed crown: a raised ring with six teeth around a
@@ -319,15 +345,11 @@ void main() {
   vec3 fd = normalize(uFillDir);
   vec3 rd = normalize(uRimDir);
 
-  // The lights have SIZE. Flooring the lobe width is the cheap stand-in for
-  // that, and without it a polished case under a directional light shows a
-  // one-pixel firefly instead of a softbox.
-  float atK = max(at, 0.012), abK = max(ab, 0.012);
-  float atF = max(at, 0.050), abF = max(ab, 0.050);
-
-  vec3 spec = lobe(N, V, T, B, kd, uKeyCol, f0, atK, abK, NoV)
-            + lobe(N, V, T, B, fd, uFillCol, f0, atF, abF, NoV)
-            + lobe(N, V, T, B, rd, uRimCol, f0, atF, abF, NoV);
+  // How big each source is, in lobe-width units: the softbox is large, the
+  // bounce card larger still, the rim strip in between.
+  vec3 spec = lobe(N, V, T, B, kd, uKeyCol, f0, at, ab, 0.25, NoV)
+            + lobe(N, V, T, B, fd, uFillCol, f0, at, ab, 0.50, NoV)
+            + lobe(N, V, T, B, rd, uRimCol, f0, at, ab, 0.42, NoV);
 
   float NoLk = max(dot(N, kd), 0.0);
   vec3 irr = uKeyCol * NoLk
@@ -354,8 +376,8 @@ void main() {
   if (uMat2.x > 0.0) {
     float ca = max(uMat2.y * uMat2.y, 0.002);
     vec3 cf0 = vec3(0.04);
-    vec3 cs = lobe(N, V, T, B, kd, uKeyCol, cf0, ca, ca, NoV)
-            + lobe(N, V, T, B, fd, uFillCol, cf0, max(ca, 0.04), max(ca, 0.04), NoV);
+    vec3 cs = lobe(N, V, T, B, kd, uKeyCol, cf0, ca, ca, 0.25, NoV)
+            + lobe(N, V, T, B, fd, uFillCol, cf0, ca, ca, 0.50, NoV);
     vec2 cb = envBRDF(uMat2.y, NoV);
     cs += studio(R, uMat2.y) * (cf0 * cb.x + vec3(cb.y)) * 0.8;
     color = color * (1.0 - 0.06 * uMat2.x) + cs * uMat2.x;
@@ -1551,7 +1573,7 @@ export function mountWatch(canvas, opts) {
     gl.uniform3fv(loc.uSky, lumeMode ? [0.02, 0.026, 0.045] : [0.60, 0.67, 0.82]);
     gl.uniform3fv(loc.uGround, lumeMode ? [0.004, 0.005, 0.009] : [0.055, 0.052, 0.058]);
     // exposure, lights-out, softbox half-width, floor bounce
-    gl.uniform4f(loc.uScene, lumeMode ? 1.7 : 1.12, lumeMode, 0.34, 0.9);
+    gl.uniform4f(loc.uScene, lumeMode ? 1.7 : 1.12, lumeMode, 0.30, 0.9);
 
     const p = state.parts;
     const M = state.mats;
