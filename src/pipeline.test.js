@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { isTransientConnectStatus, contextOverflowMessage } from "./answer-stream.js";
 import { collectConflicts } from "./pipeline-inputs.js";
-import { searchPolicyFor } from "./pipeline.js";
+import { searchPolicyFor, subquestionsAreIndependent } from "./pipeline.js";
 import { looksLikeClarifyTurn, normalizeTriage } from "./triage.js";
 import { lastAssistantText } from "./conversation.js";
 
@@ -211,6 +211,75 @@ describe("normalizeTriage — decomposition fields (complexity, subquestions)", 
   test("omits both fields when absent — the pre-decomposition shape exactly", () => {
     const result = normalizeTriage({ action: "research", queries: ["real query"] }, "x");
     assert.deepEqual(result, { action: "research", queries: ["real query"] });
+  });
+
+  test("carries a valid decomposition value", () => {
+    for (const shape of ["independent", "sequential"]) {
+      const result = normalizeTriage(
+        { action: "research", queries: ["q"], decomposition: shape },
+        "x",
+      );
+      assert.equal(result.decomposition, shape, shape);
+    }
+  });
+
+  test("drops an unknown decomposition value instead of carrying junk", () => {
+    const result = normalizeTriage(
+      { action: "research", queries: ["q"], decomposition: "parallel-ish" },
+      "x",
+    );
+    assert.equal("decomposition" in result, false);
+  });
+
+  test("a Swedish research turn carries the shape fields the same way", () => {
+    // Invariant 6 in spirit: the classifier is a model field rather than a
+    // regex gate, but a Swedish request must reach the fan-out gate with the
+    // same shape as an English one — no language-dependent drop-out.
+    const result = normalizeTriage(
+      {
+        action: "research",
+        queries: ["jämför elbilar"],
+        complexity: "comparison",
+        subquestions: ["Vad kostar en Volvo EX30?", "Vad kostar en Tesla Model 3?"],
+        decomposition: "independent",
+      },
+      "jämför elbilar",
+    );
+    assert.equal(result.decomposition, "independent");
+    assert.equal(subquestionsAreIndependent(result), true);
+  });
+});
+
+describe("subquestionsAreIndependent — the fan-out shape gate", () => {
+  test("the classifier decides when it spoke", () => {
+    assert.equal(subquestionsAreIndependent({ decomposition: "independent" }), true);
+    assert.equal(subquestionsAreIndependent({ decomposition: "sequential" }), false);
+  });
+
+  test("a sequential verdict overrides a fan-out-friendly complexity", () => {
+    // The whole point of asking directly: a survey whose angles build on each
+    // other used to fan out purely because "survey" was the proxy.
+    assert.equal(
+      subquestionsAreIndependent({ complexity: "survey", decomposition: "sequential" }),
+      false,
+    );
+  });
+
+  test("multihop is refused even when the classifier claims independence", () => {
+    // Hop 2 cannot be searched until hop 1 surfaces the bridging fact, so a
+    // concurrent audit of it audits an unanswerable question.
+    assert.equal(
+      subquestionsAreIndependent({ complexity: "multihop", decomposition: "independent" }),
+      false,
+    );
+  });
+
+  test("falls back to the complexity proxy when the field is absent", () => {
+    assert.equal(subquestionsAreIndependent({ complexity: "comparison" }), true);
+    assert.equal(subquestionsAreIndependent({ complexity: "survey" }), true);
+    assert.equal(subquestionsAreIndependent({ complexity: "multihop" }), false);
+    assert.equal(subquestionsAreIndependent({ complexity: "simple" }), false);
+    assert.equal(subquestionsAreIndependent({}), false);
   });
 
   test("drops an unknown complexity value instead of carrying junk", () => {

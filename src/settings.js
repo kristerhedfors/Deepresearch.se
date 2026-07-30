@@ -56,7 +56,7 @@ import {
  * `google_maps` — src/extensions.js), plus the account's persisted
  * `chat_mode` — the one non-boolean setting, and the reason the boolean-only
  * key list (KNOB_KEYS) is kept separate from this shape.
- * @typedef {{ bash_lite_mcp: boolean, chat_mode: string } & Record<string, any>} Settings
+ * @typedef {{ bash_lite_mcp: boolean, memory: boolean, chat_mode: string } & Record<string, any>} Settings
  */
 /**
  * What the server can offer this identity right now (see featureAvailability):
@@ -94,7 +94,14 @@ import {
 // and the name of the availability gate. Three jobs, one boolean, mirrored in
 // three stores. Now the MODE is stored and everything is derived from it; see
 // public/js/chat-mode-core.js for the table and the resolution rules.
-const CORE_DEFAULTS = { bash_lite_mcp: false };
+//  - memory: default OFF (opt-in — builds the account's durable note graph
+//    from finished turns and keeps it server-side; src/memory.js,
+//    docs/ACCOUNT-MEMORY.md). Off by default because it is the one knob that
+//    creates a NEW long-lived record of what a person researched, distilled
+//    and linked; the tier already stores conversations, but a memory note
+//    outlives the chat it came from and is far easier to read at a glance.
+//    Se/rver-tier only, and never written for an incognito turn.
+const CORE_DEFAULTS = { bash_lite_mcp: false, memory: false };
 /** @type {Record<string, boolean>} */
 const KNOB_DEFAULTS = { ...extensionSettingDefaults(), ...CORE_DEFAULTS };
 /**
@@ -290,6 +297,22 @@ export function extensionEnabledMap(env, identity) {
 export function bashLiteEnabled(env, identity) {
   if (!featureAvailability(env, identity).bash_lite) return false;
   return identity?.user ? getSettings(identity).bash_lite_mcp : true;
+}
+
+/**
+ * Whether this turn should feed the account's memory (src/memory.js).
+ *
+ * Unlike the knobs above there is NO break-glass fallback to `true`: memory is
+ * account-scoped durable state, so an identity without a user row has nowhere
+ * to put it and no business writing under a shared operational credential.
+ * A missing D1 binding also means no, since there would be nothing to write to.
+ * @param {Env} env
+ * @param {Identity} identity
+ * @returns {boolean}
+ */
+export function memoryEnabled(env, identity) {
+  if (!env?.DB || !identity?.user) return false;
+  return getSettings(identity).memory === true;
 }
 
 // Whether this identity may use the non-normal chat modes at all. The whole

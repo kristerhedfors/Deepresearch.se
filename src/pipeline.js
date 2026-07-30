@@ -178,6 +178,7 @@ import {
  *   quiz?: object,
  *   complexity?: string | null,
  *   subquestions?: string[],
+ *   decomposition?: string | null,
  *   conflicts?: string[],
  *   notes?: object[],
  *   notesCursor?: number,
@@ -727,6 +728,10 @@ async function runTriage(ctx) {
   // the time budget for simple questions (budget.js applyComplexityToPlan).
   state.complexity = decision.complexity || null;
   state.subquestions = decision.subquestions || [];
+  // Task SHAPE, which decides whether splitting the work helps at all
+  // (docs/AGENTIC-GRAPHS.md §5.2). Null when the model omitted it — the
+  // fan-out gate then infers it from `complexity`, exactly as before.
+  state.decomposition = decision.decomposition || null;
   applyComplexityToPlan(state.plan, state.complexity);
   const kindTag =
     state.complexity && state.complexity !== "simple" ? ` · ${state.complexity}` : "";
@@ -1502,12 +1507,39 @@ async function runSourceResearch(ctx) {
 // and no queries means the phase quietly did nothing.
 const MAX_FANOUT_SUBQUESTIONS = 4;
 const FANOUT_QUERIES_PER_SUBQUESTION = 2;
+
+/**
+ * May this request's sub-questions be audited CONCURRENTLY? Task shape decides,
+ * not difficulty (docs/AGENTIC-GRAPHS.md §3): parallelising decomposable work
+ * pays, and parallelising dependency-ordered work costs — so the wrong answer
+ * here is expensive in both directions.
+ *
+ * Triage now answers it directly via `decomposition`, which is why this
+ * function exists. When that field is absent (older model output, a schema
+ * miss, or a lenient-extraction path that dropped it) it falls back to
+ * inferring shape from `complexity` — the comparison/survey proxy the phase
+ * used before the field existed, so behaviour degrades to exactly what it was.
+ *
+ * `multihop` is refused on BOTH paths regardless of what the classifier said:
+ * hop 2's query needs a bridging fact from hop 1's sources, so a concurrent
+ * audit of hop 2 is auditing a question that cannot be searched yet. That is
+ * runGapChecks's serial rounds' job, and a classifier that says otherwise is
+ * wrong rather than permissive.
+ * @param {{complexity?: string | null, decomposition?: string | null}} state
+ * @returns {boolean}
+ */
+export function subquestionsAreIndependent(state) {
+  if (state.complexity === "multihop") return false;
+  if (state.decomposition === "independent") return true;
+  if (state.decomposition === "sequential") return false;
+  return state.complexity === "comparison" || state.complexity === "survey";
+}
 /** @param {PipelineCtx} ctx */
 async function runSubquestionFanout(ctx) {
   const { log, state, reinforceJsonOnly, lastUser, convText } = ctx;
   const plan = state.plan;
   if (!wantsSubqFanout(plan)) return;
-  if (state.complexity !== "comparison" && state.complexity !== "survey") return;
+  if (!subquestionsAreIndependent(state)) return;
   const subqs = (state.subquestions || []).slice(0, MAX_FANOUT_SUBQUESTIONS);
   if (subqs.length < 2) return;
   if (state.searchCount >= plan.maxSearches) return;

@@ -112,6 +112,27 @@ CREATE TABLE IF NOT EXISTS tokemon_saves (
   save_json TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
+-- ACCOUNT MEMORY (src/memory.js): the durable, linked notes an account builds
+-- across conversations, stored in the shape Obsidian uses so the export is a
+-- layout rather than a conversion. One row per note; (user_id, slug) is the
+-- identity a re-mention merges into. links_json holds note slugs — the
+-- graph's edges live here rather than in a join table because a note carries
+-- at most MAX_LINKS_PER_NOTE of them and they are only ever read with the
+-- note itself. Se/rver-tier only, opt-in, never written for an incognito turn,
+-- and deleted outright by the reset button (docs/ACCOUNT-MEMORY.md).
+CREATE TABLE IF NOT EXISTS memory_notes (
+  user_id TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  title TEXT NOT NULL,
+  type TEXT NOT NULL,
+  body TEXT NOT NULL,
+  links_json TEXT NOT NULL,
+  tags_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, slug)
+);
+CREATE INDEX IF NOT EXISTS idx_memory_notes_user_updated ON memory_notes(user_id, updated_at DESC);
 -- The space-animations showcase's gallery feedback (src/space.js). The /space/
 -- page is public, so rows deliberately carry NO identity column: scene id +
 -- verdict + a clamped short comment is the whole record.

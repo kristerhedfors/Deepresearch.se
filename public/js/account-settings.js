@@ -188,6 +188,18 @@ export async function loadSettingsView(ctx) {
       <p class="muted setting-note">Share your own local model with other people, or use
         someone else's. Both directions ask you first, once per person, and remember the answer.</p>
     </div>
+    <!-- Same treatment, same reason: memory is a switch, a browsable store of
+         what has been remembered, and two actions (download the vault, wipe
+         it) — a screen rather than a knob. -->
+    <div class="settings-item">
+      <div class="settings-row">
+        <span class="settings-label">Memory</span>
+        <button id="memorysettingsbtn" type="button">Open</button>
+      </div>
+      <p class="muted setting-note">Keep linked notes from what you research, so later
+        questions build on earlier ones — and download the lot as an Obsidian vault.
+        Off until you switch it on.</p>
+    </div>
     <!-- Same treatment, same reason: the MCP server is a credential, a tool
          list and a spend dial, which is a screen rather than a knob. -->
     <div class="settings-item">
@@ -205,6 +217,7 @@ export async function loadSettingsView(ctx) {
     ${note ? `<p class="muted setting-note">${note}</p>` : ""}`;
   document.getElementById("settingsbackbtn").addEventListener("click", () => ctx.show("summary"));
   document.getElementById("llmsharingbtn")?.addEventListener("click", () => ctx.show("llmsharing"));
+  document.getElementById("memorysettingsbtn")?.addEventListener("click", () => ctx.show("memory"));
   document.getElementById("mcpsettingsbtn")?.addEventListener("click", () => ctx.show("mcp"));
   wireSettingPopovers(ctx.body);
   wireSandboxKnob(ctx);

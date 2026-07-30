@@ -26,6 +26,7 @@ import { arrayOf, boolean, object, oneOf, string, stringEnum, validate } from ".
  *   queries: string[],
  *   complexity?: string,
  *   subquestions?: string[],
+ *   decomposition?: string,
  *   quiz?: boolean,
  * }} ResearchDecision
  */
@@ -61,9 +62,14 @@ export const TRIAGE_SCHEMA = oneOf([
       // pre-decomposition flow.
       complexity: stringEnum(["simple", "multihop", "comparison", "survey"]),
       subquestions: arrayOf(string({ allowEmpty: false })),
+      // Task SHAPE, asked separately from difficulty (docs/AGENTIC-GRAPHS.md
+      // §5.2): can the sub-questions be researched in parallel, or does one
+      // need another's answer first? Absent = fall back to inferring it from
+      // `complexity`, which is what the pipeline did before this field existed.
+      decomposition: stringEnum(["independent", "sequential"]),
       quiz: boolean(),
     },
-    /** @type {any} */ ({ optional: ["queries", "complexity", "subquestions", "quiz"] }),
+    /** @type {any} */ ({ optional: ["queries", "complexity", "subquestions", "decomposition", "quiz"] }),
   ),
 ]);
 export const GAP_SCHEMA = object(
@@ -215,6 +221,9 @@ export function normalizeTriage(triage, lastUser, priorUser = "", { priorWasClar
         .map((/** @type {string} */ s) => s.trim())
         .slice(0, 5);
       if (subs.length) out.subquestions = subs;
+      if (["independent", "sequential"].includes(triage.decomposition)) {
+        out.decomposition = triage.decomposition;
+      }
       return out;
     }
   }
