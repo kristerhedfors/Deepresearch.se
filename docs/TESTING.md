@@ -711,6 +711,23 @@ suite only ever ran against a deployment:
   back into `process.env.BASE_URL`, which fixes that and the nine other specs
   reading the same variable.
 
+> **A mid-run `wrangler dev` exit reads as four unrelated failures** (observed
+> 2026-07-30, PR #343, run 30552749008). The dev server printed its shutdown
+> line — `🪵 Logs were written to …/wrangler-*.log` — after 59 passing tests,
+> and the remaining four failed together: three with
+> `net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8787/` in ~1.1 s each, and
+> one already in flight that burned its full 30 s timeout waiting for a
+> `.stats` element on a page whose server had gone. The 30 s timeout is the
+> misleading part: it reads like a slow assertion or a real UI regression, and
+> it is neither. **Diagnose by the shutdown line, not by the failure list** —
+> `grep 'Logs were written to' the job log and check whether it lands before
+> the failures. When it does, the failures are collateral and the suite proved
+> nothing about the diff. The tell that it is infrastructure rather than the
+> change under test: the run in question altered only `MERGED-BRANCHES.md` and
+> the three generated artifacts, so its application code was byte-identical to
+> the `main` commit whose e2e run had passed minutes earlier. Re-running the
+> job is the correct response; there is no fix to write.
+
 ### Remote — against the deployed site or a branch preview
 
 Set `BASE_URL` plus the break-glass credentials (`BASIC_AUTH_USER` /
