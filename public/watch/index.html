@@ -57,6 +57,9 @@
 
     .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: .85rem .9rem; }
     .panel + .panel { margin-top: .8rem; }
+    .panel.wide { margin-top: 0; }
+    .panel.wide #sourcing { column-gap: 1.6rem; }
+    @media (min-width: 901px) { .panel.wide #sourcing { columns: 2; } .panel.wide .src { break-inside: avoid; } }
     .panel h2 { font-size: .78rem; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin: 0 0 .6rem; }
 
     .slot { border-top: 1px solid var(--border); padding: .6rem 0 .2rem; }
@@ -71,7 +74,72 @@
     }
     .chip:hover { border-color: var(--accent); }
     .chip.on { border-color: var(--accent); color: var(--accent); background: rgba(127,180,238,.1); }
+    .chip.none { border-style: dashed; color: var(--muted); }
+    .chip.none.on { color: var(--accent); border-style: dashed; }
     .sw { width: .72rem; height: .72rem; border-radius: 50%; border: 1px solid rgba(255,255,255,.35); flex: none; }
+
+    /* Options that do not fit the rest of the build are never hidden — they go
+       behind a disclosure marked with a warning symbol, each with the reason
+       it clashes (feedback #56). Picking one anyway is allowed; the warning
+       then stays on the slot. */
+    details.clash { margin-top: .4rem; }
+    details.clash > summary {
+      list-style: none; cursor: pointer; font-size: .74rem; color: var(--warn);
+      border: 1px solid rgba(216,168,96,.4); border-radius: 999px;
+      padding: .22rem .6rem; display: inline-flex; align-items: center; gap: .3rem;
+    }
+    details.clash > summary::-webkit-details-marker { display: none; }
+    details.clash > summary:hover { border-color: var(--warn); }
+    details.clash[open] > summary { background: rgba(216,168,96,.1); }
+    .clashlist { display: flex; flex-direction: column; gap: .3rem; margin-top: .45rem; }
+    .clashopt {
+      text-align: left; background: var(--panel-2); border: 1px solid rgba(216,168,96,.3);
+      color: var(--text); border-radius: 10px; padding: .34rem .55rem; cursor: pointer; width: 100%;
+    }
+    .clashopt:hover { border-color: var(--warn); }
+    .clashopt.on { border-color: var(--warn); background: rgba(216,168,96,.12); }
+    .clashopt .n { font-size: .76rem; display: flex; align-items: center; gap: .34rem; }
+    .clashopt .why { display: block; font-size: .7rem; color: var(--muted); margin-top: .12rem; line-height: 1.35; }
+    .slot > .warnpick { font-size: .72rem; color: var(--warn); margin-top: .38rem; line-height: 1.35; }
+    .slot > .label .pick.bad { color: var(--warn); }
+
+    .chip.soft { border-color: rgba(216,168,96,.45); }
+    .chip.soft.on { color: var(--warn); border-color: var(--warn); background: rgba(216,168,96,.1); }
+
+    /* The orthogonal axes: one disclosure per group, so the picker still opens
+       on the eleven decisions a build is made of (feedback #56). */
+    .axeshead { margin-top: 1rem !important; padding-top: .8rem; border-top: 1px solid var(--border); }
+    details.axes { border-top: 1px solid var(--border); }
+    details.axes > summary {
+      list-style: none; cursor: pointer; font-size: .78rem; color: var(--text);
+      padding: .5rem 0; display: flex; align-items: center; gap: .35rem;
+    }
+    details.axes > summary::-webkit-details-marker { display: none; }
+    details.axes > summary::before { content: "▸"; font-size: .7em; color: var(--muted); }
+    details.axes[open] > summary::before { content: "▾"; }
+    details.axes > summary:hover { color: var(--accent); }
+    .axesbody { padding: 0 0 .5rem .6rem; border-left: 1px solid var(--border); margin-left: .25rem; }
+    .axesbody .slot:first-of-type { border-top: 0; padding-top: 0; }
+
+    .txtslot { display: flex; gap: .4rem; align-items: center; }
+    .txtslot input {
+      flex: 1; min-width: 0; background: var(--panel-2); border: 1px solid var(--border);
+      color: var(--text); border-radius: 9px; padding: .32rem .55rem; font-size: .78rem;
+    }
+    .txtslot input:focus { outline: none; border-color: var(--accent); }
+    .txtslot .count { color: var(--muted); font-size: .68rem; font-variant-numeric: tabular-nums; }
+
+    /* The spec sheet opens on the handful a buyer reads first; the rest is one
+       tap away, in place (feedback #56). */
+    details.more { margin-top: .55rem; }
+    details.more > summary {
+      list-style: none; cursor: pointer; font-size: .74rem; color: var(--accent);
+      display: inline-flex; align-items: center; gap: .3rem;
+    }
+    details.more > summary::-webkit-details-marker { display: none; }
+    details.more > summary::before { content: "▸"; font-size: .7em; }
+    details.more[open] > summary::before { content: "▾"; }
+    details.more > .specs { margin-top: .55rem; }
 
     .specs { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: .5rem .8rem; }
     .spec .k { font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
@@ -140,24 +208,31 @@
         <div class="panel">
           <h2 id="t-specs"></h2>
           <div class="specs" id="specs"></div>
+          <details class="more" id="specs-more">
+            <summary id="t-specs-more"></summary>
+            <div class="specs" id="specs-rest"></div>
+          </details>
         </div>
 
         <div class="panel">
           <h2 id="t-fit"></h2>
           <div id="issues"></div>
         </div>
-
-        <div class="panel">
-          <h2 id="t-src"></h2>
-          <div id="sourcing"></div>
-          <div class="permalink">
-            <input id="perma" readonly>
-            <button class="tool" id="b-copy" type="button"></button>
-          </div>
-        </div>
       </div>
 
       <div class="panel" id="picker"></div>
+    </div>
+
+    <!-- The sourcing / price breakdown is the LAST thing on the page, below
+         the spec sheet, the fit check and the parts picker, in both the
+         two-column and the stacked layout (feedback #56). -->
+    <div class="panel wide">
+      <h2 id="t-src"></h2>
+      <div id="sourcing"></div>
+      <div class="permalink">
+        <input id="perma" readonly>
+        <button class="tool" id="b-copy" type="button"></button>
+      </div>
     </div>
 
     <footer id="foot"></footer>

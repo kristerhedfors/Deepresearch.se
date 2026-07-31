@@ -68,11 +68,15 @@ export function isPublicAsset(url, method) {
     // a 401 on any of them would kill the page for signed-out visitors, and
     // watch-math.js and watch-materials.js are static imports of
     // watch-render.js, so they are as load-bearing as the other two.
+    // watch-page-core.js is the page's own DOM-free logic (which options are
+    // offered, what "surprise me" may produce); the /watch/ page statically
+    // imports it, so it is the same.
     url.pathname === "/watch" ||
     url.pathname.startsWith("/watch/") ||
     url.pathname === "/js/watch-core.js" ||
     url.pathname === "/js/watch-math.js" ||
     url.pathname === "/js/watch-materials.js" ||
+    url.pathname === "/js/watch-page-core.js" ||
     url.pathname === "/js/watch-render.js" ||
     // The embeddable scene renderer (stage + HUD + runners), split out of the
     // /space/ page so chat answers can mount a scene too (feedback #18):
