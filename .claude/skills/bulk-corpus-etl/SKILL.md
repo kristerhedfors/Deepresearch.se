@@ -357,10 +357,15 @@ uses** — "everything loaded since file n*N*" — and treat any publication-dat
 filter as a trim that says so out loud. A file-numbered archive gives
 "latest first" for free, with no date arithmetic to get wrong.
 
-**§2's double-counting scales with how the feed publishes revisions.** arXiv's
-was 3.4%; PubMed's daily update files carry new, revised *and* deleted
-citations, so the same measurement gave **25.9%**. Budget on the deduplicated
-set or be a quarter wrong in both directions at once.
+**§2's double-counting scales with how the feed publishes revisions, AND with
+the window length.** arXiv's was 3.4%; PubMed's daily update files carry new,
+revised *and* deleted citations, and the same measurement gave **25.9% at 44
+files and 55.9% at 223** — 3.71 M rows deduplicating to 1.64 M citations. So the
+ratio measured on a pilot slice does not extrapolate: every extra day of updates
+is another chance for an already-seen document to be revised again. Budget on
+the deduplicated set at the size you intend to build, and budget DISK on the
+kept rows, which is the number that actually lands (8.0 GB here, against 3.6 GB
+if you cost it per unique document).
 
 **A record's own id may not be the first id in its record.** A naive `<PMID>`
 match also picks up every cited PMID in `<CommentsCorrectionsList>`, which
@@ -385,6 +390,12 @@ chars, so **89.7% of passages are cut**, typically losing RESULTS and
 CONCLUSIONS from a structured abstract. arXiv's measured finding that chunking
 hurts was established on abstracts that *fit* — it does not transfer, and the
 honest move is to record the experiment rather than inherit the conclusion.
+
+**A verifier's first verdict is as likely to be its own bug as a finding**
+(§11), and here it was: the PMID set-difference reported 4.6% missing because it
+sampled ALL ids while the corpus holds only those that cleared the abstract
+floor — two different populations. Comparing like with like gave 0.1%. Before
+believing a coverage number, check that both sides describe the same set.
 
 **Cost is driven by the vector count, and it recurs.** Cloudflare bills queried
 dimensions as `(queries + stored) × dims`, so the index size shows up in the

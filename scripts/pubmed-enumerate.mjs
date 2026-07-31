@@ -45,7 +45,7 @@ const PAUSE_MS = Number(process.env.NCBI_PAUSE_MS || 400);
 
 /** @param {string[]} argv */
 export function parseArgs(argv) {
-  const out = { months: 12, corpus: "data/pubmed", verify: false, ids: false, month: "", sample: 0, help: false };
+  const out = { months: 12, corpus: "data/pubmed", verify: false, ids: false, month: "", sample: 0, all: false, help: false };
   for (let i = 0; i < argv.length; i++) {
     const [flag, inline] = argv[i].split("=");
     const value = () => (inline !== undefined ? inline : argv[++i]);
@@ -55,6 +55,7 @@ export function parseArgs(argv) {
     else if (flag === "--ids") out.ids = true;
     else if (flag === "--month") out.month = String(value());
     else if (flag === "--sample") out.sample = Number(value());
+    else if (flag === "--all") out.all = true;
     else if (flag === "--help" || flag === "-h") out.help = true;
     else throw new Error(`Unknown flag: ${flag}`);
   }
@@ -140,16 +141,28 @@ export async function count(term) {
  * PMIDs loaded in one month, capped. Used for the set-difference check, which
  * is the one that catches a hole a count cannot: two channels can agree on a
  * total while disagreeing on WHICH records they hold.
+ *
+ * `hasabstract` is on by DEFAULT, and that is the difference between a
+ * meaningful diff and a misleading one. The corpus holds only records that
+ * cleared the abstract floor, so sampling ALL PMIDs compares two different
+ * populations and reports the harvester's own filter as a coverage hole. Run
+ * unfiltered the first time and this said 4.6% missing for 2026/06 — a number
+ * that is neither the filter's drop rate nor a gap, just an artefact of the
+ * question. The residual is that PubMed's `hasabstract` means "any abstract"
+ * while the corpus floor is 200 characters, so a small deficit is still
+ * expected and is stated rather than explained away.
+ *
  * @param {string} month
  * @param {number} limit
+ * @param {{ hasAbstract?: boolean }} [opts]
  * @returns {Promise<string[]>}
  */
-export async function monthIds(month, limit) {
+export async function monthIds(month, limit, opts = {}) {
   /** @type {string[]} */
   const ids = [];
   for (let start = 0; start < limit; start += 9999) {
     const json = await eutils("esearch.fcgi", {
-      term: monthQuery(month),
+      term: monthQuery(month, { hasAbstract: opts.hasAbstract !== false }),
       retmax: String(Math.min(9999, limit - start)),
       retstart: String(start),
       sort: "pub_date",
@@ -197,7 +210,7 @@ async function main() {
   if (args.help) {
     console.log(
       "usage: node scripts/pubmed-enumerate.mjs [--months N] [--verify] [--corpus DIR]\n" +
-        "       node scripts/pubmed-enumerate.mjs --ids --month YYYY/MM [--sample N]\n\n" +
+        "       node scripts/pubmed-enumerate.mjs --ids --month YYYY/MM [--sample N] [--all]\n\n" +
         "Counts come from E-utilities (esearch over EDAT), independently of the\n" +
         "FTP archive the harvester reads. --verify diffs the two.",
     );
@@ -206,16 +219,22 @@ async function main() {
 
   if (args.ids) {
     const limit = args.sample || 9999;
-    const ids = await monthIds(args.month, limit);
+    const ids = await monthIds(args.month, limit, { hasAbstract: !args.all });
     const corpus = await readCorpusIds(join(ROOT, args.corpus, "raw"));
     const missing = ids.filter((id) => !corpus.has(id));
-    console.log(`${args.month}: sampled ${ids.length} PMIDs from E-utilities, ${ids.length - missing.length} present in the corpus`);
+    const population = args.all ? "ALL citations" : "citations WITH an abstract";
+    console.log(`${args.month}: sampled ${ids.length} PMIDs from E-utilities (${population}), ${ids.length - missing.length} present in the corpus`);
     console.log(`missing ${missing.length} (${((100 * missing.length) / Math.max(1, ids.length)).toFixed(1)}%)`);
     if (missing.length) console.log(`  e.g. ${missing.slice(0, 10).join(", ")}`);
-    // A sampled diff is evidence about the sample, and a set difference over a
-    // partial harvest is EXPECTED to be large — say so rather than letting the
-    // number read as a defect.
-    console.log("note: a percentage here is only a defect if the harvest was supposed to cover this month.");
+    // A sampled diff is evidence about the sample, and it is only a defect if
+    // the harvest was supposed to cover this month at all — say so rather than
+    // letting the number read as a hole. With --all it is not even that: it
+    // measures the abstract filter, not coverage.
+    console.log(
+      args.all
+        ? "note: --all compares against a population the corpus never holds — this number is mostly the abstract filter, not a gap."
+        : "note: a percentage here is only a defect if the harvest was supposed to cover this month; a small deficit is expected because the corpus floor is 200 chars while PubMed's hasabstract means any abstract.",
+    );
     return;
   }
 

@@ -35,11 +35,12 @@ requests per second and say that a data-mining project should "download a local
 copy of the database" from the FTP site instead. 40.9 M citations at 3 req/s is
 not a plan; the whole baseline is about 1,334 requests.
 
-**Measured throughput of the archive channel: 30,000 records parsed per file in
-7–18 s wall clock, sustaining ~1,800 kept records/s** including download. A
-1.5 M-record harvest is therefore roughly **15 minutes**, not the 15 hours the
-equivalent arXiv OAI-PMH harvest takes. The bulk file channel is the single
-biggest reason PubMed is cheaper to ingest than arXiv was.
+**Measured throughput of the archive channel: the complete set of 223 daily
+update files — 3,776,137 records, 11.5 GB streamed — harvested in 34 minutes**,
+sustaining ~1,700 kept records/s including download, at one connection with a
+1 s pause between files. The equivalent arXiv OAI-PMH harvest is about 15 hours
+for a year. The bulk file channel is the single biggest reason PubMed is cheaper
+to ingest than arXiv was.
 
 ### 1.1 Terms
 
@@ -101,48 +102,63 @@ uses is the fix.
 
 ## 3. What is in the window — measured
 
-From the first 44 update files (`n1501…n1557`, i.e. citations loaded roughly
-2026-05 → 2026-07-30), 916,481 rows on disk:
+The whole daily-update set was harvested end to end: **all 223 files
+`n1335…n1557`, i.e. everything NLM has loaded or revised since the 2026 baseline
+was cut on 2026-01-29**. 3,776,137 records read, 3,397,607 kept (10.0% dropped),
+34 minutes, 8.0 GB of JSONL.
 
 ```
-UNIQUE citations    678,680   (237,801 repeats, 25.9%)
-PMID range          7,714 … 42,530,985
-with DOI            99.1%
-with MeSH terms     74.5%
+UNIQUE citations    1,639,403   (2,074,518 repeats, 55.9%)
+PMID range          75 … 42,530,985
+with DOI            99.3%
+with MeSH terms     66.7%
 
-abstract chars      mean 1724 · p5 896 · median 1699 · p95 2682 · p99 3527 · max 15652
-passage chars       mean 1172 (budget 1200)
-TRUNCATED passages  608,494 of 678,680 (89.7%)
+abstract chars      mean 1690 · p5 851 · median 1672 · p95 2629 · p99 3500 · max 38300
+passage chars       mean 1168 (budget 1200)
+TRUNCATED passages  1,443,072 of 1,639,403 (88.0%)
 
-publication years   2026 516,771 · 2025 82,973 · 2024 49,825 · 2023 9,889 · 2022 4,141 · 2021 3,990
-languages           eng 668,949 · chi 4,381 · spa 1,309 · ger 1,198 · fre 1,195 · rus 1,015
-publication types   Journal Article 652,520 · Case Reports 10,167 · English Abstract 5,477
-journals            Scientific reports 18,608 · PloS one 9,525 · Nature communications 6,485
+publication years   2026 874,152 · 2025 350,196 · 2024 212,052 · 2023 63,700 · 2021 26,507 · 2020 21,570
+languages           eng 1,619,417 · chi 8,574 · spa 3,667 · ger 3,206 · fre 2,811 · por 2,366
+publication types   Journal Article 1,554,006 · Case Reports 35,294 · English Abstract 10,576
+journals            Scientific reports 34,297 · bioRxiv 18,880 · PloS one 15,352 · Nature communications 12,187
 ```
 
-Four of those numbers change how the build is planned.
+Four of those numbers change how the build is planned, and the first one
+changed the recommendation in §5.
 
-### 3.1 "Records kept" is not "unique citations", and here the gap is 26%
+### 3.1 "Records kept" is not "unique citations", and here the gap is 56%
 
-arXiv's double-count was 3.4%. PubMed's is **25.9%**, because a daily update
-file carries new, **revised** and deleted citations — a paper corrected twice
-since the baseline appears in three shards. Vectorize bills per *unique* vector,
-so a plan costed against the harvester's own "kept" counter would be a quarter
-too expensive and a quarter too optimistic about coverage at the same time.
+arXiv's double-count was 3.4%. PubMed's is **55.9%** — a daily update file
+carries new, **revised** and deleted citations, so a paper corrected four times
+since the baseline appears in five shards. Vectorize bills per *unique* vector,
+so a plan costed against the harvester's own "kept" counter would be more than
+twice too expensive.
+
+**And the ratio grows with the window.** Measured on the same corpus at two
+sizes: 44 files gave 25.9% repeats, the full 223 gave 55.9%. That is the shape
+to expect — every extra day of updates is another chance for an already-seen
+citation to be revised again — and it means the ratio measured on a pilot slice
+does **not** extrapolate. Deduplicate and re-count at the size you intend to
+build.
 
 ### 3.2 The update files are not "recent papers" — they are recent *edits*
 
-The lowest PMID in that window is **7,714**: a 1990s citation revised in 2026.
-The load-order window genuinely contains records of every age, which is a
-feature (a corrected old record arrives with its correction) and a warning (the
-window's *publication* spread has a long tail, so "the last six months of
-PubMed" is not what a load-order window means).
+The lowest PMID in that window is **75** — a citation from the 1970s, revised in
+2026. The publication-year table shows the same thing at scale: six months of
+*load* contains 874 k citations published in 2026, but also 350 k from 2025,
+212 k from 2024, 64 k from 2023 and a long tail back through the 1970s.
 
-### 3.3 90% of PubMed abstracts do not fit the embedder
+That is a feature and a warning at once. The feature: a corrected old record
+arrives with its correction, and six months of updates reaches three years of
+literature. The warning: "the last six months of PubMed" is **not** what a
+load-order window means, and any claim about publication coverage has to be read
+off the year table rather than off the window definition.
+
+### 3.3 88% of PubMed abstracts do not fit the embedder
 
 This is the biggest single difference from arXiv and the one open technical
 question. e5's window is 512 tokens ≈ 1,200 characters. PubMed's **median
-abstract is 1,699 characters** — arXiv's is about 1,200 — so **89.7% of
+abstract is 1,672 characters** — arXiv's is about 1,200 — so **88.0% of
 passages are cut**, most of them losing roughly a third of their text. A
 structured abstract cut at 1,200 chars typically keeps BACKGROUND and METHODS
 and loses RESULTS and CONCLUSIONS, which is the half a reader wants.
@@ -223,7 +239,9 @@ afterwards costs one file's worth of disk and removes the failure mode.
 **Never mirror the archive.** 51.8 GB baseline + 12.4 GB updates is roughly half
 a terabyte uncompressed, against ~30 GB of writable disk in a session container.
 One file is on disk at a time and is deleted once parsed; only the JSONL rests,
-at ~700 bytes per kept record (about 1 GB per 1.5 M citations).
+at ~2.2 KB per kept record — **8.0 GB for the 3.4 M kept rows** of the
+update-file set. Budget on kept ROWS, not on unique citations: the 56% that
+deduplicate away are still written to disk first.
 
 ---
 
@@ -242,14 +260,19 @@ monthly = (queries + stored) × 1024 × ($0.01 / 1M)      queried dimensions
 
 At 10,000 queries/month and 1024 dimensions:
 
-| stored vectors | ≈ months of load | Vectorize / month | Berget embeddings (one-time) | fill wall-clock |
+| stored vectors | what it is | Vectorize / month | Berget embeddings (one-time) | fill wall-clock |
 |---|---|---|---|---|
-| 772,658 *(arXiv today)* | — | ~$7.90 | — | — |
-| 820,000 | 6 | ~$8.60 | €7 | ~2.5 h |
-| **1,640,000** | **12** | **~$17.20** | **€14** | **~5 h** |
-| 2,500,000 | 18 | ~$26.30 | €21 | ~7 h |
-| 4,600,000 | 34 *(arXiv's window)* | ~$48.90 | €38 | ~13 h |
-| 10,000,000 | ~73 | ~$107 | €83 | ~30 h *(the per-index ceiling)* |
+| 772,658 | *arXiv today, for scale* | ~$7.90 | — | — |
+| 500,000 | a capped slice, newest first | ~$5.35 | €4 | ~1.5 h |
+| **1,639,403** | **every daily update file since the baseline — MEASURED, harvested** | **~$17.20** | **€13.55** | **~5 h** |
+| 3,000,000 | + roughly 45 baseline files below `n1334` | ~$31.50 | €25 | ~9 h |
+| 5,000,000 | + roughly 110 baseline files | ~$52.50 | €41 | ~15 h |
+| 10,000,000 | the per-index ceiling — beyond this needs sharding | ~$105 | €83 | ~29 h |
+
+The 1,639,403 row is not an estimate: that corpus is on disk. Embeddings are
+€0.0083 per 1,000 citations at the measured 275.4 tokens each; fill wall-clock
+assumes the arXiv build's measured ~95 vectors/s with the input partitioned
+across parallel loaders (~23/s single-process).
 
 Fill wall-clock assumes the arXiv build's measured ~95 vectors/s with the input
 partitioned across parallel loaders (~23/s single-process). Embedding is €0.0083
@@ -270,41 +293,45 @@ per 1,000 citations at the measured 275.4 tokens each.
 
 ### 5.2 The recommendation
 
-**Land six months first, then run the ladder to twelve.**
+**Import the daily update files and stop there: every archive file above
+`n1334`, which is 1,639,403 unique citations for about $17/month.**
 
-- **First fill: six months of load order, ~820 k unique citations** — every
-  daily update file since the 2026 baseline (`--min-file 1335`). It costs about
-  what arXiv already costs (~$8.60/month), it is the slice this session's
-  harvest covers, and it is the one that proves the tier end to end against
-  real traffic before any money is committed to width.
-- **Target: twelve months, ~1.64 M unique citations** (`--max-records 1900000`
-  before dedup, or every archive file from about `n1250` up). Getting there is a
-  resumed run, not a rebuild.
+```bash
+NODE_USE_ENV_PROXY=1 npm run pubmed:harvest -- --min-file 1335
+```
 
-The reasoning, in order of weight:
+That corpus is already harvested and cross-validated (§6). The reasoning, in
+order of weight:
 
-1. **It is the "latest first" slice, and latest is what this corpus is for.**
-   Measured through E-utilities on 2026-07-31, PubMed loads ~155 k citations a
-   month and ~90% carry an abstract (2026/07: 154,542 loaded / 138,396 with
-   abstracts; 2026/06: 158,720 / 142,526; 2026/05: 155,841 / 140,369). Twelve
-   months is one natural unit of "current literature" and comes to ~1.86 M
-   citations, ~1.64 M of which survive the harvest filters.
-2. **Twelve months roughly triples the platform's hosted literature for about
-   $17/month.** arXiv holds 772,658 vectors; this adds 1.64 M in the half of
-   research arXiv never sees.
-3. **Everything older already has a live tier.** Europe PMC answers a 2009
-   cohort study today and will keep doing so — the relevance floor is what
-   routes those questions to it. A partial index that fails honestly is worth
-   far more than a complete one costing 3× as much.
-4. **It stays inside one index with room to grow.** 1.64 M against a 10 M
-   ceiling leaves the option of widening to arXiv's 34-month window later
-   without an index-sharding design.
+1. **It is a natural, exactly reproducible boundary rather than an arbitrary
+   number.** "Everything NLM has loaded or revised since the 2026 baseline" is
+   one flag, needs no date arithmetic, and re-running it next month simply
+   extends it. A "last N months" window would need the two-axis reconciliation
+   of §2 to mean anything.
+2. **It is the latest-first slice, and it reaches further back than its name
+   suggests.** Six months of *load* is 874 k citations published in 2026, but
+   also 350 k from 2025, 212 k from 2024 and 64 k from 2023 — because a revised
+   old record arrives with its revision. Roughly half the corpus predates the
+   window, for free.
+3. **It roughly triples the platform's hosted literature.** arXiv holds 772,658
+   vectors; this adds 1.64 M in the half of research arXiv never sees, for
+   about $17/month and a one-time €13.55.
+4. **Everything older still has a live tier.** Europe PMC answers a 2009 cohort
+   study today and will keep doing so — the relevance floor is what routes those
+   questions to it. A partial index that fails honestly is worth far more than a
+   complete one costing three times as much.
+5. **It leaves room.** 1.64 M against a 10 M per-index ceiling means the corpus
+   can be widened into the baseline later without an index-sharding design.
 
-**Do not go past ~2.5 M without a separate decision.** Beyond that Vectorize
-passes $26/month, the fill passes half a working day, and the marginal citations
-are increasingly ones the live tier already handles well. Matching arXiv's
-34-month window would cost ~$49/month — defensible, but it is a budget choice
-and should be made as one.
+**If $17/month is too much to commit before the tier has proved itself**, fill
+`--limit 500000` first (~$5.35/month). The loader is checkpointed, so raising
+the limit later resumes rather than rebuilds, and nothing is embedded twice.
+
+**Going deeper means baseline files, and it is a separate decision.** Each ~30 k
+-record baseline file below `n1334` costs about $0.30/month to keep, so the
+question "how much history do we want" has a straightforward price per file.
+Past ~3 M the fill is most of a working day and the marginal citations are
+increasingly ones the live tier already handles well.
 
 ---
 
@@ -317,6 +344,30 @@ counters — the arXiv harvest's totals agreed with themselves to 0.04% while
 - `scripts/pubmed-enumerate.mjs` counts the same window through **E-utilities**,
   a different system from the file dumps, and `--ids --month YYYY/MM` does a
   set difference on real PMIDs rather than a total.
+
+**The result for the harvested corpus**, 1,500–2,000 PMIDs sampled per month
+from E-utilities and looked up in the JSONL:
+
+| month | sampled | present | missing |
+|---|---|---|---|
+| 2026/07 | 1,500 | 1,476 | 24 (1.6%) |
+| 2026/06 | 2,000 | 1,999 | **1 (0.1%)** |
+| 2026/05 | 1,500 | 1,497 | 3 (0.2%) |
+| 2026/03 | 1,500 | 1,497 | 3 (0.2%) |
+
+2026/07 is the open month — the last update file was cut on 2026-07-30, so the
+final days are simply not published yet. The others are the steady state, and
+the residual is expected: the corpus floor is 200 characters while PubMed's
+`hasabstract` means any abstract at all.
+
+> **The verifier's first verdict was its own bug**, which is the reason this
+> section exists. Run unfiltered it reported **4.6% missing** for 2026/06 —
+> because it sampled *all* PMIDs while the corpus only holds those that cleared
+> the abstract floor, so it was comparing two different populations and
+> reporting the harvester's own filter as a coverage hole. `hasabstract` is now
+> the default and `--all` is the opt-out, labelled as measuring the filter
+> rather than coverage. A verifier that has never been exercised is an untested
+> assertion.
 - The comparison is on the **EDAT** (load) axis, deliberately. A count on the
   publication axis would disagree with a *correct* harvest and send the next
   reader hunting a bug that is not there.
