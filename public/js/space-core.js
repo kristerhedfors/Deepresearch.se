@@ -1287,6 +1287,87 @@ export function launchPitchDeg(u, cfg) {
 }
 
 /**
+ * Fraction of the generic rocket's height taken by the upper stage that flies
+ * on after separation — the size `rocketMesh` is asked for once the lower
+ * stage is gone.
+ */
+export const ROCKET_UPPER_FRAC = 0.55;
+
+/**
+ * Where the upper stage's BASE sits on the full stack, as a fraction of the
+ * stack's height: 0 is the pad end, 1 the nose. The renderer flies ONE
+ * trajectory point — the stack's base — so once the lower stage is gone the
+ * upper stage has to be drawn this far ALONG the vehicle's axis from it, or it
+ * jumps down into the space its booster occupied at the moment of separation.
+ *
+ * That jump is feedback #58's second report, *"separation seems to drop the
+ * front part, the starship rather than the stage below"*: the Ship's base sits
+ * 0.57 of the stack up, so re-anchoring it at the base dropped it more than
+ * half its own length, straight through the booster still being drawn there.
+ * Nothing was falling that shouldn't — the two stage paths never cross (the
+ * Ship's altitude leads the booster's from the separation instant onward) —
+ * the vehicle was simply drawn in the wrong place.
+ *
+ * @param {{craft?: string}} cfg scene config
+ * @returns {number} fraction of stack height, 0..1
+ */
+export function upperStageBaseFrac(cfg) {
+  return cfg && cfg.craft === "starship"
+    ? 1 - STARSHIP_SHIP_FRAC
+    : 1 - ROCKET_UPPER_FRAC;
+}
+
+/**
+ * Where the drawn craft mesh's BASE goes at flight progress `u`, as a distance
+ * along the vehicle's axis from the flown trajectory point. Zero while the
+ * whole stack is drawn — the trajectory point IS its base — and the seam once
+ * only the upper stage is left, because that is where the upper stage's base
+ * was all along.
+ *
+ * Pure, and the ONE definition of it, so the test can state the thing the
+ * viewer actually reported: run it either side of `stageT`, add on where the
+ * Ship sits inside whichever mesh is being drawn, and the Ship's base must not
+ * move. It moved by `upperStageBaseFrac × size` before this existed.
+ *
+ * @param {number} u flight progress 0..1
+ * @param {{stageT: number, craft?: string}} cfg scene config
+ * @param {number} size the drawn height of the full stack
+ * @returns {number} distance along the vehicle axis from the trajectory point
+ */
+export function craftBaseOffset(u, cfg, size) {
+  return u >= cfg.stageT ? upperStageBaseFrac(cfg) * size : 0;
+}
+
+/** How far the booster swings over to burn engines-first, in radians. */
+export const BOOSTER_FLIP_RAD = 2.6;
+/** How far through the return the booster is back upright, engines down. */
+export const BOOSTER_UPRIGHT_K = 0.8;
+
+/**
+ * The returning booster's attitude, in the SAME flight-plane rotation the craft
+ * is oriented by (`rotZ(v, -vAng)`), at `k` through its return from a stack
+ * whose velocity angle at separation was `sepAng`.
+ *
+ * Two ends are fixed and neither may be fudged: at k=0 it holds the attitude
+ * the stack had, because an instant earlier it WAS the stack — swinging
+ * upright there is the same discontinuity at the same frame as the Ship's
+ * drop, and it made the separation read as one object shedding another at a
+ * right angle. From `BOOSTER_UPRIGHT_K` onward it is upright over the pad,
+ * because that is the only way to sit in the tower's arms — and it gets there
+ * with descent left to fall, rather than snapping vertical in the last frame
+ * before the catch. Between the two it swings past engines-first, which is the
+ * boostback burn.
+ *
+ * @param {number} k progress through the return, 0..1
+ * @param {number} sepAng the flight's velocity angle at separation (radians)
+ * @returns {number} rotation in the flight plane
+ */
+export function boosterRollAngle(k, sepAng) {
+  const s = clamp(k / BOOSTER_UPRIGHT_K, 0, 1);
+  return -sepAng * (1 - s) + Math.sin(Math.PI * s) * BOOSTER_FLIP_RAD;
+}
+
+/**
  * The booster's boostback path, for the launch scenes that fly one home
  * (`cfg.catchT`). Returns how far through the return it is (`k`, 0..1), its
  * altitude, and its ground angle — at k=1 both are zero, which is the pad.
