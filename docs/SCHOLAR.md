@@ -3,9 +3,6 @@
 The **Deep Science** agent (`scholar` in `sdk/AGENTS.json`) answers only from
 peer-reviewed publications. No web search runs. No preprint reaches an answer.
 
-This document covers what that costs, how far the Google Scholar integration
-goes, and where it stops.
-
 Modules: `src/scholar.js` (the search source), `src/scholar-metrics.js` (the
 enrichment), `src/scholar-venues.js` (the metrics table),
 `scripts/scholar-venues.mjs` (the harvest).
@@ -95,7 +92,7 @@ That last row is the load-bearing one. A Scholar result carries no peer-review
 signal at all — Scholar indexes preprints, theses, slide decks, working papers
 and predatory journals beside *Nature*, and its result JSON does not distinguish
 them. So a Scholar hit is admitted only by being **merged** onto a record from
-one of the four backends above, by DOI or normalised title. What it contributes
+one of the four backends above, by DOI or normalized title. What it contributes
 is its ranking and its citation count; the verdict always comes from a source
 that publishes one.
 
@@ -163,7 +160,7 @@ So Crossref only ever verifies a candidate another backend found. Its
 `query.bibliographic` carries one more trap: asked for the exact title of the
 Doench 2016 paper it returns a *Faculty Opinions recommendation of* that paper —
 a `dataset` record with a near-identical title. Title verification therefore
-requires a normalised-title **equality** check *and* a type check, or
+requires a normalized-title **equality** check *and* a type check, or
 "verification" swaps the paper for a review of the paper.
 
 ### Never sort a literature by citations
@@ -180,9 +177,9 @@ Every one of those is a real, heavily peer-reviewed paper. None of them is
 about the question. Citation counts across a whole literature are dominated by
 methods papers and reporting standards that everybody cites and nobody was
 asking about — the same failure Crossref's `sort=is-referenced-by-count`
-produces, and it always takes this shape.
+produces, and both times it took this shape.
 
-The fix is two-part and both halves are needed:
+Two changes, both needed:
 
 1. **Retrieve by relevance.** Europe PMC's default sort *is* relevance; the
    `sort=` parameter was the bug. OpenAlex, Semantic Scholar and Scholar all
