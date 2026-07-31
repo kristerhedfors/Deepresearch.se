@@ -529,9 +529,9 @@ one-line derivation available. It is the opposite call. Those two are
 sanitizers over untrusted client input, and `validation.js` says so at the
 site — "nothing here is allowed to widen it (invariant 4)". Deriving them
 would make adding a row to a UI picker widen what the server accepts and logs,
-in a subsystem whose whole job is to not do that. So the tell that separates
-this pass's cut from this pass's decline is not shape and not size: **a list
-that two components must AGREE on wants one copy; a list that one component
-uses to DISTRUST another wants two.** The action grammar is the first; the
-exec-backend whitelists (and `SWARM_DIAG_PHASES`/`SWARM_DIAG_CLASSES` beside
-them) are the second.
+in a subsystem whose whole job is to not do that. Shape and size sort these two
+into the same bucket, so ask what the list is FOR instead: **a list two
+components must AGREE on wants one copy; a list one component uses to DISTRUST
+another wants two.** The action grammar is the first; the exec-backend
+whitelists (and `SWARM_DIAG_PHASES`/`SWARM_DIAG_CLASSES` beside them) are the
+second.
