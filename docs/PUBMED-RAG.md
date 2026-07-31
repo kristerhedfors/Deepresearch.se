@@ -204,9 +204,11 @@ E-utilities cross-check ──────────────────�
 | Shared fill | `scripts/vectorize-upsert.mjs` | the corpus-agnostic checkpoint + upsert, shared with `scripts/arxiv-vectorize.mjs` |
 
 ```bash
-# 1. Harvest, newest first (resumable — rerun to continue)
-NODE_USE_ENV_PROXY=1 npm run pubmed:harvest -- --min-file 1335        # 6 months
-NODE_USE_ENV_PROXY=1 npm run pubmed:harvest -- --max-records 1900000  # 12 months
+# 1. Harvest, newest first (resumable — rerun to continue).
+#    --min-file 1335 is the recommended corpus: every daily update file above
+#    the 2026 baseline. --max-records caps a smaller trial slice instead.
+NODE_USE_ENV_PROXY=1 npm run pubmed:harvest -- --min-file 1335
+NODE_USE_ENV_PROXY=1 npm run pubmed:harvest -- --max-records 500000
 
 # 2. What did we actually get?
 npm run pubmed:corpus
@@ -273,10 +275,6 @@ The 1,639,403 row is not an estimate: that corpus is on disk. Embeddings are
 €0.0083 per 1,000 citations at the measured 275.4 tokens each; fill wall-clock
 assumes the arXiv build's measured ~95 vectors/s with the input partitioned
 across parallel loaders (~23/s single-process).
-
-Fill wall-clock assumes the arXiv build's measured ~95 vectors/s with the input
-partitioned across parallel loaders (~23/s single-process). Embedding is €0.0083
-per 1,000 citations at the measured 275.4 tokens each.
 
 ### 5.1 The hard limits
 
@@ -360,14 +358,8 @@ final days are simply not published yet. The others are the steady state, and
 the residual is expected: the corpus floor is 200 characters while PubMed's
 `hasabstract` means any abstract at all.
 
-> **The verifier's first verdict was its own bug**, which is the reason this
-> section exists. Run unfiltered it reported **4.6% missing** for 2026/06 —
-> because it sampled *all* PMIDs while the corpus only holds those that cleared
-> the abstract floor, so it was comparing two different populations and
-> reporting the harvester's own filter as a coverage hole. `hasabstract` is now
-> the default and `--all` is the opt-out, labelled as measuring the filter
-> rather than coverage. A verifier that has never been exercised is an untested
-> assertion.
+The rest of the discipline:
+
 - The comparison is on the **EDAT** (load) axis, deliberately. A count on the
   publication axis would disagree with a *correct* harvest and send the next
   reader hunting a bug that is not there.
@@ -376,6 +368,15 @@ the residual is expected: the corpus floor is 200 characters while PubMed's
   an empty corpus directory is an error rather than a `done — 0 vectors`.
 - A shard is written to `.part` and renamed only after the whole file parsed, so
   an interrupted run can never be checkpointed as a complete one.
+
+> **The verifier's first verdict was its own bug**, which is why the table above
+> is quoted with its method rather than on its own. Run unfiltered it reported
+> **4.6% missing** for 2026/06 — because it sampled *all* PMIDs while the corpus
+> only holds those that cleared the abstract floor, so it was comparing two
+> different populations and reporting the harvester's own filter as a coverage
+> hole. `hasabstract` is now the default and `--all` is the opt-out, labelled as
+> measuring the filter rather than coverage. A verifier that has never been
+> exercised is an untested assertion.
 
 Unit tests: `public/js/pubmed-core.test.js` (20 tests — parsing, the own-PMID
 trap, structured abstracts, free-text dates, streaming block boundaries, the
@@ -388,7 +389,7 @@ to it).
 
 ## 7. Open, and deliberately not guessed at
 
-1. **Whether to chunk long abstracts.** 89.7% of passages lose their tail
+1. **Whether to chunk long abstracts.** 88.0% of passages lose their tail
    (§3.3), and the arXiv finding against chunking was measured on abstracts that
    fit. The experiment: build a 20 k-record sample two ways — single truncated
    passage vs. two overlapping passages max-pooled — and score both on a needle
@@ -399,7 +400,7 @@ to it).
    this document quotes arXiv's recall figures only to say what configuration
    was chosen and why. Nothing here claims a measured recall on PubMed, and
    nothing should until `pubmed:eval` exists.
-3. **MeSH terms are harvested but unused.** 74.5% of records carry them and they
+3. **MeSH terms are harvested but unused.** 66.7% of records carry them and they
    are a controlled vocabulary — a natural lexical arm, or metadata filter, or
    query-expansion source. Not wired to anything yet.
 4. **`src/scholar.js` does not use this tier.** The Deep Science agent added
@@ -414,4 +415,4 @@ to it).
    new PMIDs and prunes the deleted ones.
 6. **The `$/month` figures follow Cloudflare's documented formula**, in which
    stored vectors appear inside the *queried*-dimension term. Check the first
-   real invoice against the table in §5 before scaling past tier 1.
+   real invoice against the table in §5 before widening the corpus.
