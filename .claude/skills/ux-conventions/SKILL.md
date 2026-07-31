@@ -1346,3 +1346,101 @@ conversation cannot report what changed in a page it does not own.
 core is a tool family over MCP as well (`src/watch-tools.js`): if the
 conversation can drive the surface, an agent can drive it too. Full account:
 `docs/WATCH-BUILDER.md` §6b.
+
+---
+
+## UX-24 — A choice that does not fit the rest of the configuration is offered behind a warning, never removed
+
+**Rule.** When a picker's options depend on other choices the user has already
+made, the ones that no longer fit are **still offered** — collected into a
+disclosure control **marked with ⚠**, each carrying **the reason it clashes** —
+while the ones that fit stay in the ordinary row. Picking a warned option is
+**allowed**: the configuration belongs to the user. What follows a warned pick
+is that the **warning stays visible on the slot** (a ⚠ on the slot's current
+value and the reason in words underneath) for as long as the clash lasts. The
+same treatment applies to **every** slot in the picker, not just the one where
+the problem was first noticed. A slot that may be left empty offers a real
+**"none"** choice in the same row, not an absence.
+
+**Why.** Filtering an option away answers a question the user did not ask
+("which parts exist?") with an answer to a different one ("which parts fit
+right now?"), and it does it invisibly — the option simply is not there, and the
+user cannot tell whether it was never made or is merely incompatible with a
+choice they could revisit. Feedback #56 named exactly this on the NHxx watch
+builder: *"dials should come in certain designs and designs that can not be
+found in versions suited to the currently selected movement should be in a
+dropdown menu with a warning symbol. This choice system philosophy should be
+applied in all cases when suitable."* The complement is #57 — *"the surprise me
+button should not pair incompatible parts"* — the other half of the same rule:
+the tool may **show** you an impossible combination on request, but it must
+never **hand** you one when you asked it to choose.
+
+**The mechanics (match all of these):**
+
+1. **Annotate, do not filter.** The layer that knows the rules returns EVERY
+   option with a verdict and a reason —
+   `[{ option, compatible: boolean, why: {en,sv}|null }]` — and the UI groups
+   them. A function that returns only the valid options cannot render this.
+2. **⚠ on the disclosure, ⚠ on each entry, reason in words.** A native
+   `<details>`/`<summary>` is the control (no framework, no popover, keyboard
+   and screen-reader behaviour for free); the summary counts what is inside
+   ("⚠ 4 that do not fit this build") and every entry shows its own `why`.
+3. **The disclosure's open/closed state survives a re-render.** Picking an
+   option re-renders the whole picker; remember which disclosures were open
+   (a `Set` of slot keys keyed off the `toggle` event) or they snap shut under
+   the cursor.
+4. **A warned pick keeps its warning, and the reason is said once.** Mark the
+   slot's current value (⚠ + a warning colour) and print the reason under the
+   slot. One clash is usually visible from both ends of it — dial and movement
+   name the same sentence — so de-duplicate the reason lines within a render
+   pass and leave the ⚠ markers.
+5. **Optional means a visible "none".** A slot that can be left out gets an
+   explicit, differently-styled choice ("None — comes with the case"), because
+   an empty slot with no control is indistinguishable from a broken one
+   (UX-18's cousin).
+6. **The randomiser obeys the rules the picker teaches.** Any "surprise me" /
+   "shuffle" control picks in dependency order and is unit-tested to produce
+   only valid configurations — and tested for COVERAGE too, or a constraint bug
+   quietly makes part of the catalogue unreachable rather than failing loudly.
+
+**Canonical implementation:** `public/js/watch-page-core.js`
+(`annotateOptions` / `localAnnotate` / `groupOptions` / `optionsForSlot` /
+`surpriseBuild`; Node-tested in `watch-page-core.test.js`) rendered by
+`public/watch/watch.js` `renderPicker` — the `details.clash` disclosure, the
+`.warnpick` line and the `.pick.bad` marker, styled in `public/watch/index.html`.
+
+---
+
+## UX-25 — A detail sheet opens on what a decision needs and expands in place for the rest
+
+**Rule.** A read-only sheet of derived facts (a spec table, a summary of
+computed values) shows **only the handful the user's decision actually rests
+on**, with everything else behind **one native `<details>` disclosure that
+expands in place** — no new page, no modal, no scroll jump. The summary label
+says which way it goes ("All the other numbers" / "Hide the other numbers").
+**A caveat stays with what it qualifies**: a warning about the numbers on the
+summary belongs on the summary, not filed away with the detail.
+
+**Why.** A fifteen-row table where four rows decide the purchase reads as
+undifferentiated noise, and the rows that matter lose by being surrounded.
+Feedback #56: *"make spec sheet only contain most basic information until
+expanded."* Native `<details>` rather than a custom toggle because it is
+keyboard-accessible, findable by in-page search when open, and free of state
+this page would otherwise have to own.
+
+**The mechanics:**
+
+1. **The split is data, not markup** — a named list of the keys that qualify as
+   basic, applied by a pure function (`splitSpecRows`), so it is testable and
+   one place to change.
+2. **Order the summary by the named list**, not by the order the rows happened
+   to be built in.
+3. **Nothing is lost:** every row lands in exactly one of the two groups (pin
+   it with a test), and the disclosure is hidden entirely when there is nothing
+   behind it.
+4. **The label is bilingual and reflects state**, updated from the `toggle`
+   event so it is right after a language switch too.
+
+**Canonical implementation:** `public/watch/watch.js` `renderSpecs` +
+`BASIC_SPEC_KEYS` / `splitSpecRows` in `public/js/watch-page-core.js`, markup
+`#specs` / `details#specs-more` / `#specs-rest` in `public/watch/index.html`.
