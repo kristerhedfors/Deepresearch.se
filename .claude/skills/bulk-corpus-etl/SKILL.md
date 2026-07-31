@@ -397,6 +397,42 @@ sampled ALL ids while the corpus holds only those that cleared the abstract
 floor — two different populations. Comparing like with like gave 0.1%. Before
 believing a coverage number, check that both sides describe the same set.
 
+**Parallelising a fill needs the dedup to happen BEFORE the split.** N loaders
+over a slice each of the SHARDS is the obvious partition and the wrong one: each
+loader dedupes only what it can see, so a document in two partitions is embedded
+twice. Dedup once, then split by a HASH of the id — hashing rather than
+round-robin keeps part membership independent of read order, so a re-partition
+still matches every checkpoint. And expect the parallel launch itself to fail
+first: eight concurrent `npx <tool>` calls race on the shared npx cache
+(`ENOTEMPTY … rename node_modules/wrangler`), because npx revalidates on every
+invocation and warming the cache does not help. Point at the installed binary.
+
+**A single character can stall a fill, and the error will not say so.** A
+plain `.slice()` to a character budget can cut BETWEEN the two code units of an
+astral character; the tokenizer then rejects the batch with a type error rather
+than a length error, so no shrink-and-retry can clear it and the loader
+crash-loops forever on the same batch. Truncate surrogate-safely, and keep that
+rule in ONE place — this repo had the helper already and the passage builder
+simply did not use it. Corpora that sit AT the budget (88% of PubMed passages
+hit the cap) exercise the boundary on nearly every record, so a latent version
+of this bug surfaces the moment the corpus changes.
+
+**An agent session cannot run a multi-hour fill unattended.** Background
+processes are killed at TURN BOUNDARIES — not by memory, not by a timeout. A
+34-minute harvest survived because it ran inside one long response and never
+crossed one; eight loaders died twice, each time exactly when a new user message
+arrived, ending mid-batch with no error and plenty of free memory. Checkpointing
+(§6) is what makes this survivable rather than fatal, but plan the work as
+"held turn" or "machine that stays up", never "start it and come back".
+
+**Never measure a non-English language without its diacritics.** A Swedish probe
+typed as `hjart-karldodlighet` instead of `hjärt-kärldödlighet` scored 0.271
+where the correct spelling scored 0.941 — and two of five paired queries
+returned nothing at all above the relevance floor, which read exactly like a
+language-parity defect in the retrieval layer. It was the test. Orders of
+magnitude ride on this, so a sloppily-typed probe will manufacture a bug that is
+not there, and the fix is to the probe.
+
 **Cost is driven by the vector count, and it recurs.** Cloudflare bills queried
 dimensions as `(queries + stored) × dims`, so the index size shows up in the
 monthly bill as soon as anything queries it: roughly **$10/month per million

@@ -79,15 +79,27 @@ export async function recordPushed(statePath, ids) {
 
 /**
  * Push one NDJSON file into Vectorize via wrangler.
+ *
+ * `WRANGLER_BIN` points at an already-installed wrangler and is what makes a
+ * PARALLEL fill possible. Eight concurrent loaders each shelling out to `npx`
+ * race on the shared npx cache and die with
+ * `ENOTEMPTY: directory not empty, rename '…/node_modules/wrangler' -> '…'`
+ * (measured 2026-07-31 — half the loaders failed on their first batch). npx
+ * revalidates the package on every invocation, so warming the cache first does
+ * not help; pointing at the binary skips that step entirely. The default stays
+ * `npx` so a single-process fill needs no setup.
+ *
  * @param {string} index
  * @param {string} file
  * @param {string} cwd
  * @returns {boolean} true on success
  */
 export function upsertFile(index, file, cwd) {
+  const bin = process.env.WRANGLER_BIN;
+  const [cmd, lead] = bin ? [bin, []] : ["npx", ["wrangler"]];
   const res = spawnSync(
-    "npx",
-    ["wrangler", "vectorize", "upsert", index, "--file", file, "--batch-size", String(UPSERT_BATCH)],
+    cmd,
+    [...lead, "vectorize", "upsert", index, "--file", file, "--batch-size", String(UPSERT_BATCH)],
     { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 900000 },
   );
   if (res.status !== 0) {

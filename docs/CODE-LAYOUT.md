@@ -1183,10 +1183,17 @@ rows are revisions of a citation already seen, against arXiv's 3.4% — plus the
 drop reasons, the abstract-length distribution against the embedder's budget, and
 the publication-year spread of a window selected on load order) and
 `pubmed-vectorize.mjs` (incremental embed + upsert, with `--prune` to delete
-citations the archive has since withdrawn). `scripts/vectorize-upsert.mjs` is the
-corpus-agnostic half of a fill — the append-only checkpoint, the plain-array
-`values` guard, and the wrangler upsert — shared with `arxiv-vectorize.mjs`. See
-`docs/PUBMED-RAG.md`.
+citations the archive has since withdrawn) and `pubmed-partition.mjs` (dedup
+ONCE, then split by a hash of the PMID into N disjoint parts, which is what lets
+the fill run as N parallel loaders — dedup has to precede the split or the 55.9%
+repeats get embedded once per partition, and hashing rather than round-robin is
+what keeps part membership stable so a resumed loader finds the work list its
+checkpoint describes). `scripts/vectorize-upsert.mjs` is the corpus-agnostic
+half of a fill — the append-only checkpoint, the plain-array `values` guard, and
+the wrangler upsert — shared with `arxiv-vectorize.mjs`; its `WRANGLER_BIN`
+override exists because eight concurrent `npx wrangler` calls race on the shared
+npx cache and die with `ENOTEMPTY`, so a parallel fill points at an
+already-installed binary instead. See `docs/PUBMED-RAG.md`.
 
 Embedding for EVERY build-time index in the repo — the arXiv database and the
 committed introspection artifacts alike — goes through

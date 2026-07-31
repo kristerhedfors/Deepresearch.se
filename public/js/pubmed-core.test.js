@@ -226,3 +226,19 @@ test("windowNote names the fetch axis, and says min-year does not define one", (
   // confusion, so the harvester says it out loud on every run.
   assert.match(windowNote(plan, { minYear: 2024 }), /TRIMS this window, it does not define one/);
 });
+
+test("a passage never ends on a lone surrogate, whatever the abstract holds", () => {
+  // Regression, PMID 41993351 (2026-07-31): its abstract puts a mathematical
+  // bold character on the 1200-char boundary, so the plain `.slice()` that
+  // buildPassage used left a lone high surrogate. Berget's tokenizer rejects
+  // that batch with a 400 that is NOT a length error, so no shrink retry can
+  // clear it — the loader crash-looped on the same batch at 96% of the fill.
+  const astral = "\u{1D465}"; // MATHEMATICAL ITALIC SMALL X, a surrogate pair
+  for (let pad = 1190; pad <= 1205; pad++) {
+    const passage = buildPassage({ title: "T", abstract: "a".repeat(pad) + astral.repeat(6) }, "title_abstract");
+    const last = passage.charCodeAt(passage.length - 1);
+    assert.ok(!(last >= 0xd800 && last <= 0xdbff), `pad ${pad} left a lone high surrogate`);
+    // And the whole string must be well-formed, not merely well-terminated.
+    assert.equal(passage, passage.toWellFormed ? passage.toWellFormed() : passage, `pad ${pad} left an unpaired surrogate`);
+  }
+});
