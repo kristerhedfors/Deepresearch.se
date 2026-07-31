@@ -223,6 +223,7 @@ export const CONTEXT_BLOCKS = {
   "owasp": { label: "OWASP reference", desc: "the OWASP Top 10 block retrieved for a security-assessment ask" },
   "model-catalog": { label: "Model catalog", desc: "the live cross-provider model catalog — priced and annotated with verification state — folded in for a model ask (src/model-catalog.js catalogBlock)", serverOnly: true },
   "ancient-samples": { label: "Ancient samples", desc: "a structured query over the committed ancient-DNA sample corpus — geography, date window, haplogroup prefix, coverage floor — folded in as exact rows and counts (src/aadr.js)", serverOnly: true },
+  "scholar-metrics": { label: "Scholar metrics", desc: "Google Scholar's robots-allowed surfaces — an author profile fetched live from citations?user=, and the committed venue h5-index table — folded in as attributed metrics, and the switch restricting the turn to the peer-reviewed source (src/scholar-metrics.js)", serverOnly: true },
 };
 
 /** The model buckets a phase may run on. `json-default` is the fixed reliable
@@ -239,6 +240,7 @@ export const GATE_IDS = {
   "quiz": { label: "Quiz", desc: "is this an ask for a quiz? (src/quiz.js quizIntent)" },
   "model-lifecycle": { label: "Model lifecycle", desc: "is this ask about choosing, pricing, evaluating or starting a model? (src/models-agent.js modelIntent)" },
   "ancient-sample": { label: "Ancient sample", desc: "is this ask a structured query over the ancient-DNA sample corpus, rather than a question about the literature? (public/js/aadr-core.js ancientSampleIntent)" },
+  "scholar-venue": { label: "Scholar venue", desc: "is this ask about where a field publishes — top journals, venue ranking, h5-index? (src/scholar-metrics.js venueIntent)" },
   // Listed for completeness, but PLATFORM BASELINE and so declared by no
   // shipped spec: the gate — the bare keyword or the `/feedback` command —
   // runs before any agent's answer phase, and the slash commands it is half of

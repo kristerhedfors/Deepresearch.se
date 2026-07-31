@@ -63,6 +63,24 @@ export interface Env {
   // Web search (Exa) — see src/exa.js.
   EXA_API_KEY?: string;
 
+  // The peer-reviewed literature source (src/scholar.js). ALL THREE ARE
+  // OPTIONAL and the source works with none of them set — Europe PMC's
+  // peer-reviewed slice needs no key at all, which is what keeps the Deep
+  // Science agent working on a bare deployment.
+  //
+  /** OpenAlex. Unkeyed it works until a small daily budget is spent and then
+   * answers 429; on Cloudflare's shared egress that budget is effectively
+   * always spent, so this is what makes the widest backend real in production. */
+  OPENALEX_API_KEY?: string;
+  /** A LICENSED Google Scholar search API (SerpApi's `google_scholar` engine).
+   * Google publishes no Scholar API and robots-disallows /scholar, so this is
+   * the only supported route to Scholar's own ranking. Absent, the leg is
+   * simply off and the open backends carry the source. */
+  SERPAPI_KEY?: string;
+  /** Semantic Scholar. Unkeyed the Graph API answers 429 immediately, so the
+   * backend is skipped rather than tried and failed. */
+  SEMANTIC_SCHOLAR_API_KEY?: string;
+
   // Break-glass Basic Auth + session signing — see src/auth.js.
   ADMIN_USER?: string;
   ADMIN_PASS?: string;

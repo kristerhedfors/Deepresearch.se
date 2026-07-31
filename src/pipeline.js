@@ -2273,7 +2273,12 @@ function leadingSources(ctx) {
   if (/** @type {any} */ (state).auxLeadReleased) return [];
   // An agent that declines the auxiliary sources cannot be led by one.
   if (!searchPolicyFor(state).auxSources) return [];
-  return leadSourceIds(ctx.lastUser);
+  const ids = leadSourceIds(ctx.lastUser);
+  // …and a source the request has narrowed away (state.auxOnly) cannot lead it
+  // either: leading stands the web leg down, so a lead that planAuxSource will
+  // then refuse to plan would spend the wave on nothing.
+  const only = /** @type {any} */ (state).auxOnly;
+  return Array.isArray(only) && only.length ? ids.filter((id) => only.includes(id)) : ids;
 }
 
 /**
@@ -2332,6 +2337,19 @@ function planAuxSource(ctx, source, batch, leading) {
   // like the rest of the registry loop.
   const forced = Array.isArray(/** @type {any} */ (state).forceAux)
     && /** @type {any} */ (state).forceAux.includes(source.id);
+  // `state.auxOnly` is the mirror image and, unlike forceAux, purely
+  // NARROWING: when present, only the listed source ids may run this request
+  // at all — a source's own intent, and even a lead, cannot get it in.
+  //
+  // It exists because an agent can be defined by what it must NOT consult as
+  // much as by what it must. The Deep Science agent answers exclusively from
+  // peer-reviewed publications, and its `search.web: false` only stands the
+  // Exa leg down; without this, arXiv would still fire on a physics question
+  // and hand it preprints, which is precisely the thing that agent promises
+  // not to do. Read generically here — ids off the state, no source named —
+  // so it composes with any future agent that needs the same restriction.
+  const only = /** @type {any} */ (state).auxOnly;
+  if (Array.isArray(only) && only.length && !only.includes(source.id)) return [];
   if (!batch.length || (!forced && !leading && !source.intent(ctx.lastUser))) return [];
   state.aux ||= {};
   const st = (state.aux[source.id] ||= { count: 0, ran: new Set() });

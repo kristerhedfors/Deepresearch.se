@@ -296,6 +296,17 @@ describe("core purity", () => {
     // agent-spec.js is not an enrichment at all: it is the capability reader
     // the aadr entry is GATED on, and importing it is what lets an enrichment
     // be switched on by an agent spec instead of by a mode flag.
-    assert.deepEqual(imports, ["./aadr.js", "./agent-spec.js", "./extensions.js", "./introspect.js", "./models-agent.js"]);
+    //
+    // scholar-metrics.js joins them on the same footing (2026-07-31). It is the
+    // Deep Science agent's own mode behaviour over the peer-reviewed record —
+    // no knob, no secret, no per-request state slice, no extension descriptor —
+    // and the venue table it reads is a build artifact in this deployment. Its
+    // one outbound call goes to a page Google's robots.txt explicitly allows;
+    // that makes it a research SOURCE like Europe PMC and arXiv, which this
+    // project has always treated as core, not a third-party integration bolted
+    // onto a message the way Maps and Shodan are.
+    assert.deepEqual(imports, [
+      "./aadr.js", "./agent-spec.js", "./extensions.js", "./introspect.js", "./models-agent.js", "./scholar-metrics.js",
+    ]);
   });
 });
