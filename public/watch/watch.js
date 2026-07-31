@@ -10,7 +10,6 @@
 
 import {
   SLOTS,
-  slotOptions,
   resolveBuild,
   normalizeBuild,
   checkBuild,
@@ -22,6 +21,17 @@ import {
   SOURCES,
   mm,
 } from "/js/watch-core.js";
+import {
+  annotateOptions,
+  groupOptions,
+  splitSpecRows,
+  surpriseBuild,
+  slotIsText,
+  textFieldDef,
+  axisGroupsFor,
+  sanitizeTextValue,
+  TEXT_SLOT_MAXLEN,
+} from "/js/watch-page-core.js";
 import { mountWatch } from "/js/watch-render.js";
 
 // ---------------------------------------------------------------------------
@@ -50,8 +60,32 @@ const UI = {
   copy: { en: "Copy link", sv: "Kopiera länk" },
   copied: { en: "Copied", sv: "Kopierad" },
   specs: { en: "Spec sheet", sv: "Specifikation" },
+  specsMore: { en: "All the other numbers", sv: "Alla övriga mått" },
+  specsLess: { en: "Hide the other numbers", sv: "Dölj övriga mått" },
   fit: { en: "Does it fit?", sv: "Passar det?" },
   src: { en: "Where to buy it", sv: "Var du köper delarna" },
+  // The picker's warning surface. `clash` takes the count: the same phrasing
+  // reads correctly for one option and for thirteen in both languages.
+  clash: {
+    en: (n) => `⚠ ${n} that ${n === 1 ? "does" : "do"} not fit this build`,
+    sv: (n) => `⚠ ${n} som inte passar det här bygget`,
+  },
+  clashPicked: {
+    en: "You picked a part that does not fit the rest of this build. It stays selected — the build is yours — but here is what is wrong:",
+    sv: "Du har valt en del som inte passar resten av bygget. Den förblir vald — bygget är ditt — men så här är felet:",
+  },
+  textHint: {
+    en: "Leave it empty for none.",
+    sv: "Lämna tomt för ingen text.",
+  },
+  fineTuning: {
+    en: "Fine tuning — the variables behind each part",
+    sv: "Finjustering — variablerna bakom varje del",
+  },
+  calcFail: {
+    en: "This section could not be worked out for the current build. The rest of the page still works — try a different combination.",
+    sv: "Det här avsnittet kunde inte räknas ut för det aktuella bygget. Resten av sidan fungerar ändå — prova en annan kombination.",
+  },
   allgood: { en: "Every part in this build fits. Nothing to fix.", sv: "Alla delar i det här bygget passar. Inget att åtgärda." },
   noGl: {
     en: "This browser cannot open a WebGL context, so the 3D view is unavailable. The spec sheet, the fit check and the sourcing links below all still work.",
@@ -126,6 +160,196 @@ function swatchFor(slotKey, opt) {
   return "";
 }
 
+// Which disclosures the user left open, so a re-render (every pick re-renders
+// the whole picker) does not snap them shut under the cursor.
+/** @type {Set<string>} */
+const openDisclosures = new Set();
+
+/**
+ * A chip for one option. `warn` marks the ones that do not fit; they are
+ * offered all the same.
+ */
+function chipFor(slotKey, opt, selected, why) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "chip" + (selected ? " on" : "") + (opt.none || opt.asListed ? " none" : "") + (why ? " soft" : "");
+  const sw = swatchFor(slotKey, opt);
+  if (sw) {
+    const dot = document.createElement("span");
+    dot.className = "sw";
+    dot.style.background = sw;
+    b.appendChild(dot);
+  }
+  // A compatible option can still come back with something worth saying. Mark
+  // it softly — it fits, so it is not behind the ⚠ disclosure — and put the
+  // sentence on the tooltip.
+  b.appendChild(document.createTextNode((why ? "⚠ " : "") + T(opt.name)));
+  const tip = [why ? T(why) : "", opt.blurb ? T(opt.blurb) : ""].filter(Boolean).join(" — ");
+  if (tip) b.title = tip;
+  b.addEventListener("click", () => setPart(slotKey, opt.id));
+  return b;
+}
+
+/**
+ * The free-text fields — a custom dial legend or a case-back engraving is
+ * typed, not picked (#56: "support for custom text dial logos and dial text
+ * specifications").
+ */
+function textSlotRow(slot) {
+  const max = Number(slot.max) > 0 ? Number(slot.max) : TEXT_SLOT_MAXLEN;
+  const wrap = document.createElement("div");
+  wrap.className = "txtslot";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.maxLength = max;
+  input.value = String(build[slot.key] || "");
+  input.placeholder = T(slot.placeholder) || T(UI.textHint);
+  input.setAttribute("aria-label", T(slot.name));
+  const count = document.createElement("span");
+  count.className = "count";
+  const sync = () => (count.textContent = `${input.value.length}/${max}`);
+  sync();
+  input.addEventListener("input", sync);
+  // Commit on blur / Enter rather than per keystroke: every commit pushes a
+  // history entry, and one per letter would bury the back button.
+  const commit = () => {
+    const clean = sanitizeTextValue(input.value, max);
+    input.value = clean;
+    sync();
+    if (clean !== String(build[slot.key] || "")) setPart(slot.key, clean);
+  };
+  input.addEventListener("change", commit);
+  input.addEventListener("blur", commit);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      input.blur();
+    }
+  });
+  wrap.append(input, count);
+  return wrap;
+}
+
+/**
+ * Which option a slot or an axis currently holds. An axis left alone is not
+ * written into the build at all (that is what keeps an old permalink opening
+ * the same watch), so its current value is its own default.
+ */
+function currentId(slot) {
+  const set = build[slot.key];
+  if (typeof set === "string" && set) return set;
+  if (slot.asListed) return "as-listed";
+  if (slot.defaultId) return slot.defaultId;
+  const first = annotateOptions(slot.key, build)[0];
+  return first ? first.option.id : "";
+}
+
+/**
+ * One picker row — the same shape for a base slot and for an axis: the label
+ * with what is chosen, the chips that fit, and the ⚠ disclosure holding the
+ * ones that do not with the reason each of them clashes.
+ *
+ * @param {any} slot
+ * @param {Set<string>} saidWhy reasons already printed in this render pass
+ */
+function slotRow(slot, saidWhy) {
+  const row = document.createElement("div");
+  row.className = "slot";
+
+  const field = textFieldDef(slot.key);
+  const now = field ? String(build[slot.key] || "") : currentId(slot);
+
+  const label = document.createElement("div");
+  label.className = "label";
+  const name = document.createElement("span");
+  name.textContent = T(slot.name);
+  label.appendChild(name);
+
+  if (field || slotIsText(slot.key)) {
+    const pick = document.createElement("span");
+    pick.className = "pick";
+    pick.textContent = now || (lang === "sv" ? "tom" : "empty");
+    label.appendChild(pick);
+    row.appendChild(label);
+    row.appendChild(textSlotRow(field || slot));
+    return row;
+  }
+
+  const rows = annotateOptions(slot.key, build);
+  const selected = rows.find((r) => r.option.id === now) || null;
+  const { fits, clashes } = groupOptions(rows);
+
+  const pick = document.createElement("span");
+  pick.className = "pick" + (selected && !selected.compatible ? " bad" : "");
+  pick.textContent =
+    (selected && !selected.compatible ? "⚠ " : "") +
+    (selected ? T(selected.option.name) : now);
+  label.appendChild(pick);
+  row.appendChild(label);
+
+  const chips = document.createElement("div");
+  chips.className = "chips";
+  for (const r of fits) chips.appendChild(chipFor(slot.key, r.option, r.option.id === now, r.why));
+  row.appendChild(chips);
+
+  // The user is allowed to keep a part that does not fit — but then the reason
+  // stays on screen rather than only inside the dropdown.
+  const stuck = selected && (!selected.compatible || (selected.why && selected.level === "warning"));
+  if (stuck && selected.why && !saidWhy.has(T(selected.why))) {
+    saidWhy.add(T(selected.why));
+    const w = document.createElement("div");
+    w.className = "warnpick";
+    w.textContent = selected.compatible
+      ? `⚠ ${T(selected.why)}`
+      : `⚠ ${T(UI.clashPicked)} ${T(selected.why)}`;
+    row.appendChild(w);
+  }
+
+  if (clashes.length) {
+    const key = `clash:${slot.key}`;
+    const det = document.createElement("details");
+    det.className = "clash";
+    det.open = openDisclosures.has(key);
+    det.addEventListener("toggle", () => {
+      if (det.open) openDisclosures.add(key);
+      else openDisclosures.delete(key);
+    });
+    const sum = document.createElement("summary");
+    sum.textContent = UI.clash[lang === "sv" ? "sv" : "en"](clashes.length);
+    det.appendChild(sum);
+    const list = document.createElement("div");
+    list.className = "clashlist";
+    for (const r of clashes) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "clashopt" + (r.option.id === now ? " on" : "");
+      const n = document.createElement("span");
+      n.className = "n";
+      const sw = swatchFor(slot.key, r.option);
+      if (sw) {
+        const dot = document.createElement("span");
+        dot.className = "sw";
+        dot.style.background = sw;
+        n.appendChild(dot);
+      }
+      n.appendChild(document.createTextNode(`⚠ ${T(r.option.name)}`));
+      b.appendChild(n);
+      if (r.why) {
+        const why = document.createElement("span");
+        why.className = "why";
+        why.textContent = T(r.why);
+        b.appendChild(why);
+      }
+      b.addEventListener("click", () => setPart(slot.key, r.option.id));
+      list.appendChild(b);
+    }
+    det.appendChild(list);
+    row.appendChild(det);
+  }
+
+  return row;
+}
+
 function renderPicker() {
   const host = $("picker");
   if (!host) return;
@@ -133,82 +357,99 @@ function renderPicker() {
   const h2 = document.createElement("h2");
   h2.textContent = lang === "sv" ? "Delar" : "Parts";
   host.appendChild(h2);
-  const { parts } = resolveBuild(build);
-  for (const slot of SLOTS) {
-    const row = document.createElement("div");
-    row.className = "slot";
-    const label = document.createElement("div");
-    label.className = "label";
-    const name = document.createElement("span");
-    name.textContent = T(slot.name);
-    const pick = document.createElement("span");
-    pick.className = "pick";
-    pick.textContent = T(parts[slot.key].name);
-    label.append(name, pick);
-    row.appendChild(label);
+  // One clash is usually visible from both ends of it — a dated dial under a
+  // no-date movement is the same sentence in the dial slot and the movement
+  // slot. Say it once, on the first slot that reports it, and leave the ⚠ on
+  // the others.
+  /** @type {Set<string>} */
+  const saidWhy = new Set();
+  for (const slot of SLOTS) host.appendChild(slotRow(slot, saidWhy));
 
-    const chips = document.createElement("div");
-    chips.className = "chips";
-    for (const opt of slotOptions(slot.key)) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "chip" + (opt.id === build[slot.key] ? " on" : "");
-      const sw = swatchFor(slot.key, opt);
-      if (sw) {
-        const dot = document.createElement("span");
-        dot.className = "sw";
-        dot.style.background = sw;
-        b.appendChild(dot);
-      }
-      b.appendChild(document.createTextNode(T(opt.name)));
-      if (opt.blurb) b.title = T(opt.blurb);
-      b.addEventListener("click", () => setPart(slot.key, opt.id));
-      chips.appendChild(b);
-    }
-    row.appendChild(chips);
-    host.appendChild(row);
+  // The orthogonal variables (#56: "dials come in so many shapes, colours and
+  // sizes that the current fixed-variable system needs replacement"). They are
+  // filed one disclosure per group so the picker still opens on the eleven
+  // decisions a build is actually made of, with the fine tuning a tap away.
+  // A group whose axes cannot apply to this build is not rendered at all.
+  const groups = axisGroupsFor(build);
+  if (groups.length) {
+    const h3 = document.createElement("h2");
+    h3.className = "axeshead";
+    h3.textContent = T(UI.fineTuning);
+    host.appendChild(h3);
+  }
+  for (const g of groups) {
+    const key = `axes:${g.id}`;
+    const det = document.createElement("details");
+    det.className = "axes";
+    det.open = openDisclosures.has(key);
+    det.addEventListener("toggle", () => {
+      if (det.open) openDisclosures.add(key);
+      else openDisclosures.delete(key);
+    });
+    const sum = document.createElement("summary");
+    const touched = [...g.axes, ...g.texts].filter((a) => build[a.key]).length;
+    sum.textContent = `${T(g.name)}${touched ? ` · ${touched}` : ""}`;
+    det.appendChild(sum);
+    const body = document.createElement("div");
+    body.className = "axesbody";
+    for (const axis of g.axes) body.appendChild(slotRow(axis, saidWhy));
+    for (const f of g.texts) body.appendChild(slotRow(f, saidWhy));
+    det.appendChild(body);
+    host.appendChild(det);
   }
 }
 
 // ---------------------------------------------------------------------------
 // Spec sheet.
 
+/** One key/value cell of the spec sheet. */
+function specCell(row) {
+  const cell = document.createElement("div");
+  cell.className = "spec";
+  const kk = document.createElement("div");
+  kk.className = "k";
+  kk.textContent = T(row.label);
+  const vv = document.createElement("div");
+  vv.className = "v";
+  vv.textContent = row.value;
+  cell.append(kk, vv);
+  return cell;
+}
+
 function renderSpecs() {
   const host = $("specs");
-  if (!host) return;
+  const rest = $("specs-rest");
+  if (!host || !rest) return;
   const s = buildSpec(build);
   const { parts } = resolveBuild(build);
   const L = UI.labels;
   const rows = [
-    [L.dia, mm(s.caseDia, s.approxDims)],
-    [L.l2l, mm(s.l2l, s.approxDims)],
-    [L.thick, mm(s.thick, s.approxDims)],
-    [L.lugW, mm(s.lugW, s.approxDims)],
-    [L.dial, mm(s.dialDia)],
-    [L.crystal, mm(s.crystalDia, !!(parts.case.crystal && parts.case.crystal.approx))],
-    [L.insert, s.insert ? `${s.insert.od} / ${s.insert.id} mm` : lang === "sv" ? "boettspecifikt" : "case-specific"],
-    [L.crown, `${s.crownHour}:00`],
-    [L.wr, `${s.wr} m`],
-    [L.mvt, s.movement],
-    [L.bph, `${s.bph.toLocaleString(lang === "sv" ? "sv-SE" : "en-US")} A/h`],
-    [L.reserve, `${s.reserveH} h`],
-    [L.tubes, `${s.handTubes.hour} / ${s.handTubes.minute} / ${s.handTubes.second} mm`],
-    [L.stack, mm(s.stackMm, true)],
-    [L.price, `USD ${s.priceUsd.low}–${s.priceUsd.high}`],
+    { key: "dia", label: L.dia, value: mm(s.caseDia, s.approxDims) },
+    { key: "l2l", label: L.l2l, value: mm(s.l2l, s.approxDims) },
+    { key: "thick", label: L.thick, value: mm(s.thick, s.approxDims) },
+    { key: "lugW", label: L.lugW, value: mm(s.lugW, s.approxDims) },
+    { key: "dial", label: L.dial, value: mm(s.dialDia) },
+    { key: "crystal", label: L.crystal, value: mm(s.crystalDia, !!(parts.case.crystal && parts.case.crystal.approx)) },
+    { key: "insert", label: L.insert, value: s.insert ? `${s.insert.od} / ${s.insert.id} mm` : lang === "sv" ? "boettspecifikt" : "case-specific" },
+    { key: "crown", label: L.crown, value: `${s.crownHour}:00` },
+    { key: "wr", label: L.wr, value: `${s.wr} m` },
+    { key: "mvt", label: L.mvt, value: s.movement },
+    { key: "bph", label: L.bph, value: `${s.bph.toLocaleString(lang === "sv" ? "sv-SE" : "en-US")} A/h` },
+    { key: "reserve", label: L.reserve, value: `${s.reserveH} h` },
+    { key: "tubes", label: L.tubes, value: `${s.handTubes.hour} / ${s.handTubes.minute} / ${s.handTubes.second} mm` },
+    { key: "stack", label: L.stack, value: mm(s.stackMm, true) },
+    { key: "price", label: L.price, value: `USD ${s.priceUsd.low}–${s.priceUsd.high}` },
   ];
+  // The sheet opens on the numbers that decide whether a watch fits a wrist and
+  // a parts drawer; everything else is one tap away (feedback #56).
+  const { basic, more } = splitSpecRows(rows);
+
   host.innerHTML = "";
-  for (const [k, v] of rows) {
-    const cell = document.createElement("div");
-    cell.className = "spec";
-    const kk = document.createElement("div");
-    kk.className = "k";
-    kk.textContent = T(k);
-    const vv = document.createElement("div");
-    vv.className = "v";
-    vv.textContent = v;
-    cell.append(kk, vv);
-    host.appendChild(cell);
-  }
+  for (const row of basic) host.appendChild(specCell(row));
+
+  rest.innerHTML = "";
+  for (const row of more) rest.appendChild(specCell(row));
+
   // Where the case's numbers came from — the point of carrying `src` at all.
   const src = SOURCES[parts.case.src];
   if (src) {
@@ -220,8 +461,10 @@ function renderSpecs() {
       `<div class="v" style="font-size:.78rem;font-weight:400">` +
       (src.url ? `<a href="${src.url}" target="_blank" rel="noopener">${src.label}</a>` : src.label) +
       `</div>`;
-    host.appendChild(note);
+    rest.appendChild(note);
   }
+  // A caveat about the case's own numbers is not "extra detail" — it stays on
+  // the summary, where the numbers it qualifies are.
   const caseNote = parts.case.note;
   if (caseNote) {
     const n = document.createElement("div");
@@ -230,6 +473,9 @@ function renderSpecs() {
     n.innerHTML = `<div class="v" style="font-size:.78rem;font-weight:400;color:var(--warn)">${T(caseNote)}</div>`;
     host.appendChild(n);
   }
+
+  const det = /** @type {HTMLDetailsElement} */ ($("specs-more"));
+  if (det) det.hidden = more.length === 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -316,6 +562,8 @@ function applyStatic() {
   $("sub").textContent = T(UI.sub);
   $("hint").textContent = T(UI.hint);
   $("t-specs").textContent = T(UI.specs);
+  const det = /** @type {HTMLDetailsElement} */ ($("specs-more"));
+  $("t-specs-more").textContent = det && det.open ? T(UI.specsLess) : T(UI.specsMore);
   $("t-fit").textContent = T(UI.fit);
   $("t-src").textContent = T(UI.src);
   $("b-reset").textContent = T(UI.reset);
@@ -330,32 +578,45 @@ function applyStatic() {
   $("lang-sv").classList.toggle("active", lang === "sv");
 }
 
-function applyAll() {
-  applyStatic();
-  renderPicker();
-  renderSpecs();
-  renderIssues();
-  renderSourcing();
-  if (stage) stage.setBuild(build);
+// One derived section failing must not take the page down with it. The builder
+// is a tool you keep using while the catalogue underneath it grows — a part
+// combination the catalogue cannot price or measure yet should cost you that
+// panel, not the whole workbench.
+function guardRender(hostId, fn) {
+  try {
+    fn();
+  } catch (err) {
+    console.error(`watch: ${hostId} failed`, err);
+    const host = $(hostId);
+    if (!host) return;
+    host.innerHTML = "";
+    const p = document.createElement("div");
+    p.className = "issue warning";
+    p.textContent = T(UI.calcFail);
+    host.appendChild(p);
+  }
 }
 
-function randomBuild() {
-  /** @type {Record<string,string>} */
-  const next = {};
-  for (const slot of SLOTS) {
-    const opts = slotOptions(slot.key);
-    next[slot.key] = opts[Math.floor(Math.random() * opts.length)].id;
+function applyAll() {
+  applyStatic();
+  guardRender("picker", renderPicker);
+  guardRender("specs", renderSpecs);
+  guardRender("issues", renderIssues);
+  guardRender("sourcing", renderSourcing);
+  try {
+    if (stage) stage.setBuild(build);
+  } catch (err) {
+    console.error("watch: stage failed", err);
   }
-  // Keep the movement honest: pick a dial that matches the movement's
-  // complications so "surprise me" produces a buildable watch rather than a
-  // pile of errors. The fit check is there to teach, not to nag.
-  const dials = slotOptions("dial");
-  const mv = slotOptions("movement").find((m) => m.id === next.movement);
-  const match = dials.filter((d) => !!d.date === !!mv.date && !!d.day === !!mv.day && !!d.gmt === !!mv.gmt);
-  if (match.length) next.dial = match[Math.floor(Math.random() * match.length)].id;
-  const hands = slotOptions("hands").filter((h) => !!h.gmt === !!mv.gmt);
-  if (hands.length) next.hands = hands[Math.floor(Math.random() * hands.length)].id;
-  build = normalizeBuild(next);
+}
+
+// "Surprise me" is only allowed to hand over a build that passes the fit check
+// (feedback #57). Picking each slot independently — what this used to do —
+// produced a hard error about seven times in ten, so the button taught the
+// user that the tool contradicts itself. The guarantee lives in the page core,
+// where a unit test holds it to two thousand draws.
+function randomBuild() {
+  build = surpriseBuild();
   applyAll();
   pushHash(false);
 }
@@ -405,6 +666,12 @@ function init() {
     a.click();
   });
   $("b-random").addEventListener("click", randomBuild);
+  const specsMore = /** @type {HTMLDetailsElement} */ ($("specs-more"));
+  if (specsMore) {
+    specsMore.addEventListener("toggle", () => {
+      $("t-specs-more").textContent = specsMore.open ? T(UI.specsLess) : T(UI.specsMore);
+    });
+  }
   $("b-copy").addEventListener("click", async () => {
     const input = /** @type {HTMLInputElement} */ ($("perma"));
     try {

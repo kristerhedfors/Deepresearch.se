@@ -4399,12 +4399,19 @@ export function surpriseBuild(rand) {
     let build = { ...DEFAULT_BUILD };
     let dead = false;
     for (const key of ORDER) {
+      // The FIRST slot is judged against nothing — every later slot is still
+      // sitting at its default, and a default is not a decision. Constraining
+      // the movement against DEFAULT_BUILD's date-only dial rejected every
+      // day-date, GMT and no-date calibre on step one, so "surprise me"
+      // returned the NH35 3000 times out of 3000: valid, and not a surprise.
+      // Everything after it IS constrained, by the slots actually chosen above.
       const annotated = compatibleOptions(key, build);
+      const unconstrained = key === ORDER[0];
       // Prefer options that raise no warning at all; fall back to merely
       // compatible ones so a slot with only imperfect choices still resolves.
       const clean = annotated.filter((a) => a.compatible && !a.why);
       const okAny = annotated.filter((a) => a.compatible);
-      const from = clean.length ? clean : okAny;
+      const from = unconstrained ? annotated : clean.length ? clean : okAny;
       if (!from.length) {
         dead = true;
         break;

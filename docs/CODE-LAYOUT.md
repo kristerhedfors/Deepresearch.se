@@ -933,6 +933,16 @@ zoom, "lights out" for the lume, "save PNG" for the frame. `index.html`
 `/space/`) + `watch.js` (page chrome only: the per-slot part pickers, the
 spec sheet, the fit-check list, the AliExpress sourcing table, the EN/SV
 toggle, and the permalink — a build IS its URL hash, so a link is a watch).
+The page's own decisions sit one module out in `public/js/watch-page-core.js`
+(pure, Node-tested, allowlisted): which options a slot offers and which of them
+go behind the ⚠ disclosure, the "leave it out" choice on an optional slot, the
+basic/expanded split of the spec sheet, the sanitiser that keeps typed dial
+text out of the permalink's `key:value;` separators, and the random build
+"surprise me" is allowed to hand over — which is guaranteed to pass
+`checkBuild` (feedback #57; it used to pick each slot independently and broke
+about seven builds in ten). It prefers the catalogue's `compatibleOptions` /
+`surpriseBuild` when those exist and reasons from `checkBuild` itself when they
+do not, so the page works against either.
 Everything deterministic lives in the shared pure core
 `public/js/watch-core.js` (Node-tested, served publicly under the same
 public-module-graph rule as the /cure entries), which `src/watch.js`
