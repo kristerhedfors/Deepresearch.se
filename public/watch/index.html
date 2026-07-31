@@ -103,6 +103,24 @@
     .slot > .warnpick { font-size: .72rem; color: var(--warn); margin-top: .38rem; line-height: 1.35; }
     .slot > .label .pick.bad { color: var(--warn); }
 
+    .chip.soft { border-color: rgba(216,168,96,.45); }
+    .chip.soft.on { color: var(--warn); border-color: var(--warn); background: rgba(216,168,96,.1); }
+
+    /* The orthogonal axes: one disclosure per group, so the picker still opens
+       on the eleven decisions a build is made of (feedback #56). */
+    .axeshead { margin-top: 1rem !important; padding-top: .8rem; border-top: 1px solid var(--border); }
+    details.axes { border-top: 1px solid var(--border); }
+    details.axes > summary {
+      list-style: none; cursor: pointer; font-size: .78rem; color: var(--text);
+      padding: .5rem 0; display: flex; align-items: center; gap: .35rem;
+    }
+    details.axes > summary::-webkit-details-marker { display: none; }
+    details.axes > summary::before { content: "▸"; font-size: .7em; color: var(--muted); }
+    details.axes[open] > summary::before { content: "▾"; }
+    details.axes > summary:hover { color: var(--accent); }
+    .axesbody { padding: 0 0 .5rem .6rem; border-left: 1px solid var(--border); margin-left: .25rem; }
+    .axesbody .slot:first-of-type { border-top: 0; padding-top: 0; }
+
     .txtslot { display: flex; gap: .4rem; align-items: center; }
     .txtslot input {
       flex: 1; min-width: 0; background: var(--panel-2); border: 1px solid var(--border);

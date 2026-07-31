@@ -66,7 +66,7 @@ describe("surprise me never hands the user a broken build (feedback #57)", () =>
 
   test("a surprise build is a complete, normalised build", () => {
     const b = surpriseBuild(seeded(7));
-    assert.deepEqual(Object.keys(b).sort(), SLOTS.map((s) => s.key).sort());
+    for (const slot of SLOTS) assert.ok(typeof b[slot.key] === "string" && b[slot.key], `${slot.key} missing`);
     assert.deepEqual(b, normalizeBuild(b));
   });
 
@@ -88,6 +88,18 @@ describe("surprise me never hands the user a broken build (feedback #57)", () =>
     for (let i = 0; i < 300; i++) seen.add(encodeBuild(pageSurpriseBuild(rand)));
     assert.ok(seen.size > 100, `only ${seen.size} distinct builds in 300 draws`);
     assert.ok(!seen.has(encodeBuild(DEFAULT_BUILD)) || seen.size > 1);
+  });
+
+  test("the SHIPPED button reaches every movement — validity alone is not a surprise", () => {
+    // The catalogue also ships a surpriseBuild. Everything it returns is valid,
+    // but measured over 3000 draws it returned the NH35 every time: it judges
+    // each slot against a build whose later slots are still at their defaults,
+    // so a movement whose default dial clashes is rejected on step one. This
+    // pins the entry point the button actually calls, whichever way it routes.
+    const rand = seeded(20260731);
+    const seen = new Set();
+    for (let i = 0; i < 1200; i++) seen.add(surpriseBuild(rand).movement);
+    for (const mv of MOVEMENTS) assert.ok(seen.has(mv.id), `the button never offers ${mv.id}`);
   });
 
   test("it reaches every movement, so the guarantee is not bought by pinning one", () => {
@@ -204,13 +216,19 @@ describe("the compatibility-annotated picker (feedback #56)", () => {
   });
 
   test("a build already broken elsewhere does not poison unrelated slots", () => {
-    // NH34 under the default three-hand set is an error in the HANDS slot. That
-    // must not make every strap or crown look incompatible.
+    // NH34 under the default three-hand set is an error in the HANDS slot. An
+    // unrelated slot may still have clashes of its own — what it must never do
+    // is inherit THAT sentence, which is what a naive "does checkBuild error?"
+    // annotator would do to every option in every slot.
     const broken = { ...DEFAULT_BUILD, movement: "nh34" };
-    assert.ok(checkBuild(broken).issues.some((i) => i.level === "error" && i.slot === "hands"));
-    for (const key of ["strap", "crown", "caseback", "finish"]) {
-      const { clashes } = groupOptions(localAnnotate(key, broken));
-      assert.equal(clashes.length, 0, `${key} was poisoned by the hands error`);
+    const handsErr = checkBuild(broken).issues.find((i) => i.level === "error" && i.slot === "hands");
+    assert.ok(handsErr, "the fixture no longer produces a hands error");
+    for (const key of ["strap", "crown", "caseback", "finish", "case"]) {
+      const { fits, clashes } = groupOptions(localAnnotate(key, broken));
+      assert.ok(fits.length > 0, `${key} was wholly poisoned by the hands error`);
+      for (const r of clashes) {
+        assert.notEqual(r.why && r.why.en, handsErr.en, `${key}/${r.option.id} inherited the hands error`);
+      }
     }
   });
 

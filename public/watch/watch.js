@@ -27,6 +27,8 @@ import {
   splitSpecRows,
   surpriseBuild,
   slotIsText,
+  textFieldDef,
+  axisGroupsFor,
   sanitizeTextValue,
   TEXT_SLOT_MAXLEN,
 } from "/js/watch-page-core.js";
@@ -73,8 +75,12 @@ const UI = {
     sv: "Du har valt en del som inte passar resten av bygget. Den förblir vald — bygget är ditt — men så här är felet:",
   },
   textHint: {
-    en: "Printed on the dial. Leave it empty for no text.",
-    sv: "Trycks på urtavlan. Lämna tomt för ingen text.",
+    en: "Leave it empty for none.",
+    sv: "Lämna tomt för ingen text.",
+  },
+  fineTuning: {
+    en: "Fine tuning — the variables behind each part",
+    sv: "Finjustering — variablerna bakom varje del",
   },
   calcFail: {
     en: "This section could not be worked out for the current build. The rest of the page still works — try a different combination.",
@@ -163,10 +169,10 @@ const openDisclosures = new Set();
  * A chip for one option. `warn` marks the ones that do not fit; they are
  * offered all the same.
  */
-function chipFor(slotKey, opt, selected) {
+function chipFor(slotKey, opt, selected, why) {
   const b = document.createElement("button");
   b.type = "button";
-  b.className = "chip" + (selected ? " on" : "") + (opt.none ? " none" : "");
+  b.className = "chip" + (selected ? " on" : "") + (opt.none || opt.asListed ? " none" : "") + (why ? " soft" : "");
   const sw = swatchFor(slotKey, opt);
   if (sw) {
     const dot = document.createElement("span");
@@ -174,31 +180,40 @@ function chipFor(slotKey, opt, selected) {
     dot.style.background = sw;
     b.appendChild(dot);
   }
-  b.appendChild(document.createTextNode(T(opt.name)));
-  if (opt.blurb) b.title = T(opt.blurb);
+  // A compatible option can still come back with something worth saying. Mark
+  // it softly — it fits, so it is not behind the ⚠ disclosure — and put the
+  // sentence on the tooltip.
+  b.appendChild(document.createTextNode((why ? "⚠ " : "") + T(opt.name)));
+  const tip = [why ? T(why) : "", opt.blurb ? T(opt.blurb) : ""].filter(Boolean).join(" — ");
+  if (tip) b.title = tip;
   b.addEventListener("click", () => setPart(slotKey, opt.id));
   return b;
 }
 
-/** The free-text slots — a custom dial legend is typed, not picked. */
+/**
+ * The free-text fields — a custom dial legend or a case-back engraving is
+ * typed, not picked (#56: "support for custom text dial logos and dial text
+ * specifications").
+ */
 function textSlotRow(slot) {
+  const max = Number(slot.max) > 0 ? Number(slot.max) : TEXT_SLOT_MAXLEN;
   const wrap = document.createElement("div");
   wrap.className = "txtslot";
   const input = document.createElement("input");
   input.type = "text";
-  input.maxLength = TEXT_SLOT_MAXLEN;
+  input.maxLength = max;
   input.value = String(build[slot.key] || "");
   input.placeholder = T(slot.placeholder) || T(UI.textHint);
   input.setAttribute("aria-label", T(slot.name));
   const count = document.createElement("span");
   count.className = "count";
-  const sync = () => (count.textContent = `${input.value.length}/${TEXT_SLOT_MAXLEN}`);
+  const sync = () => (count.textContent = `${input.value.length}/${max}`);
   sync();
   input.addEventListener("input", sync);
   // Commit on blur / Enter rather than per keystroke: every commit pushes a
   // history entry, and one per letter would bury the back button.
   const commit = () => {
-    const clean = sanitizeTextValue(input.value);
+    const clean = sanitizeTextValue(input.value, max);
     input.value = clean;
     sync();
     if (clean !== String(build[slot.key] || "")) setPart(slot.key, clean);
@@ -215,6 +230,126 @@ function textSlotRow(slot) {
   return wrap;
 }
 
+/**
+ * Which option a slot or an axis currently holds. An axis left alone is not
+ * written into the build at all (that is what keeps an old permalink opening
+ * the same watch), so its current value is its own default.
+ */
+function currentId(slot) {
+  const set = build[slot.key];
+  if (typeof set === "string" && set) return set;
+  if (slot.asListed) return "as-listed";
+  if (slot.defaultId) return slot.defaultId;
+  const first = annotateOptions(slot.key, build)[0];
+  return first ? first.option.id : "";
+}
+
+/**
+ * One picker row — the same shape for a base slot and for an axis: the label
+ * with what is chosen, the chips that fit, and the ⚠ disclosure holding the
+ * ones that do not with the reason each of them clashes.
+ *
+ * @param {any} slot
+ * @param {Set<string>} saidWhy reasons already printed in this render pass
+ */
+function slotRow(slot, saidWhy) {
+  const row = document.createElement("div");
+  row.className = "slot";
+
+  const field = textFieldDef(slot.key);
+  const now = field ? String(build[slot.key] || "") : currentId(slot);
+
+  const label = document.createElement("div");
+  label.className = "label";
+  const name = document.createElement("span");
+  name.textContent = T(slot.name);
+  label.appendChild(name);
+
+  if (field || slotIsText(slot.key)) {
+    const pick = document.createElement("span");
+    pick.className = "pick";
+    pick.textContent = now || (lang === "sv" ? "tom" : "empty");
+    label.appendChild(pick);
+    row.appendChild(label);
+    row.appendChild(textSlotRow(field || slot));
+    return row;
+  }
+
+  const rows = annotateOptions(slot.key, build);
+  const selected = rows.find((r) => r.option.id === now) || null;
+  const { fits, clashes } = groupOptions(rows);
+
+  const pick = document.createElement("span");
+  pick.className = "pick" + (selected && !selected.compatible ? " bad" : "");
+  pick.textContent =
+    (selected && !selected.compatible ? "⚠ " : "") +
+    (selected ? T(selected.option.name) : now);
+  label.appendChild(pick);
+  row.appendChild(label);
+
+  const chips = document.createElement("div");
+  chips.className = "chips";
+  for (const r of fits) chips.appendChild(chipFor(slot.key, r.option, r.option.id === now, r.why));
+  row.appendChild(chips);
+
+  // The user is allowed to keep a part that does not fit — but then the reason
+  // stays on screen rather than only inside the dropdown.
+  const stuck = selected && (!selected.compatible || (selected.why && selected.level === "warning"));
+  if (stuck && selected.why && !saidWhy.has(T(selected.why))) {
+    saidWhy.add(T(selected.why));
+    const w = document.createElement("div");
+    w.className = "warnpick";
+    w.textContent = selected.compatible
+      ? `⚠ ${T(selected.why)}`
+      : `⚠ ${T(UI.clashPicked)} ${T(selected.why)}`;
+    row.appendChild(w);
+  }
+
+  if (clashes.length) {
+    const key = `clash:${slot.key}`;
+    const det = document.createElement("details");
+    det.className = "clash";
+    det.open = openDisclosures.has(key);
+    det.addEventListener("toggle", () => {
+      if (det.open) openDisclosures.add(key);
+      else openDisclosures.delete(key);
+    });
+    const sum = document.createElement("summary");
+    sum.textContent = UI.clash[lang === "sv" ? "sv" : "en"](clashes.length);
+    det.appendChild(sum);
+    const list = document.createElement("div");
+    list.className = "clashlist";
+    for (const r of clashes) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "clashopt" + (r.option.id === now ? " on" : "");
+      const n = document.createElement("span");
+      n.className = "n";
+      const sw = swatchFor(slot.key, r.option);
+      if (sw) {
+        const dot = document.createElement("span");
+        dot.className = "sw";
+        dot.style.background = sw;
+        n.appendChild(dot);
+      }
+      n.appendChild(document.createTextNode(`⚠ ${T(r.option.name)}`));
+      b.appendChild(n);
+      if (r.why) {
+        const why = document.createElement("span");
+        why.className = "why";
+        why.textContent = T(r.why);
+        b.appendChild(why);
+      }
+      b.addEventListener("click", () => setPart(slot.key, r.option.id));
+      list.appendChild(b);
+    }
+    det.appendChild(list);
+    row.appendChild(det);
+  }
+
+  return row;
+}
+
 function renderPicker() {
   const host = $("picker");
   if (!host) return;
@@ -222,98 +357,45 @@ function renderPicker() {
   const h2 = document.createElement("h2");
   h2.textContent = lang === "sv" ? "Delar" : "Parts";
   host.appendChild(h2);
-  const { parts } = resolveBuild(build);
   // One clash is usually visible from both ends of it — a dated dial under a
   // no-date movement is the same sentence in the dial slot and the movement
   // slot. Say it once, on the first slot that reports it, and leave the ⚠ on
   // the others.
   /** @type {Set<string>} */
   const saidWhy = new Set();
-  for (const slot of SLOTS) {
-    const row = document.createElement("div");
-    row.className = "slot";
+  for (const slot of SLOTS) host.appendChild(slotRow(slot, saidWhy));
 
-    const rows = annotateOptions(slot.key, build);
-    const selected = rows.find((r) => r.option.id === build[slot.key]) || null;
-    const { fits, clashes } = groupOptions(rows);
-
-    const label = document.createElement("div");
-    label.className = "label";
-    const name = document.createElement("span");
-    name.textContent = T(slot.name);
-    const pick = document.createElement("span");
-    pick.className = "pick" + (selected && !selected.compatible ? " bad" : "");
-    const chosen = selected ? selected.option : parts[slot.key];
-    pick.textContent =
-      (selected && !selected.compatible ? "⚠ " : "") +
-      (chosen ? T(chosen.name) : String(build[slot.key] || ""));
-    label.append(name, pick);
-    row.appendChild(label);
-
-    if (slotIsText(slot.key)) {
-      row.appendChild(textSlotRow(slot));
-      host.appendChild(row);
-      continue;
-    }
-
-    const chips = document.createElement("div");
-    chips.className = "chips";
-    for (const r of fits) chips.appendChild(chipFor(slot.key, r.option, r.option.id === build[slot.key]));
-    row.appendChild(chips);
-
-    // The user is allowed to keep a part that does not fit — but then the
-    // reason stays on screen rather than only inside the dropdown.
-    if (selected && !selected.compatible && selected.why && !saidWhy.has(T(selected.why))) {
-      saidWhy.add(T(selected.why));
-      const w = document.createElement("div");
-      w.className = "warnpick";
-      w.textContent = `⚠ ${T(UI.clashPicked)} ${T(selected.why)}`;
-      row.appendChild(w);
-    }
-
-    if (clashes.length) {
-      const key = `clash:${slot.key}`;
-      const det = document.createElement("details");
-      det.className = "clash";
-      det.open = openDisclosures.has(key);
-      det.addEventListener("toggle", () => {
-        if (det.open) openDisclosures.add(key);
-        else openDisclosures.delete(key);
-      });
-      const sum = document.createElement("summary");
-      sum.textContent = UI.clash[lang === "sv" ? "sv" : "en"](clashes.length);
-      det.appendChild(sum);
-      const list = document.createElement("div");
-      list.className = "clashlist";
-      for (const r of clashes) {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = "clashopt" + (r.option.id === build[slot.key] ? " on" : "");
-        const n = document.createElement("span");
-        n.className = "n";
-        const sw = swatchFor(slot.key, r.option);
-        if (sw) {
-          const dot = document.createElement("span");
-          dot.className = "sw";
-          dot.style.background = sw;
-          n.appendChild(dot);
-        }
-        n.appendChild(document.createTextNode(`⚠ ${T(r.option.name)}`));
-        b.appendChild(n);
-        if (r.why) {
-          const why = document.createElement("span");
-          why.className = "why";
-          why.textContent = T(r.why);
-          b.appendChild(why);
-        }
-        b.addEventListener("click", () => setPart(slot.key, r.option.id));
-        list.appendChild(b);
-      }
-      det.appendChild(list);
-      row.appendChild(det);
-    }
-
-    host.appendChild(row);
+  // The orthogonal variables (#56: "dials come in so many shapes, colours and
+  // sizes that the current fixed-variable system needs replacement"). They are
+  // filed one disclosure per group so the picker still opens on the eleven
+  // decisions a build is actually made of, with the fine tuning a tap away.
+  // A group whose axes cannot apply to this build is not rendered at all.
+  const groups = axisGroupsFor(build);
+  if (groups.length) {
+    const h3 = document.createElement("h2");
+    h3.className = "axeshead";
+    h3.textContent = T(UI.fineTuning);
+    host.appendChild(h3);
+  }
+  for (const g of groups) {
+    const key = `axes:${g.id}`;
+    const det = document.createElement("details");
+    det.className = "axes";
+    det.open = openDisclosures.has(key);
+    det.addEventListener("toggle", () => {
+      if (det.open) openDisclosures.add(key);
+      else openDisclosures.delete(key);
+    });
+    const sum = document.createElement("summary");
+    const touched = [...g.axes, ...g.texts].filter((a) => build[a.key]).length;
+    sum.textContent = `${T(g.name)}${touched ? ` · ${touched}` : ""}`;
+    det.appendChild(sum);
+    const body = document.createElement("div");
+    body.className = "axesbody";
+    for (const axis of g.axes) body.appendChild(slotRow(axis, saidWhy));
+    for (const f of g.texts) body.appendChild(slotRow(f, saidWhy));
+    det.appendChild(body);
+    host.appendChild(det);
   }
 }
 

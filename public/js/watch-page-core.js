@@ -25,7 +25,10 @@ const cat = /** @type {any} */ (core);
 
 /**
  * @typedef {{ en: string, sv: string }} Bi
- * @typedef {{ option: any, compatible: boolean, why: Bi|null }} AnnotatedOption
+ * @typedef {{ option: any, compatible: boolean, why: Bi|null, level: "error"|"warning"|null }} AnnotatedOption
+ * `compatible: false` means picking it would put the build in ERROR. A `why`
+ * can also come back on an option that IS compatible, carrying
+ * `level: "warning"` — it fits, but something about it is worth saying.
  */
 
 // ---------------------------------------------------------------------------
@@ -75,11 +78,28 @@ const NONE_BLURBS = {
 };
 
 /**
- * The slot descriptor, or null.
+ * The slot descriptor, or null. Uses the catalogue's own lookup when it has
+ * one — that covers the orthogonal AXES too, which `SLOTS` alone does not.
  * @param {string} slotKey
  */
 export function slotDef(slotKey) {
+  if (typeof cat.slotDef === "function") return cat.slotDef(slotKey) || null;
   return core.SLOTS.find((s) => s.key === slotKey) || null;
+}
+
+/** Every choosable key: the base slots, then the axes that modify them. */
+export function allSlots() {
+  return /** @type {any[]} */ (Array.isArray(cat.ALL_SLOTS) ? cat.ALL_SLOTS : core.SLOTS);
+}
+
+/** The orthogonal axes, or an empty list on a catalogue without them. */
+export function axisSlots() {
+  return /** @type {any[]} */ (Array.isArray(cat.AXIS_SLOTS) ? cat.AXIS_SLOTS : []);
+}
+
+/** The free-text fields, or an empty list. */
+export function textFields() {
+  return /** @type {any[]} */ (Array.isArray(cat.TEXT_FIELDS) ? cat.TEXT_FIELDS : []);
 }
 
 /**
@@ -100,8 +120,19 @@ export function slotIsOptional(slotKey) {
  * @param {string} slotKey
  */
 export function slotIsText(slotKey) {
+  if (typeof cat.textFieldDef === "function" && cat.textFieldDef(slotKey)) return true;
+  if (textFields().some((f) => f && f.key === slotKey)) return true;
   const slot = /** @type {any} */ (slotDef(slotKey));
   return !!(slot && (slot.text === true || slot.input === "text"));
+}
+
+/**
+ * The free-text field descriptor for a key, or null.
+ * @param {string} slotKey
+ */
+export function textFieldDef(slotKey) {
+  if (typeof cat.textFieldDef === "function") return cat.textFieldDef(slotKey) || null;
+  return textFields().find((f) => f && f.key === slotKey) || null;
 }
 
 /**
@@ -112,12 +143,17 @@ export function noneOption(slotKey) {
   const key = /** @type {keyof typeof NONE_NAMES} */ (
     slotKey in NONE_NAMES ? slotKey : "default"
   );
-  return {
-    id: NONE_ID,
-    none: true,
-    name: NONE_NAMES[key],
-    blurb: NONE_BLURBS[/** @type {keyof typeof NONE_BLURBS} */ (key)],
-  };
+  const blurb = NONE_BLURBS[/** @type {keyof typeof NONE_BLURBS} */ (key)];
+  // The catalogue words "none" per slot when it can — it knows what the case
+  // ships with. Take its wording and keep the page's explanatory blurb, which
+  // is what the chip's tooltip shows.
+  if (typeof cat.noneOption === "function") {
+    const own = cat.noneOption(slotKey);
+    if (own && own.id === NONE_ID && own.name && own.name.en && own.name.sv) {
+      return { ...own, blurb: own.blurb || blurb };
+    }
+  }
+  return { id: NONE_ID, none: true, name: NONE_NAMES[key], blurb };
 }
 
 /**
@@ -135,10 +171,94 @@ export function optionsForSlot(slotKey) {
 }
 
 // ---------------------------------------------------------------------------
+// The orthogonal AXES (#56: "dials come in so many shapes, colours and sizes
+// that the current fixed-variable system needs replacement"). The catalogue
+// carries them as its own registry; the page's job is to file them under a
+// heading, hide the ones that cannot apply to this build, and otherwise render
+// them exactly like a slot.
+
+/** The order the fine-tuning groups appear in, and what to call each. */
+export const AXIS_GROUPS = [
+  { id: "dial", name: { en: "Dial detail", sv: "Urtavlans detaljer" } },
+  { id: "dialText", name: { en: "Dial text and logo", sv: "Urtavlans text och logga" } },
+  { id: "wheels", name: { en: "Date and day wheels", sv: "Datum- och veckodagshjul" } },
+  { id: "bezel", name: { en: "Bezel insert detail", sv: "Lünettinläggets detaljer" } },
+  { id: "crystal", name: { en: "Crystal detail", sv: "Glasets detaljer" } },
+  { id: "chapterRing", name: { en: "Chapter ring detail", sv: "Chapter ringens detaljer" } },
+  { id: "caseback", name: { en: "Case back detail", sv: "Boettbottnens detaljer" } },
+  { id: "strap", name: { en: "Strap detail", sv: "Bandets detaljer" } },
+];
+
+const GROUP_FALLBACK = { en: "More detail", sv: "Fler detaljer" };
+
+/**
+ * Whether an axis has anything to say about THIS build.
+ *
+ * Two ways it can have nothing: it modifies a part that was left out (there is
+ * no insert profile to choose when there is no insert), or it is written for a
+ * strap family this build is not on (a NATO weave under a steel bracelet). The
+ * second is not silently dropped by the compatibility engine — it raises a
+ * real issue — but showing the user a row whose every option is warned is
+ * noise, not a choice.
+ *
+ * @param {any} axis
+ * @param {Record<string,string>} ids
+ */
+function axisApplies(axis, ids) {
+  if (!axis) return false;
+  if (axis.over && ids[axis.over] === NONE_ID) return false;
+  if (!axis.kind) return true;
+  try {
+    const strap = core.part("strap", ids.strap);
+    return !!strap && strap.kind === axis.kind;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * The fine-tuning groups to render for a build: the axes and free-text fields
+ * that apply, filed under their heading, empty groups dropped.
+ * @param {Record<string,string>|null|undefined} build
+ * @returns {{ id: string, name: Bi, axes: any[], texts: any[] }[]}
+ */
+export function axisGroupsFor(build) {
+  const ids = core.normalizeBuild(build);
+  const axes = axisSlots().filter((a) => axisApplies(a, ids));
+  const texts = textFields();
+  const seen = new Set([...axes.map((a) => a.group || "other"), ...texts.map((t) => t.group || "other")]);
+  const ordered = [
+    ...AXIS_GROUPS.filter((g) => seen.has(g.id)),
+    ...[...seen].filter((id) => !AXIS_GROUPS.some((g) => g.id === id)).map((id) => ({ id, name: GROUP_FALLBACK })),
+  ];
+  return ordered
+    .map((g) => ({
+      id: g.id,
+      name: g.name,
+      axes: axes.filter((a) => (a.group || "other") === g.id),
+      texts: texts.filter((t) => (t.group || "other") === g.id),
+    }))
+    .filter((g) => g.axes.length || g.texts.length);
+}
+
+// ---------------------------------------------------------------------------
 // Compatibility annotation (#56: "designs that can not be found in versions
 // suited to the currently selected movement should be in a dropdown menu with
 // a warning symbol"). Nothing is filtered out — an incompatible option is
 // still offered, just behind the warning, because it is the user's build.
+
+/**
+ * Whether an issue names a slot. The catalogue grew a `slots` ARRAY (one clash
+ * is usually visible from both ends of it — hands AND movement) while keeping
+ * the single `slot` for the primary one; read both.
+ * @param {any} issue
+ * @param {string} slotKey
+ */
+function errNames(issue, slotKey) {
+  if (!issue) return false;
+  if (String(issue.slot) === slotKey) return true;
+  return Array.isArray(issue.slots) && issue.slots.includes(slotKey);
+}
 
 /** @param {any} row @returns {AnnotatedOption|null} */
 function tidyRow(row) {
@@ -147,7 +267,9 @@ function tidyRow(row) {
     row.why && typeof row.why === "object" && (row.why.en || row.why.sv)
       ? { en: String(row.why.en || row.why.sv), sv: String(row.why.sv || row.why.en) }
       : null;
-  return { option: row.option, compatible: row.compatible !== false, why };
+  const compatible = row.compatible !== false;
+  const level = row.level === "error" || row.level === "warning" ? row.level : compatible ? (why ? "warning" : null) : "error";
+  return { option: row.option, compatible, why, level: /** @type {any} */ (level) };
 }
 
 /**
@@ -160,7 +282,7 @@ function tidyRow(row) {
 function withNoneRow(slotKey, rows) {
   if (!slotIsOptional(slotKey)) return rows;
   if (rows.some((r) => r.option && r.option.id === NONE_ID)) return rows;
-  return [{ option: noneOption(slotKey), compatible: true, why: null }, ...rows];
+  return [{ option: noneOption(slotKey), compatible: true, why: null, level: null }, ...rows];
 }
 
 /**
@@ -229,12 +351,13 @@ export function localAnnotate(slotKey, build) {
   const unavoidable = universal || new Set();
 
   return trials.map(({ opt, errs }) => {
-    const mine = errs.filter((e) => String(e.slot) === slotKey || !unavoidable.has(String(e.slot)));
+    const mine = errs.filter((e) => errNames(e, slotKey) || !unavoidable.has(String(e.slot)));
     const first = mine[0];
     return {
       option: opt,
       compatible: mine.length === 0,
       why: first ? { en: String(first.en), sv: String(first.sv || first.en) } : null,
+      level: /** @type {any} */ (first ? "error" : null),
     };
   });
 }
@@ -332,9 +455,17 @@ function greedyBuild(rand) {
       } catch {
         errs = [];
       }
-      const blocking = errs.some(
-        (e) => decided.has(String(e.slot)) || (String(e.slot) === key && decided.size > 0),
-      );
+      // An error blocks only when EVERY slot it names is already settled (this
+      // one included). One that also names a slot still to come can be fixed
+      // by that later pick, and treating it as fatal here is what used to make
+      // whole movements unreachable: the NH34's "this hand set has only three"
+      // names hands AND movement, so judging it while the hands are still at
+      // their placeholder rejected the movement itself.
+      const blocking = errs.some((e) => {
+        const named = new Set([String(e.slot), ...(Array.isArray(e.slots) ? e.slots.map(String) : [])]);
+        for (const n of named) if (n !== key && !decided.has(n)) return false;
+        return true;
+      });
       if (!blocking) {
         picked = opt.id;
         break;
@@ -374,34 +505,66 @@ export function pageSurpriseBuild(rand = Math.random) {
     if (!b) continue;
     // normalizeBuild may rewrite an id the catalogue does not know, so check
     // AFTER normalising rather than before.
-    const norm = core.normalizeBuild(b);
+    const norm = core.normalizeBuild(twistAxes(b, r));
     if (isValid(norm)) return norm;
   }
   return core.normalizeBuild(core.DEFAULT_BUILD);
 }
 
 /**
- * A random build that is guaranteed to pass `checkBuild(build).ok`.
+ * Twist a few of the orthogonal axes, sometimes. A build with every knob moved
+ * is noise rather than a surprise, so each applicable axis gets a small chance
+ * and only options that raise nothing at all are eligible.
+ * @param {Record<string,string>} build
+ * @param {() => number} rand
+ */
+function twistAxes(build, rand) {
+  const axes = axisSlots();
+  if (!axes.length) return build;
+  let out = build;
+  const ids = core.normalizeBuild(out);
+  for (const axis of axes) {
+    if (rand() > 0.28) continue;
+    if (!axisApplies(axis, ids)) continue;
+    const clean = annotateOptions(axis.key, out).filter((a) => a.compatible && !a.why);
+    if (clean.length < 2) continue;
+    const chosen = clean[Math.min(clean.length - 1, Math.floor(Math.abs(rand()) * clean.length))];
+    const trial = { ...out, [axis.key]: chosen.option.id };
+    if (isValid(core.normalizeBuild(trial))) out = trial;
+  }
+  return out;
+}
+
+/**
+ * A random build that is guaranteed to pass `checkBuild(build).ok` — what the
+ * "surprise me" button calls (feedback #57).
  *
- * Prefers the catalogue's own `surpriseBuild` when it exists — but still
- * verifies it, because the promise this function makes to the button is
- * unconditional and a button that contradicts the fit check beside it is the
- * bug this replaced (feedback #57).
+ * VALIDITY IS NOT THE WHOLE JOB. The catalogue also ships a `surpriseBuild`,
+ * and everything it returns does pass the fit check — but it judges each slot
+ * against a build whose later slots are still at their defaults, so a movement
+ * whose default dial clashes is rejected on step one. Measured over 3000
+ * draws it returned the NH35 every single time: valid, and not a surprise.
+ * The page's own picker (which defers an error that also names an undecided
+ * slot instead of treating it as fatal) reaches all five movements, every case
+ * and every dial, so it leads here. The catalogue's is the fallback, and the
+ * unit suite pins the coverage of whichever one is in front.
  *
  * @param {() => number} [rand]
  * @returns {Record<string,string>}
  */
 export function surpriseBuild(rand = Math.random) {
   const r = typeof rand === "function" ? rand : Math.random;
+  const own = pageSurpriseBuild(r);
+  if (isValid(own) && core.encodeBuild(own) !== core.encodeBuild(core.DEFAULT_BUILD)) return own;
   if (typeof cat.surpriseBuild === "function") {
     try {
       const b = core.normalizeBuild(cat.surpriseBuild(r));
       if (isValid(b)) return b;
     } catch {
-      /* fall through to the page's own picker */
+      /* keep whatever the page's own picker produced */
     }
   }
-  return pageSurpriseBuild(r);
+  return own;
 }
 
 // ---------------------------------------------------------------------------
@@ -442,13 +605,15 @@ export const TEXT_SLOT_MAXLEN = 24;
 
 /**
  * @param {string|null|undefined} value
+ * @param {number} [max]
  * @returns {string}
  */
-export function sanitizeTextValue(value) {
+export function sanitizeTextValue(value, max) {
+  const limit = Number.isFinite(max) && Number(max) > 0 ? Number(max) : TEXT_SLOT_MAXLEN;
   return String(value == null ? "" : value)
     .replace(/[;:]/g, " ")
     .replace(/[\u0000-\u001f\u007f]/g, "")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, TEXT_SLOT_MAXLEN);
+    .slice(0, limit);
 }
