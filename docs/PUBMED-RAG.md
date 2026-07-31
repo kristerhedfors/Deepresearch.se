@@ -14,10 +14,11 @@ PMC's live keyword-AND API. This tier gives it dense retrieval with a
 cross-encoder rerank — the configuration that, measured through the deployed
 path on arXiv, reaches 78.7% recall@1 / 85.3% recall@10 in English.
 
-Status: **the ingestion path is built, measured and tested; the index is not yet
-created.** Everything below §1–§4 is measured on this machine on 2026-07-31.
-§5 is the cost model and the amounts recommendation, which is the decision this
-document exists to support. §7 is what is deliberately still open.
+Status: **built, measured, and FILLING.** The index `deepresearch-se-pubmed`
+was created on 2026-07-31 and the `PUBMED_INDEX` binding is live. Every number
+in §1–§4 was measured on this machine that day; §5 is the cost model and the
+amounts recommendation this document exists to support; §7 is the fill and what
+it measured; §8 is what is deliberately still open.
 
 ---
 
@@ -168,7 +169,7 @@ the whole batch past 512 tokens, it does not truncate), and the index works. But
 arXiv's measured finding that chunking makes retrieval *worse* was established
 on abstracts that **fit** — "chunking is a technique for documents longer than
 the embedder's window; an abstract already fits." On this corpus that premise is
-false. §7 records the experiment rather than guessing at it.
+false. §8 records the experiment rather than guessing at it.
 
 ### 3.4 Token cost per record, measured not estimated
 
@@ -197,6 +198,7 @@ E-utilities cross-check ──────────────────�
 | Harvest | `scripts/pubmed-harvest.mjs` | newest file first, resumable, one archive file on disk at a time |
 | Enumerate | `scripts/pubmed-enumerate.mjs` | the independent E-utilities count; `--verify` diffs it against the corpus |
 | Report | `scripts/pubmed-corpus.mjs` | dedup, drop reasons, length distribution, year spread |
+| Partition | `scripts/pubmed-partition.mjs` | dedup ONCE, then split by PMID hash into N disjoint parts so the fill can run in parallel |
 | Fill | `scripts/pubmed-vectorize.mjs` | incremental embed + upsert, checkpointed; `--prune` removes withdrawn citations |
 | Pure core | `public/js/pubmed-core.js` | XML parse, filters, window planning, passage + metadata construction |
 | Served tier | `src/pubmed-rag.js` | dense → rerank → relevance floor, behind Europe PMC's existing intent gate |
@@ -219,7 +221,10 @@ npm run pubmed:enumerate -- --ids --month 2026/06 --sample 2000
 
 # 4. Fill the index (resumable — Vectorize is the checkpoint)
 npx wrangler vectorize create deepresearch-se-pubmed --dimensions=1024 --metric=cosine
-NODE_USE_ENV_PROXY=1 npm run pubmed:vectorize -- --index deepresearch-se-pubmed
+node scripts/pubmed-partition.mjs --parts 8       # dedup once, then split
+WRANGLER_BIN=$(command -v wrangler) NODE_USE_ENV_PROXY=1 \
+  node scripts/pubmed-vectorize.mjs --index deepresearch-se-pubmed \
+    --corpus data/pubmed/parts/00 --work data/pubmed/vectorize/00   # ×8, in parallel
 ```
 
 Then uncomment the `PUBMED_INDEX` binding in `wrangler.toml`. Until it is
@@ -387,7 +392,100 @@ to it).
 
 ---
 
-## 7. Open, and deliberately not guessed at
+## 7. The fill — what actually happened (2026-07-31)
+
+The index was created and filled from the corpus already on disk. Numbers as
+measured, not planned.
+
+```
+1,639,403 unique citations · 8 parallel loaders · ~82 vectors/s sustained
+```
+
+### 7.1 Dedup has to happen BEFORE the split, not inside each loader
+
+Parallelising is done by partitioning the input, and the obvious partition —
+hand each loader a slice of the shards — is wrong here and expensively so. A
+citation revised since the baseline appears in every update file that touched
+it, and each loader dedupes only what it can see, so the same PMID landing in
+two partitions gets embedded twice. Vectorize would still be *correct* (a
+repeated id overwrites), but embeddings are billed per call, and at 55.9%
+repeats a shard-sliced 8-way fill would have spent most of an extra €13 for
+nothing.
+
+`scripts/pubmed-partition.mjs` therefore dedupes once — 3,713,921 rows →
+1,639,403 citations in 547 s — and splits by a hash of the PMID. Hashing rather
+than round-robin is what makes a re-partition safe: part membership does not
+depend on read order, so a resumed loader finds the same work list its
+checkpoint describes. The eight parts came out within 0.2% of each other
+(204,694 – 205,122).
+
+### 7.2 Eight concurrent `npx` calls kill each other
+
+The first launch lost half its loaders on their first batch:
+
+```
+npm error ENOTEMPTY: directory not empty,
+  rename '…/_npx/…/node_modules/wrangler' -> '…/node_modules/.wrangler-YxIlSDWy'
+```
+
+`npx` revalidates the package on every invocation, so eight loaders shelling out
+concurrently race on the shared npx cache. Warming the cache first does not fix
+it. `scripts/vectorize-upsert.mjs` now takes a `WRANGLER_BIN` env override that
+points at an already-installed binary and skips the npx step; the default stays
+`npx`, so a single-process fill needs no setup. With it, eight loaders ran with
+zero upsert failures.
+
+### 7.3 The served path, probed against the partial index
+
+Retrieval was checked end to end — embed, Vectorize query, cross-encoder rerank,
+relevance floor — while the fill was still running:
+
+| query | top rerank | above the 0.01 floor |
+|---|---|---|
+| does metformin reduce cardiovascular mortality in type 2 diabetes | 0.991 | 10/10 |
+| antibiotic resistance in *Klebsiella pneumoniae* | 0.990 | 10/10 |
+| risk factors for preterm birth | 0.973 | 10/10 |
+| CRISPR base editing for sickle cell disease | 0.418 | 7/10 |
+| **best pizza recipe napoletana dough** | **0.00006** | **0/10** |
+
+The nonsense control is the one that matters: four orders of magnitude below the
+on-topic queries and nothing survives the floor, so `src/europepmc.js` falls
+through to the live API instead of citing the index's nearest food-science
+paper. That is the property the floor exists for, reproduced on a second corpus.
+
+### 7.4 A Swedish measurement trap that nearly became a false bug report
+
+The first Swedish probe looked alarming — two of five paired queries returned
+**nothing** above the floor while their English twins scored 0.97+. It read like
+an invariant-6 violation in the retrieval layer.
+
+It was mostly the *test*. Those queries had been typed without diacritics
+(`hjart-karldodlighet`, `fodsel`, `djupinlarning`) because of shell quoting.
+Restoring them moved three of five from near-zero to healthy:
+
+| query | EN top | SV top (no diacritics) | SV top (correct) |
+|---|---|---|---|
+| metformin, cardiovascular mortality | 0.991 | 0.271 | **0.941** |
+| risk factors for preterm birth | 0.973 | 0.00095 | **0.501** |
+| deep learning in mammography | 0.932 | 0.554 | **0.948** |
+| antibiotic resistance in *Klebsiella* | 0.990 | — | **0.970** |
+| gut microbiota and depression | 0.986 | 0.0036 | 0.0054 |
+
+**Never measure Swedish retrieval without diacritics.** Stripping them costs
+orders of magnitude, so a probe written that way understates Swedish support
+badly enough to manufacture a defect that is not there. This is the retrieval
+analogue of the `\b` Swedish-boundary trap that silently kills bilingual regex
+gates (the **palaeogenomics** skill records that one).
+
+What survives the correction is a single query — "tarmflorans roll vid
+depression" — still at 0.0054 against its English pair's 0.986, and it collapses
+the same way on the arXiv index (0.00109). One case out of six is a lead, not an
+established defect, and the floor was **not** touched on the strength of it.
+Deciding it needs a Swedish gold set, which §8 already says does not exist.
+
+---
+
+## 8. Open, and deliberately not guessed at
 
 1. **Whether to chunk long abstracts.** 88.0% of passages lose their tail
    (§3.3), and the arXiv finding against chunking was measured on abstracts that
