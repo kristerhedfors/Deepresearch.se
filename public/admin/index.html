@@ -52,7 +52,28 @@
       <p class="muted">Accounts are created automatically on first Google
       sign-in — the address configured as <code>ADMIN_EMAIL</code> becomes
       admin, everyone else a regular user with the default quota. Manage
-      roles, status, and per-user quotas here.</p>
+      status and per-user quotas here. (Roles are not editable: the admin
+      is whoever <code>ADMIN_EMAIL</code> names, and only them.)</p>
+
+      <form id="add-user" autocomplete="off">
+        <div class="add-user-row">
+          <input type="email" id="add-user-email" placeholder="name@example.com"
+                 required aria-label="Email address of the person to add">
+          <input type="text" id="add-user-name" placeholder="Name (optional)"
+                 aria-label="Display name (optional)">
+          <label><input type="checkbox" id="add-user-approved" checked>
+            Pre-approved</label>
+          <button type="submit">Add user</button>
+        </div>
+        <p class="muted add-user-hint">Adds the account before its owner has
+        ever signed in, so a colleague you are expecting skips the approval
+        queue: they sign in with Google at that exact address and are
+        straight into the app. <b>No email is sent</b> — send them
+        <code id="add-user-link">/login</code> yourself. Untick
+        <em>pre-approved</em> to stage the account as pending instead.</p>
+        <p id="add-user-msg" class="add-user-msg" hidden></p>
+      </form>
+
       <div id="users"></div>
     </section>
 

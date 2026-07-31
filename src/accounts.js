@@ -1,10 +1,13 @@
 // @ts-check
-// User accounts (D1-backed), provisioned exclusively by Google sign-in
-// (src/google.js). No passwords are stored: Google proves the email, our
-// signed session cookie carries the identity afterwards. Roles are
-// user | admin — ADMIN_EMAIL is the ONLY path to admin (sole-admin
-// policy; the admin API cannot change roles). Disabling a user takes
-// effect on their next request.
+// User accounts (D1-backed). Two ways a row appears: Google sign-in
+// provisions one on first arrival (src/google.js), or an admin creates it
+// ahead of time from /admin ("Add user" → createInvitedUser), keyed by
+// email alone until its owner's first sign-in claims it
+// (linkGoogleIdentity). No passwords are stored either way: Google proves
+// the email, our signed session cookie carries the identity afterwards.
+// Roles are user | admin — ADMIN_EMAIL is the ONLY path to admin
+// (sole-admin policy; neither the admin API nor an invite can change or
+// mint one). Disabling a user takes effect on their next request.
 
 import { getDb } from "./db.js";
 
@@ -77,7 +80,14 @@ export async function listUsers(env) {
   const db = await getDb(env);
   if (!db) return [];
   const { results } = await db
-    .prepare("SELECT id, email, name, role, status, quota_json, quota_reset_at, created_at FROM users ORDER BY created_at DESC")
+    // google_sub is reduced to a boolean rather than selected: the admin
+    // list only needs to tell an admin-created invite (nobody has signed in
+    // against it yet) from a live account — not the opaque Google subject id.
+    .prepare(
+      "SELECT id, email, name, role, status, quota_json, quota_reset_at, created_at," +
+        " (google_sub IS NOT NULL) AS has_signed_in" +
+        " FROM users ORDER BY created_at DESC",
+    )
     .all();
   return results || [];
 }
@@ -124,6 +134,74 @@ export async function createUserFromGoogle(env, { email, name, sub, role, status
     .run();
   // The INSERT above succeeded (or threw), so the row exists.
   return /** @type {Promise<User>} */ (getUserByEmail(env, email));
+}
+
+/**
+ * Creates an account BEFORE its owner has ever signed in — the /admin
+ * "Add user" form (POST /api/admin/users). The row is keyed by email with
+ * no `google_sub`; the first Google sign-in for that address finds it and
+ * claims it (linkGoogleIdentity), so the person keeps the id, quota, and
+ * history the admin set up for them.
+ *
+ * Pre-approving is the whole point: an invited user defaults to "active"
+ * and so never meets the approval gate. "pending" stays available for
+ * staging an account without granting access yet.
+ *
+ * The role is ALWAYS "user". ADMIN_EMAIL is the only path to admin
+ * (sole-admin policy) — this must no more be able to mint an admin than
+ * `updateUser` is able to promote one.
+ *
+ * Nothing is emailed: the site has no outbound mail path, so the admin
+ * shares the sign-in link themselves. The row IS the invitation.
+ * @param {Env} env
+ * @param {{ email: string, name?: string, status?: string }} fields email is
+ *   expected normalized (the caller validates it via normalizeEmail)
+ * @returns {Promise<User>} the freshly inserted row
+ */
+export async function createInvitedUser(env, { email, name, status }) {
+  const db = await getDb(env);
+  if (!db) throw new Error("Database not configured.");
+  await db
+    .prepare(
+      "INSERT INTO users (email, name, role, status, google_sub, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(
+      email,
+      name?.slice(0, 120) || null,
+      "user",
+      status === "pending" ? "pending" : "active",
+      null,
+      Date.now(),
+    )
+    .run();
+  return /** @type {Promise<User>} */ (getUserByEmail(env, email));
+}
+
+/**
+ * Pins an account to a Google identity — used when a sign-in lands on a row
+ * that has no `google_sub` yet (an admin-created invite, or a legacy
+ * pre-Google row).
+ *
+ * `WHERE google_sub IS NULL` makes it fill blanks only: a row already
+ * pinned to one Google subject can never be repointed at another, so this
+ * cannot become an account-takeover path. The name is filled in from the
+ * Google profile only when the admin didn't already supply one.
+ * @param {Env} env
+ * @param {number} id
+ * @param {{ sub?: string, name?: string }} identity from the verified claims
+ * @returns {Promise<User | null>} the fresh row (unchanged when sub is empty)
+ */
+export async function linkGoogleIdentity(env, id, { sub, name }) {
+  const db = await getDb(env);
+  if (!db) throw new Error("Database not configured.");
+  if (!sub) return getUserById(env, id);
+  await db
+    .prepare(
+      "UPDATE users SET google_sub = ?, name = COALESCE(NULLIF(name, ''), ?) WHERE id = ? AND google_sub IS NULL",
+    )
+    .bind(sub, name?.slice(0, 120) || null, id)
+    .run();
+  return getUserById(env, id);
 }
 
 /**

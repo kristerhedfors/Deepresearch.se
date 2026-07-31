@@ -44,10 +44,11 @@ function idTokenFor(email, extra = {}) {
 // A minimal in-memory D1 fake modelling exactly the statements the login path
 // issues. `failInsertUsers` makes the INSERT throw, standing in for a transient
 // D1 write failure during first-time provisioning.
-function fakeDb({ failInsertUsers = false } = {}) {
+function fakeDb({ failInsertUsers = false, seed = [] } = {}) {
   /** @type {any[]} */
   const users = [];
   let nextId = 1;
+  for (const u of seed) users.push({ id: nextId++, google_sub: null, name: null, ...u });
   const stmt = (sql, args = []) => ({
     bind: (...a) => stmt(sql, a),
     async run() {
@@ -57,11 +58,25 @@ function fakeDb({ failInsertUsers = false } = {}) {
         users.push({ id: nextId++, email, name, role, status, google_sub, created_at });
         return { success: true, meta: { changes: 1 } };
       }
+      // linkGoogleIdentity — the invite-claim UPDATE. Modelled faithfully,
+      // including the `google_sub IS NULL` guard that makes it fill-blanks-only.
+      if (/^UPDATE users SET google_sub/i.test(sql)) {
+        const [sub, name, id] = args;
+        const u = users.find((x) => x.id === id && !x.google_sub);
+        if (u) {
+          u.google_sub = sub;
+          u.name = u.name || name;
+        }
+        return { success: true, meta: { changes: u ? 1 : 0 } };
+      }
       return { success: true, meta: { changes: 0 } };
     },
     async first() {
       if (/^SELECT \* FROM users WHERE email/i.test(sql)) {
         return users.find((u) => u.email === args[0]) || null;
+      }
+      if (/^SELECT \* FROM users WHERE id/i.test(sql)) {
+        return users.find((u) => u.id === args[0]) || null;
       }
       if (/^SELECT value FROM config/i.test(sql)) return null; // defaults apply
       return null;
@@ -71,6 +86,7 @@ function fakeDb({ failInsertUsers = false } = {}) {
     },
   });
   return {
+    users, // the test's window into what provisioning actually wrote
     prepare: (sql) => stmt(sql),
     async batch(statements) {
       return statements.map(() => ({ success: true }));
@@ -128,4 +144,89 @@ test("callback: successful first-time provisioning sets the session and 303s to 
     cookies.some((c) => c.startsWith("dr_session=u.")),
     "a signed session cookie is set on success",
   );
+});
+
+// --- admin-created (invited) accounts --------------------------------------
+// An admin can create a row from /admin before its owner has ever signed in
+// (POST /api/admin/users → createInvitedUser). Such a row is keyed by email
+// with no google_sub; the first sign-in for that address must ADOPT it rather
+// than trip over it, so the invited person keeps the id, status and quota the
+// admin set up — that adoption is the whole point of pre-approving.
+
+test("callback: a pre-approved invite is claimed on first sign-in, not re-provisioned", async () => {
+  const db = fakeDb({
+    seed: [{ email: "invited@example.com", role: "user", status: "active", created_at: 1 }],
+  });
+  const env = { ...ENV, DB: db };
+  const { request, url } = await callbackRequest();
+  const res = await withStubbedFetch("invited@example.com", () =>
+    handleGoogleCallback(request, env, url, noopLog),
+  );
+  assert.equal(res.status, 303);
+  assert.equal(res.headers.get("Location"), "/rver");
+  assert.equal(db.users.length, 1, "the invite row is adopted — no duplicate account");
+  const user = db.users[0];
+  assert.equal(user.google_sub, "sub-123", "the row is now pinned to the Google identity");
+  assert.equal(user.name, "Test User", "the Google profile name fills the blank the admin left");
+  // Pre-approved is the point: this user must NOT be sent to the approval gate.
+  assert.equal(user.status, "active");
+  // The session belongs to the pre-created row, so its quota/history carry over.
+  assert.ok(
+    res.headers.getSetCookie().some((c) => c.startsWith(`dr_session=u.${user.id}.`)),
+    "the session is minted for the invited row's id",
+  );
+});
+
+test("callback: claiming an invite never overwrites an admin-supplied name", async () => {
+  const db = fakeDb({
+    seed: [
+      { email: "invited@example.com", name: "Ada L", role: "user", status: "active", created_at: 1 },
+    ],
+  });
+  const env = { ...ENV, DB: db };
+  const { request, url } = await callbackRequest();
+  await withStubbedFetch("invited@example.com", () =>
+    handleGoogleCallback(request, env, url, noopLog),
+  );
+  assert.equal(db.users[0].name, "Ada L");
+  assert.equal(db.users[0].google_sub, "sub-123");
+});
+
+test("callback: a row already pinned to a Google identity is never repointed", async () => {
+  // Fill-blanks-only: linkGoogleIdentity's `WHERE google_sub IS NULL` guard is
+  // what keeps this from being an account-takeover path if an address were
+  // ever reused by a different Google subject.
+  const db = fakeDb({
+    seed: [
+      {
+        email: "existing@example.com",
+        role: "user",
+        status: "active",
+        google_sub: "original-sub",
+        created_at: 1,
+      },
+    ],
+  });
+  const env = { ...ENV, DB: db };
+  const { request, url } = await callbackRequest();
+  const res = await withStubbedFetch("existing@example.com", () =>
+    handleGoogleCallback(request, env, url, noopLog),
+  );
+  assert.equal(res.status, 303);
+  assert.equal(db.users[0].google_sub, "original-sub");
+});
+
+test("callback: an invite staged as pending still lands on the approval gate", async () => {
+  // Unticking "pre-approved" stages the account without granting access —
+  // claiming the row must not quietly activate it.
+  const db = fakeDb({
+    seed: [{ email: "staged@example.com", role: "user", status: "pending", created_at: 1 }],
+  });
+  const env = { ...ENV, DB: db };
+  const { request, url } = await callbackRequest();
+  await withStubbedFetch("staged@example.com", () =>
+    handleGoogleCallback(request, env, url, noopLog),
+  );
+  assert.equal(db.users[0].status, "pending");
+  assert.equal(db.users[0].google_sub, "sub-123");
 });

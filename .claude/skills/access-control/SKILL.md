@@ -44,6 +44,29 @@ Worker; setup reference: `docs/GOOGLE-AUTH.md`).
   die too). **Sole-admin policy**: the admin role is assigned only via
   `ADMIN_EMAIL` at sign-in — the admin API deliberately cannot change
   roles, so no other account can ever be promoted.
+- **Add user / invite (`POST /api/admin/users`, `createInvitedUser`)**:
+  the admin gets ahead of auto-provisioning by creating the row for an
+  address that has never signed in — `/admin` → Users → **Add user**
+  (email, optional name, a "Pre-approved" tick that defaults ON). The
+  point is the pre-approval: an expected colleague signs in and is
+  straight into the app rather than parked on the awaiting-approval page
+  until the admin next opens `/admin`. Untick it to stage the row as
+  `pending` instead. **No mail is sent** — the site has no outbound mail
+  path, so the form hands the admin the `/login` URL to pass on; the ROW
+  is the invitation. The first Google sign-in for that address finds the
+  row and claims it (`linkGoogleIdentity` stamps `google_sub` + fills a
+  blank name), so the person keeps the id, quota and history prepared for
+  them instead of getting a second account. `WHERE google_sub IS NULL`
+  makes that fill-blanks-only: an already-pinned row can never be
+  repointed at another Google subject. The endpoint **does not accept a
+  role** (sole-admin policy, same reason `patchUser` won't), refuses a
+  malformed email with 400, and answers a duplicate with 409 — including
+  when a `users.email` UNIQUE violation races the pre-check. `listUsers`
+  exposes `has_signed_in` (a boolean derived from `google_sub`, never the
+  raw subject id) so the admin list badges an unclaimed invite. This is
+  NOT a return of invite-only access: sign-in stays open to any verified
+  Google address. Pinned by `src/admin-users.test.js` (the endpoint) and
+  the invite-claim tests in `src/google.test.js` (the sign-in side).
 - **Flow**: `GET /auth/google` (signed single-use state cookie, CSRF) →
   Google → `GET /auth/google/callback` (code exchange server-to-server;
   claims validated: `iss`, `aud`, `exp`, `email_verified === true`;

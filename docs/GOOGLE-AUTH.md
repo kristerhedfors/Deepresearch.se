@@ -12,6 +12,13 @@
 >   land as `pending` on an auto-refreshing waiting page (APIs 403,
 >   nothing spends) until approved in `/admin`. Quotas are the cost
 >   boundary after that, and the admin can disable users at any time.
+> - The admin *may* create an account before its owner arrives — **Users →
+>   Add user** in `/admin` (`POST /api/admin/users`), defaulting to
+>   pre-approved so the person skips the waiting page. Their first sign-in
+>   claims that row. Read this as a shortcut past the approval gate, not a
+>   return of the invite gate: it grants nobody anything they could not have
+>   obtained by signing in and being approved, and it cannot mint an admin.
+>   No mail is sent — the admin shares the `/login` link themselves.
 > - Every account must also accept the **terms of use** once, right after
 >   first sign-in (`POST /terms/accept`, `users.terms_accepted_at`),
 >   before the approval wait, the app, or any API.
@@ -132,6 +139,10 @@ code=<code>&client_id=…&client_secret=…
      (Optionally store `claims.sub` in a new `google_sub` column on first
      Google login and require it to match thereafter — pins the account to
      one Google identity even if email ownership ever changes.)
+     *(shipped in part — `linkGoogleIdentity` stamps `claims.sub` onto any
+     row that has none yet, which is how an admin-created account and a
+     legacy pre-Google row both get pinned. It fills blanks only; a
+     mismatching `sub` on an already-pinned row is not yet a rejection.)*
    - **Found & disabled** → back to `/login` with an error flash.
    - **Not found** → *(superseded — see the status header)* the plan said
      "do NOT create an account (invite-only stays intact)"; the
