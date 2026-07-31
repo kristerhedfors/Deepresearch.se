@@ -225,26 +225,27 @@ test("arxivRagSearch", async (t) => {
     };
     await arxivRagSearch(env, log, "llm agents");
     assert.equal(ms, "bounded");
-    // The budget itself is stated in the module, so a later edit that drops it
-    // back to the inherited default fails here.
-    const src = readFileSync(new URL("./arxiv-rag.js", import.meta.url), "utf8");
-    assert.match(src, /const EMBED_TIMEOUT_MS = \d{4};/);
+    // The budget itself is stated in the shared tier (src/dense-rag.js, which
+    // both hosted corpora go through), so a later edit that drops it back to
+    // the inherited default fails here.
+    const src = readFileSync(new URL("./dense-rag.js", import.meta.url), "utf8");
+    assert.match(src, /export const EMBED_TIMEOUT_MS = \d{4};/);
     assert.match(src, /embedTexts\(env, \[QUERY_PREFIX \+ text\], \{ timeoutMs: EMBED_TIMEOUT_MS \}\)/);
   });
 
   await t.test("a hanging index lookup gives up instead of holding the wave", async () => {
     // Vectorize's query takes no abort signal, so the bound is a race.
-    const src = readFileSync(new URL("./arxiv-rag.js", import.meta.url), "utf8");
-    assert.match(src, /withTimeout\(\s*env\.ARXIV_INDEX\.query\(qvec, \{ topK: CANDIDATES, returnMetadata: "all" \}\),\s*QUERY_TIMEOUT_MS,/);
+    const src = readFileSync(new URL("./dense-rag.js", import.meta.url), "utf8");
+    assert.match(src, /withTimeout\(\s*index\.query\(qvec, \{ topK: CANDIDATES, returnMetadata: "all" \}\),\s*QUERY_TIMEOUT_MS,/);
   });
 
   await t.test("the rerank is skipped rather than started when the call is already over budget", async () => {
     // Reranking is worth +15/+17 recall@1 points, but not another 6 s on a
     // call that has already spent its budget — the dense order is the
     // fail-soft result.
-    const src = readFileSync(new URL("./arxiv-rag.js", import.meta.url), "utf8");
+    const src = readFileSync(new URL("./dense-rag.js", import.meta.url), "utf8");
     assert.match(src, /spent > TOTAL_BUDGET_MS - RERANK_TIMEOUT_MS/);
-    assert.match(src, /arxiv_rag\.rerank_skipped/);
+    assert.match(src, /\$\{tag\}\.rerank_skipped/);
   });
 
   await t.test("an empty index reports zero rather than failing", async () => {
@@ -318,8 +319,8 @@ test("the rerank pool stays at Vectorize's measured returnMetadata ceiling", () 
   // through this exact path, 20 → 50 bought +4.0 points of English recall@10
   // and +2.0 Swedish for no extra round trip and no extra rerank latency.
   // Anything above 50 is rejected by the API unless metadata is dropped.
-  const src = readFileSync(new URL("./arxiv-rag.js", import.meta.url), "utf8");
-  const m = /const CANDIDATES = (\d+);/.exec(src);
+  const src = readFileSync(new URL("./dense-rag.js", import.meta.url), "utf8");
+  const m = /export const CANDIDATES = (\d+);/.exec(src);
   assert.ok(m, "CANDIDATES must be declared as a literal");
   assert.equal(Number(m[1]), 50);
 });

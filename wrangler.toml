@@ -218,3 +218,31 @@ index_name = "deepresearch-se-rag"
 [[vectorize]]
 binding = "ARXIV_INDEX"
 index_name = "deepresearch-se-arxiv"
+
+# The PubMed corpus — the biomedical half of the literature, complementing
+# arXiv rather than replacing it (docs/PUBMED-RAG.md). Searched by
+# src/pubmed-rag.js behind Europe PMC's existing intent gate; src/europepmc.js
+# falls back to the live API whenever this is absent, errors, or returns
+# nothing above the relevance floor.
+#
+# DELIBERATELY COMMENTED OUT until the index is created and filled. A declared
+# Vectorize resource that does not exist fails EVERY deploy, and the tier is
+# gated on the binding, so shipping without it changes nothing at all. To turn
+# it on:
+#
+#   npx wrangler vectorize create deepresearch-se-pubmed --dimensions=1024 --metric=cosine
+#   NODE_USE_ENV_PROXY=1 node scripts/pubmed-harvest.mjs --max-records 1500000
+#   NODE_USE_ENV_PROXY=1 node scripts/pubmed-vectorize.mjs --index deepresearch-se-pubmed
+#
+# then uncomment. Same 1024 dims as the other two indexes because the same
+# embedding model builds all three (intfloat/multilingual-e5-large).
+#
+# SIZE IS THE COST. Vectorize bills queried dimensions as
+# (queries + stored_vectors) x dims, so the vector COUNT drives a recurring
+# monthly charge whether or not anyone queries deeply — roughly $10/month per
+# million 1024-d vectors. docs/PUBMED-RAG.md §5 has the table and the tiers;
+# do not widen the corpus without re-reading it.
+#
+# [[vectorize]]
+# binding = "PUBMED_INDEX"
+# index_name = "deepresearch-se-pubmed"

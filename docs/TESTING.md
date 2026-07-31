@@ -294,6 +294,11 @@ honours — fielded `abs:"…" AND …` ladders rather than the `all:`-with-spac
 form that silently returns nothing) and `arxiv-rag.js` (the dense tier: binding
 + embedder gating, an item shape identical to the live tier's, the rerank
 document cut to the served 512-token window, and the fall-back-to-live path).
+`pubmed-rag.js` covers the same ground for the biomedical corpus and adds the
+one behaviour that would silently change what users see: a bound index takes
+precedence over the live Europe PMC API, while an index result with nothing
+above the relevance floor still falls THROUGH to it — the difference between
+"the recent slice cannot answer this" and "there is no answer".
 **Execution:** `exec-container.js` against a FAKE container that mimics the
 documented Durable Object API — availability follows the optional binding then
 the sandbox knob, session ids can't shape the DO name, `/exec` bodies are
@@ -505,7 +510,9 @@ plural forms, not just base words — invariant 6's enforcement pattern outside
 table and that the strip never repeats an id; `pipeline-map-core.js` pins a
 connected, uniquely-identified graph whose POST node is proven by the wire
 rather than by starting a send. Also here: `sdk-core.js`, `agent-spec-core.js`
-and `agent-capability.js` (the SDK/AgentSpec cores), `arxiv-rag-core.js`,
+and `agent-capability.js` (the SDK/AgentSpec cores), `arxiv-rag-core.js`, `pubmed-core.js` (the PubMed XML parse, the own-PMID
+trap, structured abstracts, free-text dates, the streaming block boundaries and
+the newest-first file plan),
 `knowledge-core.js`, `pool-core.js` / `pool-local.js` / `pool-provider.js`,
 `ondevice-core.js`, `models-core.js` / `ai-models.js` / `provider-region.js`,
 `websearch-backends-core.js`, `secure-posture-core.js`,
