@@ -1039,3 +1039,53 @@ truncates in-flight streams and poisons the run.
 > 0.15 floor has been reading REGRESSION on runs carrying no signal. Record a
 > baseline at **n≥8** or its sd cannot support a verdict.
 > Full working: `tests/EVAL-BENCH-FINDINGS.md`, entry of 2026-07-30 run 5.
+
+### Attribution: which question moved, and which retrieval leg it touches
+
+A battery mean cannot say *where* a change landed, and for six consecutive runs
+that is exactly what was missing: the mean sat ~0.6 below baseline while a
+hand-read of the per-question values showed `mh_semiconductor_export` carrying
+most of it on its own. That detail was in data the gate already collected and
+discarded at print time.
+
+Compare mode now prints two tables from `tests/bench-drift-core.mjs` (pure,
+unit-tested in `tests/bench-sources.test.js`):
+
+- **per-question drift** — baseline vs candidate per question, most-negative
+  first, with anything past ±0.5 flagged `<-- moved`. A question present on only
+  one side shows `n/a` rather than being dropped, because a battery that gained
+  or lost a question between measurements is a fact about the comparison.
+- **per-source drift** — the same deltas rolled up by the retrieval sources each
+  question's intent gate reaches. **The buckets OVERLAP** (a question reaching
+  arXiv and Europe PMC counts toward both), so a source's mean is "how the
+  questions that can reach this leg moved", never an exclusive attribution.
+  The `(none)` bucket — questions no source reaches — is the **control**: if it
+  moved as much as the source buckets, the drift is not about retrieval at all.
+
+Read the per-question table before reasoning about the pipeline as a whole. One
+question falling 1.2 and three holding is a different investigation from four
+questions each falling 0.3, and the battery mean renders them identically.
+
+### Source coverage is a build-time invariant
+
+`tests/bench-sources.test.js` fails the build when a registered
+`SEARCH_SOURCES` entry is reached by **no** benchmark question, and again when a
+source declaring a `leadIntent` has no question that triggers its lead path.
+
+This is not hypothetical hygiene. Audited 2026-07-31, `europepmc` — the
+life-science leg **PubMed feeds** — was reached by zero of 34 questions, while
+PubMed was being ingested as a second hosted corpus (PR #352). arXiv had
+arrived through the same gap: it landed between the 07-23 baseline and the first
+re-measurement with nothing measuring it on the way in, and six runs then sat
+~0.6 low with no way to attribute the fall. A source no question reaches is a
+source the gate reports NEUTRAL on whatever it does to answers.
+
+So: **register a source, add a question that reaches it, in the same change.**
+The bank is append-only (new id, never edit an existing entry) so past scores
+stay comparable — adding questions does not invalidate a baseline, it means the
+*next* baseline can see a leg the current one is blind to. The lead path gets
+its own question because leading stands the whole web leg down, which is a
+different behaviour from the source merely contributing, and the more dangerous
+one to ship unmeasured. Both languages are required for the life-science leg:
+the intent gate is bilingual by design (invariant 6), and a bank testing it only
+in English would let the Swedish half rot unnoticed.
