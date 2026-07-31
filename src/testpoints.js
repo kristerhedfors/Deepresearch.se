@@ -53,7 +53,7 @@
 import { getDb } from "./db.js";
 import { jsonResponse, textResponse } from "./http.js";
 import { cleanStr, likePattern } from "./chatlog.js";
-import { deepLink, parseUseCaseRef, useCaseTag } from "../public/js/testpoints-core.js";
+import { CLIENT_ACTION_TYPES as ACTION_TYPES, deepLink, parseUseCaseRef, useCaseTag } from "../public/js/testpoints-core.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -103,29 +103,11 @@ const RESULT_STATUS = { pass: "passed", fail: "failed", untestable: "untestable"
 export const MESSAGE_AUTHORS = ["tester", "agent"];
 
 // ---- the deep-link ACTION grammar (THE reachability boundary) -------------
-// An action is one step the target page's client runs on arrival to set the
-// scene. This list IS the boundary of what a point can reach automatically;
-// anything outside it must be described in prose in the summary and reached
-// by hand. Keep this in lockstep with the client executor in
-// public/js/testpoints.js and the grammar table in the skill.
-//
-// Unknown action types (and malformed ones) are DROPPED, not rejected — a
-// point declared against a newer/older grammar still opens, minus the steps
-// this build can't run. validateActions reports how many were dropped so the
-// producer can be told.
-export const ACTION_TYPES = [
-  "note", // {text} — extra inline guidance in the banner; no side effect
-  "openAccount", // {view?} — open the account panel to a view
-  "openSettings", // {knob?} — open Settings, optionally highlight a knob row
-  "openProjects", // {} — open the project panel
-  "openHistory", // {} — open the chat-history sidebar
-  "newChat", // {} — start a fresh chat
-  "compose", // {text, send?} — prefill the composer (send:true submits it)
-  "setSearch", // {on} — flip the web-search knob
-  "setBudget", // {seconds} — set the research time-target slider
-  "selectModel", // {model} — pick a model in the dropdown
-  "highlight", // {selector} — pulse-highlight + scroll to an element
-];
+// The grammar itself lives in public/js/testpoints-core.js (the client executor
+// has to be able to import it), re-exported below as ACTION_TYPES so this
+// module's public surface and its validator read the SAME whitelist. The
+// per-action payload table and the drop-don't-reject rule are documented at the
+// definition.
 
 const ACCOUNT_VIEWS = ["summary", "full", "messages", "settings", "feedback", "games", "docs"];
 
@@ -377,7 +359,7 @@ export function isOpenStatus(status) {
 // modules, the Worker bundler can import from anywhere), re-exported here so
 // server callers (pipeline.js, this module) and src/testpoints.test.js keep
 // their import path. Do not reintroduce a copy.
-export { deepLink, parseUseCaseRef, useCaseTag };
+export { ACTION_TYPES, deepLink, parseUseCaseRef, useCaseTag };
 
 // The verdict symbol vocabulary — one glyph per result, used everywhere a
 // verdict is shown (text render here, the banner buttons, PR comments).

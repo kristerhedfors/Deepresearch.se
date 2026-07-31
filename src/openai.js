@@ -22,7 +22,7 @@
 // absent, the models don't appear in the catalog and nothing routes here
 // (src/providers.js).
 
-import { eurPerTokenFromUsd, formatPricing, parseLooseJson } from "./berget.js";
+import { eurPerTokenFromUsd, formatPricing, jsonCompletionResult } from "./berget.js";
 
 // OPENAI_URL override exists solely so tests can point at a mock (the same
 // convention as BERGET_URL/ANTHROPIC_URL); production always uses the default.
@@ -183,16 +183,5 @@ export async function openaiCompleteJson(env, messages, { model, maxTokens = 900
     throw new Error(`OpenAI JSON call failed (${resp.status}): ${detail.slice(0, 200)}`);
   }
   const data = /** @type {any} */ (await resp.json());
-  const choice = data.choices?.[0];
-  const content = choice?.message?.content || "";
-  const { value, parseMode } = parseLooseJson(content);
-  return {
-    value,
-    usage: data.usage || null,
-    diagnostics: {
-      parse_mode: parseMode,
-      finish_reason: choice?.finish_reason || null,
-      content_length: content.length,
-    },
-  };
+  return jsonCompletionResult(data);
 }

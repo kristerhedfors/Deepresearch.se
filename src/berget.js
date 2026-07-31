@@ -434,6 +434,20 @@ export async function completeJson(env, messages, { model, maxTokens = 900 } = {
     throw new Error(`Berget JSON call failed (${resp.status}): ${detail.slice(0, 200)}`);
   }
   const data = await resp.json();
+  return jsonCompletionResult(data);
+}
+
+// The { value, usage, diagnostics } adapter over an OpenAI-shaped non-streaming
+// response body — the second half of every provider's JSON completion, after
+// its own auth/payload half has run. Shared by src/openai.js and
+// src/hf-inference.js, which speak the same wire; src/anthropic.js keeps its
+// own because Anthropic returns content BLOCKS and input/output token counts,
+// not `choices` and `usage`.
+/**
+ * @param {any} data a parsed OpenAI-style chat-completions response
+ * @returns {{ value: any, usage: any | null, diagnostics: { parse_mode: string, finish_reason: string | null, content_length: number } }}
+ */
+export function jsonCompletionResult(data) {
   const choice = data.choices?.[0];
   const content = choice?.message?.content || "";
   const { value, parseMode } = parseLooseJson(content);
