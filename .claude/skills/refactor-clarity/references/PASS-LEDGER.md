@@ -467,3 +467,71 @@ sharper tell than "read the body": **when two copies of a body look identical,
 diff their CONSTANTS before anything else.** The same question also settled the
 `HKDF_INFO` pair in one step, where the differing constant is the domain
 separation itself.
+
+## 14 — 2026-07-31, the whitelist pass
+
+Base `1581efe4` (main after PR #345). Surveyed the whole repo: `dup-scan`
+(17 groups), `line-scan --run 8` (76 runs), the diff since pass 13 —
+`src/memory.js` + `public/js/memory-core.js`, `src/watch-tools.js`,
+`public/js/watch-chat-core.js`, `watch-materials.js`, `zip-core.js`,
+`demo-mount.js`, `src/test-helpers/` — and the apology-comment grep
+(`lockstep|mirrors|keep in sync`). **Two cuts.**
+
+Fourteen of `dup-scan`'s seventeen groups were already in
+`STANDING-DECLINES.md`. Of the three new ones, one supplied a cut and two were
+declined. Every new subsystem since pass 13 shipped factored again:
+`memory.js` is storage+HTTP over a `memory-core.js` that was carved at
+authoring time, `watch-materials.js` imports `linear` from pass 13's own
+`watch-math.js` rather than re-deriving it, and `demo-mount.js` was created BY
+a feature change to stop `turns.js` and the Se/cure tier deciding the same
+thing twice — the pattern working without a refactor pass in the loop.
+
+- **`jsonCompletionResult` → `src/berget.js`**: the eleven-line
+  `{ value, usage, diagnostics }` block that follows a non-streaming JSON call
+  was hand-copied into `berget.js`, `openai.js` and `hf-inference.js`. The sink
+  was already decided by the code: all three import `parseLooseJson` from
+  `berget.js`, whose docstring declares it "Exported for other providers' JSON
+  completions", so the adapter is a missing sibling of the shared tolerant-JSON
+  layer rather than a new role — the `lastUserText` → `conversation.js`
+  reasoning from pass 13. **`src/anthropic.js` was correctly left out**: its
+  body reads `data.content` blocks and `input_tokens`/`output_tokens`, so it is
+  a different function that happens to return the same shape. Note this cut
+  does NOT reopen decline #52 (`anthropicModels`/`openaiModels`, declined
+  because `berget.js` is the Berget CLIENT and not a catalog utility): the
+  distinction is that the tolerant-JSON layer already lives there and is
+  already documented as cross-provider, where the pricing catalog is not.
+- **The deep-link action grammar → `public/js/testpoints-core.js`**:
+  `ACTION_TYPES` (server validator) and `CLIENT_ACTION_TYPES` (client executor)
+  were the same eleven strings in the same order, each under a comment telling
+  the reader to keep it in lockstep with the other — in a module that ALREADY
+  carries "Do not reintroduce a copy" over `useCaseTag`/`deepLink` four hundred
+  lines down. The server copy's per-action payload comments were the better
+  documentation and travelled with the list. `src/testpoints.js` imports it and
+  re-exports it as `ACTION_TYPES`, so both public surfaces are unchanged.
+
+**Why the grammar was worth cutting when `esc` and `el` are not.** All three
+are small duplications with a "someone should share this" smell. The
+difference is what happens when the copies diverge. A second `esc` that drifts
+produces visibly wrong HTML in one view. A second action list that drifts
+produces NOTHING visible: the grammar's own drop-don't-reject rule means an
+action on the producer's whitelist but not the executor's list is declared,
+accepted, stored, and then silently skipped on arrival. **Drift that the
+system is designed to swallow is worth a cut at a size that would not
+otherwise earn one** — which is the bar gate's "will the copies drift"
+question answered by consequence rather than by line count.
+
+**Method lesson — read what a duplicated whitelist GUARDS before unifying it.**
+The apology-comment grep turned up a third list family that looks exactly like
+the action grammar: `["browser","local","cloudflare"]` in `src/bash-api.js`
+and `src/validation.js`, both under "mirrors `EXEC_BACKENDS`" comments, with a
+real source of truth sitting in `public/js/exec-backends-core.js` and a
+one-line derivation available. It is the opposite call. Those two are
+sanitizers over untrusted client input, and `validation.js` says so at the
+site — "nothing here is allowed to widen it (invariant 4)". Deriving them
+would make adding a row to a UI picker widen what the server accepts and logs,
+in a subsystem whose whole job is to not do that. So the tell that separates
+this pass's cut from this pass's decline is not shape and not size: **a list
+that two components must AGREE on wants one copy; a list that one component
+uses to DISTRUST another wants two.** The action grammar is the first; the
+exec-backend whitelists (and `SWARM_DIAG_PHASES`/`SWARM_DIAG_CLASSES` beside
+them) are the second.
