@@ -74,21 +74,34 @@ export function tagStarterPrompt(id, text) {
   return body ? `${tag} ${body}` : tag;
 }
 
-// The action types the client executor (testpoints.js) can run. Keep in
-// lockstep with ACTION_TYPES in src/testpoints.js and the grammar table in
-// the skill.
+// ---- the deep-link ACTION grammar (THE reachability boundary) -------------
+// An action is one step the target page's client runs on arrival to set the
+// scene. This list IS the boundary of what a point can reach automatically;
+// anything outside it must be described in prose in the summary and reached
+// by hand. Keep this in lockstep with the client executor in
+// public/js/testpoints.js and the grammar table in the skill.
+//
+// Unknown action types (and malformed ones) are DROPPED, not rejected — a
+// point declared against a newer/older grammar still opens, minus the steps
+// this build can't run. validateActions reports how many were dropped so the
+// producer can be told.
+//
+// The server's validator reaches this same array through the src/testpoints.js
+// façade (as ACTION_TYPES); until refactor pass 14 the two were hand-copied
+// under matching "keep in lockstep" comments, which is a grammar that could
+// silently diverge from its own whitelist. Do not reintroduce a copy.
 export const CLIENT_ACTION_TYPES = [
-  "note",
-  "openAccount",
-  "openSettings",
-  "openProjects",
-  "openHistory",
-  "newChat",
-  "compose",
-  "setSearch",
-  "setBudget",
-  "selectModel",
-  "highlight",
+  "note", // {text} — extra inline guidance in the banner; no side effect
+  "openAccount", // {view?} — open the account panel to a view
+  "openSettings", // {knob?} — open Settings, optionally highlight a knob row
+  "openProjects", // {} — open the project panel
+  "openHistory", // {} — open the chat-history sidebar
+  "newChat", // {} — start a fresh chat
+  "compose", // {text, send?} — prefill the composer (send:true submits it)
+  "setSearch", // {on} — flip the web-search knob
+  "setBudget", // {seconds} — set the research time-target slider
+  "selectModel", // {model} — pick a model in the dropdown
+  "highlight", // {selector} — pulse-highlight + scroll to an element
 ];
 
 // Parse the try-point id out of a location search string ("?try=5&x=1").

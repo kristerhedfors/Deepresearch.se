@@ -181,8 +181,8 @@ These extend testable-interaction-points' "declaring points well":
 ## Improvements backlog (needs code — take to the features board, don't ad-hoc)
 
 - `setKnob {knob, on}` action so a point can pin its settings scene
-  (server `cleanAction` + client executor + `CLIENT_ACTION_TYPES`, one change,
-  see the grammar-lockstep rule).
+  (`CLIENT_ACTION_TYPES` + server `cleanAction` + client executor, one change,
+  see the grammar rule).
 - A `?decided=1` (or multi-status) filter on `GET /api/admin/testpoints` so
   `--verdicts` is one call instead of three.
 - A verdict NOTIFICATION (alert row or webhook → wakes the loop session) so

@@ -142,11 +142,15 @@ newer/older grammar) are **dropped, not rejected** — the point still opens,
 minus the steps this build can't run, and the banner warns "N setup steps
 this build can't run".
 
-The grammar is defined in THREE places that must stay in lockstep — the
-server validator `ACTION_TYPES`/`cleanAction` (`src/testpoints.js`), the
-client executor `executeAction` (`public/js/testpoints.js`), and the client
-`CLIENT_ACTION_TYPES` (`public/js/testpoints-core.js`). Add a new action to
-all three (plus a unit test) in one change.
+The action-type LIST lives in ONE place: `CLIENT_ACTION_TYPES` in
+`public/js/testpoints-core.js`, which `src/testpoints.js` imports and
+re-exports as `ACTION_TYPES` for its validator `cleanAction`. (It used to be
+two hand-copied arrays under matching "keep in lockstep" comments; refactor
+pass 14 collapsed them, and `src/testpoints.test.js` pins the identity so a
+re-introduced copy fails the build.) What still needs a matching edit is the
+EXECUTOR — `executeAction` in `public/js/testpoints.js` — plus `cleanAction`'s
+per-field validation. Add a new action to the list, the executor, and
+`cleanAction` (plus a unit test) in one change.
 
 | Action | Fields | Effect on `/rver` |
 |---|---|---|
