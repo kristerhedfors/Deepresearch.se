@@ -205,6 +205,11 @@ E-utilities cross-check ──────────────────�
 | Shared tier | `src/dense-rag.js` | the corpus-agnostic retrieval half, shared with `src/arxiv-rag.js` |
 | Shared fill | `scripts/vectorize-upsert.mjs` | the corpus-agnostic checkpoint + upsert, shared with `scripts/arxiv-vectorize.mjs` |
 
+To REPEAT this — a routine catch-up, or a rebuild after NLM cuts a new annual
+baseline — follow the **pubmed-ingest** skill rather than these commands: a
+delta starts from the marker in §7 and takes minutes, and the skill carries the
+four traps that broke the first fill.
+
 ```bash
 # 1. Harvest, newest first (resumable — rerun to continue).
 #    --min-file 1335 is the recommended corpus: every daily update file above
@@ -405,6 +410,12 @@ The 647 short of the corpus's 1,639,403 are withdrawn citations: the archive
 recorded 4,503 `<DeleteCitation>` PMIDs and 647 of those were in this window, so
 the loader skipped them rather than indexing retracted work.
 
+> **last ingested archive file: `pubmed26n1558`** · vectorCount 1,644,825 ·
+> 2026-07-31. This line is the delta marker — `data/` is gitignored and the
+> container is ephemeral, so it is the only durable record of where the next
+> incremental run should start. Update it in the same change as any ingest;
+> the **pubmed-ingest** skill is the runbook for both a delta and a rebuild.
+
 **Verified against Vectorize's own count**, not the loader's: `vectorize info`
 reports `vectorCount` 1,638,756, matching the checkpoint exactly. (That count
 lags a live fill — it tracks `processedUpToMutation` — so it confirms a
@@ -510,7 +521,32 @@ with nothing above the floor, so `src/europepmc.js` still falls through to the
 live API rather than citing the index's nearest food-science paper. That is the
 property the floor exists for, reproduced on a second corpus.
 
-### 7.6 A Swedish measurement trap that nearly became a false bug report
+### 7.6 The first delta, measured
+
+`n1558` was ingested incrementally the same day, following the
+**pubmed-ingest** skill's delta runbook, as a check that the runbook works
+rather than merely reads well:
+
+```
+1 file · 20,238 records · 17,535 kept · 0.0% repeats · 2 loaders · 5.5 min
+prune: submitted 66 withdrawn ids
+```
+
+Two things fall out, and both are properties the design claimed but had never
+demonstrated.
+
+**A single new file has no internal duplication** (0.0% repeats, against 55.9%
+across the whole update set), because a citation can only be revised twice if
+two files touched it. So a delta is partitioned with `--parts 2`, not 8 —
+eight loaders over a few thousand rows each spend longer starting than working.
+
+**Most of a daily update is REVISION, not new work.** 17,535 records raised the
+index by only 6,069 (1,638,756 → 1,644,825), so roughly two-thirds overwrote a
+citation already indexed. That is the id-keyed upsert doing exactly what it
+should — the update file carries the corrected abstract and the index takes the
+correction — and it is why a delta needs no record of what is already there.
+
+### 7.7 A Swedish measurement trap that nearly became a false bug report
 
 The first Swedish probe looked alarming — two of five paired queries returned
 **nothing** above the floor while their English twins scored 0.97+. It read like

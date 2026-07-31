@@ -77,6 +77,49 @@ export async function recordPushed(statePath, ids) {
   if (ids.length) await appendFile(statePath, ids.join("\n") + "\n");
 }
 
+/** Ids per `vectorize delete-vectors` call. The whole withdrawn set can be
+ * thousands of ids, and one argv that long is rejected long before Vectorize
+ * sees it. */
+export const DELETE_BATCH = 500;
+
+/**
+ * Delete vectors by id, in batches. Returns the number of ids submitted.
+ *
+ * Deleting an id the index does not hold is a NO-OP, and that property is what
+ * makes a delta ingest possible from a fresh machine: the caller does not need
+ * a local record of what was pushed, so it can submit every withdrawn id it
+ * knows about and let the service ignore the ones that were never there.
+ * Filtering against a local checkpoint first — which is what this did until
+ * 2026-07-31 — meant a delta run on a new container pruned NOTHING, leaving
+ * retracted citations in the index for the life of the index.
+ *
+ * @param {string} index
+ * @param {string[]} ids
+ * @param {string} cwd
+ * @returns {number} ids submitted; 0 on failure or when there is nothing to do
+ */
+export function deleteVectorsById(index, ids, cwd) {
+  const bin = process.env.WRANGLER_BIN;
+  const [cmd, lead] = bin ? [bin, []] : ["npx", ["wrangler"]];
+  let submitted = 0;
+  for (let i = 0; i < ids.length; i += DELETE_BATCH) {
+    const slice = ids.slice(i, i + DELETE_BATCH);
+    const res = spawnSync(cmd, [...lead, "vectorize", "delete-vectors", index, "--ids", ...slice], {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 300000,
+    });
+    if (res.status !== 0) {
+      const out = `${res.stdout || ""}${res.stderr || ""}`;
+      console.error(`  delete FAILED: ${out.trim().split("\n").slice(-3).join(" | ")}`);
+      return 0;
+    }
+    submitted += slice.length;
+  }
+  return submitted;
+}
+
 /**
  * Push one NDJSON file into Vectorize via wrangler.
  *

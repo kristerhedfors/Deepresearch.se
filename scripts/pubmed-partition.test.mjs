@@ -47,3 +47,13 @@ test("parseArgs rejects a parts count that cannot produce a usable fill", () => 
   }
   assert.throws(() => parseArgs(["--nope"]), /Unknown flag/);
 });
+
+test("DELETE_BATCH keeps a prune call's argv within what a shell will accept", async () => {
+  // The withdrawn set is thousands of ids (4,503 in the window ingested on
+  // 2026-07-31), and one argv that long is rejected before Vectorize sees it.
+  const { DELETE_BATCH } = await import("./vectorize-upsert.mjs");
+  assert.ok(Number.isInteger(DELETE_BATCH) && DELETE_BATCH > 0);
+  // `pmid:` + 8 digits + a separator is ~14 bytes; 500 of them is ~7 KB, which
+  // is comfortably inside every platform's limit with room for the rest.
+  assert.ok(DELETE_BATCH * 16 < 32_000, "a delete batch must stay far under ARG_MAX");
+});

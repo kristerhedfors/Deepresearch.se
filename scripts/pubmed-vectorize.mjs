@@ -26,9 +26,11 @@
 //   Vectorize bills per unique vector.
 // * **Withdrawn citations are removed, not just skipped.** The harvester
 //   records every `<DeleteCitation>` PMID in its state file. Those ids are
-//   excluded here, and `--prune` deletes any that a previous run already
-//   pushed — an index that keeps serving retracted citations is worse than one
-//   that is merely incomplete.
+//   excluded from the fill, and `--prune` submits ALL of them for deletion —
+//   an index that keeps serving retracted citations is worse than one that is
+//   merely incomplete. Submitting every id rather than only the ones this
+//   machine remembers pushing is what makes a DELTA ingest work from a fresh
+//   container, where there is no checkpoint to filter against.
 // * **The passage budget bites.** PubMed abstracts run about a third longer
 //   than arXiv's, so a majority of records lose their tail at the 1200-char
 //   e5 window. That is a known, measured limitation of this tier rather than a
@@ -37,13 +39,12 @@
 import { createReadStream } from "node:fs";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
-import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { PASSAGE_PREFIX, buildPassage, vectorMetadata } from "../public/js/pubmed-core.js";
 import { embedBatch } from "./embed-providers.mjs";
-import { assertVectors, loadCheckpoint, recordPushed, upsertFile, vectorLine } from "./vectorize-upsert.mjs";
+import { assertVectors, deleteVectorsById, loadCheckpoint, recordPushed, upsertFile, vectorLine } from "./vectorize-upsert.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -140,27 +141,6 @@ export async function readDeleted(statePath) {
   }
 }
 
-/**
- * Remove withdrawn citations that an earlier run already pushed. Cheap when
- * there is nothing to do, and skipping it leaves retracted papers citable.
- * @param {string} index
- * @param {string[]} ids
- */
-function deleteVectors(index, ids) {
-  if (!ids.length) return true;
-  const res = spawnSync("npx", ["wrangler", "vectorize", "delete-vectors", index, "--ids", ...ids], {
-    cwd: ROOT,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    timeout: 300000,
-  });
-  if (res.status !== 0) {
-    console.error(`  prune FAILED: ${`${res.stdout || ""}${res.stderr || ""}`.trim().split("\n").slice(-3).join(" | ")}`);
-    return false;
-  }
-  return true;
-}
-
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -178,9 +158,17 @@ async function main() {
   if (deleted.size) console.log(`${deleted.size} withdrawn citations will be skipped`);
 
   if (args.prune) {
-    const stale = [...deleted].map((p) => `pmid:${p}`).filter((id) => pushed.has(id));
-    if (!stale.length) console.log("prune: nothing already pushed has since been withdrawn");
-    else if (deleteVectors(args.index, stale)) console.log(`pruned ${stale.length} withdrawn citations from ${args.index}`);
+    // EVERY withdrawn id is submitted, not just the ones this machine's
+    // checkpoint remembers pushing. Deleting an absent id is a no-op, and a
+    // delta ingest runs on a container that has no checkpoint at all — the old
+    // filter made `--prune` silently do nothing there, which is the worst of
+    // both worlds: retracted work stays citable and the run reports success.
+    const stale = [...deleted].map((p) => `pmid:${p}`);
+    if (!stale.length) console.log("prune: the archive has recorded no withdrawn citations in this window");
+    else {
+      const n = deleteVectorsById(args.index, stale, ROOT);
+      console.log(`prune: submitted ${n} withdrawn ids to ${args.index} (ids it never held are ignored)`);
+    }
   }
 
   let batch = [];
