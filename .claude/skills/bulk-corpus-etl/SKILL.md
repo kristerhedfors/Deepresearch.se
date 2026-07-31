@@ -407,6 +407,24 @@ first: eight concurrent `npx <tool>` calls race on the shared npx cache
 (`ENOTEMPTY … rename node_modules/wrangler`), because npx revalidates on every
 invocation and warming the cache does not help. Point at the installed binary.
 
+**A single character can stall a fill, and the error will not say so.** A
+plain `.slice()` to a character budget can cut BETWEEN the two code units of an
+astral character; the tokenizer then rejects the batch with a type error rather
+than a length error, so no shrink-and-retry can clear it and the loader
+crash-loops forever on the same batch. Truncate surrogate-safely, and keep that
+rule in ONE place — this repo had the helper already and the passage builder
+simply did not use it. Corpora that sit AT the budget (88% of PubMed passages
+hit the cap) exercise the boundary on nearly every record, so a latent version
+of this bug surfaces the moment the corpus changes.
+
+**An agent session cannot run a multi-hour fill unattended.** Background
+processes are killed at TURN BOUNDARIES — not by memory, not by a timeout. A
+34-minute harvest survived because it ran inside one long response and never
+crossed one; eight loaders died twice, each time exactly when a new user message
+arrived, ending mid-batch with no error and plenty of free memory. Checkpointing
+(§6) is what makes this survivable rather than fatal, but plan the work as
+"held turn" or "machine that stays up", never "start it and come back".
+
 **Never measure a non-English language without its diacritics.** A Swedish probe
 typed as `hjart-karldodlighet` instead of `hjärt-kärldödlighet` scored 0.271
 where the correct spelling scored 0.941 — and two of five paired queries

@@ -102,6 +102,41 @@ export const PASSAGE_STRATEGIES = {
 };
 
 /**
+ * Truncate to at most `max` UTF-16 code units without orphaning a surrogate.
+ *
+ * A plain `.slice(0, n)` can land BETWEEN the two code units of an astral
+ * character, leaving a lone high surrogate at the end. Berget's tokenizer
+ * rejects that batch with a 400 that looks nothing like a length problem —
+ *
+ *   TextEncodeInput must be Union[TextInputSequence, Tuple[InputSequence, …]]
+ *
+ * — and because it is not a "too long" 400, no shrink retry can ever clear it:
+ * the loader crash-loops on the same batch forever. Measured 2026-07-31 on
+ * PMID 41993351, whose abstract puts a mathematical bold character
+ * (`\ud835\udc65`) exactly on the 1200-char boundary; it stalled one of eight
+ * PubMed loaders at 96% of the fill. PubMed makes this far likelier than arXiv
+ * did — 88% of its passages hit the cap, so the boundary is exercised on nearly
+ * every record rather than on a rare long one.
+ *
+ * Dropping the orphan costs at most one character off a vector's tail; the
+ * retrieved TEXT always comes from the corpus, never from this cut.
+ *
+ * @param {string} text
+ * @param {number} max
+ * @returns {string}
+ */
+export function truncateChars(text, max) {
+  const s = String(text ?? "");
+  if (!(max > 0)) return "";
+  if (s.length <= max) return s;
+  const last = s.charCodeAt(max - 1);
+  // A high surrogate (D800–DBFF) as the final unit means its low half is the
+  // character being cut away — drop the orphan too.
+  const end = last >= 0xd800 && last <= 0xdbff ? max - 1 : max;
+  return s.slice(0, end);
+}
+
+/**
  * @param {ArxivPaper} paper
  * @param {string} strategy a key of PASSAGE_STRATEGIES
  * @returns {string} the text to embed, truncated to the e5 window
@@ -109,7 +144,7 @@ export const PASSAGE_STRATEGIES = {
 export function buildPassage(paper, strategy = "title_abstract") {
   const fn = PASSAGE_STRATEGIES[strategy];
   if (!fn) throw new Error(`Unknown passage strategy: ${strategy}`);
-  return fn(paper).replace(/\s+/g, " ").trim().slice(0, MAX_PASSAGE_CHARS);
+  return truncateChars(fn(paper).replace(/\s+/g, " ").trim(), MAX_PASSAGE_CHARS);
 }
 
 /**
@@ -133,7 +168,7 @@ export function paperPassages(paper, opts = {}) {
     : "";
   if (!full) return [];
   if (!window || full.length <= Math.min(window, MAX_PASSAGE_CHARS)) {
-    return [full.slice(0, MAX_PASSAGE_CHARS)];
+    return [truncateChars(full, MAX_PASSAGE_CHARS)];
   }
   const stride = Math.max(1, Number(opts.stride) || Math.round(window * 0.75));
   /** @type {string[]} */

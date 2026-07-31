@@ -35,7 +35,7 @@
 //   bug to be fixed here — see docs/PUBMED-RAG.md.
 
 import { createReadStream } from "node:fs";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -208,6 +208,13 @@ async function main() {
       throw new Error(`upsert failed on batch ${batchNo} — rerun to resume from the checkpoint`);
     }
     await recordPushed(statePath, batch.map((r) => String(r.id)));
+    // The NDJSON is scratch: written, uploaded, checkpointed, never read again.
+    // Keeping it leaks ~2 MB per 256 vectors, which is ~13 GB by the time a
+    // 1.6 M-citation fill is two-thirds done — measured 2026-07-31, when it took
+    // the container from 21 GB free to 4.1 GB and would have run the fill out of
+    // disk before it finished. Deleted only AFTER the checkpoint, so a crash
+    // between upload and record still re-does at most one batch.
+    await rm(file, { force: true });
     for (const r of batch) pushed.add(String(r.id));
     embedded += batch.length;
     const rate = embedded / Math.max(1, (Date.now() - started) / 1000);

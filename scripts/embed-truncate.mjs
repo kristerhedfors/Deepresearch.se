@@ -17,20 +17,13 @@
 // Dropping the orphaned unit costs at most one character off a vector's tail;
 // the retrieved TEXT is always the full chunk, re-chunked from the corpus.
 
-/**
- * Truncate `text` to at most `max` UTF-16 code units, backing off by one when
- * the cut would orphan a surrogate. Shorter input is returned unchanged.
- * @param {string} text
- * @param {number} max
- * @returns {string}
- */
-export function truncateChars(text, max) {
-  const s = String(text ?? "");
-  if (!(max > 0)) return "";
-  if (s.length <= max) return s;
-  const last = s.charCodeAt(max - 1);
-  // A high surrogate (D800–DBFF) as the final unit means its low half is the
-  // character being cut away — drop the orphan too.
-  const end = last >= 0xd800 && last <= 0xdbff ? max - 1 : max;
-  return s.slice(0, end);
-}
+// THE IMPLEMENTATION MOVED (2026-07-31) to public/js/arxiv-rag-core.js, and
+// this module is now the façade over it — the repo's standing convention for a
+// pure helper both a browser module and a script need, since the browser can
+// only import served modules. It moved because `buildPassage` needed the same
+// cut and was still using a plain `.slice()`: a mathematical bold character in
+// PMID 41993351's abstract landed exactly on the 1200-char boundary and
+// crash-looped a PubMed loader at 96% of the fill (docs/PUBMED-RAG.md §7.2).
+// Two copies of this rule is how that happened; there is now one.
+
+export { truncateChars } from "../public/js/arxiv-rag-core.js";

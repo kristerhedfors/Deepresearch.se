@@ -14,8 +14,8 @@ PMC's live keyword-AND API. This tier gives it dense retrieval with a
 cross-encoder rerank — the configuration that, measured through the deployed
 path on arXiv, reaches 78.7% recall@1 / 85.3% recall@10 in English.
 
-Status: **built, measured, and FILLING.** The index `deepresearch-se-pubmed`
-was created on 2026-07-31 and the `PUBMED_INDEX` binding is live. Every number
+Status: **built, filled and serving.** `deepresearch-se-pubmed` holds
+**1,638,756 vectors** as of 2026-07-31 and the `PUBMED_INDEX` binding is live. Every number
 in §1–§4 was measured on this machine that day; §5 is the cost model and the
 amounts recommendation this document exists to support; §7 is the fill and what
 it measured; §8 is what is deliberately still open.
@@ -394,12 +394,21 @@ to it).
 
 ## 7. The fill — what actually happened (2026-07-31)
 
-The index was created and filled from the corpus already on disk. Numbers as
-measured, not planned.
+The index was created and filled from the corpus already on disk, in one
+session. Numbers as measured, not planned.
 
 ```
-1,639,403 unique citations · 8 parallel loaders · ~82 vectors/s sustained
+1,638,756 vectors · 8 parallel loaders · ~200 vectors/s aggregate · ~46 min per part
 ```
+
+The 647 short of the corpus's 1,639,403 are withdrawn citations: the archive
+recorded 4,503 `<DeleteCitation>` PMIDs and 647 of those were in this window, so
+the loader skipped them rather than indexing retracted work.
+
+**Verified against Vectorize's own count**, not the loader's: `vectorize info`
+reports `vectorCount` 1,638,756, matching the checkpoint exactly. (That count
+lags a live fill — it tracks `processedUpToMutation` — so it confirms a
+*finished* build and cannot confirm one in progress.)
 
 ### 7.1 Dedup has to happen BEFORE the split, not inside each loader
 
@@ -435,25 +444,73 @@ points at an already-installed binary and skips the npx step; the default stays
 `npx`, so a single-process fill needs no setup. With it, eight loaders ran with
 zero upsert failures.
 
-### 7.3 The served path, probed against the partial index
+### 7.3 One character stalled the fill at 96%
 
-Retrieval was checked end to end — embed, Vectorize query, cross-encoder rerank,
-relevance floor — while the fill was still running:
+Part 04 crash-looped on the same batch for half an hour, its supervisor
+restarting it each time, with the embedder answering
+`Embedding incomplete: 256/256 texts unfilled`. Berget was healthy — a direct
+probe returned 200 — so it was one record in one batch.
 
-| query | top rerank | above the 0.01 floor |
-|---|---|---|
-| does metformin reduce cardiovascular mortality in type 2 diabetes | 0.991 | 10/10 |
-| antibiotic resistance in *Klebsiella pneumoniae* | 0.990 | 10/10 |
-| risk factors for preterm birth | 0.973 | 10/10 |
-| CRISPR base editing for sickle cell disease | 0.418 | 7/10 |
-| **best pizza recipe napoletana dough** | **0.00006** | **0/10** |
+`buildPassage` cut to the 1,200-char budget with a plain `.slice()`, and
+PMID 41993351's abstract puts a mathematical bold character
+(`\ud835\udc65`) exactly on that boundary. The cut landed *between* the two
+code units, leaving a lone high surrogate; Berget's tokenizer rejects that batch
+with a 400 reading `TextEncodeInput must be Union[TextInputSequence, …]`, which
+is **not** a length error, so no shrink retry can ever clear it.
 
-The nonsense control is the one that matters: four orders of magnitude below the
-on-topic queries and nothing survives the floor, so `src/europepmc.js` falls
-through to the live API instead of citing the index's nearest food-science
-paper. That is the property the floor exists for, reproduced on a second corpus.
+The repo already had the fix — `truncateChars`, written for exactly this when an
+emoji in `docs/WORKSPACES.md` hit a chunk boundary — but it lived in
+`scripts/embed-truncate.mjs` and `buildPassage` did not use it. Two copies of a
+rule is how one of them goes stale. The implementation now lives once, in
+`public/js/arxiv-rag-core.js` beside the budget it enforces, and the script is a
+façade over it.
 
-### 7.4 A Swedish measurement trap that nearly became a false bug report
+PubMed is what exposed this: **88% of its passages hit the cap**, so the boundary
+is exercised on nearly every record instead of on a rare long one. arXiv had the
+same latent bug and had simply never landed on a surrogate.
+
+### 7.4 An agent session cannot run a multi-hour fill unattended
+
+Background processes here are killed at every **turn boundary**, not by memory
+or by a timeout. The evidence is clean: the 34-minute harvest survived because
+it never crossed one — it ran inside a single long response — while the loaders
+died twice, each time exactly when a new user message started a turn, seven of
+eight ending mid-batch with no error line and 15 GB of memory free.
+
+So the fill advances only while a turn is held open, at roughly 200 vectors/s
+across eight loaders. That is ~2.3 h of held turn for 1.64 M citations. Nothing
+is lost to a kill — every loader resumes from its checkpoint and re-embeds
+nothing — but "start it and come back later" does not work from a session. Run
+it from a machine that stays up, or expect to hold the turn.
+
+The loaders are wrapped in a retry loop for the same reason a checkpoint exists:
+a transient `fetch failed` from the upload exits non-zero by design, and
+re-running is free, so the loop turns an interruption into a self-healing fill.
+
+### 7.5 The served path on the finished index
+
+Retrieval measured end to end — embed, Vectorize query, cross-encoder rerank,
+relevance floor — against all 1,638,756 vectors, in both languages
+(invariant 6):
+
+| query | EN top | EN kept | SV top | SV kept |
+|---|---|---|---|---|
+| metformin and cardiovascular mortality in type 2 diabetes | 0.999 | 10/10 | 0.996 | 10/10 |
+| antibiotic resistance in *Klebsiella pneumoniae* | 0.997 | 10/10 | 0.992 | 10/10 |
+| mRNA vaccine efficacy against severe COVID-19 | 0.998 | 10/10 | 0.972 | 10/10 |
+| deep learning for tumour detection in mammography | 0.996 | 10/10 | 0.959 | 10/10 |
+| risk factors for preterm birth | 0.993 | 10/10 | 0.933 | 10/10 |
+| gut microbiota and depression | 0.996 | 10/10 | 0.089 | 1/10 |
+| **best pizza recipe napoletana dough** | **0.0012** | **0/10** | — | — |
+
+Two things to read off it. **Swedish reaches parity** — five of six queries
+score above 0.93 and keep the whole slate, which is what invariant 6 asks for.
+And the nonsense control stays three orders of magnitude below everything real
+with nothing above the floor, so `src/europepmc.js` still falls through to the
+live API rather than citing the index's nearest food-science paper. That is the
+property the floor exists for, reproduced on a second corpus.
+
+### 7.6 A Swedish measurement trap that nearly became a false bug report
 
 The first Swedish probe looked alarming — two of five paired queries returned
 **nothing** above the floor while their English twins scored 0.97+. It read like
@@ -477,11 +534,14 @@ badly enough to manufacture a defect that is not there. This is the retrieval
 analogue of the `\b` Swedish-boundary trap that silently kills bilingual regex
 gates (the **palaeogenomics** skill records that one).
 
-What survives the correction is a single query — "tarmflorans roll vid
-depression" — still at 0.0054 against its English pair's 0.986, and it collapses
-the same way on the arXiv index (0.00109). One case out of six is a lead, not an
-established defect, and the floor was **not** touched on the strength of it.
-Deciding it needs a Swedish gold set, which §8 already says does not exist.
+What survived the correction was a single query — "tarmflorans roll vid
+depression" — at 0.0054 against its English pair's 0.986. **Finishing the fill
+resolved that too**: on the complete index it scores 0.089 and clears the floor,
+where at 30% of the corpus it did not. So it was corpus size, not language.
+
+The floor was never touched, and that restraint is the point. Both times the
+evidence said "defect", the defect was somewhere else — first in the probe, then
+in the corpus being partial. Re-measure before moving a measured constant.
 
 ---
 
