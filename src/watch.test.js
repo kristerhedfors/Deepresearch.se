@@ -8,6 +8,7 @@
 // matters most — that it never reaches the network.
 
 import { test, describe } from "node:test";
+import { MOVEMENTS } from "./watch.js";
 import assert from "node:assert/strict";
 
 import { handleWatchCatalog, CASES, SLOTS, DEFAULT_BUILD, encodeBuild } from "./watch.js";
@@ -2313,5 +2314,54 @@ describe("buckles, clasps and the wrist cylinder", () => {
     const kit = strapAssembly(null, null);
     assert.equal(kit.band.positions.length, 0);
     assert.equal(kit.wristInfo.show, false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// "Surprise me" has to be BOTH valid and surprising (feedback #57).
+//
+// The validity half is the reported bug: picking each slot independently
+// produced a build the fit check rejected about three times in four. The
+// variety half is a bug found while fixing it — the first version constrained
+// the FIRST slot against DEFAULT_BUILD, whose date-only dial is incompatible
+// with every day-date, GMT and no-date calibre, so the movement was decided
+// before the user ever pressed the button: 3000 draws, 3000 NH35s. Valid, and
+// not a surprise. A default is not a decision, so the root slot is judged
+// against nothing and everything after it against the slots actually chosen.
+
+describe("surpriseBuild is valid AND varied", () => {
+  /** Deterministic generator, so a failure here is reproducible. */
+  const seeded = (seed) => () => {
+    seed = (seed * 1664525 + 1013904223) % 4294967296;
+    return seed / 4294967296;
+  };
+
+  test("never returns a build the fit check rejects", () => {
+    const rnd = seeded(20260731);
+    for (let i = 0; i < 500; i++) {
+      const build = surpriseBuild(rnd);
+      const verdict = checkBuild(build);
+      assert.ok(verdict.ok, `draw ${i} invalid: ${JSON.stringify(build)}`);
+    }
+  });
+
+  test("reaches every movement, not just the default one", () => {
+    const rnd = seeded(1234567);
+    const seen = new Set();
+    for (let i = 0; i < 500; i++) seen.add(surpriseBuild(rnd).movement);
+    assert.equal(
+      seen.size,
+      MOVEMENTS.length,
+      `only reached ${[...seen].join(", ")} — the root slot is being constrained by undecided ones again`,
+    );
+  });
+
+  test("varies the dial rather than settling on one", () => {
+    const rnd = seeded(7654321);
+    const seen = new Set();
+    for (let i = 0; i < 500; i++) seen.add(surpriseBuild(rnd).dial);
+    // Not all 24 — some dials are genuinely reachable only from rare
+    // combinations — but a picker that offers a handful is not a surprise.
+    assert.ok(seen.size >= 12, `only ${seen.size} distinct dials over 500 draws`);
   });
 });
