@@ -119,7 +119,7 @@ The relationships, in one line each:
   client-platform spec cannot opt into a server data path (PA-4).
 - **An agent picks a mode**, via the `mode` field and the `mode-select`
   control; all six ids are selectable, and leaving `mode` unset is legal too —
-  that is what makes `palaeogenomics` reachable by id alone. Since spec 0.2.0 it also picks an
+  that is what makes `palaeogenomics` and `scholar` reachable by id alone. Since spec 0.2.0 it also picks an
   **answer phase**, via `capability.answerPhase` (§3.1) — so a spec can reach
   any execution semantics the platform already implements, and the `defaults`
   table (§4) is what binds a mode to the agent that IS it. What a spec still

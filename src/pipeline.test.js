@@ -517,8 +517,13 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // Generic: the rule for what counts as naming a source lives in that
     // source's module; the orchestrator reads ids only.
     const leading = src.slice(src.indexOf("function leadingSources(ctx)"), src.indexOf("function startAuxSearches"));
-    assert.match(leading, /return leadSourceIds\(ctx\.lastUser\);/);
-    assert.doesNotMatch(leading, /arxiv|\bhf\b|hugging/i);
+    assert.match(leading, /const ids = leadSourceIds\(ctx\.lastUser\);/);
+    // …and a source the request narrowed away (state.auxOnly — the Deep
+    // Science agent restricting itself to the peer-reviewed leg) cannot lead
+    // it either: a lead planAuxSource will then refuse to plan would stand the
+    // web leg down and spend the wave on nothing.
+    assert.match(leading, /state\)\.auxOnly;\n\s*return Array\.isArray\(only\) && only\.length \? ids\.filter\(/);
+    assert.doesNotMatch(leading, /arxiv|\bhf\b|hugging|scholar/i);
   });
 
   test("web-off short-circuits to the model answer ONLY when no other source applies", () => {

@@ -25,6 +25,7 @@ import { capHasContext } from "./agent-spec.js";
 import { extensionEnrichments } from "./extensions.js";
 import { runIntrospectionEnrichment } from "./introspect.js";
 import { runModelsAgentEnrichment } from "./models-agent.js";
+import { runScholarMetricsEnrichment } from "./scholar-metrics.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -99,6 +100,28 @@ const CORE_ENRICHMENTS = [
     id: "aadr",
     enabled: (state) => capHasContext(/** @type {any} */ (state).capability, "ancient-samples"),
     run: (c) => runAncientSampleEnrichment(c),
+  },
+  {
+    // The Google Scholar metrics leg (src/scholar-metrics.js), and the switch
+    // that restricts the Deep Science agent to its peer-reviewed source. It is
+    // NOT silent on an ordinary turn the way its neighbours are — it always
+    // sets the turn's source restriction — but everything it can APPEND is
+    // gated: a profile block only when the message carries a Scholar profile
+    // link, a venue-metrics block only when the message asks where a field
+    // publishes.
+    //
+    // Core rather than an extension, on the same footing as the model catalog
+    // above: no knob, no secret, no per-user configuration. The venue table it
+    // reads is a build artifact in this deployment, and the one outbound call
+    // it can make goes to a page Google's robots.txt explicitly allows —
+    // src/scholar.js's header documents the whole posture.
+    //
+    // Gated on the resolved agent's declared context block, so there is no
+    // chat mode and no request flag: removing the agent from sdk/AGENTS.json
+    // turns the capability off entirely.
+    id: "scholar",
+    enabled: (state) => capHasContext(/** @type {any} */ (state).capability, "scholar-metrics"),
+    run: (c) => runScholarMetricsEnrichment(c),
   },
 ];
 

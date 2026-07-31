@@ -138,6 +138,11 @@ export const ASPECTS = {
     "deextinction", "preservation", "population-history", "corpus-limits", "method-caveats",
     "proteomics", "literature-frontier", "reference-panel", "sv-dating", "isotopes",
   ],
+  scholar: [
+    "clinical-evidence", "sv-clinical", "replication", "venue-metrics", "effect-size",
+    "disagreement", "author-profile", "retraction", "emerging", "sv-method",
+    "cs-evidence", "method-critique", "systematic-review", "scholarly-system", "peer-review-itself",
+  ],
   "under-construction": [
     "purpose", "tier-choice", "controls", "theme", "examples",
     "capability", "prompts", "search-policy", "gates", "bounds",
@@ -657,6 +662,68 @@ export const STARTERS = {
         text: "What do strontium and oxygen isotopes add to a genetic study of an individual, and where do the two lines of evidence disagree?" },
       { id: "pal-sv-databas", xp: 239, lang: "sv", aspect: "corpus-limits",
         text: "Vilka delar av världen är dåligt representerade i databasen över forntida individer, och hur påverkar det slutsatserna?" },
+    ],
+    // =====================================================================
+    // scholar — Deep Science. The editorial rule here follows from what the
+    // agent structurally CANNOT do: there is no web leg, so a starter whose
+    // answer lives in a news article, a vendor page or a policy document gets
+    // a worse answer here than in Deep Research, not a better one. Every
+    // opener below is a question the published literature has actually
+    // studied.
+    //
+    // The second rule is that a good opener should make the agent's own
+    // discipline visible rather than hide it — where the evidence is
+    // contested, where the effect size is small, where a famous finding
+    // failed to replicate. An agent that only ever answers settled questions
+    // reads as an oracle, which is the opposite of what citing a literature
+    // is for.
+    //
+    // Two aspects exist only here and exercise the Google Scholar legs
+    // specifically: `venue-metrics` (the committed h5-index table) and
+    // `author-profile` (the robots-allowed profile page). Unranked — no eval
+    // run has scored this queue yet (a rank cites the run that produced it).
+    // =====================================================================
+    scholar: [
+      { id: "sch-vitamin-d", xp: 240, lang: "en", aspect: "clinical-evidence",
+        text: "Does vitamin D supplementation reduce the risk of acute respiratory infection, and how has the answer changed as the trials got larger?" },
+      { id: "sch-sv-fasta", xp: 241, lang: "sv", aspect: "sv-clinical",
+        text: "Vad säger den sakkunniggranskade forskningen om intermittent fasta och insulinkänslighet, och hur starka är beläggen?" },
+      { id: "sch-replication", xp: 242, lang: "en", aspect: "replication",
+        text: "Which findings from the social-priming literature failed to replicate, and what did the replication attempts actually measure?" },
+      { id: "sch-venues-security", xp: 243, lang: "en", aspect: "venue-metrics",
+        text: "Which venues publish the highest-cited work in computer security and cryptography, by Google Scholar's h5-index?" },
+      { id: "sch-sv-tidskrifter", xp: 244, lang: "sv", aspect: "venue-metrics",
+        text: "Vilka tidskrifter inom medicin har högst h5-index enligt Google Scholar, och vad mäter det egentligen?" },
+      { id: "sch-effect-size", xp: 245, lang: "en", aspect: "effect-size",
+        text: "How large is the measured effect of exercise on depression symptoms in randomised trials, and how much does it shrink in the best-controlled ones?" },
+      { id: "sch-meta-conflict", xp: 246, lang: "en", aspect: "disagreement",
+        text: "Where do the meta-analyses of dietary salt reduction and cardiovascular outcomes disagree, and what explains the disagreement?" },
+      { id: "sch-sv-skarm", xp: 247, lang: "sv", aspect: "sv-clinical",
+        text: "Finns det belägg i forskningen för att skärmtid påverkar barns sömn, och hur väl kontrollerade är de studierna?" },
+      { id: "sch-author-profile", xp: 248, lang: "en", aspect: "author-profile",
+        text: "Looking at https://scholar.google.com/citations?user=JicYPdAAAAAJ — what is this researcher's most-cited work, and which of it is actually peer-reviewed?" },
+      { id: "sch-retractions", xp: 249, lang: "en", aspect: "retraction",
+        text: "What did the retracted papers on beta-amyloid and Alzheimer's actually claim, and how much of the later literature was built on them?" },
+      { id: "sch-microplastics", xp: 250, lang: "en", aspect: "emerging",
+        text: "What has been measured, rather than speculated, about microplastics in human tissue, and how reliable are the detection methods?" },
+      { id: "sch-sv-vaxthus", xp: 251, lang: "sv", aspect: "sv-method",
+        text: "Vad visar den granskade forskningen om koldioxidupptag i återställda våtmarker, och hur mäts det i fält?" },
+      { id: "sch-ml-benchmarks", xp: 252, lang: "en", aspect: "cs-evidence",
+        text: "What does the peer-reviewed literature say about benchmark contamination in language-model evaluation, as opposed to what the preprints say?" },
+      { id: "sch-p-hacking", xp: 253, lang: "en", aspect: "method-critique",
+        text: "How much of the published psychology literature shows signs of p-hacking, and how was that estimated?" },
+      { id: "sch-sv-antibiotika", xp: 254, lang: "sv", aspect: "sv-clinical",
+        text: "Hur snabbt utvecklas antibiotikaresistens enligt publicerade studier, och vilka åtgärder har mätbar effekt?" },
+      { id: "sch-cochrane", xp: 255, lang: "en", aspect: "systematic-review",
+        text: "What do the Cochrane reviews conclude about mindfulness-based interventions for chronic pain, and how certain is the evidence graded?" },
+      { id: "sch-open-access", xp: 256, lang: "en", aspect: "scholarly-system",
+        text: "What does the research on open-access publishing find about citation advantage, once self-selection is controlled for?" },
+      { id: "sch-preprint-gap", xp: 257, lang: "en", aspect: "peer-review-itself",
+        text: "How often do preprints change substantively between posting and peer-reviewed publication, and what changes most?" },
+      { id: "sch-sv-kost", xp: 258, lang: "sv", aspect: "sv-clinical",
+        text: "Vad säger de största kohortstudierna om rött kött och hjärt-kärlsjukdom, och var ligger osäkerheten?" },
+      { id: "sch-citation-bias", xp: 259, lang: "en", aspect: "method-critique",
+        text: "What is the evidence that citation counts measure impact rather than visibility, and who has tried to separate the two?" },
     ],
   },
 };

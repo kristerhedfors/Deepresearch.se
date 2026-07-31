@@ -8,8 +8,11 @@ description: >-
   Nominatim reverse geocoding (src/geocode.js), Shodan host intelligence
   (src/shodan.js), Google Maps / Street View (src/googlemaps.js), or
   Hugging Face Hub search (src/hf.js; its INFERENCE sibling
-  src/hf-inference.js belongs to the models-agent skill) — or adding a new enrichment in the
-  same deterministic no-function-calling pattern. ALSO the go-to for the
+  src/hf-inference.js belongs to the models-agent skill), or GOOGLE SCHOLAR
+  and the peer-reviewed literature (src/scholar.js, src/scholar-metrics.js,
+  src/scholar-venues.js — what Scholar's robots.txt permits, why /scholar is
+  never scraped, and the OpenAlex/Crossref/SerpApi traps) — or adding a new
+  enrichment in the same deterministic no-function-calling pattern. ALSO the go-to for the
   EXTENSION BOUNDARY (src/extensions.js, CLAUDE.md invariant 7): the
   knob-gated third-party integrations are extensions, not core, so wiring
   one is a descriptor in the registry plus its own modules — never an edit
@@ -1153,3 +1156,85 @@ work in the repo was the offline CLI RAG database (`docs/ARXIV-RAG.md`), whose
   cross-encoder rerank over a frozen year, with measurably better recall, still
   waiting on a hosting decision. The registry entry is the seam it slots into —
   promoting it replaces the fetch inside `arxivSearch` and nothing else.
+
+## Google Scholar + the peer-reviewed literature — a search-phase source and an enrichment (no knob)
+
+`src/scholar.js` (source) + `src/scholar-metrics.js` (enrichment) +
+`src/scholar-venues.js` (the committed metrics table) + `scripts/scholar-venues.mjs`
+(the harvest). Added 2026-07-31 for the `scholar` (Deep Science) agent, which
+answers exclusively from peer-reviewed publications. Full posture and every
+probe: `docs/SCHOLAR.md`.
+
+**Start here: Google Scholar has no API, and the Maps/OAuth keys buy nothing.**
+Scholar is not a Google Cloud product. What it publishes is a `robots.txt` that
+splits the service, and that split is the whole design (read 2026-07-31):
+
+    Disallow: /scholar                          ← the search index
+    Allow:    /citations?user=                  ← author profiles
+    Allow:    /citations?view_op=top_venues     ← publication metrics
+
+- **`/scholar` is not scraped.** A plain datacenter GET returns `403` (the
+  robot page); only a forged browser UA gets past, which is the thing
+  robots.txt asked us not to do, and Cloudflare's shared egress is
+  rate-limited by Google besides. `view_op=search_authors` is disallowed too,
+  so there is **no permitted way to look an author up by name** — the profile
+  leg fires only when the message already carries the link.
+- **The allowed surfaces are used fully**: profiles live (one GET carrying only
+  the id) and the 4,652-venue h5-index table as a build artifact — offline for
+  the privacy reason as much as the caching one, since a per-turn lookup would
+  tell Google which journals every question here is about.
+- **The search leg** is a backend ladder: OpenAlex, Europe PMC's peer-reviewed
+  slice, Semantic Scholar, and a LICENSED Scholar API (`SERPAPI_KEY`) when
+  configured. All three keys are optional; Europe PMC needs none.
+
+**The three API traps, measured — none is guessable:**
+
+- **OpenAlex quoting is the INVERSE of Europe PMC's.** Quoting a phrase costs
+  38% of the recall *and made the top hit worse*. Never quote here; always
+  quote there. Adding terms narrows in both, so both ladders climb by dropping.
+- **OpenAlex now meters a free daily BUDGET** and answers `429 {"error":"Rate
+  limit exceeded","message":"Insufficient budget…"}` once it is spent — about
+  25 requests from one address. On shared egress that is most of the time, so
+  `OPENALEX_API_KEY` is what makes the widest backend real.
+- **SerpApi fails with HTTP 200** plus an `error` body. Check the body.
+
+**Crossref is a registry, not a search engine.** Its relevance ranking returned
+a zero-citation 2025 paper at rank 1 for a query whose seminal papers are
+famous; `sort=is-referenced-by-count` returned *lme4* because "effects" matched
+"Linear Mixed-Effects". Use it only to verify a candidate, and note the trap:
+`query.bibliographic` for a paper's exact title returns the *Faculty Opinions
+recommendation of* that paper — a `dataset` record with a near-identical title.
+Verification needs a normalized-title **equality** check AND a type check.
+
+**Never sort a literature by citations** (the bug this integration is most
+likely to regrow). Ranking on citation count answered "vitamin D and acute
+respiratory infection" with the PRISMA reporting statement and "CRISPR
+off-target effects" with DESeq2 and limma — real peer-reviewed papers, none of
+them about the question. Citation counts across a literature are dominated by
+methods papers everybody cites. Retrieve by relevance (Europe PMC's default;
+the `sort=` parameter WAS the bug) and rank by retrieval position first, with
+citations only separating comparably relevant papers.
+
+**"Peer-reviewed" is a positive-evidence filter, and Google Scholar supplies
+none.** A record is admitted when a backend says something entailing peer
+review (a journal source with an ISSN, MEDLINE/PMC indexing, a Crossref
+`journal-article`), never for lack of evidence against. Scholar indexes
+preprints, theses, slide decks and predatory journals beside *Nature* and
+publishes nothing telling them apart, so a Scholar hit is admitted only by
+MERGING onto a record that has evidence — it contributes ranking and citation
+counts, never the verdict. State the consequence rather than hiding it: *"from
+Google Scholar" and "peer-reviewed only" are different requests.*
+
+**The restriction is three declarations, not a prompt.** `capability.search.web:
+false` (which `capSearch` cannot let a request re-enable), `state.forceAux`, and
+`state.auxOnly` — the last one new and generic, because without it arXiv still
+fires on a physics question and hands a peer-review-only agent preprints. The
+agent's control set ships **no web-search toggle**: with `web: false` it could
+only be a no-op that implied otherwise.
+
+**Refreshing the venue table** is an annual job (Scholar recomputes once a
+year): `node scripts/scholar-venues.mjs --deep`, ~15 min at one page per 2.5 s.
+Two harvest traps are in the script's comments — hrefs arrive entity-encoded, so
+a `[?&]vq=` match silently harvests zero subcategories while reporting success;
+and the `gsc_mvt_*` class names also appear in the page's inline stylesheet, so
+a row's three cells are matched as one unit or CSS selectors become venues.

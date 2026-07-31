@@ -1616,8 +1616,11 @@ as bespoke subsystems:
   (`normal`), `introspection`, `agent-builder` (Agent Studio, mode `sdk`),
   `orchestrator`, `outrospection` and `models` — plus `secure` (the Se/cure
   archetype), `under-construction` (the template to copy) and
-  `palaeogenomics`, a DOMAIN agent bound to no mode at all and reached by id
-  (`docs/PALAEOGENOMICS.md`). The registry's ordered
+  two DOMAIN agents bound to no mode at all and reached by id —
+  `palaeogenomics` (`docs/PALAEOGENOMICS.md`) and `scholar`, the Deep Science
+  agent that answers exclusively from peer-reviewed publications with the web
+  leg structurally off and integrates Google Scholar as far as Scholar's
+  robots.txt permits (`docs/SCHOLAR.md`). The registry's ordered
   `defaults` table is what `/api/chat` routes on; the per-agent detail is
   `docs/AGENT-PLATFORM.md` §2.
 - **DeepResearch Platform SDK** (`sdk/MANIFEST.json`, `docs/DISTILLSDK.md`)
@@ -1631,8 +1634,8 @@ module — `execution-sandbox`, `introspection-help`, `decision-boards`,
 `publish-replays`, `games-shelf`, `mcp-surface`, `grant-bridge`,
 `symbol-language`, `pair-studio`, `agent-platform`. Orchestrator, Outrospection
 and Models modes now have their AgentSpec entry and route through the registry
-(2026-07-25/26), as does the mode-less `palaeogenomics` domain agent — but none
-of the four has a Platform-SDK module yet. Others are still bespoke code with no
+(2026-07-25/26), as do the mode-less `palaeogenomics` and `scholar` domain
+agents — but none of the four has a Platform-SDK module yet. Others are still bespoke code with no
 SDK module and no AgentSpec entry: **on-device inference** (`public/js/ondevice-*.js`,
 `docs/BONSAI-27B-PHONE-INFERENCE.md` — since 2026-07-25 it also powers
 Orchestrator's `swarm` node kind, `docs/SWARM-REASONING.md`: N tiny Bonsai

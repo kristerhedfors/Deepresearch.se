@@ -49,6 +49,9 @@ const EXCLUDE = [
   // reads by a fifth and put 20,927 tab-separated rows in front of a model
   // asked how the site works.
   /^public\/aadr\//,
+  // The Google Scholar venue-metrics table (scripts/scholar-venues.mjs) — same
+  // reasoning: 4,652 generated rows of h5-index data, not source.
+  /^public\/scholar\//,
   /(^|\/)package-lock\.json$/,
   /^tests\/fixtures\//,
 ];
