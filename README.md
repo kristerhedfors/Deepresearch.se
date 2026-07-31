@@ -291,6 +291,11 @@ approved in `/admin`, where default quotas, Exa cost, max time budget, and
 the default model are also configured (settings live in the D1 `config`
 table).
 
+To spare someone that wait, add them from **Users → Add user** in `/admin`
+before they ever sign in: the account is created pre-approved, and their
+first Google sign-in at that address picks it up. Nothing is emailed — send
+them the `/login` link yourself.
+
 ### 7. Optional: cloud storage + document RAG (R2 + Vectorize)
 
 Enables the signed-in tier's implicit cloud storage — conversations and

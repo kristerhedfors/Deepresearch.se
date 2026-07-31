@@ -621,6 +621,50 @@ function renderTotals() {
 
 // ---- users ---------------------------------------------------------------
 
+// Add user (invite). The account is created before its owner has ever
+// signed in, keyed by their email; their first Google sign-in claims that
+// row (src/google.js). Pre-approved is the default and the point of the
+// feature — it takes the expected colleague out of the approval queue.
+// Nothing is mailed from here, so the form says so and hands the admin the
+// sign-in URL to pass on themselves.
+function wireAddUser() {
+  const form = $("add-user");
+  if (!form) return;
+  $("add-user-link").textContent = location.origin + "/login";
+  const msg = $("add-user-msg");
+  const say = (text, isError) => {
+    msg.textContent = text;
+    msg.classList.toggle("err", !!isError);
+    msg.hidden = false;
+  };
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = $("add-user-email").value.trim();
+    const name = $("add-user-name").value.trim();
+    const preApproved = $("add-user-approved").checked;
+    const btn = form.querySelector('button[type="submit"]');
+    btn.disabled = true;
+    try {
+      const { user } = await api("/users", {
+        method: "POST",
+        body: { email, name, status: preApproved ? "active" : "pending" },
+      });
+      form.reset();
+      $("add-user-approved").checked = true;
+      say(
+        `${user.email} added${user.status === "pending" ? " as pending" : " and pre-approved"} — send them ${location.origin}/login to sign in with Google.`,
+        false,
+      );
+      // Reload so the new row shows up in the list below with its quota bars.
+      await load();
+    } catch (err) {
+      say(err.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
 function quotaBar(label, used, limit, fmt) {
   const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
   return `<div class="qbar">${label}: ${fmt(used)}${limit > 0 ? " / " + fmt(limit) : ""}
@@ -631,7 +675,7 @@ function renderUsers() {
   const box = $("users");
   box.innerHTML = overview.users.length
     ? ""
-    : '<p class="muted">No users yet — accounts appear on first Google sign-in.</p>';
+    : '<p class="muted">No users yet — accounts appear on first Google sign-in, or add one above.</p>';
   const defaults = overview.config.quotas;
 
   // Usage recorded under the shared break-glass identity (ADMIN_USER
@@ -685,6 +729,7 @@ function renderUsers() {
         <span class="badge ${u.role}">${u.role}</span>
         ${u.status === "disabled" ? '<span class="badge disabled">disabled</span>' : ""}
         ${u.status === "pending" ? '<span class="badge pending">awaiting approval</span>' : ""}
+        ${u.has_signed_in ? "" : '<span class="badge" title="Added here, but nobody has signed in against this address yet. The account activates itself on their first Google sign-in.">invited · not signed in yet</span>'}
         ${override ? '<span class="badge">custom quota</span>' : ""}
         ${inGrace ? `<span class="badge" title="Usage bars held at zero; user uncapped until this date. History kept.">quota reset · until ${new Date(graceUntil).toISOString().slice(0, 10)}</span>` : ""}
         <span class="spacer"></span>
@@ -1514,5 +1559,9 @@ function renderConfig() {
   };
   $("config-sec").hidden = false;
 }
+
+// Bound once, outside load() — load() re-runs after every mutation and would
+// stack a duplicate submit handler each time.
+wireAddUser();
 
 load();

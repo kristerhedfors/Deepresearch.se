@@ -198,6 +198,22 @@ input, select, textarea {
 }
 input[type="number"] { width: 6.2rem; }
 
+/* Add user (invite) form — sits above the user list in the Users panel */
+#add-user {
+  border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2);
+  padding: .65rem .8rem; margin-bottom: .8rem;
+}
+.add-user-row { display: flex; flex-wrap: wrap; gap: .45rem .6rem; align-items: center; }
+.add-user-row input[type="email"] { flex: 1 1 15rem; }
+.add-user-row input[type="text"] { flex: 1 1 10rem; }
+.add-user-row label {
+  display: inline-flex; gap: .35rem; align-items: center;
+  font-size: .8rem; color: var(--muted);
+}
+.add-user-hint { margin: .5rem 0 0; font-size: .78rem; }
+.add-user-msg { margin: .5rem 0 0; font-size: .82rem; color: var(--ok); }
+.add-user-msg.err { color: var(--warn); }
+
 /* Usage bars */
 .rowitem .usage-fold { margin-top: .5rem; }
 .quota-bars { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .5rem; margin-top: .5rem; }

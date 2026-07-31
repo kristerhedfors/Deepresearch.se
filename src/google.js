@@ -21,7 +21,13 @@
 // GOOGLE_AUTH_URL / GOOGLE_TOKEN_URL env overrides exist for local tests
 // (pointing at a mock); production always uses the defaults.
 
-import { createUserFromGoogle, getUserByEmail, normalizeEmail, updateUser } from "./accounts.js";
+import {
+  createUserFromGoogle,
+  getUserByEmail,
+  linkGoogleIdentity,
+  normalizeEmail,
+  updateUser,
+} from "./accounts.js";
 import { createSessionCookie, signState, verifyState } from "./auth.js";
 import { getDb } from "./db.js";
 import { getConfig } from "./config.js";
@@ -198,6 +204,21 @@ export async function handleGoogleCallback(request, env, url, log) {
       log.info("google.user_created", { role: user.role, status: user.status });
     } else {
       if (user.status === "disabled") return fail("disabled");
+      // An admin-created (invited) row is keyed by email alone — no
+      // google_sub until its owner turns up. Claim it on that first sign-in
+      // so the account is pinned to this Google identity from here on,
+      // exactly like a self-provisioned one. linkGoogleIdentity fills blanks
+      // only, so an already-pinned row is left untouched.
+      if (!user.google_sub) {
+        user =
+          /** @type {User} */ (
+            await linkGoogleIdentity(env, user.id, {
+              sub: typeof claims.sub === "string" ? claims.sub : "",
+              name: typeof claims.name === "string" ? claims.name : "",
+            })
+          ) || user;
+        log.info("google.invite_claimed", { status: user.status });
+      }
       if (isAdminEmail && user.role !== "admin") {
         // The row exists (we just loaded it), so the update returns it.
         user = /** @type {User} */ (await updateUser(env, user.id, { role: "admin" }));

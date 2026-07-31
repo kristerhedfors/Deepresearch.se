@@ -1047,6 +1047,19 @@ gate is on (config `require_approval`, default on) until the admin
 approves them in `/admin`. Every account must also accept the terms once
 (§3). The admin can disable any user, effective immediately.
 
+The admin can also get *ahead* of that flow: **Users → Add user** in
+`/admin` (`POST /api/admin/users`) creates the row for an address that has
+never signed in, defaulting to `active`. Nothing is emailed — the site has
+no outbound mail path, so the admin passes on the `/login` URL themselves;
+the row IS the invitation, and its value is the pre-approval. The address's
+first Google sign-in finds that row and claims it, pinning it to the Google
+subject (`linkGoogleIdentity`, fill-blanks-only so an account already
+pinned can never be repointed), so the person keeps the id, quota and
+history set up for them instead of getting a second account. This is a
+convenience over the approval gate, **not** an invite gate: sign-in stays
+open to any verified Google address, and the endpoint cannot mint an admin
+— `ADMIN_EMAIL` remains the sole path to that role.
+
 **Quotas — real-cost-grounded**: per four windows (rolling **last 5
 hours**, UTC calendar day, ISO week (Mon), calendar month), two
 dimensions. No time limits.

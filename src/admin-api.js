@@ -9,6 +9,9 @@
 //                                    attribution: per-window LLM vs search
 //                                    totals + per-model breakdown ("what has
 //                                    cost so much for this user")
+//   POST   /api/admin/users         {email, name?, status?} — create an
+//                                    account ahead of its owner's first
+//                                    sign-in ("Add user" / invite)
 //   PATCH  /api/admin/users/:id      {status?, name?, quota?} quota={day:{budget_eur,searches},...}|null
 //   POST   /api/admin/users/:id/quota/reset  {days?}|{clear} — zero a user's
 //                                    usage + grant an uncapped grace window
@@ -43,8 +46,10 @@
 //                                    text view; ?format=text is the "pop up
 //                                    every board" entry point)
 //
-// Accounts are provisioned by Google sign-in (src/google.js) — there is no
-// create-user endpoint; the admin manages status, names, and quotas.
+// Accounts are normally provisioned by Google sign-in (src/google.js); POST
+// /users is the admin's way to get ahead of that, creating a pre-approved row
+// so an expected colleague skips the approval gate. Either way the admin
+// manages status, names, and quotas from here — never roles (sole-admin).
 
 import { acknowledgeAlert, listAlerts } from "./alerts.js";
 import { handleChatLogs } from "./chatlog.js";
@@ -64,7 +69,15 @@ import { handleAdminProxy } from "./proxy.js";
 import { handleAdminServerToken } from "./server-grants.js";
 import { handleAdminPool } from "./pool.js";
 import { handleAgentLink } from "./agent-link.js";
-import { deleteUser, getUserByEmail, getUserById, listUsers, updateUser } from "./accounts.js";
+import {
+  createInvitedUser,
+  deleteUser,
+  getUserByEmail,
+  getUserById,
+  listUsers,
+  normalizeEmail,
+  updateUser,
+} from "./accounts.js";
 import { getDb } from "./db.js";
 import { jsonResponse } from "./http.js";
 import { getConfig, saveConfig } from "./config.js";
@@ -119,6 +132,9 @@ export async function handleAdminApi(request, env, url, log, identity) {
     // per-model breakdown (usage_model_events). ?user_id= or ?email=.
     if (path === "/user-cost" && method === "GET") {
       return userCost(env, url);
+    }
+    if (path === "/users" && method === "POST") {
+      return addUser(request, env, log);
     }
     const resetPath = path.match(/^\/users\/(\d+)\/quota\/reset$/);
     if (resetPath && method === "POST") {
@@ -299,6 +315,54 @@ export async function handleAdminApi(request, env, url, log, identity) {
     log.warn("admin.api_error", { error: message || String(err) });
     return jsonResponse({ error: message || "Admin API error." }, 400);
   }
+}
+
+// POST /api/admin/users — {email, name?, status?}
+// Create an account for someone who has not signed in yet. Nothing is
+// emailed (the site has no outbound mail path): the ROW is the invitation,
+// and the admin passes on the sign-in link themselves. Its value is the
+// pre-approval — the invited person signs in with Google and is straight
+// into the app instead of parked on the awaiting-approval page until the
+// admin happens to look at /admin.
+//
+// Role is not accepted at all, by omission: ADMIN_EMAIL is the only path to
+// admin (sole-admin policy), the same reason patchUser won't take one.
+/**
+ * @param {Request} request
+ * @param {Env} env
+ * @param {Logger} log
+ */
+async function addUser(request, env, log) {
+  const body = /** @type {any} */ (await request.json().catch(() => ({})));
+  const email = normalizeEmail(body.email);
+  if (!email) return jsonResponse({ error: "A valid email address is required." }, 400);
+  const existing = await getUserByEmail(env, email);
+  if (existing) {
+    return jsonResponse(
+      { error: `${email} already has an account.`, user: existing },
+      409,
+    );
+  }
+  const status = body.status === "pending" ? "pending" : "active";
+  let user;
+  try {
+    user = await createInvitedUser(env, {
+      email,
+      name: typeof body.name === "string" ? body.name : "",
+      status,
+    });
+  } catch (err) {
+    // `users.email` is UNIQUE, so a sign-in (or a second admin) that landed
+    // between the check above and this INSERT surfaces as a constraint
+    // error. That is the same answer as the check's — say so, don't 400 with
+    // a raw D1 message.
+    if (/UNIQUE|constraint/i.test(String(/** @type {any} */ (err)?.message || err))) {
+      return jsonResponse({ error: `${email} already has an account.` }, 409);
+    }
+    throw err;
+  }
+  log.info("admin.user_created", { user_id: String(user.id), status });
+  return jsonResponse({ user }, 201);
 }
 
 // PATCH /api/admin/users/:id — {status?, name?, quota?}; quota=null clears
