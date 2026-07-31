@@ -216,6 +216,35 @@ console.log(`\nbaseline ${baseline.overall.mean}±${baseline.overall.sd} (n=${ba
 console.log(`candidate ${overall.mean}±${overall.sd} (n=${overall.n}, commit ${gitSha})`);
 console.log(`delta ${delta >= 0 ? "+" : ""}${delta}  noise bar ±${bar.toFixed(3)}  →  ${verdict}`);
 
+// Per-question and per-source attribution (bench-drift-core.mjs). Printed for
+// every compare run, because the battery mean alone cannot say WHERE a change
+// landed — six runs sat ~0.6 low before a hand-read of the per-question values
+// showed one question carrying most of it. The source rollup answers the
+// question a corpus change actually poses: did the questions that reach this
+// retrieval leg move differently from the ones that never touch it?
+{
+  const { perQuestionDrift, perSourceDrift, formatDrift } = await import("./bench-drift-core.mjs");
+  const { SEARCH_SOURCES } = await import("../src/search-sources.js");
+  const { BENCH_QUESTIONS } = await import("./bench-questions.mjs");
+  const textOf = new Map(BENCH_QUESTIONS.map((q) => [q.id, q.question]));
+  const sourcesOf = (qid) => {
+    const text = textOf.get(qid) || "";
+    return SEARCH_SOURCES.filter((src) => {
+      try { return src.intent(text); } catch { return false; }
+    }).map((src) => src.id);
+  };
+  const questionRows = perQuestionDrift(baseline.perQuestion || {}, perQuestionStats);
+  console.log(formatDrift(questionRows, perSourceDrift(questionRows, sourcesOf)));
+  const movers = questionRows.filter((r) => r.moved);
+  if (movers.length) {
+    console.log(
+      `\n${movers.length} question${movers.length === 1 ? "" : "s"} moved by >=0.5: ` +
+        movers.map((r) => `${r.qid} ${r.delta >= 0 ? "+" : ""}${r.delta}`).join(", "),
+    );
+    console.log("Attribute the battery delta to these before reasoning about the pipeline as a whole.");
+  }
+}
+
 console.log("\n--- paste into tests/EVAL-BENCH-FINDINGS.md ---");
 console.log(
   `- bench-gate ${new Date().toISOString().slice(0, 10)} (commit ${gitSha} vs baseline ${baseline.commit}): ` +

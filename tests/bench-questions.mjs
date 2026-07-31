@@ -531,6 +531,65 @@ export const BENCH_QUESTIONS = [
     notes:
       "Svensk fr\u00e5ga, engelskt s\u00f6kf\u00e4lt: pr\u00f6var promptregeln att arXiv-vinklar skrivs p\u00e5 engelska medan svaret f\u00f6rblir svenskt (invariant 6).",
   },
+  // --- source coverage: the life-science literature leg (Europe PMC / PubMed) --
+  //
+  // ADDED 2026-07-31 because a coverage audit found `europepmc` exercised by
+  // ZERO questions in the whole bank — while PubMed was being ingested as a
+  // second hosted corpus (PR #352). A source no question reaches is a source
+  // the gate reports NEUTRAL on whatever it does to answers, good or bad, and
+  // that is exactly the hole arXiv arrived through: it landed between the
+  // 07-23 baseline and the first re-measurement with nothing measuring it.
+  //
+  // These are appended, never edited into existing entries: the bank is
+  // append-only so past scores stay comparable, so adding them does NOT
+  // invalidate the b2a5ab6 baseline — it means the NEXT baseline can see a leg
+  // this one was blind to. `bench-sources.test.js` fails the build if any
+  // registered source drops back to zero coverage.
+  {
+    id: "epmc_antibiotic_resistance",
+    question:
+      "What does published research show about the mechanisms by which bacteria acquire resistance to carbapenem antibiotics, and how quickly has resistance spread in clinical isolates?",
+    lang: "en",
+    kind: "europepmc",
+    rubric: [
+      "Names concrete resistance mechanisms (e.g. carbapenemase enzymes, efflux, porin loss)",
+      "Distinguishes acquired from intrinsic resistance",
+      "Gives a sense of spread over time, with figures or surveillance data where available",
+      "Cites the primary literature (PubMed/PMC/Europe PMC or journal pages), not only news coverage",
+    ],
+    notes:
+      "Subject-matter route into europepmcIntent: RESEARCH_WORD (\"research\") + LIFE_SCIENCE_WORD (\"bacteria\"). Does NOT name an archive, so it exercises the ordinary (non-lead) path.",
+  },
+  {
+    id: "epmc_lead_pubmed_microbiome",
+    question:
+      "Search PubMed for what the peer-reviewed literature says about the gut microbiome's role in response to immunotherapy, and summarise where the studies agree and disagree.",
+    lang: "en",
+    kind: "europepmc",
+    rubric: [
+      "Reports specific findings linking gut microbiome composition to immunotherapy response",
+      "Names where evidence is consistent and where it conflicts, rather than presenting one view",
+      "Notes study limitations (cohort size, confounders, observational vs interventional)",
+      "Cites the primary literature rather than secondary summaries",
+    ],
+    notes:
+      "LEAD route: names PubMed explicitly, so europepmcLeadIntent fires and the literature leg stands the web leg down. The one question in the bank that exercises a lead path for this source.",
+  },
+  {
+    id: "epmc_sv_tarmflora",
+    question:
+      "Vad visar forskningen om sambandet mellan tarmflorans bakterier och immunförsvaret, och hur starka är beläggen?",
+    lang: "sv",
+    kind: "europepmc",
+    rubric: [
+      "Namnger konkreta samband mellan tarmflora och immunförsvar från publicerad forskning",
+      "Värderar bevisstyrkan i stället för att bara räkna upp fynd",
+      "Skiljer på observationsstudier och interventionsstudier",
+      "Svarar på svenska men citerar den engelskspråkiga primarlitteraturen",
+    ],
+    notes:
+      "Invariant 6 parity for this source, and it pins the documented asymmetry: the INTENT gate is bilingual so a Swedish question reaches Europe PMC, but the QUERY must be English or the archive returns nothing (europepmc.js, probed 2026-07-29). A Swedish-language answer citing English papers is the pass condition.",
+  },
 ];
 
 // Convenience: filter helpers the runner uses for env overrides.
