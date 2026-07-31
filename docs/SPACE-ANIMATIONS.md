@@ -104,6 +104,51 @@ broadcast does. Ground structures also take a size cap (`R * 0.015`): held at
 constant SCREEN size like the craft, the tower became a 1,000 km spike off
 Earth's limb once the orbit reveal pulled the camera out to 21,840 km.
 
+### The separation frame (feedback #58, second report)
+
+The same session came back with *"separation seems to drop the front part, the
+starship rather than the stage below"* — and it was reading the animation
+correctly. The runner flies ONE trajectory point and that point is the STACK's
+base, so when the drawn mesh switched from the full stack to the Ship alone,
+the Ship was re-anchored from 0.57 of the stack up down to the base: it fell
+more than half its own length in one frame, straight through the booster drawn
+at that same point. `upperStageBaseFrac` and `craftBaseOffset` are the fix —
+the seam the stack is built at, applied as an offset along the vehicle's axis
+once the lower stage is gone. Both launch scenes had it; nothing about the
+trajectories was ever wrong (the Ship's altitude leads the booster's from the
+separation instant onward), only where the vehicle was drawn.
+
+Looking at that frame turned up a second defect in the same beat. The booster's
+boostback flip was applied with `tilt` — `rotX`, which turns ACROSS the flight
+plane — so a booster that should have parted along the stack's 77°-over
+attitude stood bolt upright at separation and only leaned toward the camera
+thereafter. `drawMesh` grew a `roll` option (`rotZ`, the plane the scenes
+actually fly in) and `boosterRollAngle` owns the attitude: the stack's own
+angle at k=0, past engines-first for the burn, upright from `BOOSTER_UPRIGHT_K`
+so it has descent left to fall rather than snapping vertical at the catch.
+
+The same frame also had the exhaust plume drawn straight down the SCREEN, so
+it pointed off into space the moment the craft pitched over; it trails along
+the vehicle's axis now, from whichever stage is burning.
+
+Two workers fixed the drop independently within minutes of each other, on the
+same feedback thread: `claude/space-launch-feedback-euzzwg` (merged as PR #344,
+which also fixed the plume) and `claude/starship-stage-feedback-6jqm1p` (which
+also fixed the attitude). They agreed on the diagnosis and differed only in
+where the offset lived — stored on the mount state as a constant, or derived in
+the core from the mesh. Reconciled to the core function, because that is the
+version a unit test can check against the stack's own vertices, keeping both
+extra fixes. Worth knowing for the next time this happens: git merged the two
+offsets TEXTUALLY, which applied the lift twice and looked plausible in the
+diff. Two independently correct fixes to one line of geometry do not compose.
+
+Method note: the fix and the defect it exposed were both found by freezing the
+loop (`st.playing = false; st.u = …`) and screenshotting either side of
+`stageT` on a deliberately oversized canvas — the craft draws at a constant
+SCREEN fraction, so a bigger canvas is the only way to zoom in on it. The unit
+tests derive the offset from the stack mesh's own vertices rather than a copy
+of the constant, so the drawn position and the drawn shape cannot drift apart.
+
 ## The chat embed (feedback #18)
 
 Both tiers' chats run the same gate on every outgoing question — since
@@ -243,13 +288,14 @@ both right and broadside:
 - The catch tower is set back along the ground by its own arm reach, so the
   tower and the stack do not draw through each other at liftoff — and the
   returning booster lands in the arms rather than inside the mast.
-- **Separation lifts the upper stage** by `st.upperOffset`, where it sat on
-  the stack. Drawn at the trajectory point it snapped down into the booster's
-  place at staging, and the eye read that as the front section falling away:
-  *"separation seems to drop the front part, the starship rather than the
-  stage below"*. The exhaust follows the same offset and now trails along the
-  vehicle's own axis rather than straight down the screen, which pointed off
-  into space as soon as the craft was pitched over.
+- **Separation lifts the upper stage** to the seam it sat at on the stack
+  (`craftBaseOffset`) and the booster parts holding the stack's own attitude
+  (`boosterRollAngle`) — "The separation frame" above has the whole story.
+- The **exhaust** burns from `craftPos`, whichever stage that currently is, and
+  trails along the vehicle's own axis rather than straight down the screen,
+  which pointed off into space as soon as the craft was pitched over. It needs
+  no staging logic of its own: the offset moves the craft, and the plume
+  follows the craft.
 
 ## Pinch to zoom (feedback #58)
 

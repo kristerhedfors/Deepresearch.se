@@ -351,10 +351,16 @@ to it).
 3. **MeSH terms are harvested but unused.** 74.5% of records carry them and they
    are a controlled vocabulary — a natural lexical arm, or metadata filter, or
    query-expansion source. Not wired to anything yet.
-4. **Withdrawn citations are handled at fill time, not continuously.** `--prune`
+4. **`src/scholar.js` does not use this tier.** The Deep Science agent added
+   its own `europePmcPeerSearch` — a peer-reviewed-only slice that deliberately
+   excludes preprints — and it goes straight to the Europe PMC REST API. Wiring
+   the dense tier in behind it would need a peer-reviewed filter this index does
+   not currently carry (the `types` field is harvested but not stored in the
+   vector metadata), so it is a separate decision rather than an oversight.
+5. **Withdrawn citations are handled at fill time, not continuously.** `--prune`
    removes any that were already pushed, but nothing re-runs it on a schedule; a
    long-lived index needs a refresh loop that pulls new update files, upserts the
    new PMIDs and prunes the deleted ones.
-5. **The `$/month` figures follow Cloudflare's documented formula**, in which
+6. **The `$/month` figures follow Cloudflare's documented formula**, in which
    stored vectors appear inside the *queried*-dimension term. Check the first
    real invoice against the table in §5 before scaling past tier 1.

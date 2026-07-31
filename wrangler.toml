@@ -63,6 +63,18 @@ preview_urls = true
 # GOOGLE_MAPS_API_KEY when unset — safe as long as that key is HTTP-referrer-
 # locked to *.deepresearch.se/* (the mitigation for browser exposure). Set a
 # dedicated Embed-API-only key only to narrow the browser-exposed scope.
+#
+# The Deep Science agent's peer-reviewed literature source (src/scholar.js)
+# reads three MORE optional secrets, and works with none of them: OPENALEX_API_KEY
+# (OpenAlex meters a small free daily budget per caller and 429s once it is
+# spent, which on Cloudflare's shared egress is most of the time),
+# SERPAPI_KEY (a licensed Google Scholar search API — Google publishes none and
+# robots-disallows /scholar, so this is the only supported route to Scholar's
+# own ranking) and SEMANTIC_SCHOLAR_API_KEY (the Graph API 429s unkeyed). With
+# none set the source falls back to Europe PMC's peer-reviewed slice, which
+# needs no key. The Maps/OAuth Google credentials above buy NOTHING here —
+# Google Scholar is not a Google Cloud product and has no API. See
+# docs/SCHOLAR.md.
 [vars]
 LOG_LEVEL = "debug" # debug | info | warn | error — temporarily debug for sandbox-filesystem heavy testing (2026-07-12); revert to "info" when done
 # ADMIN_EMAIL (the Google account that gets and keeps the admin role on

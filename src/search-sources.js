@@ -44,6 +44,17 @@ import {
   europepmcTermKey,
 } from "./europepmc.js";
 import { hfDiversityKey, hfIntent, hfPickQuery, hfPromptNote, hfSearch, hfTermKey } from "./hf.js";
+import {
+  SCHOLAR_LEAD_MAX_PER_REQUEST,
+  SCHOLAR_MAX_PER_REQUEST,
+  scholarDiversityKey,
+  scholarIntent,
+  scholarLeadIntent,
+  scholarPickQuery,
+  scholarPromptNote,
+  scholarSearch,
+  scholarTermKey,
+} from "./scholar.js";
 
 /**
  * One search result an auxiliary source returns, in the same shape Exa
@@ -176,6 +187,35 @@ export const SEARCH_SOURCES = [
     // prefix instead, which is the publisher (europepmc.js).
     diversityHost: "doi.org",
     diversityKeyOf: europepmcDiversityKey,
+  },
+  {
+    // The PEER-REVIEWED leg: OpenAlex, Europe PMC's peer-reviewed slice,
+    // Semantic Scholar and — where a licensed key is configured — Google
+    // Scholar itself, merged and then filtered down to records that carry
+    // positive evidence of peer review (src/scholar.js).
+    //
+    // It overlaps the two legs above and differs from both in the way that
+    // matters. arXiv is preprints by definition and europepmc includes them on
+    // purpose; this source excludes them on purpose, and is cross-domain where
+    // europepmc is life-science. It is the only source the Deep Science agent
+    // is allowed to consult (state.auxOnly), which is why the exclusion has to
+    // live in the source rather than in a prompt.
+    id: "scholar",
+    intent: scholarIntent,
+    leadIntent: scholarLeadIntent,
+    leadMaxPerRequest: SCHOLAR_LEAD_MAX_PER_REQUEST,
+    search: scholarSearch,
+    service: "Peer-reviewed literature",
+    pickQuery: scholarPickQuery,
+    dedupKey: scholarTermKey,
+    maxPerRequest: SCHOLAR_MAX_PER_REQUEST,
+    promptNote: scholarPromptNote,
+    // Same reasoning as europepmc's: the hits are DOI URLs, so without a
+    // platform key every publisher on earth shares the origin `doi.org` and
+    // the per-origin cap starves the leg. Keyed on the registrant prefix,
+    // which is the publisher.
+    diversityHost: "doi.org",
+    diversityKeyOf: scholarDiversityKey,
   },
 ];
 

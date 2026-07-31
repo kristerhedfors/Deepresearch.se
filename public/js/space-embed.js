@@ -28,7 +28,7 @@ import {
   SUPER_HEAVY_FRAC, STARSHIP_SHIP_FRAC,
   astronautMesh, landerMesh, terrainMesh, ringMesh,
   spherePatchGrid, launchCamDistKm, launchAltKm, launchGroundAngle, orbitSpeedKms,
-  boosterReturnState, isCatchView,
+  boosterReturnState, isCatchView, craftBaseOffset, boosterRollAngle, ROCKET_UPPER_FRAC,
   sphereSilhouette, facesCamera,
   rotX, rotY, rotZ, worldRot, projectPoint, mulberry32,
 } from "./space-core.js";
@@ -101,13 +101,17 @@ const SPHERE_FINE = sphereMesh(1, 9, 16, 32);
 
 /** Draws a mesh: scale + own rotation + position, then world rotation. */
 function drawMesh(ctx, st, cam, mesh, opts) {
-  const { scale = 1, pos = [0, 0, 0], spin = 0, tilt = 0, stroke, alpha = 0.9, width = 1 } = opts;
+  const { scale = 1, pos = [0, 0, 0], spin = 0, tilt = 0, roll = 0, stroke, alpha = 0.9, width = 1 } = opts;
   const pts = new Array(mesh.verts.length);
   for (let i = 0; i < mesh.verts.length; i++) {
     let v = mesh.verts[i];
     v = [v[0] * scale, v[1] * scale, v[2] * scale];
     if (spin) v = rotY(v, spin);
     if (tilt) v = rotX(v, tilt);
+    // `roll` turns the mesh in the FLIGHT plane — the plane the launch scenes
+    // fly and orient the craft in. `tilt` (rotX) turns across it, which is why
+    // a booster flipped with `tilt` only ever leaned toward the camera.
+    if (roll) v = rotZ(v, roll);
     v = [v[0] + pos[0], v[1] + pos[1], v[2] + pos[2]];
     pts[i] = projectPoint(worldRot(v, st), cam);
   }
@@ -418,9 +422,16 @@ const RUNNERS = {
     ctx.stroke();
     // The rocket, oriented along its velocity, drawn enlarged to stay visible.
     const eps = 0.004;
-    const ahead = toWorld(rocketState(Math.min(1, u + eps)));
-    const vel = [ahead[0] - rpos[0], ahead[1] - rpos[1], 0];
-    const vAng = Math.atan2(vel[0], vel[1]);
+    // The flight's velocity angle at any point on it — read at `u` for the
+    // craft, and at `stageT` for the attitude the booster inherits when it
+    // parts from the stack.
+    const velAngAt = (uu) => {
+      const at = toWorld(rocketState(uu));
+      const next = toWorld(rocketState(Math.min(1, uu + eps)));
+      return Math.atan2(next[0] - at[0], next[1] - at[1]);
+    };
+    const vAng = velAngAt(u);
+    const sepAng = velAngAt(cfg.stageT);
     // Big enough to READ as the vehicle it is. Held at a constant fraction of
     // the camera distance the craft keeps one screen size the whole way up;
     // at 0.045 that was ~18 px on a phone, which is a smudge — feedback #58,
@@ -464,18 +475,28 @@ const RUNNERS = {
     // half the stack under the pad at liftoff, which only became visible once
     // the craft was drawn big enough to see (feedback #58). Base-anchored it
     // also matches the booster below, which drew from its base all along.
-    // Once staged, the upper stage keeps the place it held on the stack —
-    // it does not slide down into the booster's. The booster drops away from
-    // beneath it, which is the direction separation actually goes.
-    const lift = staged ? st.upperOffset : 0;
     const oriented = {
       verts: rocket.verts.map((v) => {
-        const r = rotZ([v[0], v[1] + lift, v[2]], -vAng);
+        const r = rotZ(v, -vAng);
         return [r[0] * size, r[1] * size, r[2] * size];
       }),
       edges: rocket.edges,
     };
-    const craftPos = rel(rpos);
+    // One trajectory point is flown, and it is the STACK's base — so after
+    // separation the upper stage has to be lifted back to where it actually
+    // sat, up the vehicle's own axis. Anchored at the base instead, the Ship
+    // dropped more than half its length at the staging frame and fell THROUGH
+    // the booster drawn at that same point: feedback #58, *"separation seems to
+    // drop the front part, the starship rather than the stage below"*. The
+    // offset is what makes the two stages part from the seam they were joined
+    // at, the Ship carrying on up and the booster left below it.
+    const along = craftBaseOffset(u, cfg, size);
+    const base = rel(rpos);
+    const craftPos = [
+      base[0] + Math.sin(vAng) * along,
+      base[1] + Math.cos(vAng) * along,
+      base[2],
+    ];
     drawMesh(ctx, st, cam, oriented, {
       pos: craftPos, stroke: "hsl(30 55% 72%)", alpha: 0.95, width: 1.2,
     });
@@ -484,17 +505,19 @@ const RUNNERS = {
       ctx.strokeStyle = "hsl(38 70% 70%)";
       ctx.globalAlpha = 0.7;
       ctx.beginPath();
-      // Just under whichever engines are lit — the stack's at the base, the
-      // Ship's up where it separated from — and trailing along the vehicle's
+      // Just under whichever engines are lit, and trailing along the vehicle's
       // OWN axis. Drawn straight down the screen it pointed off into space
       // once the craft was pitched over, which the bigger craft made obvious.
-      const along = (d) => projectPoint(worldRot([
+      // `craftPos` is already the burning stage's base, so these are measured
+      // from it — the Ship's engines move up to the seam at separation because
+      // craftPos does, not because the plume knows anything about staging.
+      const axisPoint = (d) => projectPoint(worldRot([
         craftPos[0] + Math.sin(vAng) * d,
         craftPos[1] + Math.cos(vAng) * d,
         craftPos[2],
       ], st), cam);
-      const tail = along((lift - 0.04) * size);
-      const plume = along((lift - 0.34) * size);
+      const tail = axisPoint(-0.04 * size);
+      const plume = axisPoint(-0.34 * size);
       if (tail && plume) {
         const jitter = Math.sin(st.time * 40) * 3;
         // Perpendicular to the plume, so the two edges straddle the nozzle
@@ -518,8 +541,9 @@ const RUNNERS = {
         // Sitting in the tower it is a ground structure too, and takes the cap.
         scale: caught ? groundSize : size,
         pos: rel(bpos),
-        // Flips engines-first to burn back, and is upright again for the catch.
-        tilt: Math.sin(Math.PI * bs.k) * 2.6,
+        // Leaves the stack holding the stack's own attitude, flips engines-first
+        // to burn back, and is upright again for the catch.
+        roll: boosterRollAngle(bs.k, sepAng),
         stroke: "hsl(30 32% 58%)",
         alpha: caught ? 0.85 : 0.7,
       });
@@ -529,7 +553,10 @@ const RUNNERS = {
       const bs = { a: ss.a * (1 - k * k), phi: ss.phi + k * 0.01 };
       const bpos = rel(toWorld(bs));
       drawMesh(ctx, st, cam, st.boosterMesh, {
-        scale: size * 0.8, pos: bpos, tilt: k * 2, stroke: "hsl(30 30% 55%)", alpha: 0.7,
+        // Same rule for the stage that is simply discarded: it parts holding
+        // the attitude it had, then tumbles as it falls away.
+        scale: size * 0.8, pos: bpos, roll: -sepAng + k * 2,
+        stroke: "hsl(30 30% 55%)", alpha: 0.7,
       });
     }
     // Readout: altitude + phase.
@@ -689,20 +716,17 @@ function buildSceneState(scene, canvas, lang) {
       // The Ship keeps the size it had ON the stack once it separates.
       st.upperMesh = starshipShipMesh(STARSHIP_SHIP_FRAC);
       st.boosterMesh = superHeavyMesh(SUPER_HEAVY_FRAC);
-      // Where the upper stage sat ON the stack, as a fraction of stack height.
-      // The trajectory point tracks the vehicle's BASE, so without this the
-      // upper stage snaps down into the booster's place at separation and the
-      // eye reads it as the FRONT falling away — reported exactly that way:
-      // "separation seems to drop the front part, the starship rather than
-      // the stage below" (feedback #58).
-      st.upperOffset = 1 - STARSHIP_SHIP_FRAC;
+      // Where it SITS on the stack is upperStageBaseFrac() in the core, applied
+      // by craftBaseOffset() at draw time — not stored here, so the seam has
+      // one definition and the unit test can check it against the stack mesh.
       st.towerMesh = launchTowerMesh(1.2);
       st.towerClosed = launchTowerMesh(1.2, 0);
     } else {
       st.fullMesh = rocketMesh(1);
-      st.upperMesh = rocketMesh(0.55);
+      // The same fraction upperStageBaseFrac() measures the seam from — one
+      // constant, so the mesh and the place it is drawn cannot drift apart.
+      st.upperMesh = rocketMesh(ROCKET_UPPER_FRAC);
       st.boosterMesh = cylinderMesh(0.09, 0.5, 8);
-      st.upperOffset = 0.45;
     }
     st.loopSec = 26;
     // The ground around the pad; the limb alone does not read as a planet.
