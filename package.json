@@ -28,7 +28,11 @@
     "arxiv:search": "node scripts/arxiv-search.mjs",
     "arxiv:eval": "node scripts/arxiv-eval.mjs",
     "arxiv:fulltext": "node scripts/arxiv-fulltext.mjs",
-    "arxiv:fulltext-eval": "node scripts/arxiv-fulltext-eval.mjs"
+    "arxiv:fulltext-eval": "node scripts/arxiv-fulltext-eval.mjs",
+    "pubmed:harvest": "node scripts/pubmed-harvest.mjs",
+    "pubmed:enumerate": "node scripts/pubmed-enumerate.mjs",
+    "pubmed:corpus": "node scripts/pubmed-corpus.mjs",
+    "pubmed:vectorize": "node scripts/pubmed-vectorize.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",

@@ -29,7 +29,6 @@
 // agent proxy or every embedding call fails with a 503 "DNS resolution
 // failure" that looks like Berget being down.
 
-import { spawnSync } from "node:child_process";
 import { createReadStream } from "node:fs";
 import { appendFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
@@ -38,15 +37,20 @@ import { fileURLToPath } from "node:url";
 
 import { PASSAGE_PREFIX, buildPassage } from "../public/js/arxiv-rag-core.js";
 import { embedBatch } from "./embed-providers.mjs";
+import {
+  assertVectors,
+  loadCheckpoint,
+  recordPushed,
+  upsertFile,
+  vectorLine as ndjsonLine,
+} from "./vectorize-upsert.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Batch sizing: 256 is the embedder's measured sweet spot (~46-47k prompt
-// tokens/s at concurrency 8 on real abstracts). The upsert batch is smaller
-// because wrangler sends the NDJSON in one request and Vectorize caps a single
-// upsert; 1000 rows of 1024 floats is about 8 MB of JSON, which is comfortable.
+// tokens/s at concurrency 8 on real abstracts). The checkpoint and upsert
+// machinery lives in scripts/vectorize-upsert.mjs, shared with the PubMed fill.
 const EMBED_BATCH = 256;
-const UPSERT_BATCH = 1000;
 
 /** @param {string[]} argv */
 export function parseArgs(argv) {
@@ -100,11 +104,7 @@ export function vectorMetadata(paper) {
  * @param {number[] | Float32Array} values
  */
 export function vectorLine(paper, values) {
-  return JSON.stringify({
-    id: String(paper.id),
-    values: Array.from(values),
-    metadata: vectorMetadata(paper),
-  });
+  return ndjsonLine(paper.id, values, vectorMetadata(paper));
 }
 
 /** Reads every harvested shard, de-duplicated by id (a paper updated in-window
@@ -149,25 +149,6 @@ async function* corpusRows(dir, skip, limit) {
   }
 }
 
-/**
- * Push one NDJSON file into Vectorize via wrangler. Returns true on success.
- * @param {string} index
- * @param {string} file
- */
-function upsert(index, file) {
-  const res = spawnSync(
-    "npx",
-    ["wrangler", "vectorize", "upsert", index, "--file", file, "--batch-size", String(UPSERT_BATCH)],
-    { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 900000 },
-  );
-  const out = `${res.stdout || ""}${res.stderr || ""}`;
-  if (res.status !== 0) {
-    console.error(`  upsert FAILED: ${out.trim().split("\n").slice(-4).join(" | ")}`);
-    return false;
-  }
-  return true;
-}
-
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -185,15 +166,9 @@ async function main() {
   const statePath = join(workDir, "pushed.txt");
   const legacyPath = join(workDir, "pushed.json");
 
-  /** @type {Set<string>} */
-  const pushed = new Set();
-  try {
-    for (const id of (await readFile(statePath, "utf8")).split("\n")) {
-      if (id) pushed.add(id);
-    }
-  } catch {
-    /* first run */
-  }
+  // Reads the append-only file and compacts it when an earlier run (or the bug
+  // below) left duplicate lines.
+  const pushed = await loadCheckpoint(statePath);
   try {
     // Carry a checkpoint written by the earlier JSON format across, so an
     // in-flight build does not re-push everything it already paid to embed.
@@ -217,14 +192,6 @@ async function main() {
   } catch {
     /* no legacy checkpoint */
   }
-  // Compact a checkpoint that the bug above (or an interrupted run) left with
-  // duplicate lines. Cheap, and it keeps the resume read proportional to the
-  // corpus rather than to how many times the script has been run.
-  const lines = await readFile(statePath, "utf8").catch(() => "");
-  if (lines && lines.split("\n").filter(Boolean).length > pushed.size) {
-    await writeFile(statePath, [...pushed].join("\n") + "\n");
-    console.log(`compacted checkpoint to ${pushed.size} unique ids`);
-  }
   if (pushed.size) console.log(`resuming — ${pushed.size} ids already in the index`);
 
   let batch = [];
@@ -241,12 +208,7 @@ async function main() {
     // Cloudflare rejected with an opaque "line Some(0) was not expected
     // format", so the shape is asserted here where the message can be useful.
     const { vectors } = await embedBatch(passages);
-    if (!Array.isArray(vectors) || vectors.length !== batch.length) {
-      throw new Error(`embedder returned ${vectors?.length} vectors for ${batch.length} passages`);
-    }
-    if (!vectors[0] || typeof vectors[0][0] !== "number" || !vectors[0].length) {
-      throw new Error(`embedder returned a malformed vector (${vectors[0]?.constructor?.name}) — expected numbers`);
-    }
+    assertVectors(vectors, batch.length);
     const file = join(workDir, `batch-${String(batchNo).padStart(5, "0")}.ndjson`);
     await writeFile(file, batch.map((p, i) => vectorLine(p, vectors[i])).join("\n") + "\n");
     if (args.dryRun) {
@@ -258,12 +220,12 @@ async function main() {
       batch = [];
       return;
     }
-    if (!upsert(args.index, file)) {
+    if (!upsertFile(args.index, file, ROOT)) {
       throw new Error(`upsert failed on batch ${batchNo} — rerun to resume from the checkpoint`);
     }
     // Checkpoint AFTER the upsert, so a crash re-does at most one batch rather
     // than silently skipping it.
-    await appendFile(statePath, batch.map((p) => String(p.id)).join("\n") + "\n");
+    await recordPushed(statePath, batch.map((p) => String(p.id)));
     for (const p of batch) pushed.add(String(p.id));
     embedded += batch.length;
     const rate = embedded / Math.max(1, (Date.now() - started) / 1000);

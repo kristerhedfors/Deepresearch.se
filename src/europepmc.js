@@ -69,6 +69,8 @@
 // of 2 searches (EUROPEPMC_MAX_PER_REQUEST) keeps a research turn at ≤4
 // requests, which is in the same range as the arXiv leg it sits beside.
 
+import { pubmedRagAvailable, pubmedRagSearch } from "./pubmed-rag.js";
+
 const API = "https://www.ebi.ac.uk/europepmc/webservices/rest/search";
 const TIMEOUT_MS = 7000;
 const PAGE_SIZE = 8;
@@ -429,14 +431,33 @@ export function toItem(r) {
  * HF leg uses and for the same reason: one sort alone is either stale or
  * untested.
  *
- * @param {import('./types.js').Env} _env unused — Europe PMC needs no key
+ * @param {import('./types.js').Env} env only for the PUBMED_INDEX binding —
+ *   the live Europe PMC API itself needs no key
  * @param {import('./types.js').Logger} log
  * @param {string} query
  * @param {{ skipKeys?: Set<string> }} [opts]
  * @returns {Promise<{ items: Array<{url: string, title: string, highlights: string[]}>, durationMs: number, usedKeys: string[] }>}
  */
-export async function europepmcSearch(_env, log, query, { skipKeys } = {}) {
+export async function europepmcSearch(env, log, query, { skipKeys } = {}) {
   const startedAt = Date.now();
+  // Tier 1: the hosted PubMed index, when bound. It gets the PROSE query —
+  // dense retrieval wants the natural question, and the term extraction below
+  // is a keyword-AND concern that would throw away signal an embedder uses. A
+  // null or empty return falls through to the live API, so a deployment
+  // without the binding behaves exactly as it did before this tier existed.
+  if (pubmedRagAvailable(env)) {
+    const dense = await pubmedRagSearch(env, log, query, { limit: MAX_ITEMS });
+    if (dense && dense.length) {
+      const durationMs = Date.now() - startedAt;
+      log?.info?.("europepmc.search", {
+        query: String(query || "").slice(0, 120),
+        tier: "dense",
+        results: dense.length,
+        duration_ms: durationMs,
+      });
+      return { items: /** @type {any} */ (dense), durationMs, usedKeys: [] };
+    }
+  }
   const rungs = europepmcLadder(query).filter((r) => !skipKeys?.has(r.key));
   const usedKeys = [];
 

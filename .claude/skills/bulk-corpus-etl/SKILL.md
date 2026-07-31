@@ -334,3 +334,72 @@ The design rules that fall out:
   verdict is as likely to be its own bug as a finding.
 - **Fail-soft must still be loud.** Degrading is correct; degrading silently
   turns a measurement into fiction.
+
+## 12. The second instance: PubMed (2026-07-31)
+
+The first corpus this procedure was applied to after arXiv. Full write-up in
+`docs/PUBMED-RAG.md`; what generalises is below, and most of it confirms §1–§11
+rather than amending it.
+
+**A publisher's bulk file dump can be far cheaper than an OAI feed.** NLM
+publishes the whole of PubMed as numbered gzipped XML — a 1,334-file annual
+baseline plus daily updates — and the whole channel sustained ~1,800 kept
+records/s including download. The equivalent arXiv OAI-PMH harvest is ~15 h for
+a year; this is ~15 min for the same volume. **Look for the file dump before
+designing around an API**, and note that NCBI's own E-utilities guidelines say
+so explicitly. The API then becomes the §1 cross-check rather than the source.
+
+**The two axes were there again, in a new spelling.** Fetch axis: the archive
+file number, which tracks PMID, which tracks the *load* date. Selection axis:
+the *publication* date, which is not monotone in PMID. The fix that avoids §3
+and §3a entirely is to **define the corpus on the axis the fetch actually
+uses** — "everything loaded since file n*N*" — and treat any publication-date
+filter as a trim that says so out loud. A file-numbered archive gives
+"latest first" for free, with no date arithmetic to get wrong.
+
+**§2's double-counting scales with how the feed publishes revisions, AND with
+the window length.** arXiv's was 3.4%; PubMed's daily update files carry new,
+revised *and* deleted citations, and the same measurement gave **25.9% at 44
+files and 55.9% at 223** — 3.71 M rows deduplicating to 1.64 M citations. So the
+ratio measured on a pilot slice does not extrapolate: every extra day of updates
+is another chance for an already-seen document to be revised again. Budget on
+the deduplicated set at the size you intend to build, and budget DISK on the
+kept rows, which is the number that actually lands (8.0 GB here, against 3.6 GB
+if you cost it per unique document).
+
+**A record's own id may not be the first id in its record.** A naive `<PMID>`
+match also picks up every cited PMID in `<CommentsCorrectionsList>`, which
+reported one file as spanning PMIDs 11 M–41.5 M when its records span
+32.8 M–37.6 M — and that table was about to be used to plan the window.
+
+**Deletions are part of the feed.** Update files carry withdrawn citations in
+their own block. An index that only ever upserts keeps serving retracted work
+for as long as it lives, so the harvester records them and the loader prunes.
+
+**A slow consumer looks exactly like a broken server.** Parsing 30,000 records
+is ten-odd seconds of blocking CPU; doing it inside the response stream's
+`data` handler stalls the socket long enough for the connection to be torn
+down, and undici surfaces that as a bare `Error: terminated`. It killed four
+consecutive runs after one to three files each, exiting 1 with a one-word
+message. **Download at full speed, parse afterwards** — it costs one file's
+worth of disk.
+
+**Check the embedder's window against the NEW corpus, not the old one.** e5's
+512-token window is ~1,200 chars. arXiv abstracts fit; PubMed's median is 1,699
+chars, so **89.7% of passages are cut**, typically losing RESULTS and
+CONCLUSIONS from a structured abstract. arXiv's measured finding that chunking
+hurts was established on abstracts that *fit* — it does not transfer, and the
+honest move is to record the experiment rather than inherit the conclusion.
+
+**A verifier's first verdict is as likely to be its own bug as a finding**
+(§11), and here it was: the PMID set-difference reported 4.6% missing because it
+sampled ALL ids while the corpus holds only those that cleared the abstract
+floor — two different populations. Comparing like with like gave 0.1%. Before
+believing a coverage number, check that both sides describe the same set.
+
+**Cost is driven by the vector count, and it recurs.** Cloudflare bills queried
+dimensions as `(queries + stored) × dims`, so the index size shows up in the
+monthly bill as soon as anything queries it: roughly **$10/month per million
+1024-d vectors**, against a one-time ~€8/million for the embeddings. That makes
+"how much to import" a budget decision rather than a technical one, and it is
+worth stating as a table of tiers before a fill starts rather than after.
