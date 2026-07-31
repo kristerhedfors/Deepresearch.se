@@ -628,3 +628,39 @@ judge's variance, one run of 3 samples cannot resolve anything smaller than
    the drop is fully present in the earliest post-baseline run (07-29,
    `978ce70a`) and flat across the ~13 merges since, so whatever caused it sits
    at or before that commit — or outside the repo entirely.
+
+---
+
+## 2026-07-31, run 6 — the bar was honest this time, and it still regressed
+
+- bench-gate 2026-07-31 (commit 09024cac vs baseline b2a5ab6): overall 2.729±0.63 vs 3.625±0.042 (delta -0.896, bar ±0.54) → REGRESSION. Pins: mistralai/Mistral-Small-3.2-24B-Instruct-2506 / judge mistralai/Mistral-Small-3.2-24B-Instruct-2506 / 240s / mh_semiconductor_export,rec_eu_ai_act_timeline,div_openai_safety,con_coffee_health.
+
+Owed for PR #350 (the Deep Science agent), which touches `pipeline.js` and
+`search-sources.js`. One sample dropped a question to a helper timeout, so the
+battery mean rests on four.
+
+**This is the first run where the noise bar was not the 0.15 floor.** The
+candidate's own spread (sd 0.63 at n=4) pushed `1.7 · se` to **0.538**, above
+the floor, so the verdict came from measured dispersion rather than from the
+baseline's frozen 0.042. The delta cleared it anyway. Read that as the previous
+entry's correction working as intended, not as a contradiction of it: widening
+the bar was always about what a single run can *claim*, never about making the
+drop disappear.
+
+Six candidate runs now: **3.278, 2.667, 3.146, 2.867, 3.083, 2.729** — mean
+**2.962**, spread 0.61, against a baseline of 3.625. Flat across ~17 merges.
+
+Note the candidate sd this run (0.63) sits **above** the 0.27 that judge noise
+alone predicts for a four-question battery mean, which says the answers vary
+run-to-run as well as the scoring does. `mh_semiconductor_export` continues to
+be the floor at 1.583 and has never once approached its recorded baseline of
+2.833.
+
+Nothing here implicates #350: the agent adds a source and a mode, `science` was
+not exercised by any battery question, and the drop was fully present on
+2026-07-29 before the branch existed.
+
+Next steps unchanged from run 5, in order: raise the floor or raise `SAMPLES`
+(owner call, it changes verdicts); bisect by deployment to attribute the real
+−0.6 (owner call, ~12 min of old code in production per probe); do not
+re-record the baseline, and when it is re-recorded it needs n≥8.
