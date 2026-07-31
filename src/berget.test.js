@@ -9,6 +9,7 @@ import {
   consumeChatStream,
   eurPerTokenFromBerget,
   formatPricing,
+  jsonCompletionResult,
 } from "./berget.js";
 
 // Builds an SSE body from chunks; a `null` chunk means "stall forever from
@@ -142,5 +143,56 @@ describe("bergetPricingPerToken", () => {
     // normalization round-trips to exactly what Berget published.
     const tip = formatPricing(bergetPricingPerToken({ currency: "EUR", input: 0.3, output: 0.3, unit: "€ / M Token" }));
     assert.equal(tip, "€0.3 in / €0.3 out per 1M tokens");
+  });
+});
+
+// The adapter three provider clients now share (berget.js, openai.js,
+// hf-inference.js). It was a hand-copy in each until refactor pass 14; the
+// properties below are the ones the pipeline's helper phases rely on, and the
+// ones a drifting copy would have broken silently.
+describe("jsonCompletionResult", () => {
+  const body = (content, extra = {}) => ({
+    choices: [{ message: { content }, finish_reason: "stop" }],
+    usage: { prompt_tokens: 11, completion_tokens: 4 },
+    ...extra,
+  });
+
+  test("a clean JSON object parses strict and carries usage through", () => {
+    const r = jsonCompletionResult(body('{"needsSearch":true}'));
+    assert.deepEqual(r.value, { needsSearch: true });
+    assert.equal(r.diagnostics.parse_mode, "strict");
+    assert.equal(r.diagnostics.finish_reason, "stop");
+    assert.equal(r.diagnostics.content_length, 20);
+    assert.deepEqual(r.usage, { prompt_tokens: 11, completion_tokens: 4 });
+  });
+
+  test("prose-wrapped JSON is repaired, not failed — the fail-soft path", () => {
+    const r = jsonCompletionResult(body('Sure! {"needsSearch":false} — hope that helps'));
+    assert.deepEqual(r.value, { needsSearch: false });
+    assert.equal(r.diagnostics.parse_mode, "repaired");
+  });
+
+  // Invariant 2: a helper phase degrades, it never throws. value null is the
+  // signal every caller falls back on.
+  test("unparseable output yields value null rather than throwing", () => {
+    const r = jsonCompletionResult(body("I cannot answer that."));
+    assert.equal(r.value, null);
+    assert.equal(r.diagnostics.parse_mode, "failed");
+  });
+
+  test("a truncated completion reports its finish_reason for per-model observability", () => {
+    const data = body('{"a":1');
+    data.choices[0].finish_reason = "length";
+    const r = jsonCompletionResult(data);
+    assert.equal(r.diagnostics.finish_reason, "length");
+    assert.equal(r.value, null);
+  });
+
+  test("an empty or malformed envelope degrades instead of throwing", () => {
+    const r = jsonCompletionResult({});
+    assert.equal(r.value, null);
+    assert.equal(r.usage, null);
+    assert.equal(r.diagnostics.finish_reason, null);
+    assert.equal(r.diagnostics.content_length, 0);
   });
 });
