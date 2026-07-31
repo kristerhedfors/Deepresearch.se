@@ -71,6 +71,19 @@ export const MODELS_SPINNER = {
   check: "#b8860b",
 };
 
+/** Deep Science's balloon palette: parchment crown, aged-paper alt, a gilt
+ * border folding into the gold ✓. `check` MUST match app.css --check-gold (the
+ * introspection-recolour pattern). */
+export const SCIENCE_SPINNER = {
+  palette: {
+    col: "#f3e7c6",
+    alt: "#d8c188",
+    border: "#b08d3f",
+    fill: { a: "#e8d9a8", b: "#c0a55f" },
+  },
+  check: "#b08d3f",
+};
+
 /**
  * Mount the current mode's waiting spinner on a loading slot. Same signature
  * and return contract as the underlying mounts; fail-soft (a bad mode or a
@@ -102,6 +115,7 @@ export function mountModeSpinner(host, opts = {}) {
     : mode === "orchestrator" ? { ...ORCH_SPINNER, ...opts }
     : mode === "outrospection" ? { ...NEWSPRINT_SPINNER, ...opts }
     : mode === "models" ? { ...MODELS_SPINNER, ...opts }
+    : mode === "science" ? { ...SCIENCE_SPINNER, ...opts }
     : opts;
   return mountBalloonSpinner(host, balloonOpts);
 }

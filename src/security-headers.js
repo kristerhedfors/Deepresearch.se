@@ -36,18 +36,27 @@ const CSP_ENABLED = false;
 // to the keyless google.com Embed iframe (frame-src), so Street View degrades
 // rather than breaking. img-src stays broad (data:/blob:/https:) for user
 // uploads, server data-URL frames, and Maps imagery.
-const BOOT_GUARD_HASH = "'sha256-w5cPLY1sDxZyXuQvRq2aJ4i2L1jyBf4ulNgTL0pzf10='";
+// STALE UNTIL 2026-07-31, and nothing said so. The boot guard was edited at
+// some point without recomputing this, so the constant described a script the
+// shell no longer served. Nothing broke, for one reason only: CSP_ENABLED is
+// false, so the policy is assembled and never sent. Switching CSP on with this
+// value in place would have blocked the boot guard on first paint and the
+// symptom would have looked like anything but a hash — which is why the drift
+// is now a red test (src/security-headers.test.js) rather than a comment
+// asking the next person to remember.
+const BOOT_GUARD_HASH = "'sha256-u3ySwtFlG4CiAt1dxXdOkRXyntKuJg40eE2Z21Vm9+Y='";
 const STORY_INLINE_HASH = "'sha256-ATMgXgI8+2fgznyrbCNX5n9ZAqIHL8/YoN64WD6CwlI='";
 // The parse-time MODE-theme cue bootstrap in index.html (the
 // `<script data-devtheme>` — carries an attribute so the boot-guard recompute
 // regex above stays unique to the attribute-less boot guard). Adds the
 // `dev-mode` (introspection, white titanium), `sdk-mode` (SDK, green) or
 // `orch-mode` (Orchestrator, violet), `outro-mode` (Outrospection,
-// newsprint) or `models-mode` (Models, amber) class before first paint from the
+// newsprint), `models-mode` (Models, amber) or `sci-mode` (Deep Science,
+// parchment) class before first paint from the
 // chat-mode cache (public/js/chat-mode.js).
 // Recompute on edit:
 //   node -e 'const c=require("crypto"),h=require("fs").readFileSync("public/index.html","utf8").match(/<script data-devtheme>([\s\S]*?)<\/script>/)[1];console.log("sha256-"+c.createHash("sha256").update(h).digest("base64"))'
-const THEME_BOOT_HASH = "'sha256-jlngGLt0MMWK47lsLGYTz6wws8ep6SufJ92zOqtd0zQ='";
+const THEME_BOOT_HASH = "'sha256-AtHqtF+jlgdrQTKJhK6FQ9ykTqrX0zefVxjUlE/DMUs='";
 const CSP = [
   "default-src 'self'",
   "base-uri 'self'",

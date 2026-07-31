@@ -9,7 +9,7 @@
 // app.js does the DOM side effects from what this returns.
 
 /** Canonical chat-mode ids (mirror chat-mode.js CHAT_MODES — all six). */
-export const DEEPLINK_MODES = ["normal", "introspection", "sdk", "orchestrator", "outrospection", "models"];
+export const DEEPLINK_MODES = ["normal", "science", "introspection", "sdk", "orchestrator", "outrospection", "models"];
 
 /** Friendly aliases → canonical mode id, so links can read naturally. The
  * `agent-builder` entry is the AgentSpec's name for the `sdk` mode
@@ -37,7 +37,30 @@ const MODE_ALIASES = {
   hf: "models",
   huggingface: "models",
   "hugging-face": "models",
+  // Deep Science (2026-07-31). The Swedish forms ship WITH the English ones
+  // rather than "later" (invariant 6) — a link is exactly the deterministic
+  // routing surface the rule is about, and a Swedish reader given a Swedish
+  // link that silently opens Deep Research is the failure feedback #22 already
+  // recorded once for outrospection.
+  science: "science",
+  scholar: "science",
+  "deep-science": "science",
+  literature: "science",
+  papers: "science",
+  "peer-reviewed": "science",
+  vetenskap: "science",
+  vetenskaplig: "science",
+  litteratur: "science",
+  artiklar: "science",
+  forskningsartiklar: "science",
+  "referentgranskad": "science",
 };
+
+// NOTE (2026-07-31): the aliases ABOVE this block are English-only, which is an
+// invariant-6 gap that predates the science entry and is deliberately not fixed
+// here — widening six mode vocabularies is its own change with its own parity
+// tests, not a rider on adding a mode. Recorded so it is a known debt rather
+// than an oversight nobody wrote down.
 
 /** Cap on a prefilled question — long enough for a real ask, bounded for safety. */
 export const MAX_ASK_CHARS = 2000;

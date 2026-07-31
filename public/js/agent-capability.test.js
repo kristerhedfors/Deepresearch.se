@@ -100,14 +100,14 @@ test("every mode-select offers only real chat modes", () => {
 
 test("the defaults table covers every chat mode, in chat.js precedence order", () => {
   const reg = realRegistry();
-  assert.deepEqual(reg.defaults.map((r) => r.mode), ["sdk", "orchestrator", "outrospection", "models", "introspection", "normal"]);
+  assert.deepEqual(reg.defaults.map((r) => r.mode), ["sdk", "orchestrator", "outrospection", "models", "introspection", "science", "normal"]);
   // Every mode except `normal` names a request flag; `normal` (flag null) is the
   // terminal fallback. Introspection got `introspection_mode` in 2026-07-26's
   // collapse — before that it was the only mode with no way to ask for it by
   // name, which is what made it the derived leftover of the developer_mode knob.
   assert.deepEqual(
     reg.defaults.map((r) => r.flag),
-    ["sdk_mode", "orchestrator_mode", "outrospection_mode", "models_mode", "introspection_mode", null],
+    ["sdk_mode", "orchestrator_mode", "outrospection_mode", "models_mode", "introspection_mode", "science_mode", null],
   );
   // The flags and their order agree with the shared mode table, which is what
   // src/chat.js actually resolves a request's mode against.
@@ -205,12 +205,18 @@ test("declared answer phases are one per shipped answer path", () => {
     // forced on and the priced, verification-annotated model catalog in
     // context, which is why a sixth mode needed no row in ANSWER_PHASE_RUNNERS.
     models: "research",
+    // Deep Science is the same shape and the point is worth stating twice: a
+    // mode is a SELECTION over shipped behaviour, not new behaviour. It is the
+    // research phase restricted to peer-reviewed sources, so a seventh mode
+    // needed no row in ANSWER_PHASE_RUNNERS either (invariant 1 holds for the
+    // routing as for the run).
+    science: "research",
   });
 });
 
 test("every mode that needs the capability knob declares it", () => {
   const reg = realRegistry();
-  for (const mode of ["sdk", "orchestrator", "outrospection", "models", "introspection"]) {
+  for (const mode of ["sdk", "orchestrator", "outrospection", "models", "introspection", "science"]) {
     const cap = resolveCapability(defaultAgentForMode(reg, mode));
     assert.deepEqual(cap.requires, ["developer_mode"], `${mode} is gated on the developer_mode knob`);
   }

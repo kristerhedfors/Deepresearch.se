@@ -312,7 +312,7 @@ routing policy, gates, bounds, emitted events, required knob, sub-agent
 team. It is a SELECTOR over shipped behaviour, never a definition of new
 behaviour, so the dispatch stays code and the spec stays data (invariant 1
 holds for the routing as for the run); validation enforces invariants 1, 3,
-4 and 6 as rules rather than prose. The six chat modes are the six
+4 and 6 as rules rather than prose. The seven chat modes are the seven
 **default agents**, bound to their mode by the registry's ordered
 `defaults` table, which is what `/api/chat` routes on
 (`src/agent-registry.js` → `src/chat.js` → `src/pipeline.js`
@@ -428,7 +428,7 @@ Features & surfaces:
 - **models-agent** — the amber Models agent and the model LIFECYCLE it owns (discovered → evaluated → enabled): the provider-agnostic catalog (`src/model-catalog.js`, the ALLOWANCE), the established verification checks (`src/model-checks.js` — status, never blockers), the mode's enrichment (forced Hub search + the EN/SV lifecycle gate + the priced catalog block + the `model_cards` event), `/api/models/{catalog,verify,enable,disable}`, the per-account record, and the left-sidebar board that promotes a model into every OTHER mode's dropdown.
 - **palaeogenomics** — the ancient-DNA agent: the two legs that make it (Europe PMC for the life-science literature, whose query grammar is the INVERSE of arXiv's — AND by default, so the ladder climbs by dropping terms; and a committed corpus of 20,927 published ancient individuals queried by radius/date window/haplogroup/coverage with no outbound request at all, not even a geocoder), the domain conventions an answer gets wrong without them (`Ignore_`, BP=1950, one-way haplogroup prefixes, dates as intervals), the entity-matching traps found only against the real corpus, and the seam worth copying: an enrichment gated on the agent spec's declared context block rather than on a mode or a knob. ALSO the reference for the JS `\b` Swedish-boundary trap, which silently kills bilingual regex gates repo-wide (invariant 6).
 - **outrospection** — introspection's mirror image: the FIFTH chat mode (answers from the outward feed) and the feed page at `/outrospect/`: the seven-lens registry, the offline scan + per-visit refresh that fill it, and the feedback STRATEGY lane.
-- **sdk-mode** — the green Agent Studio "lovable experience" mode: the chat-mode dropdown (Deep Research / Introspection / Agent Studio / Orchestrator / Outrospection / Models), the Platform-SDK (DistillSDK) build flow that distils an individual agent OR a whole platform, `/app/<slug>/` publishing, the MCP `sdk_*` tools.
+- **sdk-mode** — the green Agent Studio "lovable experience" mode: the chat-mode dropdown (Deep Research / Deep Science / Introspection / Agent Studio / Orchestrator / Outrospection / Models), the Platform-SDK (DistillSDK) build flow that distils an individual agent OR a whole platform, `/app/<slug>/` publishing, the MCP `sdk_*` tools.
 - **orchestrator-mode** — the violet sub-agent workflow mode: one JSON plan phase decomposes a request into a team of sub-agents (Deep Research / Introspection / custom) the Worker runs in parallel waves, the `workflow`/`agent_update` SSE events, the live workflow graph view.
 - **publish-app** — the admin/CLI bridge (`scripts/publish-app`, `PUT /api/build/:slug`) that publishes an already-built bundle (sandbox outbox, hand-assembled files) into sdk-mode's `/app/<slug>/` without a chat/tool loop.
 - **help-docs** — help mode, the documentation-first layer of introspection: the docs corpus/index, docs-first routing.

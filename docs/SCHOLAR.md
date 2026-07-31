@@ -226,10 +226,40 @@ toggle could only ever be a no-op that implied otherwise.
 
 ## 5. Reaching the agent
 
-`scholar` is bound to no chat mode. Like `palaeogenomics`, it is reached by id —
-an `agent: "scholar"` field on `/api/chat`, or an agent share link — which is
-what a domain agent should cost the platform: no mode, no flag, no CSS, and
-deleting the entry from `sdk/AGENTS.json` removes the capability entirely.
+**It is the `science` chat mode** (since 2026-07-31), labeled **Deep Science**
+in the composer dropdown, wearing a parchment theme.
+
+It did not start that way, and the correction is worth keeping. This document
+originally argued that `scholar` should be bound to no chat mode — reached only
+by an `agent: "scholar"` field on `/api/chat` or an agent share link — on the
+grounds that a domain agent should cost the platform nothing: no mode, no flag,
+no CSS. The argument was tidy and the consequence was that nobody could find
+it. The owner reported it the day it shipped: *"I dont see the deep science
+agent."*
+
+Both routes that were supposed to substitute for a door fail an ordinary user.
+The composer dropdown is built from `CHAT_MODES`, so an agent outside that list
+appears nowhere; minting an agent share link is admin-only (`/api/admin/agent-link`
+answers 403 otherwise); and `/agents/` itself 404s, so the preview page that
+does exist is unreachable. **A capability with no door is not a capability.**
+
+What it actually cost to give it one is the honest measure of the seam: a
+`defaults` row in `sdk/AGENTS.json`, a theme descriptor, an `<option>`, and a
+CSS block. **No new answer phase** — `science` resolves to the same `research`
+phase as `normal` and `models`, because a mode is a SELECTION over shipped
+behaviour, not new behaviour. Deleting the row still removes the mode; deleting
+the agent entry still removes the capability.
+
+One thing it does NOT inherit: `science` is the first mode that does not carry
+this site's own source. That rule used to be spelled "every mode except
+`normal`", which was true only because all five non-normal modes happened to
+want it; a peer-reviewed-literature agent has no more business with this repo
+than plain Deep Research does. The carriers are now named outright in
+`public/js/chat-mode-core.js` `SOURCE_CARRYING_MODES`, so the next domain mode
+inherits nothing by accident.
+
+`palaeogenomics` is still bound to no chat mode and still reachable by id
+alone — the same gap, unfixed, and now a known one.
 
 ## 6. Secrets
 

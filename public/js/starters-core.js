@@ -80,6 +80,7 @@ export const MIN_ASPECTS = 8;
  */
 export const MODE_AGENTS = {
   normal: "research",
+  science: "scholar",
   introspection: "introspection",
   sdk: "agent-builder",
   orchestrator: "orchestrator",

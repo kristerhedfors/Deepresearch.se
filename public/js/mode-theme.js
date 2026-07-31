@@ -69,7 +69,7 @@
 
 /** The Se/rver-app chat modes, dropdown order. Mirrors chat-mode.js CHAT_MODES;
  * kept here too so the registry is self-describing. */
-export const CHAT_MODE_IDS = ["normal", "introspection", "sdk", "orchestrator", "outrospection", "models"];
+export const CHAT_MODE_IDS = ["normal", "science", "introspection", "sdk", "orchestrator", "outrospection", "models"];
 
 /** The mode descriptors, keyed by id.
  * @type {Record<string, ModeTheme>} */
@@ -90,6 +90,35 @@ export const MODE_THEMES = {
     depthSlider: true,
     symbol: "the balloon",
     blurb: "carried — the server lifts the load",
+  },
+  science: {
+    id: "science",
+    label: "Deep Science",
+    rootClass: "sci-mode",
+    tag: "deep science",
+    // Parchment gold — the agent's own declared accent (sdk/AGENTS.json
+    // `scholar.theme.--agent-accent`), so the mode a user picks and the agent
+    // registry describe the same identity rather than two that merely look
+    // alike. It reads as a reading room next to Models' workshop amber.
+    accent: "#b08d3f",
+    bar: "#e8d9a8", // aged-paper status bar over the warm dark field
+    check: "#b08d3f",
+    checkVar: "--check-gold",
+    // The balloon recoloured in GOLD (mode-spinner.js SCIENCE_SPINNER) — the
+    // introspection/orchestrator/outrospection/models recolour pattern; the
+    // KIND stays "balloon", the palette lives in mode-spinner.js.
+    spinner: "balloon",
+    character: "balloon",
+    panel: "history",
+    backdrop: "terminal",
+    // The ONE non-normal mode that keeps the depth slider. It does real
+    // literature research, over a corpus rather than the open web, and depth
+    // buys exactly what it buys everywhere else: more searches, more sources.
+    // Every other mode hides it because its answer does not come from a search
+    // at all — that is the distinction the slider tracks, not "is it normal".
+    depthSlider: true,
+    symbol: "the reading room",
+    blurb: "read — only what survived peer review, and nothing that did not",
   },
   introspection: {
     id: "introspection",

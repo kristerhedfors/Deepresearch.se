@@ -51,6 +51,11 @@
      dark amber where Normal folds to --check-blue. Applied to the real .check
      span under :root.models-mode so the canvas ✓ and the swapped-in span agree. */
   --check-amber: #b8860b;
+  /* Deep Science's ✓ — the gold-recoloured waiting balloon
+     (public/js/mode-spinner.js SCIENCE_SPINNER.check must match) folds into this
+     gilt where Normal folds to --check-blue. Applied to the real .check span
+     under :root.sci-mode so the canvas ✓ and the swapped-in span agree. */
+  --check-gold: #b08d3f;
   --user: #d8edff;
 }
 /* COMPLETE per-mode themes (owner directive, 2026-07-23). Each chat mode is a
@@ -125,6 +130,21 @@
   --muted: #6b5a2c;
   --accent: #b8860b;      /* dark amber — links, buttons, focus */
   --user: #fff3cf;
+}
+/* • Deep Science → PARCHMENT: the reading room. A dark field rather than a
+     bright one, because this is the only mode that answers exclusively from
+     what has already been published — a library at night, not a workbench.
+     The accent is the agent's own declared --agent-accent (sdk/AGENTS.json),
+     so the mode and the registry describe one identity, not two. */
+:root.sci-mode {
+  --bg: #12100b;          /* near-black warm brown — the reading-room field */
+  --panel: #1c1913;
+  --panel-2: #26221a;
+  --border: #3a3327;
+  --text: #efeade;
+  --muted: #a99c7f;
+  --accent: #b08d3f;      /* parchment gold — links, buttons, focus */
+  --user: #2a2418;
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; overflow-x: hidden; }
@@ -534,6 +554,22 @@ body.term-fg .brand {
   pointer-events: none;
 }
 :root.models-mode .models-tag { display: block; }
+/* Deep Science's header tag. This theme's field is DARK — the one mode besides
+   plain Deep Research where it is — so the tag is a pale gilt over the dark
+   field rather than dark-on-warm like Models' and Outrospection's. */
+.sci-tag {
+  display: none;
+  align-self: center;
+  margin-top: -.1rem;
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .16em;
+  text-transform: lowercase;
+  color: #d8c188;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, .5);
+  pointer-events: none;
+}
+:root.sci-mode .sci-tag { display: block; }
 .header-right, #composer { pointer-events: auto; }
 #chat {
   flex: 1;
@@ -805,6 +841,7 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
 :root.orch-mode .step .check { color: var(--check-violet); }
 :root.outro-mode .step .check { color: var(--check-red); }
 :root.models-mode .step .check { color: var(--check-amber); }
+:root.sci-mode .step .check { color: var(--check-gold); }
 /* A step settled by run-end (e.g. one still mid-flight when the stream
    dropped and the answer was recovered): finished, but muted — no green
    ✓, since its own result wasn't captured. */

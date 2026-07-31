@@ -18,6 +18,7 @@ export {
   DEFAULT_CHAT_MODE,
   FLAG_FOR_MODE,
   MODE_REQUEST_FLAGS,
+  SOURCE_CARRYING_MODES,
   modeCarriesSource,
   normalizeChatMode,
   resolveBodyChatMode,

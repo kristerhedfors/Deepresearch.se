@@ -402,7 +402,7 @@ most-specific first, and every one of them applies the same requirement gate.
 |---|---|---|---|
 | **Inline spec** | `agent_spec` (object) | no | a spec the caller wrote — Agent Studio handing back what it just built |
 | **Address** | `agent` (id string) | yes | a registry entry with no `defaults` row, no flag, no chat mode |
-| **Mode** | `chat_mode` (or a legacy `sdk_mode`, …) | yes | the six default agents (the table above) |
+| **Mode** | `chat_mode` (or a legacy `sdk_mode`, …) | yes | the seven default agents (the table above) |
 
 Two rules make the extra reach safe:
 
