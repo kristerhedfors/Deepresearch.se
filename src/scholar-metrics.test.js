@@ -14,6 +14,7 @@ import test from "node:test";
 import {
   SCHOLAR_SEARCHES_PER_REQUEST,
   SCHOLAR_SOURCE_ID,
+  fetchProfile,
   parseProfile,
   profileBlock,
   profileId,
@@ -87,6 +88,65 @@ test("profileId does not fire on a bare token that merely looks like an id", () 
   ]) {
     assert.equal(profileId(s), "", `should not match: ${s}`);
   }
+});
+
+// ---- the one outbound URL, checked against Scholar's actual robots.txt ----------
+
+// scholar.google.com/robots.txt, the rules governing /citations, verbatim as
+// fetched 2026-07-31. Kept here rather than fetched so the assertion is
+// deterministic and offline; re-fetch it when this test starts arguing with
+// reality.
+const SCHOLAR_ROBOTS = [
+  ["disallow", "/citations?"],
+  ["allow", "/citations?user="],
+  ["disallow", "/citations?*cstart="],
+  ["disallow", "/citations?user=*%40"],
+  ["disallow", "/citations?user=*@"],
+];
+
+/**
+ * RFC 9309 matching, the part that decides this case: a rule matches when its
+ * pattern is a PREFIX of the request's path+query (`*` matching any run of
+ * characters), and the LONGEST matching pattern wins, Allow taking ties.
+ * @param {string} pathAndQuery
+ */
+function robotsVerdict(pathAndQuery) {
+  let best = { type: "allow", len: -1 };
+  for (const [type, pattern] of SCHOLAR_ROBOTS) {
+    const rx = new RegExp("^" + pattern.split("*").map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*"));
+    if (!rx.test(pathAndQuery)) continue;
+    const len = pattern.length;
+    if (len > best.len || (len === best.len && type === "allow")) best = { type, len };
+  }
+  return best.type;
+}
+
+test("the profile fetch is ALLOWED by Scholar's robots.txt — and parameter order is why", async () => {
+  const realFetch = globalThis.fetch;
+  /** @type {string[]} */
+  const urls = [];
+  globalThis.fetch = async (url) => {
+    urls.push(String(url));
+    return new Response(PROFILE_HTML, { status: 200 });
+  };
+  try {
+    await fetchProfile("JicYPdAAAAAJ", null);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  const u = new URL(urls[0]);
+  assert.equal(robotsVerdict(u.pathname + u.search), "allow");
+
+  // The failure this pins is not hypothetical: `Disallow: /citations?` is a
+  // prefix of EVERY /citations URL, and `Allow: /citations?user=` only outranks
+  // it when the query STARTS with `user=`. Put any other parameter first and
+  // the Allow stops matching, leaving the Disallow to win on its own.
+  assert.equal(robotsVerdict("/citations?hl=en&user=JicYPdAAAAAJ"), "disallow");
+  // The two rules satisfied by construction, asserted so a loosened id regex
+  // cannot quietly start reaching them.
+  assert.equal(robotsVerdict("/citations?user=JicYPdAAAAAJ&cstart=20"), "disallow");
+  assert.equal(robotsVerdict("/citations?user=someone%40example.com"), "disallow");
+  assert.equal(profileId("scholar id: someone@example.com"), "");
 });
 
 // ---- the profile parser ---------------------------------------------------------
@@ -303,7 +363,7 @@ test("a readable profile becomes an attributed context block", async () => {
     // ONLY the robots-allowed path, carrying ONLY the id — never the question,
     // the conversation or any account identity (invariant 4).
     assert.equal(urls.length, 1);
-    assert.equal(urls[0], "https://scholar.google.com/citations?hl=en&user=JicYPdAAAAAJ");
+    assert.equal(urls[0], "https://scholar.google.com/citations?user=JicYPdAAAAAJ&hl=en");
     assert.ok(!urls[0].includes("published"), "the question does not cross the wire");
     assert.match(String(out[0].content), /Ada Nordin/);
     assert.equal(state.scholarProfile.h_index, 57);

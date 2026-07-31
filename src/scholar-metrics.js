@@ -186,7 +186,25 @@ export async function fetchProfile(id, log) {
   // conversation, the question or the account crosses the wire (invariant 4) —
   // Google learns that someone looked at a public profile, which is what the
   // page is for.
-  const url = `https://scholar.google.com/citations?hl=en&user=${encodeURIComponent(id)}`;
+  //
+  // `user=` MUST COME FIRST, and that is not a style choice. robots.txt rules
+  // match by PREFIX over path+query (RFC 9309), longest match winning, so with
+  // `hl=en` in front the request is DISALLOWED by the very file it claims to
+  // obey — scholar.google.com/robots.txt reads:
+  //
+  //     Disallow: /citations?          ← prefix of "/citations?hl=en&user=…"
+  //     Allow:    /citations?user=     ← NOT a prefix of it
+  //
+  // With `user=` first, the Allow (20 chars) outranks the Disallow (12) and
+  // the fetch is permitted. Corrected at merge 2026-07-31; the fetched URL is
+  // test-pinned against the live rule set, so reordering it fails the suite.
+  //
+  // Two neighbouring rules are satisfied by construction rather than by check:
+  // `Disallow: /citations?*cstart=` (never paginated — the works come off the
+  // first page) and `Disallow: /citations?user=*@` / `*%40` (PROFILE_URL and
+  // PROFILE_ID admit only `[A-Za-z0-9_-]{10,16}`, so neither character can
+  // reach the id).
+  const url = `https://scholar.google.com/citations?user=${encodeURIComponent(id)}&hl=en`;
   try {
     const res = await fetch(url, {
       headers: { "user-agent": UA, "accept-language": "en" },
