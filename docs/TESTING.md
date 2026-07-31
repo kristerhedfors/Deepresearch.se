@@ -735,6 +735,40 @@ suite only ever ran against a deployment:
 > the `main` commit whose e2e run had passed minutes earlier. Re-running the
 > job is the correct response; there is no fix to write.
 
+> **It recurs, and the failure COUNT is not the signal** (2026-07-31: three
+> consecutive PRs — #354, #355, #356 — all red on this job, none of them at
+> fault). The variant matters less than it looks: #354 lost 5 of 63 tests to a
+> server that died late in the run, #356 lost **41 of 63** to one that died
+> **17 seconds in**. Same cause, different arrival time, and a run that loses
+> two thirds of its tests reads far more alarming than one that loses five
+> while being no more meaningful.
+>
+> The 2026-07-31 crash is worth recording in full because it names what to look
+> for. Startup was clean — `Ready on http://localhost:8787`, all bindings
+> local, the fake provider up, ~17 s of `GET / 200 OK` — then:
+>
+> ```
+> 21:51:04  ✘ [ERROR] kj::getCaughtExceptionAsKj() = kj/async-io-unix.c++:186:
+>           disconnected: ::write(fd, …): Broken pipe        ← workerd, non-fatal
+> 21:51:11  ✘ [ERROR]                                        ← EMPTY message; the crash
+> 21:51:11  🪵 Logs were written to …/wrangler-2026-07-31_21-50-52_307.log
+> ```
+>
+> **A blank `✘ [ERROR]` preceded by workerd `Broken pipe` disconnects is the
+> fingerprint.** No `EADDRINUSE`, no bundling error, no OOM/`Killed` anywhere —
+> so the usual suspects are all excluded, and `wrangler dev` (4.118.0, fetched
+> per-run via `npx`) simply exits. Two independent confirmations that the diff
+> is innocent are usually available and both are cheap: the first failing test
+> is an *assertion timeout* on a page whose server has gone (not a connection
+> error — that only starts with the NEXT test), and in #355's case the diff
+> touched no `src/` or `public/` file at all.
+>
+> **The real crash reason is in a file CI throws away.** The shutdown line names
+> `~/.config/.wrangler/logs/wrangler-*.log`, and the workflow uploads only
+> `tests/test-results/`. Adding that log to the upload step is the one change
+> that would turn this from a recurring shrug into a diagnosis — worth doing
+> before the fourth occurrence.
+
 ### Looking at a rendered page from a session container
 
 A session container **can** open a real browser, and several PRs have shipped
