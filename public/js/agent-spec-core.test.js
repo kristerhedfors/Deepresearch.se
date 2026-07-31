@@ -138,18 +138,24 @@ test("sdk/AGENTS.json is a valid registry", () => {
 test("the ten shipped agents are present with the expected identities", () => {
   const reg = realRegistry();
   const ids = reg.agents.map((a) => a.id).sort();
-  // Six DEFAULT agents — one per Se/rver chat mode — plus the two client-tier
-  // entries (the Se/cure archetype and the template you copy) and two DERIVED
-  // agents: palaeogenomics and scholar are bound to no chat mode and are
-  // reached by id alone, which is what a domain agent should cost the platform.
+  // Seven DEFAULT agents — one per Se/rver chat mode — plus the two client-tier
+  // entries (the Se/cure archetype and the template you copy) and one DERIVED
+  // agent: palaeogenomics is bound to no chat mode and is reached by id alone.
   assert.deepEqual(ids, [
     "agent-builder", "introspection", "models", "orchestrator", "outrospection", "palaeogenomics", "research", "scholar", "secure", "under-construction",
   ]);
-  // …and they stay out of the mode table: no `defaults` row addresses either,
-  // so no chat mode can resolve to them and the six modes route exactly as
-  // before.
+  // Palaeogenomics stays out of the mode table: no `defaults` row addresses it,
+  // so no chat mode can resolve to it and it is reachable by id alone.
   assert.equal(reg.defaults.some((r) => r.agent === "palaeogenomics"), false);
-  assert.equal(reg.defaults.some((r) => r.agent === "scholar"), false);
+  // SCHOLAR JOINED THE TABLE 2026-07-31. It shipped as registry data reachable
+  // only by id, and the owner reported the predictable consequence — "I dont
+  // see the deep science agent" — because there was no door: the dropdown is
+  // built from CHAT_MODES, minting an agent share link is admin-only, and
+  // /agents/ 404s. A domain agent nobody can reach is a capability that does
+  // not exist, so it is a mode now. What that cost is the measure of the seam:
+  // a `defaults` row, a theme descriptor, and no new answer phase.
+  assert.equal(reg.defaults.some((r) => r.agent === "scholar"), true);
+  assert.equal(findAgent(reg, "scholar").mode, "science");
   assert.equal(findAgent(reg, "research").platform, "server");
   assert.equal(findAgent(reg, "secure").platform, "client");
   // The mode is the RUNNING app's id: Agent Studio's spec id stays

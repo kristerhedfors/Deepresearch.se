@@ -1612,7 +1612,7 @@ as bespoke subsystems:
   0.2.0, its **capability block** (what it does: answer phase, tool set,
   context blocks, search/routing policy, gates, bounds, emitted events,
   required knob, sub-agent team). Copy a spec, change those, validate. Nine
-  agents ship today: the six DEFAULTS, one per chat mode — `research`
+  agents ship today: the seven DEFAULTS, one per chat mode — `research`
   (`normal`), `introspection`, `agent-builder` (Agent Studio, mode `sdk`),
   `orchestrator`, `outrospection` and `models` — plus `secure` (the Se/cure
   archetype), `under-construction` (the template to copy) and

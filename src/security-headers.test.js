@@ -3,6 +3,9 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+
 import { applySecurityHeaders, _internals } from "./security-headers.js";
 
 describe("applySecurityHeaders", () => {
@@ -51,5 +54,33 @@ describe("CSP policy shape", () => {
   test("locks down object-src and frame-ancestors", () => {
     assert.match(_internals.CSP, /object-src 'none'/);
     assert.match(_internals.CSP, /frame-ancestors 'none'/);
+  });
+
+  // Every inline script in the app shell is admitted by a HASH, and the hashes
+  // are hand-maintained: the source comment says "recompute on edit" and until
+  // 2026-07-31 nothing checked that anyone had. A stale hash does not fail
+  // loudly — the page still serves, the browser silently refuses the script,
+  // and the only symptom is the mode theme not painting until JS catches up,
+  // on a PWA relaunch, on someone else's phone. Recomputing here is three lines
+  // and turns that into a red test on the commit that caused it.
+  //
+  // Added while adding the `science` mode, which edits the theme-boot script.
+  test("every inline-script CSP hash matches the script actually shipped", () => {
+    const scriptSrc = _internals.CSP.split("; ").find((d) => d.startsWith("script-src")) || "";
+    const html = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+    /** @type {Array<[string, RegExp]>} */
+    const inline = [
+      ["theme boot", /<script data-devtheme>([\s\S]*?)<\/script>/],
+      ["boot guard", /<script>([\s\S]*?)<\/script>/],
+    ];
+    for (const [what, re] of inline) {
+      const body = html.match(re)?.[1];
+      if (body === undefined) continue; // the shell stopped carrying it — not this test's business
+      const hash = "sha256-" + createHash("sha256").update(body).digest("base64");
+      assert.ok(
+        scriptSrc.includes(hash),
+        `the ${what} inline script's hash (${hash}) is not in script-src — recompute it in src/security-headers.js`,
+      );
+    }
   });
 });

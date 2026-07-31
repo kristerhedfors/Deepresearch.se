@@ -40,6 +40,17 @@ test("every canonical chat mode is reachable by its own id", () => {
   }
 });
 
+// Invariant 6: a mode's link vocabulary carries Swedish with the same breadth
+// as English, in the SAME change that adds the mode.
+test("Deep Science is reachable in Swedish as well as English", () => {
+  for (const id of ["science", "scholar", "deep-science", "literature", "papers", "peer-reviewed"]) {
+    assert.equal(parseComposerDeepLink(`?mode=${id}`).mode, "science", `EN ${id}`);
+  }
+  for (const id of ["vetenskap", "vetenskaplig", "litteratur", "artiklar", "forskningsartiklar", "referentgranskad"]) {
+    assert.equal(parseComposerDeepLink(`?mode=${id}`).mode, "science", `SV ${id}`);
+  }
+});
+
 test("resolves ask, then q as an alias, trimmed and bounded", () => {
   assert.equal(parseComposerDeepLink("?ask=%20hello%20").ask, "hello");
   assert.equal(parseComposerDeepLink("?q=fallback").ask, "fallback");
@@ -71,5 +82,5 @@ test("build → parse round-trips", () => {
   // an invalid mode is dropped, ask still set
   const u2 = buildComposerDeepLink({ mode: "nope", ask: "x" });
   assert.ok(!u2.includes("mode="));
-  assert.deepEqual(DEEPLINK_MODES, ["normal", "introspection", "sdk", "orchestrator", "outrospection", "models"]);
+  assert.deepEqual(DEEPLINK_MODES, ["normal", "science", "introspection", "sdk", "orchestrator", "outrospection", "models"]);
 });

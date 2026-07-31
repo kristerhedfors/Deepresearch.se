@@ -45,12 +45,17 @@
       "flag": "introspection_mode"
     },
     {
+      "mode": "science",
+      "agent": "scholar",
+      "flag": "science_mode"
+    },
+    {
       "mode": "normal",
       "agent": "research",
       "flag": null
     }
   ],
-  "defaults_note": "The Se/rver app's six DEFAULT agents — one per chat mode (public/js/chat-mode-core.js CHAT_MODES). ARRAY ORDER IS PRECEDENCE, mirroring src/chat.js: a request carrying several mode flags resolves to the first match (sdk > orchestrator > outrospection > models > introspection). `flag` names the /api/chat request field that selects the mode; every mode except `normal` has one, and `normal` (flag null) is the terminal fallback. A request may instead name its mode outright with the `chat_mode` field, which is the preferred form and what the app sends — the per-mode booleans are the legacy spelling. Until 2026-07-26 introspection had NO flag and was the derived leftover (whatever remained when the developer_mode knob was on and no other flag matched); it now has `introspection_mode` like every sibling, and `developer_mode` is an AVAILABILITY grant only, never a mode selector. Agents NOT listed here (secure, under-construction) are tier archetypes and templates, not chat modes.",
+  "defaults_note": "The Se/rver app's seven DEFAULT agents — one per chat mode (public/js/chat-mode-core.js CHAT_MODES). ARRAY ORDER IS PRECEDENCE, mirroring src/chat.js: a request carrying several mode flags resolves to the first match (sdk > orchestrator > outrospection > models > introspection > science). `science` was added 2026-07-31: the scholar agent shipped as registry data reachable only by id, which meant nobody browsing the app could find it — a domain agent with no door is a capability that does not exist. It is the first mode that does NOT carry this site's own source (chat-mode-core.js SOURCE_CARRYING_MODES), because a peer-reviewed-literature agent has no more business with this repo than plain Deep Research does. `flag` names the /api/chat request field that selects the mode; every mode except `normal` has one, and `normal` (flag null) is the terminal fallback. A request may instead name its mode outright with the `chat_mode` field, which is the preferred form and what the app sends — the per-mode booleans are the legacy spelling. Until 2026-07-26 introspection had NO flag and was the derived leftover (whatever remained when the developer_mode knob was on and no other flag matched); it now has `introspection_mode` like every sibling, and `developer_mode` is an AVAILABILITY grant only, never a mode selector. Agents NOT listed here (secure, under-construction) are tier archetypes and templates, not chat modes.",
   "agents": [
     {
       "id": "research",
@@ -127,6 +132,7 @@
           "type": "mode-select",
           "modes": [
             "normal",
+            "science",
             "introspection",
             "sdk",
             "orchestrator",
@@ -405,6 +411,7 @@
           "type": "mode-select",
           "modes": [
             "normal",
+            "science",
             "introspection",
             "sdk",
             "orchestrator",
@@ -520,6 +527,7 @@
           "type": "mode-select",
           "modes": [
             "normal",
+            "science",
             "introspection",
             "sdk",
             "orchestrator",
@@ -630,6 +638,7 @@
           "type": "mode-select",
           "modes": [
             "normal",
+            "science",
             "introspection",
             "sdk",
             "orchestrator",
@@ -762,6 +771,7 @@
           "type": "mode-select",
           "modes": [
             "normal",
+            "science",
             "introspection",
             "sdk",
             "orchestrator",
@@ -869,6 +879,7 @@
           "type": "mode-select",
           "modes": [
             "normal",
+            "science",
             "introspection",
             "sdk",
             "orchestrator",
@@ -1006,6 +1017,7 @@
           "type": "mode-select",
           "modes": [
             "normal",
+            "science",
             "introspection",
             "sdk",
             "orchestrator",
@@ -1068,6 +1080,7 @@
     },
     {
       "id": "scholar",
+      "mode": "science",
       "name": "Deep Science",
       "tagline": "Peer-reviewed sources only. No web search, no preprints, no exceptions.",
       "description": "A research agent that answers exclusively from the peer-reviewed literature. The web-search leg is off structurally — the capability declares `search.web: false`, which a request cannot re-enable — and the turn is restricted to one source: a peer-reviewed literature search that merges OpenAlex, Europe PMC's peer-reviewed slice, Semantic Scholar and, where a licensed key is configured, Google Scholar's own ranking, then keeps only records carrying POSITIVE evidence of peer review (a journal venue with an ISSN, a Crossref journal-article, a MEDLINE/PMC indexing) and drops everything else, retractions and preprints included. It integrates with Google Scholar as far as Google permits: Scholar's robots.txt disallows the search results and explicitly allows the author profile and publication-metrics pages, so this agent reads the allowed ones — an author's Scholar h-index, i10-index and most-cited works from a profile link, and every citation's venue annotated with Google Scholar's h5-index from a committed metrics table. It never scrapes the disallowed search index. Two consequences it states rather than hides: 'from Google Scholar' and 'peer-reviewed only' are different requests, and where they conflict this agent obeys the second; and a peer-reviewed source is a reviewed source, not a correct one, so the answer reports what the literature found, in whose journal, cited how often, and where the studies disagree.",
@@ -1135,6 +1148,7 @@
           "type": "mode-select",
           "modes": [
             "normal",
+            "science",
             "introspection",
             "sdk",
             "orchestrator",

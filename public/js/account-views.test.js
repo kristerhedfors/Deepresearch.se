@@ -6,7 +6,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { settingSelectRow, renderConfigKnobs, renderSummary } from "./account-views.js";
+import { readFileSync } from "node:fs";
+
 import { CHAT_MODES } from "./chat-mode-core.js";
+import { MODE_THEMES } from "./mode-theme.js";
 
 const baseMe = (notifications) => ({
   email: "a@b.c",
@@ -94,6 +97,31 @@ test("renderConfigKnobs: the Settings dropdown offers EVERY chat mode", () => {
         `mode "${mode}" is missing from the Settings dropdown (me.email=${me.email})`,
       );
     }
+  }
+});
+
+test("the COMPOSER dropdown in index.html offers every chat mode too", () => {
+  // The mirror of the test above, and the drift it exists to catch is the one
+  // that actually happened (2026-07-31, owner-reported: "I dont see the deep
+  // science agent"). #modesel is hand-written markup in public/index.html, so
+  // a mode can be complete everywhere — registry row, theme, CSS, settings —
+  // and still have no door in the composer, which is the only place most
+  // people ever pick a mode. Nothing tied the two together, and the previous
+  // drift ran the OTHER way (models in #modesel but not in Settings), so this
+  // pairing is the actual invariant: the two dropdowns and CHAT_MODES agree.
+  const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const sel = html.match(/<select id="modesel"[\s\S]*?<\/select>/)?.[0];
+  assert.ok(sel, "#modesel is missing from public/index.html");
+  const offered = [...sel.matchAll(/<option value="([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(offered, CHAT_MODES, "the composer dropdown and CHAT_MODES disagree");
+  // The labels are the mode registry's, not a second set of names.
+  for (const mode of CHAT_MODES) {
+    const label = MODE_THEMES[mode].label;
+    assert.match(
+      sel,
+      new RegExp(`<option value="${mode}">${label}</option>`),
+      `#modesel labels ${mode} as something other than "${label}"`,
+    );
   }
 });
 

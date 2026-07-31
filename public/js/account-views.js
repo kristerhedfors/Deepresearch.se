@@ -96,6 +96,7 @@ export function settingSelectRow({ id, label, options, value, disabled, popId, i
 // list names each session's agent from it rather than keeping a second copy.
 export const CHAT_MODE_OPTIONS = [
   { value: "normal", label: "Deep Research" },
+  { value: "science", label: "Deep Science" },
   { value: "introspection", label: "Introspection" },
   { value: "sdk", label: "Agent Studio" },
   { value: "orchestrator", label: "Orchestrator" },
@@ -119,6 +120,11 @@ const SANDBOX_INFO = `<strong>Execution sandbox (bash) — Experimental</strong>
 const MODE_INFO = `<strong>Chat mode</strong><br>
   Pick how the assistant works. The composer's mode dropdown mirrors this.<br>
   <b>Deep Research (default):</b> ordinary web research.<br>
+  <b>Deep Science:</b> the parchment mode — answers come only from the
+  peer-reviewed record (Europe PMC, the open scholarly graph, and Google Scholar
+  as far as it permits). No open-web search runs and no preprint reaches an
+  answer, so it will say a question is unanswerable rather than reach for a
+  blog post.<br>
   <b>Introspection:</b> ask about this site's own implementation (“how are you
   built?”, “show me src/pipeline.js”) and it answers from a snapshot of the exact
   source this deployment runs — the composer pane turns white titanium. With the
@@ -135,8 +141,10 @@ const MODE_INFO = `<strong>Chat mode</strong><br>
   <b>Models:</b> the amber mode — explore every provider's catalog, see what each
   model costs, verify one against the established checks and enable it for every
   other mode.<br>
-  Every mode except Deep Research reads this site's own source, and the pick is
-  saved to your account, so it follows you to your other devices.`;
+  Introspection, Agent Studio, Orchestrator, Outrospection and Models read this
+  site's own source; Deep Research and Deep Science do not, because neither has
+  business with it. The pick is saved to your account, so it follows you to your
+  other devices.`;
 
 /**
  * The execution-sandbox row + the Chat mode dropdown the Settings view renders
@@ -377,6 +385,7 @@ export function wireModeKnob(ctx) {
   /** @type {Record<string, string>} */
   const STATUS = {
     normal: "Deep Research — ordinary web research.",
+    science: "Deep Science — the composer pane turns parchment, and questions are answered only from the peer-reviewed record: no open-web search, no preprints, and an honest \u201cnot answerable from the literature\u201d rather than a guess.",
     introspection: "Introspection — the composer pane turns white titanium, and asking about this site's own source answers from the deployed source.",
     sdk: "SDK — distill this site (above all the Se/cure tier) into a new flavour and get a live, self-contained web app at its own link.",
     orchestrator: "Orchestrator — the composer pane turns violet, and each request runs as a planned team of sub-agents working in the background.",

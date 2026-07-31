@@ -18,7 +18,7 @@
 // tests all agree on one table.
 
 /** The modes, in dropdown order. `normal` is labeled "Deep Research" in the UI. */
-export const CHAT_MODES = ["normal", "introspection", "sdk", "orchestrator", "outrospection", "models"];
+export const CHAT_MODES = ["normal", "science", "introspection", "sdk", "orchestrator", "outrospection", "models"];
 
 /** The mode a request falls back to — plain deep research, no capability needed. */
 export const DEFAULT_CHAT_MODE = "normal";
@@ -38,6 +38,7 @@ export const MODE_REQUEST_FLAGS = [
   { mode: "outrospection", flag: "outrospection_mode" },
   { mode: "models", flag: "models_mode" },
   { mode: "introspection", flag: "introspection_mode" },
+  { mode: "science", flag: "science_mode" },
 ];
 
 /** mode → its request flag (null for `normal`, which no flag selects). */
@@ -57,18 +58,29 @@ export function normalizeChatMode(v, fallback = DEFAULT_CHAT_MODE) {
 // snapshot enrichment (src/introspect.js) plus, when the sandbox is also on,
 // the /src mount in the browser VM.
 //
-// Every non-normal mode does. That is not an accident of the old knob but the
-// deliberate rule it accidentally implemented, now stated in one place:
-// introspection answers FROM the source, Agent Studio distils Se/cure OUT of
-// it, Orchestrator briefs sub-agents that may need it, and Outrospection and
-// Models compare this site against the outside world. Only plain Deep Research
-// has no business with it — and it is the hot path, so it pays nothing.
+// This used to be spelled `mode !== normal`, on the reasoning that every
+// non-normal mode has business with the source: introspection answers FROM it,
+// Agent Studio distils Se/cure OUT of it, Orchestrator briefs sub-agents that
+// may need it, and Outrospection and Models compare this site against the
+// outside world. That was true of all five, so the rule and the shortcut agreed
+// and nothing distinguished them.
+//
+// SCIENCE broke the tie (2026-07-31). It is a DOMAIN mode — it answers from the
+// peer-reviewed record and has no more business with this repo's source than
+// plain Deep Research does, so under the old shortcut it would have loaded a
+// multi-megabyte snapshot on every turn to ignore it. The set is declared
+// outright now, which also means the next domain mode inherits nothing by
+// accident: a mode carries the source because it is named here, not because it
+// happens not to be `normal`.
+/** @type {string[]} */
+export const SOURCE_CARRYING_MODES = ["introspection", "sdk", "orchestrator", "outrospection", "models"];
+
 /**
  * @param {unknown} mode
  * @returns {boolean}
  */
 export function modeCarriesSource(mode) {
-  return normalizeChatMode(mode) !== DEFAULT_CHAT_MODE;
+  return SOURCE_CARRYING_MODES.includes(normalizeChatMode(mode));
 }
 
 /**
