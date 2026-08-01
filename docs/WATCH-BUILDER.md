@@ -188,6 +188,44 @@ One detail that is not geometry at all: the seconds hand ticks six times a
 second, because the NH35 runs at 21,600 A/h and a smooth sweep would be the
 wrong watch.
 
+### 3.1 The case back, and what an exhibition one shows
+
+A **solid** back is a puck that plugs the bore. A **display (exhibition)** back
+is a ring with a sapphire in the middle of it, and the interior it opens onto is
+its own mesh — `movement` (the mainplate and the spacer ring), `movementBridges`
+(barrel bridge, train bridge, balance cock, balance wheel, screws), `rotor` and
+`movementJewels`. The renderer draws the window with the crystal, blended and
+without a depth write; everything else is opaque.
+
+Three things about this are worth keeping in mind before changing it:
+
+* **The interior is built either way.** Behind a solid back nobody sees it, and
+  it is what closes the case — the ray test over every case still has to pass
+  with the window cut.
+* **The mainplate is deliberately darker than the bridges.** The bridges stand
+  0.3 mm proud of a disc, this renderer has no shadows, and at that scale shape
+  alone is a suggestion. Contrast comes from the material table, not the mesh.
+* **The lighting rig dips under the horizon with the camera.** It follows the
+  camera's yaw but used to keep every light above the horizon whatever the
+  pitch, which left the whole underside of the watch lit by the hemisphere's
+  ground term alone. Below the horizon the key is also deliberately shallower
+  than its mirror image, because a key straight down the camera's axis lights
+  no side walls and a movement comes out as a flat grey disc. Above the horizon
+  nothing changed — `dip` is exactly 1 there.
+
+An **engraving** is not a shape. It is a decal — `casebackArt`, a disc lying on
+the back face with the same radial UVs a dial uses, carrying a relief map and
+almost no albedo, because an engraved back is dimensionally identical to a plain
+one. It exists only when something is actually engraved, and never on a display
+back. The painter mirrors and half-turns its canvas: a downward-facing annulus
+emits the upward disc UVs seen from the other side, so text painted without that
+flip comes out back to front.
+
+The **cushion and the strap can be put down** (`setWrist`, `setStrap`). Both sit
+directly behind the case back — a bracelet's fold-over clasp closes at 6
+o'clock, which is across the middle of it — so the "case back" view drops both,
+the way you would take the watch off to look at it.
+
 ---
 
 ## 4. The AliExpress index

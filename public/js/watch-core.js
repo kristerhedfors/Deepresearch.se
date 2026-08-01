@@ -7456,6 +7456,119 @@ export function bezelLayout(insert) {
 }
 
 // ---------------------------------------------------------------------------
+// WHAT AN EXHIBITION BACK SHOWS.
+//
+// A transparent caseback over a featureless drum looks like a fault, not like a
+// movement — so a display back is only half-fixed by making the metal
+// transparent. This is the other half: enough of an NH35 to be recognised
+// through a window the size of one.
+//
+// It is deliberately a SILHOUETTE rather than a model. Nobody publishes bridge
+// outlines, and inventing detail down to the click spring would be dressing a
+// guess up as a drawing. What is here is what you can name from a photograph
+// of any NH-series calibre and what the window actually shows: the rotor
+// sweeping over everything, three bridges under it, the balance off to one
+// side, jewels where jewels go, and screws. Every dimension is a fraction of
+// the movement's own radius, so it holds for the 27.4 mm NH35 and for anything
+// else the catalogue may carry later.
+
+/**
+ * @param {number} movR the movement's radius, mm
+ * @param {number} floorY the interior floor — the movement's own back plate
+ * @param {number} segments radial subdivision the rest of the build is using
+ * @returns {{ bridges: Mesh, rotor: Mesh, jewels: Mesh, depth: number }}
+ *   `bridges` merges into the movement mesh (same material); `rotor` and
+ *   `jewels` are their own meshes because they are their own materials, which
+ *   is the whole point of a movement being visible at all.
+ */
+export function movementDetail(movR, floorY, segments) {
+  const n = Math.max(16, Math.min(48, Math.round((segments || 96) / 3)));
+  /**
+   * A convex disc outline in the (x, z) plane, wound the way `extrude` wants.
+   *
+   * CLOCKWISE — theta DECREASING — which is the winding that leaves the solid's
+   * normals pointing out of it. The check is the sign of the signed volume, not
+   * the eye: a flat disc wound the other way renders almost identically,
+   * because backface culling then shows its underside 0.2 mm away and the
+   * shader's `if (!gl_FrontFacing) N = -N` relights it as if nothing happened.
+   */
+  /**
+   * @param {number} cx
+   * @param {number} cz
+   * @param {number} r
+   * @param {number} sides
+   * @returns {[number, number][]}
+   */
+  const disc = (cx, cz, r, sides) => {
+    /** @type {[number, number][]} */
+    const pts = [];
+    for (let i = 0; i < sides; i++) {
+      const t = -(i / sides) * Math.PI * 2;
+      pts.push([cx + r * Math.cos(t), cz + r * Math.sin(t)]);
+    }
+    return pts;
+  };
+
+  // Everything has to fit between the plate and the sapphire WITHOUT touching
+  // it, so the stack is a fraction of the room actually available rather than a
+  // set of millimetres that would poke through the glass on a slim case.
+  const room = clamp(floorY - 0.42, 0.5, 1.35);
+  const bridgeT = room * 0.3;
+  const wheelT = room * 0.24;
+  const rotorT = room * 0.28;
+  const bridgeY = floorY - bridgeT / 2;
+  const wheelY = floorY - bridgeT - wheelT / 2;
+  const rotorY = floorY - bridgeT - wheelT - rotorT / 2 - room * 0.05;
+
+  const bridges = emptyMesh();
+  // Barrel bridge (the big one, over the mainspring), train bridge, balance
+  // cock. Three plates at three sizes is what separates a movement from a disc.
+  mergeMesh(bridges, extrude(disc(-movR * 0.3, movR * 0.16, movR * 0.44, n), bridgeT, bridgeY));
+  mergeMesh(bridges, extrude(disc(-movR * 0.02, -movR * 0.44, movR * 0.3, n), bridgeT, bridgeY));
+  mergeMesh(bridges, extrude(disc(movR * 0.45, -movR * 0.04, movR * 0.19, n), bridgeT, bridgeY));
+  // The balance wheel, under its cock and proud of the plate: the one part of a
+  // mechanical watch that visibly MOVES, so it is what an owner looks for.
+  mergeMesh(bridges, extrude(disc(movR * 0.45, -movR * 0.04, movR * 0.31, n), wheelT, wheelY));
+  // Screws, in the bridge corners.
+  for (const [cx, cz] of [
+    [-movR * 0.62, movR * 0.44],
+    [-movR * 0.16, movR * 0.56],
+    [-movR * 0.28, -movR * 0.6],
+  ]) {
+    // Sunk flush INTO the plate and standing proud of the bridge, which is what
+    // a screw does — and keeps the whole calibre inside the room the plate and
+    // the sapphire leave it.
+    mergeMesh(bridges, extrude(disc(cx, cz, movR * 0.06, 12), bridgeT * 1.4, bridgeY - bridgeT * 0.2));
+  }
+
+  // Jewels: their own mesh because ruby is the only non-metal in there.
+  const jewels = emptyMesh();
+  for (const [cx, cz] of [
+    [-movR * 0.34, movR * 0.1],
+    [-movR * 0.04, -movR * 0.4],
+    [movR * 0.45, -movR * 0.04],
+    [-movR * 0.5, -movR * 0.16],
+  ]) {
+    mergeMesh(jewels, extrude(disc(cx, cz, movR * 0.045, 12), bridgeT * 0.9, bridgeY - bridgeT * 0.55));
+  }
+
+  // THE ROTOR, over all of it. A half disc on the movement's own axis, turned
+  // off the bridges' axis so it reads as a separate part that happens to be
+  // parked there rather than as a shape cut to fit them.
+  /** @type {[number, number][]} */
+  const sweep = [];
+  const rr = movR * 0.86;
+  const turn = 0.6;
+  for (let i = 0; i <= n; i++) {
+    const t = turn - (i / n) * Math.PI;
+    sweep.push([rr * Math.cos(t), rr * Math.sin(t)]);
+  }
+  const rotor = extrude(sweep, rotorT, rotorY);
+
+  return { bridges, rotor, jewels, depth: floorY - (rotorY - rotorT / 2) };
+}
+
+// ---------------------------------------------------------------------------
 // Assembling one build into meshes. This is the function the renderer calls;
 // everything above it exists to make this one deterministic and testable.
 
@@ -7691,40 +7804,71 @@ export function buildMeshes(build, opts) {
     lift += 0.38;
   }
 
-  // CASE BACK, and the interior it closes onto. The caseback is a solid puck
-  // that plugs the bore; above it sit a movement drum and the dial spacer ring,
-  // so looking into the watch shows a case interior rather than the outside
-  // world through the far wall.
-  const caseback = lathe(
+  // CASE BACK, and the interior it closes onto.
+  //
+  // TWO SHAPES, not one. A solid back is a puck that plugs the bore. A DISPLAY
+  // (exhibition) back is a ring with a sapphire window in it — and until now
+  // that shape did not exist: the catalogue offered the part, the price and the
+  // compatibility rules moved with it, and the mesh went on being the solid
+  // puck. Reported in feedback #56 and again, unchanged, in #59.
+  //
+  // The INTERIOR is its own mesh either way. Merged into the caseback it was
+  // invisible by construction, so nothing could tell whether it was worth
+  // looking at — and behind glass a featureless drum reads as a fault rather
+  // than as a movement. Separated, it takes movement materials and a display
+  // back has something to show. It still closes the case from the inside,
+  // which is what feedback #56's first item bought and must not be given back.
+  const movR = Math.min(geo.boreR - 0.3, (parts.movement && parts.movement.dia ? parts.movement.dia : 27.4) / 2);
+  const showsMovement = !!(parts.caseback && parts.caseback.display);
+  // The window: as wide as the movement plus a rim, never so wide that the
+  // threaded ring the back screws down by disappears. A real CT239 window is
+  // narrower than the movement behind it, so this crops the calibre exactly the
+  // way an exhibition back does.
+  const windowR = showsMovement ? clamp(movR + 0.8, 3, geo.boreBotR * 0.62) : 0;
+
+  const caseback = showsMovement
+    ? lathe(
+        [
+          // Up the inner wall of the aperture, out over the chamfer the
+          // sapphire seats under, then the same rim and top the solid back has.
+          { r: windowR, y: -0.02 },
+          { r: windowR + 0.5, y: -0.4, s: true },
+          { r: geo.boreBotR - 0.35, y: -0.05, s: true },
+          { r: geo.boreBotR, y: 0.3 },
+          { r: geo.boreBotR, y: geo.floorY - 0.2 },
+          { r: geo.boreR, y: geo.floorY },
+          { r: windowR, y: geo.floorY },
+          { r: windowR, y: -0.02 },
+        ],
+        segments,
+      )
+    : lathe(
+        [
+          { r: 0, y: -0.35 },
+          { r: geo.boreBotR * 0.72, y: -0.42, s: true },
+          { r: geo.boreBotR - 0.35, y: -0.05, s: true },
+          { r: geo.boreBotR, y: 0.3 },
+          { r: geo.boreBotR, y: geo.floorY - 0.2 },
+          { r: geo.boreR, y: geo.floorY },
+          { r: 0, y: geo.floorY },
+        ],
+        segments,
+      );
+
+  // The movement drum, and the spacer ring that fills the last millimetre
+  // between it and the bore wall right under the dial, so a steep viewing
+  // angle cannot see down the side of the movement.
+  const movement = lathe(
     [
-      { r: 0, y: -0.35 },
-      { r: geo.boreBotR * 0.72, y: -0.42, s: true },
-      { r: geo.boreBotR - 0.35, y: -0.05, s: true },
-      { r: geo.boreBotR, y: 0.3 },
-      { r: geo.boreBotR, y: geo.floorY - 0.2 },
-      { r: geo.boreR, y: geo.floorY },
       { r: 0, y: geo.floorY },
+      { r: movR, y: geo.floorY },
+      { r: movR, y: geo.dialY - 0.45 },
+      { r: 0, y: geo.dialY - 0.45 },
     ],
     segments,
   );
-  const movR = Math.min(geo.boreR - 0.3, (parts.movement && parts.movement.dia ? parts.movement.dia : 27.4) / 2);
   mergeMesh(
-    caseback,
-    lathe(
-      [
-        { r: 0, y: geo.floorY },
-        { r: movR, y: geo.floorY },
-        { r: movR, y: geo.dialY - 0.45 },
-        { r: 0, y: geo.dialY - 0.45 },
-      ],
-      segments,
-    ),
-  );
-  // The spacer ring: fills the last millimetre between the movement drum and
-  // the bore wall, right under the dial, so a steep viewing angle cannot see
-  // down the side of the movement.
-  mergeMesh(
-    caseback,
+    movement,
     lathe(
       [
         { r: movR - 0.2, y: geo.dialY - 0.9 },
@@ -7736,6 +7880,34 @@ export function buildMeshes(build, opts) {
       segments,
     ),
   );
+
+  // Behind the glass: bridges, a balance, jewels and the rotor over them.
+  const backGlass = showsMovement
+    ? lathe(
+        [
+          { r: 0, y: -0.34 },
+          { r: windowR + 0.28, y: -0.34 },
+          { r: windowR + 0.28, y: 0.22 },
+          { r: 0, y: 0.22 },
+        ],
+        segments,
+      )
+    : null;
+  const calibre = showsMovement ? movementDetail(movR, geo.floorY, segments) : null;
+
+  // The engraving. It is a DECAL on the solid back — dimensionally identical to
+  // a plain one, which is why it must never become its own shape — so it is a
+  // textured disc lying on the back face, and it exists only when something is
+  // actually engraved. #56 reported it broken too; it was answered by making it
+  // share the solid geometry, and nothing was ever put on that geometry.
+  const engraved =
+    !showsMovement &&
+    parts.caseback &&
+    parts.caseback.engraving &&
+    parts.caseback.engraving !== "none";
+  const casebackArt = engraved
+    ? annulus(0, geo.boreBotR * 0.72, -0.44, segments, false)
+    : null;
 
   // Strap, hardware and the wrist cylinder. The cylinder is the DEFAULT
   // presentation (feedback #56); buildMeshes(build, { wrist: false }) drops it.
@@ -7755,11 +7927,49 @@ export function buildMeshes(build, opts) {
       insert,
       crystal,
       caseback,
+      // The interior, always built and always closing the case. Behind a solid
+      // back nobody sees it; behind a display back it is the point.
+      movement,
       strap: strapKit.band,
       strapHardware: strapKit.hardware,
       wrist: strapKit.wrist,
+      // Present ONLY on a display back — a key that disappears stops being
+      // drawn, which is how the renderer already handles an unbought insert.
+      ...(calibre
+        ? { movementBridges: calibre.bridges, rotor: calibre.rotor, movementJewels: calibre.jewels }
+        : {}),
+      ...(backGlass ? { casebackCrystal: backGlass } : {}),
+      ...(casebackArt ? { casebackArt } : {}),
+    },
+    // The mesh-key → material-ID hints the renderer's generic pass consumes.
+    // Distinct from `strapMaterials`, which is a description of what a strap is
+    // MADE OF rather than a name in the material table.
+    materials: {
+      // The mainplate is DARKER than what is screwed to it. That is the only
+      // reason a bridge is visible at all through a window this small: the
+      // shapes are 0.3 mm proud of a disc, and shape alone at that scale is a
+      // suggestion, not a contrast.
+      movement: "movement-base",
+      movementBridges: "movement-plate",
+      rotor: "movement-rotor",
+      movementJewels: "jewel-ruby",
+      casebackCrystal: "sapphire",
+      // Hardware is ALWAYS steel, whatever the band is made of — the rule
+      // stated above strapMesh and, until this map was read, not enforced
+      // anywhere: `strapHardware` fell through the renderer's name heuristic on
+      // /strap|band/ and a bracelet's fold-over clasp came out dark leather.
+      // It sits at 6 o'clock, directly behind the case back, which is where it
+      // reads as a black slab across the very thing #59 is about.
+      strapHardware: "steel-brushed",
+      wrist: "wrist-leather",
     },
     strapMaterials: strapKit.materials,
+    caseback: {
+      display: showsMovement,
+      windowR,
+      engraving: engraved ? parts.caseback.engraving : "none",
+      engravingText: (parts.caseback && parts.caseback.engravingText) || "",
+    },
     wrist: strapKit.wristInfo,
     crownTransform,
     hands,

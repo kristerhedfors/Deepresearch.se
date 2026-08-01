@@ -177,6 +177,7 @@ import {
   CRYSTAL_FAMILIES,
   DIAL_METRICS,
   SOURCES,
+  movementDetail,
 } from "./watch.js";
 
 /** Triangles of a mesh as coordinate triples. */
@@ -256,7 +257,7 @@ function verts(mesh) {
   return out;
 }
 
-const SOLIDS = ["case", "caseback", "lugs", "crown"];
+const SOLIDS = ["case", "caseback", "movement", "lugs", "crown"];
 
 describe("case and dial geometry", () => {
   test("the case is a CLOSED shell — no sightline passes through the metal", () => {
@@ -346,11 +347,18 @@ describe("case and dial geometry", () => {
       assert.ok(geo.boreR > geo.dialR, `${c.id}: the bore does not clear the dial`);
       assert.ok(geo.boreBotR > geo.boreR, `${c.id}: the case-back recess is not wider than the bore`);
       assert.ok(geo.floorY > 0 && geo.floorY < geo.dialY, `${c.id}: the interior floor is not under the dial`);
-      const back = verts(buildMeshes({ ...DEFAULT_BUILD, case: c.id }, { segments: 16 }).meshes.caseback);
+      // The back CLOSES the bore; the interior FILLS it. They are two meshes
+      // (the interior has its own materials once a display back makes it
+      // visible), so each is asserted where it actually lives — the version of
+      // this that read `backTop` off a merged caseback would pass on an
+      // interior that had quietly stopped being built.
+      const meshes = buildMeshes({ ...DEFAULT_BUILD, case: c.id }, { segments: 16 }).meshes;
+      const back = verts(meshes.caseback);
       const backR = Math.max(...back.map((p) => Math.hypot(p[0], p[2])));
-      const backTop = Math.max(...back.map((p) => p[1]));
+      const inside = verts(meshes.movement);
+      const insideTop = Math.max(...inside.map((p) => p[1]));
       assert.ok(backR >= geo.boreBotR - 1e-6, `${c.id}: the case back is narrower than the bore it has to close`);
-      assert.ok(backTop >= geo.dialY - 1, `${c.id}: nothing fills the case under the dial`);
+      assert.ok(insideTop >= geo.dialY - 1, `${c.id}: nothing fills the case under the dial`);
     }
   });
 
@@ -1548,6 +1556,189 @@ describe("feedback #56: casebacks", () => {
     assert.ok(wrong.issues.some((i) => i.slots.includes("caseback") && i.slots.includes("movement")));
     assert.equal(checkBuild({ ...BASE, caseback: "display" }).ok, true);
     assert.equal(part("caseback", "display").spacerFit, "grey-nh");
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe("feedback #59: the exhibition back is a HOLE, and there is something behind it", () => {
+  // Reported in #56, answered, and reported again in #59 unchanged: "clear /
+  // exhibition caseback still doesn't work". It never worked. The resolver set
+  // parts.caseback.geometry = "display" and NOTHING read it — the mesh builder
+  // always lathed a solid puck, the renderer always picked steel.
+  //
+  // The suite was green through both rounds because the only assertion about a
+  // display back was on `parts.caseback.geometry`: the resolver's own output,
+  // one layer above BOTH places the defect lived. So every test here is on the
+  // mesh or on the material id, and that is the point of them.
+
+  /** Signed volume: positive means the winding puts the normals outside. */
+  const volume = (m) => {
+    let v = 0;
+    for (let t = 0; t < m.indices.length; t += 3) {
+      const p = [0, 1, 2].map((k) => {
+        const i = m.indices[t + k] * 3;
+        return [m.positions[i], m.positions[i + 1], m.positions[i + 2]];
+      });
+      const [a, b, c] = p;
+      v +=
+        (a[0] * (b[1] * c[2] - b[2] * c[1]) -
+          a[1] * (b[0] * c[2] - b[2] * c[0]) +
+          a[2] * (b[0] * c[1] - b[1] * c[0])) /
+        6;
+    }
+    return v;
+  };
+  const radii = (m) => verts(m).map((p) => Math.hypot(p[0], p[2]));
+  const ys = (m) => verts(m).map((p) => p[1]);
+  const built = (caseback) => buildMeshes({ ...BASE, case: "skx007", caseback }, { segments: 48 });
+
+  test("the metal has a hole in it exactly when the back is a display back", () => {
+    const display = built("display");
+    const solid = built("solid-brushed");
+    assert.ok(display.caseback.display, "the build did not resolve to a display back");
+    // THE assertion the old test should have been: a solid back reaches the
+    // axis, a display back does not — there is a window where the steel was.
+    assert.ok(Math.min(...radii(solid.meshes.caseback)) < 1e-9, "a solid back should be a closed puck");
+    const innerR = Math.min(...radii(display.meshes.caseback));
+    assert.ok(innerR > 3, `the display back still closes over the axis (inner radius ${innerR})`);
+    assert.ok(Math.abs(innerR - display.caseback.windowR) < 1e-6, "the mesh's hole is not the window it reports");
+    // And the hole is a WINDOW, not a gap: wide enough to see a movement,
+    // narrow enough to leave the ring the back screws down by.
+    const outerR = Math.max(...radii(display.meshes.caseback));
+    assert.ok(innerR > outerR * 0.35 && innerR < outerR * 0.8, `window ${innerR} against a back of ${outerR}`);
+  });
+
+  test("something transparent fills the window, and the material table agrees it is glass", () => {
+    const display = built("display");
+    const glass = display.meshes.casebackCrystal;
+    assert.ok(glass && glass.indices.length > 0, "no window mesh at all");
+    // The second half of the original defect was in the RENDERER: the caseback
+    // took a steel material unconditionally. So assert on what the material
+    // layer resolves, not on the mesh being present.
+    const id = meshMaterialId("casebackCrystal", display.materials);
+    assert.equal(id, "sapphire");
+    assert.equal(MATERIALS[id].glass, true, "the window resolves to a material that is not transparent");
+    assert.ok(materialFor(id).glass, "materialFor drops the glass flag the shader switches on");
+    // It covers the hole rather than sitting in the middle of it.
+    assert.ok(Math.max(...radii(glass)) >= display.caseback.windowR, "the window glass is narrower than the window");
+    assert.equal(built("solid-brushed").meshes.casebackCrystal, undefined, "a solid back has no window glass");
+  });
+
+  test("what is behind the glass is a movement, not a featureless drum", () => {
+    // "The interior it would reveal is a plain cylinder, which through glass
+    // would look like a fault rather than a movement." A transparent back over
+    // nothing is the same bug in a nicer costume.
+    const display = built("display");
+    const solid = built("solid-brushed");
+    for (const key of ["movement", "movementBridges", "rotor", "movementJewels"]) {
+      assert.ok(display.meshes[key], `a display back with no ${key}`);
+    }
+    assert.equal(solid.meshes.rotor, undefined);
+    assert.equal(solid.meshes.movementBridges, undefined);
+    assert.equal(solid.meshes.movementJewels, undefined);
+    // The parts that make it recognisable are their own materials — a rotor
+    // that took the plate's response would be a disc on a disc.
+    const mat = (k) => meshMaterialId(k, display.materials);
+    assert.equal(mat("movement"), "movement-base");
+    assert.equal(mat("movementBridges"), "movement-plate");
+    assert.equal(mat("rotor"), "movement-rotor");
+    assert.equal(mat("movementJewels"), "jewel-ruby");
+    assert.notEqual(mat("rotor"), mat("movementBridges"));
+    assert.equal(MATERIALS[mat("movementJewels")].metal, 0, "a jewel is a dielectric");
+    // The mainplate has to be DARKER than what is bolted to it, or the shapes
+    // are 0.3 mm of relief on a disc and read as one flat grey — which is what
+    // the first render of this actually looked like.
+    assert.ok(
+      MATERIALS[mat("movement")].reflect < MATERIALS[mat("movementBridges")].reflect,
+      "the bridges cannot separate from a mainplate that reflects as much as they do",
+    );
+    assert.ok(volume(display.meshes.movementBridges) > 10, "the bridges have no relief to catch light on");
+  });
+
+  test("nothing behind the glass pokes through it, or floats off the plate", () => {
+    for (const id of ["skx007", "srp-turtle", "samurai", "tuna", "skx013"]) {
+      const r = buildMeshes({ ...BASE, case: id, caseback: "display" }, { segments: 32 });
+      const glassTop = Math.max(...ys(r.meshes.casebackCrystal));
+      const floor = r.geo.floorY;
+      for (const key of ["rotor", "movementJewels", "movementBridges"]) {
+        const lo = Math.min(...ys(r.meshes[key]));
+        const hi = Math.max(...ys(r.meshes[key]));
+        assert.ok(lo > glassTop, `${id}: the ${key} is inside the sapphire (${lo} vs ${glassTop})`);
+        assert.ok(hi <= floor + 1e-9, `${id}: the ${key} stands proud of the movement plate`);
+      }
+      // The rotor is the part nearest the glass: it sweeps OVER the bridges.
+      assert.ok(
+        Math.max(...ys(r.meshes.rotor)) < Math.max(...ys(r.meshes.movement)),
+        `${id}: the rotor is not in front of the movement`,
+      );
+    }
+  });
+
+  test("every new solid is wound outward, which the eye cannot check", () => {
+    // A flat disc wound inside-out renders almost identically — culling shows
+    // its underside a fraction of a millimetre away and the shader relights it.
+    // So this is a numeric check or it is no check.
+    const r = built("display");
+    for (const key of ["caseback", "movement", "movementBridges", "rotor", "movementJewels", "casebackCrystal"]) {
+      assert.ok(volume(r.meshes[key]) > 0, `${key} is inside out (signed volume ${volume(r.meshes[key])})`);
+    }
+    const d = movementDetail(13.7, 2.1, 48);
+    for (const [k, m] of Object.entries({ bridges: d.bridges, rotor: d.rotor, jewels: d.jewels })) {
+      assert.ok(volume(m) > 0, `${k} is inside out`);
+    }
+  });
+
+  test("the engraving is a decal that exists only when something is engraved", () => {
+    // The OTHER half of the same report — "neither is engraved caseback
+    // seemingly". #56 answered it by making an engraved back share the solid
+    // back's shape, which is correct and put nothing on that shape.
+    const plain = built("solid-brushed");
+    const engraved = built("solid-engraved");
+    assert.equal(plain.meshes.casebackArt, undefined, "a plain back carries engraving geometry");
+    assert.ok(engraved.meshes.casebackArt, "an engraved back carries nothing to engrave");
+    assert.equal(engraved.caseback.engraving, "sword");
+    // It must not become its own SHAPE: the two backs are dimensionally
+    // identical, which is what the #56 test pinned and stays true.
+    assert.deepEqual(engraved.meshes.caseback.positions, plain.meshes.caseback.positions);
+    // Custom text reaches the renderer, which is what paints it.
+    const custom = buildMeshes(
+      { ...BASE, case: "skx007", caseback: "solid-brushed", casebackEngraving: "custom-text", casebackText: "For Elin" },
+      { segments: 32 },
+    );
+    assert.equal(custom.caseback.engravingText, "For Elin");
+    assert.ok(custom.meshes.casebackArt);
+    // A display back has no metal in the middle to engrave.
+    assert.equal(built("display").meshes.casebackArt, undefined);
+  });
+
+  test("a display back does not reopen the case (feedback #56's own fix)", () => {
+    // The coupling worth keeping in front of whoever changes this next: #56 was
+    // fixed by CLOSING the case, and that is exactly what a display back has to
+    // show through. Cutting the window must not cut a hole into the room.
+    for (const id of ["skx007", "tuna", "skx013"]) {
+      const r = buildMeshes({ ...BASE, case: id, caseback: "display" }, { segments: 24 });
+      const tris = [];
+      for (const n of ["case", "caseback", "movement", "lugs", "crown"]) tris.push(...triangles(r.meshes[n]));
+      let checked = 0;
+      for (let ai = 0; ai < 8; ai++) {
+        const a = (ai / 8) * Math.PI * 2;
+        const o = [Math.cos(a) * 300, r.geo.dialY * 0.5 + 40, Math.sin(a) * 300];
+        for (const aim of [
+          [0, r.geo.dialY - 0.6, 0],
+          [r.dialR * 0.5, r.geo.dialY + 0.2, 0],
+        ]) {
+          const d = [aim[0] - o[0], aim[1] - o[1], aim[2] - o[2]];
+          const L = Math.hypot(d[0], d[1], d[2]);
+          const dir = [d[0] / L, d[1] / L, d[2] / L];
+          let count = 0;
+          for (const t of tris) if (rayHit(o, dir, t) !== null) count++;
+          assert.equal(count % 2, 0, `${id}: a display back opened a sightline through the case`);
+          checked++;
+        }
+      }
+      assert.equal(checked, 16);
+    }
   });
 });
 

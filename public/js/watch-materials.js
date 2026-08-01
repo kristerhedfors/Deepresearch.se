@@ -111,6 +111,34 @@ export const MATERIALS = {
     grain: 0.02, grainFreq: 10, env: 1,
     note: "Sunray brushing on a bezel top or caseback: grooves run out from the centre.",
   },
+  // --- what an exhibition back shows ---------------------------------------
+  //
+  // Three responses that exist only behind a display caseback. They are here
+  // rather than reusing the case finishes because a movement does NOT look
+  // like a case: the plates are rhodium-plated nickel (brighter and flatter
+  // than steel), the rotor is the one part that is deliberately decorated, and
+  // a jewel is the only non-metal inside the watch.
+  "movement-base": {
+    rough: 0.52, metal: 1, reflect: 0.52,
+    anisoMode: ANISO_GRAIN, grain: 0.05, grainFreq: 40, env: 0.55,
+    note: "The mainplate under the bridges: sandblasted and darker, so the plated bridges on top of it read as separate parts rather than as one disc.",
+  },
+  "movement-plate": {
+    rough: 0.36, metal: 1, reflect: 0.66,
+    anisoMode: ANISO_GRAIN, grain: 0.045, grainFreq: 46, env: 0.7,
+    note: "Rhodium-plated nickel bridges. Perlage is overlapping ground circles — at this scale it reads as fine isotropic sparkle, not as a direction.",
+  },
+  "movement-rotor": {
+    rough: 0.19, metal: 1, reflect: 0.62,
+    aniso: 0.72, anisoMode: ANISO_RADIAL, axis: 0,
+    grain: 0.025, grainFreq: 14, env: 0.95,
+    note: "The oscillating weight: côtes/sunray decoration sweeping out from its pivot, which is why it flares as the watch turns and the bridges under it do not.",
+  },
+  "jewel-ruby": {
+    rough: 0.09, metal: 0, reflect: 0.09, env: 0.6,
+    note: "Synthetic corundum. A dielectric, not a metal — the red is diffuse and the highlight on top of it stays white.",
+  },
+
   "pvd-black": {
     rough: 0.34, metal: 1, reflect: 0.2,
     aniso: 0.5, anisoMode: ANISO_CIRCUMFERENTIAL, axis: 0,
@@ -321,6 +349,10 @@ export const DEFAULT_COLORS = {
   ceramic: "#0a0b0e",
   "aluminium-anodised": "#111318",
   "lume-plate": "#dfe4ea",
+  "movement-base": "#787e88",
+  "movement-plate": "#c6ccd4",
+  "movement-rotor": "#9aa0a9",
+  "jewel-ruby": "#8e1220",
   sapphire: "#dfe9f5",
   mineral: "#e0e7ef",
 };
@@ -570,6 +602,12 @@ export function meshMaterialId(key, hints) {
   const hinted = hints && hints[key];
   if (hinted && MATERIALS[hinted]) return hinted;
   const k = String(key || "").toLowerCase();
+  // Before the leather rule, because a movement mesh may well be named for the
+  // DISPLAY back it is seen through and `display` matches the prop below.
+  if (/jewel/.test(k)) return "jewel-ruby";
+  if (/rotor/.test(k)) return "movement-rotor";
+  if (/bridge|calibre|caliber/.test(k)) return "movement-plate";
+  if (/movement/.test(k)) return "movement-base";
   if (/wrist|holder|cushion|pillow|roll|stand|display/.test(k)) return "wrist-leather";
   if (/strap|band/.test(k)) return "leather";
   if (/buckle|clasp|keeper|spring|screw|pin/.test(k)) return "steel-brushed";

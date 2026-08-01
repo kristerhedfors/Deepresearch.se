@@ -83,6 +83,9 @@ const UI = {
   lumeOff: { en: "lights on", sv: "tänd lamporna" },
   top: { en: "top view", sv: "ovanifrån" },
   reset: { en: "reset view", sv: "återställ vy" },
+  back: { en: "case back", sv: "boettbotten" },
+  cushionOff: { en: "hide cushion", sv: "dölj kudden" },
+  cushionOn: { en: "show cushion", sv: "visa kudden" },
   png: { en: "save PNG", sv: "spara PNG" },
   tryTyping: { en: "Try typing", sv: "Prova att skriva" },
   tryTypingStatic: { en: "Try typing one of these", sv: "Prova att skriva någon av dessa" },
@@ -208,7 +211,27 @@ export function mountWatchBuild(host, state, opts = {}) {
     lumeBtn.textContent = lume ? UI.lumeOff[lang] : UI.lumeOn[lang];
   });
   addButton(UI.top[lang], () => view.topView());
-  addButton(UI.reset[lang], () => view.resetView());
+  // The case back, and the cushion switch that makes it worth turning to —
+  // both asked for in feedback #59, and asked for FROM THE CHAT, which is why
+  // they belong here and not only on the /watch/ page.
+  let cushion = true;
+  /** @param {boolean} v */
+  const setCushion = (v) => {
+    cushion = v;
+    view.setWrist(cushion);
+    cushionBtn.textContent = cushion ? UI.cushionOff[lang] : UI.cushionOn[lang];
+  };
+  const cushionBtn = addButton(UI.cushionOff[lang], () => setCushion(!cushion));
+  addButton(UI.back[lang], () => {
+    setCushion(false);
+    view.setStrap(false);
+    view.backView();
+  });
+  addButton(UI.reset[lang], () => {
+    setCushion(true);
+    view.setStrap(true);
+    view.resetView();
+  });
   addButton(UI.png[lang], () => {
     try {
       const a = doc.createElement("a");

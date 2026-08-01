@@ -52,6 +52,9 @@ const UI = {
   },
   reset: { en: "Reset view", sv: "Återställ vy" },
   top: { en: "Top down", sv: "Rakt uppifrån" },
+  back: { en: "Case back", sv: "Boettbotten" },
+  cushionOff: { en: "Hide cushion", sv: "Dölj kudden" },
+  cushionOn: { en: "Show cushion", sv: "Visa kudden" },
   poseLive: { en: "Live time", sv: "Aktuell tid" },
   pose1010: { en: "10:10 pose", sv: "10:10-pose" },
   lume: { en: "Lights out", sv: "Släck ljuset" },
@@ -130,6 +133,10 @@ const $ = (id) => document.getElementById(id);
 let build = normalizeBuild(location.hash.length > 1 ? decodeBuild(decodeURIComponent(location.hash.slice(1))) : DEFAULT_BUILD);
 let stage = null;
 let pose = "live";
+// The presentation cushion. Feedback #59 asked for the switch, and asked for it
+// in the same sentence as the display back — with the cushion on, the case back
+// has a leather cylinder directly behind it and there is nothing to see.
+let cushion = true;
 let lume = false;
 
 function pushHash(replace) {
@@ -568,6 +575,8 @@ function applyStatic() {
   $("t-src").textContent = T(UI.src);
   $("b-reset").textContent = T(UI.reset);
   $("b-top").textContent = T(UI.top);
+  $("b-back").textContent = T(UI.back);
+  $("b-cushion").textContent = cushion ? T(UI.cushionOff) : T(UI.cushionOn);
   $("b-pose").textContent = pose === "live" ? T(UI.pose1010) : T(UI.poseLive);
   $("b-lume").textContent = T(UI.lume);
   $("b-png").textContent = T(UI.png);
@@ -645,8 +654,29 @@ function init() {
     localStorage.setItem("watch_lang", lang);
     applyAll();
   });
-  $("b-reset").addEventListener("click", () => stage && stage.resetView());
+  $("b-reset").addEventListener("click", () => {
+    if (!stage) return;
+    setCushion(true);
+    stage.setStrap(true);
+    stage.resetView();
+  });
   $("b-top").addEventListener("click", () => stage && stage.topView());
+  const setCushion = (v) => {
+    cushion = v;
+    if (stage) stage.setWrist(cushion);
+    $("b-cushion").textContent = cushion ? T(UI.cushionOff) : T(UI.cushionOn);
+    $("b-cushion").classList.toggle("active", !cushion);
+  };
+  $("b-cushion").addEventListener("click", () => setCushion(!cushion));
+  $("b-back").addEventListener("click", () => {
+    if (!stage) return;
+    // Turning to the back with the cushion and the band still on shows the
+    // cushion and the clasp — which is how "the clear back does nothing" looks
+    // from the outside. Inspecting a case back means taking the watch off.
+    setCushion(false);
+    stage.setStrap(false);
+    stage.backView();
+  });
   $("b-pose").addEventListener("click", () => {
     pose = pose === "live" ? "1010" : "live";
     if (stage) stage.setPose(pose);

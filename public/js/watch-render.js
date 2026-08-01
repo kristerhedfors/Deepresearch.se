@@ -1160,6 +1160,164 @@ function paintChapter(ring, inner) {
   return albedo;
 }
 
+/**
+ * THE CASEBACK ENGRAVING.
+ *
+ * An engraving is artwork cut into a back that is otherwise dimensionally
+ * identical to a plain one, so it is a relief map and almost nothing else: the
+ * albedo barely changes (it is the same steel), and what you actually see is
+ * the light catching the cut. That is why it belongs here rather than in the
+ * geometry core, and why answering "engraved casebacks don't work" by giving
+ * the engraved part the SOLID part's shape — which is what happened after
+ * feedback #56 — could never have made anything appear.
+ *
+ * The designs are the stock artwork the listings sell. They are drawn as
+ * emblems rather than reproduced: nobody publishes the vectors, and tracing
+ * something recognisable-but-wrong would be worse than a clean silhouette.
+ *
+ * @param {{ engraving?: string, engravingText?: string }} back
+ * @returns {{ albedo: HTMLCanvasElement, relief: HTMLCanvasElement }}
+ */
+function paintCaseback(back) {
+  const albedo = texCanvas(TEX);
+  const reliefC = texCanvas(REL);
+  const a = albedo.getContext("2d");
+  const r = reliefC.getContext("2d");
+  if (!a || !r) return { albedo, relief: reliefC };
+
+  // The metal itself: unchanged. White albedo keeps the material's own tint.
+  a.fillStyle = "#ffffff";
+  a.fillRect(0, 0, TEX, TEX);
+  r.fillStyle = FLAT;
+  r.fillRect(0, 0, REL, REL);
+
+  const design = String((back && back.engraving) || "none");
+  if (design === "none") return { albedo, relief: reliefC };
+
+  // The decal faces DOWN, and the disc UVs a downward annulus emits are the
+  // upward ones seen from the other side — so everything painted here arrives
+  // mirrored. Engraved text is where that stops being invisible: "For Elin"
+  // came out back to front. Flip the canvas once, here, rather than per design.
+  // …and the back is read with 12 o'clock away from the reader, which turns the
+  // artwork the other way up too. Mirror THEN half-turn is a plain vertical
+  // flip: (x, y) → (x, REL−y). Getting this wrong is not subtle — the first
+  // render of "For Elin" came out back to front, and no unit test can see it.
+  r.setTransform(1, 0, 0, -1, 0, REL);
+
+  const C = REL / 2;
+  // One unit = the disc's radius. The artwork is drawn at 0.8 of it so a stock
+  // emblem fills the back the way a real one does, inside the turned rim.
+  const U = (REL / 2) * 0.8;
+  const CUT = relief(0.16, 0);
+  const RIM = relief(0.34, 0);
+  r.strokeStyle = CUT;
+  r.fillStyle = CUT;
+  r.lineCap = "round";
+  r.lineJoin = "round";
+  const px = (f) => f * U;
+  /** Centre-relative move/line in disc units. */
+  const at = (x, y) => [C + px(x), C + px(y)];
+  const line = (pts, w) => {
+    r.lineWidth = Math.max(1, px(w));
+    r.beginPath();
+    pts.forEach(([x, y], i) => {
+      const [cx, cy] = at(x, y);
+      if (i === 0) r.moveTo(cx, cy);
+      else r.lineTo(cx, cy);
+    });
+    r.stroke();
+  };
+  const ring = (rad, w) => {
+    r.lineWidth = Math.max(1, px(w));
+    r.beginPath();
+    r.arc(C, C, px(rad), 0, Math.PI * 2);
+    r.stroke();
+  };
+  const dot = (x, y, rad) => {
+    const [cx, cy] = at(x, y);
+    r.beginPath();
+    r.arc(cx, cy, px(rad), 0, Math.PI * 2);
+    r.fill();
+  };
+
+  // Every stock design sits inside a turned rim, which is on the part whatever
+  // the artwork is.
+  r.strokeStyle = RIM;
+  ring(0.86, 0.02);
+  r.strokeStyle = CUT;
+
+  if (design === "sword") {
+    line([[0, -0.62], [0, 0.6]], 0.055);
+    line([[-0.26, 0.16], [0.26, 0.16]], 0.05); // guard
+    line([[-0.08, 0.44], [0.08, 0.44]], 0.04); // pommel
+    line([[0, -0.62], [-0.07, -0.44]], 0.03);
+    line([[0, -0.62], [0.07, -0.44]], 0.03);
+  } else if (design === "explorer") {
+    ring(0.6, 0.035);
+    for (let i = 0; i < 8; i++) {
+      const t = (i / 8) * Math.PI * 2;
+      const inner = i % 2 ? 0.16 : 0.24;
+      line(
+        [
+          [Math.cos(t) * inner, Math.sin(t) * inner],
+          [Math.cos(t) * (i % 2 ? 0.44 : 0.56), Math.sin(t) * (i % 2 ? 0.44 : 0.56)],
+        ],
+        i % 2 ? 0.028 : 0.045,
+      );
+    }
+    dot(0, 0, 0.07);
+  } else if (design === "serpent") {
+    /** @type {[number, number][]} */
+    const body = [];
+    for (let i = 0; i <= 40; i++) {
+      const t = i / 40;
+      body.push([-0.62 + t * 1.24, Math.sin(t * Math.PI * 2.2) * 0.3]);
+    }
+    line(body, 0.07);
+    dot(0.6, Math.sin(2.2 * Math.PI) * 0.3, 0.07); // head
+  } else if (design === "skull") {
+    ring(0.42, 0.05);
+    dot(-0.16, -0.06, 0.1);
+    dot(0.16, -0.06, 0.1);
+    line([[0, 0.02], [0, 0.14]], 0.035);
+    for (let i = -2; i <= 2; i++) line([[i * 0.1, 0.26], [i * 0.1, 0.4]], 0.03);
+    line([[-0.26, 0.26], [0.26, 0.26]], 0.035);
+  } else if (design === "robocop") {
+    // The nickname is for the shrouded Tuna-style shape, so that is the mark:
+    // a shrouded helmet with a visor slot.
+    ring(0.52, 0.06);
+    line([[-0.34, -0.1], [0.34, -0.1]], 0.09);
+    line([[-0.22, 0.2], [0.22, 0.2]], 0.04);
+    for (const s of [-1, 1]) line([[s * 0.52, -0.34], [s * 0.36, -0.2]], 0.045);
+  } else if (design === "nh-movement") {
+    // The calibre drawing: bridges as arcs, the balance off to one side.
+    ring(0.72, 0.025);
+    r.lineWidth = Math.max(1, px(0.06));
+    for (const [a0, a1, rad] of [[-0.5, 1.9, 0.5], [2.2, 4.0, 0.38], [4.4, 5.9, 0.56]]) {
+      r.beginPath();
+      r.arc(C, C, px(rad), a0, a1);
+      r.stroke();
+    }
+    dot(0.42, 0.3, 0.16);
+    dot(0, 0, 0.05);
+  } else if (design === "custom-text") {
+    const text = String((back && back.engravingText) || "").slice(0, 40);
+    if (text) {
+      r.fillStyle = CUT;
+      r.textAlign = "center";
+      r.textBaseline = "middle";
+      // Two lines if it is long enough that one would run under the rim.
+      const lines = text.length > 18 ? [text.slice(0, text.lastIndexOf(" ", 20) + 1 || 18), text.slice((text.lastIndexOf(" ", 20) + 1) || 18)] : [text];
+      const size = lines.length > 1 ? REL * 0.11 : REL * 0.15;
+      r.font = `${Math.round(size)}px "Times New Roman", Georgia, serif`;
+      lines.forEach((ln, i) => {
+        r.fillText(ln.trim(), C, C + (i - (lines.length - 1) / 2) * size * 1.25);
+      });
+    }
+  }
+  return { albedo, relief: reliefC };
+}
+
 // ---------------------------------------------------------------------------
 // The mount.
 
@@ -1169,7 +1327,12 @@ const AXES = [[0, 1, 0], [1, 0, 0], [0, 0, 1]];
 /** Mesh keys this renderer places itself; anything else goes through the
  * generic pass, which is how a mesh a geometry module adds (a wrist cylinder,
  * a buckle) shows up without an edit here. */
-const PLACED = new Set(["case", "lugs", "crown", "dial", "chapterRing", "insert", "crystal", "caseback", "strap"]);
+const PLACED = new Set([
+  "case", "lugs", "crown", "dial", "chapterRing", "insert", "crystal", "caseback", "strap",
+  // The back's own sapphire is blended and must be drawn with the front
+  // crystal, not in the opaque generic pass; the engraving is a textured decal.
+  "casebackCrystal", "casebackArt",
+]);
 
 /** Keep a material's specular tint but let its painted texture supply the
  * albedo. */
@@ -1324,6 +1487,8 @@ export function mountWatch(canvas, opts) {
     insertLumeTex: null,
     insertReliefTex: null,
     chapterTex: null,
+    casebackTex: null,
+    casebackReliefTex: null,
     /** @type {Record<string, any>} */
     mats: {},
     /** @type {Record<string, string>} */
@@ -1335,9 +1500,16 @@ export function mountWatch(canvas, opts) {
   let lumeMode = 0;
   let pose = "live"; // "live" or "1010"
   let running = true;
+  // The presentation cushion. On by default (feedback #56 asked for it); off is
+  // what makes the case back visible at all (feedback #59).
+  let showWrist = true;
+  // The strap, likewise. A bracelet's fold-over clasp closes at 6 o'clock —
+  // that is, directly across the case back — so a view OF the case back has to
+  // be able to put the band down, the way you would take the watch off to look.
+  let showStrap = true;
 
   function setBuild(build) {
-    const assembled = buildMeshes(build, { segments: 128 });
+    const assembled = buildMeshes(build, { segments: 128, wrist: showWrist });
     const { parts } = resolveBuild(build);
     const cs = parts.case;
     const plat = PLATFORMS[cs.platform] || PLATFORMS.native;
@@ -1374,6 +1546,11 @@ export function mountWatch(canvas, opts) {
       // A caseback is finished more coarsely than the flank and, where it is
       // brushed at all, radially rather than round the case.
       caseback: materialFor(finishId === "steel-polished" ? "steel-polished" : "steel-radial", parts.finish.color),
+      // The exhibition window. Its own material rather than the front
+      // crystal's: this one is always sapphire, never domed, and never AR
+      // coated — so it reflects more than the glass over the dial does, which
+      // is exactly how you tell the two apart in a photograph.
+      casebackCrystal: crystalMaterial({ material: "sapphire", ar: "none" }),
       // An onion crown's ribs are softer and fewer than a coin edge's, and
       // the core models them the same way — so it takes the fluted response
       // rather than a plain polished one.
@@ -1447,6 +1624,14 @@ export function mountWatch(canvas, opts) {
       state.chapterTex = canvasTexture(paintChapter(ring, chapInner), state.chapterTex);
     } else {
       state.chapterTex = null;
+    }
+
+    // The engraving, painted only when the build has one — the mesh is absent
+    // otherwise, so this is the texture for a decal that is not being drawn.
+    if (state.meshSet.has("casebackArt")) {
+      const cb = paintCaseback(assembled.caseback || parts.caseback);
+      state.casebackTex = canvasTexture(cb.albedo, state.casebackTex);
+      state.casebackReliefTex = canvasTexture(cb.relief, state.casebackReliefTex);
     }
 
     state.plat = plat;
@@ -1564,14 +1749,33 @@ export function mountWatch(canvas, opts) {
     // reflections still slide across a polished flank as the watch turns.
     // That split is the whole trick — a rig that rotates with you never has a
     // dead angle, an environment that rotates with you kills the metal.
-    gl.uniform3fv(loc.uKeyDir, dirAt(yaw + 0.62, 0.95));
-    gl.uniform3fv(loc.uFillDir, dirAt(yaw - 1.25, 0.20));
-    gl.uniform3fv(loc.uRimDir, dirAt(yaw + Math.PI + 0.35, 0.55));
+    //
+    // …except in ELEVATION, which is the dead angle that split left behind.
+    // Every light sat above the horizon whatever the camera did, so the whole
+    // underside of the watch — the case back — was lit by the hemisphere's
+    // ground term alone. That was invisible while the back was a blank puck and
+    // is the difference between seeing a movement and not (feedback #59). The
+    // rig now dips under the horizon as the camera does, smoothly and only
+    // below it: at the default three-quarter view `dip` is within a few percent
+    // of 1, so nothing about the standard shot moves.
+    const dip = pitch >= 0 ? 1 : Math.tanh(pitch * 2.2);
+    const under = Math.max(0, -dip);
+    // Under the horizon the key is deliberately SHALLOWER than its mirror
+    // image. This renderer has no shadows, so a part 0.3 mm proud of a plate is
+    // visible only through the light raking its side wall — and a key straight
+    // down the camera's own axis makes a movement look like a flat grey disc.
+    gl.uniform3fv(loc.uKeyDir, dirAt(yaw + 0.62, (dip >= 0 ? 0.95 : 0.5) * dip));
+    gl.uniform3fv(loc.uFillDir, dirAt(yaw - 1.25, (dip >= 0 ? 0.2 : 0.45) * dip));
+    gl.uniform3fv(loc.uRimDir, dirAt(yaw + Math.PI + 0.35, (dip >= 0 ? 0.55 : 0.3) * dip));
     gl.uniform3fv(loc.uKeyCol, lumeMode ? [0.05, 0.055, 0.07] : [2.55, 2.5, 2.38]);
     gl.uniform3fv(loc.uFillCol, lumeMode ? [0.02, 0.024, 0.04] : [0.42, 0.47, 0.58]);
     gl.uniform3fv(loc.uRimCol, lumeMode ? [0.02, 0.026, 0.05] : [0.62, 0.66, 0.78]);
     gl.uniform3fv(loc.uSky, lumeMode ? [0.02, 0.026, 0.045] : [0.60, 0.67, 0.82]);
-    gl.uniform3fv(loc.uGround, lumeMode ? [0.004, 0.005, 0.009] : [0.055, 0.052, 0.058]);
+    // The floor lifts toward the sky by the same amount, for the same reason: a
+    // watch held up to be looked at underneath is not lying in a pit.
+    const ground = lumeMode ? [0.004, 0.005, 0.009] : [0.055, 0.052, 0.058];
+    const sky = lumeMode ? [0.02, 0.026, 0.045] : [0.6, 0.67, 0.82];
+    gl.uniform3fv(loc.uGround, ground.map((c, i) => c + (sky[i] - c) * 0.45 * under));
     // exposure, lights-out, softbox half-width, floor bounce
     gl.uniform4f(loc.uScene, lumeMode ? 1.7 : 1.12, lumeMode, 0.30, 0.9);
 
@@ -1590,7 +1794,7 @@ export function mountWatch(canvas, opts) {
     // Lug tops are brushed along the lug, not around the case.
     draw(mesh("lugs"), { ...M.case, anisoMode: M.case.aniso ? 2 : 0, axis: 2 });
     draw(mesh("caseback"), M.caseback);
-    draw(mesh("strap"), M.strap);
+    draw(showStrap ? mesh("strap") : null, M.strap);
 
     // Crown: the lathe is built around Y, so lay it on its side (rz = 90°) and
     // push it out along the case flank at the catalogue's crown hour. Local
@@ -1639,6 +1843,7 @@ export function mountWatch(canvas, opts) {
     // the geometry core's own hint map when it publishes one.
     for (const key of state.meshKeys) {
       if (PLACED.has(key)) continue;
+      if (!showStrap && (key === "strapHardware" || key === "wrist")) continue;
       draw(state.gpu[key], materialFor(meshMaterialId(key, state.meshHints)));
     }
 
@@ -1656,8 +1861,21 @@ export function mountWatch(canvas, opts) {
       });
     }
 
+    // The engraving: a decal lying on the back face, so it draws after the
+    // caseback and takes its shape from the same disc UVs a dial uses.
+    draw(mesh("casebackArt"), {
+      ...M.caseback,
+      color: [1, 1, 1],
+      tex: state.casebackTex,
+      reliefTex: state.casebackReliefTex,
+      relief: 2.2,
+      maskRough: 0.1,
+    });
+
     // The crystal last: blended, and no depth write so the dial keeps showing
-    // through the parts of the dome that overlap it.
+    // through the parts of the dome that overlap it. The exhibition window goes
+    // with it, for the same reason and in the same state — it is the only thing
+    // standing between the camera and the movement.
     gl.enable(gl.BLEND);
     gl.depthMask(false);
     gl.disable(gl.CULL_FACE);
@@ -1665,6 +1883,7 @@ export function mountWatch(canvas, opts) {
       ...M.crystal,
       alpha: !p.crystal || p.crystal.ar === "none" ? 0.1 : 0.03,
     });
+    draw(mesh("casebackCrystal"), { ...M.casebackCrystal, alpha: 0.12 });
     gl.enable(gl.CULL_FACE);
     gl.depthMask(true);
     gl.disable(gl.BLEND);
@@ -1752,6 +1971,35 @@ export function mountWatch(canvas, opts) {
     topView() {
       yaw = 0;
       pitch = 1.44;
+      dist = state.parts ? state.parts.case.dims.l2l * 1.9 : 90;
+    },
+    /**
+     * Show or hide the leather cushion the watch is presented on. Asked for in
+     * feedback #59 in the same sentence as the display back, and the two are
+     * one request: the cushion sits directly behind the case back, so with it
+     * on there is nothing to see through an exhibition window from below.
+     * @param {boolean} v
+     */
+    setWrist(v) {
+      const want = !!v;
+      if (want === showWrist) return;
+      showWrist = want;
+      if (state.build) setBuild(state.build);
+    },
+    /** @param {boolean} v draw the band, its hardware and the cushion */
+    setStrap(v) {
+      showStrap = !!v;
+    },
+    /**
+     * Straight at the case back. Worth a view of its own now that a display
+     * back shows a movement: reaching it by dragging past the strap is how it
+     * stayed unlooked-at through two rounds of "the clear back doesn't work".
+     */
+    backView() {
+      // Not dead-on: a case back photographed square to the camera has no side
+      // walls lit and every part of a movement lands in the same flat grey.
+      yaw = 0.4;
+      pitch = -1.12;
       dist = state.parts ? state.parts.case.dims.l2l * 1.9 : 90;
     },
     /** @returns {string} a PNG data URL of the current frame */
