@@ -763,11 +763,19 @@ suite only ever ran against a deployment:
 > error — that only starts with the NEXT test), and in #355's case the diff
 > touched no `src/` or `public/` file at all.
 >
-> **The real crash reason is in a file CI throws away.** The shutdown line names
-> `~/.config/.wrangler/logs/wrangler-*.log`, and the workflow uploads only
-> `tests/test-results/`. Adding that log to the upload step is the one change
-> that would turn this from a recurring shrug into a diagnosis — worth doing
-> before the fourth occurrence.
+> **The real crash reason was in a file CI threw away — FIXED 2026-08-01.** The
+> shutdown line names `~/.config/.wrangler/logs/wrangler-*.log`, and the
+> workflow uploaded only `tests/test-results/`. The fourth occurrence arrived on
+> PR #357 (27 of 63 lost, server died 84 s in, diff touched no file in the
+> Worker's or the browser's import graph), so `.github/workflows/ci.yml` now
+> uploads that directory as the `wrangler-logs` artifact on failure. The FIFTH
+> occurrence should be diagnosed from it rather than shrugged at.
+>
+> Until then the standing rule holds: **this fingerprint does not mean the PR is
+> at fault.** Confirm innocence the two cheap ways — the first failing test is an
+> assertion timeout on a page whose server has already gone (connection errors
+> only start with the NEXT test), and check whether the diff reaches `src/` or a
+> served `public/` module at all — then re-run the job.
 
 ### Looking at a rendered page from a session container
 

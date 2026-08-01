@@ -124,3 +124,22 @@ jobs:
           name: playwright-report
           path: tests/test-results/
           retention-days: 7
+
+      # The wrangler crash log — the file that names WHY workerd exited.
+      #
+      # `wrangler dev` has now died mid-run on four consecutive PRs (#354, #355,
+      # #356, #357), each time with the same fingerprint: workerd `Broken pipe`
+      # disconnects, then a blank `✘ [ERROR]`, then every remaining test gets
+      # ERR_CONNECTION_REFUSED. Each time the diff was innocent and each time
+      # the real reason was in a file CI threw away — wrangler prints its path
+      # ("Logs were written to …") on the way out and nothing collected it.
+      # docs/TESTING.md called for capturing it "before the fourth occurrence".
+      #
+      # `if: failure()` and a short retention, so a green run costs nothing.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: wrangler-logs
+          path: ~/.config/.wrangler/logs/
+          retention-days: 7
+          if-no-files-found: ignore
