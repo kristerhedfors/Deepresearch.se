@@ -3177,19 +3177,58 @@ export const DAY_WHEEL_LANGUAGES = [
 ];
 
 // ---------------------------------------------------------------------------
-// WHAT COMES IN THE BOX. This is the honest answer to "chapter ring, separately
-// bought crystal and separately bought bezel insert have no reason to be
-// mandatory" — and it is better than a mandatory/optional flag, because it is
-// what actually varies. Boutique cases ship a BARE BODY (gaskets and a click
-// spring and nothing else); marketplace complete kits ship with the crystal,
-// caseback, bezel, insert, chapter ring and crown already in the box. So a
-// part is free when the case includes it and priced when it does not, and none
-// of them is mandatory in either case.
+// WHAT COMES IN THE BOX.
 //
-// Keyed by case id rather than written into each case entry, so the whole
-// what-is-included policy is legible in one place.
+// Feedback #59, verbatim: "Bezel insert, crystal, caseback and crown are
+// practically never bought separately from the case. Chapter rings are
+// usually not bought separately and are integrated with the case. Base
+// everything off the available cases online."
+//
+// That is how this market sells. An NHxx mod case is a CASE SET: the machined
+// body plus the bezel and its insert, the crystal and its gasket, the case
+// back, the crown and stem, and — on the platforms that have one — the chapter
+// ring. It arrives as ONE parcel on ONE order. The model here used to run the
+// other way round, a BARE BODY by default with four named families flagged as
+// complete kits, which priced an ordinary build as if six separate parcels
+// were on their way and listed six separate things to buy.
+//
+// So the default flips, and what a set contains is DERIVED from the case's own
+// recorded properties rather than written out by hand: a case with no rotating
+// bezel ships no insert, a case on a platform with no separate chapter ring
+// ships no ring. `CASE_KITS` stays as the per-family override table for the
+// ones a listing establishes differently.
+//
+// WHICH SLOTS THE SET FILLS IS NOT THE SAME QUESTION AS WHICH PART IT PUTS IN
+// THEM, and the sources answer only the first. No vendor page says which
+// insert or which crystal a given seller drops in the box, and they genuinely
+// differ — this catalogue's own SKX007 entry warns that cheap listings ship a
+// mineral crystal and a hollow bezel where dearer ones ship sapphire and
+// ceramic. So the catalogue records the SLOT, not the SKU. The one stock part
+// it can answer is the CROWN, because a case entry records whether the crown
+// it is sold with is signed and every crown in the catalogue is a screw-down.
+// Everything else stays unrecorded rather than guessed, and the price band
+// carries that uncertainty as a RANGE (keep the set's part: nothing; fit the
+// named one instead: its listed price) rather than inventing a split.
 
-/** @type {Record<string, { includes: string[], tier: string, src: string, approx?: boolean }>} */
+/** The slots a case set can fill, in the order the sourcing table shows them. */
+export const KIT_SLOTS = ["insert", "chapterRing", "crystal", "crown", "caseback"];
+
+/** What a kit tier is called, for a UI that has to say it. */
+export const KIT_TIERS = {
+  "complete-kit": { en: "complete case kit", sv: "komplett boettsats" },
+  "case-set": { en: "case set", sv: "boettsats" },
+  "bare-body": { en: "bare case body", sv: "enbart boettstomme" },
+  unknown: { en: "not established", sv: "ej fastställt" },
+};
+
+/**
+ * Per-family overrides, for the cases where a listing establishes the contents
+ * rather than the derivation inferring them. Keyed by case id so the whole
+ * what-is-included policy stays legible in one place. `integrated` names the
+ * included slots that are part of the case rather than loose in the box (a
+ * case-specific family's chapter ring); omitting it means none are.
+ * @type {Record<string, { includes: string[], tier: string, src: string, approx?: boolean, integrated?: string[] }>}
+ */
 export const CASE_KITS = {
   skx007: { includes: ["crystal", "caseback", "insert", "chapterRing", "crown"], tier: "complete-kit", src: "aliKit" },
   "skx-ncg": { includes: ["crystal", "caseback", "insert", "chapterRing", "crown"], tier: "complete-kit", src: "aliKit", approx: true },
@@ -3197,15 +3236,230 @@ export const CASE_KITS = {
   tuna: { includes: ["crystal", "caseback", "insert", "chapterRing", "crown"], tier: "complete-kit", src: "karajan" },
 };
 
-/** The default: nothing included beyond gaskets and a click spring. */
-export const CASE_KIT_DEFAULT = { includes: /** @type {string[]} */ ([]), tier: "bare-body", src: "namoki", approx: true };
+/**
+ * The fallback for a case id that is not in the catalogue at all — a stale
+ * permalink, a junk MCP argument. Claiming a set for a case we know nothing
+ * about would be the one place this could invent something, so it claims
+ * nothing and every slot prices as its own purchase, exactly as before.
+ */
+export const CASE_KIT_DEFAULT = { includes: /** @type {string[]} */ ([]), tier: "unknown", src: "community", approx: true };
+
+/** One lookup for the case entry, cached: the kit helpers all want it. */
+const CASE_BY_ID = new Map();
+/** @param {string} caseId */
+function caseById(caseId) {
+  if (!CASE_BY_ID.size) for (const c of CASES) CASE_BY_ID.set(c.id, c);
+  return CASE_BY_ID.get(caseId) || null;
+}
+
+const DERIVED_KITS = new Map();
 
 /**
- * What a case family's kit contains.
+ * What a case family's set contains: the override row where one exists,
+ * otherwise derived from the case's own properties. `approx` on a derived kit
+ * is honest — that a mod case is sold as a set is the market convention these
+ * listings follow, not a bill of materials any of them publishes.
  * @param {string} caseId
+ * @returns {{ includes: string[], tier: string, src: string, approx?: boolean, integrated?: string[] }}
  */
 export function caseKit(caseId) {
-  return CASE_KITS[caseId] || CASE_KIT_DEFAULT;
+  const explicit = CASE_KITS[caseId];
+  if (explicit) return explicit;
+  if (DERIVED_KITS.has(caseId)) return DERIVED_KITS.get(caseId);
+  const cs = caseById(caseId);
+  if (!cs) return CASE_KIT_DEFAULT;
+  const plat = PLATFORMS[/** @type {keyof typeof PLATFORMS} */ (cs.platform)] || PLATFORMS.native;
+  const kit = {
+    includes: KIT_SLOTS.filter((slot) => {
+      // A case with no rotating bezel has nothing to put an insert in, so
+      // there is none in the box. Everything else is: crystal, case back and
+      // crown have to be there for the case to be a case at all, and the
+      // chapter ring is there either as the loose ring the shared platforms
+      // supply with the set or — on a case-specific family, where
+      // `plat.chapterRing` is false — machined into the case itself. Feedback
+      // #59's second sentence is exactly that: "chapter rings are usually not
+      // bought separately and are integrated with the case."
+      if (slot === "insert") return cs.bezel === "dive120";
+      return true;
+    }),
+    integrated: plat.chapterRing ? [] : ["chapterRing"],
+    tier: "case-set",
+    src: cs.src,
+    approx: true,
+  };
+  DERIVED_KITS.set(caseId, kit);
+  return kit;
+}
+
+/**
+ * The part a case set demonstrably ships for one of its slots, or null when
+ * the sources do not say — the same "not established" honesty as
+ * CASE_DISPLAY_BACKS. Today the CROWN is the only one the catalogue can
+ * answer: every case entry records whether the crown it is sold with is
+ * signed, and every crown in the catalogue is a screw-down, so the pair
+ * signed/unsigned is a derivation rather than a guess. Which insert, crystal,
+ * chapter ring or case back a seller drops in the box is not published by
+ * anybody, so those stay null.
+ * @param {string} caseId
+ * @param {string} slotKey
+ * @returns {string | null}
+ */
+export function stockPartFor(caseId, slotKey) {
+  const cs = caseById(caseId);
+  if (!cs || !caseKit(caseId).includes.includes(slotKey)) return null;
+  if (slotKey === "crown") return cs.crown.signed ? "signed-screw" : "plain-screw";
+  return null;
+}
+
+/**
+ * @typedef {{ slot: string, inKit: boolean, status: "separate"|"included"|"replaces",
+ *             certain: boolean, separateOrder: boolean,
+ *             priceUsd: [number, number] | null, approx: boolean,
+ *             note: {en: string, sv: string} | null }} KitBuy
+ * How one slot is BOUGHT for a build.
+ *   separate — the case does not include it; it is its own order at its own
+ *              price, which is what every slot used to be.
+ *   included — it comes with the case: either the case's own part was kept, or
+ *              the slot was left out. Nothing to order, nothing to pay.
+ *   replaces — the set ships one and a different part has been named. Whether
+ *              that is CERTAIN decides the price: against a known stock part
+ *              it is a real swap at the full band, and where the set's own
+ *              part is unrecorded the band runs from nothing (it may already
+ *              be what is in the box) to the part's listed high.
+ */
+
+/**
+ * @param {{en: string, sv: string}[]} names
+ * @param {"en"|"sv"} lang
+ * @param {string} and
+ */
+function joinNames(names, lang, and) {
+  const list = names.map((n) => n[lang]);
+  if (list.length <= 1) return list.join("");
+  return `${list.slice(0, -1).join(", ")} ${and} ${list[list.length - 1]}`;
+}
+
+/**
+ * The bilingual, lower-cased names of a set of slots.
+ * @param {string[]} keys
+ * @returns {{en: string, sv: string}[]}
+ */
+function slotNames(keys) {
+  return keys.map((k) => {
+    const def = ALL_SLOTS.find((s) => s.key === k);
+    return def
+      ? { en: def.name.en.toLowerCase(), sv: def.name.sv.toLowerCase() }
+      : { en: k, sv: k };
+  });
+}
+
+/**
+ * How a slot is bought, for an already-normalized build.
+ * @param {Record<string, string>} ids
+ * @param {string} slotKey
+ * @returns {KitBuy}
+ */
+function kitBuyFor(ids, slotKey) {
+  const caseId = ids.case;
+  const kit = caseKit(caseId);
+  const inKit = kit.includes.includes(slotKey);
+  const chosen = part(slotKey, ids[slotKey]);
+  const band = chosen && chosen.ali && Array.isArray(chosen.ali.priceUsd)
+    ? /** @type {[number, number]} */ ([chosen.ali.priceUsd[0], chosen.ali.priceUsd[1]])
+    : null;
+  const base = { slot: slotKey, inKit, certain: true, approx: false, note: null };
+  if (!inKit) {
+    return { ...base, status: /** @type {"separate"} */ ("separate"), separateOrder: !!chosen, priceUsd: band };
+  }
+  const cs = caseById(caseId);
+  const caseName = cs ? cs.name : { en: "case", sv: "boetten" };
+  const [slotName] = slotNames([slotKey]);
+  // Left out, or left as the one the case comes with: nothing is ordered and
+  // nothing is paid, whichever of the two the reader meant.
+  if (!chosen) {
+    return {
+      ...base,
+      status: /** @type {"included"} */ ("included"),
+      separateOrder: false,
+      priceUsd: /** @type {[number, number]} */ ([0, 0]),
+      note: {
+        en: `Comes with the ${caseName.en}: the case set ships one, so there is nothing to order here.`,
+        sv: `Följer med ${caseName.sv}: boettsatsen innehåller en, så det finns inget att beställa här.`,
+      },
+    };
+  }
+  const stockId = stockPartFor(caseId, slotKey);
+  const stock = stockId ? part(slotKey, stockId) : null;
+  if (stock && stockId === ids[slotKey]) {
+    return {
+      ...base,
+      status: /** @type {"included"} */ ("included"),
+      separateOrder: false,
+      priceUsd: /** @type {[number, number]} */ ([0, 0]),
+      note: {
+        en: `Comes with the ${caseName.en}: this is the ${slotName.en} the case is sold with, so it is not a separate order.`,
+        // No indefinite article on the Swedish side: the slot names run across
+        // both genders ("en krona", "ett glas") and quoting the part's own
+        // name sidesteps the agreement entirely.
+        sv: `Följer med ${caseName.sv}: boetten säljs med "${chosen.name.sv}", så det är ingen separat beställning.`,
+      },
+    };
+  }
+  if (stock) {
+    return {
+      ...base,
+      status: /** @type {"replaces"} */ ("replaces"),
+      separateOrder: true,
+      priceUsd: band,
+      note: {
+        en: `The ${caseName.en} is sold with "${stock.name.en}" in this slot, so "${chosen.name.en}" replaces it — a separate order on top of the case.`,
+        sv: `${caseName.sv} säljs med "${stock.name.sv}" på den här platsen, så "${chosen.name.sv}" ersätter den — en separat beställning utöver boetten.`,
+      },
+    };
+  }
+  // The set includes this slot but nobody publishes which part. Carry the
+  // range rather than picking an end: keeping the set's own costs nothing,
+  // fitting this one instead costs what it is listed at.
+  return {
+    ...base,
+    status: /** @type {"replaces"} */ ("replaces"),
+    certain: false,
+    approx: true,
+    separateOrder: false,
+    priceUsd: band ? /** @type {[number, number]} */ ([0, band[1]]) : null,
+    note: {
+      en: `The ${caseName.en} is sold as a case set that already includes ${slotName.en}, and no listing says which one. Keeping the set's own costs nothing; fitting "${chosen.name.en}" instead is a separate order${band ? ` of about USD ${band[0]}–${band[1]}` : ""}, and the price band carries both ends.`,
+      sv: `${caseName.sv} säljs som en boettsats som redan innehåller ${slotName.sv}, och ingen annons anger vilken. Att behålla satsens egen kostar inget; att i stället montera "${chosen.name.sv}" är en separat beställning${band ? ` på ungefär USD ${band[0]}–${band[1]}` : ""}, och prisspannet bär båda ändarna.`,
+    },
+  };
+}
+
+/**
+ * How one slot is bought for a build — the public entry point over the same
+ * logic the sourcing table and the price band use.
+ * @param {Record<string, string> | null | undefined} build
+ * @param {string} slotKey
+ * @returns {KitBuy}
+ */
+export function kitBuy(build, slotKey) {
+  return kitBuyFor(normalizeBuild(build), slotKey);
+}
+
+/**
+ * The one line that says what a case arrives as. Bilingual, and it names the
+ * count, because "one order, not six" is the whole point.
+ * @param {string} caseId
+ */
+export function kitSummary(caseId) {
+  const kit = caseKit(caseId);
+  const cs = caseById(caseId);
+  if (!cs || !kit.includes.length) return null;
+  const names = slotNames(kit.includes);
+  const tier = KIT_TIERS[/** @type {keyof typeof KIT_TIERS} */ (kit.tier)] || KIT_TIERS["case-set"];
+  return {
+    en: `The ${cs.name.en} is sold as a ${tier.en}: ${joinNames(names, "en", "and")} come with it. That is one order, not ${kit.includes.length + 1}.`,
+    sv: `${cs.name.sv} säljs som en ${tier.sv}: ${joinNames(names, "sv", "och")} ingår. Det är en beställning, inte ${kit.includes.length + 1}.`,
+  };
 }
 
 /**
@@ -3254,17 +3508,26 @@ export function displayBackFor(caseId) {
 
 /**
  * The slot choices a case implies. Picking a case should carry its own
- * defaults: an exhibition back where one demonstrably exists, and the SKX013
- * platform's mandatory chapter ring.
+ * defaults: an exhibition back where one demonstrably exists, the crown the
+ * case is actually sold with, and the SKX013 platform's mandatory chapter
+ * ring.
+ *
+ * Note what is deliberately NOT here. The insert, the crystal and the case
+ * back all come in the box (see `caseKit`), but no source says WHICH, so
+ * naming one would be the invention this catalogue does not make. A UI that
+ * wants to offer "keep what the case comes with" for those slots has the
+ * honest answer in `kitBuy`, not here.
  * @param {string} caseId
  * @returns {Record<string, string>}
  */
 export function defaultsForCase(caseId) {
-  const cs = CASES.find((c) => c.id === caseId);
+  const cs = caseById(caseId);
   if (!cs) return {};
   /** @type {Record<string, string>} */
   const out = {};
   out.caseback = displayBackFor(caseId) === true ? "display" : "solid-brushed";
+  const crown = stockPartFor(caseId, "crown");
+  if (crown) out.crown = crown;
   const plat = PLATFORMS[/** @type {keyof typeof PLATFORMS} */ (cs.platform)];
   if (plat && plat.chapterRingRequired) out.chapterRing = "black-minutes";
   return out;
@@ -4004,6 +4267,50 @@ export function checkBuild(build) {
     });
   }
 
+  // --- WHAT THE CASE ALREADY SHIPS (feedback #59). A NOTE, never a gate: the
+  //     build assembles either way, and the whole point of the tool is that
+  //     you can look at any combination. What it must not do is quietly list
+  //     the insert, the crystal, the chapter ring, the crown and the case back
+  //     as five independent purchases when the case they hang off is sold with
+  //     all five in the box.
+  const kit = caseKit(cs.id);
+  if (kit.includes.length) {
+    const buys = kit.includes.map((k) => kitBuyFor(ids, k));
+    // Only a part the reader DELIBERATELY named belongs in this note. That is
+    // a known swap (the crown, where the catalogue knows what the case ships)
+    // or an optional slot, where "the one the case comes with" was on offer
+    // and something else was picked instead. A case back is neither: every
+    // build has to name one, so saying it might not be the one in the box on
+    // every build ever built would be noise, and the sourcing row says it
+    // quietly where it belongs.
+    const named = buys.filter((b) => {
+      if (b.status !== "replaces") return false;
+      const def = slotDef(b.slot);
+      return b.certain || !!(def && def.optional);
+    });
+    const replaced = named.map((b) => b.slot);
+    const certain = named.filter((b) => b.certain);
+    if (replaced.length) {
+      const inBox = slotNames(kit.includes);
+      const named = slotNames(replaced);
+      issues.push({
+        level: "note",
+        slot: "case",
+        // Deliberately scoped to the CASE alone even though it talks about
+        // five slots: `slots` is what a per-slot lookup matches on, and a
+        // sourcing note about the box must not shadow a fitment issue on the
+        // insert or the crystal.
+        slots: ["case"],
+        en: `The ${cs.name.en} is sold as a case set: ${joinNames(inBox, "en", "and")} come with it, on one order. The ${joinNames(named, "en", "and")} named here ${replaced.length === 1 ? "replaces" : "replace"} what is in the box rather than adding to it — the price band's low end assumes you keep the set's own parts, its high end that you swap them.`,
+        sv: `${cs.name.sv} säljs som en boettsats: ${joinNames(inBox, "sv", "och")} ingår, på en och samma beställning. Delarna som valts här — ${joinNames(named, "sv", "och")} — ersätter det som ligger i lådan i stället för att läggas till; prisspannets undre ände utgår från att du behåller satsens egna delar, den övre från att du byter ut dem.`,
+      });
+    }
+    for (const buy of certain) {
+      if (!buy.note) continue;
+      issues.push({ level: "note", slot: buy.slot, slots: [buy.slot, "case"], en: buy.note.en, sv: buy.note.sv });
+    }
+  }
+
   // --- a case with no rotating bezel has nowhere to put an insert.
   if (cs.bezel !== "dive120" && parts.insert && parts.insert.scale !== "none") {
     issues.push({
@@ -4455,10 +4762,18 @@ export function buildSpec(build) {
   const stackMm = parts.movement.height + 0.9 + domeMm + backMm;
   const price = priceBand(ids);
   const dialDia = DIAL_DIAMETERS.find((d) => d.id === parts.dial.diameter);
+  const kit = caseKit(ids.case);
   return {
     ids,
     omitted,
-    included: caseKit(ids.case).includes,
+    included: kit.includes,
+    kit,
+    kitSummary: kitSummary(ids.case),
+    // Per bundled slot: "included" (comes with the case), "replaces" (a
+    // different part named for a slot the case already fills) or "separate".
+    bundled: /** @type {Record<string, string>} */ (
+      Object.fromEntries(KIT_SLOTS.map((k) => [k, kitBuyFor(ids, k).status]))
+    ),
     dialDiameter: dialDia ? dialDia.mm : plat.dialDia,
     dialDiameterApprox: !!(dialDia && dialDia.approx),
     backMm: Math.round(backMm * 10) / 10,
@@ -4494,18 +4809,21 @@ export function priceBand(ids) {
   let low = 0;
   let high = 0;
   let counted = 0;
-  const included = caseKit(ids && ids.case).includes;
+  const norm = ids && typeof ids === "object" ? ids : {};
   for (const slot of ALL_SLOTS) {
-    const p = part(slot.key, ids[slot.key]);
+    const p = part(slot.key, norm[slot.key]);
     const band = p && p.ali && Array.isArray(p.ali.priceUsd) ? p.ali.priceUsd : null;
     if (!band) continue;
     counted += 1;
-    // A part the case already ships with costs nothing extra — which is what
-    // makes the crystal, the insert and the chapter ring genuinely optional
-    // instead of mandatory: `included ? free : priced`.
-    if (included.includes(slot.key)) continue;
-    low += band[0];
-    high += band[1];
+    // What a slot COSTS is what it costs to BUY, and a part that comes with
+    // the case is not bought. `kitBuyFor` answers that in one place for the
+    // price band and the sourcing table alike: nothing for a part the case
+    // ships, the full band for one it does not, and — where the set includes
+    // the slot but no listing says which part is in it — a range from nothing
+    // to the named part's high, because both ends are genuinely possible.
+    const contribution = kitBuyFor(norm, slot.key).priceUsd || band;
+    low += contribution[0];
+    high += contribution[1];
   }
   // The movement itself is not in a slot band; NH35s run about USD 18–45.
   low += 18;
@@ -4560,13 +4878,14 @@ export function aliSearchUrl(query) {
  */
 export function sourcingFor(build) {
   const { ids, parts } = resolveBuild(build);
-  const included = caseKit(ids.case).includes;
+  const kit = caseKit(ids.case);
   const rows = [];
   for (const slot of ALL_SLOTS) {
     const p = slot.over ? part(slot.key, ids[slot.key]) : parts[slot.key];
     if (!p || !p.ali) continue;
     const queries = /** @type {string[]} */ (Array.isArray(p.ali.queries) ? p.ali.queries : []);
-    rows.push({
+    const buy = kitBuyFor(ids, slot.key);
+    const row = {
       slot: slot.key,
       slotName: slot.name,
       id: ids[slot.key],
@@ -4574,9 +4893,29 @@ export function sourcingFor(build) {
       brands: Array.isArray(p.ali.brands) ? p.ali.brands : [],
       priceUsd: p.ali.priceUsd || null,
       watchFor: p.ali.watchFor || null,
-      includedWithCase: included.includes(slot.key),
+      // The case ships this slot: the row belongs UNDER the case, not beside
+      // it. `separateOrder` is the one a reader cares about — is this a parcel
+      // of its own? — and it is false for everything the case brings with it.
+      includedWithCase: buy.inKit,
+      bundle: buy.status,
+      separateOrder: buy.separateOrder,
+      orderWith: buy.inKit ? "case" : null,
+      // What this row actually adds to the build's price band, which is not
+      // the listed band when the case already includes the part.
+      bundlePriceUsd: buy.priceUsd,
+      bundleApprox: buy.approx,
+      bundleNote: buy.note,
+      /** @type {{ includes: string[], tier: string, src: string, approx?: boolean, integrated?: string[] } | null} */
+      kit: null,
+      /** @type {{en: string, sv: string} | null} */
+      kitSummary: null,
       links: queries.map((q) => ({ q, url: aliSearchUrl(q) })),
-    });
+    };
+    if (slot.key === "case") {
+      row.kit = kit;
+      row.kitSummary = kitSummary(ids.case);
+    }
+    rows.push(row);
   }
   return rows;
 }

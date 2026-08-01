@@ -1761,21 +1761,30 @@ describe("feedback #56: nothing is mandatory that a case may already ship", () =
   });
 
   test("optionality falls out of what the case ships with, not a special case", () => {
-    // The better model: every case carries what is in its box, so a part is
-    // free when it is included and priced when it is not.
+    // The model: every case carries what is in its box, so a part is free when
+    // the case brings it and priced when it does not. Feedback #59 corrected
+    // WHICH way round that runs by default — a mod case is sold as a set, so
+    // the whole ring of parts comes with it and a bare body is the exception,
+    // not the rule. The detail lives in public/js/watch-kits.test.js.
     assert.deepEqual(caseKit("skx007").includes.slice().sort(),
       ["caseback", "chapterRing", "crown", "crystal", "insert"]);
-    assert.deepEqual(caseKit("62mas").includes, [], "a bare body ships gaskets and a click spring");
-    // Same case, a dearer crystal: free on a complete kit, priced on a bare body.
-    const kitCheap = buildSpec({ ...BASE, case: "skx007", crystal: "domed-hardlex" });
-    const kitDear = buildSpec({ ...BASE, case: "skx007", crystal: "top-hat-sapphire" });
-    assert.equal(kitDear.priceUsd.high, kitCheap.priceUsd.high, "a crystal the case ships with adds nothing");
-    const bareCheap = buildSpec({ ...BASE, case: "62mas", crystal: "domed-hardlex" });
-    const bareDear = buildSpec({ ...BASE, case: "62mas", crystal: "top-hat-sapphire" });
-    assert.ok(bareDear.priceUsd.high > bareCheap.priceUsd.high, "a separately bought crystal is priced");
+    assert.deepEqual(caseKit("62mas").includes.slice().sort(),
+      ["caseback", "chapterRing", "crown", "crystal", "insert"],
+      "a case-specific family ships a set too — with the chapter ring machined into the case");
+    assert.deepEqual(caseKit("62mas").integrated, ["chapterRing"]);
+    // A part the case already includes cannot raise the FLOOR of the band —
+    // keeping what is in the box costs nothing — but naming a dearer one does
+    // raise the ceiling, because that is what a swap would cost.
+    const cheap = buildSpec({ ...BASE, case: "skx007", crystal: "domed-hardlex" });
+    const dear = buildSpec({ ...BASE, case: "skx007", crystal: "top-hat-sapphire" });
+    assert.equal(dear.priceUsd.low, cheap.priceUsd.low, "the set's own crystal costs nothing either way");
+    assert.ok(dear.priceUsd.high > cheap.priceUsd.high, "swapping it in is priced at the listing");
     const rows = sourcingFor({ ...BASE, case: "skx007" });
     assert.equal(rows.find((r) => r.slot === "crystal").includedWithCase, true);
-    assert.equal(sourcingFor({ ...BASE, case: "62mas" }).find((r) => r.slot === "crystal").includedWithCase, false);
+    assert.equal(sourcingFor({ ...BASE, case: "62mas" }).find((r) => r.slot === "crystal").includedWithCase, true);
+    // The strap is not in any case set, so it stays an order of its own.
+    assert.equal(rows.find((r) => r.slot === "strap").includedWithCase, false);
+    assert.equal(rows.find((r) => r.slot === "strap").separateOrder, true);
   });
 
   test("the chapter ring is genuinely MANDATORY on the SKX013 platform", () => {
