@@ -781,6 +781,40 @@ suite only ever ran against a deployment:
 > is not a slow leak or gradual degradation — it is an abrupt exit from full
 > health. Read the artifact before theorising further; it has a 7-day retention.
 >
+> **The artifact was read, and the five-occurrence mystery is closed.** The
+> blank `✘ [ERROR]` is a wrangler DISPLAY bug: the fatal it prints is an outer
+> error whose own `message` is empty, and the real one is nested one level down
+> in `cause`. The 2.4 MB log carries it in full:
+>
+> ```
+> 11:25:44.928  Error in ProxyController: Error inside ProxyWorker
+>               at castErrorCause (wrangler-dist/cli.js:178283)
+>               at ProxyController2.emitErrorEvent (cli.js:278284)
+>               at async #handleLoopbackCustomFetchService (miniflare/index.js:113376)
+>               cause: { name: 'Error', message: 'Network connection lost.' }
+> ```
+>
+> So the cause is **a transient socket drop on miniflare's internal loopback**,
+> which wrangler's `ProxyController` escalates to a process-ending fatal. Three
+> facts settle that this is wrangler's own plumbing and nothing of ours:
+> `Error inside ProxyWorker` appears **exactly once** in the whole 160-second
+> log (it is a single transient event, not a degradation that finally tipped
+> over); the last request before it was a healthy `GET /admin 307` 215 ms
+> earlier; and the failing frame is inside `node_modules/miniflare`, never in
+> `src/`. The earlier workerd `Broken pipe` disconnects are the same class of
+> event surviving non-fatally.
+>
+> **What follows for this repo.** Nothing to fix in our code, and re-running the
+> job remains the correct response — but now for a stated reason rather than a
+> shrug. Two things would reduce the frequency if it becomes intolerable:
+> `.github/workflows/ci.yml` installs wrangler through a bare `npx wrangler`,
+> so every run silently takes the newest release (4.118.0 at the time of
+> writing) — **pinning it** makes the failure rate a property you control and
+> can bisect, instead of one that changes under you. And Playwright's
+> `webServer` has no restart-on-exit, so a single dropped socket costs the whole
+> suite; a supervising wrapper would turn a fatal into a reconnect. Neither is
+> written yet, and neither should be attempted while pretending the bug is ours.
+>
 > Either way the standing rule holds: **this fingerprint does not mean the PR is
 > at fault.** Confirm innocence the two cheap ways — the first failing test is an
 > assertion timeout on a page whose server has already gone (connection errors
