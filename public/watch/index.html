@@ -75,8 +75,10 @@
     .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: .85rem .9rem; }
     .panel + .panel { margin-top: .8rem; }
     .panel.wide { margin-top: 0; }
-    .panel.wide #sourcing { column-gap: 1.6rem; }
-    @media (min-width: 901px) { .panel.wide #sourcing { columns: 2; } .panel.wide .src { break-inside: avoid; } }
+    /* The sourcing table used to run in two CSS columns on a wide screen. It
+       is now an ORDERED list of parcels (feedback #59) and a numbered list
+       split down the middle cannot be counted, so it stays one flow. */
+    .panel.wide #sourcing { max-width: 46rem; }
     .panel h2 { font-size: .78rem; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin: 0 0 .6rem; }
 
     .slot { border-top: 1px solid var(--border); padding: .6rem 0 .2rem; }
@@ -93,6 +95,20 @@
     .chip.on { border-color: var(--accent); color: var(--accent); background: rgba(127,180,238,.1); }
     .chip.none { border-style: dashed; color: var(--muted); }
     .chip.none.on { color: var(--accent); border-style: dashed; }
+    /* "Keep what the case comes with" is not a variant of "none" — one says the
+       part is fitted and already paid for, the other that it is absent — so it
+       carries the case set's own colour rather than the muted dashed outline
+       (feedback #59). */
+    .chip.keep { border-color: rgba(216,168,96,.45); color: var(--accent-2); }
+    .chip.keep.on { background: rgba(216,168,96,.14); border-color: var(--accent-2); color: var(--accent-2); }
+    /* The badge on a slot the case set fills. It states a sourcing fact and
+       gates nothing: the whole catalogue is still offered under it. */
+    .kitbadge {
+      font-size: .62rem; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+      color: var(--accent-2); background: rgba(216,168,96,.14);
+      border-radius: 5px; padding: .06rem .3rem; white-space: nowrap;
+    }
+    .kitbadge.fixed { color: var(--muted); background: rgba(139,155,178,.16); }
     .sw { width: .72rem; height: .72rem; border-radius: 50%; border: 1px solid rgba(255,255,255,.35); flex: none; }
 
     /* Options that do not fit the rest of the build are never hidden — they go
@@ -208,6 +224,58 @@
     }
     .src .links a:hover { border-color: var(--accent); }
     .src .warn { color: var(--warn); font-size: .74rem; margin-top: .25rem; }
+
+    /* THE SOURCING TABLE AS ORDERS (feedback #59). Every part used to be an
+       equal row with its own price, which is what made a case set read as six
+       parcels. Now each PARCEL is numbered and what arrives inside one is
+       indented under it, so the count is readable without doing arithmetic. */
+    .srclead { font-size: .82rem; color: var(--text); margin: 0 0 .6rem; line-height: 1.45; }
+    .srcgroup {
+      font-size: .68rem; text-transform: uppercase; letter-spacing: .09em;
+      color: var(--muted); margin: .85rem 0 .1rem;
+    }
+    /* The order title and its price share one line even at 390 px — the price
+       dropping to a line of its own cost four lines out of a phone screen and
+       made the numbered list harder to count, not easier. */
+    .src.order .head { flex-wrap: nowrap; align-items: baseline; }
+    .src.order .head > div:first-child { display: flex; flex-wrap: wrap; align-items: baseline; gap: .34rem; min-width: 0; }
+    .src.order .head > .price { flex: none; }
+    .src.order .head .who { flex-basis: 100%; }
+    .onum {
+      font-size: .66rem; font-weight: 700; font-variant-numeric: tabular-nums;
+      color: var(--bg); background: var(--accent); border-radius: 999px;
+      min-width: 1.15rem; height: 1.15rem; display: inline-flex;
+      align-items: center; justify-content: center; flex: none;
+    }
+    .kitsum { color: var(--muted); font-size: .74rem; margin-top: .35rem; line-height: 1.4; }
+    .nestwrap {
+      margin: .45rem 0 .1rem; padding-left: .7rem;
+      border-left: 2px solid rgba(216,168,96,.35);
+    }
+    .nestcap {
+      font-size: .64rem; text-transform: uppercase; letter-spacing: .08em;
+      color: var(--accent-2); margin-bottom: .2rem;
+    }
+    .nshared { color: var(--muted); font-size: .7rem; line-height: 1.4; margin: 0 0 .3rem; }
+    .nested { padding: .22rem 0; font-size: .78rem; }
+    .nested .head { display: flex; justify-content: space-between; gap: .5rem; align-items: baseline; }
+    .nested .head > div:first-child { min-width: 0; }
+    .nested .head > .price { flex: none; }
+    .nested .price { color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; font-size: .74rem; }
+    .nested.swap .price { color: var(--accent-2); }
+    .nested .nslot { color: var(--muted); }
+    .nested .ntag {
+      font-size: .6rem; text-transform: uppercase; letter-spacing: .04em;
+      color: var(--accent-2); border: 1px solid rgba(216,168,96,.35);
+      border-radius: 5px; padding: .02rem .25rem; margin-left: .3rem; white-space: nowrap;
+    }
+    .nested .ntag.off { color: var(--muted); border-color: var(--border); }
+    .nested .nnote { color: var(--muted); font-size: .7rem; line-height: 1.35; margin-top: .1rem; }
+    /* On a phone the "(if you swap it)" tail is what breaks the part name onto
+       a second line. The number stays; the words move to the shared line above
+       the nest, which says the same thing once. */
+    .nested .swapif { color: var(--muted); font-weight: 400; }
+    @media (max-width: 560px) { .nested .swapif { display: none; } }
 
     .permalink { display: flex; gap: .4rem; margin-top: .5rem; }
     .permalink input {
