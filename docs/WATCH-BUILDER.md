@@ -577,8 +577,10 @@ browser, which is where this project's rendering bugs have always come from
 
 ## 8. Known limits
 
-- The movement is never modelled. A display case back shows a tinted disc, not a
-  rotor — the geometry budget is better spent on the parts a modder chooses.
+- The movement is a silhouette, not a replica (§3.1). Mainplate, three bridges,
+  balance, rotor, screws and four jewels are enough to read as a calibre through
+  an exhibition back; nobody publishes bridge outlines for these movements, so
+  drawing down to the click spring would be dressing a guess up as a drawing.
 - Crown guards are carried as a catalogue flag and drawn into the case
   silhouette, not as separate machined lobes.
 - Dial finishes are painted approximations. A real sunburst changes with the
