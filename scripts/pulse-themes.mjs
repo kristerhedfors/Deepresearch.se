@@ -95,6 +95,20 @@ export const SUBJECTS = /** @type {Subject[]} */ ([
     test: /\b(arxiv|oai-pmh|preprint|f[öo]rtryck|vectorize (index|checkpoint)|rerank(er|ing|ed)?|omrankning|goldset|gold[- ]set|full-?text (tier|search|fetch|eval)|corpus (harvest|build))\b/,
   },
   {
+    key: "pubmed",
+    label: "PubMed corpus",
+    color: "#3d5a80", // extended · steel blue (the second hosted corpus, beside arXiv's navy)
+    blurb: "The biomedical corpus beside arXiv: the ingest runbook, the filled index, the served tier.",
+    test: /\b(pubmed\w*|medline|biomedic(al|ine)|biomedicin(sk|ska)?)\b/,
+  },
+  {
+    key: "science",
+    label: "Deep Science & literature",
+    color: "#00713d", // extended · deep emerald
+    blurb: "The peer-reviewed agents: Deep Science, Google Scholar, palaeogenomics and the ancient-DNA corpus.",
+    test: /\b(deep science|djupvetenskap|scholar|palaeogenom\w*|paleogenom\w*|arkeogenetik|peer[- ]?review(ed|s|ing)?|expertgranskad|fackgranskad|europe ?pmc|ancient (dna|sample|individual|genom\w*)|forntida dna|haplogroup\w*|haplogrupp\w*|radiocarbon|kolfjortonda\w*|venue metric)\b/,
+  },
+  {
     key: "grants",
     label: "Grants & tokens",
     color: "#4a3aa7", // slot 7 · violet
@@ -190,14 +204,14 @@ export const SUBJECTS = /** @type {Subject[]} */ ([
     label: "Testing & try-it",
     color: "#00967d", // extended · pine
     blurb: "Unit/e2e suites, the try-it queue, test-request batches, verdicts.",
-    test: /\b(test(s|ing|-requests?|-feedback|-batch|-point|-queue|able)?|try-it|\/try\/|e2e|fixture|verdict|spec\b|coverage|stamp(ed|s)? minted|queue #|eval\b|eval-|benchmark|\bbench\b|rubric)\b/,
+    test: /\b(test(s|ing|-requests?|-feedback|-batch|-point|-queue|able)?|try-it|\/try\/|e2e|fixture|verdict|spec\b|coverage|stamp(ed|s)? minted|queue #|eval\b|eval-|benchmark|\bbench\b|rubric|ci\b|github action(s)?|browser suite)\b/,
   },
   {
     key: "admin",
     label: "Admin & boards",
     color: "#b0a032", // extended · olive
     blurb: "The admin panel, decision boards, feedback/feature loops, live diagnostics.",
-    test: /\b(admin|decision board|boards?\b|panel|feedback (loop|queue|mode)|feature board|attention loop|dashboard|maintenance registry|ledger|owners? registry|\bdiag\b|client_diag|live-verify|observability|wrangler tail|tool-call activity)\b/,
+    test: /\b(admins?|decision board|boards?\b|panel|feedback (loop|queue|mode)|feature board|attention loop|dashboard|maintenance registry|ledger|owners? registry|\bdiag\b|client_diag|live-verify|observability|wrangler tail|tool-call activity)\b/,
   },
   {
     key: "feedback",
@@ -218,7 +232,14 @@ export const SUBJECTS = /** @type {Subject[]} */ ([
     label: "Games",
     color: "#d45087", // extended · pink
     blurb: "The games registry, the Tokemon AR game, inline quizzes, the /space/ archive.",
-    test: /\b(tokemon|game(s)?|quiz(zes)?|pok[eé]mon|inline-quiz|space[- ](animation|archive|core|scene)|rymd(spel|animation))\b|\/space\//,
+    test: /\b(tokemon|game(s)?|quiz(zes)?|pok[eé]mon|inline-quiz|space[- ](animation|archive|core|scene|launch(es)?)|rymd(spel|animation|raket)|starship|gravity turn|gravitationssv[äa]ng|stage separation|stegseparation|hot[- ]staging|tower catch|launch scene|rocket[- ]?launch|raketuppskjutning|booster)\b|\/space\//,
+  },
+  {
+    key: "watch",
+    label: "Watch builder",
+    color: "#5c4033", // extended · leather brown
+    blurb: "The NHxx watch builder: mix-and-match Seiko NH35/NH36 mod parts rendered in 3D.",
+    test: /(^watch\b|\bwatch (builder|case|dial|catalogue|catalog|mod|parts)\b|\b(nh3[56]|nhxx|seiko|bezel|l[üu]nett(en)?|bracelet|armband(et)?|urtavl(a|an)|klockbygg\w*)\b|\/watch\/)/,
   },
   {
     key: "mcp",

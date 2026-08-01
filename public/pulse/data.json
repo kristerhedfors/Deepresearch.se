@@ -1,15 +1,15 @@
 {
-  "generated": "2026-07-27T10:58:27.765Z",
+  "generated": "2026-08-01T11:48:02.920Z",
   "repo": "kristerhedfors/deepresearch.se",
   "range": {
     "from": "2026-07-04",
-    "to": "2026-07-27"
+    "to": "2026-08-01"
   },
   "totals": {
-    "commits": 1117,
-    "added": 330961,
-    "removed": 62882,
-    "features": 133
+    "commits": 1257,
+    "added": 387495,
+    "removed": 66874,
+    "features": 152
   },
   "commits": [
     {
@@ -6583,6 +6583,12 @@
       "f": 0
     },
     {
+      "t": "2026-07-27T00:39:18+02:00",
+      "a": 304,
+      "r": 24,
+      "f": 0
+    },
+    {
       "t": "2026-07-27T00:48:54+02:00",
       "a": 3,
       "r": 1,
@@ -6710,9 +6716,843 @@
     },
     {
       "t": "2026-07-27T12:55:32+02:00",
-      "a": 1375,
-      "r": 158,
+      "a": 1395,
+      "r": 162,
       "f": 1
+    },
+    {
+      "t": "2026-07-27T13:07:52+02:00",
+      "a": 332,
+      "r": 112,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T13:16:29+02:00",
+      "a": 13,
+      "r": 12,
+      "f": 1
+    },
+    {
+      "t": "2026-07-27T13:17:07+02:00",
+      "a": 21,
+      "r": 20,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T13:55:29+02:00",
+      "a": 2,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T16:09:23+02:00",
+      "a": 405,
+      "r": 22,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T17:25:50+02:00",
+      "a": 41,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T20:31:44+02:00",
+      "a": 443,
+      "r": 19,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T20:54:47+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T21:42:34+02:00",
+      "a": 886,
+      "r": 16,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T22:31:34+02:00",
+      "a": 26,
+      "r": 26,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T22:41:22+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-27T23:13:03+02:00",
+      "a": 853,
+      "r": 159,
+      "f": 0
+    },
+    {
+      "t": "2026-07-28T00:13:11+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-28T15:09:25+02:00",
+      "a": 5,
+      "r": 5,
+      "f": 1
+    },
+    {
+      "t": "2026-07-28T20:26:04+02:00",
+      "a": 1,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-28T20:38:45+02:00",
+      "a": 385,
+      "r": 46,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T04:53:35+02:00",
+      "a": 9,
+      "r": 8,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T05:03:40+02:00",
+      "a": 129,
+      "r": 99,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T05:05:22+02:00",
+      "a": 181,
+      "r": 139,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T05:08:42+02:00",
+      "a": 153,
+      "r": 92,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T05:13:28+02:00",
+      "a": 338,
+      "r": 15,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T05:14:29+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T05:15:33+02:00",
+      "a": 3,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T12:19:10+02:00",
+      "a": 4,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T12:25:37+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T13:33:24+02:00",
+      "a": 655,
+      "r": 285,
+      "f": 1
+    },
+    {
+      "t": "2026-07-29T13:43:11+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 1
+    },
+    {
+      "t": "2026-07-29T13:53:00+02:00",
+      "a": 1,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T14:01:44+02:00",
+      "a": 581,
+      "r": 33,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T14:03:52+02:00",
+      "a": 5,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T14:07:30+02:00",
+      "a": 5897,
+      "r": 4,
+      "f": 1
+    },
+    {
+      "t": "2026-07-29T14:10:11+02:00",
+      "a": 816,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T14:15:26+02:00",
+      "a": 463,
+      "r": 44,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T14:21:46+02:00",
+      "a": 192,
+      "r": 1,
+      "f": 1
+    },
+    {
+      "t": "2026-07-29T14:22:57+02:00",
+      "a": 748,
+      "r": 53,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T14:24:46+02:00",
+      "a": 86,
+      "r": 13,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T14:25:33+02:00",
+      "a": 3874,
+      "r": 18,
+      "f": 1
+    },
+    {
+      "t": "2026-07-29T14:27:18+02:00",
+      "a": 251,
+      "r": 4,
+      "f": 1
+    },
+    {
+      "t": "2026-07-29T14:34:07+02:00",
+      "a": 112,
+      "r": 7,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T14:39:28+02:00",
+      "a": 210,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T14:41:43+02:00",
+      "a": 43,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T14:47:25+02:00",
+      "a": 10,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T15:44:34+02:00",
+      "a": 9,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T16:15:48+02:00",
+      "a": 176,
+      "r": 15,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T16:40:12+02:00",
+      "a": 12,
+      "r": 8,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T16:40:49+02:00",
+      "a": 5,
+      "r": 5,
+      "f": 1
+    },
+    {
+      "t": "2026-07-29T16:41:16+02:00",
+      "a": 304,
+      "r": 8,
+      "f": 1
+    },
+    {
+      "t": "2026-07-29T16:41:28+02:00",
+      "a": 102,
+      "r": 13,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T16:43:05+02:00",
+      "a": 17,
+      "r": 16,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T16:44:27+02:00",
+      "a": 1,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T18:00:47+02:00",
+      "a": 7,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T19:25:36+02:00",
+      "a": 1007,
+      "r": 94,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T19:41:43+02:00",
+      "a": 13,
+      "r": 14,
+      "f": 1
+    },
+    {
+      "t": "2026-07-29T19:49:59+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T19:50:05+02:00",
+      "a": 3923,
+      "r": 18,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T19:58:19+02:00",
+      "a": 124,
+      "r": 79,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T20:01:43+02:00",
+      "a": 386,
+      "r": 144,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T20:06:48+02:00",
+      "a": 105,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T20:09:04+02:00",
+      "a": 1,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T20:17:18+02:00",
+      "a": 19,
+      "r": 18,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T20:37:04+02:00",
+      "a": 51,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T20:44:49+02:00",
+      "a": 1,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T21:00:23+02:00",
+      "a": 100,
+      "r": 11,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T21:08:37+02:00",
+      "a": 597,
+      "r": 48,
+      "f": 0
+    },
+    {
+      "t": "2026-07-29T23:14:36+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T00:17:03+02:00",
+      "a": 1,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T11:15:20+02:00",
+      "a": 530,
+      "r": 24,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T11:38:03+02:00",
+      "a": 21,
+      "r": 22,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T11:48:07+02:00",
+      "a": 2997,
+      "r": 180,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T11:51:01+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T12:13:27+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T12:21:23+02:00",
+      "a": 47,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T12:26:38+02:00",
+      "a": 1,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T12:52:11+02:00",
+      "a": 50,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T13:32:30+02:00",
+      "a": 481,
+      "r": 75,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T14:24:09+02:00",
+      "a": 2,
+      "r": 2,
+      "f": 1
+    },
+    {
+      "t": "2026-07-30T14:52:05+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T15:07:40+02:00",
+      "a": 277,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T16:01:33+02:00",
+      "a": 2081,
+      "r": 17,
+      "f": 1
+    },
+    {
+      "t": "2026-07-30T16:26:13+02:00",
+      "a": 52,
+      "r": 24,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T16:36:00+02:00",
+      "a": 1,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T16:38:29+02:00",
+      "a": 3,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T16:47:13+02:00",
+      "a": 20,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T16:51:12+02:00",
+      "a": 62,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T18:52:11+02:00",
+      "a": 5,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T19:13:59+02:00",
+      "a": 624,
+      "r": 27,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T19:44:52+02:00",
+      "a": 414,
+      "r": 71,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T19:50:08+02:00",
+      "a": 1695,
+      "r": 125,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T19:51:26+02:00",
+      "a": 60,
+      "r": 13,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T19:52:59+02:00",
+      "a": 3,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T20:03:51+02:00",
+      "a": 1922,
+      "r": 262,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T20:06:52+02:00",
+      "a": 19,
+      "r": 19,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T20:07:28+02:00",
+      "a": 267,
+      "r": 16,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T20:11:31+02:00",
+      "a": 75,
+      "r": 66,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T20:11:50+02:00",
+      "a": 3864,
+      "r": 83,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T21:55:50+02:00",
+      "a": 1,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T22:30:00+02:00",
+      "a": 43,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T22:34:08+02:00",
+      "a": 114,
+      "r": 0,
+      "f": 1
+    },
+    {
+      "t": "2026-07-30T22:41:31+02:00",
+      "a": 1601,
+      "r": 50,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T22:44:07+02:00",
+      "a": 152,
+      "r": 27,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T22:52:14+02:00",
+      "a": 225,
+      "r": 23,
+      "f": 0
+    },
+    {
+      "t": "2026-07-30T23:03:43+02:00",
+      "a": 201,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T00:41:28+02:00",
+      "a": 6,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T01:01:37+02:00",
+      "a": 4,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T10:06:23+02:00",
+      "a": 70,
+      "r": 26,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T10:07:53+02:00",
+      "a": 45,
+      "r": 46,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T10:12:08+02:00",
+      "a": 79,
+      "r": 7,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T12:01:17+02:00",
+      "a": 6,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T12:33:50+02:00",
+      "a": 1,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T12:40:33+02:00",
+      "a": 3,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T12:43:43+02:00",
+      "a": 3313,
+      "r": 27,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T12:44:34+02:00",
+      "a": 1233,
+      "r": 77,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T12:55:10+02:00",
+      "a": 7,
+      "r": 10,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T13:01:10+02:00",
+      "a": 0,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T13:05:19+02:00",
+      "a": 93,
+      "r": 11,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T13:06:18+02:00",
+      "a": 410,
+      "r": 127,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T13:10:04+02:00",
+      "a": 3,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T13:20:07+02:00",
+      "a": 59,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T13:21:20+02:00",
+      "a": 2907,
+      "r": 264,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T13:28:26+02:00",
+      "a": 96,
+      "r": 0,
+      "f": 1
+    },
+    {
+      "t": "2026-07-31T13:29:03+02:00",
+      "a": 0,
+      "r": 23,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T13:40:09+02:00",
+      "a": 336,
+      "r": 54,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T13:42:34+02:00",
+      "a": 36,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T13:46:09+02:00",
+      "a": 175,
+      "r": 94,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T13:49:47+02:00",
+      "a": 4,
+      "r": 18,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T14:50:06+02:00",
+      "a": 22,
+      "r": 21,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T15:46:59+02:00",
+      "a": 377,
+      "r": 32,
+      "f": 1
+    },
+    {
+      "t": "2026-07-31T20:12:29+02:00",
+      "a": 178,
+      "r": 49,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T20:27:23+02:00",
+      "a": 1,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T20:28:58+02:00",
+      "a": 484,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T20:40:41+02:00",
+      "a": 1,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T21:04:17+02:00",
+      "a": 583,
+      "r": 23,
+      "f": 1
+    },
+    {
+      "t": "2026-07-31T21:09:50+02:00",
+      "a": 324,
+      "r": 34,
+      "f": 0
+    },
+    {
+      "t": "2026-07-31T23:48:36+02:00",
+      "a": 15,
+      "r": 15,
+      "f": 1
+    },
+    {
+      "t": "2026-08-01T00:11:03+02:00",
+      "a": 44,
+      "r": 8,
+      "f": 0
+    },
+    {
+      "t": "2026-08-01T10:05:47+02:00",
+      "a": 2190,
+      "r": 20,
+      "f": 0
+    },
+    {
+      "t": "2026-08-01T13:12:20+02:00",
+      "a": 4,
+      "r": 3,
+      "f": 1
+    },
+    {
+      "t": "2026-08-01T13:21:47+02:00",
+      "a": 35,
+      "r": 8,
+      "f": 0
+    },
+    {
+      "t": "2026-08-01T13:23:24+02:00",
+      "a": 1,
+      "r": 0,
+      "f": 0
     }
   ],
   "days": [
@@ -8066,11 +8906,24 @@
     },
     {
       "date": "2026-07-27",
-      "commits": 22,
-      "added": 9594,
-      "removed": 768,
-      "features": 1,
+      "commits": 35,
+      "added": 12944,
+      "removed": 1186,
+      "features": 2,
       "subjects": [
+        "Ask arXiv first, ask it the right question, and stop waiting a minute",
+        "Ledger the thirteenth 2026-07-27 merge queue (PR #323)",
+        "Clean the touched docs and rebuild the snapshot with the new spec in it",
+        "Show the terminal when commands run outside the browser VM",
+        "Ledger the twelfth 2026-07-27 merge queue (PR #322)",
+        "Record the corpus-ETL knowledge as a skill and document the hosted build",
+        "Fix a harvest window that silently lost half its oldest month",
+        "Enumerate arXiv from the public GCS mirror instead of OAI-PMH",
+        "Extract arXiv full text from HTML with a LaTeXML-aware DOM parser",
+        "Ledger the eleventh 2026-07-27 merge queue (PRs #320-#321)",
+        "Clean the doc prose this branch added, and refresh the artifacts",
+        "Clean the prose this branch added, and rebuild the four artifacts",
+        "Name Hugging Face as a model provider on the landing page and in the architecture diagrams",
         "pulse: five new subjects for the feature-focus timeline, and refresh all three datasets",
         "Ledger the tenth 2026-07-27 merge queue (PRs #317-#319)",
         "Ledger the cloud-vms-docs rule-break, and land its orphaned fix",
@@ -8094,7 +8947,189 @@
         "Documentation comment mode: the rail is opened, not automatic (feedback #40)",
         "Ledger the seventh 2026-07-26 merge queue (PRs #310-#311)"
       ],
-      "summary": "The server-side container became the default execution environment, and every source that still called the browser VM 'the sandbox' was corrected to match. Each browser tab now isolates into its own session — agent, workspace and history — and the terminal pane leaves a boot transcript instead of clearing the line (feedback #38, #42). Agent Studio builds one agent with the Agents SDK and both SDKs are named publicly; MCP gained account-minted keys with a configurable exposure; the landing page was marked the approved baseline with the whole intro phase specified; and this feature-focus timeline learned five new subjects (arXiv, execution environments, the agent platform, starter prompts, articles) so the newest work stops reading as chore commits.",
+      "summary": "arXiv retrieval was reworked end to end: enumeration moved from OAI-PMH to the public GCS mirror, full text is extracted with a LaTeXML-aware DOM parser, and a harvest window that silently lost half its oldest month was fixed — with the corpus-ETL knowledge kept as a skill. The server-side container became the default execution environment, the terminal now shows when commands run outside the browser VM, and each browser tab was isolated into its own session. Also: Claude Code can connect over MCP with an account-minted key and a configurable exposure, the landing page was marked an approved baseline with the intro phase specified, and the DRSW/1 and DRPL/1 standards were linked behind a served node-discovery file.",
+      "curated": true
+    },
+    {
+      "date": "2026-07-28",
+      "commits": 4,
+      "added": 393,
+      "removed": 52,
+      "features": 1,
+      "subjects": [
+        "Stop forgetting the question a failed send asked (feedback #45)",
+        "Ledger the fifteenth 2026-07-28 merge queue (PR #325)",
+        "Landing: retitle the feature-focus card to \"What work has been done and when\"",
+        "Ledger the fourteenth 2026-07-27 merge queue (PR #324)"
+      ],
+      "summary": "A quiet day between pushes: a failed send stops forgetting the question it asked (feedback #45), and the landing page feature-focus card was retitled to “What work has been done and when”.",
+      "curated": true
+    },
+    {
+      "date": "2026-07-29",
+      "commits": 49,
+      "added": 21729,
+      "removed": 1348,
+      "features": 9,
+      "subjects": [
+        "Ledger the testing-capabilities pass (PR #337)",
+        "Run the browser suite against a local Worker, in CI",
+        "Source peek: one type scale for the popover (feedback #51)",
+        "Ledger refactor pass 13 (PR #336)",
+        "Run the bench gate: NEUTRAL, clearing eleven owed changes",
+        "Clean the pass-13 doc prose and rebuild the four artifacts",
+        "Rebuild the four introspection artifacts on the rebased base",
+        "Record refactor pass 13: docs, the decline register, and the artifacts",
+        "Refactor: split the watch renderer's pure maths into public/js/watch-math.js",
+        "Refactor: share the enrichments' lastUserText/appendToLast via conversation.js",
+        "Measure testability, and make coverage a ratchet",
+        "Ledger the twentieth 2026-07-29 merge queue (PR #335)",
+        "Rebuild the introspection artifacts with the four new modules, and Clean the prose",
+        "Route \"show me X demo\" to the site's own surfaces (feedback #49, #50)",
+        "Ledger the nineteenth 2026-07-29 merge queue (PRs #329-#334)",
+        "Regenerate the rag artifacts for the widened-window docs",
+        "Clean the watch-builder docs and refresh the introspection artifacts",
+        "docs+skills: record the widened window and the served-path evaluation method",
+        "Add the palaeogenomics skill — the agent's own working documentation",
+        "Clean the added local-web-search prose and rebuild the four artifacts",
+        "Clean the touched docs and refresh the introspection artifacts",
+        "arXiv: widen the window to late 2023 (772,658 vectors) with before/after evidence",
+        "arxiv-crosscheck: accept several corpus directories",
+        "docs: mirror the pool change and the new eval scripts into CODE-LAYOUT",
+        "docs: record the 81.5% band harvest and what the monotonic curve proves",
+        "skills: persist the widened-window findings (arxiv-rag, bulk-corpus-etl)",
+        "arXiv harvest: --keep-months, for the coverage hole --until silently creates",
+        "arXiv: add the harvest cross-check as a command, and start §11",
+        "arXiv RAG: rerank 50 candidates, and date sources by submission not revision",
+        "arXiv eval: add per-month coverage, the run comparison, and the age profile",
+        "arXiv: add a hosted-index eval harness, and fix three silent-failure seams",
+        "Add the palaeogenomics agent: Europe PMC + an ancient-sample corpus",
+        "Fix web-search quality on the Cloudflare-originating backend",
+        "Fix two web-search faults reported in feedback #47 and #48",
+        "Add the NHxx watch builder: mix-and-match Seiko NH35/NH36 mod parts in 3D",
+        "Regenerate introspection artifacts after the rebase onto main",
+        "Show Earth in the rocket-launch animation, and stop the reply denying it",
+        "Ledger the eighteenth 2026-07-29 merge queue (PR #328)",
+        "Regenerate the introspection snapshot with the new starters DOM suite",
+        "Starter evaluation: new questions every render, verdicts by the feedback keyword",
+        "Ledger the seventeenth 2026-07-29 merge queue (PR #327)",
+        "Clean the pass-12 ledger prose and rebuild the four artifacts",
+        "Regenerate the introspection artifacts for the refactor pass",
+        "Ledger the sixteenth 2026-07-29 merge queue (PR #326)",
+        "Commit the line-run scanner, and record pass 12",
+        "Share the tag check every token family opens its verify with",
+        "Build the two small RAG indexes from one script, not two copies",
+        "Read a request's JSON body in one place instead of thirteen",
+        "Clean the CODE-LAYOUT prose and refresh all four introspection artifacts"
+      ],
+      "summary": "The arXiv corpus widened to late 2023 — 772,658 vectors — with a hosted-index eval harness, per-month coverage and age profiles, reranking over 50 candidates, and sources dated by submission rather than revision, all recorded with before/after evidence. Two new surfaces landed: the palaeogenomics agent (Europe PMC plus a corpus of published ancient individuals) and the NHxx watch builder, which mixes and matches Seiko NH35/NH36 mod parts in 3D. The browser suite started running against a local Worker in CI, coverage became a ratchet, refactor passes 12 and 13 single-sourced request-body reading and the token tag check, and web search, starter evaluation, demo routing and the source-peek popover picked up fixes from feedback #47–#51.",
+      "curated": true
+    },
+    {
+      "date": "2026-07-30",
+      "commits": 37,
+      "added": 17917,
+      "removed": 1149,
+      "features": 3,
+      "subjects": [
+        "Measure the bench judge instead of assuming it, and record run 5",
+        "watch: seat the crown on a flank PLATEAU and give the case a crown boss",
+        "watch: stop the steel bracelet blowing out to white",
+        "Watch builder: real strap construction, a wrist cylinder and a buckle",
+        "Record that branch pushes deploy to production, and add the render harness",
+        "Ledger PR #344, and record that a session container can open a browser",
+        "Regenerate the source and docs RAG artifacts for the watch-builder work",
+        "watch builder: decompose the catalogue into orthogonal axes, and make compatibility explainable",
+        "Repair the watch.test.js merge: reconstruct both appended blocks",
+        "Stage separation: the Ship keeps the height it had on the stack",
+        "Clean the space-animations prose, and fix a units typo in the owners row",
+        "watch: real material response, a studio environment, and dial relief",
+        "Regenerate the introspection artifacts after the geometry merge",
+        "Separation drops the booster, not the Ship",
+        "watch: close the case solid, distinct shells, real crystal families, true NH36 day-date",
+        "Space launches: a real gravity turn, a Starship you can recognise, a pinch that works",
+        "Mount the watch builder on build talk, carry it forward, lead with the app door",
+        "Ignore the subagent worktree directory",
+        "Record the third gate run: the drift is persistent and predates every recent PR",
+        "Record the mid-run wrangler-exit e2e failure mode",
+        "Tag the agentic-graphs branch as merged in the branch ledger",
+        "Ledger the agentic-graphs pass (PR #342)",
+        "Clean the touched docs and reconcile the research note with what shipped",
+        "Add the decomposability classifier and account memory (Obsidian vault)",
+        "Research agentic graphs and map them onto this codebase",
+        "Ledger the docs-validation pass (PR #341)",
+        "Rebuild the introspection artifacts with the new guard suite tracked",
+        "Validate the docs against the code: fix the \\b Swedish trap, reconcile 18 drifts",
+        "The bench regression is real, predates #340, and was masked by noise",
+        "Refresh the source snapshot after the findings append",
+        "Record the bench gate's first REGRESSION verdict",
+        "Ledger the inline watch builder (PR #340)",
+        "Ledger the Starship launch scene (PR #339)",
+        "Inline the watch builder: the chat drives it, every reply says what changed",
+        "Clean the starship scene's doc prose and rebuild all four artifacts",
+        "Starship launch scene: hot-staging and a tower catch (feedback #53)",
+        "Ledger the source-peek type scale (PR #338)"
+      ],
+      "summary": "The watch builder became a real 3D object: solid case shells, distinct crystal families, a true NH36 day-date, strap construction with a wrist cylinder and buckle, studio lighting with dial relief, and a catalogue decomposed into orthogonal axes so compatibility can be explained — then inlined, so the chat drives it and every reply says what changed. The Starship launch scene got a real gravity turn, hot-staging, a tower catch, and a separation that drops the booster instead of the Ship. A docs-against-code validation reconciled 18 drifts and fixed the Swedish word-boundary trap, the bench gate returned its first REGRESSION verdict and traced the drift back beyond the recent PRs, and research into agentic graphs landed a decomposability classifier and account memory.",
+      "curated": true
+    },
+    {
+      "date": "2026-07-31",
+      "commits": 32,
+      "added": 10871,
+      "removed": 986,
+      "features": 4,
+      "subjects": [
+        "Clean the add-user prose and regenerate the introspection artifacts",
+        "A runbook for repeating the PubMed ingest, and the fix that made a delta work",
+        "Add an invite / add-user interface for admins",
+        "Verify the PubMed tier in production, and record which agent misses it",
+        "Make the benchmark see every retrieval source, and attribute drift per question",
+        "Merge PR #353: the PubMed index created, filled, and the binding turned on",
+        "The PubMed index is filled: 1,638,756 vectors, and one real bug on the way",
+        "Create and fill the PubMed index; enable the PUBMED_INDEX binding",
+        "Clean docs/PUBMED-RAG.md and fix four defects the read found",
+        "Regenerate the introspection artifacts after merging main",
+        "PubMed: harvest the full update-file set and re-cost from it",
+        "Record bench-gate run 6 — the first run judged against a measured bar",
+        "Deep Science is a chat mode now — the agent had no door",
+        "Drop a scratch harness committed by accident",
+        "Add a browser harness for the /watch/ picker chrome",
+        "Ingest PubMed as a second hosted corpus beside arXiv",
+        "Fix surpriseBuild returning the same movement every time",
+        "Regenerate artifacts after the page UI merge",
+        "watch builder: wire the picker to the landed catalogue — the axes, the text fields, and a surprise button that varies",
+        "watch builder: guaranteed-valid surprise me, warning-symbol option dropdowns, collapsed spec sheet, price breakdown at the bottom",
+        "Merge PRs #349, #346 and #350",
+        "wip: 349",
+        "Clean the Deep Science docs and refresh the artifacts",
+        "Deep Science agent: peer-reviewed sources only, with Google Scholar integrated as far as it permits",
+        "Regenerate the introspection artifacts after the rebase",
+        "Ledger PR #345 and record the watch-builder regression signatures",
+        "Tag refactor pass 14's branch Merged in the ledger",
+        "Clean the pass-14 ledger prose and refresh the artifacts",
+        "Record refactor pass 14: docs, the decline register, and the artifacts",
+        "Refactor: single-source the try-point deep-link action grammar",
+        "Refactor: share the providers' JSON-completion result adapter",
+        "Commit the artifacts the last doc edit regenerated"
+      ],
+      "summary": "PubMed joined arXiv as a second hosted corpus: the index was created, filled with 1,638,756 vectors, wired to its binding, verified in production, and documented with a runbook for repeating the ingest as a delta. The Deep Science agent shipped — peer-reviewed sources only, with Google Scholar integrated as far as it permits — and then got its own door in the chat-mode menu. Admins gained an invite / add-user interface, the watch builder picker was wired to the landed catalogue with a surprise button that actually varies, and refactor pass 14 single-sourced the try-point action grammar and the providers JSON-completion adapter.",
+      "curated": true
+    },
+    {
+      "date": "2026-08-01",
+      "commits": 5,
+      "added": 2274,
+      "removed": 39,
+      "features": 1,
+      "subjects": [
+        "wip 357",
+        "Capture the wrangler crash log in CI, at the fourth occurrence",
+        "Rebuild the introspection artifacts with the new harness files tracked",
+        "Measure both hosted RAG pipelines with one instrument, and codify the loop",
+        "Merge PRs #355 and #356, and sharpen the wrangler-crash diagnosis"
+      ],
+      "summary": "Both hosted RAG pipelines — arXiv and PubMed — are measured with one instrument now, and the hill-climbing loop that decides a retrieval change is codified as a skill. CI captures the wrangler crash log at the fourth occurrence of an intermittent failure.",
       "curated": true
     }
   ]
