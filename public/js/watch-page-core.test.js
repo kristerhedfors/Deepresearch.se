@@ -26,10 +26,16 @@ import {
   pageSurpriseBuild,
   splitSpecRows,
   sanitizeTextValue,
+  axisGroupsFor,
+  axisGroupsBySlot,
+  axisSummary,
+  shortAxisName,
+  slotForGroup,
 } from "./watch-page-core.js";
 
 import {
   SLOTS,
+  AXIS_SLOTS,
   DEFAULT_BUILD,
   MOVEMENTS,
   slotOptions,
@@ -325,6 +331,121 @@ describe("the spec sheet's basic/expanded split (feedback #56)", () => {
   test("splitSpecRows is total", () => {
     assert.deepEqual(splitSpecRows(/** @type {any} */ (null)), { basic: [], more: [] });
     assert.deepEqual(splitSpecRows([]), { basic: [], more: [] });
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe("the fine tuning is addressed to its part (feedback #59)", () => {
+  test("every group that applies lands under a real part slot", () => {
+    // The defect #59 reported was DISCOVERABILITY: dial colour, dial finish,
+    // index style and strap colour all shipped, and all of them sat under one
+    // "Fine tuning" heading at the foot of the picker, detached from the part
+    // they modify. Nothing may be left there that belongs to a part.
+    const { bySlot, orphans } = axisGroupsBySlot(DEFAULT_BUILD);
+    assert.deepEqual(orphans, [], `unfiled groups: ${orphans.map((g) => g.id).join(", ")}`);
+    const keys = new Set(SLOTS.map((s) => s.key));
+    for (const key of Object.keys(bySlot)) assert.ok(keys.has(key), `${key} is not a part slot`);
+  });
+
+  test("nothing is lost or duplicated on the way from axisGroupsFor", () => {
+    for (const mv of MOVEMENTS) {
+      const build = normalizeBuild({ ...DEFAULT_BUILD, movement: mv.id });
+      const flat = axisGroupsFor(build);
+      const { bySlot, orphans } = axisGroupsBySlot(build);
+      const placed = [...Object.values(bySlot).flat(), ...orphans];
+      assert.equal(placed.length, flat.length, `${mv.id}: group count changed`);
+      assert.deepEqual(
+        placed.map((g) => g.id).sort(),
+        flat.map((g) => g.id).sort(),
+        `${mv.id}: a group changed identity`,
+      );
+    }
+  });
+
+  test("the words the reporter went looking for are the ones on the summary", () => {
+    // "color, style (sunburst excetera), indices … And strap, I need to be able
+    // to choose strap color." Each of those has to be readable with nothing
+    // opened, in both languages.
+    const { bySlot } = axisGroupsBySlot(DEFAULT_BUILD);
+    const textOf = (slotKey, lang) =>
+      (bySlot[slotKey] || [])
+        .flatMap((g) => axisSummary(g, DEFAULT_BUILD).items.map((i) => i.label[lang]))
+        .join(" · ")
+        .toLowerCase();
+
+    const dialEn = textOf("dial", "en");
+    for (const word of ["colour", "finish", "index style", "lume"]) {
+      assert.ok(dialEn.includes(word), `the dial summary never says "${word}": ${dialEn}`);
+    }
+    const dialSv = textOf("dial", "sv");
+    for (const word of ["färg", "finish", "indexstil", "lysmassa"]) {
+      assert.ok(dialSv.includes(word), `urtavlans sammanfattning saknar "${word}": ${dialSv}`);
+    }
+    assert.ok(textOf("strap", "en").includes("colour"), "the strap summary never says colour");
+    assert.ok(textOf("strap", "sv").includes("färg"), "bandets sammanfattning saknar färg");
+  });
+
+  test("a summary names every variable inside its group, bilingually", () => {
+    for (const g of axisGroupsFor(DEFAULT_BUILD)) {
+      const { items } = axisSummary(g, DEFAULT_BUILD);
+      assert.equal(items.length, g.axes.length + g.texts.length, `${g.id}: a variable went unnamed`);
+      for (const item of items) {
+        assert.ok(item.label.en.trim(), `${g.id}/${item.key}: empty EN label`);
+        assert.ok(item.label.sv.trim(), `${g.id}/${item.key}: empty SV label`);
+      }
+    }
+  });
+
+  test("a variable the user has moved shows its value; an untouched one does not", () => {
+    const plain = axisSummary(axisGroupsBySlot(DEFAULT_BUILD).bySlot.dial[0], DEFAULT_BUILD);
+    assert.equal(plain.setCount, 0, "an untouched build reports a chosen variable");
+    for (const item of plain.items) assert.equal(item.value, null);
+
+    const colour = slotOptions("dialColor").find((o) => o.id !== "as-listed");
+    const build = normalizeBuild({ ...DEFAULT_BUILD, dialColor: colour.id });
+    assert.equal(build.dialColor, colour.id, "the fixture no longer sets the axis");
+    const moved = axisSummary(axisGroupsBySlot(build).bySlot.dial[0], build);
+    const row = moved.items.find((i) => i.key === "dialColor");
+    assert.ok(row && row.set, "a chosen dial colour is not marked");
+    assert.equal(row.value.en, colour.name.en);
+    assert.equal(row.value.sv, colour.name.sv);
+    assert.equal(moved.setCount, 1);
+  });
+
+  test("shortAxisName drops the subject in BOTH languages, never to nothing", () => {
+    for (const axis of AXIS_SLOTS) {
+      const group = axis.group || "other";
+      const short = shortAxisName(axis, group);
+      assert.ok(short.en.trim(), `${axis.key}: EN short name is empty`);
+      assert.ok(short.sv.trim(), `${axis.key}: SV short name is empty`);
+      assert.ok(short.en.length <= axis.name.en.length, `${axis.key}: EN grew`);
+      assert.ok(short.sv.length <= axis.name.sv.length, `${axis.key}: SV grew`);
+      // Whatever the trim does, the first character is upper case in both.
+      assert.equal(short.en[0], short.en[0].toLocaleUpperCase(), `${axis.key}: EN not capitalised`);
+      assert.equal(short.sv[0], short.sv[0].toLocaleUpperCase(), `${axis.key}: SV not capitalised`);
+    }
+    assert.deepEqual(shortAxisName({ key: "dialColor", name: { en: "Dial colour", sv: "Urtavlans färg" } }, "dial"), {
+      en: "Colour",
+      sv: "Färg",
+    });
+    // An unknown group leaves the name alone rather than guessing at it.
+    assert.deepEqual(shortAxisName({ name: { en: "Dial colour", sv: "Urtavlans färg" } }, "nope"), {
+      en: "Dial colour",
+      sv: "Urtavlans färg",
+    });
+  });
+
+  test("placement, summarising and shortening are all total", () => {
+    assert.equal(slotForGroup(/** @type {any} */ (null)), null);
+    assert.equal(slotForGroup({ id: "not-a-group" }), null);
+    assert.equal(slotForGroup({ id: "x", axes: [{ over: "dial" }] }), "dial");
+    assert.deepEqual(shortAxisName(/** @type {any} */ (null)), { en: "", sv: "" });
+    assert.deepEqual(axisSummary(/** @type {any} */ ({}), null), { items: [], setCount: 0 });
+    for (const junk of [null, undefined, {}, { movement: "nope" }]) {
+      const { bySlot, orphans } = axisGroupsBySlot(/** @type {any} */ (junk));
+      assert.ok(Object.keys(bySlot).length > 0 || orphans.length > 0, String(junk));
+    }
   });
 });
 
