@@ -2177,6 +2177,7 @@ import {
   strapAssembly,
   strapMaterialHint,
   wristMesh,
+  cushionPenetration,
   buildMeshes as coreBuildMeshes,
 } from "../public/js/watch-core.js";
 
@@ -2302,7 +2303,12 @@ describe("the strap leaves the lug the way a worn strap does", () => {
       const f = p.frames[0];
       assert.ok(f.ty < -0.2, `arm ${dir} leaves at ty=${f.ty}`);
       const angle = Math.atan2(-f.ty, Math.abs(f.tz));
-      assert.ok(angle > 0.35 && angle < 0.9, `arm ${dir} departs at ${angle} rad`);
+      // It used to be pinned at 0.35–0.9 rad, which was the bug: a fixed 29.5°
+      // below horizontal, lifted from STRAP_EXIT, where the taut span to the
+      // cushion runs at 67–76°. Feedback #59's lug bend was the lead-in curve
+      // absorbing the difference. The angle is DERIVED now, so what a test can
+      // still pin is that it is steep, downward, and outward.
+      assert.ok(angle > 0.9 && angle < 1.45, `arm ${dir} departs at ${angle} rad`);
       // It starts just BEHIND the lug tip — the tuck that keeps the joint
       // overlapping — and runs outward from there.
       const anchor = lugAnchor(SKX);
@@ -2346,13 +2352,23 @@ describe("the strap leaves the lug the way a worn strap does", () => {
     }
   });
 
-  test("no part of any strap sinks into the wrist it is lying on", () => {
+  test("no part of any strap sinks into the cushion it is lying on", () => {
+    // Since feedback #59 the cushion is not a cylinder: the watch presses a
+    // print into it. So the surface a band vertex has to stay outside of is
+    // `r − penetration` at that vertex's own place on the cushion, not `r`.
+    // The ridge of displaced leather only pushes the surface further out, so
+    // this bound is the conservative one.
     for (const s of STRAPS) {
       const kit = strapAssembly(SKX, s, { segments: 96 });
       const { r, cy } = kit.wristInfo;
+      const penAt = cushionPenetration(SKX, kit.plan);
       for (let i = 0; i < kit.band.positions.length; i += 3) {
-        const rad = Math.hypot(kit.band.positions[i + 2], kit.band.positions[i + 1] - cy);
-        assert.ok(rad >= r - 1e-6, `${s.id} band reaches radius ${rad} inside a ${r} wrist`);
+        const x = kit.band.positions[i];
+        const y = kit.band.positions[i + 1] - cy;
+        const z = kit.band.positions[i + 2];
+        const rad = Math.hypot(z, y);
+        const floor = r - penAt(x, Math.atan2(y, z));
+        assert.ok(rad >= floor - 1e-6, `${s.id} band reaches radius ${rad} inside a ${floor} cushion`);
       }
     }
   });
@@ -2471,11 +2487,15 @@ describe("buckles, clasps and the wrist cylinder", () => {
     assert.ok(Math.abs(b.maxX + b.minX) < 1e-9, "the cylinder is not centred on x = 0");
     assert.ok(Math.abs(b.maxX - on.wrist.len / 2) < 1e-6);
     // The barrel is a polygon, so its highest VERTEX sits a fraction under the
-    // reported radius unless a ring happens to land on 12 o'clock.
+    // reported radius unless a ring happens to land on 12 o'clock — except
+    // where the leather displaced by the case comes back up as a ridge, which
+    // is allowed to stand a little proud of it (feedback #59; the contact
+    // patch itself is pinned in public/js/watch-strap.test.js).
     const top = on.wrist.cy + on.wrist.r;
-    assert.ok(b.maxY <= top + 1e-9 && b.maxY > top - 0.25, `top ${b.maxY} vs ${top}`);
-    // Its top surface sits just under the case back, so the watch rests on it.
-    assert.ok(b.maxY < 0 && b.maxY > -1);
+    assert.ok(b.maxY <= top + WRIST_HOLDER.sinkMm * WRIST_HOLDER.bulge && b.maxY > top - 0.25, `top ${b.maxY} vs ${top}`);
+    // The undeformed crown stands `sinkMm` proud of where the case back rests,
+    // because the watch presses INTO the cushion rather than balancing on it.
+    assert.ok(Math.abs(top - WRIST_HOLDER.sinkMm) < 1, `crown ${top} vs sink ${WRIST_HOLDER.sinkMm}`);
   });
 
   test("a NATO lifts the watch off the wrist because it runs under the case", () => {

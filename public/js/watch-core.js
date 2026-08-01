@@ -3316,7 +3316,20 @@ export const BUCKLES = [
   { id: "tang", name: { en: "Tang buckle", sv: "Stiftspänne" }, kinds: ["leather", "rubber", "nato"], thicknessMm: 1.0, tongueMm: 3.0, src: "strapcodeLeather" },
   { id: "sporty-tang", name: { en: "Sporty tang buckle", sv: "Sportigt stiftspänne" }, kinds: ["leather", "rubber", "nato"], thicknessMm: 1.0, tongueMm: 2.0, src: "strapcodeLeather" },
   { id: "deployant", name: { en: "Deployant clasp", sv: "Vikspänne" }, kinds: ["leather", "rubber"], src: "strapcodeLeather" },
-  { id: "butterfly", name: { en: "Butterfly clasp", sv: "Fjärilslås" }, kinds: ["leather", "rubber"], closedThicknessMm: 7, planMm: [40, 22], maxStrapThicknessMm: 3.5, src: "strapcodeLeather" },
+  {
+    id: "butterfly", name: { en: "Butterfly clasp", sv: "Fjärilslås" },
+    // Feedback #59: "add butterfly clasp to models that have it". A butterfly
+    // (papillon) clasp is TWO wings hinged at the outer ends that fold to meet
+    // in the middle, and it is sold for bracelets as much as for straps — a
+    // dress bracelet's "concealed" clasp IS this mechanism with the links
+    // closing over it, which is why `president` and `nautilus` carry it.
+    kinds: ["leather", "rubber", "bracelet"],
+    closedThicknessMm: 7, planMm: [40, 22], maxStrapThicknessMm: 3.5, src: "strapcodeLeather",
+    note: {
+      en: "Twin wings hinged at the outer ends, meeting at the centre, so the closed strap has no free tail and no keepers. The 40 × 22 mm plan and the 7 mm closed thickness are the listing's; which bracelets ship one is a market fact rather than a published fitment table, so it is offered on every bracelet and defaulted only where the bracelet's own listing calls its clasp concealed.",
+      sv: "Två vingar med gångjärn i ytterändarna som möts på mitten, så det stängda bandet varken har fri tamp eller hållare. Måtten 40 × 22 mm och 7 mm stängd tjocklek kommer från annonsen; vilka länkar som levereras med ett fjärilslås är ett marknadsfaktum snarare än en publicerad passformstabell, så det erbjuds på alla länkar och väljs som standard bara där länkens egen annons kallar låset dolt.",
+    },
+  },
   { id: "v-clasp", name: { en: "V-clasp, double lock", sv: "V-lås, dubbelspärr" }, kinds: ["bracelet"], microHoles: 6, src: "strapcodeJubilee" },
   { id: "flip-lock", name: { en: "Double flip-lock diver clasp", sv: "Dubbelt flip-lock dykarlås" }, kinds: ["bracelet"], microHoles: 6, src: "strapcodeOyster" },
   { id: "concealed", name: { en: "Concealed clasp", sv: "Dolt lås" }, kinds: ["bracelet"], src: "everestBracelet" },
@@ -3324,36 +3337,94 @@ export const BUCKLES = [
 ];
 
 /**
- * The default scene: the watch resting on a leather cylinder that stands in
- * for a wrist, which is what the feedback asked for. The radius is
- * sourced-and-derived — the average adult male wrist circumference is 172 mm,
- * giving a 27.4 mm circular radius, and watch pillows are actually sold in
- * 50 mm and 55 mm diameters banded by wrist size. The LENGTH is a rendering
- * choice; nobody publishes one.
+ * The default scene: the watch resting on a leather CUSHION — a watch pillow,
+ * not a forearm. The radius is sourced-and-derived: watch pillows are sold in
+ * 50 mm and 55 mm diameters banded by wrist size, and a 172 mm average adult
+ * male wrist circumference independently gives a 27.4 mm circular radius.
+ *
+ * Feedback #59 is what the rest of this record answers, verbatim: "the leather
+ * cushion the watch sits on is perfectly round, it should account for the
+ * squish it would receive from the watch", and "make the leather cushion just
+ * wide enough for the watch to sit on it, not so wide as to replicate a
+ * forearm". So the LENGTH is no longer a fixed 100 mm cylinder — it is the
+ * case's own diameter plus `marginMm` of leather showing at each end — and the
+ * pillow deforms under the case back instead of staying a perfect cylinder.
+ *
+ * Nobody publishes how far a watch sinks into a pillow or how much leather
+ * comes back up around it, so `marginMm`, `sinkMm` and `bulge` are rendering
+ * conventions and say so. What is NOT a convention is where the flat lands:
+ * the contact patch is clipped to the case back's own footprint and to the
+ * case-back plane, both read off the same catalogue numbers `caseProfile`
+ * uses, so a bigger watch leaves a bigger print.
  */
 export const WRIST_HOLDER = {
   radiusMm: 27,
   radiusRangeMm: [25, 27.5],
-  lengthMm: 100,
+  /** Leather showing beyond the case at each end; the cushion is this + the case. */
+  marginMm: 4,
   lengthApprox: true,
   material: "suede",
   sheen: "matte",
   /** A wrist is flatter than it is wide; the ratio itself is not sourced. */
   aspect: 1.25,
   aspectApprox: true,
+  /** How deep the case back presses into the leather. */
+  sinkMm: 1.5,
+  /** How much of the displaced leather returns as a ridge around the print. */
+  bulge: 0.55,
+  contactApprox: true,
   src: "strapcodeLeather",
   note: {
-    en: "Radius 27 mm from a 172 mm average adult male wrist circumference, independently corroborated by the 50 and 55 mm diameters watch pillows are actually sold in. The cylinder is matte suede-grain leather, not polished. Its length and its non-circular cross-section ratio are rendering conventions.",
-    sv: "Radie 27 mm utifrån 172 mm genomsnittligt handledsomfång för vuxna män, oberoende bekräftat av de 50 och 55 mm diametrar klockkuddar faktiskt säljs i. Cylindern är matt mockaläder, inte polerat. Dess längd och icke-cirkulära tvärsnittsförhållande är renderingskonventioner.",
+    en: "Radius 27 mm from the 50 and 55 mm diameters watch pillows are actually sold in, independently corroborated by a 172 mm average adult male wrist circumference. Matte suede-grain leather, not polished. Its length is the case diameter plus 4 mm of leather at each end — enough for the watch to sit on and no more. The 1.5 mm the case sinks in and the 0.55 of that which returns as a ridge round the print are rendering conventions; the print's OUTLINE is not, being clipped to the case back's own footprint.",
+    sv: "Radie 27 mm utifrån de 50 och 55 mm diametrar klockkuddar faktiskt säljs i, oberoende bekräftat av 172 mm genomsnittligt handledsomfång för vuxna män. Matt mockaläder, inte polerat. Längden är boettens diameter plus 4 mm läder i var ände — precis nog för att klockan ska vila på den och inte mer. De 1,5 mm boetten sjunker ned och de 0,55 av det som kommer tillbaka som en vall runt avtrycket är renderingskonventioner; avtryckets KONTUR är det inte, utan följer bottenlockets egen fotavtrycksradie.",
   },
 };
 
 /**
- * How far down the strap has already turned when it leaves the lug. The
- * complaint was that worn straps do not start straight out, and they do not:
- * with a wrist radius R and a spring bar standing d proud of the wrist, the
- * strap is tangent to the wrist at arccos(R/(R+d)) — about 29° for a 27 mm
- * wrist and a 4 mm standoff. The standoff is the unsourced part.
+ * WHERE THE STRAP FIRST TOUCHES THE CUSHION, and how it gets there.
+ *
+ * `degrees` is the classical figure: with a wrist radius R and a spring bar
+ * standing d proud of the wrist, a strap running from a bar directly ABOVE the
+ * wrist centre is tangent to it at arccos(R/(R+d)) — about 29.5° for a 27 mm
+ * wrist and a 4 mm standoff. That maths is right and `strapPath` computes the
+ * same arccos for real, from the actual spring-bar position rather than from
+ * an idealised one directly overhead.
+ *
+ * FEEDBACK #59, verbatim: "strap/bracelet sits weirdly with a bend near the
+ * lugs which has no reason to be there". The bend was not this angle being
+ * wrong. It was this angle being used for a SECOND, different quantity: the
+ * renderer also took 29.5° as the direction the band leaves the lug, measured
+ * below horizontal. Those are not the same number and are not even close. A
+ * spring bar sits half a lug-to-lug OUT from the wrist's centreline, not above
+ * it, so the taut span from the bar down to the tangent point runs at 67–76°
+ * below horizontal on the catalogue's cases. Leaving at 29.5° and arriving at
+ * 75° forced the lead-in curve to absorb a ~45° mismatch in about 25 mm: it
+ * bowed outward off the lug, over-plunged past the taut line and swung back —
+ * measurably, at 6.4°/mm of turn 4 mm from the lug tip, with two inflections
+ * before the wrap even started.
+ *
+ * So the exit direction is now DERIVED: the band leaves along the taut span
+ * itself. Because the tangent point is by construction where the line from the
+ * spring bar touches the cushion, the span and the wrap already meet
+ * tangentially, so a lead-in that leaves along the span and arrives along it
+ * is the straight line, and there is no bend anywhere in it.
+ *
+ * A SOFTER EXIT WAS TRIED AND DROPPED, and the reason is worth keeping because
+ * it will be proposed again: a strap does not fold at a spring bar, so it
+ * seems obvious to leave a few degrees flatter and ease in. It cannot be done
+ * on this path. Both the flat exit and the taut span start AT the spring bar,
+ * so a curve leaving flatter starts above the span and has to come back down
+ * to the same tangent point — which means bending one way and then the other.
+ * A Hermite does it with 0.8° of reversal, a line–arc–line fillet degenerates
+ * because the two lines meet at the spring bar itself, and no curve of that
+ * family avoids it: a flatter exit and a tangential arrival at the SAME
+ * tangent point are not simultaneously satisfiable. Modelling the stiffness
+ * properly means moving the tangent point, which is a two-circle tangency
+ * solve for an effect a few tenths of a millimetre wide. And the straight run
+ * is what the note below already said the physics was: a flat-cut strap PIVOTS
+ * at the spring bar rather than being clamped by it, and a taut pivoting strap
+ * is a straight line. So the reversal it would reintroduce is exactly the
+ * artifact being removed, and the honest answer is the straight span.
  */
 export const STRAP_EXIT = {
   wristRadiusMm: WRIST_HOLDER.radiusMm,
@@ -3361,10 +3432,12 @@ export const STRAP_EXIT = {
   standoffApprox: true,
   degrees: 29.5,
   degreesRange: [25, 35],
+  /** The band leaves along the taut span itself; see the note above for why. */
+  easeDegrees: 0,
   src: "strapcodeLeather",
   note: {
-    en: "Computed, not authored: arccos(R/(R+d)). Nobody publishes a lug exit angle. A flat-cut strap on curved lugs PIVOTS at the spring bar; a fitted curved end BENDS instead and sits flush against the case.",
-    sv: "Beräknad, inte påhittad: arccos(R/(R+d)). Ingen publicerar en utgångsvinkel vid hornen. Ett rakskuret band på kurvade horn VRIDER sig kring bandstiftet; en formgjuten kurvad ände BÖJER sig i stället och ligger tätt mot boetten.",
+    en: "Computed, not authored: arccos(R/(R+d)), and computed again per case from the real spring-bar position rather than from an idealised bar overhead. Nobody publishes a lug exit angle. This is the angle at which the strap first TOUCHES the wrist — it is NOT the angle at which it leaves the lug, and using it as one is what put a kink at the lugs until 2026-08-01. The band leaves along the taut span to the tangent point, which is straight, because a flat-cut strap on curved lugs PIVOTS at the spring bar rather than being clamped by it — and a taut strap on a pivot is a straight line. A fitted curved end BENDS instead and sits flush against the case; that end is not modelled.",
+    sv: "Beräknad, inte påhittad: arccos(R/(R+d)), och beräknad om per boett utifrån bandstiftets verkliga läge i stället för ett tänkt stift rakt ovanför. Ingen publicerar en utgångsvinkel vid hornen. Det här är vinkeln där bandet först RÖR handleden — det är INTE vinkeln det lämnar hornet i, och att använda den som det var det som gav en knyck vid hornen fram till 2026-08-01. Bandet lämnar hornet längs det spända spannet fram till tangeringspunkten, vilket är rakt, eftersom ett rakskuret band på kurvade horn VRIDER sig kring bandstiftet i stället för att spännas fast av det — och ett spänt band kring ett vridcentrum är en rät linje. En formgjuten kurvad ände BÖJER sig i stället och ligger tätt mot boetten; den änden är inte modellerad.",
   },
 };
 
@@ -6018,13 +6091,19 @@ export function integratedBraceletAssembly(caseEntry, opts) {
 
 /** How the strap is draped, independent of what it is made of. */
 export const STRAP_DRAPE = {
-  // A 60 mm cylinder — a 188 mm wrist, and also the size of an ordinary
-  // leather display roll. Listing-derived, so approximate by construction.
-  wristR: 30,
-  // How far below horizontal the band already points AS IT LEAVES THE LUG.
-  // The old code left at 0° and that is exactly what "straps don't start out
-  // straight out like they do here" was about.
-  drop: 0.52,
+  // ONE radius, and it is the cushion's. This used to be an independent 30 mm
+  // — a second, unsourced number for the same object WRIST_HOLDER already
+  // measured at 27 mm off the diameters watch pillows are sold in — so the
+  // drape was solved against a cushion 3 mm fatter than the one drawn.
+  wristR: WRIST_HOLDER.radiusMm,
+  // How much flatter than the taut span the band leaves the spring bar. It is
+  // NOT a departure angle below horizontal — that confusion is the whole of
+  // feedback #59's lug bend — and STRAP_EXIT records why it is zero.
+  exitEase: (STRAP_EXIT.easeDegrees * Math.PI) / 180,
+  // How much of the run the fillet that absorbs a non-zero ease may take. It
+  // bounds the mechanism rather than describing the strap, so it stays even
+  // though the ease above is currently zero.
+  exitEaseSpan: 0.45,
   src: "community",
   approx: true,
 };
@@ -6253,8 +6332,66 @@ const STRAP_KIND_FALLBACK = {
   nato: "nato",
 };
 
-/** Tang-buckle stock, from Strapcode's #64/#65 parts listings. */
-export const BUCKLE_STOCK = { plate: 1.4, bar: 1.7, tongue: 2, open: 7, src: "strapcodebuckle", approx: true };
+/**
+ * Tang-buckle stock, from Strapcode's #64/#65 parts listings, plus the two
+ * figures the modelled buckle needs beyond the frame itself. `plate` is the
+ * frame's own thickness, `bar` its wire gauge, `open` the length of the
+ * opening the strap passes through, `tongue` the prong's root width, `pin`
+ * the hinge bar the prong pivots on and `prong` how far the prong reaches
+ * across the opening as a fraction of it. The last two are listed nowhere —
+ * a buckle is sold by width and finish, never by prong length — so they are
+ * rendering conventions, which is what `approx` says.
+ */
+export const BUCKLE_STOCK = { plate: 1.4, bar: 1.7, tongue: 2, open: 7, pin: 1.0, prong: 0.86, src: "strapcodebuckle", approx: true };
+
+/**
+ * HOW A STRAP CLOSES, per hardware id, and it is not one bit of information
+ * but two. `close` decides whether the band ends in a tang buckle (a free tail
+ * running back through keepers) or in a folding clasp (no tail, no keepers,
+ * the two arms meeting under the wrist); `style` is which clasp, and until
+ * feedback #59 every bracelet drew the SAME two swept plates whatever its
+ * catalogue said, so an Oyster's diver clasp, a Jubilee's V-clasp, a mesh
+ * slider and a concealed dress clasp were one object with four names.
+ *
+ * The ids are the BUCKLES catalogue's, so a clasp offered in the UI is a clasp
+ * that gets built. Anything unknown degrades to a tang buckle rather than to
+ * nothing, because a strap with no visible closure reads as unfinished.
+ */
+export const CLASP_STYLES = {
+  tang: { close: "buckle", style: "tang" },
+  "sporty-tang": { close: "buckle", style: "tang" },
+  deployant: { close: "clasp", style: "deployant" },
+  butterfly: { close: "clasp", style: "butterfly" },
+  "v-clasp": { close: "clasp", style: "v-clasp" },
+  "flip-lock": { close: "clasp", style: "flip-lock" },
+  concealed: { close: "clasp", style: "concealed" },
+  interlock: { close: "clasp", style: "interlock" },
+};
+
+/**
+ * Which clasp this build actually wears.
+ *
+ * Three sources can name one and they are not equally authoritative. The
+ * `buckle` SLOT is an explicit choice and always wins — but `resolveBuild`
+ * writes the strap's own catalogue default into the same field when nothing is
+ * picked, so "explicit" means "differs from what this strap ships with". Below
+ * that comes the bracelet TYPE's clasp, which tracks the braceletType slot (a
+ * President is a concealed clasp, a Jubilee a V-clasp), and below that the
+ * strap listing's own default.
+ * @param {any} strapEntry
+ * @returns {string}
+ */
+export function resolveClasp(strapEntry) {
+  const e = strapEntry || {};
+  const listed = (STRAPS.find((s) => s.id === e.id) || {}).buckle;
+  if (e.buckle && e.buckle !== listed && CLASP_STYLES[/** @type {keyof typeof CLASP_STYLES} */ (e.buckle)]) {
+    return e.buckle;
+  }
+  const byType = e.geometry && e.geometry.clasp;
+  if (byType && CLASP_STYLES[/** @type {keyof typeof CLASP_STYLES} */ (byType)]) return byType;
+  if (e.buckle && CLASP_STYLES[/** @type {keyof typeof CLASP_STYLES} */ (e.buckle)]) return e.buckle;
+  return e.kind === "bracelet" ? "flip-lock" : "tang";
+}
 
 /**
  * Resolve one strap entry into the numbers the geometry needs. Never throws:
@@ -6266,21 +6403,33 @@ export const BUCKLE_STOCK = { plate: 1.4, bar: 1.7, tongue: 2, open: 7, src: "st
 export function strapPlan(caseEntry, strapEntry) {
   const key = strapEntry && strapEntry.id;
   const fallback = STRAP_KIND_FALLBACK[/** @type {keyof typeof STRAP_KIND_FALLBACK} */ ((strapEntry || {}).kind)];
+  // The braceletType/rubberType/leatherType slot is resolved onto `type`, and
+  // it is the more specific answer where the table has a row for it: picking
+  // "President" on the Oyster used to still draw an Oyster. `id` remains the
+  // fallback so `mesh` (type "milanese") keeps its own row.
   const g =
+    STRAP_GEOMETRY[/** @type {keyof typeof STRAP_GEOMETRY} */ ((strapEntry || {}).type)] ||
     STRAP_GEOMETRY[/** @type {keyof typeof STRAP_GEOMETRY} */ (key)] ||
     STRAP_GEOMETRY[/** @type {keyof typeof STRAP_GEOMETRY} */ (fallback)] ||
     STRAP_GEOMETRY.leather;
   const row = /** @type {any} */ (g);
   const lugW = (caseEntry && caseEntry.dims && caseEntry.dims.lugW) || 20;
+  const clasp = resolveClasp(strapEntry);
+  const closure = CLASP_STYLES[/** @type {keyof typeof CLASP_STYLES} */ (clasp)] || CLASP_STYLES.tang;
+  // A NATO never folds: the nylon runs through a buckle whatever the slot says.
+  const close = row.build === "nato" ? "buckle" : closure.close;
   return {
     id: key || "leather",
     build: row.build,
-    close: row.close,
+    clasp,
+    claspStyle: row.build === "nato" ? "tang" : closure.style,
+    close,
     section: row.section || "steel",
     cols: row.cols || null,
     weave: row.weave || null,
     relief: row.relief || null,
-    keepers: row.keepers || 0,
+    // A folding clasp has no free tail, so it has nothing for a keeper to hold.
+    keepers: close === "buckle" ? row.keepers || 0 : 0,
     pitch: row.pitch || 0,
     gap: row.gap || 0,
     thick: row.thick,
@@ -6292,7 +6441,8 @@ export function strapPlan(caseEntry, strapEntry) {
     // The nylon is cut a hair under the lug width; everything else fills it.
     lugW: row.build === "nato" ? lugW - 0.4 : lugW,
     wristR: STRAP_DRAPE.wristR,
-    drop: STRAP_DRAPE.drop,
+    exitEase: STRAP_DRAPE.exitEase,
+    exitEaseSpan: STRAP_DRAPE.exitEaseSpan,
     src: row.src,
     approx: row.approx === true,
     note: row.note || null,
@@ -6372,12 +6522,17 @@ function makeStrapPath(pts, seedZ, seedY) {
 }
 
 /**
- * Where the wrist cylinder sits for this build. Its top surface is just under
- * the case back — or under the nylon layers, on a NATO.
+ * Where the cushion sits for this build. Its UNDEFORMED crown stands
+ * `WRIST_HOLDER.sinkMm` above the plane the case back rests on — or above the
+ * nylon layers, on a NATO — because a watch on a leather pillow presses into
+ * it rather than balancing on top of it. `wristMesh` is what takes that back
+ * out again as a contact patch; everything else (the band's wrap radius, the
+ * clasp, the shadow the page grounds) uses the undeformed cylinder, which is
+ * right, because the strap is not what is pressing.
  * @param {any} plan
  */
 function wristAxis(plan) {
-  return { r: plan.wristR, cy: -(plan.wristR + plan.underCase + 0.15) };
+  return { r: plan.wristR, cy: -(plan.wristR + plan.underCase + 0.15) + WRIST_HOLDER.sinkMm };
 }
 
 /**
@@ -6389,18 +6544,28 @@ function wristAxis(plan) {
  */
 function bandRadius(plan) {
   const depth = plan.weave ? plan.weave.depth : plan.relief ? plan.relief.depth : 0;
-  return wristAxis(plan).r + plan.thick / 2 + depth + 0.05;
+  const rp = wristAxis(plan).r + plan.thick / 2 + depth + 0.05;
+  // A path is a polyline and the cushion is a circle: the chord between two
+  // samples 0.045 rad apart cuts inside the arc by rp·(1 − cos 0.0225). It is
+  // a hundredth of a millimetre, and it is the whole difference between
+  // "resting on the leather" and "very slightly inside it".
+  return rp + rp * (1 - Math.cos(0.0225));
 }
 
 /**
  * WHERE THE STRAP IS BOLTED ON — the spring-bar centre, at 6 and 12 o'clock.
  *
- * This is a SEAM with the lug geometry in buildMeshes: the lugs are four boxes
- * reaching out to `l2l / 2` at height `thick * 0.3`, and the band has to start
- * on exactly that point or it reads as a floating slab with daylight between
- * it and the case — which is what a browser render of the old builder showed.
- * Both sides derive it from the same two catalogue numbers; if the lug code
- * ever moves, it should move by calling this.
+ * This is a SEAM with the lug geometry in buildMeshes: the lugs reach out to
+ * `l2l / 2` and are drilled at the centre of their rounded tip, and the band
+ * has to start on exactly that point or it reads as a floating slab with
+ * daylight between it and the case — which is what a browser render of the
+ * old builder showed. Both sides derive it from the same two catalogue
+ * numbers; if the lug code ever moves, it should move by calling this.
+ *
+ * The height is the one that had already drifted. `buildMeshes` tapers each
+ * lug to a tip running from `thick * 0.09` to `thick * 0.4`, so the drilled
+ * centre is at `thick * 0.245`; this returned `thick * 0.3` and started every
+ * band about three quarters of a millimetre high on its own spring bar.
  *
  * One case needs more than the catalogue's lug-to-lug: the Tuna's SHROUD is
  * wider than its lug-to-lug (47 mm across, 44.5 mm lug-to-lug), so anchoring
@@ -6418,19 +6583,39 @@ export function lugAnchor(caseEntry) {
   const dims = (caseEntry && caseEntry.dims) || { l2l: 44, thick: 12, dia: 40 };
   // The lug axis is 12/6 o'clock, which is θ = π/2 in the lathe's frame.
   const wall = (dims.dia / 2) * outlineFor(caseEntry && caseEntry.shell)(Math.PI / 2);
-  return { z: Math.max(dims.l2l / 2, wall + 0.35), y: dims.thick * 0.3, tuck: 1.6 };
+  // (thick * 0.4 + thick * 0.09) / 2 — the midpoint of the lug tip's own
+  // top and bottom, which is where buildMeshes puts the drilled hole.
+  return { z: Math.max(dims.l2l / 2, wall + 0.35), y: dims.thick * 0.245, tuck: 1.6 };
 }
 
 /**
- * One arm of the strap: from the lug tip, bending down over the lug at the
- * drape's departure angle, onto the wrist cylinder TANGENTIALLY, then wrapped
- * round it to 6 o'clock.
+ * One arm of the strap: from the spring bar, down the taut span, onto the
+ * cushion TANGENTIALLY, then wrapped round it to 6 o'clock.
  *
- * The lead-in is a cubic Hermite rather than a straight line because a strap
- * is stiff at the lug and slack further out; a straight run from the lug tip
- * to the tangent point plunges at nearly 75° and reads as a broken hinge. Any
- * sample the Hermite still drops inside the cylinder is pushed back out to its
- * surface, so the drape can sag but can never sink into the wrist.
+ * THE LUG BEND (feedback #59: "a bend near the lugs which has no reason to be
+ * there"). The tangent point `t` is by construction the point where the line
+ * FROM THE SPRING BAR touches the cushion, so the taut span and the wrap meet
+ * tangentially and the span's direction and `dT` are the same vector. A
+ * lead-in that leaves along that direction and arrives along it, with matched
+ * tangent magnitudes, is exactly the straight line — no bend anywhere.
+ *
+ * What used to be here left the lug at a fixed 29.5° below horizontal, a
+ * number lifted from STRAP_EXIT that answers a different question (see the
+ * long note there). The span itself runs at 67–76° below horizontal on the
+ * catalogue's cases, so the Hermite had to swallow a ~45° mismatch across a
+ * ~25 mm chord: it bowed out off the lug, over-plunged past the taut line and
+ * came back, turning 6.4°/mm four millimetres from the lug tip. That S was
+ * the bend.
+ *
+ * The lead-in is therefore a STRAIGHT RUN, and `plan.exitEase` — the softer
+ * exit a stiff strap seems to want — is zero. The line–arc–line fillet below
+ * is kept because the ease is data rather than a constant, but the reason it
+ * cannot be turned on for this path is recorded in STRAP_EXIT's note: both
+ * lines start at the spring bar, so any curve leaving flatter has to bend back
+ * to reach the same tangent point, which is the artifact being removed.
+ *
+ * Any sample that still drops inside the cushion is pushed back out to its
+ * surface, so the drape can sag but can never sink into the leather.
  *
  * @param {any} caseEntry
  * @param {any} plan
@@ -6450,29 +6635,66 @@ export function strapPath(caseEntry, plan, dir, extend) {
   const beta = Math.acos(Math.max(-1, Math.min(0.999, rp / d)));
   const thetaT = alpha - dir * beta;
   const t = { z: rp * Math.cos(thetaT), y: w.cy + rp * Math.sin(thetaT) };
-  const d0 = { z: dir * Math.cos(plan.drop), y: -Math.sin(plan.drop) };
   const dT = { z: dir * Math.sin(thetaT), y: -dir * Math.cos(thetaT) };
   const len = Math.hypot(t.z - p.z, t.y - p.y);
+  // The span's angle in the arm's own (outward, up) frame: negative, because
+  // the strap always leaves going down and out. Measuring it from `dT` rather
+  // than from the chord keeps the two identical even in the degenerate case
+  // where the anchor sits almost on the cushion and `len` collapses.
+  const spanAngle = Math.atan2(dT.y, dir * dT.z);
+  // Ease toward horizontal, never past it and never more than half the span's
+  // own angle — on a case whose lugs nearly touch the leather there is no room
+  // for stiffness and the honest answer is a straight run.
+  const ease = Math.min(plan.exitEase || 0, Math.abs(spanAngle) * 0.5);
+  const exitAngle = spanAngle + ease;
+  const d0 = { z: dir * Math.cos(exitAngle), y: Math.sin(exitAngle) };
   /** @type {{ z: number, y: number }[]} */
   const pts = [];
   // Start a shade BEHIND the anchor so the band overlaps the lug instead of
   // butting against it — a hairline gap here is what read as "detached
   // floating blocks" in the render.
   pts.push({ z: p.z - d0.z * anchor.tuck, y: p.y - d0.y * anchor.tuck });
-  const lead = 18;
-  for (let i = 0; i <= lead; i++) {
-    const u = i / lead;
-    const u2 = u * u;
-    const u3 = u2 * u;
-    const h00 = 2 * u3 - 3 * u2 + 1;
-    const h10 = u3 - 2 * u2 + u;
-    const h01 = -2 * u3 + 3 * u2;
-    const h11 = u3 - u2;
-    pts.push({
-      z: h00 * p.z + h10 * len * d0.z + h01 * t.z + h11 * len * dT.z,
-      y: h00 * p.y + h10 * len * d0.y + h01 * t.y + h11 * len * dT.y,
-    });
+  pts.push({ z: p.z, y: p.y });
+  // Where the exit line and the taut span meet. Everything below works in the
+  // arm's own (outward, up) frame so both arms are one piece of arithmetic.
+  const u0 = { u: dir * d0.z, v: d0.y };
+  const uT = { u: dir * dT.z, v: dT.y };
+  const det = u0.u * uT.v - u0.v * uT.u;
+  const wu = dir * (t.z - p.z);
+  const wv = t.y - p.y;
+  const a = Math.abs(det) > 1e-9 ? (wu * uT.v - uT.u * wv) / det : -1;
+  const b = Math.abs(det) > 1e-9 ? (u0.u * wv - wu * u0.v) / det : -1;
+  const fillet = Math.min(a, b) * (plan.exitEaseSpan == null ? 0.45 : plan.exitEaseSpan);
+  /** @param {number} pu @param {number} pv */
+  const back = (pu, pv) => ({ z: dir * pu, y: pv });
+  if (ease > 1e-6 && a > 1e-6 && b > 1e-6 && fillet > 1e-6) {
+    const qu = dir * p.z + a * u0.u;
+    const qv = p.y + a * u0.v;
+    const au = qu - fillet * u0.u;
+    const av = qv - fillet * u0.v;
+    const rho = fillet / Math.tan(ease / 2);
+    // The centre sits ρ to the inside of the turn, which for a direction angle
+    // that DECREASES from exitAngle to spanAngle is the tangent rotated −90°.
+    const cu = au + rho * Math.sin(exitAngle);
+    const cv = av - rho * Math.cos(exitAngle);
+    for (let i = 1; i <= 3; i++) {
+      pts.push(back(dir * p.z + ((au - dir * p.z) * i) / 3, p.y + ((av - p.y) * i) / 3));
+    }
+    const arcN = 12;
+    for (let i = 1; i <= arcN; i++) {
+      const phi = exitAngle - ease * (i / arcN);
+      pts.push(back(cu - rho * Math.sin(phi), cv + rho * Math.cos(phi)));
+    }
+    const bu = qu + fillet * uT.u;
+    const bv = qv + fillet * uT.v;
+    for (let i = 1; i <= 5; i++) {
+      pts.push(back(bu + ((dir * t.z - bu) * i) / 5, bv + ((t.y - bv) * i) / 5));
+    }
+  } else {
+    // No room to bend — the honest answer is the taut line itself.
+    for (let i = 1; i <= 8; i++) pts.push({ z: p.z + ((t.z - p.z) * i) / 8, y: p.y + ((t.y - p.y) * i) / 8 });
   }
+  void len;
   // Both arms stop at the bottom of the wrist — which is where a clasp or a
   // buckle really sits — plus whatever tail the caller asked for.
   const bottom = dir > 0 ? -Math.PI / 2 : Math.PI * 1.5;
@@ -6759,48 +6981,311 @@ export function buckleMesh(width, thick) {
   const bar = BUCKLE_STOCK.bar;
   const innerW = width + 0.9;
   const innerL = BUCKLE_STOCK.open;
-  for (const sx of [-1, 1]) {
-    mergeMesh(m, box(bar, stock, innerL + 2 * bar, [sx * (innerW / 2 + bar / 2), 0, 0]));
+  // The FRAME, as one continuous piece of bent wire rather than four butted
+  // boxes. Feedback #59 said "buckle can be improved", and four boxes is what
+  // it was: square corners, a square section, and four visible seams where a
+  // buckle is one bent bar. Its outer width is unchanged — innerW + 2 × bar —
+  // because the rule above still holds: a buckle is the width the strap has
+  // where the buckle sits, and the tests pin that.
+  const halfW = innerW / 2 + bar / 2;
+  const halfL = innerL / 2 + bar / 2;
+  const corner = Math.min(bar * 1.5, halfL * 0.65, halfW * 0.4);
+  /** @type {{ x: number, z: number }[]} */
+  const loop = [];
+  const seg = 5;
+  // A buckle frame is not a rectangle: it narrows toward the tip and keeps its
+  // full width from the crossbar to the middle, so the widest point is still
+  // exactly innerW + 2 × bar across. The 8 % narrowing is a rendering choice.
+  const taperAt = (/** @type {number} */ z) => 1 - 0.08 * clamp(z / halfL, 0, 1);
+  for (const [cx, cz, a0] of [
+    [halfW - corner, halfL - corner, 0],
+    [-(halfW - corner), halfL - corner, Math.PI / 2],
+    [-(halfW - corner), -(halfL - corner), Math.PI],
+    [halfW - corner, -(halfL - corner), Math.PI * 1.5],
+  ]) {
+    for (let i = 0; i <= seg; i++) {
+      const a = a0 + ((i / seg) * Math.PI) / 2;
+      const z = cz + corner * Math.sin(a);
+      loop.push({ x: (cx + corner * Math.cos(a)) * taperAt(z), z });
+    }
   }
-  for (const sz of [-1, 1]) {
-    mergeMesh(m, box(innerW, stock, bar, [0, 0, sz * (innerL / 2 + bar / 2)]));
-  }
-  // The tongue, hinged on the rear bar and lying across the opening.
-  mergeMesh(m, box(BUCKLE_STOCK.tongue * 0.6, stock * 0.7, innerL * 0.94, [0, stock * 0.28, 0.3]));
+  mergeMesh(m, ovalLoop(loop, bar / 2, stock / 2, 8));
+  // The hinge pin the prong pivots on, spanning the crossbar end.
+  const pinZ = -(innerL / 2);
+  mergeMesh(m, rod([-innerW / 2, 0, pinZ], [innerW / 2, 0, pinZ], BUCKLE_STOCK.pin / 2, BUCKLE_STOCK.pin / 2, 8));
+  // The PRONG: hinged on that pin, tapering, lying up over the opening the way
+  // it lies over the strap it has just gone through. It used to be a box the
+  // same thickness end to end, which reads as a splinter rather than a tongue.
+  const tipZ = pinZ + BUCKLE_STOCK.prong * innerL;
+  mergeMesh(
+    m,
+    rod(
+      [0, stock * 0.1, pinZ],
+      [0, stock * 0.62, tipZ],
+      BUCKLE_STOCK.tongue / 2,
+      BUCKLE_STOCK.tongue * 0.22,
+      8,
+    ),
+  );
   return m;
 }
 
 /**
- * A fold-over clasp: the cover plate plus the leaf under it, both swept along
- * the wrist so they curve with it rather than sitting on it as a slab.
+ * A closed loop of round-ish bar stock, swept in the local x–z plane with `ra`
+ * across the plane and `rb` through it. This is what makes a buckle frame read
+ * as one bent wire; every hardware part that is a ring rather than a plate
+ * uses it.
+ *
+ * The loop is forced counter-clockwise in (x, z) first, because the outward
+ * in-plane normal is then (tz, −tx) unconditionally and the sweep cannot come
+ * out inside-out — the trap PR #361 recorded for `extrude`, in a different
+ * builder.
+ * @param {{ x: number, z: number }[]} pts
+ * @param {number} ra
+ * @param {number} rb
+ * @param {number} seg section resolution
+ * @returns {Mesh}
+ */
+function ovalLoop(pts, ra, rb, seg) {
+  const mesh = emptyMesh();
+  const n = pts.length;
+  if (n < 3) return mesh;
+  let area = 0;
+  for (let i = 0; i < n; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % n];
+    area += a.x * b.z - b.x * a.z;
+  }
+  const loop = area < 0 ? pts.slice().reverse() : pts;
+  const cols = Math.max(4, seg);
+  for (let i = 0; i < n; i++) {
+    const p = loop[i];
+    const a = loop[(i - 1 + n) % n];
+    const b = loop[(i + 1) % n];
+    let tx = b.x - a.x;
+    let tz = b.z - a.z;
+    const tl = Math.hypot(tx, tz) || 1;
+    tx /= tl;
+    tz /= tl;
+    // (N, Y, T) right-handed with N outward, so the section below winds out.
+    const nx = tz;
+    const nz = -tx;
+    for (let j = 0; j < cols; j++) {
+      const ang = (j / cols) * Math.PI * 2;
+      const ca = Math.cos(ang);
+      const sa = Math.sin(ang);
+      mesh.positions.push(p.x + nx * ra * ca, rb * sa, p.z + nz * ra * ca);
+      const ny = sa;
+      const l = Math.hypot(nx * ca, ny, nz * ca) || 1;
+      mesh.normals.push((nx * ca) / l, ny / l, (nz * ca) / l);
+      mesh.uvs.push(i / n, j / cols);
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    const i1 = (i + 1) % n;
+    for (let j = 0; j < cols; j++) {
+      const j1 = (j + 1) % cols;
+      const a = i * cols + j;
+      const b = i * cols + j1;
+      const c = i1 * cols + j1;
+      const d = i1 * cols + j;
+      mesh.indices.push(a, b, c, a, c, d);
+    }
+  }
+  return mesh;
+}
+
+/**
+ * A capped tapering bar between two points — a hinge pin, a buckle prong, a
+ * clasp's push-piece.
+ * @param {number[]} a
+ * @param {number[]} b
+ * @param {number} r0
+ * @param {number} r1
+ * @param {number} seg
+ * @returns {Mesh}
+ */
+function rod(a, b, r0, r1, seg) {
+  const mesh = emptyMesh();
+  const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  const l = Math.hypot(d[0], d[1], d[2]);
+  if (!(l > 1e-6)) return mesh;
+  const t = [d[0] / l, d[1] / l, d[2] / l];
+  const ref = Math.abs(t[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+  let u = [ref[1] * t[2] - ref[2] * t[1], ref[2] * t[0] - ref[0] * t[2], ref[0] * t[1] - ref[1] * t[0]];
+  const ul = Math.hypot(u[0], u[1], u[2]) || 1;
+  u = [u[0] / ul, u[1] / ul, u[2] / ul];
+  // v = t × u, so (u, v, t) is right-handed and the rings wind outward.
+  const v = [t[1] * u[2] - t[2] * u[1], t[2] * u[0] - t[0] * u[2], t[0] * u[1] - t[1] * u[0]];
+  const cols = Math.max(4, seg);
+  for (const [c, r] of /** @type {[number[], number][]} */ ([
+    [a, r0],
+    [b, r1],
+  ])) {
+    for (let j = 0; j < cols; j++) {
+      const ang = (j / cols) * Math.PI * 2;
+      const ca = Math.cos(ang);
+      const sa = Math.sin(ang);
+      mesh.positions.push(c[0] + (u[0] * ca + v[0] * sa) * r, c[1] + (u[1] * ca + v[1] * sa) * r, c[2] + (u[2] * ca + v[2] * sa) * r);
+      mesh.normals.push(u[0] * ca + v[0] * sa, u[1] * ca + v[1] * sa, u[2] * ca + v[2] * sa);
+      mesh.uvs.push(j / cols, r === r0 ? 0 : 1);
+    }
+  }
+  for (let j = 0; j < cols; j++) {
+    const j1 = (j + 1) % cols;
+    mesh.indices.push(j, j1, cols + j1, j, cols + j1, cols + j);
+  }
+  // Caps, wound so each faces away from the bar.
+  for (const [end, sign] of /** @type {[number, number][]} */ ([
+    [0, -1],
+    [1, 1],
+  ])) {
+    const base = mesh.positions.length / 3;
+    const c = end === 0 ? a : b;
+    const r = end === 0 ? r0 : r1;
+    for (let j = 0; j < cols; j++) {
+      const ang = (j / cols) * Math.PI * 2;
+      const ca = Math.cos(ang);
+      const sa = Math.sin(ang);
+      mesh.positions.push(c[0] + (u[0] * ca + v[0] * sa) * r, c[1] + (u[1] * ca + v[1] * sa) * r, c[2] + (u[2] * ca + v[2] * sa) * r);
+      mesh.normals.push(sign * t[0], sign * t[1], sign * t[2]);
+      mesh.uvs.push(0.5 + ca / 2, 0.5 + sa / 2);
+    }
+    for (let k = 1; k + 1 < cols; k++) {
+      if (sign > 0) mesh.indices.push(base, base + k, base + k + 1);
+      else mesh.indices.push(base, base + k + 1, base + k);
+    }
+  }
+  return mesh;
+}
+
+/**
+ * One plate of a clasp, swept along the wrist so it curves with it rather than
+ * sitting on it as a slab. `rOff` is millimetres out from the band's own
+ * radius (negative is under the band, where a concealed clasp lives), `halfMm`
+ * how far it reaches either side of 6 o'clock along the arc.
+ * @param {any} plan
+ * @param {number} rOff
+ * @param {number} halfMm
+ * @param {number} halfW
+ * @param {number} halfT
+ * @param {number} q
+ * @param {number} [centre] radians from 6 o'clock
+ * @returns {Mesh}
+ */
+function claspPlate(plan, rOff, halfMm, halfW, halfT, q, centre) {
+  const rp = bandRadius(plan) + rOff;
+  if (!(rp > 0.5) || !(halfMm > 0.2) || !(halfW > 0.05)) return emptyMesh();
+  const mid = -Math.PI / 2 + (centre || 0);
+  const half = halfMm / rp;
+  const path = wristArcPath(plan, rp, mid - half, mid + half);
+  return sweepTube(path, 0, path.total, {
+    cols: Math.max(8, Math.round(16 * q)),
+    rowLen: 1.4 / q,
+    section: (a) => superSection(a, halfW, halfT, 6),
+  });
+}
+
+/**
+ * HOW FAR ALONG THE WRIST each clasp reaches, either side of 6 o'clock. It is
+ * one number per style rather than one number for all of them because it does
+ * two jobs at once: the band is cut short by exactly this much, and the clasp
+ * is built to exactly this length, so the two always meet. A single 13.5 mm
+ * for everything left a mesh slider — which is genuinely short — floating in a
+ * 27 mm hole in its own bracelet.
+ *
+ * The Strapcode butterfly listing is the only published plan length here (40 ×
+ * 22 mm, so 20 mm either side of centre); the rest are proportioned around it
+ * by what each clasp visibly is — a diver's flip-lock is the longest fold-over
+ * because it carries a second lock and an extension, a V-clasp is shorter, a
+ * mesh slider is a clamp rather than a fold-over. Rendering conventions, and
+ * BUCKLES carries the one real measurement.
+ */
+export const CLASP_REACH_MM = {
+  butterfly: 17.5,
+  deployant: 15.5,
+  "flip-lock": 14.5,
+  concealed: 14,
+  "v-clasp": 12.5,
+  interlock: 7,
+};
+
+/**
+ * THE CLASP, and which clasp. Until feedback #59 every bracelet got the same
+ * cover plate and leaf whatever the catalogue said it wore, so an Oyster's
+ * double flip-lock diver clasp, a Jubilee's V-clasp, a Milanese slider and a
+ * dress bracelet's concealed clasp were one object under four names — and the
+ * BUTTERFLY clasp the feedback asked for was not offered on bracelets at all.
+ *
+ * Each style below is built from the same swept plates, differing in the way
+ * the real ones differ: how far out from the band they stand, how far along
+ * the wrist they run, and what sits on top of or under them. Every plate is
+ * proportioned off the band's own width and thickness rather than off a fixed
+ * millimetre, because a clasp is made for the bracelet it closes.
  * @param {any} plan
  * @param {number} width
  * @param {number} q detail factor
+ * @param {string} [style]
  * @returns {Mesh}
  */
-function claspMesh(plan, width, q) {
-  const rp = bandRadius(plan);
-  const half = 13 / rp;
-  const cols = Math.max(8, Math.round(16 * q));
-  const cover = wristArcPath(plan, rp + plan.thick * 0.32, -Math.PI / 2 - half, -Math.PI / 2 + half);
-  const leaf = wristArcPath(plan, rp - plan.thick * 0.34, -Math.PI / 2 - half * 0.78, -Math.PI / 2 + half * 0.78);
+function claspMesh(plan, width, q, style) {
   const m = emptyMesh();
-  mergeMesh(
-    m,
-    sweepTube(cover, 0, cover.total, {
-      cols,
-      rowLen: 1.6 / q,
-      section: (a) => superSection(a, width / 2, plan.thick * 0.3, 6),
-    }),
-  );
-  mergeMesh(
-    m,
-    sweepTube(leaf, 0, leaf.total, {
-      cols,
-      rowLen: 1.6 / q,
-      section: (a) => superSection(a, width * 0.42, plan.thick * 0.22, 6),
-    }),
-  );
+  const T = plan.thick;
+  const kind = style || "flip-lock";
+  const reach = CLASP_REACH_MM[/** @type {keyof typeof CLASP_REACH_MM} */ (kind)] || CLASP_REACH_MM["flip-lock"];
+  if (kind === "concealed") {
+    // Hidden UNDER the bracelet: two leaves inside the band radius and nothing
+    // on the outside, which is the whole point of a concealed clasp.
+    for (const sx of [-1, 1]) {
+      mergeMesh(m, claspPlate(plan, -T * 0.42, reach * 0.52, width * 0.4, T * 0.2, q, (sx * reach * 0.5) / bandRadius(plan)));
+    }
+    mergeMesh(m, claspPlate(plan, -T * 0.42, 2.4, width * 0.46, T * 0.24, q, 0));
+    return m;
+  }
+  if (kind === "butterfly") {
+    // TWO WINGS hinged at the outer ends and meeting in the middle — the shape
+    // the name is about. The centre seam is left open and bridged by a short
+    // cap on the outside, so the two halves read as two halves.
+    const rp = bandRadius(plan);
+    for (const sx of [-1, 1]) {
+      mergeMesh(m, claspPlate(plan, T * 0.18, reach * 0.47, width * 0.46, T * 0.22, q, (sx * reach * 0.53) / rp));
+      // The hinge knuckle at the outer end of each wing.
+      const f = wristArcPath(plan, rp + T * 0.18, -Math.PI / 2 + (sx * reach) / rp, -Math.PI / 2 + (sx * (reach + 0.1)) / rp).at(0);
+      mergeMesh(m, placeOnPath(rod([-width * 0.5, 0, 0], [width * 0.5, 0, 0], T * 0.19, T * 0.19, 8), f));
+    }
+    // The cap that closes over the seam, standing a little proud of the wings.
+    mergeMesh(m, claspPlate(plan, T * 0.5, 5.2, width * 0.34, T * 0.16, q, 0));
+    return m;
+  }
+  if (kind === "interlock") {
+    // A mesh slider: a short clamp that grips anywhere on the weave, with the
+    // lever that releases it lying along the top. Half the length of the rest.
+    mergeMesh(m, claspPlate(plan, T * 0.34, reach, width * 0.52, T * 0.34, q, 0));
+    mergeMesh(m, claspPlate(plan, T * 0.82, reach * 0.7, width * 0.34, T * 0.16, q, 1.2 / bandRadius(plan)));
+    mergeMesh(m, claspPlate(plan, -T * 0.36, reach * 0.92, width * 0.44, T * 0.16, q, 0));
+    return m;
+  }
+  // Everything else is a fold-over: a cover, a leaf under it, and then what
+  // distinguishes the family.
+  mergeMesh(m, claspPlate(plan, T * 0.32, reach, width / 2, T * (kind === "v-clasp" ? 0.26 : 0.32), q, 0));
+  mergeMesh(m, claspPlate(plan, -T * 0.34, reach * 0.8, width * 0.42, T * 0.22, q, 0));
+  if (kind === "flip-lock") {
+    // The second lock: a shorter plate lying on the cover with a lifting lip
+    // at its free end. That plate is the "double" in a double flip-lock.
+    mergeMesh(m, claspPlate(plan, T * 0.78, reach * 0.59, width * 0.4, T * 0.18, q, 0));
+    const f = wristArcPath(plan, bandRadius(plan) + T * 0.9, -Math.PI / 2 + (reach * 0.64) / bandRadius(plan), -Math.PI / 2 + (reach * 0.64 + 0.1) / bandRadius(plan)).at(0);
+    mergeMesh(m, placeOnPath(box(width * 0.42, T * 0.5, 1.1, [0, 0, 0]), f));
+  } else if (kind === "v-clasp") {
+    // The two side pushers a double-lock V-clasp is opened by.
+    const rp = bandRadius(plan);
+    for (const sx of [-1, 1]) {
+      const f = wristArcPath(plan, rp + T * 0.32, -Math.PI / 2 + (sx * reach * 0.72) / rp, -Math.PI / 2 + (sx * (reach * 0.72 + 0.1)) / rp).at(0);
+      mergeMesh(m, placeOnPath(rod([-width * 0.54, 0, 0], [width * 0.54, 0, 0], T * 0.13, T * 0.13, 8), f));
+    }
+  } else if (kind === "deployant") {
+    // The folding blade, longer than the cover and hinged at one end only.
+    mergeMesh(m, claspPlate(plan, -T * 0.05, reach * 0.62, width * 0.34, T * 0.14, q, 3.2 / bandRadius(plan)));
+  }
   return m;
 }
 
@@ -6824,10 +7309,104 @@ function keeperMesh(width, thick) {
 }
 
 /**
- * The leather display cylinder the watch is presented on — feedback #56's
- * "make the default be that it is placed on a leather cylinder holder to
- * simulate a wrist". Axis along X, capped, with a small chamfer at each end so
- * the rim is not a razor edge.
+ * How long the cushion is: the case, plus `WRIST_HOLDER.marginMm` of leather
+ * showing at each end. Feedback #59, verbatim: "make the leather cushion just
+ * wide enough for the watch to sit on it, not so wide as to replicate a
+ * forearm". It used to be `max(52, dia * 2.2)` — 93 mm under a 42.5 mm case,
+ * which is a forearm.
+ *
+ * The cushion's axis runs along X, and the case's extent along X is its
+ * diameter, so this is the case's own number plus a margin that is a rendering
+ * convention and says so in `WRIST_HOLDER.note`.
+ * @param {any} caseEntry
+ */
+export function cushionLength(caseEntry) {
+  const dia = (caseEntry && caseEntry.dims && caseEntry.dims.dia) || 40;
+  return dia + 2 * WRIST_HOLDER.marginMm;
+}
+
+/**
+ * THE CASE'S FOOTPRINT on the cushion — the radius of the case's bottom rim at
+ * each bearing in the x–z plane, which is the outline the leather takes the
+ * print of.
+ *
+ * Not a new dimension: `caseProfile` builds that rim from the shell
+ * archetype's `rim` fraction of the case radius, modulated by the shell's plan
+ * outline, and this reads the same two things. So a cushion case leaves a
+ * cushion-shaped print, a Tuna's shroud a lobed one, and a round diver a round
+ * one — and if the case's rim moves, the print moves with it rather than
+ * drifting away from it.
+ * @param {any} caseEntry
+ * @returns {(phi: number) => number} phi = atan2(z, x), the lathe's own angle
+ */
+export function caseFootprint(caseEntry) {
+  const dia = (caseEntry && caseEntry.dims && caseEntry.dims.dia) || 40;
+  const arch =
+    SHELL_ARCHETYPES[/** @type {keyof typeof SHELL_ARCHETYPES} */ ((caseEntry || {}).shell)] ||
+    SHELL_ARCHETYPES.diver;
+  const outline = outlineFor(caseEntry && caseEntry.shell);
+  const R = (dia / 2) * arch.rim;
+  return (phi) => R * outline(phi);
+}
+
+/**
+ * THE PRINT the watch presses into the cushion, as a pointwise field: how far
+ * IN, radially, the leather at `(x, theta)` has to move to get out of the
+ * watch's way. Zero everywhere the watch is not.
+ *
+ * `wristMesh` builds its surface from this, and it is exported because it is
+ * also the only cheap way to state the invariant the strap has to keep: a band
+ * vertex is clear of the leather exactly when its radius about the cushion
+ * axis is at least `r − penetration` there. The ridge of displaced leather can
+ * only push the surface OUT, so that bound holds with the ridge too.
+ * @param {any} caseEntry
+ * @param {any} plan a strapPlan
+ * @returns {(x: number, theta: number) => number}
+ */
+export function cushionPenetration(caseEntry, plan) {
+  const w = wristAxis(plan);
+  const yContact = w.cy + w.r - WRIST_HOLDER.sinkMm;
+  const footprint = caseFootprint(caseEntry);
+  const reach = yContact - w.cy;
+  return (x, theta) => {
+    const st = Math.sin(theta);
+    // Only the upper crown can be under the watch, and the radial push needed
+    // to reach a horizontal plane runs away near the sides.
+    if (st < 0.25) return 0;
+    const raw = w.r - reach / st;
+    if (raw <= 0) return 0;
+    const z = w.r * Math.cos(theta);
+    const fp = footprint(Math.atan2(z, x)) || 1;
+    const rho = Math.hypot(x, z) / fp;
+    // A soft millimetre of edge either side of the rim: leather does not stop
+    // dead at the metal, and a hard edge here reads as a crease.
+    const g = clamp((1.06 - rho) / 0.16, 0, 1);
+    return raw * g * g * (3 - 2 * g);
+  };
+}
+
+/**
+ * THE LEATHER CUSHION the watch is presented on. Axis along X, capped, with a
+ * small chamfer at each end so the rim is not a razor edge — and, since
+ * feedback #59, deformed under the watch instead of being a perfect cylinder:
+ *
+ * > "The leather cushion the watch sits on is perfectly round, it should
+ * > account for the squish it would receive from the watch."
+ *
+ * The squish is a real CONTACT PATCH, not a smaller cylinder. The cushion's
+ * undeformed crown stands `WRIST_HOLDER.sinkMm` above the plane the case back
+ * rests on, so the watch genuinely presses in; every surface sample that would
+ * end up above that plane, and inside the case's own footprint, is pushed back
+ * down onto it. That makes the print exactly as wide as the case is and
+ * exactly as deep as the case sinks — a lens-shaped flat running along the
+ * cushion, tapering away at the ends of the case, which is what a watch on a
+ * leather pillow actually leaves.
+ *
+ * The leather it displaces has to go somewhere, so the print's own field is
+ * blurred and the difference pushed back OUT as a ridge around it,
+ * `WRIST_HOLDER.bulge` of what was pressed in. That is the part a viewer reads
+ * as "leather" rather than "a dent in a tube".
+ *
  * @param {any} caseEntry
  * @param {any} strapEntry
  * @param {{ segments?: number }} [opts]
@@ -6837,54 +7416,136 @@ export function wristMesh(caseEntry, strapEntry, opts) {
   const plan = strapPlan(caseEntry, strapEntry || { kind: "leather", id: "leather" });
   const w = wristAxis(plan);
   const segs = Math.max(24, Math.round(((opts && opts.segments) || 96) * 0.6));
-  const len = Math.max(52, caseEntry.dims.dia * 2.2);
+  const len = cushionLength(caseEntry);
   const half = len / 2;
   const cham = 1.6;
-  /** @type {{ x: number, r: number }[]} */
-  const profile = [
-    { x: -half, r: 0 },
-    { x: -half, r: w.r - cham },
-    { x: -half + cham, r: w.r },
-    { x: half - cham, r: w.r },
-    { x: half, r: w.r - cham },
-    { x: half, r: 0 },
-  ];
-  const mesh = emptyMesh();
+  const penAt = cushionPenetration(caseEntry, plan);
+
+  // --- the undeformed profile, sampled finely enough to resolve the print ---
+  /** @type {{ x: number, r: number, cap: number }[]} */
+  const rows = [{ x: -half, r: 0, cap: -1 }];
+  const nc = 3;
+  for (let i = 0; i <= nc; i++) {
+    const psi = ((i / nc) * Math.PI) / 2;
+    rows.push({ x: -half + cham * (1 - Math.cos(psi)), r: w.r - cham + cham * Math.sin(psi), cap: 0 });
+  }
+  const bodyLen = Math.max(0.5, len - 2 * cham);
+  const nb = Math.max(8, Math.round(bodyLen));
+  for (let i = 1; i < nb; i++) rows.push({ x: -half + cham + (bodyLen * i) / nb, r: w.r, cap: 0 });
+  for (let i = nc; i >= 0; i--) {
+    const psi = ((i / nc) * Math.PI) / 2;
+    rows.push({ x: half - cham * (1 - Math.cos(psi)), r: w.r - cham + cham * Math.sin(psi), cap: 0 });
+  }
+  rows.push({ x: half, r: 0, cap: 1 });
+
   const cols = segs + 1;
-  for (const p of profile) {
+  const nr = rows.length;
+  // --- the print: how far in, radially, each sample has to move -------------
+  const pen = new Float64Array(nr * cols);
+  for (let i = 0; i < nr; i++) {
+    const row = rows[i];
+    if (row.r <= 0) continue;
     for (let c = 0; c < cols; c++) {
-      const th = (c / segs) * Math.PI * 2;
-      const st = Math.sin(th);
-      const ct = Math.cos(th);
-      mesh.positions.push(p.x, w.cy + p.r * st, p.r * ct);
-      mesh.normals.push(0, st, ct);
-      mesh.uvs.push(c / segs, (p.x + half) / len);
+      // The chamfer rows sit below the crown, so the print is clipped to what
+      // is actually there rather than cutting past the end of the leather.
+      pen[i * cols + c] = Math.min(row.r, penAt(row.x, (c / segs) * Math.PI * 2));
     }
   }
-  // Cap and chamfer rows want their own normals; recompute them per row from
-  // the profile slope so the flat ends do not shade as part of the barrel.
-  for (let i = 0; i + 1 < profile.length; i++) {
-    const a = profile[i];
-    const b = profile[i + 1];
-    const dx = b.x - a.x;
-    const dr = b.r - a.r;
-    const l = Math.hypot(dx, dr) || 1;
-    const nx = -dr / l;
-    const nr = dx / l;
-    for (const row of [i, i + 1]) {
+  // Blur the print (wrapping around θ, clamped along x) so the difference
+  // between it and its own blur is the ridge of displaced leather.
+  const blur = pen.slice();
+  const tmp = new Float64Array(nr * cols);
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < nr; i++) {
       for (let c = 0; c < cols; c++) {
-        const idx = (row * cols + c) * 3;
-        const th = (c / segs) * Math.PI * 2;
-        // Only the flat/chamfer rows are overwritten; the barrel keeps its
-        // purely radial normal, which the two middle rows already have.
-        if (Math.abs(nx) < 0.01) continue;
-        mesh.normals[idx] = nx;
-        mesh.normals[idx + 1] = nr * Math.sin(th);
-        mesh.normals[idx + 2] = nr * Math.cos(th);
+        let s = 0;
+        for (let k = -2; k <= 2; k++) s += blur[i * cols + ((c + k + segs * 2) % segs)];
+        tmp[i * cols + c] = s / 5;
+      }
+      // The seam column is a duplicate of column 0 and must stay one.
+      tmp[i * cols + segs] = tmp[i * cols];
+    }
+    for (let i = 0; i < nr; i++) {
+      for (let c = 0; c < cols; c++) {
+        let s = 0;
+        for (let k = -3; k <= 3; k++) s += tmp[Math.min(nr - 1, Math.max(0, i + k)) * cols + c];
+        blur[i * cols + c] = s / 7;
       }
     }
   }
-  for (let i = 0; i + 1 < profile.length; i++) {
+
+  // --- positions -----------------------------------------------------------
+  const mesh = emptyMesh();
+  /** @type {number[][]} */
+  const grid = [];
+  for (let i = 0; i < nr; i++) {
+    const row = rows[i];
+    /** @type {number[]} */
+    const rr = [];
+    for (let c = 0; c < cols; c++) {
+      const p = pen[i * cols + c];
+      const ridge = Math.max(0, blur[i * cols + c] - p) * WRIST_HOLDER.bulge;
+      rr.push(Math.max(0, row.r - p + (row.r > 0 ? ridge : 0)));
+    }
+    grid.push(rr);
+    for (let c = 0; c < cols; c++) {
+      const th = (c / segs) * Math.PI * 2;
+      mesh.positions.push(row.x, w.cy + rr[c] * Math.sin(th), rr[c] * Math.cos(th));
+      mesh.normals.push(0, 0, 0);
+      mesh.uvs.push(c / segs, (row.x + half) / len);
+    }
+  }
+  // --- normals from the deformed grid itself -------------------------------
+  // A dented cylinder is not a cylinder, so a radial normal would light the
+  // print as if it were not there. The caps are the two degenerate rows and
+  // get their own axial normal rather than a cross product of nothing.
+  /** @param {number} i row, clamped @param {number} c column, wrapped @returns {number[]} */
+  const at = (i, c) => {
+    const ii = Math.min(nr - 1, Math.max(0, i));
+    const cc = ((c % segs) + segs) % segs;
+    const th = (cc / segs) * Math.PI * 2;
+    const r = grid[ii][cc];
+    return [rows[ii].x, w.cy + r * Math.sin(th), r * Math.cos(th)];
+  };
+  for (let i = 0; i < nr; i++) {
+    for (let c = 0; c < cols; c++) {
+      const idx = (i * cols + c) * 3;
+      if (rows[i].cap) {
+        mesh.normals[idx] = rows[i].cap;
+        mesh.normals[idx + 1] = 0;
+        mesh.normals[idx + 2] = 0;
+        continue;
+      }
+      const a = at(i - 1, c);
+      const b = at(i + 1, c);
+      const d = at(i, c - 1);
+      const e = at(i, c + 1);
+      const dr = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+      const dc = [e[0] - d[0], e[1] - d[1], e[2] - d[2]];
+      let nx = dc[1] * dr[2] - dc[2] * dr[1];
+      let ny = dc[2] * dr[0] - dc[0] * dr[2];
+      let nz = dc[0] * dr[1] - dc[1] * dr[0];
+      const th = (c / segs) * Math.PI * 2;
+      // Point it out. Away from the print the surface is still a barrel, so
+      // the radial direction is the reliable arbiter of which way is out.
+      if (nx * 0 + ny * Math.sin(th) + nz * Math.cos(th) < 0) {
+        nx = -nx;
+        ny = -ny;
+        nz = -nz;
+      }
+      const l = Math.hypot(nx, ny, nz);
+      if (!(l > 1e-9)) {
+        mesh.normals[idx] = 0;
+        mesh.normals[idx + 1] = Math.sin(th);
+        mesh.normals[idx + 2] = Math.cos(th);
+      } else {
+        mesh.normals[idx] = nx / l;
+        mesh.normals[idx + 1] = ny / l;
+        mesh.normals[idx + 2] = nz / l;
+      }
+    }
+  }
+  for (let i = 0; i + 1 < nr; i++) {
     for (let c = 0; c < segs; c++) {
       const a = i * cols + c;
       const b = (i + 1) * cols + c;
@@ -7059,7 +7720,13 @@ export function strapAssembly(caseEntry, strapEntry, opts) {
 
   const armPlus = strapPath(caseEntry, plan, 1, 0);
   const armMinus = strapPath(caseEntry, plan, -1, 0);
-  const claspArc = plan.close === "clasp" ? 13.5 : 0;
+  // Cut the band back by exactly what the chosen clasp reaches, so band and
+  // clasp meet whichever one it is. A fixed number left the short ones (the
+  // mesh slider above all) sitting in a hole in their own bracelet.
+  const claspArc =
+    plan.close === "clasp"
+      ? (CLASP_REACH_MM[/** @type {keyof typeof CLASP_REACH_MM} */ (plan.claspStyle)] || CLASP_REACH_MM["flip-lock"]) - 1
+      : 0;
 
   if (plan.build === "links") {
     linkBand(armPlus, Math.max(plan.pitch, armPlus.total - claspArc));
@@ -7071,7 +7738,7 @@ export function strapAssembly(caseEntry, strapEntry, opts) {
   }
 
   if (plan.close === "clasp") {
-    mergeMesh(hardware, claspMesh(plan, widthOn(armMinus.total, armMinus.total) + 0.5, q));
+    mergeMesh(hardware, claspMesh(plan, widthOn(armMinus.total, armMinus.total) + 0.5, q, plan.claspStyle));
   } else {
     // The buckle sits at the 12 o'clock arm's end, at the width the taper
     // leaves the strap there — feedback #56 asked for a buckle, and one that
@@ -7109,7 +7776,7 @@ export function strapAssembly(caseEntry, strapEntry, opts) {
     show: showWrist,
     r: w.r,
     cy: w.cy,
-    len: Math.max(52, caseEntry.dims.dia * 2.2),
+    len: cushionLength(caseEntry),
   };
   return {
     band,
