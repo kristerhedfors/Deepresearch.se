@@ -768,10 +768,20 @@ suite only ever ran against a deployment:
 > workflow uploaded only `tests/test-results/`. The fourth occurrence arrived on
 > PR #357 (27 of 63 lost, server died 84 s in, diff touched no file in the
 > Worker's or the browser's import graph), so `.github/workflows/ci.yml` now
-> uploads that directory as the `wrangler-logs` artifact on failure. The FIFTH
-> occurrence should be diagnosed from it rather than shrugged at.
+> uploads that directory as the `wrangler-logs` artifact on failure.
 >
-> Until then the standing rule holds: **this fingerprint does not mean the PR is
+> **The fifth occurrence arrived the same day, on the very next push of that
+> same PR, and the capture worked** — a 195 KB `wrangler-logs` artifact on
+> [run 30697545700](https://github.com/kristerhedfors/Deepresearch.se/actions/runs/30697545700).
+> Two consecutive runs of the SAME commit range lost 27 of 63 and then 4 of 63,
+> which is the clearest evidence yet that the blast radius is random and carries
+> no information about the diff. The job log adds one fact the artifact does not
+> need to supply: the server was serving normally until **22 ms** before it died
+> (`GET /admin 307` at 11:25:44.915, blank `✘ [ERROR]` at 11:25:44.937), so this
+> is not a slow leak or gradual degradation — it is an abrupt exit from full
+> health. Read the artifact before theorising further; it has a 7-day retention.
+>
+> Either way the standing rule holds: **this fingerprint does not mean the PR is
 > at fault.** Confirm innocence the two cheap ways — the first failing test is an
 > assertion timeout on a page whose server has already gone (connection errors
 > only start with the NEXT test), and check whether the diff reaches `src/` or a
