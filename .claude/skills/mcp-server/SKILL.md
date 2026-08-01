@@ -301,19 +301,48 @@ deliberately scores its LAST candidate below the floor, so a test that wants
    the cross-family forgery matrix; key resolution (revoked / rotated /
    disabled account / surface off) and the config endpoints.
    `npm run typecheck` (all four are `// @ts-check`).
-2. **Live JSON-RPC probe** against the deployed site. Sanity sequence:
-   `initialize` → `tools/list` (expect `deep_research` + the four `sdk_*`
-   tools, with schemas) → `tools/call` with a cheap
-   `{question, time_budget_s: 15}` and confirm a cited answer comes back
-   and the spend lands in the usage totals. Run it BOTH ways — with the
-   break-glass Basic header on `/mcp`, and with a minted key against
-   `https://mcp.deepresearch.se/mcp` — since only the second exercises
-   the above-the-gate path and the custom domain. Then check the negatives:
-   revoke the key and confirm the next call is a 401 JSON-RPC error (not
-   HTML), and switch a tool off and confirm it vanishes from `tools/list`
-   AND is refused on `tools/call`. See the **live-verify** skill for
-   `wrangler tail` / `x-request-id` correlation and the **access-control**
-   skill for the Basic Auth credentials.
+2. **Live JSON-RPC probe** — `npm run mcp:probe` (`scripts/mcp-probe.mjs`),
+   which is this rung, automated. Dependency-free, exit code = failure count.
+
+   ```bash
+   BASIC_AUTH_USER=… BASIC_AUTH_PASS=… npm run mcp:probe   # zero setup
+   MCP_KEY=mck1.… npm run mcp:probe                        # the external-client path
+   npm run mcp:probe -- --deep --json                      # also run deep_research
+   ```
+
+   It covers the protocol (`initialize`, the 202 notification ack, `tools/list`
+   against `ALL_MCP_TOOLS` in order, `-32601`/`-32700`/`-32602`), the whole
+   literature family end to end (`literature_corpora` live vector counts →
+   `search-one` → a 6-angle batch → `fetch` round-tripping an id the search
+   just returned → `similar` → the post-retrieval filter disclosure), and it
+   MEASURES the batching claim: the same six angles batched against six
+   separate calls, failing only if batching is slower. Its assertions are
+   unit-tested in `scripts/mcp-probe.test.mjs`, because a probe whose checks
+   are only exercised live is one nobody can trust when it goes red.
+
+   **Know what a green run did not cover.** The report ends with an explicit
+   gap list. Break-glass Basic exercises the tool battery but NOT
+   `resolveMcpKeyIdentity` (it satisfies `identify()` instead) and NOT the
+   quota gate (`isSecretAdmin` is exempt); only `MCP_KEY` covers those. And
+   break-glass **cannot mint a key** — `requireAccount` rejects an identity
+   with no D1 row, which break-glass is by construction, so the key has to come
+   from a signed-in account at Settings → MCP server.
+
+   > Its first live run (2026-08-01) found a real defect: an unauthenticated
+   > POST to `/mcp` fell through to the identity gate and returned the sign-in
+   > **HTML** at 401. The refused-KEY branch above the gate already answered
+   > JSON-RPC; the no-credential case — the commoner one, a key forgotten or an
+   > authorization header a proxy stripped — did not, so a misconfigured client
+   > reported a transport failure and its user never saw "authenticate". Fixed
+   > in `src/index.js`, pinned in `src/index.test.js`.
+
+   **Two negatives the probe cannot automate**, because both need account
+   access it does not have: revoke the key and confirm the next call is a 401
+   JSON-RPC error rather than HTML, and switch a tool off and confirm it
+   vanishes from `tools/list` AND is refused on `tools/call`. Do those by hand
+   after any change to `mcp-key.js` or `mcp-config.js`. See the **live-verify**
+   skill for `wrangler tail` / `x-request-id` correlation and the
+   **access-control** skill for the Basic Auth credentials.
    ```bash
    curl -sS https://mcp.deepresearch.se/mcp -H "content-type: application/json" \
      -H "Authorization: Bearer $MCP_KEY" \

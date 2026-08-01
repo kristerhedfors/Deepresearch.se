@@ -21,6 +21,7 @@
     "pulse:timeline": "node scripts/build-pulse-timeline.mjs",
     "pulse:size": "node scripts/build-pulse-size.mjs",
     "proof:agents": "node scripts/agent-proof.mjs",
+    "mcp:probe": "node scripts/mcp-probe.mjs",
     "arxiv:harvest": "node scripts/arxiv-harvest.mjs",
     "arxiv:corpus": "node scripts/arxiv-corpus.mjs",
     "arxiv:goldset": "node scripts/arxiv-goldset.mjs",

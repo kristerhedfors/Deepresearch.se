@@ -567,6 +567,27 @@ async function route(request, env, url, log, ctx, requestId) {
       return { response: await serveAsset(request, env, url.origin + "/welcome/") };
     }
     log.warn("auth.denied", { reason: "unauthenticated" });
+    // The MCP endpoint answers JSON-RPC even when it is refusing. The branch
+    // above already does this for a key that was PRESENTED and rejected; this
+    // is the commoner case it did not cover — a client pointed at the URL with
+    // NO credential at all (the key forgotten, or an authorization header a
+    // proxy stripped), which fell through to the sign-in HTML below. An MCP
+    // client that gets HTML reports a TRANSPORT failure, so the one error its
+    // user most needs to read — "authenticate" — is the one they never see.
+    // Found by scripts/mcp-probe.mjs's first live run, 2026-08-01.
+    if (isMcpEndpoint(url, request.method)) {
+      return {
+        response: jsonResponse(
+          jsonRpcError(
+            null,
+            RPC_INVALID_REQUEST,
+            "Authentication required: send an MCP key as `Authorization: Bearer mck1.…`. " +
+              "Mint one at https://deepresearch.se/ under Settings → MCP server.",
+          ),
+          401,
+        ),
+      };
+    }
     if (url.pathname.startsWith("/api/")) {
       return { response: jsonResponse({ error: "Authentication required." }, 401) };
     }
