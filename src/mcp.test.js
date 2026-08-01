@@ -8,6 +8,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   PROTOCOL_VERSION,
@@ -79,19 +80,22 @@ test("initializeResult has protocolVersion, serverInfo, and tools capability", (
   assert.ok(r.capabilities && r.capabilities.tools, "advertises tools capability");
 });
 
-test("tools/list returns deep_research first plus the SDK and watch tool families", () => {
+test("tools/list returns deep_research first plus the literature, SDK and watch families", () => {
   const r = toolsListResult();
-  assert.equal(r.tools.length, 11);
+  assert.equal(r.tools.length, 15);
   const tool = r.tools[0];
   assert.equal(tool.name, TOOL_NAME);
   assert.equal(tool.name, "deep_research");
   assert.equal(tool, DEEP_RESEARCH_TOOL);
-  // Both families ride along in MCP's schema shape (inputSchema, not
-  // Anthropic's input_schema) so external agents can plan against the SDK, and
-  // configure a watch build, without shelling into the execution sandbox.
+  // Every family rides along in MCP's schema shape (inputSchema, not
+  // Anthropic's input_schema) so external agents can search the hosted corpora,
+  // plan against the SDK, and configure a watch build, without shelling into
+  // the execution sandbox. The literature family sits directly behind
+  // deep_research — same capability, different grain.
   assert.deepEqual(
     r.tools.slice(1).map((t) => t.name),
     [
+      "literature_search", "literature_fetch", "literature_similar", "literature_corpora",
       "sdk_list_modules", "sdk_show_module", "sdk_plan", "sdk_validate",
       "watch_catalog", "watch_case", "watch_build", "watch_command",
       "watch_check", "watch_sourcing",
@@ -110,6 +114,32 @@ test("tools/list returns deep_research first plus the SDK and watch tool familie
   assert.equal(tool.inputSchema.properties.time_budget_s.default, 120);
   assert.equal(tool.inputSchema.properties.web_search.default, true);
   assert.ok(tool.inputSchema.properties.model, "model property");
+});
+
+test("the literature family keeps its retrieval half behind a dynamic import", () => {
+  // The file-layout rule at the top of src/mcp.js: this suite must be able to
+  // import the protocol module without dragging the pipeline — or, now, the
+  // embedder — in. The literature SCHEMAS are statically imported, which is
+  // only safe because src/literature-tools.js imports nothing at all; the half
+  // that touches a Vectorize binding lives in src/literature-run.js and is
+  // loaded inside tools/call. Both halves of that are pinned here, because the
+  // natural "simplification" is to merge the two modules and break it.
+  const tools = readFileSync(new URL("./literature-tools.js", import.meta.url), "utf8");
+  assert.equal(
+    /^import\s/m.test(tools),
+    false,
+    "src/literature-tools.js must import nothing — it is statically imported by mcp.js",
+  );
+  const mcp = readFileSync(new URL("./mcp.js", import.meta.url), "utf8");
+  assert.match(mcp, /await import\("\.\/literature-run\.js"\)/);
+  assert.equal(
+    /^import .*from "\.\/literature-run\.js"/m.test(mcp),
+    false,
+    "the runner must never become a static import",
+  );
+  // And the runner is the module allowed to reach the corpora.
+  const runner = readFileSync(new URL("./literature-run.js", import.meta.url), "utf8");
+  assert.match(runner, /from "\.\/dense-rag\.js"/);
 });
 
 test("toolResult builds an MCP text-content envelope with isError", () => {

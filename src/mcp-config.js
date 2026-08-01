@@ -54,6 +54,40 @@ export const MCP_TOOL_CATALOG = [
     def: true,
   },
   {
+    id: "literature_search",
+    group: "Scientific corpora",
+    label: "literature_search",
+    blurb:
+      "Semantic search over the hosted arXiv and PubMed indexes — up to six angles at once, " +
+      "returning structured paper records. Spends a small amount on embedding and reranking, " +
+      "and is gated by the same research quota as deep_research.",
+    def: true,
+  },
+  {
+    id: "literature_fetch",
+    group: "Scientific corpora",
+    label: "literature_fetch",
+    blurb: "Looks up exact papers by arXiv id or PMID. A direct key read — contacts no third party and spends nothing.",
+    def: true,
+  },
+  {
+    id: "literature_similar",
+    group: "Scientific corpora",
+    label: "literature_similar",
+    blurb:
+      "Finds papers near a known one in the index, for a related-work sweep. Quota-gated like literature_search.",
+    def: true,
+  },
+  {
+    id: "literature_corpora",
+    group: "Scientific corpora",
+    label: "literature_corpora",
+    blurb:
+      "Describes what the two corpora hold — live vector counts, coverage windows, stored fields. " +
+      "Reads nothing of yours and spends nothing.",
+    def: true,
+  },
+  {
     id: "sdk_list_modules",
     group: "Platform SDK",
     label: "sdk_list_modules",

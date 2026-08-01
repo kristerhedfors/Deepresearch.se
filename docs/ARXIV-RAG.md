@@ -1337,3 +1337,36 @@ would test it, and it costs one run and no index change.
 
 Re-measured independently: 64.9% of a topical query's top 10 predates 2507,
 median result 2025-01. §11.5's open question stands unchanged.
+
+## 13. The corpus as an outward tool surface (2026-08-01)
+
+Until now this index was reachable only from inside the pipeline's own search
+wave: a question triggered `arxivIntent`, the wave asked the corpus one query,
+and the result arrived as a numbered source in an answer. That is the right
+shape for a reader who wants an answer. It is the wrong shape for an **agent**,
+which wants to issue several angles, read the records, and decide what to read
+next.
+
+The four `literature_*` MCP tools (`src/literature-tools.js` +
+`src/literature-run.js`, exposed by `src/mcp.js` — the **mcp-server** skill has
+the full description) are that second shape. What matters for this document:
+
+- **The records are structured, not flattened.** `arxivRagItem` collapses
+  authors, category, date and id into one `highlights` string because its
+  consumer is a numbered source list. The MCP mapper keeps them apart —
+  `authors` is a list, `primary_category` is a field, `date` is the SUBMISSION
+  month from the id and `revised` is the stored `d`, so the trap §3 records
+  cannot be reproduced by a caller conflating them.
+- **Several angles cost one embedding call.** `dense-rag.js` grew
+  `embedQueries` (batch) and `denseRetrieve` (`denseSearch`'s body with the
+  embedding lifted out); six angles across both corpora is one embed plus
+  twelve concurrent retrievals. The retrieval pipeline itself — top-50,
+  `bge-reranker-v2-m3`, the 0.01 floor — is unchanged, so §11 and §12's
+  measurements describe this path too.
+- **The window is quoted on every miss.** §11's late-2023 start is in
+  `CORPUS_FACTS`, and `literature_corpora` reports it alongside the live
+  vector count, precisely so an agent does not read "outside the window" as
+  "absent from the literature".
+- **Still abstracts only.** The full-text machinery of §9.9 remains offline;
+  `abstract_cut: true` marks the indexer's 900-char cut so a caller knows to
+  follow the URL rather than assume it has the whole abstract.

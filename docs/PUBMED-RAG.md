@@ -652,3 +652,31 @@ index whose coverage was never checked is a confident guess.
 6. **The `$/month` figures follow Cloudflare's documented formula**, in which
    stored vectors appear inside the *queried*-dimension term. Check the first
    real invoice against the table in §5 before widening the corpus.
+
+## 9. The corpus as an outward tool surface (2026-08-01)
+
+The dense tier described above sits behind Europe PMC's intent gate: it answers
+when a life-science question happens to reach the search wave. Since 2026-08-01
+the corpus is also reachable **directly**, by any MCP client, through the four
+`literature_*` tools (`src/literature-tools.js` + `src/literature-run.js`; the
+**mcp-server** skill documents them in full). An agent can search it by meaning
+with up to six angles in one call, resolve a PMID, sweep for related work, or
+ask what the index actually holds.
+
+Three points specific to this corpus:
+
+- **The window is the thing a caller must be told**, and it is the one §3.1
+  warns about: this is a PMID / load-order slice, not "the last six months of
+  PubMed", and roughly 5.6% of abstract-bearing PubMed. `CORPUS_FACTS.pubmed`
+  states that, `literature_corpora` reports it, and every `literature_fetch`
+  miss quotes it — so an absent PMID reads as out-of-window rather than as
+  retracted or non-existent.
+- **The truncation of §3.3 is surfaced per record.** 88% of these passages were
+  embedded from a cut abstract, and the stored abstract is itself cut at 900
+  chars; `abstract_cut: true` says so on the record, which is the honest
+  version of a limitation a caller would otherwise discover by being wrong.
+- **No journal or MeSH filtering, despite the metadata suggesting it.** `j` is
+  stored but there is no Vectorize metadata index on it, so the `journals`
+  argument filters the reranked candidate pool after retrieval; MeSH terms are
+  parsed at harvest and never stored at all. Both facts are in the tool's own
+  response notes rather than left for a caller to infer.

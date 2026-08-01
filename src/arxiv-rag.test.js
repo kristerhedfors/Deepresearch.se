@@ -227,10 +227,18 @@ test("arxivRagSearch", async (t) => {
     assert.equal(ms, "bounded");
     // The budget itself is stated in the shared tier (src/dense-rag.js, which
     // both hosted corpora go through), so a later edit that drops it back to
-    // the inherited default fails here.
+    // the inherited default fails here. The embedding call moved behind
+    // embedQueries when the MCP literature tools needed to embed six angles in
+    // ONE request (src/literature-run.js); both halves of the guarantee are
+    // pinned separately because that seam is now shared: the tier's budget is
+    // the DEFAULT there, and e5's asymmetric query prefix is applied per query.
     const src = readFileSync(new URL("./dense-rag.js", import.meta.url), "utf8");
     assert.match(src, /export const EMBED_TIMEOUT_MS = \d{4};/);
-    assert.match(src, /embedTexts\(env, \[QUERY_PREFIX \+ text\], \{ timeoutMs: EMBED_TIMEOUT_MS \}\)/);
+    assert.match(src, /export async function embedQueries\(env, queries, \{ timeoutMs = EMBED_TIMEOUT_MS \} = \{\}\)/);
+    assert.match(src, /queries\.map\(\(q\) => QUERY_PREFIX \+ q\)/);
+    // …and the one-query path denseSearch takes still asks for that budget
+    // explicitly rather than inheriting whatever a later edit makes the default.
+    assert.match(src, /embedQueries\(env, \[text\], \{ timeoutMs: EMBED_TIMEOUT_MS \}\)/);
   });
 
   await t.test("a hanging index lookup gives up instead of holding the wave", async () => {

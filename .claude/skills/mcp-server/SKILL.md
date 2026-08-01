@@ -28,22 +28,30 @@ description: >-
 `src/mcp.js` exposes the whole deep-research pipeline **as an MCP server**.
 Its headline tool is `deep_research` — question in, cited/validated/
 source-diverse answer out — callable by any MCP client (Claude, Cursor, an
-agent SDK). Alongside it the server re-exposes two more families:
-DistillSDK's four **manifest tools** (`sdk_list_modules`, `sdk_show_module`,
-`sdk_plan`, `sdk_validate`, via `SDK_MCP_TOOLS`) so an external agent can plan
-against the SDK without shelling into the execution sandbox, and — since
-2026-07-30, feedback #52 — the NHxx **watch-builder tools** (`watch_catalog`,
-`watch_case`, `watch_build`, `watch_command`, `watch_check`, `watch_sourcing`,
-via `WATCH_MCP_TOOLS` over `src/watch-tools.js`) so an agent can configure and
-cost a mod build without a browser. Eleven tools total; the pipeline one is
+agent SDK). Alongside it the server re-exposes three more families: the four
+**literature tools** (`literature_search`, `literature_fetch`,
+`literature_similar`, `literature_corpora`, via `LITERATURE_MCP_TOOLS` over
+`src/literature-tools.js` + `src/literature-run.js`) that hand an agent the
+two hosted scientific corpora directly — see the section below, it is the
+family with the most surface; DistillSDK's four **manifest tools**
+(`sdk_list_modules`, `sdk_show_module`, `sdk_plan`, `sdk_validate`, via
+`SDK_MCP_TOOLS`) so an external agent can plan against the SDK without
+shelling into the execution sandbox; and — since 2026-07-30, feedback #52 —
+the NHxx **watch-builder tools** (`watch_catalog`, `watch_case`,
+`watch_build`, `watch_command`, `watch_check`, `watch_sourcing`, via
+`WATCH_MCP_TOOLS` over `src/watch-tools.js`) so an agent can configure and
+cost a mod build without a browser. Fifteen tools total; the pipeline one is
 the reason the server exists.
 
-Both extra families are **pure** — committed data, a regex command parser, no
-network, no D1, no model — which is why they are static imports in `mcp.js`
-without breaking its keep-the-pipeline-dynamic file-layout rule, and why they
-cost nothing to expose. Both also fail into an `isError` result rather than a
-transport error, and `watch_*` degrades junk arguments to a described default:
-a tool that throws is a model that retries the same call forever.
+The SDK and watch families are **pure** — committed data, a regex command
+parser, no network, no D1, no model — which is why they are static imports in
+`mcp.js` without breaking its keep-the-pipeline-dynamic file-layout rule, and
+why they cost nothing to expose. The literature family splits along that same
+line rather than breaking it: its schemas are pure and static, its retrieval
+half is dynamic. Every family fails into an `isError` result rather than a
+transport error, and `watch_*` and `literature_*` both degrade junk arguments
+to a described default: a tool that throws is a model that retries the same
+call forever.
 This is the ONE place the pipeline points *outward*: the architecture
 roadmap (`docs/ARCHITECTURE-ROADMAP.md` §3) argues MCP belongs on the
 outbound edge (DeepResearch *as* a tool other agents compose with), NOT as
@@ -192,6 +200,74 @@ The tool's input schema (`DEEP_RESEARCH_TOOL.inputSchema`): required
 `question`; optional `time_budget_s` (default 120, clamped 15–600), `model`
 (Berget id; JSON phases stay on the reliable model regardless), `web_search`
 (default true; false = answer directly, no search provider contacted).
+
+## The literature family — the corpora as knowledge bases (2026-08-01)
+
+`deep_research` answers a question. The literature tools hand an agent the
+**corpus** and let it do the research itself: `docs/ARXIV-RAG.md`'s 772,658
+arXiv vectors and `docs/PUBMED-RAG.md`'s 1,638,756 PubMed vectors, previously
+reachable only from inside the pipeline's own search wave.
+
+- **`literature_search`** — dense retrieval, structured records out (id, url,
+  title, authors[], date, category/journal, abstract, cross-encoder score).
+  Takes **`queries`: up to 6 angles** run in parallel across both corpora.
+- **`literature_fetch`** — exact records by arXiv id / PMID, mixed in one call
+  (URLs and prefixed forms accepted). How an agent follows a citation.
+- **`literature_similar`** — more-like-this from a known paper.
+- **`literature_corpora`** — live vector counts, coverage windows, stored
+  fields, retrieval semantics. Contacts nothing.
+
+**The speed is the batching, and it is the point.** One `embedTexts` call
+covers every angle (`dense-rag.js`'s `embedQueries`), then every
+(angle × corpus) pair retrieves concurrently through `denseRetrieve`. Six
+angles over both corpora is *one embed plus twelve overlapping retrievals*,
+not twelve searches. Concurrency is capped at `RETRIEVAL_POOL` = 5 on purpose:
+a Worker holds only a handful of simultaneous outbound connections, and a
+QUEUED fetch still counts down the 6 s `AbortSignal` it was constructed with —
+so an unbounded fan-out is not faster, it is a batch of timeouts.
+
+Four things about this surface are load-bearing and easy to get wrong later:
+
+1. **The file-layout rule is preserved by a split, not an exception.**
+   `src/literature-tools.js` imports **nothing** (schemas, parsing, mappers,
+   filters, formatting) and is a static import; `src/literature-run.js` holds
+   every call that touches a binding or Berget and is loaded by a dynamic
+   `import()` inside `tools/call`. `mcp.test.js` pins both halves — merging
+   the two modules is the natural "simplification" and it breaks the suite.
+2. **There is no server-side metadata filtering, and the response says so.**
+   Neither index carries a Vectorize metadata index, so `since` / `until` /
+   `categories` / `journals` are applied to the reranked candidate pool AFTER
+   retrieval. A narrow filter can return nothing while the corpus holds
+   hundreds of matches. `min_score` is the exception — it REPLACES the
+   relevance floor during retrieval, so a strict bound returns a full set of
+   strong matches instead of the survivors of an already-cut list. Adding a
+   real filter means `wrangler vectorize create-metadata-index` plus a
+   re-upsert of ~2.4 M vectors; don't imply it works until that happens.
+3. **Coverage windows travel with every answer.** arXiv starts at submission
+   month 2310; PubMed is a PMID/load-order slice, not "recent PubMed". Both
+   are in `CORPUS_FACTS`, quoted on every miss, and `literature_corpora`
+   exists so an agent checks before concluding the literature is silent.
+   Abstracts are stored cut at **900 chars** (`abstract_cut: true` says so),
+   and there is **no full text** at runtime — that lives only in
+   `scripts/arxiv-fulltext.mjs`, offline.
+4. **Quota, but only where money moves.** `literature_search` and
+   `literature_similar` go through `researchQuotaBlock` — the same four-window
+   gate `/api/chat` and `deep_research` enforce, extracted into a shared helper
+   in the same change. `literature_fetch` (a key read) and `literature_corpora`
+   (committed facts + `describe()`) are deliberately OUTSIDE it: an agent that
+   has run out of budget should still be able to resolve an id it was handed
+   and learn what exists. Unlike `deep_research` these calls write no
+   `chat_logs` row — a retrieval is not an interaction to log, and the query
+   text stays out of Workers Logs (only counts are logged, as the dense tiers
+   already do).
+
+Validation for a change here: `node --test src/literature-tools.test.js
+src/literature-run.test.js src/mcp.test.js src/arxiv-rag.test.js`. The run
+suite drives the real code against a fake Vectorize binding and a stubbed
+Berget, and it is where the batching (one embed for six angles), the
+fail-soft legs, the floor, and the honest miss are pinned. Note the fake
+deliberately scores its LAST candidate below the floor, so a test that wants
+*n* results needs *n+1* rows.
 
 ## Adding or changing a tool
 

@@ -115,6 +115,89 @@ export async function rerankMatches(env, log, query, matches, { docOf, tag }) {
 }
 
 /**
+ * Embed one or more QUERIES in a single call, applying e5's asymmetric prefix.
+ *
+ * Batching is the whole point of the plural form: Berget's embeddings endpoint
+ * takes an array, so six research angles cost ONE round trip rather than six,
+ * and the cost of asking a corpus several questions at once collapses to the
+ * cost of asking it one. src/literature-run.js's parallel multi-angle search is
+ * built on exactly this; denseSearch below is the one-element case.
+ *
+ * @param {any} env
+ * @param {string[]} queries
+ * @param {{ timeoutMs?: number }} [opts]
+ * @returns {Promise<number[][]>} one vector per query, in the queries' order
+ */
+export async function embedQueries(env, queries, { timeoutMs = EMBED_TIMEOUT_MS } = {}) {
+  const { vectors } = await embedTexts(
+    env,
+    queries.map((q) => QUERY_PREFIX + q),
+    { timeoutMs },
+  );
+  return Array.isArray(vectors) ? vectors : [];
+}
+
+/**
+ * Retrieve and rerank ONE (query vector, index) pair, returning the SCORED
+ * matches rather than mapped items.
+ *
+ * This is denseSearch's body with the embedding lifted out and the mapping left
+ * to the caller — extracted so a caller that already holds a query vector (a
+ * batch of angles embedded together) or that wants the cross-encoder scores
+ * themselves (the MCP literature tools, which hand an agent the relevance
+ * number it is going to sort on) does not have to re-implement the budget
+ * discipline and the floor to get them.
+ *
+ * Returns null on failure, exactly as denseSearch does, so a dead index or a
+ * rejected query degrades to the caller's fallback rather than to an error.
+ *
+ * @param {any} env
+ * @param {import('./types.js').Logger} log
+ * @param {{
+ *   index: any,
+ *   qvec: number[],
+ *   query: string,
+ *   docOf: (m: any) => string,
+ *   tag: string,
+ *   startedAt?: number,
+ *   floor?: number,
+ * }} opts `startedAt` lets a batched caller charge the shared embedding leg
+ *   against this call's budget, so one slow embed cannot let every retrieval
+ *   in the batch start a 6 s cross-encoder afterwards.
+ * @returns {Promise<{ matches: any[], scored: boolean, candidates: number, aboveFloor: number } | null>}
+ */
+export async function denseRetrieve(env, log, { index, qvec, query, docOf, tag, startedAt, floor = RERANK_FLOOR }) {
+  const started = typeof startedAt === "number" ? startedAt : Date.now();
+  if (!index || !Array.isArray(qvec) || !qvec.length) return null;
+  try {
+    const res = await withTimeout(
+      index.query(qvec, { topK: CANDIDATES, returnMetadata: "all" }),
+      QUERY_TIMEOUT_MS,
+      "vectorize query",
+    );
+    const matches = res?.matches || [];
+    if (!matches.length) return { matches: [], scored: false, candidates: 0, aboveFloor: 0 };
+    // Out of budget → keep the dense order rather than spending another 6 s on
+    // a cross-encoder.
+    const spent = Date.now() - started;
+    const overBudget = spent > TOTAL_BUDGET_MS - RERANK_TIMEOUT_MS;
+    if (overBudget) log.warn(`${tag}.rerank_skipped`, { spent_ms: spent });
+    /** @type {{ ordered: any[], scored: boolean }} */
+    const { ordered, scored } = overBudget
+      ? { ordered: matches, scored: false }
+      : await rerankMatches(env, log, query, matches, { docOf, tag });
+    // The floor only applies when the cross-encoder actually scored: a fallback
+    // order carries no comparable numbers, and dropping everything on the
+    // strength of absent scores would turn a degraded result into no result.
+    const kept = scored ? ordered.filter((m) => (m.rerankScore ?? 0) >= floor) : ordered;
+    return { matches: kept, scored, candidates: matches.length, aboveFloor: kept.length };
+  } catch (/** @type {any} */ err) {
+    log.warn(`${tag}.failed`, { error: err?.message || String(err) });
+    return null;
+  }
+}
+
+/**
  * Search one hosted corpus. Returns null when the tier is unavailable or the
  * lookup fails — the caller then uses its live API, so a missing binding, a
  * cold index or a dead embedder all degrade to exactly the previous behaviour.
@@ -140,37 +223,19 @@ export async function denseSearch(env, log, query, { index, itemOf, docOf, tag, 
   const text = String(query || "").trim();
   if (!index || !text) return null;
   try {
-    const { vectors } = await embedTexts(env, [QUERY_PREFIX + text], { timeoutMs: EMBED_TIMEOUT_MS });
-    const qvec = vectors?.[0];
+    const qvec = (await embedQueries(env, [text], { timeoutMs: EMBED_TIMEOUT_MS }))[0];
     if (!Array.isArray(qvec)) return null;
-    const res = await withTimeout(
-      index.query(qvec, { topK: CANDIDATES, returnMetadata: "all" }),
-      QUERY_TIMEOUT_MS,
-      "vectorize query",
-    );
-    const matches = res?.matches || [];
-    if (!matches.length) {
+    const found = await denseRetrieve(env, log, { index, qvec, query: text, docOf, tag, startedAt: started });
+    if (!found) return null;
+    if (!found.candidates) {
       log.info(`${tag}.search`, { results: 0, duration_ms: Date.now() - started });
       return [];
     }
-    // Out of budget → keep the dense order rather than spending another 6 s on
-    // a cross-encoder.
-    const spent = Date.now() - started;
-    const overBudget = spent > TOTAL_BUDGET_MS - RERANK_TIMEOUT_MS;
-    if (overBudget) log.warn(`${tag}.rerank_skipped`, { spent_ms: spent });
-    /** @type {{ ordered: any[], scored: boolean }} */
-    const { ordered, scored } = overBudget
-      ? { ordered: matches, scored: false }
-      : await rerankMatches(env, log, text, matches, { docOf, tag });
-    // The floor only applies when the cross-encoder actually scored: a fallback
-    // order carries no comparable numbers, and dropping everything on the
-    // strength of absent scores would turn a degraded result into no result.
-    const kept = scored ? ordered.filter((m) => (m.rerankScore ?? 0) >= RERANK_FLOOR) : ordered;
-    const items = /** @type {T[]} */ (kept.map(itemOf).filter(Boolean).slice(0, limit));
+    const items = /** @type {T[]} */ (found.matches.map(itemOf).filter(Boolean).slice(0, limit));
     log.info(`${tag}.search`, {
-      candidates: matches.length,
-      reranked: scored,
-      above_floor: kept.length,
+      candidates: found.candidates,
+      reranked: found.scored,
+      above_floor: found.aboveFloor,
       results: items.length,
       duration_ms: Date.now() - started,
     });

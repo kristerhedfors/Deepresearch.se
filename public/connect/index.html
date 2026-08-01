@@ -136,6 +136,21 @@
         that spends</b> — each call draws on your research quota.</td>
       </tr>
       <tr>
+        <td><code>literature_search</code><br><code>literature_similar</code></td>
+        <td>Search the hosted arXiv and PubMed indexes by meaning and get back
+        structured paper records — up to six angles at once, both corpora, in a
+        single call. <code>literature_similar</code> does the same from a paper
+        you already have, for a related-work sweep. Both draw on your research
+        quota, but far more cheaply than <code>deep_research</code>: they
+        retrieve, they don't write an answer.</td>
+      </tr>
+      <tr>
+        <td><code>literature_fetch</code><br><code>literature_corpora</code></td>
+        <td>Resolve exact papers by arXiv id or PMID — how an agent follows a
+        citation — and ask what the two corpora actually hold: live vector
+        counts, coverage windows, stored fields. Neither spends anything.</td>
+      </tr>
+      <tr>
         <td><code>sdk_list_modules</code><br><code>sdk_show_module</code></td>
         <td>Browse the Platform SDK's module registry — what each buildable
         module contains and depends on.</td>
