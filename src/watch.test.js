@@ -2322,6 +2322,11 @@ describe("the strap leaves the lug the way a worn strap does", () => {
     // the lug end with daylight between them, worst on the Tuna and the dress
     // cases, whose lug geometry differs most from the SKX.
     for (const c of CORE_CASES) {
+      // An integrated bracelet grows out of the case and the case has no lugs
+      // to meet, so there is no lug band to find here. Its own geometry is
+      // checked against integratedBraceletOf, the same skip as the two lug
+      // tests above.
+      if (c.integrated && c.integrated.bracelet) continue;
       const anchor = lugAnchor(c);
       // The anchor may never be buried inside the case wall. The Tuna is the
       // case that proves the clamp is needed: its shroud is WIDER than its
