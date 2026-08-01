@@ -1263,3 +1263,77 @@ reranked pipeline over 34 months. It needs its own measurement — with a query
 set that distinguishes "what is the state of the art" from "what is the
 foundational work" — before anything is changed. Do not add a recency boost on
 the strength of this section alone.
+
+---
+
+## 12. Re-measured 2026-08-01, beside PubMed, with one instrument
+
+The evaluation harness was generalized from arXiv-only to corpus-agnostic when
+PubMed became the second hosted corpus (`scripts/rag-corpora.mjs`,
+`rag-hosted.mjs`, `rag-eval.mjs`; `scripts/arxiv-hosted*.mjs` remain as the
+arXiv-shaped entry points). Everything below is measured on the SERVED path at
+its shipped configuration, on 150 needles per language sampled by id from the
+GCS enumeration for submission months 2601–2607. Method, paired verdicts and
+the standing negative results: **`docs/RAG-EVAL-LEDGER.md`**; procedure: the
+**rag-hillclimb** skill.
+
+| lang | inPool | r@1 | r@5 | r@10 | MRR | ms median |
+|---|---|---|---|---|---|---|
+| EN | 84.0 | 76.7 | 82.7 | 83.3 | 79.5 | 1,390 |
+| SV | 77.3 | 67.3 | 75.3 | 76.7 | 71.2 | 1,426 |
+
+### 12.1 The pool has stopped being the constraint
+
+§11 concluded that "the POOL was the entire constraint" and raised it 20 → 50.
+That conclusion was correct **at pool 20** and no longer describes the served
+path. Measured 50 → 100 on 90 paired needles: EN r@1 lost 0 / gained 1, EN r@10
+lost 1 / gained 1, SV r@10 lost 0 / gained 2 — every McNemar p ≥ 0.5, and
+`inPool` moved 84.0 → 84.4. The median served call went 1,408 ms → 3,063 ms
+(slower on 204 of 208 queries, p<0.0001), because past 50 Vectorize returns no
+metadata and each query needs five extra hydrating round trips.
+
+**Do not raise the pool past 50.** The same experiment on PubMed reached the
+same verdict.
+
+### 12.2 The dense stage is now the whole ceiling
+
+Where the gold paper is lost, as a share of needles:
+
+| lang | in top 10 | never retrieved | rerank demoted | floored out |
+|---|---|---|---|---|
+| EN | 83.3 | **16.0** | 0.7 | 0.0 |
+| SV | 76.7 | **22.7** | 0.7 | 0.0 |
+
+The cross-encoder demotes 0.7% and the relevance floor costs nothing at all.
+Sixteen points of English recall and nearly twenty-three of Swedish are papers
+dense retrieval never put in front of the reranker. Any further work on the
+reranker or the floor is bounded at under one point before it is attempted;
+the embedding, the passage and the query are where the remaining headroom is.
+
+### 12.3 The Swedish deficit is real, and it is a RETRIEVAL deficit
+
+Paired over the same 150 papers (invariant 6, now the `rag-eval.mjs parity`
+command):
+
+| metric | SV loses | SV wins | p |
+|---|---|---|---|
+| r@1 | 22 | 8 | **0.016** |
+| r@10 | 15 | 5 | **0.041** |
+| inPool | 15 | 5 | **0.041** |
+
+The `inPool` row is identical to the r@10 row, so **every Swedish paper that
+goes missing was already missing before the cross-encoder saw the pool** — no
+reranking change can close this gap.
+
+The finding that gives it a shape: PubMed, measured the same day with the same
+instrument and the same embedder, shows **no** significant Swedish deficit
+(r@1 p=0.70, r@10 p=0.75). A plausible mechanism is that Swedish clinical
+vocabulary is largely Latin/Greek and near-identical to English while Swedish
+CS/physics vocabulary diverges (*ytkoder*, *kvantfelkorrigering*). That is a
+hypothesis, not a result; the ledger's open list names the experiment that
+would test it, and it costs one run and no index change.
+
+### 12.4 The recency profile of §11.5 reproduced exactly
+
+Re-measured independently: 64.9% of a topical query's top 10 predates 2507,
+median result 2025-01. §11.5's open question stands unchanged.

@@ -35,7 +35,7 @@ import { createInterface } from "node:readline";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { PASSAGE_PREFIX, buildPassage } from "../public/js/arxiv-rag-core.js";
+import { PASSAGE_PREFIX, buildPassage, truncateChars } from "../public/js/arxiv-rag-core.js";
 import { embedBatch } from "./embed-providers.mjs";
 import {
   assertVectors,
@@ -80,12 +80,14 @@ export function parseArgs(argv) {
 export function vectorMetadata(paper) {
   const abstract = String(paper.abstract || "").replace(/\s+/g, " ").trim();
   return {
-    t: String(paper.title || "").replace(/\s+/g, " ").trim().slice(0, 300),
+    // truncateChars, not .slice — see the note in public/js/pubmed-core.js's
+    // vectorMetadata: a plain cut can orphan half of an astral character.
+    t: truncateChars(String(paper.title || "").replace(/\s+/g, " ").trim(), 300),
     // 900 chars is what the cross-encoder gets to judge on (Berget serves
     // bge-reranker-v2-m3 behind a 512-token window covering query+document),
     // so storing more would be paid-for weight nothing reads.
-    a: abstract.slice(0, 900),
-    au: (paper.authors || []).slice(0, 8).join("; ").slice(0, 300),
+    a: truncateChars(abstract, 900),
+    au: truncateChars((paper.authors || []).slice(0, 8).join("; "), 300),
     c: String(paper.primary || (paper.categories || [])[0] || ""),
     d: String(paper.updated || "").slice(0, 10),
   };

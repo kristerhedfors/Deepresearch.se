@@ -485,6 +485,18 @@ Two things to carry over when you do:
 
 ## Measuring the HOSTED index (not the local pack)
 
+> **Since 2026-08-01 the hosted harness is corpus-agnostic and the procedure
+> has its own skill: rag-hillclimb.** `scripts/rag-eval.mjs` measures BOTH
+> hosted indexes (arXiv and PubMed) with one instrument, imports the pool and
+> floor from `src/dense-rag.js` so a replay can no longer drift from production,
+> and implements the paired McNemar that decides every verdict here. Results
+> live in the append-only `docs/RAG-EVAL-LEDGER.md`. The arXiv-shaped commands
+> below still work; load **rag-hillclimb** for the loop itself, and note its
+> two re-measurements of conclusions on this page: the POOL has stopped being
+> the constraint at 50 (going to 100 gains nothing and triples latency), and
+> the Swedish deficit is significant and lives entirely in the dense stage.
+
+
 `scripts/arxiv-eval.mjs` measures the binary pack. **That is a different
 pipeline from the one users hit**, and quoting its numbers for production is
 how §10.7 ended up flagged as unverified for two days. Use

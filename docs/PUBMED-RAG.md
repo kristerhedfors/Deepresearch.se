@@ -579,6 +579,48 @@ The floor was never touched, and that restraint is the point. Both times the
 evidence said "defect", the defect was somewhere else — first in the probe, then
 in the corpus being partial. Re-measure before moving a measured constant.
 
+### 7.8 The first measured retrieval numbers (2026-08-01)
+
+Measured with `scripts/rag-eval.mjs` — the corpus-agnostic hosted-RAG harness —
+against the served path at its shipped configuration (pool 50, floor 0.01).
+150 needle queries, EN+SV, sampled BY PMID from E-utilities and hydrated
+through `get_by_ids`, so the gold set cannot have been selected by the index it
+measures. Full method and the paired verdicts: **`docs/RAG-EVAL-LEDGER.md`**;
+the procedure is the **rag-hillclimb** skill.
+
+| lang | inPool | r@1 | r@5 | r@10 | MRR | ms median | ms p95 |
+|---|---|---|---|---|---|---|---|
+| EN | 92.0 | 72.0 | 86.0 | 88.7 | 78.1 | 1,558 | 3,029 |
+| SV | 88.7 | 74.0 | 85.3 | 87.3 | 79.1 | 1,486 | 2,652 |
+
+Three things to read off it.
+
+**Swedish reaches statistical parity**, which §7.5's probe suggested and this
+tests properly: paired over the same 150 documents, Swedish loses 12 and wins
+15 at r@1 (p=0.70) and loses 6 / wins 4 at r@10 (p=0.75). arXiv, measured the
+same day with the same instrument, has a *significant* Swedish deficit
+(p=0.016). Same embedder, same pipeline — so the parity is a property of
+biomedical vocabulary, not of the code.
+
+**The dense stage is the entire ceiling.** Of the needles that never reach the
+user's top 10, 8.0% (EN) and 11.3% (SV) were never retrieved into the pool at
+all, against 2.7% / 0.7% demoted by the cross-encoder and 0.7% dropped by the
+relevance floor. Reranking and floor work are bounded at ~3 points before they
+are attempted; the embedding and the passage are where the headroom is.
+
+**Coverage was verified first**, against E-utilities rather than the ingest's
+own counters: 400 PMIDs sampled per month, 0.0% missing for 2026/05 and
+2026/06 and 0.3% for the open month 2026/07. A recall number measured over an
+index whose coverage was never checked is a confident guess.
+
+> **Do not raise the candidate pool.** 50 → 100 was measured on this index and
+> gained nothing significant on any metric in either language while taking the
+> median served call from 1,492 ms to 4,456 ms (slower on 208 of 208 queries,
+> p<0.0001). Against `TOTAL_BUDGET_MS = 12_000` inside a search wave that is the
+> whole rerank budget spent for noise.
+
+---
+
 ---
 
 ## 8. Open, and deliberately not guessed at
@@ -590,10 +632,10 @@ in the corpus being partial. Re-measure before moving a measured constant.
    set generated from the **last third** of long abstracts, which is exactly the
    text the single-passage build throws away. Cost of the answer is a few euros;
    cost of guessing wrong is either half the recall or double the monthly bill.
-2. **No retrieval numbers yet.** There is no PubMed gold set and no bake-off, so
-   this document quotes arXiv's recall figures only to say what configuration
-   was chosen and why. Nothing here claims a measured recall on PubMed, and
-   nothing should until `pubmed:eval` exists.
+2. ~~**No retrieval numbers yet.**~~ **ANSWERED 2026-08-01** — see §7.8 and
+   `docs/RAG-EVAL-LEDGER.md`. `npm run pubmed:eval` now exists
+   (`scripts/rag-eval.mjs --corpus pubmed`), and the figures below are measured
+   on this index rather than borrowed from arXiv.
 3. **MeSH terms are harvested but unused.** 66.7% of records carry them and they
    are a controlled vocabulary — a natural lexical arm, or metadata filter, or
    query-expansion source. Not wired to anything yet.

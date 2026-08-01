@@ -48,7 +48,7 @@
 // window — because a publication-year window served by a PMID-ordered fetch is
 // the §3a bug, and the honest fix is to not pretend otherwise.
 
-import { MAX_PASSAGE_CHARS, PASSAGE_PREFIX, buildPassage } from "./arxiv-rag-core.js";
+import { MAX_PASSAGE_CHARS, PASSAGE_PREFIX, buildPassage, truncateChars } from "./arxiv-rag-core.js";
 
 export { MAX_PASSAGE_CHARS, PASSAGE_PREFIX, buildPassage };
 
@@ -412,12 +412,19 @@ export function windowNote(plan, opts = {}) {
  */
 export function vectorMetadata(rec) {
   return {
-    t: String(rec.title || "").slice(0, 300),
+    // truncateChars, not .slice: a plain cut can land BETWEEN the two code
+    // units of an astral character and leave an orphaned surrogate half. The
+    // same cut in buildPassage crash-looped a whole PubMed fill for half an
+    // hour (docs/PUBMED-RAG.md §7.3), and this copy was never converted. It is
+    // less dangerous here — metadata is stored, not embedded, so it cannot 400
+    // the tokenizer — but it is the same latent bug, and the corpus where 88%
+    // of abstracts hit a cap is the one that exercises the boundary.
+    t: truncateChars(String(rec.title || ""), 300),
     // What the cross-encoder gets to judge on: Berget serves bge-reranker-v2-m3
     // behind a 512-token window covering query AND document, so storing more
     // than 900 chars would be paid-for weight nothing reads.
-    a: String(rec.abstract || "").slice(0, 900),
-    au: (rec.authors || []).slice(0, 8).join("; ").slice(0, 300),
+    a: truncateChars(String(rec.abstract || ""), 900),
+    au: truncateChars((rec.authors || []).slice(0, 8).join("; "), 300),
     j: String(rec.journal || "").slice(0, 160),
     d: String(rec.date || rec.year || "").slice(0, 10),
   };

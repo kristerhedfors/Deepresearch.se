@@ -1,0 +1,110 @@
+{
+  "v": 1,
+  "note": "Hand-written topical queries for the PubMed RAG bake-off — the 'is the top of the list any good' family, where many citations are relevant and none is THE answer. Paired EN/SV per CLAUDE.md invariant 6; the Swedish side is idiomatic clinical/research Swedish with CORRECT DIACRITICS, not a gloss. Stripping diacritics costs orders of magnitude of retrieval score and has already manufactured a false invariant-6 bug report once (docs/PUBMED-RAG.md §7.7), so any edit here keeps them. Graded by an LLM judge in `rag-eval.mjs judge`, so the set stays small enough to grade honestly. The index holds the 2026 update files, so every query is phrased to have plausible recent literature rather than pointing at a landmark trial from 2008.",
+  "queries": [
+    {
+      "id": "p01",
+      "en": "What is the evidence that GLP-1 receptor agonists reduce cardiovascular events in type 2 diabetes?",
+      "sv": "Vilka belägg finns för att GLP-1-receptoragonister minskar kardiovaskulära händelser vid typ 2-diabetes?",
+      "field": "endocrinology"
+    },
+    {
+      "id": "p02",
+      "en": "Mechanisms and spread of carbapenem resistance in Gram-negative hospital pathogens",
+      "sv": "Mekanismer och spridning av karbapenemresistens hos gramnegativa sjukhuspatogener",
+      "field": "infectious disease"
+    },
+    {
+      "id": "p03",
+      "en": "How well do deep learning models detect malignancy on screening mammography compared with radiologists?",
+      "sv": "Hur väl upptäcker djupinlärningsmodeller malignitet vid mammografiscreening jämfört med radiologer?",
+      "field": "radiology / AI"
+    },
+    {
+      "id": "p04",
+      "en": "Immune checkpoint inhibitor response and resistance in non-small cell lung cancer",
+      "sv": "Respons och resistens mot immuncheckpointhämmare vid icke-småcellig lungcancer",
+      "field": "oncology"
+    },
+    {
+      "id": "p05",
+      "en": "The role of the gut microbiome in inflammatory bowel disease and its therapeutic manipulation",
+      "sv": "Tarmmikrobiotans roll vid inflammatorisk tarmsjukdom och hur den kan påverkas terapeutiskt",
+      "field": "gastroenterology"
+    },
+    {
+      "id": "p06",
+      "en": "Blood-based biomarkers for early diagnosis of Alzheimer's disease",
+      "sv": "Blodbaserade biomarkörer för tidig diagnostik av Alzheimers sjukdom",
+      "field": "neurology"
+    },
+    {
+      "id": "p07",
+      "en": "Long-term outcomes and rehabilitation after post-COVID condition",
+      "sv": "Långtidsutfall och rehabilitering vid postcovid",
+      "field": "internal medicine"
+    },
+    {
+      "id": "p08",
+      "en": "Risk factors for preterm birth and interventions that reduce it",
+      "sv": "Riskfaktorer för förtidsbörd och interventioner som minskar risken",
+      "field": "obstetrics"
+    },
+    {
+      "id": "p09",
+      "en": "Efficacy and safety of CAR-T cell therapy in relapsed haematological malignancies",
+      "sv": "Effekt och säkerhet av CAR-T-cellsbehandling vid recidiverande hematologiska maligniteter",
+      "field": "haematology"
+    },
+    {
+      "id": "p10",
+      "en": "Antidepressant efficacy versus psychotherapy for treatment-resistant depression",
+      "sv": "Antidepressiva läkemedels effekt jämfört med psykoterapi vid behandlingsresistent depression",
+      "field": "psychiatry"
+    },
+    {
+      "id": "p11",
+      "en": "Polygenic risk scores and their clinical utility for common complex disease",
+      "sv": "Polygena riskpoäng och deras kliniska nytta vid vanliga komplexa sjukdomar",
+      "field": "genomics"
+    },
+    {
+      "id": "p12",
+      "en": "Air pollution exposure and incidence of respiratory disease in urban populations",
+      "sv": "Exponering för luftföroreningar och insjuknande i luftvägssjukdom hos stadsbefolkningar",
+      "field": "epidemiology"
+    },
+    {
+      "id": "p13",
+      "en": "Antimicrobial stewardship interventions and their effect on prescribing in primary care",
+      "sv": "Antibiotikastyrning och dess effekt på förskrivning inom primärvården",
+      "field": "public health"
+    },
+    {
+      "id": "p14",
+      "en": "Methods for handling missing outcome data in randomised controlled trials",
+      "sv": "Metoder för att hantera saknade utfallsdata i randomiserade kontrollerade studier",
+      "field": "methodology"
+    }
+  ],
+  "controls": [
+    {
+      "id": "ctl-food",
+      "en": "best pizza recipe napoletana dough hydration",
+      "sv": "bästa receptet på napolitansk pizzadeg och degens vattenhalt",
+      "why": "off-domain by a wide margin — the index must return NOTHING above the relevance floor so src/europepmc.js falls through to the live API"
+    },
+    {
+      "id": "ctl-travel",
+      "en": "cheapest train tickets from Stockholm to Gothenburg on a Friday",
+      "sv": "billigaste tågbiljetterna från Stockholm till Göteborg på en fredag",
+      "why": "off-domain and mundane; catches a floor that only rejects obviously silly text"
+    },
+    {
+      "id": "ctl-adjacent",
+      "en": "transformer attention head pruning for faster inference on edge GPUs",
+      "sv": "beskärning av attention-huvuden i transformatormodeller för snabbare inferens på edge-GPU:er",
+      "why": "the HARD control: real research, real technical vocabulary, but arXiv's subject matter rather than PubMed's. A floor tuned only against nonsense will let this through, and this index answering a machine-learning systems question is exactly the confident-nonsense failure the floor exists to prevent."
+    }
+  ]
+}

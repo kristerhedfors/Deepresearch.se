@@ -163,7 +163,15 @@ Expect ~0.1–0.2% missing on a settled month and more on the current one — th
 last update file is cut mid-month, so the final days are simply not published.
 
 Then probe the served path, in **both** languages (invariant 6), and include a
-nonsense control:
+nonsense control — which since 2026-08-01 is one command, and the retrieval
+quality behind it is the **rag-hillclimb** skill:
+
+```bash
+node scripts/rag-eval.mjs probe    --corpus pubmed          # incl. the controls
+node scripts/rag-eval.mjs coverage --corpus pubmed --months "2026/06,2026/07"
+```
+
+The older hand-run form, for reference:
 
 ```bash
 # on-topic EN, on-topic SV, and "best pizza recipe napoletana dough"
