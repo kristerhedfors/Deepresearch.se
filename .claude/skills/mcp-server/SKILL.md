@@ -226,6 +226,34 @@ a Worker holds only a handful of simultaneous outbound connections, and a
 QUEUED fetch still counts down the 6 s `AbortSignal` it was constructed with —
 so an unbounded fan-out is not faster, it is a batch of timeouts.
 
+**Measured, so quote these rather than the intuition** (production, warm,
+median of 3, 2026-08-02):
+
+| shape | legs | median |
+|---|---|---|
+| 1 angle × both corpora | 2 | 814 ms |
+| 3 angles × both corpora | 6 | 1290 ms |
+| 6 angles × arXiv only | 6 | 1180 ms |
+| 6 angles × both corpora | 12 | **1690 ms** |
+
+Six angles cost 2.1× one angle, so serial (~4.9 s) is **2–3×** the batch:
+2.9× against these medians, 2.1× on a single-shot run of the probe's own
+check minutes later. Quote the range, not either endpoint — one sample over
+the open internet does not distinguish them. A factor of two or three, not
+the order of magnitude the code's shape suggests; the first estimate written
+into the module header claimed "a couple of seconds against most of a
+minute", which was wrong. The flat 6→12 leg step also says the pool is not
+the binding constraint at this size, so raising it is not the lever it looks
+like.
+
+> **The probe's own first number was 1.4×, and it was measuring the wrong
+> thing.** It timed the batch inside `search-batch` — the first call in the run
+> to touch the PubMed index, cold — against a serial loop that ran afterwards,
+> warm. Cold-vs-warm dressed as batched-vs-serial. Both legs are now timed in
+> `batch-speedup` after a warm-up. A benchmark whose ordering biases the result
+> is worse than none: it reports a real number for a comparison nobody meant to
+> make.
+
 Four things about this surface are load-bearing and easy to get wrong later:
 
 1. **The file-layout rule is preserved by a split, not an exception.**

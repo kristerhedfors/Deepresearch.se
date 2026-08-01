@@ -23,8 +23,25 @@
 //      Vectorize query plus a cross-encoder pass over its own 50 candidates.
 //
 // So a six-angle sweep of both corpora is one embed plus twelve retrievals
-// running together, not twelve sequential searches — the difference between a
-// couple of seconds and most of a minute.
+// running together rather than twelve sequential searches.
+//
+// MEASURED against production, 2026-08-02, warm, median of 3 (the numbers, not
+// the intuition — the first estimate written here was "a couple of seconds
+// against most of a minute", and it was wrong by an order of magnitude):
+//
+//     1 angle  × both corpora ( 2 legs)    814 ms
+//     3 angles × both corpora ( 6 legs)   1290 ms
+//     6 angles × arXiv only   ( 6 legs)   1180 ms
+//     6 angles × both corpora (12 legs)   1690 ms
+//
+// Six angles cost 2.1× one angle, not 6×, so the same work one call at a time
+// (~4.9 s) takes 2–3× as long as the batch — 2.9× against these medians, 2.1×
+// on a single-shot run of the probe's own check minutes later, which is the
+// spread to expect from one sample over the open internet. Worth being precise
+// about: the win is real and it is the reason to batch, but it is a factor of
+// two or three, not the order of magnitude the shape of the code suggests.
+// The flat-ish 6-legs-to-12-legs step (1180 → 1690 ms) also says RETRIEVAL_POOL
+// is not the binding constraint at this size — the legs genuinely overlap.
 //
 // CONCURRENCY IS CAPPED at RETRIEVAL_POOL, deliberately. A Worker may hold only
 // a handful of simultaneous outbound connections; beyond that they queue, and a

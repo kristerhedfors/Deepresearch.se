@@ -515,26 +515,39 @@ async function runBattery(url, cred, opts) {
     return v;
   });
 
-  /** @type {number} */
-  let batchMs = 0;
+  let batchRan = false;
   await check("search-batch", async () => {
     if (!has("literature_search")) return verdict(true, "not exposed on this account");
-    const started = Date.now();
     const res = await call(url, auth, toolCall(next(), "literature_search", { queries: BATCH_QUERIES, corpus: "both", limit: 5 }));
-    batchMs = Date.now() - started;
     const parsed = toolPayload(res.json?.result);
     if (!parsed) return verdict(false, `unparseable result: ${res.text.slice(0, 200)}`);
+    batchRan = true;
     return checkSearch(parsed.payload, { queries: BATCH_QUERIES.length, merged: true });
   });
 
   await check("batch-speedup", async () => {
-    if (!has("literature_search") || !batchMs) return verdict(true, "search-batch did not run");
+    if (!has("literature_search") || !batchRan) return verdict(true, "search-batch did not run");
+    // BOTH legs are timed HERE, after a warm-up, and in that order for a
+    // reason. The first version timed the batch up in `search-batch` — the
+    // first call to touch the PubMed index in the whole run — and compared it
+    // against a serial loop that ran afterwards, warm. That is a cold-vs-warm
+    // comparison dressed up as a batched-vs-serial one, and it UNDERSTATED the
+    // speedup by roughly half (measured against production 2026-08-02: it
+    // reported 1.4×, where a warm comparison of the same work gives ~2.9×).
+    // A benchmark whose ordering biases the result is worse than none: it
+    // reports a real number for a comparison nobody meant to make.
+    await call(url, auth, toolCall(next(), "literature_search", { query: BATCH_QUERIES[0], corpus: "both", limit: 1 }));
+
+    const batchStarted = Date.now();
+    await call(url, auth, toolCall(next(), "literature_search", { queries: BATCH_QUERIES, corpus: "both", limit: 5 }));
+    const batchMs = Date.now() - batchStarted;
+
     // The same angles, one call each — what an agent would otherwise pay.
-    const started = Date.now();
+    const serialStarted = Date.now();
     for (const query of BATCH_QUERIES) {
       await call(url, auth, toolCall(next(), "literature_search", { query, corpus: "both", limit: 5 }));
     }
-    return checkBatchSpeedup(batchMs, Date.now() - started, BATCH_QUERIES.length);
+    return checkBatchSpeedup(batchMs, Date.now() - serialStarted, BATCH_QUERIES.length);
   });
 
   await check("fetch-roundtrip", async () => {
