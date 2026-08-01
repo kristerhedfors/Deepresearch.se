@@ -391,8 +391,16 @@ describe("finish", () => {
     // A monochrome recolour needs no such thing, and keeps the mirror.
     assert.equal(hands(build({ hands: "mercedes", handColor: "gold" })).material, "hands-polished");
 
+    // A GMT set's red 24-hour hand is the same case, and was lost the same way
+    // until `twoTone` learned to look at `gmtColor` too.
+    const gmt = hands(build({ movement: "nh34", hands: "gmt-arrow", handColor: "black" }));
+    assert.equal(gmt.color, "#1b1d21");
+    assert.equal(gmt.gmtColor, set("gmt-arrow").gmtColor);
+    assert.equal(gmt.material, "dial-gloss");
+
     // A set whose CONTRAST it shipped with, untouched, keeps the old material.
     assert.equal(hands(build({ hands: "snowflake" })).material, "hands-polished");
+    assert.equal(hands(build({ movement: "nh34", hands: "gmt-arrow" })).material, "hands-polished");
 
     // An explicit finish is an explicit choice and still wins.
     assert.equal(

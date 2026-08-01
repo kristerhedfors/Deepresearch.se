@@ -2105,6 +2105,15 @@ export const HAND_COLOURS = [
  * the environment (0.78 against 0.62) and a thin hand facing a bright sky then
  * washes to white. A plated hand IS a polished hand; the tint belongs in the
  * colour, where the renderer puts it into the specular F0.
+ *
+ * WHAT A FINISH CAN AND CANNOT DO ON A LUMED HAND. The renderer gives a lumed
+ * hand a CONSTANT lume term (`lumeConst: 0.55`), and on a part this thin that
+ * wash dominates: gold, PVD black and polished steel all read as much the same
+ * pale hand while the lume is on, and separate cleanly the moment it is off.
+ * So the finish and colour axes are honest, but they are legible in daylight
+ * mainly on a set WITHOUT lume — which is exactly the dress-hand case they
+ * matter most for. Both were looked at side by side in a browser before this
+ * was written down.
  */
 export const HAND_FINISHES = [
   { id: "polished", name: { en: "Polished", sv: "Polerad" }, material: "hands-polished", src: "namoki" },
@@ -3795,11 +3804,13 @@ function effectiveHands(hands, ids) {
   // the whole hand group and overrides only the per-hand ALBEDO — and a metal
   // has no diffuse term, so on `hands-polished` a per-hand colour reaches
   // nothing. Verified in the browser before this line existed: a red seconds
-  // hand rendered white. Lacquer is a dielectric, so every hand then shows its
+  // hand rendered white, and a GMT set recoloured black lost its red 24-hour
+  // hand the same way. Lacquer is a dielectric, so every hand then shows its
   // own colour, and it is what a coloured hand actually is. Only a build that
   // asked for a hand colour is affected; an explicit finish still wins, and an
   // untouched build keeps the material the renderer used to hard-code.
-  const twoTone = !!(colour || second) && out.secondColor !== out.color;
+  const twoTone = !!(colour || second)
+    && (out.secondColor !== out.color || (!!out.gmtColor && out.gmtColor !== out.color));
   out.material = finish && finish.material
     ? finish.material
     : twoTone ? "dial-gloss" : "hands-polished";
