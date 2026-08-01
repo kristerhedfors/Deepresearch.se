@@ -45,6 +45,14 @@ const STAGE_CSS = `
   color: #d7e3f7; border-radius: 8px; padding: .22rem .5rem; font-size: .76rem; cursor: pointer;
 }
 .wa-hud button:hover { background: rgba(255,255,255,.14); }
+/* A state switch reads as one: lit while what it names is on. */
+.wa-hud button.wa-on { border-color: rgba(127,180,238,.7); color: #cfe4ff; background: rgba(127,180,238,.18); }
+.wa-hud select {
+  font: inherit; font-size: .76rem; background: rgba(255,255,255,.07);
+  border: 1px solid rgba(255,255,255,.18); color: #d7e3f7;
+  border-radius: 8px; padding: .22rem .3rem; cursor: pointer; max-width: 9rem;
+}
+.wa-hud select:hover { background: rgba(255,255,255,.14); }
 .wa-spec { margin: .45rem 0 0; font-size: .8rem; line-height: 1.45; opacity: .75; font-variant-numeric: tabular-nums; }
 .wa-issues { margin: .3rem 0 0; font-size: .8rem; line-height: 1.45; }
 .wa-issues .wa-error { color: #f2a5a5; }
@@ -84,8 +92,12 @@ const UI = {
   top: { en: "top view", sv: "ovanifrån" },
   reset: { en: "reset view", sv: "återställ vy" },
   back: { en: "case back", sv: "boettbotten" },
-  cushionOff: { en: "hide cushion", sv: "dölj kudden" },
-  cushionOn: { en: "show cushion", sv: "visa kudden" },
+  // Labelled by STATE, matching the /watch/ bar: "hide cushion" beside a watch
+  // that is lying on one describes the tap, not the switch, and the reporter
+  // asked for this switch by name twice (feedback #59).
+  cushionOn: { en: "cushion: on", sv: "kudde: på" },
+  cushionOff: { en: "cushion: off", sv: "kudde: av" },
+  scene: { en: "scene", sv: "miljö" },
   png: { en: "save PNG", sv: "spara PNG" },
   tryTyping: { en: "Try typing", sv: "Prova att skriva" },
   tryTypingStatic: { en: "Try typing one of these", sv: "Prova att skriva någon av dessa" },
@@ -217,11 +229,13 @@ export function mountWatchBuild(host, state, opts = {}) {
   let cushion = true;
   /** @param {boolean} v */
   const setCushion = (v) => {
-    cushion = v;
+    cushion = !!v;
     view.setWrist(cushion);
-    cushionBtn.textContent = cushion ? UI.cushionOff[lang] : UI.cushionOn[lang];
+    cushionBtn.textContent = cushion ? UI.cushionOn[lang] : UI.cushionOff[lang];
+    cushionBtn.classList.toggle("wa-on", cushion);
   };
-  const cushionBtn = addButton(UI.cushionOff[lang], () => setCushion(!cushion));
+  const cushionBtn = addButton(UI.cushionOn[lang], () => setCushion(!cushion));
+  cushionBtn.classList.add("wa-on");
   addButton(UI.back[lang], () => {
     setCushion(false);
     view.setStrap(false);
@@ -241,6 +255,57 @@ export function mountWatchBuild(host, state, opts = {}) {
     } catch { /* a blocked download must not break the turn */ }
   });
   stage.appendChild(hud);
+
+  // The scene the stage is lit in. Both halves of it — the SCENES table in
+  // watch-materials.js and setScene on the stage — are feature-detected and the
+  // import is DYNAMIC, because a static import of an export that is not there
+  // yet is a link-time failure that would take the whole turn's builder down.
+  // A single scene is not a choice, so the select appears only when there are
+  // at least two and the stage will actually take one (UX-18).
+  let gone = false;
+  if (typeof (/** @type {any} */ (view).setScene) === "function") {
+    import("./watch-materials.js")
+      .then((mats) => {
+        if (gone) return;
+        const list = Array.isArray(/** @type {any} */ (mats).SCENES)
+          ? /** @type {any[]} */ (/** @type {any} */ (mats).SCENES).filter((s) => s && s.id)
+          : [];
+        if (list.length < 2) return;
+        let want = "";
+        try {
+          want = localStorage.getItem("watch_scene") || "";
+        } catch { /* private mode: fall through to the first scene */ }
+        if (!list.some((s) => s.id === want)) want = list[0].id;
+        const label = doc.createElement("label");
+        label.style.cssText = "display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem;color:#9db9d6";
+        const cap = doc.createElement("span");
+        cap.textContent = UI.scene[lang];
+        const select = doc.createElement("select");
+        for (const s of list) {
+          const opt = doc.createElement("option");
+          opt.value = s.id;
+          opt.textContent = (s.name && (s.name[lang] || s.name.en)) || s.id;
+          select.appendChild(opt);
+        }
+        select.value = want;
+        /** @param {string} id */
+        const apply = (id) => {
+          try {
+            /** @type {any} */ (view).setScene(id);
+          } catch { /* a scene the stage rejects must not break the turn */ }
+        };
+        select.addEventListener("change", () => {
+          try {
+            localStorage.setItem("watch_scene", select.value);
+          } catch { /* best effort */ }
+          apply(select.value);
+        });
+        label.append(cap, select);
+        hud.appendChild(label);
+        apply(want);
+      })
+      .catch(() => { /* no scenes module: the HUD is complete without it */ });
+  }
 
   const spec = doc.createElement("p");
   spec.className = "wa-spec";
@@ -309,6 +374,7 @@ export function mountWatchBuild(host, state, opts = {}) {
 
   return {
     destroy() {
+      gone = true;
       try {
         if (observer) observer.disconnect();
       } catch { /* already gone */ }

@@ -52,6 +52,23 @@
       display: flex; gap: .4rem; flex-wrap: wrap; padding: .6rem;
       border-top: 1px solid var(--border); background: rgba(0,0,0,.25);
     }
+    /* The scene picker. Hidden until the material table is known to carry
+       scenes AND the stage is known to accept one — the two halves ship
+       separately, and a select that cannot change anything is worse than no
+       select (UX-18). */
+    .scenepick { display: inline-flex; align-items: center; gap: .35rem; }
+    /* An author `display` beats the UA's [hidden] rule, so the attribute needs
+       saying again — without this the empty picker shows on every browser whose
+       stage has no scenes to offer, which is precisely the case it exists to
+       stay out of. Caught in a screenshot, not in a test. */
+    .scenepick[hidden] { display: none; }
+    .scenepick > span { color: var(--muted); font-size: .74rem; }
+    .scenepick select {
+      background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.16);
+      color: var(--text); font-weight: 600; font-size: .82rem; font-family: inherit;
+      border-radius: 10px; padding: .42rem .5rem; cursor: pointer; max-width: 11rem;
+    }
+    .scenepick select:hover, .scenepick select:focus { border-color: var(--accent); outline: none; }
     .hint { color: var(--muted); font-size: .75rem; padding: 0 .7rem .6rem; margin: 0; }
     .nogl { padding: 2rem 1rem; text-align: center; color: var(--muted); font-size: .9rem; }
 
@@ -107,19 +124,45 @@
     .chip.soft.on { color: var(--warn); border-color: var(--warn); background: rgba(216,168,96,.1); }
 
     /* The orthogonal axes: one disclosure per group, so the picker still opens
-       on the eleven decisions a build is made of (feedback #56). */
+       on the eleven decisions a build is made of (feedback #56).
+
+       Feedback #59 then asked for every one of those axes as though none of
+       them existed — "separate selections for … color, style (sunburst
+       excetera), indices … And strap, I need to be able to choose strap
+       color." They all shipped; they were just unfindable. Two changes, both
+       here and in watch.js: the disclosure now hangs off the PART ROW it
+       modifies instead of sitting under one heading at the foot of the picker,
+       and its collapsed summary SPELLS OUT the variables inside it by name, so
+       the words a reader goes looking for are on the page with nothing
+       opened. */
     .axeshead { margin-top: 1rem !important; padding-top: .8rem; border-top: 1px solid var(--border); }
     details.axes { border-top: 1px solid var(--border); }
+    .slot > details.axes { border-top: 0; margin-top: .5rem; }
     details.axes > summary {
-      list-style: none; cursor: pointer; font-size: .78rem; color: var(--text);
-      padding: .5rem 0; display: flex; align-items: center; gap: .35rem;
+      list-style: none; cursor: pointer; font-size: .74rem; color: var(--muted);
+      padding: .34rem .55rem; display: flex; align-items: baseline; gap: .3rem;
+      flex-wrap: wrap; line-height: 1.5;
+      border: 1px dashed rgba(127,180,238,.32); border-radius: 10px;
+      background: rgba(127,180,238,.045);
     }
     details.axes > summary::-webkit-details-marker { display: none; }
-    details.axes > summary::before { content: "▸"; font-size: .7em; color: var(--muted); }
+    details.axes > summary::before { content: "▸"; font-size: .7em; color: var(--accent); }
     details.axes[open] > summary::before { content: "▾"; }
-    details.axes > summary:hover { color: var(--accent); }
-    .axesbody { padding: 0 0 .5rem .6rem; border-left: 1px solid var(--border); margin-left: .25rem; }
+    details.axes > summary:hover { border-color: var(--accent); color: var(--text); }
+    details.axes[open] > summary { background: rgba(127,180,238,.1); border-style: solid; }
+    .axlead { color: var(--accent); font-weight: 700; }
+    .axname { color: var(--text); opacity: .78; }
+    .axname.set { color: var(--accent); opacity: 1; font-weight: 600; }
+    .axsep { color: var(--muted); opacity: .55; }
+    .axesbody { padding: .1rem 0 .5rem .6rem; border-left: 1px solid var(--border); margin: .45rem 0 0 .25rem; }
     .axesbody .slot:first-of-type { border-top: 0; padding-top: 0; }
+
+    /* One control that opens (or shuts) every fine-tuning group at once — the
+       blunt answer to "I could not find it", next to the picker's own title. */
+    .pickhead { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; flex-wrap: wrap; }
+    .pickhead h2 { margin-bottom: 0; }
+    button.tool.tiny { font-size: .72rem; padding: .26rem .55rem; border-radius: 8px; }
+    .pickhint { color: var(--muted); font-size: .74rem; margin: .4rem 0 .7rem; line-height: 1.4; }
 
     .txtslot { display: flex; gap: .4rem; align-items: center; }
     .txtslot input {
@@ -203,6 +246,10 @@
             <button class="tool" id="b-lume" type="button"></button>
             <button class="tool" id="b-png" type="button"></button>
             <button class="tool" id="b-random" type="button"></button>
+            <label class="scenepick" id="scenewrap" hidden>
+              <span id="t-scene"></span>
+              <select id="scene"></select>
+            </label>
           </div>
           <p class="hint" id="hint"></p>
         </div>

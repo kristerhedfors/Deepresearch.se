@@ -28,7 +28,8 @@ import {
   surpriseBuild,
   slotIsText,
   textFieldDef,
-  axisGroupsFor,
+  axisGroupsBySlot,
+  axisSummary,
   sanitizeTextValue,
   TEXT_SLOT_MAXLEN,
 } from "/js/watch-page-core.js";
@@ -53,8 +54,13 @@ const UI = {
   reset: { en: "Reset view", sv: "Återställ vy" },
   top: { en: "Top down", sv: "Rakt uppifrån" },
   back: { en: "Case back", sv: "Boettbotten" },
-  cushionOff: { en: "Hide cushion", sv: "Dölj kudden" },
-  cushionOn: { en: "Show cushion", sv: "Visa kudden" },
+  // The cushion switch is labelled by its STATE, not by the action it would
+  // perform. "Hide cushion" next to a watch already lying on one reads as a
+  // description of what you are looking at, which is how a switch the reporter
+  // asked for by name (feedback #59) went unnoticed a second time.
+  cushionOn: { en: "Cushion: on", sv: "Kudde: på" },
+  cushionOff: { en: "Cushion: off", sv: "Kudde: av" },
+  scene: { en: "Scene", sv: "Miljö" },
   poseLive: { en: "Live time", sv: "Aktuell tid" },
   pose1010: { en: "10:10 pose", sv: "10:10-pose" },
   lume: { en: "Lights out", sv: "Släck ljuset" },
@@ -81,10 +87,24 @@ const UI = {
     en: "Leave it empty for none.",
     sv: "Lämna tomt för ingen text.",
   },
+  // Groups the catalogue files under a heading this page has no slot for. The
+  // ones that DO belong to a part now hang off that part's row instead.
   fineTuning: {
     en: "Fine tuning — the variables behind each part",
     sv: "Finjustering — variablerna bakom varje del",
   },
+  // The collapsed line above each part's variables. It names the count so the
+  // reader knows the fold is worth opening, and the names follow it.
+  moreChoices: {
+    en: (n) => `${n} more ${n === 1 ? "choice" : "choices"}:`,
+    sv: (n) => `${n} ${n === 1 ? "val till" : "fler val"}:`,
+  },
+  pickHint: {
+    en: "Each part opens on more choices — dial colour, finish, indices, strap colour and the rest — on the dashed line under its row.",
+    sv: "Varje del döljer fler val — urtavlans färg, finish, index, bandets färg och resten — på den streckade raden under sin rad.",
+  },
+  expandAll: { en: "Open every choice", sv: "Öppna alla val" },
+  collapseAll: { en: "Close every choice", sv: "Stäng alla val" },
   calcFail: {
     en: "This section could not be worked out for the current build. The rest of the page still works — try a different combination.",
     sv: "Det här avsnittet kunde inte räknas ut för det aktuella bygget. Resten av sidan fungerar ändå — prova en annan kombination.",
@@ -138,6 +158,15 @@ let pose = "live";
 // has a leather cylinder directly behind it and there is nothing to see.
 let cushion = true;
 let lume = false;
+// The scene the stage is lit in. The list and the setter both arrive from
+// modules this page only feature-detects (see `wireScenes`), so this holds an
+// id and nothing else until one is known to work.
+let sceneId = "";
+try {
+  sceneId = localStorage.getItem("watch_scene") || "";
+} catch {
+  sceneId = "";
+}
 
 function pushHash(replace) {
   const code = encodeBuild(build);
@@ -252,16 +281,73 @@ function currentId(slot) {
 }
 
 /**
+ * One fine-tuning group as a disclosure, with its variables named on the
+ * summary so they are readable while it is shut (feedback #59).
+ *
+ * @param {any} group
+ * @param {Set<string>} saidWhy
+ */
+function axisGroup(group, saidWhy) {
+  const key = `axes:${group.id}`;
+  const det = document.createElement("details");
+  det.className = "axes";
+  det.open = openDisclosures.has(key);
+  det.addEventListener("toggle", () => {
+    if (det.open) openDisclosures.add(key);
+    else openDisclosures.delete(key);
+  });
+
+  const sum = document.createElement("summary");
+  const { items, setCount } = axisSummary(group, build);
+  const lead = document.createElement("span");
+  lead.className = "axlead";
+  lead.textContent = UI.moreChoices[lang === "sv" ? "sv" : "en"](items.length);
+  sum.appendChild(lead);
+  items.forEach((item, i) => {
+    if (i) {
+      const sep = document.createElement("span");
+      sep.className = "axsep";
+      sep.textContent = "·";
+      sum.appendChild(sep);
+    }
+    const n = document.createElement("span");
+    n.className = "axname" + (item.set ? " set" : "");
+    // A variable the user has moved shows what it was moved TO, so the fold
+    // never hides a choice already made.
+    n.textContent = item.set && item.value ? `${T(item.label)}: ${T(item.value)}` : T(item.label);
+    sum.appendChild(n);
+  });
+  sum.title = `${T(group.name)}${setCount ? ` — ${setCount}` : ""}`;
+  det.appendChild(sum);
+
+  const body = document.createElement("div");
+  body.className = "axesbody";
+  for (const axis of group.axes) body.appendChild(slotRow(axis, saidWhy));
+  for (const f of group.texts) body.appendChild(slotRow(f, saidWhy));
+  det.appendChild(body);
+  return det;
+}
+
+/**
  * One picker row — the same shape for a base slot and for an axis: the label
  * with what is chosen, the chips that fit, and the ⚠ disclosure holding the
- * ones that do not with the reason each of them clashes.
+ * ones that do not with the reason each of them clashes. `groups` are the
+ * fine-tuning disclosures that belong to THIS part; they render inside the
+ * row, under its chips.
  *
  * @param {any} slot
  * @param {Set<string>} saidWhy reasons already printed in this render pass
+ * @param {any[]} [groups]
  */
-function slotRow(slot, saidWhy) {
+function slotRow(slot, saidWhy, groups) {
   const row = document.createElement("div");
   row.className = "slot";
+  // The part's own variables sit INSIDE its row (feedback #59) — a dial colour
+  // that lives three sections below the dial is a dial colour nobody finds.
+  const withGroups = () => {
+    for (const g of groups || []) row.appendChild(axisGroup(g, saidWhy));
+    return row;
+  };
 
   const field = textFieldDef(slot.key);
   const now = field ? String(build[slot.key] || "") : currentId(slot);
@@ -279,7 +365,7 @@ function slotRow(slot, saidWhy) {
     label.appendChild(pick);
     row.appendChild(label);
     row.appendChild(textSlotRow(field || slot));
-    return row;
+    return withGroups();
   }
 
   const rows = annotateOptions(slot.key, build);
@@ -354,55 +440,70 @@ function slotRow(slot, saidWhy) {
     row.appendChild(det);
   }
 
-  return row;
+  return withGroups();
 }
 
 function renderPicker() {
   const host = $("picker");
   if (!host) return;
   host.innerHTML = "";
+
+  // The orthogonal variables (#56: "dials come in so many shapes, colours and
+  // sizes that the current fixed-variable system needs replacement"), addressed
+  // to the part each of them modifies (#59). A group whose axes cannot apply to
+  // this build is not rendered at all.
+  const { bySlot, orphans } = axisGroupsBySlot(build);
+
+  const head = document.createElement("div");
+  head.className = "pickhead";
   const h2 = document.createElement("h2");
   h2.textContent = lang === "sv" ? "Delar" : "Parts";
-  host.appendChild(h2);
+  head.appendChild(h2);
+  // Every group on the page right now, so the one control can open or shut all
+  // of them without becoming a mode that fights the individual disclosures.
+  const allKeys = [...Object.values(bySlot).flat(), ...orphans].map((g) => `axes:${g.id}`);
+  if (allKeys.length) {
+    const allOpen = allKeys.every((k) => openDisclosures.has(k));
+    const all = document.createElement("button");
+    all.type = "button";
+    all.className = "tool tiny" + (allOpen ? " active" : "");
+    all.textContent = allOpen ? T(UI.collapseAll) : T(UI.expandAll);
+    all.addEventListener("click", () => {
+      for (const k of allKeys) {
+        if (allOpen) openDisclosures.delete(k);
+        else openDisclosures.add(k);
+      }
+      // Only the picker: this changes no part, so nothing needs re-rendering in
+      // the stage, the spec sheet or the sourcing table.
+      guardRender("picker", renderPicker);
+    });
+    head.appendChild(all);
+  }
+  host.appendChild(head);
+
+  if (Object.keys(bySlot).length) {
+    const hint = document.createElement("p");
+    hint.className = "pickhint";
+    hint.textContent = T(UI.pickHint);
+    host.appendChild(hint);
+  }
+
   // One clash is usually visible from both ends of it — a dated dial under a
   // no-date movement is the same sentence in the dial slot and the movement
   // slot. Say it once, on the first slot that reports it, and leave the ⚠ on
   // the others.
   /** @type {Set<string>} */
   const saidWhy = new Set();
-  for (const slot of SLOTS) host.appendChild(slotRow(slot, saidWhy));
+  for (const slot of SLOTS) host.appendChild(slotRow(slot, saidWhy, bySlot[slot.key]));
 
-  // The orthogonal variables (#56: "dials come in so many shapes, colours and
-  // sizes that the current fixed-variable system needs replacement"). They are
-  // filed one disclosure per group so the picker still opens on the eleven
-  // decisions a build is actually made of, with the fine tuning a tap away.
-  // A group whose axes cannot apply to this build is not rendered at all.
-  const groups = axisGroupsFor(build);
-  if (groups.length) {
+  // A group the catalogue files under something this page has no part for still
+  // gets rendered — under the old heading — rather than silently vanishing.
+  if (orphans.length) {
     const h3 = document.createElement("h2");
     h3.className = "axeshead";
     h3.textContent = T(UI.fineTuning);
     host.appendChild(h3);
-  }
-  for (const g of groups) {
-    const key = `axes:${g.id}`;
-    const det = document.createElement("details");
-    det.className = "axes";
-    det.open = openDisclosures.has(key);
-    det.addEventListener("toggle", () => {
-      if (det.open) openDisclosures.add(key);
-      else openDisclosures.delete(key);
-    });
-    const sum = document.createElement("summary");
-    const touched = [...g.axes, ...g.texts].filter((a) => build[a.key]).length;
-    sum.textContent = `${T(g.name)}${touched ? ` · ${touched}` : ""}`;
-    det.appendChild(sum);
-    const body = document.createElement("div");
-    body.className = "axesbody";
-    for (const axis of g.axes) body.appendChild(slotRow(axis, saidWhy));
-    for (const f of g.texts) body.appendChild(slotRow(f, saidWhy));
-    det.appendChild(body);
-    host.appendChild(det);
+    for (const g of orphans) host.appendChild(axisGroup(g, saidWhy));
   }
 }
 
@@ -563,6 +664,19 @@ function renderSourcing() {
 // ---------------------------------------------------------------------------
 // Wiring.
 
+/**
+ * The cushion switch reads as a SWITCH: it says which state it is in and lights
+ * up while the cushion is there. It was already on the bar before feedback #59
+ * asked for it — labelled "Hide cushion", which describes the tap rather than
+ * the state, and unlit while on, so it looked like a button that did nothing.
+ */
+function syncCushion() {
+  const btn = $("b-cushion");
+  if (!btn) return;
+  btn.textContent = cushion ? T(UI.cushionOn) : T(UI.cushionOff);
+  btn.classList.toggle("active", cushion);
+}
+
 function applyStatic() {
   document.documentElement.lang = lang;
   $("h1").textContent = T(UI.title);
@@ -576,7 +690,9 @@ function applyStatic() {
   $("b-reset").textContent = T(UI.reset);
   $("b-top").textContent = T(UI.top);
   $("b-back").textContent = T(UI.back);
-  $("b-cushion").textContent = cushion ? T(UI.cushionOff) : T(UI.cushionOn);
+  syncCushion();
+  $("t-scene").textContent = T(UI.scene);
+  syncSceneLabels();
   $("b-pose").textContent = pose === "live" ? T(UI.pose1010) : T(UI.poseLive);
   $("b-lume").textContent = T(UI.lume);
   $("b-png").textContent = T(UI.png);
@@ -630,6 +746,76 @@ function randomBuild() {
   pushHash(false);
 }
 
+// ---------------------------------------------------------------------------
+// The scene picker.
+//
+// Both halves of it live outside this file — the list (`SCENES`) and the
+// resolver in /js/watch-materials.js, the setter (`setScene`) on the stage —
+// and neither is assumed to exist. The import is DYNAMIC on purpose: a static
+// `import { SCENES }` against a module that has not grown the export yet is a
+// link-time failure that takes the whole page down, and this control is worth
+// less than the builder. Nothing is shown until both halves answer, so the
+// select can never be a control that does nothing (UX-18).
+
+/** @type {{ id: string, name: any }[]} */
+let scenes = [];
+
+function applyScene() {
+  if (!stage || typeof stage.setScene !== "function" || !sceneId) return;
+  try {
+    stage.setScene(sceneId);
+  } catch (err) {
+    console.error("watch: setScene failed", err);
+  }
+}
+
+async function wireScenes() {
+  const wrap = $("scenewrap");
+  const select = /** @type {HTMLSelectElement} */ ($("scene"));
+  if (!wrap || !select) return;
+  if (!stage || typeof stage.setScene !== "function") return;
+  /** @type {any} */
+  let mats = null;
+  try {
+    mats = await import("/js/watch-materials.js");
+  } catch {
+    return;
+  }
+  const list = mats && Array.isArray(mats.SCENES) ? mats.SCENES.filter((s) => s && s.id) : [];
+  // One scene is not a choice.
+  if (list.length < 2) return;
+  scenes = list;
+  if (!scenes.some((s) => s.id === sceneId)) sceneId = scenes[0].id;
+
+  select.innerHTML = "";
+  for (const s of scenes) {
+    const opt = document.createElement("option");
+    opt.value = s.id;
+    opt.textContent = T(s.name) || s.id;
+    select.appendChild(opt);
+  }
+  select.value = sceneId;
+  select.addEventListener("change", () => {
+    sceneId = select.value;
+    try {
+      localStorage.setItem("watch_scene", sceneId);
+    } catch { /* a blocked store must not break the picker */ }
+    applyScene();
+  });
+  wrap.hidden = false;
+  applyScene();
+}
+
+/** Re-label the scene options after a language switch. */
+function syncSceneLabels() {
+  const select = /** @type {HTMLSelectElement} */ ($("scene"));
+  if (!select || !scenes.length) return;
+  for (const opt of Array.from(select.options)) {
+    const s = scenes.find((x) => x.id === opt.value);
+    if (s) opt.textContent = T(s.name) || s.id;
+  }
+}
+
 function init() {
   const canvas = /** @type {HTMLCanvasElement} */ ($("view"));
   stage = mountWatch(canvas, {
@@ -662,10 +848,9 @@ function init() {
   });
   $("b-top").addEventListener("click", () => stage && stage.topView());
   const setCushion = (v) => {
-    cushion = v;
+    cushion = !!v;
     if (stage) stage.setWrist(cushion);
-    $("b-cushion").textContent = cushion ? T(UI.cushionOff) : T(UI.cushionOn);
-    $("b-cushion").classList.toggle("active", !cushion);
+    syncCushion();
   };
   $("b-cushion").addEventListener("click", () => setCushion(!cushion));
   $("b-back").addEventListener("click", () => {
@@ -713,6 +898,8 @@ function init() {
     $("b-copy").textContent = T(UI.copied);
     setTimeout(() => ($("b-copy").textContent = T(UI.copy)), 1400);
   });
+
+  wireScenes();
 
   window.addEventListener("popstate", () => {
     build = normalizeBuild(location.hash.length > 1 ? decodeBuild(decodeURIComponent(location.hash.slice(1))) : DEFAULT_BUILD);
