@@ -4182,12 +4182,22 @@ const NONE_STANDINS = {
 export const KEEP_ID = "stock";
 
 /**
- * Whether a slot can say "keep what the case comes with" at all. Exactly the
- * slots a case set can fill — nothing else has a box to come out of.
+ * The slots where "keep what the case comes with" is a real choice: a part
+ * that arrives in the box AND could otherwise be bought separately.
+ *
+ * This is NOT every kit slot. An integrated bracelet is also shipped with the
+ * case, but it is machined into it — there is no alternative to bolt on, so
+ * "keep it" is not a decision the buyer makes, it is what the case IS. Offering
+ * the choice there would imply a swap that cannot happen.
+ */
+export const KEEPABLE_SLOTS = ["insert", "chapterRing", "crystal", "crown", "caseback"];
+
+/**
+ * Whether a slot can say "keep what the case comes with" at all.
  * @param {string} slotKey
  */
 export function slotCanKeep(slotKey) {
-  return KIT_SLOTS.includes(slotKey);
+  return KEEPABLE_SLOTS.includes(slotKey);
 }
 
 /**
@@ -6336,7 +6346,6 @@ export function integratedPlan(caseEntry) {
     gap: 0.55,
     clasp: g.clasp || "concealed",
     wristR: STRAP_DRAPE.wristR,
-    drop: STRAP_DRAPE.drop,
     underCase: 0,
     weave: null,
     relief: null,
@@ -6486,10 +6495,15 @@ export function integratedBraceletAssembly(caseEntry, opts) {
 //     a crowned band with stitching, and a NATO is what a NATO actually is —
 //     one nylon pass running UNDER the case with a second layer folded back
 //     over it, keepers and metal rings.
-//   * A REAL DEPARTURE ANGLE. The band leaves the lug tip already dropping
-//     (STRAP_DRAPE.drop) and curves onto the wrist cylinder along a Hermite
-//     that meets the cylinder TANGENTIALLY, then wraps it to 6 o'clock. No
-//     sample is ever allowed inside the cylinder.
+//   * A REAL DEPARTURE ANGLE — and it is DERIVED, not stated. The band leaves
+//     the spring bar along the taut span to its first contact with the wrist,
+//     then wraps the cylinder to 6 o'clock, meeting it TANGENTIALLY. There used
+//     to be a separate STRAP_DRAPE.drop here, and it was feedback #59's lug
+//     bend: it reused STRAP_EXIT's arccos — which answers WHERE the strap first
+//     touches the wrist — as the angle the band leaves the lug at. The spring
+//     bar sits half a lug-to-lug OUT from the centre, so the span really runs
+//     at 67–76°, and leaving at 30° forced the lead-in to absorb ~45° over a
+//     25 mm chord. No sample is ever allowed inside the cylinder.
 //   * THE CYLINDER ITSELF, exported as its own mesh and shown by default.
 //   * A pin/tang buckle for leather, rubber and NATO; a fold-over clasp for
 //     bracelets — both sized from the taper, at the width the strap has where

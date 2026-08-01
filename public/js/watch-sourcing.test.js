@@ -26,6 +26,7 @@ import {
   DEFAULT_BUILD,
   KEEP_ID,
   KIT_SLOTS,
+  KEEPABLE_SLOTS,
   buildSpec,
   canKeepStock,
   caseKit,
@@ -77,8 +78,10 @@ describe('"keep what the case comes with" is not "not fitted"', () => {
     assert.notEqual(KEEP_ID, "none");
     // Neither is a catalogue part: both are decisions about the ORDER.
     for (const slot of KIT_SLOTS) assert.equal(part(slot, KEEP_ID), null, slot);
-    // Exactly the slots a case set can fill, and nothing else.
-    for (const slot of KIT_SLOTS) assert.equal(slotCanKeep(slot), true, slot);
+    // Every slot where keeping is a real choice, and nothing else. Note this
+    // is NARROWER than KIT_SLOTS: an integrated bracelet ships with the case
+    // too, but it is machined into it, so there is no alternative to decline.
+    for (const slot of KEEPABLE_SLOTS) assert.equal(slotCanKeep(slot), true, slot);
     for (const slot of ["dial", "hands", "strap", "movement", "case", "finish"]) {
       assert.equal(slotCanKeep(slot), false, slot);
       assert.equal(keepOption(slot), null, slot);
@@ -87,7 +90,7 @@ describe('"keep what the case comes with" is not "not fitted"', () => {
 
   test("a KEPT part is fitted; an OMITTED one is absent, and resolveBuild says which", () => {
     const kept = resolveBuild(KEPT);
-    for (const slot of KIT_SLOTS) {
+    for (const slot of KEEPABLE_SLOTS) {
       assert.equal(kept.kept[slot], true, `${slot}: not reported kept`);
       assert.equal(kept.omitted[slot], undefined, `${slot}: a kept part must NEVER be omitted`);
       assert.ok(kept.parts[slot] && kept.parts[slot].name, `${slot}: no part to render`);
@@ -223,9 +226,17 @@ describe("the option is offered where there is something to keep", () => {
   test("every case in the catalogue offers it for every slot its set fills", () => {
     for (const cs of CASES) {
       const build = { ...DEFAULT_BUILD, case: cs.id };
-      for (const slot of KIT_SLOTS) {
+      for (const slot of KEEPABLE_SLOTS) {
         const inKit = caseKit(cs.id).includes.includes(slot);
         assert.equal(canKeepStock(build, slot), inKit, `${cs.id}/${slot}`);
+      }
+      // The one bundled slot that is deliberately NOT keepable. An integrated
+      // bracelet comes with the case and is still never a "keep it?" question,
+      // because it is machined in and there is no alternative to decline.
+      // Asserted rather than merely skipped, so the distinction stays load-
+      // bearing instead of decaying into an oversight.
+      if (caseKit(cs.id).includes.includes("strap")) {
+        assert.equal(canKeepStock(build, "strap"), false, `${cs.id}: integrated bracelet is not a choice`);
       }
     }
   });
@@ -469,7 +480,7 @@ describe("nothing that already worked moved", () => {
   test("a kept slot survives the permalink, and survives a change of case", () => {
     const code = encodeBuild(KEPT);
     assert.deepEqual(decodeBuild(code), KEPT);
-    for (const slot of KIT_SLOTS) assert.match(code, new RegExp(`${slot}:${KEEP_ID}`));
+    for (const slot of KEEPABLE_SLOTS) assert.match(code, new RegExp(`${slot}:${KEEP_ID}`));
     // Opening the same link on a case whose set does not fill a slot must not
     // silently rewrite the build — the picker decides what to OFFER, the codec
     // only carries what was said.
