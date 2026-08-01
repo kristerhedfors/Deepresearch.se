@@ -133,8 +133,17 @@ const ALIASES = {
     tuna: { strong: [/\btuna\b/, /\bshrouded\b/, /\btonfisk(en)?/], weak: [] },
     mm300: { strong: [/\bmm ?300\b/, /marinemaster/, /marine ?master/], weak: [] },
     "planet-ocean": { strong: [/planet ?ocean/, /\bpo ?case\b/], weak: [] },
-    explorer: { strong: [/\bexplorer\b(?! ?3)/], weak: [] },
+    // The "3" lookahead was there for the 3-6-9 DIAL; "ii" and "2" join it now
+    // that an Explorer II case exists, or "explorer" out-scores the longer name
+    // and "change the case to Explorer II style" quietly fits an Explorer I.
+    explorer: { strong: [/\bexplorer\b(?! ?(3|ii\b|2\b))/], weak: [] },
+    "explorer-2": { strong: [/\bexplorer ?(ii|2)\b/, /\bexp ?(ii|2)\b/, /24[- ]?(hour|timmar)s? bezel/], weak: [] },
     alpinist: { strong: [/\balpinist\b/], weak: [] },
+    // The two integrated-bracelet cases. "royal oak" and "prx" are unmistakable
+    // in this catalogue; "ap" alone is not (it is two letters), so it needs the
+    // word case beside it.
+    "royal-oak": { strong: [/\broyal ?oak\b/, /\bap ?(style|case|royal)/, /\boctagon(al)?\b/, /\b[åa]ttakant(ig|ad)?/], weak: [] },
+    prx: { strong: [/\bprx\b/, /super ?player/, /integrated ?bracelet/, /integrerad ?l[äa]nk/], weak: [] },
     field: { strong: [/\bfield ?(38|watch)?\b/, /f[äa]ltklock(a|an)/, /f[äa]ltur(et)?/], weak: [] },
     monster: { strong: [/\bmonster\b/], weak: [] },
   },
