@@ -242,6 +242,179 @@ export function axisGroupsFor(build) {
 }
 
 // ---------------------------------------------------------------------------
+// WHERE THE FINE TUNING LIVES (feedback #59).
+//
+// The axes above shipped with #56 and were filed under one "Fine tuning"
+// heading at the BOTTOM of the picker. The next round of feedback asked for
+// every one of them as though none existed: "please add separate selections
+// for the different aspects of a dial such as color, style (sunburst
+// excetera), indices … And strap, I need to be able to choose strap color."
+//
+// Nothing was missing. What was missing was any way to FIND it: the words
+// "colour", "index style" and "strap colour" appeared nowhere on the page
+// until two disclosures had been opened, and the group that held them sat
+// several screens below the dial row it modified — on a phone, below the
+// sourcing table's worth of scrolling.
+//
+// So the groups are addressed to their PART (`slotForGroup` / `axisGroupsBySlot`)
+// and each collapsed group states, by name, every variable inside it
+// (`axisSummary`). The collapse itself stays — #56 asked for the picker to open
+// on the eleven decisions a build is made of, and re-expanding everything by
+// default would trade one report for the other.
+
+/**
+ * Which base slot a fine-tuning group belongs under, for groups whose members
+ * do not name it themselves. An AXIS always names its slot (`over`); a group of
+ * free-text fields has no such field, so the group id maps.
+ * @type {Record<string,string>}
+ */
+export const GROUP_SLOT = {
+  dial: "dial",
+  dialText: "dial",
+  wheels: "movement",
+  bezel: "insert",
+  crystal: "crystal",
+  chapterRing: "chapterRing",
+  caseback: "caseback",
+  strap: "strap",
+};
+
+/**
+ * The slot a group hangs off, or null when nothing in the catalogue says.
+ * The axes' own `over` wins, because it is the catalogue's statement rather
+ * than this module's table — a group the catalogue grows later lands correctly
+ * without an edit here.
+ * @param {{ id?: string, axes?: any[] }} group
+ * @returns {string|null}
+ */
+export function slotForGroup(group) {
+  for (const a of (group && group.axes) || []) if (a && a.over) return String(a.over);
+  const id = group && group.id ? String(group.id) : "";
+  if (id && Object.prototype.hasOwnProperty.call(GROUP_SLOT, id)) return GROUP_SLOT[id];
+  return null;
+}
+
+/**
+ * The fine-tuning groups filed under the part row each of them modifies.
+ * `orphans` holds any group whose slot is unknown — they still get rendered,
+ * under their own heading, so a catalogue that grows a group this module has
+ * never heard of cannot make its axes disappear.
+ * @param {Record<string,string>|null|undefined} build
+ * @returns {{ bySlot: Record<string, any[]>, orphans: any[] }}
+ */
+export function axisGroupsBySlot(build) {
+  const known = new Set(core.SLOTS.map((s) => s.key));
+  /** @type {Record<string, any[]>} */
+  const bySlot = {};
+  /** @type {any[]} */
+  const orphans = [];
+  for (const g of axisGroupsFor(build)) {
+    const key = slotForGroup(g);
+    if (key && known.has(key)) (bySlot[key] = bySlot[key] || []).push(g);
+    else orphans.push(g);
+  }
+  return { bySlot, orphans };
+}
+
+/**
+ * The subject each group's axes are named after, so a list of eight of them
+ * does not read as the word "dial" eight times. EN and SV both, because the
+ * Swedish forms are genitive ("Urtavlans färg") and a regex written for one
+ * language silently leaves the other unshortened (invariant 6).
+ * @type {Record<string, { en: RegExp[], sv: RegExp[] }>}
+ */
+const GROUP_PREFIX = {
+  dial: { en: [/^dial\s+/i], sv: [/^urtavlans\s+/i] },
+  dialText: { en: [/^dial\s+/i], sv: [/^urtavlans\s+/i] },
+  bezel: { en: [/^insert\s+/i], sv: [/^inläggets\s+/i] },
+  crystal: { en: [/^crystal\s+/i], sv: [/^glasets\s+/i] },
+  chapterRing: { en: [/^chapter ring\s+/i], sv: [/^chapter ringens\s+/i] },
+  caseback: { en: [/^case ?back\s+/i], sv: [/^boettbottnens\s+/i] },
+  strap: { en: [/^strap\s+/i], sv: [/^bandets\s+/i] },
+};
+
+/**
+ * @param {string} text
+ * @param {RegExp[]|null} res
+ */
+function trimSubject(text, res) {
+  let out = String(text || "");
+  if (res) {
+    for (const re of res) {
+      const cut = out.replace(re, "");
+      if (cut && cut !== out) {
+        out = cut;
+        break;
+      }
+    }
+  }
+  return out ? out.charAt(0).toLocaleUpperCase() + out.slice(1) : out;
+}
+
+/**
+ * An axis's name with its group's subject taken off the front — "Dial colour"
+ * under the dial's group is just "Colour". Bilingual, and total: an unknown
+ * group or a nameless axis gives back what it was handed.
+ * @param {any} axis
+ * @param {string} [groupId]
+ * @returns {Bi}
+ */
+export function shortAxisName(axis, groupId) {
+  const name = axis && axis.name ? axis.name : null;
+  if (!name) return { en: "", sv: "" };
+  const pre = GROUP_PREFIX[String(groupId || "")] || null;
+  const en = trimSubject(name.en || name.sv || "", pre ? pre.en : null);
+  const sv = trimSubject(name.sv || name.en || "", pre ? pre.sv : null);
+  return { en, sv };
+}
+
+/**
+ * What a COLLAPSED fine-tuning group says about itself: one entry per variable
+ * inside it, named, plus the value where the user has actually chosen one.
+ *
+ * This is the whole of feedback #59's fix. The reporter went looking for
+ * "colour", "style", "indices" and "strap colour" and reported them absent —
+ * so those words have to be readable on the page with nothing opened.
+ *
+ * A build carries an axis key only once it has been moved off its default
+ * (`normalizeBuild`), which is exactly the test for "the user chose this".
+ *
+ * @param {{ id?: string, axes?: any[], texts?: any[] }} group
+ * @param {Record<string,string>|null|undefined} build
+ * @returns {{ items: { key: string, label: Bi, value: Bi|null, set: boolean }[], setCount: number }}
+ */
+export function axisSummary(group, build) {
+  const ids = core.normalizeBuild(build);
+  const gid = group && group.id ? String(group.id) : "";
+  /** @type {{ key: string, label: Bi, value: Bi|null, set: boolean }[]} */
+  const items = [];
+  for (const a of [...((group && group.axes) || []), ...((group && group.texts) || [])]) {
+    if (!a || !a.key) continue;
+    const raw = ids[a.key];
+    const chosen = typeof raw === "string" && raw !== "";
+    /** @type {Bi|null} */
+    let value = null;
+    if (chosen) {
+      if (slotIsText(a.key)) {
+        value = { en: raw, sv: raw };
+      } else {
+        let opt = null;
+        try {
+          opt = core.part(a.key, raw);
+        } catch {
+          opt = null;
+        }
+        if (opt && opt.name) {
+          value = { en: String(opt.name.en || opt.name.sv || ""), sv: String(opt.name.sv || opt.name.en || "") };
+        }
+      }
+    }
+    items.push({ key: String(a.key), label: shortAxisName(a, gid), value, set: !!value });
+  }
+  return { items, setCount: items.filter((i) => i.set).length };
+}
+
+// ---------------------------------------------------------------------------
 // Compatibility annotation (#56: "designs that can not be found in versions
 // suited to the currently selected movement should be in a dropdown menu with
 // a warning symbol"). Nothing is filtered out — an incompatible option is
