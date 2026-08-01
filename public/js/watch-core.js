@@ -3466,12 +3466,21 @@ export const DAY_WHEEL_LANGUAGES = [
 // named one instead: its listed price) rather than inventing a split.
 
 /** The slots a case set can fill, in the order the sourcing table shows them. */
-export const KIT_SLOTS = ["insert", "chapterRing", "crystal", "crown", "caseback"];
+// `strap` is in here for exactly one shape: an integrated bracelet is machined
+// into the case rather than bolted to it, so it is bought with the case and
+// there is nothing to fit an alternative onto. Every other family's strap is
+// its own purchase, which is what the derivation below enforces.
+export const KIT_SLOTS = ["insert", "chapterRing", "crystal", "crown", "caseback", "strap"];
 
 /** What a kit tier is called, for a UI that has to say it. */
 export const KIT_TIERS = {
   "complete-kit": { en: "complete case kit", sv: "komplett boettsats" },
   "case-set": { en: "case set", sv: "boettsats" },
+  // A listing that establishes it ships LESS than the derivation would infer:
+  // Lucius' Explorer II arrives with the sapphire fitted and a movement-
+  // specific back, and sells the crown separately. Narrowing what a case is
+  // said to include is only allowed against a source, never as a guess.
+  "part-kit": { en: "part case kit", sv: "delvis boettsats" },
   "bare-body": { en: "bare case body", sv: "enbart boettstomme" },
   unknown: { en: "not established", sv: "ej fastställt" },
 };
@@ -3543,6 +3552,10 @@ export function caseKit(caseId) {
       // #59's second sentence is exactly that: "chapter rings are usually not
       // bought separately and are integrated with the case."
       if (slot === "insert") return cs.bezel === "dive120";
+      // The bracelet comes with the case only where it IS the case (feedback
+      // #59 asked for exactly these two families). Anywhere else a strap is a
+      // separate order, which is the overwhelmingly common shape.
+      if (slot === "strap") return !!integratedBraceletOf(cs);
       return true;
     }),
     integrated: plat.chapterRing ? [] : ["chapterRing"],

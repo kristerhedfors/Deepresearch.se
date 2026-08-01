@@ -24,6 +24,7 @@ import {
   CASES,
   PLATFORMS,
   SLOTS,
+  SOURCES,
   DEFAULT_BUILD,
   CASE_KITS,
   CASE_KIT_DEFAULT,
@@ -91,9 +92,21 @@ describe("feedback #59: a case is sold as a set, not as a bare body", () => {
         assert.ok(SLOTS.some((s) => s.key === key), `${cs.id}: ${key} is not a slot at all`);
       }
       assert.ok(KIT_TIERS[kit.tier], `${cs.id}: tier "${kit.tier}" has no bilingual label`);
-      // Crystal, case back and crown are what make a case a case.
-      for (const key of ["crystal", "caseback", "crown"]) {
-        assert.ok(kit.includes.includes(key), `${cs.id} must ship its ${key}`);
+      // Crystal, case back and crown are what make a case a case, so the
+      // DERIVATION always includes all three. An explicit per-family override
+      // may narrow that — Lucius sells the Explorer II's crown separately —
+      // but only against a listing: a narrowing with no `src` is a guess
+      // wearing a fact's clothes, which is the one thing this table may not do.
+      const narrowed = ["crystal", "caseback", "crown"].filter((k) => !kit.includes.includes(k));
+      if (narrowed.length) {
+        assert.ok(
+          CASE_KITS[cs.id],
+          `${cs.id}: only an explicit override may leave out ${narrowed.join(", ")}`,
+        );
+        assert.ok(
+          CASE_KITS[cs.id].src && SOURCES[CASE_KITS[cs.id].src],
+          `${cs.id}: leaving out ${narrowed.join(", ")} needs a resolvable source`,
+        );
       }
     }
   });
@@ -148,11 +161,17 @@ describe("feedback #59: which part is in the box, where that is knowable", () =>
   test("the crown is the one stock part the catalogue can name, and it is derived", () => {
     for (const cs of CASES) {
       const crown = stockPartFor(cs.id, "crown");
-      assert.equal(
-        crown, cs.crown.signed ? "signed-screw" : "plain-screw",
-        `${cs.id}: the stock crown follows the case's own recorded signed flag`,
-      );
-      assert.ok(part("crown", crown), `${cs.id}: ${crown} must be a real catalogue crown`);
+      if (!caseKit(cs.id).includes.includes("crown")) {
+        // A set that does not ship a crown has no stock crown to name. That is
+        // the honest answer, not a hole: the buyer orders one.
+        assert.equal(crown, null, `${cs.id}: no crown in the set, so none may be claimed`);
+      } else {
+        assert.equal(
+          crown, cs.crown.signed ? "signed-screw" : "plain-screw",
+          `${cs.id}: the stock crown follows the case's own recorded signed flag`,
+        );
+        assert.ok(part("crown", crown), `${cs.id}: ${crown} must be a real catalogue crown`);
+      }
       // Everything else the set includes: unrecorded rather than guessed.
       for (const key of ["insert", "crystal", "caseback", "chapterRing"]) {
         assert.equal(
@@ -165,9 +184,20 @@ describe("feedback #59: which part is in the box, where that is knowable", () =>
 
   test("picking a case carries the crown it is sold with", () => {
     for (const cs of CASES) {
-      assert.equal(defaultsForCase(cs.id).crown, stockPartFor(cs.id, "crown"), cs.id);
-      // ...and keeping it is not a purchase.
+      const stock = stockPartFor(cs.id, "crown");
+      // A set with no crown contributes no default: `defaultsForCase` omits
+      // the key rather than carrying null, because spreading null would blank
+      // the slot instead of leaving the build's own crown alone.
+      assert.equal(defaultsForCase(cs.id).crown ?? null, stock, cs.id);
       const buy = kitBuy({ ...BASE, case: cs.id, ...defaultsForCase(cs.id) }, "crown");
+      if (!stock) {
+        // Lucius sells the Explorer II's crown separately, so it really is a
+        // parcel — the table must say so rather than quietly bundling it.
+        assert.equal(buy.status, "separate", cs.id);
+        assert.equal(buy.separateOrder, true, cs.id);
+        continue;
+      }
+      // ...and where the set does carry it, keeping it is not a purchase.
       assert.equal(buy.status, "included", cs.id);
       assert.equal(buy.separateOrder, false, cs.id);
       assert.deepEqual(buy.priceUsd, [0, 0], cs.id);
@@ -217,8 +247,17 @@ describe("feedback #59: the sourcing table tells the truth about orders", () => 
         );
       }
       assert.ok(orders.includes("case"), `${cs.id}: the case itself is the order`);
-      // What is left is the parts no case set contains.
-      assert.deepEqual(orders, ["case", "dial", "hands", "strap"], cs.id);
+      // What is left is the parts this case's set does not contain. For almost
+      // every family that is exactly the case, dial, hands and strap. A part
+      // kit adds back whatever its listing leaves out (the Explorer II's crown
+      // and chapter ring), and an integrated bracelet takes the strap away —
+      // both are the table telling the truth rather than an exception to it.
+      const kit = caseKit(cs.id);
+      const expected = ["case", "dial", "hands", "chapterRing", "crystal", "caseback", "crown", "insert", "strap"]
+        .filter((k) => k === "case" || k === "dial" || k === "hands"
+          ? true
+          : !kit.includes.includes(k) && stockBuild(cs.id)[k] && stockBuild(cs.id)[k] !== "none");
+      assert.deepEqual(orders.slice().sort(), expected.slice().sort(), cs.id);
     }
   });
 
