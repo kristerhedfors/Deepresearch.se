@@ -664,3 +664,64 @@ Next steps unchanged from run 5, in order: raise the floor or raise `SAMPLES`
 (owner call, it changes verdicts); bisect by deployment to attribute the real
 −0.6 (owner call, ~12 min of old code in production per probe); do not
 re-record the baseline, and when it is re-recorded it needs n≥8.
+
+---
+
+## 2026-08-01, run 7 — NEUTRAL at last, and the attribution's first real output
+
+- bench-gate 2026-08-01 (commit f6555f2d vs baseline b2a5ab6): overall 3.278±0.416 vs 3.625±0.042 (delta -0.347, bar ±0.41) → NEUTRAL. Pins: mistralai/Mistral-Small-3.2-24B-Instruct-2506 / judge mistralai/Mistral-Small-3.2-24B-Instruct-2506 / 240s / mh_semiconductor_export,rec_eu_ai_act_timeline,div_openai_safety,con_coffee_health.
+
+The first non-REGRESSION verdict since the drift opened on 07-29, and the first
+run with #354's per-question and per-source attribution printing.
+
+**Read the verdict carefully: the answers did not improve.** 3.278 merely TIES
+the best previous run, and seven candidate runs now read 3.278, 2.667, 3.146,
+2.867, 3.083, 2.729, 3.278 — mean **3.007**, flat. What changed is the BAR: the
+run's own spread (sd 0.416 at n=3) pushed `1.7 · se` to 0.411, just past the
+delta. That is the judge-noise correction of run 5 arriving on schedule — when
+a run's dispersion is honest rather than inherited from a fluke baseline, a
+−0.35 delta stops being a finding. Six earlier runs were judged against the
+0.15 floor and four of them would have read NEUTRAL under an honest bar.
+
+### Per-question: the instrument works
+
+```
+con_coffee_health        4.00 → 3.11   -0.89  <-- moved
+rec_eu_ai_act_timeline   5.00 → 4.13   -0.87  <-- moved
+mh_semiconductor_export  2.83 → 2.47   -0.37
+div_openai_safety        3.11 → 3.27   +0.16
+```
+
+Two questions carry essentially the whole battery delta and one moved UP. That
+is exactly what six rounds of hand-reconstruction were producing, now emitted
+by the tool — which is the point of #354.
+
+### Per-source: printed, and NOT yet evidence — read the control
+
+```
+europepmc  n=1  -0.89
+scholar    n=1  -0.89
+(none)     n=2  -0.62      <-- the control
+arxiv      n=2  -0.37
+```
+
+**The control moved as much as the source buckets**, and it sits between them.
+If the drift had entered through a retrieval leg — the leading hypothesis after
+#354's zero-coverage finding — questions touching NO source should have held
+flat while the source buckets fell. They did not separate.
+
+That is a genuine negative result and it deserves recording as one, but it is
+NOT yet a refutation: the buckets are n=1 and n=2, they OVERLAP by construction
+(a question reaching two sources appears in both), and at this judge's ~0.54
+per-question noise a one-question bucket carries no information at all. The
+honest statement is that **the first attribution run gives no support to the
+source hypothesis and cannot yet rule it out.** It needs the next baseline,
+recorded at n≥8 with the three appended `europepmc` questions in it, before the
+per-source column means anything.
+
+### Still recurring
+
+Two of five samples dropped a question to a helper timeout, as in runs 5 and 6.
+The battery mean rests on three complete samples again, which is half of why
+the sd is 0.416. Worth fixing before the next baseline is recorded — a baseline
+built from three-sample runs inherits this.
