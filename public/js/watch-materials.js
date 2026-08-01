@@ -38,9 +38,11 @@
 // art-directed — there is no table for "how brushed is a Seiko case flank" —
 // but they are art-directed WITHIN the physical split above, not across it.
 //
-// No user-facing strings live here and nothing here routes intent, so this
-// module carries no EN/SV surface of its own (invariant 6): the names the UI
-// shows come from the catalogue in watch-core.js, which is already bilingual.
+// Almost no user-facing strings live here and nothing here routes intent: the
+// names the UI shows for a part come from the catalogue in watch-core.js,
+// which is already bilingual. The one exception is the SCENE table at the
+// bottom of this file, whose entries name themselves — those carry EN+SV like
+// everything else a reader sees (invariant 6).
 
 import { linear } from "./watch-math.js";
 
@@ -709,4 +711,199 @@ export function dialRelief(dial) {
     // Sunburst and fumé are brushed, not embossed: no height, all direction.
     anisotropy: finish === "sunburst" || finish === "fume" ? "radial" : "none",
   };
+}
+
+// ---------------------------------------------------------------------------
+// THE SCENE.
+//
+// This renderer has no scene geometry at all. There is no backdrop mesh, no
+// floor, no wall — so everything a metal shows you comes from the procedural
+// `studio()` function in watch-render.js's fragment shader, driven by the
+// `uSky` / `uGround` uniforms and the floor-bounce term, and everything you
+// see BEHIND the watch is the canvas clear colour. Those are two completely
+// separate numbers, and until feedback #59 nothing tied them together.
+//
+// They had drifted a long way apart. The shipped studio clears to
+// (0.045, 0.05, 0.065) — near black — while the same studio's backdrop, as
+// reflected by a polished flank, tonemaps to about 0.63 display grey. A
+// mirror-finish case was therefore showing a mid-grey room while floating in
+// a void, which is exactly the "reflections still look odd, possibly because
+// of the all black background" that feedback #59 reported: the reflection is
+// not wrong in itself, it is testifying to a room the viewer cannot see.
+//
+// So a scene is ONE record that owns both sides:
+//
+//   * `bg` — the canvas clear colour, in DISPLAY space (the clear value is
+//     written straight to the framebuffer; it is not tonemapped and not
+//     gamma-encoded by the shader, so it has to be authored post-curve).
+//   * `sky` / `ground` / `bounce` — the environment, in LINEAR radiance.
+//   * `key` / `fill` / `rim` / `exposure` / `softbox` — the rig that lights
+//     it, so a brighter room does not simply blow out.
+//
+// and `bg` is DERIVED from the environment unless a scene states otherwise.
+// That is the mechanism, not a convention: a new scene cannot disagree with
+// its own reflections, because nobody types its background in. The one scene
+// that does state its own `bg` is `studio-dark`, whose look is the preserved
+// pre-#59 baseline; `SCENES[0].matched === false` is that mismatch recorded
+// in the data rather than in a comment, and `watch-scene.test.js` pins it.
+
+/**
+ * The shader's output curve, in JS: exposure, the ACES-ish filmic tonemap,
+ * then gamma. Mirrored from the last three lines of FRAG in watch-render.js —
+ * the same "kept here because it is load-bearing and looks arbitrary" reason
+ * `softboxEnergy` and `lobeEnergy` above are.
+ * @param {number[]} rgb linear radiance
+ * @param {number} exposure
+ * @returns {number[]} display-space 0..1
+ */
+export function toneMap(rgb, exposure) {
+  return rgb.map((v) => {
+    const c = Math.max(0, v) * exposure;
+    const t = (c * (2.51 * c + 0.03)) / (c * (2.43 * c + 0.59) + 0.14);
+    return Math.pow(Math.min(1, Math.max(0, t)), 1 / 2.2);
+  });
+}
+
+/**
+ * `smoothstep`, matching GLSL.
+ * @param {number} e0 @param {number} e1 @param {number} x
+ */
+function smoothstep(e0, e1, x) {
+  const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * What the room looks like straight behind the watch: the shader's `studio()`
+ * evaluated along the horizon, which is where a vertical flank's reflected ray
+ * goes at the silhouette — the boundary pixel where the metal and the canvas
+ * background meet, and therefore the one place the eye can compare them.
+ *
+ * Two of `studio()`'s four terms are deliberately left out. The SOFTBOX is a
+ * light source hanging in the room, not the wall behind it, and the HORIZON
+ * LINE is the glint where the table meets the backdrop — a specular streak on
+ * the surface, not a colour the wall has. Including either would make every
+ * background brighter than the room it stands for.
+ *
+ * @param {{sky: number[], ground: number[], bounce: number}} scene
+ * @returns {number[]} linear radiance
+ */
+export function sceneBackdrop(scene) {
+  const y = 0;
+  const t = smoothstep(-0.30, 0.55, y);
+  const b = scene.bounce * smoothstep(0.05, -0.85, y);
+  return scene.ground.map((g, i) => g + (scene.sky[i] - g) * t + g * b);
+}
+
+/**
+ * Lights out. ONE record shared by every scene, because "turn the lights out
+ * to see the lume" means the room is dark — a lit backdrop behind a glowing
+ * dial is not a darker version of the same photograph, it is a different and
+ * much worse one. Byte-identical to the values the renderer carried inline
+ * before scenes existed.
+ */
+export const LUME_SCENE = {
+  id: "lume",
+  bg: [0.01, 0.012, 0.02],
+  sky: [0.02, 0.026, 0.045],
+  ground: [0.004, 0.005, 0.009],
+  key: [0.05, 0.055, 0.07],
+  fill: [0.02, 0.024, 0.04],
+  rim: [0.02, 0.026, 0.05],
+  exposure: 1.7,
+  softbox: 0.30,
+  bounce: 0.9,
+};
+
+/** @type {any[]} */
+const RAW_SCENES = [
+  {
+    id: "studio-dark",
+    name: { en: "Dark studio", sv: "Mörk studio" },
+    // Stated, not derived: this is the look the builder shipped with, and it
+    // stays the default so no existing screenshot, embed or permalink moves.
+    // It is also the one scene whose background does NOT agree with its own
+    // reflections — see the note above; that disagreement is the thing the
+    // other two scenes exist to test.
+    bg: [0.045, 0.05, 0.065],
+    sky: [0.60, 0.67, 0.82],
+    ground: [0.055, 0.052, 0.058],
+    key: [2.55, 2.5, 2.38],
+    fill: [0.42, 0.47, 0.58],
+    rim: [0.62, 0.66, 0.78],
+    exposure: 1.12,
+    softbox: 0.30,
+    bounce: 0.9,
+    note: "The shipped look: a bright softbox in a black room. Dramatic, and the reason a polished case reflects a room that is not on screen.",
+  },
+  {
+    id: "studio-grey",
+    name: { en: "Grey backdrop", sv: "Grå fond" },
+    // THE CONTROL. Identical environment and identical rig to studio-dark —
+    // every reflection in this scene is the same reflection, ray for ray. The
+    // only difference is that the canvas now clears to the studio's own
+    // backdrop instead of to near-black. Any change you see between these two
+    // is caused by the background and by nothing else, which is what makes
+    // feedback #59's hypothesis testable rather than arguable.
+    sky: [0.60, 0.67, 0.82],
+    ground: [0.055, 0.052, 0.058],
+    key: [2.55, 2.5, 2.38],
+    fill: [0.42, 0.47, 0.58],
+    rim: [0.62, 0.66, 0.78],
+    exposure: 1.12,
+    softbox: 0.30,
+    bounce: 0.9,
+    note: "The same studio with the wall put back in. Same lights, same reflections, background matched to the room the metal is already showing you.",
+  },
+  {
+    id: "studio-light",
+    name: { en: "Daylight studio", sv: "Dagsljusstudio" },
+    // A bright room over a pale table. What lifts is the FLOOR, not the
+    // ceiling, and that is the whole tuning: the first version of this scene
+    // took the sky to (1.05, 1.10, 1.20) and every steel part in the render
+    // went white — case, lugs and bracelet all one blank shape. A conductor
+    // reflects ~60 % of whatever is above it, and some of this renderer's
+    // parts already sit near the tonemap's shoulder in the DARK studio (the
+    // exhibition-back view measures mean 0.81 with a standard deviation of
+    // 0.08 across the subject: almost no tonal range left to spend). So the
+    // ground goes up six-fold and the sky only by a fifth, which fills the
+    // shadow side and leaves the highlight where it was — what a bright room
+    // actually does to a photograph. Measured on the same five builds: the
+    // subject mean rises 0.49 → 0.65 while the spread holds at 0.21.
+    sky: [0.70, 0.76, 0.88],
+    ground: [0.22, 0.225, 0.245],
+    key: [2.30, 2.26, 2.15],
+    fill: [0.48, 0.52, 0.60],
+    rim: [0.62, 0.66, 0.78],
+    exposure: 1.02,
+    softbox: 0.30,
+    bounce: 0.9,
+    note: "A white sweep. Every metal has something bright to reflect from every angle, so a flank shows form rather than one hard highlight over black.",
+  },
+];
+
+/**
+ * The selectable scenes, in display order, background resolved. `SCENES[0]` is
+ * the default and is today's exact look.
+ */
+export const SCENES = RAW_SCENES.map((s) => ({
+  ...s,
+  bg: s.bg || toneMap(sceneBackdrop(s), s.exposure),
+  // Does the canvas background agree with the room the reflections show? True
+  // for every derived scene by construction; false only where a scene states
+  // its own background, which today means the preserved baseline.
+  matched: !s.bg,
+}));
+
+/**
+ * Fail-soft: an unknown, missing or malformed id gives the default scene
+ * rather than nothing, because a scene is presentation — a permalink from a
+ * future build naming a scene this one has never heard of should still draw
+ * the watch.
+ * @param {string} [id]
+ * @returns {typeof SCENES[0]}
+ */
+export function sceneFor(id) {
+  for (const s of SCENES) if (s.id === id) return s;
+  return SCENES[0];
 }

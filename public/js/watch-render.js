@@ -84,9 +84,11 @@ import {
   dialRelief,
   finishMaterialId,
   insertMaterialId,
+  LUME_SCENE,
   markerIsApplied,
   materialFor,
   meshMaterialId,
+  sceneFor,
   strapMaterialId,
 } from "/js/watch-materials.js";
 
@@ -1350,7 +1352,7 @@ function dirAt(az, el) {
 
 /**
  * @param {HTMLCanvasElement} canvas
- * @param {{ onError?: (msg: string) => void }} [opts]
+ * @param {{ onError?: (msg: string) => void, scene?: string }} [opts]
  */
 export function mountWatch(canvas, opts) {
   const gl = /** @type {WebGLRenderingContext | null} */ (
@@ -1507,6 +1509,10 @@ export function mountWatch(canvas, opts) {
   // that is, directly across the case back — so a view OF the case back has to
   // be able to put the band down, the way you would take the watch off to look.
   let showStrap = true;
+  // The room. Presentation only — it changes no geometry and no material, so
+  // switching it never rebuilds anything. `sceneFor` fail-softs, so an id this
+  // build has never heard of draws the default rather than nothing.
+  let scene = sceneFor(opts && opts.scene);
 
   function setBuild(build) {
     const assembled = buildMeshes(build, { segments: 128, wrist: showWrist });
@@ -1724,7 +1730,15 @@ export function mountWatch(canvas, opts) {
       canvas.height = h;
     }
     gl.viewport(0, 0, w, h);
-    const bg = lumeMode ? [0.01, 0.012, 0.02] : [0.045, 0.05, 0.065];
+    // ONE record decides the room: the colour the canvas clears to, the sky
+    // and ground the `studio()` environment is built from, the floor bounce,
+    // the three lights and the exposure. They used to be six separate literals
+    // on six separate lines here, which is how the visible background came to
+    // be near-black while the environment every metal reflected was a mid-grey
+    // studio (feedback #59). Lights out is its own record and overrides the
+    // scene entirely — every scene goes dark, none of them half-lit.
+    const sc = lumeMode ? LUME_SCENE : scene;
+    const bg = sc.bg;
     gl.clearColor(bg[0], bg[1], bg[2], 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     if (!state.parts) return;
@@ -1767,17 +1781,15 @@ export function mountWatch(canvas, opts) {
     gl.uniform3fv(loc.uKeyDir, dirAt(yaw + 0.62, (dip >= 0 ? 0.95 : 0.5) * dip));
     gl.uniform3fv(loc.uFillDir, dirAt(yaw - 1.25, (dip >= 0 ? 0.2 : 0.45) * dip));
     gl.uniform3fv(loc.uRimDir, dirAt(yaw + Math.PI + 0.35, (dip >= 0 ? 0.55 : 0.3) * dip));
-    gl.uniform3fv(loc.uKeyCol, lumeMode ? [0.05, 0.055, 0.07] : [2.55, 2.5, 2.38]);
-    gl.uniform3fv(loc.uFillCol, lumeMode ? [0.02, 0.024, 0.04] : [0.42, 0.47, 0.58]);
-    gl.uniform3fv(loc.uRimCol, lumeMode ? [0.02, 0.026, 0.05] : [0.62, 0.66, 0.78]);
-    gl.uniform3fv(loc.uSky, lumeMode ? [0.02, 0.026, 0.045] : [0.60, 0.67, 0.82]);
+    gl.uniform3fv(loc.uKeyCol, sc.key);
+    gl.uniform3fv(loc.uFillCol, sc.fill);
+    gl.uniform3fv(loc.uRimCol, sc.rim);
+    gl.uniform3fv(loc.uSky, sc.sky);
     // The floor lifts toward the sky by the same amount, for the same reason: a
     // watch held up to be looked at underneath is not lying in a pit.
-    const ground = lumeMode ? [0.004, 0.005, 0.009] : [0.055, 0.052, 0.058];
-    const sky = lumeMode ? [0.02, 0.026, 0.045] : [0.6, 0.67, 0.82];
-    gl.uniform3fv(loc.uGround, ground.map((c, i) => c + (sky[i] - c) * 0.45 * under));
+    gl.uniform3fv(loc.uGround, sc.ground.map((c, i) => c + (sc.sky[i] - c) * 0.45 * under));
     // exposure, lights-out, softbox half-width, floor bounce
-    gl.uniform4f(loc.uScene, lumeMode ? 1.7 : 1.12, lumeMode, 0.30, 0.9);
+    gl.uniform4f(loc.uScene, sc.exposure, lumeMode, sc.softbox, sc.bounce);
 
     const p = state.parts;
     const M = state.mats;
@@ -1989,6 +2001,23 @@ export function mountWatch(canvas, opts) {
     /** @param {boolean} v draw the band, its hardware and the cushion */
     setStrap(v) {
       showStrap = !!v;
+    },
+    /**
+     * Choose the room. Ids come from `SCENES` in watch-materials.js; anything
+     * unknown falls back to the default rather than erroring, so this is safe
+     * to drive straight from a URL or a stored preference.
+     *
+     * Nothing is rebuilt: a scene is uniforms only, so the swap costs one
+     * frame. It is deliberately NOT part of the build permalink either — the
+     * scene is how you are looking at the watch, not what the watch is.
+     * @param {string} id
+     */
+    setScene(id) {
+      scene = sceneFor(id);
+    },
+    /** @returns {string} the id of the scene currently drawn */
+    sceneId() {
+      return scene.id;
     },
     /**
      * Straight at the case back. Worth a view of its own now that a display
