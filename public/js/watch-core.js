@@ -340,6 +340,61 @@ export const SOURCES = {
     label: "Strapcode — #64/#65 classic tang buckle parts listings",
     url: "https://www.strapcode.com/products/parts-nt-acc-bu-065b",
   },
+
+  // --- 2026-08-01 research pass (feedback #59, the case shapes). Vidar asked
+  // for Royal Oak and PRX style cases WITH integrated bracelets, and for the
+  // Explorer II / Submariner / Alpinist shapes to actually resemble their
+  // references. Every row below is an NHxx-FITMENT listing — a case sold to
+  // take an NH35/NH36 — not the Audemars Piguet, Tissot or Rolex original,
+  // because the catalogue's whole subject is what a modder can buy.
+  nomodsRo: {
+    label: "NoMods — V2 ultrathin Royal Oak 37 mm Seiko mod case (NH35/NH72), bracelet included",
+    url: "https://nomods.co/products/royal-oak-37mm-seiko-mod-case-silver",
+  },
+  tandorioRo: {
+    label: "Tandorio — 42 mm Royal Oak AP case with integrated bracelet, NH34/35/36/38/70/72",
+    url: "https://tandoriowatch.com/products/42mm-royal-oak-ap-case",
+  },
+  watchmodzRo: {
+    label: "Watch-Modz — 40 mm Royal Oak case, integrated bracelet, fits 28.5 mm dials (its sapphire is NOT an SKX007 crystal)",
+    url: "https://watch-modz.com/product/skx007-case-black-royal-oak/",
+  },
+  namokiNrx: {
+    label: "namokiMODS NMK945 \"NRX\" — PRX-style case bundle, integrated bracelet tapering 24 → 18 mm",
+    url: "https://www.namokimods.com/products/nmk945-nrx-sports-watch-case-bundle-steel-finish",
+  },
+  tandorioPrx: {
+    label: "Tandorio — 40 mm PRX case with integrated bracelet, dial fit 30.7–32.1 mm",
+    url: "https://tandoriowatch.com/products/prx-case-40mm",
+  },
+  monochromePrx: {
+    label: "Monochrome — Tissot PRX 40 review (the original's 44.6 mm case lug-to-lug, and that the first bracelet link does not articulate)",
+    url: "https://monochrome-watches.com/tissot-prx-40-205-powermatic-80-review-price/",
+  },
+  luciusExp2: {
+    label: "Lucius Atelier — Explorer II watch case 36 mm [NH34-ready]: 36 / 43 / 11.6 mm, 29.5 × 1.5 mm flat sapphire",
+    url: "https://luciusatelier.com/products/explorer-ii-watch-case-36mm-nh34-ready",
+  },
+  tandorioExp: {
+    label: "Tandorio — 39 mm EXP 24-hour GMT case, fixed bezel, NH34/35/36",
+    url: "https://tandoriowatch.com/products/39mm-exp-24-hour-gmt-watch-case-fixed-bezel",
+  },
+  namokiAlpine: {
+    label: "namokiMODS NMK951 \"Alpine Tool\" — Alpinist-style case, 39 / 45.9 / 11.1 mm, two crowns and an internal compass ring",
+    url: "https://www.namokimods.com/products/nmk951-alpine-tool-case-steel-finish",
+  },
+  millenaryAlpinist: {
+    label: "Millenary Watches — Seiko Alpinist SARB017 review (crown guards at 3, second crown at 4 for the internal compass ring)",
+    url: "https://millenarywatches.com/seiko-alpinist-sarb017-review/",
+  },
+  modmodeSub: {
+    label: "Mod Mode CAS031 — 40 mm Sub case set with bracelet: 20 mm lug width, 38 mm insert, 28.5–29 mm dial",
+    url: "https://modmodewatches.com/products/cas031-40mm-sub-case-set-with-bracelet-and-case-back",
+  },
+  sanmartinSub: {
+    label: "San Martin SN0118G-B — 40 mm ceramic-bezel diver: 47.8 mm lug-to-lug, 12.7 mm thick",
+    url: "https://sanmartin-watch.com/products/sn0118g-b",
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -645,6 +700,71 @@ export const PLATFORMS = {
 // lug tip, thick = total case thickness including the crystal, lugW = strap
 // width between the lugs.
 
+/**
+ * INTEGRATED BRACELETS — a different construction, not a strap choice.
+ *
+ * Feedback #59 asked for "a royal oak and PRX style case with integrated
+ * bracelet", and the word integrated is the whole of the request. On every
+ * other case in this catalogue the band is a separate purchase that meets the
+ * case at a spring bar: the case has lugs, the strap has an end, and the join
+ * is a hinge. On these two the bracelet IS the case — the first link is
+ * machined into the case body, there is no spring bar, no lug and nothing to
+ * unbolt, and the case's own outline runs uninterrupted into the bracelet's
+ * taper. That is why it is a flag on the CASE rather than an entry in STRAPS,
+ * and why its geometry is its own function: nothing about the strap builder's
+ * lug-anchored drape describes it.
+ *
+ * WHAT IS SOURCED AND WHAT IS NOT. `widthMm` / `endMm` are millimetres when a
+ * vendor publishes them (namokiMODS quotes the NRX's bracelet as tapering
+ * "24mm to 18mm") and `null` when nobody does — in which case the renderer
+ * derives them from the case, and the case's `note` says so in as many words.
+ * `linksAcross`, `widthRatios` and `pitchMm` are NOT millimetres at all: they
+ * are rendering conventions of a procedural model, the same kind of number
+ * `BRACELET_TYPES.widthRatios` already carries with `ratiosApprox: true`, and
+ * they are marked the same way. No vendor publishes a link count or a link
+ * pitch for these cases.
+ */
+export const INTEGRATED_OCTAGON = {
+  bracelet: true,
+  /** Five bodies across: a wide centre flanked by two mids and two outers. */
+  linksAcross: 5,
+  widthRatios: [0.17, 0.2, 0.26, 0.2, 0.17],
+  ratiosApprox: true,
+  pitchMm: 5.6,
+  pitchApprox: true,
+  /** Unpublished by every vendor — derived from the case, see `note`. */
+  widthMm: null,
+  endMm: null,
+  taper: 0.28,
+  clasp: "concealed",
+  src: "nomodsRo",
+  approx: true,
+  note: {
+    en: "The bracelet is machined into the case: no lugs, no spring bars, and no strap fits. NoMods, Watch-Modz and Tandorio all ship it with the case and none of them publishes its width or its link pitch, so the render derives both from the case's own outline — treat the bracelet's millimetres as drawing, not as data.",
+    sv: "Länken är infräst i boetten: inga horn, inga bandstift och inget band passar. NoMods, Watch-Modz och Tandorio levererar den alla med boetten och ingen av dem publicerar bredd eller länkdelning, så renderingen härleder båda ur boettens egen kontur — betrakta länkens millimetrar som ritning, inte som data.",
+  },
+};
+
+export const INTEGRATED_BARREL = {
+  bracelet: true,
+  linksAcross: 5,
+  widthRatios: [0.16, 0.19, 0.3, 0.19, 0.16],
+  ratiosApprox: true,
+  pitchMm: 6.4,
+  pitchApprox: true,
+  /** Published: namokiMODS quotes the NMK945's bracelet as 24 → 18 mm. */
+  widthMm: 24,
+  endMm: 18,
+  taper: 0.25,
+  clasp: "butterfly",
+  src: "namokiNrx",
+  approx: true,
+  note: {
+    en: "namokiMODS publishes this one's taper — 24 mm at the case, 18 mm at the milled butterfly clasp — which makes it the only integrated bracelet here whose width is a measurement rather than a drawing. The link count and pitch are still the render's convention. Nothing unbolts: the case has no lugs.",
+    sv: "namokiMODS publicerar avsmalningen för den här — 24 mm vid boetten, 18 mm vid det frästa fjärilslåset — vilket gör den till den enda integrerade länken här vars bredd är en mätning och inte en ritning. Antalet länkar och delningen är fortfarande renderingens konvention. Inget skruvas loss: boetten har inga horn.",
+  },
+};
+
 export const CASES = [
   {
     id: "skx007",
@@ -720,9 +840,16 @@ export const CASES = [
     id: "sub",
     name: { en: "Sub-style diver", sv: "Sub-dykare" },
     homage: "Submariner-style, SKX platform",
-    shell: "diver",
+    // Its OWN shell as of feedback #59. Sharing the generic `diver` archetype
+    // with the SKX meant a Submariner and an SKX differed by 1.5 mm of
+    // diameter and nothing else — and the report said so: "still often not
+    // bearing significant resemblance to the real thing". What separates the
+    // two in the metal is the flank, not the diameter: slab sides with a
+    // polished chamfer running the length of them, almost no waist, and a
+    // thin bezel that sits high and proud instead of a deep dive shoulder.
+    shell: "sub",
     platform: "skx",
-    dims: { dia: 41, l2l: 46, thick: 12.8, lugW: 22, approx: true },
+    dims: { dia: 41, l2l: 46, thick: 12.8, lugW: 20, approx: true },
     crown: { hour: 3, guards: true, signed: true },
     bezel: "dive120",
     finish: "polished",
@@ -731,6 +858,10 @@ export const CASES = [
     blurb: {
       en: "The most-sold shape on AliExpress: 41 mm, crown at 3, polished flanks, ceramic insert.",
       sv: "Den mest sålda formen på AliExpress: 41 mm, krona vid 3, polerade sidor, keramikinlägg.",
+    },
+    note: {
+      en: "The lug width was carried as 22 mm — the SKX figure — until 2026-08-01. Sub-style mod case sets are sold at 20 mm (Mod Mode's CAS031 40 mm set), and the Submariner the shape homages is a 20 mm watch, so 20 is what the catalogue now carries. Sizes disagree across sellers: DLW's chart gives 41 × 46 × 12.8 mm, San Martin's SN0118G-B is 40 × 47.8 × 12.7 mm at 18 mm lugs.",
+      sv: "Bandbredden bars som 22 mm — SKX-måttet — fram till 2026-08-01. Sub-liknande boettsatser säljs med 20 mm (Mod Modes CAS031, 40 mm-satsen), och Submarinern formen hyllar är en 20 mm-klocka, så 20 är vad katalogen nu bär. Måtten skiljer sig mellan säljare: DLW:s tabell ger 41 × 46 × 12,8 mm, San Martins SN0118G-B är 40 × 47,8 × 12,7 mm med 18 mm horn.",
     },
     ali: {
       queries: ["NH35 case 41mm sub", "submariner case NH35 sapphire ceramic bezel", "41mm diver case NH35 200m"],
@@ -746,9 +877,9 @@ export const CASES = [
     id: "sub-slim",
     name: { en: "Sub-style, slim", sv: "Sub-dykare, tunn" },
     homage: "Submariner-style slim, SKX platform",
-    shell: "diver",
+    shell: "sub",
     platform: "skx",
-    dims: { dia: 40, l2l: 45.5, thick: 12, lugW: 22, approx: true },
+    dims: { dia: 40, l2l: 45.5, thick: 12, lugW: 20, approx: true },
     crown: { hour: 3, guards: false, signed: false },
     bezel: "dive120",
     finish: "polished",
@@ -1050,23 +1181,147 @@ export const CASES = [
     id: "alpinist",
     name: { en: "Alpinist", sv: "Alpinist" },
     homage: "Seiko SARB017 Alpinist",
-    shell: "dress",
+    // Its own shell as of feedback #59. On the generic `dress` archetype an
+    // Alpinist rendered as an Explorer with a different diameter, and the two
+    // are not alike: the Alpinist is a THICK case for its width, with a tall
+    // fixed bezel standing over an internal compass ring, a wide polished
+    // bevel and a second crown at 4.
+    shell: "alpinist",
     platform: "native",
-    dims: { dia: 38, l2l: 43, thick: 12, lugW: 20 },
+    // Re-sourced 2026-08-01 from an NHxx case rather than from the Seiko
+    // original: namokiMODS' NMK951 "Alpine Tool" publishes all four figures.
+    dims: { dia: 39, l2l: 45.9, thick: 11.1, lugW: 20, approx: true },
     crystal: { dia: 30, approx: true },
     crown: { hour: 3, guards: false, signed: true },
+    // The second crown, at 4, turns the internal compass ring. It is a real
+    // part of both the SARB017 and the NMK951, and it is NOT rendered — the
+    // crown builder places exactly one crown. Listed here so the spec sheet
+    // and the answer can say so rather than the picture quietly denying it.
+    crown2: { hour: 4, turns: "inner-bezel", rendered: false, src: "namokiAlpine" },
     bezel: "fixed",
     finish: "polished",
-    wr: 200,
-    src: "strapcode",
+    wr: 100,
+    src: "namokiAlpine",
     blurb: {
       en: "The field-dress classic, with the second crown at 4 that turns the inner compass ring.",
       sv: "Fält- och klädklassikern, med den andra kronan vid 4 som vrider den inre kompassringen.",
+    },
+    note: {
+      en: "Two different objects are quoted for this shape and the catalogue now describes the CASE you can buy, not the watch it homages. namokiMODS' NMK951 Alpine Tool case is 39 mm across, 45.9 mm lug to lug, 11.1 mm with crystal and slim case back, 100 m, with crowns at 3 and 4. Seiko's own SARB017 is 38 mm, about 12 mm thick and rated 200 m, and has crown guards at 3 that the mod case does not. The earlier 43 mm lug-to-lug carried here was short for either.",
+      sv: "Två olika föremål anges för den här formen, och katalogen beskriver nu BOETTEN du kan köpa, inte klockan den hyllar. namokiMODS NMK951 Alpine Tool är 39 mm bred, 45,9 mm mellan hornen, 11,1 mm med glas och tunn boettbotten, 100 m, med kronor vid 3 och 4. Seikos egen SARB017 är 38 mm, cirka 12 mm tjock och 200 m, och har kronskydd vid 3 som moddboetten saknar. De 43 mm mellan hornen som tidigare angavs var för kort för båda.",
     },
     ali: {
       queries: ["alpinist case NH35", "SARB017 case NH35 mod", "38mm dress case NH35 inner bezel"],
       brands: ["San Martin", "Baltany", "Merkur", "Bliger"],
       priceUsd: [40, 160],
+    },
+  },
+  {
+    id: "explorer-2",
+    name: { en: "Explorer II style", sv: "Explorer II-stil" },
+    homage: "Explorer II style, NHxx mod case",
+    // Not a variant of the Explorer entry above: an Explorer I is a plain
+    // dress-sports case, an Explorer II is a TOOL case — a fixed 24-hour
+    // bezel standing proud over slab flanks, crown guards machined in, and a
+    // squarer lug than either the dress or the diver archetype draws.
+    shell: "tool",
+    platform: "native",
+    dims: { dia: 36, l2l: 43, thick: 11.6, lugW: 20, approx: true },
+    // The one new case here whose crystal diameter a vendor actually
+    // publishes: Lucius Atelier ships it pre-installed at 29.5 × 1.5 mm.
+    crystal: { dia: 29.5, approx: true },
+    crown: { hour: 3, guards: true, signed: false },
+    bezel: "fixed",
+    finish: "polished",
+    wr: 200,
+    src: "luciusExp2",
+    blurb: {
+      en: "The 24-hour tool watch: a fixed engraved bezel instead of a rotating one, and a case built squarer and flatter than the Explorer I.",
+      sv: "24-timmarsverktyget: en fast graverad lünett i stället för en roterande, och en boett byggd fyrkantigare och plattare än Explorer I.",
+    },
+    note: {
+      en: "Two sizes circulate. Lucius Atelier's 36 mm case is the one with published figures — 36 / 43 / 11.6 mm (12.1 mm with the sapphire back), 20 mm lugs, a 29.5 mm flat sapphire, 28.5 mm dial, 200 m, and an SKX013-spec chapter ring bought separately. Tandorio's 39 mm EXP case is 39 mm and 12 mm thick at 20 mm lugs, 100 m, and publishes no lug-to-lug. The 24-hour bezel is FIXED on both; an actual 24-hour hand needs an NH34.",
+      sv: "Två storlekar cirkulerar. Lucius Ateliers 36 mm-boett är den med publicerade mått — 36/43/11,6 mm (12,1 mm med safirbotten), 20 mm horn, ett plant safirglas på 29,5 mm, 28,5 mm urtavla, 200 m och en chapter ring i SKX013-mått som köps separat. Tandorios 39 mm EXP-boett är 39 mm och 12 mm tjock med 20 mm horn, 100 m, och anger ingen längd mellan hornen. 24-timmarslünetten är FAST på båda; en riktig 24-timmarsvisare kräver ett NH34.",
+    },
+    ali: {
+      queries: ["explorer 2 case NH35", "39mm 24 hour fixed bezel case NH35", "explorer II case NH34 GMT mod"],
+      brands: ["Tandorio", "Baltany", "Corgeut"],
+      priceUsd: [45, 170],
+      watchFor: {
+        en: "Listings show a GMT hand in the photographs; the case does not supply one. Without an NH34 the fixed 24-hour bezel has nothing pointing at it.",
+        sv: "Annonserna visar en GMT-visare på bilderna; boetten levererar ingen. Utan ett NH34 finns det inget som pekar på den fasta 24-timmarslünetten.",
+      },
+    },
+  },
+  {
+    id: "royal-oak",
+    name: { en: "Royal Oak style (integrated bracelet)", sv: "Royal Oak-stil (integrerad länk)" },
+    homage: "Royal Oak style, NHxx mod case",
+    shell: "octagon",
+    platform: "native",
+    // NoMods' V2 ultrathin 37 mm case publishes diameter, lug-to-lug and
+    // thickness together, which is why it and not the bigger Tandorio listing
+    // is the row this entry is built on. The lug width is Tandorio's 42 mm
+    // case (a different vendor and a different size — hence approx).
+    dims: { dia: 37, l2l: 48, thick: 9.95, lugW: 20, approx: true },
+    crystal: { dia: 30.5, approx: true },
+    crown: { hour: 3, guards: false, signed: false },
+    bezel: "fixed",
+    finish: "brushed",
+    wr: 100,
+    integrated: INTEGRATED_OCTAGON,
+    src: "nomodsRo",
+    blurb: {
+      en: "The octagonal one: eight flats around the bezel, a case only 9.95 mm tall, and a bracelet that is part of the case rather than bolted to it.",
+      sv: "Den åttakantiga: åtta fasetter runt lünetten, en boett på bara 9,95 mm och en länk som är en del av boetten i stället för fastskruvad på den.",
+    },
+    note: {
+      en: "Three families circulate and they are genuinely different watches: NoMods' ultrathin 37 mm (37 / 48 / 9.95 mm, 10.3 mm with the exhibition back), Watch-Modz' 40 × 10 mm, and Tandorio's 42 × 12 mm. Two things nobody publishes: the crystal diameter — 30.5 mm here is the render's own assumption from the 28.5 mm dial these cases all take, not a measurement, so do not order a crystal by it — and the width of the bracelet where it meets the case, which the render treats the same way. The lug-to-lug is also not comparable with a lugged case: on an integrated bracelet the first link does not articulate, and vendors differ on whether they measure to the case or past that link (Tissot's own PRX is 44.6 mm one way and over 51 mm the other).",
+      sv: "Tre familjer cirkulerar och de är verkligt olika klockor: NoMods ultratunna 37 mm (37/48/9,95 mm, 10,3 mm med glasbotten), Watch-Modz 40 × 10 mm och Tandorios 42 × 12 mm. Två saker publicerar ingen: glasets diameter — 30,5 mm här är renderingens eget antagande utifrån den 28,5 mm-urtavla alla dessa boetter tar, inte en mätning, så beställ inget glas efter den — och länkens bredd där den möter boetten, som renderingen behandlar likadant. Längden mellan hornen går inte heller att jämföra med en boett med horn: på en integrerad länk är första länken fast, och säljarna skiljer sig åt om de mäter till boetten eller förbi den länken (Tissots egen PRX är 44,6 mm det ena sättet och över 51 mm det andra).",
+    },
+    ali: {
+      queries: ["royal oak case NH35", "octagon watch case NH35 integrated bracelet", "AP style case NH35 NH36 bracelet"],
+      brands: ["Tandorio"],
+      priceUsd: [50, 160],
+      watchFor: {
+        en: "Tandorio is the only maker of these that publishes a full specification; the same octagon ships under a dozen unbranded seller names at every price. The bracelet comes with the case and is not interchangeable — there is nothing to bolt a 20 mm strap onto.",
+        sv: "Tandorio är den enda tillverkaren av dessa som publicerar en fullständig specifikation; samma åttakant säljs under ett dussin omärkta säljarnamn i alla prisklasser. Länken följer med boetten och går inte att byta — det finns inget att skruva fast ett 20 mm-band i.",
+      },
+    },
+  },
+  {
+    id: "prx",
+    name: { en: "PRX style (integrated bracelet)", sv: "PRX-stil (integrerad länk)" },
+    homage: "PRX style, NHxx mod case",
+    shell: "barrel",
+    platform: "native",
+    // namokiMODS' NMK945 NRX publishes diameter, lug-to-lug, case thickness
+    // AND total thickness with the crystal and case back — which is exactly
+    // what this catalogue's `thick` means — plus the bracelet's taper.
+    dims: { dia: 36, l2l: 42, thick: 11, lugW: 24, approx: true },
+    crystal: { dia: 30.5, approx: true },
+    crown: { hour: 3, guards: false, signed: false },
+    bezel: "fixed",
+    finish: "brushed",
+    wr: 100,
+    integrated: INTEGRATED_BARREL,
+    src: "namokiNrx",
+    blurb: {
+      en: "The barrel with the bracelet growing straight out of it: a rounded square in plan, flat on top, 24 mm across at the case and 18 mm at the clasp.",
+      sv: "Tunnan med länken som växer rakt ur den: rundad fyrkant sedd uppifrån, plan ovansida, 24 mm vid boetten och 18 mm vid låset.",
+    },
+    note: {
+      en: "namokiMODS' NMK945 is 36 mm with a 42 mm lug-to-lug, 9.5 mm of case and 11 mm all in; Tandorio's is a 40 mm case 11.5 mm thick with a 20 mm bracelet. Both ship the bracelet, and namokiMODS' also machines the chapter ring into the case, so a separate rehaut is not a part you buy for it. The crystal diameter is published by neither — 30.5 mm here is the render's assumption, not a figure to order by; what IS published is the dial fit, 28.5 mm on the NMK945 and 30.7–32.1 mm on Tandorio's larger case.",
+      sv: "namokiMODS NMK945 är 36 mm med 42 mm mellan hornen, 9,5 mm boett och 11 mm totalt; Tandorios är en 40 mm-boett på 11,5 mm med 20 mm länk. Båda levererar länken, och namokiMODS fräser dessutom chapter ringen i boetten, så någon separat rehaut köper man inte till den. Glasets diameter publiceras av ingen av dem — 30,5 mm här är renderingens antagande, inte ett mått att beställa efter; det som ÄR publicerat är urtavlemåttet, 28,5 mm på NMK945 och 30,7–32,1 mm på Tandorios större boett.",
+    },
+    ali: {
+      queries: ["PRX case NH35", "integrated bracelet watch case NH35 36mm", "PRX super player case NH35 NH36"],
+      brands: ["Tandorio"],
+      priceUsd: [45, 190],
+      watchFor: {
+        en: "\"Fits a 28.5 mm dial\" and \"fits a 31 mm dial\" are both sold as PRX cases and they are not the same case. Check the dial fit before ordering the dial, because there is no chapter ring to adapt one to the other on the models that machine theirs in.",
+        sv: "\"Passar 28,5 mm urtavla\" och \"passar 31 mm urtavla\" säljs båda som PRX-boetter och är inte samma boett. Kontrollera urtavlemåttet innan du beställer urtavlan, för på modellerna med infräst chapter ring finns ingen ring som kan anpassa den ena till den andra.",
+      },
     },
   },
   {
@@ -3195,6 +3450,14 @@ export const CASE_KITS = {
   "skx-ncg": { includes: ["crystal", "caseback", "insert", "chapterRing", "crown"], tier: "complete-kit", src: "aliKit", approx: true },
   "skx-c3": { includes: ["crystal", "caseback", "insert", "chapterRing", "crown"], tier: "complete-kit", src: "aliKit", approx: true },
   tuna: { includes: ["crystal", "caseback", "insert", "chapterRing", "crown"], tier: "complete-kit", src: "karajan" },
+  // The integrated-bracelet cases ship the BRACELET too, which is the one
+  // case in this table where the strap slot is already bought — there is
+  // nothing to bolt an alternative onto (see INTEGRATED_OCTAGON).
+  "royal-oak": { includes: ["crystal", "caseback", "crown", "strap"], tier: "complete-kit", src: "nomodsRo", approx: true },
+  prx: { includes: ["crystal", "caseback", "crown", "chapterRing", "strap"], tier: "complete-kit", src: "namokiNrx", approx: true },
+  // Lucius ships the sapphire pre-installed and a movement-specific back; the
+  // crown, chapter ring, dial and hands are separate purchases.
+  "explorer-2": { includes: ["crystal", "caseback"], tier: "part-kit", src: "luciusExp2", approx: true },
 };
 
 /** The default: nothing included beyond gaskets and a click spring. */
@@ -3234,6 +3497,13 @@ export const CASE_DISPLAY_BACKS = {
   mm300: { display: true, src: "ct239", approx: true },
   "planet-ocean": { display: true, src: "ct239", approx: true },
   "62mas": { display: true, src: "lucius", approx: true },
+  // The 2026-08-01 additions. NoMods lists the Royal Oak case with a solid or
+  // an exhibition back as a configuration option; namokiMODS' NRX takes "all
+  // SKX casebacks", which includes the CT239 sapphire one; Lucius Atelier's
+  // Explorer II is sold with a solid or a sapphire back.
+  "royal-oak": { display: true, src: "nomodsRo" },
+  prx: { display: true, src: "namokiNrx", approx: true },
+  "explorer-2": { display: true, src: "luciusExp2" },
   willard: { display: null, src: "namoki" },
   alpinist: { display: null, src: "watchandstyle" },
   explorer: { display: null, src: "lucius" },
@@ -3267,6 +3537,11 @@ export function defaultsForCase(caseId) {
   out.caseback = displayBackFor(caseId) === true ? "display" : "solid-brushed";
   const plat = PLATFORMS[/** @type {keyof typeof PLATFORMS} */ (cs.platform)];
   if (plat && plat.chapterRingRequired) out.chapterRing = "black-minutes";
+  // A case with an INTEGRATED bracelet arrives wearing one, and there are no
+  // lugs to fit anything else to. Defaulting the strap slot to a bracelet is
+  // the same kind of choice as defaulting the SKX013 to its mandatory chapter
+  // ring: the case decides, because the case already includes the part.
+  if (cs.integrated && cs.integrated.bracelet) out.strap = "oyster";
   return out;
 }
 
@@ -4315,6 +4590,33 @@ export function checkBuild(build) {
       sv: `Ett ${bucklePick.name.sv.toLowerCase()} monteras på ${bucklePick.kinds.join(" eller ")}-band, inte på ${parts.strap.kind}.`,
     });
   }
+  // R14 — the INTEGRATED bracelet (feedback #59). A case whose bracelet is
+  // machined into it has no lugs and no spring bars, so the strap slot is not
+  // a choice on it: whatever is picked, the bracelet that comes with the case
+  // is what goes on the wrist, and that is what the render shows. A warning
+  // rather than an error, because the build is perfectly buildable — it is the
+  // strap purchase that is wasted, not the watch.
+  const integrated = integratedBraceletOf(cs);
+  if (integrated) {
+    if (parts.strap.kind === "bracelet") {
+      issues.push({
+        level: "note",
+        slot: "strap",
+        slots: ["strap", "case"],
+        en: `${cs.name.en} ships its own integrated bracelet, machined into the case. There are no lugs and no spring bars, so a separate ${parts.strap.name.en.toLowerCase()} cannot be fitted and is not what the render shows.`,
+        sv: `${cs.name.sv} levereras med sin egen integrerade länk, infräst i boetten. Det finns inga horn och inga bandstift, så en separat ${parts.strap.name.sv.toLowerCase()} går inte att montera och är inte det renderingen visar.`,
+      });
+    } else {
+      issues.push({
+        level: "warning",
+        slot: "strap",
+        slots: ["strap", "case"],
+        en: `A ${parts.strap.kind} strap does not go on ${cs.name.en}. The bracelet is part of the case — no lugs, no spring bars, nothing to bolt it to — so this choice buys a strap that cannot be fitted. Aftermarket straps for integrated cases exist but are cut for one specific case mouth.`,
+        sv: `Ett ${parts.strap.kind === "leather" ? "läderband" : parts.strap.kind === "rubber" ? "gummiband" : "NATO-band"} går inte på ${cs.name.sv}. Länken är en del av boetten — inga horn, inga bandstift, inget att skruva fast det i — så det här valet köper ett band som inte kan monteras. Eftermarknadsband för boetter med integrerad länk finns men skärs för en enda boettmynning.`,
+      });
+    }
+  }
+
   // R13 — fat spring bars. Not a fit error, but it is what stops a strap going on.
   if (cs.platform === "skx" && parts.strap.kind !== "bracelet") {
     issues.push({
@@ -4714,6 +5016,41 @@ export function outlineFor(shell) {
     // Tuna: round, with the shroud's four bolt lobes.
     return (t) => 1 + 0.018 * Math.cos(4 * t);
   }
+  if (shell === "octagon") {
+    // Royal Oak: a TRUE octagon — eight straight edges, not a wobble on a
+    // circle. Distance from the centre to a flat is constant, so the radius
+    // along one edge is exactly 1/cos(a) where `a` is the angle off that
+    // edge's midpoint; the corners stand 1/cos(π/8) = 1.082 out.
+    //
+    // TWO THINGS THAT MATTER AND BOTH COST A RENDER TO FIND.
+    //
+    // Phase: a Royal Oak has a FLAT at 12, 3, 6 and 9 and its corners on the
+    // diagonals, and the bracelet leaves through the 12 and 6 flats. Rounding
+    // (not flooring) θ to the nearest π/4 is what puts a flat rather than a
+    // corner on the axis. Get it wrong and the crown sits on a point.
+    //
+    // Normalisation: the octagon is inscribed on the catalogue's diameter
+    // rather than circumscribed — k ≥ 1 everywhere, never below. `lathe`
+    // modulates EVERY point of the profile, the bore included, so an outline
+    // that dips under 1 pulls the case's inner wall in over the dial and eats
+    // its edge at exactly the four flats. Every other non-round shell here is
+    // ≥ 0.91 for the same reason; this one has straight edges, which is a far
+    // bigger swing, so it is pinned at 1.
+    const step = Math.PI / 4;
+    return (t) => 1 / Math.cos(t - Math.round(t / step) * step);
+  }
+  if (shell === "barrel") {
+    // PRX: a rounded square — squarer than the Turtle's cushion, rounder than
+    // the Samurai's faceted tonneau, and (like the octagon) normalised so the
+    // axes sit at exactly 1 and only the corners stand proud. The bracelet
+    // leaves through the 12 and 6 faces, which are flat where it meets them.
+    const n = 3.1;
+    return (t) => {
+      const c = Math.abs(Math.cos(t));
+      const s = Math.abs(Math.sin(t));
+      return 1 / Math.pow(Math.pow(c, n) + Math.pow(s, n), 1 / n);
+    };
+  }
   // Divers, dress cases and field cases are ROUND in plan — their character is
   // in the vertical profile (`caseProfile`), not in the plan silhouette, which
   // is why they share one outline and still render as different watches.
@@ -5035,6 +5372,237 @@ export function extrude(outline, thickness, y) {
     mesh.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
   return mesh;
+}
+
+// ---------------------------------------------------------------------------
+// INTEGRATED BRACELETS — the Royal Oak and PRX construction (feedback #59).
+//
+// "Add a royal oak and PRX style case with integrated bracelet." The word
+// integrated is the requirement, and it is a different object from everything
+// the strap builder below knows how to make.
+//
+// A STRAP MEETS A CASE. It is bought separately, it ends in a hinge, and the
+// geometry that draws it starts at `lugAnchor` — a spring-bar centre out at
+// the catalogue's lug-to-lug, with the band tucked back into the lug so the
+// joint overlaps. Everything in STRAP_GEOMETRY assumes that anchor.
+//
+// AN INTEGRATED BRACELET IS THE CASE. There is no spring bar, no lug and no
+// separate purchase: the first link is machined into the case body and the
+// case's own silhouette runs straight on into the bracelet's taper. Modelling
+// it as a strap that happens to be metal gets the one thing wrong that anybody
+// looks at — the join. So it gets its own path, its own first link, and its
+// own entry point, and the CASE carries the flag (`integrated`, see
+// INTEGRATED_OCTAGON) rather than the strap.
+//
+// WHAT THIS SHARES WITH THE STRAP BUILDER, DELIBERATELY: the drape. The
+// Hermite lead-in onto the wrist cylinder and the wrap round it are the same
+// tested code (`strapPath`), called with a shim whose lug-to-lug is zero so the
+// anchor collapses onto the case wall — which is exactly where an integrated
+// bracelet starts. Duplicating that curve would have meant two drapes to keep
+// in step, and a second one to get the sign wrong in.
+//
+// WHAT IS SOURCED HERE: nothing. Every millimetre in the mesh comes from the
+// case's `dims` and its `integrated` descriptor; the shape ratios below are
+// rendering conventions of a procedural model, like SHELL_ARCHETYPES', and are
+// commented as such where they appear.
+
+/**
+ * The integrated-bracelet descriptor for a case, or null for the ordinary
+ * lug-and-spring-bar cases — which is every other case in the catalogue.
+ * @param {any} caseEntry
+ * @returns {any | null}
+ */
+export function integratedBraceletOf(caseEntry) {
+  const g = caseEntry && caseEntry.integrated;
+  return g && g.bracelet ? g : null;
+}
+
+/**
+ * Resolve a case's integrated bracelet into the numbers its geometry needs.
+ * The plan deliberately carries the same key names the strap plan does
+ * (`wristR`, `drop`, `thick`, `underCase`, `weave`, `relief`) because
+ * `wristAxis`, `bandRadius`, `strapPath` and `claspMesh` all read those, and
+ * sharing the drape is the point.
+ * @param {any} caseEntry
+ * @returns {any | null}
+ */
+export function integratedPlan(caseEntry) {
+  const g = integratedBraceletOf(caseEntry);
+  if (!g || !caseEntry.dims) return null;
+  const dims = caseEntry.dims;
+  const R = dims.dia / 2;
+  const T = dims.thick;
+  // The case wall at 12/6 o'clock — where the bracelet actually leaves. Not
+  // `dia / 2`: on an octagon that is the corner, and the bracelet leaves
+  // through a flat.
+  const wall = R * outlineFor(caseEntry.shell)(Math.PI / 2);
+  // Width AT THE CASE. Published for the PRX-style case (namokiMODS quotes
+  // 24 → 18 mm) and published by nobody for the octagon, in which case it is
+  // 0.52 of the case's width across the flats — a rendering convention, and
+  // the case's own `note` says so rather than dressing it as a measurement.
+  // 0.52 rather than something larger because a render at 0.62 overhung the
+  // octagon's 12 o'clock flat by 4 mm and read as a slab laid across the
+  // case; the real watch's first link is barely wider than the face it grows
+  // out of.
+  const width = g.widthMm != null ? g.widthMm : wall * 2 * 0.52;
+  const endW = g.endMm != null ? g.endMm : width * (1 - (g.taper || 0.25));
+  const taper = width > 0 ? Math.max(0, Math.min(0.5, 1 - endW / width)) : 0;
+  // Bracelet thickness: nobody publishes it either. 0.3 of the case, held
+  // between 2.4 and 4.2 mm, which is the range the researched bracelets in
+  // BRACELET_TYPES actually occupy (2.5 mm Milanese to 4.6 mm Engineer).
+  const thick = clamp(T * 0.3, 2.4, 4.2);
+  // How far the FIXED first link runs. The catalogue's lug-to-lug on these
+  // cases is measured past that link (it is the only thing out there to
+  // measure to), so the difference between it and the case wall IS the link.
+  const endLen = Math.max(2.5, dims.l2l / 2 - wall);
+  /** Column widths, normalised to leave 8 % of the band as the grooves. */
+  const ratios = Array.isArray(g.widthRatios) && g.widthRatios.length
+    ? g.widthRatios
+    : [0.2, 0.2, 0.2, 0.2, 0.2];
+  const sum = ratios.reduce((/** @type {number} */ a, /** @type {number} */ b) => a + b, 0) || 1;
+  return {
+    id: `${caseEntry.id}-integrated`,
+    caseId: caseEntry.id,
+    wall,
+    width,
+    endW,
+    taper,
+    thick,
+    endLen,
+    /** The end piece is nearly as tall as the case where it leaves it. */
+    caseH: clamp(T * 0.46, thick + 0.4, T * 0.6),
+    cols: ratios.map((/** @type {number} */ r) => (r / sum) * 0.92),
+    pitch: g.pitchMm || 6,
+    gap: 0.55,
+    clasp: g.clasp || "concealed",
+    wristR: STRAP_DRAPE.wristR,
+    drop: STRAP_DRAPE.drop,
+    underCase: 0,
+    weave: null,
+    relief: null,
+    src: g.src,
+    approx: true,
+    note: g.note || null,
+  };
+}
+
+/**
+ * The whole integrated bracelet: the two machined end pieces flowing out of
+ * the case, the articulated rows tapering to the clasp, the clasp, and the
+ * wrist cylinder. Same return shape as `strapAssembly`, so `buildMeshes` needs
+ * no branch of its own — it asks for a strap assembly and gets this instead.
+ * @param {any} caseEntry
+ * @param {{ segments?: number, wrist?: boolean }} [opts]
+ * @returns {{ band: Mesh, hardware: Mesh, wrist: Mesh, materials: any,
+ *   wristInfo: { show: boolean, r: number, cy: number, len: number }, plan: any } | null}
+ */
+export function integratedBraceletAssembly(caseEntry, opts) {
+  const plan = integratedPlan(caseEntry);
+  if (!plan) return null;
+  const band = emptyMesh();
+  const hardware = emptyMesh();
+  const showWrist = !(opts && opts.wrist === false);
+  const q = Math.max(0.25, Math.min(1, ((opts && opts.segments) || 96) / 96));
+  const w = wristAxis(plan);
+  // The shim: lug-to-lug zero, so `lugAnchor`'s max() collapses onto the case
+  // wall and the drape starts where the metal actually does.
+  const shim = { dims: { ...caseEntry.dims, l2l: 0 }, shell: caseEntry.shell };
+  const tuck = lugAnchor(shim).tuck;
+  const secCols = Math.max(8, Math.round(14 * q));
+  const linkCols = Math.max(6, Math.round(10 * q));
+
+  /** @param {number} s @param {number} total */
+  const widthAt = (s, total) =>
+    plan.width * (1 - plan.taper * clamp(total > 0 ? s / total : 0, 0, 1));
+  /** Column centres across the band, as fractions of the band's width. */
+  /** @type {number[]} */
+  const centres = [];
+  {
+    const filled = plan.cols.reduce((/** @type {number} */ a, /** @type {number} */ b) => a + b, 0);
+    const gapEach = plan.cols.length > 1 ? Math.max(0, 1 - filled) / (plan.cols.length - 1) : 0;
+    let acc = -0.5;
+    for (const c of plan.cols) {
+      centres.push(acc + c / 2);
+      acc += c + gapEach;
+    }
+  }
+
+  /** @type {any} */
+  let claspPath = null;
+  for (const dir of /** @type {(1|-1)[]} */ ([1, -1])) {
+    const path = strapPath(shim, plan, dir, 0);
+    const total = path.total;
+    if (dir < 0) claspPath = path;
+    // 1. THE MACHINED END PIECE. One solid sweep, as wide as the case face it
+    //    grows out of and nearly as tall, easing down to the bracelet's own
+    //    section. This is the join the whole feature is about: no gap, no
+    //    hinge, no spring bar — the case's silhouette continued.
+    const solid = Math.min(total * 0.4, tuck + plan.endLen);
+    mergeMesh(
+      band,
+      sweepTube(path, 0, solid, {
+        cols: secCols,
+        rowLen: 0.7 / q,
+        section: (a, _t, s) => {
+          const u = clamp(s / Math.max(0.001, solid), 0, 1);
+          const e = u * u * (3 - 2 * u);
+          const halfW = (widthAt(s, total) * (1 - 0.03 * e)) / 2;
+          const halfT = (plan.caseH + (plan.thick - plan.caseH) * e) / 2;
+          return superSection(a, halfW, halfT, 7);
+        },
+      }),
+    );
+    // 2. THE ARTICULATED ROWS. Per column, per row — the gaps between them are
+    //    what makes a bracelet read as a bracelet rather than a bent bar.
+    const first = solid + plan.gap;
+    const usable = Math.max(first + plan.pitch, total - (plan.clasp ? 13.5 : 0));
+    const last = plan.cols.length - 1;
+    for (let ci = 0; ci <= last; ci++) {
+      const cw = plan.cols[ci];
+      // Outer links are thinner and softer-edged than the centre; on both of
+      // these bracelets the middle body is the one that carries the polish.
+      const mid = ci === Math.floor(plan.cols.length / 2);
+      const hf = mid ? 1 : 0.82 - 0.06 * Math.abs(ci - last / 2);
+      const nf = mid ? 6 : 4.5;
+      for (let s0 = first; s0 + plan.pitch <= usable; s0 += plan.pitch) {
+        const s1 = s0 + plan.pitch - plan.gap;
+        mergeMesh(
+          band,
+          sweepTube(path, s0, s1, {
+            cols: linkCols,
+            rowLen: Math.max(0.9, (s1 - s0) / 3),
+            section: (a, _t, s) => {
+              const bw = widthAt(s, total);
+              const p = superSection(a, (bw * cw) / 2, (plan.thick * hf) / 2, nf);
+              p.u += centres[ci] * bw;
+              return p;
+            },
+          }),
+        );
+      }
+    }
+  }
+  // 3. THE CLASP. A concealed folding clasp on the octagon, a milled butterfly
+  //    on the PRX — both are a cover plate and a leaf under it at 6 o'clock,
+  //    which is what claspMesh draws, and both are steel whatever the case is.
+  if (claspPath) {
+    mergeMesh(hardware, claspMesh(plan, widthAt(claspPath.total, claspPath.total) + 0.5, q));
+  }
+
+  return {
+    band,
+    hardware,
+    wrist: showWrist ? wristMesh(caseEntry, { kind: "bracelet", id: "oyster" }, opts) : emptyMesh(),
+    // Steel, and it takes the CASE's own finish — a brushed Royal Oak has a
+    // brushed bracelet by construction, because they are the same billet.
+    materials: {
+      strap: { kind: "steel", color: "#9aa2ab", rough: 0.4, metal: 1, brush: true, useCaseFinish: true },
+      strapHardware: { kind: "steel", color: "#b6bec7", rough: 0.28, metal: 1, brush: false, useCaseFinish: true },
+      wrist: { kind: "leather", color: "#5b4231", rough: 0.94, metal: 0, brush: false, useCaseFinish: false },
+    },
+    wristInfo: { show: showWrist, r: w.r, cy: w.cy, len: Math.max(52, caseEntry.dims.dia * 2.2) },
+    plan,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -6013,6 +6581,15 @@ export function strapMaterialHint(strapEntry) {
  * @param {{ segments?: number, wrist?: boolean }} [opts]
  */
 export function strapAssembly(caseEntry, strapEntry, opts) {
+  // A case with an INTEGRATED bracelet has no strap to assemble: the band is
+  // part of the case, so it is built by its own function and the strap slot's
+  // choice does not reach the geometry at all (checkBuild says so in words).
+  // One branch, at the top, deliberately — see the integrated-bracelet section
+  // above for why this is a different construction rather than a strap family.
+  if (integratedBraceletOf(caseEntry)) {
+    const kit = integratedBraceletAssembly(caseEntry, opts);
+    if (kit) return kit;
+  }
   const showWrist = !(opts && opts.wrist === false);
   const materials = strapMaterialHint(strapEntry);
   const band = emptyMesh();
@@ -6496,6 +7073,90 @@ export const SHELL_ARCHETYPES = {
       { r: R * 0.90, y: T * 0.74 },
     ],
   },
+  // A SUBMARINER is not an SKX with a smaller number, which is what sharing
+  // the `diver` archetype made it (feedback #59). The differences that read
+  // from across a room are all vertical: the flank is a slab with almost no
+  // waist, a polished chamfer runs the whole length of it at about a third of
+  // the height, and the bezel seat sits HIGH so the bezel is a thin ring on
+  // top of a tall case rather than a deep shoulder wrapped around one. The
+  // creased points are the point — a Sub's side is flats meeting flats, and
+  // smoothing them is what made it read as the SKX's soft barrel.
+  sub: {
+    rim: 0.90,
+    seatF: 0.70,
+    topF: 0.875,
+    flank: (R, T, k) => [
+      { r: R * 0.965, y: T * 0.06 },
+      { r: R * 0.995, y: T * 0.20 },
+      // The chamfer: two creases 0.03 T apart, which is what a polished bevel
+      // between two brushed faces actually is.
+      { r: R * 1.0, y: T * 0.30 },
+      { r: R * 0.978, y: T * 0.33 },
+      { r: R * (0.985 + 0.01 * k.beefy), y: T * 0.58 },
+      { r: R * 0.975, y: T * 0.70 },
+    ],
+  },
+  // An EXPLORER II is a tool case, not a dress one: near-vertical slab sides,
+  // a hard chamfer where they meet the top, and a fixed 24-hour bezel that
+  // stands proud of the case rather than being flush with it. The top face is
+  // wide because that bezel is engraved and has to be readable.
+  tool: {
+    rim: 0.89,
+    seatF: 0.72,
+    topF: 0.86,
+    flank: (R, T) => [
+      { r: R * 0.97, y: T * 0.07 },
+      { r: R * 1.0, y: T * 0.22 },
+      { r: R * 1.0, y: T * 0.62 },
+      { r: R * 0.965, y: T * 0.72 },
+    ],
+  },
+  // An ALPINIST is thick for its width and its bezel is TALL — the internal
+  // compass ring lives under it, and that ring is why the case is 11 mm on a
+  // 39 mm body. A wide polished bevel from the flank up to the bezel is the
+  // other half of the read.
+  alpinist: {
+    rim: 0.86,
+    seatF: 0.58,
+    topF: 0.82,
+    flank: (R, T, k) => [
+      { r: R * 0.93, y: T * 0.08, s: true },
+      { r: R * 1.0, y: T * (0.24 + 0.03 * k.reach), s: true },
+      { r: R * 0.99, y: T * 0.40 },
+      { r: R * 0.93, y: T * 0.58 },
+    ],
+  },
+  // OCTAGON — the Royal Oak. The plan silhouette does the heavy lifting
+  // (`outlineFor("octagon")`); vertically it is the thinnest thing in the
+  // catalogue, with the bezel a broad sloping ring dropping to the crystal and
+  // a hard step where the case bottom tucks under. Flat, creased, no waist:
+  // the whole case is one wedge seen edge on.
+  octagon: {
+    rim: 0.83,
+    seatF: 0.52,
+    topF: 0.78,
+    flank: (R, T) => [
+      { r: R * 0.90, y: T * 0.06 },
+      { r: R * 0.985, y: T * 0.20 },
+      { r: R * 1.0, y: T * 0.34 },
+      { r: R * 0.995, y: T * 0.52 },
+    ],
+  },
+  // BARREL — the PRX. Same job as the octagon and a different answer: the
+  // sides are one continuous brushed sweep with a polished bevel at the top,
+  // the case is flat and low, and the fixed bezel is a rounded square rather
+  // than a ring.
+  barrel: {
+    rim: 0.85,
+    seatF: 0.56,
+    topF: 0.80,
+    flank: (R, T) => [
+      { r: R * 0.92, y: T * 0.06, s: true },
+      { r: R * 0.99, y: T * 0.22, s: true },
+      { r: R * 1.0, y: T * 0.40 },
+      { r: R * 0.97, y: T * 0.56 },
+    ],
+  },
   // A field case has no bezel at all: a straight taper with one bevel, and the
   // crystal running almost to the case edge.
   field: {
@@ -6594,8 +7255,17 @@ export function caseProfile(caseEntry, crystalEntry, crownEntry) {
     // the ledge between them is the bezel seat.
     profile.push({ r: towerR, y: bezelSeatY });
     profile.push({ r: towerR, y: bezelTopY });
+  } else if (caseEntry.bezel === "fixed") {
+    // A FIXED bezel is still a bezel: a ring standing proud of the case top
+    // and sloping down to the crystal. It used to be a flat annulus level
+    // with the crystal seat, which is why an Explorer II, an Alpinist and a
+    // Royal Oak all rendered with a plain white plate where their bezel
+    // should be — no edge to catch the light, nothing to read as a part.
+    // The rise is bounded so it cannot push the case over the catalogue's
+    // thickness (a test), and the crystal seat stays exactly where it was.
+    profile.push({ r: R * 0.985, y: bezelTopY + Math.min(0.5, T * 0.045) });
   } else {
-    profile.push({ r: R * (caseEntry.bezel === "fixed" ? 0.985 : 0.96), y: bezelTopY });
+    profile.push({ r: R * 0.96, y: bezelTopY });
   }
   profile.push({ r: crystalR, y: bezelTopY });
   // Inner wall, top-down: crystal seat well → dial/rehaut seat → bore →
@@ -7625,7 +8295,10 @@ export function buildMeshes(build, opts) {
     width: cs.dims.lugW,
     thickness: T * 0.4 - T * 0.09,
   };
-  for (const sx of [-1, 1]) {
+  // A case with an INTEGRATED bracelet has no lugs at all — that is what
+  // integrated means — so it gets none built (feedback #59).
+  const lugSides = integratedBraceletOf(cs) ? /** @type {number[]} */ ([]) : [-1, 1];
+  for (const sx of lugSides) {
     for (const sz of [-1, 1]) {
       const lug = lugMesh({
         x: sx * halfX,

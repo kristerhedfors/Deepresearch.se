@@ -362,7 +362,7 @@ describe("case and dial geometry", () => {
     }
   });
 
-  test("the six shell archetypes are genuinely different silhouettes", () => {
+  test("every shell archetype is a genuinely different silhouette", () => {
     // "Case models very whacky — most look the same." They shared one set of
     // profile ratios; only the PLAN outline differed, and three of the six
     // archetypes are round in plan, so a dress case and a diver drew one flank.
@@ -375,7 +375,11 @@ describe("case and dial geometry", () => {
       sigs.set(sig, id);
       assert.ok(arch.topF > arch.seatF, `${id}: the bezel top must be above its seat`);
     }
-    assert.equal(sigs.size, 6);
+    // One signature per archetype: the count is the table's own length so
+    // adding a shell (feedback #59 added five) cannot silently pass by
+    // duplicating an existing flank.
+    assert.equal(sigs.size, Object.keys(SHELL_ARCHETYPES).length);
+    assert.ok(sigs.size >= 11, "the archetype table has shrunk");
   });
 
   test("two cases that differ in the catalogue differ in the render", () => {
@@ -397,6 +401,10 @@ describe("case and dial geometry", () => {
     // The floating parts: four axis-aligned boxes starting at a flat 0.8 R,
     // which on any non-round silhouette left the block hanging beside the case.
     for (const c of CASES) {
+      // A case with an INTEGRATED bracelet has no lugs at all — see
+      // integratedBraceletOf; the bracelet-side geometry is checked in
+      // public/js/watch-cases.test.js.
+      if (c.integrated && c.integrated.bracelet) continue;
       const geo = caseProfile(c, CRYSTALS[0]);
       const outline = outlineFor(c.shell);
       const lug = verts(buildMeshes({ ...DEFAULT_BUILD, case: c.id }, { segments: 24 }).meshes.lugs);
@@ -515,6 +523,7 @@ describe("case and dial geometry", () => {
 
   test("the lug tip ends at the catalogue's lug-to-lug and publishes where a strap meets it", () => {
     for (const c of CASES) {
+      if (c.integrated && c.integrated.bracelet) continue;
       const r = buildMeshes({ ...DEFAULT_BUILD, case: c.id }, { segments: 24 });
       const tipZ = Math.max(...verts(r.meshes.lugs).map((p) => p[2]));
       assert.ok(Math.abs(tipZ - c.dims.l2l / 2) < 1e-6, `${c.id}: the lug tip is not at lug-to-lug/2`);
