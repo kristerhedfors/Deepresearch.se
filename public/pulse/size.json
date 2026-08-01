@@ -1,17 +1,17 @@
 {
-  "generated": "2026-07-27T10:57:28.520Z",
+  "generated": "2026-08-01T11:39:48.437Z",
   "totals": {
-    "files": 883,
-    "lines": 241163,
-    "chars": 12308588,
+    "files": 995,
+    "lines": 294182,
+    "chars": 17150160,
     "languages": 13,
     "dependencies": 0,
-    "devDependencies": 3
+    "devDependencies": 4
   },
   "dependencies": {
     "root": {
       "dependencies": 0,
-      "devDependencies": 2
+      "devDependencies": 3
     },
     "tests": {
       "dependencies": 0,
@@ -22,44 +22,51 @@
     {
       "ext": "js, mjs",
       "label": "JavaScript",
-      "files": 555,
-      "lines": 171190,
-      "chars": 7764450
+      "files": 648,
+      "lines": 214089,
+      "chars": 9687301
     },
     {
       "ext": "md",
       "label": "Markdown",
-      "files": 157,
-      "lines": 49186,
-      "chars": 3118190
+      "files": 169,
+      "lines": 56600,
+      "chars": 3645031
     },
     {
       "ext": "html",
       "label": "HTML",
-      "files": 21,
-      "lines": 8073,
-      "chars": 446619
+      "files": 22,
+      "lines": 8367,
+      "chars": 463211
+    },
+    {
+      "ext": "json, webmanifest",
+      "label": "JSON",
+      "files": 61,
+      "lines": 5424,
+      "chars": 2930034
     },
     {
       "ext": "css",
       "label": "CSS",
       "files": 5,
-      "lines": 5154,
-      "chars": 230835
-    },
-    {
-      "ext": "json, webmanifest",
-      "label": "JSON",
-      "files": 57,
-      "lines": 3433,
-      "chars": 576326
+      "lines": 5185,
+      "chars": 232087
     },
     {
       "ext": "(none)",
       "label": "Other",
-      "files": 22,
-      "lines": 2219,
-      "chars": 83307
+      "files": 23,
+      "lines": 2368,
+      "chars": 91366
+    },
+    {
+      "ext": "ts",
+      "label": "TypeScript",
+      "files": 1,
+      "lines": 534,
+      "chars": 21214
     },
     {
       "ext": "sh",
@@ -69,11 +76,11 @@
       "chars": 26203
     },
     {
-      "ext": "ts",
-      "label": "TypeScript",
-      "files": 1,
-      "lines": 516,
-      "chars": 20185
+      "ext": "toml",
+      "label": "TOML",
+      "files": 3,
+      "lines": 383,
+      "chars": 19600
     },
     {
       "ext": "py",
@@ -83,25 +90,18 @@
       "chars": 12156
     },
     {
-      "ext": "toml",
-      "label": "TOML",
-      "files": 2,
-      "lines": 258,
-      "chars": 13240
-    },
-    {
       "ext": "yml",
       "label": "YAML",
       "files": 8,
-      "lines": 191,
-      "chars": 5939
+      "lines": 273,
+      "chars": 9417
     },
     {
       "ext": "svg",
       "label": "SVG",
       "files": 2,
-      "lines": 120,
-      "chars": 10874
+      "lines": 136,
+      "chars": 12276
     },
     {
       "ext": "ini",
@@ -113,9 +113,9 @@
   ],
   "readme": {
     "file": "README.md",
-    "lines": 499,
-    "chars": 27849,
-    "words": 3987
+    "lines": 514,
+    "chars": 28913,
+    "words": 4142
   },
   "excluded": {
     "generatedArtifacts": 23

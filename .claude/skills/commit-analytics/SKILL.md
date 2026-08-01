@@ -244,7 +244,21 @@ last pass, so the current focus lands in the untagged tail. Check for that
 before curating anything — `--audit`'s untagged list, newest first, is the
 signal. The 2026-07-27 pass found the last three days almost entirely untagged
 and added five subjects (`arxiv`, `execenv`, `agents`, `starters`, `articles`),
-taking untagged from 13% to 10%. The steps:
+taking untagged from 13% to 10%. The 2026-08-01 pass repeated the finding on the
+five days since: three new subjects (`pubmed`, `science`, `watch`) plus three
+WIDENINGS of existing ones, 12% → 10%. Its lesson is that not every untagged
+class deserves a key — measure, then decide which of the two it is:
+
+- The Starship launch scenes belonged to `games` (the /space/ archive already
+  owned them), so the fix was widening that pattern, not a new hue.
+- CI commits belonged to `tests` — `ci\b`, `github action`, `browser suite` —
+  because CI *is* the test infrastructure. As a standalone candidate it scored
+  3 untagged commits, under the `publish` bar anyway.
+- `admin` silently missed *"…for admins"*: the group's trailing `\b` fails on
+  the plural. Fixed to `admins?`. Re-read your own patterns for that trap
+  whenever an obviously on-theme subject line comes back untagged.
+
+The steps:
 
 1. **Measure the candidate before adding it.** Draft the RegExp, run it over
    `git log --no-merges --pretty=%ad%x09%s`, and read every line it matches —
