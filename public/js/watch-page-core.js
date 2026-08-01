@@ -182,6 +182,7 @@ export const AXIS_GROUPS = [
   { id: "dial", name: { en: "Dial detail", sv: "Urtavlans detaljer" } },
   { id: "dialText", name: { en: "Dial text and logo", sv: "Urtavlans text och logga" } },
   { id: "wheels", name: { en: "Date and day wheels", sv: "Datum- och veckodagshjul" } },
+  { id: "hands", name: { en: "Hand detail", sv: "Visarnas detaljer" } },
   { id: "bezel", name: { en: "Bezel insert detail", sv: "Lünettinläggets detaljer" } },
   { id: "crystal", name: { en: "Crystal detail", sv: "Glasets detaljer" } },
   { id: "chapterRing", name: { en: "Chapter ring detail", sv: "Chapter ringens detaljer" } },
@@ -326,6 +327,9 @@ export function axisGroupsBySlot(build) {
 const GROUP_PREFIX = {
   dial: { en: [/^dial\s+/i], sv: [/^urtavlans\s+/i] },
   dialText: { en: [/^dial\s+/i], sv: [/^urtavlans\s+/i] },
+  // Deliberately anchored: "Seconds-hand colour" / "Sekundvisarens färg" must
+  // survive intact, or the two colour axes in this group become one word twice.
+  hands: { en: [/^hand\s+/i], sv: [/^visarnas\s+/i] },
   bezel: { en: [/^insert\s+/i], sv: [/^inläggets\s+/i] },
   crystal: { en: [/^crystal\s+/i], sv: [/^glasets\s+/i] },
   chapterRing: { en: [/^chapter ring\s+/i], sv: [/^chapter ringens\s+/i] },
