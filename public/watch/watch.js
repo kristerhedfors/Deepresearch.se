@@ -14,7 +14,7 @@ import {
   normalizeBuild,
   checkBuild,
   buildSpec,
-  sourcingFor,
+  caseKit,
   encodeBuild,
   decodeBuild,
   DEFAULT_BUILD,
@@ -31,6 +31,11 @@ import {
   axisGroupsBySlot,
   axisSummary,
   sanitizeTextValue,
+  sourcingView,
+  orderSummary,
+  bandLabel,
+  KEEP_ID,
+  SWAP_SUFFIX,
   TEXT_SLOT_MAXLEN,
 } from "/js/watch-page-core.js";
 import { mountWatch } from "/js/watch-render.js";
@@ -73,6 +78,28 @@ const UI = {
   specsLess: { en: "Hide the other numbers", sv: "Dölj övriga mått" },
   fit: { en: "Does it fit?", sv: "Passar det?" },
   src: { en: "Where to buy it", sv: "Var du köper delarna" },
+  // The sourcing table as ORDERS rather than as parts (feedback #59: "bezel
+  // insert, crystal, caseback and crown are practically never bought
+  // separately from the case").
+  srcComesWith: { en: "Comes in the same box", sv: "Ligger i samma låda" },
+  srcSeparate: { en: "Bought separately", sv: "Köps separat" },
+  srcOneOrder: { en: "one order", sv: "en beställning" },
+  srcOwnOrder: { en: "its own order", sv: "egen beställning" },
+  srcIncluded: { en: "included", sv: "ingår" },
+  srcIntegrated: { en: "part of the case", sv: "en del av boetten" },
+  srcKept: { en: "kept", sv: "behålls" },
+  srcNotFitted: { en: "not fitted", sv: "ej monterad" },
+  // Said ONCE under the nest, because the catalogue's per-row note says the
+  // same thing five times over and on a phone that buried the order list. It
+  // does NOT promise a tooltip: the full wording is on each row's `title`,
+  // which a touch device has no way to show.
+  srcSwapNote: {
+    en: "None of these is a separate order. Where no listing says which part the set ships, the figure is what swapping it would ADD — nothing at all if you keep what is in the box.",
+    sv: "Inget av det här är en separat beställning. Där ingen annons anger vilken del satsen levererar visar siffran vad ett byte skulle LÄGGA TILL — ingenting alls om du behåller det som ligger i lådan.",
+  },
+  // On a bundled slot's picker row: the case already brings one.
+  comesWithCase: { en: "comes with the case", sv: "följer med boetten" },
+  partOfCase: { en: "part of the case", sv: "en del av boetten" },
   // The picker's warning surface. `clash` takes the count: the same phrasing
   // reads correctly for one option and for thirteen in both languages.
   clash: {
@@ -208,7 +235,14 @@ const openDisclosures = new Set();
 function chipFor(slotKey, opt, selected, why) {
   const b = document.createElement("button");
   b.type = "button";
-  b.className = "chip" + (selected ? " on" : "") + (opt.none || opt.asListed ? " none" : "") + (why ? " soft" : "");
+  // "Keep what the case comes with" is styled as its own kind of answer, not as
+  // a variant of "none" — the two say opposite things about whether the part is
+  // fitted, and feedback #59 turned on exactly that distinction.
+  const isKeep = opt.id === KEEP_ID && opt.stock;
+  b.className = "chip" +
+    (selected ? " on" : "") +
+    (isKeep ? " keep" : opt.none || opt.asListed ? " none" : "") +
+    (why ? " soft" : "");
   const sw = swatchFor(slotKey, opt);
   if (sw) {
     const dot = document.createElement("span");
@@ -357,6 +391,18 @@ function slotRow(slot, saidWhy, groups) {
   const name = document.createElement("span");
   name.textContent = T(slot.name);
   label.appendChild(name);
+  // A slot the case set already fills says so on its own row, before anything
+  // is picked (feedback #59). The badge is a SOURCING fact and never gates
+  // anything — the whole catalogue is still offered underneath it.
+  const kit = caseKit(build.case) || { includes: [], integrated: [] };
+  if (Array.isArray(kit.includes) && kit.includes.includes(slot.key)) {
+    const badge = document.createElement("span");
+    const isIntegrated = Array.isArray(kit.integrated) && kit.integrated.includes(slot.key);
+    badge.className = "kitbadge" + (isIntegrated ? " fixed" : "");
+    badge.textContent = T(isIntegrated ? UI.partOfCase : UI.comesWithCase);
+    name.appendChild(document.createTextNode(" "));
+    name.appendChild(badge);
+  }
 
   if (field || slotIsText(slot.key)) {
     const pick = document.createElement("span");
@@ -621,44 +667,210 @@ function renderIssues() {
 // ---------------------------------------------------------------------------
 // Sourcing — the pre-indexed AliExpress table for exactly this build.
 
+/** The AliExpress search links for one sourcing row. */
+function srcLinks(row) {
+  if (!row || !row.links || !row.links.length) return null;
+  const links = document.createElement("div");
+  links.className = "links";
+  for (const l of row.links) {
+    const a = document.createElement("a");
+    a.href = l.url;
+    a.target = "_blank";
+    a.rel = "noopener nofollow";
+    a.textContent = l.q;
+    links.appendChild(a);
+  }
+  return links;
+}
+
+/**
+ * One numbered ORDER — a parcel. The number is the whole point: feedback #59
+ * was that the table drew every part as an equal priced row, so a reader could
+ * not tell that five of them arrive in the case's box.
+ *
+ * @param {number} n
+ * @param {any} row a `sourcingFor` row
+ * @param {{en:string,sv:string}} [tag] a short note under the title
+ */
+function orderBlock(n, row, tag) {
+  const el = document.createElement("div");
+  el.className = "src order";
+  const head = document.createElement("div");
+  head.className = "head";
+  const left = document.createElement("div");
+  if (n > 0) {
+    const num = document.createElement("span");
+    num.className = "onum";
+    num.textContent = String(n);
+    left.appendChild(num);
+  }
+  const title = document.createElement("strong");
+  title.textContent = T(row.slotName);
+  left.appendChild(title);
+  left.appendChild(document.createTextNode(` — ${T(row.name)}`));
+  if (row.brands && row.brands.length) {
+    const who = document.createElement("div");
+    who.className = "who";
+    who.textContent = row.brands.join(" · ");
+    left.appendChild(who);
+  }
+  if (tag) {
+    const t = document.createElement("div");
+    t.className = "who";
+    t.textContent = T(tag);
+    left.appendChild(t);
+  }
+  const price = document.createElement("div");
+  price.className = "price";
+  // An order's price is what the ORDER costs — the bundle band, not the part's
+  // listed band, on the one row where the two differ.
+  const band = row.bundlePriceUsd && row.bundlePriceUsd[1] > 0 ? row.bundlePriceUsd : row.priceUsd;
+  price.textContent = bandLabel(band, { approx: !!row.bundleApprox, lang });
+  head.append(left, price);
+  el.appendChild(head);
+  const links = srcLinks(row);
+  if (links) el.appendChild(links);
+  if (row.watchFor) {
+    const w = document.createElement("div");
+    w.className = "warn";
+    w.textContent = T(row.watchFor);
+    el.appendChild(w);
+  }
+  return el;
+}
+
+/**
+ * One part that arrives inside the case's parcel. Indented under the case, no
+ * number of its own, and priced by what it ADDS — nothing when it is what the
+ * box contains, and the honest "0 – 45 if you swap it" band where the set's own
+ * part is unrecorded (the range is the honesty; docs §2 forbids collapsing it).
+ *
+ * @param {any} b a `sourcingView().bundled` entry
+ */
+function nestedRow(b) {
+  const el = document.createElement("div");
+  el.className = "nested" + (b.kept ? " kept" : "") + (b.status === "replaces" ? " swap" : "");
+  const head = document.createElement("div");
+  head.className = "head";
+  const left = document.createElement("div");
+  const name = document.createElement("span");
+  name.className = "nslot";
+  name.textContent = T(b.slotName);
+  left.append(name, document.createTextNode(` ${T(b.name)}`));
+  // Exactly one tag, and "left out" is never allowed to read as "included" —
+  // that confusion is the thing this change exists to end.
+  const tag = b.omitted ? UI.srcNotFitted : b.integrated ? UI.srcIntegrated : b.kept ? UI.srcKept : null;
+  if (tag) {
+    const chip = document.createElement("span");
+    chip.className = "ntag" + (b.omitted ? " off" : "");
+    chip.textContent = T(tag);
+    left.appendChild(chip);
+  }
+  const price = document.createElement("div");
+  price.className = "price";
+  if (b.priceUsd && b.priceUsd[1] > 0) {
+    price.textContent = bandLabel(b.priceUsd, { approx: b.approx, lang });
+    // "(if you swap it)" is its own element so the phone layout can drop it —
+    // it is long enough at 390 px to force the part's name onto a second line,
+    // and the shared line above the nest already says what the number means.
+    if (b.status === "replaces" && b.priceUsd[0] === 0) {
+      const tail = document.createElement("span");
+      tail.className = "swapif";
+      tail.textContent = ` ${T(SWAP_SUFFIX)}`;
+      price.appendChild(tail);
+    }
+  } else {
+    // A part left OUT is not "included" — nobody is shipping it. It costs
+    // nothing either way, so the column carries a dash and the tag says which
+    // of the two nothings this is.
+    price.textContent = b.omitted ? "—" : T(UI.srcIncluded);
+  }
+  head.append(left, price);
+  el.appendChild(head);
+  // The catalogue already words WHY in both languages. Never re-word it here —
+  // but do not print it five times either: on a 390 px screen the same
+  // "…and the price band carries both ends" sentence under every bundled slot
+  // pushed the order list off the bottom of the panel. The rows whose note says
+  // something the price cannot (kept, included, integrated) keep it inline; the
+  // repeated swap sentence moves to the row's tooltip, and one shared line
+  // under the caption says it once for all of them.
+  if (b.note) {
+    el.title = T(b.note);
+    if (b.kept || b.status === "included") {
+      const note = document.createElement("div");
+      note.className = "nnote";
+      note.textContent = T(b.note);
+      el.appendChild(note);
+    }
+  }
+  return el;
+}
+
 function renderSourcing() {
   const host = $("sourcing");
   if (!host) return;
   host.innerHTML = "";
-  for (const row of sourcingFor(build)) {
-    const el = document.createElement("div");
-    el.className = "src";
-    const head = document.createElement("div");
-    head.className = "head";
-    const left = document.createElement("div");
-    left.innerHTML = `<strong>${T(row.slotName)}</strong> — ${T(row.name)}` +
-      (row.brands.length ? `<div class="who">${row.brands.join(" · ")}</div>` : "");
-    const price = document.createElement("div");
-    price.className = "price";
-    if (row.priceUsd) price.textContent = `USD ${row.priceUsd[0]}–${row.priceUsd[1]}`;
-    head.append(left, price);
-    el.appendChild(head);
-    if (row.links.length) {
-      const links = document.createElement("div");
-      links.className = "links";
-      for (const l of row.links) {
-        const a = document.createElement("a");
-        a.href = l.url;
-        a.target = "_blank";
-        a.rel = "noopener nofollow";
-        a.textContent = l.q;
-        links.appendChild(a);
+  const view = sourcingView(build);
+
+  // How many parcels this build costs, in one sentence, before anything else.
+  const lead = document.createElement("p");
+  lead.className = "srclead";
+  lead.textContent = T(orderSummary(build, view));
+  host.appendChild(lead);
+
+  let n = 0;
+  if (view.caseRow) {
+    const block = orderBlock(++n, view.caseRow);
+    if (view.kitSummary) {
+      const sum = document.createElement("div");
+      sum.className = "kitsum";
+      sum.textContent = T(view.kitSummary);
+      block.appendChild(sum);
+    }
+    if (view.bundled.length) {
+      const nest = document.createElement("div");
+      nest.className = "nestwrap";
+      const cap = document.createElement("div");
+      cap.className = "nestcap";
+      cap.textContent = `${T(UI.srcComesWith)} · ${T(UI.srcOneOrder)}`;
+      nest.appendChild(cap);
+      let anySwap = false;
+      for (const b of view.bundled) {
+        // A bundled slot the catalogue can price as a REAL swap is a parcel of
+        // its own, so it is listed with the orders below rather than in here.
+        if (b.row && b.row.separateOrder) continue;
+        if (b.status === "replaces") anySwap = true;
+        nest.appendChild(nestedRow(b));
       }
-      el.appendChild(links);
+      if (anySwap) {
+        const shared = document.createElement("div");
+        shared.className = "nshared";
+        shared.textContent = T(UI.srcSwapNote);
+        nest.insertBefore(shared, nest.children[1] || null);
+      }
+      if (nest.childElementCount > 1) block.appendChild(nest);
     }
-    if (row.watchFor) {
-      const w = document.createElement("div");
-      w.className = "warn";
-      w.textContent = T(row.watchFor);
-      el.appendChild(w);
-    }
-    host.appendChild(el);
+    host.appendChild(block);
   }
+
+  const rest = [
+    ...view.bundled.filter((b) => b.row && b.row.separateOrder).map((b) => ({ row: b.row, swap: true })),
+    ...view.separate.map((row) => ({ row, swap: false })),
+  ];
+  if (rest.length) {
+    const h = document.createElement("div");
+    h.className = "srcgroup";
+    h.textContent = `${T(UI.srcSeparate)} (${rest.length})`;
+    host.appendChild(h);
+    for (const r of rest) {
+      host.appendChild(orderBlock(++n, r.row, r.swap ? UI.srcOwnOrder : undefined));
+    }
+  }
+
+  // Anything the catalogue lists but nobody orders on its own (a part with a
+  // search index and no parcel of its own) still gets its links — the table is
+  // a research surface as well as a shopping list.
+  for (const row of view.loose) host.appendChild(orderBlock(0, row));
 }
 
 // ---------------------------------------------------------------------------

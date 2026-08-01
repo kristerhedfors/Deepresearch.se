@@ -3312,7 +3312,8 @@ export function stockPartFor(caseId, slotKey) {
 }
 
 /**
- * @typedef {{ slot: string, inKit: boolean, status: "separate"|"included"|"replaces",
+ * @typedef {{ slot: string, inKit: boolean, kept: boolean,
+ *             status: "separate"|"included"|"replaces",
  *             certain: boolean, separateOrder: boolean,
  *             priceUsd: [number, number] | null, approx: boolean,
  *             note: {en: string, sv: string} | null }} KitBuy
@@ -3367,15 +3368,44 @@ function kitBuyFor(ids, slotKey) {
   const band = chosen && chosen.ali && Array.isArray(chosen.ali.priceUsd)
     ? /** @type {[number, number]} */ ([chosen.ali.priceUsd[0], chosen.ali.priceUsd[1]])
     : null;
-  const base = { slot: slotKey, inKit, certain: true, approx: false, note: null };
+  const keeping = ids[slotKey] === KEEP_ID && slotCanKeep(slotKey);
+  const base = { slot: slotKey, inKit, kept: keeping && inKit, certain: true, approx: false, note: null };
   if (!inKit) {
     return { ...base, status: /** @type {"separate"} */ ("separate"), separateOrder: !!chosen, priceUsd: band };
   }
   const cs = caseById(caseId);
   const caseName = cs ? cs.name : { en: "case", sv: "boetten" };
   const [slotName] = slotNames([slotKey]);
-  // Left out, or left as the one the case comes with: nothing is ordered and
-  // nothing is paid, whichever of the two the reader meant.
+  // THE PROMOTION. Without an explicit "keep it" the model could only guess at
+  // intent, so a bundled slot whose stock part nobody publishes came back as a
+  // MAYBE: `replaces`, not certain, nothing-to-listed-high. Said out loud it is
+  // no longer a guess — this row is settled, costs nothing and is not a parcel.
+  // For the case back that is the difference between the only answer the tool
+  // could give (an uncertain 0–22 on every build) and a real zero.
+  if (keeping) {
+    const keptId = stockPartFor(caseId, slotKey);
+    const keptPart = keptId ? part(slotKey, keptId) : null;
+    return {
+      ...base,
+      status: /** @type {"included"} */ ("included"),
+      separateOrder: false,
+      priceUsd: /** @type {[number, number]} */ ([0, 0]),
+      note: keptPart
+        ? {
+          en: `Kept: the ${caseName.en} is sold with "${keptPart.name.en}", so this slot is filled before the parcel is opened.`,
+          sv: `Behålls: ${caseName.sv} säljs med "${keptPart.name.sv}", så den här platsen är fylld innan paketet öppnas.`,
+        }
+        : {
+          en: `Kept: the ${slotName.en} that comes in the ${caseName.en}'s box. No listing says which one it is, so the tool does not claim to know — but it is fitted, it is not an order, and it costs nothing.`,
+          sv: `Behålls: ${slotName.sv} som ligger i lådan med ${caseName.sv}. Ingen annons anger vilken, så verktyget påstår sig inte veta — men den är monterad, den är ingen beställning och den kostar inget.`,
+        },
+    };
+  }
+  // LEFT OUT. This used to be worded as "comes with the case", because before
+  // the keep option existed "none" had to cover both readings. It no longer
+  // does, and a slot the build deliberately leaves empty must not be described
+  // as filled — the price is the same nothing either way, and the difference is
+  // the whole point of the two choices.
   if (!chosen) {
     return {
       ...base,
@@ -3383,8 +3413,10 @@ function kitBuyFor(ids, slotKey) {
       separateOrder: false,
       priceUsd: /** @type {[number, number]} */ ([0, 0]),
       note: {
-        en: `Comes with the ${caseName.en}: the case set ships one, so there is nothing to order here.`,
-        sv: `Följer med ${caseName.sv}: boettsatsen innehåller en, så det finns inget att beställa här.`,
+        en: `Left out — which is not the same as keeping the set's own. Either way there is nothing to order and nothing to pay, but here the slot stays empty; the ${caseName.en}'s set still ships one.`,
+        // No article on the Swedish side: the slot names run across both
+        // genders, and naming the slot avoids the agreement entirely.
+        sv: `Utelämnad — vilket inte är samma sak som att behålla satsens egen. Hur som helst finns inget att beställa och inget att betala, men här står platsen tom; satsen till ${caseName.sv} innehåller ändå en.`,
       },
     };
   }
@@ -3583,11 +3615,16 @@ export const SLOTS = [
  * What "none" MEANS per slot, in the user's own words. These slots are
  * optional because a case very often ships the part already — so leaving one
  * out is a real purchase decision, not an incomplete build.
+ *
+ * "None" is NOT "keep the one the case comes with", and since feedback #59 the
+ * two are separate choices (see `KEEP_ID` below). These three say NOTHING IS
+ * FITTED, which is why "none" on a chapter ring still raises the floating-dial
+ * warning and always must.
  */
 const NONE_NAMES = {
-  insert: { en: "None — the bezel as it comes", sv: "Ingen — lünetten som den är" },
+  insert: { en: "None — no bezel insert fitted", sv: "Ingen — inget lünettinlägg monterat" },
   chapterRing: { en: "None — no chapter ring fitted", sv: "Ingen — ingen chapter ring monterad" },
-  crystal: { en: "None — the glass the case ships with", sv: "Inget — glaset som följer med boetten" },
+  crystal: { en: "None — no crystal bought", sv: "Inget — inget glas köpt" },
 };
 
 /**
@@ -3612,6 +3649,131 @@ const NONE_STANDINS = {
   insert: { id: "none", none: true, name: NONE_NAMES.insert, scale: "none", material: "steel", profile: "flat", base: "#8d949d", mark: "#5d646d", pip: "none", fits: ["skx", "skx013", "srp", "native"] },
   chapterRing: { id: "none", none: true, name: NONE_NAMES.chapterRing, base: "#9aa1aa", mark: "#6b727b", printing: "plain", finish: "polished", lume: "none", fits: ["skx", "skx013", "srp", "native"] },
   crystal: { id: "none", none: true, name: NONE_NAMES.crystal, material: "as-supplied", profile: "flat", edge: "bevel", arSide: "underside", forInsert: "any", dome: 0, tint: "#e0e7ef", ar: "none", cyclops: false, fits: ["skx", "skx013", "srp", "native"] },
+};
+
+// ---------------------------------------------------------------------------
+// "KEEP WHAT THE CASE COMES WITH" (feedback #59).
+//
+// A case set arrives with a crystal, a case back, a crown, usually a bezel
+// insert and always a chapter ring. Until this option existed a build had no
+// way to SAY that it was keeping them. The three optional slots could only say
+// "none", which means NOTHING IS FITTED — a different statement, and the right
+// one to keep raising the floating-dial warning — and the crown and the case
+// back could say neither, so every build named a part for them and every build
+// therefore read as five parcels.
+//
+// The two must not be confused in either direction, so they are separate ids
+// with separate meanings all the way down:
+//
+//   "none"  → the part is absent. `omitted.<slot>` is true, and every rule that
+//             keys off an absent part (R5, the SKX013's mandatory ring) fires.
+//   "stock" → the part is FITTED and came in the case's box. `kept.<slot>` is
+//             true, `omitted.<slot>` is NOT, so no absence rule fires — and
+//             nothing is ordered and nothing is paid.
+//
+// It names no SKU, because no listing publishes one. `caseKit` knows which
+// SLOTS a set fills and `stockPartFor` can name the part for the CROWN alone,
+// so a kept slot resolves to the real crown where the catalogue can say and to
+// a deliberately unmarked stand-in everywhere else — the same "not
+// established" honesty the rest of this file keeps. What the option buys is
+// certainty about the ORDER, which is what the report was actually about: a
+// kept slot is nothing to buy, full stop, where a named part on a bundled slot
+// stays the uncertain "nothing … its listed price" the price band carries as a
+// range.
+
+/** The head option id meaning "keep the one the case set ships". */
+export const KEEP_ID = "stock";
+
+/**
+ * Whether a slot can say "keep what the case comes with" at all. Exactly the
+ * slots a case set can fill — nothing else has a box to come out of.
+ * @param {string} slotKey
+ */
+export function slotCanKeep(slotKey) {
+  return KIT_SLOTS.includes(slotKey);
+}
+
+/**
+ * Whether a slot can say it for THIS build: the case has to actually include
+ * it. A case with no rotating bezel ships no insert, so there is nothing to
+ * keep.
+ * @param {Record<string, string> | null | undefined} build
+ * @param {string} slotKey
+ */
+export function canKeepStock(build, slotKey) {
+  if (!slotCanKeep(slotKey)) return false;
+  const ids = normalizeBuild(build);
+  return caseKit(ids.case).includes.includes(slotKey);
+}
+
+/** What "keep it" is called per slot. Bilingual, like everything user-facing. */
+const KEEP_NAMES = {
+  insert: { en: "Keep the case's own bezel insert", sv: "Behåll boettens eget lünettinlägg" },
+  chapterRing: { en: "Keep the case's own chapter ring", sv: "Behåll boettens egen chapter ring" },
+  crystal: { en: "Keep the case's own crystal", sv: "Behåll boettens eget glas" },
+  crown: { en: "Keep the case's own crown", sv: "Behåll boettens egen krona" },
+  caseback: { en: "Keep the case's own case back", sv: "Behåll boettens egen boettbotten" },
+};
+
+/** Why you would, in one sentence — the chip's tooltip. */
+const KEEP_BLURBS = {
+  insert: {
+    en: "The case set ships a bezel insert. Keep it: nothing to order, nothing to pay, and the tool stops guessing which one you meant.",
+    sv: "Boettsatsen innehåller ett lünettinlägg. Behåll det: inget att beställa, inget att betala, och verktyget slutar gissa vilket du menade.",
+  },
+  chapterRing: {
+    en: "The ring that came with the case, fitted. This is NOT the same as leaving the ring out — the dial still has something to sit against.",
+    sv: "Ringen som följde med boetten, monterad. Det är INTE samma sak som att utelämna ringen — urtavlan har fortfarande något att vila mot.",
+  },
+  crystal: {
+    en: "Keep the glass in the box. No listing says which one it is, so the tool does not pretend to know — it just stops charging you for a second one.",
+    sv: "Behåll glaset i lådan. Ingen annons anger vilket det är, så verktyget låtsas inte veta — det slutar bara ta betalt för ett till.",
+  },
+  crown: {
+    en: "The crown the case is sold with. Every case entry records whether that crown is signed, so this is the one bundled part the catalogue can actually name.",
+    sv: "Kronan boetten säljs med. Varje boettpost anger om den kronan är signerad, så det är den enda medföljande delen katalogen faktiskt kan namnge.",
+  },
+  caseback: {
+    en: "The back that screws onto the case you are buying. Keep it and the build loses a parcel; name one instead and it is a real swap.",
+    sv: "Bottnen som skruvas på boetten du köper. Behåll den så tappar bygget ett paket; namnge en annan så är det ett verkligt byte.",
+  },
+};
+
+/**
+ * The synthetic "keep it" option for a bundled slot. Like `noneOption` it is
+ * NOT in the catalogue list — nothing is sold called "stock" — so
+ * `part(slot, "stock")` answers null and the resolver stands it in.
+ * @param {string} slotKey
+ */
+export function keepOption(slotKey) {
+  const name = KEEP_NAMES[/** @type {keyof typeof KEEP_NAMES} */ (slotKey)];
+  if (!name) return null;
+  return {
+    id: KEEP_ID,
+    name,
+    stock: true,
+    blurb: KEEP_BLURBS[/** @type {keyof typeof KEEP_BLURBS} */ (slotKey)],
+  };
+}
+
+/**
+ * Stand-ins for a kept slot whose part the sources do not name. They are
+ * deliberately UNMARKED — a plain bezel with no printed scale, an untinted
+ * flat crystal, a plain solid back — because drawing a ceramic Pepsi or a
+ * sapphire exhibition window here would be inventing the very thing the
+ * catalogue refuses to invent. The crown never reaches these: `stockPartFor`
+ * names it from the case entry.
+ */
+const KEEP_STANDINS = {
+  insert: { id: KEEP_ID, stock: true, name: KEEP_NAMES.insert, scale: "none", material: "steel", profile: "flat", base: "#8d949d", mark: "#5d646d", pip: "none", fits: ["skx", "skx013", "srp", "native"] },
+  chapterRing: { id: KEEP_ID, stock: true, name: KEEP_NAMES.chapterRing, base: "#9aa1aa", mark: "#6b727b", printing: "plain", finish: "polished", lume: "none", fits: ["skx", "skx013", "srp", "native"] },
+  crystal: { id: KEEP_ID, stock: true, name: KEEP_NAMES.crystal, material: "as-supplied", profile: "flat", edge: "bevel", arSide: "underside", forInsert: "any", dome: 0, tint: "#e0e7ef", ar: "none", cyclops: false, fits: ["skx", "skx013", "srp", "native"] },
+  crown: { id: KEEP_ID, stock: true, name: KEEP_NAMES.crown, style: "coin", texture: "coin", signed: false, mount: "screw-down", diaMm: 7.0, heightMm: 4.9, fits: ["skx", "skx013", "srp", "native"] },
+  // Solid, because a set that shipped an exhibition back would be the listing's
+  // headline feature and CASE_DISPLAY_BACKS records those separately. R4's "no
+  // exhibition back was found listed" warning must not fire for a kept back,
+  // and with `display: false` it cannot.
+  caseback: { id: KEEP_ID, stock: true, name: KEEP_NAMES.caseback, type: "solid", display: false, finish: "brushed", profile: "standard", mount: "screw-down", engraving: "none", heightDeltaMm: 0, fits: ["skx", "skx013", "srp", "native"] },
 };
 
 /**
@@ -3763,6 +3925,10 @@ export function part(slotKey, id) {
   // "none" is an ordinary option id ("no engraving", "no visible stitch") and
   // resolves like any other.
   if (id === "none" && slot && slot.optional) return null;
+  // Same contract for "keep what the case comes with": it is a decision about
+  // the ORDER, not a catalogue part, so it is a miss here and the resolver
+  // stands it in (`KEEP_STANDINS`, or the real crown via `stockPartFor`).
+  if (id === KEEP_ID && slot && slotCanKeep(slotKey)) return null;
   return slotOptions(slotKey).find((o) => o && o.id === id) || null;
 }
 
@@ -3823,6 +3989,15 @@ export function normalizeBuild(build) {
     const wanted = typeof src[slot.key] === "string" ? src[slot.key] : "";
     if (slot.optional && wanted === "none") {
       out[slot.key] = "none";
+      continue;
+    }
+    // "Keep what the case comes with" survives normalisation on any slot a
+    // case set CAN fill, whatever case the build currently names — a permalink
+    // that says "keep the crown" must not lose that by being opened on a
+    // different case. Whether this case actually includes the slot is
+    // `canKeepStock`'s question, and it belongs to the picker, not here.
+    if (wanted === KEEP_ID && slotCanKeep(slot.key)) {
+      out[slot.key] = KEEP_ID;
       continue;
     }
     out[slot.key] = part(slot.key, wanted) ? wanted : DEFAULT_BUILD[/** @type {keyof typeof DEFAULT_BUILD} */ (slot.key)];
@@ -4103,10 +4278,24 @@ export function resolveBuild(build) {
   const parts = {};
   /** @type {Record<string, boolean>} */
   const omitted = {};
+  /** @type {Record<string, boolean>} */
+  const kept = {};
   for (const slot of SLOTS) {
     const found = part(slot.key, ids[slot.key]);
     if (found) {
       parts[slot.key] = found;
+      continue;
+    }
+    // KEPT IS NOT OMITTED. A part that came in the case's box is FITTED, so it
+    // must never set `omitted` — that flag is what every absence rule reads,
+    // and a kept chapter ring holding the dial up is the exact opposite of no
+    // chapter ring at all.
+    if (ids[slot.key] === KEEP_ID && slotCanKeep(slot.key)) {
+      kept[slot.key] = true;
+      const stockId = stockPartFor(ids.case, slot.key);
+      parts[slot.key] = (stockId && part(slot.key, stockId))
+        || KEEP_STANDINS[/** @type {keyof typeof KEEP_STANDINS} */ (slot.key)]
+        || slotOptions(slot.key)[0];
       continue;
     }
     omitted[slot.key] = true;
@@ -4123,7 +4312,7 @@ export function resolveBuild(build) {
   parts.dayWheel = part("dayWheel", ids.dayWheel || "as-supplied") || DAY_WHEELS[0];
   parts.aperture = DAY_DATE_APERTURE;
   parts.kit = caseKit(ids.case);
-  return { ids, parts, omitted };
+  return { ids, parts, omitted, kept };
 }
 
 // ---------------------------------------------------------------------------
@@ -4142,7 +4331,7 @@ export function resolveBuild(build) {
  * @returns {{ ok: boolean, issues: Issue[] }}
  */
 export function checkBuild(build) {
-  const { ids, parts, omitted } = resolveBuild(build);
+  const { ids, parts, omitted, kept } = resolveBuild(build);
   /** @type {Issue[]} */
   const issues = [];
   const mv = parts.movement;
@@ -4445,7 +4634,10 @@ export function checkBuild(build) {
 
   // R9 — the crown does not cross SKX007 ↔ SRPD. This platform lumps the two
   // together, so the honest thing is to say which one you have to check.
-  if (cs.platform === "skx" && ids.crown && ids.crown !== DEFAULT_BUILD.crown) {
+  // It is a warning about BUYING the wrong crown, so a crown kept from the
+  // case's own box (feedback #59) cannot trip it — that crown came off this
+  // case and fits it by construction.
+  if (cs.platform === "skx" && ids.crown && !kept.crown && ids.crown !== DEFAULT_BUILD.crown) {
     issues.push({
       level: "note",
       slot: "crown",
@@ -4905,6 +5097,9 @@ export function sourcingFor(build) {
       bundlePriceUsd: buy.priceUsd,
       bundleApprox: buy.approx,
       bundleNote: buy.note,
+      // The user said "keep the one in the box" for this slot (feedback #59) —
+      // a settled row, not the maybe a named part leaves behind.
+      keptWithCase: !!buy.kept,
       /** @type {{ includes: string[], tier: string, src: string, approx?: boolean, integrated?: string[] } | null} */
       kit: null,
       /** @type {{en: string, sv: string} | null} */

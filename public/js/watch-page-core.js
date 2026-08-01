@@ -38,19 +38,32 @@ const cat = /** @type {any} */ (core);
 /** The id an optional slot takes when the buyer leaves it out. */
 export const NONE_ID = "none";
 
-/** What "leave it out" is called, per slot, in both languages. */
+/**
+ * The id a bundled slot takes when the buyer keeps what the case set ships
+ * (feedback #59). Distinct from NONE_ID all the way down: "none" is ABSENT,
+ * "stock" is FITTED AND NOT BOUGHT, and the compatibility engine reads the
+ * difference (a missing chapter ring lets the dial float forward; a kept one
+ * does not).
+ */
+export const KEEP_ID = "stock";
+
+/**
+ * What "leave it out" is called, per slot, in both languages — the fallback
+ * for a catalogue with no wording of its own. These say NOTHING IS FITTED;
+ * "keep what the case comes with" is the separate `KEEP_ID` choice.
+ */
 const NONE_NAMES = {
   insert: {
-    en: "None — the case's own bezel",
-    sv: "Ingen — boettets egen lünett",
+    en: "None — no bezel insert fitted",
+    sv: "Ingen — inget lünettinlägg monterat",
   },
   chapterRing: {
     en: "None — no chapter ring",
     sv: "Ingen — ingen chapter ring",
   },
   crystal: {
-    en: "None — comes with the case",
-    sv: "Ingen — följer med boettet",
+    en: "None — no crystal bought",
+    sv: "Inget — inget glas köpt",
   },
   default: {
     en: "None",
@@ -60,16 +73,16 @@ const NONE_NAMES = {
 
 const NONE_BLURBS = {
   insert: {
-    en: "Skip the separately bought insert and keep whatever bezel the case ships with.",
-    sv: "Hoppa över det separat köpta inlägget och behåll lünetten som följer med boettet.",
+    en: "Leave the bezel bare. To keep the insert the case set ships instead, choose “keep the case's own bezel insert”.",
+    sv: "Lämna lünetten bar. För att i stället behålla inlägget som boettsatsen levererar, välj ”behåll boettens eget lünettinlägg”.",
   },
   chapterRing: {
-    en: "Leave the chapter ring out. Plenty of mod builds never fit one.",
-    sv: "Utelämna chapter ringen. Många moddbyggen monterar aldrig någon.",
+    en: "Leave the chapter ring out entirely. Plenty of mod builds never fit one — but note that this is not the same as keeping the one in the case's box.",
+    sv: "Utelämna chapter ringen helt. Många moddbyggen monterar aldrig någon — men observera att det inte är samma sak som att behålla den som ligger i boettens låda.",
   },
   crystal: {
-    en: "Keep the crystal the case set came with instead of buying one separately.",
-    sv: "Behåll glaset som följde med boettsatsen i stället för att köpa ett separat.",
+    en: "Buy no crystal at all. To keep the glass the case set came with, choose “keep the case's own crystal”.",
+    sv: "Köp inget glas alls. För att behålla glaset som följde med boettsatsen, välj ”behåll boettens eget glas”.",
   },
   default: {
     en: "Leave this part out of the build.",
@@ -459,6 +472,42 @@ function withNoneRow(slotKey, rows) {
 }
 
 /**
+ * Guarantee the "keep what the case comes with" row on a slot the case set
+ * fills (feedback #59).
+ *
+ * It lives in the PAGE layer, next to `withNoneRow`, rather than in the
+ * catalogue's own `compatibleOptions`: it is a statement about how you ORDER
+ * the build, and the catalogue's option list is what the chat parser, the MCP
+ * tools and the /api/watch/catalog endpoint enumerate as buyable parts. The
+ * catalogue still understands the id everywhere it matters — normalisation,
+ * the permalink, `resolveBuild`, `kitBuy` — it just does not list it as
+ * something for sale, because it is the opposite of that.
+ *
+ * The row is annotated by asking the catalogue, not by asserting: keeping a
+ * fitted part cannot break a build today, but if the compatibility engine ever
+ * thinks otherwise the picker says so rather than hiding it.
+ *
+ * @param {string} slotKey
+ * @param {Record<string,string>|null|undefined} build
+ * @param {AnnotatedOption[]} rows
+ * @returns {AnnotatedOption[]}
+ */
+function withKeepRow(slotKey, build, rows) {
+  if (typeof cat.canKeepStock !== "function" || typeof cat.keepOption !== "function") return rows;
+  let option = null;
+  try {
+    option = cat.canKeepStock(build, slotKey) ? cat.keepOption(slotKey) : null;
+  } catch {
+    option = null;
+  }
+  if (!option) return rows;
+  if (rows.some((r) => r.option && r.option.id === option.id)) return rows;
+  const judged = localAnnotate(slotKey, build, [...optionsForSlot(slotKey), option]);
+  const annotated = judged[judged.length - 1];
+  return [annotated || { option, compatible: true, why: null, level: null }, ...rows];
+}
+
+/**
  * Every option for a slot, annotated against the REST of the current build.
  *
  * Prefers the catalogue's own `compatibleOptions` when it exists; otherwise
@@ -478,10 +527,10 @@ export function annotateOptions(slotKey, build) {
     }
     if (Array.isArray(rows) && rows.length) {
       const tidy = /** @type {AnnotatedOption[]} */ (rows.map(tidyRow).filter(Boolean));
-      if (tidy.length) return withNoneRow(slotKey, tidy);
+      if (tidy.length) return withKeepRow(slotKey, build, withNoneRow(slotKey, tidy));
     }
   }
-  return withNoneRow(slotKey, localAnnotate(slotKey, build));
+  return withKeepRow(slotKey, build, withNoneRow(slotKey, localAnnotate(slotKey, build)));
 }
 
 /**
@@ -497,11 +546,14 @@ export function annotateOptions(slotKey, build) {
  *
  * @param {string} slotKey
  * @param {Record<string,string>|null|undefined} build
+ * @param {any[]} [candidates] the options to judge; the slot's own list by
+ *   default. Passing a list is how a synthetic head option the catalogue does
+ *   not sell (the "keep it" row) gets judged by the same rules as the parts.
  * @returns {AnnotatedOption[]}
  */
-export function localAnnotate(slotKey, build) {
+export function localAnnotate(slotKey, build, candidates) {
   const base = core.normalizeBuild(build);
-  const opts = optionsForSlot(slotKey);
+  const opts = Array.isArray(candidates) && candidates.length ? candidates : optionsForSlot(slotKey);
   const trials = opts.map((opt) => {
     /** @type {any[]} */
     let errs = [];
@@ -548,6 +600,205 @@ export function groupOptions(rows) {
   for (const r of rows || []) (r && r.compatible ? fits : clashes).push(r);
   return { fits, clashes };
 }
+
+// ---------------------------------------------------------------------------
+// THE SOURCING TABLE, SHAPED AS ORDERS RATHER THAN AS PARTS (feedback #59).
+//
+// > "Bezel insert, crystal, caseback and crown are practically never bought
+// > separately from the case. … Chapter rings are usually not bought
+// > separately and are integrated with the case."
+//
+// The catalogue answers that per slot (`kitBuy`), and the page's job is to make
+// the answer countable: the case and everything that arrives in its box is ONE
+// line with the rest nested under it, and what is left is the actual order
+// list. The number a reader wants is `parcels` — how many separate things they
+// have to buy — and before this it was invisible because every part was drawn
+// as an equal row with its own price.
+//
+// Nothing here filters or gates. A slot the catalogue prices, it prices; a slot
+// it cannot, it says so.
+
+/**
+ * @typedef {{ slot: string, slotName: Bi, name: Bi, status: string,
+ *             kept: boolean, omitted: boolean, integrated: boolean,
+ *             priceUsd: [number, number] | null, approx: boolean,
+ *             note: Bi | null, row: any }} BundledSlot
+ */
+
+/** The catalogue's kit facts for a build, feature-detected. @param {any} ids */
+function kitFor(ids) {
+  if (typeof cat.caseKit !== "function") return { includes: [], integrated: [], tier: "unknown" };
+  try {
+    return cat.caseKit(ids.case) || { includes: [], integrated: [] };
+  } catch {
+    return { includes: [], integrated: [] };
+  }
+}
+
+/**
+ * The sourcing table as ORDERS: the case with its set nested under it, then
+ * every part that is genuinely its own parcel.
+ *
+ * @param {Record<string,string>|null|undefined} build
+ * @returns {{ parcels: number, orderSlots: string[], caseRow: any, kit: any,
+ *             kitSummary: Bi|null, bundled: BundledSlot[], separate: any[],
+ *             loose: any[] }}
+ */
+export function sourcingView(build) {
+  const rows = typeof cat.sourcingFor === "function" ? cat.sourcingFor(build) || [] : [];
+  const ids = core.normalizeBuild(build);
+  const kit = kitFor(ids);
+  const integrated = Array.isArray(kit.integrated) ? kit.integrated : [];
+  const bySlot = new Map(rows.map((/** @type {any} */ r) => [r.slot, r]));
+  const caseRow = bySlot.get("case") || null;
+
+  // Everything the case set fills, in the catalogue's own order — INCLUDING the
+  // slots that have no sourcing row at all because nothing is being bought for
+  // them (kept, or left out). Those are exactly the lines that prove the point,
+  // so dropping them for want of a price would be the wrong economy.
+  /** @type {BundledSlot[]} */
+  const bundled = [];
+  let resolved = null;
+  try {
+    resolved = core.resolveBuild(build);
+  } catch {
+    resolved = null;
+  }
+  for (const slot of Array.isArray(kit.includes) ? kit.includes : []) {
+    const row = bySlot.get(slot) || null;
+    const buy = typeof cat.kitBuy === "function" ? cat.kitBuy(build, slot) : null;
+    const def = /** @type {any} */ (slotDef(slot));
+    let name = row ? row.name : null;
+    if (!name && resolved && resolved.parts[slot]) {
+      // No row means no `ali` block, which means a stand-in: its own name is
+      // the honest label ("Keep the case's own crystal", "None — …").
+      name = resolved.parts[slot].name || null;
+    }
+    bundled.push({
+      slot,
+      slotName: def && def.name ? def.name : { en: slot, sv: slot },
+      name: name || { en: "", sv: "" },
+      status: buy ? buy.status : "included",
+      kept: !!(buy && buy.kept),
+      // Left out is not the same as kept, and the table must not price an
+      // absent part as "included" — that is the confusion this whole change
+      // exists to end.
+      omitted: !!(resolved && resolved.omitted && resolved.omitted[slot]),
+      integrated: integrated.includes(slot),
+      priceUsd: buy ? buy.priceUsd : null,
+      approx: !!(buy && buy.approx),
+      note: buy ? buy.note : null,
+      row,
+    });
+  }
+
+  const bundledSlots = new Set(bundled.map((b) => b.slot));
+  /** @type {any[]} */
+  const separate = [];
+  /** @type {any[]} */
+  const loose = [];
+  for (const row of rows) {
+    if (row.slot === "case" || bundledSlots.has(row.slot)) continue;
+    (row.separateOrder ? separate : loose).push(row);
+  }
+
+  // A bundled slot can still be its own parcel — a KNOWN stock part swapped for
+  // a named one is a real order (`separateOrder`), and that is the one case
+  // where a nested row counts.
+  const nestedOrders = bundled.filter((b) => b.row && b.row.separateOrder);
+  /** @type {string[]} */
+  const orderSlots = [];
+  if (caseRow) orderSlots.push("case");
+  for (const b of nestedOrders) orderSlots.push(b.slot);
+  for (const r of separate) orderSlots.push(r.slot);
+  return {
+    parcels: orderSlots.length,
+    orderSlots,
+    caseRow,
+    kit,
+    kitSummary: caseRow ? caseRow.kitSummary || null : null,
+    bundled,
+    separate,
+    loose,
+  };
+}
+
+/** Join a list of names the way each language does. @param {string[]} list @param {string} and */
+function joinList(list, and) {
+  if (list.length <= 1) return list.join("");
+  return `${list.slice(0, -1).join(", ")} ${and} ${list[list.length - 1]}`;
+}
+
+/**
+ * The one sentence at the top of the sourcing table: how many separate things
+ * this build actually costs you, and which. That number is what feedback #59
+ * came down to — the old table drew eleven equal priced rows and never said
+ * that five of them arrive in the case's box.
+ *
+ * @param {Record<string,string>|null|undefined} build
+ * @param {{ parcels: number, orderSlots: string[], bundled: BundledSlot[], caseRow: any }} [view]
+ * @returns {Bi}
+ */
+export function orderSummary(build, view) {
+  const v = view || sourcingView(build);
+  /** @type {Bi[]} */
+  const named = v.orderSlots
+    .filter((/** @type {string} */ s) => s !== "case")
+    .map((/** @type {string} */ s) => {
+      const def = /** @type {any} */ (slotDef(s));
+      return def && def.name ? def.name : { en: s, sv: s };
+    });
+  const withCase = v.bundled.length;
+  const n = v.parcels;
+  const en = [
+    `This build is ${n} ${n === 1 ? "order" : "separate orders"}`,
+    withCase
+      ? `: the case set, which brings ${withCase} more ${withCase === 1 ? "part" : "parts"} with it`
+      : ": the case",
+    named.length ? `, plus ${joinList(named.map((x) => String(x.en).toLowerCase()), "and")}.` : ".",
+  ].join("");
+  const sv = [
+    `Det här bygget är ${n} ${n === 1 ? "beställning" : "separata beställningar"}`,
+    withCase
+      ? `: boettsatsen, som har med sig ${withCase} ${withCase === 1 ? "del till" : "delar till"}`
+      : ": boetten",
+    named.length ? `, plus ${joinList(named.map((x) => String(x.sv).toLowerCase()), "och")}.` : ".",
+  ].join("");
+  return { en, sv };
+}
+
+/**
+ * A price band written the way the rest of the page writes numbers: `≈` in
+ * front of anything read off a listing rather than a spec sheet (docs §2 rule
+ * 2), and a band that starts at nothing kept as a BAND — "0 – 45 if you swap
+ * it" — because collapsing it to one number is exactly the invented price the
+ * catalogue refuses to publish.
+ *
+ * @param {[number, number] | null | undefined} band
+ * @param {{ approx?: boolean, swap?: boolean, lang?: string }} [opts]
+ * @returns {string}
+ */
+export function bandLabel(band, opts) {
+  const o = opts || {};
+  const sv = o.lang === "sv";
+  if (!Array.isArray(band)) return "";
+  const [low, high] = band;
+  if (!(high > 0)) return sv ? "ingår" : "included";
+  const lead = o.approx ? "≈ " : "";
+  if (low === high) return `${lead}USD ${low}`;
+  const range = `${lead}USD ${low}–${high}`;
+  if (low === 0 && o.swap) return `${range} ${SWAP_SUFFIX[sv ? "sv" : "en"]}`;
+  return range;
+}
+
+/**
+ * The tail on a nothing-to-high band. Exported because the page renders it as
+ * its own element — at 390 px it is long enough to push the part's name onto a
+ * second line, and the shared line above the nest already says what it means,
+ * so the page hides it there rather than dropping the number.
+ * @type {Bi}
+ */
+export const SWAP_SUFFIX = { en: "(if you swap it)", sv: "(om du byter ut den)" };
 
 // ---------------------------------------------------------------------------
 // Surprise me (#57: "the surprise me button should not pair incompatible
