@@ -2037,6 +2037,133 @@ export const HAND_SETS = [
 ];
 
 // ---------------------------------------------------------------------------
+// THE HAND AXES (feedback #59: "Same goes with hands").
+//
+// A HAND_SET above is a listed COMBINATION, exactly as a DIALS row is: it
+// ships with its shapes, its length, its colour, its seconds-hand colour and
+// its lume as one bundle. The four lists below carry the five axes that
+// decompose that bundle — the colour list serves both the set and the seconds
+// hand — the way DIAL_COLOURS / DIAL_FINISHES / DIAL_INDEX_STYLES /
+// DIAL_LUME_OPTIONS decompose a dial, so "Mercedes hands, but gold" and "a
+// snowflake set with a red seconds hand" are sayable. Every one is an
+// OVERRIDE: left alone, the set's own values are what render, which is what
+// keeps an old permalink resolving to the watch it always did.
+//
+// The SHAPE is deliberately NOT an axis. A hand set's silhouette is what the
+// set IS — Mercedes, snowflake, plongeur — the same way a dial's `design` is
+// not decomposed into "hour marker shape" and "logo position".
+
+/**
+ * Hand COLOURS. One list serves both the set's colour and the seconds hand,
+ * because a hand is plated or painted the same way whichever of the three it
+ * is — but a colour found ONLY as a seconds-hand accent says so in `roles`,
+ * and `checkBuild` warns rather than blocks, the same posture a dial colour
+ * outside its design family gets.
+ */
+export const HAND_COLOURS = [
+  { id: "steel", name: { en: "Polished steel", sv: "Polerat stål" }, hex: "#e2e7ee", roles: ["set", "second"], src: "namoki" },
+  { id: "white", name: { en: "White", sv: "Vit" }, hex: "#f2f5f9", roles: ["set", "second"], src: "namoki" },
+  { id: "cream", name: { en: "Cream / fauxtina", sv: "Gräddvit / fauxtina" }, hex: "#d9c9a4", roles: ["set", "second"], src: "namoki" },
+  { id: "black", name: { en: "Black", sv: "Svart" }, hex: "#1b1d21", roles: ["set", "second"], src: "namoki" },
+  { id: "gold", name: { en: "Gold", sv: "Guld" }, hex: "#c8a253", roles: ["set", "second"], src: "namoki" },
+  { id: "rose-gold", name: { en: "Rose gold", sv: "Roséguld" }, hex: "#c98f6f", roles: ["set", "second"], src: "namoki" },
+  { id: "blue", name: { en: "Blue", sv: "Blå" }, hex: "#2f4d8f", roles: ["set", "second"], src: "namoki" },
+  {
+    id: "red", name: { en: "Red", sv: "Röd" }, hex: "#c33b32", roles: ["second"], src: "namoki",
+    note: {
+      en: "Found listed as a seconds-hand colour, not as a full hour-and-minute set. A red seconds hand is one of the commonest single-part mods; red hour hands are not sold as a stock item.",
+      sv: "Hittad listad som sekundvisarfärg, inte som ett helt tim- och minutset. En röd sekundvisare är en av de vanligaste enskilda moddarna; röda timvisare säljs inte som lagervara.",
+    },
+  },
+  {
+    id: "orange", name: { en: "Orange", sv: "Orange" }, hex: "#d2661f", roles: ["second"], src: "namoki",
+    note: {
+      en: "A seconds-hand accent, sold with Monster-style and orange-dial sets.",
+      sv: "En accentfärg för sekundvisaren, säljs med Monster-liknande set och orangea tavlor.",
+    },
+  },
+  {
+    id: "yellow", name: { en: "Yellow", sv: "Gul" }, hex: "#e0bd3a", roles: ["second"], src: "namoki",
+    note: {
+      en: "A seconds-hand accent only.",
+      sv: "Endast en accentfärg för sekundvisaren.",
+    },
+  },
+];
+
+/**
+ * Hand FINISHES. `material` names an entry in the renderer's material table,
+ * which is the whole mechanism: a finish changes how the metal RESPONDS to
+ * light, not what shape it is. Where the market sells the finish and the
+ * colour as one product ("PVD black hands", "gold hands"), the finish carries
+ * its own `color` — used ONLY when the colour axis is left as the set comes,
+ * so an explicit colour always wins.
+ *
+ * PLATING IS NOT ITS OWN MATERIAL, and that is a finding rather than a
+ * simplification: gold-plated hands drawn with the `gold` spec came out PALER
+ * than the same colour over `hands-polished`, because `gold` reflects more of
+ * the environment (0.78 against 0.62) and a thin hand facing a bright sky then
+ * washes to white. A plated hand IS a polished hand; the tint belongs in the
+ * colour, where the renderer puts it into the specular F0.
+ */
+export const HAND_FINISHES = [
+  { id: "polished", name: { en: "Polished", sv: "Polerad" }, material: "hands-polished", src: "namoki" },
+  { id: "brushed", name: { en: "Brushed", sv: "Borstad" }, material: "steel-brushed", src: "namoki" },
+  { id: "blasted", name: { en: "Sandblasted / matte", sv: "Blästrad / matt" }, material: "steel-blasted", src: "namoki" },
+  { id: "pvd-black", name: { en: "PVD black", sv: "PVD svart" }, material: "pvd-black", color: "#1b1d21", src: "namoki" },
+  { id: "gold-plated", name: { en: "Gold plated", sv: "Guldpläterad" }, material: "hands-polished", color: "#c8a253", src: "namoki" },
+  { id: "rose-gold-plated", name: { en: "Rose gold plated", sv: "Roséguldpläterad" }, material: "hands-polished", color: "#c98f6f", src: "namoki" },
+  {
+    id: "lacquered", name: { en: "Lacquered / painted", sv: "Lackerad / målad" }, material: "dial-gloss", src: "namoki",
+    note: {
+      en: "A coloured hand is painted, not plated — which is also the only way the render can show a seconds hand in a different colour from the rest of the set. See effectiveHands.",
+      sv: "En färgad visare är målad, inte pläterad — vilket också är enda sättet renderingen kan visa en sekundvisare i en annan färg än resten av setet. Se effectiveHands.",
+    },
+  },
+  {
+    id: "blued", name: { en: "Heat-blued", sv: "Blånerad" }, material: "hands-polished", color: "#2f4d8f", src: "community",
+    note: {
+      en: "Sold for dress builds. Most aftermarket \"blued\" hands are painted or PVD rather than flame-blued, and no listing found says which — so this is a colour and a polish, not a claim about the process.",
+      sv: "Säljs för klädklockebyggen. De flesta \"blånerade\" eftermarknadsvisare är målade eller PVD-behandlade snarare än eldblånerade, och ingen hittad annons säger vilket — så det här är en färg och en polering, inte ett påstående om processen.",
+    },
+  },
+];
+
+/**
+ * Hand LUME as a choosable axis, not a fixed property of the listing — the
+ * exact shape DIAL_LUME_OPTIONS has. "full-lume" is excluded: it is a whole
+ * dial that glows, which is not a thing a hand can be.
+ */
+export const HAND_LUME_OPTIONS = Object.keys(LUMES)
+  .filter((id) => id !== "full-lume")
+  .map((id) => ({
+    id,
+    name: LUMES[/** @type {keyof typeof LUMES} */ (id)].name,
+    src: LUMES[/** @type {keyof typeof LUMES} */ (id)].src || "namokiDials",
+  }));
+
+/**
+ * Hand LENGTH, expressed as the DIAL the set was cut for — which is how the
+ * market actually sells it, and the only framing that invents no millimetre:
+ * every figure here is a DIAL_DIAMETERS row already in this catalogue, with
+ * that row's own source and its own `approx` flag. The scale is the ratio to
+ * the 28.5 mm standard, so a set cut for a 31.8 mm dial reaches 11.6% further
+ * on an SKX — which is exactly the overhang `checkBuild` warns about, and
+ * until this axis existed nothing in the catalogue could reach that rule.
+ */
+export const HAND_LENGTHS = DIAL_DIAMETERS.map((d) => ({
+  id: d.id,
+  name: {
+    en: `Cut for a ${d.mm} mm dial`,
+    sv: `Skuren för en ${String(d.mm).replace(".", ",")} mm urtavla`,
+  },
+  forDialMm: d.mm,
+  scale: d.mm / DIAL_DIA,
+  approx: !!d.approx,
+  src: d.src,
+}));
+
+// ---------------------------------------------------------------------------
 // BEZEL INSERTS, CHAPTER RINGS, CRYSTALS, CROWNS, CASEBACKS, STRAPS.
 // `fits` is a list of platform ids — this is what the compatibility engine
 // actually checks, rather than the case's silhouette.
@@ -3374,6 +3501,11 @@ export const AXIS_SLOTS = [
   { key: "crystalEdge", list: "CRYSTAL_EDGES", over: "crystal", group: "crystal", name: { en: "Crystal edge", sv: "Glasets kant" }, asListed: { en: "As the crystal comes", sv: "Som glaset levereras" } },
   { key: "crystalAr", list: "CRYSTAL_ARS", over: "crystal", group: "crystal", name: { en: "AR coating", sv: "Antireflexbehandling" }, asListed: { en: "As the crystal comes", sv: "Som glaset levereras" } },
   { key: "chapterPrinting", list: "CHAPTER_PRINTINGS", over: "chapterRing", group: "chapterRing", name: { en: "Chapter ring printing", sv: "Chapter ringens tryck" }, asListed: { en: "As the ring comes", sv: "Som ringen levereras" } },
+  { key: "handColor", list: "HAND_COLOURS", over: "hands", group: "hands", name: { en: "Hand colour", sv: "Visarnas färg" }, asListed: { en: "As the hands come", sv: "Som visarna levereras" } },
+  { key: "handSecondColor", list: "HAND_COLOURS", over: "hands", group: "hands", name: { en: "Seconds-hand colour", sv: "Sekundvisarens färg" }, asListed: { en: "As the hands come", sv: "Som visarna levereras" } },
+  { key: "handFinish", list: "HAND_FINISHES", over: "hands", group: "hands", name: { en: "Hand finish", sv: "Visarnas finish" }, asListed: { en: "As the hands come", sv: "Som visarna levereras" } },
+  { key: "handLume", list: "HAND_LUME_OPTIONS", over: "hands", group: "hands", name: { en: "Hand lume", sv: "Visarnas lysmassa" }, asListed: { en: "As the hands come", sv: "Som visarna levereras" } },
+  { key: "handLength", list: "HAND_LENGTHS", over: "hands", group: "hands", name: { en: "Hand length", sv: "Visarnas längd" }, asListed: { en: "As the hands come", sv: "Som visarna levereras" } },
   { key: "casebackFinish", list: "CASEBACK_FINISHES", over: "caseback", group: "caseback", name: { en: "Case back finish", sv: "Boettbottnens finish" }, asListed: { en: "As the case back comes", sv: "Som boettbottnen levereras" } },
   { key: "casebackEngraving", list: "CASEBACK_ENGRAVINGS", over: "caseback", group: "caseback", name: { en: "Case back engraving", sv: "Boettbottnens gravyr" }, asListed: { en: "As the case back comes", sv: "Som boettbottnen levereras" } },
   { key: "braceletType", list: "BRACELET_TYPES", over: "strap", group: "strap", name: { en: "Bracelet type", sv: "Länktyp" }, asListed: { en: "As the bracelet comes", sv: "Som länken levereras" }, kind: "bracelet" },
@@ -3432,6 +3564,10 @@ const CATALOG = {
   CRYSTAL_EDGES,
   CRYSTAL_ARS,
   CHAPTER_PRINTINGS,
+  HAND_COLOURS,
+  HAND_FINISHES,
+  HAND_LUME_OPTIONS,
+  HAND_LENGTHS,
   CASEBACK_FINISHES,
   CASEBACK_ENGRAVINGS,
   BRACELET_TYPES,
@@ -3608,6 +3744,83 @@ function axisPick(ids, key) {
 function axisKind(key) {
   const axis = AXIS_SLOTS.find((a) => a.key === key);
   return axis && axis.kind ? axis.kind : null;
+}
+
+/**
+ * The hand set as it will actually look, with every axis override applied.
+ *
+ * The fields the renderer and the geometry builders already read — `color`,
+ * `secondColor`, `gmtColor`, `len`, `shapes` and the BOOLEAN `lume` — keep
+ * exactly the types they had, so decomposing hands changed nothing
+ * downstream. What is new is `material` (the renderer's material-table id for
+ * the chosen finish, defaulting to the literal the renderer used to hard-code)
+ * and the resolved axis ids, which the spec sheet and the UI read.
+ *
+ * TWO RULES WORTH KNOWING BEFORE CHANGING THIS:
+ *
+ * 1. A finish may carry a colour, because the market sells "PVD black hands"
+ *    and "gold hands" as one product rather than as a surface and a tint. An
+ *    explicit hand colour always beats it.
+ * 2. Recolouring the set carries the SECONDS hand with it only when the set
+ *    is monochrome. A snowflake's blue seconds hand and a GMT set's red
+ *    24-hour hand are part of what that set IS; asking for gold hands must
+ *    not silently delete the contrast you chose the set for. Say
+ *    `handSecondColor` to move it.
+ *
+ * @param {any} hands
+ * @param {Record<string, string>} ids
+ */
+function effectiveHands(hands, ids) {
+  const out = { ...hands };
+  const contrast = !!hands.secondColor && hands.secondColor !== hands.color;
+
+  const finish = axisPick(ids, "handFinish");
+  out.finishId = finish ? finish.id : "polished";
+
+  const colour = axisPick(ids, "handColor");
+  const tint = colour ? colour.hex : finish && finish.color ? finish.color : null;
+  if (colour) out.colourId = colour.id;
+  if (tint && tint !== out.color) {
+    out.color = tint;
+    if (!contrast) out.secondColor = tint;
+  }
+
+  const second = axisPick(ids, "handSecondColor");
+  if (second) {
+    out.secondColourId = second.id;
+    out.secondColor = second.hex;
+  }
+
+  // WHY A TWO-COLOUR SET GOES LACQUERED. The renderer builds ONE material for
+  // the whole hand group and overrides only the per-hand ALBEDO — and a metal
+  // has no diffuse term, so on `hands-polished` a per-hand colour reaches
+  // nothing. Verified in the browser before this line existed: a red seconds
+  // hand rendered white. Lacquer is a dielectric, so every hand then shows its
+  // own colour, and it is what a coloured hand actually is. Only a build that
+  // asked for a hand colour is affected; an explicit finish still wins, and an
+  // untouched build keeps the material the renderer used to hard-code.
+  const twoTone = !!(colour || second) && out.secondColor !== out.color;
+  out.material = finish && finish.material
+    ? finish.material
+    : twoTone ? "dial-gloss" : "hands-polished";
+
+  // Lume stays a BOOLEAN on the part — the renderer switches the glow on it,
+  // and "none" is a truthy string. The compound is carried beside it.
+  const lume = axisPick(ids, "handLume");
+  out.lumeId = lume ? lume.id : null;
+  if (lume) out.lume = lume.id !== "none";
+
+  const length = axisPick(ids, "handLength");
+  out.lengthId = length ? length.id : null;
+  if (length) {
+    out.lengthForDialMm = length.forDialMm;
+    out.lengthApprox = !!length.approx;
+    /** @type {Record<string, number>} */
+    const scaled = {};
+    for (const key of Object.keys(hands.len)) scaled[key] = hands.len[key] * length.scale;
+    out.len = scaled;
+  }
+  return out;
 }
 
 /**
@@ -3854,6 +4067,7 @@ export function resolveBuild(build) {
   parts.insert = effectiveInsert(parts.insert, ids);
   parts.crystal = effectiveCrystal(parts.crystal, ids);
   parts.chapterRing = effectiveChapterRing(parts.chapterRing, ids);
+  parts.hands = effectiveHands(parts.hands, ids);
   parts.caseback = effectiveCaseback(parts.caseback, ids);
   parts.strap = effectiveStrap(parts.strap, ids);
   parts.dateWheel = part("dateWheel", ids.dateWheel || "as-supplied") || DATE_WHEELS[0];
@@ -4025,14 +4239,17 @@ export function checkBuild(build) {
   }
 
   // --- hand length against the dial. All NHxx share the tubes, so this is the
-  //     only geometric constraint hands actually have.
+  //     only geometric constraint hands actually have. `hs` is the EFFECTIVE
+  //     set, so the length axis is judged here rather than only the listing's
+  //     own proportion — and `handLength` is named in `slots` so the axis's
+  //     own dropdown carries the warning symbol.
   const dialR = plat.dialDia / 2;
   const minuteMm = hs.len.minute * dialR;
   if (minuteMm > dialR * 0.95) {
     issues.push({
       level: "warning",
       slot: "hands",
-      slots: ["hands", "dial"],
+      slots: ["hands", "handLength", "dial"],
       en: "The minute hand reaches past the printed minute track — it will overhang the chapter ring.",
       sv: "Minutvisaren når förbi minutskalan — den kommer att hänga över chapter ringen.",
     });
@@ -4041,7 +4258,7 @@ export function checkBuild(build) {
     issues.push({
       level: "warning",
       slot: "hands",
-      slots: ["hands", "dial"],
+      slots: ["hands", "handLength", "dial"],
       en: "The minute hand stops well short of the minute track, which reads as a mismatched set.",
       sv: "Minutvisaren når långt ifrån minutskalan, vilket ser ut som ett felmatchat set.",
     });
@@ -4050,9 +4267,21 @@ export function checkBuild(build) {
     issues.push({
       level: "note",
       slot: "dial",
-      slots: ["dial", "hands"],
+      slots: ["dial", "hands", "handLume"],
       en: "Lumed hands over a dial with no lume: it will glow as four floating marks in the dark.",
       sv: "Lysande visare över en tavla utan lysmassa: i mörkret lyser bara visarna, som lösa märken.",
+    });
+  }
+  // --- a hand colour found only as a seconds-hand accent. Same posture as a
+  //     dial colour outside its design family: warned, never blocked.
+  const handColourPick = axisPick(ids, "handColor");
+  if (handColourPick && Array.isArray(handColourPick.roles) && !handColourPick.roles.includes("set")) {
+    issues.push({
+      level: "warning",
+      slot: "handColor",
+      slots: ["handColor", "hands"],
+      en: `${handColourPick.name.en} was found listed only as a SECONDS-hand colour, not as a full hour-and-minute set. Put it on the seconds hand instead, or expect to have the pair painted.`,
+      sv: `${handColourPick.name.sv} hittades listad bara som färg på SEKUNDVISAREN, inte som ett helt tim- och minutset. Lägg den på sekundvisaren i stället, eller räkna med att få paret målat.`,
     });
   }
 

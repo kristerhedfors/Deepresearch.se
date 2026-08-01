@@ -1575,7 +1575,7 @@ export function mountWatch(canvas, opts) {
       chapterRing: parts.chapterRing
         ? whiteAlbedo(materialFor("chapter-ring", parts.chapterRing.base))
         : materialFor("steel-radial", parts.finish.color),
-      hands: materialFor("hands-polished", parts.hands.color),
+      hands: materialFor(parts.hands.material || "hands-polished", parts.hands.color),
       crystal: crystalMaterial(parts.crystal),
     };
     // A bracelet inherits the case's colour AND its finish family, but its
