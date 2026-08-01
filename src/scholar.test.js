@@ -72,6 +72,37 @@ test("scholarIntent fires on the peer-reviewed record, in English and Swedish", 
   }
 });
 
+// Feedback #54 (2026-07-30): a question asking whether something is PROVEN is
+// asking for the peer-reviewed record, and no gate in the repo fired on the
+// word. The reported question is the first case here, verbatim.
+test("scholarIntent fires on the proven family, minus the commercial idiom", () => {
+  for (const s of [
+    "Spirulina proven health benefits",
+    "is creatine scientifically proven",
+    "what proof is there that cold plunges help recovery",
+    "unproven claims about collagen supplements",
+    "clinically tested treatments for tinnitus",
+    "evidence-based approaches to insomnia",
+    "Bevisade hälsoeffekter av spirulina",
+    "Är kreatin vetenskapligt bevisat?",
+    "Vilka påvisade effekter har kalla bad?",
+    "Finns det evidensbaserad behandling för migrän?",
+    "Är nyttan styrkt?",
+  ]) {
+    assert.equal(scholarIntent(s), true, `should fire: ${s}`);
+  }
+  // The one research word with a heavy commercial idiom — that sentence is
+  // not an ask for the literature, in either language.
+  for (const s of [
+    "our team has a proven track record in logistics",
+    "a tried and tested deployment process",
+    "we use proven technology only",
+    "en beprövad metod för att baka bröd",
+  ]) {
+    assert.equal(scholarIntent(s), false, `should not fire: ${s}`);
+  }
+});
+
 test("scholarIntent stays out of questions with nothing scholarly in them", () => {
   for (const s of [
     "",

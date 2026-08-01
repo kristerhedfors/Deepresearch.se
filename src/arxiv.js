@@ -154,8 +154,11 @@ const ARXIV_EXPLICIT =
 // (invariant 6), parity-tested in arxiv.test.js.
 // NB: no \b before "över-"/"rön" style vowels — JS \b is ASCII-word-based and
 // never matches before "ö"/"å"/"ä", so a leading boundary there is dead code.
+// NB "scientific" carries its `-ally` suffix explicitly: the trailing \b makes
+// a bare \bscientific\b a NON-match inside "scientifically", so "is this
+// scientifically proven" reached no literature leg at all (feedback #54).
 const ARXIV_LITERATURE =
-  /\bpapers?\b|\bpublications?\b|\bpublished\b|\bstud(?:y|ies)\b|\bliterature\b|\bpeer[-\s]?review(?:ed)?\b|\bcitations?\b|\bcited\b|\bbibliograph|\bjournals?\b|\bthes[ie]s\b|\bdissertations?\b|\bresearch(?:ers?)?\b|\bacademic\b|\bscientific\b/i;
+  /\bpapers?\b|\bpublications?\b|\bpublished\b|\bstud(?:y|ies)\b|\bliterature\b|\bpeer[-\s]?review(?:ed)?\b|\bcitations?\b|\bcited\b|\bbibliograph|\bjournals?\b|\bthes[ie]s\b|\bdissertations?\b|\bresearch(?:ers?)?\b|\bacademic\b|\bscientific(?:ally)?\b/i;
 // NB definite forms are load-bearing: "artiklarna" (definite plural) is the
 // most natural way to ask this in Swedish and an `\bartiklar?\b` alternation
 // silently misses it — the parity test caught exactly that.
@@ -166,10 +169,17 @@ const ARXIV_LITERATURE_SV =
 // "evidence for", "state of the art". On its own this is not enough (a
 // question about the latest iPhone is not a literature question) — it fires
 // only together with a technical/scientific topic word below.
+// "proven" and its family sit HERE rather than in ARXIV_LITERATURE: asking
+// whether something is proven is research phrasing, not a word that names the
+// published record, so it needs the topic partner below ("is post-quantum
+// cryptography proven secure" fires; "our proven track record" does not).
+// Reported by feedback #54 — before this, "proven" fired no gate in the repo.
 const ARXIV_RESEARCH_INTENT =
-  /\blatest\b|\brecent(?:ly)?\b|\bnewest\b|\bnew\b|\badvances?\b|\bbreakthroughs?\b|\bstate[-\s]of[-\s]the[-\s]art\b|\bsota\b|\bevidence\b|\bfindings?\b|\bresults?\b|\bbenchmarks?\b|\bablations?\b|\boutperform(?:s|ed|ing)?\b|\bcompar(?:e|es|ed|ison)\b|\bsmarter\b|\bbetter than\b|\bhow many\b|\bwork together\b|\bemerg(?:e|es|ing|ent)\b/i;
+  /\blatest\b|\brecent(?:ly)?\b|\bnewest\b|\bnew\b|\badvances?\b|\bbreakthroughs?\b|\bstate[-\s]of[-\s]the[-\s]art\b|\bsota\b|\bevidence\b|\bevidence[-\s]?based\b|\bproven\b|\bproved\b|\bproves\b|\bunproven\b|\bdisproven\b|\bproofs?\b|\bempirical(?:ly)?\b|\bvalidated\b|\bfindings?\b|\bresults?\b|\bbenchmarks?\b|\bablations?\b|\boutperform(?:s|ed|ing)?\b|\bcompar(?:e|es|ed|ison)\b|\bsmarter\b|\bbetter than\b|\bhow many\b|\bwork together\b|\bemerg(?:e|es|ing|ent)\b/i;
+// NB no \b before "överträffar"/"påvisad" style vowels — see the note above
+// ARXIV_LITERATURE_SV; a leading boundary there never matches.
 const ARXIV_RESEARCH_INTENT_SV =
-  /\bsenaste\b|\bnyaste\b|\bnya\b|\bframsteg(?:et|en)?\b|\bgenombrott(?:et|en)?\b|\bforskningsläget\b|\bbevis(?:et|en)?\b|\bresultat(?:et|en)?\b|\bmätningar?\b|\bjämför(?:a|else|elser|t)?\b|\bpresterar\b|\böverträffar\b|\bbättre än\b|\bsmartare\b|\bhur många\b|\bsamarbeta(?:r|de)?\b|\btillsammans\b|\bframväxande\b/i;
+  /\bsenaste\b|\bnyaste\b|\bnya\b|\bframsteg(?:et|en)?\b|\bgenombrott(?:et|en)?\b|\bforskningsläget\b|\bbevis(?:et|en)?\b|\bbevisad(?:e|t)?\b|\bbevisat\b|\bbevisar\b|påvisad(?:e|t)?\b|\bevidensbaserad(?:e|t)?\b|\bstyrkt(?:a)?\b|\bbelagd(?:a|t)?\b|\bresultat(?:et|en)?\b|\bmätningar?\b|\bjämför(?:a|else|elser|t)?\b|\bpresterar\b|överträffar\b|\bbättre än\b|\bsmartare\b|\bhur många\b|\bsamarbeta(?:r|de)?\b|\btillsammans\b|\bframväxande\b/i;
 
 // Technical/scientific topic vocabulary — the co-occurrence partner for
 // ARXIV_RESEARCH_INTENT. Deliberately the vocabulary of arXiv's own archives

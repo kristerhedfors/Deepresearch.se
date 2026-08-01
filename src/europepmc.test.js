@@ -68,6 +68,40 @@ test("europepmcIntent", async (t) => {
     ]) assert.equal(europepmcIntent(s), true, s);
   });
 
+  // Feedback #54 (2026-07-30). The verbatim question was "Spirulina proven
+  // health benefits" and it reached NO literature leg: "proven" fired no gate
+  // in the repo, and health/medicine was not life-science subject matter here,
+  // so the answer came from supplement-marketing pages. Both halves are pinned.
+  await t.test("health and medicine are life-science subject matter", () => {
+    for (const s of [
+      "Spirulina proven health benefits",
+      "what does the research say about vitamin D supplementation",
+      "studies on the side effects of statins",
+      "is there evidence for this cancer treatment",
+      "peer-reviewed papers on gut microbiome and diet",
+      "Bevisade hälsoeffekter av spirulina",
+      "finns det evidensbaserad behandling för migrän",
+      "vad säger studierna om biverkningar av kosttillskott",
+      "forskning om blodtryck och kost",
+    ]) assert.equal(europepmcIntent(s), true, s);
+  });
+
+  await t.test("the proven family is a research word, in both languages", () => {
+    for (const s of [
+      "is turmeric proven to reduce inflammation",
+      "unproven claims about probiotics",
+      "clinically tested supplements for cholesterol",
+      "är omega-3 bevisat bra för hjärtat",
+      "styrkt effekt av vitamin C på immunförsvaret",
+      "påvisade biverkningar av läkemedlet",
+    ]) assert.equal(europepmcIntent(s), true, s);
+    // Still a COMBINATION gate: a proven word with no life-science subject,
+    // and a health word with no research framing, both stay silent.
+    assert.equal(europepmcIntent("our team has a proven track record"), false);
+    assert.equal(europepmcIntent("book me a doctor's appointment"), false);
+    assert.equal(europepmcIntent("boka en tid hos läkaren"), false);
+  });
+
   await t.test("needs both halves for the generic combination gate", () => {
     // A life-science word with no research framing, and research framing with
     // no life-science subject, both stay silent.
