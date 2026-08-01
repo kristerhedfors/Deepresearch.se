@@ -93,6 +93,29 @@ test("arxivIntent", async (t) => {
     }
   });
 
+  // Feedback #54 (2026-07-30): "whenever asking for proven or scientific you
+  // should of course search arxiv as well". "scientific" fired; "proven" fired
+  // nothing anywhere in the repo, and "scientifically" was a non-match for the
+  // bare \bscientific\b it looks like it should hit.
+  await t.test("asking whether something is PROVEN counts as research phrasing", () => {
+    for (const s of [
+      "is post-quantum cryptography proven secure",
+      "has this reasoning benchmark result been proved",
+      "what proof is there that quantization hurts llms",
+      "empirically validated retrieval methods",
+      "är kvantdatorer bevisat bättre",
+      "finns det bevisade framsteg för språkmodeller",
+      "är påvisad nytta av finjustering",
+    ]) assert.equal(arxivIntent(s), true, s);
+    // "scientifically" is its own token — the suffix has to be spelled out.
+    assert.equal(arxivIntent("is creatine scientifically proven"), true);
+    assert.equal(arxivIntent("scientifically speaking"), true);
+    // …but the proven family still needs a scientific topic to ride on, so the
+    // commercial idiom cannot reach arXiv.
+    assert.equal(arxivIntent("our team has a proven track record"), false);
+    assert.equal(arxivIntent("a proven recipe for cinnamon buns"), false);
+  });
+
   // Invariant 6: Swedish forms carry the same breadth as English.
   await t.test("Swedish language parity", () => {
     const pairs = [

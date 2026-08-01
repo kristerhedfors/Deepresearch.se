@@ -117,14 +117,25 @@ const LETTER = "[\\p{L}]*";
 
 /** Terms that name the life-science literature as a body of work, in either
  * language. Definite and plural Swedish forms included ("studien", "studierna",
- * "forskningen"), which is how Swedish actually asks. */
+ * "forskningen"), which is how Swedish actually asks.
+ *
+ * The PROVEN family is here for a reported miss (feedback #54, 2026-07-30):
+ * "Spirulina proven health benefits" reached no literature leg at all and was
+ * answered from supplement-marketing pages. "proven"/"proof"/"evidence-based"
+ * is how a lay question asks for the published record, and nothing in this
+ * repo's gates fired on it \u2014 `evidence` did, `proven` did not. Note
+ * "scientific" needs its `-ally` suffix spelled out: the E boundary makes
+ * "scientifically" a non-match for a bare "scientific". */
 const RESEARCH_WORD = new RegExp(
   B +
     "(?:stud(?:y|ies)|papers?|publications?|literature|research|evidence|reviews?|preprints?" +
-    "|peer[-\\s]?review(?:ed)?|findings?|trials?" +
+    "|peer[-\\s]?review(?:ed)?|findings?|trials?|scientific(?:ally)?|clinically" +
+    "|proven|proved|proves|unproven|disproven|proofs?|evidence[-\\s]?based|empirical(?:ly)?" +
     "|studie|studien|studier|studierna|artikel|artikeln|artiklar|artiklarna" +
     "|publikation|publikationer|publicerad[et]?|litteratur|litteraturen" +
     "|forskning|forskningen|forskningsl\u00e4get|bevis|bel\u00e4gg|\u00f6versikt|granskning" +
+    "|vetenskaplig[at]?|vetenskapligt|bevisad[et]?|bevisade|bevisat|p\u00e5visad[et]?|p\u00e5visade" +
+    "|evidensbaserad[et]?|styrkt[a]?|belagd[at]?|dokumenterad[et]?" +
     "|sakkunniggransk" + LETTER + "|f\u00f6rhandstryck|r\u00f6n)" +
     E,
   "iu",
@@ -132,10 +143,36 @@ const RESEARCH_WORD = new RegExp(
 
 /** Life-science subject matter, in either language. Deliberately wide on the
  * genetics/palaeogenomics side — that is the domain this leg was added for —
- * and narrow everywhere else, so it does not claim general science. */
+ * and narrow everywhere else, so it does not claim general science.
+ *
+ * HEALTH AND MEDICINE (added 2026-08-01, feedback #54) is the second wide
+ * strand, and it is not a widening of scope: PubMed *is* the biomedical
+ * literature, and the reported failure was a health question ("Spirulina
+ * proven health benefits") that could not reach this source because nothing
+ * short of genetics counted as life science. Health words still only fire in
+ * combination with a RESEARCH_WORD, so "healthy office chairs" alone stays
+ * out — it is the pairing that means "ask the literature". */
 const LIFE_SCIENCE_WORD = new RegExp(
   B +
-    "(?:dna|rna|genom(?:e|es|ic|ics)?|genes?|genetic(?:s|ally)?|alleles?|snps?|haplogroups?" +
+    "(?:health|healthy|healthcare|medical|medicine|medicinal|clinical|clinic|patients?" +
+    "|disease|diseases|illness(?:es)?|symptoms?|diagnos(?:is|es|tic)|syndrome" +
+    "|treatments?|therap(?:y|ies|eutic)|drugs?|pharmaceutical|dosages?|dosing|doses" +
+    "|side[-\\s]?effects?|adverse (?:effects?|events?|reactions?)|contraindicat" + LETTER +
+    "|toxicity|efficacy|supplements?|supplementation|vitamins?|minerals?|nutrients?" +
+    "|nutrition(?:al)?|diet(?:ary)?|probiotics?|antioxidants?|inflammation|immune|immunity" +
+    "|cancers?|tumou?rs?|diabetes|obesity|cholesterol|blood pressure|cardiovascular" +
+    "|heart|cardiac|brains?|livers?|kidneys?|lungs?|muscles?|omega[-\\s]?3|fatty acids?" +
+    "|hjärta|hjärtat|hjärna|hjärnan|lever|levern|njur(?:e|ar|arna|en)|lung(?:a|or|orna|an)" +
+    "|muskel|muskler|tarmflora|fettsyr(?:a|or|orna)" +
+    "|hälsa|hälsan|hälsoeffekt(?:er|erna|en)?|hälsofördel(?:ar|arna|en)?|hälsosam[mt]?" +
+    "|medicinsk[at]?|medicin(?:en|er)?|klinisk[at]?|patient(?:er|en|erna)?" +
+    "|sjukdom(?:ar|en|arna)?|symtom(?:et|en)?|symptom(?:et|en)?|diagnos(?:er|en)?" +
+    "|behandling(?:ar|en|arna)?|terapi(?:er|n)?|läkemedel|läkemedlet|dos(?:en|er|ering(?:en)?)?" +
+    "|biverkning(?:ar|arna|en)?|kosttillskott(?:et)?|tillskott(?:et)?|vitamin(?:er|et|erna)?" +
+    "|näringsämne(?:n|t|na)?|näringsvärde(?:t|n)?|kost(?:en)?|kostråd" +
+    "|antioxidant(?:er|en)?|inflammation(?:en)?|immunförsvar(?:et)?|toxicitet" +
+    "|cancer(?:n)?|tumör(?:er|en)?|diabetes|fetma|kolesterol|blodtryck(?:et)?" +
+    "|dna|rna|genom(?:e|es|ic|ics)?|genes?|genetic(?:s|ally)?|alleles?|snps?|haplogroups?" +
     "|haplotypes?|mitochondrial|mitogenomes?|chromosom(?:e|es|al)|sequenc(?:e|es|ing)" +
     "|assembl(?:y|ies)|proteins?|proteom(?:e|ics)|enzyme|antibod(?:y|ies)|microbiom(?:e|es)" +
     "|pathogens?|bacteri(?:a|um|al)|virus(?:es)?|species|taxon|taxa|phylogen(?:y|etic|omics)" +

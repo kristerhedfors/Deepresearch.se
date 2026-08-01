@@ -200,7 +200,7 @@ const RESEARCH_WORD = new RegExp(
     "|stud(?:y|ies)|papers?|publications?|literature|journals?|articles?" +
     "|research|evidence|meta[-\\s]?anal(?:ysis|yses)|systematic reviews?" +
     "|randomi[sz]ed (?:controlled )?trials?|rct|citations?|cited" +
-    "|scientific|science|academic|scholarly|findings?|replicat(?:ed|ion)" +
+    "|scientific(?:ally)?|science|academic|scholarly|findings?|replicat(?:ed|ion)" +
     "|sakkunniggransk" + LETTER + "|referentgransk" + LETTER + "|kollegialt gransk" + LETTER +
     "|studie|studien|studier|studierna|artikel|artikeln|artiklar|artiklarna" +
     "|publikation(?:er|en)?|publicerad[et]?|litteratur(?:en)?|tidskrift(?:er|en)?" +
@@ -210,6 +210,30 @@ const RESEARCH_WORD = new RegExp(
     E,
   "iu",
 );
+
+/** "Proven" and its family — asking whether a claim is established. Kept OUT
+ * of RESEARCH_WORD and given its own clause because it is the one research
+ * word with a heavily commercial idiom ("a proven track record", "tried and
+ * proven"), excluded below. Reported by feedback #54 (2026-07-30): "Spirulina
+ * proven health benefits" fired no literature gate anywhere in the repo and
+ * was answered from supplement-marketing pages. Swedish carries the same
+ * breadth (invariant 6); "beprövad" is deliberately absent — in Swedish it is
+ * the idiom half ("vetenskap och beprövad erfarenhet"), not the ask. */
+const PROVEN_WORD = new RegExp(
+  B +
+    "(?:proven|proved|proves|unproven|disproven|proofs?|evidence[-\\s]?based" +
+    "|clinically|empirical(?:ly)?" +
+    "|bevisad[et]?|bevisade|bevisat|bevisar|påvisad[et]?|påvisade|påvisat" +
+    "|evidensbaserad[et]?|styrkt[a]?|belagd[at]?|dokumenterad[et]?)" +
+    E,
+  "iu",
+);
+
+/** The commercial idiom the word above is borrowed by. Matched over the whole
+ * message: if someone writes "proven track record", the sentence is not an
+ * ask for the peer-reviewed record. */
+const PROVEN_IDIOM =
+  /(?:proven track record|tried[-\s]and[-\s](?:proven|tested)|proven technolog|proven leader|proven winner|proven performer|beprövad)/iu;
 
 /** Asking a question AT the literature: "what does the research say", "finns
  * det belägg för". Fires on its own — it names no field but leaves no doubt. */
@@ -244,6 +268,7 @@ export function scholarIntent(text) {
   if (!s) return false;
   if (NAMED.test(s)) return true;
   if (ASKS_THE_LITERATURE.test(s)) return true;
+  if (PROVEN_WORD.test(s) && !PROVEN_IDIOM.test(s)) return true;
   return RESEARCH_WORD.test(s);
 }
 
