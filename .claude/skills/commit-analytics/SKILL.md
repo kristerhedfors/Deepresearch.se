@@ -246,8 +246,8 @@ signal. The 2026-07-27 pass found the last three days almost entirely untagged
 and added five subjects (`arxiv`, `execenv`, `agents`, `starters`, `articles`),
 taking untagged from 13% to 10%. The 2026-08-01 pass repeated the finding on the
 five days since: three new subjects (`pubmed`, `science`, `watch`) plus three
-WIDENINGS of existing ones, 12% → 10%. Its lesson is that not every untagged
-class deserves a key — measure, then decide which of the two it is:
+WIDENINGS of existing ones, 12% → 10%. Not every untagged class deserves a key.
+Measure first, then decide which of the two it is:
 
 - The Starship launch scenes belonged to `games` (the /space/ archive already
   owned them), so the fix was widening that pattern, not a new hue.
