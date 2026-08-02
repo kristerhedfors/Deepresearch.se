@@ -40,6 +40,7 @@ import {
   MOVEMENTS,
   slotOptions,
   normalizeBuild,
+  withCase,
   checkBuild,
   encodeBuild,
   decodeBuild,
@@ -209,7 +210,12 @@ describe("the compatibility-annotated picker (feedback #56)", () => {
       for (const slot of SLOTS) {
         for (const row of groupOptions(localAnnotate(slot.key, base)).fits) {
           if (row.option.id === NONE_ID) continue; // the catalogue's job, not the annotator's
-          const trial = normalizeBuild({ ...base, [slot.key]: row.option.id });
+          // Apply the pick the way the PAGE applies it. Picking a case takes
+          // that case's own parts (feedback #59, `withCase`); a spread would
+          // carry the old case's onto it and test a click nobody can make.
+          const trial = slot.key === "case"
+            ? withCase(base, row.option.id)
+            : normalizeBuild({ ...base, [slot.key]: row.option.id });
           const errs = checkBuild(trial).issues.filter((i) => i.level === "error");
           assert.equal(
             errs.length,

@@ -111,6 +111,44 @@
     .kitbadge.fixed { color: var(--muted); background: rgba(139,155,178,.16); }
     .sw { width: .72rem; height: .72rem; border-radius: 50%; border: 1px solid rgba(255,255,255,.35); flex: none; }
 
+    /* THE PARTS THE CASE DECIDES (feedback #59, owner directive): one
+       disclosure, shut by default, hanging off the case row. What it says
+       while SHUT is the whole of its honesty — every swapped part is named on
+       the summary, and a fit problem inside it shows as a ⚠ there, so the fold
+       cannot become a place things hide. */
+    details.kitswap { margin: .1rem 0 .2rem; }
+    details.kitswap > summary {
+      list-style: none; cursor: pointer; font-size: .74rem; color: var(--muted);
+      padding: .38rem .6rem; display: flex; align-items: baseline; gap: .4rem;
+      flex-wrap: wrap; line-height: 1.5;
+      border: 1px dashed rgba(216,168,96,.4); border-radius: 10px;
+      background: rgba(216,168,96,.05);
+    }
+    details.kitswap > summary::-webkit-details-marker { display: none; }
+    details.kitswap > summary::before { content: "▸"; font-size: .7em; color: var(--accent-2); }
+    details.kitswap[open] > summary::before { content: "▾"; }
+    details.kitswap > summary:hover { border-color: var(--accent-2); color: var(--text); }
+    details.kitswap[open] > summary { background: rgba(216,168,96,.1); border-style: solid; }
+    .kitlead { color: var(--accent-2); font-weight: 700; }
+    .kitstate { color: var(--muted); }
+    .kitstate.on { color: var(--text); font-weight: 600; }
+    .kitwarn { color: var(--warn); font-weight: 700; }
+    .kitbody { padding: .1rem 0 .5rem .6rem; border-left: 1px solid rgba(216,168,96,.3); margin: .5rem 0 0 .25rem; }
+    .kitbody .slot:first-of-type { border-top: 0; padding-top: 0; }
+    .kitnote { font-size: .72rem; color: var(--muted); line-height: 1.45; margin: .1rem 0 .6rem; max-width: 42rem; }
+    /* An overridden part is marked ON ITS ROW as well, with the one tap back to
+       what the case ships beside it. */
+    .overtag {
+      font-size: .62rem; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+      color: var(--accent); background: rgba(127,180,238,.16);
+      border-radius: 5px; padding: .06rem .3rem; white-space: nowrap;
+    }
+    .undoswap {
+      font-size: .66rem; color: var(--muted); background: none; border: 0; padding: 0;
+      cursor: pointer; text-decoration: underline dotted;
+    }
+    .undoswap:hover { color: var(--accent); }
+
     /* Options that do not fit the rest of the build are never hidden — they go
        behind a disclosure marked with a warning symbol, each with the reason
        it clashes (feedback #56). Picking one anyway is allowed; the warning

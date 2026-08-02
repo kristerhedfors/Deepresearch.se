@@ -84,7 +84,10 @@ describe("GET /api/watch/catalog", () => {
     assert.equal(j.build.case, "skx007");
     assert.equal(j.spec.caseDia, 42.5);
     assert.equal(j.fit.ok, true);
-    assert.ok(j.sourcing.length >= 8);
+    // A stock build's parcels are the six decisions minus the movement, which
+    // has no listing of its own: the five collapsed slots come with the case
+    // and have nothing to buy (feedback #59).
+    assert.ok(j.sourcing.length >= 5, `${j.sourcing.length} rows`);
     assert.equal(j.code, encodeBuild(DEFAULT_BUILD));
   });
 
@@ -1520,10 +1523,14 @@ describe("feedback #56: casebacks", () => {
       assert.equal(defaultsForCase(id).caseback, "display", id);
     }
     // ...and NOT where the research found none. Defaulting these to exhibition
-    // would be inventing a part nobody sells.
+    // would be inventing a part nobody sells. Since the collapse (feedback #59)
+    // those families answer with the back that comes in the box instead — also
+    // not an exhibition one, and also not a part the buyer chose.
     for (const id of ["willard", "alpinist", "explorer", "field"]) {
       assert.equal(displayBackFor(id), null, id);
-      assert.equal(defaultsForCase(id).caseback, "solid-brushed", id);
+      assert.notEqual(defaultsForCase(id).caseback, "display", id);
+      const back = resolveBuild({ ...DEFAULT_BUILD, case: id }).parts.caseback;
+      assert.equal(back.display, false, id);
     }
     const warned = checkBuild({ ...BASE, case: "willard", caseback: "display" });
     assert.ok(warned.issues.some((i) => i.slots.includes("caseback") && i.level === "warning"));
@@ -1540,10 +1547,12 @@ describe("feedback #56: casebacks", () => {
     assert.equal(engraved.heightDeltaMm, plain.heightDeltaMm);
     assert.equal(engraved.display, false);
     assert.equal(resolveBuild({ ...BASE, caseback: "display" }).parts.caseback.geometry, "display");
+    // …and a kept back — the SKX007's own, since the collapse — is a solid one.
+    assert.equal(resolveBuild({ ...BASE, caseback: "stock" }).parts.caseback.geometry, "solid");
     // The artwork is an axis over the solid part, with real listed designs.
     const ids = CASEBACK_ENGRAVINGS.map((e) => e.id);
     for (const design of ["sword", "explorer", "serpent", "skull", "robocop"]) assert.ok(ids.includes(design));
-    const custom = resolveBuild({ ...BASE, casebackEngraving: "custom-text", casebackText: "For Elin" }).parts.caseback;
+    const custom = resolveBuild({ ...BASE, caseback: "solid-engraved", casebackEngraving: "custom-text", casebackText: "For Elin" }).parts.caseback;
     assert.equal(custom.engravingText, "For Elin");
     assert.equal(custom.geometry, "solid");
   });
@@ -1788,9 +1797,17 @@ describe("feedback #56: nothing is mandatory that a case may already ship", () =
     const dear = buildSpec({ ...BASE, case: "skx007", crystal: "top-hat-sapphire" });
     assert.equal(dear.priceUsd.low, cheap.priceUsd.low, "the set's own crystal costs nothing either way");
     assert.ok(dear.priceUsd.high > cheap.priceUsd.high, "swapping it in is priced at the listing");
-    const rows = sourcingFor({ ...BASE, case: "skx007" });
+    // Since the collapse (feedback #59) a crystal nobody named has no row at
+    // all — there is nothing to buy. Name one and the row is back, still
+    // marked as coming with the case.
+    const rows = sourcingFor({ ...BASE, case: "skx007", crystal: "domed-hardlex" });
     assert.equal(rows.find((r) => r.slot === "crystal").includedWithCase, true);
-    assert.equal(sourcingFor({ ...BASE, case: "62mas" }).find((r) => r.slot === "crystal").includedWithCase, true);
+    assert.equal(sourcingFor({ ...BASE, case: "62mas" }).find((r) => r.slot === "crystal"), undefined);
+    assert.equal(
+      sourcingFor({ ...BASE, case: "62mas", crystal: "domed-hardlex" })
+        .find((r) => r.slot === "crystal").includedWithCase,
+      true,
+    );
     // The strap is not in any case set, so it stays an order of its own.
     assert.equal(rows.find((r) => r.slot === "strap").includedWithCase, false);
     assert.equal(rows.find((r) => r.slot === "strap").separateOrder, true);
@@ -1836,13 +1853,17 @@ describe("feedback #56: crystals and inserts", () => {
   test("R1: a crystal cut for one insert profile warns under the other", () => {
     // The #1 real trap: crystal vendors name SKUs after the insert they pair
     // with, because a sloped insert intrudes 0.9 mm further inward.
-    const r = checkBuild({ ...BASE, insertProfile: "flat", crystalEdge: "stepped" });
+    // The axes modify a PART, so this rule needs both named — since the
+    // collapse an unnamed crystal and insert are the case's own, and the
+    // catalogue does not publish their edge or profile to compare.
+    const FITTED = { ...BASE, insert: "ceramic-black", crystal: "dd-sapphire" };
+    const r = checkBuild({ ...FITTED, insertProfile: "flat", crystalEdge: "stepped" });
     const issue = r.issues.find((i) => i.slots.includes("crystal") && i.slots.includes("insert"));
     assert.ok(issue, "a stepped crystal over a flat insert must warn");
     assert.match(issue.en, /step or gap/);
     assert.match(issue.sv, /steg eller en glipa/);
     // Matched profiles are silent.
-    assert.ok(!checkBuild({ ...BASE, insertProfile: "sloped", crystalEdge: "stepped" }).issues
+    assert.ok(!checkBuild({ ...FITTED, insertProfile: "sloped", crystalEdge: "stepped" }).issues
       .some((i) => i.slots.includes("crystal") && i.slots.includes("insert")));
     // The published mechanism: the difference is entirely the INNER diameter.
     const p = PLATFORMS.skx.insertProfiles;
@@ -2010,7 +2031,11 @@ describe("feedback #56 item 7 + #57: the two functions the page is built on", ()
   test("every slot and every axis answers the same shape", () => {
     for (const slot of ALL_SLOTS) {
       const rows = compatibleOptions(slot.key, BASE);
-      const expected = slotOptions(slot.key).length + (slot.optional ? 1 : 0);
+      // The catalogue's own list, plus the two synthetic head options: "leave
+      // it out" on an optional slot, and "keep what the case comes with" on a
+      // collapsed slot this case actually fills (feedback #59).
+      const keeps = slot.fromCase && caseKit(BASE.case).includes.includes(slot.key) ? 1 : 0;
+      const expected = slotOptions(slot.key).length + (slot.optional ? 1 : 0) + keeps;
       assert.equal(rows.length, expected, slot.key);
       for (const row of rows) {
         assert.ok(row.option && row.option.id, slot.key);
@@ -2075,13 +2100,27 @@ describe("feedback #56 item 7 + #57: the two functions the page is built on", ()
 // ---------------------------------------------------------------------------
 
 describe("the wire surfaces stay backward compatible", () => {
-  test("a permalink from the old eleven-slot catalogue decodes unchanged", () => {
+  test("a permalink from the old eleven-slot catalogue still opens", () => {
+    // Byte-identity is deliberately NOT promised any more (owner directive over
+    // feedback #59): the five slots the case decides are no longer in a link,
+    // so an eleven-slot code reads as a build with overrides on it. What is
+    // still promised is FAIL-SOFT — it opens, it draws, and every part it names
+    // it gets.
     const legacy = "movement:nh35;case:skx007;finish:brushed;insert:ceramic-black;dial:skx-black;"
       + "chapterRing:black-minutes;hands:skx-dive;crystal:dd-sapphire;crown:signed-screw;"
       + "caseback:solid-engraved;strap:oyster";
-    assert.deepEqual(decodeBuild(legacy), BASE);
-    // A build that touches none of the new controls encodes to that same string.
-    assert.equal(encodeBuild(BASE), legacy);
+    const decoded = decodeBuild(legacy);
+    for (const [key, id] of Object.entries({
+      insert: "ceramic-black", chapterRing: "black-minutes", crystal: "dd-sapphire",
+      crown: "signed-screw", caseback: "solid-engraved",
+    })) assert.equal(decoded[key], id, key);
+    assert.deepEqual(decodeBuild(encodeBuild(decoded)), decoded);
+    assert.equal(checkBuild(decoded).issues.some((i) => i.level === "error"), false);
+    // A build that names none of the five encodes to the six decisions alone.
+    assert.equal(
+      encodeBuild(BASE),
+      "movement:nh35;case:skx007;finish:brushed;dial:skx-black;hands:skx-dive;strap:oyster",
+    );
   });
 
   test("axis and text keys appear only once they are set", () => {

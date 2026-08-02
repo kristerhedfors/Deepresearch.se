@@ -45,6 +45,10 @@ import {
   surpriseBuild,
   encodeBuild,
   decodeBuild,
+  resolveBuild,
+  caseBuild,
+  kitOverrides,
+  CASE_PART_SLOTS,
 } from "./watch-core.js";
 
 // Nothing in this feature may reach the network — the same stub src/watch.test.js
@@ -56,19 +60,29 @@ globalThis.fetch = () => {
 const BASE = { ...DEFAULT_BUILD };
 
 /**
- * The build a reader gets by picking a case and keeping everything it ships:
- * the three optional slots say "the one the case comes with", and the crown
- * and case back — which have no such option — sit at the case's own default.
+ * A build that NAMES a part for every slot the case decides — what the default
+ * build used to be, and what a modder produces once they open the swap
+ * disclosure. Since the collapse (feedback #59) this has to be written out,
+ * because `DEFAULT_BUILD` no longer carries any of them.
+ */
+const NAMED = {
+  ...BASE,
+  insert: "ceramic-black",
+  chapterRing: "black-minutes",
+  crystal: "dd-sapphire",
+  crown: "signed-screw",
+  caseback: "solid-engraved",
+};
+
+/**
+ * The build a reader gets by picking a case and keeping everything it ships —
+ * which since the collapse is simply naming the case and nothing else, because
+ * the five come from it. The three optional slots are pinned to "the one the
+ * case comes with" so the sweep still exercises the keep path on a family whose
+ * set does not fill them.
  */
 function stockBuild(caseId) {
-  return normalizeBuild({
-    ...BASE,
-    case: caseId,
-    ...defaultsForCase(caseId),
-    insert: "none",
-    chapterRing: "none",
-    crystal: "none",
-  });
+  return normalizeBuild({ ...BASE, case: caseId });
 }
 
 /** @param {number} seed */
@@ -185,10 +199,13 @@ describe("feedback #59: which part is in the box, where that is knowable", () =>
   test("picking a case carries the crown it is sold with", () => {
     for (const cs of CASES) {
       const stock = stockPartFor(cs.id, "crown");
-      // A set with no crown contributes no default: `defaultsForCase` omits
-      // the key rather than carrying null, because spreading null would blank
-      // the slot instead of leaving the build's own crown alone.
-      assert.equal(defaultsForCase(cs.id).crown ?? null, stock, cs.id);
+      // Since the collapse (feedback #59) the crown is not a decision: a case
+      // whose set carries one answers KEEP, which resolves through
+      // `stockPartFor` to the very crown the case is sold with. A case whose
+      // set does NOT carry one leaves a real part to buy.
+      const carried = defaultsForCase(cs.id).crown;
+      assert.equal(carried === "stock", !!stock, cs.id);
+      if (stock) assert.equal(resolveBuild({ ...BASE, case: cs.id }).parts.crown.id, stock, cs.id);
       const buy = kitBuy({ ...BASE, case: cs.id, ...defaultsForCase(cs.id) }, "crown");
       if (!stock) {
         // Lucius sells the Explorer II's crown separately, so it really is a
@@ -343,8 +360,18 @@ describe("feedback #59: the price band cannot double-count the case", () => {
     for (const key of KIT_SLOTS) {
       assert.ok(["separate", "included", "replaces"].includes(spec.bundled[key]), key);
     }
-    assert.equal(spec.bundled.crown, "included", "the default build keeps the SKX007's own signed crown");
-    assert.equal(spec.bundled.crystal, "replaces", "and names a double-domed sapphire over whatever ships");
+    // The default build keeps everything the SKX007's set brings, because the
+    // five are no longer decisions (feedback #59, owner directive).
+    assert.equal(spec.bundled.crown, "included");
+    assert.equal(spec.bundled.crystal, "included");
+    assert.deepEqual(spec.overrides, [], "a build that names nothing overrides nothing");
+    assert.deepEqual(spec.fromCase, caseBuild(BASE.case));
+    // Name a double-domed sapphire over whatever ships and it is a swap.
+    const swapped = buildSpec(NAMED);
+    assert.equal(swapped.bundled.crystal, "replaces");
+    // Not the crown: naming the very crown the SKX007 is sold with is the same
+    // crown, not a swap.
+    assert.deepEqual(swapped.overrides, ["insert", "chapterRing", "crystal", "caseback"]);
   });
 });
 
@@ -370,8 +397,8 @@ describe("feedback #59: bundling is a note, never a gate", () => {
     const stock = stockBuild("skx007");
     const quiet = checkBuild(stock).issues.filter((i) => /case set/.test(i.en));
     assert.equal(quiet.length, 0, "keeping the set's own parts is not worth saying");
-    const loud = checkBuild(BASE).issues.filter((i) => /case set/.test(i.en));
-    assert.equal(loud.length, 1, "naming three of them is");
+    const loud = checkBuild(NAMED).issues.filter((i) => /case set/.test(i.en));
+    assert.equal(loud.length, 1, "naming parts over them is");
     assert.equal(loud[0].level, "note");
     assert.deepEqual(loud[0].slots, ["case"], "a sourcing note must not shadow a fitment issue on a slot");
     assert.match(loud[0].en, /replace what is in the box/);
@@ -405,15 +432,20 @@ describe("feedback #59: bundling is a note, never a gate", () => {
 });
 
 describe("feedback #59: nothing downstream of the change moved", () => {
-  test("an old eleven-slot permalink still resolves to the watch it always did", () => {
+  test("an old eleven-slot permalink still opens on a coherent watch", () => {
     // Minted before feedback #59, by hand from the shipped codec's own output.
+    // It is NOT promised to decode to the same build any more: the five slots
+    // it names are no longer decisions, so it reads as a build with four
+    // overrides on it (the crown it names is the one the SKX007 ships). That
+    // degradation is accepted; what is not negotiable is that it still opens.
     const old =
       "movement:nh35;case:skx007;finish:brushed;insert:ceramic-black;dial:skx-black;" +
       "chapterRing:black-minutes;hands:skx-dive;crystal:dd-sapphire;crown:signed-screw;" +
       "caseback:solid-engraved;strap:oyster";
     const decoded = decodeBuild(old);
-    assert.deepEqual(decoded, normalizeBuild(DEFAULT_BUILD));
-    assert.equal(encodeBuild(decoded), old, "and it re-encodes byte for byte");
+    assert.deepEqual(decoded, normalizeBuild(NAMED));
+    assert.deepEqual(kitOverrides(decoded), ["insert", "chapterRing", "crystal", "caseback"]);
+    assert.deepEqual(decodeBuild(encodeBuild(decoded)), decoded, "and what it becomes round-trips");
     // It still answers every question the page asks of it.
     assert.equal(checkBuild(decoded).issues.some((i) => i.level === "error"), false);
     assert.ok(buildSpec(decoded).priceUsd.low > 0);

@@ -667,7 +667,9 @@ describe("directPrompt / searchOffPrompt", () => {
     const withWatch = directPrompt({ watchBuild: block });
     assert.doesNotMatch(withWatch, /does NOT run code/);
     assert.match(withWatch, /INLINE WATCH BUILDER/);
-    assert.match(withWatch, /Bezel insert: Ceramic, black → Pepsi/);
+    // The FROM side is the case's own insert: since the collapse (feedback
+    // #59) the bezel insert comes with the case rather than being decided.
+    assert.match(withWatch, /Bezel insert: Keep the case's own bezel insert → Pepsi/);
     assert.match(withWatch, /NEVER say you cannot show, render, build or animate a watch/);
     // Threaded through the other two answer phases.
     assert.match(searchOffPrompt({ watchBuild: block }), /INLINE WATCH BUILDER/);

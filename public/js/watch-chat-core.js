@@ -49,6 +49,7 @@ import {
   slotOptions,
   part,
   normalizeBuild,
+  resolveBuild,
   checkBuild,
   buildSpec,
   encodeBuild,
@@ -547,11 +548,20 @@ export function parseWatchCommand(text, build, opts = {}) {
 
   /** @type {WatchChange[]} */
   const changes = [];
+  // Read the two ends through the RESOLVER rather than through `part()`. Since
+  // the collapse (feedback #59) a slot the case decides sits at "stock" until
+  // somebody overrides it, and `part(slot, "stock")` is a miss by contract — so
+  // reading it here dropped "change the bezel to Pepsi" on the floor, because
+  // the FROM side had no option object. The resolver always has one, and its
+  // stand-in's own name ("Keep the case's own bezel insert") is exactly what a
+  // what-changed line should say.
+  const fromParts = resolveBuild(before).parts;
+  const toParts = resolveBuild(after).parts;
   for (const slot of SLOTS) {
     if (after[slot.key] === before[slot.key]) continue;
-    const from = part(slot.key, before[slot.key]);
-    const to = part(slot.key, after[slot.key]);
-    if (!from || !to) continue;
+    const from = fromParts[slot.key];
+    const to = toParts[slot.key];
+    if (!from || !to || !from.name || !to.name) continue;
     changes.push({ slot: slot.key, slotName: slot.name, from: { id: from.id, name: from.name }, to: { id: to.id, name: to.name } });
   }
 
@@ -911,10 +921,22 @@ export function watchPromptBlock(state) {
   if (!state || !state.active) return "";
   const spec = buildSpec(state.build);
   const fit = checkBuild(state.build);
+  // Through the resolver, so a slot the case decides reads as what it IS
+  // ("Keep the case's own crystal") rather than as the raw id "stock".
+  const built = resolveBuild(state.build).parts;
   const rows = SLOTS.map((slot) => {
-    const p = part(slot.key, state.build[slot.key]);
-    return `${slot.name.en}: ${p ? p.name.en : state.build[slot.key]}`;
+    const p = built[slot.key];
+    return `${slot.name.en}: ${p && p.name ? p.name.en : state.build[slot.key]}`;
   }).join("; ");
+  // Which of the five the case gave and which the conversation overrode: the
+  // answer has to be able to say "that is the case's own back" without
+  // guessing (feedback #59).
+  const over = Array.isArray(spec.overrides) ? spec.overrides : [];
+  const fromCase = `The case decides the bezel insert, chapter ring, crystal, crown and case back: ${
+    over.length
+      ? `this build overrides ${over.map((k) => (SLOTS.find((s) => s.key === k) || { name: { en: k } }).name.en.toLowerCase()).join(", ")} and takes the rest as the case ships them`
+      : "this build takes all five as the case ships them"
+  }.`;
   const changed = state.changes.length
     ? state.changes.map((c) => `${c.slotName.en}: ${c.from.name.en} → ${c.to.name.en}`).join("; ")
     : state.opened
@@ -926,6 +948,7 @@ export function watchPromptBlock(state) {
   return [
     "INLINE WATCH BUILDER — a live, rotatable 3D render of THIS build is ALREADY displayed with your reply, and the user changes it by typing plain-language commands into the chat. It is generated from the catalogue's real millimetres (Seiko/TMI NHxx mod parts).",
     `Current build — ${rows}.`,
+    fromCase,
     `Dimensions — case ${mm(spec.caseDia, spec.approxDims)}, lug-to-lug ${mm(spec.l2l, spec.approxDims)}, thickness ${mm(spec.thick, spec.approxDims)}, lug width ${mm(spec.lugW, spec.approxDims)}, ${spec.wr} m water resistance, movement ${spec.movement} (${spec.bph} A/h, ${spec.reserveH} h reserve), parts cost about USD ${spec.priceUsd.low}–${spec.priceUsd.high}.`,
     `Changed by this message — ${changed}.`,
     `Fit check — ${problems}.`,

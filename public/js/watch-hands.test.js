@@ -235,17 +235,24 @@ describe("the default is a no-op", () => {
 
 // ---------------------------------------------------------------------------
 
-describe("an old permalink still resolves to the same watch", () => {
-  // The whole point of `asListed`: a build that touches none of the new
-  // controls has to ENCODE to the string it always did, and a string minted
-  // before the axes existed has to DECODE to the same parts.
-  const LEGACY = SLOTS.map((s) => `${s.key}:${DEFAULT_BUILD[s.key]}`).join(";");
+describe("an old permalink still opens on a sensible watch", () => {
+  // The AXES still keep out of a permalink they were not used in. What the
+  // codec no longer promises is byte-identity with a pre-collapse code: the
+  // five slots a case decides are not in a link any more (feedback #59, owner
+  // directive), so an eleven-slot code from before is read as five overrides
+  // and re-encodes shorter. Fail-soft is the rule that survives; identity is
+  // deliberately not.
+  const LEGACY = "movement:nh35;case:skx007;finish:brushed;insert:ceramic-black;dial:skx-black;"
+    + "chapterRing:black-minutes;hands:skx-dive;crystal:dd-sapphire;crown:signed-screw;"
+    + "caseback:solid-engraved;strap:oyster";
 
-  test("the default build still encodes to the eleven-slot legacy string", () => {
-    assert.equal(encodeBuild(DEFAULT_BUILD), LEGACY);
+  test("no unused hand axis leaks into a permalink", () => {
     const code = encodeBuild(DEFAULT_BUILD);
     for (const key of HAND_AXES) {
       assert.ok(!code.includes(`${key}:`), `${key} leaked into a default permalink`);
+    }
+    for (const s of SLOTS) {
+      if (!s.fromCase) assert.ok(code.includes(`${s.key}:`), `${s.key} is a decision and belongs in the link`);
     }
   });
 
@@ -258,14 +265,22 @@ describe("an old permalink still resolves to the same watch", () => {
     assert.deepEqual(now.len, then.len);
   });
 
-  test("a legacy code for EVERY hand set round-trips unchanged", () => {
+  test("EVERY hand set round-trips through a permalink", () => {
     for (const h of HAND_SETS) {
-      const code = SLOTS.map((s) => `${s.key}:${s.key === "hands" ? h.id : DEFAULT_BUILD[s.key]}`).join(";");
-      const decoded = decodeBuild(code);
+      const build = normalizeBuild({ ...DEFAULT_BUILD, hands: h.id });
+      const decoded = decodeBuild(encodeBuild(build));
       assert.equal(decoded.hands, h.id);
-      assert.equal(encodeBuild(decoded), code, `${h.id} re-encoded differently`);
+      assert.deepEqual(decoded, build, `${h.id} did not round-trip`);
       for (const key of HAND_AXES) assert.equal(decoded[key], undefined, `${h.id} gained ${key}`);
     }
+  });
+
+  test("a legacy eleven-slot code opens, with its named parts kept as overrides", () => {
+    const decoded = decodeBuild(LEGACY);
+    assert.equal(decoded.hands, "skx-dive");
+    assert.equal(decoded.insert, "ceramic-black");
+    assert.equal(decoded.caseback, "solid-engraved");
+    for (const key of HAND_AXES) assert.equal(decoded[key], undefined);
   });
 
   test("a build WITH hand axes round-trips through the codec", () => {
