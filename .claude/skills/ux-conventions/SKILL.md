@@ -1444,3 +1444,87 @@ this page would otherwise have to own.
 **Canonical implementation:** `public/watch/watch.js` `renderSpecs` +
 `BASIC_SPEC_KEYS` / `splitSpecRows` in `public/js/watch-page-core.js`, markup
 `#specs` / `details#specs-more` / `#specs-rest` in `public/watch/index.html`.
+
+---
+
+## UX-26 — A collapsed group states what is inside it, and lives with the thing it modifies
+
+**Rule.** When detail is folded away, two things are load-bearing. The fold
+must sit **with the item it belongs to**, not in a section of its own at the
+foot of the page. And the shut fold must **name what it contains** — the
+variables, and the value of anything already changed — so the words a reader is
+searching for are on the page with nothing opened.
+
+**Why.** Feedback #59 asked for five things that had shipped a round earlier:
+dial colour, dial finish, index style, strap colour, and separate hand choices.
+Four of the five existed as `AXIS_SLOTS`, rendered and reachable. They were
+invisible because the words were not on the page: the fine-tuning groups sat
+under one heading at the foot of the picker behind disclosures labelled `Dial
+detail`, `Strap detail`. On a 390×844 phone the dial's colour control was about
+**3,200 px below the dial row**, and a scan for "colour" inside the Strap row
+found nothing.
+
+The trade is real and recurs, which is why this is a rule rather than a fix:
+**UX-25 exists because #56 asked for the picker to open on the decisions a
+build is made of, and that collapse is what buried the variables.** Both
+reports are right. The resolution is not to pick one, and it is not to
+un-collapse either.
+
+**The mechanics:**
+
+1. **File a group by the data, not a table.** Each axis names the slot it
+   modifies (`over`), so the grouping follows the catalogue and an axis added
+   later files itself with no edit to the page. Keep an `orphans` escape so a
+   group whose slot cannot be resolved still renders somewhere rather than
+   vanishing.
+2. **The shut summary lists the contents** — *"8 more choices: Colour · Finish
+   · Construction · Index style · Calendar · Lume · Diameter · Feet"* — and
+   strips the group's subject off each name, per language, or eight axes read
+   as the same word eight times. Swedish genitives ("Urtavlans färg") need
+   their own pattern; one written for English silently leaves the other
+   unshortened (invariant 6).
+3. **A decision already made shows its value on the summary** (*"Colour:
+   White"*), so a fold never hides something the reader chose.
+4. **Offer one control that opens everything**, for the reader who would rather
+   scan than tap.
+5. **A fold that can hide a problem must say so.** Where the contents can carry
+   a compatibility warning, surface it on the shut summary.
+
+**Canonical implementation:** `slotForGroup` / `axisGroupsBySlot` /
+`axisSummary` / `shortAxisName` in `public/js/watch-page-core.js`, rendered by
+`slotRow` in `public/watch/watch.js`.
+
+---
+
+## UX-27 — A toggle whose effect is already on screen is labelled by its state, not its action
+
+**Rule.** When a control switches something the reader can already SEE, label
+it with the state it is in and light it while that state is on. Label by the
+action only when the effect is invisible until it happens.
+
+**Why.** Feedback #59 asked for a switch to turn the presentation cushion off.
+The switch was already there — and labelled "Hide cushion", lit only while the
+cushion was OFF. Next to a watch visibly lying on a cushion, "Hide cushion"
+reads as a caption describing the picture, not as a control. It now reads
+`Cushion: on` / `Kudde: på`, lit while the cushion is there.
+
+The same report also asked for features that already existed (UX-26). Both are
+the same class of defect: **shipped and invisible costs the same as missing**,
+and it costs a motivated reader a round of feedback to tell you.
+
+**The mechanics:**
+
+1. State in the label, both languages, and the lit style tracks the state
+   rather than the availability of the action.
+2. A control that depends on a capability which may not be present is
+   feature-detected and HIDDEN when absent — and, if it is hidden by the
+   `hidden` attribute, say `[hidden] { display: none }` explicitly in the
+   stylesheet. An author `display` rule outranks the UA one, so a styled
+   control renders on exactly the browsers it exists to stay away from.
+3. Import such a capability **dynamically**. A static `import { X }` against a
+   module that has not grown the export is a link-time failure that takes the
+   whole page down, not a soft miss.
+
+**Canonical implementation:** `#b-cushion` in `public/watch/watch.js` and the
+embed HUD's `.wa-on` in `public/js/watch-embed.js`; the scene picker beside it
+(`wireScenes`) is the feature-detection shape.

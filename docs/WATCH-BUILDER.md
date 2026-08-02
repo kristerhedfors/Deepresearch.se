@@ -212,6 +212,32 @@ Three things about this are worth keeping in mind before changing it:
   than its mirror image, because a key straight down the camera's axis lights
   no side walls and a movement comes out as a flat grey disc. Above the horizon
   nothing changed — `dip` is exactly 1 there.
+* **The floor lift is 0.06, and it used to be 0.45.** That is the same dip's
+  other half — how far the floor is raised toward the sky as the camera drops —
+  and at 0.45 it was blowing the whole movement out. It took the dark studio's
+  floor from 0.055 to 0.297, the floor-bounce term multiplied it again, and
+  every conductor on the underside landed on the tonemap's shoulder, where the
+  material table's 0.52-against-0.66 reflectance flattened to 0.813 against
+  0.913. Measured over the window: **mean 0.846, sd 0.062** — a movement
+  rendered as a blank white disc, which is what feedback #59 was looking at
+  when it said the reflections were odd.
+
+  The diagnosis is worth repeating because the obvious suspects were all
+  innocent. Serving patched shaders through Playwright's `page.route` (no repo
+  edit) and masking to the window: killing the analytic lights moved the mean
+  by 0.005, because on a CONDUCTOR the rig contributes almost nothing and
+  `studio()` contributes everything; halving exposure moved the mean and left
+  the spread alone. Only the floor lift moved sd. Dielectrics — the cushion the
+  lift was added for — are lit by the rig and barely notice the ground;
+  conductors are the opposite, which is why one number could be right for the
+  cushion and ruinous for the calibre. After: **mean 0.635, sd 0.171**, and the
+  contrast went back where the bullet above says it belongs, into the material
+  table (mainplate `reflect` 0.24 / `env` 0.30, bridges 0.72 / 0.85 — `env` is
+  this renderer's only occlusion term, since it has neither shadows nor AO).
+
+  Two things measured as worthless and recorded so nobody re-argues them:
+  anisotropy and heavier grain on the bridges. They are flat surfaces, so the
+  reflected ray does not move across them.
 
 An **engraving** is not a shape. It is a decal — `casebackArt`, a disc lying on
 the back face with the same radial UVs a dial uses, carrying a relief map and
@@ -559,13 +585,227 @@ has to leave.
 
 ---
 
+## 6d. The third round (feedback #59)
+
+The same reporter came back a third time, and the report is the most useful
+this feature has had. It is worth reading as four different KINDS of finding,
+because they needed four different kinds of answer.
+
+### Findable, not merely present
+
+Five of the things asked for had already shipped:
+
+> *"Dial selection is whack, please add separate selections for the different
+> aspects of a dial such as color, style (sunburst excetera), indices (sub
+> style for example) and other important things. Same goes with hands. And
+> strap, I need to be able to choose strap color."*
+
+Dial colour, finish, construction, index style, calendar, lume, diameter, feet
+and strap colour were all `AXIS_SLOTS`, all rendered, all reachable. **The
+defect was that none of those words appeared anywhere on the page.** §6c's fine
+tuning was filed under one heading at the FOOT of the picker, behind eight
+disclosures labelled `Dial detail`, `Strap detail` and the like. Measured on a
+390×844 phone — the reporter's own device class — the dial's colour control sat
+roughly **3,200 px below the dial row it belongs to**, and a scan for the word
+"colour" inside the Strap row returned nothing at all.
+
+That trade recurs, so it is worth stating as a rule: **#56 asked for the picker
+to open on the decisions a build is made of, and the collapse that answered it
+is what buried the variables.** Both reports are right, and the resolution is
+not to pick one.
+
+- **A group is addressed to its part.** Each axis names the slot it modifies
+  (`over`), so `slotForGroup` / `axisGroupsBySlot` render the dial's variables
+  inside the dial's own row. A group whose slot cannot be worked out still
+  draws, under the old heading — the catalogue can grow one this page has never
+  heard of without it vanishing.
+- **A shut fold says what is in it.** `axisSummary` produces *"8 more choices:
+  Colour · Finish · Construction · Index style · Calendar · Lume · Diameter ·
+  Feet"*, and `shortAxisName` takes the group's subject off the front in both
+  languages, or eight axes read as the word "dial" eight times. A variable
+  already moved shows its value there, so the fold never hides a decision.
+- **One control opens all of them**, and one sentence under the PARTS heading
+  names the things the report went looking for.
+
+Nothing was added to the catalogue for this. The measure of the fix is that the
+words a reader searches for are on the page with nothing opened.
+
+### The hands really were missing
+
+One clause of that sentence was not a discoverability problem. Counting the
+axis table at the time: **dial 9, strap 10, hands 0.** Hands were whole named
+sets, so Mercedes hands in gold or a red seconds hand were not expressible.
+
+Five axes now sit over the slot — `handColor`, `handSecondColor` (both over one
+`HAND_COLOURS` list, with a `roles` field so a seconds-only accent warns rather
+than blocks when applied to the whole set), `handFinish`, `handLume` (a
+`DIAL_LUME_OPTIONS` clone minus `full-lume`) and `handLength`. Length is
+expressed as *which dial the set was cut for*, derived from `DIAL_DIAMETERS` so
+no millimetre is invented, and it makes the minute-hand overhang warning
+reachable for the first time. Shape is deliberately not an axis.
+
+Four things only rendering found, all now written into the code: a metal has no
+diffuse term and the hands share one material, so a red seconds hand rendered
+**white** until a two-colour set was drawn as lacquer; the same bug hid the GMT
+accent; plating is not its own material, so a `gold` spec came out paler than
+the tint over `hands-polished`; and it is the constant lume term, not the
+material, that washes a tint out — colours separate cleanly only with lume off.
+
+### A case is sold as a set
+
+> *"Bezel insert, crystal, caseback and crown are practically never bought
+> separately from the case. … Chapter rings are usually not bought separately
+> and are integrated with the case."*
+
+True about the market, and it landed in two stages.
+
+First the model, and the shape of it matters: **bundling is a fact about the
+SLOT, not about the SKU.** Which slots a case set fills is knowable and is now
+derived for every case — crystal, case back and crown always, the insert where
+there is a rotating bezel, the chapter ring always (loose in the box on the
+shared platforms, machined into the case on a case-specific family, which is
+the report's second sentence taken literally). Which PART is in a slot is
+knowable for the crown only, because every case entry records whether the crown
+it ships with is signed. Everything else stays `null`. The catalogue's own
+SKX007 entry explains why: *"cheap listings ship a mineral crystal and a hollow
+bezel; 'sapphire' in the title is not always sapphire in the box."* A $25
+Sharkey set and a $120 San Martin set both include a crystal and they are not
+the same crystal, so naming one would be a fabricated price claim wearing a
+default's clothes. Where the set's own part is unrecorded the band carries
+**both ends** (`0 … high`) rather than picking one.
+
+Then the presentation, because the data knowing better is invisible.
+`sourcingView` / `orderSummary` turn the table into a numbered list of parcels
+— *"This build is 4 separate orders: the case set, which brings 5 more parts
+with it, plus dial, hands and strap"* — with the bundled slots indented under
+the case row and priced as the bundle, not the part. A `[0, high]` band renders
+as "≈ USD 0–45 (if you swap it)".
+
+**"Keep what the case comes with"** (`KEEP_ID = "stock"`) is the choice that
+makes the distinction expressible, and keeping it apart from "not fitted" is
+the whole safety property: `resolveBuild` reports it as `kept`, never
+`omitted`, so an SKX007 with `chapterRing: none` still warns that the dial
+floats and an SKX013 with `chapterRing: none` is still a hard error, while
+`stock` raises neither — a kept ring is a fitted ring.
+
+Finally the collapse itself (owner directive, 2026-08-02), which is the strong
+version of the report and was argued against before it was approved: the five
+slots carry `fromCase: true` and are **out of the primary picker**.
+`caseBuild(caseId)` is the single definition of what a case gives,
+`normalizeBuild` fills the five from it, and `kitOverrides` reports the
+difference. One disclosure under the case row — *"Swap a part the case came
+with"*, shut by default — holds them, and its shut summary names every swapped
+part and carries a ⚠ if the fit check has something to say about one of them,
+because a fold that can hide a decision is worse than no fold. **11 primary
+rows became 6; the phone picker went from 2,663 px to 1,503 px; the default
+permalink from 174 characters to 74.**
+
+Two things the collapse cost, and what was done about them. A bug fell out
+of it that had been there all along: the chat's what-changed list read both
+ends through `part()`, a deliberate miss for `"stock"`, so a command like
+"pepsi bezel" reported *no change at all*. And the default build lost its
+bezel markings — the insert stand-in is deliberately unmarked so the catalogue
+never claims which insert is in the box, which is right about the SKU and
+wrong about the picture, since the default is an SKX diver. A case sold with a
+120-click dive bezel ships a DIVE insert, scale and lume pip included; that is
+a derivation from `cs.bezel`, the same reasoning `stockPartFor` uses to name
+the crown, and it still names no part.
+
+### The reflections, and what was actually wrong
+
+> *"Reflections still look odd, possibly because of the all black background.
+> Add another background that's toggle able to test out this theory."*
+
+The instrument was built — `SCENES` and `sceneFor` in `watch-materials.js`,
+`setScene` on the stage, with the clear colour, `uSky`, `uGround` and the
+bounce all coming from one scene record so a scene's background and its
+reflections can never disagree again. Then the theory was tested rather than
+assumed, and the answer is **right about the symptom, wrong about the cause.**
+
+Masked to the subject, dark and grey measure the same watch to three decimals
+(polished mean 0.486 vs 0.487, sd 0.212 both). No watch pixel changes, so the
+metal cannot have improved. What a lighter background fixes is the READ: the
+case sits in a room, and **15.6% of a PVD build sits below 0.15 luminance** and
+simply disappears against black. That is why `studio-grey` is now the default
+(owner-approved), with `studio-dark` still selectable and value-for-value.
+
+The odd reflections had a different cause entirely, and it is the floor-lift
+blowout in §3.1 — a shading defect no background could fix.
+
+### The strap, the cushion, and one number doing two jobs
+
+> *"strap/bracelet sits weirdly with a bend near the lugs which has no reason
+> to be there."*
+
+There was a real modelling error behind that. `STRAP_EXIT.degrees` =
+`arccos(R/(R+d))` answers *at what angle around the wrist the strap first
+touches it*, and `strapPath` computed it honestly per case. `STRAP_DRAPE.drop`
+was the same figure a second time, used as *the angle below horizontal at which
+the band leaves the lug*. A spring bar sits half a lug-to-lug **out** from the
+centreline, not above it, so the taut span really runs at 67–76°. Leaving at
+30° and arriving at 76° made the lead-in absorb about 45° over a 25 mm chord:
+measured **6.4°/mm four millimetres from the lug tip**, then an over-plunge and
+a swing back — two inflections before the wrap. The exit is now derived and the
+lead-in is the straight taut span: **0.00°/mm until first contact**, then the
+wrap's constant 1.97°/mm.
+
+A softer exit was tried and rejected with a reason, recorded in `STRAP_EXIT`'s
+note so it is not rediscovered: both lines start at the spring bar, so any
+curve leaving flatter must bend back to the same tangent point and brings the
+artifact back. Two drifted seams were fixed with it — `lugAnchor` used
+`thick × 0.3` where `buildMeshes` drills at `thick × 0.245`, and
+`STRAP_DRAPE.wristR` carried an independent 30 mm for the object
+`WRIST_HOLDER` measures at 27 mm.
+
+The cushion is now `dia + 2×4 mm` instead of a 93 mm forearm, and it deforms:
+the crown stands 1.5 mm above the case-back plane, and the leather inside the
+case's own bottom-rim footprint is pushed down onto it — a 33 mm flat with a
+ridge of displaced leather around it. Because the footprint is the case's rim,
+a cushion case leaves a cushion-shaped print. The buckle is one swept frame of
+round stock with radiused corners, a hinge pin and a tapered prong, replacing
+five axis-aligned boxes; butterfly clasps are offered on bracelets; and there
+are six distinct clasp geometries where every bracelet used to draw the same
+two plates.
+
+### The cases
+
+Three new families, all from real NHxx-fitment listings with their own
+`SOURCES` rows and their disagreements carried in notes: `royal-oak` (37/48/9.95
+mm octagon, integrated bracelet), `prx` (36/42/11 mm barrel, integrated
+bracelet with a published 24→18 mm taper) and `explorer-2` (36/43/11.6 mm tool
+case, fixed 24-hour bezel, and the one new case whose crystal diameter a vendor
+actually publishes at 29.5 mm). `sub` and `sub-slim` were given their own
+slab-and-chamfer archetype — they had been sharing the SKX's flank, which is a
+large part of why they did not resemble anything — and the Alpinist was
+re-sourced from namokiMODS' NMK951 rather than the Seiko original.
+
+An **integrated bracelet** is a case flag plus its own geometry
+(`integratedBraceletOf` / `integratedPlan` / `integratedBraceletAssembly`),
+returning `strapAssembly`'s exact shape so the seam is three lines. It is also
+why `strap` is a kit slot: on these cases the bracelet is bought with the case.
+It is deliberately NOT in `KEEPABLE_SLOTS`, though — a machined-in bracelet is
+not a keep-or-buy decision, it is what the case IS, and offering the choice
+would imply a swap that cannot happen.
+
+---
+
 ## 7. Testing
 
-`public/js/watch-core.test.js` (70 checks), `src/watch.test.js` (11),
+`public/js/watch-core.test.js`, `src/watch.test.js`,
 `public/js/watch-chat-core.test.js` (the conversational core — thread
 open/carry/close, EN+SV command parity, the whole-catalogue command round trip,
-reroll determinism and repair, the suggestions' validity) all run in
-`npm test`. They cover catalogue integrity (unique ids, resolvable references,
+reroll determinism and repair, the suggestions' validity) and, since feedback
+#59, one file per slice of that report — `watch-cases.test.js`,
+`watch-strap.test.js`, `watch-hands.test.js`, `watch-kits.test.js`,
+`watch-sourcing.test.js`, `watch-collapse.test.js`, `watch-scene.test.js` and
+`watch-shading.test.js` — all run in `npm test`.
+
+That one-file-per-slice split is not tidiness. #59 was worked by parallel
+agents on disjoint territory, and a shared test file is the one thing that
+makes disjoint territory collide; separate files merged without a single
+conflict. The catalogue-wide integrity checks stay in `watch-core.test.js`.
+
+Together they cover catalogue integrity (unique ids, resolvable references,
 EN+SV everywhere, plausible millimetres, crystal smaller than case and larger
 than dial), the permalink codec's fail-soft decode, every compatibility rule,
 the spec-sheet maths, the sourcing index's URL shapes, and the geometry: well-
@@ -578,12 +818,53 @@ What is **not** tested here is how any of it looks. That is verified in a
 browser, which is where this project's rendering bugs have always come from
 (the **live-verify** skill).
 
+### Rendering it in a container
+
+Four traps cost real time during #59 and are worth knowing before writing
+another verification script:
+
+- **`npx wrangler dev` does not run here** — it wants a Docker socket for the
+  container binding and dies without one. `/watch/` is static assets, so
+  `cd public && python3 -m http.server <port>` serves the same module graph.
+- **Pick a PRIVATE port and assert on served content.** Two separate sessions
+  lost work to this: a sibling's server was already holding the agreed port, so
+  the "verification" rendered somebody else's working tree and looked fine. If a
+  render disagrees with what the source says, check what the port is actually
+  serving before believing either.
+- **`page.screenshot()` never returns** on this canvas under SwiftShader. Read
+  the pixels out with `canvas.toDataURL()` instead.
+- **A hash-only `page.goto('#…')` is not a reload.** Navigate to `about:blank`
+  first, or the build you think you loaded is the previous one. For the same
+  reason `localStorage.setItem` after the first `goto` is a no-op — use
+  `addInitScript`.
+
+And one habit rather than a trap: **measure, don't squint.** The blown-out
+movement in §3.1 was found by masking to the subject and computing mean and sd
+of luminance, and the fix was chosen because sd tripled. The eye agreed
+afterwards, but it could not have told 0.062 from 0.171 across two screenshots.
+
 ## 8. Known limits
 
 - The movement is a silhouette, not a replica (§3.1). Mainplate, three bridges,
   balance, rotor, screws and four jewels are enough to read as a calibre through
   an exhibition back; nobody publishes bridge outlines for these movements, so
   drawing down to the click spring would be dressing a guess up as a drawing.
+- **The three bridges do not separate from each other.** Barrel bridge, train
+  bridge and balance cock are one mesh under one material key, so the material
+  table cannot give them different tones the way it separates them from the
+  mainplate. Fixing it means splitting the mesh, not retuning the shading.
+- **`studio-light` still washes the movement out** (sd 0.110 against 0.171 in
+  the default scene). That is structural to its 0.22 floor, and fixing it is a
+  retune of the scene rather than of the calibre.
+- Which insert, crystal, chapter ring or case back a case set actually ships is
+  not knowable from the sources, so a kept part stands in unmarked rather than
+  naming a SKU (§6d). The one exception is the crown, derived from the case's
+  own `signed` flag, and the one concession to the picture is that a case with
+  a rotating dive bezel gets a dive insert's scale and pip.
+- The Explorer II's bezel carries no 24-hour numerals and the Royal Oak no
+  bezel screws: the insert painter only runs for a `dive120` bezel. The
+  Alpinist's second crown at 4 o'clock is recorded as `crown2: { rendered:
+  false }` rather than faked.
 - Crown guards are carried as a catalogue flag and drawn into the case
   silhouette, not as separate machined lobes.
 - Dial finishes are painted approximations. A real sunburst changes with the
