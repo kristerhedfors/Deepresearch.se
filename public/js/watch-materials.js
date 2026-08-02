@@ -120,15 +120,33 @@ export const MATERIALS = {
   // like a case: the plates are rhodium-plated nickel (brighter and flatter
   // than steel), the rotor is the one part that is deliberately decorated, and
   // a jewel is the only non-metal inside the watch.
+  //
+  // WHAT THESE NUMBERS HAD TO SURVIVE. The first tuning gave the mainplate
+  // 0.52 and the bridges 0.66 — a real difference on paper and none at all on
+  // screen, because the underside of the watch was landing on the tonemap's
+  // shoulder and 0.52 against 0.66 came out as 0.813 against 0.913 display,
+  // with everything around them clipped white. Measured over the window: mean
+  // 0.846, standard deviation 0.062. Two rules came out of fixing it:
+  //
+  //   * A CONDUCTOR INSIDE THE CASE IS LIT BY `env` AND BY NOTHING ELSE.
+  //     metal: 1 kills the diffuse term, and on a down-facing plate the three
+  //     analytic lights contribute 0.005 of 0.846 (measured by switching
+  //     `spec` off). Everything you see is `studio()` scaled by `env`, so
+  //     `env` — not `reflect` — is the strong lever, and the two have to move
+  //     together or the difference disappears into the curve.
+  //   * `env` IS THIS RENDERER'S OCCLUSION TERM. There is no shadow map and
+  //     no AO anywhere in the shader. A plate lying at the bottom of a well,
+  //     roofed by three bridges and a rotor, can only see a fraction of the
+  //     room, and this field is the only place that fact can be stated.
   "movement-base": {
-    rough: 0.52, metal: 1, reflect: 0.52,
-    anisoMode: ANISO_GRAIN, grain: 0.05, grainFreq: 40, env: 0.55,
-    note: "The mainplate under the bridges: sandblasted and darker, so the plated bridges on top of it read as separate parts rather than as one disc.",
+    rough: 0.66, metal: 1, reflect: 0.24,
+    anisoMode: ANISO_GRAIN, grain: 0.06, grainFreq: 40, env: 0.30,
+    note: "The mainplate under the bridges. It is neither plated nor in the open: a bead-blasted, oxidised plate reflects on the order of pvd-black's 0.2 rather than bare steel's 0.57, and roofed by the bridges it sees under a third of the room. Both numbers are what makes the parts on top of it read as separate parts instead of as one disc.",
   },
   "movement-plate": {
-    rough: 0.36, metal: 1, reflect: 0.66,
-    anisoMode: ANISO_GRAIN, grain: 0.045, grainFreq: 46, env: 0.7,
-    note: "Rhodium-plated nickel bridges. Perlage is overlapping ground circles — at this scale it reads as fine isotropic sparkle, not as a direction.",
+    rough: 0.30, metal: 1, reflect: 0.72,
+    anisoMode: ANISO_GRAIN, grain: 0.045, grainFreq: 46, env: 0.85,
+    note: "Rhodium-plated nickel bridges: the one part inside the case that is both polished and in the open, so it takes the highest reflectance here and sees nearly the whole window. Perlage is overlapping ground circles — at this scale it reads as fine isotropic sparkle, not as a direction, and giving it a direction was tried and measured worth nothing (a flat bridge's reflected ray does not move, so anisotropy has nothing to sweep).",
   },
   "movement-rotor": {
     rough: 0.19, metal: 1, reflect: 0.62,
@@ -533,6 +551,70 @@ export function strapMaterialId(strap) {
 }
 
 /**
+ * The BAND MESH's material — which is not always the strap slot's material.
+ *
+ * `strapMaterialId` answers "what did the buyer choose?". This answers "what
+ * is the thing on screen actually made of?", and on an integrated-bracelet
+ * case (Royal Oak, PRX) those are different questions. There is no lug and no
+ * spring bar on those cases: the bracelet is machined out of the same billet
+ * as the case, `strapAssembly` hands back `integratedBraceletAssembly`'s mesh
+ * whatever the strap slot says, and the slot's choice never reaches the
+ * geometry at all. Reading the slot anyway painted a machined steel bracelet
+ * as brown stitched calf.
+ *
+ * The geometry core states what it built, in `buildMeshes().strapMaterials`
+ * (`{ kind, color, rough, metal, brush, useCaseFinish }` per mesh). That hint
+ * WINS, and the strap slot is consulted only for the grade — because the hint
+ * says "leather" where the catalogue says "shell cordovan", and the finer
+ * answer is the better one when the two agree on the family.
+ *
+ * The cousin of this bug is already fixed one layer up: `strapHardware` used
+ * to fall through `meshMaterialId`'s /strap|band/ rule and a bracelet's clasp
+ * came out near-black leather. Same root cause — a name or a slot standing in
+ * for a declaration.
+ *
+ * @param {any} hint `strapMaterials.strap` from the geometry core, if any
+ * @param {any} strap the strap slot's catalogue entry
+ * @param {string} [finishId] the case's finish material id
+ * @returns {string} a key of MATERIALS
+ */
+export function bandMaterialId(hint, strap, finishId) {
+  const kind = String((hint && hint.kind) || "");
+  if (kind === "steel") {
+    // A bracelet is the case's own metal, so it follows the case's finish
+    // family rather than carrying one of its own.
+    return finishId === "steel-polished" ? "bracelet-polished" : "bracelet-brushed";
+  }
+  if (kind === "rubber") return "rubber";
+  if (kind === "nylon") {
+    const id = strapMaterialId(strap);
+    return id === "nylon-seatbelt" ? id : "nylon";
+  }
+  if (kind === "leather") {
+    const id = strapMaterialId(strap);
+    return id.indexOf("leather") === 0 ? id : "leather";
+  }
+  // No hint at all (an older core, or a build with no strap): the slot is all
+  // there is, and the pre-hint rule is preserved exactly.
+  return strap && strap.kind === "bracelet" && finishId === "steel-polished"
+    ? "bracelet-polished"
+    : strapMaterialId(strap);
+}
+
+/**
+ * Does the band take the CASE's colour rather than its own? True for anything
+ * the geometry core marked `useCaseFinish` — every steel band, integrated or
+ * bolted on — because a bracelet is the same billet as the case and a swatch
+ * of its own would let the two drift apart.
+ * @param {any} hint `strapMaterials.strap`
+ * @param {any} strap
+ */
+export function bandTakesCaseFinish(hint, strap) {
+  if (hint && typeof hint.useCaseFinish === "boolean") return hint.useCaseFinish;
+  return !!(strap && strap.kind === "bracelet");
+}
+
+/**
  * A bezel insert. This is the one feedback #56 singled out ("lighting looks
  * odd, especially for bezel inserts"): the renderer used to give EVERY insert
  * one half-metal response, so a matte anodised aluminium insert and a glossy
@@ -744,8 +826,25 @@ export function dialRelief(dial) {
 // That is the mechanism, not a convention: a new scene cannot disagree with
 // its own reflections, because nobody types its background in. The one scene
 // that does state its own `bg` is `studio-dark`, whose look is the preserved
-// pre-#59 baseline; `SCENES[0].matched === false` is that mismatch recorded
+// pre-#59 baseline; `studio-dark.matched === false` is that mismatch recorded
 // in the data rather than in a comment, and `watch-scene.test.js` pins it.
+//
+// WHICH ONE IS THE DEFAULT (owner call, after the toggle shipped). It is
+// `studio-grey`, and it is first in this list because first IS default —
+// `sceneFor()` falls back to `SCENES[0]` and the picker on /watch/ selects
+// `SCENES[0].id` when nothing is stored, so the order is the decision rather
+// than a duplicate of it. `studio-dark` stays selectable and stays value for
+// value what it was.
+//
+// The evidence, all of it measured on the same builds through a subject mask:
+// dark and grey render the same watch to three decimal places, because not one
+// watch pixel differs between them — same environment, same rig, ray for ray.
+// What differs is what happens to the pixels the watch loses. 10.9 % of a
+// PVD build sits below 0.15 display luminance, and against a near-black canvas
+// that fraction is simply gone: the flank merges into the background and the
+// case loses its silhouette. Against the grey the same pixels become a hard
+// black edge, which is what a PVD case actually looks like. A device that has
+// already chosen keeps its choice; only the unset case moves.
 
 /**
  * The shader's output curve, in JS: exposure, the ACES-ish filmic tonemap,
@@ -818,33 +917,17 @@ export const LUME_SCENE = {
 /** @type {any[]} */
 const RAW_SCENES = [
   {
-    id: "studio-dark",
-    name: { en: "Dark studio", sv: "Mörk studio" },
-    // Stated, not derived: this is the look the builder shipped with, and it
-    // stays the default so no existing screenshot, embed or permalink moves.
-    // It is also the one scene whose background does NOT agree with its own
-    // reflections — see the note above; that disagreement is the thing the
-    // other two scenes exist to test.
-    bg: [0.045, 0.05, 0.065],
-    sky: [0.60, 0.67, 0.82],
-    ground: [0.055, 0.052, 0.058],
-    key: [2.55, 2.5, 2.38],
-    fill: [0.42, 0.47, 0.58],
-    rim: [0.62, 0.66, 0.78],
-    exposure: 1.12,
-    softbox: 0.30,
-    bounce: 0.9,
-    note: "The shipped look: a bright softbox in a black room. Dramatic, and the reason a polished case reflects a room that is not on screen.",
-  },
-  {
     id: "studio-grey",
     name: { en: "Grey backdrop", sv: "Grå fond" },
-    // THE CONTROL. Identical environment and identical rig to studio-dark —
-    // every reflection in this scene is the same reflection, ray for ray. The
-    // only difference is that the canvas now clears to the studio's own
-    // backdrop instead of to near-black. Any change you see between these two
-    // is caused by the background and by nothing else, which is what makes
-    // feedback #59's hypothesis testable rather than arguable.
+    // THE DEFAULT, and still the control it was built as. Identical
+    // environment and identical rig to studio-dark — every reflection in this
+    // scene is the same reflection, ray for ray. The only difference is that
+    // the canvas clears to the studio's own backdrop instead of to near-black,
+    // which is what makes feedback #59's hypothesis testable rather than
+    // arguable: any change between the two is caused by the background and by
+    // nothing else. It ships as the default because of what that experiment
+    // then showed — see WHICH ONE IS THE DEFAULT above. No `bg` here: it is
+    // derived, like every scene but the preserved baseline.
     sky: [0.60, 0.67, 0.82],
     ground: [0.055, 0.052, 0.058],
     key: [2.55, 2.5, 2.38],
@@ -856,6 +939,26 @@ const RAW_SCENES = [
     note: "The same studio with the wall put back in. Same lights, same reflections, background matched to the room the metal is already showing you.",
   },
   {
+    id: "studio-dark",
+    name: { en: "Dark studio", sv: "Mörk studio" },
+    // Stated, not derived: this is the look the builder shipped with, kept
+    // value for value so it stays available as the dramatic one and so a
+    // pixel-identity check has something to check against. It is also the one
+    // scene whose background does NOT agree with its own reflections — see the
+    // note above; that disagreement is the thing the other two scenes exist to
+    // test, and it is why it is no longer what a first-time visitor meets.
+    bg: [0.045, 0.05, 0.065],
+    sky: [0.60, 0.67, 0.82],
+    ground: [0.055, 0.052, 0.058],
+    key: [2.55, 2.5, 2.38],
+    fill: [0.42, 0.47, 0.58],
+    rim: [0.62, 0.66, 0.78],
+    exposure: 1.12,
+    softbox: 0.30,
+    bounce: 0.9,
+    note: "The look the builder shipped with: a bright softbox in a black room. Dramatic, and the reason a polished case reflects a room that is not on screen.",
+  },
+  {
     id: "studio-light",
     name: { en: "Daylight studio", sv: "Dagsljusstudio" },
     // A bright room over a pale table. What lifts is the FLOOR, not the
@@ -863,9 +966,10 @@ const RAW_SCENES = [
     // took the sky to (1.05, 1.10, 1.20) and every steel part in the render
     // went white — case, lugs and bracelet all one blank shape. A conductor
     // reflects ~60 % of whatever is above it, and some of this renderer's
-    // parts already sit near the tonemap's shoulder in the DARK studio (the
-    // exhibition-back view measures mean 0.81 with a standard deviation of
-    // 0.08 across the subject: almost no tonal range left to spend). So the
+    // parts sit near the tonemap's shoulder even in the DARK studio — the
+    // exhibition-back view measured mean 0.81 with a standard deviation of
+    // 0.08 across the subject, almost no tonal range left to spend, until the
+    // underside floor lift was cut (see watch-render.js's rig). So the
     // ground goes up six-fold and the sky only by a fifth, which fills the
     // shadow side and leaves the highlight where it was — what a bright room
     // actually does to a photograph. Measured on the same five builds: the
@@ -884,7 +988,9 @@ const RAW_SCENES = [
 
 /**
  * The selectable scenes, in display order, background resolved. `SCENES[0]` is
- * the default and is today's exact look.
+ * the DEFAULT — the picker and `sceneFor` both read position 0 rather than a
+ * separate id, so the order is the decision and there is nothing for a second
+ * declaration to disagree with.
  */
 export const SCENES = RAW_SCENES.map((s) => ({
   ...s,
