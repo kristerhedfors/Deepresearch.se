@@ -75,6 +75,37 @@ describe("the identity gate is fail-closed", () => {
     });
   }
 
+  test("an unauthenticated /mcp is refused as JSON-RPC, never as the sign-in page", async () => {
+    // The endpoint speaks JSON-RPC even when refusing. An MCP client handed
+    // HTML reports a TRANSPORT failure, so the one error its user needs to
+    // read — "authenticate" — is the one they never see. src/index.js already
+    // did this for a key that was presented and rejected; the commoner case is
+    // no credential at all (key forgotten, or an authorization header a proxy
+    // stripped), which used to fall through to loginPage. Caught by
+    // scripts/mcp-probe.mjs's first live run, 2026-08-01.
+    const resp = await call("/mcp", { method: "POST" });
+    assert.equal(resp.status, 401);
+    assert.match(resp.headers.get("content-type") || "", /application\/json/);
+    const body = await resp.json();
+    assert.equal(body.jsonrpc, "2.0");
+    assert.ok(body.error?.code, "carries a JSON-RPC error code");
+    // The message has to say what to DO — this is the one response a
+    // misconfigured client's user will actually see.
+    assert.match(body.error.message, /Bearer/);
+  });
+
+  test("the bare origin on the mcp. host refuses the same way", async () => {
+    // Clients disagree about whether the configured URL includes the path, so
+    // isMcpEndpoint treats the bare origin on that host as the endpoint too —
+    // and a refusal there must not become HTML either.
+    const ctx = fakeCtx();
+    const request = new Request("https://mcp.deepresearch.se/", { method: "POST" });
+    const resp = await worker.fetch(request, env(), ctx);
+    await ctx.settle();
+    assert.equal(resp.status, 401);
+    assert.equal((await resp.json()).jsonrpc, "2.0");
+  });
+
   test("an unknown path behind the gate is 401, not 404 — no route enumeration", async () => {
     // Answering 404 for unknown paths and 401 for real ones tells an
     // unauthenticated caller which routes exist. It answers 401 for both.

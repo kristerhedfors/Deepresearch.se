@@ -323,11 +323,23 @@ a normal index (same flat `vectors`/`map`), committed and served like before —
 so it "follows along" into the web app with no server change; retrieval ignores
 `hashes`.
 
-**Rebuild order when source changes:** finish edits → `npm run bundle`
-(snapshot) → `npm run bundle:rag` (index, against the FINAL snapshot — now a
-cheap DELTA that only re-embeds the changed files) → commit all three. Doing
-rag before the final snapshot leaves the index chunk-map misaligned and trips
-the consistency check. Since the HELP layer (2026-07-16), a source edit can
+**Rebuild order when source changes:** finish edits → **`git add` any NEW
+files** → `npm run bundle` (snapshot) → `npm run bundle:rag` (index, against
+the FINAL snapshot — now a cheap DELTA that only re-embeds the changed files) →
+commit all three. Doing rag before the final snapshot leaves the index chunk-map
+misaligned and trips the consistency check.
+
+> **`git add` first, and this is not a style preference.** The walk is
+> `git ls-files`, so an UNTRACKED file does not exist as far as the bundler is
+> concerned. Bundle before staging and you get a snapshot that is internally
+> consistent, passes `--check`, passes the whole local suite — and goes stale
+> the instant `git add -A` stages the new files, because the tree it described
+> is no longer the tree in the commit. The failure surfaces only in CI, on a
+> fresh checkout, as the two drift tests, with a clean `git status` and nothing
+> obviously wrong. Observed 2026-08-01 on PR #362: two new `scripts/*.mjs`
+> files, snapshot count 926 where the commit held 928. A change that adds no
+> new files never hits this, which is why it is easy to go a long time without
+> meeting it. Since the HELP layer (2026-07-16), a source edit can
 ALSO stale the docs corpus (its symbol references carry definition line
 numbers) — add `npm run bundle:docs` + `npm run bundle:docs-rag` to the pass;
 the full order and the whole help layer live in the **help-docs** skill.

@@ -43,6 +43,12 @@ import { SDK_TOOLS, SDK_TOOL_NAMES, manifestFromSnapshot, runSdkTool, snapshotFi
 // no network, no model — so a static import keeps the file-layout rule above
 // intact, exactly as SDK_TOOLS does.
 import { WATCH_TOOLS, WATCH_TOOL_NAMES, runWatchTool } from "./watch-tools.js";
+// The LITERATURE family: the two hosted scientific corpora (arXiv, PubMed) as
+// directly searchable knowledge bases. Only the SCHEMAS are imported here —
+// src/literature-tools.js imports nothing at all, so the file-layout rule holds;
+// everything that touches a Vectorize binding or the embedder lives in
+// src/literature-run.js, loaded by a dynamic import in the dispatch below.
+import { LITERATURE_TOOLS, LITERATURE_TOOL_NAMES } from "./literature-tools.js";
 // WHAT this server exposes is per-account configuration (Settings → "MCP
 // server"). A pure leaf module — catalog, parse, filter, argument resolution —
 // so this static import keeps the file-layout rule above intact.
@@ -157,11 +163,25 @@ export const WATCH_MCP_TOOLS = WATCH_TOOLS.map(({ name, description, input_schem
   inputSchema: input_schema,
 }));
 
+// The literature family, same rename. These are the only tools here that reach
+// a data store rather than committed data, which is why their runner is loaded
+// dynamically even though their definitions are static.
+export const LITERATURE_MCP_TOOLS = LITERATURE_TOOLS.map(({ name, description, input_schema }) => ({
+  name,
+  description,
+  inputSchema: input_schema,
+}));
+
 // Every tool this server CAN serve, in a stable order. What a given caller
 // actually sees is this list filtered by the account's exposure config —
 // src/mcp-config.js's catalog mirrors it exactly, a correspondence its unit
 // test enforces, so no tool can ship without a switch to turn it off.
-export const ALL_MCP_TOOLS = [DEEP_RESEARCH_TOOL, ...SDK_MCP_TOOLS, ...WATCH_MCP_TOOLS];
+//
+// The literature family sits directly behind deep_research because the two are
+// the same capability at different grain: deep_research answers a question,
+// literature_* hands an agent the corpus to answer it from. A client scanning
+// the list top-down should meet them together.
+export const ALL_MCP_TOOLS = [DEEP_RESEARCH_TOOL, ...LITERATURE_MCP_TOOLS, ...SDK_MCP_TOOLS, ...WATCH_MCP_TOOLS];
 
 // The `tools/list` result, narrowed to what this account exposes. Called with
 // no argument it reports the full set (the default config) — which is what an
@@ -352,6 +372,41 @@ async function handleToolCall(parsed, env, log, identity, ctx, requestId, config
     }
   }
 
+  // The literature family: dense retrieval over the two hosted scientific
+  // corpora. Unlike the two families above these reach a data store and spend
+  // real (small) provider money, so the two SEARCHING tools sit behind the same
+  // research quota /api/chat and deep_research enforce — an exhausted account
+  // must not be able to keep hammering the index from a long-lived key.
+  // literature_corpora and literature_fetch are deliberately outside the gate:
+  // one reads committed facts plus an index description, the other is a direct
+  // key read, and an agent that has run out of budget should still be able to
+  // learn what exists and resolve an id it was handed.
+  if (typeof name === "string" && LITERATURE_TOOL_NAMES.has(name)) {
+    try {
+      if (name === "literature_search" || name === "literature_similar") {
+        const blocked = await researchQuotaBlock(env, log, identity);
+        if (blocked) {
+          log.info("mcp.quota_blocked", { tool: name, user_id: identity?.id });
+          return jsonResponse(jsonRpcResult(id, toolResult(blocked, true)));
+        }
+      }
+      const { runLiteratureTool } = await import("./literature-run.js");
+      const result = await runLiteratureTool(env, log, name, args);
+      log.info("mcp.literature_tool", {
+        tool: name,
+        user_id: identity?.id,
+        queries: result.queries,
+        records: result.records,
+        request_id: requestId,
+      });
+      return jsonResponse(jsonRpcResult(id, toolResult(result.text, result.isError)));
+    } catch (err) {
+      const message = (/** @type {any} */ (err))?.message || String(err);
+      log.error("mcp.literature_tool_failed", { tool: name, error: message });
+      return jsonResponse(jsonRpcResult(id, toolResult(`Literature tool failed: ${message}`, true)));
+    }
+  }
+
   if (name !== TOOL_NAME) {
     return jsonResponse(jsonRpcError(id, RPC_INVALID_PARAMS, `Unknown tool: ${name ?? "(none)"}`));
   }
@@ -392,6 +447,38 @@ async function handleToolCall(parsed, env, log, identity, ctx, requestId, config
   }
 }
 
+/**
+ * The research quota gate, shared by every tool on this surface that spends
+ * provider money — deep_research and the two searching literature tools.
+ *
+ * Admins are never blocked; every regular user is checked against their
+ * four-window budget BEFORE any spend. Without this, /mcp would be an unmetered
+ * bypass of the quota /api/chat applies. Returns the message to hand back, or
+ * null when the caller may proceed.
+ *
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @param {any} [config] the site config, when the caller already loaded it
+ * @returns {Promise<string | null>}
+ */
+async function researchQuotaBlock(env, log, identity, config) {
+  if (identity?.isSecretAdmin || identity?.role === "admin") return null;
+  const [{ getUsage, quotaExceeded, effectiveQuota }, { getConfig }] = await Promise.all([
+    import("./quota.js"),
+    import("./config.js"),
+  ]);
+  const settings = config || (await getConfig(env));
+  const quota = effectiveQuota(settings, identity?.user);
+  if (!quota) return null;
+  const usage = await getUsage(env, identity.id, Date.now(), identity?.user?.quota_reset_at);
+  const blocked = quotaExceeded(usage, quota);
+  if (!blocked) return null;
+  log.info("mcp.quota_exceeded", { user_id: identity?.id, period: blocked.period, kind: blocked.kind });
+  const when = `${new Date(blocked.reset_at).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+  return `Research quota exceeded (${blocked.period}). It resets at ${when}.`;
+}
+
 // ---------------------------------------------------------------------------
 // The deep_research tool: mirrors src/chat.js's per-request setup (WITHOUT
 // editing it) and runs the pipeline to completion, collecting the streamed
@@ -423,7 +510,7 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
     { listChatModels },
     { runPipeline },
     { getConfig },
-    { getUsage, quotaExceeded, effectiveQuota, recordUsage, recordModelUsage },
+    { recordUsage, recordModelUsage },
     { summarizeSpend, exaCost, spendByModel },
   ] = await Promise.all([
     import("./validation.js"),
@@ -471,25 +558,16 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
   budgetS = Math.min(budgetS, config.max_time_budget_s);
   const webSearch = args.web_search;
 
-  // Research quota — the SAME gate /api/chat enforces (src/chat.js). Admins
-  // are never blocked; every regular user is checked against their four-window
-  // budget BEFORE any spend. Without this, /mcp would be an unmetered bypass of
-  // the quota /api/chat applies (each call runs the full pipeline for real
-  // Berget + Exa money), and the spend would also be invisible to the usage
-  // bars and admin cost totals — see the recordUsage below.
-  const quota =
-    identity?.isSecretAdmin || identity?.role === "admin"
-      ? null
-      : effectiveQuota(config, identity?.user);
-  if (quota) {
-    const usage = await getUsage(env, identity.id, Date.now(), identity?.user?.quota_reset_at);
-    const blocked = quotaExceeded(usage, quota);
-    if (blocked) {
-      log.info("mcp.quota_blocked", { user_id: identity?.id, period: blocked.period, kind: blocked.kind });
-      const when = `${new Date(blocked.reset_at).toISOString().slice(0, 16).replace("T", " ")} UTC`;
-      throw new Error(`Research quota exceeded (${blocked.period}). It resets at ${when}.`);
-    }
-  }
+  // Research quota — the SAME gate /api/chat enforces (src/chat.js), through
+  // the shared helper the literature tools also use. Admins are never blocked;
+  // every regular user is checked against their four-window budget BEFORE any
+  // spend. Without this, /mcp would be an unmetered bypass of the quota
+  // /api/chat applies (each call runs the full pipeline for real Berget + Exa
+  // money), and the spend would also be invisible to the usage bars and admin
+  // cost totals — see the recordUsage below. The config is already loaded here,
+  // so it is passed rather than read a second time.
+  const blocked = await researchQuotaBlock(env, log, identity, config);
+  if (blocked) throw new Error(blocked);
 
   const state = newRequestState(model, jsonModel, webSearch, budgetS, planResearch(model, budgetS, jsonModel));
 
