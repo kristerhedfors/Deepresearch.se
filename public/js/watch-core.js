@@ -4299,6 +4299,21 @@ export function keepOption(slotKey) {
  */
 const KEEP_STANDINS = {
   insert: { id: KEEP_ID, stock: true, name: KEEP_NAMES.insert, scale: "none", material: "steel", profile: "flat", base: "#8d949d", mark: "#5d646d", pip: "none", fits: ["skx", "skx013", "srp", "native"] },
+  /**
+   * The insert stand-in on a case whose bezel actually ROTATES. Refusing to
+   * name a SKU is right; drawing a blank steel ring on a dive watch is not,
+   * and the collapse made that the default render — the first thing a visitor
+   * meets was a diver with no bezel markings at all.
+   *
+   * A case sold with a 120-click dive bezel ships a DIVE insert: a minute
+   * scale and a lume pip at 12. That is a derivation from `cs.bezel`, the same
+   * shape of reasoning `stockPartFor` already uses to name the crown from the
+   * case's own `signed` flag — not a guess about which insert. It still names
+   * no part and claims no material beyond the commodity aluminium every SKX-
+   * platform set ships, and it stays `stock: true`, so the sourcing table goes
+   * on pricing it as "came with the case, unspecified".
+   */
+  insertDive: { id: KEEP_ID, stock: true, name: KEEP_NAMES.insert, scale: "dive60", material: "aluminium", profile: "flat", base: "#12151a", mark: "#e6eaf0", pip: "c3", fits: ["skx", "skx013", "srp", "native"] },
   chapterRing: { id: KEEP_ID, stock: true, name: KEEP_NAMES.chapterRing, base: "#9aa1aa", mark: "#6b727b", printing: "plain", finish: "polished", lume: "none", fits: ["skx", "skx013", "srp", "native"] },
   crystal: { id: KEEP_ID, stock: true, name: KEEP_NAMES.crystal, material: "as-supplied", profile: "flat", edge: "bevel", arSide: "underside", forInsert: "any", dome: 0, tint: "#e0e7ef", ar: "none", cyclops: false, fits: ["skx", "skx013", "srp", "native"] },
   crown: { id: KEEP_ID, stock: true, name: KEEP_NAMES.crown, style: "coin", texture: "coin", signed: false, mount: "screw-down", diaMm: 7.0, heightMm: 4.9, fits: ["skx", "skx013", "srp", "native"] },
@@ -5074,8 +5089,13 @@ export function resolveBuild(build) {
     if (ids[slot.key] === KEEP_ID && slotCanKeep(slot.key)) {
       kept[slot.key] = true;
       const stockId = stockPartFor(ids.case, slot.key);
+      // A rotating bezel takes the dive stand-in: see KEEP_STANDINS.insertDive
+      // for why that is a derivation rather than an invented part.
+      const standinKey = slot.key === "insert" && caseById(ids.case)?.bezel === "dive120"
+        ? "insertDive"
+        : slot.key;
       parts[slot.key] = (stockId && part(slot.key, stockId))
-        || KEEP_STANDINS[/** @type {keyof typeof KEEP_STANDINS} */ (slot.key)]
+        || KEEP_STANDINS[/** @type {keyof typeof KEEP_STANDINS} */ (standinKey)]
         || slotOptions(slot.key)[0];
       continue;
     }
