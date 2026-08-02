@@ -41,6 +41,7 @@ import {
   slotCanKeep,
   sourcingFor,
   CASES,
+  caseBuild,
 } from "./watch-core.js";
 import {
   KEEP_ID as PAGE_KEEP_ID,
@@ -52,6 +53,19 @@ import {
 } from "./watch-page-core.js";
 
 const BASE = normalizeBuild(DEFAULT_BUILD);
+/**
+ * A build that NAMES a part for every slot the case decides. Since the
+ * collapse (feedback #59, owner directive) `DEFAULT_BUILD` carries none of
+ * them, so a test that needs a named part has to say so.
+ */
+const NAMED = normalizeBuild({
+  ...DEFAULT_BUILD,
+  insert: "ceramic-black",
+  chapterRing: "black-minutes",
+  crystal: "dd-sapphire",
+  crown: "signed-screw",
+  caseback: "solid-engraved",
+});
 /** Every slot of a build set to "keep the one in the box". */
 const KEPT = normalizeBuild({
   ...DEFAULT_BUILD,
@@ -446,7 +460,7 @@ describe("prices are written the way the rest of the page writes them", () => {
   test("the table prices the BUNDLE, not the part", () => {
     // The listed band and the band the row contributes are different numbers on
     // a bundled slot, and the table has to show the second.
-    const row = sourcingFor(DEFAULT_BUILD).find((r) => r.slot === "crystal");
+    const row = sourcingFor(NAMED).find((r) => r.slot === "crystal");
     assert.ok(row.priceUsd[0] > 0, "the crystal has a real listed floor");
     assert.equal(row.bundlePriceUsd[0], 0, "…which is not what it adds to this build");
     assert.equal(row.bundlePriceUsd[1], row.priceUsd[1]);
@@ -458,16 +472,18 @@ describe("prices are written the way the rest of the page writes them", () => {
 // ---------------------------------------------------------------------------
 
 describe("nothing that already worked moved", () => {
-  test("an old eleven-slot permalink decodes to exactly the watch it always did", () => {
-    // Minted from the shipped codec before "keep it" existed. Adding a head
-    // option must not shift what an existing code means.
+  test("an old eleven-slot permalink opens, and says what it said", () => {
+    // Minted from the shipped codec before "keep it" existed. It no longer
+    // decodes byte-identically — the five slots it names are not decisions any
+    // more, so it reads as a build with overrides — but every part it NAMES it
+    // still gets, which is the honest degradation the owner accepted.
     const old =
       "movement:nh35;case:skx007;finish:brushed;insert:ceramic-black;dial:skx-black;" +
       "chapterRing:black-minutes;hands:skx-dive;crystal:dd-sapphire;crown:signed-screw;" +
       "caseback:solid-engraved;strap:oyster";
     const decoded = decodeBuild(old);
-    assert.deepEqual(decoded, BASE);
-    assert.equal(encodeBuild(decoded), old, "and it re-encodes byte for byte");
+    assert.deepEqual(decoded, NAMED);
+    assert.deepEqual(decodeBuild(encodeBuild(decoded)), decoded, "and what it becomes round-trips");
     for (const slot of KIT_SLOTS) {
       assert.notEqual(decoded[slot], KEEP_ID, `${slot}: an old link acquired a keep it never had`);
     }
@@ -480,7 +496,15 @@ describe("nothing that already worked moved", () => {
   test("a kept slot survives the permalink, and survives a change of case", () => {
     const code = encodeBuild(KEPT);
     assert.deepEqual(decodeBuild(code), KEPT);
-    for (const slot of KEEPABLE_SLOTS) assert.match(code, new RegExp(`${slot}:${KEEP_ID}`));
+    // Since the collapse a kept slot is usually what the case ALREADY gives,
+    // so it is not in the link at all — the link carries the decisions and the
+    // differences. Where keeping IS a difference (an SKX007 is listed with an
+    // exhibition back, so "keep the plain one" is a real choice) it is carried.
+    for (const slot of KEEPABLE_SLOTS) {
+      const carried = new RegExp(`${slot}:${KEEP_ID}`).test(code);
+      assert.equal(carried, caseBuild(KEPT.case)[slot] !== KEEP_ID, slot);
+    }
+    assert.match(code, new RegExp(`caseback:${KEEP_ID}`));
     // Opening the same link on a case whose set does not fill a slot must not
     // silently rewrite the build — the picker decides what to OFFER, the codec
     // only carries what was said.
@@ -491,10 +515,10 @@ describe("nothing that already worked moved", () => {
     assert.ok(sourcingView(moved).parcels >= 1);
   });
 
-  test("junk in the keep position degrades to the default, as every unknown id does", () => {
+  test("junk in the keep position degrades to what the case gives", () => {
     const junk = normalizeBuild({ ...DEFAULT_BUILD, crown: "stocked", caseback: "stok" });
-    assert.equal(junk.crown, DEFAULT_BUILD.crown);
-    assert.equal(junk.caseback, DEFAULT_BUILD.caseback);
+    assert.equal(junk.crown, BASE.crown);
+    assert.equal(junk.caseback, BASE.caseback);
     // And "stock" on a slot with no box to come out of is not a valid id either.
     assert.equal(normalizeBuild({ ...DEFAULT_BUILD, dial: KEEP_ID }).dial, DEFAULT_BUILD.dial);
   });

@@ -4047,17 +4047,14 @@ export function displayBackFor(caseId) {
 export function defaultsForCase(caseId) {
   const cs = caseById(caseId);
   if (!cs) return {};
+  // The five collapsed slots come straight from `caseBuild` — one definition
+  // of "what the case gives", shared by normalisation, the picker, the
+  // permalink and this endpoint, so none of them can drift from another.
   /** @type {Record<string, string>} */
-  const out = {};
-  out.caseback = displayBackFor(caseId) === true ? "display" : "solid-brushed";
-  const crown = stockPartFor(caseId, "crown");
-  if (crown) out.crown = crown;
-  const plat = PLATFORMS[/** @type {keyof typeof PLATFORMS} */ (cs.platform)];
-  if (plat && plat.chapterRingRequired) out.chapterRing = "black-minutes";
+  const out = { ...caseBuild(caseId) };
   // A case with an INTEGRATED bracelet arrives wearing one, and there are no
-  // lugs to fit anything else to. Defaulting the strap slot to a bracelet is
-  // the same kind of choice as defaulting the SKX013 to its mandatory chapter
-  // ring: the case decides, because the case already includes the part.
+  // lugs to fit anything else to. The strap IS a decision on every other case,
+  // so it is not in `caseBuild`; here it is the one the case forces.
   if (cs.integrated && cs.integrated.bracelet) out.strap = "oyster";
   return out;
 }
@@ -4065,10 +4062,23 @@ export function defaultsForCase(caseId) {
 // ---------------------------------------------------------------------------
 // SLOTS AND AXES.
 //
-// SLOTS are the eleven physical parts you buy. They have been the build's
-// shape since the page shipped and they stay exactly as they were, because
-// permalinks, the chat command parser and the catalogue endpoint are all built
-// on them.
+// SLOTS are the eleven physical parts a finished build is made of. SIX of them
+// are DECISIONS a buyer makes — movement, case, finish, dial, hands, strap —
+// and the other five are not:
+//
+//   > "Bezel insert, crystal, caseback and crown are practically never bought
+//   > separately from the case. Base everything off the available cases
+//   > online. … Chapter rings are usually not bought separately and are
+//   > integrated with the case."   — feedback #59
+//
+// So `insert`, `chapterRing`, `crystal`, `crown` and `caseback` carry
+// `fromCase: true`: they are still slots, still render, still get checked and
+// still get priced, but a build does not decide them — it TAKES them from the
+// case, via `caseBuild`. Naming one anyway is an OVERRIDE, which the picker
+// puts behind "swap a part the case came with" and the sourcing table prices
+// as its own parcel. The engine is unchanged: `checkBuild` still never blocks
+// a render, and an override that does not fit still draws with the problem
+// listed beside it (docs §5).
 //
 // AXIS_SLOTS are the orthogonal variables ON those parts — dial colour, dial
 // finish, insert profile, crystal edge, strap leather type, the date and day
@@ -4083,30 +4093,46 @@ export function defaultsForCase(caseId) {
 
 /**
  * @typedef {{ key: string, list: string, name: {en: string, sv: string},
- *             optional?: boolean, over?: string, group?: string,
- *             asListed?: {en: string, sv: string}, defaultId?: string,
- *             kind?: string }} SlotDef
+ *             optional?: boolean, fromCase?: boolean, over?: string,
+ *             group?: string, asListed?: {en: string, sv: string},
+ *             defaultId?: string, kind?: string }} SlotDef
  * A slot or an axis. The two share a shape so one registry, one option
- * lookup and one compatibility annotator serve both.
+ * lookup and one compatibility annotator serve both. `fromCase` marks a slot
+ * the CASE decides rather than the buyer (feedback #59).
  */
 
 /**
- * Every slot the builder fills, in the order the UI shows them.
+ * Every slot the builder fills, in the order the UI shows them. The six
+ * without `fromCase` are the primary picker; the five with it come from the
+ * case and are reached through the override disclosure.
  * @type {SlotDef[]}
  */
 export const SLOTS = [
   { key: "movement", list: "MOVEMENTS", name: { en: "Movement", sv: "Urverk" } },
   { key: "case", list: "CASES", name: { en: "Case", sv: "Boett" } },
   { key: "finish", list: "FINISHES", name: { en: "Finish", sv: "Ytbehandling" } },
-  { key: "insert", list: "INSERTS", name: { en: "Bezel insert", sv: "Lünettinlägg" }, optional: true },
+  { key: "insert", list: "INSERTS", name: { en: "Bezel insert", sv: "Lünettinlägg" }, optional: true, fromCase: true },
   { key: "dial", list: "DIALS", name: { en: "Dial", sv: "Urtavla" } },
-  { key: "chapterRing", list: "CHAPTER_RINGS", name: { en: "Chapter ring", sv: "Chapter ring" }, optional: true },
+  { key: "chapterRing", list: "CHAPTER_RINGS", name: { en: "Chapter ring", sv: "Chapter ring" }, optional: true, fromCase: true },
   { key: "hands", list: "HAND_SETS", name: { en: "Hands", sv: "Visare" } },
-  { key: "crystal", list: "CRYSTALS", name: { en: "Crystal", sv: "Glas" }, optional: true },
-  { key: "crown", list: "CROWNS", name: { en: "Crown", sv: "Krona" } },
-  { key: "caseback", list: "CASEBACKS", name: { en: "Case back", sv: "Boettbotten" } },
+  { key: "crystal", list: "CRYSTALS", name: { en: "Crystal", sv: "Glas" }, optional: true, fromCase: true },
+  { key: "crown", list: "CROWNS", name: { en: "Crown", sv: "Krona" }, fromCase: true },
+  { key: "caseback", list: "CASEBACKS", name: { en: "Case back", sv: "Boettbotten" }, fromCase: true },
   { key: "strap", list: "STRAPS", name: { en: "Strap", sv: "Band" } },
 ];
+
+/**
+ * The five slots a build takes from the case rather than deciding
+ * (feedback #59). Derived from `SLOTS` so the marker is the single source.
+ * @type {string[]}
+ */
+export const CASE_PART_SLOTS = SLOTS.filter((s) => s.fromCase).map((s) => s.key);
+
+/**
+ * The six decisions the primary picker shows — what a buyer actually chooses.
+ * @type {SlotDef[]}
+ */
+export const PRIMARY_SLOTS = SLOTS.filter((s) => !s.fromCase);
 
 /**
  * What "none" MEANS per slot, in the user's own words. These slots are
@@ -4283,6 +4309,145 @@ const KEEP_STANDINS = {
   caseback: { id: KEEP_ID, stock: true, name: KEEP_NAMES.caseback, type: "solid", display: false, finish: "brushed", profile: "standard", mount: "screw-down", engraving: "none", heightDeltaMm: 0, fits: ["skx", "skx013", "srp", "native"] },
 };
 
+// ---------------------------------------------------------------------------
+// WHAT THE CASE GIVES — the five collapsed slots, resolved from the case alone.
+//
+// This is the whole of the collapse. `caseBuild(caseId)` answers, for a case
+// and nothing else, what the insert, chapter ring, crystal, crown and case
+// back are; `normalizeBuild` fills them in from it; and anything a build says
+// that DIFFERS from it is an override (`kitOverrides`).
+//
+// The rules, in the order they apply, and what each is grounded in:
+//
+//  1. The set fills the slot (`caseKit`) → KEEP_ID. Nothing is bought and no
+//     part is named, because no listing publishes which insert or crystal is
+//     in a given box (§2, "no invented millimetres" applied to parts).
+//  2. Except the case back on a family a display back is LISTED for: that
+//     stays the exhibition back, which is the standing decision
+//     `CASE_DISPLAY_BACKS` exists for — still a fact about the case, not a
+//     choice the buyer made, so it is not an override.
+//  3. The set does NOT fill the slot → the part is a genuine separate
+//     purchase, and the case still narrows it: no rotating bezel means no
+//     insert at all, a platform with no separate chapter ring means no ring,
+//     and everything else falls back to the one part below.
+
+/**
+ * The last resort for a collapsed slot a case neither ships nor rules out.
+ * These are the ids the default build used to carry outright; they are now
+ * only reached where the case genuinely leaves the choice open.
+ */
+const CASE_PART_FALLBACK = {
+  insert: "ceramic-black",
+  chapterRing: "black-minutes",
+  crystal: "dd-sapphire",
+  crown: "signed-screw",
+  caseback: "solid-brushed",
+};
+
+const CASE_BUILDS = new Map();
+
+/**
+ * What a case gives for the five slots a build no longer decides.
+ * Total: an unknown case id answers with the fallbacks, so a stale permalink
+ * still resolves to a complete, renderable watch.
+ * @param {string} caseId
+ * @returns {Record<string, string>}
+ */
+export function caseBuild(caseId) {
+  const key = String(caseId || "");
+  const hit = CASE_BUILDS.get(key);
+  if (hit) return hit;
+  const cs = caseById(key);
+  const kit = caseKit(key);
+  const plat = cs ? PLATFORMS[/** @type {keyof typeof PLATFORMS} */ (cs.platform)] || PLATFORMS.native : null;
+  const display = displayBackFor(key) === true;
+  /** @type {Record<string, string>} */
+  const out = {};
+  for (const slot of CASE_PART_SLOTS) {
+    if (slot === "caseback" && display) {
+      out.caseback = "display";
+      continue;
+    }
+    if (kit.includes.includes(slot)) {
+      out[slot] = KEEP_ID;
+      continue;
+    }
+    if (slot === "insert") {
+      out.insert = cs && cs.bezel === "dive120" ? CASE_PART_FALLBACK.insert : "none";
+      continue;
+    }
+    if (slot === "chapterRing") {
+      out.chapterRing = plat && plat.chapterRing ? CASE_PART_FALLBACK.chapterRing : "none";
+      continue;
+    }
+    out[slot] = CASE_PART_FALLBACK[/** @type {keyof typeof CASE_PART_FALLBACK} */ (slot)];
+  }
+  CASE_BUILDS.set(key, out);
+  return out;
+}
+
+/**
+ * Whether a collapsed slot on an already-normalized build says something
+ * other than what the case gives.
+ * @param {Record<string, string>} ids
+ * @param {string} slotKey
+ */
+function kitOverrideAt(ids, slotKey) {
+  const from = caseBuild(ids.case)[slotKey];
+  if (ids[slotKey] === from) return false;
+  // Naming the exact part the set is RECORDED as shipping is not an override.
+  // It is the same crown, said out loud — and the sourcing table already
+  // prices it as included, so calling it a swap in the picker would be the two
+  // surfaces disagreeing about one part.
+  if (from === KEEP_ID && ids[slotKey] === stockPartFor(ids.case, slotKey)) return false;
+  return true;
+}
+
+/**
+ * The collapsed slots this build says something different about — the
+ * overrides a modder has actually made. Order follows `SLOTS`, so a UI
+ * listing them reads top to bottom the way the picker does.
+ * @param {Record<string, string> | null | undefined} build
+ * @returns {string[]}
+ */
+export function kitOverrides(build) {
+  const ids = normalizeBuild(build);
+  return CASE_PART_SLOTS.filter((k) => kitOverrideAt(ids, k));
+}
+
+/**
+ * Whether one collapsed slot is an override on this build.
+ * @param {Record<string, string> | null | undefined} build
+ * @param {string} slotKey
+ */
+export function isKitOverride(build, slotKey) {
+  if (!CASE_PART_SLOTS.includes(slotKey)) return false;
+  return kitOverrideAt(normalizeBuild(build), slotKey);
+}
+
+/**
+ * CHANGE THE CASE. Use this rather than `{ ...build, case: id }`.
+ *
+ * A normalized build spells the five collapsed slots out, so spreading a new
+ * case over one drags the OLD case's parts along as overrides — pick a Tuna
+ * after an SKX007 and you would inherit the SKX007's exhibition back without
+ * ever asking for it. This drops every collapsed slot the buyer did not
+ * actually override, so the new case gets to decide its own, and keeps the
+ * ones they did: a modder who chose a Pepsi bezel keeps it across the swap.
+ *
+ * @param {Record<string, string> | null | undefined} build
+ * @param {string} caseId
+ * @returns {Record<string, string>}
+ */
+export function withCase(build, caseId) {
+  const ids = normalizeBuild(build);
+  const over = new Set(CASE_PART_SLOTS.filter((k) => kitOverrideAt(ids, k)));
+  /** @type {Record<string, string>} */
+  const next = { ...ids, case: part("case", caseId) ? caseId : ids.case };
+  for (const k of CASE_PART_SLOTS) if (!over.has(k)) delete next[k];
+  return normalizeBuild(next);
+}
+
 /**
  * The orthogonal variables. `over` names the slot an axis modifies, `group`
  * is what a UI should file it under, `asListed` adds the synthetic "as it
@@ -4456,18 +4621,20 @@ function axisDefault(axis) {
   return axis.defaultId || "as-listed";
 }
 
-/** The build the page opens on. */
+/**
+ * The build the page opens on — the SIX decisions and nothing else
+ * (feedback #59). The insert, chapter ring, crystal, crown and case back are
+ * not in here because they are not decisions: `normalizeBuild` takes them from
+ * whatever case the build names, through `caseBuild`. Spreading this over a
+ * change (`{ ...DEFAULT_BUILD, case: "tuna" }`) therefore gives that case's own
+ * parts rather than the SKX007's, which is the point.
+ */
 export const DEFAULT_BUILD = {
   movement: "nh35",
   case: "skx007",
   finish: "brushed",
-  insert: "ceramic-black",
   dial: "skx-black",
-  chapterRing: "black-minutes",
   hands: "skx-dive",
-  crystal: "dd-sapphire",
-  crown: "signed-screw",
-  caseback: "solid-engraved",
   strap: "oyster",
 };
 
@@ -4501,7 +4668,17 @@ export function normalizeBuild(build) {
   /** @type {Record<string, string>} */
   const out = {};
   const src = build && typeof build === "object" ? build : {};
+  // The CASE first, whatever order `SLOTS` happens to be in: the five
+  // collapsed slots are resolved against it, so it has to be settled before
+  // the loop reaches them.
+  const wantedCase = typeof src.case === "string" ? src.case : "";
+  const caseId = part("case", wantedCase) ? wantedCase : DEFAULT_BUILD.case;
+  const fromCase = caseBuild(caseId);
   for (const slot of SLOTS) {
+    if (slot.key === "case") {
+      out.case = caseId;
+      continue;
+    }
     const wanted = typeof src[slot.key] === "string" ? src[slot.key] : "";
     if (slot.optional && wanted === "none") {
       out[slot.key] = "none";
@@ -4514,6 +4691,15 @@ export function normalizeBuild(build) {
     // `canKeepStock`'s question, and it belongs to the picker, not here.
     if (wanted === KEEP_ID && slotCanKeep(slot.key)) {
       out[slot.key] = KEEP_ID;
+      continue;
+    }
+    // A COLLAPSED SLOT IS NOT A DECISION. Say nothing about it and the case
+    // says it for you; name a part and that is an override, which is exactly
+    // what `kitOverrides` reports and what the picker puts behind its
+    // disclosure. Junk falls back to the case too, never to a fixed SKX007
+    // part, so a stale permalink degrades into a coherent watch.
+    if (slot.fromCase) {
+      out[slot.key] = part(slot.key, wanted) ? wanted : fromCase[slot.key];
       continue;
     }
     out[slot.key] = part(slot.key, wanted) ? wanted : DEFAULT_BUILD[/** @type {keyof typeof DEFAULT_BUILD} */ (slot.key)];
@@ -5247,8 +5433,10 @@ export function checkBuild(build) {
   // together, so the honest thing is to say which one you have to check.
   // It is a warning about BUYING the wrong crown, so a crown kept from the
   // case's own box (feedback #59) cannot trip it — that crown came off this
-  // case and fits it by construction.
-  if (cs.platform === "skx" && ids.crown && !kept.crown && ids.crown !== DEFAULT_BUILD.crown) {
+  // case and fits it by construction. What DOES trip it is a crown the buyer
+  // overrode: the whole point of the note is "check which case you are
+  // ordering a crown for", which only arises once one is being ordered.
+  if (cs.platform === "skx" && ids.crown && !kept.crown && kitOverrideAt(ids, "crown")) {
     issues.push({
       level: "note",
       slot: "crown",
@@ -5493,9 +5681,24 @@ export function compatibleOptions(slotKey, build) {
   const options = [...slotOptions(slotKey)];
   const none = def.optional ? noneOption(slotKey) : null;
   if (none) options.push(none);
+  // A collapsed slot leads with what the case gives, because that is its
+  // value until somebody overrides it — and it has to be reachable from every
+  // surface that enumerates options (the picker, the chat parser, the
+  // catalogue endpoint), not only from the page.
+  if (def.fromCase && caseKit(base.case).includes.includes(slotKey)) {
+    const keep = keepOption(slotKey);
+    if (keep) options.unshift(keep);
+  }
 
   return options.map((option) => {
-    const trial = normalizeBuild({ ...base, [slotKey]: option.id });
+    // Judge each option against what PICKING it would actually do. For the
+    // case that is `withCase`, not a spread: a spread would carry the current
+    // case's insert and back onto the candidate as overrides and warn about a
+    // clash the click will never produce (a Willard marked ⚠ because the
+    // SKX007 you are looking at has an exhibition back).
+    const trial = slotKey === "case"
+      ? withCase(base, option.id)
+      : normalizeBuild({ ...base, [slotKey]: option.id });
     const { issues } = checkBuild(trial);
     const mine = issues.filter((i) => Array.isArray(i.slots) && i.slots.includes(slotKey));
     const error = mine.find((i) => i.level === "error");
@@ -5528,8 +5731,12 @@ export function surpriseBuild(rand) {
   /** @param {any[]} list */
   const pick = (list) => list[Math.min(list.length - 1, Math.floor(Math.abs(rnd()) * list.length))];
 
-  // Dependency order: what constrains most, first.
-  const ORDER = ["movement", "case", "dial", "hands", "insert", "chapterRing", "crystal", "crown", "caseback", "finish", "strap"];
+  // Dependency order over the DECISIONS: what constrains most, first. The
+  // five collapsed slots are not in here, because a surprise build is a
+  // surprising SHOPPING LIST — the case brings its own parts, exactly as it
+  // does when a reader picks one by hand. They are rolled below, sometimes,
+  // as the overrides they are.
+  const ORDER = ["movement", "case", "dial", "hands", "finish", "strap"];
 
   for (let attempt = 0; attempt < 24; attempt++) {
     /** @type {Record<string, string>} */
@@ -5553,9 +5760,21 @@ export function surpriseBuild(rand) {
         dead = true;
         break;
       }
-      build = normalizeBuild({ ...build, [key]: pick(from).option.id });
+      const chosen = pick(from).option.id;
+      build = key === "case" ? withCase(build, chosen) : normalizeBuild({ ...build, [key]: chosen });
     }
     if (dead) continue;
+    // A collapsed slot is overridden about half the time — often enough that
+    // "surprise me" still throws up a Pepsi bezel or a box crystal, rarely
+    // enough that most surprises are what the case actually arrives as. Every
+    // candidate is still judged against the build, so an override can never
+    // be the thing that makes the result unbuildable.
+    for (const key of CASE_PART_SLOTS) {
+      if (rnd() > 0.5) continue;
+      const clean = compatibleOptions(key, build).filter((a) => a.compatible && !a.why);
+      if (clean.length < 2) continue;
+      build = normalizeBuild({ ...build, [key]: pick(clean).option.id });
+    }
     // The axes are chosen the same way, but only sometimes — a build where
     // every knob has been twisted is noise, not a surprise.
     for (const axis of AXIS_SLOTS) {
@@ -5604,6 +5823,11 @@ export function buildSpec(build) {
     bundled: /** @type {Record<string, string>} */ (
       Object.fromEntries(KIT_SLOTS.map((k) => [k, kitBuyFor(ids, k).status]))
     ),
+    // The five slots the case decides, and the ones this build overrode
+    // (feedback #59). A caller that wants to say "this is the SKX007's own
+    // stack, with one part swapped" has both halves here.
+    fromCase: caseBuild(ids.case),
+    overrides: CASE_PART_SLOTS.filter((k) => kitOverrideAt(ids, k)),
     dialDiameter: dialDia ? dialDia.mm : plat.dialDia,
     dialDiameterApprox: !!(dialDia && dialDia.approx),
     backMm: Math.round(backMm * 10) / 10,
@@ -5738,6 +5962,9 @@ export function sourcingFor(build) {
       // The user said "keep the one in the box" for this slot (feedback #59) —
       // a settled row, not the maybe a named part leaves behind.
       keptWithCase: !!buy.kept,
+      // A collapsed slot the build overrode: the case gives one thing and this
+      // build says another. False on every slot the buyer decides outright.
+      overrideOfCase: !!slot.fromCase && kitOverrideAt(ids, slot.key),
       /** @type {{ includes: string[], tier: string, src: string, approx?: boolean, integrated?: string[] } | null} */
       kit: null,
       /** @type {{en: string, sv: string} | null} */
@@ -5780,9 +6007,14 @@ export function caseIndex() {
 }
 
 // ---------------------------------------------------------------------------
-// Permalink codec. A build is eleven short ids; the whole thing fits in a URL
-// hash with room to spare. Unknown ids decode to the default rather than
-// throwing, so an old link from a previous catalogue still opens.
+// Permalink codec. A build is six decisions plus whatever was overridden; the
+// whole thing fits in a URL hash with room to spare. Unknown ids decode to
+// what the case gives rather than throwing, so a stale link from an older
+// catalogue still opens on a coherent watch — that is FAIL-SOFT, and it is a
+// robustness rule, not a promise that the watch is the one the link meant.
+// A code minted before the collapse still decodes: it names all eleven slots,
+// and every name it uses is either a part that still exists or one the case
+// answers for.
 
 /**
  * @param {Record<string, string> | null | undefined} build
@@ -5790,10 +6022,18 @@ export function caseIndex() {
  */
 export function encodeBuild(build) {
   const ids = normalizeBuild(build);
-  const out = SLOTS.map((s) => `${s.key}:${ids[s.key]}`);
-  // Axes and text only when they are actually set, so a build that touches
-  // none of the new controls encodes to exactly the string it always did and
-  // every permalink ever shared still opens the same watch.
+  const fromCase = caseBuild(ids.case);
+  /** @type {string[]} */
+  const out = [];
+  for (const s of SLOTS) {
+    // A collapsed slot the case decided is not in the link. It is not a
+    // decision, so recording it would freeze one case's parts into a code that
+    // is about to be opened on another; leaving it out means the link carries
+    // the SIX decisions and the overrides, which is what a build is now.
+    if (s.fromCase && ids[s.key] === fromCase[s.key]) continue;
+    out.push(`${s.key}:${ids[s.key]}`);
+  }
+  // Axes and text only when they are actually set.
   for (const axis of AXIS_SLOTS) if (ids[axis.key]) out.push(`${axis.key}:${ids[axis.key]}`);
   for (const field of TEXT_FIELDS) if (ids[field.key]) out.push(`${field.key}:${ids[field.key]}`);
   return out.join(";");

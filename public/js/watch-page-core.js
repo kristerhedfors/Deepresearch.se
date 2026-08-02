@@ -110,6 +110,26 @@ export function axisSlots() {
   return /** @type {any[]} */ (Array.isArray(cat.AXIS_SLOTS) ? cat.AXIS_SLOTS : []);
 }
 
+/**
+ * The DECISIONS — the slots the primary picker shows (feedback #59). Feature
+ * detected: a catalogue that has not collapsed anything reports all eleven,
+ * and the page renders one flat list exactly as it used to.
+ * @returns {any[]}
+ */
+export function primarySlots() {
+  if (Array.isArray(cat.PRIMARY_SLOTS)) return cat.PRIMARY_SLOTS;
+  return core.SLOTS.filter((s) => !(/** @type {any} */ (s).fromCase));
+}
+
+/**
+ * The slots the CASE decides, in picker order — what the override disclosure
+ * holds. Empty on a catalogue that marks none of them.
+ * @returns {any[]}
+ */
+export function caseSlots() {
+  return core.SLOTS.filter((s) => !!(/** @type {any} */ (s).fromCase));
+}
+
 /** The free-text fields, or an empty list. */
 export function textFields() {
   return /** @type {any[]} */ (Array.isArray(cat.TEXT_FIELDS) ? cat.TEXT_FIELDS : []);
@@ -562,7 +582,14 @@ export function localAnnotate(slotKey, build, candidates) {
     /** @type {any[]} */
     let errs = [];
     try {
-      errs = core.checkBuild({ ...base, [slotKey]: opt.id }).issues.filter((i) => i.level === "error");
+      // The CASE carries its own parts with it, so a candidate case has to be
+      // judged the way picking it would actually apply (see `withCase`) — a
+      // spread drags the current case's insert and back onto it and warns
+      // about a clash the click will never produce.
+      const trial = slotKey === "case" && typeof cat.withCase === "function"
+        ? cat.withCase(base, opt.id)
+        : { ...base, [slotKey]: opt.id };
+      errs = core.checkBuild(trial).issues.filter((i) => i.level === "error");
     } catch {
       errs = [];
     }
@@ -603,6 +630,100 @@ export function groupOptions(rows) {
   const clashes = [];
   for (const r of rows || []) (r && r.compatible ? fits : clashes).push(r);
   return { fits, clashes };
+}
+
+// ---------------------------------------------------------------------------
+// THE PARTS THE CASE DECIDES (feedback #59, owner directive).
+//
+// The primary picker shows what a buyer decides — case, movement, dial, hands,
+// strap, finish. The other five arrive with the case, so they live behind one
+// disclosure, shut by default. What the disclosure has to say while it is SHUT
+// is the whole of its honesty: an overridden part must be visible without
+// opening anything, or the fold becomes a place things hide.
+
+/**
+ * @typedef {{ slot: string, name: Bi, current: Bi, id: string,
+ *             override: boolean, fromCase: string, offered: boolean,
+ *             level: "error"|"warning"|null, why: Bi|null }} CaseSlotView
+ */
+
+/**
+ * What each of the five holds, and whether the buyer put it there.
+ *
+ * `current` is read through the RESOLVER, so a kept slot reads as the thing it
+ * is ("Keep the case's own crystal") rather than as the raw id. `level` is the
+ * fit verdict for what is CURRENTLY chosen, so the shut summary can carry a ⚠
+ * rather than swallowing a problem — `checkBuild` never blocks a render (docs
+ * §5) and this never gates a choice.
+ *
+ * @param {Record<string,string>|null|undefined} build
+ * @returns {{ rows: CaseSlotView[], overrides: CaseSlotView[], problems: CaseSlotView[] }}
+ */
+export function caseSlotView(build) {
+  const ids = core.normalizeBuild(build);
+  let parts = /** @type {Record<string, any>} */ ({});
+  try {
+    parts = core.resolveBuild(ids).parts;
+  } catch {
+    parts = {};
+  }
+  /** @type {any[]} */
+  let issues = [];
+  try {
+    issues = core.checkBuild(ids).issues.filter((i) => i.level !== "note");
+  } catch {
+    issues = [];
+  }
+  const fromCase = typeof cat.caseBuild === "function" ? cat.caseBuild(ids.case) || {} : {};
+  /** @type {CaseSlotView[]} */
+  const rows = caseSlots().map((slot) => {
+    const p = parts[slot.key];
+    const mine = issues.filter((i) => Array.isArray(i.slots) && i.slots.includes(slot.key));
+    const worst = mine.find((i) => i.level === "error") || mine.find((i) => i.level === "warning") || null;
+    return {
+      slot: slot.key,
+      name: slot.name,
+      current: p && p.name ? p.name : { en: ids[slot.key], sv: ids[slot.key] },
+      id: ids[slot.key],
+      override: typeof cat.isKitOverride === "function" ? !!cat.isKitOverride(ids, slot.key) : false,
+      fromCase: fromCase[slot.key] || "",
+      // Whether this case's set fills the slot at all. A case with no rotating
+      // bezel has no insert to keep, and saying "comes with the case" there
+      // would be a claim about a part that is not in the box.
+      offered: typeof cat.canKeepStock === "function" ? !!cat.canKeepStock(ids, slot.key) : false,
+      level: worst ? worst.level : null,
+      why: worst ? { en: String(worst.en), sv: String(worst.sv || worst.en) } : null,
+    };
+  });
+  return {
+    rows,
+    overrides: rows.filter((r) => r.override),
+    problems: rows.filter((r) => r.level),
+  };
+}
+
+/**
+ * The one line on the shut disclosure. It names every overridden part, because
+ * a fold that hides a decision already made is worse than no fold.
+ * @param {Record<string,string>|null|undefined} build
+ * @param {{ rows: CaseSlotView[], overrides: CaseSlotView[] }} [view]
+ * @returns {Bi}
+ */
+export function caseSlotSummary(build, view) {
+  const v = view || caseSlotView(build);
+  const n = v.rows.length;
+  if (!v.overrides.length) {
+    return {
+      en: `${n} parts come with the case — swap one`,
+      sv: `${n} delar följer med boetten — byt en`,
+    };
+  }
+  const en = v.overrides.map((o) => `${String(o.name.en).toLowerCase()}: ${o.current.en}`);
+  const sv = v.overrides.map((o) => `${String(o.name.sv).toLowerCase()}: ${o.current.sv}`);
+  return {
+    en: `Swapped ${v.overrides.length} of ${n} — ${joinList(en, "and")}`,
+    sv: `Bytt ${v.overrides.length} av ${n} — ${joinList(sv, "och")}`,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -839,11 +960,18 @@ function shuffled(list, rand) {
  * placeholder. Slots the catalogue grows later fall through to the tail in
  * catalogue order.
  */
-const PICK_ORDER = ["movement", "dial", "hands", "case", "insert", "chapterRing", "crystal"];
+const PICK_ORDER = ["movement", "dial", "hands", "case"];
 
-/** @returns {string[]} the slot keys, dependencies first. */
+/**
+ * The slot keys a surprise DECIDES, dependencies first. Since the collapse
+ * (feedback #59) the five the case decides are not among them: a surprise
+ * build is a surprising shopping list, and the case brings its own parts
+ * exactly as it does when a reader picks one by hand. `twistKit` overrides
+ * some of them afterwards, the way `twistAxes` moves the axes.
+ * @returns {string[]}
+ */
 function pickOrder() {
-  const keys = core.SLOTS.map((s) => s.key);
+  const keys = primarySlots().map((s) => s.key);
   const head = PICK_ORDER.filter((k) => keys.includes(k));
   return [...head, ...keys.filter((k) => !head.includes(k))];
 }
@@ -933,10 +1061,32 @@ export function pageSurpriseBuild(rand = Math.random) {
     if (!b) continue;
     // normalizeBuild may rewrite an id the catalogue does not know, so check
     // AFTER normalising rather than before.
-    const norm = core.normalizeBuild(twistAxes(b, r));
+    const norm = core.normalizeBuild(twistAxes(twistKit(b, r), r));
     if (isValid(norm)) return norm;
   }
   return core.normalizeBuild(core.DEFAULT_BUILD);
+}
+
+/**
+ * Override some of the parts the case decides, sometimes. Roughly half the
+ * time per slot: often enough that a surprise still throws up a Pepsi bezel,
+ * rarely enough that most surprises are what the case actually arrives as.
+ * @param {Record<string,string>} build
+ * @param {() => number} rand
+ */
+function twistKit(build, rand) {
+  const keys = caseSlots().map((s) => s.key);
+  if (!keys.length) return build;
+  let out = build;
+  for (const key of keys) {
+    if (rand() > 0.5) continue;
+    const clean = annotateOptions(key, out).filter((a) => a.compatible && !a.why);
+    if (clean.length < 2) continue;
+    const chosen = clean[Math.min(clean.length - 1, Math.floor(Math.abs(rand()) * clean.length))];
+    const trial = { ...out, [key]: chosen.option.id };
+    if (isValid(core.normalizeBuild(trial))) out = trial;
+  }
+  return out;
 }
 
 /**

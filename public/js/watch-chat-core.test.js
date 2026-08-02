@@ -179,7 +179,9 @@ test("commands set the slot they name, in English and Swedish", () => {
     ["put it on a jubilee bracelet", "sätt den på ett jubilee-band", "strap:jubilee"],
     ["use a mini turtle case", "använd ett mini turtle-boett", "case:mini-turtle"],
     ["make the finish PVD black", "gör ytbehandlingen PVD svart", "finish:pvd-black"],
-    ["fit a display case back", "sätt på en genomskinlig boettbotten", "caseback:display"],
+    // The SKX007 is LISTED with an exhibition back, so since the collapse it
+    // is already the case's own — asking for a solid one is the change.
+    ["fit a solid brushed case back", "sätt på en borstad hel boettbotten", "caseback:solid-brushed"],
     ["switch to the NH36 movement", "byt till NH36-urverket", "movement:nh36"],
     ["fit a flat sapphire crystal", "sätt på ett plant safirglas", "crystal:flat-sapphire"],
     ["fit a fluted crown", "sätt på en räfflad krona", "crown:fluted"],
@@ -365,7 +367,10 @@ test("watchPromptBlock carries the build, the delta and the fit verdict", () => 
   const block = watchPromptBlock(state);
   assert.match(block, /INLINE WATCH BUILDER/);
   assert.match(block, /ALREADY displayed/);
-  assert.match(block, /Bezel insert: Ceramic, black → Pepsi/);
+  // The FROM side is the case's own insert, not a part the build ever named:
+  // since the collapse the bezel insert comes with the case (feedback #59).
+  assert.match(block, /Bezel insert: Keep the case's own bezel insert → Pepsi/);
+  assert.match(block, /The case decides the bezel insert, chapter ring, crystal, crown and case back/);
   assert.match(block, /62MAS vintage diver/);
   assert.match(block, /Dimensions —/);
   assert.match(block, /Fit check —/);

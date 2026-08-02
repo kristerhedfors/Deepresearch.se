@@ -10,6 +10,10 @@
 
 import {
   SLOTS,
+  PRIMARY_SLOTS,
+  withCase,
+  caseBuild,
+  isKitOverride,
   resolveBuild,
   normalizeBuild,
   checkBuild,
@@ -34,6 +38,9 @@ import {
   sourcingView,
   orderSummary,
   bandLabel,
+  caseSlots,
+  caseSlotView,
+  caseSlotSummary,
   KEEP_ID,
   SWAP_SUFFIX,
   TEXT_SLOT_MAXLEN,
@@ -100,6 +107,23 @@ const UI = {
   // On a bundled slot's picker row: the case already brings one.
   comesWithCase: { en: "comes with the case", sv: "följer med boetten" },
   partOfCase: { en: "part of the case", sv: "en del av boetten" },
+  // The five parts the case decides, folded behind one disclosure
+  // (feedback #59: they are "practically never bought separately from the
+  // case", so they are not decisions the primary picker should be asking for).
+  swapPart: {
+    en: "Swap a part the case came with",
+    sv: "Byt en del som följde med boetten",
+  },
+  swapNote: {
+    en: "The case arrives with these fitted. Nothing here has to be decided — change one only if you are modding it, and it becomes an order of its own.",
+    sv: "Boetten kommer med de här monterade. Inget här måste bestämmas — byt bara om du moddar, och då blir delen en egen beställning.",
+  },
+  swapped: { en: "swapped", sv: "bytt" },
+  putBack: { en: "put the case's own back", sv: "återställ boettens egen" },
+  putBackTip: {
+    en: "Go back to the part the case is sold with — one part fewer to order.",
+    sv: "Gå tillbaka till delen boetten säljs med — en del färre att beställa.",
+  },
   // The picker's warning surface. `clash` takes the count: the same phrasing
   // reads correctly for one option and for thirteen in both languages.
   clash: {
@@ -205,9 +229,12 @@ function pushHash(replace) {
 }
 
 function setPart(slotKey, id) {
-  build = normalizeBuild({ ...build, [slotKey]: id });
-  // Picking a case also picks its stock finish the first time, so switching
-  // from a blasted Tuna to a polished Sub does not leave the Tuna's finish on.
+  // CHANGING THE CASE CHANGES ITS PARTS. Spreading a new case over the build
+  // would drag the old case's insert, crystal, crown and back along as
+  // overrides — pick a Tuna after an SKX007 and you would inherit the SKX007's
+  // exhibition back without ever asking for it. `withCase` keeps the overrides
+  // the buyer actually made and lets the new case decide the rest.
+  build = slotKey === "case" ? withCase(build, id) : normalizeBuild({ ...build, [slotKey]: id });
   applyAll();
   pushHash(false);
 }
@@ -227,6 +254,9 @@ function swatchFor(slotKey, opt) {
 // the whole picker) does not snap them shut under the cursor.
 /** @type {Set<string>} */
 const openDisclosures = new Set();
+
+/** The one disclosure holding the parts the case decides (feedback #59). */
+const KIT_KEY = "kit:swap";
 
 /**
  * A chip for one option. `warn` marks the ones that do not fit; they are
@@ -403,6 +433,24 @@ function slotRow(slot, saidWhy, groups) {
     name.appendChild(document.createTextNode(" "));
     name.appendChild(badge);
   }
+  // A part the case decided and the buyer has replaced says so on its own row,
+  // and offers the one-tap way back (feedback #59: an override has to be
+  // VISIBLE as an override, not just a different chip lit up).
+  if (slot.fromCase && isKitOverride(build, slot.key)) {
+    const tag = document.createElement("span");
+    tag.className = "overtag";
+    tag.textContent = T(UI.swapped);
+    name.appendChild(document.createTextNode(" "));
+    name.appendChild(tag);
+    const undo = document.createElement("button");
+    undo.type = "button";
+    undo.className = "undoswap";
+    undo.textContent = T(UI.putBack);
+    undo.title = T(UI.putBackTip);
+    undo.addEventListener("click", () => setPart(slot.key, caseBuild(build.case)[slot.key]));
+    name.appendChild(document.createTextNode(" "));
+    name.appendChild(undo);
+  }
 
   if (field || slotIsText(slot.key)) {
     const pick = document.createElement("span");
@@ -489,6 +537,63 @@ function slotRow(slot, saidWhy, groups) {
   return withGroups();
 }
 
+/**
+ * THE PARTS THE CASE CAME WITH — one disclosure, shut by default
+ * (feedback #59, owner directive).
+ *
+ * > "Bezel insert, crystal, caseback and crown are practically never bought
+ * > separately from the case. … Chapter rings are usually not bought
+ * > separately and are integrated with the case."
+ *
+ * So they are not in the primary picker. They are still all here, with the
+ * whole catalogue behind each of them, one tap away — the modder loses
+ * nothing but the obligation to decide. The summary is what carries the
+ * honesty while the fold is shut: it names every part that has been swapped,
+ * and it carries a ⚠ when the fit check has something to say about one, so
+ * nothing can hide in here.
+ *
+ * @param {Set<string>} saidWhy
+ * @param {Record<string, any[]>} bySlot
+ */
+function caseSlotBlock(saidWhy, bySlot) {
+  const view = caseSlotView(build);
+  const det = document.createElement("details");
+  det.className = "kitswap";
+  det.open = openDisclosures.has(KIT_KEY);
+  det.addEventListener("toggle", () => {
+    if (det.open) openDisclosures.add(KIT_KEY);
+    else openDisclosures.delete(KIT_KEY);
+  });
+
+  const sum = document.createElement("summary");
+  const lead = document.createElement("span");
+  lead.className = "kitlead";
+  lead.textContent = T(UI.swapPart);
+  sum.appendChild(lead);
+  const state = document.createElement("span");
+  state.className = "kitstate" + (view.overrides.length ? " on" : "");
+  state.textContent = T(caseSlotSummary(build, view));
+  sum.appendChild(state);
+  if (view.problems.length) {
+    const warn = document.createElement("span");
+    warn.className = "kitwarn";
+    warn.textContent = `⚠ ${view.problems.length}`;
+    warn.title = view.problems.map((p) => T(p.why)).join(" · ");
+    sum.appendChild(warn);
+  }
+  det.appendChild(sum);
+
+  const body = document.createElement("div");
+  body.className = "kitbody";
+  const note = document.createElement("p");
+  note.className = "kitnote";
+  note.textContent = T(UI.swapNote);
+  body.appendChild(note);
+  for (const slot of caseSlots()) body.appendChild(slotRow(slot, saidWhy, bySlot[slot.key]));
+  det.appendChild(body);
+  return det;
+}
+
 function renderPicker() {
   const host = $("picker");
   if (!host) return;
@@ -507,7 +612,12 @@ function renderPicker() {
   head.appendChild(h2);
   // Every group on the page right now, so the one control can open or shut all
   // of them without becoming a mode that fights the individual disclosures.
-  const allKeys = [...Object.values(bySlot).flat(), ...orphans].map((g) => `axes:${g.id}`);
+  // …including the one holding the parts the case decides: "open every choice"
+  // that leaves five slots folded is not every choice.
+  const allKeys = [
+    ...[...Object.values(bySlot).flat(), ...orphans].map((g) => `axes:${g.id}`),
+    ...(caseSlots().length ? [KIT_KEY] : []),
+  ];
   if (allKeys.length) {
     const allOpen = allKeys.every((k) => openDisclosures.has(k));
     const all = document.createElement("button");
@@ -540,7 +650,12 @@ function renderPicker() {
   // the others.
   /** @type {Set<string>} */
   const saidWhy = new Set();
-  for (const slot of SLOTS) host.appendChild(slotRow(slot, saidWhy, bySlot[slot.key]));
+  // THE DECISIONS, and then — under the case they hang off — the five parts
+  // the case decides (feedback #59, owner directive).
+  for (const slot of PRIMARY_SLOTS) {
+    host.appendChild(slotRow(slot, saidWhy, bySlot[slot.key]));
+    if (slot.key === "case") host.appendChild(caseSlotBlock(saidWhy, bySlot));
+  }
 
   // A group the catalogue files under something this page has no part for still
   // gets rendered — under the old heading — rather than silently vanishing.

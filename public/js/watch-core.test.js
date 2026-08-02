@@ -33,6 +33,11 @@ import {
   HAND_TUBES,
   DIAL_DIA,
   DEFAULT_BUILD,
+  PRIMARY_SLOTS,
+  CASE_PART_SLOTS,
+  caseBuild,
+  kitOverrides,
+  isKitOverride,
   HAND_SHAPES,
   slotOptions,
   part,
@@ -239,17 +244,45 @@ describe("catalogue integrity", () => {
 // ---------------------------------------------------------------------------
 
 describe("build normalisation and the permalink codec", () => {
-  test("the default build is complete and every id resolves", () => {
-    for (const slot of SLOTS) {
+  // The default build carries the SIX decisions and nothing else since the
+  // collapse (feedback #59): the other five come from whatever case it names.
+  test("the default build names every decision, and only decisions", () => {
+    for (const slot of PRIMARY_SLOTS) {
       assert.ok(DEFAULT_BUILD[slot.key], `default build has no ${slot.key}`);
       assert.ok(part(slot.key, DEFAULT_BUILD[slot.key]), `default ${slot.key} does not resolve`);
+    }
+    for (const key of CASE_PART_SLOTS) {
+      assert.equal(DEFAULT_BUILD[key], undefined, `${key} is not a decision and must not be in DEFAULT_BUILD`);
     }
   });
 
   test("normalizeBuild fills every slot, whatever it is handed", () => {
     for (const input of [null, undefined, {}, { case: "nope" }, { case: 7 }, "junk"]) {
       const b = normalizeBuild(/** @type {any} */ (input));
-      for (const slot of SLOTS) assert.ok(part(slot.key, b[slot.key]), `${slot.key} unresolved for ${String(input)}`);
+      // A collapsed slot may legitimately hold "stock" (kept) or "none" (left
+      // out), which `part()` answers null for by contract — so completeness is
+      // checked where it is actually promised: `resolveBuild().parts`.
+      const { parts } = resolveBuild(b);
+      for (const slot of SLOTS) {
+        assert.ok(typeof b[slot.key] === "string" && b[slot.key], `${slot.key} unset for ${String(input)}`);
+        assert.ok(parts[slot.key] && parts[slot.key].name, `${slot.key} unresolved for ${String(input)}`);
+      }
+    }
+  });
+
+  test("the five collapsed slots come from the case, not the build", () => {
+    for (const c of CASES) {
+      const b = normalizeBuild({ ...DEFAULT_BUILD, case: c.id });
+      const from = caseBuild(c.id);
+      for (const key of CASE_PART_SLOTS) {
+        assert.equal(b[key], from[key], `${c.id}: ${key} did not come from the case`);
+      }
+      assert.deepEqual(kitOverrides(b), [], `${c.id}: a build that names nothing has no overrides`);
+      // …and naming one IS an override, reported and only for that slot.
+      const over = normalizeBuild({ ...b, crystal: "box-sapphire" });
+      assert.deepEqual(kitOverrides(over), ["crystal"], `${c.id}: the override is not reported`);
+      assert.equal(isKitOverride(over, "crystal"), true);
+      assert.equal(isKitOverride(over, "caseback"), false);
     }
   });
 
@@ -271,10 +304,32 @@ describe("build normalisation and the permalink codec", () => {
   test("a stale or hostile permalink decodes to something renderable", () => {
     // The whole point of the codec's fail-soft posture: a link from an older
     // catalogue must still open the page.
-    for (const code of ["", ";;;", "case:gone;dial:vanished", "case", ":::", "a:b;c:d"]) {
+    for (const code of [
+      "", ";;;", "case:gone;dial:vanished", "case", ":::", "a:b;c:d",
+      // A code minted BEFORE the collapse: it names all eleven slots, and the
+      // five it has no business naming are read as overrides. It must open.
+      "movement:nh35;case:skx007;finish:brushed;insert:ceramic-black;dial:skx-black;chapterRing:black-minutes;hands:skx-dive;crystal:dd-sapphire;crown:signed-screw;caseback:solid-engraved;strap:oyster",
+      // …and one whose collapsed ids no longer exist at all.
+      "case:skx007;insert:gone;crystal:vanished;caseback:removed;crown:missing;chapterRing:nope",
+    ]) {
       const b = decodeBuild(code);
-      for (const slot of SLOTS) assert.ok(part(slot.key, b[slot.key]));
+      const { parts } = resolveBuild(b);
+      for (const slot of SLOTS) assert.ok(parts[slot.key] && parts[slot.key].name, `${slot.key} unrenderable for "${code}"`);
+      assert.equal(typeof encodeBuild(b), "string");
     }
+  });
+
+  test("a link carries the decisions and the overrides, and nothing else", () => {
+    const plain = normalizeBuild(DEFAULT_BUILD);
+    const code = encodeBuild(plain);
+    for (const key of CASE_PART_SLOTS) {
+      assert.ok(!code.includes(`${key}:`), `${key} is not a decision and must not be in the link`);
+    }
+    assert.deepEqual(decodeBuild(code), plain);
+    // One override, and the link grows by exactly that one.
+    const swapped = normalizeBuild({ ...plain, insert: "pepsi" });
+    assert.ok(encodeBuild(swapped).includes("insert:pepsi"));
+    assert.deepEqual(decodeBuild(encodeBuild(swapped)), swapped);
   });
 
   test("resolveBuild returns catalogue objects, not ids", () => {
@@ -399,8 +454,17 @@ describe("spec sheet", () => {
   test("the price band sums the chosen parts and always includes a movement", () => {
     const band = priceBand(normalizeBuild(DEFAULT_BUILD));
     assert.ok(band.low > 0 && band.high > band.low);
-    // Every slot that carries a band, plus the movement itself.
-    assert.ok(band.parts >= 8);
+    // The DECISIONS carry a band, plus the movement itself. The collapsed
+    // slots are kept by default and a kept part is not a priced part, so the
+    // count is the decisions — which is the honest shopping list.
+    assert.ok(band.parts >= PRIMARY_SLOTS.length, `${band.parts} priced rows`);
+    // Override all five and every one of them joins the count.
+    const all = priceBand(normalizeBuild({
+      ...DEFAULT_BUILD,
+      insert: "pepsi", chapterRing: "black-minutes", crystal: "box-sapphire",
+      crown: "onion", caseback: "solid-engraved",
+    }));
+    assert.ok(all.parts > band.parts, `${all.parts} vs ${band.parts}`);
     const cheap = priceBand(normalizeBuild({ ...DEFAULT_BUILD, case: "skx007", crystal: "domed-hardlex" }));
     const dear = priceBand(normalizeBuild({ ...DEFAULT_BUILD, case: "mm300", crystal: "box-sapphire" }));
     assert.ok(dear.high > cheap.high);
@@ -430,7 +494,13 @@ describe("the AliExpress source index", () => {
     const order = rows.map((r) => r.slot);
     const expected = SLOTS.map((s) => s.key).filter((k) => order.includes(k));
     assert.deepEqual(order, expected);
-    assert.ok(rows.length >= 8);
+    // A kept part has nothing to buy, so it has no sourcing row — the parcels
+    // a stock build actually costs are the decisions. Overriding a collapsed
+    // slot puts it back on the list.
+    assert.ok(rows.length >= PRIMARY_SLOTS.length - 1, `${rows.length} rows`);
+    const swapped = sourcingFor({ ...DEFAULT_BUILD, insert: "pepsi" });
+    assert.ok(swapped.some((r) => r.slot === "insert" && r.overrideOfCase));
+    assert.ok(!rows.some((r) => r.overrideOfCase), "a stock build overrides nothing");
   });
 
   test("every sourcing row carries resolvable links and a bilingual name", () => {
