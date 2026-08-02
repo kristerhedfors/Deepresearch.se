@@ -39,6 +39,50 @@ const LOCAL_URL = `http://127.0.0.1:${LOCAL_PORT}`;
 // Must match BERGET_URL in wrangler.dev.toml.
 const FAKE_PROVIDER_PORT = process.env.FAKE_PROVIDER_PORT || "8799";
 
+/**
+ * PINNED, deliberately. CI ran `npx wrangler` bare, so every run silently took
+ * whatever wrangler had published that day — which means the e2e failure rate
+ * moved under us and no two runs were the same experiment. That was written
+ * down as a mitigation at the fifth crash (docs/MERGED-BRANCHES.md,
+ * `claude/wrangler-crash-fifth-occurrence`) and never done; occurrences six
+ * (PR #361) and seven (PR #364) followed.
+ *
+ * Bumping this is a deliberate act with a CI run behind it, not a side effect
+ * of the date. Override with WRANGLER_VERSION to test a candidate.
+ */
+const WRANGLER_VERSION = process.env.WRANGLER_VERSION || "4.118.0";
+
+/**
+ * The dev server, wrapped in a restart loop.
+ *
+ * The crash this exists for is not ours and is not fixable from here: a
+ * transient socket drop on miniflare's internal loopback
+ * (`#handleLoopbackCustomFetchService` → `Network connection lost.`) gets
+ * escalated to a process-ending fatal by wrangler's own `ProxyController`. It
+ * has now killed `wrangler dev` mid-suite seven times. The captured artifact
+ * shows `Error inside ProxyWorker` exactly ONCE per run — a single transient
+ * event, not a degradation, and no frame in `src/`.
+ *
+ * Playwright's `webServer` has no restart-on-exit, so that one dropped socket
+ * used to cost the ENTIRE remaining suite: every later test dies on
+ * ERR_CONNECTION_REFUSED. The blast radius is therefore random — the same
+ * commit range once lost 27 of 63 and then 4 of 63 — which also makes the
+ * failure count meaningless as a signal about the diff.
+ *
+ * The loop brings the port back within a couple of seconds, so a crash costs
+ * the test(s) actually in flight rather than everything after it. Paired with
+ * `retries` on the mocked project, that turns this class of failure into a
+ * retry instead of a red build. It deliberately does NOT mask a Worker that
+ * cannot boot at all: a wrangler that exits immediately just restarts in a
+ * tight loop and Playwright still times out waiting for the URL.
+ */
+const WRANGLER_CMD = [
+  `npx wrangler@${WRANGLER_VERSION} dev -c wrangler.dev.toml`,
+  `--local --enable-containers=false --port ${LOCAL_PORT}`,
+].join(" ");
+const WRANGLER_SUPERVISED = `bash -c 'while true; do ${WRANGLER_CMD}; ` +
+  `code=$?; echo "[e2e] wrangler dev exited ($code) — restarting" >&2; sleep 2; done'`;
+
 const envUser = process.env.BASIC_AUTH_USER;
 const envPass = process.env.BASIC_AUTH_PASS;
 
@@ -103,7 +147,9 @@ export default defineConfig({
             stderr: "pipe",
           },
           {
-            command: `npx wrangler dev -c wrangler.dev.toml --local --enable-containers=false --port ${LOCAL_PORT}`,
+            // Pinned and supervised — see WRANGLER_SUPERVISED above for why
+            // both, and what the seven crashes actually were.
+            command: WRANGLER_SUPERVISED,
             cwd: "..",
             url: LOCAL_URL,
             reuseExistingServer: !process.env.CI,
@@ -152,6 +198,12 @@ export default defineConfig({
       name: "mocked",
       testMatch: /(parsing|limits|report|api|ui|metadata|projects|proxy-space|pulse-timeline|landing)\.spec\.js/,
       timeout: 90_000,
+      // The other half of the wrangler-crash mitigation. The supervisor above
+      // brings the port back, but the test that was in flight when the socket
+      // dropped is already lost; without a retry the build is still red for a
+      // reason that has nothing to do with the diff. One retry is enough —
+      // these tests are deterministic, so a genuine failure fails twice.
+      retries: process.env.CI ? 1 : 0,
     },
     {
       name: "live",
