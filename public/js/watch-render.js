@@ -79,6 +79,8 @@ import {
   perspective,
 } from "/js/watch-math.js";
 import {
+  bandMaterialId,
+  bandTakesCaseFinish,
   crystalMaterial,
   dialMaterialId,
   dialRelief,
@@ -89,7 +91,6 @@ import {
   materialFor,
   meshMaterialId,
   sceneFor,
-  strapMaterialId,
 } from "/js/watch-materials.js";
 
 // ---------------------------------------------------------------------------
@@ -1545,7 +1546,11 @@ export function mountWatch(canvas, opts) {
     // --- materials, resolved once per build rather than once per frame.
     const finishId = finishMaterialId(parts.finish);
     const insertId = insertMaterialId(parts.insert);
-    const strapId = strapMaterialId(parts.strap);
+    // What the core says the BAND mesh is made of. Distinct from
+    // `state.meshHints`: that map names materials, this one describes the
+    // physical band (`{ kind, color, useCaseFinish, … }`) and exists because
+    // an integrated bracelet is built from the CASE, not from the strap slot.
+    const bandHint = (assembled.strapMaterials && assembled.strapMaterials.strap) || null;
     const crownStyle = String((parts.crown && parts.crown.style) || "coin");
     state.mats = {
       case: materialFor(finishId, parts.finish.color),
@@ -1564,9 +1569,14 @@ export function mountWatch(canvas, opts) {
         crownStyle === "coin" ? "crown-knurled" : "crown-fluted",
         parts.finish.color,
       ),
+      // The BAND, from what the geometry core says it BUILT rather than from
+      // what the strap slot says was bought. On an integrated-bracelet case
+      // those disagree: there are no lugs, `strapAssembly` returns the
+      // machined bracelet whatever the slot holds, and reading the slot
+      // painted that bracelet brown when someone picked leather.
       strap: materialFor(
-        parts.strap.kind === "bracelet" && finishId === "steel-polished" ? "bracelet-polished" : strapId,
-        parts.strap.color,
+        bandMaterialId(bandHint, parts.strap, finishId),
+        bandTakesCaseFinish(bandHint, parts.strap) ? parts.finish.color : parts.strap.color,
       ),
       // The textured parts take their ALBEDO from the painted canvas, so
       // their tint uniform is white — but a partly metallic dial or insert
@@ -1584,11 +1594,13 @@ export function mountWatch(canvas, opts) {
       hands: materialFor(parts.hands.material || "hands-polished", parts.hands.color),
       crystal: crystalMaterial(parts.crystal),
     };
-    // A bracelet inherits the case's colour AND its finish family, but its
-    // brushing runs along the band, which is circumferential about X — not
-    // about Y like the case flank. The material table carries that; this is
-    // only where the colour comes from.
-    if (parts.strap.kind === "bracelet") {
+    // A metal band inherits the case's F0 as well as its colour — same billet,
+    // same alloy — but its brushing runs along the band, which is
+    // circumferential about X and not about Y like the case flank. The
+    // material table carries the direction; this carries the metal. Gated on
+    // the geometry core's hint for the same reason the material above is: on
+    // an integrated case the band is steel however the strap slot is set.
+    if (bandTakesCaseFinish(bandHint, parts.strap)) {
       state.mats.strap.color = linear(parts.finish.color);
       state.mats.strap.f0 = state.mats.case.f0.slice();
     }
@@ -1785,9 +1797,33 @@ export function mountWatch(canvas, opts) {
     gl.uniform3fv(loc.uFillCol, sc.fill);
     gl.uniform3fv(loc.uRimCol, sc.rim);
     gl.uniform3fv(loc.uSky, sc.sky);
-    // The floor lifts toward the sky by the same amount, for the same reason: a
+    // The floor lifts a little toward the sky as the camera goes under, so a
     // watch held up to be looked at underneath is not lying in a pit.
-    gl.uniform3fv(loc.uGround, sc.ground.map((c, i) => c + (sc.sky[i] - c) * 0.45 * under));
+    //
+    // A LITTLE. It was 0.45, and that one number is what made the exhibition
+    // back render as a white blob. The split above is deliberate — the RIG
+    // follows the camera, the ENVIRONMENT does not, because an environment
+    // that rotates with you kills the metal — and this is the single line
+    // that broke it: it rotated the floor toward the sky as the camera went
+    // under. At 0.45 the dark studio's floor went 0.055 → 0.297, the bounce
+    // term multiplied that by another 1.9, and every conductor on the
+    // underside landed on the tonemap's shoulder with nothing left to spend.
+    //
+    // What that cost, measured over the movement window in the default scene:
+    // mean 0.846, sd 0.062, mainplate 0.813 against bridges 0.913 — a
+    // material table doing its job and the curve throwing the result away.
+    // At 0.06: mean 0.627, sd 0.158, mainplate 0.442 against bridges 0.811.
+    //
+    // It is worth being precise about who this term was ever for. A DIELECTRIC
+    // — the leather cushion, a strap — is lit by `irr`, which the three
+    // analytic lights dominate; the ground reaches it only through
+    // `ambient(N) * 0.55` and it barely notices. A CONDUCTOR has no diffuse
+    // response at all and is lit by `studio()` and nothing else. So the lift
+    // did almost nothing for the leather it was aimed at and did everything to
+    // every piece of metal. The lights dipping under the horizon (`dip`, just
+    // above) is the half of PR #361 that actually reaches the underside, and
+    // it is untouched.
+    gl.uniform3fv(loc.uGround, sc.ground.map((c, i) => c + (sc.sky[i] - c) * 0.06 * under));
     // exposure, lights-out, softbox half-width, floor bounce
     gl.uniform4f(loc.uScene, sc.exposure, lumeMode, sc.softbox, sc.bounce);
 
