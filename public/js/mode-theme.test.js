@@ -5,20 +5,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import {
   CHAT_MODE_IDS,
+  MODE_ROOT_CLASSES,
   MODE_THEMES,
   TIER_THEMES,
   backdropKind,
   barTint,
   checkColor,
   modeCharacter,
+  modeRootClass,
   modeTheme,
   panelFlavour,
   showsDepthSlider,
   spinnerKind,
 } from "./mode-theme.js";
 import { CHAT_MODES } from "./chat-mode.js";
+
+const here = (rel) => fileURLToPath(new URL(rel, import.meta.url));
 
 test("registry covers exactly the chat modes, in the same order", () => {
   assert.deepEqual(CHAT_MODE_IDS, CHAT_MODES);
@@ -49,6 +56,63 @@ test("every descriptor declares all distinguishing axes", () => {
     assert.ok(typeof t.depthSlider === "boolean", `depthSlider for ${t.id}`);
     assert.ok(typeof t.symbol === "string" && t.symbol);
     assert.ok(typeof t.blurb === "string" && t.blurb);
+  }
+});
+
+// THE THREE PLACES A THEME CLASS LIVES, pinned against each other. A mode's
+// root class is DECLARED here, APPLIED at parse time by the inline script in
+// public/index.html, re-applied on every switch by chat-mode.js, and PAINTED by
+// public/css/app.css. Deep Science shipped declared, applied at parse time and
+// painted — but chat-mode.js's hand-written toggles never learned about it
+// (2026-08-02), so it could be turned on only by a reload and never turned off:
+// the header showed two mode tags at once and the palette, the composer pane
+// and the dropdown text came from two different themes. The tests below make
+// each of the four places answer to the registry.
+test("MODE_ROOT_CLASSES is every declared root class, once each", () => {
+  const declared = CHAT_MODES.map((m) => MODE_THEMES[m].rootClass).filter(Boolean);
+  assert.deepEqual(MODE_ROOT_CLASSES, declared);
+  assert.equal(new Set(MODE_ROOT_CLASSES).size, MODE_ROOT_CLASSES.length, "two modes share a root class");
+  assert.equal(modeRootClass("science"), "sci-mode");
+  assert.equal(modeRootClass("normal"), null);
+  assert.equal(modeRootClass("nope"), null, "unknown → Normal, which carries none");
+});
+
+test("index.html's parse-time script applies every mode's class and bar tint", () => {
+  const html = readFileSync(here("../index.html"), "utf8");
+  const boot = html.match(/<script data-devtheme>[\s\S]*?<\/script>/)?.[0];
+  assert.ok(boot, "the data-devtheme first-paint script is missing from public/index.html");
+  for (const mode of CHAT_MODES) {
+    const t = MODE_THEMES[mode];
+    if (!t.rootClass) continue;
+    assert.ok(boot.includes(`"${mode}"`), `the first-paint script never tests for mode ${mode}`);
+    assert.ok(boot.includes(`"${t.rootClass}"`), `the first-paint script never adds ${t.rootClass}`);
+    assert.ok(boot.includes(t.bar), `the first-paint script never sets ${mode}'s bar tint ${t.bar}`);
+  }
+});
+
+test("app.css paints a palette for every declared root class", () => {
+  const css = readFileSync(here("../css/app.css"), "utf8");
+  for (const cls of MODE_ROOT_CLASSES) {
+    const block = css.match(new RegExp(`:root\\.${cls}\\s*\\{[^}]*\\}`))?.[0];
+    assert.ok(block, `app.css has no :root.${cls} palette block`);
+    assert.match(block, /--bg:/, `:root.${cls} does not remap the field colour`);
+    assert.match(block, /--text:/, `:root.${cls} does not remap the text colour`);
+  }
+});
+
+// The one DARK mode. Its `--text` is near-white, so the composer's default
+// white glass (#composer at .3, and the chips inside it at another .35) put
+// light text on a light chip — 2.58:1, measured on production with
+// tests/theme-contrast.mjs. Every widget that carries text inside the pane
+// needs the dark treatment; this pins that the override exists rather than
+// re-measuring colour, which the audit script does properly in a browser.
+test("the dark Deep Science theme overrides the composer's white glass", () => {
+  const css = readFileSync(here("../css/app.css"), "utf8");
+  for (const sel of ["#composer", "#model", "#modesel", "#attach", "#camera", ".att-card"]) {
+    assert.ok(
+      css.includes(`:root.sci-mode ${sel}`),
+      `sci-mode does not override ${sel}, so its near-white text lands on white glass`,
+    );
   }
 });
 

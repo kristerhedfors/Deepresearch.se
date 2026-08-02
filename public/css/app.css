@@ -1307,6 +1307,48 @@ img.doc-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px so
     inset 0 14px 26px rgba(255, 253, 248, .5),
     inset 0 -10px 20px rgba(180, 170, 145, .12);
 }
+/* Deep Science: the READING DESK. This is the one DARK mode — a library at
+   night rather than a bright field — so it cannot wear the white glass the
+   other panes are built from. The default `#composer` fill is white at .3, and
+   the chips inside it stack another white .35 on top; over the near-black
+   parchment field that lands at about rgb(147,146,144), which put Science's
+   near-white `--text` (#efeade) on a light chip at 2.6:1 — the "white text on
+   white background in the dropdowns" (owner report, 2026-08-02). Measured, not
+   eyeballed: tests/theme-contrast.mjs.
+   So the pane and every chip in it invert: a dark walnut desk with a gold
+   hairline, chips lifted with white at .08 rather than .35. Same construction
+   as the panes above (top→bottom sheen, specular top edge, soft shadow),
+   read in the dark. The chips keep `color: var(--text)`, which now has the
+   contrast it was always assuming. */
+:root.sci-mode #composer {
+  background:
+    linear-gradient(180deg, rgba(48, 42, 31, .93) 0%, rgba(30, 26, 19, .95) 55%, rgba(40, 35, 25, .93) 100%),
+    rgba(28, 25, 19, .84);
+  border: 1px solid rgba(176, 141, 63, .38);
+  box-shadow:
+    0 7px 26px rgba(0, 0, 0, .5),
+    inset 0 1px 0 rgba(214, 186, 120, .22),
+    inset 0 14px 26px rgba(0, 0, 0, .16);
+}
+:root.sci-mode #model,
+:root.sci-mode #modesel,
+:root.sci-mode #attach,
+:root.sci-mode #camera {
+  background: rgba(255, 255, 255, .08);
+  border: 1px solid rgba(214, 186, 120, .3);
+}
+/* The native option list is drawn by the OS, which does not inherit the pane —
+   without an explicit pair it renders light-on-light on some platforms once the
+   select itself is dark. */
+:root.sci-mode #model option,
+:root.sci-mode #modesel option {
+  background: var(--panel);
+  color: var(--text);
+}
+:root.sci-mode .att-card {
+  background: rgba(255, 255, 255, .1);
+  border: 1px solid rgba(214, 186, 120, .3);
+}
 /* The research depth/time slider (#budget + its #budgetval readout) is an
    OPTIONAL theme feature (mode-theme.js `depthSlider`; owner 2026-07-19):
    Introspection answers from the site's own source and SDK builds a flavour —
@@ -1635,6 +1677,13 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 #budgetval {
   min-width: 3.6rem;
   font-variant-numeric: tabular-nums;
+  /* The readout of the control the user is actively dragging, so it takes
+     `--text` rather than the row's inherited `--muted`. On the default blue
+     theme the muted ink measured 4.33:1 over the composer glass — just under
+     AA, and the only sub-AA sample left after the 2026-08-02 theme audit
+     (tests/theme-contrast.mjs). Scoped to this one element: `--muted` is
+     correct everywhere else it is used. */
+  color: var(--text);
   /* Time stacked over the report tier the setting buys (app.js budgetTier):
      the slider scales the answer's comprehensiveness too, so the readout
      names the deliverable, not just the duration. */

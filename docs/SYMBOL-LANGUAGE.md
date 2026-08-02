@@ -270,3 +270,33 @@ As shipped:
 Semantic pairing, extending §4's: the umbrella says *"sheltered"*, the balloon
 *"carried"*, the plant *"grown"* — SDK's honest half: a new, useful thing
 distilled from the site and planted, live, at its own link.
+
+### 7a. One class, derived — never a list kept by hand (2026-08-02)
+
+A mode's root class is written down once, in the registry's `rootClass`, and
+everything else derives from it. Three places apply or consume it:
+
+1. the parse-time script in `public/index.html`, which paints the cached mode
+   before any module loads;
+2. `chat-mode.js`'s `applyChatModeTheme`, which clears **every** class in
+   `MODE_ROOT_CLASSES` and re-adds only the current mode's;
+3. `public/css/app.css`, which paints a `:root.<class>` palette per mode.
+
+The switcher used to carry a hand-written toggle per mode instead of (2), and
+Deep Science's `sci-mode` was never added to it. The class could therefore be
+turned on only by a reload and never turned off, so a browser that had booted in
+Science kept it through every later switch: the header showed two mode tags at
+once and the palette, the composer pane and the dropdown text came from
+different themes. The registry is now the only list, and
+`public/js/mode-theme.test.js` holds all three places to it.
+
+Two consequences worth stating for a new mode:
+
+- **The palette is half a theme; the composer pane is the other half.** A mode
+  whose `--bg` is dark also needs its own `#composer` and chip rules — the
+  default pane is white glass at `.3` with another white `.35` on the chips
+  inside it, which is invisible against six light themes and unreadable against
+  one dark one. Deep Science measured 2.58:1 before it got the reading-desk
+  pane.
+- **Contrast is measured, not eyeballed** — `tests/theme-contrast.mjs`, the
+  same rule the wordmark slash follows (the **slash-spacing** skill).

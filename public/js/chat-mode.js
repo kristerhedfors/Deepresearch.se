@@ -49,8 +49,7 @@
 // localStorage access is guarded and fails soft.
 
 import { CHAT_MODES, DEFAULT_CHAT_MODE, normalizeChatMode } from "./chat-mode-core.js";
-import { DEV_MODE_CLASS } from "./dev-mode.js";
-import { barTint } from "./mode-theme.js";
+import { MODE_ROOT_CLASSES, barTint, modeRootClass } from "./mode-theme.js";
 import { nudgeTint } from "./bar-tint.js";
 import { sessionAgent, setSessionAgent } from "./session.js";
 
@@ -85,6 +84,8 @@ export const ORCH_MODE_CLASS = "orch-mode";
 export const OUTRO_MODE_CLASS = "outro-mode";
 /** The root class carrying the amber Models-mode pane tint. */
 export const MODELS_MODE_CLASS = "models-mode";
+/** The root class carrying the parchment Deep-Science reading-room theme. */
+export const SCI_MODE_CLASS = "sci-mode";
 /**
  * The account's last picked mode — the first-paint theme and the seed a NEW
  * session starts in. "normal" when nothing is cached or storage is unavailable
@@ -154,9 +155,19 @@ export function storeChatMode(mode, opts) {
 }
 
 /**
- * Apply a mode's theme: exactly one of the `dev-mode` / `sdk-mode` root classes
+ * Apply a mode's theme: exactly ONE of the registry's root classes on <html>
  * (or none, for normal). Persists unless {persist:false} (the boot-time cached
  * apply is READING the cache, not deciding).
+ *
+ * The class list comes from mode-theme.js (MODE_ROOT_CLASSES), not from a
+ * hand-written toggle per mode. Deep Science's `sci-mode` was missing from the
+ * hand-written version for its whole life (2026-08-02): picking Deep Science
+ * left the class off, and — because the parse-time script in index.html DID
+ * apply it — a browser that had booted in Science kept it through every later
+ * switch. The header then showed two mode tags at once and the palette, the
+ * composer pane and the dropdown text each came from a different theme (the
+ * near-white Science `--text` landing on the rose-white Introspection pane).
+ * Deriving the set means the next mode cannot be forgotten the same way.
  * @param {string} mode
  * @param {{ persist?: boolean, account?: boolean }} [opts] account:false records
  *   the mode on this session only, leaving the account seed alone
@@ -167,11 +178,8 @@ export function applyChatModeTheme(mode, opts) {
   if (!opts || opts.persist !== false) storeChatMode(m, { account: opts?.account !== false });
   try {
     const root = globalThis.document?.documentElement;
-    root?.classList?.toggle(DEV_MODE_CLASS, m === "introspection");
-    root?.classList?.toggle(SDK_MODE_CLASS, m === "sdk");
-    root?.classList?.toggle(ORCH_MODE_CLASS, m === "orchestrator");
-    root?.classList?.toggle(OUTRO_MODE_CLASS, m === "outrospection");
-    root?.classList?.toggle(MODELS_MODE_CLASS, m === "models");
+    const want = modeRootClass(m);
+    for (const cls of MODE_ROOT_CLASSES) root?.classList?.toggle(cls, cls === want);
   } catch {
     /* no DOM (tests) — persistence above is the durable part */
   }

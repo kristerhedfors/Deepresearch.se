@@ -6,9 +6,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DEV_MODE_CLASS } from "./dev-mode.js";
+import { MODE_ROOT_CLASSES, MODE_THEMES } from "./mode-theme.js";
 import {
   CHAT_MODES,
   CHAT_MODE_KEY,
+  SCI_MODE_CLASS,
   SDK_MODE_CLASS,
   adoptServerChatMode,
   applyChatModeTheme,
@@ -68,6 +70,43 @@ test("applyChatModeTheme: exactly one theme class per mode; persist opt-out hono
     assert.deepEqual([...classes], []);
     applyChatModeTheme("sdk", { persist: false });
     assert.equal(store.get(CHAT_MODE_KEY), "normal"); // read-only apply
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+// EVERY ORDERED PAIR, not a sampled path. The bug this pins (2026-08-02) hid in
+// the modes the older test above never visited: `applyChatModeTheme` toggled
+// five hand-written classes and Deep Science's `sci-mode` was not among them, so
+// picking Science left the class off and — because index.html's parse-time
+// script DOES apply it — a browser that booted in Science carried `sci-mode`
+// into every other agent. The header then showed two mode tags at once and the
+// palette, the composer pane and the dropdown text came from different themes.
+// Walking the full matrix is what makes a sixth mode's omission fail here
+// instead of on a phone.
+test("applyChatModeTheme: every mode→mode switch lands on exactly its own class", () => {
+  stubStorage();
+  const classes = new Set();
+  globalThis.document = {
+    documentElement: { classList: { toggle: (c, on) => (on ? classes.add(c) : classes.delete(c)) } },
+  };
+  try {
+    for (const from of CHAT_MODES) {
+      for (const to of CHAT_MODES) {
+        classes.clear();
+        applyChatModeTheme(from);
+        applyChatModeTheme(to);
+        const want = MODE_THEMES[to].rootClass;
+        assert.deepEqual(
+          [...classes],
+          want ? [want] : [],
+          `${from} → ${to} left [${[...classes]}] on the root, expected ${want || "no theme class"}`,
+        );
+      }
+    }
+    // And every class the registry declares is one this module can clear.
+    assert.deepEqual([...MODE_ROOT_CLASSES].sort(), [...new Set(MODE_ROOT_CLASSES)].sort());
+    assert.ok(MODE_ROOT_CLASSES.includes(SCI_MODE_CLASS));
   } finally {
     delete globalThis.document;
   }

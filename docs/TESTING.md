@@ -1021,6 +1021,39 @@ Results and the guidance drawn from them: **`docs/SANDBOX-PERFORMANCE.md`**.
 These are exploration tools, not gates — they assert only that they produced
 usable data, since the numbers vary with network conditions.
 
+### The theme audit (`tests/theme-contrast.mjs`) — every agent switch, measured
+
+A standalone Playwright script, not part of either project, because it walks
+all 49 ordered mode pairs and samples computed colour on each — too slow for
+the mocked run, and the two claims it makes are pinned there in cheaper form
+(`ui.spec.js`'s switching matrix, `chat-mode.test.js`'s class algebra).
+
+```bash
+cd tests
+node theme-contrast.mjs                                  # a local Worker on :8787
+BASE_URL=https://deepresearch.se node theme-contrast.mjs # production, break-glass
+VERBOSE=1 node theme-contrast.mjs                        # print every ratio, not just failures
+```
+
+It boots in each chat mode and switches to every other, asserting that `<html>`
+ends up carrying **exactly** the target mode's root class and the header shows
+**exactly one** mode tag; then it composites each text-bearing chrome element
+against everything painted behind it — alpha-mixing up the ancestor chain — and
+reports the WCAG ratio. Credentials follow the target the way
+`playwright.config.js` resolves them, so a container carrying the production
+break-glass pair does not accidentally send it to a loopback Worker.
+
+Both halves earned their place on 2026-08-02. Deep Science was declared with
+`rootClass: "sci-mode"` and applied by `index.html`'s parse-time script, but
+`chat-mode.js` toggled five hand-written classes and `sci-mode` was not among
+them — so the class could be turned on only by a reload and never turned off. A
+browser that had booted in Science carried it into every other agent: two header
+tags at once, and the palette, the composer pane and the dropdown text each from
+a different theme. The audit reported 54 failures against production. The
+contrast half then caught what the switching half did not explain — Science is
+the one DARK theme, and its near-white `--text` over the composer's default
+white glass measured **2.58:1** even with the classes correct.
+
 The **model-matrix eval** (`tests/model-eval.mjs`, `npm run eval:models`) is a
 separate data-collection tool — see the **model-eval** skill for its
 methodology, the `QUERY_SETS` discipline, the `tests/MODEL-EVAL-FINDINGS.md`

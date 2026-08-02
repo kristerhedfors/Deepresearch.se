@@ -268,6 +268,25 @@ export const TIER_THEMES = {
   },
 };
 
+// EVERY root class any mode declares, derived from the descriptors above rather
+// than listed by hand. chat-mode.js clears this whole set and re-adds only the
+// current mode's class, so adding a mode to MODE_THEMES is enough to make its
+// theme switch correctly in both directions.
+//
+// Listing them by hand is exactly what broke (2026-08-02): Deep Science shipped
+// with `rootClass: "sci-mode"` and the parse-time boot script in index.html
+// applied it, but applyChatModeTheme's five hard-coded toggles never learned
+// about it. So `sci-mode` could neither be turned ON by picking Deep Science nor
+// turned OFF by picking anything else — a browser that had booted in Science
+// carried the class into every other agent, and the header showed two mode tags
+// while the palette and the composer pane came from two different themes.
+/** Every root theme class in the registry, in descriptor order. @type {string[]} */
+export const MODE_ROOT_CLASSES = /** @type {string[]} */ (
+  Object.values(MODE_THEMES)
+    .map((t) => t.rootClass)
+    .filter((c) => typeof c === "string" && c.length > 0)
+);
+
 /**
  * The descriptor for a mode, falling back to Deep Research for anything unknown.
  * @param {unknown} mode
@@ -276,6 +295,12 @@ export const TIER_THEMES = {
 export function modeTheme(mode) {
   const id = typeof mode === "string" ? mode : "";
   return MODE_THEMES[id] || MODE_THEMES.normal;
+}
+
+/** The root class a mode carries on <html>, or null for the unthemed default.
+ * @param {unknown} mode @returns {string|null} */
+export function modeRootClass(mode) {
+  return modeTheme(mode).rootClass;
 }
 
 /** The waiting-symbol spinner kind for a mode. @param {unknown} mode @returns {"balloon"|"plant"} */
