@@ -452,26 +452,30 @@ commands. That is the *"text on what changed"* half of the request, and it is
 generated from the same build the embed rendered — one core, so the answer
 cannot describe a different watch than the one on screen.
 
-### The tools
+### The tools, and why they are gone
 
-The last clause — *"make it an mcp server with a bunch of tools"* — is
-`src/watch-tools.js`: six tools on `POST /mcp`, over the same two cores.
+The last clause of #52 — *"make it an mcp server with a bunch of tools"* — was
+built: `src/watch-tools.js`, six tools on `POST /mcp` (`watch_catalog`,
+`watch_case`, `watch_build`, `watch_command`, `watch_check`,
+`watch_sourcing`) over the same two cores the inline builder runs on.
 
-| Tool | Answers |
-|---|---|
-| `watch_catalog` | what exists — the slots, or one family's options in full |
-| `watch_case` | one case family's real millimetres, platform and crown position |
-| `watch_build` | a build → spec sheet, fit check, sourcing rows, permalink |
-| `watch_command` | plain EN/SV commands → new build, exactly what changed, what to try next |
-| `watch_check` | compatibility only |
-| `watch_sourcing` | brands, price bands, prepared search URLs |
+**They were removed on 2026-08-02 (owner directive): this feature needs no MCP
+surface.** The module, its tests and its six entries in `src/mcp-config.js`'s
+catalog are deleted.
 
-No network and no model in any of them, so they cost nothing to run and cannot
-fail soft into nonsense — which is also what keeps invariant 1 intact: these are
-what an agent calls *instead of* the pipeline reaching for function calling.
-Each has its own exposure switch in `src/mcp-config.js`'s catalog, and junk
-arguments degrade to a described default rather than throwing, because a thrown
-tool is a model that retries the same call forever.
+The reasoning is worth keeping, because it is a general one. An MCP tool earns
+its place when an agent without a browser needs the answer — which is why the
+literature and SDK families are still there. The watch builder is a browser
+surface and a chat surface: the people using it are looking at a rendered
+watch, and the conversational half already answers in plain language through
+`watchThread` and `parseWatchCommand`, with no protocol in the way. Six tools
+were carrying a maintenance cost — schemas, an exposure switch each, a
+catalog⇔tool-list mirror test — against a caller nobody could name.
+
+Nothing about the builder's capability changed with them. `GET
+/api/watch/catalog` (§6) still answers the non-browser caller: a shell in the
+sandbox, a script, an agent that wants a case's real millimetres without
+running WebGL. That endpoint was always the honest seam for that job.
 
 ---
 
@@ -560,9 +564,8 @@ has to leave.
 `public/js/watch-core.test.js` (70 checks), `src/watch.test.js` (11),
 `public/js/watch-chat-core.test.js` (the conversational core — thread
 open/carry/close, EN+SV command parity, the whole-catalogue command round trip,
-reroll determinism and repair, the suggestions' validity) and
-`src/watch-tools.test.js` (the MCP family, including that every tool survives
-junk arguments) all run in `npm test`. They cover catalogue integrity (unique ids, resolvable references,
+reroll determinism and repair, the suggestions' validity) all run in
+`npm test`. They cover catalogue integrity (unique ids, resolvable references,
 EN+SV everywhere, plausible millimetres, crystal smaller than case and larger
 than dial), the permalink codec's fail-soft decode, every compatibility rule,
 the spec-sheet maths, the sourcing index's URL shapes, and the geometry: well-

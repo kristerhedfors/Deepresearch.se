@@ -80,25 +80,28 @@ test("initializeResult has protocolVersion, serverInfo, and tools capability", (
   assert.ok(r.capabilities && r.capabilities.tools, "advertises tools capability");
 });
 
-test("tools/list returns deep_research first plus the literature, SDK and watch families", () => {
+test("tools/list returns deep_research first plus the literature and SDK families", () => {
   const r = toolsListResult();
-  assert.equal(r.tools.length, 15);
+  assert.equal(r.tools.length, 9);
   const tool = r.tools[0];
   assert.equal(tool.name, TOOL_NAME);
   assert.equal(tool.name, "deep_research");
   assert.equal(tool, DEEP_RESEARCH_TOOL);
   // Every family rides along in MCP's schema shape (inputSchema, not
-  // Anthropic's input_schema) so external agents can search the hosted corpora,
-  // plan against the SDK, and configure a watch build, without shelling into
-  // the execution sandbox. The literature family sits directly behind
-  // deep_research — same capability, different grain.
+  // Anthropic's input_schema) so external agents can search the hosted corpora
+  // and plan against the SDK without shelling into the execution sandbox. The
+  // literature family sits directly behind deep_research — same capability,
+  // different grain.
+  //
+  // The NHxx watch builder had a six-tool family here and it was REMOVED
+  // (owner directive, 2026-08-02): the builder is a browser surface and a chat
+  // surface, and nothing was asking it questions over MCP. GET
+  // /api/watch/catalog still answers a non-browser caller.
   assert.deepEqual(
     r.tools.slice(1).map((t) => t.name),
     [
       "literature_search", "literature_fetch", "literature_similar", "literature_corpora",
       "sdk_list_modules", "sdk_show_module", "sdk_plan", "sdk_validate",
-      "watch_catalog", "watch_case", "watch_build", "watch_command",
-      "watch_check", "watch_sourcing",
     ],
   );
   for (const t of r.tools.slice(1)) {

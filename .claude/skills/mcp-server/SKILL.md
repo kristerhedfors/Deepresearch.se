@@ -36,22 +36,28 @@ two hosted scientific corpora directly — see the section below, it is the
 family with the most surface; DistillSDK's four **manifest tools**
 (`sdk_list_modules`, `sdk_show_module`, `sdk_plan`, `sdk_validate`, via
 `SDK_MCP_TOOLS`) so an external agent can plan against the SDK without
-shelling into the execution sandbox; and — since 2026-07-30, feedback #52 —
-the NHxx **watch-builder tools** (`watch_catalog`, `watch_case`,
-`watch_build`, `watch_command`, `watch_check`, `watch_sourcing`, via
-`WATCH_MCP_TOOLS` over `src/watch-tools.js`) so an agent can configure and
-cost a mod build without a browser. Fifteen tools total; the pipeline one is
+shelling into the execution sandbox. Nine tools total; the pipeline one is
 the reason the server exists.
 
-The SDK and watch families are **pure** — committed data, a regex command
-parser, no network, no D1, no model — which is why they are static imports in
-`mcp.js` without breaking its keep-the-pipeline-dynamic file-layout rule, and
-why they cost nothing to expose. The literature family splits along that same
+An NHxx **watch-builder family** of six tools lived here from 2026-07-30
+(feedback #52) and was **removed on 2026-08-02 by owner directive**. Worth
+knowing as a precedent for what belongs on this surface: a tool earns its
+place when a caller WITHOUT a browser needs the answer. The watch builder is
+a browser surface and a chat surface, its conversational half already answers
+in plain language, and `GET /api/watch/catalog` already served the shell and
+the script — so the six tools were paying for schemas, an exposure switch
+each and a mirror-test row against a caller nobody could name. Deleting a
+tool family is cheap here; adding one that nothing calls is the expensive
+mistake.
+
+The SDK family is **pure** — committed data, no network, no D1, no model —
+which is why it is a static import in `mcp.js` without breaking its
+keep-the-pipeline-dynamic file-layout rule, and why it costs nothing to
+expose. The literature family splits along that same
 line rather than breaking it: its schemas are pure and static, its retrieval
 half is dynamic. Every family fails into an `isError` result rather than a
-transport error, and `watch_*` and `literature_*` both degrade junk arguments
-to a described default: a tool that throws is a model that retries the same
-call forever.
+transport error, and `literature_*` degrades junk arguments to a described
+default: a tool that throws is a model that retries the same call forever.
 This is the ONE place the pipeline points *outward*: the architecture
 roadmap (`docs/ARCHITECTURE-ROADMAP.md` §3) argues MCP belongs on the
 outbound edge (DeepResearch *as* a tool other agents compose with), NOT as

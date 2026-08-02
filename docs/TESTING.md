@@ -333,7 +333,7 @@ declared-context gate that switches it on without a mode or a knob),
 `europepmc.js` (the life-science literature leg, whose bilingual intent gates
 are where the `\b` trap was first found), `watch.js` (the NHxx catalogue
 endpoint's four answer shapes, with `globalThis.fetch` replaced by a throwing
-stub to pin that the module makes no outbound call) and `watch-tools.js` (the
+stub to pin that the module makes no outbound call) (the
 six MCP tools over the same cores, including that junk arguments degrade to a
 described default rather than throwing). **The interchange
 standards** get the same treatment, and it is pointed specifically at the gap
