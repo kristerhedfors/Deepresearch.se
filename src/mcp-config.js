@@ -87,6 +87,33 @@ export const MCP_TOOL_CATALOG = [
       "Reads nothing of yours and spends nothing.",
     def: true,
   },
+  // The two adapter tools ChatGPT requires BY NAME. Their own group, because
+  // their switches do not behave like the others: these two are the price of
+  // being addable as a ChatGPT connector at all, so switching `search` off is
+  // not "one less tool" — it is a connector that will not connect. The Settings
+  // screen has to say that rather than leave someone to discover it as a failed
+  // connection with no error worth reading.
+  {
+    id: "search",
+    group: "ChatGPT connector",
+    label: "search",
+    blurb:
+      "One query over the same hosted arXiv and PubMed indexes, returning id/title/url in the " +
+      "fixed shape ChatGPT expects. ChatGPT will not connect to a server without a tool named " +
+      "`search`, so switching this off makes the connector unusable there — every other client " +
+      "is unaffected. Retrieves, so it draws on the same research quota as literature_search.",
+    def: true,
+  },
+  {
+    id: "fetch",
+    group: "ChatGPT connector",
+    label: "fetch",
+    blurb:
+      "Turns one id from a `search` result back into that paper's title, stored abstract and " +
+      "link. ChatGPT requires it alongside `search` — the two are switched as a pair in " +
+      "practice. A direct key read: contacts no third party and spends nothing.",
+    def: true,
+  },
   {
     id: "sdk_list_modules",
     group: "Platform SDK",

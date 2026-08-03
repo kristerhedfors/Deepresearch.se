@@ -21,10 +21,14 @@ description: >-
   recording), how to add or change a tool, the shared seams
   (model-routing.js, billing.js), the validation ladder, and debugging an MCP
   client that can't connect or whose tool call is refused. ALSO the go-to for
-  the claude.ai CUSTOM CONNECTOR and MOBILE question — "connect it from my
-  phone", "add it as a connector on claude.ai", "why is this terminal-only",
-  OAuth/DCR/CIMD or a WWW-Authenticate handshake on this surface: the design
-  and feasibility answer is docs/MCP-CONNECTOR.md (F-20).
+  the CUSTOM CONNECTOR on claude.ai and ChatGPT and the MOBILE question —
+  "my connector won't connect", "connect it from my phone", "add it as a
+  connector on claude.ai / in ChatGPT", "why is this terminal-only", the
+  consent screen, OAuth/DCR/CIMD, PKCE, a WWW-Authenticate handshake, a
+  redirect_uri that is refused, invalid_grant on refresh, or the ChatGPT-only
+  `search`/`fetch` tools: the authorization server is BUILT (2026-08-03,
+  src/oauth-metadata.js + src/oauth-store.js + src/oauth-authorize.js +
+  src/oauth-token.js, F-20) and the full spec is docs/MCP-CONNECTOR.md.
 ---
 
 # The MCP server — DeepResearch as a tool (`POST /mcp`)
@@ -401,53 +405,129 @@ deliberately scores its LAST candidate below the floor, so a test that wants
 3. If the change touched the pipeline path, the pipeline's own checks apply
    — see **pipeline-architecture**.
 
-## Reaching a phone — the web connector (F-20, designed not built)
+## Reaching a phone — the OAuth connector (F-20, BUILT 2026-08-03)
 
 Every way in above needs a terminal. `claude mcp add` writes Claude Code's own
 configuration, which the Claude mobile app never reads, and a phone has
-nowhere to paste that line anyway. So this surface is reachable from a laptop
-and invisible from the device someone is most likely holding when a question
-occurs to them. The feasibility and design answer is
-**`docs/MCP-CONNECTOR.md`** (2026-08-03), tracked as `FEATURES.md` F-20. Read
-it before building; what follows is only what a session needs to reason about
-the surface without opening it.
+nowhere to paste that line anyway. The fix is being addable as a **custom
+connector**: claude.ai on the web, Claude Desktop, Claude mobile and Cowork
+share ONE connector infrastructure, so a connector added once *by URL* appears
+on all of them, and ChatGPT's dialog works the same way. Transport was already
+right — a connector is a remote MCP server over Streamable HTTP on a public
+host, which is what `src/mcp.js` serves. The gap was auth, and that is what
+got built.
 
-**There is no separate mobile integration to build.** claude.ai on the web,
-Claude Desktop, Claude mobile and Cowork share ONE connector infrastructure,
-so a custom connector added once by URL from any of them appears on all of
-them. Reaching the phone means becoming addable as a connector. Transport is
-already right: a custom connector is a remote MCP server over Streamable HTTP
-on a public host, which is what `src/mcp.js` serves.
+Full spec, vendor requirements and the by-hand walkthrough:
+**`docs/MCP-CONNECTOR.md`** (§4 what exists, §4a how to verify it, §2/§2a what
+Claude and ChatGPT each demand). What follows is what a session needs to
+reason about — and debug — the surface without opening it.
 
-**The gap is auth, and it is the entire build.** The Add-connector dialog
-takes a URL and runs OAuth; there is nowhere to put an `mck1.` key the way
-`claude mcp add --header` puts one. The handshake starts at our end: an
-unauthenticated POST must answer **`401`** carrying
-`WWW-Authenticate: Bearer resource_metadata="…/.well-known/oauth-protected-resource"`
-— the status is part of the protocol, that header on a `200` is ignored — and
-that document's `resource` field must equal the URL the user typed, with
-`authorization_servers[0]` naming the issuer. The design keeps
-`https://mcp.deepresearch.se` as the connector URL with no new subdomain, and
-puts an OAuth 2.1 authorization server on the apex, where the account, Google
-sign-in and the session cookie already are. Prefer **CIMD over DCR** —
-advertise `client_id_metadata_document_supported` together with `"none"` in
-`token_endpoint_auth_methods_supported`, or Claude falls back to DCR and
-registers a fresh client per connection. The access token would be a fifth
-HS256 family resolved beside `mck1.` in `resolveMcpKeyIdentity`, so the
-exposure config, the quota gate, split billing and the `chat_logs` row apply
-unchanged and the not-a-login pin extends to it verbatim.
+**The modules.** `src/oauth-metadata.js` (pure leaf: both discovery
+documents, the redirect allowlist, `issuerFor`), `src/oauth-store.js` (the
+`oac1.` code / `oat1.` access / `ort1.` refresh families, D1 rows for the two
+that need single use and rotation), `src/oauth-authorize.js` (consent + code
+issuance; needs a signed-in identity, and the CIMD document it fetches for the
+client's display name degrades to the hostname rather than failing the
+connection), `src/oauth-token.js` (`POST /oauth/token`, form-urlencoded, RFC
+6749 errors). The access token resolves beside `mck1.` in
+`resolveMcpKeyIdentity`, so exposure config, quota, billing and the
+`chat_logs` row apply unchanged — and the not-a-login pin extends to it
+verbatim.
 
-One stopgap needs no server change: **`static_headers`** in the
-Add-connector dialog takes a fixed `authorization: Bearer mck1.…` against the
-server exactly as it stands. It is beta and rollout-gated, and shaped for a
-credential an organization shares rather than one key per account, so it
-cannot be documented as the way to connect — but anyone who already has the
-beta can connect a phone today.
+**The endpoints, and which host serves them.** The split is the thing to
+remember: the resource server is the MCP host, the authorization server is the
+apex (that is where the account, Google sign-in and the session cookie live,
+and where a consent screen reads as this site).
 
-**Acceptance is a live check on the phone**, and no green unit suite implies
-it: add the connector on claude.ai in a browser, complete consent, call a
-tool, then open the mobile app and confirm the connector is there and lists
-tools with no further setup.
+| Host | Path | Public? |
+|---|---|---|
+| `mcp.deepresearch.se` | `/.well-known/oauth-protected-resource` | yes |
+| `mcp.deepresearch.se` | the existing `401`, now carrying `WWW-Authenticate` | — |
+| `deepresearch.se` | `/.well-known/oauth-authorization-server` | yes |
+| `deepresearch.se` | `/oauth/authorize` | no — needs a signed-in identity (otherwise a sign-in page) |
+| `deepresearch.se` | `/oauth/token` | yes (a client has no credential yet) |
+
+That is what production *advertises*. Both well-known documents actually
+answer on any host, and `issuerFor` collapses to the request's own origin
+off the `mcp.` host — which is what lets a preview or a local run drive the
+whole flow without a second deployment.
+
+**CIMD over DCR, and no client storage.** The authorization-server document
+advertises `client_id_metadata_document_supported: true` **and** `"none"` in
+`token_endpoint_auth_methods_supported`. Both fields, or the client silently
+falls back to Dynamic Client Registration and registers a fresh client per
+connection. With CIMD the `client_id` is an HTTPS URL, so there is no client
+table and no `/register` — and no `registration_endpoint` is advertised.
+
+**The redirect allowlist is DATA** (`REDIRECT_ALLOWLIST` +
+`redirectAllowed`): exact strings for Claude's
+`https://claude.ai/api/mcp/auth_callback` and ChatGPT's two callbacks, plus
+the RFC 8252 port-agnostic loopback for Claude Code. A third client is an
+entry, not a code change.
+
+**For ChatGPT only:** it refuses any server without tools named literally
+`search` and `fetch` (without developer mode, which is web-only and paid-tier,
+so it is not an answer). Those are thin adapters over the hosted corpora
+beside `literature_search`/`literature_fetch`, returning OpenAI's fixed shapes
+both as `structuredContent` and as JSON-encoded content text. Consequence to
+remember when reading a support report: **an account that switches `search`
+off is an account ChatGPT will refuse to connect to.**
+
+### Debugging a connector that won't connect
+
+Both clients report nearly every failure as one unhelpful line ("Couldn't
+reach the MCP server"), so work the handshake in order rather than guessing.
+`docs/MCP-CONNECTOR.md` §4a is the same sequence with copy-pasteable `curl`.
+
+1. **The `401` and its header — this is where it fails most.** An
+   unauthenticated POST must answer **`401`** carrying
+   `WWW-Authenticate: Bearer resource_metadata="…/.well-known/oauth-protected-resource"`.
+   The status is part of the protocol: the same header on a `200` is ignored,
+   and a `403`, a redirect to the sign-in page, or HTML instead of JSON all
+   end the flow before OAuth starts. Check this first, always.
+2. **`resource` must equal the URL the user typed**, character for character.
+   This is why the advertised endpoint is the bare origin and only the bare
+   origin (`mcpEndpointUrl`); a user who typed `…/mcp` gets a mismatch, and
+   the client says nothing useful about why.
+3. **`authorization_servers[0]` is the only entry read** — both clients take
+   the first and never fall back. If it points somewhere that does not serve
+   the RFC 8414 document, the flow dies there.
+4. **A refused `redirect_uri` is LOGGED, deliberately.** An exact-match
+   failure is the commonest reported ChatGPT connector problem and it is
+   invisible from the outside, so the refused string goes to Workers Logs as
+   **`oauth.redirect_refused`** (with `client_id`) — `wrangler tail | grep
+   oauth.` while the user retries, and the answer is usually a callback URL a
+   vendor changed. Fix = an entry in `REDIRECT_ALLOWLIST`. Neighbouring keys
+   worth knowing: `oauth.authorize_rejected` (every other RFC 6749 error,
+   which bounces to the client rather than rendering) and
+   `oauth.consent_token_rejected` (an expired or wrong-account consent form —
+   the user left the screen open, so tell them to start again from the
+   client). A refused redirect renders a page and never a `Location`, on
+   purpose: an unvalidated redirect target is what an open redirector is made
+   of.
+5. **`invalid_grant` on refresh is correct behaviour, not a bug**, if the
+   refresh token was reused: rotation kills the old `jti` in the same call
+   that mints the new one. What would be a bug is any *other* error code
+   there — clients branch on `error`, and only `invalid_grant` makes a client
+   re-authorize instead of retrying a dead token forever.
+6. **Latency ceilings are real**: 10 s for discovery, registration and the
+   initial token exchange, 30 s for a refresh. Past that the flow fails even
+   if the request eventually completes, which reads as an intermittent
+   connector.
+
+**Acceptance is a live check on the phone, and it has NOT been run** (as of
+2026-08-03): add the connector on claude.ai in a browser, complete consent,
+call a tool, then open the mobile app and confirm the connector is there and
+lists tools with no further setup — then the same on ChatGPT, which is also
+what settles whether it accepts Streamable HTTP and whether its iOS app can
+use a connector at all. No green unit suite implies any of it. Until then,
+F-20 is `PARTIAL`.
+
+**The stopgap is still there:** **`static_headers`** in Claude's
+Add-connector dialog takes a fixed `authorization: Bearer mck1.…` with no
+server involvement at all. Beta, rollout-gated, and shaped for a credential an
+organization shares — but it is the fallback if the OAuth flow fails its live
+check on Claude, and it does nothing for ChatGPT.
 
 ## The stateless revision — what's coming (F-19)
 

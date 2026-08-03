@@ -93,7 +93,7 @@ test("rpc and toolCall build well-formed JSON-RPC 2.0 messages", () => {
 test("the probe's expectations mirror the server's tool list", () => {
   // A tool added to src/mcp.js without being added here would pass tools-list
   // as "unknown tool" — which is the failure this constant exists to produce.
-  assert.equal(EXPECTED_TOOLS.length, 9);
+  assert.equal(EXPECTED_TOOLS.length, 11);
   assert.equal(EXPECTED_TOOLS[0], "deep_research");
   assert.deepEqual(EXPECTED_TOOLS.slice(1, 5), [
     "literature_search",

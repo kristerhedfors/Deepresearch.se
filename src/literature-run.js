@@ -65,6 +65,7 @@ import {
   FILTER_NOTE,
   MAX_QUERIES,
   MAX_TOTAL_RECORDS,
+  OPENAI_SEARCH_LIMIT,
   RECORD_MAPPERS,
   RETRIEVAL_NOTE,
   applyFilters,
@@ -76,11 +77,31 @@ import {
   normalizeCorpora,
   normalizeLimit,
   normalizeQueries,
+  openAiDocument,
+  openAiFetchId,
+  openAiMissDocument,
+  openAiQuery,
+  openAiSearchResults,
   parseFilters,
   parseLiteratureId,
   parseLiteratureIds,
   shapeAbstracts,
 } from "./literature-tools.js";
+
+/**
+ * What every tool here returns. `payload` is the object `text` was serialized
+ * FROM — the adapters below project one tool's payload into another's shape, and
+ * re-parsing our own JSON to do it would be a second place for the two spellings
+ * to drift. `structured` marks the results src/mcp.js must return twice, as
+ * `structuredContent` as well as text.
+ * @typedef {Object} LiteratureToolResult
+ * @property {string} text
+ * @property {any} payload
+ * @property {boolean} isError
+ * @property {number} queries
+ * @property {number} records
+ * @property {boolean} [structured]
+ */
 
 /** The binding each corpus reads. */
 const BINDINGS = { arxiv: "ARXIV_INDEX", pubmed: "PUBMED_INDEX" };
@@ -166,7 +187,7 @@ function effectiveFloor(minScore) {
  * @param {any} env
  * @param {import('./types.js').Logger} log
  * @param {any} args
- * @returns {Promise<{ text: string, isError: boolean, queries: number, records: number }>}
+ * @returns {Promise<LiteratureToolResult>}
  */
 export async function runLiteratureSearch(env, log, args) {
   const started = Date.now();
@@ -321,7 +342,7 @@ export async function runLiteratureSearch(env, log, args) {
     duration_ms: Date.now() - started,
   });
 
-  return { text: formatLiteratureResult(payload), isError: false, queries: queries.length, records: total };
+  return { text: formatLiteratureResult(payload), payload, isError: false, queries: queries.length, records: total };
 }
 
 // ---------------------------------------------------------------------------
@@ -336,6 +357,7 @@ export async function runLiteratureSearch(env, log, args) {
  * @param {any} env
  * @param {import('./types.js').Logger} log
  * @param {any} args
+ * @returns {Promise<LiteratureToolResult>}
  */
 export async function runLiteratureFetch(env, log, args) {
   const started = Date.now();
@@ -414,7 +436,7 @@ export async function runLiteratureFetch(env, log, args) {
   };
 
   log.info("literature.fetch", { requested: refs.length, found: records.length, duration_ms: Date.now() - started });
-  return { text: formatLiteratureResult(payload), isError: false, queries: 0, records: records.length };
+  return { text: formatLiteratureResult(payload), payload, isError: false, queries: 0, records: records.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -554,7 +576,7 @@ export async function runLiteratureSimilar(env, log, args) {
     results: records.length,
     duration_ms: Date.now() - started,
   });
-  return { text: formatLiteratureResult(payload), isError: false, queries: 0, records: records.length };
+  return { text: formatLiteratureResult(payload), payload, isError: false, queries: 0, records: records.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -626,7 +648,117 @@ export async function runLiteratureCorpora(env, log) {
     },
     stats: { duration_ms: Date.now() - started },
   };
-  return { text: formatLiteratureResult(payload), isError: false, queries: 0, records: 0 };
+  return { text: formatLiteratureResult(payload), payload, isError: false, queries: 0, records: 0 };
+}
+
+// ---------------------------------------------------------------------------
+// search / fetch — the two adapter tools ChatGPT requires by name
+// (docs/MCP-CONNECTOR.md §2a; the schemas and projections are in
+// src/literature-tools.js).
+//
+// Both are THIN: `search` is runLiteratureSearch with one angle and the
+// abstracts turned off, `fetch` is runLiteratureFetch with one id. Nothing new
+// retrieves, nothing is embedded twice, and every fail-soft property the
+// literature family already has — a dead corpus degrading, an honest miss, the
+// relevance floor — arrives here for free because it is the same call.
+//
+// Their results carry a `structured: true` flag, which is src/mcp.js's cue to
+// return the payload BOTH as `structuredContent` and as the JSON text of the
+// content array. That dual return is not belt-and-braces: it is how the client
+// reads the result at all.
+// ---------------------------------------------------------------------------
+
+/**
+ * Wrap an adapter payload in the runner's result shape. The text is the SAME
+ * object serialized, never a second rendering of it — two spellings of one
+ * result is exactly the drift a connector would surface as a parse failure.
+ * @param {any} payload
+ * @param {boolean} isError
+ * @param {number} records
+ */
+function structuredResult(payload, isError, records) {
+  return { text: formatLiteratureResult(payload), payload, structured: true, isError, queries: 0, records };
+}
+
+/**
+ * `search` — one query over both hosted corpora, projected to
+ * `{ results: [{ id, title, url }] }`.
+ *
+ * On failure the shape is preserved (an empty `results` plus an `error`) rather
+ * than replaced by an error string: a client that asked for a documented shape
+ * and got something else reports a broken server, which is a worse thing to
+ * debug than an empty result set.
+ *
+ * @param {any} env
+ * @param {import('./types.js').Logger} log
+ * @param {any} args
+ */
+export async function runOpenAiSearch(env, log, args) {
+  const query = openAiQuery(args);
+  if (!query) {
+    return structuredResult(
+      { results: [], error: "`query` is required: a question or topic in natural language." },
+      true,
+      0,
+    );
+  }
+
+  const inner = await runLiteratureSearch(env, log, {
+    query,
+    limit: OPENAI_SEARCH_LIMIT,
+    // The projection carries no abstract, so retrieving them would be payload
+    // nobody reads.
+    abstract: "none",
+  });
+  if (inner.isError) {
+    return structuredResult({ results: [], error: inner.payload?.error || "The corpora are unreachable." }, true, 0);
+  }
+
+  const records = inner.payload?.queries?.[0]?.results || [];
+  const results = openAiSearchResults(records);
+  log.info("literature.openai_search", { results: results.length });
+  return structuredResult({ results }, false, results.length);
+}
+
+/**
+ * `fetch` — one document id to `{ id, title, text, url, metadata }`.
+ *
+ * @param {any} env
+ * @param {import('./types.js').Logger} log
+ * @param {any} args
+ */
+export async function runOpenAiFetch(env, log, args) {
+  const raw = openAiFetchId(args);
+  const ref = parseLiteratureId(raw);
+  if (!ref) {
+    // No corpus and no id to name, so there is no document shape to fill
+    // honestly — this is the one branch that answers with an error alone.
+    return structuredResult(
+      {
+        id: raw,
+        title: "",
+        text:
+          "Unreadable id. Pass the `id` from a `search` result ('arxiv:2401.12345', " +
+          "'pmid:41610285'), a bare arXiv id or PMID, or a URL to arxiv.org or pubmed.ncbi.nlm.nih.gov.",
+        url: "",
+        error: "unreadable id",
+      },
+      true,
+      0,
+    );
+  }
+
+  const inner = await runLiteratureFetch(env, log, { ids: [raw], abstract: "full" });
+  if (inner.isError) {
+    return structuredResult(openAiMissDocument(ref, inner.payload?.error || "the lookup failed."), true, 0);
+  }
+  const record = inner.payload?.results?.[0];
+  if (!record) {
+    const miss = inner.payload?.not_found?.[0];
+    return structuredResult(openAiMissDocument(ref, miss?.reason || "not in this corpus's window."), true, 0);
+  }
+  log.info("literature.openai_fetch", { corpus: ref.corpus });
+  return structuredResult(openAiDocument(record), false, 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -640,8 +772,10 @@ export async function runLiteratureCorpora(env, log) {
  * @param {string} message
  */
 function fail(message) {
+  const payload = { error: message };
   return {
-    text: formatLiteratureResult({ error: message }),
+    text: formatLiteratureResult(payload),
+    payload,
     isError: true,
     queries: 0,
     records: 0,
@@ -654,7 +788,7 @@ function fail(message) {
  * @param {import('./types.js').Logger} log
  * @param {string} name
  * @param {any} args
- * @returns {Promise<{ text: string, isError: boolean, queries: number, records: number }>}
+ * @returns {Promise<LiteratureToolResult>}
  */
 export async function runLiteratureTool(env, log, name, args) {
   switch (name) {
@@ -666,6 +800,12 @@ export async function runLiteratureTool(env, log, name, args) {
       return runLiteratureSimilar(env, log, args);
     case "literature_corpora":
       return runLiteratureCorpora(env, log);
+    // The two adapter tools ride the same dispatch so src/mcp.js needs one
+    // dynamic import and one branch, not two of each.
+    case "search":
+      return runOpenAiSearch(env, log, args);
+    case "fetch":
+      return runOpenAiFetch(env, log, args);
     default:
       return fail(`Unknown literature tool: ${name}`);
   }

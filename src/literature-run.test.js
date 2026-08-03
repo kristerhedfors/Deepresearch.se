@@ -27,6 +27,8 @@ import {
   runLiteratureSearch,
   runLiteratureSimilar,
   runLiteratureTool,
+  runOpenAiFetch,
+  runOpenAiSearch,
 } from "./literature-run.js";
 
 const log = { info() {}, warn() {}, error() {}, debug() {} };
@@ -565,6 +567,130 @@ test("a describe that fails still returns the committed facts", async () => {
 });
 
 // ---------------------------------------------------------------------------
+// search / fetch — the ChatGPT adapters (docs/MCP-CONNECTOR.md §2a)
+// ---------------------------------------------------------------------------
+
+test("search projects one angle over both corpora into ChatGPT's shape", async () => {
+  const berget = stubBerget();
+  // Three rows per corpus: the stub scores the LAST document below the floor,
+  // so two of each survive.
+  const arxiv = fakeIndex({
+    rows: [arxivRow("2401.11111", "Dense retrieval"), arxivRow("2401.22222", "Reranking"), arxivRow("2401.33333", "Dropped")],
+  });
+  const pubmed = fakeIndex({
+    rows: [pubmedRow("41610285", "A trial"), pubmedRow("41610286", "A cohort"), pubmedRow("41610287", "Dropped")],
+  });
+  const env = { BERGET_API_TOKEN: "t", ARXIV_INDEX: arxiv, PUBMED_INDEX: pubmed };
+  try {
+    const result = await runOpenAiSearch(env, log, { query: "how does dense retrieval work" });
+    assert.equal(result.isError, false);
+    // The adapter is THIN: one angle, one embedding call, the same dense tier.
+    assert.equal(berget.calls.embed, 1);
+    assert.equal(arxiv.calls.query, 1);
+    assert.equal(pubmed.calls.query, 1);
+
+    // THE dual return — the payload as an object AND as the text of the
+    // content array, byte-identical because it is one serialization.
+    assert.equal(result.structured, true);
+    assert.deepEqual(JSON.parse(result.text), result.payload);
+
+    // ChatGPT's fixed shape: `results`, each row exactly id/title/url.
+    assert.deepEqual(Object.keys(result.payload), ["results"]);
+    assert.equal(result.payload.results.length, 4);
+    for (const row of result.payload.results) assert.deepEqual(Object.keys(row).sort(), ["id", "title", "url"]);
+    // Both corpora reached the caller, each with a prefixed id.
+    const ids = result.payload.results.map((r) => r.id);
+    assert.ok(ids.some((i) => i.startsWith("arxiv:")), "arXiv ids are prefixed");
+    assert.ok(ids.some((i) => i.startsWith("pmid:")), "PMIDs are prefixed");
+  } finally {
+    berget.restore();
+  }
+});
+
+test("an id from search round-trips into fetch", async () => {
+  // The only property that makes the pair usable: whatever `search` handed out
+  // must be readable by `fetch` without the client editing it. Pinned end to
+  // end rather than by inspecting the id format, because the format is an
+  // implementation detail and the round trip is the contract.
+  const berget = stubBerget();
+  const arxiv = fakeIndex({ rows: [arxivRow("2401.11111", "Dense retrieval"), arxivRow("2401.22222", "Below the floor")] });
+  const pubmed = fakeIndex({ rows: [pubmedRow("41610285", "A trial"), pubmedRow("41610286", "Below the floor")] });
+  const env = { BERGET_API_TOKEN: "t", ARXIV_INDEX: arxiv, PUBMED_INDEX: pubmed };
+  try {
+    const found = (await runOpenAiSearch(env, log, { query: "q" })).payload.results;
+    assert.equal(found.length, 2);
+    for (const row of found) {
+      const doc = await runOpenAiFetch(env, log, { id: row.id });
+      assert.equal(doc.isError, false, `${row.id} resolves`);
+      assert.equal(doc.payload.id, row.id, "and comes back under the same id");
+      assert.equal(doc.payload.title, row.title);
+      assert.equal(doc.payload.url, row.url);
+      assert.ok(doc.payload.text.length > 0);
+    }
+  } finally {
+    berget.restore();
+  }
+});
+
+test("fetch returns the stored abstract, labelled as an abstract", async () => {
+  const env = {
+    BERGET_API_TOKEN: "t",
+    PUBMED_INDEX: fakeIndex({ rows: [pubmedRow("41610285", "A trial", { abstract: "BACKGROUND: a finding." })] }),
+  };
+  const result = await runOpenAiFetch(env, log, { id: "pmid:41610285" });
+  assert.equal(result.structured, true);
+  assert.deepEqual(JSON.parse(result.text), result.payload);
+  assert.deepEqual(Object.keys(result.payload).sort(), ["id", "metadata", "text", "title", "url"]);
+  assert.equal(result.payload.text, "BACKGROUND: a finding.");
+  // There is no full text in either index and no runtime path that could get
+  // it, so the payload says what `text` is rather than letting a caller assume.
+  assert.match(result.payload.metadata.text_is, /no full text/);
+
+  // A bare id and a source URL are accepted too — a citation arrives in
+  // whatever form the thing that cited it used.
+  for (const id of ["41610285", "https://pubmed.ncbi.nlm.nih.gov/41610285/"]) {
+    const alt = await runOpenAiFetch(env, log, { id });
+    assert.equal(alt.payload.id, "pmid:41610285", `${id} normalizes to the canonical id`);
+  }
+});
+
+test("a fetch miss keeps the shape and explains itself", async () => {
+  const env = { BERGET_API_TOKEN: "t", ARXIV_INDEX: fakeIndex({ rows: [] }) };
+  const result = await runOpenAiFetch(env, log, { id: "arxiv:1801.00001" });
+  assert.equal(result.isError, true);
+  // Still a document, not an error string: a client that asked for a document
+  // and got something else reports a broken server rather than a missing paper.
+  for (const key of ["id", "title", "text", "url"]) assert.ok(key in result.payload, `${key} present`);
+  assert.equal(result.payload.url, "https://arxiv.org/abs/1801.00001");
+  assert.match(result.payload.text, /2310/, "the coverage window explains the miss");
+
+  const unreadable = await runOpenAiFetch(env, log, { id: "???" });
+  assert.equal(unreadable.isError, true);
+  assert.match(unreadable.payload.text, /pmid:/);
+});
+
+test("search keeps its shape when the retrieval underneath fails", async () => {
+  const berget = stubBerget({ embed: "throw" });
+  const env = { BERGET_API_TOKEN: "t", ARXIV_INDEX: fakeIndex() };
+  try {
+    const dead = await runOpenAiSearch(env, log, { query: "q" });
+    assert.equal(dead.isError, true);
+    // `results` is present and empty rather than replaced by an error string —
+    // the failure is reported inside the shape the client is parsing.
+    assert.deepEqual(dead.payload.results, []);
+    assert.ok(dead.payload.error);
+    assert.deepEqual(JSON.parse(dead.text), dead.payload);
+  } finally {
+    berget.restore();
+  }
+
+  const empty = await runOpenAiSearch({ BERGET_API_TOKEN: "t" }, log, {});
+  assert.equal(empty.isError, true);
+  assert.deepEqual(empty.payload.results, []);
+  assert.match(empty.payload.error, /query/);
+});
+
+// ---------------------------------------------------------------------------
 // Dispatch
 // ---------------------------------------------------------------------------
 
@@ -577,10 +703,21 @@ test("runLiteratureTool routes every name and refuses the unknown one", async ()
       ["literature_fetch", { ids: ["2401.1"] }],
       ["literature_similar", { id: "2401.1" }],
       ["literature_corpora", {}],
+      // The adapters ride the same dispatch, so src/mcp.js needs one dynamic
+      // import and one branch rather than two of each.
+      ["search", { query: "q" }],
+      ["fetch", { id: "2401.1" }],
     ]) {
       const result = await runLiteratureTool(env, log, /** @type {string} */ (name), args);
       assert.equal(typeof result.text, "string", `${name} returns text`);
       assert.deepEqual(Object.keys(JSON.parse(result.text)).length > 0, true);
+      // Only the adapters ask for the dual return; the native tools stay
+      // text-only, which is what every existing client reads them as.
+      assert.equal(
+        result.structured === true,
+        name === "search" || name === "fetch",
+        `${name} declares structured output only if it has an outputSchema`,
+      );
     }
     const unknown = await runLiteratureTool(env, log, "literature_invent", {});
     assert.equal(unknown.isError, true);

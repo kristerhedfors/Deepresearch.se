@@ -51,6 +51,7 @@ import {
   handleMcpConfigPut,
   handleMcpKeyMint,
   handleMcpKeyRevoke,
+  mcpEndpointUrl,
   resolveMcpKeyIdentity,
 } from "./mcp-api.js";
 import { handleGoogleCallback, handleGoogleStart } from "./google.js";
@@ -124,6 +125,15 @@ import { canonicalRedirect } from "./canonical.js";
 import { drswManifestResponse } from "./drsw-manifest.js";
 import { applySecurityHeaders } from "./security-headers.js";
 import { runAsUid, runAsView } from "./run-as.js";
+import {
+  authorizationServerMetadata,
+  issuerFor,
+  protectedResourceMetadata,
+  resourceMetadataUrl,
+  wwwAuthenticateValue,
+} from "./oauth-metadata.js";
+import { handleAuthorizeGet, handleAuthorizePost } from "./oauth-authorize.js";
+import { handleOAuthToken } from "./oauth-token.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -205,6 +215,32 @@ export default {
  * Top-level routing: config sanity, the public (unauthenticated) surface,
  * then the identity gate ahead of everything else. Returns the identity
  * only when resolved, so the caller can slide the session cookie.
+ * The MCP endpoint's 401 — the one response that starts the whole connector
+ * flow.
+ *
+ * Two things ride on it and both are easy to lose in a later refactor. The
+ * BODY is JSON-RPC, because an MCP client that receives HTML reports a
+ * transport failure and its user goes hunting for a network problem instead
+ * of reading "authenticate" (found by the probe's first live run, 2026-08-01).
+ * The `WWW-Authenticate` HEADER points at the protected-resource document,
+ * which is how a connector discovers where to authorize at all: without it a
+ * client probes well-known paths and, failing those, gives up with "couldn't
+ * reach the MCP server". The header is ignored on a 200, so this must stay a
+ * 401 (docs/MCP-CONNECTOR.md §2).
+ * @param {URL} url
+ * @param {string} message
+ * @returns {Response}
+ */
+function mcpUnauthorized(url, message) {
+  const res = jsonResponse(jsonRpcError(null, RPC_INVALID_REQUEST, message), 401);
+  res.headers.set(
+    "WWW-Authenticate",
+    wwwAuthenticateValue(resourceMetadataUrl(mcpEndpointUrl(url))),
+  );
+  return res;
+}
+
+/**
  * @param {Request} request
  * @param {Env} env
  * @param {URL} url
@@ -250,6 +286,46 @@ async function route(request, env, url, log, ctx, requestId) {
     return { response: drswManifestResponse(url.origin) };
   }
 
+  // ---- OAuth discovery (F-20, docs/MCP-CONNECTOR.md) ----------------------
+  //
+  // The two documents a hosted chat client fetches before it can authenticate.
+  // Public and unauthenticated by definition, like the DRSW manifest above: a
+  // client that must already be authorized to learn HOW to authorize cannot
+  // start. Both are served on ANY host so a preview or a local run can drive
+  // the same flow (issuerFor collapses to the request's own origin there).
+  //
+  // The split they encode: the resource server is the `mcp.` host, the
+  // authorization server is the apex, where the account and Google sign-in
+  // already live. Both clients resolve a cross-host authorization server with
+  // nothing special required — `authorization_servers` is what points them at
+  // it.
+  if (request.method === "GET" || request.method === "HEAD") {
+    if (url.pathname === "/.well-known/oauth-protected-resource") {
+      return {
+        response: jsonResponse(
+          // The SAME function that decides what Settings → MCP server tells
+          // you to paste. That is not a convenience: `resource` has to equal
+          // the URL the user typed into the connector dialog, character for
+          // character, and the only way to guarantee that is for one function
+          // to own both answers.
+          protectedResourceMetadata(mcpEndpointUrl(url), issuerFor(url)),
+        ),
+      };
+    }
+    if (url.pathname === "/.well-known/oauth-authorization-server") {
+      return { response: jsonResponse(authorizationServerMetadata(issuerFor(url))) };
+    }
+  }
+
+  // The token endpoint. Above the identity gate because it IS the thing that
+  // produces an identity — a public-client endpoint with no cookie, no secret
+  // and no ambient authority, holding a code or a refresh token as its only
+  // credential. Routed for every method so a browser probe reads as a method
+  // problem rather than a malformed grant.
+  if (url.pathname === "/oauth/token") {
+    return { response: await handleOAuthToken(request, env, log) };
+  }
+
   // ---- the MCP endpoint, key-bearing half (src/mcp.js) --------------------
   //
   // The MCP server is reachable two ways. This is the first: an external
@@ -268,7 +344,7 @@ async function route(request, env, url, log, ctx, requestId) {
       // than as the sign-in page: an MCP client that gets HTML here reports a
       // transport failure, which sends its user hunting for the wrong problem.
       log.warn("mcp.key_denied", { reason: keyed.error });
-      return { response: jsonResponse(jsonRpcError(null, RPC_INVALID_REQUEST, keyed.error), 401) };
+      return { response: mcpUnauthorized(url, keyed.error) };
     }
     if (keyed) {
       return {
@@ -566,14 +642,11 @@ async function route(request, env, url, log, ctx, requestId) {
     // Found by scripts/mcp-probe.mjs's first live run, 2026-08-01.
     if (isMcpEndpoint(url, request.method)) {
       return {
-        response: jsonResponse(
-          jsonRpcError(
-            null,
-            RPC_INVALID_REQUEST,
-            "Authentication required: send an MCP key as `Authorization: Bearer mck1.…`. " +
-              "Mint one at https://deepresearch.se/ under Settings → MCP server.",
-          ),
-          401,
+        response: mcpUnauthorized(
+          url,
+          "Authentication required: send an MCP key as `Authorization: Bearer mck1.…`, " +
+            "or connect this server as a custom connector and authorize it. " +
+            "Mint a key at https://deepresearch.se/ under Settings → MCP server.",
         ),
       };
     }
@@ -621,6 +694,24 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
       return jsonResponse({ error: "Your account is awaiting approval.", pending: true }, 403);
     }
     return htmlResponse(pendingPage(identity), 200);
+  }
+
+  // ---- the OAuth consent screen (F-20) ------------------------------------
+  //
+  // Placed HERE, after both gates, on purpose: a pending or terms-blocked
+  // account cannot authorize a connector, and putting the endpoint behind the
+  // same gates as the app means that holds without a second implementation of
+  // either rule. `identity` is non-null by construction at this point, and an
+  // unauthenticated arrival never reaches it — it meets the site's ordinary
+  // sign-in page instead, which is the behaviour a person expects when a
+  // connector sends them to a site they are not signed in to.
+  if (url.pathname === "/oauth/authorize") {
+    if (request.method === "GET" || request.method === "HEAD") {
+      return handleAuthorizeGet(request, env, url, log, identity);
+    }
+    if (request.method === "POST") {
+      return handleAuthorizePost(request, env, url, log, identity);
+    }
   }
 
   const apiResponse = await routeApi(request, env, url, log, identity, ctx, requestId);

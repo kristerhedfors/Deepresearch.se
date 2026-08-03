@@ -272,12 +272,58 @@ provider, and is recorded in the full-visibility interaction log (channel
 belong on this endpoint — that is what Se/cure is for. The dedicated
 `mcp.deepresearch.se` host changes none of this: same Worker, same code path,
 a separate name so a machine credential is pasted against a machine endpoint.
-A claude.ai **connector** would not move it either (`docs/MCP-CONNECTOR.md`,
-designed 2026-08-03, not built): the same call through a different door,
-authorized by OAuth instead of a pasted key, landing on the same exposure
-config, quota and log row. It adds two things, both on the disclosure side: a
-consent screen naming what connecting grants before the connection exists,
-and a credential revocable per connection rather than one key per account.
+A hosted-chat **connector** does not move it either — see the next section.
+
+## The OAuth connector — a new door, not a new exposure (2026-08-03)
+
+The MCP surface can now be added as a custom connector in Claude and ChatGPT,
+authorized by OAuth instead of a pasted key (`docs/MCP-CONNECTOR.md`, F-20;
+`src/oauth-metadata.js`, `src/oauth-store.js`, `src/oauth-authorize.js`,
+`src/oauth-token.js`). It is a new way in, so this section says what it
+changes and what it does not.
+
+**It moves nothing in invariant 4.** An MCP call was already a Se/rver call:
+the question reaches this server, goes upstream to the model and the search
+provider, and is recorded in the full-visibility interaction log on channel
+`mcp`. An OAuth access token resolves to the same account identity an `mck1.`
+key does, beside it in `resolveMcpKeyIdentity`, so the account's exposure
+config, the four-window quota, split billing and the `chat_logs` row all apply
+unchanged. Same call, same exposure, different door. Research that must not
+rest on a server still does not belong on this endpoint — that is what Se/cure
+is for, and Se/cure has no account to consent with, so none of this reaches
+that tier.
+
+**What it adds is on the disclosure side, and both are gains:**
+
+- **A consent screen that names the exposure before the connection exists.**
+  Minting a key tells an account nothing about what the key can reach; the
+  consent screen has to say what connecting grants — the tools left switched
+  on in Settings → *MCP server*, spending against this account's research
+  quota, every question landing in the interaction log — plus the redirect
+  URI's hostname, so a user can see they are authorizing `claude.ai` and not
+  something that merely claims to be.
+- **A credential revocable per connection.** One `mck1.` key per account means
+  revoking the laptop revokes the phone. Refresh tokens are per connection and
+  carry their own D1 row keyed by `jti`, so one can be killed without touching
+  the others; a public client's refresh MUST rotate, and the row is what makes
+  both the rotation and the revocation real (a signature alone can express
+  neither). A reused refresh token also kills its whole lineage on the spot.
+  What does not exist yet is an account-facing screen listing connections —
+  revoking one today means deleting its row, and building that screen is the
+  obvious next thing this design earns.
+
+**Structurally, it is bounded exactly like the MCP key.** An access token is
+NOT a login: `src/auth.js`'s `identify()` reads a `Basic` header and the
+`dr_session` cookie, and an `oat1.` bearer is neither in any position, so
+`/admin`, `/api/admin/*` and every data-bearing `/api/*` route stay out of
+reach by construction — the same argument the MCP key and the Se/rver token
+make, pinned the same way, cross-family forgery matrix included. The four new
+families (`oac1.` code, `oat1.` access, `ort1.` refresh, `oct1.` the consent
+form's own token) sign under their own `token-crypto.js` namespaces beneath
+the one `SESSION_SECRET`, which is what keeps them mutually unforgeable and
+unforgeable from any older family. Consent itself needs a signed-in identity,
+so the wider front door opens onto the same sign-in and the same account
+gates: no account, no consent, no code.
 
 ## Where shell commands run — the third execution environment (2026-07-26)
 

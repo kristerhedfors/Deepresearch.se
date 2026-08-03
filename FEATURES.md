@@ -372,69 +372,68 @@ helpers, then a live JSON-RPC probe of both the legacy handshake path and
 the stateless path. Re-read the changelog before starting — this item was
 written against a draft that can still move.
 
-### F-20 · Reach the hosted chat clients — the MCP server as a web connector — 🔵 OPEN (medium)
+### F-20 · Reach the hosted chat clients — the MCP server as a web connector — 🟡 PARTIAL (medium)
 
-The MCP surface is reachable from a laptop and invisible from a phone.
-Connecting means pasting `claude mcp add` into a terminal — Claude Code's
-command, which no hosted chat app reads. For a research assistant that is the
-wrong way round.
+**Built 2026-08-03; live acceptance outstanding.** The MCP surface was
+reachable from a laptop and invisible from a phone: connecting meant pasting
+`claude mcp add` into a terminal — Claude Code's command, which no hosted chat
+app reads. For a research assistant that is the wrong way round.
 
-**Scope widened 2026-08-03 (owner): ChatGPT as well as Claude.** They want the
-SAME authorization server — OAuth 2.1, CIMD preferred with DCR as fallback,
-PKCE S256, the `401` + `WWW-Authenticate` handshake, protected-resource
-metadata — so supporting both is one build plus two bounded deltas: a
-redirect-URI allowlist that is a LIST (ChatGPT's
-`https://chatgpt.com/connector_platform_oauth_redirect` beside Claude's
-`https://claude.ai/api/mcp/auth_callback`), and two adapter tools ChatGPT
-requires by name.
+**Scope widened 2026-08-03 (owner): ChatGPT as well as Claude**, and both are
+served by ONE authorization server — OAuth 2.1, CIMD preferred with DCR as
+fallback, PKCE S256, the `401` + `WWW-Authenticate` handshake,
+protected-resource metadata. The per-client deltas are bounded: a redirect
+allowlist that is a LIST, and two adapter tools ChatGPT requires by name.
 
-Design and feasibility: **`docs/MCP-CONNECTOR.md`** (2026-08-03). Two findings
-make it smaller than it sounds. There is **no separate mobile integration** —
-claude.ai on the web, Claude Desktop, Claude mobile and Cowork share one
-connector infrastructure, so a custom connector added once *by URL* appears on
-all of them. And the transport is already right: a custom connector is a
-remote MCP server over Streamable HTTP on a public host, which is what
-`mcp.deepresearch.se` is.
+**What shipped.** Design and spec: **`docs/MCP-CONNECTOR.md`** (§4 what
+exists, §4a how to verify it by hand).
 
-**The gap is authentication, not MCP.** The Add-connector dialog takes a URL
-and runs OAuth; it cannot be handed an `mck1.` key the way
-`claude mcp add --header` is. So the work is an OAuth 2.1 authorization
-server:
+- `src/oauth-metadata.js` — pure leaf: both discovery documents, the
+  `REDIRECT_ALLOWLIST` + `redirectAllowed` (exact strings for Claude's
+  `https://claude.ai/api/mcp/auth_callback` and ChatGPT's two callbacks, RFC
+  8252 port-agnostic loopback for Claude Code), the `WWW-Authenticate` value,
+  and `issuerFor`, which encodes the host split.
+- `src/oauth-store.js` — three token families under their own
+  `token-crypto.js` namespaces: `oac1.` code (60 s), `oat1.` access (1 h),
+  `ort1.` refresh (90 d). Codes and refresh tokens also carry a D1 row keyed
+  by `jti`, because a signature cannot express single use or revocation;
+  access tokens are signed only, so there is no lookup on the hot path.
+- `src/oauth-authorize.js` — the consent screen and code issuance, needing a
+  signed-in identity, naming what connecting grants and showing the redirect
+  URI's hostname. A refused `redirect_uri` renders a page rather than
+  redirecting and logs `oauth.redirect_refused`; the form is bound by its own
+  signed `oct1.` consent token, so the POST cannot be re-pointed.
+- `src/oauth-token.js` — `POST /oauth/token`: form-urlencoded, RFC 6749 §5.2
+  error codes at 400, mandatory refresh rotation delegated to the store,
+  `client_credentials` refused with `unsupported_grant_type`.
+- Two adapter tools for ChatGPT — `search` and `fetch`, named exactly that,
+  fronting **the two hosted corpora** (the owner's decision; the alternative
+  was the research pipeline) with OpenAI's fixed shapes returned both as
+  `structuredContent` and as JSON-encoded content text.
 
-- **Keep `https://mcp.deepresearch.se` as the connector URL** — bare origin,
-  no new path, no new subdomain. Protected-resource metadata's `resource`
-  field must match the URL the user typed, character for character, so one
-  canonical short form is what makes the handshake matchable.
-- **Put the authorization server on the apex**, where the account, Google
-  sign-in and the session cookie already live and where a consent screen
-  reads as this site. Cross-host authorization servers are explicitly
-  supported.
-- New surface: `/.well-known/oauth-protected-resource` plus a
-  `WWW-Authenticate: Bearer resource_metadata="…"` header on the MCP host's
-  existing `401`; `/.well-known/oauth-authorization-server`,
-  `/oauth/authorize` and `/oauth/token` on the apex.
-- **Prefer CIMD to DCR** — advertise `client_id_metadata_document_supported`
-  *and* `"none"` in `token_endpoint_auth_methods_supported`, or Claude falls
-  back to DCR and registers a fresh client on every connection. PKCE S256 is
-  mandatory; the redirect URI for every hosted surface is
-  `https://claude.ai/api/mcp/auth_callback` (Claude Code uses a port-agnostic
-  loopback); the token endpoint is form-urlencoded; refresh tokens rotate
-  (public client) and a dead one answers `invalid_grant`.
-- The access token is a **fifth HS256 family** resolved beside `mck1.` in
-  `resolveMcpKeyIdentity`, so the exposure config, the four-window quota,
-  split billing and the `chat_logs` row all apply unchanged — OAuth adds a
-  door, not a second surface — and the not-a-login pin extends to it.
+**The shape held.** `https://mcp.deepresearch.se` stays the connector URL —
+bare origin, no new path, no new subdomain, because protected-resource
+metadata's `resource` must match what the user typed, character for character.
+The authorization server is the apex, where the account, Google sign-in and
+the session cookie already live. The access token resolves beside `mck1.` in
+`resolveMcpKeyIdentity`, so the exposure config, the four-window quota, split
+billing and the `chat_logs` row all apply unchanged — OAuth added a door, not
+a second surface — and the not-a-login pin extends to it.
 
-**A stopgap already works**: `static_headers` (beta, rollout-gated) lets an
-admin paste `Bearer mck1.…` as a request header with no server change at all.
-It is org-shared by design, so it is not the plan, but anyone holding the beta
-can connect a phone today.
+**Why this is PARTIAL and not SHIPPED.** Acceptance is live and cannot be
+inferred from a green unit suite, and none of it can be run from a build
+container: add the connector on claude.ai, complete consent, call a tool —
+**then open the Claude mobile app and confirm it lists tools with no further
+setup** — and repeat the whole thing on ChatGPT, which is also what settles
+whether it accepts Streamable HTTP and whether its iOS app can use a connector
+at all. Re-read both vendors' connector docs first; Anthropic's moved hosts
+once already, `static_headers` is mid-rollout, and OpenAI's pages contradict
+each other on transport.
 
-Acceptance is live and cannot be inferred from a green unit suite: add the
-connector on claude.ai, complete consent, call a tool — **then open the mobile
-app and confirm the connector is there and lists tools with no further
-setup**. Re-read the connector documentation first; it moved hosts once
-already and `static_headers` is mid-rollout.
+**The stopgap remains available**: `static_headers` (beta, rollout-gated) lets
+an admin paste `Bearer mck1.…` as a request header with no server involvement
+— Claude-only, org-shared by design, and the fallback if the OAuth flow fails
+its live check.
 
 ---
 
@@ -551,3 +550,27 @@ already and `static_headers` is mid-rollout.
   `deep_research` tool and "anything else is method-not-found" after the
   `sdk_*` tools landed, and gave it an upcoming-revision section so whoever
   builds F-19 starts from the verified list.
+
+- **2026-08-03** — F-20 opened, then widened and built the same day. Opened as
+  "the MCP server is reachable from a laptop and invisible from a phone",
+  written up as design and feasibility in `docs/MCP-CONNECTOR.md`; widened by
+  the owner from Claude to Claude **and** ChatGPT once it turned out both want
+  the SAME authorization server, so the second client cost a redirect-allowlist
+  entry and two adapter tools rather than a second project. The owner then
+  decided the two questions the design left open — build it now, and point
+  `search`/`fetch` at the two hosted corpora rather than the research pipeline
+  — and the OAuth 2.1 authorization server landed: `src/oauth-metadata.js`
+  (discovery documents, the redirect allowlist as data, the host split),
+  `src/oauth-store.js` (`oac1.`/`oat1.`/`ort1.`, signed plus a D1 row where
+  single use and rotation need one), `src/oauth-authorize.js` (the consent screen,
+  which needs a signed-in identity), `src/oauth-token.js` (form-urlencoded, RFC 6749 codes,
+  mandatory rotation). Status is 🟡 PARTIAL, not shipped, and deliberately so:
+  the acceptance criterion is a live check on both clients and both phones,
+  which cannot be run from a build container and cannot be inferred from a
+  green unit suite. Recorded in the same pass: the privacy answer (a connector
+  moves nothing in invariant 4 — same call, same log row, same quota — and
+  adds a consent screen and a per-connection revocable credential,
+  `docs/PRIVACY-MODEL.md`), and a debugging section in the **mcp-server**
+  skill, because every client reports every failure in this flow as one
+  unhelpful line and the 401 + `WWW-Authenticate` step is where it usually
+  dies.

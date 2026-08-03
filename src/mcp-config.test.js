@@ -48,6 +48,32 @@ test("the default config exposes everything — the behaviour it replaced", () =
   assert.deepEqual(toolsListResult().tools, ALL_MCP_TOOLS, "no argument means the default config");
 });
 
+test("the ChatGPT adapter pair is catalogued, exposed by default, and switchable", () => {
+  // docs/MCP-CONNECTOR.md §2a: ChatGPT refuses a server with no `search` and
+  // `fetch`. So the two need catalog entries like every other tool (the mirror
+  // test above already fails without them) AND they need to be on by default,
+  // or a fresh account is one ChatGPT cannot connect to at all.
+  const config = defaultMcpConfig();
+  assert.equal(toolExposed(config, "search"), true);
+  assert.equal(toolExposed(config, "fetch"), true);
+  for (const id of ["search", "fetch"]) {
+    const entry = /** @type {any} */ (MCP_TOOL_CATALOG.find((t) => t.id === id));
+    // The blurb is what the Settings screen shows, and it is the ONLY place a
+    // user can learn that this particular switch breaks a connector rather than
+    // trimming a tool list. Discovering that as a failed connection instead is
+    // the outcome this copy exists to prevent.
+    assert.match(entry.blurb, /ChatGPT/);
+  }
+  // And the switch really does work: an account that turns `search` off has a
+  // server ChatGPT will not accept — which is a supported choice, just one the
+  // copy above has to name.
+  const off = applyConfigPatch(defaultMcpConfig(), { tools: { search: false } });
+  assert.equal(
+    toolsListResult(off).tools.some((t) => t.name === "search"),
+    false,
+  );
+});
+
 test("parseMcpConfig degrades to the defaults on anything unreadable", () => {
   for (const bad of [null, undefined, "", "not json", "{}", '{"mcp":null}', '{"mcp":[]}', '{"mcp":42}']) {
     assert.deepEqual(parseMcpConfig(bad), defaultMcpConfig(), `should default on ${JSON.stringify(bad)}`);
