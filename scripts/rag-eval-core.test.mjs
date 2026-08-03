@@ -11,8 +11,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  GRADER_OPTS,
+  GRADER_SYSTEM,
+  GRADE_ABSTRACT_CHARS,
   ageProfile,
   expandMonths,
+  gradeMessages,
   langParity,
   lexicalOverlap,
   lossBreakdown,
@@ -20,6 +24,7 @@ import {
   needleStats,
   pairedNeedle,
   pairedSign,
+  parseGrades,
   rankOf,
   scoreProfile,
 } from "./rag-eval-core.mjs";
@@ -257,4 +262,93 @@ test("lexicalOverlap measures the query's content words against a body", () => {
   assert.equal(lexicalOverlap("completely different wording here", "quantum error correction", tok), 0);
   // Short words are ignored on both sides, so "the"/"of" cannot inflate it.
   assert.equal(lexicalOverlap("of the a", "quantum", tok), 0);
+});
+
+// ---- the graded-relevance judge ---------------------------------------------
+
+test("gradeMessages presents candidates by position, never by id", () => {
+  const docs = {
+    "2601.00001": { title: "Surface codes", abstract: "A long abstract." },
+    "pmid:7": { title: "A cohort study", abstract: "Another abstract." },
+  };
+  const ids = ["2601.00001", "pmid:7"];
+  const msgs = gradeMessages("How is X measured?", ids, (id) => docs[id]);
+
+  assert.equal(msgs.length, 2);
+  assert.equal(msgs[0].role, "system");
+  assert.equal(msgs[0].content, GRADER_SYSTEM);
+  // The identifiers must not reach the judge: a grader that recognizes a paper
+  // grades the DOCUMENT rather than the match, and the two corpora spell their
+  // ids differently, so a leak would also bias one corpus against the other.
+  assert.ok(!msgs[1].content.includes("2601.00001"));
+  assert.ok(!msgs[1].content.includes("pmid:7"));
+  assert.ok(msgs[1].content.includes("Research question: How is X measured?"));
+  assert.ok(msgs[1].content.includes("0. Surface codes — A long abstract."));
+  assert.ok(msgs[1].content.includes("1. A cohort study — Another abstract."));
+});
+
+test("gradeMessages cuts each abstract to the judged excerpt", () => {
+  const long = "z".repeat(GRADE_ABSTRACT_CHARS + 500);
+  const msgs = gradeMessages("q", ["a"], () => ({ title: "T", abstract: long }));
+  assert.ok(msgs[1].content.includes(`0. T — ${"z".repeat(GRADE_ABSTRACT_CHARS)}`));
+  assert.ok(!msgs[1].content.includes("z".repeat(GRADE_ABSTRACT_CHARS + 1)));
+});
+
+test("gradeMessages tolerates a candidate the caller cannot resolve", () => {
+  // A pooled id whose document was not carried in the run file must still
+  // occupy its position — dropping the line would shift every later candidate
+  // by one and mis-attribute every grade after it.
+  const msgs = gradeMessages("q", ["a", "b"], (id) => (id === "a" ? { title: "T", abstract: "A" } : undefined));
+  assert.ok(msgs[1].content.includes("0. T — A"));
+  assert.ok(msgs[1].content.includes("1.  — "));
+});
+
+test("gradeMessages works with either shape of document store", () => {
+  const byId = new Map([["a", { title: "T", abstract: "A" }]]);
+  const obj = { a: { title: "T", abstract: "A" } };
+  assert.deepEqual(
+    gradeMessages("q", ["a"], (id) => byId.get(id)),
+    gradeMessages("q", ["a"], (id) => obj[id]),
+  );
+});
+
+test("the grader is deterministic", () => {
+  // A judge that varies run to run measures itself, and every before/after
+  // verdict in docs/RAG-EVAL-LEDGER.md assumes it does not.
+  assert.equal(GRADER_OPTS.temperature, 0);
+});
+
+test("parseGrades maps positions back onto ids and clamps to the rubric", () => {
+  const ids = ["a", "b", "c"];
+  assert.deepEqual(parseGrades({ grades: { 0: 3, 1: 1, 2: 0 } }, ids), { a: 3, b: 1, c: 0 });
+  // Out of range, fractional, and non-numeric all land inside 0–3.
+  assert.deepEqual(parseGrades({ grades: { 0: 9, 1: 2.4, 2: -5 } }, ids), { a: 3, b: 2, c: 0 });
+  assert.deepEqual(parseGrades({ grades: { 0: "2", 1: "high", 2: null } }, ids), { a: 2, b: 0, c: 0 });
+});
+
+test("parseGrades gives every pooled candidate a gain, even when grading failed", () => {
+  // nDCG needs a gain per candidate: a missing key would shorten the ideal
+  // ranking and inflate the score instead of reporting a zero row.
+  const ids = ["a", "b"];
+  assert.deepEqual(parseGrades(null, ids), { a: 0, b: 0 });
+  assert.deepEqual(parseGrades({}, ids), { a: 0, b: 0 });
+  assert.deepEqual(parseGrades({ grades: { 0: 3 } }, ids), { a: 3, b: 0 });
+});
+
+test("every harness grades with the same rubric", async () => {
+  // Four call sites hand-copied this prompt before it lived here, and a gain is
+  // only comparable to gains from the same rubric — which is exactly what
+  // docs/ARXIV-RAG.md does when it puts local-pack and hosted nDCG side by
+  // side. A reworded copy leaves every table green and every number plausible.
+  const { readFile } = await import("node:fs/promises");
+  const { dirname, join } = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const here = dirname(fileURLToPath(import.meta.url));
+  for (const f of ["arxiv-eval.mjs", "arxiv-hosted-eval.mjs", "rag-eval.mjs"]) {
+    const src = await readFile(join(here, f), "utf8");
+    assert.ok(
+      !src.includes("You grade search results"),
+      `${f} carries its own copy of the grader rubric — import GRADER_SYSTEM instead`,
+    );
+  }
 });
