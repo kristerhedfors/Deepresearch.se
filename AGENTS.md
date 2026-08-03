@@ -32,7 +32,8 @@ assumptions.
      capabilities is built from scratch, a machine-readable module registry
      (`sdk/MANIFEST.json`), an implementation-order rationale
      (`sdk/ROADMAP.md`), and a dependency-free CLI (`node sdk/pair-cli.mjs
-     list|show|plan|validate`). Its complete standalone documentation is
+     list|show|plan|validate|agents|agent`). Its complete standalone
+     documentation is
      **`docs/DISTILLSDK.md`** — the platform abstraction, the capability
      classes, contracts PA-1..PA-10, the full module catalog, the CLI, and the
      implementation order, in one document;
@@ -97,8 +98,18 @@ the summaries below with the parser in `introspect-core.js` if a skill's
   routing.
 - **add-research-source** — adding a NEW data source to the deep-research
   pipeline (search provider, platform API, intelligence feed).
+- **anti-ai-smell** — stripping LLM writing tells out of documentation prose;
+  the tell taxonomy, the fact-preservation contract, the runnable Vale style.
+  Also the Clean step every doc pass ends with.
+- **arxiv-rag** — the arXiv RAG database (772,658 hosted vectors): the OAI-PMH
+  bulk harvest, the binary index pack, Berget's three serving limits, and how
+  to judge a corpus change on the SERVED path with paired significance.
 - **bugreport-bugfix** — turning a bug reported as little more than a chat
   keyword into a verified fix via chatlogs.
+- **bulk-corpus-etl** — the provider-agnostic discipline for turning any large
+  external corpus into a hosted searchable index: two-source enumeration
+  (one cannot find its own gaps), checkpointing, rate-limit citizenship,
+  Vectorize's billing traps, the relevance floor.
 - **cache-helper** — when the live site serves STALE content, and cache-control
   decisions for new assets/endpoints.
 - **chat-logs** — the full-visibility chat interaction log (`src/chatlog.js`,
@@ -108,47 +119,119 @@ the summaries below with the parser in `introspect-core.js` if a skill's
 - **decision-boards** — building/extending an admin DECISION BOARD; the shared
   core `src/board.js` and the panel ⇄ loop mechanism.
 - **deploy** — how code reaches production (push-to-main auto-deploy, direct
-  `wrangler deploy`), live verification, commit-signing remediation.
+  `wrangler deploy`), branch preview URLs, commit-signing remediation.
+- **docs-drift-validation** — validating the canonical docs bottom-up against
+  the code: the doc-age scan, the layer walk, and the owner-checkmark loop for
+  capability/posture drift (`docs/DOC-DRIFT-LOG.md`).
 - **execution-sandbox** — the in-browser Linux (CheerpX) sandbox and bash-lite
-  agent; the COEP headers, fail-soft contract, file mounting.
+  agent; the COEP headers, fail-soft contract, file mounting, and the DREE/1
+  choice of WHERE commands run.
 - **feature-board** — running the FEATURE-BUILD loop (`src/features.js`,
   `FEATURES.md`), and the general playbook for a new priority board.
-- **feedback-loop** — Claude Code as the back end of the feedback pipeline
-  (`src/feedback.js`); the gather → decide → act → message-back loop.
+- **feature-maintenance** — routing a regression back to the worker who
+  authored the fix, via a comment on its PR; the owners registry
+  `docs/MAINTENANCE-OWNERS.md`.
+- **feedback-loop** — the site's feedback pipeline as an agent loop
+  (`src/feedback.js`); gather → decide → act → message back.
 - **help-docs** — HELP MODE, the documentation-first layer of introspection:
   the docs corpus + index (symbol references, served doc images), the
   docs→source escalation, the `bundle:docs` regeneration discipline.
 - **integrations** — external providers and the enrichment pattern (Berget,
-  Anthropic, OpenAI, Exa, geocoding, Shodan, Google Maps, Hugging Face).
+  Anthropic, OpenAI, Exa, geocoding, Shodan, Google Maps, Hugging Face, and
+  Google Scholar + the peer-reviewed literature — what Scholar's robots.txt
+  permits, and the OpenAlex/Crossref/SerpApi traps).
+- **intro-baseline** — the approved landing page and the controlled
+  new-visitor intro phase (invariant 8). Load before editing the landing,
+  either tier's first run, or anything a stranger meets first.
 - **introspection** — introspection mode / the retired `developer_mode` knob: the
   source snapshot + RAG index, the shared pure core, both tiers' clients.
 - **live-verify** — verifying against the live site, Workers Logs /
   `wrangler tail`, request-id correlation, disconnect/recovery machinery.
+- **local-web-search** — running your own web-search service as an Exa
+  alternative, configurable in both tiers.
+- **mcp-server** — the site exposed AS an MCP tool (`POST /mcp`, hand-rolled
+  JSON-RPC 2.0): the `deep_research`, `literature_*` and `sdk_*` families,
+  the MCP key, the bare-origin `https://mcp.deepresearch.se`, and the
+  per-account exposure config.
 - **merge-branches** — reconciling the repo's unmerged feature branches; the
   merged-branch ledger and the rule-break guard.
+- **model-catalog-refresh** — the freshness check over already-wired
+  providers' static catalogs when a new release ships: replace-vs-add, the
+  never-invent-a-price rule, following an id bump through every echo.
 - **model-eval** — the model-matrix eval battery, `QUERY_SETS`, the findings
   ledger, and evidence-driven `model-profiles.js` entries.
+- **models-agent** — the Models mode and the model lifecycle it owns
+  (discovered → evaluated → enabled): the provider-agnostic catalog, the
+  verification checks, `/api/models/*`, and the per-account enabled list.
 - **on-device-trace** — remote-debugging a bug that only reproduces on a real
   device (iOS PWA); the visible build stamp + on-device event trace.
+- **orchestrator-mode** — the sub-agent workflow mode: one JSON plan phase
+  decomposes a request into a team the Worker runs in parallel waves; the
+  `workflow`/`agent_update` events and the live graph view.
+- **outrospection** — introspection's mirror image: the mode that answers from
+  an outward feed, the `/outrospect/` page, the seven-lens registry.
+- **palaeogenomics** — the ancient-DNA agent: the Europe PMC leg, the
+  committed 20,927-individual corpus queried with no outbound request, and the
+  domain conventions an answer gets wrong without them. Also the reference for
+  the JavaScript `\b` Swedish-boundary trap (invariant 6).
 - **pipeline-architecture** — the research pipeline engine (phases, split model
   routing, time-budget/EWMA planner, per-model profiles, incident history).
+- **pr** — the one-word trigger that prepares a branch: rebase, regenerate
+  artifacts, test gate, push, open a focused PR.
+- **publish-app** — the admin/CLI bridge that publishes an already-built bundle
+  into `/app/<slug>/` without a chat/tool loop.
 - **publish-research** — publishing a frozen deep-research replay at
   `DeepResearch.Se/cure/<slug>` (`src/pub.js`, `public/cure/`).
+- **pubmed-ingest** — re-running the PubMed ingest: the full-rebuild and delta
+  runbooks, the annual-baseline cutover, and the four traps that broke the
+  first fill.
+- **quota-grant-assessment** — testing/auditing the grant tokens: the
+  invariant checklist and the combined-D1-fake technique.
+- **rag-hillclimb** — measuring and improving the hosted dense-retrieval
+  indexes: `scripts/rag-eval.mjs`, the coverage-first order, the paired
+  McNemar that decides every verdict, the append-only ledger.
 - **refactor-clarity** — refactoring for clarity/modularity here without
   breaking behavior; the pure-core convention and what to preserve.
+- **request-testing** — shipping test cases inside your PR as
+  `docs/test-requests/<branch>.json`.
+- **sandbox-debug** — the sandbox boot-hang playbook: debug switches, the
+  `boot_stage` timeline, the stall watchdog.
+- **sandbox-perf-eval** — measuring how long sandbox commands take: the
+  cold/warm battery, the agent-turn trace, and the two traps that void a run.
+- **sdk-mode** — Agent Studio: the mode that distils this site into a new agent
+  or a whole platform using the Platform SDK, publishes it at `/app/<slug>/`,
+  and exposes the `sdk_*` MCP tools.
+- **secure-workspaces** — offline workspace links (`/cure/workspace#w=…`), the
+  cloned crypto, the quota-adjust surfaces, and the workspace concept across
+  both tiers (`docs/WORKSPACES.md`).
 - **security-posture** — verifying/updating the security posture against
   `SECURITY-RISKS.md`; the secret-leak scans, header/CSP probes, review board.
+- **slash-spacing** — measuring the wordmark slash gap
+  (`scripts/slash-gap.mjs`); never eyeball the `.sl` margins.
+- **space-animations** — the `/space/` archive of playable wireframe
+  animations (EN+SV matched), the only-stars-glow rule, real-scale zoom.
 - **sse-protocol** — the `/api/chat` SSE event vocabulary and the
   forward-compatibility rule for clients.
+- **starter-prompts** — the opening questions on an empty chat and the
+  cross-agent system that ranks them: the per-agent queue, the
+  synthetic-provenance rule, the judged dimensions, the live battery.
 - **storage-privacy** — chat-history encryption, the implicit always-on
-  cloud storage, RAG documents, projects, the secret-keyed vault, and DRC.
+  cloud storage, RAG documents, projects, and the secret-keyed vault.
 - **sync-main** — the fetch-latest-`origin/main`-first rule every session must
   follow before implementing anything.
+- **test-batches** — the standing library of standard test cases per pipeline
+  case, and the `scripts/test-batch` CLI.
+- **test-feedback-loop** — the standing loop over the try-it queue: sync
+  verdicts, mine every note, mint the next batch.
+- **testable-interaction-points** — the try-it queue: declaring linkable test
+  points, the action grammar, the verdicts.
 - **tokemon-game** — the games subsystem (`src/games.js` registry) and the
   Tokemon open-world AR game.
 - **tune-provider-models** — tuning newly added models for the pipeline's
   codified use cases and running their first eval battery.
 - **ui-notes** — the client UI/UX facts: Markdown rendering, the PDF report,
   attachments/metadata, floating glass chrome, the static pages.
+- **update-docs** — reconciling the whole documentation surface with the code:
+  the inventory, the drift greps, the regenerate-never-hand-edit rules.
 - **ux-conventions** — the numbered registry of codified UX interaction rules
   ("when X → then Y") that must feel the same everywhere.
