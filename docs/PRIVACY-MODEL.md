@@ -275,10 +275,9 @@ a separate name so a machine credential is pasted against a machine endpoint.
 A claude.ai **connector** would not move it either (`docs/MCP-CONNECTOR.md`,
 designed 2026-08-03, not built): the same call through a different door,
 authorized by OAuth instead of a pasted key, landing on the same exposure
-config, the same quota and the same log row. What it adds is on the
-disclosure side — a consent screen naming what connecting grants before the
-connection exists, and a credential revocable per connection rather than one
-key per account.
+config, quota and log row. It adds two things, both on the disclosure side: a
+consent screen naming what connecting grants before the connection exists,
+and a credential revocable per connection rather than one key per account.
 
 ## Where shell commands run — the third execution environment (2026-07-26)
 

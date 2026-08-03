@@ -1,0 +1,36 @@
+{
+  "branch": "claude/mcp-mobile-availability-6od4ei",
+  "requested_at": "2026-08-03",
+  "points": [
+    {
+      "label": "MCP endpoint reads as the bare origin",
+      "summary": "The MCP URL we hand out lost its /mcp tail. Open Settings → MCP server. PASS: the Endpoint row reads exactly https://mcp.deepresearch.se with no path after the host, and the 'claude mcp add' command below it carries the same bare URL. FAIL: either still shows /mcp on the end. Both forms still answer — this point is about what the screen advertises, not about what works.",
+      "target": "/rver",
+      "actions": [
+        {
+          "type": "openSettings",
+          "knob": "mcp"
+        },
+        {
+          "type": "note",
+          "text": "Settings (gear) → MCP server. Read the Endpoint row and the command box under the key."
+        }
+      ],
+      "runs": 1,
+      "verdicts": []
+    },
+    {
+      "label": "The setup page answers on the bare origin, from a phone",
+      "summary": "Open https://mcp.deepresearch.se in the phone browser — no path, no key needed. PASS: the 'Connect an MCP client' page loads, the command under '2. Add the server' shows the bare URL, and there is an 'On a phone' section explaining that the mobile app needs a custom connector and that this server does not speak that flow yet. FAIL: a 404, a sign-in page, or a page still telling you to use .../mcp.",
+      "target": "/connect/",
+      "actions": [
+        {
+          "type": "note",
+          "text": "Also try typing just mcp.deepresearch.se into the phone browser with no path — it serves this same page. Signed out is fine; the page is public."
+        }
+      ],
+      "runs": 1,
+      "verdicts": []
+    }
+  ]
+}

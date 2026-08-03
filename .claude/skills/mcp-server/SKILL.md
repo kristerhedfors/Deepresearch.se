@@ -126,21 +126,21 @@ the certificate; the host answered within ~20 s).
 Same Worker, same code path. **On that host the advertised URL is the BARE
 ORIGIN** — `https://mcp.deepresearch.se`, no `/mcp` tail (owner directive
 2026-08-03; `mcpEndpointUrl` in `src/mcp-api.js` is what the Settings screen
-and the `claude mcp add` line render). Both forms answer and always have —
-`isMcpEndpoint` takes `/mcp` on any host plus the bare origin on this one —
-so this changed what we TELL people, not what works. Three reasons the bare
-origin is the form to hand out: it is the shortest URL a client cannot get
-wrong (clients disagree about whether the configured URL includes the path,
-and a wrong-URL 404 is the commonest way an MCP setup fails; on this host
-neither convention misses); the host serves exactly one thing, so
-`mcp.deepresearch.se/mcp` states it twice; and a claude.ai connector needs
-the protected-resource metadata's `resource` field to match the URL the user
-TYPED, character for character, which only one canonical advertised form
-makes matchable. A preview or local deploy keeps the path — there the bare
-origin is the app and only `/mcp` is the endpoint. A `GET` on the dedicated
-host serves the public setup page `public/connect/` (allowlisted in
-`src/assets.js`). `src/canonical.js` leaves the host alone: it only rewrites
-`http` → `https` and strips `www.`.
+and the `claude mcp add` line render). Both forms answer and always have
+(`isMcpEndpoint` takes `/mcp` on any host plus the bare origin on this one),
+so this changed what we TELL people, not what works. Hand out the bare origin
+because it is the shortest URL a client cannot get wrong: clients disagree
+about whether the configured URL includes the path, a wrong-URL 404 is the
+commonest way an MCP setup fails, and on this host neither convention misses.
+It also matters for a claude.ai connector: the protected-resource metadata's
+`resource` field must match the URL the user TYPED, character for character,
+and only one canonical advertised form makes that matchable. And the host
+serves exactly one thing, so `mcp.deepresearch.se/mcp` states it twice. A
+preview or local deploy keeps the path — there the bare origin is the app and
+only `/mcp` is the endpoint. A `GET` on the dedicated host serves the public
+setup page `public/connect/` (allowlisted in `src/assets.js`).
+`src/canonical.js` leaves the host alone: it only rewrites `http` → `https`
+and strips `www.`.
 
 ## What is exposed: per-account configuration
 
@@ -403,11 +403,11 @@ deliberately scores its LAST candidate below the floor, so a test that wants
 
 ## Reaching a phone — the web connector (F-20, designed not built)
 
-Every way in above needs a terminal. `claude mcp add` is Claude Code's
-command, the Claude mobile app does not read Claude Code's configuration, and
-a phone has nowhere to paste that line — so this surface is reachable from a
-laptop and invisible from the device someone is most likely holding when a
-question occurs to them. The feasibility and design answer is
+Every way in above needs a terminal. `claude mcp add` writes Claude Code's own
+configuration, which the Claude mobile app never reads, and a phone has
+nowhere to paste that line anyway. So this surface is reachable from a laptop
+and invisible from the device someone is most likely holding when a question
+occurs to them. The feasibility and design answer is
 **`docs/MCP-CONNECTOR.md`** (2026-08-03), tracked as `FEATURES.md` F-20. Read
 it before building; what follows is only what a session needs to reason about
 the surface without opening it.
@@ -415,10 +415,9 @@ the surface without opening it.
 **There is no separate mobile integration to build.** claude.ai on the web,
 Claude Desktop, Claude mobile and Cowork share ONE connector infrastructure,
 so a custom connector added once by URL from any of them appears on all of
-them — reaching the phone means becoming addable as a connector, and the
-phone then follows. Transport is already right: a custom connector is a
-remote MCP server over Streamable HTTP on a public host, which is what
-`src/mcp.js` serves.
+them. Reaching the phone means becoming addable as a connector. Transport is
+already right: a custom connector is a remote MCP server over Streamable HTTP
+on a public host, which is what `src/mcp.js` serves.
 
 **The gap is auth, and it is the entire build.** The Add-connector dialog
 takes a URL and runs OAuth; there is nowhere to put an `mck1.` key the way
@@ -427,9 +426,9 @@ unauthenticated POST must answer **`401`** carrying
 `WWW-Authenticate: Bearer resource_metadata="…/.well-known/oauth-protected-resource"`
 — the status is part of the protocol, that header on a `200` is ignored — and
 that document's `resource` field must equal the URL the user typed, with
-`authorization_servers[0]` naming the issuer. The recommendation is to keep
+`authorization_servers[0]` naming the issuer. The design keeps
 `https://mcp.deepresearch.se` as the connector URL with no new subdomain, and
-put an OAuth 2.1 authorization server on the apex, where the account, Google
+puts an OAuth 2.1 authorization server on the apex, where the account, Google
 sign-in and the session cookie already are. Prefer **CIMD over DCR** —
 advertise `client_id_metadata_document_supported` together with `"none"` in
 `token_endpoint_auth_methods_supported`, or Claude falls back to DCR and
@@ -438,7 +437,7 @@ HS256 family resolved beside `mck1.` in `resolveMcpKeyIdentity`, so the
 exposure config, the quota gate, split billing and the `chat_logs` row apply
 unchanged and the not-a-login pin extends to it verbatim.
 
-A stopgap exists and needs no server change: **`static_headers`** in the
+One stopgap needs no server change: **`static_headers`** in the
 Add-connector dialog takes a fixed `authorization: Bearer mck1.…` against the
 server exactly as it stands. It is beta and rollout-gated, and shaped for a
 credential an organization shares rather than one key per account, so it

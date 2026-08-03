@@ -377,7 +377,7 @@ written against a draft that can still move.
 The MCP surface is reachable from a laptop and invisible from a phone.
 Connecting means pasting `claude mcp add` into a terminal — Claude Code's
 command, which the Claude mobile app does not read. For a research assistant
-that is backwards: the phone is where people most want to ask a question.
+that is the wrong way round.
 
 Design and feasibility: **`docs/MCP-CONNECTOR.md`** (2026-08-03). Two findings
 make it smaller than it sounds. There is **no separate mobile integration** —

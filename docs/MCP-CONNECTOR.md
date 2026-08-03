@@ -5,8 +5,7 @@ Anthropic's connector documentation as it stood that day (see §7 for exactly
 what was read, and what has to be re-read before anyone builds this).
 
 Companion to the **mcp-server** skill, which documents the server that exists.
-This document answers a different question: the one thing our MCP surface
-cannot do today is turn up on a phone.
+This one covers what it cannot do today: turn up on a phone.
 
 ---
 
@@ -21,9 +20,8 @@ claude mcp add --transport http deepresearch https://mcp.deepresearch.se --heade
 
 That line is Claude Code's. A phone has no terminal to paste it into, and the
 Claude mobile app does not read Claude Code's configuration. So the surface is
-reachable from a laptop and invisible from a phone — which is backwards for a
-research assistant, the thing people most want to ask a question of while away
-from a desk.
+reachable from a laptop and invisible from a phone, which is the wrong way
+round for a research assistant.
 
 **The answer is a custom connector, and it is feasible.** Two facts make it
 smaller than it sounds:
@@ -141,8 +139,7 @@ token endpoint.
 **The connector URL should be `https://mcp.deepresearch.se`, unchanged, with
 no new path and no new subdomain.** That is the same bare-origin form now
 advertised everywhere else (2026-08-03: `src/mcp-api.js` `mcpEndpointUrl`
-dropped the `/mcp` tail), and it is the right one for three reasons that all
-point the same way:
+dropped the `/mcp` tail). Three reasons:
 
 - **`resource` must match what the user typed, character for character.** Any
   ambiguity about the canonical form becomes a connection that fails with no
@@ -222,8 +219,8 @@ so `/admin` and every data-bearing route stay unreachable by construction —
 the same structural argument `src/mcp-key.js` makes, and it needs the same
 test, including the cross-family forgery matrix in both directions.
 
-**Consent copy is part of the build, not decoration.** The screen has to say
-what connecting actually grants: the tools left switched on in Settings → MCP
+**The consent screen's copy is part of the build.** It has to say what
+connecting actually grants: the tools left switched on in Settings → MCP
 server, spending against this account's research quota, and every question
 landing in the full-visibility interaction log. The MCP spec also requires the
 redirect URI's hostname to be displayed on the consent screen — so a user can
@@ -295,8 +292,8 @@ document's §4 becomes optional work rather than the only path.
 3. **Live, on the real client** — add the connector on claude.ai in a browser,
    complete consent, call a tool. **Then open the mobile app and confirm the
    connector is there and lists tools without any further setup.** That last
-   step is the acceptance criterion for this whole document, and it is the one
-   that cannot be inferred from a green unit suite.
+   step is the acceptance criterion, and it cannot be inferred from a green
+   unit suite.
 
 **Open questions for the owner:**
 
