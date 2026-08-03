@@ -372,6 +372,61 @@ helpers, then a live JSON-RPC probe of both the legacy handshake path and
 the stateless path. Re-read the changelog before starting — this item was
 written against a draft that can still move.
 
+### F-20 · Reach the Claude mobile app — the MCP server as a web connector — 🔵 OPEN (medium)
+
+The MCP surface is reachable from a laptop and invisible from a phone.
+Connecting means pasting `claude mcp add` into a terminal — Claude Code's
+command, which the Claude mobile app does not read. For a research assistant
+that is the wrong way round.
+
+Design and feasibility: **`docs/MCP-CONNECTOR.md`** (2026-08-03). Two findings
+make it smaller than it sounds. There is **no separate mobile integration** —
+claude.ai on the web, Claude Desktop, Claude mobile and Cowork share one
+connector infrastructure, so a custom connector added once *by URL* appears on
+all of them. And the transport is already right: a custom connector is a
+remote MCP server over Streamable HTTP on a public host, which is what
+`mcp.deepresearch.se` is.
+
+**The gap is authentication, not MCP.** The Add-connector dialog takes a URL
+and runs OAuth; it cannot be handed an `mck1.` key the way
+`claude mcp add --header` is. So the work is an OAuth 2.1 authorization
+server:
+
+- **Keep `https://mcp.deepresearch.se` as the connector URL** — bare origin,
+  no new path, no new subdomain. Protected-resource metadata's `resource`
+  field must match the URL the user typed, character for character, so one
+  canonical short form is what makes the handshake matchable.
+- **Put the authorization server on the apex**, where the account, Google
+  sign-in and the session cookie already live and where a consent screen
+  reads as this site. Cross-host authorization servers are explicitly
+  supported.
+- New surface: `/.well-known/oauth-protected-resource` plus a
+  `WWW-Authenticate: Bearer resource_metadata="…"` header on the MCP host's
+  existing `401`; `/.well-known/oauth-authorization-server`,
+  `/oauth/authorize` and `/oauth/token` on the apex.
+- **Prefer CIMD to DCR** — advertise `client_id_metadata_document_supported`
+  *and* `"none"` in `token_endpoint_auth_methods_supported`, or Claude falls
+  back to DCR and registers a fresh client on every connection. PKCE S256 is
+  mandatory; the redirect URI for every hosted surface is
+  `https://claude.ai/api/mcp/auth_callback` (Claude Code uses a port-agnostic
+  loopback); the token endpoint is form-urlencoded; refresh tokens rotate
+  (public client) and a dead one answers `invalid_grant`.
+- The access token is a **fifth HS256 family** resolved beside `mck1.` in
+  `resolveMcpKeyIdentity`, so the exposure config, the four-window quota,
+  split billing and the `chat_logs` row all apply unchanged — OAuth adds a
+  door, not a second surface — and the not-a-login pin extends to it.
+
+**A stopgap already works**: `static_headers` (beta, rollout-gated) lets an
+admin paste `Bearer mck1.…` as a request header with no server change at all.
+It is org-shared by design, so it is not the plan, but anyone holding the beta
+can connect a phone today.
+
+Acceptance is live and cannot be inferred from a green unit suite: add the
+connector on claude.ai, complete consent, call a tool — **then open the mobile
+app and confirm the connector is there and lists tools with no further
+setup**. Re-read the connector documentation first; it moved hosts once
+already and `static_headers` is mid-rollout.
+
 ---
 
 ## 4. History log (append-only)

@@ -43,7 +43,8 @@ feedback threads. R2 and Vectorize hold encrypted cloud history and document RAG
 — implicit on this tier, so the tier is the choice rather than a per-account
 knob. An `/admin` console shows usage and approves users. The pipeline is also
 exposed as an MCP tool (`POST /mcp`, `deep_research`) — point Claude Code or any
-other MCP client at `mcp.deepresearch.se` with an account-minted key, and choose
+other MCP client at `https://mcp.deepresearch.se` — the bare origin, no path —
+with an account-minted key, and choose
 which tools it may reach under Settings → MCP server ([setup
 instructions](https://mcp.deepresearch.se/)).
 

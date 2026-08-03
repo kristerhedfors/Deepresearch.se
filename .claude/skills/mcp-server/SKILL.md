@@ -9,7 +9,9 @@ description: >-
   CONNECTING an external client: "connect Claude Code", "claude mcp add", the
   MCP KEY bearer credential (src/mcp-key.js — mint/rotate/revoke, and why it
   is never a login and not a Se/rver token), the dedicated mcp.deepresearch.se
-  host and its public setup page public/connect/, and the per-account EXPOSURE
+  host, its BARE-ORIGIN advertised URL (https://mcp.deepresearch.se, no /mcp
+  tail — the form to hand out since 2026-08-03) and its public setup page
+  public/connect/, and the per-account EXPOSURE
   configuration behind Settings → "MCP server" (src/mcp-config.js,
   src/mcp-api.js, public/js/account-mcp.js, /api/mcp/config + /api/mcp/key) —
   which tools an account exposes, the research defaults, and the override
@@ -18,7 +20,11 @@ description: >-
   chat.js's per-request setup (quota gate, model routing, usage/billing
   recording), how to add or change a tool, the shared seams
   (model-routing.js, billing.js), the validation ladder, and debugging an MCP
-  client that can't connect or whose tool call is refused.
+  client that can't connect or whose tool call is refused. ALSO the go-to for
+  the claude.ai CUSTOM CONNECTOR and MOBILE question — "connect it from my
+  phone", "add it as a connector on claude.ai", "why is this terminal-only",
+  OAuth/DCR/CIMD or a WWW-Authenticate handshake on this surface: the design
+  and feasibility answer is docs/MCP-CONNECTOR.md (F-20).
 ---
 
 # The MCP server — DeepResearch as a tool (`POST /mcp`)
@@ -117,12 +123,24 @@ the certificate; the host answered within ~20 s).
 > and the config entry are not alternatives; a domain missing from `routes`
 > does not survive the next deploy.
 
-Same Worker, same code path. On that host the BARE
-ORIGIN answers too — clients disagree about whether the configured URL
-includes the path, and a wrong-URL 404 is the commonest way an MCP setup
-fails — and a `GET` serves the public setup page `public/connect/`
-(allowlisted in `src/assets.js`). `src/canonical.js` leaves the host alone:
-it only rewrites `http` → `https` and strips `www.`.
+Same Worker, same code path. **On that host the advertised URL is the BARE
+ORIGIN** — `https://mcp.deepresearch.se`, no `/mcp` tail (owner directive
+2026-08-03; `mcpEndpointUrl` in `src/mcp-api.js` is what the Settings screen
+and the `claude mcp add` line render). Both forms answer and always have
+(`isMcpEndpoint` takes `/mcp` on any host plus the bare origin on this one),
+so this changed what we TELL people, not what works. Hand out the bare origin
+because it is the shortest URL a client cannot get wrong: clients disagree
+about whether the configured URL includes the path, a wrong-URL 404 is the
+commonest way an MCP setup fails, and on this host neither convention misses.
+It also matters for a claude.ai connector: the protected-resource metadata's
+`resource` field must match the URL the user TYPED, character for character,
+and only one canonical advertised form makes that matchable. And the host
+serves exactly one thing, so `mcp.deepresearch.se/mcp` states it twice. A
+preview or local deploy keeps the path — there the bare origin is the app and
+only `/mcp` is the endpoint. A `GET` on the dedicated host serves the public
+setup page `public/connect/` (allowlisted in `src/assets.js`).
+`src/canonical.js` leaves the host alone: it only rewrites `http` → `https`
+and strips `www.`.
 
 ## What is exposed: per-account configuration
 
@@ -376,12 +394,60 @@ deliberately scores its LAST candidate below the floor, so a test that wants
    skill for `wrangler tail` / `x-request-id` correlation and the
    **access-control** skill for the Basic Auth credentials.
    ```bash
-   curl -sS https://mcp.deepresearch.se/mcp -H "content-type: application/json" \
+   curl -sS https://mcp.deepresearch.se -H "content-type: application/json" \
      -H "Authorization: Bearer $MCP_KEY" \
      -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
    ```
 3. If the change touched the pipeline path, the pipeline's own checks apply
    — see **pipeline-architecture**.
+
+## Reaching a phone — the web connector (F-20, designed not built)
+
+Every way in above needs a terminal. `claude mcp add` writes Claude Code's own
+configuration, which the Claude mobile app never reads, and a phone has
+nowhere to paste that line anyway. So this surface is reachable from a laptop
+and invisible from the device someone is most likely holding when a question
+occurs to them. The feasibility and design answer is
+**`docs/MCP-CONNECTOR.md`** (2026-08-03), tracked as `FEATURES.md` F-20. Read
+it before building; what follows is only what a session needs to reason about
+the surface without opening it.
+
+**There is no separate mobile integration to build.** claude.ai on the web,
+Claude Desktop, Claude mobile and Cowork share ONE connector infrastructure,
+so a custom connector added once by URL from any of them appears on all of
+them. Reaching the phone means becoming addable as a connector. Transport is
+already right: a custom connector is a remote MCP server over Streamable HTTP
+on a public host, which is what `src/mcp.js` serves.
+
+**The gap is auth, and it is the entire build.** The Add-connector dialog
+takes a URL and runs OAuth; there is nowhere to put an `mck1.` key the way
+`claude mcp add --header` puts one. The handshake starts at our end: an
+unauthenticated POST must answer **`401`** carrying
+`WWW-Authenticate: Bearer resource_metadata="…/.well-known/oauth-protected-resource"`
+— the status is part of the protocol, that header on a `200` is ignored — and
+that document's `resource` field must equal the URL the user typed, with
+`authorization_servers[0]` naming the issuer. The design keeps
+`https://mcp.deepresearch.se` as the connector URL with no new subdomain, and
+puts an OAuth 2.1 authorization server on the apex, where the account, Google
+sign-in and the session cookie already are. Prefer **CIMD over DCR** —
+advertise `client_id_metadata_document_supported` together with `"none"` in
+`token_endpoint_auth_methods_supported`, or Claude falls back to DCR and
+registers a fresh client per connection. The access token would be a fifth
+HS256 family resolved beside `mck1.` in `resolveMcpKeyIdentity`, so the
+exposure config, the quota gate, split billing and the `chat_logs` row apply
+unchanged and the not-a-login pin extends to it verbatim.
+
+One stopgap needs no server change: **`static_headers`** in the
+Add-connector dialog takes a fixed `authorization: Bearer mck1.…` against the
+server exactly as it stands. It is beta and rollout-gated, and shaped for a
+credential an organization shares rather than one key per account, so it
+cannot be documented as the way to connect — but anyone who already has the
+beta can connect a phone today.
+
+**Acceptance is a live check on the phone**, and no green unit suite implies
+it: add the connector on claude.ai in a browser, complete consent, call a
+tool, then open the mobile app and confirm the connector is there and lists
+tools with no further setup.
 
 ## The stateless revision — what's coming (F-19)
 

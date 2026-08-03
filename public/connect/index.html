@@ -92,7 +92,7 @@
     <h2>2. Add the server</h2>
     <p>Claude Code, one line — paste your key where the placeholder is:</p>
     <div class="cmd">
-      <pre>claude mcp add --transport http deepresearch https://mcp.deepresearch.se/mcp --header "Authorization: Bearer YOUR_KEY"</pre>
+      <pre>claude mcp add --transport http deepresearch https://mcp.deepresearch.se --header "Authorization: Bearer YOUR_KEY"</pre>
       <button type="button">Copy</button>
     </div>
     <p>Settings → MCP server has the same line with your key already spliced in.
@@ -110,7 +110,7 @@
   "mcpServers": {
     "deepresearch": {
       "type": "http",
-      "url": "https://mcp.deepresearch.se/mcp",
+      "url": "https://mcp.deepresearch.se",
       "headers": { "Authorization": "Bearer YOUR_KEY" }
     }
   }
@@ -118,9 +118,29 @@
       <button type="button">Copy</button>
     </div>
     <p class="muted">Transport is Streamable HTTP (JSON-RPC 2.0 over a single
-    POST). The bare origin — <code>https://mcp.deepresearch.se</code> — answers
-    too, since clients disagree about whether the configured URL includes the
-    path.</p>
+    POST). The URL is the bare origin — that host serves nothing but this
+    server, so there is no path to get wrong. If your client insists on one,
+    <code>https://mcp.deepresearch.se/mcp</code> answers identically.</p>
+  </section>
+
+  <section>
+    <h2>On a phone</h2>
+    <p>The command above is Claude Code's, and a phone has no terminal to paste
+    it into. The Claude mobile app connects to an MCP server as a
+    <b>custom connector</b> instead — Settings → Connectors → Add custom
+    connector, which takes a URL and runs an OAuth sign-in. This server does not
+    speak that flow yet, so there is no supported way to add it from a phone
+    today.</p>
+    <p>One exception, if you have it: Claude's <b>request headers</b> field (in
+    beta at the time of writing) lets you add this server by URL and supply the
+    key yourself. Enter the URL above, add an <code>authorization</code> header,
+    and paste <code>Bearer </code> followed by your key as the value — the space
+    included, and the whole thing exactly as your key appears, since Claude sends
+    the value verbatim. A connector added on the web then shows up in the mobile
+    app too.</p>
+    <p class="muted">The OAuth work that would make this the normal path is
+    designed but not built; the write-up is
+    <code>docs/MCP-CONNECTOR.md</code> in the repository.</p>
   </section>
 
   <section>

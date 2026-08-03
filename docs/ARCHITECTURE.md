@@ -1202,8 +1202,8 @@ can compose with them:
   has since been switched off.
 - **Host**: production also serves the endpoint on the dedicated
   `mcp.deepresearch.se` custom domain (same Worker, same code path), where
-  the bare origin answers as well as `/mcp` — clients disagree about
-  whether the configured URL includes the path — and a `GET` serves the
+  the **bare origin is the advertised URL** (2026-08-03) and `/mcp` answers
+  too, for clients that append a path of their own. A `GET` serves the
   public setup page `public/connect/`. Usage is recorded through the same
   `usage_events` path against the same quota; completed exchanges land in
   the same interaction log (channel `mcp`).

@@ -42,11 +42,12 @@
 //   npm run mcp:probe -- --only corpora,search-batch
 //   npm run mcp:probe -- --json          machine-readable report
 //
-// Default target is https://mcp.deepresearch.se/mcp — the dedicated host, which
-// is where an external client is pointed. Exit code is the number of failed
+// Default target is https://mcp.deepresearch.se — the dedicated host's BARE
+// ORIGIN, which is the URL an external client is pointed at (the `/mcp` tail
+// answers there too, and is what a non-dedicated origin needs). Exit code is the number of failed
 // checks (0 = clean), so it drops into a shell gate unchanged.
 
-const DEFAULT_URL = "https://mcp.deepresearch.se/mcp";
+const DEFAULT_URL = "https://mcp.deepresearch.se";
 /** The protocol revision src/mcp.js reports. Bumping it there should fail here. */
 export const EXPECTED_PROTOCOL = "2025-06-18";
 /** Every tool the server serves, in the order src/mcp.js's ALL_MCP_TOOLS fixes. */
@@ -613,17 +614,22 @@ async function main() {
     name: "unauthenticated",
     verdict: checkUnauthenticated(await call(url, "", rpc(1, "initialize"))),
   });
-  // The bare origin on the dedicated host must answer too: MCP clients
-  // disagree about whether the configured URL includes the path, and a
-  // wrong-URL 404 is the commonest way an MCP setup fails.
+  // BOTH forms must answer on the dedicated host: MCP clients disagree about
+  // whether the configured URL includes the path, and a wrong-URL 404 is the
+  // commonest way an MCP setup fails. So probe the form the target is NOT —
+  // bare origin when `--url` carried `/mcp`, `/mcp` when it didn't. Probing a
+  // fixed form would be tautological once the default became the bare origin
+  // (2026-08-03), and the check would silently stop covering the other one.
   if (/^mcp\./.test(new URL(url).hostname)) {
-    const bare = await call(`${origin}/`, "", rpc(1, "initialize"));
+    const targetIsBare = new URL(url).pathname === "/";
+    const altPath = targetIsBare ? "/mcp" : "/";
+    const alt = await call(`${origin}${altPath}`, "", rpc(1, "initialize"));
     anon.push({
-      name: "bare-origin",
+      name: "alt-form",
       verdict:
-        bare.status === 404
-          ? verdict(false, "the bare origin 404s — clients configured without /mcp will fail")
-          : verdict(true, `bare origin answers (${bare.status}, same gate as /mcp)`),
+        alt.status === 404
+          ? verdict(false, `${altPath} 404s — clients that configure that form will fail`)
+          : verdict(true, `${altPath} answers too (${alt.status}, same gate as ${new URL(url).pathname})`),
     });
   } else {
     gaps.push(`the dedicated mcp. host was not probed (target was ${origin})`);
