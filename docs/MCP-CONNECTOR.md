@@ -154,6 +154,42 @@ token endpoint.
 
 ---
 
+## 2c. What `/connect/` tells a person, and why it is ordered that way
+
+The page led with **minting a key** and the `claude mcp add` command, and put
+the connector — the only route that works on a phone, and the one needing no
+key at all — third. Measured on a 390 px viewport, the connector instructions
+began **1,421 px down**: about three and a half screens, behind a terminal
+command a phone cannot use. Reordered 2026-08-03 (owner: *"should be very
+straight forward and clearly documented"*), the connector is section 1 at
+**369 px**, with the URL in a one-tap copy block and per-client steps
+immediately under it. The terminal path keeps everything it had and is now
+section 2, prefaced with who it is for.
+
+**The page also used to overclaim on ChatGPT.** It said, of both clients, that
+you *"add it once on the web or desktop; it then appears in the mobile app with
+nothing further to do"* — true for Claude, whose surfaces share one connector
+list (§1), and **not established for ChatGPT**, whose mobile behaviour OpenAI
+does not document. The body asserted it while the note below it admitted the
+doubt. The two now agree: Claude's step says there is no separate mobile step,
+ChatGPT's says to add it in a browser and then *check the app*, and says why
+that check is real. A page that hedges in a footnote and promises in the body
+has told the reader the promise.
+
+**And then the paths themselves turned out to be wrong.** The reordering above
+is right and stands; the navigation steps inside it were not. An owner tried
+them the same day and reported: *"I dont find custom connector in claude app?
+And the settings path for chatgpt was not found neither!"* Both were carried
+from this document into the page and had never been checked against either
+vendor's UI — §7's acceptance check covers whether the SERVER connects, and
+nobody had confirmed that the menus a person is told to walk still exist under
+those names. The page now says outright that the paths are unverified, in place
+of printing them, while the real ones are established from Anthropic's and
+OpenAI's own documentation. **The lesson is narrow and worth keeping: a
+build-side acceptance check does not cover the instructions, and vendor UI
+labels are the fastest-rotting facts in this document.** They need a date and a
+source line each, the way the redirect URIs in §2a have.
+
 ## 2a. What ChatGPT requires, and where it differs
 
 Verified 2026-08-03 against `developers.openai.com/api/docs/mcp`, OpenAI's

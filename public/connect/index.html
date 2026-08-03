@@ -74,22 +74,76 @@
 
   <p>DeepResearch.<b>Se<span class="sl">/</span>rver</b> is also an
   <a href="https://modelcontextprotocol.io" target="_blank" rel="noopener">MCP</a>
-  server. Point <b>Claude Code</b> — or Cursor, or anything that speaks MCP — at
-  it and your agent gets the same deep-research run the chat does: it plans
-  search angles, searches the web, audits its own coverage for gaps, and
-  synthesizes an answer built only from the sources it found, with citations.</p>
+  server. Add it to <b>Claude</b> or <b>ChatGPT</b> — on a phone or anywhere
+  else — and your assistant gets the same deep-research run the chat does: it
+  plans search angles, searches the web, audits its own coverage for gaps, and
+  synthesizes an answer built only from the sources it found, with citations.
+  Claude Code, Cursor and other terminal clients work too; that is section 2.</p>
 
   <section>
-    <h2>1. Mint a key</h2>
+    <h2>1. On a phone, or anywhere — add it as a connector</h2>
+    <p>This is the way in for most people, and the only one that works on a
+    phone: you hand Claude or ChatGPT a single URL, they send you here to sign
+    in and approve, and <b>no key is ever created or pasted</b>. If that is
+    what you came for, you are done after this section.</p>
+    <div class="cmd">
+      <pre>https://mcp.deepresearch.se</pre>
+      <button type="button">Copy</button>
+    </div>
+
+    <h3>Claude</h3>
+    <p>Look for <b>Connectors</b> in Claude's settings and add a custom one by
+    URL, then approve on the consent screen this site shows you.</p>
+    <div class="note"><b>We have not verified where that lives in the current
+    Claude UI, and a reader has already failed to find it in the mobile app.</b>
+    Anthropic has moved this menu more than once, and custom connectors may be
+    limited to certain plans or to the web app rather than the phone. Rather
+    than print a path that sends you hunting, we are checking it against
+    Anthropic's own documentation and will replace this with the exact steps —
+    including whether the phone app can add one at all.</div>
+
+    <h3>ChatGPT — add it in a browser first</h3>
+    <p>Add it from <code>chatgpt.com</code> in a <b>browser</b> — your phone's
+    browser counts — using the URL above with <b>OAuth</b>, then check whether
+    the ChatGPT app lists it.</p>
+    <div class="note"><b>The menu path here is unverified too, and a reader
+    could not find it.</b> OpenAI's connector surface has moved faster than
+    Anthropic's, custom connectors appear to be gated by plan and possibly by a
+    developer setting, and OpenAI does not document whether connectors reach the
+    phone app at all. Being checked now; this will be replaced with the exact
+    steps and the plan requirements rather than a guess.</div>
+
+    <p>Either way you land on a consent screen on this site naming exactly what
+    you are granting — which tools, whose quota, and that the questions are
+    logged — before anything connects. Approving creates a credential for
+    <em>that one connection</em>, so removing the connector in Claude or
+    ChatGPT ends it without touching your other clients.</p>
+
+    <div class="note"><b>Newly built, and you may be the first through it.</b>
+    The flow passes its own tests, but nobody has yet completed it from a real
+    connector dialog. If it fails, the terminal path below still works from a
+    laptop. Two things are known-uncertain on ChatGPT's side: whether it
+    accepts our transport (we serve Streamable HTTP; some of OpenAI's pages
+    describe SSE), and whether its connectors reach the phone app at all.
+    ChatGPT also refuses any server without tools named <code>search</code> and
+    <code>fetch</code> — both ship switched on, so leave them on if you want
+    ChatGPT to connect.</div>
+  </section>
+
+  <section>
+    <h2>2. In a terminal — Claude Code, Cursor, agent SDKs</h2>
+    <p class="muted">Only for clients configured from a command line or a
+    config file. If you came here to connect a phone, section 1 was all of
+    it — this is a different route to the same server.</p>
+    <h3>Mint a key</h3>
     <p>Sign in at <a href="https://deepresearch.se/rver">deepresearch.se</a>, open
     <b>Settings</b> (the gear icon) → <b>MCP server</b> → <b>Mint key</b>.</p>
     <p>The key is shown once. It authorizes the MCP endpoint and nothing else —
     it is not a login, and it cannot read your chats, projects, files, history or
     account. Minting again replaces it; <b>Revoke</b> kills it on the next call.</p>
   </section>
-
   <section>
-    <h2>2. Add the server</h2>
+    <h3>Add the server</h3>
     <p>Claude Code, one line — paste your key where the placeholder is:</p>
     <div class="cmd">
       <pre>claude mcp add --transport http deepresearch https://mcp.deepresearch.se --header "Authorization: Bearer YOUR_KEY"</pre>
@@ -123,28 +177,6 @@
     <code>https://mcp.deepresearch.se/mcp</code> answers identically.</p>
   </section>
 
-  <section>
-    <h2>On a phone — add it as a connector</h2>
-    <p>The command above is Claude Code's, and a phone has no terminal to paste
-    it into. Both Claude and ChatGPT instead take a <b>custom connector</b>: you
-    give them the URL, they send you here to sign in and approve, and no key
-    changes hands at all.</p>
-    <p>In <b>Claude</b>: Settings → Connectors → Add custom connector, and enter
-    the URL above. In <b>ChatGPT</b>: Settings → Connectors → Create, same URL.
-    You add it once on the web or desktop; it then appears in the mobile app
-    with nothing further to do.</p>
-    <p>You will land on a consent screen on this site that names what you are
-    granting — which tools, whose quota, and that the questions are logged —
-    before anything is connected. Approving creates a credential for
-    <em>that connection</em>, so removing the connector in Claude or ChatGPT
-    ends it without touching your other clients.</p>
-    <div class="note"><b>Newly built and not yet proven against a real client.</b>
-    The flow passes its own tests, but nobody has completed it from an actual
-    connector dialog yet — if it fails, the pasted-key path above still works
-    from a laptop. Two things are known-uncertain on the ChatGPT side: whether
-    it accepts our transport, and whether its connectors reach the iOS app at
-    all, which its documentation does not say.</div>
-  </section>
 
   <section>
     <h2>3. Choose what it may reach</h2>
