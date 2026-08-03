@@ -319,6 +319,116 @@ export const LITERATURE_TOOLS = [
 export const LITERATURE_TOOL_NAMES = new Set(LITERATURE_TOOLS.map((t) => t.name));
 
 // ---------------------------------------------------------------------------
+// The two ADAPTER tools ChatGPT requires by name (docs/MCP-CONNECTOR.md §2a).
+//
+// Without developer mode, ChatGPT REFUSES to connect to an MCP server that does
+// not expose tools literally named `search` and `fetch`, with a fixed
+// contract — one query string in, `{ results: [{ id, title, url }] }` out; one
+// document id in, `{ id, title, text, url, metadata? }` out — returned TWICE,
+// as `structuredContent` and as JSON-encoded text in the content array. That is
+// not a preference we can negotiate with a better schema: the names and the
+// shapes are the price of being addable at all, and developer mode is web-only,
+// paid-tier and labelled dangerous, so requiring it is not an answer.
+//
+// They front THE TWO HOSTED CORPORA (owner decision), projecting what
+// literature_search and literature_fetch already return. Nothing new retrieves:
+// `search` is one angle through the same dense tier and `fetch` is the same
+// getByIds key read, so this is a rename and a projection rather than a second
+// search stack. The literature tools stay the better ones for a client that can
+// name them — six angles at once, authors, dates, scores, filters — and their
+// descriptions say so, because a Claude-side model reading a nine-tool list
+// should not pick the flattest one on the strength of the shortest name.
+// ---------------------------------------------------------------------------
+
+/** Records per corpus retrieved for one `search` call, before merging. */
+export const OPENAI_SEARCH_LIMIT = 10;
+/** Results in a `search` response. Small on purpose: the shape carries no
+ * abstract, so every result is a `fetch` the caller may decide to make. */
+export const OPENAI_MAX_RESULTS = 12;
+
+/** @type {{ name: string, description: string, input_schema: any, output_schema: any }[]} */
+export const OPENAI_ADAPTER_TOOLS = [
+  {
+    name: "search",
+    description:
+      "Search DeepResearch.se's hosted scientific corpora — arXiv preprints and PubMed " +
+      "biomedical literature — and return the matching papers as {id, title, url}. " +
+      "Retrieval is semantic: ask in natural language, because stripping a question to " +
+      "keywords throws away the signal the embedder uses. The results carry no abstract by " +
+      "design — pass an `id` to `fetch` to read one. " +
+      "If you can call `literature_search`, prefer it: same retrieval, but up to six angles " +
+      "in one round trip and records with authors, dates, categories, relevance scores and " +
+      "abstracts. This tool exists because some clients require a tool named `search`.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "The question or topic to search for, in natural language.",
+        },
+      },
+      required: ["query"],
+    },
+    output_schema: {
+      type: "object",
+      properties: {
+        results: {
+          type: "array",
+          description: "Matching papers, most relevant first.",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string", description: "Pass this to `fetch` verbatim." },
+              title: { type: "string" },
+              url: { type: "string" },
+            },
+            required: ["id", "title", "url"],
+          },
+        },
+      },
+      required: ["results"],
+    },
+  },
+  {
+    name: "fetch",
+    description:
+      "Retrieve one paper from the hosted scientific corpora by the `id` a `search` result " +
+      "carried. Bare arXiv ids ('2401.12345'), PMIDs ('41610285') and URLs to either site " +
+      "work too, so a citation seen anywhere can be resolved here. " +
+      "`text` IS THE STORED ABSTRACT, NOT FULL TEXT: the indexes hold abstracts cut to 900 " +
+      "characters and no body text at all, so treat it as a summary and follow `url` for the " +
+      "paper itself. An id outside a corpus's coverage window comes back named, with the " +
+      "window that explains it, rather than as a silent miss.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description:
+            "The document id — 'arxiv:2401.12345' or 'pmid:41610285' as returned by `search`, " +
+            "or a bare id or source URL.",
+        },
+      },
+      required: ["id"],
+    },
+    output_schema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        title: { type: "string" },
+        text: { type: "string", description: "The stored abstract (up to 900 characters). Never full text." },
+        url: { type: "string" },
+        metadata: { type: "object", description: "Corpus, authors, date, and what `text` actually is." },
+      },
+      required: ["id", "title", "text", "url"],
+    },
+  },
+];
+
+/** The adapter tool names, for src/mcp.js's dispatch and the quota decision. */
+export const OPENAI_ADAPTER_TOOL_NAMES = new Set(OPENAI_ADAPTER_TOOLS.map((t) => t.name));
+
+// ---------------------------------------------------------------------------
 // Argument parsing. Every one of these DEGRADES rather than throws: a tool
 // that errors on a slightly wrong argument is a model that retries the same
 // call forever. What cannot be
@@ -597,6 +707,33 @@ export function arxivSubmittedMonth(id) {
 }
 
 /**
+ * The id this surface HANDS OUT, and the one it expects back: `arxiv:2401.12345`
+ * / `pmid:41610285`. parseLiteratureId reads the bare forms too, but a bare id
+ * only says which corpus it belongs to by accident of shape — an arXiv id has a
+ * dot, a PMID does not — so anything that has to survive a round trip through a
+ * client carries the prefix that says it outright.
+ * @param {"arxiv"|"pubmed"} corpus
+ * @param {string} id
+ * @returns {string}
+ */
+export function canonicalRefId(corpus, id) {
+  return `${corpus === "arxiv" ? "arxiv" : "pmid"}:${id}`;
+}
+
+/**
+ * Where a record lives at its source. Known from the corpus and the id alone,
+ * which is what lets a MISS still be answered with a usable link: the corpora
+ * are windows, so "not in this index" routinely means "published, just outside
+ * the window".
+ * @param {"arxiv"|"pubmed"} corpus
+ * @param {string} id
+ * @returns {string}
+ */
+export function sourceUrlFor(corpus, id) {
+  return corpus === "arxiv" ? `https://arxiv.org/abs/${id}` : `https://pubmed.ncbi.nlm.nih.gov/${id}/`;
+}
+
+/**
  * One arXiv Vectorize match → a record.
  * @param {any} match
  * @returns {LiteratureRecord | null}
@@ -613,7 +750,7 @@ export function arxivRecord(match) {
   const rec = {
     corpus: "arxiv",
     id,
-    url: `https://arxiv.org/abs/${id}`,
+    url: sourceUrlFor("arxiv", id),
     title,
     authors: splitAuthors(m.au),
     // The id's month is the true SUBMISSION date; `d` is the last revision.
@@ -645,7 +782,7 @@ export function pubmedRecord(match) {
   const rec = {
     corpus: "pubmed",
     id: pmid,
-    url: `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`,
+    url: sourceUrlFor("pubmed", pmid),
     title,
     authors: splitAuthors(m.au),
     date: String(m.d || "").slice(0, 10),
@@ -746,4 +883,143 @@ export function capGroups(groups, cap = MAX_TOTAL_RECORDS) {
  */
 export function formatLiteratureResult(payload) {
   return JSON.stringify(payload, null, 2);
+}
+
+// ---------------------------------------------------------------------------
+// The adapter projections. Pure, so the exact field names ChatGPT reads are
+// pinned by a unit test with no binding in sight — and a wrong field name here
+// is invisible until a connector fails to parse, which is the worst place to
+// find it.
+// ---------------------------------------------------------------------------
+
+/**
+ * The single query out of whatever a client sent. `query` is the argument the
+ * schema declares, but the family's discipline is to degrade rather than throw
+ * (a tool that errors on a near-miss argument is a model that retries the same
+ * call forever), so the shorthands a caller might reach for are read too.
+ * @param {any} args
+ * @returns {string}
+ */
+export function openAiQuery(args) {
+  const standard = normalizeQueries(args);
+  if (standard.length) return standard[0];
+  const given = args && typeof args === "object" ? args : {};
+  for (const key of ["q", "search_query", "text", "input"]) {
+    const text = String(given[key] ?? "").replace(/\s+/g, " ").trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+/**
+ * The single document id out of whatever a client sent — same tolerance, same
+ * reason. `ids` is read as well because a caller that has just used
+ * literature_fetch may reach for its argument name.
+ * @param {any} args
+ * @returns {string}
+ */
+export function openAiFetchId(args) {
+  const given = args && typeof args === "object" ? args : {};
+  const first = Array.isArray(given.ids) ? given.ids[0] : null;
+  for (const value of [given.id, first, given.document_id, given.doc_id, given.url]) {
+    const text = String(value ?? "").trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+/**
+ * Records → ChatGPT's `results`. EXACTLY three keys per row, no more: the
+ * contract names id/title/url, and an unrequested field on a shape a closed
+ * client parses is a gamble with no upside — the abstract it would carry is one
+ * `fetch` away.
+ * @param {LiteratureRecord[]} records
+ * @param {number} [cap]
+ * @returns {{ id: string, title: string, url: string }[]}
+ */
+export function openAiSearchResults(records, cap = OPENAI_MAX_RESULTS) {
+  /** @type {{ id: string, title: string, url: string }[]} */
+  const out = [];
+  const seen = new Set();
+  for (const rec of Array.isArray(records) ? records : []) {
+    const corpus = rec?.corpus;
+    const id = String(rec?.id ?? "").trim();
+    if ((corpus !== "arxiv" && corpus !== "pubmed") || !id) continue;
+    const key = `${corpus}:${id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      id: canonicalRefId(corpus, id),
+      title: String(rec.title || "").trim(),
+      url: rec.url || sourceUrlFor(corpus, id),
+    });
+    if (out.length >= cap) break;
+  }
+  return out;
+}
+
+/**
+ * One record → ChatGPT's document shape.
+ *
+ * `text` is the stored ABSTRACT and nothing else. Neither index holds body
+ * text, and there is no runtime path that could fetch it, so the honest move is
+ * to return what exists and say what it is — in the tool description, in this
+ * `metadata.text_is`, and in `metadata.abstract_cut` when the indexer's 900-char
+ * cut bit. A `text` field silently carrying a truncated abstract is how a
+ * caller ends up asserting a paper does not mention something it discusses in
+ * its results section.
+ * @param {LiteratureRecord} record
+ * @returns {{ id: string, title: string, text: string, url: string, metadata: Record<string, string> }}
+ */
+export function openAiDocument(record) {
+  const corpus = record.corpus === "pubmed" ? "pubmed" : "arxiv";
+  const id = String(record.id || "").trim();
+  const abstract = String(record.abstract || "").trim();
+  /** @type {Record<string, string>} */
+  const metadata = {
+    corpus,
+    source: CORPUS_FACTS[corpus].name,
+    text_is: abstract
+      ? "the abstract as stored (up to 900 characters); this index holds no full text"
+      : "no abstract is stored for this record",
+    abstract_cut: String(Boolean(record.abstract_cut)),
+  };
+  if (record.authors?.length) metadata.authors = record.authors.join("; ");
+  if (record.date) metadata.date = record.date;
+  if (record.journal) metadata.journal = record.journal;
+  if (record.primary_category) metadata.primary_category = record.primary_category;
+  if (record.revised) metadata.revised = record.revised;
+  if (Number.isFinite(record.score)) metadata.relevance_score = String(record.score);
+  return {
+    id: canonicalRefId(corpus, id),
+    title: String(record.title || "").trim(),
+    // Bracketed rather than empty: an empty `text` reads as "this paper says
+    // nothing", which is a different claim from "we stored nothing".
+    text: abstract || `[No abstract is stored for ${canonicalRefId(corpus, id)} in the hosted index.]`,
+    url: record.url || sourceUrlFor(corpus, id),
+    metadata,
+  };
+}
+
+/**
+ * The same shape for an id that did not come back — because the contract has no
+ * "not found" branch, and a client that gets an error string where it expects a
+ * document will report a broken server rather than a missing paper. The window
+ * travels with it (the corpora are windows onto their sources, so most misses
+ * are "published, outside the window"), and `url` still points at the source,
+ * where the paper does exist.
+ * @param {{ corpus: "arxiv"|"pubmed", id: string }} ref
+ * @param {string} reason
+ */
+export function openAiMissDocument(ref, reason) {
+  const facts = CORPUS_FACTS[ref.corpus];
+  return {
+    id: canonicalRefId(ref.corpus, ref.id),
+    title: "",
+    text:
+      `Not in the hosted ${facts.name} index: ${reason} ${facts.window} ` +
+      "The paper itself may well exist — follow `url` rather than concluding it does not.",
+    url: sourceUrlFor(ref.corpus, ref.id),
+    metadata: { corpus: ref.corpus, found: "false", coverage_window: facts.window },
+  };
 }

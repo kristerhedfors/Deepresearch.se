@@ -43,7 +43,12 @@ import { SDK_TOOLS, SDK_TOOL_NAMES, manifestFromSnapshot, runSdkTool, snapshotFi
 // src/literature-tools.js imports nothing at all, so the file-layout rule holds;
 // everything that touches a Vectorize binding or the embedder lives in
 // src/literature-run.js, loaded by a dynamic import in the dispatch below.
-import { LITERATURE_TOOLS, LITERATURE_TOOL_NAMES } from "./literature-tools.js";
+import {
+  LITERATURE_TOOLS,
+  LITERATURE_TOOL_NAMES,
+  OPENAI_ADAPTER_TOOLS,
+  OPENAI_ADAPTER_TOOL_NAMES,
+} from "./literature-tools.js";
 // WHAT this server exposes is per-account configuration (Settings → "MCP
 // server"). A pure leaf module — catalog, parse, filter, argument resolution —
 // so this static import keeps the file-layout rule above intact.
@@ -156,6 +161,18 @@ export const LITERATURE_MCP_TOOLS = LITERATURE_TOOLS.map(({ name, description, i
   inputSchema: input_schema,
 }));
 
+// The two ADAPTER tools, named `search` and `fetch` because ChatGPT refuses to
+// connect to a server without them (docs/MCP-CONNECTOR.md §2a). Same rename,
+// plus `outputSchema`: MCP pairs a declared output schema with the
+// `structuredContent` these two return, and a client that knows the shape in
+// advance is one that cannot mis-read the result.
+export const OPENAI_MCP_TOOLS = OPENAI_ADAPTER_TOOLS.map(({ name, description, input_schema, output_schema }) => ({
+  name,
+  description,
+  inputSchema: input_schema,
+  outputSchema: output_schema,
+}));
+
 // Every tool this server CAN serve, in a stable order. What a given caller
 // actually sees is this list filtered by the account's exposure config —
 // src/mcp-config.js's catalog mirrors it exactly, a correspondence its unit
@@ -164,8 +181,14 @@ export const LITERATURE_MCP_TOOLS = LITERATURE_TOOLS.map(({ name, description, i
 // The literature family sits directly behind deep_research because the two are
 // the same capability at different grain: deep_research answers a question,
 // literature_* hands an agent the corpus to answer it from. A client scanning
-// the list top-down should meet them together.
-export const ALL_MCP_TOOLS = [DEEP_RESEARCH_TOOL, ...LITERATURE_MCP_TOOLS, ...SDK_MCP_TOOLS];
+// the list top-down should meet them together — and the two adapters follow
+// them, next to the tools they project.
+export const ALL_MCP_TOOLS = [
+  DEEP_RESEARCH_TOOL,
+  ...LITERATURE_MCP_TOOLS,
+  ...OPENAI_MCP_TOOLS,
+  ...SDK_MCP_TOOLS,
+];
 
 // The `tools/list` result, narrowed to what this account exposes. Called with
 // no argument it reports the full set (the default config) — which is what an
@@ -184,6 +207,22 @@ export function toolsListResult(config) {
  */
 export function toolResult(text, isError = false) {
   return { content: [{ type: "text", text: String(text) }], isError: !!isError };
+}
+
+// The same envelope for a tool that declares an `outputSchema`: the payload
+// travels TWICE — once as `structuredContent`, once as the JSON text of the
+// content array. Both, not either. MCP's own spec says a tool with an output
+// schema SHOULD also serialize the result into `content` for clients that only
+// read text, and ChatGPT's connector contract requires exactly that pair
+// (docs/MCP-CONNECTOR.md §2a). The text is passed in rather than re-serialized
+// here so the two are the same bytes the runner produced.
+/**
+ * @param {unknown} text the payload, already serialized
+ * @param {unknown} structuredContent the same payload as an object
+ * @param {boolean} [isError]
+ */
+export function structuredToolResult(text, structuredContent, isError = false) {
+  return { content: [{ type: "text", text: String(text) }], structuredContent, isError: !!isError };
 }
 
 // JSON-RPC 2.0 success envelope. `id` of undefined normalizes to null
@@ -291,7 +330,8 @@ export async function handleMcp(request, env, log, identity, ctx, requestId) {
   }
 }
 
-// tools/call dispatcher: the SDK manifest family, then `deep_research`;
+// tools/call dispatcher: the SDK manifest family, the literature family and its
+// two `search`/`fetch` adapters, then `deep_research`;
 // anything else — including a tool this account does not
 // expose — is an invalid-params error. The tool itself fails soft: any pipeline
 // error comes back as an MCP result with isError:true (a protocol-level success
@@ -339,18 +379,23 @@ async function handleToolCall(parsed, env, log, identity, ctx, requestId, config
     }
   }
 
-  // The literature family: dense retrieval over the two hosted scientific
-  // corpora. Unlike the two families above these reach a data store and spend
-  // real (small) provider money, so the two SEARCHING tools sit behind the same
+  // The literature family — plus the two `search`/`fetch` adapters that project
+  // it into the shapes ChatGPT requires (docs/MCP-CONNECTOR.md §2a), which run
+  // the same retrieval and so belong on the same branch and the same gate.
+  //
+  // Unlike the two families above these reach a data store and spend
+  // real (small) provider money, so the SEARCHING tools sit behind the same
   // research quota /api/chat and deep_research enforce — an exhausted account
   // must not be able to keep hammering the index from a long-lived key.
-  // literature_corpora and literature_fetch are deliberately outside the gate:
-  // one reads committed facts plus an index description, the other is a direct
-  // key read, and an agent that has run out of budget should still be able to
-  // learn what exists and resolve an id it was handed.
-  if (typeof name === "string" && LITERATURE_TOOL_NAMES.has(name)) {
+  // literature_corpora, literature_fetch and `fetch` are deliberately outside
+  // the gate: one reads committed facts plus an index description, the others
+  // are a direct key read, and an agent that has run out of budget should still
+  // be able to learn what exists and resolve an id it was handed. `search`
+  // retrieves, so it is gated exactly like literature_search — the adapter is a
+  // projection, never a way around the meter.
+  if (typeof name === "string" && (LITERATURE_TOOL_NAMES.has(name) || OPENAI_ADAPTER_TOOL_NAMES.has(name))) {
     try {
-      if (name === "literature_search" || name === "literature_similar") {
+      if (name === "literature_search" || name === "literature_similar" || name === "search") {
         const blocked = await researchQuotaBlock(env, log, identity);
         if (blocked) {
           log.info("mcp.quota_blocked", { tool: name, user_id: identity?.id });
@@ -366,10 +411,25 @@ async function handleToolCall(parsed, env, log, identity, ctx, requestId, config
         records: result.records,
         request_id: requestId,
       });
-      return jsonResponse(jsonRpcResult(id, toolResult(result.text, result.isError)));
+      // The adapters declare an outputSchema, so their payload goes back both
+      // ways; the native literature tools stay text-only, which is what every
+      // client already reads them as.
+      return jsonResponse(
+        jsonRpcResult(
+          id,
+          result.structured
+            ? structuredToolResult(result.text, result.payload, result.isError)
+            : toolResult(result.text, result.isError),
+        ),
+      );
     } catch (err) {
       const message = (/** @type {any} */ (err))?.message || String(err);
       log.error("mcp.literature_tool_failed", { tool: name, error: message });
+      // Text-only even for the adapters, and that is correct: MCP requires
+      // structuredContent from a tool with an outputSchema EXCEPT on an error
+      // result. The runners answer their own failures inside the declared shape
+      // (an empty `results`, a named miss); this branch is the one nothing
+      // planned for, and inventing a document to describe it would be worse.
       return jsonResponse(jsonRpcResult(id, toolResult(`Literature tool failed: ${message}`, true)));
     }
   }

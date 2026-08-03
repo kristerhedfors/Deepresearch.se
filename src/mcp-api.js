@@ -28,6 +28,7 @@ import { jsonResponse, readJsonBody } from "./http.js";
 import { mergeStoredSettings } from "./settings.js";
 import { MCP_TOOL_CATALOG, applyConfigPatch, isMcpHost, normalizeConfigPatch, parseMcpConfig } from "./mcp-config.js";
 import { MCP_KEY_TTL_S, bearerToken, looksLikeMcpKey, mintMcpKey, verifyMcpKey } from "./mcp-key.js";
+import { OAUTH_ACCESS_PREFIX, verifyAccessToken } from "./oauth-store.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -57,6 +58,20 @@ import { MCP_KEY_TTL_S, bearerToken, looksLikeMcpKey, mintMcpKey, verifyMcpKey }
  */
 export async function resolveMcpKeyIdentity(request, env) {
   const token = bearerToken(request);
+  // An OAuth ACCESS TOKEN reaches the same surface as a key (F-20). It is
+  // resolved here, in the one place a bearer becomes an identity, so the
+  // endpoint keeps exactly ONE identity seam: everything downstream — the
+  // exposure config, tools/list filtering, tools/call enforcement, the
+  // four-window quota, split billing, the chat_logs row — is reached the same
+  // way whichever credential arrived. OAuth adds a door, not a second surface
+  // with its own rules to keep in sync.
+  //
+  // The families are told apart by their wire prefix and cannot be confused:
+  // each is signed under its own namespace, so an `oat1.` token fails
+  // `verifyMcpKey` and an `mck1.` key fails `verifyAccessToken`. Neither is a
+  // login — identify() reads a `Basic` header and the `dr_session` cookie, and
+  // is satisfied by neither in any position (pinned in src/mcp-key.test.js).
+  if (looksLikeAccessToken(token)) return resolveOauthIdentity(env, token);
   if (!looksLikeMcpKey(token)) return null;
 
   const claims = await verifyMcpKey(env, token);
@@ -79,6 +94,64 @@ export async function resolveMcpKeyIdentity(request, env) {
   if (!config.key || config.key.jti !== claims.jti) {
     return { error: "This MCP key has been revoked. Mint a new one in Settings → MCP server." };
   }
+  if (!config.enabled) {
+    return { error: "The MCP server is switched off for this account (Settings → MCP server)." };
+  }
+
+  /** @type {Identity} */
+  const identity = {
+    id: String(user.id),
+    role: user.role === "admin" ? "admin" : "user",
+    email: user.email ?? null,
+    name: user.name || user.email || "",
+    user,
+  };
+  return { identity, config };
+}
+
+/**
+ * Whether a bearer is shaped like an OAuth access token. Prefix only — the
+ * signature decides everything else, and this just picks the branch.
+ * @param {string | null} token
+ * @returns {token is string} a predicate, so the caller's `token` narrows to
+ *   a string on the branch that hands it to the resolver
+ */
+function looksLikeAccessToken(token) {
+  return typeof token === "string" && token.startsWith(`${OAUTH_ACCESS_PREFIX}.`);
+}
+
+/**
+ * Resolve an OAuth access token into the same {identity, config} pair a key
+ * resolves to — the connector half of F-20.
+ *
+ * The account checks are IDENTICAL to the key path's on purpose (the account
+ * must exist, be active, and have the MCP surface switched on), because a
+ * connector must not be a way around a decision that governs a key. The one
+ * difference is what revocation looks like: a key dies when the account's
+ * stored `jti` no longer matches, while an access token dies by expiring —
+ * revocation happens by refusing the REFRESH, which is what makes the
+ * credential per-connection rather than per-account.
+ *
+ * The wording of each refusal matters more here than it looks: a connector
+ * shows the user whatever comes back, and "reconnect" is a different action
+ * from "you have been switched off".
+ * @param {Env} env
+ * @param {string} token
+ * @returns {Promise<{ identity: Identity, config: McpConfig } | { error: string }>}
+ */
+async function resolveOauthIdentity(env, token) {
+  const claims = await verifyAccessToken(env, token);
+  if (!claims) {
+    return { error: "This connection's access token is invalid or has expired. Reconnect the connector." };
+  }
+
+  const user = await getUserById(env, Number(claims.sub)).catch(() => null);
+  if (!user) return { error: "The account this connection belongs to no longer exists." };
+  if (user.status !== "active") {
+    return { error: "The account this connection belongs to is not active." };
+  }
+
+  const config = parseMcpConfig(user.settings_json);
   if (!config.enabled) {
     return { error: "The MCP server is switched off for this account (Settings → MCP server)." };
   }

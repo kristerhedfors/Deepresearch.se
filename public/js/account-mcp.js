@@ -216,8 +216,38 @@ function toolsMarkup(data) {
       popId: `mcptoolpop-${entry.id}`,
       info: `<strong>${escapeHtml(entry.label)}</strong><br>${escapeHtml(entry.blurb)}`,
     });
+    out += chatgptPairWarning(entry, catalog, tools);
   }
   return out || '<p class="muted setting-note">This server exposes no MCP tools.</p>';
+}
+
+/**
+ * The one switch here whose effect is not "this tool disappears".
+ *
+ * ChatGPT validates a server's tool list at CONNECT time and refuses any
+ * server that does not expose BOTH `search` and `fetch` by name (developer
+ * mode lifts that, but it is web-only and paid-tier). So switching either one
+ * off does not narrow a ChatGPT connector — it stops one being added at all,
+ * and the failure surfaces inside ChatGPT as a generic "couldn't connect"
+ * with nothing pointing back at this screen. Say so here, where the decision
+ * is made, rather than leaving it to be discovered.
+ *
+ * Rendered after the LAST tool of the pair, so it reads as a note on the pair
+ * rather than on whichever switch happens to come first.
+ */
+function chatgptPairWarning(entry, catalog, tools) {
+  const pair = ["search", "fetch"];
+  if (entry.id !== pair[pair.length - 1]) return "";
+  // Only if the catalog actually carries both — a future catalog edit that
+  // drops one should not leave this warning talking about a tool that is gone.
+  if (!pair.every((id) => catalog.some((e) => e.id === id))) return "";
+  const off = pair.filter((id) => tools[id] === false);
+  if (!off.length) return "";
+  const which = off.length === 2 ? "Both are" : `<code>${escapeHtml(off[0])}</code> is`;
+  return `<p class="muted setting-note" style="margin-top:.35rem">⚠︎ ${which} switched off.
+    ChatGPT requires <code>search</code> and <code>fetch</code> to exist before it will add
+    this server as a connector, so a new ChatGPT connection will fail while that is the case.
+    Claude and Claude Code are unaffected.</p>`;
 }
 
 /** The defaults + override policy section. */

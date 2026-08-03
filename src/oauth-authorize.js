@@ -188,6 +188,17 @@ export function parseAuthorizeParams(params) {
   if (!codeChallenge) {
     return bounce("invalid_request", "PKCE is required: send code_challenge with code_challenge_method=S256.");
   }
+  // The SHAPE is checked here, not left to the code mint. An S256 challenge is
+  // 43 base64url characters, always; anything else is a client bug. Without
+  // this the value travels all the way to mintAuthCode, which throws on it —
+  // and the user gets a `server_error` redirect for what is squarely an
+  // `invalid_request`, sending whoever debugs it to the wrong side.
+  if (!/^[A-Za-z0-9_-]{43}$/.test(codeChallenge)) {
+    return bounce(
+      "invalid_request",
+      "code_challenge must be the base64url-encoded SHA-256 of the verifier (43 characters).",
+    );
+  }
   // `plain` is not a downgrade we accept: the metadata advertises S256 only,
   // and a client that ignored that has a bug worth surfacing at the start of
   // the flow rather than at the token exchange.

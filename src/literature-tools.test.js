@@ -20,11 +20,14 @@ import {
   MAX_LIMIT,
   MAX_QUERIES,
   MAX_TOTAL_RECORDS,
+  OPENAI_ADAPTER_TOOLS,
+  OPENAI_ADAPTER_TOOL_NAMES,
   RECORD_MAPPERS,
   STORED_ABSTRACT_CHARS,
   applyFilters,
   arxivRecord,
   arxivSubmittedMonth,
+  canonicalRefId,
   capGroups,
   comparableDate,
   filtersActive,
@@ -35,11 +38,17 @@ import {
   normalizeDateBound,
   normalizeLimit,
   normalizeQueries,
+  openAiDocument,
+  openAiFetchId,
+  openAiMissDocument,
+  openAiQuery,
+  openAiSearchResults,
   parseFilters,
   parseLiteratureId,
   parseLiteratureIds,
   pubmedRecord,
   shapeAbstracts,
+  sourceUrlFor,
   splitAuthors,
 } from "./literature-tools.js";
 
@@ -428,6 +437,126 @@ test("capGroups holds the response under the record cap without starving a query
   // A response already under the cap is passed through untouched.
   const small = [{ query: "q", records: [/** @type {any} */ ({ corpus: "arxiv", id: "x" })] }];
   assert.equal(capGroups(small, MAX_TOTAL_RECORDS), small);
+});
+
+// ---------------------------------------------------------------------------
+// The `search` / `fetch` adapters (docs/MCP-CONNECTOR.md §2a)
+// ---------------------------------------------------------------------------
+
+test("the adapter tools are named, and shaped, exactly as ChatGPT demands", () => {
+  assert.deepEqual(OPENAI_ADAPTER_TOOLS.map((t) => t.name), ["search", "fetch"]);
+  assert.deepEqual([...OPENAI_ADAPTER_TOOL_NAMES], ["search", "fetch"]);
+  // They are NOT part of the native family — the two sets dispatch and gate
+  // differently, and merging them would quietly put `fetch` behind the quota.
+  for (const name of OPENAI_ADAPTER_TOOL_NAMES) assert.equal(LITERATURE_TOOL_NAMES.has(name), false);
+  // Each carries an output schema, which is what licenses structuredContent.
+  for (const tool of OPENAI_ADAPTER_TOOLS) {
+    assert.equal(tool.input_schema.type, "object");
+    assert.equal(tool.output_schema.type, "object");
+  }
+  // The description points a capable caller at the better tool rather than
+  // letting it pick the flattest one for having the shortest name.
+  assert.match(OPENAI_ADAPTER_TOOLS[0].description, /literature_search/);
+});
+
+test("canonical ids and source URLs are derivable from corpus + id alone", () => {
+  assert.equal(canonicalRefId("arxiv", "2401.12345"), "arxiv:2401.12345");
+  assert.equal(canonicalRefId("pubmed", "41610285"), "pmid:41610285");
+  assert.equal(sourceUrlFor("arxiv", "2401.12345"), "https://arxiv.org/abs/2401.12345");
+  assert.equal(sourceUrlFor("pubmed", "41610285"), "https://pubmed.ncbi.nlm.nih.gov/41610285/");
+  // THE round trip that matters: whatever `search` hands out, `fetch` must be
+  // able to read back. A bare id would work by accident of shape; the prefixed
+  // form works by saying which corpus it is.
+  for (const [corpus, id] of /** @type {const} */ ([["arxiv", "2401.12345"], ["pubmed", "41610285"]])) {
+    const parsed = parseLiteratureId(canonicalRefId(corpus, id));
+    assert.equal(parsed?.corpus, corpus);
+    assert.equal(parsed?.id, id);
+  }
+});
+
+test("the adapters read the argument a client actually sent", () => {
+  assert.equal(openAiQuery({ query: "  dense   retrieval " }), "dense retrieval");
+  assert.equal(openAiQuery({ queries: ["first", "second"] }), "first");
+  assert.equal(openAiQuery({ q: "shorthand" }), "shorthand");
+  assert.equal(openAiQuery({}), "");
+  assert.equal(openAiQuery(null), "");
+
+  assert.equal(openAiFetchId({ id: " arxiv:2401.1 " }), "arxiv:2401.1");
+  assert.equal(openAiFetchId({ ids: ["pmid:41610285"] }), "pmid:41610285");
+  assert.equal(openAiFetchId({ document_id: "2401.1" }), "2401.1");
+  assert.equal(openAiFetchId({}), "");
+});
+
+test("search results carry exactly id, title and url — nothing else", () => {
+  const records = [
+    /** @type {any} */ (arxivRecord({ id: "2401.12345", metadata: { t: "A paper", a: "abs", au: "X" } })),
+    /** @type {any} */ (pubmedRecord({ id: "pmid:41610285", metadata: { t: "A trial", a: "abs", au: "Y" } })),
+  ];
+  const results = openAiSearchResults(records);
+  assert.deepEqual(results, [
+    { id: "arxiv:2401.12345", title: "A paper", url: "https://arxiv.org/abs/2401.12345" },
+    { id: "pmid:41610285", title: "A trial", url: "https://pubmed.ncbi.nlm.nih.gov/41610285/" },
+  ]);
+  // The contract names three keys. An extra one on a shape a closed client
+  // parses is a gamble with no upside.
+  for (const row of results) assert.deepEqual(Object.keys(row).sort(), ["id", "title", "url"]);
+
+  // De-duplicated across corpora and capped.
+  assert.equal(openAiSearchResults([...records, ...records]).length, 2);
+  assert.equal(openAiSearchResults(records, 1).length, 1);
+  // Junk in is an empty list, never a throw.
+  assert.deepEqual(openAiSearchResults(/** @type {any} */ (null)), []);
+  assert.deepEqual(openAiSearchResults(/** @type {any} */ ([{ id: "x" }, {}])), []);
+});
+
+test("a fetched document says what its `text` actually is", () => {
+  const record = /** @type {any} */ (
+    pubmedRecord({
+      id: "pmid:41610285",
+      metadata: { t: "A trial", a: "BACKGROUND: something.", au: "Rosalind Franklin; Ada Lovelace", j: "The Lancet", d: "2026-03-14" },
+      rerankScore: 0.42,
+    })
+  );
+  const doc = openAiDocument(record);
+  assert.deepEqual(Object.keys(doc).sort(), ["id", "metadata", "text", "title", "url"]);
+  assert.equal(doc.id, "pmid:41610285");
+  assert.equal(doc.title, "A trial");
+  assert.equal(doc.text, "BACKGROUND: something.");
+  assert.equal(doc.url, "https://pubmed.ncbi.nlm.nih.gov/41610285/");
+  assert.equal(doc.metadata.corpus, "pubmed");
+  assert.equal(doc.metadata.journal, "The Lancet");
+  assert.equal(doc.metadata.authors, "Rosalind Franklin; Ada Lovelace");
+  assert.equal(doc.metadata.abstract_cut, "false");
+  // The honesty that has to survive every future edit: `text` is an abstract,
+  // there is no full text in either index, and the metadata says so in the
+  // payload rather than only in the tool description.
+  assert.match(doc.metadata.text_is, /no full text/);
+  // Every metadata value is a string — the field is a flat map, not a place to
+  // smuggle the record back in.
+  for (const value of Object.values(doc.metadata)) assert.equal(typeof value, "string");
+
+  // A record stored at the indexer's 900-char cut says so.
+  const long = /** @type {any} */ (
+    arxivRecord({ id: "2401.12345", metadata: { t: "Long", a: "x".repeat(STORED_ABSTRACT_CHARS), au: "" } })
+  );
+  assert.equal(openAiDocument(long).metadata.abstract_cut, "true");
+  assert.equal(openAiDocument(long).metadata.primary_category, undefined);
+
+  // No abstract at all is stated, not faked as an empty document.
+  const bare = /** @type {any} */ ({ corpus: "arxiv", id: "2401.9", title: "Bare", authors: [], date: "", abstract: "", abstract_cut: false });
+  assert.match(openAiDocument(bare).text, /No abstract is stored/);
+});
+
+test("a miss keeps the document shape, the window, and a working link", () => {
+  const doc = openAiMissDocument({ corpus: "arxiv", id: "1801.00001" }, "not in this corpus's window.");
+  // Same four required fields — a client that asked for a document and got an
+  // error string reports a broken server, not a missing paper.
+  for (const key of ["id", "title", "text", "url"]) assert.ok(key in doc, `${key} present`);
+  assert.equal(doc.id, "arxiv:1801.00001");
+  assert.equal(doc.url, "https://arxiv.org/abs/1801.00001");
+  assert.match(doc.text, /2310/, "the coverage window travels with the miss");
+  assert.match(doc.text, /may well exist/);
+  assert.equal(doc.metadata.found, "false");
 });
 
 test("results are formatted as parseable JSON", () => {

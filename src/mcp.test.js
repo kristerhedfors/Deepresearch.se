@@ -24,6 +24,7 @@ import {
   jsonRpcResult,
   jsonRpcError,
   parseJsonRpc,
+  structuredToolResult,
 } from "./mcp.js";
 
 test("parseJsonRpc accepts a well-formed request", () => {
@@ -80,9 +81,9 @@ test("initializeResult has protocolVersion, serverInfo, and tools capability", (
   assert.ok(r.capabilities && r.capabilities.tools, "advertises tools capability");
 });
 
-test("tools/list returns deep_research first plus the literature and SDK families", () => {
+test("tools/list returns deep_research first plus the literature, adapter and SDK families", () => {
   const r = toolsListResult();
-  assert.equal(r.tools.length, 9);
+  assert.equal(r.tools.length, 11);
   const tool = r.tools[0];
   assert.equal(tool.name, TOOL_NAME);
   assert.equal(tool.name, "deep_research");
@@ -96,6 +97,7 @@ test("tools/list returns deep_research first plus the literature and SDK familie
     r.tools.slice(1).map((t) => t.name),
     [
       "literature_search", "literature_fetch", "literature_similar", "literature_corpora",
+      "search", "fetch",
       "sdk_list_modules", "sdk_show_module", "sdk_plan", "sdk_validate",
     ],
   );
@@ -138,6 +140,53 @@ test("the literature family keeps its retrieval half behind a dynamic import", (
   // And the runner is the module allowed to reach the corpora.
   const runner = readFileSync(new URL("./literature-run.js", import.meta.url), "utf8");
   assert.match(runner, /from "\.\/dense-rag\.js"/);
+});
+
+test("the two adapter tools are named exactly what ChatGPT requires", () => {
+  // docs/MCP-CONNECTOR.md §2a: without developer mode, ChatGPT refuses any MCP
+  // server whose tool list does not contain tools literally called `search` and
+  // `fetch`. There is no aliasing this and no negotiating it, so the names are
+  // pinned here — a rename that reads like a tidy-up is a connector that stops
+  // connecting, with no error anyone can act on.
+  const byName = Object.fromEntries(toolsListResult().tools.map((t) => [t.name, t]));
+  const search = byName.search;
+  const fetchTool = byName.fetch;
+  assert.ok(search && fetchTool, "both adapter tools are served");
+
+  // One query string in; results out.
+  assert.deepEqual(search.inputSchema.required, ["query"]);
+  assert.equal(search.inputSchema.properties.query.type, "string");
+  assert.deepEqual(search.outputSchema.required, ["results"]);
+  assert.deepEqual(search.outputSchema.properties.results.items.required, ["id", "title", "url"]);
+
+  // One document id in; the document out.
+  assert.deepEqual(fetchTool.inputSchema.required, ["id"]);
+  assert.deepEqual(fetchTool.outputSchema.required, ["id", "title", "text", "url"]);
+  // `text` is the stored abstract and the description has to say so — the
+  // corpora hold no full text at runtime and never will without a re-ingest.
+  assert.match(fetchTool.description, /abstract/i);
+  assert.match(fetchTool.description, /no body text|not full text/i);
+  // MCP's own key, not Anthropic's, on both schemas.
+  for (const t of [search, fetchTool]) {
+    assert.equal(t.input_schema, undefined);
+    assert.equal(t.output_schema, undefined);
+  }
+});
+
+test("structuredToolResult returns the payload TWICE — structured and as text", () => {
+  // The dual return is how ChatGPT reads a tool result at all: the object in
+  // `structuredContent`, the same object serialized in the content array. The
+  // text is passed in rather than re-serialized so the two can never drift.
+  const payload = { results: [{ id: "arxiv:2401.12345", title: "A paper", url: "https://arxiv.org/abs/2401.12345" }] };
+  const text = JSON.stringify(payload, null, 2);
+  const envelope = structuredToolResult(text, payload, false);
+  assert.equal(envelope.structuredContent, payload);
+  assert.deepEqual(JSON.parse(envelope.content[0].text), payload);
+  assert.equal(envelope.content[0].type, "text");
+  assert.equal(envelope.isError, false);
+  // An error still carries the shape — a client that asked for a document and
+  // got a bare string reports a broken server, not a missing paper.
+  assert.equal(structuredToolResult("{}", {}, true).isError, true);
 });
 
 test("toolResult builds an MCP text-content envelope with isError", () => {

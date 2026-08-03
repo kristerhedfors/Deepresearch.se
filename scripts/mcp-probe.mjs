@@ -57,6 +57,12 @@ export const EXPECTED_TOOLS = [
   "literature_fetch",
   "literature_similar",
   "literature_corpora",
+  // The two OpenAI adapter tools, named exactly what ChatGPT demands. They sit
+  // beside the literature four because that is what they project — and they
+  // are the reason a ChatGPT connector can be added at all: without developer
+  // mode, a server missing either name is refused outright.
+  "search",
+  "fetch",
   "sdk_list_modules",
   "sdk_show_module",
   "sdk_plan",

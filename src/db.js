@@ -256,6 +256,36 @@ CREATE TABLE IF NOT EXISTS test_point_messages (
   body TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_test_point_messages_point ON test_point_messages(point_id, id);
+-- The OAUTH connector's two stateful tables (src/oauth-store.js, F-20). A
+-- signed token carries its own claims, so these rows exist for the two things
+-- a signature cannot express: an authorization code must be usable EXACTLY
+-- once, and a refresh token must be revocable and rotatable. Access tokens
+-- have no table on purpose — they are signed-only and short-lived, so the hot
+-- path does no lookup at all. Kept here rather than created lazily by the
+-- store, so the whole schema stays readable in one place.
+CREATE TABLE IF NOT EXISTS oauth_codes (
+  jti TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  client_id TEXT NOT NULL,
+  redirect_uri TEXT NOT NULL,
+  code_challenge TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_oauth_codes_exp ON oauth_codes(expires_at);
+CREATE TABLE IF NOT EXISTS oauth_refresh_tokens (
+  jti TEXT PRIMARY KEY,
+  family_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  client_id TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_oauth_refresh_family ON oauth_refresh_tokens(family_id);
+CREATE INDEX IF NOT EXISTS idx_oauth_refresh_user ON oauth_refresh_tokens(user_id, expires_at DESC);
+CREATE INDEX IF NOT EXISTS idx_oauth_refresh_exp ON oauth_refresh_tokens(expires_at);
 -- The OUTROSPECTION feed (src/outrospect.js): the outward-looking counterpart
 -- to introspection — what everyone else is building, through the lens registry
 -- in public/js/outrospect-core.js. Rows are ARTICLES, deliberately carrying no

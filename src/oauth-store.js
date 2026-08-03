@@ -267,6 +267,12 @@ function validChallenge(c) {
 /** @param {number} nowMs @returns {number} epoch seconds */
 const secs = (nowMs) => Math.floor(nowMs / 1000);
 
+// The two sweep statements, spelled out rather than built from a table name:
+// no interpolation into SQL at all, so nothing here needs an entry in
+// src/sql-injection-guard.test.js's hand-audited allowlist.
+const SWEEP_CODES = "DELETE FROM oauth_codes WHERE expires_at <= ?1";
+const SWEEP_REFRESH = "DELETE FROM oauth_refresh_tokens WHERE expires_at <= ?1";
+
 /**
  * Delete rows whose expiry has passed. Opportunistic and deliberately
  * un-scheduled: mints are rare (once per authorization), both tables are
@@ -277,12 +283,13 @@ const secs = (nowMs) => Math.floor(nowMs / 1000);
  * Note this can never create a false reuse signal in rotateRefreshToken: a row
  * only becomes sweepable once `expires_at` has passed, and by then the token
  * that names it is already refused by `unseal` on the same expiry.
- * @param {D1Database} db @param {string} table @param {number} nowS
+ * @param {D1Database} db @param {string} sql one of the two constants above
+ * @param {number} nowS
  * @returns {Promise<void>}
  */
-async function sweep(db, table, nowS) {
+async function sweep(db, sql, nowS) {
   await db
-    .prepare(`DELETE FROM ${table} WHERE expires_at <= ?1`)
+    .prepare(sql)
     .bind(nowS)
     .run()
     .catch(() => null);
@@ -326,7 +333,7 @@ export async function mintAuthCode(env, opts) {
   const jti = newId();
 
   const db = await requireDb(env);
-  await sweep(db, "oauth_codes", nowS);
+  await sweep(db, SWEEP_CODES, nowS);
   // The INSERT is not caught: if the record cannot be written, the code must
   // not exist, and the caller must see the failure rather than hand a client a
   // credential nothing can ever redeem.
@@ -496,7 +503,7 @@ export async function mintRefreshToken(env, opts) {
   const db = await requireDb(env);
   // Only a NEW family sweeps: a rotation runs inside a token request a client
   // is waiting on, and it has already deleted the row it replaced.
-  if (fam === jti) await sweep(db, "oauth_refresh_tokens", nowS);
+  if (fam === jti) await sweep(db, SWEEP_REFRESH, nowS);
   await db
     .prepare(
       "INSERT INTO oauth_refresh_tokens (jti, family_id, user_id, client_id, scope, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
