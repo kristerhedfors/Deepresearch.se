@@ -29,7 +29,6 @@ import {
   orchSynthPrompt,
 } from "./prompts.js";
 import { MAX_READ_TOTAL_CHARS } from "./introspect-tools.js";
-import { watchPromptBlock, watchThread } from "./watch-chat.js";
 
 describe("triagePrompt", () => {
   test("embeds the max query count in the research-action description", () => {
@@ -654,30 +653,6 @@ describe("directPrompt / searchOffPrompt", () => {
     const both = directPrompt({ hasShell: true, spaceScene: "Standing on the Moon" });
     assert.match(both, /DID run shell commands/);
     assert.match(both, /Standing on the Moon/);
-  });
-
-  test("watchBuild puts the live build in the answer prompt, and the delta with it", () => {
-    // Default: unchanged, byte-identical to a run without the inline builder.
-    assert.equal(directPrompt(), directPrompt({ watchBuild: "" }));
-    assert.equal(synthPrompt(), synthPrompt({ watchBuild: "" }));
-    // The input is the whole generated block (public/js/watch-chat-core.js
-    // watchPromptBlock), not a title: feedback #52 asked for the answer to say
-    // what changed each turn, which needs the build and the delta, not a name.
-    const block = watchPromptBlock(watchThread(["Seiko watch demo", "pepsi bezel"]));
-    const withWatch = directPrompt({ watchBuild: block });
-    assert.doesNotMatch(withWatch, /does NOT run code/);
-    assert.match(withWatch, /INLINE WATCH BUILDER/);
-    // The FROM side is the case's own insert: since the collapse (feedback
-    // #59) the bezel insert comes with the case rather than being decided.
-    assert.match(withWatch, /Bezel insert: Keep the case's own bezel insert → Pepsi/);
-    assert.match(withWatch, /NEVER say you cannot show, render, build or animate a watch/);
-    // Threaded through the other two answer phases.
-    assert.match(searchOffPrompt({ watchBuild: block }), /INLINE WATCH BUILDER/);
-    assert.match(synthPrompt({ watchBuild: block }), /INLINE WATCH BUILDER/);
-    // Composes with the sandbox clause rather than replacing it.
-    const both = directPrompt({ hasShell: true, watchBuild: block });
-    assert.match(both, /DID run shell commands/);
-    assert.match(both, /INLINE WATCH BUILDER/);
   });
 
   describe("capabilities grounding", () => {

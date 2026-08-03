@@ -66,8 +66,6 @@ const CASES = [
   ["Create and fill the PubMed index; enable the PUBMED_INDEX binding", ["pubmed"]],
   ["Deep Science agent: peer-reviewed sources only, with Google Scholar", ["science"]],
   ["Add the palaeogenomics agent: Europe PMC + an ancient-sample corpus", ["science"]],
-  ["Add the NHxx watch builder: mix-and-match Seiko NH35/NH36 mod parts in 3D", ["watch"]],
-  ["watch: stop the steel bracelet blowing out to white", ["watch"]],
   ["Starship launch scene: hot-staging and a tower catch", ["games"]],
   ["Run the browser suite against a local Worker, in CI", ["tests"]],
   ["Add an invite / add-user interface for admins", ["admin"]],
@@ -83,7 +81,6 @@ const SV_PARITY = [
   ["Artikelserien på LinkedIn får en ny ingång", "articles"],
   ["Biomedicinska träffar hämtas nu från det andra korpuset", "pubmed"],
   ["Expertgranskade källor och haplogrupperna som saknades", "science"],
-  ["Klockbyggaren: urtavlan och armbandet renderas i 3D", "watch"],
   ["Rymdanimationen: stegseparation utan att tappa höjden", "games"],
 ];
 

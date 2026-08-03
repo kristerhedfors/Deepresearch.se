@@ -331,11 +331,7 @@ enrichments and surfaces** added since: `aadr.js` (the ancient-sample block —
 corpus load through the ASSETS binding, per-binding caching, and the
 declared-context gate that switches it on without a mode or a knob),
 `europepmc.js` (the life-science literature leg, whose bilingual intent gates
-are where the `\b` trap was first found), `watch.js` (the NHxx catalogue
-endpoint's four answer shapes, with `globalThis.fetch` replaced by a throwing
-stub to pin that the module makes no outbound call) (the
-six MCP tools over the same cores, including that junk arguments degrade to a
-described default rather than throwing). **The interchange
+are where the `\b` trap was first found). **The interchange
 standards** get the same treatment, and it is pointed specifically at the gap
 between what a spec claims and what the code does: `drsw-manifest.js` pins that
 `/.well-known/drsw.json` declares the payload kind and version the workspace
@@ -530,17 +526,12 @@ and `account-articles.js`, plus the presentation cores `mode-theme.js`,
 `bar-tint.js`, `graph-backdrop.js`, `plant-spinner.js`, `boot-messages.js`,
 `umbrella-intro.js`, `ghostwalk.js`, `sandbox-mode.js` and `dev-mode.js`.
 
-The demo and watch surfaces are the newest of these. `demo-core.js` covers the
+The demo surface is the newest of these. `demo-core.js` covers the
 capability-demo registry — the deterministic EN+SV "show me X demo" gate and the
 bare-visual-ask inheritance that takes its subject from the turn before — and
 `demo-mount.js` covers which module a matched surface fetches; between them they
 pin that the answer prompt and the thing actually displayed cannot disagree
-(feedback #49/#50/#52). `watch-core.js` covers the NHxx parts catalogue, the
-compatibility engine and the permalink codec, `watch-math.js` the parametric
-geometry extracted from the renderer, and `watch-chat-core.js` the bilingual
-command parser plus the conversation walk that opens on a demo ask and CLOSES on
-an unrelated question, so a watch is never bolted onto someone else's answer.
-Also here: `aadr-core.js` (the ancient-sample corpus parse, the date-window and
+(feedback #49/#50). Also here: `aadr-core.js` (the ancient-sample corpus parse, the date-window and
 radius grammar, and the bilingual intent gates), `chat-mode.js` (the browser
 wrapper over the mode core), `session-core.js`, `starters.js` (the strip's
 rendering over `starters-core.js`) and `unanswered-core.js`.
@@ -827,7 +818,7 @@ A session container **can** open a real browser, and several PRs have shipped
 with "not verified in a browser" written into them on the belief that it
 cannot. Chromium is pre-installed under `/opt/pw-browsers/`, which is what
 `PLAYWRIGHT_BROWSERS_PATH` already points at. This matters most for the WebGL
-and canvas surfaces — `/watch/`, `/space/`, the demo mounts — where a unit test
+and canvas surfaces — `/space/`, the demo mounts — where a unit test
 proves the arithmetic and says nothing about whether the shader compiled.
 
 Three snags, each with its fix (established 2026-07-30 while reviewing PR #345,
@@ -844,11 +835,11 @@ whose own body reported no browser was available):
    With those, `getContext("webgl")` succeeds and the page's shaders really do
    compile — a compile failure shows up as a console error and a blank canvas,
    which is exactly the class of break that unit tests cannot see.
-3. `wrangler dev` is the wrong host for a static showcase page: `/watch/` and
-   `/space/` **301 to themselves** locally, while production serves both 200.
-   It is a local asset-routing artifact, not a defect. Serve the directory
-   instead — `cd public && python3 -m http.server 8123` — since these pages are
-   static HTML plus module imports rooted at `/js/`.
+3. `wrangler dev` is the wrong host for a static showcase page: `/space/`
+   **301s to itself** locally, while production serves 200. It is a local
+   asset-routing artifact, not a defect. Serve the directory instead —
+   `cd public && python3 -m http.server 8123` — since these pages are static
+   HTML plus module imports rooted at `/js/`.
 
 **Measure the render; do not only look at it — and do not only count lit
 pixels.** The space-animations rule stands (a lit-pixel count passes happily on

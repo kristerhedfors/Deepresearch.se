@@ -1,33 +1,33 @@
 {
   "generated_by": "npm run coverage -- --save",
-  "modules": 262,
+  "modules": 272,
   "unloaded_modules": 33,
-  "total_lines": 108071,
-  "unloaded_lines": 15441,
+  "total_lines": 110560,
+  "unloaded_lines": 14794,
   "totals": {
-    "line": 71.93,
-    "branch": 71.71,
-    "func": 64.91,
-    "loaded_share": 85.71
+    "line": 72.84,
+    "branch": 71.98,
+    "func": 65.44,
+    "loaded_share": 86.62
   },
   "by_module": {
     "src/aadr.js": {
-      "lines": 211,
-      "line": 98.1,
-      "branch": 78.43,
+      "lines": 175,
+      "line": 100,
+      "branch": 84.21,
       "func": 100
     },
     "src/accounts.js": {
-      "lines": 204,
-      "line": 69.95,
-      "branch": 40,
-      "func": 44.44
+      "lines": 282,
+      "line": 75.8,
+      "branch": 59.26,
+      "func": 54.55
     },
     "src/admin-api.js": {
-      "lines": 471,
-      "line": 31.49,
-      "branch": 100,
-      "func": 0
+      "lines": 535,
+      "line": 46.07,
+      "branch": 29.79,
+      "func": 16.67
     },
     "src/admin-boards.js": {
       "lines": 198,
@@ -84,19 +84,19 @@
       "func": 76.92
     },
     "src/arxiv-rag.js": {
-      "lines": 341,
+      "lines": 190,
       "line": 100,
-      "branch": 81.18,
+      "branch": 91.43,
       "func": 100
     },
     "src/arxiv.js": {
-      "lines": 839,
-      "line": 98.81,
+      "lines": 849,
+      "line": 98.82,
       "branch": 94.84,
       "func": 94.12
     },
     "src/assets.js": {
-      "lines": 467,
+      "lines": 460,
       "line": 100,
       "branch": 100,
       "func": 100
@@ -104,7 +104,7 @@
     "src/auth.js": {
       "lines": 319,
       "line": 89.94,
-      "branch": 85.94,
+      "branch": 85.71,
       "func": 72.22
     },
     "src/bash-agent.js": {
@@ -120,10 +120,10 @@
       "func": 0
     },
     "src/berget.js": {
-      "lines": 561,
-      "line": 92.68,
-      "branch": 84.26,
-      "func": 78.79
+      "lines": 575,
+      "line": 97.56,
+      "branch": 87.79,
+      "func": 79.41
     },
     "src/billing.js": {
       "lines": 119,
@@ -150,22 +150,22 @@
       "func": 92.86
     },
     "src/canonical.js": {
-      "lines": 40,
+      "lines": 65,
       "line": 100,
       "branch": 100,
       "func": 100
     },
     "src/chat-modes.js": {
-      "lines": 26,
+      "lines": 27,
       "line": 100,
       "branch": 100,
       "func": 100
     },
     "src/chat.js": {
-      "lines": 1195,
-      "line": 90.12,
-      "branch": 50.83,
-      "func": 70.59
+      "lines": 1224,
+      "line": 88.8,
+      "branch": 50,
+      "func": 66.67
     },
     "src/chatlog.js": {
       "lines": 453,
@@ -180,13 +180,13 @@
       "func": 57.14
     },
     "src/conversation.js": {
-      "lines": 217,
-      "line": 99.07,
-      "branch": 97.1,
+      "lines": 266,
+      "line": 99.25,
+      "branch": 97.73,
       "func": 100
     },
     "src/db.js": {
-      "lines": 516,
+      "lines": 537,
       "line": 100,
       "branch": 100,
       "func": 80
@@ -195,6 +195,12 @@
       "lines": 25,
       "line": 100,
       "branch": 100,
+      "func": 100
+    },
+    "src/dense-rag.js": {
+      "lines": 265,
+      "line": 98.86,
+      "branch": 76.19,
       "func": 100
     },
     "src/drsw-manifest.js": {
@@ -216,15 +222,15 @@
       "func": 100
     },
     "src/enrichment.js": {
-      "lines": 140,
-      "line": 96.4,
-      "branch": 85.71,
-      "func": 57.14
+      "lines": 163,
+      "line": 96.91,
+      "branch": 87.5,
+      "func": 55.56
     },
     "src/europepmc.js": {
-      "lines": 534,
+      "lines": 592,
       "line": 100,
-      "branch": 88.89,
+      "branch": 93.46,
       "func": 100
     },
     "src/exa.js": {
@@ -270,9 +276,9 @@
       "func": 16.67
     },
     "src/google.js": {
-      "lines": 246,
-      "line": 82.04,
-      "branch": 28.95,
+      "lines": 267,
+      "line": 84.59,
+      "branch": 31.91,
       "func": 88.89
     },
     "src/googlemaps-blocks.js": {
@@ -282,7 +288,7 @@
       "func": 100
     },
     "src/googlemaps-text.js": {
-      "lines": 1714,
+      "lines": 1719,
       "line": 99.94,
       "branch": 88.71,
       "func": 100
@@ -300,8 +306,8 @@
       "func": 100
     },
     "src/hf-inference.js": {
-      "lines": 426,
-      "line": 80.94,
+      "lines": 415,
+      "line": 83.09,
       "branch": 80.56,
       "func": 66.67
     },
@@ -324,9 +330,9 @@
       "func": 100
     },
     "src/index.js": {
-      "lines": 964,
-      "line": 73.83,
-      "branch": 25.51,
+      "lines": 988,
+      "line": 74.47,
+      "branch": 26.34,
       "func": 71.43
     },
     "src/introspect-tools.js": {
@@ -346,6 +352,18 @@
       "line": 98.45,
       "branch": 65.71,
       "func": 36.84
+    },
+    "src/literature-run.js": {
+      "lines": 673,
+      "line": 97.77,
+      "branch": 78.81,
+      "func": 86.67
+    },
+    "src/literature-tools.js": {
+      "lines": 750,
+      "line": 100,
+      "branch": 89.06,
+      "func": 100
     },
     "src/llm-proxy.js": {
       "lines": 172,
@@ -378,9 +396,9 @@
       "func": 91.67
     },
     "src/mcp-config.js": {
-      "lines": 370,
-      "line": 99.46,
-      "branch": 98.29,
+      "lines": 404,
+      "line": 99.5,
+      "branch": 98.28,
       "func": 100
     },
     "src/mcp-key.js": {
@@ -390,10 +408,16 @@
       "func": 100
     },
     "src/mcp.js": {
-      "lines": 609,
-      "line": 46.88,
+      "lines": 687,
+      "line": 46.79,
       "branch": 100,
-      "func": 63.64
+      "func": 61.54
+    },
+    "src/memory.js": {
+      "lines": 307,
+      "line": 74.51,
+      "branch": 82.76,
+      "func": 50
     },
     "src/model-catalog.js": {
       "lines": 362,
@@ -402,10 +426,10 @@
       "func": 84.21
     },
     "src/model-checks.js": {
-      "lines": 377,
-      "line": 94.68,
-      "branch": 62.92,
-      "func": 91.89
+      "lines": 394,
+      "line": 95.93,
+      "branch": 64.84,
+      "func": 92.11
     },
     "src/model-profiles.js": {
       "lines": 160,
@@ -420,10 +444,10 @@
       "func": 100
     },
     "src/models-agent.js": {
-      "lines": 238,
-      "line": 64.98,
+      "lines": 202,
+      "line": 70.15,
       "branch": 91.67,
-      "func": 50
+      "func": 75
     },
     "src/models-api.js": {
       "lines": 280,
@@ -438,9 +462,9 @@
       "func": 100
     },
     "src/openai.js": {
-      "lines": 199,
-      "line": 98.48,
-      "branch": 72.73,
+      "lines": 188,
+      "line": 98.4,
+      "branch": 84.21,
       "func": 84.62
     },
     "src/orchestrator-api.js": {
@@ -474,10 +498,10 @@
       "func": 100
     },
     "src/pipeline.js": {
-      "lines": 2408,
-      "line": 65.39,
-      "branch": 36.9,
-      "func": 49.21
+      "lines": 2463,
+      "line": 66.21,
+      "branch": 38.8,
+      "func": 49.23
     },
     "src/pool-token.js": {
       "lines": 111,
@@ -498,8 +522,8 @@
       "func": 100
     },
     "src/prompts.js": {
-      "lines": 850,
-      "line": 98.12,
+      "lines": 860,
+      "line": 98.14,
       "branch": 90.53,
       "func": 96.77
     },
@@ -525,6 +549,12 @@
       "lines": 158,
       "line": 100,
       "branch": 79.63,
+      "func": 85.71
+    },
+    "src/pubmed-rag.js": {
+      "lines": 154,
+      "line": 98.69,
+      "branch": 84.38,
       "func": 85.71
     },
     "src/quiz-api.js": {
@@ -569,6 +599,24 @@
       "branch": 97.53,
       "func": 100
     },
+    "src/scholar-metrics.js": {
+      "lines": 388,
+      "line": 99.22,
+      "branch": 66.15,
+      "func": 100
+    },
+    "src/scholar-venues.js": {
+      "lines": 166,
+      "line": 98.79,
+      "branch": 70.73,
+      "func": 100
+    },
+    "src/scholar.js": {
+      "lines": 1142,
+      "line": 77.56,
+      "branch": 73.66,
+      "func": 70
+    },
     "src/sdk-tools.js": {
       "lines": 42,
       "line": 100,
@@ -576,14 +624,14 @@
       "func": 100
     },
     "src/search-sources.js": {
-      "lines": 220,
+      "lines": 260,
       "line": 100,
       "branch": 92.31,
       "func": 100
     },
     "src/security-headers.js": {
-      "lines": 110,
-      "line": 98.17,
+      "lines": 119,
+      "line": 98.31,
       "branch": 66.67,
       "func": 100
     },
@@ -612,10 +660,10 @@
       "func": 100
     },
     "src/settings.js": {
-      "lines": 508,
-      "line": 78.5,
+      "lines": 531,
+      "line": 79.43,
       "branch": 100,
-      "func": 78.95
+      "func": 80
     },
     "src/shodan-enrichment.js": {
       "lines": 67,
@@ -660,8 +708,8 @@
       "func": 0
     },
     "src/testpoints.js": {
-      "lines": 742,
-      "line": 77.46,
+      "lines": 724,
+      "line": 76.9,
       "branch": 93.96,
       "func": 71.43
     },
@@ -702,9 +750,9 @@
       "func": 100
     },
     "src/triage.js": {
-      "lines": 232,
+      "lines": 253,
       "line": 100,
-      "branch": 96.23,
+      "branch": 96.49,
       "func": 100
     },
     "src/user-api.js": {
@@ -737,12 +785,6 @@
       "branch": 83.33,
       "func": 100
     },
-    "src/watch.js": {
-      "lines": 225,
-      "line": 100,
-      "branch": 90,
-      "func": 100
-    },
     "src/websearch-backends.js": {
       "lines": 142,
       "line": 100,
@@ -768,8 +810,8 @@
       "func": 50
     },
     "public/js/aadr-core.js": {
-      "lines": 906,
-      "line": 98.34,
+      "lines": 910,
+      "line": 98.35,
       "branch": 81.9,
       "func": 92.5
     },
@@ -803,6 +845,12 @@
       "branch": null,
       "func": null
     },
+    "public/js/account-memory.js": {
+      "lines": 196,
+      "line": null,
+      "branch": null,
+      "func": null
+    },
     "public/js/account-messages.js": {
       "lines": 168,
       "line": null,
@@ -816,19 +864,19 @@
       "func": null
     },
     "public/js/account-settings.js": {
-      "lines": 539,
+      "lines": 552,
       "line": null,
       "branch": null,
       "func": null
     },
     "public/js/account-views.js": {
-      "lines": 564,
-      "line": 65.01,
+      "lines": 573,
+      "line": 65.38,
       "branch": 51.06,
       "func": 46.67
     },
     "public/js/account.js": {
-      "lines": 206,
+      "lines": 215,
       "line": null,
       "branch": null,
       "func": null
@@ -846,7 +894,7 @@
       "func": 0
     },
     "public/js/admin.js": {
-      "lines": 1519,
+      "lines": 1568,
       "line": null,
       "branch": null,
       "func": null
@@ -870,7 +918,7 @@
       "func": null
     },
     "public/js/agent-spec-core.js": {
-      "lines": 1327,
+      "lines": 1329,
       "line": 99.47,
       "branch": 80.46,
       "func": 97.01
@@ -888,10 +936,10 @@
       "func": null
     },
     "public/js/arxiv-rag-core.js": {
-      "lines": 672,
-      "line": 99.11,
-      "branch": 84.38,
-      "func": 96.3
+      "lines": 707,
+      "line": 99.15,
+      "branch": 85.21,
+      "func": 96.36
     },
     "public/js/attachments.js": {
       "lines": 336,
@@ -930,7 +978,7 @@
       "func": 100
     },
     "public/js/bash-core.js": {
-      "lines": 890,
+      "lines": 892,
       "line": 100,
       "branch": 94.79,
       "func": 100
@@ -942,21 +990,21 @@
       "func": 100
     },
     "public/js/canned-faq.js": {
-      "lines": 340,
+      "lines": 350,
       "line": 100,
       "branch": 91.18,
       "func": 100
     },
     "public/js/chat-mode-core.js": {
-      "lines": 131,
+      "lines": 143,
       "line": 100,
       "branch": 100,
       "func": 100
     },
     "public/js/chat-mode.js": {
-      "lines": 235,
-      "line": 91.45,
-      "branch": 70,
+      "lines": 243,
+      "line": 91.74,
+      "branch": 66.67,
       "func": 83.33
     },
     "public/js/chat-rag.js": {
@@ -966,22 +1014,28 @@
       "func": 81.82
     },
     "public/js/deeplink-core.js": {
-      "lines": 90,
-      "line": 97.75,
+      "lines": 113,
+      "line": 98.21,
       "branch": 85,
       "func": 100
     },
     "public/js/demo-core.js": {
-      "lines": 311,
-      "line": 100,
-      "branch": 100,
-      "func": 100
+      "lines": 297,
+      "line": 93.92,
+      "branch": 94,
+      "func": 61.54
     },
     "public/js/demo-embed.js": {
       "lines": 97,
       "line": null,
       "branch": null,
       "func": null
+    },
+    "public/js/demo-mount.js": {
+      "lines": 72,
+      "line": 74.65,
+      "branch": 100,
+      "func": 50
     },
     "public/js/dev-mode.js": {
       "lines": 67,
@@ -1145,6 +1199,12 @@
       "branch": 96.55,
       "func": 70.59
     },
+    "public/js/memory-core.js": {
+      "lines": 357,
+      "line": 100,
+      "branch": 92.59,
+      "func": 92.31
+    },
     "public/js/message-content.js": {
       "lines": 525,
       "line": 97.71,
@@ -1158,13 +1218,13 @@
       "func": null
     },
     "public/js/mode-spinner.js": {
-      "lines": 108,
-      "line": 76.64,
+      "lines": 122,
+      "line": 78.51,
       "branch": 100,
       "func": 0
     },
     "public/js/mode-theme.js": {
-      "lines": 292,
+      "lines": 346,
       "line": 100,
       "branch": 100,
       "func": 100
@@ -1319,6 +1379,12 @@
       "branch": 93.1,
       "func": 100
     },
+    "public/js/pubmed-core.js": {
+      "lines": 432,
+      "line": 100,
+      "branch": 84.38,
+      "func": 100
+    },
     "public/js/pulse-timeline-core.js": {
       "lines": 344,
       "line": 99.71,
@@ -1416,10 +1482,10 @@
       "func": 33.33
     },
     "public/js/settings.js": {
-      "lines": 192,
-      "line": 78.5,
+      "lines": 205,
+      "line": 79.43,
       "branch": 100,
-      "func": 78.95
+      "func": 80
     },
     "public/js/slash-core.js": {
       "lines": 218,
@@ -1440,19 +1506,19 @@
       "func": 100
     },
     "public/js/source-peek.js": {
-      "lines": 333,
-      "line": 44.28,
+      "lines": 369,
+      "line": 48.91,
       "branch": 100,
       "func": 0
     },
     "public/js/space-core.js": {
-      "lines": 1038,
-      "line": 99.52,
-      "branch": 89.1,
-      "func": 97.37
+      "lines": 1496,
+      "line": 99.46,
+      "branch": 91.37,
+      "func": 96.08
     },
     "public/js/space-embed.js": {
-      "lines": 894,
+      "lines": 1088,
       "line": null,
       "branch": null,
       "func": null
@@ -1464,13 +1530,13 @@
       "func": 100
     },
     "public/js/starters-core.js": {
-      "lines": 1099,
+      "lines": 1100,
       "line": 99,
       "branch": 84.65,
       "func": 98.91
     },
     "public/js/starters-data.js": {
-      "lines": 828,
+      "lines": 895,
       "line": 100,
       "branch": 100,
       "func": 100
@@ -1506,14 +1572,14 @@
       "func": null
     },
     "public/js/testpoints-core.js": {
-      "lines": 278,
-      "line": 98.56,
+      "lines": 291,
+      "line": 98.62,
       "branch": 93.33,
       "func": 100
     },
     "public/js/testpoints.js": {
       "lines": 573,
-      "line": 77.46,
+      "line": 76.9,
       "branch": 93.96,
       "func": 71.43
     },
@@ -1524,8 +1590,8 @@
       "func": 100
     },
     "public/js/turns.js": {
-      "lines": 679,
-      "line": 35.55,
+      "lines": 678,
+      "line": 35.45,
       "branch": 100,
       "func": 7.41
     },
@@ -1553,18 +1619,6 @@
       "branch": 83.33,
       "func": 100
     },
-    "public/js/watch-core.js": {
-      "lines": 2691,
-      "line": 98.92,
-      "branch": 92.31,
-      "func": 100
-    },
-    "public/js/watch-render.js": {
-      "lines": 1108,
-      "line": null,
-      "branch": null,
-      "func": null
-    },
     "public/js/websearch-backends-core.js": {
       "lines": 237,
       "line": 97.03,
@@ -1581,6 +1635,12 @@
       "lines": 435,
       "line": 100,
       "branch": 88.19,
+      "func": 100
+    },
+    "public/js/zip-core.js": {
+      "lines": 161,
+      "line": 100,
+      "branch": 94.44,
       "func": 100
     }
   }

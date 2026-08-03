@@ -1161,19 +1161,14 @@ can compose with them:
   `initialize`, `tools/list`, `tools/call`, plus a no-op ack for
   `notifications/initialized`.
 - **The tools** (`toolsListResult()` = `DEEP_RESEARCH_TOOL` +
-  `SDK_MCP_TOOLS` + `WATCH_MCP_TOOLS`): `deep_research` — question in;
+  `LITERATURE_MCP_TOOLS` + `SDK_MCP_TOOLS`): `deep_research` — question in;
   cited, validated, source-diverse answer out; the handler mirrors
   `chat.js`'s per-request setup and runs the same `runPipeline` (quizzes
   stay off on this channel) — plus the four Platform-SDK registry tools
   `sdk_list_modules`, `sdk_show_module`, `sdk_plan` and `sdk_validate`,
   so an agent can plan against `sdk/MANIFEST.json` without shelling into
   the sandbox (the **sdk-mode** skill). That family is pure: committed
-  data, no network, no D1, no model, nothing to spend. A six-tool NHxx
-  watch-builder family lived here too and was REMOVED on 2026-08-02 (owner
-  directive) — the builder is a browser and chat surface, and
-  `GET /api/watch/catalog` already answers the non-browser caller, so the
-  tools cost schemas and an exposure switch each against a caller nobody
-  could name.
+  data, no network, no D1, no model, nothing to spend.
 - **Auth — two ways in, both resolving to a real account.** The route is
   wired *after* the identity gate, so a signed-in session and the
   break-glass Basic Auth header work exactly as they always did. External
@@ -1657,12 +1652,8 @@ models reasoning in parallel browser workers, planned through
 `POST /api/orchestrator/plan` and merged server-side), **compute sharing**
 (`src/pool.js`, `src/pool-token.js`, `docs/COMPUTE-SHARING.md`), **workspace
 knowledge** (`src/knowledge.js`), the **quiz** surface (`src/quiz.js`), the
-**capability-demo registry and the NHxx watch builder** it drives
-(`public/js/demo-core.js`, `watch-core.js`, `watch-chat-core.js`, façades
-`src/demos.js`, `src/watch.js`, `src/watch-chat.js`,
-`docs/WATCH-BUILDER.md`, 2026-07-30 — the newest surface, and the clearest case
-of one that should have been a spec: a conversational builder over a committed
-catalogue is a flavour, not a subsystem) and the
+**capability-demo registry** (`public/js/demo-core.js`, façade
+`src/demos.js`) and the
 **execution-environment seam** (`public/js/exec-backends-core.js`,
 `src/exec-container.js`, `docs/EXECUTION-ENVIRONMENTS.md`, 2026-07-26 — the
 DREE/1 wire letting either a runner on the user's own machine or an ephemeral

@@ -141,7 +141,7 @@ export const FILTER_NOTE =
 
 // ---------------------------------------------------------------------------
 // Tool definitions. Written in Anthropic's `input_schema` key like SDK_TOOLS
-// and WATCH_TOOLS, so src/mcp.js renames it to MCP's `inputSchema` in one
+// as the SDK family does, so src/mcp.js renames it to MCP's `inputSchema` in one
 // place. Descriptions are what the CALLING model reads — they carry the
 // operating advice (batch your angles; a miss may be a window, not a failure)
 // that no amount of documentation elsewhere will reach it.
@@ -321,7 +321,7 @@ export const LITERATURE_TOOL_NAMES = new Set(LITERATURE_TOOLS.map((t) => t.name)
 // ---------------------------------------------------------------------------
 // Argument parsing. Every one of these DEGRADES rather than throws: a tool
 // that errors on a slightly wrong argument is a model that retries the same
-// call forever (the lesson src/watch-tools.js records). What cannot be
+// call forever. What cannot be
 // understood becomes the documented default, and the response says what was
 // used.
 // ---------------------------------------------------------------------------

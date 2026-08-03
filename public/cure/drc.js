@@ -147,7 +147,7 @@ import { detectLang, matchCanned } from "/js/canned-faq.js";
 import { feedbackComment, feedbackPageTag, feedbackRequested, feedbackScopeOfPrior } from "/js/feedback-core.js";
 import { slashEffect } from "/js/slash-core.js";
 import { mountSlashMenu } from "/js/slash-menu.js";
-import { demoSurfacePossible, mountDemoSurface, setDemoCommandSender, userTextsOf } from "/js/demo-mount.js";
+import { demoSurfacePossible, mountDemoSurface } from "/js/demo-mount.js";
 import { renderMarkdownInto } from "/js/markdown.js";
 import { mountUmbrellaSpinner } from "/js/umbrella-spinner.js";
 
@@ -1812,20 +1812,16 @@ function renderMessages() {
   const conv = activeConv();
   let prevUserText = "";
   let priorUserText = "";
-  // The user side so far, oldest first: a watch thread rebuilds the exact build
-  // each stored turn was answered with by replaying its commands (feedback #52).
-  const userTexts = [];
   messages.forEach((m, i) => {
     // A demo ask re-mounts its surface above the stored answer (feedback #18,
-    // #49, #52) — deterministic re-detection from the messages, the same rule
-    // the live send path applies, so reloads keep the canvas or the watch.
+    // #49) — deterministic re-detection from the messages, the same rule the
+    // live send path applies, so reloads keep the canvas.
     if (m.role === "assistant") {
-      mountDrcSpaceEmbed(box, prevUserText, { priorText: priorUserText, userTexts: [...userTexts] });
+      mountDrcSpaceEmbed(box, prevUserText, { priorText: priorUserText });
     }
     if (m.role === "user") {
       priorUserText = prevUserText;
       prevUserText = typeof m.content === "string" ? m.content : "";
-      userTexts.push(prevUserText);
     }
     box.appendChild(messageEl(m.role, m.content, { conv, index: i }));
   });
@@ -1837,12 +1833,9 @@ function renderMessages() {
 // turns.js mountDemoEmbed. WHICH surface, and which renderer, is one shared
 // decision (/js/demo-mount.js) so the two tiers cannot drift: a /space/ scene
 // renders inline as a playable wireframe canvas ("show a moonshot from space
-// between earth and moon", "visa jorden och månen" — feedback #18); the NHxx
-// watch builder renders as a live 3D watch this conversation drives with text
-// commands (feedback #49 routed the ask here, #52 moved the builder into the
-// turn). `priorText` lets a bare "show me visually" inherit the subject of the
-// turn before it (feedback #50), and the user side of the conversation lets a
-// watch thread replay its commands in order.
+// between earth and moon", "visa jorden och månen" — feedback #18); a page-only
+// surface renders as a link card (feedback #49). `priorText` lets a bare "show
+// me visually" inherit the subject of the turn before it (feedback #50).
 //
 // Every renderer is dynamic-imported so the module graph only pays for the one
 // that matched; they are same-origin static assets, so the server stays out of
@@ -1859,16 +1852,16 @@ function drcPriorUserText(conv) {
   return "";
 }
 
-function mountDrcSpaceEmbed(host, questionText, { before = null, priorText = "", userTexts = [] } = {}) {
+function mountDrcSpaceEmbed(host, questionText, { before = null, priorText = "" } = {}) {
   try {
     // Cheap synchronous check first: most messages want no surface, and placing a
     // box for them only to remove it a microtask later is layout churn — most
     // visibly when a stored conversation re-renders.
-    if (!demoSurfacePossible({ questionText: questionText || "", priorText: priorText || "", userTexts })) return;
+    if (!demoSurfacePossible({ questionText: questionText || "", priorText: priorText || "" })) return;
     const box = document.createElement("div");
     if (before && before.parentNode) before.parentNode.insertBefore(box, before);
     else host.appendChild(box);
-    mountDemoSurface(box, { questionText: questionText || "", priorText: priorText || "", userTexts })
+    mountDemoSurface(box, { questionText: questionText || "", priorText: priorText || "" })
       .then((ok) => { if (!ok) box.remove(); })
       .catch(() => box.remove());
   } catch { /* decorative — never break the chat */ }
@@ -3907,13 +3900,11 @@ async function send(ev) {
   live.className = "msg assistant streaming";
   $("chat").appendChild(live);
   // A demo ask mounts its surface above the incoming answer — the /space/
-  // wireframe scene (feedback #18) or the inline watch builder (feedback #49,
-  // #52); the research answer still streams below it. `conv.messages` already
-  // carries this send, so its user side is the watch thread's full input.
+  // wireframe scene (feedback #18) or a page-only surface's link card (feedback
+  // #49); the research answer still streams below it.
   mountDrcSpaceEmbed($("chat"), text, {
     before: live,
     priorText: drcPriorUserText(conv),
-    userTexts: userTextsOf(conv?.messages),
   });
   // The research steps render inline, just above this send's answer (matching
   // the DRS app's activity placement) — not in the composer footer.
@@ -4419,14 +4410,6 @@ mountSlashMenu({
     const prior = conv?.messages?.filter((m) => m.role === "user").slice(-1)[0]?.content || "";
     return detectLang(typed || prior);
   },
-});
-// The inline watch builder's suggestion chips (/js/watch-embed.js) send the
-// command they show. Lending it this tier's composer is the whole wiring — and
-// it stays client-side like everything else here: the chip fills the same box a
-// typed command would.
-setDemoCommandSender((text) => {
-  $("input").value = text;
-  $("form").requestSubmit();
 });
 // Introspection knob (client-local, persisted in the sealed project state):
 // unlocks introspection mode for this browser's conversations, and tints the

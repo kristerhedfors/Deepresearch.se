@@ -4,7 +4,7 @@
 // public/js/demo-core.js). A matched ask mounts one of these above the reply:
 // what the surface is, what it does, and a link straight into it.
 //
-// Why a card and not an embed: /watch/ is a WebGL builder with its own
+// Why a card and not an embed: a page surface is a whole app with its own
 // catalogue, permalink codec and sourcing table — a real page, not a canvas.
 // Inlining it would mean a second copy of that page inside a chat turn. The
 // card is the honest shape: it tells the user the capability exists and takes

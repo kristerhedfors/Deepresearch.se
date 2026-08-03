@@ -131,22 +131,6 @@ export function previousUserText(conversation) {
   return users.length >= 2 ? textOf(users[users.length - 2].content) : "";
 }
 
-// Every user message as plain text, oldest first. The demo registry's stateful
-// surfaces need the whole user side rather than the last one or two turns: the
-// inline watch builder replays its text commands in order to arrive at the build
-// the turn is being answered with (public/js/watch-chat-core.js watchThread),
-// and the Worker has to walk the identical list the client walked or the answer
-// describes a different watch than the one on screen.
-/**
- * @param {Msg[]} conversation
- * @returns {string[]}
- */
-export function userTexts(conversation) {
-  return (Array.isArray(conversation) ? conversation : [])
-    .filter((m) => m?.role === "user")
-    .map((m) => textOf(m.content));
-}
-
 // Text of the most recent assistant message — the reply the latest user
 // message is answering. Triage reads it to notice that it has already asked a
 // clarifying question (src/triage.js looksLikeClarifyTurn): the request the

@@ -1232,10 +1232,9 @@ line on the feedback entry and the **feedback-loop** skill.
 ## UX-22 — If the site ships a tool that answers the request, the chat offers the tool — it does not research around it
 
 **Rule.** When a message asks to be SHOWN something the site already builds —
-"Seiko watch demo", "space launch demo", "visa mig klockbyggaren" — the reply
-carries the surface itself: a `/space/` scene mounts inline as a playable
-canvas, a page surface like the `/watch/` builder mounts as a card one tap into
-it. Three things hold:
+"space launch demo", "visa mig rymduppskjutningen" — the reply carries the
+surface itself: a `/space/` scene mounts inline as a playable canvas, a
+page-only surface mounts as a card one tap into it. Three things hold:
 
 - **The routing is a registry, not a branch.** `public/js/demo-core.js` owns the
   gate and the list of demonstrable surfaces. Adding one is an entry; no client
@@ -1249,9 +1248,9 @@ it. Three things hold:
   costs a card the user ignores, never an answer.
 
 **Why.** Feedback #49 and #50, 2026-07-29, minutes apart in the same demo
-session. "Seiko watch demo" ran a full research pass, found four irrelevant
-sources and reported "no usable information" — on the day the NHxx watch
-builder shipped. "Space launch demo" → "Show me visually" produced an ASCII bar
+session. An ask for a surface this site ships ran a full research pass, found
+four irrelevant sources and reported "no usable information" — on the day that
+surface shipped. "Space launch demo" → "Show me visually" produced an ASCII bar
 chart of a dataset the sandbox invented, with the launch animation unmounted
 because the matcher had `rocket launch` but not `space launch`. Neither is a
 model failure — the routing was never asked. The reporter generalised it in one
@@ -1269,10 +1268,10 @@ demo for instance."*
    either language's pattern makes the language whichever set was tested first;
    they are `neutral`, and the subject decides (invariant 6 still applies to
    every other pattern).
-3. **A subject that is also a common verb needs a companion.** `watch` fires
-   only beside a show verb or a build word, or the card mounts on "watch out
-   for rate limits". The unambiguous forms (`nh35`, `watch builder`,
-   `klockbyggare`) fire alone.
+3. **A subject that is also a common verb needs a companion.** A subject word
+   that doubles as an everyday verb fires only beside a show verb or a build
+   word, or the card mounts on half the site's conversations. Only the
+   unambiguous forms fire alone.
 4. **A card is the fallback, not the default.** The first version of this rule
    said a page with its own state, permalink and tables gets a card, because
    inlining it would put a second copy of the page inside a chat turn. Feedback
@@ -1284,10 +1283,9 @@ demo for instance."*
 **Canonical implementation:** `public/js/demo-core.js` (`DEMOS`, `demoIntent`,
 Node-tested in `demo-core.test.js`), the shared mount decision
 `public/js/demo-mount.js`, the renderers `public/js/space-embed.js` /
-`public/js/watch-embed.js` / `public/js/demo-embed.js`, the tier mounts
-`turns.js mountDemoEmbed` / `drc.js mountDrcSpaceEmbed`, and the prompt half in
-`src/pipeline.js` `demoSurfaces` → `src/prompts.js` `demoSurfaceNote` /
-`watchBuildNote`.
+`public/js/demo-embed.js`, the tier mounts `turns.js mountDemoEmbed` /
+`drc.js mountDrcSpaceEmbed`, and the prompt half in `src/pipeline.js`
+`demoSurfaces` → `src/prompts.js` `demoSurfaceNote`.
 
 ---
 
@@ -1297,8 +1295,8 @@ Node-tested in `demo-core.test.js`), the shared mount decision
 becomes its control panel. Four things hold:
 
 - **Plain text is the input.** No panel of pickers is reproduced in the turn.
-  The message is the command — "pepsi bezel", "svart urtavla", "lights out" —
-  parsed deterministically, EN and SV alike.
+  The message is the command — a slot and a value, "lights out" — parsed
+  deterministically, EN and SV alike.
 - **Every reply re-renders and states the delta.** The surface appears on each
   turn of the thread, showing the state that turn's message produced, with a
   what-changed line on it. The answer model is told the same delta so its prose
@@ -1313,11 +1311,12 @@ becomes its control panel. Four things hold:
   than what the answer describes.
 
 **Why.** Feedback #52, 2026-07-30, on the card UX-22 describes, which had
-shipped the day before: *"i want the watch builder to be inline so I get the watch animation
-here and suggestions on what one can change through text commands … every new
-reply contains a new watch animation with text on what changed."* A link is
-somewhere else; it cannot be driven by the conversation that produced it, and a
-conversation cannot report what changed in a page it does not own.
+shipped the day before: the reporter wanted the builder inline, so the render
+arrived in the turn together with suggestions of what a text command could
+change, and *"every new reply contains a new animation with text on what
+changed."* A link is somewhere else; it cannot be driven by the conversation
+that produced it, and a conversation cannot report what changed in a page it
+does not own.
 
 **The parts that are easy to get wrong:**
 
@@ -1326,8 +1325,8 @@ conversation cannot report what changed in a page it does not own.
    while each message is recognisably about the tool, and close on the first
    that is not — then stay closed until another explicit ask.
 2. **An ambiguous value needs its slot word NEARBY, not merely present.** In
-   "blue dial and green bezel" both colours are inside the dial's window;
-   proximity is what decides. Whole-message presence sets the wrong one.
+   "blue X and green Y" both colours are inside X's window; proximity is what
+   decides. Whole-message presence sets the wrong one.
 3. **A suggestion the parser rejects is worse than no suggestion.** Generate
    offers from the same vocabulary that reads them, and test the round trip over
    the whole option set in both languages rather than spot-checking.
@@ -1338,14 +1337,11 @@ conversation cannot report what changed in a page it does not own.
 5. **Degrade to the card, not to nothing.** If the device cannot render, mount
    UX-22's link card instead — the tool does still exist.
 
-**Canonical implementation:** `public/js/watch-chat-core.js` (`parseWatchCommand`,
-`watchThread`, `suggestCommands`, `watchPromptBlock`; Node-tested in
-`watch-chat-core.test.js`), the embed `public/js/watch-embed.js`, the pre-gate
-`public/js/demo-mount.js` `watchOpenedIn`, and the prompt half in
-`src/pipeline.js` `demoSurfaces` → `src/prompts.js` `watchBuildNote`. The same
-core is a tool family over MCP as well (`src/watch-tools.js`): if the
-conversation can drive the surface, an agent can drive it too. Full account:
-`docs/WATCH-BUILDER.md` §6b.
+**Canonical implementation:** none in the tree today. The surface this rule was
+written from — a conversational parts builder — was removed on 2026-08-03 and
+moved to a different site, taking its parser, embed and prompt block with it.
+The rule stands for the next surface that mounts inside a turn; the seam it used
+is still here (`public/js/demo-mount.js`, `src/pipeline.js` `demoSurfaces`).
 
 ---
 
@@ -1366,12 +1362,12 @@ the problem was first noticed. A slot that may be left empty offers a real
 ("which parts exist?") with an answer to a different one ("which parts fit
 right now?"), and it does it invisibly — the option simply is not there, and the
 user cannot tell whether it was never made or is merely incompatible with a
-choice they could revisit. Feedback #56 named exactly this on the NHxx watch
-builder: *"dials should come in certain designs and designs that can not be
-found in versions suited to the currently selected movement should be in a
-dropdown menu with a warning symbol. This choice system philosophy should be
-applied in all cases when suitable."* The complement is #57 — *"the surprise me
-button should not pair incompatible parts"* — the other half of the same rule:
+choice they could revisit. Feedback #56 named exactly this on a parts picker:
+options that cannot be found in a version suited to the currently selected
+component should sit *"in a dropdown menu with a warning symbol"*, and the
+report generalised it — *"this choice system philosophy should be applied in
+all cases when suitable."* The complement is #57 — *"the surprise me button
+should not pair incompatible parts"* — the other half of the same rule:
 the tool may **show** you an impossible combination on request, but it must
 never **hand** you one when you asked it to choose.
 
@@ -1391,11 +1387,11 @@ never **hand** you one when you asked it to choose.
    the cursor.
 4. **A warned pick keeps its warning, and the reason is said once.** Mark the
    slot's current value (⚠ + a warning colour) and print the reason under the
-   slot. One clash is usually visible from both ends of it — dial and movement
-   name the same sentence — so de-duplicate the reason lines within a render
-   pass and leave the ⚠ markers.
+   slot. One clash is usually visible from both ends of it — the two parts that
+   disagree name the same sentence — so de-duplicate the reason lines within a
+   render pass and leave the ⚠ markers.
 5. **Optional means a visible "none".** A slot that can be left out gets an
-   explicit, differently-styled choice ("None — comes with the case"), because
+   explicit, differently-styled choice ("None — comes with the part above"), because
    an empty slot with no control is indistinguishable from a broken one
    (UX-18's cousin).
 6. **The randomiser obeys the rules the picker teaches.** Any "surprise me" /
@@ -1403,11 +1399,11 @@ never **hand** you one when you asked it to choose.
    only valid configurations — and tested for COVERAGE too, or a constraint bug
    quietly makes part of the catalogue unreachable rather than failing loudly.
 
-**Canonical implementation:** `public/js/watch-page-core.js`
-(`annotateOptions` / `localAnnotate` / `groupOptions` / `optionsForSlot` /
-`surpriseBuild`; Node-tested in `watch-page-core.test.js`) rendered by
-`public/watch/watch.js` `renderPicker` — the `details.clash` disclosure, the
-`.warnpick` line and the `.pick.bad` marker, styled in `public/watch/index.html`.
+**Canonical implementation:** none in the tree today — the parts-picker page
+this was written from was removed on 2026-08-03 and moved to a different site.
+The shape it left behind is the rule itself: an annotate-don't-filter layer
+(`[{ option, compatible, why }]`), a `details.clash` disclosure over the
+incompatible group, and a randomiser unit-tested for validity AND coverage.
 
 ---
 
@@ -1441,9 +1437,10 @@ this page would otherwise have to own.
 4. **The label is bilingual and reflects state**, updated from the `toggle`
    event so it is right after a language switch too.
 
-**Canonical implementation:** `public/watch/watch.js` `renderSpecs` +
-`BASIC_SPEC_KEYS` / `splitSpecRows` in `public/js/watch-page-core.js`, markup
-`#specs` / `details#specs-more` / `#specs-rest` in `public/watch/index.html`.
+**Canonical implementation:** none in the tree today — the spec-sheet page this
+was written from was removed on 2026-08-03. The shape it left behind: a named
+`BASIC_SPEC_KEYS` list applied by a pure `splitSpecRows`, rendered into a
+summary table plus one native `<details>` holding the rest.
 
 ---
 
@@ -1455,14 +1452,13 @@ foot of the page. And the shut fold must **name what it contains** — the
 variables, and the value of anything already changed — so the words a reader is
 searching for are on the page with nothing opened.
 
-**Why.** Feedback #59 asked for five things that had shipped a round earlier:
-dial colour, dial finish, index style, strap colour, and separate hand choices.
-Four of the five existed as `AXIS_SLOTS`, rendered and reachable. They were
+**Why.** Feedback #59 asked for five fine-tuning controls that had shipped a
+round earlier. Four of the five existed, rendered and reachable. They were
 invisible because the words were not on the page: the fine-tuning groups sat
-under one heading at the foot of the picker behind disclosures labelled `Dial
-detail`, `Strap detail`. On a 390×844 phone the dial's colour control was about
-**3,200 px below the dial row**, and a scan for "colour" inside the Strap row
-found nothing.
+under one heading at the foot of the picker, behind disclosures labelled only
+with the group's subject. On a 390×844 phone one group's colour control was
+about **3,200 px below the row it modified**, and a scan for "colour" inside
+the row that owned it found nothing.
 
 The trade is real and recurs, which is why this is a rule rather than a fix:
 **UX-25 exists because #56 asked for the picker to open on the decisions a
@@ -1478,11 +1474,10 @@ un-collapse either.
    group whose slot cannot be resolved still renders somewhere rather than
    vanishing.
 2. **The shut summary lists the contents** — *"8 more choices: Colour · Finish
-   · Construction · Index style · Calendar · Lume · Diameter · Feet"* — and
-   strips the group's subject off each name, per language, or eight axes read
-   as the same word eight times. Swedish genitives ("Urtavlans färg") need
-   their own pattern; one written for English silently leaves the other
-   unshortened (invariant 6).
+   · Construction · …"* — and strips the group's subject off each name, per
+   language, or eight axes read as the same word eight times. Swedish genitives
+   ("Ytans färg") need their own pattern; one written for English silently
+   leaves the other unshortened (invariant 6).
 3. **A decision already made shows its value on the summary** (*"Colour:
    White"*), so a fold never hides something the reader chose.
 4. **Offer one control that opens everything**, for the reader who would rather
@@ -1490,9 +1485,10 @@ un-collapse either.
 5. **A fold that can hide a problem must say so.** Where the contents can carry
    a compatibility warning, surface it on the shut summary.
 
-**Canonical implementation:** `slotForGroup` / `axisGroupsBySlot` /
-`axisSummary` / `shortAxisName` in `public/js/watch-page-core.js`, rendered by
-`slotRow` in `public/watch/watch.js`.
+**Canonical implementation:** none in the tree today — the picker this was
+written from was removed on 2026-08-03. The shape it left behind: each axis
+names the slot it modifies, a `slotForGroup` / `axisGroupsBySlot` pair files it
+there, and `axisSummary` / `shortAxisName` build the shut label.
 
 ---
 
@@ -1502,11 +1498,11 @@ un-collapse either.
 it with the state it is in and light it while that state is on. Label by the
 action only when the effect is invisible until it happens.
 
-**Why.** Feedback #59 asked for a switch to turn the presentation cushion off.
-The switch was already there — and labelled "Hide cushion", lit only while the
-cushion was OFF. Next to a watch visibly lying on a cushion, "Hide cushion"
-reads as a caption describing the picture, not as a control. It now reads
-`Cushion: on` / `Kudde: på`, lit while the cushion is there.
+**Why.** Feedback #59 asked for a switch to turn a presentation prop off. The
+switch was already there — and labelled "Hide cushion", lit only while the
+cushion was OFF. Next to a scene visibly resting on that cushion, "Hide
+cushion" reads as a caption describing the picture, not as a control. It was
+changed to read `Cushion: on` / `Kudde: på`, lit while the cushion is there.
 
 The same report also asked for features that already existed (UX-26). Both are
 the same class of defect: **shipped and invisible costs the same as missing**,
@@ -1525,6 +1521,7 @@ and it costs a motivated reader a round of feedback to tell you.
    module that has not grown the export is a link-time failure that takes the
    whole page down, not a soft miss.
 
-**Canonical implementation:** `#b-cushion` in `public/watch/watch.js` and the
-embed HUD's `.wa-on` in `public/js/watch-embed.js`; the scene picker beside it
-(`wireScenes`) is the feature-detection shape.
+**Canonical implementation:** none in the tree today — the page this was written
+from was removed on 2026-08-03. The shape it left behind: a state-labelled
+toggle whose lit style tracks the state, and a `wireScenes`-style
+feature-detected control that hides itself when the capability is absent.

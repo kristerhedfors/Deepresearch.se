@@ -93,7 +93,7 @@ test("rpc and toolCall build well-formed JSON-RPC 2.0 messages", () => {
 test("the probe's expectations mirror the server's tool list", () => {
   // A tool added to src/mcp.js without being added here would pass tools-list
   // as "unknown tool" — which is the failure this constant exists to produce.
-  assert.equal(EXPECTED_TOOLS.length, 15);
+  assert.equal(EXPECTED_TOOLS.length, 9);
   assert.equal(EXPECTED_TOOLS[0], "deep_research");
   assert.deepEqual(EXPECTED_TOOLS.slice(1, 5), [
     "literature_search",
@@ -148,10 +148,10 @@ test("checkToolsList accepts the full list and the narrowed one", () => {
   assert.equal(checkToolsList(TOOL_LIST).ok, true);
   // A SHORT list is the expected shape when an account has switched tools off,
   // so it passes and reports what is missing rather than failing.
-  const narrowed = { tools: TOOL_LIST.tools.filter((t) => t.name !== "watch_catalog") };
+  const narrowed = { tools: TOOL_LIST.tools.filter((t) => t.name !== "sdk_validate") };
   const v = checkToolsList(narrowed);
   assert.equal(v.ok, true);
-  assert.deepEqual(v.info.missing, ["watch_catalog"]);
+  assert.deepEqual(v.info.missing, ["sdk_validate"]);
   assert.match(v.detail, /switched off/);
 });
 

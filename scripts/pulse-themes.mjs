@@ -235,13 +235,6 @@ export const SUBJECTS = /** @type {Subject[]} */ ([
     test: /\b(tokemon|game(s)?|quiz(zes)?|pok[eé]mon|inline-quiz|space[- ](animation|archive|core|scene|launch(es)?)|rymd(spel|animation|raket)|starship|gravity turn|gravitationssv[äa]ng|stage separation|stegseparation|hot[- ]staging|tower catch|launch scene|rocket[- ]?launch|raketuppskjutning|booster)\b|\/space\//,
   },
   {
-    key: "watch",
-    label: "Watch builder",
-    color: "#5c4033", // extended · leather brown
-    blurb: "The NHxx watch builder: mix-and-match Seiko NH35/NH36 mod parts rendered in 3D.",
-    test: /(^watch\b|\bwatch (builder|case|dial|catalogue|catalog|mod|parts)\b|\b(nh3[56]|nhxx|seiko|bezel|l[üu]nett(en)?|bracelet|armband(et)?|urtavl(a|an)|klockbygg\w*)\b|\/watch\/)/,
-  },
-  {
     key: "mcp",
     label: "MCP server",
     color: "#2c8ec4", // extended · sky

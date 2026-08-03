@@ -58,7 +58,6 @@ import {
   previousUserText,
   starterRefOf,
   textOf,
-  userTexts,
   withAppendedText,
   withImageNudge,
   withoutStarterTags,
@@ -108,7 +107,6 @@ import { runOrchestration } from "./orchestrator.js";
 import { runOutrospection } from "./outrospect.js";
 import { spaceIntent, sceneById } from "./space.js";
 import { demoIntent } from "./demos.js";
-import { watchPromptBlock, watchThread } from "./watch-chat.js";
 import { anthropicConfigured, anthropicToolRun, isAnthropicModel } from "./anthropic.js";
 import { runIntrospectionTool } from "./introspect-tools.js";
 import {
@@ -196,35 +194,26 @@ import {
 
 /**
  * The demo surface the chat clients mount for this turn — the answer prompts'
- * `spaceScene` / `demoSurface` / `watchBuild` inputs, at most one of which is
- * ever set. The three clauses differ because the affordances do: a /space/
- * animation is playing and can be rotated; a page surface is one tap away; the
- * NHxx watch builder is playing AND the conversation is its control panel.
+ * `spaceScene` / `demoSurface` inputs, at most one of which is ever set. The
+ * two clauses differ because the affordances do: a /space/ animation is playing
+ * and can be rotated; a page surface is one tap away.
  *
  * English: these feed a prompt, not the UI (every mount captions itself in the
  * matched language). `prior` carries the turn before, so a bare "show me
- * visually" resolves the same way here as in the client; `texts` is the whole
- * user side, which is what lets the watch thread arrive at the same build the
- * client rendered. One shared core each way (demo-core.js, watch-chat-core.js),
- * so no matcher and no build can drift.
+ * visually" resolves the same way here as in the client. One shared core
+ * (demo-core.js), so the matcher cannot drift.
  *
  * @param {string} text the latest user message
  * @param {string} [prior] the user message before it
- * @param {string[]} [texts] every user message, oldest first
- * @returns {{spaceScene: string, demoSurface: string, watchBuild: string}}
+ * @returns {{spaceScene: string, demoSurface: string}}
  */
-function demoSurfaces(text, prior = "", texts = []) {
-  const none = { spaceScene: "", demoSurface: "", watchBuild: "" };
+function demoSurfaces(text, prior = "") {
+  const none = { spaceScene: "", demoSurface: "" };
   const m = demoIntent(text, prior);
   if (m && m.kind === "space") {
     const scene = sceneById(m.sceneId);
     return { ...none, spaceScene: scene ? scene.title.en : "" };
   }
-  // The watch thread can be live on a turn whose own text matched nothing — a
-  // bare "pepsi bezel" is a command, not an ask — so it is checked whether or
-  // not the gate fired, exactly as the client checks it (demo-mount.js).
-  const watch = watchThread(texts.length ? texts : [prior, text].filter(Boolean));
-  if (watch.active) return { ...none, watchBuild: watchPromptBlock(watch) };
   if (m) return { ...none, demoSurface: m.title.en };
   return none;
 }
@@ -254,7 +243,6 @@ function demoSurfaces(text, prior = "", texts = []) {
  *   hasSource: boolean,
  *   spaceScene: string,
  *   demoSurface: string,
- *   watchBuild: string,
  *   lastUser: string,
  *   convText: string,
  *   cleanLastUser: string,
@@ -433,22 +421,16 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
     hasSource: !!(/** @type {any} */ (state).introspectionCount),
     // Both chat clients mount one of the site's own surfaces above the reply
     // when the outgoing question asks to be shown it (turns.js mountDemoEmbed,
-    // drc.js mountDrcSpaceEmbed): a playable /space/ animation inline, the NHxx
-    // watch builder as a live render the conversation drives, or a card into a
-    // page-only surface. The server re-runs the SAME deterministic gates over
-    // the SAME messages so the answer prompts know what is displayed —
+    // drc.js mountDrcSpaceEmbed): a playable /space/ animation inline, or a card
+    // into a page-only surface. The server re-runs the SAME deterministic gate
+    // over the SAME messages so the answer prompts know what is displayed —
     // otherwise the capabilities line has the model apologising for being
     // unable to show anything while the animation plays beside it (feedback
     // #46), or researching the web for a capability this site ships (feedback
-    // #49). No matcher drift is possible: one shared core each.
-    //
-    // Read from `conversation`, NOT the enriched `convo`: the watch thread walks
-    // the user side in order, and an enrichment block appended to a user turn
-    // would join that walk and change what the parser sees.
+    // #49). No matcher drift is possible: one shared core.
     ...demoSurfaces(
       textOf(lastUserMessage(convo)?.content),
       previousUserText(convo),
-      userTexts(conversation),
     ),
     lastUser: textOf(lastUserMessage(convo)?.content),
     convText: formatConversation(convo),
@@ -678,7 +660,7 @@ async function runWithoutSearch(ctx) {
   // (searchOffPrompt's sourceless depth ladder; default "standard" is the
   // long-standing byte-identical prompt).
   await streamCompletion(ctx, [
-    { role: "system", content: phasePrompt(ctx.state, "direct", "answer-search-off")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: ctx.state.plan.reportTier, spaceScene: ctx.spaceScene, demoSurface: ctx.demoSurface, watchBuild: ctx.watchBuild }) },
+    { role: "system", content: phasePrompt(ctx.state, "direct", "answer-search-off")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: ctx.state.plan.reportTier, spaceScene: ctx.spaceScene, demoSurface: ctx.demoSurface }) },
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
@@ -715,7 +697,7 @@ async function runTriage(ctx) {
       // Whether the client mounted a demo surface for this turn. Asking the
       // user to narrow what they meant is wrong once the thing they asked for
       // is already playing above the reply (feedback #58).
-      demoMounted: !!(ctx.spaceScene || ctx.demoSurface || ctx.watchBuild),
+      demoMounted: !!(ctx.spaceScene || ctx.demoSurface),
     },
   );
 
@@ -804,7 +786,7 @@ async function runQuizGeneration(ctx, quizReq) {
 /** @param {PipelineCtx} ctx */
 async function runDirectReply(ctx) {
   await streamCompletion(ctx, [
-    { role: "system", content: phasePrompt(ctx.state, "research", "answer-direct")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, spaceScene: ctx.spaceScene, demoSurface: ctx.demoSurface, watchBuild: ctx.watchBuild }) },
+    { role: "system", content: phasePrompt(ctx.state, "research", "answer-direct")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, spaceScene: ctx.spaceScene, demoSurface: ctx.demoSurface }) },
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
@@ -1861,7 +1843,7 @@ async function runSynthesis(ctx) {
     // reportTier scales the OUTPUT's structure/comprehensiveness with the
     // slider (brief → standard → extended → full) — see budget.js
     // reportTierFor and prompts.js REPORT_TIER_STRUCTURE.
-    { role: "system", content: phasePrompt(ctx.state, "research", "answer")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: plan.reportTier, spaceScene: ctx.spaceScene, demoSurface: ctx.demoSurface, watchBuild: ctx.watchBuild }) },
+    { role: "system", content: phasePrompt(ctx.state, "research", "answer")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, reportTier: plan.reportTier, spaceScene: ctx.spaceScene, demoSurface: ctx.demoSurface }) },
     {
       role: "user",
       content: imageParts.length ? [{ type: "text", text: synthText }, ...imageParts] : synthText,

@@ -239,11 +239,11 @@ Do all of it in the same commit range, in this order. The first two drift
       moved, or split a file it names, fix the array. Add a new pure core the
       distiller should study.
 - [ ] **The public-module-graph allowlist** (`src/assets.js`) — a client split
-      under a NO-AUTH surface (`/space/`, `/watch/`, `/cure/`, the demo embeds)
-      must add the new file, which is allowlisted path by path. Miss it and the
-      module 401s for signed-out visitors, taking the page down with it —
-      silently, because no test covers a file that did not exist. Pass 13's
-      `watch-math.js` needed the entry in the same commit as the split.
+      under a NO-AUTH surface (`/space/`, `/cure/`, the demo embeds) must add
+      the new file, which is allowlisted path by path. Miss it and the module
+      401s for signed-out visitors, taking the page down with it — silently,
+      because no test covers a file that did not exist. Pass 13's split needed
+      its entry in the same commit.
 - [ ] **`sdk/MANIFEST.json` `reference` paths** — `sdk_validate` /
       `snapshotFileCheck` verify only that SKILL files exist, never the
       reference paths. Also check `sdk/DESIGN.md` and `docs/DISTILLSDK.md` if

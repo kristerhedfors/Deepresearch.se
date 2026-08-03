@@ -291,8 +291,8 @@ export async function handleMcp(request, env, log, identity, ctx, requestId) {
   }
 }
 
-// tools/call dispatcher: the SDK manifest family, the watch-builder family,
-// then `deep_research`; anything else — including a tool this account does not
+// tools/call dispatcher: the SDK manifest family, then `deep_research`;
+// anything else — including a tool this account does not
 // expose — is an invalid-params error. The tool itself fails soft: any pipeline
 // error comes back as an MCP result with isError:true (a protocol-level success
 // carrying a tool-level failure), never a transport error.

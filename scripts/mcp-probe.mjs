@@ -60,12 +60,6 @@ export const EXPECTED_TOOLS = [
   "sdk_show_module",
   "sdk_plan",
   "sdk_validate",
-  "watch_catalog",
-  "watch_case",
-  "watch_build",
-  "watch_command",
-  "watch_check",
-  "watch_sourcing",
 ];
 
 // Six angles on one topic — the shape literature_search exists for. Chosen to

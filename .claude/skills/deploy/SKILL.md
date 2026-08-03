@@ -195,15 +195,15 @@ that push, only `npx wrangler versions list` shows the new version.
 > ### MEASURED 2026-07-30: the setup is NOT in effect — branch pushes go LIVE
 >
 > That verification was run on PR #345 and it FAILED. Pushing a feature
-> branch (`claude/seiko-feedback-parallelism-qathq8`) produced a **production
-> deployment at 100% traffic**, not a preview version:
+> branch produced a **production deployment at 100% traffic**, not a preview
+> version:
 >
 > - `npx wrangler deployments list` showed a new production deployment whose
 >   timestamp matched the branch push to the second, while `origin/main` had
 >   not moved.
-> - Behavioural proof: `https://deepresearch.se/js/watch-materials.js`
->   returned **200** for a file that existed only on that branch, and the
->   branch's new UI strings were live on the public site.
+> - Behavioural proof: a `https://deepresearch.se/js/…` module that existed
+>   only on that branch returned **200**, and the branch's new UI strings were
+>   live on the public site.
 > - Every push in that session behaved the same way, so this is the standing
 >   behaviour, not a one-off.
 >

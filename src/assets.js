@@ -62,41 +62,19 @@ export function isPublicAsset(url, method) {
     url.pathname === "/space" ||
     url.pathname.startsWith("/space/") ||
     url.pathname === "/js/space-core.js" ||
-    // The NHxx watch builder (/watch/): a public showcase surface like /space/,
-    // reachable from both tiers without an account. Its four shared modules
-    // ride along under the same public-module-graph rule as the /cure entries —
-    // a 401 on any of them would kill the page for signed-out visitors, and
-    // watch-math.js and watch-materials.js are static imports of
-    // watch-render.js, so they are as load-bearing as the other two.
-    // watch-page-core.js is the page's own DOM-free logic (which options are
-    // offered, what "surprise me" may produce); the /watch/ page statically
-    // imports it, so it is the same.
-    url.pathname === "/watch" ||
-    url.pathname.startsWith("/watch/") ||
-    url.pathname === "/js/watch-core.js" ||
-    url.pathname === "/js/watch-math.js" ||
-    url.pathname === "/js/watch-materials.js" ||
-    url.pathname === "/js/watch-page-core.js" ||
-    url.pathname === "/js/watch-render.js" ||
     // The embeddable scene renderer (stage + HUD + runners), split out of the
     // /space/ page so chat answers can mount a scene too (feedback #18):
     // /space/space.js statically imports it, and both tiers' chats
     // dynamic-import it — /cure included, so it must be public (a 401 here
     // would kill the /space page's module graph for signed-out visitors).
     url.pathname === "/js/space-embed.js" ||
-    // The capability-demo registry, the shared mount decision, and the two
-    // renderers only IT reaches: the gate that routes "show me X demo" to a
-    // built surface (feedback #49), the link card, and the inline watch builder
-    // the conversation drives with text commands (feedback #52). Both tiers
-    // import them from the chat — /cure included, so they ride the same
-    // public-module-graph rule as space-embed.js above. watch-chat-core.js and
-    // watch-embed.js are dynamic imports of demo-mount.js, which makes them
-    // exactly as load-bearing: a 401 on either and the builder never draws.
+    // The capability-demo registry, the shared mount decision, and the link
+    // card it reaches: the gate that routes "show me X demo" to a built surface
+    // (feedback #49). Both tiers import them from the chat — /cure included, so
+    // they ride the same public-module-graph rule as space-embed.js above.
     url.pathname === "/js/demo-core.js" ||
     url.pathname === "/js/demo-embed.js" ||
     url.pathname === "/js/demo-mount.js" ||
-    url.pathname === "/js/watch-chat-core.js" ||
-    url.pathname === "/js/watch-embed.js" ||
     // DRC — the no-account client-side tier at /cure: the page, its
     // modules, and the vault/SSE primitives it reuses. Only FILES (with
     // an extension) match here: extensionless paths under /cure/ are page

@@ -92,11 +92,6 @@ test("tools/list returns deep_research first plus the literature and SDK familie
   // and plan against the SDK without shelling into the execution sandbox. The
   // literature family sits directly behind deep_research — same capability,
   // different grain.
-  //
-  // The NHxx watch builder had a six-tool family here and it was REMOVED
-  // (owner directive, 2026-08-02): the builder is a browser surface and a chat
-  // surface, and nothing was asking it questions over MCP. GET
-  // /api/watch/catalog still answers a non-browser caller.
   assert.deepEqual(
     r.tools.slice(1).map((t) => t.name),
     [

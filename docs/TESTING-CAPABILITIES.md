@@ -138,7 +138,7 @@ All 32 never-loaded modules, 15 319 lines. They are DOM glue: they query the
 document, bind listeners, and mutate the page.
 
 The big ones: `stream.js` (2 287), `admin.js` (1 519), `app.js` (1 231),
-`watch-render.js` (1 108), `space-embed.js` (894), `history-ui.js` (642),
+`space-embed.js` (894), `history-ui.js` (642),
 `account-settings.js` (539), `projects-ui.js` (535), `models-panel.js` (488),
 plus the `account-*` panels and `attachments.js`.
 

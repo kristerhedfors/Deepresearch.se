@@ -2,8 +2,7 @@
 // view, image counting, last/previous user turn, non-mutating appenders).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { textOf, countImages, lastUserMessage, lastUserText, appendToLast, previousUserText, userTexts, imagePartsOf, formatConversation, withImageNudge, withAppendedText, withAppendedImage, starterRefOf, withoutStarterTags } from "./conversation.js";
-import { watchThread } from "./watch-chat.js";
+import { textOf, countImages, lastUserMessage, lastUserText, appendToLast, previousUserText, imagePartsOf, formatConversation, withImageNudge, withAppendedText, withAppendedImage, starterRefOf, withoutStarterTags } from "./conversation.js";
 
 describe("previousUserText", () => {
   test("returns the user message before the latest one", () => {
@@ -27,62 +26,6 @@ describe("previousUserText", () => {
       { role: "user", content: "and now?" },
     ];
     assert.match(previousUserText(convo), /look at this/);
-  });
-});
-
-describe("userTexts", () => {
-  test("returns every user message as text, oldest first", () => {
-    const convo = [
-      { role: "user", content: "Seiko watch demo" },
-      { role: "assistant", content: "here it is" },
-      { role: "user", content: [{ type: "text", text: "pepsi bezel" }, { type: "image_url", image_url: { url: "data:," } }] },
-      { role: "assistant", content: "changed the insert" },
-      { role: "user", content: "jubilee bracelet" },
-    ];
-    // Multimodal content comes back through textOf, which appends its own
-    // attachment marker — the client's twin (demo-mount.js userTextsOf) drops
-    // images silently instead. The divergence is deliberate and inert: the
-    // marker carries no vocabulary any deterministic gate matches, and it is
-    // appended AFTER the message, so it cannot come between a slot word and its
-    // value either. The test below pins the property that actually matters.
-    assert.deepEqual(userTexts(convo), [
-      "Seiko watch demo",
-      "pepsi bezel\n[1 image attached]",
-      "jubilee bracelet",
-    ]);
-  });
-
-  test("an attachment marker does not change the watch build the server derives", () => {
-    // The Worker re-runs the client's walk so the answer describes the watch on
-    // screen. If textOf's marker changed the parse, the two would disagree.
-    const withImage = userTexts([
-      { role: "user", content: "Seiko watch demo" },
-      { role: "user", content: [{ type: "text", text: "pepsi bezel" }, { type: "image_url", image_url: { url: "data:," } }] },
-    ]);
-    assert.deepEqual(
-      watchThread(withImage).build,
-      watchThread(["Seiko watch demo", "pepsi bezel"]).build,
-    );
-  });
-
-  test("order is load-bearing, not incidental", () => {
-    // The inline watch builder replays these in sequence to arrive at the build
-    // the turn is answered with, so a reversed or deduplicated list would render
-    // a different watch than the client did.
-    const convo = [
-      { role: "user", content: "watch demo" },
-      { role: "user", content: "blue dial" },
-      { role: "user", content: "black dial" },
-    ];
-    assert.deepEqual(userTexts(convo), ["watch demo", "blue dial", "black dial"]);
-  });
-
-  test("total: no user turns, or junk, gives an empty list", () => {
-    assert.deepEqual(userTexts([{ role: "assistant", content: "alone" }]), []);
-    assert.deepEqual(userTexts([]), []);
-    for (const junk of [null, undefined, 42, {}]) {
-      assert.deepEqual(userTexts(/** @type {any} */ (junk)), [], String(junk));
-    }
   });
 });
 

@@ -154,9 +154,9 @@ of the constant, so the drawn position and the drawn shape cannot drift apart.
 Both tiers' chats run the same gate on every outgoing question — since
 feedback #49 through the capability-demo registry `public/js/demo-core.js`,
 which delegates all space subject matching straight back to `SPACE_MATCHERS`
-(one space matcher, no drift) and adds two things around it: page surfaces
-like the `/watch/` builder, which mount as a link card rather than a canvas,
-and `priorText` — a bare "show me visually" inherits the subject of the turn
+(one space matcher, no drift) and adds two things around it: page surfaces,
+which mount as a link card rather than a canvas, and `priorText` — a bare
+"show me visually" inherits the subject of the turn
 before it, which is how feedback #50's real sequence ("Space launch demo" →
 "Show me visually") reaches the launch scene. On a match,
 the scene mounts full-width at the top of the response area — the playable

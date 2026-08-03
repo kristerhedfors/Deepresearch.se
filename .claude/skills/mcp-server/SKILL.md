@@ -39,16 +39,14 @@ family with the most surface; DistillSDK's four **manifest tools**
 shelling into the execution sandbox. Nine tools total; the pipeline one is
 the reason the server exists.
 
-An NHxx **watch-builder family** of six tools lived here from 2026-07-30
-(feedback #52) and was **removed on 2026-08-02 by owner directive**. Worth
-knowing as a precedent for what belongs on this surface: a tool earns its
-place when a caller WITHOUT a browser needs the answer. The watch builder is
-a browser surface and a chat surface, its conversational half already answers
-in plain language, and `GET /api/watch/catalog` already served the shell and
-the script — so the six tools were paying for schemas, an exposure switch
-each and a mirror-test row against a caller nobody could name. Deleting a
-tool family is cheap here; adding one that nothing calls is the expensive
-mistake.
+A six-tool family for a browser-and-chat surface lived here from 2026-07-30
+and was **removed on 2026-08-02 by owner directive**. Worth knowing as a
+precedent for what belongs on this surface: a tool earns its place when a
+caller WITHOUT a browser needs the answer. That surface already answered in
+plain language in the chat and served its data over a plain GET endpoint — so
+the six tools were paying for schemas, an exposure switch each and a
+mirror-test row against a caller nobody could name. Deleting a tool family is
+cheap here; adding one that nothing calls is the expensive mistake.
 
 The SDK family is **pure** — committed data, no network, no D1, no model —
 which is why it is a static import in `mcp.js` without breaking its

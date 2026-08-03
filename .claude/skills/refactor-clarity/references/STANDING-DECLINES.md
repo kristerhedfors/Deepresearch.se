@@ -59,7 +59,6 @@ diverges — cut it and move the row here to the pass ledger.
 | Admin list-endpoint preamble | `src/feedback.js`, `src/server-errors.js` | Verbatim + Bar | Six lines of method/path/limit-clamp/`where`/`binds` before two DIFFERENT D1 queries over two different tables. The same shape as the grant-subsystem blocks above; the shared half (`readJsonBody`, the response helpers) already went to `http.js` in pass 12 | 2026-07-29 |
 | `recordStepUsage` | `src/bash-api.js` vs. `quota.js`'s `recordDefaultModelUsage` | Verbatim | The third copy of the DEFAULT_MODEL spend recorder, and the two identical ones WERE shared (pass 11). This one looks up the catalog through `providers.js` `listChatModels`, not `berget.js` `listModels`. The two are equivalent for a Berget `DEFAULT_MODEL` id, but swapping one for the other is a behaviour-equivalence argument, not a move. **Flagged for the owner:** if the two lookups are meant to be interchangeable here, folding this in is a one-line follow-up | 2026-07-26 || Se/rver-token vs. proxy-bundle SERVICE HANDLERS | `src/server-grants.js`, `src/proxy.js` | Verbatim | The biggest run set `line-scan` reports (the whole `/web` handler, the `/llm/*` embeddings and chat-completions arms). They differ in the verifier (`verifyServerToken` vs `verifyProxyToken`), the claim shape (`perms.includes("web")` vs `svc !== "web"`, `sub` vs `uid`), the ARITY of `refundUnit`/`remainingOf` (the token family passes the service, the bundle does not), every error string and every log tag. Sharing means parameterizing all five — the same table-name-parameterized argument that has declined the meter helpers in six consecutive passes, one layer up. Their genuinely shared halves already left: `grant-http.js` (pure) and `llm-proxy.js` (the forwarders) | 2026-07-31 |
 | `EXEC_ENVS` / `EXEC_DIAG_BACKENDS` vs. `EXEC_BACKENDS` | `src/bash-api.js`, `src/validation.js` vs. `public/js/exec-backends-core.js` | Purity of effect | `["browser","local","cloudflare"]` appears twice in `src/` under "mirrors EXEC_BACKENDS" comments, and a derived `EXEC_BACKENDS.map((b) => b.id)` would collapse both. **Do not.** Both copies are input-sanitizer whitelists over UNTRUSTED client fields (`body.exec_env`, `client_diag.xb`) and `validation.js` says so at the site: "nothing here is allowed to widen it (invariant 4)". Deriving them means adding a row to a UI picker silently widens what the server accepts and logs. `SWARM_DIAG_PHASES` / `SWARM_DIAG_CLASSES` vs. `ondevice-core.js` `RUN_PHASES`/`crashClass` are the same shape and decline for the same reason. A sanitizer that is INDEPENDENT of the catalog it shadows is the design | 2026-07-31 |
-| `normalize` (lowercase + collapse whitespace) | `public/js/demo-core.js`, `public/js/watch-chat-core.js` | Bar + Home | Byte-identical four-liner, and the edge exists (`watch-chat-core.js` imports `demoIntent` from `demo-core.js`) — but `demo-core.js` is the DEMO REGISTRY, not a text-utility home, so part (a) of the home gate fails. Same shape as the `base64ToBytes` idiom: obviously correct forever, zero drift risk | 2026-07-31 |
 | `arg` (CLI flag reader) | `scripts/arxiv-crosscheck.mjs`, `scripts/arxiv-hosted-eval.mjs` | Bar + Home | Four lines of `process.argv` scanning in two standalone eval scripts. No script in the repo imports from `src/`, and there is no `scripts/` shared module; creating one for an argv one-liner is churn | 2026-07-31 |
 
 
@@ -88,22 +87,14 @@ diverges — cut it and move the row here to the pass ledger.
 - **`public/js/orchestrator-core.js`** — authored as a textbook class-X core;
   validate / normalize / waves / prompts / clamp / merge / events are all
   exported and pure already.
-- **`public/js/watch-core.js`** (2,690 lines) — the largest client module in the
-  repo and none of it is tangling: a parts catalogue with per-dimension
-  provenance, then banded sections for the compatibility engine, the spec
-  maths, the permalink codec and the parametric geometry. Same shape as
-  `googlemaps-text.js` — length is the data, not a defect. Its renderer's
-  matrix band was the pass-13 cut; what is left in `watch-render.js` is
-  shaders, canvas textures and the animation loop, none of it pure.
-- **`src/europepmc.js`, `src/websearch-cf.js`, `src/watch.js`,
+- **`src/europepmc.js`, `src/websearch-cf.js`,
   `public/js/aadr-core.js`, the `demo-core`/`demo-embed` and
   `space-core`/`space-embed` pairs, `public/js/unanswered-core.js`,
   `public/js/starters-core.js` + `starters-data.js`** — the subsystems that
   arrived between passes 12 and 13, surveyed and left alone. Every one shipped
   factored: `europepmc.js` and `websearch-cf.js` carry explicit `// ---- pure`
   band headers ahead of their fetching halves with the pure parts already
-  exported and tested, `watch.js` is a façade the `facade-contract.test.js`
-  guard now polices, and the `-core`/`-embed` pairs were authored with the
+  exported and tested, and the `-core`/`-embed` pairs were authored with the
   split already made.
 - **`src/exec-container.js`, the MCP trio (`mcp-key.js` / `mcp-config.js` /
   `mcp-api.js`), `src/arxiv.js` + `arxiv-rag.js`, `src/drsw-manifest.js`,
