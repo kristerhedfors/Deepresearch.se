@@ -190,6 +190,80 @@ build-side acceptance check does not cover the instructions, and vendor UI
 labels are the fastest-rotting facts in this document.** They need a date and a
 source line each, the way the redirect URIs in §2a have.
 
+## 2d. The verified paths and the install link (retrieved 2026-08-03)
+
+Both vendors had **renamed the menu**, which is the whole explanation for the
+two reported failures. Every line here carries its source; re-check by date.
+
+**Claude — `claude.ai/customize/connectors`.** It moved out of Settings into a
+**Customize** section (Skills / Connectors / Plugins) in February 2026, so
+"Settings → Connectors" finds nothing.
+
+> "Navigate to **Customize > Connectors** / Click "+" then "Add custom
+> connector." / Add your connector's remote MCP server URL."
+> — support.claude.com/en/articles/11175166
+
+Team and Enterprise are Owner-only, at `claude.ai/admin-settings/connectors`.
+Free, Pro and Max add it themselves; Free is capped at one custom connector.
+**Mobile:** "installing connectors on mobile is currently in beta — Claude
+Desktop and web remain the primary path", and one added on web "will be
+available to use the next time you log in to your account on Claude for iOS or
+Android" (article 11176164). The phone USES it; add from a browser. Anthropic's
+own two sources disagree on the label — the developer docs still say "Settings
+> Connectors" — but the deep links are unambiguous and are what we print.
+
+**THE INSTALL LINK IS THE ANSWER TO "why isn't this one tap".** Anthropic
+documents a prefilled dialog, needing no directory listing, no review and no
+Team plan:
+
+> "For a connector that is not in the directory, link to the **Add custom
+> connector** dialog with the name and URL prefilled:
+> `https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=NAME&connectorUrl=ENCODED_URL`"
+> — claude.com/docs/connectors/building/directory-vs-custom
+
+> "Install links only prefill the form. They do not bypass review by the user,
+> and they do not grant your server any permissions the user has not confirmed."
+
+`/connect/` now leads with that as an **Add to Claude** button. Note the shipped
+parameter names are `connectorName` / `connectorUrl` — the originating GitHub
+issue proposed `mcpName` / `mcpServerUrl`, which do not work.
+
+**ChatGPT — Developer mode, then `chatgpt.com/plugins`.** Renamed twice:
+Connectors → apps → **Plugins**. A self-hosted server additionally needs
+**Developer mode**, which is not in that menu:
+
+> "In ChatGPT, open **Settings → Security and login** and turn on **Developer
+> mode**." … "The plus button will only create developer-mode apps after you
+> turn on Developer mode."
+> — developers.openai.com/api/docs/guides/developer-mode
+
+> "Under **Connection** … enter the MCP server URL, **including the `/mcp`
+> path**." — developers.openai.com/plugins/deploy/connect-chatgpt
+
+**That last line matters here:** we advertise the bare origin (§2b) and ChatGPT
+tells people to include `/mcp`. Both answer identically (verified live), so the
+page prints the bare origin for Claude and the `/mcp` form for ChatGPT.
+Developer mode is **web only**, on Plus/Pro/Business/Enterprise/Education —
+**not Free** — and Business/Enterprise admins can gate it.
+
+**ChatGPT does not reach mobile at all:** "Plugins aren't available in Chat,
+the IDE extension, or mobile" (developers.openai.com/codex/plugins). §1 left
+this as an open question; it is settled, in the unhelpful direction. Claude
+reaches the phone, ChatGPT does not.
+
+**Two §2a claims are corrected by OpenAI's own pages.** `search`/`fetch` are
+NOT required for a developer-mode connector — "Developer mode does not require
+`search`/`fetch` tools" — only for deep research and company knowledge, where
+they stay mandatory. And transport is settled: "Supported MCP protocols: SSE
+and streaming HTTP", so our Streamable HTTP is accepted. Keeping `search`/
+`fetch` costs nothing and buys the deep-research path.
+
+**No ChatGPT install link exists** in OpenAI's documentation, and there is no
+cross-vendor standard — the `.well-known` discovery SEPs (1649, 1960) are open
+drafts about capability discovery, not installation. MCPB/`.mcpb` bundles are
+**local servers only** and cannot carry a hosted one. Listing in the open MCP
+Registry explicitly does **not** surface a server in Claude.
+
 ## 2a. What ChatGPT requires, and where it differs
 
 Verified 2026-08-03 against `developers.openai.com/api/docs/mcp`, OpenAI's

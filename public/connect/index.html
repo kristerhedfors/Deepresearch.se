@@ -55,6 +55,12 @@
       font-weight: 600; padding: .45rem .7rem; cursor: pointer; min-width: 4.6rem;
     }
     .cmd button:hover { background: #262c38; }
+    .addbtn {
+      display: inline-block; background: var(--accent); color: #0b0d11;
+      text-decoration: none; font-weight: 700; font-size: .95rem;
+      border-radius: 10px; padding: .7rem 1.1rem;
+    }
+    .addbtn:hover { filter: brightness(1.08); }
     .note {
       background: var(--panel-2); border-left: 3px solid var(--accent);
       border-radius: 6px; padding: .5rem .8rem; font-size: .86rem; margin: .5rem 0;
@@ -86,32 +92,64 @@
     phone: you hand Claude or ChatGPT a single URL, they send you here to sign
     in and approve, and <b>no key is ever created or pasted</b>. If that is
     what you came for, you are done after this section.</p>
+    <p style="margin:.9rem 0 .4rem"><a class="addbtn"
+      href="https://claude.ai/customize/connectors?modal=add-custom-connector&amp;connectorName=DeepResearch&amp;connectorUrl=https%3A%2F%2Fmcp.deepresearch.se"
+      >Add to Claude →</a></p>
+    <p class="muted">That opens Claude's add-connector dialog with the name and
+    URL already filled in. It only prefills: Claude tells you the values came
+    from an external link, and nothing is added until you confirm. If you are
+    signed out you will sign in first and land back on the dialog.</p>
+    <p>Or paste the URL yourself:</p>
     <div class="cmd">
       <pre>https://mcp.deepresearch.se</pre>
       <button type="button">Copy</button>
     </div>
 
-    <h3>Claude</h3>
-    <p>Look for <b>Connectors</b> in Claude's settings and add a custom one by
-    URL, then approve on the consent screen this site shows you.</p>
-    <div class="note"><b>We have not verified where that lives in the current
-    Claude UI, and a reader has already failed to find it in the mobile app.</b>
-    Anthropic has moved this menu more than once, and custom connectors may be
-    limited to certain plans or to the web app rather than the phone. Rather
-    than print a path that sends you hunting, we are checking it against
-    Anthropic's own documentation and will replace this with the exact steps —
-    including whether the phone app can add one at all.</div>
+    <h3>Claude — by hand, at <code>claude.ai/customize/connectors</code></h3>
+    <p>It is under <b>Customize</b>, not Settings — Anthropic moved it there in
+    February 2026, which is why "Settings → Connectors" finds nothing.</p>
+    <ol>
+      <li>Open <a href="https://claude.ai/customize/connectors">claude.ai/customize/connectors</a>
+      (left sidebar: <b>Customize</b> → <b>Connectors</b>).</li>
+      <li><b>+</b> → <b>Add custom connector</b>.</li>
+      <li>Paste the URL above. Leave Advanced settings alone — this server needs
+      no client ID or secret.</li>
+      <li>Approve on the consent screen this site shows you.</li>
+    </ol>
+    <p><b>On a Team or Enterprise plan only an Owner can add it</b>, at
+    <a href="https://claude.ai/admin-settings/connectors">claude.ai/admin-settings/connectors</a>
+    → <b>Add</b> → hover <b>Custom</b> → <b>Web</b>. Everyone else then connects
+    to it individually. On Free, Pro and Max you add it yourself; Free is capped
+    at one custom connector.</p>
+    <p><b>The phone:</b> add it on web or desktop, and it is there the next time
+    you open Claude on iOS or Android — Anthropic's own words are that
+    "installing connectors on mobile is currently in beta" and that desktop and
+    web "remain the primary path". So the app can use it; add it from a browser.</p>
 
-    <h3>ChatGPT — add it in a browser first</h3>
-    <p>Add it from <code>chatgpt.com</code> in a <b>browser</b> — your phone's
-    browser counts — using the URL above with <b>OAuth</b>, then check whether
-    the ChatGPT app lists it.</p>
-    <div class="note"><b>The menu path here is unverified too, and a reader
-    could not find it.</b> OpenAI's connector surface has moved faster than
-    Anthropic's, custom connectors appear to be gated by plan and possibly by a
-    developer setting, and OpenAI does not document whether connectors reach the
-    phone app at all. Being checked now; this will be replaced with the exact
-    steps and the plan requirements rather than a guess.</div>
+    <h3>ChatGPT — turn on Developer mode first</h3>
+    <p>ChatGPT renamed this twice: Connectors → apps → <b>Plugins</b>. And a
+    self-hosted MCP server needs <b>Developer mode</b>, which is not in the
+    Connectors menu at all.</p>
+    <ol>
+      <li><b>Settings</b> → <b>Security and login</b> → turn on <b>Developer
+      mode</b>.</li>
+      <li>Go to <a href="https://chatgpt.com/plugins">chatgpt.com/plugins</a> →
+      the <b>+</b> button.</li>
+      <li>Give it a name and description, and for the URL use
+      <code>https://mcp.deepresearch.se/mcp</code> — OpenAI's setup expects the
+      <code>/mcp</code> path, unlike Claude.</li>
+      <li>Create, then review the tools it discovered.</li>
+      <li>In a chat: the <b>+</b> menu → <b>Developer mode</b> → pick it.</li>
+    </ol>
+    <p><b>Requirements worth knowing before you start:</b> Developer mode is
+    <b>web only</b> and available on Plus, Pro, Business, Enterprise and
+    Education — <b>not Free</b>. On Business/Enterprise a workspace admin may
+    have to allow it first.</p>
+    <div class="note"><b>ChatGPT plugins do not reach the phone app.</b>
+    OpenAI's current documentation states plainly that plugins "aren't
+    available in Chat, the IDE extension, or mobile". So unlike Claude, adding
+    this on the web does <em>not</em> make it appear on your phone. If mobile is
+    what you want, Claude is the one that does it today.</div>
 
     <p>Either way you land on a consent screen on this site naming exactly what
     you are granting — which tools, whose quota, and that the questions are
