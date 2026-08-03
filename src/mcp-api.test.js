@@ -15,6 +15,8 @@ import {
   handleMcpConfigPut,
   handleMcpKeyMint,
   handleMcpKeyRevoke,
+  chatgptEndpointUrl,
+  claudeInstallUrl,
   mcpEndpointUrl,
   resolveMcpKeyIdentity,
 } from "./mcp-api.js";
@@ -185,6 +187,12 @@ test("GET /api/mcp/config reports the defaults, the catalog and the endpoint", a
   assert.equal(payload.config.key, null);
   assert.match(payload.connect_command, /^claude mcp add --transport http deepresearch /);
   assert.match(payload.connect_command, /<your-key>/, "the placeholder, never a real token");
+  // The connector route's two strings, which DIFFER from each other and from
+  // the advertised endpoint. The Settings screen renders them rather than
+  // assembling them, so a vendor's convention lives in exactly one place.
+  assert.equal(payload.chatgpt_endpoint, "https://mcp.deepresearch.se/mcp");
+  assert.match(payload.claude_install_url, /^https:\/\/claude\.ai\/customize\/connectors\?/);
+  assert.match(payload.claude_install_url, /connectorUrl=https%3A%2F%2Fmcp\.deepresearch\.se/);
 });
 
 test("break-glass has no row to hang an MCP config on", async () => {
@@ -323,4 +331,27 @@ test("mcpEndpointUrl prefers the dedicated mcp. host, and falls back where none 
     "https://abc-deepresearch-se.someone.workers.dev/mcp",
   );
   assert.equal(at("http://localhost:8787/rver"), "http://localhost:8787/mcp");
+});
+
+test("the ChatGPT URL carries the /mcp path the advertised one drops", () => {
+  // OpenAI's add-a-connector form expects the path; Claude and Claude Code
+  // take the bare origin. Both answer, so this is about what a person is told
+  // to paste — and pasting the wrong one is the commonest way the setup fails.
+  assert.equal(chatgptEndpointUrl("https://mcp.deepresearch.se"), "https://mcp.deepresearch.se/mcp");
+  assert.equal(chatgptEndpointUrl("https://mcp.deepresearch.se/"), "https://mcp.deepresearch.se/mcp");
+  // A preview endpoint already ends in /mcp: don't say it twice.
+  assert.equal(chatgptEndpointUrl("http://localhost:8787/mcp"), "http://localhost:8787/mcp");
+});
+
+test("the Claude install link prefills the dialog with the endpoint that answers", () => {
+  const link = new URL(claudeInstallUrl("https://mcp.deepresearch.se"));
+  assert.equal(link.origin + link.pathname, "https://claude.ai/customize/connectors");
+  assert.equal(link.searchParams.get("modal"), "add-custom-connector");
+  assert.equal(link.searchParams.get("connectorName"), "DeepResearch");
+  // Built from the endpoint rather than hard-coded, so a preview prefills the
+  // preview — a hard-coded production URL would make the link untestable
+  // anywhere except production.
+  assert.equal(link.searchParams.get("connectorUrl"), "https://mcp.deepresearch.se");
+  const preview = new URL(claudeInstallUrl("http://localhost:8787/mcp"));
+  assert.equal(preview.searchParams.get("connectorUrl"), "http://localhost:8787/mcp");
 });

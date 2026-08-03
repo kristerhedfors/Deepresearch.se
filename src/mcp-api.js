@@ -213,6 +213,45 @@ export function mcpEndpointUrl(url) {
   return `${url.origin}/mcp`;
 }
 
+/**
+ * The URL to hand ChatGPT, which is NOT the one to hand Claude.
+ *
+ * Everything else advertises the bare origin (see `mcpEndpointUrl` above), and
+ * that is right for every client that takes a server URL as a server URL.
+ * OpenAI's add-a-connector form is the exception: its own setup instructions
+ * expect the `/mcp` path, and the whole point of the bare-origin rule is that
+ * a person cannot get the URL wrong — so where a vendor wants the path, give
+ * them the path rather than making the reader work out that this one differs.
+ * Both forms answer on the dedicated host, so this changes nothing about what
+ * the server accepts; it is the second of the two strings the UI shows.
+ * @param {string} endpoint the advertised endpoint (`mcpEndpointUrl`)
+ * @returns {string}
+ */
+export function chatgptEndpointUrl(endpoint) {
+  return endpoint.endsWith("/mcp") ? endpoint : `${endpoint.replace(/\/$/, "")}/mcp`;
+}
+
+/**
+ * Anthropic's documented PREFILL link for the add-connector dialog: it opens
+ * the dialog with the name and URL already in it, needing no directory
+ * listing, no review and no Team plan. It only prefills — Claude marks the
+ * values as externally supplied and adds nothing until the user confirms —
+ * which is why the UI beside it says so rather than calling this an install.
+ *
+ * Built from the advertised endpoint rather than hard-coded, so a preview or a
+ * local run prefills the URL that actually answers from where the reader is.
+ * @param {string} endpoint the advertised endpoint (`mcpEndpointUrl`)
+ * @returns {string}
+ */
+export function claudeInstallUrl(endpoint) {
+  const q = new URLSearchParams({
+    modal: "add-custom-connector",
+    connectorName: "DeepResearch",
+    connectorUrl: endpoint,
+  });
+  return `https://claude.ai/customize/connectors?${q}`;
+}
+
 // ---------------------------------------------------------------------------
 // GET/PUT /api/mcp/config, POST/DELETE /api/mcp/key
 // ---------------------------------------------------------------------------
@@ -220,9 +259,10 @@ export function mcpEndpointUrl(url) {
 /**
  * The payload the Settings screen renders from: the account's effective
  * config, the catalog it switches (so the client keeps no second copy of the
- * tool list), the endpoint to connect to, and a ready-to-paste Claude Code
- * command. The live key's TOKEN is deliberately absent — it exists in the
- * mint response and nowhere else.
+ * tool list), the endpoint to connect to, the two connector strings that
+ * differ between the vendors, and a ready-to-paste Claude Code command. The
+ * live key's TOKEN is deliberately absent — it exists in the mint response and
+ * nowhere else.
  * @param {URL} url
  * @param {McpConfig} config
  */
@@ -230,6 +270,11 @@ function configPayload(url, config) {
   const endpoint = mcpEndpointUrl(url);
   return {
     endpoint,
+    // The connector route's two strings. They differ, and the difference is
+    // the single commonest way this setup fails, so the server settles it
+    // once instead of leaving each surface to append a path or not.
+    chatgpt_endpoint: chatgptEndpointUrl(endpoint),
+    claude_install_url: claudeInstallUrl(endpoint),
     catalog: MCP_TOOL_CATALOG,
     config: { ...config, key: config.key },
     // The exact command, minus the secret: the UI splices the token in at

@@ -14,6 +14,12 @@
   --text: #0a2e5c;
   --muted: #2f5d8e;
   --accent: #0d4fa0;
+  /* Text drawn ON an --accent fill. White works for every accent this site
+     uses except the two gold ones, where it lands near 3:1 — so the themes
+     that need it override this rather than each filled control guessing.
+     New filled controls should use it; the handful of older `color: #fff`
+     sites predate it and are left alone until someone measures them. */
+  --on-accent: #ffffff;
   --ok: #157a4b;
   /* The completed-research-step checkmark's pink — matched to the umbrella
      intro's lead canopy pink (public/cure/umbrella.js, the first PINKS entry
@@ -129,6 +135,7 @@
   --text: #201a08;
   --muted: #6b5a2c;
   --accent: #b8860b;      /* dark amber — links, buttons, focus */
+  --on-accent: #14100a;   /* white on this amber is 3.2:1 — below AA */
   --user: #fff3cf;
 }
 /* • Deep Science → PARCHMENT: the reading room. A dark field rather than a
@@ -144,6 +151,7 @@
   --text: #efeade;
   --muted: #a99c7f;
   --accent: #b08d3f;      /* parchment gold — links, buttons, focus */
+  --on-accent: #14100a;   /* white on this gold is 3.1:1 — below AA */
   --user: #2a2418;
 }
 * { box-sizing: border-box; }
@@ -2343,6 +2351,33 @@ textarea::placeholder { color: var(--muted); opacity: .75; }
 @media (prefers-reduced-motion: reduce) {
   .settings-sub > summary::before { transition: none; }
 }
+
+/* MCP server view (public/js/account-mcp.js) — the connector section. The
+   "Add to Claude" link is the one control on that screen that is a call to
+   action rather than a setting, so it is the one thing styled as a filled
+   button; everything else there stays a plain settings row. The two vendor
+   walkthroughs are <details> because each reader needs one of them and the
+   pair would otherwise push the tool switches off a phone screen. */
+.mcp-add {
+  display: inline-block; background: var(--accent); color: var(--on-accent);
+  font-weight: 700; text-decoration: none;
+  border-radius: 10px; padding: .6rem 1rem;
+}
+.mcp-add:hover { filter: brightness(1.08); }
+.mcp-steps {
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel-2);
+  margin: .5rem 0; padding: .1rem .75rem;
+}
+.mcp-steps > summary {
+  cursor: pointer; font-size: .85rem; font-weight: 600;
+  padding: .45rem 0; line-height: 1.4;
+}
+.mcp-steps-body { font-size: .82rem; line-height: 1.55; padding-bottom: .5rem; }
+.mcp-steps-body p { margin: .4rem 0; }
+.mcp-steps ol { margin: .4rem 0; padding-left: 1.2rem; }
+.mcp-steps li { margin: .3rem 0; }
+.mcp-steps code { word-break: break-all; }
 
 /* Article collection (public/js/account-articles.js) — the admin-only view
    of the planned article series. Each abstract is a collapsible <details>

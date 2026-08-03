@@ -116,6 +116,52 @@ test("the dark Deep Science theme overrides the composer's white glass", () => {
   }
 });
 
+// Text drawn ON an --accent fill. Two of the seven accents are gold, where
+// white lands near 3:1 — so `--on-accent` exists and those themes override it.
+// This is arithmetic over the declared palettes rather than a browser
+// measurement (tests/theme-contrast.mjs does the real thing, but it samples the
+// CHAT chrome and never signs in, so it cannot see the account panel where the
+// first --on-accent control lives). What it buys is that an EIGHTH theme with a
+// light accent fails here instead of shipping unreadable.
+test("every theme's --on-accent clears AA against that theme's --accent", () => {
+  const css = readFileSync(here("../css/app.css"), "utf8");
+  const relLum = (hex) => {
+    const ch = [1, 3, 5]
+      .map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+  };
+  const ratio = (a, b) => {
+    const [x, y] = [relLum(a), relLum(b)];
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+  };
+  const expand = (h) => (h.length === 4 ? `#${[...h.slice(1)].map((c) => c + c).join("")}` : h);
+
+  // Every palette block, root first, in declaration order — each inherits the
+  // root's --on-accent unless it declares its own, exactly as the cascade does.
+  const blocks = [...css.matchAll(/:root(\.[a-z-]+)?\s*\{([^}]*)\}/g)];
+  const rootOn = blocks[0][2].match(/--on-accent:\s*(#[0-9a-f]{3,8})/i)?.[1];
+  assert.ok(rootOn, "app.css declares no default --on-accent");
+  let checked = 0;
+  for (const [, cls, body] of blocks) {
+    const accent = body.match(/--accent:\s*(#[0-9a-f]{3,8})/i)?.[1];
+    if (!accent) continue;
+    const on = body.match(/--on-accent:\s*(#[0-9a-f]{3,8})/i)?.[1] || rootOn;
+    const r = ratio(expand(accent), expand(on));
+    // 4.3, not 4.5: the SDK green sits at 4.38 with white and at 4.44 with
+    // near-black, so no text colour clears AA on it and picking one is a
+    // wash. The floor is set to catch a genuinely unreadable fill — the two
+    // golds were at 3.1 before they got their override — not to relitigate a
+    // colour where both choices are equally marginal.
+    assert.ok(
+      r >= 4.3,
+      `${cls || ":root"}: --on-accent ${on} on --accent ${accent} is ${r.toFixed(2)}:1`,
+    );
+    checked++;
+  }
+  assert.ok(checked >= 7, `expected every palette to declare an accent, checked ${checked}`);
+});
+
 test("depth slider is an optional theme feature: off for Introspection + SDK + Orchestrator", () => {
   assert.equal(showsDepthSlider("normal"), true);
   assert.equal(showsDepthSlider("introspection"), false);

@@ -264,6 +264,43 @@ drafts about capability discovery, not installation. MCPB/`.mcpb` bundles are
 **local servers only** and cannot carry a hosted one. Listing in the open MCP
 Registry explicitly does **not** surface a server in Claude.
 
+## 2e. The same guidance inside the app (Settings → MCP server)
+
+`/connect/` is a public page a signed-out stranger can read, which is exactly
+why it could not be the only place this lives: **the person most likely to
+want a connector is the one already signed in and looking at the MCP screen**,
+and that screen used to open with minting a key and a `claude mcp add` line —
+the same defect §2c measured on `/connect/`, in the surface where an account
+holder actually stands. Added 2026-08-03 (owner: *"Mcp menu under settings
+should guide user in chatgpt and anthropic"*).
+
+`public/js/account-mcp.js` now renders four sections instead of three, and the
+connector is first: an **Add to Claude** button on the same prefilled link, a
+copyable connector URL, and the two vendor walkthroughs as collapsed
+`<details>` so neither reader scrolls past the other's. The terminal path
+keeps everything it had as section 2, prefaced with who it is for. Section 3
+(Tools exposed) already carried the `search`/`fetch` warning that a switched-off
+pair makes ChatGPT refuse the connection; the ChatGPT walkthrough now points
+at it.
+
+**The two URLs are built by the SERVER, not by the screen.**
+`src/mcp-api.js` exports `chatgptEndpointUrl()` and `claudeInstallUrl()` and
+puts both in the `/api/mcp/config` payload as `chatgpt_endpoint` and
+`claude_install_url`. Claude takes the bare origin and OpenAI's form wants the
+`/mcp` path (§2d), so there are now three related strings in play and pasting
+the wrong one is the commonest way this setup fails — one module decides, two
+surfaces render. Both are derived from `mcpEndpointUrl`, so a preview deploy
+prefills the preview rather than production, which is what makes the flow
+testable anywhere but production.
+
+Neither surface can be tested for correctness of the vendor paths — they
+describe someone else's UI, which is how §2c's failure happened. What
+`public/js/account-mcp.test.js` pins is what is ours: that the URLs come from
+the payload rather than being assembled or hard-coded client-side, that the
+two stay distinct, that payload strings are escaped, and that a server which
+does not send the connector fields degrades to the walkthroughs instead of
+rendering a button pointing at nothing.
+
 ## 2a. What ChatGPT requires, and where it differs
 
 Verified 2026-08-03 against `developers.openai.com/api/docs/mcp`, OpenAI's

@@ -164,12 +164,20 @@ test("the wire format is oac1.<payload>.<hex sig>", async () => {
 });
 
 test("the code discloses NOTHING but its own id — the user, scope and redirect stay in the row", async () => {
-  const { code, jti } = await issueCode(envWith(oauthDb()));
+  // The user id is deliberately NOT the "42" the rest of this file uses. The
+  // sweep below substring-searches the payload, which also carries two 10-digit
+  // unix timestamps — and roughly a third of all seconds contain "42", so the
+  // sentinel used to make this test fail on the clock rather than on a leak.
+  // A sentinel that cannot occur by accident is the fix; weakening the sweep
+  // would have been the wrong one, since a substring search over the whole
+  // payload is exactly what catches a claim nobody thought to enumerate.
+  const userId = "user-oac-sentinel";
+  const { code, jti } = await issueCode(envWith(oauthDb()), { userId });
   const payload = Buffer.from(code.split(".")[1], "base64url").toString("utf8");
   const claims = JSON.parse(payload);
   assert.deepEqual(Object.keys(claims).sort(), ["exp", "iat", "jti", "v"]);
   assert.equal(claims.jti, jti);
-  for (const secret of ["42", REDIRECT, CLIENT, "research"]) {
+  for (const secret of [userId, REDIRECT, CLIENT, "research"]) {
     assert.equal(payload.includes(secret), false, `a code in a URL must not carry ${secret}`);
   }
 });
