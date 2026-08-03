@@ -30,6 +30,10 @@ import { fileURLToPath } from "node:url";
 import { tokenize } from "../public/js/arxiv-rag-core.js";
 import { chatJson } from "./arxiv-berget.mjs";
 import { hash01, loadCorpus } from "./arxiv-corpus.mjs";
+// One definition of the leak guard for both corpora's gold-set builders —
+// a threshold tuned against one measure of overlap and applied to another is
+// the failure docs/ARXIV-RAG.md §4.3 records.
+import { lexicalOverlap } from "./rag-eval-core.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -54,27 +58,7 @@ Respond with JSON: {"en": "...", "sv": "..."}`;
  * @param {string} title
  */
 export function titleOverlap(query, title) {
-  return lexicalOverlap(query, title);
-}
-
-/**
- * Fraction of the query's content words that also appear in `text`.
- *
- * Named generically because the title is the WRONG thing to measure alone.
- * docs/ARXIV-RAG.md §4.3: the shipped needle set looked clean at 0.30 mean
- * title overlap, but the model writes from the ABSTRACT and kept 0.68 of its
- * vocabulary — which silently handed BM25 a large head start and made it look
- * like the English winner. Always measure against the body too.
- * @param {string} query
- * @param {string} text
- */
-export function lexicalOverlap(query, text) {
-  const q = new Set(tokenize(query).filter((t) => t.length > 3));
-  const t = new Set(tokenize(text).filter((t) => t.length > 3));
-  if (!q.size || !t.size) return 0;
-  let shared = 0;
-  for (const w of q) if (t.has(w)) shared++;
-  return shared / q.size;
+  return lexicalOverlap(query, title, tokenize);
 }
 
 const MAX_OVERLAP = 0.5;

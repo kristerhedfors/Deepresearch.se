@@ -37,13 +37,16 @@ import { chatJson } from "./arxiv-berget.mjs";
 import { CANDIDATES, RERANK_FLOOR, corpus } from "./rag-corpora.mjs";
 import { getByIdsBatched, hostedSearch, vectorizeCount } from "./rag-hosted.mjs";
 import {
+  GRADER_OPTS,
   ageProfile,
+  gradeMessages,
   langParity,
   lexicalOverlap,
   lossBreakdown,
   needleStats,
   pairedNeedle,
   pairedSign,
+  parseGrades,
   rankOf,
   scoreProfile,
 } from "./rag-eval-core.mjs";
@@ -573,27 +576,11 @@ async function cmdJudge(argv) {
     const [qid, lang] = key.split(".");
     const q = byQ.get(qid);
     const ids = [...pooled.get(key)];
-    const listing = ids.map((id, i) => `${i}. ${docs[id]?.title || ""} — ${(docs[id]?.abstract || "").slice(0, 400)}`).join("\n");
     const json = await chatJson(
-      [
-        {
-          role: "system",
-          content:
-            "You grade search results for a scientific literature search engine. For each numbered candidate, " +
-            "rate how well it answers the research question: 3 = directly on topic and substantive, 2 = clearly " +
-            'related, 1 = same broad field only, 0 = irrelevant. Respond as JSON: {"grades": {"0": 3, "1": 0, ...}} ' +
-            "with an entry for every candidate.",
-        },
-        { role: "user", content: `Research question: ${q?.[lang] || qid}\n\nCandidates:\n${listing}` },
-      ],
-      { temperature: 0, maxTokens: 1500 },
+      gradeMessages(q?.[lang] || qid, ids, (id) => docs[id]),
+      GRADER_OPTS,
     ).catch(() => null);
-    /** @type {Record<string, number>} */
-    const g = {};
-    for (let i = 0; i < ids.length; i++) {
-      const raw = Number(json?.grades?.[String(i)]);
-      g[ids[i]] = Number.isFinite(raw) ? Math.max(0, Math.min(3, Math.round(raw))) : 0;
-    }
+    const g = parseGrades(json, ids);
     gains[key] = g;
     return g;
   });

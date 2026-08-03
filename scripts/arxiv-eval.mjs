@@ -42,6 +42,7 @@ import {
 import { RERANK_DOC_CHARS, chatJson, rerank } from "./arxiv-berget.mjs";
 import { EMBED_MODEL, EMBED_MODEL_INSTRUCT, describeProviders, embedAll } from "./embed-providers.mjs";
 import { loadCorpus } from "./arxiv-corpus.mjs";
+import { GRADER_OPTS, gradeMessages, parseGrades } from "./rag-eval-core.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CACHE = join(ROOT, "data/arxiv/cache");
@@ -419,30 +420,10 @@ async function gradeTopical(topicalPool, topical, byId, names, langs, results) {
         const [qid, lang] = key.split(".");
         const q = topical.find((/** @type {any} */ t) => t.id === qid);
         const ids = [...topicalPool.get(key)];
-        const listing = ids
-          .map((id, i) => `${i}. ${byId.get(id)?.title || ""} — ${(byId.get(id)?.abstract || "").slice(0, 400)}`)
-          .join("\n");
-        const json = await chatJson(
-          [
-            {
-              role: "system",
-              content:
-                "You grade search results for a scientific literature search engine. For each numbered candidate, " +
-                "rate how well it answers the research question: 3 = directly on topic and substantive, 2 = clearly " +
-                'related, 1 = same broad field only, 0 = irrelevant. Respond as JSON: {"grades": {"0": 3, "1": 0, ...}} ' +
-                "with an entry for every candidate.",
-            },
-            { role: "user", content: `Research question: ${q[lang]}\n\nCandidates:\n${listing}` },
-          ],
-          { temperature: 0, maxTokens: 1500 },
-        ).catch(() => null);
-        /** @type {Record<string, number>} */
-        const g = {};
-        for (let i = 0; i < ids.length; i++) {
-          const raw = Number(json?.grades?.[String(i)]);
-          g[ids[i]] = Number.isFinite(raw) ? Math.max(0, Math.min(3, Math.round(raw))) : 0;
-        }
-        gains[key] = g;
+        const json = await chatJson(gradeMessages(q[lang], ids, (id) => byId.get(id)), GRADER_OPTS).catch(
+          () => null,
+        );
+        gains[key] = parseGrades(json, ids);
         process.stdout.write(`\r  graded ${++graded}/${keys.length}`);
       }
     }),
@@ -648,30 +629,10 @@ async function main() {
           const [qid, lang] = key.split(".");
           const q = topical.find((/** @type {any} */ t) => t.id === qid);
           const ids = [...topicalPool.get(key)];
-          const listing = ids
-            .map((id, i) => `${i}. ${byId.get(id)?.title || ""} — ${(byId.get(id)?.abstract || "").slice(0, 400)}`)
-            .join("\n");
-          const json = await chatJson(
-            [
-              {
-                role: "system",
-                content:
-                  "You grade search results for a scientific literature search engine. For each numbered candidate, " +
-                  "rate how well it answers the research question: 3 = directly on topic and substantive, 2 = clearly " +
-                  'related, 1 = same broad field only, 0 = irrelevant. Respond as JSON: {"grades": {"0": 3, "1": 0, ...}} ' +
-                  "with an entry for every candidate.",
-              },
-              { role: "user", content: `Research question: ${q[lang]}\n\nCandidates:\n${listing}` },
-            ],
-            { temperature: 0, maxTokens: 1500 },
-          ).catch(() => null);
-          /** @type {Record<string, number>} */
-          const g = {};
-          for (let i = 0; i < ids.length; i++) {
-            const raw = Number(json?.grades?.[String(i)]);
-            g[ids[i]] = Number.isFinite(raw) ? Math.max(0, Math.min(3, Math.round(raw))) : 0;
-          }
-          gains[key] = g;
+          const json = await chatJson(gradeMessages(q[lang], ids, (id) => byId.get(id)), GRADER_OPTS).catch(
+            () => null,
+          );
+          gains[key] = parseGrades(json, ids);
           process.stdout.write(`\r  graded ${++graded}/${keys.length}`);
         }
       }),

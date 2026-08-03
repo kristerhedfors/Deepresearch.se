@@ -262,3 +262,50 @@ export function titleAbstractDoc(match) {
   const text = [title, abstract].filter(Boolean).join(". ");
   return text.length > RERANK_DOC_CHARS ? text.slice(0, RERANK_DOC_CHARS) : text;
 }
+
+// ---- the shared half of `itemOf` --------------------------------------------
+// `denseSearch` takes both per-corpus callbacks as parameters, and the shared
+// implementation of the first one — `docOf` — is `titleAbstractDoc` above.
+// These are the shared implementation of the second. What a corpus genuinely
+// differs in (its URL, and which stored fields go on the metadata line) stays
+// in src/arxiv-rag.js and src/pubmed-rag.js; the author formatting and the
+// abstract cut are the same in both because they are REQUIRED to be: each
+// tier's mapper exists to look exactly like its live sibling's, so a reader of
+// the numbered source list cannot tell which tier answered. That property is
+// invisible when it breaks, which is why the cut length is one constant.
+
+// The presentation cut, matching the live tiers. Unrelated to RERANK_DOC_CHARS
+// above: that one is what the cross-encoder reads, this is what the user does.
+export const MAX_ABSTRACT_CHARS = 420;
+
+/**
+ * The stored `au` metadata ("A; B; C; D") → a citation author line, first three
+ * names with "et al." for the rest, or "" when there are none.
+ * @param {any} value
+ * @returns {string}
+ */
+export function authorsLine(value) {
+  const authors = String(value || "")
+    .split(";")
+    .map((a) => a.trim())
+    .filter(Boolean);
+  const shown = authors.slice(0, 3).join(", ");
+  return authors.length ? `${shown}${authors.length > 3 ? " et al." : ""}` : "";
+}
+
+/**
+ * The `highlights` array of a citable item: the metadata line, then the
+ * abstract when there is one, cut to MAX_ABSTRACT_CHARS.
+ * @param {string} metaLine
+ * @param {any} abstract the stored `a` metadata, unparsed
+ * @returns {string[]}
+ */
+export function citationHighlights(metaLine, abstract) {
+  const text = String(abstract || "").trim();
+  /** @type {string[]} */
+  const highlights = [metaLine];
+  if (text) {
+    highlights.push(text.length > MAX_ABSTRACT_CHARS ? `${text.slice(0, MAX_ABSTRACT_CHARS).trimEnd()}…` : text);
+  }
+  return highlights;
+}

@@ -377,3 +377,80 @@ export function lexicalOverlap(query, text, tokenize) {
   for (const w of q) if (t.has(w)) shared++;
   return shared / q.size;
 }
+
+// ---- the graded-relevance judge ---------------------------------------------
+//
+// Every topical query set in this repo is scored by nDCG over LLM-assigned
+// gains, and the rubric below is what assigns them. It was written once and
+// hand-copied into four places: scripts/arxiv-eval.mjs (twice, in its two
+// grading passes), scripts/arxiv-hosted-eval.mjs and scripts/rag-eval.mjs.
+//
+// Four copies of a JUDGE is a different kind of duplication from four copies
+// of a helper. A gain is only meaningful relative to other gains from the same
+// rubric, so the local pack's nDCG and the hosted path's nDCG are comparable
+// ONLY while the four prompts are identical — and docs/ARXIV-RAG.md compares
+// them directly. Reword one ("substantive" → "useful", say, or the 0–3 scale
+// to 0–2) and every table stays green, every number stays plausible, and the
+// comparisons across them quietly stop meaning anything.
+//
+// The chatJson CALL stays at each site: this module reaches no network, which
+// is what makes all of it testable.
+
+/** The abstract excerpt each candidate is judged on. */
+export const GRADE_ABSTRACT_CHARS = 400;
+
+/** The 0–3 rubric. Changing this invalidates comparisons with every run already recorded. */
+export const GRADER_SYSTEM =
+  "You grade search results for a scientific literature search engine. For each numbered candidate, " +
+  "rate how well it answers the research question: 3 = directly on topic and substantive, 2 = clearly " +
+  'related, 1 = same broad field only, 0 = irrelevant. Respond as JSON: {"grades": {"0": 3, "1": 0, ...}} ' +
+  "with an entry for every candidate.";
+
+/** Temperature 0 because a judge that varies run to run measures itself. */
+export const GRADER_OPTS = { temperature: 0, maxTokens: 1500 };
+
+/**
+ * The chatJson messages that grade one pooled candidate set.
+ *
+ * Candidates are presented by POSITION, not by id — the grader never sees an
+ * arXiv id or a PMID, so it cannot recognize a paper it "knows" and grade the
+ * document rather than the match. `parseGrades` maps the positions back.
+ *
+ * @param {string} question the research question, in the pool's language
+ * @param {string[]} ids the pooled candidate ids, in the order to present them
+ * @param {(id: string) => any} docOf id → `{ title, abstract }`, however the
+ *   caller happens to hold its documents (a Map, a plain object, a lookup)
+ * @returns {{ role: string, content: string }[]}
+ */
+export function gradeMessages(question, ids, docOf) {
+  const listing = ids
+    .map((id, i) => `${i}. ${docOf(id)?.title || ""} — ${(docOf(id)?.abstract || "").slice(0, GRADE_ABSTRACT_CHARS)}`)
+    .join("\n");
+  return [
+    { role: "system", content: GRADER_SYSTEM },
+    { role: "user", content: `Research question: ${question}\n\nCandidates:\n${listing}` },
+  ];
+}
+
+/**
+ * The judge's reply → a gain per id, clamped to the rubric's 0–3.
+ *
+ * An unparseable, missing or out-of-range grade becomes 0 rather than being
+ * dropped: nDCG needs a gain for every pooled candidate, and a missing key
+ * would silently shorten the ideal ranking and inflate the score. A failed
+ * grading call (`json` null) therefore reads as "nothing was relevant", which
+ * is visible in the table as a zero row rather than as a quiet omission.
+ *
+ * @param {any} json the parsed `{ grades: { "0": 3, … } }` reply, or null
+ * @param {string[]} ids the same ids, in the same order, gradeMessages was given
+ * @returns {Record<string, number>}
+ */
+export function parseGrades(json, ids) {
+  /** @type {Record<string, number>} */
+  const g = {};
+  for (let i = 0; i < ids.length; i++) {
+    const raw = Number(json?.grades?.[String(i)]);
+    g[ids[i]] = Number.isFinite(raw) ? Math.max(0, Math.min(3, Math.round(raw))) : 0;
+  }
+  return g;
+}

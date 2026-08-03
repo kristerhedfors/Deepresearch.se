@@ -50,6 +50,7 @@ import { hash01 } from "./arxiv-corpus.mjs";
 import { listShard } from "./arxiv-gcs.mjs";
 import { bareId } from "./arxiv-crosscheck.mjs";
 import { CANDIDATES, hostedSearch, vectorizeCount, vectorizeGetByIds } from "./arxiv-hosted.mjs";
+import { GRADER_OPTS, expandMonths, gradeMessages, parseGrades, rankOf } from "./rag-eval-core.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Vectorize rejects a larger payload outright: "40007 too many ids in payload;
@@ -58,44 +59,12 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const GET_BY_IDS_BATCH = 20;
 const WORKERS = 4;
 
-/**
- * "2507-2607" → every YYMM in between, inclusive. Also accepts a plain list.
- * Two-digit years wrap at the century, so the range walks months rather than
- * comparing strings (2512 → 2601 must not look like a gap).
- * @param {string} spec
- * @returns {string[]}
- */
-export function expandMonths(spec) {
-  const text = String(spec || "").trim();
-  if (!text) return [];
-  if (text.includes(",")) return text.split(",").map((s) => s.trim()).filter(Boolean);
-  const m = /^(\d{2})(\d{2})-(\d{2})(\d{2})$/.exec(text);
-  if (!m) return [text];
-  const [, y1, m1, y2, m2] = m;
-  const out = [];
-  let year = Number(y1);
-  let month = Number(m1);
-  for (let guard = 0; guard < 600; guard++) {
-    out.push(String(year).padStart(2, "0") + String(month).padStart(2, "0"));
-    if (year === Number(y2) && month === Number(m2)) return out;
-    month++;
-    if (month > 12) {
-      month = 1;
-      year = (year + 1) % 100;
-    }
-  }
-  return out;
-}
-
-/**
- * Rank of the gold id in a ranked id list, 1-based; 0 when absent.
- * @param {string[]} ids
- * @param {string} gold
- */
-export function rankOf(ids, gold) {
-  const i = ids.indexOf(gold);
-  return i < 0 ? 0 : i + 1;
-}
+// The window arithmetic and the rank bookkeeping are shared with the
+// corpus-agnostic harness (scripts/rag-eval-core.mjs) rather than copied. They
+// were byte-identical, and the two harnesses measure the SAME index: a range
+// that walked its months differently in one of them would report a coverage
+// hole that the other could not see.
+export { expandMonths, rankOf };
 
 /** @param {string[]} argv */
 function arg(argv, flag, dflt) {
@@ -519,28 +488,11 @@ async function cmdJudge(argv) {
         const [qid, lang] = key.split(".");
         const q = byQ.get(qid);
         const ids = [...pool.get(key)];
-        const listing = ids.map((id, i) => `${i}. ${docs[id]?.title || ""} — ${(docs[id]?.abstract || "").slice(0, 400)}`).join("\n");
         const json = await chatJson(
-          [
-            {
-              role: "system",
-              content:
-                "You grade search results for a scientific literature search engine. For each numbered candidate, " +
-                "rate how well it answers the research question: 3 = directly on topic and substantive, 2 = clearly " +
-                'related, 1 = same broad field only, 0 = irrelevant. Respond as JSON: {"grades": {"0": 3, "1": 0, ...}} ' +
-                "with an entry for every candidate.",
-            },
-            { role: "user", content: `Research question: ${q?.[lang] || qid}\n\nCandidates:\n${listing}` },
-          ],
-          { temperature: 0, maxTokens: 1500 },
+          gradeMessages(q?.[lang] || qid, ids, (id) => docs[id]),
+          GRADER_OPTS,
         ).catch(() => null);
-        /** @type {Record<string, number>} */
-        const g = {};
-        for (let i = 0; i < ids.length; i++) {
-          const raw = Number(json?.grades?.[String(i)]);
-          g[ids[i]] = Number.isFinite(raw) ? Math.max(0, Math.min(3, Math.round(raw))) : 0;
-        }
-        gains[key] = g;
+        gains[key] = parseGrades(json, ids);
         process.stdout.write(`\r  graded ${++graded}/${keys.length}   `);
       }
     }),

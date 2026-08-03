@@ -43,32 +43,15 @@
 //   queries WORSE in both languages. The live tier is the lexical arm, and it
 //   is a fallback rather than a fusion input.
 
-import {
-  CANDIDATES,
-  RERANK_DOC_CHARS,
-  RERANK_FLOOR,
-  denseSearch,
-  rerankMatches,
-  titleAbstractDoc,
-} from "./dense-rag.js";
+import { authorsLine, citationHighlights, denseSearch, rerankMatches, titleAbstractDoc } from "./dense-rag.js";
 
 /** @typedef {{ url: string, title: string, highlights: string[] }} ArxivItem */
 
-// The retrieval machinery — embed, query, rerank, floor — and every measured
-// constant behind it now live in src/dense-rag.js, shared with the PubMed
-// corpus. What stays here is what is arXiv-specific: the binding, the id
-// convention, and how a match becomes a citable source.
-//
-// ---- deviations from docs/ARXIV-RAG.md, and why ----------------------------
-// * **The rerank pool is 50, matching the doc's measured pipeline** (raised
-//   from 20 on 2026-07-29, when Vectorize's returnMetadata:"all" cap moved).
-//   Measured over 150 needle queries (EN+SV) through this exact path, pool
-//   20 → 50 bought +4.0 points of English recall@10 and +2.0 Swedish, and the
-//   cross-encoder leg did not get slower (median 763 → 779 ms).
-// * **No BM25 arm**, matching the doc: fusing lexical in made hand-written
-//   queries WORSE in both languages. The live tier is the lexical arm, and it
-//   is a fallback rather than a fusion input.
-const MAX_ABSTRACT_CHARS = 420; // presentation cut, matches the live tier
+// The retrieval machinery — embed, query, rerank, floor — every measured
+// constant behind it, and the parts of the item mapping that both hosted
+// corpora share now live in src/dense-rag.js. What stays here is what is
+// arXiv-specific: the binding, the id convention, and which stored fields go
+// on a source's metadata line.
 
 /**
  * Is the dense tier available in this deployment?
@@ -114,28 +97,15 @@ export function arxivRagItem(match) {
   const id = String(match.id || "").trim();
   const title = String(m.t || "").trim();
   if (!id || !title) return null;
-  const authors = String(m.au || "")
-    .split(";")
-    .map((a) => a.trim())
-    .filter(Boolean);
-  const shown = authors.slice(0, 3).join(", ");
   const meta = [
-    authors.length ? `${shown}${authors.length > 3 ? " et al." : ""}` : "",
+    authorsLine(m.au),
     String(m.c || ""),
     arxivSubmitted(id) || String(m.d || "").slice(0, 10),
     `arXiv:${id}`,
   ]
     .filter(Boolean)
     .join(" · ");
-  const abstract = String(m.a || "").trim();
-  /** @type {string[]} */
-  const highlights = [meta];
-  if (abstract) {
-    highlights.push(
-      abstract.length > MAX_ABSTRACT_CHARS ? `${abstract.slice(0, MAX_ABSTRACT_CHARS).trimEnd()}…` : abstract,
-    );
-  }
-  return { url: `https://arxiv.org/abs/${id}`, title, highlights };
+  return { url: `https://arxiv.org/abs/${id}`, title, highlights: citationHighlights(meta, m.a) };
 }
 
 /**
