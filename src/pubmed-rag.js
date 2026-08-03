@@ -41,11 +41,9 @@
 // is a measured limitation of the embedding window, recorded in
 // docs/PUBMED-RAG.md, not something to paper over here.
 
-import { denseSearch, rerankMatches, titleAbstractDoc } from "./dense-rag.js";
+import { authorsLine, citationHighlights, denseSearch, rerankMatches, titleAbstractDoc } from "./dense-rag.js";
 
 /** @typedef {{ url: string, title: string, highlights: string[] }} PubmedItem */
-
-const MAX_ABSTRACT_CHARS = 420; // presentation cut, matches the live tier
 
 /**
  * Is the dense tier available in this deployment?
@@ -78,28 +76,14 @@ export function pubmedRagItem(match) {
   const pmid = pubmedPmid(match.id);
   const title = String(m.t || "").trim();
   if (!pmid || !title) return null;
-  const authors = String(m.au || "")
-    .split(";")
-    .map((a) => a.trim())
-    .filter(Boolean);
-  const shown = authors.slice(0, 3).join(", ");
-  const meta = [
-    authors.length ? `${shown}${authors.length > 3 ? " et al." : ""}` : "",
-    String(m.j || ""),
-    String(m.d || "").slice(0, 10),
-    `PMID:${pmid}`,
-  ]
+  const meta = [authorsLine(m.au), String(m.j || ""), String(m.d || "").slice(0, 10), `PMID:${pmid}`]
     .filter(Boolean)
     .join(" · ");
-  const abstract = String(m.a || "").trim();
-  /** @type {string[]} */
-  const highlights = [meta];
-  if (abstract) {
-    highlights.push(
-      abstract.length > MAX_ABSTRACT_CHARS ? `${abstract.slice(0, MAX_ABSTRACT_CHARS).trimEnd()}…` : abstract,
-    );
-  }
-  return { url: `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`, title, highlights };
+  return {
+    url: `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`,
+    title,
+    highlights: citationHighlights(meta, m.a),
+  };
 }
 
 /**
