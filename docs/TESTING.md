@@ -193,7 +193,26 @@ and `mcp-config.js` (the per-account exposure policy: the catalog mirrors the
 tool list `mcp.js` serves exactly, unreadable input degrades to the
 everything-exposed default that preceded it, out-of-range budgets are clamped
 rather than honoured, the master switch outranks every individual tool row, and
-`filterMcpTools` drops uncatalogued names) — `model-routing.js` (the shared
+`filterMcpTools` drops uncatalogued names) — plus the LITERATURE tool family
+the same clients reach (added 2026-08-01): `literature-tools.js` (the pure
+half — four MCP-ready schemas, `normalizeQueries` merging `query` with
+`queries` under a cap, `normalizeCorpora` defaulting to both, the date padding
+that stops `since: "2024"` dropping January off an arXiv record's `YYYY-MM`,
+the record mappers that keep the fields the presentation tier flattens away,
+the post-retrieval filters — a category prefix matching its subcategories but
+not a longer name, a corpus-specific filter that cannot empty the other
+corpus, a record with no usable date surviving a date bound — `mergeRanked`
+ranking corroboration above a slightly better lone score, and `capGroups`
+holding the response under the record cap without starving a query) and
+`literature-run.js` (the runner against fake bindings: six angles costing ONE
+embedding call while the retrievals overlap, `mapPool` preserving order while
+bounding concurrency, the relevance floor dropping the weak tail and an empty
+result saying what it means, `similar` falling back to re-embedding when the
+index returns no vector and naming the window when the seed is outside the
+corpus, and every degrade path — one corpus down, the cross-encoder lost, the
+embedder dead, a binding missing — reported as a described `isError` result
+rather than thrown, which is invariant 2 at the tool boundary) —
+`model-routing.js` (the shared
 `resolveJsonModel` split-routing decision `chat.js` and `mcp.js` both
 delegate to), `pipeline.js` + `pipeline-inputs.js` (the flow's pure
 pieces — `normalizeTriage`, `collectConflicts`,
@@ -270,7 +289,15 @@ independent per subsystem, account binding with byte-identical foreign/missing
 → open → hydrate → spend → minter pause/top-up → revoke workspace flow),
 `history-key.js` (per-user key derivation determinism + the configured
 gate), `admin-boards.js` (the boards-discovery registry shape +
-`?format=text`), `testpoints.js` (the try-it queue's pure logic:
+`?format=text`), `admin-users.test.js` (the admin invite endpoint in
+`admin-api.js` over an in-memory D1 — the suite is named for the endpoint, not
+a module of its own: a pre-approved row for an address that has never signed
+in, `pending` staging an account without granting access, an unrecognized
+status falling back to `active` rather than being written raw, the sole-admin
+policy that never takes a role from the request, and an address that already
+has an account answering 409 both from the pre-check and from a UNIQUE
+violation racing it — the sign-in side of that handshake, claiming the row, is
+pinned in `google.test.js`), `testpoints.js` (the try-it queue's pure logic:
 `cleanTarget` same-origin validation, the action-grammar `cleanAction`/
 `validateActions` incl. unknown-drop + count cap, create/patch/result
 validation incl. the three-verdict 👍/👎/❓ vocabulary + thread-message
@@ -331,7 +358,34 @@ enrichments and surfaces** added since: `aadr.js` (the ancient-sample block —
 corpus load through the ASSETS binding, per-binding caching, and the
 declared-context gate that switches it on without a mode or a knob),
 `europepmc.js` (the life-science literature leg, whose bilingual intent gates
-are where the `\b` trap was first found). **The interchange
+are where the `\b` trap was first found), and the Deep Science pair added
+2026-07-31 — `scholar.js` (the peer-reviewed search source: `scholarIntent`
+EN+SV over the peer-reviewed and the "proven" family, minus the commercial
+idiom, with `scholarLeadIntent` strictly narrower; the ladder that climbs by
+DROPPING terms, because terms narrow; `peerReviewed` admitting only records
+carrying positive evidence and rejecting preprints, repositories, retractions
+and the unknown, with a Google Scholar hit admitted ONLY by merging onto a
+record that has evidence; `titleKey` matching one paper across four house
+styles; the OpenAlex inverted-abstract rebuild; `crossrefRecord` keeping the
+type so the Faculty-Opinions trap stays visible; and `rankRecords` refusing to
+let a citation magnet outrank the paper the question was about) and
+`scholar-metrics.js` (the Google Scholar half: `profileId` reading an id out of
+a profile URL or an explicit mention while staying off a bare lookalike token,
+the profile fetch asserted against what Scholar's robots.txt ALLOWS,
+`parseProfile` returning null for a page that is not a profile — which IS the
+CAPTCHA detection, since that page answers 200 — the profile block attributing
+every number to Scholar and refusing to imply peer review, `parseVenueTable`
+refusing a layout it does not know, and the enrichment restricting EVERY turn
+to the peer-reviewed source while folding in venue metrics with no outbound
+request). **Account memory** (2026-07-30, `docs/ACCOUNT-MEMORY.md`):
+`memory.js` covers the write gates rather than the note model — `memoryUserId`
+refusing a break-glass identity, since a shared credential has no personal
+memory; the knob off by default and only an explicit stored `true` enabling it;
+and `runMemoryExtraction` writing nothing for an incognito turn, a signed-out
+identity, a knob left off (without paying for a model call) or a thin answer,
+dropping junk from the model instead of storing it, degrading rather than
+throwing when extraction fails (invariant 2), and passing the already-known
+titles to the prompt so re-mentions merge. **The interchange
 standards** get the same treatment, and it is pointed specifically at the gap
 between what a spec claims and what the code does: `drsw-manifest.js` pins that
 `/.well-known/drsw.json` declares the payload kind and version the workspace
@@ -522,7 +576,21 @@ set, mirroring the server's with Exa first and default), `sdk-showcase.js` (a
 catalog whose every item carries a stable unique id and a real build prompt),
 `sdk-plant.js`, `account-views.js` (the account panel's summary/row rendering,
 including a Messages count that excludes feedback replies the badge folds in)
-and `account-articles.js`, plus the presentation cores `mode-theme.js`,
+and `account-articles.js`, `memory-core.js` (account memory's note model:
+`noteSlug` stripping path separators and Obsidian link syntax while keeping
+non-ASCII letters, `normalizeMemoryNotes` dropping a note missing a title or a
+body — neither is memory — mapping an unknown type to `note` rather than
+storing junk, de-duplicating by slug case-insensitively and dropping a
+self-link, `mergeNote` unioning links and tags so the graph only ever gains
+edges while a vague type never overwrites a specific stored one, and
+`noteToMarkdown` putting links in the BODY as wikilinks rather than only in
+frontmatter, since that is what Obsidian follows) and `zip-core.js` (the
+hand-rolled export archive: `crc32` against the published check value, a
+pre-1980 date clamped instead of written as a negative year, entries STORED
+rather than deflated and flagged UTF-8 so a Swedish vault's paths survive,
+byte-identical output across two exports of one vault, and the archive read
+back both by an independent reader and by the system `unzip`), plus the
+presentation cores `mode-theme.js`,
 `bar-tint.js`, `graph-backdrop.js`, `plant-spinner.js`, `boot-messages.js`,
 `umbrella-intro.js`, `ghostwalk.js`, `sandbox-mode.js` and `dev-mode.js`.
 
@@ -605,7 +673,25 @@ cannot detect its own gaps), `arxiv-fulltext.test.mjs`,
 `cheerio`, so a bare checkout fails it on a missing module rather than an
 assertion), `arxiv-hosted-eval.test.mjs`, `corpus-rag.test.mjs`,
 `embed-providers.test.mjs` and `embed-truncate.test.mjs` (the 512-token
-embedder limit that REJECTS rather than truncates). The rest:
+embedder limit that REJECTS rather than truncates). Beside them,
+`pubmed-partition.test.mjs` covers the biomedical ingest's work split —
+`partOf` deterministic, so a resumed loader sees the same work list, staying
+inside the requested range and spreading PMIDs evenly enough to balance the
+loaders, plus the parts count that cannot produce a usable fill being
+rejected rather than run — and
+`rag-eval-core.test.mjs` covers the retrieval-evaluation instrument:
+`expandMonths` crossing a year boundary rather than comparing strings, the
+PubMed month parser asserted NOT to be the arXiv one, every registered corpus
+round-tripping its own id spelling while an unknown one is refused by name
+rather than defaulted, the harness replaying the SERVED pool and floor rather
+than a copy of them, and `mcnemar` reproducing the hand-computed verdicts
+published in `docs/ARXIV-RAG.md` §11 while staying finite where a factorial
+implementation would overflow. `mcp-probe.test.mjs` is the MCP surface's
+live-probe helper: credentials read from both families and overridden by
+flags, well-formed JSON-RPC 2.0 messages, an unauthenticated call that must
+answer a JSON-RPC 401 rather than the sign-in page, and the corpora check
+treating a live vector count as the binding proof so a bound-but-empty index
+cannot pass. The rest:
 `pulse-themes.test.mjs` + `pulse-time.test.mjs` (the commit-analytics tagger
 and rollups), `dup-scan.test.mjs` + `line-scan.test.mjs` (the refactor-pass
 surveys), `merge-markers.test.mjs` and `check-merged-branches.test.mjs` (the
@@ -615,7 +701,9 @@ merge hygiene guards behind the push hook).
 change is a caught diff rather than a silently different ledger:
 `bench-score.test.js` (the rubric bench's aggregation and the noise-aware gate
 verdict) and `hf-bench-lib.test.js` (`aggregateHfScores`, including that it
-counts leak-tainted runs separately instead of averaging them in). The
+counts leak-tainted runs separately instead of averaging them in), plus
+`bench-sources.test.js`, the source-coverage guard described under "Source
+coverage is a build-time invariant" below. The
 Playwright specs in `tests/e2e/` are a different runner entirely; next
 section.
 

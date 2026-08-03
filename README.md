@@ -35,21 +35,29 @@ OpenAI-compatible models are the primary LLM provider. Anthropic (`claude-*`)
 and OpenAI (`gpt-*`) are optional, key-gated answer-model providers behind the
 `src/providers.js` registry; the JSON planning phases always stay on Berget.
 Exa is the web search — or the Worker itself, which can originate searches with
-no search company in the path — and the Hugging Face Hub and arXiv are auxiliary
-search sources; opt-in enrichments (Shodan host intelligence, Google Maps and
-Street View) feed the pipeline context. Google sign-in gates the whole site. D1
-stores accounts, real-cost research quotas, the chat interaction log, and
-feedback threads. R2 and Vectorize hold encrypted cloud history and document RAG
+no search company in the path — and the Hugging Face Hub, arXiv, Europe PMC
+and the peer-reviewed literature are auxiliary search sources; opt-in
+enrichments (Shodan host intelligence, Google Maps and Street View) feed the
+pipeline context. Google sign-in gates the whole site. D1 stores accounts,
+real-cost research quotas, the chat interaction log, feedback threads, and the
+durable note graph an account builds across conversations. R2 and Vectorize
+hold encrypted cloud history and document RAG
 — implicit on this tier, so the tier is the choice rather than a per-account
 knob. An `/admin` console shows usage and approves users. The pipeline is also
-exposed as an MCP tool (`POST /mcp`, `deep_research`) — point Claude Code or any
+exposed as an MCP tool (`POST /mcp`, `deep_research`), alongside a
+`literature_*` family that hands an external agent the arXiv and PubMed corpora
+directly — search several angles at once, fetch a record by arXiv id or PMID,
+find more like a known paper, and ask what is actually indexed — so the agent
+reads the records itself instead of a written answer. Point Claude Code or any
 other MCP client at `https://mcp.deepresearch.se` — the bare origin, no path —
 with an account-minted key, and choose
 which tools it may reach under Settings → MCP server ([setup
 instructions](https://mcp.deepresearch.se/)).
 
-The chat itself has several **modes**, each a pre-bundled agent over the same
-platform: Deep Research (the default), Introspection (the site answering
+The chat itself has seven **modes**, each a pre-bundled agent over the same
+platform: Deep Research (the default), Deep Science (answering only from the
+peer-reviewed literature, with citations annotated by the venue's own h5-index
+where Google Scholar ranks it), Introspection (the site answering
 questions about its own deployed source), Agent Studio (distilling this site
 into a new agent or platform and publishing it live), Orchestrator (one plan
 phase decomposing a request into a team of sub-agents run in parallel waves),
@@ -62,13 +70,14 @@ browser / PWA / MCP client ── Google OIDC session ──> Worker (src/index.
     ├── static UI            public/ (env.ASSETS)
     ├── POST /api/chat       src/chat.js → src/pipeline.js
     │     ├── LLMs           src/providers.js → berget.js | anthropic.js | openai.js | hf-inference.js
-    │     ├── web search     src/exa.js | src/websearch-cf.js (+ src/search-sources.js: hf.js, arxiv.js)
+    │     ├── web search     src/exa.js | src/websearch-cf.js
+    │     │                  (+ src/search-sources.js: hf.js, arxiv.js, europepmc.js, scholar.js)
     │     └── enrichments    src/enrichment.js (via src/extensions.js: shodan.js, maps-enrichment.js)
-    ├── POST /mcp            src/mcp.js (deep_research + sdk_* tools; MCP key or session)
+    ├── POST /mcp            src/mcp.js (deep_research + literature_* + sdk_* tools; MCP key or session)
     ├── POST /api/exec/*     src/exec-container.js (DREE/1 → one container per session)
     ├── /admin, /api/admin/* admin console (usage, users, chatlogs, feedback)
-    ├── D1  (accounts, quotas, config, chat_logs, feedback, answer recovery, game saves)
-    └── R2 + Vectorize (encrypted cloud history, document RAG, the arXiv corpus)
+    ├── D1  (accounts, quotas, config, chat_logs, feedback, memory_notes, answer recovery, game saves)
+    └── R2 + Vectorize (encrypted cloud history, document RAG, the arXiv + PubMed corpora)
 ```
 
 ## Workspaces — where research is distributed and findings come back
@@ -150,8 +159,9 @@ core, so they stay in sync by construction.
   catalog, the CLI, and the implementation order.
 - `sdk/README.md` — the catalog front page; `sdk/DESIGN.md` the full design;
   `sdk/ROADMAP.md` the build-order rationale.
-- `node sdk/pair-cli.mjs list|show|plan|validate` — explore the registry,
-  compute a build order for a module selection, check manifest integrity.
+- `node sdk/pair-cli.mjs list|show|plan|validate|agents|agent` — explore the
+  registry, compute a build order for a module selection, check manifest
+  integrity, and read the agent registry the modes route on.
 
 ## Installing your own instance
 
