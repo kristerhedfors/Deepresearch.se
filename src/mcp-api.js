@@ -104,18 +104,38 @@ export async function resolveMcpKeyIdentity(request, env) {
  * a deploy without one — a workers.dev preview, a fork on a bare hostname, a
  * local run — shows its own origin instead, so the setup instructions are
  * always something that actually works from where the reader is standing.
+ *
+ * ON THE DEDICATED HOST THE ADVERTISED URL IS THE BARE ORIGIN — no `/mcp`
+ * tail (owner directive, 2026-08-03). Both forms have always answered
+ * (isMcpEndpoint accepts either there), so this is a change of what we TELL
+ * people, not of what works. Three reasons the bare origin is the better
+ * thing to advertise:
+ *   - It is the shortest URL that cannot be got wrong. The commonest MCP
+ *     setup failure is a client that appends its own path to the configured
+ *     URL, or one that doesn't; on this host neither can miss.
+ *   - The host exists for exactly one service, so a path adds nothing. Saying
+ *     `mcp.deepresearch.se/mcp` states it twice.
+ *   - A future claude.ai web connector (docs/MCP-CONNECTOR.md) needs the
+ *     protected-resource metadata's `resource` field to match the URL THE
+ *     USER TYPED, character for character. Advertising one canonical form —
+ *     the one a person types from memory — is what makes that matchable.
+ * A preview or local origin keeps the path: there the bare origin is the app,
+ * and only `/mcp` is the endpoint. The test is the HOST, not the deploy: a
+ * preview that happens to be served on an `mcp.` name gets the bare origin
+ * too, which is right — `isMcpEndpoint` accepts it wherever the first label
+ * is `mcp`, so the advertised form and the accepted form cannot diverge.
  * @param {URL} url the incoming request URL
  * @returns {string}
  */
 export function mcpEndpointUrl(url) {
   const host = url.hostname.toLowerCase();
-  if (isMcpHost(host)) return `${url.origin}/mcp`;
+  if (isMcpHost(host)) return url.origin;
   // A dedicated subdomain only exists for a real custom domain; the preview
   // and local hosts get their own origin. `.workers.dev` previews are the
   // common case and are matched explicitly rather than guessed at.
   const isPlainHost = !host.includes("localhost") && !host.endsWith(".workers.dev") && host.includes(".");
   if (url.protocol === "https:" && isPlainHost) {
-    return `https://mcp.${host.replace(/^www\./, "")}/mcp`;
+    return `https://mcp.${host.replace(/^www\./, "")}`;
   }
   return `${url.origin}/mcp`;
 }

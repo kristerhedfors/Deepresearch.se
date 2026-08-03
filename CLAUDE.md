@@ -388,7 +388,7 @@ Pipeline & models:
 - **add-research-source** — integrating a new deep-research source end to end (intent, registry, SSE visibility, validation).
 - **local-web-search** — running your own web-search service as an Exa alternative, configurable in both tiers.
 - **sse-protocol** — the `/api/chat` SSE event vocabulary, forward-compatibility rule, and the inline-quiz event.
-- **mcp-server** — the site exposed AS an MCP `deep_research` tool (`POST /mcp`, hand-rolled JSON-RPC 2.0); connecting Claude Code via an MCP key on `mcp.deepresearch.se`, and the per-account exposure config under Settings → MCP server.
+- **mcp-server** — the site exposed AS an MCP `deep_research` tool (`POST /mcp`, hand-rolled JSON-RPC 2.0); connecting Claude Code via an MCP key at the advertised bare origin `https://mcp.deepresearch.se` (no `/mcp` tail), the per-account exposure config under Settings → MCP server, and the claude.ai web-connector / mobile question (`docs/MCP-CONNECTOR.md`).
 - **integrations** — external providers and the enrichment pattern (Berget, Anthropic, OpenAI, Exa, Nominatim, Shodan, Maps, HF, **Google Scholar + the peer-reviewed literature**: what Scholar's robots.txt permits — profiles and venue metrics yes, `/scholar` never — the OpenAlex/Crossref/SerpApi traps, and why sorting a literature by citations answers with methods papers nobody asked about; the agent itself is `docs/SCHOLAR.md`).
 
 Privacy, storage & grants:

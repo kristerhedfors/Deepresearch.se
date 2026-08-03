@@ -40,7 +40,7 @@ import {
 
 test("parseProbeArgs defaults to the dedicated MCP host", () => {
   const opts = parseProbeArgs([], {});
-  assert.equal(opts.url, "https://mcp.deepresearch.se/mcp");
+  assert.equal(opts.url, "https://mcp.deepresearch.se");
   assert.equal(opts.key, "");
   assert.equal(opts.basic, "");
   assert.equal(opts.deep, false);

@@ -179,7 +179,7 @@ test("a garbage or expired mck1 token is refused, not ignored", async () => {
 test("GET /api/mcp/config reports the defaults, the catalog and the endpoint", async () => {
   const user = activeUser();
   const payload = await readJson(await handleMcpConfigGet(URL_APEX, identityFor(user)));
-  assert.equal(payload.endpoint, "https://mcp.deepresearch.se/mcp");
+  assert.equal(payload.endpoint, "https://mcp.deepresearch.se");
   assert.ok(payload.catalog.length >= 5);
   assert.equal(payload.config.enabled, true);
   assert.equal(payload.config.key, null);
@@ -312,9 +312,11 @@ test("revoking leaves the exposure config alone — it is a credential, not a se
 
 test("mcpEndpointUrl prefers the dedicated mcp. host, and falls back where none exists", () => {
   const at = (u) => mcpEndpointUrl(new URL(u));
-  assert.equal(at("https://deepresearch.se/rver"), "https://mcp.deepresearch.se/mcp");
-  assert.equal(at("https://www.deepresearch.se/rver"), "https://mcp.deepresearch.se/mcp");
-  assert.equal(at("https://mcp.deepresearch.se/mcp"), "https://mcp.deepresearch.se/mcp");
+  // The dedicated host advertises the BARE ORIGIN — the `/mcp` tail still
+  // answers there, it is just not what we tell people to paste.
+  assert.equal(at("https://deepresearch.se/rver"), "https://mcp.deepresearch.se");
+  assert.equal(at("https://www.deepresearch.se/rver"), "https://mcp.deepresearch.se");
+  assert.equal(at("https://mcp.deepresearch.se/mcp"), "https://mcp.deepresearch.se");
   // A preview or local deploy has no such host: point at where the reader is.
   assert.equal(
     at("https://abc-deepresearch-se.someone.workers.dev/rver"),
