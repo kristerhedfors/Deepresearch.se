@@ -372,12 +372,21 @@ helpers, then a live JSON-RPC probe of both the legacy handshake path and
 the stateless path. Re-read the changelog before starting — this item was
 written against a draft that can still move.
 
-### F-20 · Reach the Claude mobile app — the MCP server as a web connector — 🔵 OPEN (medium)
+### F-20 · Reach the hosted chat clients — the MCP server as a web connector — 🔵 OPEN (medium)
 
 The MCP surface is reachable from a laptop and invisible from a phone.
 Connecting means pasting `claude mcp add` into a terminal — Claude Code's
-command, which the Claude mobile app does not read. For a research assistant
-that is the wrong way round.
+command, which no hosted chat app reads. For a research assistant that is the
+wrong way round.
+
+**Scope widened 2026-08-03 (owner): ChatGPT as well as Claude.** They want the
+SAME authorization server — OAuth 2.1, CIMD preferred with DCR as fallback,
+PKCE S256, the `401` + `WWW-Authenticate` handshake, protected-resource
+metadata — so supporting both is one build plus two bounded deltas: a
+redirect-URI allowlist that is a LIST (ChatGPT's
+`https://chatgpt.com/connector_platform_oauth_redirect` beside Claude's
+`https://claude.ai/api/mcp/auth_callback`), and two adapter tools ChatGPT
+requires by name.
 
 Design and feasibility: **`docs/MCP-CONNECTOR.md`** (2026-08-03). Two findings
 make it smaller than it sounds. There is **no separate mobile integration** —
