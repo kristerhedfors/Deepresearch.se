@@ -11,7 +11,7 @@
 //
 // So this is the window: a running, tabloid-flavoured feed of everything
 // happening OUTSIDE this repo that bears on what it is trying to be. Not
-// general tech news — news filtered through seven LENSES that each answer a
+// general tech news — news filtered through eight LENSES that each answer a
 // standing strategic question this project actually has:
 //
 //   one-dependency   is there a library significant enough to become our ONE
@@ -25,6 +25,9 @@
 //   privacy-llm      provable privacy for LLM apps — the project's mission
 //   agent-standards  agent/tool interchange standards (MCP and successors)
 //   deep-research    other deep-research systems: the direct comparison set
+//   research-corpus  deep research over the PEER-REVIEWED literature — the
+//                    arXiv/PubMed indexes this project hosts are useless if we
+//                    only ever watch general-purpose web-research agents
 //
 // Each lens carries its own Exa queries, so "refresh" is a deterministic fan
 // of searches, not a model deciding what to look for. Nothing here calls a
@@ -67,6 +70,15 @@ export const FRESH_WINDOW_MS = 36 * 3600 * 1000;
 // strings — deterministic, reviewable, and diffable in git; a lens's results
 // change because the WORLD changed, not because a prompt drifted.
 //
+// A lens SHOULD carry more queries than `OUTROSPECT_CAPS.queriesPerRefresh`.
+// A refresh runs a rotating window of them (refreshQueries, offset = how many
+// times this lens has run), so extra queries widen the APERTURE over time at
+// no extra cost per refresh. When every lens held exactly three queries and
+// the cap was three, the rotation was a permutation of one fixed set and the
+// feed could only ever see what those three phrasings returned — which is how
+// `deep-research` accumulated eighteen items about agent benchmarks and none
+// about research over the scientific literature.
+//
 // `terms` / `termsSv` back lensMatch() below: the deterministic router that
 // files a free-text note (a search in the view, a strategic idea posted from
 // it) under a lens. Invariant 6 — every routing gate takes Swedish forms with
@@ -100,6 +112,8 @@ export const OUTROSPECT_LENSES = [
       "new JavaScript library dependency-free browser LLM applications",
       "single-dependency architecture library release 2026",
       "zero build step ESM library for AI applications",
+      "supply chain risk npm dependency audit JavaScript 2026",
+      "vendoring versus depending small library argument",
     ],
     terms: ["dependency", "dependencies", "library", "libraries", "package", "npm", "vendored", "runtime dep"],
     termsSv: [
@@ -127,6 +141,8 @@ export const OUTROSPECT_LENSES = [
       "WebGPU in-browser LLM inference new model release",
       "small language model on-device phone inference benchmark 2026",
       "Bonsai model browser inference wasm",
+      "quantized model memory footprint mobile browser tab",
+      "llama.cpp WebGPU browser port open weight model",
     ],
     terms: ["browser model", "on-device", "webgpu", "wasm", "bonsai", "local model", "phone inference", "quantized"],
     termsSv: [
@@ -152,6 +168,8 @@ export const OUTROSPECT_LENSES = [
       "client-side RAG browser vector search new technique",
       "edge retrieval augmented generation Cloudflare Workers pattern",
       "embedding index in browser IndexedDB retrieval 2026",
+      "contextual retrieval chunk embedding improvement measured",
+      "reranker model release benchmark nDCG retrieval",
     ],
     terms: ["rag", "retrieval", "embedding", "embeddings", "vector search", "vector database", "reranking", "chunking"],
     termsSv: [
@@ -179,6 +197,8 @@ export const OUTROSPECT_LENSES = [
       "LLM application architecture pattern orchestration without function calling",
       "agent architecture deterministic pipeline versus tool calling",
       "new LLM app framework architecture post-mortem 2026",
+      "agent scaffold comparison controlled evaluation accuracy",
+      "context management long horizon agent state reconstruction",
     ],
     terms: ["architecture", "pipeline", "orchestration", "agent loop", "function calling", "tool use", "pattern"],
     termsSv: [
@@ -205,6 +225,8 @@ export const OUTROSPECT_LENSES = [
       "client-side AI privacy architecture server sees no data",
       "confidential inference end-to-end encrypted LLM application",
       "local-first AI assistant privacy verifiable 2026",
+      "trusted execution environment attestation LLM inference",
+      "browser-direct provider call no server data path design",
     ],
     terms: ["privacy", "private", "encryption", "encrypted", "confidential", "local-first", "zero-knowledge", "e2ee"],
     termsSv: [
@@ -234,6 +256,8 @@ export const OUTROSPECT_LENSES = [
       "Model Context Protocol MCP specification update new capability",
       "agent interoperability standard open specification 2026",
       "portable agent definition format specification",
+      "agent workspace bundle interchange format open standard",
+      "agent delegation protocol authorization specification draft",
     ],
     terms: ["mcp", "standard", "standards", "protocol", "specification", "interoperability", "interchange", "schema"],
     termsSv: [
@@ -260,6 +284,10 @@ export const OUTROSPECT_LENSES = [
       "deep research agent system release comparison",
       "multi-step research assistant evaluation benchmark 2026",
       "autonomous web research agent citations quality",
+      "deep research agent context management long horizon rounds",
+      "research agent report synthesis parallel trajectories test-time scaling",
+      "deep research agent citation faithfulness unsupported claims",
+      "research agent rubric evaluation coverage specificity",
     ],
     terms: ["deep research", "research agent", "research assistant", "citations", "synthesis", "search agent"],
     termsSv: [
@@ -273,6 +301,56 @@ export const OUTROSPECT_LENSES = [
       "syntes",
       "syntesen",
       "sökagent",
+    ],
+  },
+  {
+    id: "research-corpus",
+    title: "Research over the scientific literature",
+    titleSv: "Research över den vetenskapliga litteraturen",
+    question:
+      "How do others do deep research over PAPERS rather than web pages — and what beats plain retrieval over the arXiv and PubMed indexes we host?",
+    questionSv:
+      "Hur gör andra djupresearch över ARTIKLAR i stället för webbsidor — och vad slår enkel retrieval över de arXiv- och PubMed-index vi själva driver?",
+    queries: [
+      "literature research agent arxiv pubmed full text retrieval",
+      "PaperQA OpenScholar scientific literature agent evaluation",
+      "automated systematic review screening LLM sensitivity precision",
+      "contradiction detection between scientific papers automated",
+      "retracted paper detection research assistant citation",
+      "per-paper summarization relevance scoring before synthesis",
+    ],
+    terms: [
+      "paper",
+      "papers",
+      "arxiv",
+      "pubmed",
+      "preprint",
+      "preprints",
+      "peer-reviewed",
+      "literature",
+      "systematic review",
+      "meta-analysis",
+      "retraction",
+      "scholarly",
+    ],
+    termsSv: [
+      "artikel",
+      "artikeln",
+      "artiklar",
+      "artiklarna",
+      "forskningsartikel",
+      "forskningsartiklar",
+      "litteratur",
+      "litteraturen",
+      "litteraturöversikt",
+      "förhandsgranskad",
+      "sakkunniggranskad",
+      "referentgranskad",
+      "metaanalys",
+      "systematisk översikt",
+      "tillbakadragen",
+      "vetenskaplig",
+      "vetenskapliga",
     ],
   },
 ];

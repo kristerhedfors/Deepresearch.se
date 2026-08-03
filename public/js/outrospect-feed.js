@@ -39,6 +39,7 @@
 import {
   FEED_PAGE_SIZE,
   FEED_RETRIEVE_K,
+  LENS_IDS,
   feedIndexText,
   feedItemIndexText,
   feedPage,
@@ -270,7 +271,9 @@ export function mountFeedHistory(chatEl, items, { pageSize = FEED_PAGE_SIZE } = 
   older.addEventListener("click", () => addPage());
 
   const intro = el("p", "outro-intro");
-  intro.textContent = `The outward feed — ${items.length} entr${items.length === 1 ? "y" : "ies"} from the seven lenses, indexed in this browser. Ask about any of it.`;
+  // The lens count comes from the registry, never a literal — a lens added
+  // there must not leave this line quietly claiming the old number.
+  intro.textContent = `The outward feed — ${items.length} entr${items.length === 1 ? "y" : "ies"} from the ${LENS_IDS.length} lenses, indexed in this browser. Ask about any of it.`;
   host.appendChild(intro);
 
   chatEl.appendChild(host);
