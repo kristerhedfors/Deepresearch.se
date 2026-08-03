@@ -535,3 +535,71 @@ components must AGREE on wants one copy; a list one component uses to DISTRUST
 another wants two.** The action grammar is the first; the exec-backend
 whitelists (and `SWARM_DIAG_PHASES`/`SWARM_DIAG_CLASSES` beside them) are the
 second.
+
+## 15 — 2026-08-03, the measurement-instrument pass
+
+Base `a558445c` (main after PRs #368/#369), diffed from pass 14's own commit
+`569863f3`. About 13k inserted lines since, and one large deletion: the watch
+builder left the repo (PR #367), taking pass 13's `watch-math.js` cut with it.
+What arrived instead is a literature stack — Google Scholar
+(`src/scholar.js` + `scholar-metrics.js` + `scholar-venues.js`), the MCP
+literature tool family (`literature-tools.js` + `literature-run.js`), PubMed as
+the second hosted corpus (`src/pubmed-rag.js`, `public/js/pubmed-core.js`), the
+corpus-agnostic dense tier `src/dense-rag.js`, and a corpus-agnostic evaluation
+harness (`scripts/rag-corpora.mjs`, `rag-hosted.mjs`, `rag-eval-core.mjs`,
+`rag-eval.mjs`). **Two cuts.**
+
+`dup-scan` returned 22 groups, 15 of them already in `STANDING-DECLINES.md`.
+`line-scan --run 8` returned 88 runs. The new `src/` subsystems shipped
+factored again — `literature-tools.js` is the pure half of the MCP family with
+`literature-run.js` as its runner, `scholar-metrics.js` carries `// ---- the
+runner` beneath its pure legs, `scripts/mcp-probe.mjs` is twenty exported
+`check*` predicates plus a network driver — so both cuts came from the same
+place the diff did.
+
+- **The two hosted tiers' citation formatting → `src/dense-rag.js`**:
+  `arxiv-rag.js` and `pubmed-rag.js` each carried the author line, the
+  420-char abstract cut, and `MAX_ABSTRACT_CHARS` itself. The sink was already
+  decided by the code — `denseSearch` takes both per-corpus callbacks as
+  parameters and already owns the shared implementation of the first one
+  (`titleAbstractDoc`, the `docOf`), so `authorsLine` and `citationHighlights`
+  are the shared implementation of the second. Both callers already imported
+  it, so the change adds no graph edge. The bar-gate argument is the one pass
+  14 named: each mapper exists to be indistinguishable from its live sibling's
+  ("a user should not be able to tell which one answered"), and a cut length
+  that drifts breaks that with no error, no failed request and no red test.
+  New `src/dense-rag.test.js` — the module had no direct test file at all.
+- **The graded-relevance judge → `scripts/rag-eval-core.mjs`**: the 0–3 rubric
+  that assigns every gain behind every topical nDCG was hand-copied into FOUR
+  sites — `arxiv-eval.mjs` twice, `arxiv-hosted-eval.mjs`, `rag-eval.mjs`. The
+  sink is the module that exists to hold the parts of this harness that
+  "silently produce a plausible-but-wrong table", and the `chatJson` call stays
+  at each site so the core still reaches no network. `gradeMessages` takes the
+  document lookup as a callback because the callers hold documents differently
+  (a `Map`, a plain object); no site's control flow changes. Rode along in the
+  same commit: `arxiv-hosted-eval.mjs` and `arxiv-goldset.mjs` now import
+  `expandMonths` / `rankOf` / `lexicalOverlap` from the same core instead of
+  keeping byte-identical copies.
+
+**Why a PROMPT is worth a cut when a five-line escape is not.** The rubric is
+about the size of `esc`, and `esc` has been declined four times. The difference
+is what a divergence does. A gain is meaningful only relative to other gains
+from the same rubric, and `docs/ARXIV-RAG.md` puts local-pack and hosted nDCG
+side by side — so rewording one copy ("substantive" → "useful", or 0–3 → 0–2)
+leaves every table green, every number plausible, and every comparison across
+them empty. That is pass 14's "drift the system is designed to swallow", found
+in a string literal rather than in a list. **When the duplicated thing is an
+instrument, measure the bar in comparability, not in lines.**
+
+**Method lesson — the biggest duplicate group in the tree can be the one you
+must not touch.** `scripts/arxiv-hosted.mjs` and `scripts/rag-hosted.mjs` share
+their whole Vectorize transport, and `line-scan` reports it at length. It is
+declined, because `arxiv-hosted.mjs` binds `CANDIDATES = 20` where its
+successor imports the served 50 from `src/dense-rag.js` — the
+`finalePhaseBucket` trap, except that here the constants differ because one of
+them is a KNOWN DEFECT that `docs/ARXIV-RAG.md` §12 records. Unifying would
+have silently fixed it, which is a behaviour change wearing a refactor's
+clothes. The generalize-and-keep-the-predecessor shape is worth recognizing on
+sight: it produces enormous, tempting duplicate groups whose two halves have
+already diverged in the one place that matters. The live question there is
+whether the predecessor should be DELETED, and that is the owner's.
