@@ -188,7 +188,11 @@ claims, a fresh unguessable `jti` per mint, and rejection of expired, tampered,
 malformed, wrong-prefix and foreign-secret keys), `mcp-api.js` (resolving a key
 to its account against a mocked D1: no bearer and another family's bearer both
 fall through to the identity gate, while revocation, rotation, the master
-switch, and a non-active or deleted account each stop a live key immediately),
+switch, and a non-active or deleted account each stop a live key immediately,
+plus the three connector strings that differ from one another — the advertised
+bare origin, the `/mcp` form ChatGPT's setup form wants, and the prefilled
+Claude install link, all derived from the request so a preview advertises the
+preview),
 and `mcp-config.js` (the per-account exposure policy: the catalog mirrors the
 tool list `mcp.js` serves exactly, unreadable input degrades to the
 everything-exposed default that preceded it, out-of-range budgets are clamped
@@ -481,6 +485,15 @@ build→seal→open→apply flow end to end),
 phase timeline and vortex→umbrella geometry: ramp
 ordering/monotonicity, the quarter-circle camera projection,
 twist/scallop/dome math),
+`account-mcp.js`'s `connectorMarkup` (the Settings → MCP server connector
+section: that the Claude install link and the ChatGPT URL come from the
+`/api/mcp/config` payload rather than being assembled client-side, that the two
+stay distinct because the vendors disagree about the `/mcp` path, that a
+preview render leaks no production URL, that payload strings are escaped, and
+that an older server sending neither field degrades to the walkthroughs instead
+of a button pointing nowhere — the vendor MENU PATHS in that markup are
+deliberately untested, since they describe someone else's UI and no test here
+can notice a rename),
 `vault-core.js` — via `vault.js`'s re-exports — (secret
 format/entropy/uniqueness, the forgiving normalization incl. misread
 mapping and prefix stripping, the Crockford codec round-trip, HKDF

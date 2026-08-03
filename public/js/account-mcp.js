@@ -3,23 +3,30 @@
 //
 // This is the screen that connects an EXTERNAL agent — Claude Code, Cursor,
 // any MCP client — to this account's research pipeline, and the screen that
-// decides what such an agent may reach once connected. Three sections, in the
+// decides what such an agent may reach once connected. Four sections, in the
 // order someone actually needs them:
 //
-//   1. CONNECT — the endpoint, the one-line `claude mcp add` command, and the
-//      key. The key's token is shown exactly once, at mint; afterwards the
-//      screen can only tell you which key is live (its last six characters)
+//   1. CONNECTOR — adding this server to Claude or ChatGPT by URL. No key, no
+//      terminal, and the only route that works from a phone, which is why it
+//      is first: the screen used to open with section 2 and left the majority
+//      of readers looking at an instruction they could not follow. The vendor
+//      menu paths are dated and sourced in docs/MCP-CONNECTOR.md §2d — both
+//      vendors renamed these menus inside six months and no test here can
+//      notice when they do it again.
+//   2. TERMINAL CLIENTS — the endpoint, the one-line `claude mcp add` command,
+//      and the key. The key's token is shown exactly once, at mint; afterwards
+//      the screen can only tell you which key is live (its last six characters)
 //      and offer to rotate or revoke it. That is a property of the server
 //      (src/mcp-api.js stores only the jti and the hint), not a UI choice.
-//   2. TOOLS — one switch per exposable tool, grouped by the catalog the
+//   3. TOOLS — one switch per exposable tool, grouped by the catalog the
 //      server sends. There is no second copy of the tool list in this file:
 //      /api/mcp/config carries the catalog precisely so the screen cannot
 //      drift from what the server actually serves.
-//   3. RESEARCH DEFAULTS — what a `deep_research` call gets when the caller
+//   4. RESEARCH DEFAULTS — what a `deep_research` call gets when the caller
 //      does not say, and whether a caller may override it at all. This is the
 //      spend dial: every call runs the real pipeline on this account's quota.
 //
-// A master switch above all three turns the whole surface off without
+// A master switch above all four turns the whole surface off without
 // touching any of it, which is the fastest honest answer to "stop, now".
 //
 // Everything here reads and writes /api/mcp/config and /api/mcp/key, both
@@ -35,10 +42,11 @@ const HEADER = `
   <button id="mcpbackbtn" type="button" class="back-link">← Back</button>
   <p class="section-lbl">MCP server</p>`;
 
-const INTRO = `Connect an outside agent — <b>Claude Code</b>, Cursor, or anything
-  that speaks MCP — to this account's research pipeline. It gets the same
-  deep-research run the chat does: plan, search, gap-check, synthesize, cite.
-  Calls draw on <b>your</b> quota, and every one is logged like a chat.`;
+const INTRO = `Connect an outside agent — the <b>Claude</b> or <b>ChatGPT</b> app,
+  <b>Claude Code</b>, Cursor, or anything that speaks MCP — to this account's
+  research pipeline. It gets the same deep-research run the chat does: plan,
+  search, gap-check, synthesize, cite. Calls draw on <b>your</b> quota, and
+  every one is logged like a chat.`;
 
 const MASTER_INFO = `<strong>MCP server</strong><br>
   <b>On:</b> the endpoint answers for this account — a signed-in browser
@@ -128,7 +136,10 @@ function render(ctx, data, freshToken) {
     })}
     ${on ? "" : `<p class="muted setting-note">The endpoint is refusing every call for this account. Nothing below is lost — switch it back on and it all applies again.</p>`}
 
-    <p class="section-lbl">Connect</p>
+    <p class="section-lbl">Add to Claude or ChatGPT</p>
+    ${connectorMarkup(data)}
+
+    <p class="section-lbl">Terminal clients</p>
     ${endpointMarkup(data, freshToken)}
 
     <p class="section-lbl">Tools exposed</p>
@@ -149,6 +160,98 @@ function render(ctx, data, freshToken) {
   wireControls(ctx, data);
 }
 
+/**
+ * The CONNECTOR section — the route that needs no key and no terminal, and
+ * therefore the only one that works from a phone. It comes first for that
+ * reason: the screen used to open with minting a key and a `claude mcp add`
+ * line, which is the right instruction for the minority of readers who are
+ * sitting at a terminal and useless to everyone else.
+ *
+ * The two vendor paths are collapsed by default because they are long and
+ * neither reader needs the other's. What is NOT collapsed is the one-tap
+ * button and the honest note about it, because those are the whole point.
+ *
+ * Both URLs come from the server payload (`claude_install_url`,
+ * `chatgpt_endpoint`) rather than being assembled here — they differ from each
+ * other and from the advertised endpoint, and that difference is the commonest
+ * way an MCP setup fails, so exactly one module decides it (src/mcp-api.js).
+ *
+ * The vendor menu paths below are dated and sourced in docs/MCP-CONNECTOR.md
+ * §2d. Both vendors have renamed these menus inside six months and nothing in
+ * this repo can notice when they do again — so when a report says a path is
+ * gone, believe it and re-check the vendor's docs rather than the code.
+ */
+export function connectorMarkup(data) {
+  const endpoint = escapeHtml(data.endpoint || "");
+  const install = escapeHtml(data.claude_install_url || "");
+  const chatgpt = escapeHtml(data.chatgpt_endpoint || "");
+  return `
+    <p class="muted setting-note">You hand the client one URL, it sends you back
+      here to approve, and a credential is created for <b>that one connection</b> —
+      no key to mint, copy or lose. Removing the connector in Claude or ChatGPT
+      ends it without touching anything else. <a href="/connect/">Full walkthrough →</a></p>
+    <div class="settings-item">
+      ${install ? `<p style="margin:.2rem 0 .45rem"><a class="mcp-add" href="${install}" target="_blank" rel="noopener">Add to Claude →</a></p>` : ""}
+      <p class="muted setting-note">That opens Claude's add-connector dialog with the
+        name and URL already in it. It only <b>prefills</b> — Claude tells you the
+        values came from an external link, and nothing is added until you confirm.</p>
+      <div class="settings-row">
+        <span class="settings-label">Connector URL</span>
+        <button type="button" id="mcpcopyurl">Copy</button>
+      </div>
+      <textarea id="mcpurl" readonly rows="2" style="width:100%;font-size:.72rem;word-break:break-all">${endpoint}</textarea>
+    </div>
+
+    <details class="mcp-steps">
+      <summary>Claude — by hand</summary>
+      <div class="mcp-steps-body">
+        <p>It lives under <b>Customize</b>, not Settings — Anthropic moved it there in
+          February 2026, which is why "Settings → Connectors" finds nothing.</p>
+        <ol>
+          <li><a href="https://claude.ai/customize/connectors" target="_blank" rel="noopener">claude.ai/customize/connectors</a>
+            → <b>+</b> → <b>Add custom connector</b>.</li>
+          <li>Paste the URL above. Leave Advanced settings alone — this server needs no
+            client ID or secret.</li>
+          <li>Approve on the consent screen this site shows you.</li>
+        </ol>
+        <p><b>Team or Enterprise:</b> only an Owner may add it, at
+          <a href="https://claude.ai/admin-settings/connectors" target="_blank" rel="noopener">claude.ai/admin-settings/connectors</a>;
+          everyone else then connects to it individually. On Free, Pro and Max you add
+          it yourself, and Free is capped at one custom connector.</p>
+        <p><b>Your phone:</b> add it on web or desktop and it is there the next time you
+          open Claude on iOS or Android — installing connectors on mobile is still beta,
+          so a browser is the reliable way in.</p>
+      </div>
+    </details>
+
+    <details class="mcp-steps">
+      <summary>ChatGPT — turn on Developer mode first</summary>
+      <div class="mcp-steps-body">
+        <p>ChatGPT renamed this twice — Connectors → apps → <b>Plugins</b> — and a
+          self-hosted server additionally needs <b>Developer mode</b>, which is not in
+          that menu at all.</p>
+        <ol>
+          <li><b>Settings</b> → <b>Security and login</b> → turn on <b>Developer mode</b>.</li>
+          <li><a href="https://chatgpt.com/plugins" target="_blank" rel="noopener">chatgpt.com/plugins</a> → the <b>+</b> button.</li>
+          <li>Give it a name, and for the URL use <code>${chatgpt}</code> —
+            OpenAI's form expects the <code>/mcp</code> path, unlike Claude.</li>
+          <li>Create, then in a chat: the <b>+</b> menu → <b>Developer mode</b> → pick it.</li>
+        </ol>
+        <p>Developer mode is <b>web only</b> and needs Plus, Pro, Business, Enterprise or
+          Education — not Free. On Business and Enterprise an admin may have to allow it.</p>
+        <p>ChatGPT also refuses any server that does not expose <code>search</code> and
+          <code>fetch</code>; both are on by default under <b>Tools exposed</b> below.</p>
+        <p><b>Not on the phone.</b> OpenAI's documentation says plugins "aren't available
+          in Chat, the IDE extension, or mobile" — so unlike Claude, adding this on the
+          web does not put it on your phone.</p>
+      </div>
+    </details>
+
+    <p class="muted setting-note">⚠︎ <b>Newly built, and you may be the first through
+      it.</b> The flow passes its own tests, but nobody has yet completed it from a real
+      connector dialog. If it fails, the terminal route below still works from a laptop.</p>`;
+}
+
 /** The endpoint + key section. */
 function endpointMarkup(data, freshToken) {
   const key = data.config?.key || null;
@@ -167,6 +270,10 @@ function endpointMarkup(data, freshToken) {
            your terminal, and the client is connected.</p>`;
 
   return `
+    <p class="muted setting-note">For <b>Claude Code</b>, Cursor and anything else that
+      reads a config file. These clients have no browser session, so they carry a key
+      instead — which is why this route needs a terminal and the connector above does
+      not.</p>
     <div class="settings-item">
       <div class="settings-row">
         <span class="settings-label">Endpoint</span>
@@ -421,6 +528,7 @@ function wireControls(ctx, data) {
     }
   });
 
+  wireCopy("mcpcopyurl", "mcpurl");
   wireCopy("mcpcopycmd", "mcpcommand");
   wireCopy("mcpcopykey", "mcptoken");
 }

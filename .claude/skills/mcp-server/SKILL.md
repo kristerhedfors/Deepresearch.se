@@ -523,6 +523,39 @@ what settles whether it accepts Streamable HTTP and whether its iOS app can
 use a connector at all. No green unit suite implies any of it. Until then,
 F-20 is `PARTIAL`.
 
+### Where the instructions live, and the three URLs they hand out
+
+Two surfaces carry the same guidance: the public page `public/connect/` and
+the signed-in screen **Settings → MCP server** (`public/js/account-mcp.js`,
+connector section added 2026-08-03). Both put the CONNECTOR first and the
+`claude mcp add` terminal path second — it is the only route that works from a
+phone and the only one needing no key, and both screens used to bury it. On
+`/connect/` that was measured: 1,421 px down a 390 px viewport, now 369 px.
+
+**Three URLs are in play and they are not interchangeable**, which is the
+commonest way this setup fails:
+
+| who | string | built by |
+|---|---|---|
+| Claude, Claude Code, everything else | the bare origin `https://mcp.deepresearch.se` | `mcpEndpointUrl` |
+| ChatGPT's add-a-connector form | `…/mcp` — OpenAI's setup expects the path | `chatgptEndpointUrl` |
+| the one-tap button | `claude.ai/customize/connectors?modal=add-custom-connector&…` | `claudeInstallUrl` |
+
+All three live in `src/mcp-api.js` and travel in the `/api/mcp/config` payload
+(`endpoint`, `chatgpt_endpoint`, `claude_install_url`), so a surface renders
+them and never assembles them. All are derived from the request, so a preview
+deploy advertises and prefills the preview.
+
+**The vendor menu paths rot faster than anything else in this repo.** Both
+Claude and ChatGPT renamed theirs inside six months (Settings → **Customize**;
+Connectors → apps → **Plugins**, plus a Developer-mode switch under **Security
+and login**), and the pages here printed the old ones until an owner tried them
+and found nothing. **No test can catch this** — it is someone else's UI. So:
+every path carries a source URL and a retrieval date in `docs/MCP-CONNECTOR.md`
+§2d, and when a report says a path is gone, believe the report and re-read the
+vendor's docs. §7's acceptance check verifies the SERVER connects, not that the
+menus still exist.
+
 **The stopgap is still there:** **`static_headers`** in Claude's
 Add-connector dialog takes a fixed `authorization: Bearer mck1.…` with no
 server involvement at all. Beta, rollout-gated, and shaped for a credential an
