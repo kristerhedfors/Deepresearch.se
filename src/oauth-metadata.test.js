@@ -1,4 +1,6 @@
-// @ts-check
+// (no @ts-check: node:test / node:assert have no type declarations in this
+// repo — tsconfig's types is workers-only and @types/node would be a new
+// dependency.)
 // The discovery documents and the redirect allowlist (src/oauth-metadata.js).
 //
 // These assertions look pedantic and are not: every one of them corresponds to
