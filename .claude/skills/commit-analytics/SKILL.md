@@ -236,6 +236,18 @@ series stays legible (the page defaults to the busiest six). The shallow session
 clone only sees recent days — `git fetch --unshallow origin` first for the full
 range. Same `/pulse/` allowlist covers it.
 
+**REMOVING a subject is not a refresh.** Rebuilding to drop one theme trades a
+1,257-commit range for whatever the shallow clone holds, and the loss is silent:
+the builder reports its own numbers cheerfully ("106 commits, 62 tagged, 18/35
+subjects over 4 day(s)") and the committed file is simply gone. It surfaced as a
+red e2e — `pulse-timeline.spec.js`'s curve-click test needs a populated chart —
+which is the only thing that caught it. Either unshallow first, or edit the
+emitted `timeline.json` surgically: drop the entry from `subjects`, strip the key
+from every `commits[].s`, delete `totals.byKey.<key>`, and **recount
+`totals.tagged`** (it counts commits carrying at least one subject, so removing
+the only tag a commit had changes it). A 16-line diff against a 10,000-line
+rebuild is also the reviewable one.
+
 ### Adding a subject to the taxonomy
 
 A refresh that only re-runs the builder makes the newest months look like chore
