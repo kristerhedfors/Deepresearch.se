@@ -395,8 +395,14 @@ Every request flows through `src/index.js`:
    public informational pages `/welcome/`, `/help/`, `/build/`, `/story/`
    (plus the markdown-rendering assets they need and the build-story video).
 3. **Public auth endpoints** — `GET /login`, `GET /auth/google` (starts the
-   OAuth flow with a signed single-use state cookie),
-   `GET /auth/google/callback`.
+   Google sign-in flow with a signed single-use state cookie),
+   `GET /auth/google/callback`. The MCP connector's OAuth surface is public
+   here for the same reason: a client fetches
+   `/.well-known/oauth-protected-resource` (MCP host),
+   `/.well-known/oauth-authorization-server` (apex) and `POST /oauth/token`
+   *before* it holds any credential. `/oauth/authorize` is the exception — it
+   sits behind the gate, because consent has to happen as a signed-in
+   person (§7).
 4. **Identity gate** (`src/auth.js`) — resolves *who* is calling, and
    **fails closed** (missing admin secrets ⇒ everything is denied):
    - **Users**: D1 accounts provisioned by Google sign-in (no passwords —
@@ -1200,6 +1206,37 @@ can compose with them:
   change them. `tools/list` is filtered by it and `tools/call` enforces it,
   so a client that cached an older listing still cannot reach a tool that
   has since been switched off.
+- **Auth — the third way in: an OAuth connector** (2026-08-03,
+  `docs/MCP-CONNECTOR.md`, F-20). Both hosted chat clients — Claude and
+  ChatGPT — add an MCP server by URL and run OAuth, so neither can be handed a
+  key the way `claude mcp add --header` is. The answer is an OAuth 2.1
+  authorization server, and it is **split across the two hosts**: the
+  **resource server** is the MCP host (`mcp.deepresearch.se`), which serves
+  `/.well-known/oauth-protected-resource` and the `401` +
+  `WWW-Authenticate: Bearer resource_metadata="…"` that starts the flow; the
+  **authorization server** is the apex (`deepresearch.se`), which serves
+  `/.well-known/oauth-authorization-server`, `/oauth/authorize` and
+  `/oauth/token`. The split is deliberate: `resource` must match the URL the
+  user typed, so the MCP host keeps one canonical form, while consent is an
+  ordinary browser page that belongs where the account, Google sign-in and the
+  session cookie already are and where it reads as this site. Both clients
+  follow a cross-host `authorization_servers[0]` with nothing special
+  required. One authorization server serves both clients; what is
+  client-specific is an entry in the redirect allowlist
+  (`src/oauth-metadata.js`) and, for ChatGPT, two adapter tools named `search`
+  and `fetch` over the hosted corpora. The modules are `oauth-metadata.js`
+  (pure leaf: both discovery documents, the allowlist, `issuerFor`),
+  `oauth-store.js` (the `oac1.`/`oat1.`/`ort1.` families — signed under their
+  own `token-crypto.js` namespaces, with a D1 row for the two that need single
+  use and rotation), `oauth-authorize.js` (consent + code issuance; needs a
+  signed-in identity, settles the redirect URI before any error can be routed
+  to it, and binds the form with its own signed `oct1.` consent token) and
+  `oauth-token.js` (form-urlencoded, RFC 6749 error codes, mandatory refresh
+  rotation). The access token resolves beside `mck1.` in
+  `resolveMcpKeyIdentity`, so exposure config, quota, billing and the
+  `chat_logs` row apply unchanged, and the not-a-login pin extends to it
+  verbatim. Unit-tested; the live acceptance check on both clients and both
+  phones is outstanding.
 - **Host**: production also serves the endpoint on the dedicated
   `mcp.deepresearch.se` custom domain (same Worker, same code path), where
   the **bare origin is the advertised URL** (2026-08-03) and `/mcp` answers

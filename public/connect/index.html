@@ -124,23 +124,26 @@
   </section>
 
   <section>
-    <h2>On a phone</h2>
+    <h2>On a phone — add it as a connector</h2>
     <p>The command above is Claude Code's, and a phone has no terminal to paste
-    it into. The Claude mobile app connects to an MCP server as a
-    <b>custom connector</b> instead — Settings → Connectors → Add custom
-    connector, which takes a URL and runs an OAuth sign-in. This server does not
-    speak that flow yet, so there is no supported way to add it from a phone
-    today.</p>
-    <p>One exception, if you have it: Claude's <b>request headers</b> field (in
-    beta at the time of writing) lets you add this server by URL and supply the
-    key yourself. Enter the URL above, add an <code>authorization</code> header,
-    and paste <code>Bearer </code> followed by your key as the value — the space
-    included, and the whole thing exactly as your key appears, since Claude sends
-    the value verbatim. A connector added on the web then shows up in the mobile
-    app too.</p>
-    <p class="muted">The OAuth work that would make this the normal path is
-    designed but not built; the write-up is
-    <code>docs/MCP-CONNECTOR.md</code> in the repository.</p>
+    it into. Both Claude and ChatGPT instead take a <b>custom connector</b>: you
+    give them the URL, they send you here to sign in and approve, and no key
+    changes hands at all.</p>
+    <p>In <b>Claude</b>: Settings → Connectors → Add custom connector, and enter
+    the URL above. In <b>ChatGPT</b>: Settings → Connectors → Create, same URL.
+    You add it once on the web or desktop; it then appears in the mobile app
+    with nothing further to do.</p>
+    <p>You will land on a consent screen on this site that names what you are
+    granting — which tools, whose quota, and that the questions are logged —
+    before anything is connected. Approving creates a credential for
+    <em>that connection</em>, so removing the connector in Claude or ChatGPT
+    ends it without touching your other clients.</p>
+    <div class="note"><b>Newly built and not yet proven against a real client.</b>
+    The flow passes its own tests, but nobody has completed it from an actual
+    connector dialog yet — if it fails, the pasted-key path above still works
+    from a laptop. Two things are known-uncertain on the ChatGPT side: whether
+    it accepts our transport, and whether its connectors reach the iOS app at
+    all, which its documentation does not say.</div>
   </section>
 
   <section>
