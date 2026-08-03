@@ -20,7 +20,7 @@ So the feed is deliberately shaped like a tabloid front page rather than a
 research report. Kicker, headline, one line, source. You skim it, and you stop
 where something changes what this project should do.
 
-## The seven lenses
+## The eight lenses
 
 The feed is not general technology news. Each lens is a standing strategic
 question, and it exists because the answer would change something concrete
@@ -36,6 +36,7 @@ its own literal search queries and its own English and Swedish routing terms.
 | `privacy-llm` | Who else is making privacy structural rather than a policy line? |
 | `agent-standards` | Which interchange standards are becoming real? |
 | `deep-research` | What are the other deep-research systems doing that we are not? |
+| `research-corpus` | How do others do deep research over papers rather than web pages — and what beats plain retrieval over the arXiv and PubMed indexes we host? |
 
 Two of these are pointed straight at known sore spots. `one-dependency` exists
 because invariant 5 says no runtime dependencies, and the honest reading of
@@ -45,9 +46,32 @@ is capability without a server, and the Bonsai phone-inference work
 (`docs/BONSAI-27B-PHONE-INFERENCE.md`) is the standing record of that not
 working well enough yet.
 
+`research-corpus` is the newest, and it exists because of a hole the feed
+itself revealed: `deep-research` had collected eighteen items about agent
+benchmarks and comparison tables, and not one about research conducted over
+the peer-reviewed literature — the thing the hosted arXiv and PubMed indexes
+are for.
+
 Adding a lens means adding an entry to `OUTROSPECT_LENSES` with its queries and
 both term sets. The parity test in `public/js/outrospect-core.test.js` will
 fail if the Swedish terms are thinner than the English ones (invariant 6).
+
+### The aperture
+
+A lens must carry **more queries than one refresh issues**
+(`OUTROSPECT_CAPS.queriesPerRefresh`, currently three). `refreshQueries` walks
+the list with an offset equal to how many times that lens has already run, so
+surplus queries cost nothing per refresh and widen what the lens can see over
+time.
+
+Until 2026-08-03 every lens held exactly three queries against a three-query
+cap, which made that rotation a permutation of one fixed set: the same three
+searches ran forever and the lens was blind to anything they did not phrase
+for. The symptom is visible in the live feed. All eighteen `deep-research`
+items carry the same `first_seen` date, 2026-07-26 — the lens landed its
+catch on one pass and every later refresh re-issued the same three queries for
+nothing. None of the eighteen is about research over the scientific
+literature. A test now fails if any lens lets its aperture close back up.
 
 ## How the feed fills
 
@@ -221,7 +245,7 @@ What a send does:
    `[2]` like any research answer; the quotable passages follow as their own
    section, each carrying its own URL so a quotation can be linked to the page
    it came from. The block also always carries the lens catalog, so the model
-   can name the seven lenses whether or not the feed had anything. The prompt
+   can name every lens whether or not the feed had anything. The prompt
    closes every answer with what the material means for *this* project — the
    comparison is the point of looking outward.
 

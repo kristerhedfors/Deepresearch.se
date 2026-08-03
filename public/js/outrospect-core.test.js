@@ -76,6 +76,7 @@ test("lensMatch: routes English notes to the right standing question", () => {
   assert.equal(lensMatch("end-to-end encrypted, local-first privacy"), "privacy-llm");
   assert.equal(lensMatch("the MCP specification adds a capability"), "agent-standards");
   assert.equal(lensMatch("another deep research assistant with citations"), "deep-research");
+  assert.equal(lensMatch("a systematic review screening papers from pubmed"), "research-corpus");
 });
 
 test("lensMatch: Swedish notes route the same way (parity)", () => {
@@ -86,6 +87,7 @@ test("lensMatch: Swedish notes route the same way (parity)", () => {
   assert.equal(lensMatch("kryptering och integritet, lokalt först"), "privacy-llm");
   assert.equal(lensMatch("specifikationen för protokollet uppdaterades"), "agent-standards");
   assert.equal(lensMatch("en annan forskningsassistent med källhänvisningar"), "deep-research");
+  assert.equal(lensMatch("en systematisk översikt över förhandsgranskade artiklar"), "research-corpus");
 });
 
 test("lensMatch: definite and plural Swedish forms hit, not just the base word", () => {
@@ -327,6 +329,29 @@ test("refreshQueries caps the fan-out and walks the list across runs", () => {
 test("refreshQueries never asks for more queries than a lens has", () => {
   for (const lens of OUTROSPECT_LENSES) {
     assert.ok(refreshQueries(lens.id, { max: 99 }).length <= lens.queries.length);
+  }
+});
+
+// The aperture. A lens holding exactly as many queries as one refresh issues
+// makes the offset rotation a permutation of one fixed set: the same searches
+// run forever and the lens can only ever see what those phrasings return. That
+// is not hypothetical — it is how `deep-research` filled up with agent
+// benchmarks and never surfaced a single paper on research over the
+// scientific literature. Every lens must be able to rotate onto ground the
+// previous refresh did not cover.
+test("every lens carries more queries than one refresh issues, so rotation widens the aperture", () => {
+  for (const lens of OUTROSPECT_LENSES) {
+    assert.ok(
+      lens.queries.length > OUTROSPECT_CAPS.queriesPerRefresh,
+      `${lens.id}: ${lens.queries.length} queries vs a ${OUTROSPECT_CAPS.queriesPerRefresh}-query refresh — ` +
+        `the rotation would re-issue the same set forever`,
+    );
+    const first = refreshQueries(lens.id, { offset: 0 });
+    const next = refreshQueries(lens.id, { offset: OUTROSPECT_CAPS.queriesPerRefresh });
+    assert.ok(
+      next.some((q) => !first.includes(q)),
+      `${lens.id}: the second refresh must reach a query the first one did not issue`,
+    );
   }
 });
 
