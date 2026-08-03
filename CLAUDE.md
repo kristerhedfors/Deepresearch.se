@@ -67,15 +67,37 @@ same internal/display split as DRC/DRS. Full rule + rationale:
 
 ## Git workflow
 
+> ### FINISH EVERY CHANGE WITH A PULL REQUEST (owner directive, 2026-08-03)
+>
+> **When the work is complete and no further decision is needed from the
+> owner, OPEN A PULL REQUEST. Always. Do not ask for permission first, and do
+> not stop at a pushed branch — a pushed branch with no PR is unfinished
+> work.** This is a STANDING instruction from the owner: it replaces any
+> default "only open a PR when explicitly asked", and it applies to every
+> change, however small (a one-line fix, a doc tweak, a test).
+>
+> The ONLY reason not to open the PR is that you genuinely need owner input —
+> an ambiguous requirement, a decision that changes what gets built, a
+> destructive or irreversible step. In that case ask (`AskUserQuestion`), get
+> the answer, then finish and open the PR. "I could not fully verify it" or
+> "part of it is blocked" is NOT a reason to hold the PR: open it, and say in
+> the PR body what is unverified or left out.
+>
+> Then immediately `subscribe_pr_activity` on it — see the watch-your-PR
+> directive below. Direct-to-`main` merges remain permitted, but a PR is the
+> default and the expected outcome of a session.
+
 - **Sync first.** Always sync with the latest `origin/main` BEFORE
   implementing anything — new sessions are routinely off-sync. The
   SessionStart hook (`.claude/hooks/sync-main.sh`) fetches and fast-forwards;
   if it printed a WARNING, rebase onto `origin/main` before touching code.
   Re-fetch before every push. See the **sync-main** skill.
-- **Both merge styles are supported (2026-07-13):** a change may land by a PR
-  merged into `main` OR a direct branch merge / push to `main`. Always cut
-  work on a feature branch off the latest `origin/main`; a merged branch is
-  DONE — branch fresh from the updated `main`. See **merge-branches**.
+- **Both merge styles are supported (2026-07-13), but the PR is the default
+  (2026-08-03):** a change may land by a PR merged into `main` OR a direct
+  branch merge / push to `main` — open the PR unless the owner asked for a
+  direct merge. Always cut work on a feature branch off the latest
+  `origin/main`; a merged branch is DONE — branch fresh from the updated
+  `main`. See **merge-branches**.
 - **ALWAYS watch a PR you open (owner directive, 2026-07-14):** subscribe with
   `subscribe_pr_activity` the moment you create it — don't wait to be asked.
   Investigate every CI failure / review comment; push small confident fixes;
@@ -89,7 +111,9 @@ git fetch origin main
 git checkout -B <feature-branch> origin/main
 git add -A && git commit -m "…"
 git push -u origin <feature-branch>
-# then EITHER open a PR targeting main, OR merge the branch into main directly
+# then open a PR targeting main (the default — see the directive above),
+# and subscribe_pr_activity on it right away.
+# A direct branch merge / push to main stays permitted when the owner asks.
 ```
 
 > ### MERGE BARRIER — check on EVERY prompt, before any change
