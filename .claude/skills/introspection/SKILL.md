@@ -339,7 +339,15 @@ misaligned and trips the consistency check.
 > obviously wrong. Observed 2026-08-01 on PR #362: two new `scripts/*.mjs`
 > files, snapshot count 926 where the commit held 928. A change that adds no
 > new files never hits this, which is why it is easy to go a long time without
-> meeting it. Since the HELP layer (2026-07-16), a source edit can
+> meeting it.
+>
+> **It is not a source-file problem — it is a tracked-file problem.** Hit again
+> 2026-08-03 on PR #370 with a single new `docs/*.md`: snapshot count 910 where
+> the commit held 911, and the docs corpus stale alongside it, so BOTH drift
+> tests failed. Adding one documentation file is enough. The rule is the same
+> whatever the extension: `git add` every new file, then bundle.
+>
+> Since the HELP layer (2026-07-16), a source edit can
 ALSO stale the docs corpus (its symbol references carry definition line
 numbers) — add `npm run bundle:docs` + `npm run bundle:docs-rag` to the pass;
 the full order and the whole help layer live in the **help-docs** skill.
