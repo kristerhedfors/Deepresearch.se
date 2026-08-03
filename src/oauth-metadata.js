@@ -122,7 +122,10 @@ export function protectedResourceMetadata(resource, issuer) {
     authorization_servers: [issuer],
     scopes_supported: [...OAUTH_SCOPES],
     bearer_methods_supported: ["header"],
-    resource_documentation: `${resource}/connect/`,
+    // Origin-relative for the same reason as the metadata URL above: on a
+    // preview or local origin the resource carries a path, and appending to
+    // it points at a page that does not exist.
+    resource_documentation: `${originOf(resource)}/connect/`,
   };
 }
 
@@ -180,11 +183,37 @@ export function wwwAuthenticateValue(resourceMetadataUrl, scope) {
 
 /**
  * Where the protected-resource document lives for a given MCP endpoint.
+ *
+ * Built from the resource's ORIGIN, not by appending to the resource string.
+ * On the dedicated host the two are the same thing (the resource IS an
+ * origin), which is why appending looked right — but anywhere else the
+ * resource carries a `/mcp` path, and appending produced
+ * `…/mcp/.well-known/oauth-protected-resource`, a 404. A well-known URI is
+ * defined by RFC 8615 as origin-relative; a client that follows the pointer
+ * finds nothing, and the connection fails at the first step with no clue why.
+ *
+ * Found by probing a local Worker, not by a unit test: both were written from
+ * the same wrong assumption, so they agreed with each other.
  * @param {string} resource
  * @returns {string}
  */
 export function resourceMetadataUrl(resource) {
-  return `${resource}/.well-known/oauth-protected-resource`;
+  return `${originOf(resource)}/.well-known/oauth-protected-resource`;
+}
+
+/**
+ * The origin of a URL string, falling back to the input when it will not
+ * parse — a malformed resource is a bug worth seeing in the document rather
+ * than a thrown request.
+ * @param {string} u
+ * @returns {string}
+ */
+function originOf(u) {
+  try {
+    return new URL(u).origin;
+  } catch {
+    return u;
+  }
 }
 
 /**

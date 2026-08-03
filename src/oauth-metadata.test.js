@@ -110,6 +110,35 @@ test("the resource metadata URL is where the 401 points", () => {
   );
 });
 
+test("a well-known URI is origin-relative even when the resource carries a path", () => {
+  // The regression this pins was found by probing a local Worker, not here: a
+  // preview or local origin has no `mcp.` host, so its resource is
+  // `<origin>/mcp` — and appending to that produced
+  // `…/mcp/.well-known/oauth-protected-resource`, which 404s. A client that
+  // follows the pointer finds nothing and the connection dies at step one.
+  assert.equal(
+    resourceMetadataUrl("http://127.0.0.1:8788/mcp"),
+    "http://127.0.0.1:8788/.well-known/oauth-protected-resource",
+  );
+  assert.equal(
+    resourceMetadataUrl("https://abc.workers.dev/mcp"),
+    "https://abc.workers.dev/.well-known/oauth-protected-resource",
+  );
+  // Same for the documentation link the document advertises.
+  const doc = protectedResourceMetadata("http://127.0.0.1:8788/mcp", "http://127.0.0.1:8788");
+  assert.equal(doc.resource_documentation, "http://127.0.0.1:8788/connect/");
+  // `resource` itself is NOT normalized: it must stay exactly the URL the
+  // user typed, path and all.
+  assert.equal(doc.resource, "http://127.0.0.1:8788/mcp");
+});
+
+test("an unparseable resource degrades rather than throwing", () => {
+  assert.equal(
+    resourceMetadataUrl("not a url"),
+    "not a url/.well-known/oauth-protected-resource",
+  );
+});
+
 // ---- authorization-server metadata (RFC 8414) -------------------------------
 
 test("the two fields that select CIMD are both present", () => {
