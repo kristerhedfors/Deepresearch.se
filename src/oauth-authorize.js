@@ -405,9 +405,28 @@ export async function verifyConsentToken(env, token, uid, nowMs = Date.now()) {
  * Every page this module serves. `no-store` because a consent screen carries a
  * one-shot signed token; `frame-ancestors 'none'` (plus the legacy header,
  * which some clients still honour and no client is harmed by) because a
- * framed consent screen is a clickjacking target; `no-referrer` so the query
- * string — which holds the code challenge and the state — does not leak into
- * anything the page links to.
+ * framed consent screen is a clickjacking target.
+ *
+ * ── WHY `same-origin` AND NOT `no-referrer` ───────────────────────────────
+ * This header was `no-referrer` and it broke the flow at the last click.
+ * `Referrer-Policy` does not only govern `Referer`: Fetch's "append a request
+ * `Origin` header" step reads the *referrer policy* for a non-CORS request
+ * whose method is not GET or HEAD, and under `no-referrer` it serializes the
+ * origin as the literal string `null`. So the consent form's own same-origin
+ * POST arrived carrying `Origin: null`, the cross-origin guard below read that
+ * as another site, and every connection attempt died on a 403 that said the
+ * form had been submitted from somewhere else. Observed in production on the
+ * first live connector run (2026-08-04, `oauth.consent_cross_origin`,
+ * `origin: "null"`, ~23 s after `oauth.consent_shown`) and reproduced in
+ * Chromium against a two-line server: `no-referrer` → `Origin: null`,
+ * `same-origin` → the real origin.
+ *
+ * `same-origin` keeps the property the old header was chosen for — the query
+ * string, which holds the code challenge and the state, still never leaves
+ * this origin, because a cross-origin navigation gets no referrer at all — and
+ * it leaves the POST's `Origin` intact so the guard can do its job. The 302
+ * back to the client keeps `no-referrer` (see `bounceTo`); that one is a
+ * redirect, not a form, so no `Origin` depends on it.
  * @param {string} html
  * @param {number} [status]
  * @returns {Response}
@@ -417,7 +436,7 @@ function page(html, status = 200) {
   res.headers.set("cache-control", "no-store");
   res.headers.set("content-security-policy", "frame-ancestors 'none'");
   res.headers.set("x-frame-options", "DENY");
-  res.headers.set("referrer-policy", "no-referrer");
+  res.headers.set("referrer-policy", "same-origin");
   return res;
 }
 
@@ -583,8 +602,23 @@ export async function handleAuthorizePost(request, env, url, log, identity, deps
   // somehow arrived. A missing header is tolerated (older clients, and the
   // header is not universally sent) because the signed token below is the
   // check that actually binds.
+  //
+  // `null` is tolerated for the same reason, and the reason is worth writing
+  // down because reading it as hostile is what took the whole flow down once
+  // (see `page()`): an OPAQUE origin is not a foreign origin. A browser
+  // serializes it for a same-origin POST under several policies we do not
+  // control — a referrer policy on the page, a sandboxed context, an embedded
+  // webview's own rules — so refusing it refuses honest submissions, while
+  // refusing nothing an attacker has. What stops a cross-site POST is
+  // structural and unaffected: `dr_session` is `SameSite=Lax`, so the cookie
+  // is not sent at all, and the consent token is signed, expiring and bound to
+  // this uid, so it cannot be minted, read or replayed from another origin.
+  // It is logged rather than silently accepted — if this line starts firing,
+  // the page's own headers are the first thing to look at.
   const origin = request.headers.get("Origin");
-  if (origin && origin !== url.origin) {
+  if (origin === "null") {
+    log.info("oauth.consent_opaque_origin", { user_id: identity.id });
+  } else if (origin && origin !== url.origin) {
     log.warn("oauth.consent_cross_origin", { user_id: identity.id, origin });
     return page(errorPage("invalid_request", "This form was submitted from another site."), 403);
   }

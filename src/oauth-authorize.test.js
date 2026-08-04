@@ -341,6 +341,23 @@ test("GET: a valid request renders the consent screen", async () => {
   }
 });
 
+// The header that took the whole connector flow down on its first live run
+// (2026-08-04). `Referrer-Policy` also governs the `Origin` header: under
+// `no-referrer`, Fetch serializes the origin of a non-CORS POST as the literal
+// string `null`, so this page's OWN form arrived looking cross-origin and the
+// guard in the POST handler refused it. Anything that hides a referrer from
+// cross-origin destinations is fine here; `no-referrer` specifically is not.
+test("GET: the consent page is not served no-referrer — it strips its own form's Origin", async () => {
+  const restore = stubFetch(() => jsonRes(CLAUDE_CIMD));
+  try {
+    const res = await getReq(getUrl(), recordingLog());
+    assert.equal(res.headers.get("referrer-policy"), "same-origin");
+    assert.notEqual(res.headers.get("referrer-policy"), "no-referrer");
+  } finally {
+    restore();
+  }
+});
+
 test("GET: a refused redirect_uri renders AND logs the value it refused", async () => {
   const log = recordingLog();
   const res = await getReq(getUrl({ redirect_uri: "https://evil.example/callback" }), log);
@@ -575,6 +592,41 @@ test("POST: a cross-origin submission is refused before anything is read", async
   );
   assert.equal(res.status, 403);
   assert.equal(mint.calls.length, 0);
+});
+
+// An OPAQUE origin is not a foreign origin, and reading it as one is what the
+// production failure above actually was. A browser serializes `null` for a
+// perfectly ordinary same-origin submission under conditions the server does
+// not control (a page's referrer policy, a sandboxed context, a webview's own
+// rules) — so it is accepted and logged. Nothing is given away: `SameSite=Lax`
+// withholds the cookie cross-site, and the consent token is signed, expiring
+// and bound to this uid.
+test("POST: an opaque `null` Origin is accepted, and says so in the log", async () => {
+  const consent = await mintConsentToken(env, sampleReq, "42");
+  const mint = fakeMint();
+  const log = recordingLog();
+  const res = await handleAuthorizePost(
+    postReq({ consent, decision: "approve" }, { Origin: "null" }),
+    env,
+    POST_URL,
+    log,
+    identity,
+    { mintAuthCode: mint.mintAuthCode },
+  );
+  assert.equal(res.status, 302);
+  assert.equal(mint.calls.length, 1);
+  assert.ok(log.lines.some((l) => l.event === "oauth.consent_opaque_origin"));
+  assert.ok(!log.lines.some((l) => l.event === "oauth.consent_cross_origin"));
+});
+
+test("POST: a submission with no Origin header at all still works", async () => {
+  const consent = await mintConsentToken(env, sampleReq, "42");
+  const mint = fakeMint();
+  const res = await handleAuthorizePost(postReq({ consent, decision: "approve" }, {}), env, POST_URL, recordingLog(), identity, {
+    mintAuthCode: mint.mintAuthCode,
+  });
+  assert.equal(res.status, 302);
+  assert.equal(mint.calls.length, 1);
 });
 
 test("POST: an unauthenticated submission gets the sign-in page, not a code", async () => {

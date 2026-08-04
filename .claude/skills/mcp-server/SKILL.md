@@ -492,7 +492,20 @@ reach the MCP server"), so work the handshake in order rather than guessing.
 3. **`authorization_servers[0]` is the only entry read** — both clients take
    the first and never fall back. If it points somewhere that does not serve
    the RFC 8414 document, the flow dies there.
-4. **A refused `redirect_uri` is LOGGED, deliberately.** An exact-match
+4. **A failure at the *last* click is ours, not the client's.** If the flow
+   reaches the consent screen and **Connect** answers "This form was submitted
+   from another site", read `docs/MCP-CONNECTOR.md` §4b before anything else:
+   the consent page was served `Referrer-Policy: no-referrer`, which makes a
+   browser send `Origin: null` on the page's OWN form POST (Fetch's
+   append-a-request-`Origin`-header step reads the referrer policy for a
+   non-CORS non-GET request), and the CSRF guard refused it. That is the whole
+   of the first live run's failure, 2026-08-04. Fixed two ways — the pages are
+   `same-origin` now, and a `null` origin is treated as opaque rather than
+   foreign (`oauth.consent_opaque_origin`) — but the general lesson outlives
+   it: **a security response header can disable the endpoint it protects**, and
+   a unit suite that builds its own requests never notices, because every test
+   here set `Origin` by hand. Drive the real form in a browser.
+5. **A refused `redirect_uri` is LOGGED, deliberately.** An exact-match
    failure is the commonest reported ChatGPT connector problem and it is
    invisible from the outside, so the refused string goes to Workers Logs as
    **`oauth.redirect_refused`** (with `client_id`) — `wrangler tail | grep
@@ -505,12 +518,12 @@ reach the MCP server"), so work the handshake in order rather than guessing.
    client). A refused redirect renders a page and never a `Location`, on
    purpose: an unvalidated redirect target is what an open redirector is made
    of.
-5. **`invalid_grant` on refresh is correct behaviour, not a bug**, if the
+6. **`invalid_grant` on refresh is correct behaviour, not a bug**, if the
    refresh token was reused: rotation kills the old `jti` in the same call
    that mints the new one. What would be a bug is any *other* error code
    there — clients branch on `error`, and only `invalid_grant` makes a client
    re-authorize instead of retrying a dead token forever.
-6. **Latency ceilings are real**: 10 s for discovery, registration and the
+7. **Latency ceilings are real**: 10 s for discovery, registration and the
    initial token exchange, 30 s for a refresh. Past that the flow fails even
    if the request eventually completes, which reads as an intermittent
    connector.
