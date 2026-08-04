@@ -608,6 +608,12 @@ Consent redirects to the `redirect_uri` with `?code=…&state=…`. A refused
 redirect never gets that far, and the refused value is in the logs — that is
 what the logging is for.
 
+**Click the button, and click it in a browser.** The `curl` walk skips the one
+step no request built by hand exercises: the consent form's own POST back to
+`/oauth/authorize`. That POST carries browser-set headers, it is checked
+against them, and it is where the first live run died (§4b). A hand-built POST
+sets its own `Origin` and proves nothing about it.
+
 **5. Exchange the code**, form-encoded, within its 60 seconds:
 
 ```bash
@@ -629,6 +635,61 @@ still fails, because the client is doing things this walk does not: fetching
 and validating the CIMD document, matching the typed URL, and enforcing its
 own latency ceilings. §7's rung 3 is the acceptance criterion, and it has not
 been run.
+
+---
+
+## 4b. The first live run (2026-08-04): the consent page refused its own form
+
+Claude's connector flow was driven from an iPhone for the first time on
+2026-08-04. Everything the sections above describe worked — discovery, the
+`401` and its pointer, both metadata documents, the CIMD fetch (`client_name`
+came back as "Claude"), the consent screen — and then the **Connect** button
+produced `invalid_request`: *"This form was submitted from another site."*
+Nothing was granted, and the user had no way to tell why.
+
+```
+12:56:56Z  oauth.consent_shown          client_id=https://claude.ai/oauth/mcp-oauth-client-metadata
+                                        client_name=Claude redirect_host=claude.ai
+                                        scope="research offline_access"
+12:57:19Z  oauth.consent_cross_origin   origin="null"   ← 23 s later, the same user
+```
+
+**The cause was our own response header.** `Referrer-Policy` does not only
+govern `Referer`. Fetch's *append a request `Origin` header* step reads the
+request's referrer policy when the request is non-CORS and its method is
+neither `GET` nor `HEAD`, and under `no-referrer` it serializes the origin as
+the literal string `null` — for a same-origin submission as much as any other.
+The consent page was served `Referrer-Policy: no-referrer`, chosen so the
+authorize query string could not leak; the form it carried therefore POSTed
+with `Origin: null`; and the CSRF guard in `handleAuthorizePost` compared that
+against `url.origin`, found a mismatch, and returned 403. The page refused its
+own form. Reproduced in Chromium against a two-line server: `no-referrer` →
+`Origin: null`, `same-origin` / `strict-origin-when-cross-origin` /
+`no-referrer-when-downgrade` → the real origin.
+
+Both halves were fixed, and both are pinned in `src/oauth-authorize.test.js`:
+
+- The pages are served **`Referrer-Policy: same-origin`**. It keeps the
+  property `no-referrer` was chosen for — a cross-origin navigation still gets
+  no referrer, so the code challenge and the state do not leave this origin —
+  and it leaves the POST's `Origin` intact. The 302 back to the client keeps
+  `no-referrer`; a redirect is not a form and nothing's `Origin` depends on it.
+- The guard now treats `Origin: null` as **opaque, not foreign**: accepted, and
+  logged as `oauth.consent_opaque_origin`. A browser serializes `null` for an
+  ordinary same-origin POST under conditions the server does not control — a
+  page's referrer policy, a sandboxed context, an embedded webview's own rules
+  — so refusing it refuses honest submissions and withholds nothing from an
+  attacker. What actually stops a cross-site POST is structural and untouched:
+  `dr_session` is `SameSite=Lax`, so the cookie is not sent at all, and the
+  consent token is signed, expiring and bound to the uid it was shown to.
+
+**Two things this says about the rest of the surface.** A unit suite that
+builds its own requests will pass over any bug of this shape — every POST test
+here set `Origin` by hand, so all of them agreed with each other and none of
+them agreed with a browser. And a security header is part of the flow's
+behaviour, not a coat of paint on top of it: this one was added for a good
+reason, was correct about referrers, and silently disabled the endpoint it was
+protecting.
 
 ---
 
@@ -715,8 +776,12 @@ the build actually stands on it:
    then run a code exchange and a refresh. This is the sequence a client runs,
    and a failure anywhere in it surfaces as the same unhelpful "Couldn't reach
    the MCP server."
-3. **Live, on each real client — NOT DONE, and this is the acceptance
-   criterion.** Add the connector on claude.ai in a browser, complete consent,
+3. **Live, on each real client — ATTEMPTED, NOT PASSED, and this is the
+   acceptance criterion.** The Claude half was driven from a phone on
+   2026-08-04 and reached the consent screen before failing on the approval
+   POST (§4b — a header of ours, now fixed). Nothing past that click has been
+   observed working, so the rung stands unmet and the run has to be repeated
+   from the top. Add the connector on claude.ai in a browser, complete consent,
    call a tool. **Then open the Claude mobile app and confirm the connector is
    there and lists tools without any further setup.** Repeat the whole thing
    on ChatGPT, where the connection attempt is also what settles the two
