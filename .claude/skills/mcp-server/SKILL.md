@@ -393,8 +393,11 @@ deliberately scores its LAST candidate below the floor, so a test that wants
 - **Add ANOTHER tool:** add its schema constant at the top, put it in
   `ALL_MCP_TOOLS`, add its `MCP_TOOL_CATALOG` entry in `src/mcp-config.js`
   **in the same change** (the mirror test fails otherwise — and an account
-  needs a way to switch it off), and branch on `parsed.params.name` in
-  `handleToolCall` — which already dispatches the `sdk_*` family by
+  needs a way to switch it off), decide whether it belongs in
+  `SPENDING_TOOL_NAMES` (does it reach a provider? then yes — it holds a
+  concurrency slot and goes behind `researchQuotaBlock`), and branch on
+  `parsed.params.name` in `dispatchToolCall` — which already dispatches the
+  `sdk_*` family by
   `SDK_TOOL_NAMES` membership before falling through to `deep_research`;
   anything matching neither is method-not-found. Any heavy work its handler
   needs stays behind a dynamic import. Ask whether the tool actually belongs
@@ -410,11 +413,13 @@ deliberately scores its LAST candidate below the floor, so a test that wants
 ## Validation ladder
 
 1. **Unit** — `node --test src/mcp.test.js src/mcp-config.test.js
-   src/mcp-key.test.js src/mcp-api.test.js`: the pure protocol helpers and
+   src/mcp-key.test.js src/mcp-api.test.js src/mcp-inflight.test.js`: the
+   pure protocol helpers and
    the loads-without-the-pipeline guarantee; the catalog⇔tool-list mirror
    and the argument resolution; the key's crypto, the not-a-login pin and
    the cross-family forgery matrix; key resolution (revoked / rotated /
-   disabled account / surface off) and the config endpoints.
+   disabled account / surface off) and the config endpoints; the concurrency
+   reservation's take/release lifecycle and its JSON-RPC refusal.
    `npm run typecheck` (all four are `// @ts-check`).
 2. **Live JSON-RPC probe** — `npm run mcp:probe` (`scripts/mcp-probe.mjs`),
    which is this rung, automated. Dependency-free, exit code = failure count.
@@ -744,12 +749,23 @@ it the reranker**, 50 candidates × 900 chars per angle-corpus leg, measured
 at 10,198 tokens per leg at €0.10/M. The `sdk_*` four and
 `literature_fetch` / `literature_corpora` / `fetch` cost nothing.
 
-Two metering gaps decide whether the surface can be published, and both are
-in the register as P-3: **`src/literature-run.js` records no usage** (the
-searching tools are gated on the quota but never increment it, so they
-cannot exhaust it — unbounded per key), and **`/mcp` takes no
-`reserveInflight`**, so the CAP=5 concurrency bound that `/api/chat` gets
-does not apply here. `deep_research` itself meters correctly; a public
+Two metering gaps decided whether the surface can be published, both in the
+register as P-3, and one is now closed. Still open: **`src/literature-run.js`
+records no usage** (the searching tools are gated on the quota but never
+increment it, so they cannot exhaust it — unbounded per key). Closed
+2026-08-05: **`/mcp` takes `reserveInflight`** on the four tools that reach a
+provider — `deep_research`, `literature_search`, `literature_similar`,
+`search` (the exported `SPENDING_TOOL_NAMES`) — released in a `finally` on
+every exit path, so an external key gets the same CAP=5 bound `/api/chat`
+has. Three things about that shape are worth keeping: the seven free tools
+hold NO slot (one held there could only deny the caller its own next call);
+the refusal is a JSON-RPC `isError` result, never an HTTP 429, because an MCP
+client reads the envelope and a bare 429 reads to it as a broken server; and
+admins are NOT exempt, unlike on the quota gate — a spend cap is one an
+operator is trusted to exceed, an abuse cap is not. `quota.js` is reached by
+a dynamic `import()` like everything else heavy here, so the file-layout rule
+holds; `src/mcp-inflight.test.js` drives the real `handleMcp` against an
+in-memory D1. `deep_research` itself meters correctly; a public
 account is capped at ~€111/month, which is `budget_eur` €8 plus 12,000
 searches at the deep tier — note `quotaExceeded` caps Berget cost in EUR
 but Exa only by COUNT, so the real Exa ceiling is 71% above what the count

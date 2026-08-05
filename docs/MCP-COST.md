@@ -11,10 +11,10 @@ nothing at a provider, the literature family costs €0.002–€0.012, and
 **€0.62 at its analytic ceiling**. The per-call numbers are not what
 decides feasibility. Three gaps do, and all three are in the metering
 rather than the price: the literature family records no usage at all, `/mcp`
-takes no concurrency reservation, and the model and budget overrides are
-open by default. Fix those three and the surface is affordable to publish;
-leave them and one key can outspend the site's entire current monthly bill
-in an afternoon.
+takes no concurrency reservation (**fixed 2026-08-05** — §4b(2)), and the
+model and budget overrides are open by default. Fix those three and the
+surface is affordable to publish; leave them and one key can outspend the
+site's entire current monthly bill in an afternoon.
 
 For context on the scale: the whole site's provider spend for the month
 this was written was **€2.05 Berget + €5.11 Exa across 211 requests**
@@ -186,14 +186,27 @@ The 6-angle call is what the tool description actively encourages ("prefer
 that over sequential calls"), and it is the cheap-per-call, expensive-in-
 aggregate shape. This is the single item to fix before publishing.
 
-**(2) `/mcp` takes no concurrency reservation.** `reserveInflight`
-(`INFLIGHT_CAP = 5`) is taken on `/api/chat`, `/api/embed`,
-`/api/quiz/grade` and `/api/bash/step`. `src/mcp.js` does not call it — the
-string `inflight` does not appear in the file. The race that cap exists to
-close is spelled out in `src/quota.js`'s own comment: the quota gate is
-check-then-act, a request's spend is recorded only when it finishes, so N
-concurrent calls all read the same pre-spend usage and all pass. On `/mcp`
-that N is unbounded, and it multiplies the per-hour figures in (1) directly.
+**(2) `/mcp` takes no concurrency reservation — FIXED 2026-08-05.**
+`reserveInflight` (`INFLIGHT_CAP = 5`) was taken on `/api/chat`,
+`/api/embed`, `/api/quiz/grade` and `/api/bash/step` and nowhere else. The
+race that cap exists to close is spelled out in `src/quota.js`'s own comment:
+the quota gate is check-then-act, a request's spend is recorded only when it
+finishes, so N concurrent calls all read the same pre-spend usage and all
+pass. On `/mcp` that N was unbounded, and it multiplied the per-hour figures
+in (1) directly.
+
+`src/mcp.js` now reserves a slot for the four tools that reach a provider —
+`deep_research`, `literature_search`, `literature_similar` and the `search`
+adapter (`SPENDING_TOOL_NAMES`) — and releases it in a `finally` covering
+success, a tool-level failure and a thrown error. The seven tools that cost
+nothing stay outside it, because a slot held there could only deny the caller
+its own next call. A refusal is a JSON-RPC result with `isError`, not an HTTP
+429: an MCP client reads the envelope, and a bare 429 reads to it as a
+transport failure rather than a condition its model can act on. Admins take a
+slot like anyone else, unlike on the quota gate — a spend cap is something an
+operator is trusted to exceed, an abuse cap is not, and the admin credential
+is the one whose leak matters most. So the (1) figures below are now
+per-account rather than per-connection, times at most 5.
 
 **(3) Model and budget override are open by default.**
 `defaultMcpConfig()` sets `allow_model_override: true` and
@@ -215,6 +228,9 @@ permissive one, and a public surface would inherit it.
   leaked key is spend, not data.
 - `literature_fetch` and `literature_corpora` sit outside the quota
   deliberately and cost nothing, so that exemption carries no spend risk.
+- Since 2026-08-05 the four provider-touching tools also hold a concurrency
+  slot (§4b(2)), so the ceilings in 4a are per account rather than per
+  simultaneous connection.
 
 ## 5. Verdict
 
@@ -229,8 +245,10 @@ account at ~€111/month, and the per-call ceiling is €0.62. Tightening
 would halve the ceiling.
 
 Publishing `literature_search` / `literature_similar` / `search` is **not**
-affordable until they record usage. They are the cheapest tools per call
-and the only ones with no upper bound at all.
+affordable until they record usage. They are the cheapest tools per call,
+and the concurrency cap now bounds how fast one key can call them, but
+nothing they spend counts against any window — so they still have no upper
+bound of their own.
 
 ---
 
