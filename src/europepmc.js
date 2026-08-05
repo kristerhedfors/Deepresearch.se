@@ -70,6 +70,9 @@
 // requests, which is in the same range as the arXiv leg it sits beside.
 
 import { pubmedRagAvailable, pubmedRagSearch } from "./pubmed-rag.js";
+// The tally the hosted tier folds its provider tokens into, so this leg's
+// spend reaches the request's accounting (src/billing.js denseSpend).
+import { newRetrievalSpend } from "./dense-rag.js";
 
 const API = "https://www.ebi.ac.uk/europepmc/webservices/rest/search";
 const TIMEOUT_MS = 7000;
@@ -473,17 +476,23 @@ export function toItem(r) {
  * @param {import('./types.js').Logger} log
  * @param {string} query
  * @param {{ skipKeys?: Set<string> }} [opts]
- * @returns {Promise<{ items: Array<{url: string, title: string, highlights: string[]}>, durationMs: number, usedKeys: string[] }>}
+ * @returns {Promise<{ items: Array<{url: string, title: string, highlights: string[]}>, durationMs: number, usedKeys: string[], spend?: import('./dense-rag.js').RetrievalSpend }>}
  */
 export async function europepmcSearch(env, log, query, { skipKeys } = {}) {
   const startedAt = Date.now();
+  // What the hosted tier cost this call, reported back to the orchestrator so
+  // the request bills it (search-sources.js SearchSourceResult `spend`).
+  // Returned on BOTH exits: a dense lookup that found nothing above the floor
+  // still paid for its embedding and its cross-encoder before falling through
+  // to Europe PMC below.
+  const spend = newRetrievalSpend();
   // Tier 1: the hosted PubMed index, when bound. It gets the PROSE query —
   // dense retrieval wants the natural question, and the term extraction below
   // is a keyword-AND concern that would throw away signal an embedder uses. A
   // null or empty return falls through to the live API, so a deployment
   // without the binding behaves exactly as it did before this tier existed.
   if (pubmedRagAvailable(env)) {
-    const dense = await pubmedRagSearch(env, log, query, { limit: MAX_ITEMS });
+    const dense = await pubmedRagSearch(env, log, query, { limit: MAX_ITEMS, spend });
     if (dense && dense.length) {
       const durationMs = Date.now() - startedAt;
       log?.info?.("europepmc.search", {
@@ -492,7 +501,7 @@ export async function europepmcSearch(env, log, query, { skipKeys } = {}) {
         results: dense.length,
         duration_ms: durationMs,
       });
-      return { items: /** @type {any} */ (dense), durationMs, usedKeys: [] };
+      return { items: /** @type {any} */ (dense), durationMs, usedKeys: [], spend };
     }
   }
   const rungs = europepmcLadder(query).filter((r) => !skipKeys?.has(r.key));
@@ -535,7 +544,7 @@ export async function europepmcSearch(env, log, query, { skipKeys } = {}) {
     results: items.length,
     duration_ms: durationMs,
   });
-  return { items: /** @type {any} */ (items), durationMs, usedKeys };
+  return { items: /** @type {any} */ (items), durationMs, usedKeys, spend };
 }
 
 /**

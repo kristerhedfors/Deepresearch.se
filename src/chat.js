@@ -17,7 +17,8 @@ import { recordChatLog, shellLogSummary } from "./chatlog.js";
 import { addUserMessage } from "./user-messages.js";
 import { adminDefaultModelValid, completeJson, DEFAULT_MODEL } from "./berget.js";
 import { resolveJsonModel as resolveJsonPhaseModel } from "./model-routing.js";
-import { exaCost, spendByModel, summarizeSpend } from "./billing.js";
+import { denseSpend, exaCost, spendByModel, summarizeSpend } from "./billing.js";
+import { newRetrievalSpend } from "./dense-rag.js";
 // Re-exported so chat.test.js (and any importer) keeps getting it from here.
 export { summarizeSpend } from "./billing.js";
 import { listChatModels } from "./providers.js";
@@ -680,13 +681,27 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       // Usage accounting for quotas (fails soft; never breaks the stream).
       const { prompt_tokens, completion_tokens, berget_cost } = summarizeSpend(state, catalog);
       const exa_cost = exaCost(state, config, billedSearches);
+      // The search wave's hosted-index spend (src/billing.js): the reranker and
+      // the embedder are Berget money like any other, they just are not chat
+      // models, so they are priced from the raw catalog and added here rather
+      // than inside summarizeSpend. Never throws, and a request that ran no
+      // dense retrieval returns all zeroes and adds nothing — so a run without
+      // it records exactly what it recorded before this existed.
+      const dense = await denseSpend(env, log, state);
       await recordUsage(env, log, {
         user_id: identity.id,
         model,
-        prompt_tokens,
+        // The dense tokens ride the same row: its berget_cost includes them, and
+        // a row whose cost exceeds what its tokens explain is a row nobody can
+        // reconcile. `model` still names the answer model — one row per request
+        // is what every quota and cost view counts, and the per-model split is
+        // the by_model rows below.
+        prompt_tokens: prompt_tokens + dense.prompt_tokens,
         completion_tokens,
+        // Exa's own count, deliberately — a dense leg buys no Exa search
+        // (src/billing.js, the COUNT DIMENSION note).
         searches: billedSearches,
-        berget_cost,
+        berget_cost: berget_cost + dense.berget_cost,
         exa_cost,
         duration_ms,
       });
@@ -696,7 +711,10 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       await recordModelUsage(env, log, {
         user_id: identity.id,
         request_id: requestId,
-        by_model: spendByModel(state, catalog),
+        // …plus one row per retrieval model that ran (rerank / embed), so the
+        // "what did my budget go to" view can tell an expensive answer model
+        // from a literature-heavy turn. Empty when no dense tier ran.
+        by_model: [...spendByModel(state, catalog), ...dense.by_model],
       });
       // Full-visibility interaction log (src/chatlog.js): the complete
       // question, answer, conversation, research metadata, and any error —
@@ -1265,5 +1283,10 @@ function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
     // a premium answer model's rate.
     totals: { prompt_tokens: 0, completion_tokens: 0 },
     jsonTotals: { prompt_tokens: 0, completion_tokens: 0 },
+    // The hosted arXiv/PubMed retrieval tiers' provider spend (src/dense-rag.js),
+    // accumulated across every leg the search wave runs. Not a chat model, so it
+    // is priced from Berget's RAW catalog at the end of the request rather than
+    // by summarizeSpend's catalog lookup — src/billing.js denseSpend.
+    denseTotals: newRetrievalSpend(),
   };
 }

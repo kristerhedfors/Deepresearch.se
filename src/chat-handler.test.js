@@ -38,16 +38,28 @@ const BERGET = "https://berget.test/v1";
 const ANSWER_MODEL = "mistralai/Mistral-Small-3.2-24B-Instruct-2506";
 const SECOND_MODEL = "openai/gpt-oss-120b";
 
-/** A Berget /models body carrying two streaming+json-mode text models. */
+/** The models the hosted dense-retrieval tier spends on. NOT text models, so
+ * `fetchCatalog` filters them out of the chat catalog (that filter is exactly
+ * why their spend cannot be priced with bergetCost) — but `rawModelEntry` reads
+ * the unfiltered list, which is how src/billing.js prices them. */
+const RERANK_MODEL_ID = "BAAI/bge-reranker-v2-m3";
+const EMBED_MODEL_ID = "intfloat/multilingual-e5-large";
+
+/** A Berget /models body carrying two streaming+json-mode text models, plus the
+ * two retrieval models the raw catalog also lists. */
 const MODELS_BODY = {
-  data: [ANSWER_MODEL, SECOND_MODEL].map((id) => ({
-    id,
-    name: id,
-    model_type: "text",
-    capabilities: { streaming: true, json_mode: true },
-    pricing: { input: 0.3, output: 0.3, unit: "€ / M Token" },
-    status: { up: true },
-  })),
+  data: [
+    ...[ANSWER_MODEL, SECOND_MODEL].map((id) => ({
+      id,
+      name: id,
+      model_type: "text",
+      capabilities: { streaming: true, json_mode: true },
+      pricing: { input: 0.3, output: 0.3, unit: "€ / M Token" },
+      status: { up: true },
+    })),
+    { id: RERANK_MODEL_ID, model_type: "reranker", pricing: { input: 0.1, output: 0, unit: "€ / M Token" } },
+    { id: EMBED_MODEL_ID, model_type: "embedding", pricing: { input: 0.03, output: 0, unit: "€ / M Token" } },
+  ],
 };
 
 /**
@@ -465,5 +477,197 @@ describe("handleChat — the SSE contract", () => {
       })
       .find((e) => e?.status?.type === "done");
     assert.equal(done.status.searches, 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The DENSE-RETRIEVAL bucket (src/billing.js denseSpend)
+//
+// The search wave can reach the hosted arXiv/PubMed indexes, and every leg
+// spends real Berget money on a cross-encoder over 50 candidates. Until this
+// bucket existed those tokens were returned by the tier and consumed by nobody
+// on the /api/chat path, so every dense retrieval a chat request performed was
+// unbilled — it reached neither `usage_events`, nor the user's budget bar, nor
+// the admin cost totals.
+//
+// The request below runs with `web_search: false` and an arXiv-naming question:
+// the knob stands the Exa leg down, the auxiliary sources still run (the knob
+// is not "no research"), and the hosted index answers. So this exercises the
+// dense path with no Exa cost mixed into the row.
+// ---------------------------------------------------------------------------
+
+describe("handleChat — the dense-retrieval spend reaches the ledger", () => {
+  /** One reranked leg's token count, as Berget reports it. */
+  const RERANK_TOKENS = 10_198;
+  const EMBED_TOKENS = 9;
+
+  const denseMatch = (id) => ({
+    id,
+    score: 0.9,
+    metadata: { t: `Paper ${id}`, a: `Abstract of paper ${id}.`, au: "A One; B Two", c: "cs.AI", d: "2026-07-01" },
+  });
+
+  /** A Vectorize binding that always answers with two candidates. */
+  const fakeIndex = () => ({
+    async query() {
+      return { matches: [denseMatch("2601.00001"), denseMatch("2601.00002")] };
+    },
+  });
+
+  /** Drive one arXiv-flavoured chat request, optionally with the index bound. */
+  async function runDenseChat({ bound }) {
+    const stub = fakeFetch([
+      [/\/models$/, MODELS_BODY],
+      [
+        /\/embeddings$/,
+        (r) => {
+          const body = JSON.parse(r.body || "{}");
+          return {
+            data: body.input.map((/** @type {any} */ _, /** @type {number} */ index) => ({
+              index,
+              embedding: new Array(1024).fill(0.01),
+            })),
+            usage: { prompt_tokens: EMBED_TOKENS },
+            model: EMBED_MODEL_ID,
+          };
+        },
+      ],
+      [
+        /\/rerank$/,
+        (r) => {
+          const body = JSON.parse(r.body || "{}");
+          return {
+            results: body.documents.map((/** @type {any} */ _, /** @type {number} */ index) => ({
+              index,
+              relevance_score: 0.9 - index * 0.1,
+            })),
+            usage: { total_tokens: RERANK_TOKENS },
+          };
+        },
+      ],
+      // The live arXiv API, for the unbound run: an empty feed, so that request
+      // is the "same wave, no hosted tier" control.
+      [/export\.arxiv\.org/, "<feed></feed>"],
+      [
+        /\/chat\/completions$/,
+        (r) => {
+          const body = JSON.parse(r.body || "{}");
+          if (body.stream !== true) {
+            return {
+              choices: [
+                {
+                  message: {
+                    content: JSON.stringify({
+                      needs_search: false,
+                      queries: [],
+                      sufficient: true,
+                      verdict: "ok",
+                      ok: true,
+                    }),
+                  },
+                },
+              ],
+              usage: { prompt_tokens: 90, completion_tokens: 20 },
+            };
+          }
+          return new Response(sseBody("The answer."), {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          });
+        },
+      ],
+    ]);
+    globalThis.fetch = /** @type {any} */ (stub);
+    const db = fakeD1();
+    const env = fakeEnv({
+      DB: db,
+      BERGET_URL: BERGET,
+      ...(bound ? { ARXIV_INDEX: fakeIndex() } : {}),
+    });
+    const ctx = fakeCtx();
+    const response = await handleChat(
+      jsonRequest("https://deepresearch.test/api/chat", {
+        // Names arXiv, so the source's intent fires and it LEADS the turn.
+        messages: [{ role: "user", content: "what do recent arxiv papers say about llm agent planning" }],
+        web_search: false,
+      }),
+      env,
+      fakeLog(),
+      fakeIdentity(),
+      ctx,
+      "req-dense-1",
+    );
+    await response.text();
+    await ctx.settle();
+    return { db, stub };
+  }
+
+  /** The usage_events row's columns, by name. */
+  function usageRow(db) {
+    const [call] = db.callsMatching(/INSERT INTO usage_events/);
+    assert.ok(call, "a usage_events row was written");
+    const [, , model, prompt_tokens, completion_tokens, searches, berget_cost, exa_cost] = call.bindings;
+    return { model, prompt_tokens, completion_tokens, searches, berget_cost, exa_cost };
+  }
+
+  /** The usage_model_events attribution rows, by role. */
+  function modelRows(db) {
+    return db.callsMatching(/INSERT INTO usage_model_events/).map((c) => ({
+      role: c.bindings[3],
+      model: c.bindings[4],
+      prompt_tokens: c.bindings[5],
+      berget_cost: c.bindings[7],
+    }));
+  }
+
+  test("a request whose search wave used the dense tier bills its tokens and a non-zero EUR", async () => {
+    const { db } = await runDenseChat({ bound: true });
+    const row = usageRow(db);
+    // The reranker's tokens are three orders of magnitude above the LLM's here,
+    // so the row's token count is dominated by them — the point being that they
+    // are in it at all.
+    assert.ok(
+      Number(row.prompt_tokens) >= RERANK_TOKENS,
+      `the dense tokens are on the row (got ${row.prompt_tokens})`,
+    );
+    assert.ok(Number(row.berget_cost) > 0, "and they cost real money");
+    // Exa's count is untouched: a dense leg buys no Exa search.
+    assert.equal(Number(row.searches), 0);
+    assert.equal(Number(row.exa_cost), 0);
+
+    const rows = modelRows(db);
+    const rerank = rows.find((r) => r.role === "rerank");
+    assert.ok(rerank, "the attribution ledger names the reranker");
+    assert.equal(rerank.model, RERANK_MODEL_ID);
+    assert.equal(Number(rerank.prompt_tokens), RERANK_TOKENS);
+    assert.equal(Number(rerank.berget_cost), RERANK_TOKENS * (0.1 / 1e6));
+    const embed = rows.find((r) => r.role === "embed");
+    assert.ok(embed, "and the embedder");
+    assert.equal(Number(embed.prompt_tokens), EMBED_TOKENS);
+    // The answer row is still there — the dense rows are added, not substituted.
+    assert.ok(rows.some((r) => r.role === "answer"));
+  });
+
+  test("the SAME request without the binding records exactly what it did before", async () => {
+    // The control: same message, same wave, no hosted index. Nothing dense may
+    // appear anywhere, and the row must carry only the LLM's own tokens.
+    const { db } = await runDenseChat({ bound: false });
+    const row = usageRow(db);
+    assert.ok(Number(row.prompt_tokens) < 1000, `LLM tokens only (got ${row.prompt_tokens})`);
+    const rows = modelRows(db);
+    assert.equal(rows.filter((r) => r.role === "rerank" || r.role === "embed").length, 0);
+    assert.ok(rows.some((r) => r.role === "answer"));
+  });
+
+  test("the bound run's bill is STRICTLY higher than the unbound one's", async () => {
+    // The regression this whole change exists to stop: the two runs used to be
+    // indistinguishable in the ledger even though one of them spent money.
+    const bound = usageRow((await runDenseChat({ bound: true })).db);
+    const unbound = usageRow((await runDenseChat({ bound: false })).db);
+    assert.ok(
+      Number(bound.berget_cost) > Number(unbound.berget_cost),
+      `dense run €${bound.berget_cost} must exceed the plain run's €${unbound.berget_cost}`,
+    );
+    assert.ok(Number(bound.prompt_tokens) > Number(unbound.prompt_tokens));
   });
 });

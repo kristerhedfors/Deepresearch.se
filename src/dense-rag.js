@@ -47,7 +47,7 @@ export const TOTAL_BUDGET_MS = 12_000;
 // Berget's /v1/rerank answers with a `usage` block, which this tier used to read
 // past. It is plumbed out now (rerankMatches returns `tokens`) because a
 // MEASURED count is always better than a count inferred from string lengths, and
-// because src/literature-run.js bills a quota on it.
+// because src/literature-run.js and src/billing.js bill a quota on it.
 //
 // The ratio below is only for the case where the endpoint returns no `usage` at
 // all. Its basis is the single measurement we have of the exact shape this tier
@@ -68,6 +68,73 @@ export function estimateRerankTokens(docs) {
   let chars = 0;
   for (const d of docs) chars += String(d || "").length;
   return Math.round(chars / RERANK_CHARS_PER_TOKEN);
+}
+
+// ---- the running tally ------------------------------------------------------
+// Two callers spend this tier's money and both have to bill it: the MCP
+// literature tools (src/literature-run.js, one tally per tool call) and the
+// /api/chat research pipeline (src/pipeline.js, one tally per REQUEST, since a
+// request can run several legs — multiple angles, two corpora, several search
+// rounds). The tally shape and the folding are here, next to the numbers, so
+// there is one definition of what a dense retrieval costs rather than one per
+// caller. Pricing it is src/billing.js's job (priceRetrievalSpend): that needs
+// Berget's raw catalog, and this module must stay a leaf over berget.js.
+//
+// Accumulate, never overwrite — legs run concurrently, but JS is
+// single-threaded, so `+=` needs no coordination.
+
+/**
+ * One caller's provider spend from this tier, in tokens.
+ * @typedef {Object} RetrievalSpend
+ * @property {number} embedTokens
+ * @property {number} rerankTokens
+ * @property {number} rerankCalls how many cross-encoder calls reported a cost
+ * @property {number} estimatedCalls how many of those were estimated, not measured
+ * @property {string} embedModelId the model the embedder actually answered as
+ */
+
+/** @returns {RetrievalSpend} */
+export function newRetrievalSpend() {
+  return { embedTokens: 0, rerankTokens: 0, rerankCalls: 0, estimatedCalls: 0, embedModelId: "" };
+}
+
+/**
+ * Fold one denseRetrieve result's cross-encoder cost into the running spend.
+ * @param {RetrievalSpend | null | undefined} spend
+ * @param {{ rerankTokens?: number, rerankEstimated?: boolean } | null | undefined} found
+ */
+export function addRerankSpend(spend, found) {
+  if (!spend || !found?.rerankTokens) return;
+  spend.rerankTokens += found.rerankTokens;
+  spend.rerankCalls += 1;
+  if (found.rerankEstimated) spend.estimatedCalls += 1;
+}
+
+/**
+ * Fold one embedQueries result's cost into the running spend.
+ * @param {RetrievalSpend | null | undefined} spend
+ * @param {{ usage?: any, model?: string } | null | undefined} embedded
+ */
+export function addEmbedSpend(spend, embedded) {
+  if (!spend || !embedded) return;
+  spend.embedTokens += Number(embedded.usage?.prompt_tokens ?? embedded.usage?.total_tokens ?? 0) || 0;
+  if (embedded.model) spend.embedModelId = embedded.model;
+}
+
+/**
+ * Fold one tally into another — how a per-leg or per-source tally reaches the
+ * per-request one. Fail-soft in both directions: either side missing is a
+ * no-op, never a throw, because accounting must not break a search wave.
+ * @param {RetrievalSpend | null | undefined} into
+ * @param {RetrievalSpend | null | undefined} from
+ */
+export function mergeRetrievalSpend(into, from) {
+  if (!into || !from) return;
+  into.embedTokens += from.embedTokens || 0;
+  into.rerankTokens += from.rerankTokens || 0;
+  into.rerankCalls += from.rerankCalls || 0;
+  into.estimatedCalls += from.estimatedCalls || 0;
+  if (from.embedModelId) into.embedModelId = from.embedModelId;
 }
 
 // The relevance floor, applied to the CROSS-ENCODER score, never to the cosine.
@@ -277,17 +344,27 @@ export async function denseRetrieve(env, log, { index, qvec, query, docOf, tag, 
  *   docOf: (m: any) => string,
  *   tag: string,
  *   limit?: number,
- * }} opts
+ *   spend?: RetrievalSpend | null,
+ * }} opts `spend` is an OPTIONAL running tally the caller owns: this call folds
+ *   its embedding and cross-encoder tokens into it so the caller can bill them.
+ *   Omitting it is the pre-metering behaviour exactly — the tally is the only
+ *   thing it changes, and a caller with no way to bill (a test, a probe) passes
+ *   nothing. The folding is unconditional on the RESULT: an empty index, a
+ *   below-floor result and a returned-null failure all still cost whatever
+ *   reached the provider before they gave up.
  * @returns {Promise<T[] | null>}
  */
-export async function denseSearch(env, log, query, { index, itemOf, docOf, tag, limit = 5 }) {
+export async function denseSearch(env, log, query, { index, itemOf, docOf, tag, limit = 5, spend = null }) {
   const started = Date.now();
   const text = String(query || "").trim();
   if (!index || !text) return null;
   try {
-    const qvec = (await embedQueries(env, [text], { timeoutMs: EMBED_TIMEOUT_MS })).vectors[0];
+    const embedded = await embedQueries(env, [text], { timeoutMs: EMBED_TIMEOUT_MS });
+    addEmbedSpend(spend, embedded);
+    const qvec = embedded.vectors[0];
     if (!Array.isArray(qvec)) return null;
     const found = await denseRetrieve(env, log, { index, qvec, query: text, docOf, tag, startedAt: started });
+    addRerankSpend(spend, found);
     if (!found) return null;
     if (!found.candidates) {
       log.info(`${tag}.search`, { results: 0, duration_ms: Date.now() - started });
