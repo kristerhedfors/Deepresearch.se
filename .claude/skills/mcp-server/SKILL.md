@@ -215,7 +215,9 @@ change to the chat path doesn't silently change MCP:
    user is checked against their four-window budget BEFORE any spend. This
    is load-bearing: without it, `/mcp` would be an unmetered bypass of the
    quota `/api/chat` applies — each call runs the full pipeline for real
-   Berget + Exa money.
+   Berget + Exa money. It **fails CLOSED** when it cannot decide (a D1 error
+   reading the config row or the usage windows) — see the fail-direction note
+   below.
 5. Run `runPipeline`, collect the streamed answer into one string, append
    the Sources list (`withSources`).
 6. **Record usage** (`recordUsage`) with the split-billing totals
@@ -770,6 +772,37 @@ account is capped at ~€111/month, which is `budget_eur` €8 plus 12,000
 searches at the deep tier — note `quotaExceeded` caps Berget cost in EUR
 but Exa only by COUNT, so the real Exa ceiling is 71% above what the count
 nominally prices.
+
+### The two bounds fail in OPPOSITE directions, on purpose
+
+Decided 2026-08-05, after the concurrency work turned up that neither had a
+chosen direction at all: every step of the quota gate reaches D1 (the lazy
+migration inside `getDb`, the config row, the usage windows), none of those
+reads was wrapped, and the throw simply escaped — as `Literature tool failed:
+d1 down` here and as a generic 500 out of `handleChat` on `/api/chat`. Both
+surfaces refused, neither deliberately, and a D1 outage broke `/mcp` for every
+non-admin caller.
+
+- **The quota gate fails CLOSED.** It is the spend barrier, and "I cannot read
+  usage" is not a yes. Letting the call through would spend at exactly the
+  moment the spend cannot be RECORDED either (`recordUsage` writes to the same
+  database), so the overrun is unbounded, invisible, and unlike a refused call
+  it cannot be undone.
+- **The reservation fails OPEN**, as its `quota.js` header always said. It is
+  abuse mitigation on top of a gate that already said yes.
+
+The full argument (including why this matches `identify` /
+`resolveMcpKeyIdentity` degrading an unreadable account row to "no identity")
+lives above `QUOTA_UNAVAILABLE_STATUS` in `src/quota.js`. On this surface the
+refusal is `quotaUnavailableToolMessage()` — an `isError` result, worded so the
+client's model retries later rather than stopping, since "quota exceeded" and
+"quota unreadable" call for opposite next moves. `/api/chat` says the same
+thing as a **503** with `quota_unavailable` (not a 500, which reads as a crash;
+not a 429, which would claim a limit the user has not hit). Both log
+`*.quota_unverifiable` with the reason. Two things stay open by construction:
+a site with **no `DB` binding** (a supported configuration — nothing throws
+there, so nothing is refused) and one whose windows are all `0`
+(`quotaEnforced` — no limit for an unreadable ledger to hide).
 
 ## Related
 

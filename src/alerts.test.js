@@ -2,7 +2,7 @@
 // error pattern maps to its stable type/severity; unmatched to the catch-all.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { classifyChatError } from "./alerts.js";
+import { classifyChatError, raiseAlert } from "./alerts.js";
 
 describe("classifyChatError", () => {
   test("Berget wallet depletion classifies as critical", () => {
@@ -55,5 +55,26 @@ describe("classifyChatError", () => {
     assert.doesNotThrow(() => classifyChatError(undefined));
     assert.doesNotThrow(() => classifyChatError(null));
     assert.equal(classifyChatError(undefined).type, "chat_stream_failed");
+  });
+});
+
+// raiseAlert is called from two error paths (chat.js's stream catch,
+// answer-stream.js's failover), so a throw here escapes the catch that was
+// recovering — observed 2026-08-05 as a hung SSE stream on an errored D1.
+describe("raiseAlert is best-effort in full", () => {
+  test("an errored database is swallowed, not rethrown", async () => {
+    const dead = /** @type {any} */ ({
+      prepare() {
+        throw new Error("d1 down");
+      },
+      batch() {
+        throw new Error("d1 down");
+      },
+    });
+    await raiseAlert(/** @type {any} */ ({ DB: dead }), "t", "warning", "m", "d");
+  });
+
+  test("no database binding at all is a no-op", async () => {
+    await raiseAlert(/** @type {any} */ ({}), "t", "warning", "m");
   });
 });

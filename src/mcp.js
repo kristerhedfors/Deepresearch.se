@@ -282,6 +282,24 @@ export function inflightLimitToolMessage(limited) {
   );
 }
 
+// The refusal when the quota gate cannot REACH a decision — an errored D1 while
+// reading the site config or the caller's usage windows. The gate fails CLOSED
+// (the reasoning is above QUOTA_UNAVAILABLE_STATUS in quota.js), and this is
+// how that lands on this surface: a tool result with isError, exactly like the
+// quota-exceeded refusal and the concurrency one, never an HTTP 5xx and never
+// an escaped throw. Worded so the client's model does the right thing: it says
+// the condition is temporary and NOT a limit on the account, because "Research
+// quota exceeded" and "quota unreadable" call for opposite next moves — one
+// means stop for the day, the other means try again shortly.
+/** @returns {string} */
+export function quotaUnavailableToolMessage() {
+  return (
+    "Research quota can't be checked right now — the usage store is temporarily " +
+    "unavailable, so this call was not run. This is not a limit on the account and " +
+    "nothing was spent. Wait a minute and try the call again."
+  );
+}
+
 // The `tools/list` result, narrowed to what this account exposes. Called with
 // no argument it reports the full set (the default config) — which is what an
 // identity with no account row, notably the break-glass operator, gets.
@@ -677,27 +695,90 @@ async function dispatchToolCall(parsed, env, log, identity, ctx, requestId, conf
  * bypass of the quota /api/chat applies. Returns the message to hand back, or
  * null when the caller may proceed.
  *
+ * FAILS CLOSED when it cannot decide. Every step below reaches D1 — the lazy
+ * migration inside getDb, the config row, the usage windows — and any of them
+ * can throw. Before 2026-08-05 that throw simply ESCAPED: it surfaced as
+ * `Literature tool failed: d1 down` / `Research failed: d1 down`, which is a
+ * refusal nobody chose, described in a way no caller can act on. Now the
+ * failure is a decision, with its own message and its own log line. Why closed
+ * rather than open — and why the concurrency reservation around this call
+ * deliberately goes the other way — is written out above
+ * QUOTA_UNAVAILABLE_STATUS in quota.js.
+ *
  * @param {Env} env
  * @param {Logger} log
  * @param {Identity} identity
- * @param {any} [config] the site config, when the caller already loaded it
+ * @param {{ config: any, ok: boolean }} [site] the site config, when the caller
+ *   already loaded it (with whether that load actually reached the database)
  * @returns {Promise<string | null>}
  */
-async function researchQuotaBlock(env, log, identity, config) {
+async function researchQuotaBlock(env, log, identity, site) {
   if (identity?.isSecretAdmin || identity?.role === "admin") return null;
-  const [{ getUsage, quotaExceeded, effectiveQuota }, { getConfig }] = await Promise.all([
-    import("./quota.js"),
-    import("./config.js"),
-  ]);
-  const settings = config || (await getConfig(env));
-  const quota = effectiveQuota(settings, identity?.user);
-  if (!quota) return null;
-  const usage = await getUsage(env, identity.id, Date.now(), identity?.user?.quota_reset_at);
-  const blocked = quotaExceeded(usage, quota);
+  /** @type {typeof import('./quota.js')} */
+  let quota;
+  try {
+    quota = await import("./quota.js");
+  } catch (err) {
+    // Not reachable in practice (a static sibling module), but the gate's
+    // promise is that it always DECIDES: an unloadable meter is an unread one.
+    log.warn("mcp.quota_unverifiable", { user_id: identity?.id, reason: "import", error: errText(err) });
+    return quotaUnavailableToolMessage();
+  }
+  const settings = site || (await loadSiteConfig(env, log));
+  if (!settings.ok) {
+    log.warn("mcp.quota_unverifiable", { user_id: identity?.id, reason: "config" });
+    return quotaUnavailableToolMessage();
+  }
+  const limits = quota.effectiveQuota(settings.config, identity?.user);
+  // Nothing enforced anywhere → nothing to verify, and an unreadable usage
+  // store cannot change an admission no limit would have refused.
+  if (!limits || !quota.quotaEnforced(limits)) return null;
+  /** @type {import('./quota.js').Usage} */
+  let usage;
+  try {
+    usage = await quota.getUsage(env, identity.id, Date.now(), identity?.user?.quota_reset_at);
+  } catch (err) {
+    log.warn("mcp.quota_unverifiable", { user_id: identity?.id, reason: "usage", error: errText(err) });
+    return quotaUnavailableToolMessage();
+  }
+  const blocked = quota.quotaExceeded(usage, limits);
   if (!blocked) return null;
   log.info("mcp.quota_exceeded", { user_id: identity?.id, period: blocked.period, kind: blocked.kind });
   const when = `${new Date(blocked.reset_at).toISOString().slice(0, 16).replace("T", " ")} UTC`;
   return `Research quota exceeded (${blocked.period}). It resets at ${when}.`;
+}
+
+/**
+ * Load the site config, degrading to the SAME defaults config.js falls back to
+ * when there is no database at all — but SAYING SO. The distinction is the
+ * whole point: "this site has no D1" is a supported configuration whose
+ * defaults are the real settings, while "D1 threw" means the real settings are
+ * unknown, and the quota gate must not read the second as permission (an admin
+ * may have lowered the limits the defaults would hand back).
+ *
+ * Dynamically imported like everything else heavy on this surface, so
+ * src/mcp.test.js keeps loading the module without the pipeline graph.
+ * @param {Env} env
+ * @param {Logger} log
+ * @returns {Promise<{ config: any, ok: boolean }>}
+ */
+async function loadSiteConfig(env, log) {
+  const { DEFAULT_CONFIG, getConfig } = await import("./config.js");
+  try {
+    return { config: await getConfig(env), ok: true };
+  } catch (err) {
+    log.warn("mcp.config_unavailable", { error: errText(err) });
+    return { config: structuredClone(DEFAULT_CONFIG), ok: false };
+  }
+}
+
+/**
+ * The message of a thrown value, however odd the throw.
+ * @param {unknown} err
+ * @returns {string}
+ */
+function errText(err) {
+  return (/** @type {any} */ (err))?.message || String(err);
 }
 
 // ---------------------------------------------------------------------------
@@ -730,7 +811,6 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
     { adminDefaultModelValid, DEFAULT_MODEL },
     { listChatModels },
     { runPipeline },
-    { getConfig },
     { recordUsage, recordModelUsage },
     { summarizeSpend, exaCost, spendByModel },
   ] = await Promise.all([
@@ -739,7 +819,6 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
     import("./berget.js"),
     import("./providers.js"),
     import("./pipeline.js"),
-    import("./config.js"),
     import("./quota.js"),
     import("./billing.js"),
   ]);
@@ -760,7 +839,13 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
   } catch (err) {
     log.warn("mcp.model_catalog_unavailable", { error: (/** @type {any} */ (err))?.message || String(err) });
   }
-  const config = await getConfig(env);
+  // Site settings, fail-soft in SHAPE and fail-closed in ADMISSION: a D1 error
+  // here used to throw straight out of the tool as `Research failed: d1 down`.
+  // The request can still be shaped against the defaults (model, budget clamp),
+  // but `site.ok` travels to the quota gate below, which refuses rather than
+  // authorize spend against limits it could not read.
+  const site = await loadSiteConfig(env, log);
+  const config = site.config;
 
   // `args.model` is the account's default or the caller's pick, whichever the
   // exposure config allowed; the admin default only fills in when neither said.
@@ -787,7 +872,10 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
   // money), and the spend would also be invisible to the usage bars and admin
   // cost totals — see the recordUsage below. The config is already loaded here,
   // so it is passed rather than read a second time.
-  const blocked = await researchQuotaBlock(env, log, identity, config);
+  const blocked = await researchQuotaBlock(env, log, identity, site);
+  // Thrown, then caught by dispatchToolCall into an isError tool result: the
+  // refusal reaches the caller inside the JSON-RPC envelope either way. (The
+  // literature branch returns its message directly, one frame closer.)
   if (blocked) throw new Error(blocked);
 
   const state = newRequestState(model, jsonModel, webSearch, budgetS, planResearch(model, budgetS, jsonModel));

@@ -14,7 +14,10 @@ rather than the price: the literature family records no usage at all, `/mcp`
 takes no concurrency reservation (**fixed 2026-08-05** — §4b(2)), and the
 model and budget overrides are open by default. Fix those three and the
 surface is affordable to publish; leave them and one key can outspend the
-site's entire current monthly bill in an afternoon.
+site's entire current monthly bill in an afternoon. A fourth gap surfaced
+while closing the second and is also fixed: neither bound had a chosen
+failure direction, so a D1 error escaped as an unreadable refusal here and as
+a 500 on `/api/chat` (§4b(4)).
 
 For context on the scale: the whole site's provider spend for the month
 this was written was **€2.05 Berget + €5.11 Exa across 211 requests**
@@ -168,7 +171,7 @@ tier's 12/7 multiplier makes the real Exa ceiling 71% above what the search
 count nominally prices. **A public account's month is capped at ~€111**,
 and that is the number to reason about, not the €8 in the config.
 
-### 4b. Three gaps, in the order they matter
+### 4b. Four gaps, in the order they matter
 
 **(1) The literature family records no usage.** `src/literature-run.js`
 contains no `recordUsage` / `recordModelUsage` / `recordDefaultModelUsage`
@@ -216,10 +219,32 @@ and what lets every call sit at 600 s. It is a per-account switch, already
 built and already exposed in Settings → MCP server — but the default is the
 permissive one, and a public surface would inherit it.
 
+**(4) Neither bound had a chosen fail direction — FIXED 2026-08-05.** Found
+while building (2): a test asserting that a broken D1 fails open came back
+`Literature tool failed: d1 down`. The reservation does fail open; the quota
+gate then threw, because every step of it reaches D1 (the lazy migration inside
+`getDb`, the config row, the usage windows) and none of those reads was
+wrapped. The same hole sat on `/api/chat`, where the throw escaped `handleChat`
+and became a generic 500. Both surfaces refused, neither on purpose.
+
+The two bounds now fail in deliberate opposite directions, and the reasoning is
+in one place (above `QUOTA_UNAVAILABLE_STATUS` in `src/quota.js`). The **quota
+gate fails CLOSED**: it is the spend barrier, and an unreadable ledger is not a
+yes — letting the call through spends at exactly the moment the spend cannot be
+recorded either, so the overrun would be unbounded, invisible and irreversible,
+where a refusal costs a retry. The **reservation keeps failing OPEN**: it is
+abuse mitigation on top of a gate that already said yes. `/mcp` refuses with an
+`isError` result (`quotaUnavailableToolMessage`) worded so the client's model
+retries later rather than stopping; `/api/chat` answers 503 with
+`quota_unavailable`. Admins stay exempt from the gate on both. A site with no
+`DB` binding, and one whose windows are all `0`, are untouched — nothing throws
+in the first and there is no limit to hide in the second.
+
 ### 4c. What is already right
 
-- The quota gate is enforced *before* any spend, and admins are the only
-  exemption.
+- The quota gate is enforced *before* any spend, admins are the only
+  exemption, and it refuses rather than guesses when it cannot read usage
+  (§4b(4)).
 - `deep_research` records `recordUsage` + `recordModelUsage` in a `finally`,
   so a partial or failed run is still billed to the caller.
 - Every tool is switchable off per account (`MCP_TOOL_CATALOG`, mirror-
