@@ -60,8 +60,18 @@
 // These three reach a provider or the accounting ledgers, which is exactly why
 // this module is the dynamically imported half — see the header. berget.js is
 // already behind dense-rag.js, and quota.js pulls only db.js + berget.js.
-import { embedModel, eurPerTokenFromBerget, rawModelEntry } from "./berget.js";
-import { RERANK_FLOOR, RERANK_MODEL, denseRetrieve, embedQueries, titleAbstractDoc, withTimeout } from "./dense-rag.js";
+import { priceRetrievalSpend } from "./billing.js";
+import {
+  RERANK_FLOOR,
+  RERANK_MODEL,
+  addEmbedSpend,
+  addRerankSpend,
+  denseRetrieve,
+  embedQueries,
+  newRetrievalSpend,
+  titleAbstractDoc,
+  withTimeout,
+} from "./dense-rag.js";
 import { recordModelUsage, recordUsage } from "./quota.js";
 // src/literature-authors.js is PURE (it imports nothing), so it rides a static
 // import here exactly as src/literature-tools.js does. Only the two live API
@@ -221,18 +231,13 @@ function effectiveFloor(minScore) {
 // billed here at all — it is neither Berget money nor an Exa search, so there is
 // no column it honestly belongs in.
 //
-// PRICING, and why it is not bergetCost(). quota.js's bergetCost prices from a
-// CHAT-catalog entry, and neither the reranker nor the embedder is in the chat
-// catalog: berget.js's fetchCatalog filters `list` to model_type "text" with
-// streaming + json_mode, which is why GET /api/models does not show them. They
-// ARE in Berget's raw /v1/models, so they are priced exactly the way src/rag.js
-// already prices an embedding call — rawModelEntry (raw entry, or null when the
-// catalog is unreachable) + eurPerTokenFromBerget (which normalizes whatever
-// unit Berget states its prices in to EUR PER TOKEN). Same currency and units as
-// every other berget_cost, which is what quotaExceeded compares against
-// budget_eur. No price is hard-coded: an invented one outlives the day Berget
-// changes it, and the fail-soft direction of an unreachable catalog is to record
-// the tokens at zero cost rather than to guess.
+// THE TALLY AND ITS PRICE ARE SHARED. The /api/chat pipeline runs the same two
+// tiers in its search wave and had the same hole, so the shape a caller
+// accumulates into lives with the tier that spends the money (dense-rag.js's
+// RetrievalSpend + newRetrievalSpend/addEmbedSpend/addRerankSpend) and pricing
+// it lives with the request's other spend math (billing.js
+// priceRetrievalSpend). What stays here is what is specific to THIS surface:
+// one tally per tool call, recorded in runLiteratureTool's `finally`.
 //
 // COUNT DIMENSION: deliberately NOT `searches`. quotaExceeded's second dimension
 // is a straight count whose live limits (300 per 5 h … 12,000 per month) are
@@ -243,85 +248,7 @@ function effectiveFloor(minScore) {
 // six-angle calls, which is the bound that was missing.
 // ---------------------------------------------------------------------------
 
-/**
- * One call's provider spend, in tokens. Accumulated across every leg — legs run
- * concurrently, but JS is single-threaded, so `+=` needs no coordination.
- * @typedef {Object} RetrievalSpend
- * @property {number} embedTokens
- * @property {number} rerankTokens
- * @property {number} rerankCalls how many cross-encoder calls reported a cost
- * @property {number} estimatedCalls how many of those were estimated, not measured
- * @property {string} embedModelId the model the embedder actually answered as
- */
-
-/** @returns {RetrievalSpend} */
-export function newRetrievalSpend() {
-  return { embedTokens: 0, rerankTokens: 0, rerankCalls: 0, estimatedCalls: 0, embedModelId: "" };
-}
-
-/**
- * Fold one denseRetrieve result's cross-encoder cost into the running spend.
- * @param {RetrievalSpend | null | undefined} spend
- * @param {{ rerankTokens?: number, rerankEstimated?: boolean } | null | undefined} found
- */
-function addRerankSpend(spend, found) {
-  if (!spend || !found?.rerankTokens) return;
-  spend.rerankTokens += found.rerankTokens;
-  spend.rerankCalls += 1;
-  if (found.rerankEstimated) spend.estimatedCalls += 1;
-}
-
-/**
- * Fold one embedQueries result's cost into the running spend.
- * @param {RetrievalSpend | null | undefined} spend
- * @param {{ usage?: any, model?: string } | null | undefined} embedded
- */
-function addEmbedSpend(spend, embedded) {
-  if (!spend || !embedded) return;
-  spend.embedTokens += Number(embedded.usage?.prompt_tokens ?? embedded.usage?.total_tokens ?? 0) || 0;
-  if (embedded.model) spend.embedModelId = embedded.model;
-}
-
-/**
- * EUR for a call's spend, per model. Fail-soft in every direction: an
- * unreachable catalog, an unpriced entry or a price in an unexpected unit all
- * degrade to €0 rather than to an error or an invented number.
- * @param {any} env
- * @param {RetrievalSpend} spend
- * @returns {Promise<{ berget_cost: number, by_model: Array<{ role: string, model: string, prompt_tokens: number, completion_tokens: number, berget_cost: number }> }>}
- */
-async function priceRetrievalSpend(env, spend) {
-  const embedId = spend.embedModelId || embedModel(env);
-  const [rerankEntry, embedEntry] = await Promise.all([
-    rawModelEntry(env, RERANK_MODEL),
-    spend.embedTokens ? rawModelEntry(env, embedId) : Promise.resolve(null),
-  ]);
-  // Both are input-only workloads: a reranker emits a score, not tokens, and the
-  // embedder's output price is €0.
-  const rerankCost = spend.rerankTokens * eurPerTokenFromBerget(rerankEntry?.pricing, "input");
-  const embedCost = spend.embedTokens * eurPerTokenFromBerget(embedEntry?.pricing, "input");
-  /** @type {Array<{ role: string, model: string, prompt_tokens: number, completion_tokens: number, berget_cost: number }>} */
-  const by_model = [];
-  if (spend.rerankTokens) {
-    by_model.push({
-      role: "rerank",
-      model: RERANK_MODEL,
-      prompt_tokens: spend.rerankTokens,
-      completion_tokens: 0,
-      berget_cost: rerankCost,
-    });
-  }
-  if (spend.embedTokens) {
-    by_model.push({
-      role: "embed",
-      model: embedId,
-      prompt_tokens: spend.embedTokens,
-      completion_tokens: 0,
-      berget_cost: embedCost,
-    });
-  }
-  return { berget_cost: rerankCost + embedCost, by_model };
-}
+/** @typedef {import('./dense-rag.js').RetrievalSpend} RetrievalSpend */
 
 /**
  * Record one tool call's retrieval spend against the caller's quota.

@@ -220,7 +220,11 @@ change to the chat path doesn't silently change MCP:
    the Sources list (`withSources`).
 6. **Record usage** (`recordUsage`) with the split-billing totals
    (`summarizeSpend` / `exaCost` from the shared `billing.js`) so MCP spend
-   shows up in the usage bars and admin cost totals just like chat spend.
+   shows up in the usage bars and admin cost totals just like chat spend —
+   plus `denseSpend`, the fourth bucket (2026-08-05): the search wave can
+   reach the hosted arXiv/PubMed indexes, and those tokens are Berget money
+   that no chat catalog can price. Added into the SAME row, never a second
+   one. `docs/MCP-COST.md` §4d.
 
 The tool's input schema (`DEEP_RESEARCH_TOOL.inputSchema`): required
 `question`; optional `time_budget_s` (default 120, clamped 15–600), `model`
@@ -795,7 +799,9 @@ nominally prices.
   the tool runs).
 - **model-routing.js** / **billing.js** — the split-routing and split-billing
   math this server shares verbatim with `chat.js` (leaf modules; don't fork
-  them).
+  them). `billing.js` also owns the hosted-retrieval bucket both channels
+  bill (`denseSpend`), priced from Berget's RAW catalog because the chat
+  catalog carries neither the cross-encoder nor the embedder.
 - **chat-logs** — MCP calls log to the same interaction log on channel
   `mcp` (status `ok` / `error` / `disconnected`).
 - **access-control** — the identity gate `/mcp` sits behind and the quota

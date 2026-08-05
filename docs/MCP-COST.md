@@ -5,6 +5,12 @@ Measured 2026-08-05, against production. The question this answers: if
 accounts it serves today, what would a call cost, and what would the bill
 look like when someone abuses it.
 
+One thing here is not about `/mcp` at all, and is here because this is where
+it was found. The hosted retrieval tier §1 prices also runs inside the
+`/api/chat` research pipeline, where the same tokens went unbilled for the
+same reason — §4d records that fix and what a chat request's share of it
+comes to.
+
 **Short answer.** Per call the surface is cheap: 7 of the 11 tools spend
 nothing at a provider, the literature family costs €0.002–€0.012, and
 `deep_research` — the only expensive tool — costs €0.05 at the median and
@@ -62,11 +68,15 @@ retrieval, so a 6-angle call costs €0.0124 whether it returns 8 records or
 60. `npm run mcp:probe` confirms the leg count directly — its 6-angle batch
 reports "600 candidates examined", which is 12 legs × 50.
 
+The same €0.00102 leg is what a `/api/chat` search wave buys when it reaches
+the hosted arXiv or PubMed index — the tier is one module and `/mcp` is not
+its only caller. §4d.
+
 ## 3. `deep_research`
 
 ### The cost model
 
-One `deep_research` call spends in three buckets:
+One `deep_research` call spends in four buckets:
 
 - **Exa** — `plan.maxSearches` capped at 20 (standard) / 26 (extended) /
   34 (full ≥420 s), priced at €0.005 × the tier multiplier.
@@ -77,6 +87,9 @@ One `deep_research` call spends in three buckets:
   (`synthMaxTokens` 4096 / 6144 / 8192 by tier).
 - **The JSON phases** — triage + up to 8 gap rounds + validation, all on
   Mistral Small at €0.3/M both ways. Large in tokens, small in money.
+- **Hosted retrieval** — the arXiv and PubMed dense tiers, when the question
+  engages a literature source. At most 8 legs (§4d), so at most €0.008: the
+  smallest of the four, and the only one that was invisible until 2026-08-05.
 
 ### What it actually costs, from the log
 
@@ -138,11 +151,19 @@ the ceiling is arithmetic:
 | Exa | `maxSearches` 34 at the full tier, ×12/7 | €0.291 |
 | answer model | ~12,000 prompt (`digestCap` 24,000 chars + 28 sources) + 8,192 completion, on GPT-5.6 Sol | €0.281 |
 | JSON phases | ~165,000 tokens on Mistral Small | €0.050 |
-| | | **€0.622** |
+| hosted retrieval | 8 legs (both literature sources leading, at 4 angles each) × 10,198 tokens × €0.10/M | €0.008 |
+| | | **€0.630** |
 
 On the site default (Mistral Small answering) the same maximal run is
-**€0.347**, Exa-dominated. So the model override roughly doubles the worst
+**€0.355**, Exa-dominated. So the model override roughly doubles the worst
 case; it does not change its order of magnitude.
+
+The retrieval row is new on 2026-08-05 and is the one figure in this document
+that the chat-path fix (§4d) moved: the ceiling was **€0.622** before it, and
+the default-model ceiling €0.347. Both were understatements, not because the
+arithmetic was wrong but because the term was invisible — the tokens were
+spent and nothing counted them. 1.3% is what the correction is worth, which
+is also why nothing else in this document changes.
 
 ## 4. What actually bounds a public surface
 
@@ -235,7 +256,7 @@ per-account rather than per-connection, times at most 5.
 **(3) Model and budget override are open by default.**
 `defaultMcpConfig()` sets `allow_model_override: true` and
 `allow_budget_override: true`, so a caller picks both the answer model and
-the time budget. That is what turns a €0.347 maximal run into a €0.622 one
+the time budget. That is what turns a €0.355 maximal run into a €0.630 one
 and what lets every call sit at 600 s. It is a per-account switch, already
 built and already exposed in Settings → MCP server — but the default is the
 permissive one, and a public surface would inherit it.
@@ -258,6 +279,54 @@ permissive one, and a public surface would inherit it.
   slot (§4b(2)), so the ceilings in 4a are per account rather than per
   simultaneous connection.
 
+### 4d. The same hole on the higher-traffic path — FIXED 2026-08-05
+
+`/mcp` is not the dense tier's only caller. `src/dense-rag.js` also runs
+inside the `/api/chat` research pipeline: `src/arxiv.js` and
+`src/europepmc.js` consult the hosted index BEFORE their live API, so an
+ordinary chat turn about the literature buys the same €0.00102 legs a
+`literature_search` does. Those tokens reached no `usage_events` row, no
+budget bar and no admin cost total, for exactly the reason the literature
+tools' did not: the tier returned the counts and nothing on that path
+consumed them. This is the higher-traffic surface of the two.
+
+**Where the spend now goes.** A fourth per-request bucket beside the three
+model buckets `src/billing.js` already prices — `state.denseTotals`, a
+`RetrievalSpend` tally (`src/dense-rag.js`) that every leg folds into. The
+registry carries it generically: a source's result may report `spend`
+(`SearchSourceResult`), `pipeline.js`'s `runOneAuxSearch` merges it into the
+request's tally, and the orchestrator never names a source. At the end of
+the request `billing.js`'s `denseSpend` prices it once and the caller adds it
+to the SINGLE `recordUsage` row `summarizeSpend` produced, plus `rerank` /
+`embed` rows on the existing `recordModelUsage` call. Both request channels
+do this — `/api/chat` and `deep_research`, which runs the same pipeline.
+
+It is a separate bucket rather than a fourth entry in `summarizeSpend`
+because the three there are (model id → chat-catalog entry → `bergetCost`),
+synchronous and pure, and the reranker and the embedder are not in the chat
+catalog at all (§4b(1)). Pricing them needs Berget's raw `/v1/models` and is
+therefore async. Same fail-soft rules throughout: an unreachable catalog
+records the tokens at €0, a failed leg reports 0 tokens, and a request that
+touched no hosted index records byte-identically to what it recorded before.
+Not counted as `searches`, for the reason §4b(1) gives.
+
+**What a chat request's dense spend comes to.** One leg per (source ×
+corpus), and each source has a per-request cap:
+
+| turn | legs | dense cost |
+|---|---|---|
+| no literature source engaged (the common case) | 0 | **€0** |
+| one source, one angle | 1 | €0.0010 |
+| one source at its cap (`ARXIV_MAX_PER_REQUEST` / `EUROPEPMC_MAX_PER_REQUEST` = 2) | 2 | €0.0020 |
+| both sources at their caps | 4 | €0.0041 |
+| a source LEADING (the message names it; cap 4) | 4 | €0.0041 |
+| both leading — the arithmetic ceiling | 8 | €0.0082 |
+
+Against §3's €0.051 median run that is 2–4% for a turn that engages the
+literature, and 0% for one that does not; against the €0.62 ceiling it is
++1.3% (§3, "The ceiling"). So the correction is small — but it was
+unbounded in the sense that mattered, because nothing counted it at all.
+
 ## 5. Verdict
 
 Publishing the **free seven** — the four `sdk_*` tools, `literature_fetch`,
@@ -266,7 +335,7 @@ only exposure is Workers CPU, and the `sdk_*` snapshot parse is the one
 worth watching (779 ms per call, uncached).
 
 Publishing `deep_research` is affordable as it stands: the quota bounds an
-account at ~€111/month, and the per-call ceiling is €0.62. Tightening
+account at ~€111/month, and the per-call ceiling is €0.63. Tightening
 `allow_model_override` and `allow_budget_override` in the public default
 would halve the ceiling.
 
@@ -294,7 +363,8 @@ Reproducible; nothing here is an estimate where a measurement was available.
 | answer/JSON split | `/api/admin/user-cost` (`usage_model_events`), which attributes per model bucket |
 | the worst-case run | one `tools/call` at `time_budget_s: 600`, `model: gpt-5.6-sol`; costs read back from `chat_logs` #1209 and the h5 usage window |
 | quota ceilings | live `config.quotas` from `/api/admin/overview`, combined with `quotaExceeded`'s semantics in `src/quota.js` |
+| chat-path leg counts (§4d) | read off the code, not measured: `ARXIV_MAX_PER_REQUEST` / `EUROPEPMC_MAX_PER_REQUEST` (2) and their lead caps (4), one leg per source per wave in `pipeline.js`'s `runAuxSearch` |
 
 Re-run the whole thing after any change to `CANDIDATES`, `RERANK_DOC_CHARS`,
-the budget planner's caps, or the catalog's prices — those are the four
-inputs every figure above is built on.
+the budget planner's caps, the per-source search caps, or the catalog's
+prices — those are the inputs every figure above is built on.

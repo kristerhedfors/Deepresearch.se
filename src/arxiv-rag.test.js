@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import { arxivRagAvailable, arxivRagItem, arxivRagSearch, arxivRerank, arxivRerankDoc, arxivSubmitted } from "./arxiv-rag.js";
+import { arxivSearch } from "./arxiv.js";
 
 const log = { info() {}, warn() {}, error() {}, debug() {} };
 
@@ -290,6 +291,41 @@ test("arxivRagSearch", async (t) => {
     };
     assert.equal(await arxivRagSearch(env, log, "   "), null);
     assert.equal(queried, false);
+  });
+});
+
+test("arxivSearch reports the hosted tier's provider spend so the wave can bill it", async (t) => {
+  // The pipeline reads `spend` off the source result generically
+  // (search-sources.js) and folds it into the request's tally — a leg that
+  // does not report its tokens is a leg nobody pays for. Two candidates,
+  // because rerankMatches skips a single-match reorder and it genuinely costs
+  // nothing.
+  const original = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = original;
+  });
+  const env = fakeEnv({ matches: [match("2601.00001", "A"), match("2601.00002", "B")], rerankScores: [0.9, 0.8] });
+  globalThis.fetch = stubFetch(env);
+  const res = await arxivSearch(env, log, "recent arxiv papers on llm agents");
+  assert.ok(res.items.length > 0, "the dense tier answered");
+  assert.ok(res.spend, "and reported what it cost");
+  assert.ok(res.spend.rerankTokens > 0, "the cross-encoder is the whole cost of a leg");
+  assert.equal(res.spend.rerankCalls, 1);
+});
+
+test("a deployment with no arXiv binding reports a ZERO tally, so nothing is billed", async (t) => {
+  const original = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = original;
+  });
+  globalThis.fetch = async () => new Response("<feed></feed>", { status: 200 });
+  const res = await arxivSearch({}, log, "recent arxiv papers on llm agents");
+  assert.deepEqual(res.spend, {
+    embedTokens: 0,
+    rerankTokens: 0,
+    rerankCalls: 0,
+    estimatedCalls: 0,
+    embedModelId: "",
   });
 });
 

@@ -265,7 +265,9 @@ export type ExtensionState = Record<string, any>;
  * The mutable per-request object threaded through chat.js and pipeline.js.
  * Token usage is split three ways — `totals` (user's answer model),
  * `jsonTotals` (the fixed JSON model), `visionTotals` (the image-describe
- * helper) — each billed at its own model's catalog rate.
+ * helper) — each billed at its own model's catalog rate, plus `denseTotals`
+ * for the retrieval models the search wave spends on (not chat models, so
+ * priced from Berget's raw catalog instead).
  */
 export interface RequestState {
   startedAt: number;
@@ -302,6 +304,15 @@ export interface RequestState {
   /** Ranked describe-helper candidates (first = visionModel) for failover. */
   visionModels: string[];
   visionTotals: TokenTotals;
+  /**
+   * The request's DENSE-RETRIEVAL provider spend, accumulated across every leg
+   * of every search wave (src/dense-rag.js RetrievalSpend). A fourth bucket
+   * rather than a fourth entry in the three above because it is not a chat
+   * model: the cross-encoder and the embedder are absent from the chat catalog,
+   * so pricing them needs Berget's raw catalog and is async — src/billing.js
+   * denseSpend, folded into the same single usage row.
+   */
+  denseTotals: import("./dense-rag.js").RetrievalSpend;
   /** Validated GPS coordinates carried by the attached photos. */
   imageLocations: ImageLocation[];
   plan: BudgetPlan;

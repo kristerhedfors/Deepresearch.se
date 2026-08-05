@@ -96,6 +96,9 @@ import { cacheGet, cachePut } from "./edge-cache.js";
 // path entirely, so the rate limit above stops applying); the live API stays
 // as the fallback for every deployment and every failure.
 import { arxivRagAvailable, arxivRagSearch } from "./arxiv-rag.js";
+// The tally the hosted tier folds its provider tokens into, so this leg's
+// spend reaches the request's accounting (src/billing.js denseSpend).
+import { newRetrievalSpend } from "./dense-rag.js";
 
 /**
  * One source-registry item (same shape Exa results carry).
@@ -624,21 +627,27 @@ export function arxivCacheKey(params) {
  * @param {import('./types.js').Logger} log
  * @param {string} query
  * @param {{ skipKeys?: Set<string> }} [opts]
- * @returns {Promise<{ items: ArxivItem[], durationMs: number, usedKeys: string[] }>}
+ * @returns {Promise<{ items: ArxivItem[], durationMs: number, usedKeys: string[], spend?: import('./dense-rag.js').RetrievalSpend }>}
  */
 export async function arxivSearch(env, log, query, { skipKeys } = {}) {
   const started = Date.now();
+  // What the hosted tier cost this call, reported back to the orchestrator so
+  // the request bills it (search-sources.js SearchSourceResult `spend`). It is
+  // returned on BOTH exits, because a dense lookup that found nothing above the
+  // floor still paid for its embedding and its cross-encoder before falling
+  // through to the live API below.
+  const spend = newRetrievalSpend();
   // Tier 1: the hosted index, when bound. It gets the PROSE query — dense
   // retrieval wants the natural question, and the noise stripping below is a
   // lexical-AND concern that would throw away signal an embedder uses. A null
   // return (unavailable, or any failure) falls through to the live API, so a
   // deployment without the binding behaves exactly as before.
   if (arxivRagAvailable(env)) {
-    const dense = await arxivRagSearch(env, log, query, { limit: MAX_ITEMS });
+    const dense = await arxivRagSearch(env, log, query, { limit: MAX_ITEMS, spend });
     if (dense && dense.length) {
       const durationMs = Date.now() - started;
       log.info("arxiv.search", { query, tier: "dense", results: dense.length, duration_ms: durationMs });
-      return { items: dense, durationMs, usedKeys: [] };
+      return { items: dense, durationMs, usedKeys: [], spend };
     }
   }
   /** @type {string[]} */
@@ -729,7 +738,7 @@ export async function arxivSearch(env, log, query, { skipKeys } = {}) {
     throttled,
     duration_ms: durationMs,
   });
-  return { items, durationMs, usedKeys };
+  return { items, durationMs, usedKeys, spend };
 }
 
 // ---- registry glue ---------------------------------------------------------

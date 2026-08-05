@@ -737,7 +737,8 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
     { runPipeline },
     { getConfig },
     { recordUsage, recordModelUsage },
-    { summarizeSpend, exaCost, spendByModel },
+    { summarizeSpend, exaCost, spendByModel, denseSpend },
+    { newRetrievalSpend },
   ] = await Promise.all([
     import("./validation.js"),
     import("./budget.js"),
@@ -747,6 +748,7 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
     import("./config.js"),
     import("./quota.js"),
     import("./billing.js"),
+    import("./dense-rag.js"),
   ]);
 
   // Minimal single-turn conversation — the same {role, content} shape chat.js
@@ -795,7 +797,14 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
   const blocked = await researchQuotaBlock(env, log, identity, config);
   if (blocked) throw new Error(blocked);
 
-  const state = newRequestState(model, jsonModel, webSearch, budgetS, planResearch(model, budgetS, jsonModel));
+  const state = newRequestState(
+    model,
+    jsonModel,
+    webSearch,
+    budgetS,
+    planResearch(model, budgetS, jsonModel),
+    newRetrievalSpend(),
+  );
 
   // Collect the pipeline's streamed text deltas (and honor discard_text, the
   // post-validation reset) into one string — the MCP result is non-streaming.
@@ -823,13 +832,17 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
       const { prompt_tokens, completion_tokens, berget_cost } = summarizeSpend(state, catalog);
       const billedSearches = Math.max(0, state.searchCount - (state.cachedSearchCount || 0));
       const exa_cost = exaCost(state, config, billedSearches);
+      // The search wave's hosted-index spend, priced from Berget's raw catalog
+      // (billing.js denseSpend). Zero, and no catalog request, on a run that
+      // touched no hosted index — which is every run before this existed.
+      const dense = await denseSpend(env, log, state);
       await recordUsage(env, log, {
         user_id: identity?.id,
         model,
-        prompt_tokens,
+        prompt_tokens: prompt_tokens + dense.prompt_tokens,
         completion_tokens,
         searches: billedSearches,
-        berget_cost,
+        berget_cost: berget_cost + dense.berget_cost,
         exa_cost,
         duration_ms: Date.now() - state.startedAt,
       });
@@ -837,7 +850,7 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
       await recordModelUsage(env, log, {
         user_id: identity?.id,
         request_id: requestId,
-        by_model: spendByModel(state, catalog),
+        by_model: [...spendByModel(state, catalog), ...dense.by_model],
       });
     } catch (err) {
       log.warn("mcp.usage_record_failed", { error: (/** @type {any} */ (err))?.message || String(err) });
@@ -912,9 +925,14 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
  * @param {boolean} webSearch
  * @param {number} budgetS
  * @param {import('./budget.js').BudgetPlan} plan
+ * @param {import('./dense-rag.js').RetrievalSpend} denseTotals the request's
+ *   dense-retrieval tally. Passed IN rather than constructed here because
+ *   dense-rag.js pulls berget.js, and this module's static half must stay free
+ *   of it (the file-layout rule at the top); runDeepResearch already has it
+ *   from its dynamic-import block.
  * @returns {McpRequestState}
  */
-function newRequestState(model, jsonModel, webSearch, budgetS, plan) {
+function newRequestState(model, jsonModel, webSearch, budgetS, plan, denseTotals) {
   return {
     startedAt: Date.now(),
     model,
@@ -941,5 +959,9 @@ function newRequestState(model, jsonModel, webSearch, budgetS, plan) {
     byUrl: new Map(),
     totals: { prompt_tokens: 0, completion_tokens: 0 },
     jsonTotals: { prompt_tokens: 0, completion_tokens: 0 },
+    // deep_research runs the SAME pipeline as /api/chat, so its search wave
+    // reaches the same hosted arXiv/PubMed tiers and spends the same Berget
+    // money. Same bucket, priced by the same billing.js denseSpend below.
+    denseTotals,
   };
 }
