@@ -141,6 +141,14 @@ describe("Swedish language parity — every gate takes Swedish forms", () => {
     ["who is she?", "vem är hon?"],
     ["dig up what you can on the founder", "gräv fram vad du kan om grundaren"],
     ["run a background check on the candidate", "bakgrundskoll på kandidaten"],
+    // Added after these three fired in English and stayed silent in Swedish.
+    // The suite's PATTERN was right and its COVERAGE had a hole: the English
+    // "find anything/everything/information about" arm simply had no Swedish
+    // counterpart, which a side-by-side read of the two lists does not make
+    // obvious and a matched pair does. Not the `\b` trap — the plainer one.
+    ["find everything about this founder", "hitta allt om den här grundaren"],
+    ["find information about this person", "hitta all information om den här personen"],
+    ["find anything about the candidate", "hitta något om kandidaten"],
   ];
 
   for (const [en, sv] of PAIRS) {
