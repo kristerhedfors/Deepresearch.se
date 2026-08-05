@@ -27,7 +27,8 @@ and upsert — and §10 records what it cost to learn. The provider-agnostic
 lessons are the **bulk-corpus-etl** skill.
 
 **The window was WIDENED to late 2023 on 2026-07-29: 772,658 vectors** over
-submission months 2310–2607, 2.3× the corpus, stopping at 2310 because arXiv's
+submission months 2310–2607, 2.3× the corpus — carried to **2310–2608 and
+784,744 vectors** by the 2026-08-05 delta (§1.1) — stopping at 2310 because arXiv's
 LaTeXML HTML rendering — what makes the full-text tier Worker-native (§9.9) —
 only exists from late 2023. §11 is the before/after evaluation, and it is also
 the first measurement of the SERVED path rather than the local pack. Headline:
@@ -68,6 +69,43 @@ it is absent, errors, or returns nothing above the relevance floor.
 
 All of it lives under `data/` (gitignored). The code, the query sets and the
 measurements are committed; the 840 MB of derived data is not.
+
+> **last ingested submission month: `2608`** · vectorCount 784,744 ·
+> 2026-08-05 (§1.1). This line is the delta marker — `data/` is gitignored and the
+> container is ephemeral, so it is the only durable record of where the next
+> incremental run should start. Update it in the same change as any ingest;
+> the **arxiv-ingest** skill is the runbook for both a delta and a rebuild.
+
+### 1.1 The first delta (2026-08-05)
+
+Submission months `2607`–`2608`, run from the **arxiv-ingest** runbook — the
+first catch-up since the widening, and the first evidence of what one costs.
+
+```
+33,697 harvested → 33,561 unique papers · 10.9M est. tokens
+1 loader · 25.5 vectors/s · 21.9 min
+vectorCount 772,658 → 784,744  (+12,086)
+```
+
+**Pushed is not growth, and here the gap is most of the run.** 33,561 papers
+went in and the index grew by 12,086: the rest were 2607 papers already held
+from the 2026-07-29 harvest, upserted in place. Which is the point of
+re-covering the last indexed month rather than starting at the month after it —
+that month was harvested mid-month and its tail was missing.
+
+Verified two ways, neither of them the run's own counters:
+
+| check | result |
+|---|---|
+| GCS per-month set diff (`arxiv-crosscheck`) | 2607 **100%** — 0 of 21,590 ids missing |
+| index membership (`rag-eval coverage`) | 2607-2608 **99.5%** — 2 of 400 sampled missing |
+
+**The mirror cannot see the current month.** GCS listed 21,590 papers for 2607
+and **zero** for 2608, because it holds one object per built PDF and August's
+were not built yet. The harvest's 8,097 "extra" 2607 ids are the same lag from
+the other side. So for a mid-month delta the GCS cross-check validates the
+previous month only, and the newest month rests on the index-membership sample
+against the OAI enumeration.
 
 ### Coverage
 
