@@ -35,6 +35,7 @@ import {
   MIN_EXEC_TIMEOUT_MS,
   MAX_SHELL_WALL_MS,
   SEED_WAIT_MS,
+  execBudgetMs,
   execTimeoutForBudget,
   outboxListCommand,
   parseExecEnvelope,
@@ -598,6 +599,20 @@ describe("sandboxTornDown", () => {
     assert.equal(sandboxTornDown({ exitCode: 0, stdout: "ok", stderr: "" }), false);
     assert.equal(sandboxTornDown({ exitCode: 1, stdout: "", stderr: "grep: no match" }), false);
     assert.equal(sandboxTornDown(undefined), false);
+  });
+});
+
+describe("execBudgetMs (what the drivers hand the runner, unclamped)", () => {
+  test("no/invalid budget asks for nothing, so each backend keeps its own default", () => {
+    for (const v of [null, undefined, 0, -5, NaN, /** @type {any} */ ("abc")]) {
+      assert.equal(execBudgetMs(v), undefined);
+    }
+  });
+  test("a budget is seconds → ms, and is NOT clamped to the browser ceiling", () => {
+    assert.equal(execBudgetMs(15), 15_000);
+    assert.equal(execBudgetMs(1), 1_000); // the floor belongs to the backend
+    assert.equal(execBudgetMs(600), 600_000); // a native runner may use far more than 30 s
+    assert.ok(execBudgetMs(600) > DEFAULT_EXEC_TIMEOUT_MS);
   });
 });
 

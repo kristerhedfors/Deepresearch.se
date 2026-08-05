@@ -1,9 +1,9 @@
 {
-  "generated": "2026-08-01T11:39:48.437Z",
+  "generated": "2026-08-05T12:45:13.315Z",
   "totals": {
-    "files": 995,
-    "lines": 294182,
-    "chars": 17150160,
+    "files": 1003,
+    "lines": 294304,
+    "chars": 17307821,
     "languages": 13,
     "dependencies": 0,
     "devDependencies": 4
@@ -22,37 +22,37 @@
     {
       "ext": "js, mjs",
       "label": "JavaScript",
-      "files": 648,
-      "lines": 214089,
-      "chars": 9687301
+      "files": 652,
+      "lines": 210968,
+      "chars": 9582139
     },
     {
       "ext": "md",
       "label": "Markdown",
-      "files": 169,
-      "lines": 56600,
-      "chars": 3645031
+      "files": 172,
+      "lines": 59692,
+      "chars": 3902226
     },
     {
       "ext": "html",
       "label": "HTML",
-      "files": 22,
-      "lines": 8367,
-      "chars": 463211
+      "files": 21,
+      "lines": 8225,
+      "chars": 456579
     },
     {
       "ext": "json, webmanifest",
       "label": "JSON",
-      "files": 61,
-      "lines": 5424,
-      "chars": 2930034
+      "files": 62,
+      "lines": 5523,
+      "chars": 2933007
     },
     {
       "ext": "css",
       "label": "CSS",
       "files": 5,
-      "lines": 5185,
-      "chars": 232087
+      "lines": 5269,
+      "chars": 236148
     },
     {
       "ext": "(none)",
@@ -62,25 +62,25 @@
       "chars": 91366
     },
     {
+      "ext": "sh",
+      "label": "Shell",
+      "files": 6,
+      "lines": 618,
+      "chars": 30613
+    },
+    {
       "ext": "ts",
       "label": "TypeScript",
       "files": 1,
-      "lines": 534,
-      "chars": 21214
-    },
-    {
-      "ext": "sh",
-      "label": "Shell",
-      "files": 5,
-      "lines": 521,
-      "chars": 26203
+      "lines": 545,
+      "chars": 21870
     },
     {
       "ext": "toml",
       "label": "TOML",
       "files": 3,
-      "lines": 383,
-      "chars": 19600
+      "lines": 385,
+      "chars": 19760
     },
     {
       "ext": "py",
@@ -113,9 +113,9 @@
   ],
   "readme": {
     "file": "README.md",
-    "lines": 514,
-    "chars": 28913,
-    "words": 4142
+    "lines": 525,
+    "chars": 29660,
+    "words": 4255
   },
   "excluded": {
     "generatedArtifacts": 23

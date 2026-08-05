@@ -40,7 +40,7 @@ import {
   bashIntent,
   buildShellTranscript,
   buildStepUserMessage,
-  execTimeoutForBudget,
+  execBudgetMs,
   formatShellResult,
   normalizeExecResult,
   parseShellRequest,
@@ -491,7 +491,10 @@ async function runDrcShellPass({ provider, apiKey, jsonModel, question, context,
   // The /cure slider's research budget scopes the per-command ceiling, same
   // as DRS (stream.js): a 15 s question must not sit 30 s on one wedged
   // command. Injected test sandboxes just ignore the extra options argument.
-  const execTimeoutMs = execTimeoutForBudget(budgetS);
+  // Unclamped on the way down (execBudgetMs): `sb` may be the browser VM or a
+  // native runner with a 120 s ceiling, and pre-clamping to the emulator's
+  // 30 s here silently held the native one to the emulator's limit.
+  const execTimeoutMs = execBudgetMs(budgetS);
   return runShellLoop({
     step: async (transcript) => {
       const userMsg = buildStepUserMessage({

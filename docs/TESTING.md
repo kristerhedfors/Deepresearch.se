@@ -164,9 +164,12 @@ divergences are recorded in its `DELIBERATE_OVERRIDES` map, so a NEW divergence
 still fails). `landing.test.js` reads the tree the same way for the front door:
 that the unauthenticated root serves `public/welcome/` in place rather than
 redirecting, that the page still carries the video / purpose / capability list
-/ MIT source line, and that the two data-path diagrams stay SHARED files
+/ MIT source line, that the two data-path diagrams stay SHARED files
 (`public/architecture/path-secure.svg`, `path-server.svg`) referenced by both
-the landing and `/architecture/` instead of being re-inlined into either.
+the landing and `/architecture/` instead of being re-inlined into either, and
+that the feature-focus card keeps its code-volume backdrop UNDER the curves on
+a right-hand scale of its own (two units in one plot is the thing that goes
+wrong when someone tidies the axes).
 `intro-phase.test.js` is its cross-surface companion — the contract for the
 whole controlled new-visitor intro (`docs/INTRO-BASELINE.md`, invariant 8):
 that the APPROVED-baseline marker is still on the landing, that every door the

@@ -93,19 +93,49 @@ export const MIN_EXEC_TIMEOUT_MS = 5000;
 export const SEED_WAIT_MS = 60000;
 
 /**
- * Scope the per-command exec ceiling to the user's research time budget.
+ * The user's research time budget as a per-command ceiling REQUEST, in ms —
+ * what the drivers (stream.js, drc-research.js) hand the runner, BEFORE any
+ * backend applies its own ceiling. `undefined` for no/invalid budget, which
+ * every executor reads as "your default".
+ *
+ * It stays unclamped on purpose. The drivers used to pre-clamp with
+ * execTimeoutForBudget below — the BROWSER emulator's numbers — and pass that
+ * to whichever runner was selected, so a native runner (local or the server
+ * container, ceiling 120 s) silently inherited the emulator's 30 s: the
+ * clamp's own escape hatch never fired, because remoteExecTimeout only skips
+ * the browser ceiling when nothing was requested, and something always was.
+ * Commands that legitimately run longer than 30 s on real hardware (OCR over
+ * a full-page scan is the one that surfaced it) were killed on a machine
+ * built to run them. Each backend clamps this itself now — sandbox.js into
+ * [MIN_EXEC_TIMEOUT_MS, DEFAULT_EXEC_TIMEOUT_MS], exec-backends-core.js into
+ * [MIN_REMOTE_EXEC_TIMEOUT_MS, REMOTE_EXEC_TIMEOUT_MS] — so the budget still
+ * scopes a command DOWN everywhere (chat_logs #522, below) and only the
+ * ceiling differs.
+ * @param {number | null | undefined} budgetS research time budget in seconds
+ * @returns {number | undefined} the requested per-command timeout in ms
+ */
+export function execBudgetMs(budgetS) {
+  const n = Number(budgetS);
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  return Math.round(n * 1000);
+}
+
+/**
+ * The BROWSER VM's per-command ceiling for a given research time budget.
  * A question scoped to 15 s must not sit 30 s on one wedged command
  * (chat_logs #522: budget_s 15, `ls -l /src` timed out at the fixed 30 s) —
  * the ceiling becomes min(budget, default), floored at MIN_EXEC_TIMEOUT_MS so
  * a tiny budget still lets a real command finish. No/invalid budget keeps the
  * default — behavior is byte-identical for callers that never had a budget.
+ * This is the emulator's clamp specifically (sandbox.js applies the same
+ * bounds to whatever it is handed); a native runner has its own, larger one.
  * @param {number | null | undefined} budgetS research time budget in seconds
  * @returns {number} the per-command timeout in ms
  */
 export function execTimeoutForBudget(budgetS) {
-  const n = Number(budgetS);
-  if (!Number.isFinite(n) || n <= 0) return DEFAULT_EXEC_TIMEOUT_MS;
-  return Math.max(MIN_EXEC_TIMEOUT_MS, Math.min(DEFAULT_EXEC_TIMEOUT_MS, Math.round(n * 1000)));
+  const requested = execBudgetMs(budgetS);
+  if (requested === undefined) return DEFAULT_EXEC_TIMEOUT_MS;
+  return Math.max(MIN_EXEC_TIMEOUT_MS, Math.min(DEFAULT_EXEC_TIMEOUT_MS, requested));
 }
 
 // ---- intent gate ----------------------------------------------------------

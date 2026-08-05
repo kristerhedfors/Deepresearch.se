@@ -77,6 +77,38 @@ export function contextOverflowMessage(status, detail) {
   );
 }
 
+// The failover target is the pipeline's FIXED JSON model (Mistral Small),
+// chosen for reliability rather than for vision — nothing guarantees it can
+// read an image, and OpenAI-compatible backends answer a multimodal message
+// array on a text-only model with a deterministic 400, which would turn a
+// recoverable provider blip into a dead chat. So the failover re-sends the
+// TEXT of each message and leaves the pictures behind (a partial answer that
+// says it couldn't see the image beats no answer at all). Since 2026-08-05
+// history retains recent images across turns (public/js/message-content.js),
+// so this path now sees multimodal arrays on far more than the latest turn.
+// Returns the SAME array when there is nothing to strip — the overwhelmingly
+// common text-only failover must be byte-identical to what the user's model
+// was sent.
+/**
+ * @param {import('./conversation.js').Msg[]} messages
+ * @returns {import('./conversation.js').Msg[]}
+ */
+export function stripImageParts(messages) {
+  if (!messages.some((m) => Array.isArray(m?.content) && m.content.some((p) => p?.type === "image_url"))) {
+    return messages;
+  }
+  return messages.map((m) => {
+    if (!Array.isArray(m?.content) || !m.content.some((p) => p?.type === "image_url")) return m;
+    const text = m.content
+      .filter((p) => p?.type === "text" && typeof p.text === "string")
+      .map((p) => p.text)
+      .join("\n");
+    // An image-only turn still needs non-empty content, and the model needs
+    // to know why the turn looks blank.
+    return { ...m, content: text || "[image attached — not visible to this model]" };
+  });
+}
+
 // Tags an error as eligible for the model failover in streamCompletion():
 // set only where the failing model never delivered a byte the user still
 // has on screen, so a different model's answer can't visibly diverge.
@@ -123,7 +155,7 @@ export async function streamCompletion(ctx, messages) {
     const name = (/** @type {string} */ id) => String(id).split("/").pop();
     ctx.step("failover", `${name(ctx.model)} isn't responding — switching to ${name(fallback)}…`);
     try {
-      const text = await streamOnModel(ctx, messages, fallback, ctx.jsonProfile, ctx.state.jsonTotals);
+      const text = await streamOnModel(ctx, stripImageParts(messages), fallback, ctx.jsonProfile, ctx.state.jsonTotals);
       ctx.state.failoverModel = fallback;
       ctx.stepDone("failover", `Answered by ${name(fallback)} — ${name(ctx.model)} was unavailable`);
       return text;

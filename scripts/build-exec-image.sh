@@ -122,9 +122,15 @@ cmd_verify() {
 
     echo "-- toolchain on PATH (no network at run time: absent == unavailable)"
     for t in bash ls find diff grep sed gawk tar gzip bzip2 xz zip unzip \
-             git python3 node jq bc file less tree rg sqlite3; do
+             git python3 node jq bc file less tree rg sqlite3 \
+             tesseract pdftotext zbarimg; do
       check "$t" "command -v $t"
     done
+
+    echo "-- reading attached images (feedback #60: no network, so it ships or it fails)"
+    check "python3 imports PIL"    "python3 -c \"import PIL\""
+    check "tesseract lang eng"     "tesseract --list-langs 2>&1 | grep -qx eng"
+    check "tesseract lang swe"     "tesseract --list-langs 2>&1 | grep -qx swe"
 
     echo "-- the argv shape src/exec-container.js uses (shellArgv → bash -lc)"
     check "login shell keeps a usable PATH" "[ -x \"\$(command -v ls)\" ]"

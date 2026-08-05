@@ -35,7 +35,7 @@ import { onDeviceIdFromValue } from "./ondevice-core.js";
 import { loadOnDeviceEngine, onDeviceModelLabel } from "./ondevice-drs.js";
 import { runDrcResearch } from "./drc-research.js";
 import { runShellLoop, shellCommandLabel } from "./bash-agent.js";
-import { GUEST_STDOUT_CAP_BYTES, bashIntent, deliverablesRun, execTimeoutForBudget, shellPrePassPurpose, wantsOutboxCollect } from "./bash-core.js";
+import { GUEST_STDOUT_CAP_BYTES, bashIntent, deliverablesRun, execBudgetMs, shellPrePassPurpose, wantsOutboxCollect } from "./bash-core.js";
 import { feedbackForcesServerRoute, feedbackIntent } from "./feedback-core.js";
 import { slashEffect } from "./slash-core.js";
 import { aiModelIntent } from "./ai-models.js";
@@ -44,6 +44,7 @@ import { selectRunner } from "./exec-backends-core.js";
 import { remoteTerminalMirror } from "./agent-backdrop.js";
 import { execEnvCfg, execEnvResolved, execSessionId, remoteRunnerActive } from "./exec-env.js";
 import { hasPending } from "./attachments.js";
+import { currentModel } from "./models.js";
 import {
   addAssistantTurn,
   addUserBubble,
@@ -905,13 +906,30 @@ const deviceLocation = () =>
     }
   });
 
+// Whether the model about to answer can READ an image — the one input
+// stripOldImages needs to decide whether history may carry images at all.
+// A text-only model doesn't just ignore them: src/validation.js rejects the
+// whole request (400 "does not support image input") when ANY message in
+// the conversation has one, so retention has to switch off for the switch
+// to a non-vision model mid-conversation to keep working. An on-device pick
+// has no catalog entry and is text-only, which lands on false; so does a
+// dropdown that hasn't loaded — the fail-safe direction, since dropping the
+// retained history images can only cost context, never break the send.
+function answerModelSeesImages() {
+  try {
+    return currentModel()?.vision === true;
+  } catch {
+    return false;
+  }
+}
+
 // Assemble the /api/chat request body from the module's conversation state
 // (history, incognito) plus this send's options and the live view anchors.
 // May await the device's geolocation — only for the exact ask shapes
 // documented inline, so the permission prompt never fires gratuitously.
 async function buildChatPayload(opts) {
   const payload = {
-    messages: stripOldImages(history),
+    messages: stripOldImages(history, { retain: answerModelSeesImages() }),
     time_budget_s: opts.budgetS,
     web_search: opts.webSearch,
     // WHO runs those searches — the "Exa web search" setting (search-source.js),
@@ -1278,9 +1296,14 @@ async function maybeRunShellLoop(turn, opts) {
     // The user's research time budget scopes the per-command ceiling: a
     // question scoped to 15 s must not sit the full default 30 s on one
     // wedged command (chat_logs #522). No budget keeps the default.
-    const execTimeoutMs = execTimeoutForBudget(opts?.budgetS);
+    // Handed down UNCLAMPED (bash-core's execBudgetMs) because `runner` may be
+    // the browser VM or a native one: pre-clamping to the emulator's 30 s here
+    // is exactly how a 120 s-capable local runner or server container ended up
+    // killing long commands — OCR over a full-page scan among them — at 30 s.
+    // Each backend applies its OWN ceiling to this number.
+    const execTimeoutMs = execBudgetMs(opts?.budgetS);
     const transcript = await runShellLoop({
-      messages: stripOldImages(history),
+      messages: stripOldImages(history, { retain: answerModelSeesImages() }),
       // The transcript keeps only MAX_OUTPUT_CHARS per command, so ask the guest
       // for a bounded slice instead of hauling a whole file across the VM→JS
       // boundary to throw it away (docs/SANDBOX-PERFORMANCE.md).

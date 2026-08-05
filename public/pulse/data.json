@@ -1,15 +1,15 @@
 {
-  "generated": "2026-08-01T11:48:02.920Z",
+  "generated": "2026-08-05T12:44:06.932Z",
   "repo": "kristerhedfors/deepresearch.se",
   "range": {
     "from": "2026-07-04",
-    "to": "2026-08-01"
+    "to": "2026-08-05"
   },
   "totals": {
-    "commits": 1257,
-    "added": 387495,
-    "removed": 66874,
-    "features": 152
+    "commits": 1352,
+    "added": 431077,
+    "removed": 109166,
+    "features": 164
   },
   "commits": [
     {
@@ -7553,6 +7553,576 @@
       "a": 1,
       "r": 0,
       "f": 0
+    },
+    {
+      "t": "2026-08-01T13:29:31+02:00",
+      "a": 169,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-08-01T13:29:31+02:00",
+      "a": 169,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-08-01T13:32:29+02:00",
+      "a": 16,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-08-01T13:38:35+02:00",
+      "a": 3,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-08-01T13:56:50+02:00",
+      "a": 1341,
+      "r": 117,
+      "f": 1
+    },
+    {
+      "t": "2026-08-01T15:32:45+02:00",
+      "a": 3,
+      "r": 3,
+      "f": 1
+    },
+    {
+      "t": "2026-08-01T15:32:52+02:00",
+      "a": 1,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-08-01T16:02:09+02:00",
+      "a": 42,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-08-01T18:30:43+02:00",
+      "a": 62,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-08-01T19:15:08+02:00",
+      "a": 830,
+      "r": 48,
+      "f": 0
+    },
+    {
+      "t": "2026-08-01T19:54:43+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-08-01T22:48:53+02:00",
+      "a": 7,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-08-01T23:14:48+02:00",
+      "a": 645,
+      "r": 51,
+      "f": 0
+    },
+    {
+      "t": "2026-08-01T23:30:42+02:00",
+      "a": 803,
+      "r": 42,
+      "f": 0
+    },
+    {
+      "t": "2026-08-01T23:49:36+02:00",
+      "a": 1318,
+      "r": 146,
+      "f": 0
+    },
+    {
+      "t": "2026-08-01T23:58:22+02:00",
+      "a": 1144,
+      "r": 13,
+      "f": 0
+    },
+    {
+      "t": "2026-08-02T00:09:55+02:00",
+      "a": 65,
+      "r": 13,
+      "f": 1
+    },
+    {
+      "t": "2026-08-02T00:11:59+02:00",
+      "a": 789,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-08-02T00:15:12+02:00",
+      "a": 5,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-08-02T00:30:40+02:00",
+      "a": 2877,
+      "r": 76,
+      "f": 0
+    },
+    {
+      "t": "2026-08-02T00:35:44+02:00",
+      "a": 21,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-08-02T00:35:59+02:00",
+      "a": 450,
+      "r": 13,
+      "f": 0
+    },
+    {
+      "t": "2026-08-02T00:38:57+02:00",
+      "a": 1296,
+      "r": 60,
+      "f": 0
+    },
+    {
+      "t": "2026-08-02T00:41:38+02:00",
+      "a": 4,
+      "r": 0,
+      "f": 1
+    },
+    {
+      "t": "2026-08-02T00:55:32+02:00",
+      "a": 1169,
+      "r": 15,
+      "f": 0
+    },
+    {
+      "t": "2026-08-02T00:59:15+02:00",
+      "a": 39,
+      "r": 14,
+      "f": 0
+    },
+    {
+      "t": "2026-08-02T01:18:24+02:00",
+      "a": 19,
+      "r": 7,
+      "f": 1
+    },
+    {
+      "t": "2026-08-02T01:36:25+02:00",
+      "a": 1,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-08-02T01:43:53+02:00",
+      "a": 72,
+      "r": 14,
+      "f": 0
+    },
+    {
+      "t": "2026-08-02T02:05:17+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-08-02T02:27:57+02:00",
+      "a": 74,
+      "r": 667,
+      "f": 0
+    },
+    {
+      "t": "2026-08-02T03:20:04+02:00",
+      "a": 1224,
+      "r": 126,
+      "f": 0
+    },
+    {
+      "t": "2026-08-02T03:30:52+02:00",
+      "a": 402,
+      "r": 50,
+      "f": 0
+    },
+    {
+      "t": "2026-08-02T03:33:31+02:00",
+      "a": 116,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-08-02T03:40:12+02:00",
+      "a": 2,
+      "r": 96,
+      "f": 0
+    },
+    {
+      "t": "2026-08-02T09:29:41+02:00",
+      "a": 374,
+      "r": 9,
+      "f": 0
+    },
+    {
+      "t": "2026-08-02T09:42:49+02:00",
+      "a": 1,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-08-02T09:44:23+02:00",
+      "a": 54,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-08-02T10:19:08+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-08-02T18:52:12+02:00",
+      "a": 564,
+      "r": 14,
+      "f": 0
+    },
+    {
+      "t": "2026-08-02T20:12:27+02:00",
+      "a": 1,
+      "r": 1,
+      "f": 1
+    },
+    {
+      "t": "2026-08-02T20:29:59+02:00",
+      "a": 1,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-08-03T10:23:46+02:00",
+      "a": 978,
+      "r": 38814,
+      "f": 1
+    },
+    {
+      "t": "2026-08-03T10:35:20+02:00",
+      "a": 10207,
+      "r": 422,
+      "f": 0
+    },
+    {
+      "t": "2026-08-03T11:36:51+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-08-03T15:03:18+02:00",
+      "a": 552,
+      "r": 51,
+      "f": 0
+    },
+    {
+      "t": "2026-08-03T16:29:08+02:00",
+      "a": 32,
+      "r": 8,
+      "f": 0
+    },
+    {
+      "t": "2026-08-03T16:29:26+02:00",
+      "a": 79,
+      "r": 48,
+      "f": 0
+    },
+    {
+      "t": "2026-08-03T17:15:04+02:00",
+      "a": 150,
+      "r": 61,
+      "f": 0
+    },
+    {
+      "t": "2026-08-03T17:17:24+02:00",
+      "a": 570,
+      "r": 12,
+      "f": 1
+    },
+    {
+      "t": "2026-08-03T17:18:40+02:00",
+      "a": 201,
+      "r": 146,
+      "f": 0
+    },
+    {
+      "t": "2026-08-03T17:23:25+02:00",
+      "a": 4,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-08-03T17:24:38+02:00",
+      "a": 212,
+      "r": 44,
+      "f": 0
+    },
+    {
+      "t": "2026-08-03T17:24:41+02:00",
+      "a": 214,
+      "r": 33,
+      "f": 0
+    },
+    {
+      "t": "2026-08-03T17:26:26+02:00",
+      "a": 95,
+      "r": 7,
+      "f": 0
+    },
+    {
+      "t": "2026-08-03T17:29:17+02:00",
+      "a": 10,
+      "r": 2,
+      "f": 1
+    },
+    {
+      "t": "2026-08-03T17:40:18+02:00",
+      "a": 402,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-08-03T17:41:37+02:00",
+      "a": 855,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-08-03T17:42:35+02:00",
+      "a": 2764,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-08-03T17:50:23+02:00",
+      "a": 1132,
+      "r": 40,
+      "f": 0
+    },
+    {
+      "t": "2026-08-03T17:53:57+02:00",
+      "a": 587,
+      "r": 262,
+      "f": 0
+    },
+    {
+      "t": "2026-08-03T18:04:52+02:00",
+      "a": 62,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-08-03T18:09:53+02:00",
+      "a": 6,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-08-03T19:15:23+02:00",
+      "a": 17,
+      "r": 13,
+      "f": 0
+    },
+    {
+      "t": "2026-08-03T21:15:45+02:00",
+      "a": 100,
+      "r": 32,
+      "f": 0
+    },
+    {
+      "t": "2026-08-03T21:23:29+02:00",
+      "a": 135,
+      "r": 23,
+      "f": 1
+    },
+    {
+      "t": "2026-08-03T21:44:02+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-08-04T00:11:35+02:00",
+      "a": 461,
+      "r": 23,
+      "f": 0
+    },
+    {
+      "t": "2026-08-04T00:21:48+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-08-04T15:12:38+02:00",
+      "a": 178,
+      "r": 14,
+      "f": 0
+    },
+    {
+      "t": "2026-08-04T23:08:39+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-08-04T23:13:33+02:00",
+      "a": 5,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T09:53:14+02:00",
+      "a": 253,
+      "r": 0,
+      "f": 1
+    },
+    {
+      "t": "2026-08-05T09:59:16+02:00",
+      "a": 34,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T10:01:36+02:00",
+      "a": 27,
+      "r": 13,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T10:04:47+02:00",
+      "a": 296,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T10:18:40+02:00",
+      "a": 1750,
+      "r": 34,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T10:18:56+02:00",
+      "a": 20,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T10:27:52+02:00",
+      "a": 37,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T10:34:03+02:00",
+      "a": 4,
+      "r": 4,
+      "f": 1
+    },
+    {
+      "t": "2026-08-05T10:37:08+02:00",
+      "a": 4,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T10:56:19+02:00",
+      "a": 4,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T11:01:48+02:00",
+      "a": 1334,
+      "r": 75,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T11:03:28+02:00",
+      "a": 4,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T11:04:14+02:00",
+      "a": 44,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T11:07:15+02:00",
+      "a": 44,
+      "r": 23,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T11:19:25+02:00",
+      "a": 3,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T11:40:00+02:00",
+      "a": 2,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T11:57:05+02:00",
+      "a": 672,
+      "r": 37,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T12:06:32+02:00",
+      "a": 743,
+      "r": 99,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T12:23:21+02:00",
+      "a": 275,
+      "r": 20,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T12:35:42+02:00",
+      "a": 668,
+      "r": 69,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T12:37:54+02:00",
+      "a": 1160,
+      "r": 152,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T12:43:37+02:00",
+      "a": 8,
+      "r": 8,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T14:09:55+02:00",
+      "a": 1,
+      "r": 0,
+      "f": 0
     }
   ],
   "days": [
@@ -9118,18 +9688,157 @@
     },
     {
       "date": "2026-08-01",
-      "commits": 5,
-      "added": 2274,
-      "removed": 39,
-      "features": 1,
+      "commits": 21,
+      "added": 8829,
+      "removed": 499,
+      "features": 3,
       "subjects": [
+        "Watch builder: Royal Oak and PRX cases with integrated bracelets, and case shapes that resemble their references",
+        "Take the bend out of the lug exit, squash the cushion, rebuild the buckle and clasps",
+        "watch builder: the parts that come with the case are not separate purchases",
+        "Watch builder: make the per-part variables findable, and label the switches",
+        "Correct the stale \"movement is never modelled\" limit",
+        "Merge PR #361: the exhibition case back is a hole with a movement behind it",
+        "Make the exhibition case back a hole, and put a movement behind it",
+        "Record bench-gate run 7 — first NEUTRAL, and the attribution's first output",
+        "Merge PRs #358, #359 and #360, and close the wrangler-crash mystery",
+        "Regenerate the introspection and docs artifacts after the gate change",
+        "Clean the added skill prose, and refresh the four artifacts",
+        "pulse: refresh all three datasets through 2026-08-01, and three new subjects",
+        "Record the display-caseback regression against its owning PR",
+        "Record the fifth wrangler crash, and what the captured log now makes possible",
+        "Route \"proven\" questions to the literature, and let health reach PubMed",
+        "Route \"proven\" questions to the literature, and let health reach PubMed",
         "wip 357",
         "Capture the wrangler crash log in CI, at the fourth occurrence",
         "Rebuild the introspection artifacts with the new harness files tracked",
         "Measure both hosted RAG pipelines with one instrument, and codify the loop",
         "Merge PRs #355 and #356, and sharpen the wrangler-crash diagnosis"
       ],
-      "summary": "Both hosted RAG pipelines — arXiv and PubMed — are measured with one instrument now, and the hill-climbing loop that decides a retrieval change is codified as a skill. CI captures the wrangler crash log at the fourth occurrence of an intermittent failure.",
+      "summary": "One instrument for both hosted RAG indexes (arXiv and PubMed) plus the hill-climb loop that keeps a settled negative result settled, and \"proven\" questions started routing to the peer-reviewed literature so health queries reach PubMed. The e2e suite began capturing the recurring wrangler crash log in CI at its fourth occurrence. Watch-builder work continued on case backs, lug exits, bracelets and clasps.",
+      "curated": true
+    },
+    {
+      "date": "2026-08-02",
+      "commits": 26,
+      "added": 9624,
+      "removed": 1188,
+      "features": 4,
+      "subjects": [
+        "Merge PR #366: derive mode theme classes from the registry",
+        "Re-bundle the introspection artifacts with the new audit script tracked",
+        "Derive a mode's theme class from the registry, and give Deep Science a dark composer pane",
+        "Merge PR #365: pin wrangler, supervise it, retry once",
+        "Pin wrangler in the e2e suite, and supervise the dev server",
+        "Merge PR #364: feedback #59's remaining items, and a correction to #361",
+        "Document the third round, and codify the two UX rules it produced",
+        "Give a kept insert its dive scale back, and merge the shading fix",
+        "wip: dive stand-in for a kept insert",
+        "Take the movement off the tonemap's shoulder, and default to the grey backdrop",
+        "Collapse the five parts a case comes with out of the picker (feedback #59)",
+        "Remove the watch builder's MCP tool family",
+        "Merge PR #363: fix the probe's cold-vs-warm timing, correct the batching claim",
+        "Fix the probe's cold-vs-warm timing, and correct the batching claim",
+        "Merge PR #362: arXiv and PubMed over MCP as four literature tools",
+        "Rebuild the introspection artifacts with the new scripts tracked",
+        "Keep the integrated bracelet out of the keep-or-buy question, and drop a dead field",
+        "Add a live MCP probe, and fix the HTML 401 its first run found",
+        "File the new hand axes under a Hands group, not \"More detail\"",
+        "Watch builder: draw the sourcing table as orders, and let a build say \"keep what the case comes with\"",
+        "Selectable scenes for the watch render, and an answer on the black background",
+        "Carry the GMT accent through a recolour, and record what the lume wash hides",
+        "Expose the arXiv and PubMed corpora over MCP as four literature tools",
+        "Skip the lug-band check on integrated-bracelet cases",
+        "Decompose hands into axes: colour, seconds colour, finish, lume, length",
+        "Reconcile the case-kit model with the three new case families"
+      ],
+      "summary": "The arXiv and PubMed corpora went out over MCP as four literature tools, with a live probe that immediately found an HTML 401. The e2e suite pinned wrangler and put a supervisor with one retry around the dev server. A mode's theme class is now derived from the agent registry instead of hand-mapped. Watch-builder work decomposed hands into axes and reconciled the case-kit model before the builder's own MCP tools came out.",
+      "curated": true
+    },
+    {
+      "date": "2026-08-03",
+      "commits": 25,
+      "added": 19368,
+      "removed": 40033,
+      "features": 4,
+      "subjects": [
+        "ledger: record PR #375 (connect: the real menu paths)",
+        "connect: the real menu paths, and a one-tap Add to Claude button",
+        "connect: lead with the connector, and stop printing unverified menu paths",
+        "Merge PRs #371, #372, #373 and #374",
+        "Regenerate introspection artifacts after merging main",
+        "Fix the discovery pointer: a well-known URI is origin-relative",
+        "OAuth connector: documentation, and the follow-ups the build exposed",
+        "OAuth connector: wire the flow, and the two tools ChatGPT demands by name",
+        "OAuth connector: the token store and the authorize endpoint",
+        "OAuth connector: the token endpoint",
+        "OAuth connector: the discovery documents and the redirect allowlist",
+        "introspection skill: the bundle-before-git-add trap is not source-only",
+        "Record refactor pass 15: the docs, the decline register, the artifacts",
+        "Reconcile the docs with the code: eleven undocumented suites, seven modes",
+        "Connector design: cover ChatGPT as well as Claude (F-20)",
+        "Regenerate introspection artifacts with the new doc tracked",
+        "One graded-relevance judge for every RAG eval harness",
+        "Outrospection: add the research-corpus lens, widen every lens's aperture",
+        "Share the two hosted tiers' citation formatting",
+        "Clean the touched doc prose; add the branch's test requests",
+        "CLAUDE.md: always finish a completed change with a pull request",
+        "MCP: advertise the bare origin, and design the web connector for mobile",
+        "Merge PR #367: remove the watch builder",
+        "Restore the full pulse timeline; drop the watch subject surgically",
+        "Remove the watch builder: the feature moved to a different site"
+      ],
+      "summary": "The watch builder was removed — the feature moved to a different site, which is most of the day's 40k deleted lines. The OAuth connector was built end to end (discovery documents, redirect allowlist, token store, authorize and token endpoints, and the two tools ChatGPT demands by name) and documented for both clients. Outrospection gained a research-corpus lens, the docs were reconciled against the code, and CLAUDE.md picked up the standing directive to finish every change with a pull request.",
+      "curated": true
+    },
+    {
+      "date": "2026-08-04",
+      "commits": 5,
+      "added": 648,
+      "removed": 43,
+      "features": 0,
+      "subjects": [
+        "owners: #377 owns oauth-authorize.js; register the CI wrangler-crash row",
+        "ledger: record PR #377 (oauth consent origin)",
+        "oauth: the consent page was refusing its own form",
+        "ledger: record PR #376 (mcp settings connector guidance)",
+        "mcp settings: guide the connector flow for Claude and ChatGPT"
+      ],
+      "summary": "Fixed the OAuth consent page refusing its own form submission, and rewrote the MCP settings guidance so the connector flow is followable in both Claude and ChatGPT. The rest of the day was ledger and ownership bookkeeping, including the CI wrangler-crash row.",
+      "curated": true
+    },
+    {
+      "date": "2026-08-05",
+      "commits": 23,
+      "added": 7387,
+      "removed": 568,
+      "features": 2,
+      "subjects": [
+        "ledger: record PR #383",
+        "bundle: regenerate the introspection artifacts",
+        "Meter the chat pipeline's dense retrieval: the same hole, on the higher-traffic path",
+        "Give the quota gate a chosen fail direction: closed, on both surfaces",
+        "e2e: shorten the wrangler restart so the CI retry lands on a live server",
+        "Meter the MCP literature tools: record the retrieval spend they were only gated on",
+        "Cap /mcp concurrency: take the inflight reservation on the spending tools",
+        "ledger: record #382's tip as the merge commit the ref actually holds",
+        "ledger: record PRs #381 and #382",
+        "connector: record the first observed end-to-end use",
+        "authors: an author's own name is not one of their topic terms",
+        "mcp: make the ChatGPT connector connectable, and give it an icon",
+        "ledger: record PRs #378, #379 and #380",
+        "owners: #379 owns the MCP literature author lookup",
+        "owners: occurrences 9-11 of the e2e wrangler crash kill the fixture lead",
+        "artifacts: rebuild the source snapshot now the new modules are tracked",
+        "arxiv: delta ingest through submission month 2608; record what it measured",
+        "bundle: regenerate the artifacts with the new doc TRACKED",
+        "mcp: answer \"everything by this researcher\" with real author search",
+        "mcp: price all 11 tools against production before widening the surface",
+        "arxiv-ingest: fix two flag errors and the window rule the first run exposed",
+        "pubmed: delta ingest through pubmed26n1562; record what it cost",
+        "skills: add arxiv-ingest, the missing arXiv refresh runbook"
+      ],
+      "summary": "Closed the /mcp spend gaps: the literature tools and the chat pipeline's dense retrieval now meter the retrieval they were only gated on, the spending tools take an inflight reservation, the quota gate fails closed on both surfaces, and all eleven tools were priced against production. The ChatGPT connector became connectable and gained an icon, author search answers \"everything by this researcher\" for real, and both corpora took delta ingests (arXiv through submission month 2608, PubMed through pubmed26n1562) with the missing arxiv-ingest runbook written up.",
       "curated": true
     }
   ]

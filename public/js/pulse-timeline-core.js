@@ -12,7 +12,8 @@
 //
 // Everything that decides WHAT a curve is — the time bucketing, the metric,
 // the multi-tag split, the y-scale, the entity-stable colour lift for dark
-// mode, which subjects are "the busiest six" — lives here and is unit-tested
+// mode, which subjects are "the busiest six", and the code-volume backdrop the
+// landing draws behind them — lives here and is unit-tested
 // (`pulse-timeline-core.test.js`). Each page keeps only its own drawing and
 // its own gestures. A second copy of the bucketing maths is exactly the drift
 // this split exists to prevent, so add to the core rather than to a page.
@@ -214,6 +215,123 @@ export function niceMax(v) {
   const pow = Math.pow(10, Math.floor(Math.log10(v)));
   for (const m of [1, 1.5, 2, 2.5, 3, 4, 5, 7.5, 10]) { const c = m * pow; if (c >= v) return c; }
   return 10 * pow;
+}
+
+// ---- code volume --------------------------------------------------------
+// The backdrop behind the curves: how many lines the whole tree HELD at the
+// end of each day, measured by the builder at that day's last commit. The
+// curves answer "where did the work go", the volume answers "how big did it
+// get" — different questions, different units, so it gets its own scale on the
+// RIGHT while the curves keep the left.
+
+/**
+ * @typedef {Object} VolumePoint
+ * @property {number} ms
+ * @property {number} lines
+ * @property {number} files
+ * @property {string} d  the calendar day the reading was taken on
+ */
+
+/**
+ * Dataset volume readings → internal points, oldest first. Accepts either the
+ * `{unit, days}` wrapper or a bare array, and tolerates the field being absent
+ * entirely (a dataset built before the series existed draws no backdrop).
+ *
+ * @param {{days?: any[]}|any[]|undefined} raw
+ * @returns {VolumePoint[]}
+ */
+export function normalizeVolume(raw) {
+  const days = Array.isArray(raw) ? raw : (raw?.days || []);
+  return days
+    .filter((p) => p && (p.t || p.d) && Number.isFinite(Number(p.lines)))
+    .map((p) => ({
+      ms: wallMs(p.t || `${p.d}T12:00:00`),
+      lines: Number(p.lines),
+      files: Number(p.files) || 0,
+      d: p.d || String(p.t).slice(0, 10),
+    }))
+    .sort((a, b) => a.ms - b.ms);
+}
+
+/**
+ * The volume readings' top edge as an SVG path `d`, clamped to the drawn
+ * window so a reading outside it cannot stretch the shape. Returns "" when
+ * fewer than two readings fall inside (a single point is not a curve).
+ *
+ * @param {VolumePoint[]} points
+ * @param {number} t0
+ * @param {number} t1
+ * @param {(ms: number) => number} xOf
+ * @param {(v: number) => number} yOf
+ * @returns {string}
+ */
+export function volumeEdgePath(points, t0, t1, xOf, yOf) {
+  const inside = points.filter((p) => p.ms >= t0 && p.ms <= t1);
+  if (inside.length < 2) return "";
+  return inside
+    .map((p, i) => (i ? "L" : "M") + xOf(p.ms).toFixed(1) + " " + yOf(p.lines).toFixed(1))
+    .join(" ");
+}
+
+/**
+ * The same edge, closed down to the baseline — the filled backdrop.
+ *
+ * @param {VolumePoint[]} points
+ * @param {number} t0
+ * @param {number} t1
+ * @param {(ms: number) => number} xOf
+ * @param {(v: number) => number} yOf
+ * @param {number} baseY the plot's baseline in view units
+ * @returns {string}
+ */
+export function volumeAreaPath(points, t0, t1, xOf, yOf, baseY) {
+  const inside = points.filter((p) => p.ms >= t0 && p.ms <= t1);
+  const edge = volumeEdgePath(points, t0, t1, xOf, yOf);
+  if (!edge) return "";
+  const x0 = xOf(inside[0].ms).toFixed(1);
+  const x1 = xOf(inside[inside.length - 1].ms).toFixed(1);
+  return `M${x0} ${baseY.toFixed(1)} L` + edge.slice(1) + ` L${x1} ${baseY.toFixed(1)} Z`;
+}
+
+/**
+ * A line-count as a short axis label: `0`, `840`, `150k`, `1.2M`. Thousands
+ * are what this axis is read in — a right-hand gridline saying `293,991` is
+ * precision nobody asked the backdrop for.
+ *
+ * @param {number} v
+ * @returns {string}
+ */
+export function compactLines(v) {
+  const n = Math.abs(v);
+  if (n < 1000) return String(Math.round(v));
+  if (n < 1e6) {
+    const k = v / 1000;
+    return (k >= 100 || Number.isInteger(k) ? Math.round(k) : Math.round(k * 10) / 10) + "k";
+  }
+  return Math.round(v / 1e5) / 10 + "M";
+}
+
+/**
+ * The right-hand scale for the volume backdrop: a rounded top plus 2–5 evenly
+ * spaced, round tick values (0, 100k, 200k, 300k) — chosen so the labels are
+ * numbers a reader can hold, not whatever the data happened to reach.
+ *
+ * @param {number} max the largest reading drawn
+ * @param {number} [maxTicks] the most intervals to divide the axis into
+ * @returns {{top: number, step: number, values: number[]}}
+ */
+export function volumeTicks(max, maxTicks = 4) {
+  const top = niceMax(max);
+  const pow = Math.pow(10, Math.floor(Math.log10(top)));
+  for (const m of [1, 0.5, 0.25, 0.2, 0.1]) {
+    const step = m * pow;
+    const n = top / step;
+    if (Math.abs(n - Math.round(n)) < 1e-9 && n >= 2 && n <= maxTicks + 1) {
+      return { top, step, values: Array.from({ length: Math.round(n) + 1 }, (_, i) => i * step) };
+    }
+  }
+  const step = top / 2;
+  return { top, step, values: [0, step, top] };
 }
 
 // ---- subject selection --------------------------------------------------
