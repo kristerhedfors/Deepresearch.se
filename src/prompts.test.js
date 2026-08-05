@@ -362,6 +362,43 @@ describe("bashAgentPrompt", () => {
     }
   });
 
+  // The browser VM is deliberately minimal and is NOT being grown to match
+  // the cloud container (owner directive, 2026-08-05). Pins that the branch
+  // says so positively: told only that a tool is missing, the model treats
+  // the absence as an accident and burns the turn hunting for it or trying
+  // to install it (chat_logs #1305, feedback #60). The undefined env falls
+  // back to this branch, so both spellings are checked.
+  test("the browser VM states its minimality as deliberate, not a temporary gap", () => {
+    for (const p of [bashAgentPrompt({ env: "browser" }), bashAgentPrompt()]) {
+      assert.match(p, /deliberately kept MINIMAL/);
+      // WHY it is minimal — the disk streams to the device, so bytes cost boot time.
+      assert.match(p, /streaming its disk to the user's device/);
+      // The absence is permanent and must not be worked around.
+      assert.match(p, /is not coming/);
+      assert.match(p, /not a gap to work around/);
+      assert.match(p, /do not go looking for it and do not plan around installing it/);
+      // Where the model should go instead of reaching for OCR.
+      assert.match(p, /ALREADY been transcribed before this loop runs/);
+      // It must not read as "not there YET" — that invites the same hunt.
+      assert.doesNotMatch(p, /not (?:yet|currently|presently) (?:installed|available|present)/i);
+      assert.doesNotMatch(p, /for the (?:time being|moment)/i);
+    }
+  });
+
+  // A runner on the user's own machine is THEIR image — this project neither
+  // ships nor inspects it, so the prompt may neither promise the container's
+  // toolchain nor declare a tool missing. It says try-and-handle instead.
+  test("the local runner promises no specific toolchain", () => {
+    const p = bashAgentPrompt({ env: "local" });
+    assert.match(p, /whatever the user's own image happens to carry/);
+    assert.match(p, /this platform does not build or control it/);
+    assert.match(p, /run what you need and handle its absence/);
+    // The cloud container's image tools are never claimed for someone else's image.
+    for (const tool of [/pdftotext/, /poppler/i, /zbarimg/, /Pillow/]) {
+      assert.doesNotMatch(p, tool, `the local branch must not claim ${tool}`);
+    }
+  });
+
   // A `command not found` sent the model to `apt-get install`, which in an
   // image with no egress does not fail — it hangs until the per-command
   // deadline kills the shell, burning the turn (chat_logs #1305, feedback

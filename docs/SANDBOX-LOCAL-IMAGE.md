@@ -379,6 +379,41 @@ npx wrangler r2 object put \
   CheerpX **runtime** is still loaded from `cxrtnc.leaningtech.com` under the
   Community License, unchanged by this.
 
+### The package list is minimal on purpose — it does not mirror the container
+
+`PKGS_COMMON` in `scripts/build-sandbox-image.sh` is the whole toolchain of this
+image, and it is **deliberately smaller than `container/Dockerfile`'s**. The two
+lists are asymmetric by owner directive (2026-08-05): the OCR/PDF/image group
+added to the container in 2026-08 — `tesseract-ocr` with the `eng`/`swe`
+language packs, `poppler-utils`, `python3-pil`, `zbar-tools`, which took that
+image from 482 MB to 619 MB — belongs to the **server-side** execution sandbox
+only. Do not copy it into the browser VM's list. `scripts/build-sandbox-image.test.mjs`
+fails the build if someone does.
+
+Three reasons, all particular to this image rather than to thrift in general:
+
+- **Nothing here is installed on the device.** Every byte of every binary is
+  streamed lazily over the network the first time the guest touches it (§2), so
+  a package nobody runs is not free: it widens `PATH` and the directory trees a
+  cold `command -v` or `grep -r` walks over the wire.
+- **A cold binary costs orders of magnitude more than on real hardware.**
+  `docs/SANDBOX-PERFORMANCE.md` §1 measures `python3 --version` at 8573 ms cold
+  against 87 ms warm — 98× — and records a `command -v` for an *absent* tool
+  consuming the full 30 s exec ceiling, which discards the VM and ends the turn.
+- **This VM is the Se/cure tier's shell.** Se/cure keeps the server out of its
+  data path, so it has nothing to offload to and is the tier that most needs the
+  image to load fast on a phone.
+
+None of this gives up the capability the container's OCR group buys. An attached
+picture is turned into text by the **answer model** in phase 0, before triage
+(`src/image-read.js`), which happens in the pipeline and not in a shell — so it
+reads the same whichever execution environment the commands go to, and "read
+this screenshot" never depended on a binary in this image.
+
+The policy across all execution environments — which toolchain each one carries
+and why they differ — is the per-environment toolchain section of
+`docs/EXECUTION-ENVIRONMENTS.md`.
+
 ---
 
 ## 6. Optional: full prefetch into IndexedDB (the "no more chunk streaming" mode)

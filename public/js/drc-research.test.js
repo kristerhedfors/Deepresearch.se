@@ -5,6 +5,7 @@ import {
   DRC_DEPTH_TIERS,
   GAP_DEADLINE_FRACTION,
   VALIDATE_DEADLINE_FRACTION,
+  drcBashAgentPrompt,
   drcContext,
   drcDirectPrompt,
   drcDirectPromptWeb,
@@ -108,6 +109,40 @@ test("the web-search prompt variants flip the honesty rules to citation rules", 
   // The web synth prompt drops the offline "no web sources / training cutoff"
   // framing (it now HAS sources) — a guard against reusing the offline text.
   assert.doesNotMatch(drcSynthPromptWeb(), /never invent citations, bracketed numbers, or URLs/);
+});
+
+// The shell prompt's two environment branches (owner directive, 2026-08-05).
+// The image-and-document toolchain (tesseract, poppler, Pillow, zbarimg) is
+// the SERVER-SIDE container's alone, and Se/cure cannot reach that container —
+// so the browser branch states its minimality as a decision instead of leaving
+// the gap to be read as an accident, and the local branch refuses to predict a
+// user-built image either way. Neither may claim an image was already read:
+// Se/cure has no phase-0 vision pass and takes no image attachments.
+test("the shell prompt frames the browser VM's minimality as a decision, the local image as unknown", () => {
+  const browser = drcBashAgentPrompt();
+  assert.match(browser, /WASM x86 emulator/);
+  assert.match(browser, /kept minimal BY DESIGN/);
+  assert.match(browser, /OCR engines, PDF utilities, image libraries/);
+  assert.match(browser, /not installed and is not coming/);
+  assert.match(browser, /do not hunt for it and do not plan around installing it/);
+  // An unrecognised backend id falls back to the browser wording.
+  assert.equal(drcBashAgentPrompt({ env: "cloudflare" }), browser);
+
+  const local = drcBashAgentPrompt({ env: "local" });
+  assert.match(local, /NATIVELY on the user's own machine/);
+  assert.match(local, /whatever the user's own image carries/);
+  assert.match(local, /neither builds nor controls it/);
+  assert.match(local, /handle its absence rather than assuming either way/);
+  // The local branch promises no specific tool, and names none of the
+  // container's — listing them would be a promise this project cannot keep.
+  assert.doesNotMatch(local, /tesseract|poppler|pdftotext|zbarimg|Pillow/i);
+
+  // Both stay OFFLINE, and NEITHER claims a vision pass has read anything:
+  // Se/rver's src/image-read.js has no Se/cure counterpart.
+  for (const p of [browser, local]) {
+    assert.match(p, /OFFLINE/);
+    assert.doesNotMatch(p, /vision pass|ALREADY been read|already transcribed/i);
+  }
 });
 
 // ---- the research time budget (the /cure slider — Se/rver's, mirrored) ---------------
