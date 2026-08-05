@@ -135,7 +135,7 @@
     reaches it, and it pays for that with the capabilities only a server can
     hold keys for.
     <span class="verdict drs">Se<span class="sl">/</span>rver buys capability</span> by having a server:
-    live web search, maps, host intelligence, attachments, accounts. It
+    live web search, maps, host intelligence, hosted document indexing, accounts. It
     protects the data that server handles with encryption and policy.</p>
   </section>
 
@@ -279,7 +279,7 @@
         </tr>
         <tr>
           <th>Documents &amp; RAG</th>
-          <td class="drc-c">Project &amp; chat RAG, browser-direct embeddings on your key (OpenAI small/512-dim by design; Berget too; a session on a provider that serves no embeddings — Anthropic, Groq, Hugging Face, or most custom endpoints — simply runs without RAG, fail-soft).</td>
+          <td class="drc-c">Attachments read in the tab: the file is parsed here (pdf/docx/md/txt), mounted into the Linux sandbox, and sent to your own provider as an image or as extracted text — the original bytes never reach a server and are not saved. There is no separate file index: a document is searchable only as part of the chat you attached it to. Plus project &amp; chat RAG, browser-direct embeddings on your key (OpenAI small/512-dim by design; Berget too; a session on a provider that serves no embeddings — Anthropic, Groq, Hugging Face, or most custom endpoints — simply runs without RAG, fail-soft).</td>
           <td class="drs-c">Attachments (pdf/docx/images with metadata extraction), project files, chat RAG, with embeddings via the Worker's <code>/api/embed</code> proxy.</td>
         </tr>
         <tr>

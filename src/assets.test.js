@@ -176,6 +176,21 @@ describe("isPublicAsset", () => {
     }
   });
 
+  test("the vendored pdf.js files are public (Se/cure parses attached PDFs in the browser)", () => {
+    // Neither path is derivable by the graph walker above, for two DIFFERENT
+    // reasons, and both fail silently in production if they 401:
+    //   pdf.min.mjs — /js/docs.js dynamic-imports it, but the walker skips any
+    //     specifier not ending in `.js`, and this one is `.mjs`.
+    //   pdf.worker.min.mjs — never named in an import at all; pdf.js fetches it
+    //     at RUNTIME off GlobalWorkerOptions.workerSrc, so no static analysis
+    //     reaches it.
+    // These pins are the only thing standing between a signed-out Se/cure
+    // visitor and a dead PDF parser.
+    for (const p of ["/vendor/pdfjs/pdf.min.mjs", "/vendor/pdfjs/pdf.worker.min.mjs"]) {
+      assert.equal(isPublicAsset(u(p), "GET"), true, p);
+    }
+  });
+
   for (const page of ["docs/index.html", "help/index.html"]) {
    test(`every module STATICALLY reachable from /${page.replace("/index.html", "")}/ is public`, () => {
     // Both are public pages, so the same breakage class as /cure applies: a

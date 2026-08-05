@@ -106,10 +106,15 @@
     <b>no data path</b>. It serves the page's static files and public replay
     pages, and nothing else. Your questions go directly from your browser to
     the AI provider <i>you</i> configure, and your chats, projects and API
-    keys are stored <b>only in this browser</b>, encrypted. The server could
-    not log your conversations or keys even in principle. (The two narrow,
-    opt-in exceptions, borrowed web search and a borrowed research space, are
-    described below, and each is disclosed in the app when active.)</div>
+    keys are stored <b>only in this browser</b>, encrypted. A file you attach
+    does not reach this server either: it is read in the tab, mounted into
+    the Linux sandbox, and sent to the provider you chose. Its original bytes
+    are never saved anywhere — only what went into the message (a document's
+    extracted text, a shrunken copy of an image) is kept, with the chat. The
+    server could not log your conversations, files or keys even in principle.
+    (The two narrow, opt-in exceptions, borrowed web search and a borrowed
+    research space, are described below, and each is disclosed in the app
+    when active.)</div>
   </section>
 
   <section>
@@ -187,8 +192,11 @@
       <div class="cmp-row">
         <div class="cmp-q">Files and documents</div>
         <div class="cmp-a cure"><span class="who">Se<span class="sl">/</span>cure:</span>
-          stay in the browser; searchable locally and mountable into the
-          Linux sandbox.</div>
+          never leave the tab. Attach a file and it mounts into the Linux
+          sandbox, and the model gets a picture or the text pulled out of a
+          document. There is no separate file index here: what a document
+          contributed is searchable only as part of the chat you attached it
+          to.</div>
         <div class="cmp-a rver"><span class="who">Se<span class="sl">/</span>rver:</span>
           uploaded, text-extracted and indexed so answers can draw on them.
           The originals rest readable in the cloud.</div>
@@ -431,11 +439,12 @@
         the search provider, metered against the grant's quota.</li>
       <li><b>Cookies and sign-in</b>: none on this tier. No account exists,
         and the page sets no identifying cookie.</li>
-      <li><b>The dimmed buttons</b>: features that need a server (accounts,
-        hosted web search, cloud documents, the camera) appear dimmed where
-        the signed-in app has them, and explain themselves when tapped. They
-        belong to DeepResearch.<b>Se<span class="sl">/</span>rver</b>, the
-        hosted tier.</li>
+      <li><b>The dimmed buttons</b>: a feature that needs a server — an
+        account, hosted web search, the camera — appears dimmed where the
+        signed-in app has it, explains itself when tapped, and belongs to
+        DeepResearch.<b>Se<span class="sl">/</span>rver</b>, the hosted
+        tier. Attaching files is no longer one of them: the paperclip works
+        here, because nothing about a file needs a server.</li>
     </ul>
   </section>
 

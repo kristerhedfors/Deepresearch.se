@@ -104,7 +104,9 @@ import { runDrcResearch } from "/js/drc-research.js";
 import { runBackendSearch as runDirectBackendSearch } from "/js/websearch-backends-core.js";
 import { normalizeExecBackend, probeRunner, resolveExecBackend, runnerStatusLine, usesLocalRunner } from "/js/exec-backends-core.js";
 import { EXA_SETTING_INFO, exaStatusText, getExaEnabled, getSearchSource, setExaEnabled } from "/js/search-source.js";
-import { ensureSandboxBooted, sandboxIdle, sandboxSupported, setSandboxImage } from "/js/sandbox.js";
+import { ensureSandboxBooted, resetSandboxIfLacking, sandboxIdle, sandboxSupported, setSandboxImage } from "/js/sandbox.js";
+import { MAX_DOC_CHARS, addPending, attachSummary, drcUserContent, sanitizeAttachName, sessionFilesFor } from "/js/drc-attach-core.js";
+import { splitUserContent } from "/js/message-content.js";
 import { hideTerminalIcon, remoteTerminalMirror, showTerminalIcon } from "/js/agent-backdrop.js";
 import {
   DOCS_CORPUS_PATH,
@@ -747,10 +749,12 @@ const DRS_FEATURES = {
     // a borrowed allowance or shared compute does put text on the wire.
     text: "The ghost in the signed-in app brings you HERE: Se/cure is ghost mode. This site's server never stores your messages, keys, or projects — there is nothing to keep out of any log. (In Se/rver the server honors per-conversation incognito for its own log; here the question doesn't arise.)",
   },
-  attach: {
-    title: "Attachments & documents",
-    text: "Attaching PDFs, DOCX and images — with full-document indexing for retrieval — is a Se/rver feature: the hosted pipeline parses and indexes your documents for cited answers.",
-  },
+  // `attach` is deliberately GONE (2026-08-05): attaching files is a Se/cure
+  // feature now, so a teaser card for it would be a lie, and a stale entry is
+  // the kind of thing that gets re-wired by accident. What remains a Se/rver
+  // feature is the HOSTED half — server-side parsing and cross-document
+  // retrieval indexing — which is a different claim and belongs to the
+  // features comparison, not to a dimmed button.
   camera: {
     title: "Photos",
     text: "Taking a photo (with EXIF location flowing into Maps/Street View research) is a Se/rver feature of the hosted pipeline.",
@@ -819,6 +823,10 @@ function privacyCtx() {
     workspaceGrants: sharedWorkspaceGrants,
     pool: poolInPath(pid),
     peerLabel: poolOwnerLabel(),
+    // Live tab state, never persisted: how many files are staged for the next
+    // send. The notice's attachment paragraph appears only when there are
+    // some, so a session that attaches nothing reads exactly as it did before.
+    attachments: pendingAttach.length,
   };
 }
 
@@ -1821,9 +1829,11 @@ function renderMessages() {
     }
     if (m.role === "user") {
       priorUserText = prevUserText;
-      prevUserText = typeof m.content === "string" ? m.content : "";
+      prevUserText = splitUserContent(m.content).text;
     }
-    box.appendChild(messageEl(m.role, m.content, { conv, index: i }));
+    // The bubble renders the WORDS; an attached image is shown by the
+    // pending row before the send, not replayed into the transcript.
+    box.appendChild(messageEl(m.role, splitUserContent(m.content).text, { conv, index: i }));
   });
   box.scrollTop = box.scrollHeight;
 }
@@ -2226,7 +2236,9 @@ async function introspectionContext(conv, latestText) {
     // user asked how something works, not to read the implementation.
     if (helpCommandTurn) {
       try {
-        const texts = conv.messages.filter((m) => m.role === "user").map((m) => m.content);
+        // splitUserContent: a turn with an attached image carries a PARTS
+        // ARRAY, and retrieval must query its words, not "[object Object]".
+        const texts = conv.messages.filter((m) => m.role === "user").map((m) => splitUserContent(m.content).text);
         phaseStep("introspect", "Reading the documentation…");
         const helpDocs = await helpDocsBlockFor(texts, retrievalQuery(texts));
         phaseStep("introspect", helpDocs ? "Documentation read" : "No matching documentation");
@@ -2238,7 +2250,7 @@ async function introspectionContext(conv, latestText) {
     return { block: "", fileProvider: null, snapshot: null };
   }
   try {
-    const texts = conv.messages.filter((m) => m.role === "user").map((m) => m.content);
+    const texts = conv.messages.filter((m) => m.role === "user").map((m) => splitUserContent(m.content).text);
     // What the docs/OWASP retrieval matches on: the latest message, unless it
     // is a bare back-reference ("try again"), which resolves to the question it
     // retries — the same widening the server tier applies (feedback #45). The
@@ -3772,6 +3784,102 @@ async function createWorkspaceLink() {
   }
 }
 
+// ---- attachments: files that never leave this browser ---------------------------------
+//
+// Se/cure accepts attachments (owner directive, 2026-08-05) and they go where
+// Se/rver's go: mounted into the Linux VM running in this tab, via the same
+// tier-agnostic fileProvider seam sandbox.js has always exposed. Nothing here
+// touches a server. The bytes are read with FileReader-equivalent browser
+// APIs, parsed (PDF/DOCX/MD/TXT) by /js/docs.js in this tab, handed to the VM
+// as raw bytes, and — for images — sent as content parts straight to the
+// provider whose key the user set. Invariant 4's exception count is unchanged
+// at two: neither the web-search grant nor the proxy bundle is involved.
+//
+// THE BYTES ARE TAB MEMORY ONLY, and that is a decision, not an oversight.
+// The sealed state is one AES-GCM blob in ~5 MB of localStorage, re-serialized
+// and re-encrypted on EVERY save (17 call sites, including knob toggles), and
+// drc-rag.js has already budgeted ~2 MB of that for the retrieval index. A
+// 4 MB PDF in there does not degrade gracefully: putSealedProject catches the
+// QuotaExceededError and returns false, so the WHOLE project silently stops
+// persisting and a reload loses the conversation too. So attachments live for
+// the tab and are gone on reload — stated in the composer, and in the privacy
+// notice, rather than discovered.
+/** @type {any[]} pending attachments for the NEXT send — never persisted */
+let pendingAttach = [];
+
+function renderPending() {
+  const el = $("pending");
+  if (!el) return;
+  el.textContent = "";
+  for (const [i, a] of pendingAttach.entries()) {
+    const chip = document.createElement("span");
+    chip.className = "att-chip";
+    const label = document.createElement("span");
+    label.className = "att-name";
+    label.textContent = sanitizeAttachName(a.name);
+    chip.appendChild(label);
+    const rm = document.createElement("button");
+    rm.type = "button";
+    rm.className = "att-remove";
+    rm.setAttribute("aria-label", `Remove ${sanitizeAttachName(a.name)}`);
+    rm.textContent = "×";
+    rm.addEventListener("click", () => {
+      pendingAttach = pendingAttach.filter((_, j) => j !== i);
+      renderPending();
+    });
+    chip.appendChild(rm);
+    el.appendChild(chip);
+  }
+  el.hidden = pendingAttach.length === 0;
+}
+
+// Read one picked file into the pending list. Images keep a downscaled data
+// URL for the model AND their original bytes for the VM; documents keep their
+// extracted text for the model AND their original bytes, so `pdftotext` in the
+// sandbox works on the real PDF rather than on our extraction of it.
+/** @param {File} file */
+async function ingestAttachment(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const name = file.name || "file";
+  const isImage = (file.type || "").startsWith("image/");
+  /** @type {any} */
+  const item = { kind: isImage ? "image" : "doc", name, type: file.type || "", bytes };
+  if (isImage) {
+    // Downscaled for the wire; the VM still gets the untouched original.
+    try {
+      const { downscaleImage } = await import("/js/image-downscale.js");
+      item.dataUrl = await downscaleImage(file, 280_000);
+    } catch {
+      item.dataUrl = "";
+    }
+    // EXIF is read from the bytes we already hold, not by re-reading the file.
+    // Se/rver's attachments.js does the same two-step (extractExif →
+    // formatExifSummary); there is no single "extract metadata" export.
+    try {
+      const { extractExif, formatExifSummary } = await import("/js/exif.js");
+      item.metadata = formatExifSummary(extractExif(bytes.buffer)) || null;
+    } catch { /* metadata is a bonus, never a blocker */ }
+  } else {
+    // Parsed HERE. docs.js is import-free and lazy-loads the vendored pdf.js
+    // only when a PDF actually arrives — no server round-trip in either case.
+    // A file it cannot parse is NOT an error: it still mounts as bytes, which
+    // is the half the sandbox cares about.
+    try {
+      const { isParsableDoc, parseDocFile } = await import("/js/docs.js");
+      if (isParsableDoc(file)) {
+        const parsed = await parseDocFile(file, MAX_DOC_CHARS);
+        item.text = parsed?.text || "";
+        item.truncated = !!parsed?.truncated;
+        item.metadata = parsed?.metadata || null;
+      }
+    } catch { /* unparsable — it still mounts as bytes */ }
+  }
+  const { list, error } = addPending(pendingAttach, item);
+  pendingAttach = list;
+  if (error) workStatus(error);
+  renderPending();
+}
+
 // ---- send: the client-side research pipeline -----------------------------------------
 
 async function send(ev) {
@@ -3885,7 +3993,21 @@ async function send(ev) {
   }
   // The stored turn keeps the tag (see `raw` above) — it is what a reviewer's
   // feedback and the chat's own history point back at.
-  conv.messages.push({ role: "user", content: raw });
+  //
+  // With attachments, `content` may be a PARTS ARRAY rather than a string:
+  // a document's extracted text is appended to the text (still a string), but
+  // an image becomes an image_url part, which is what drc-providers.js
+  // translates for Anthropic and passes through on every OpenAI-wire provider.
+  // Only IMAGES force the array — drcUserContent keeps the string shape
+  // otherwise, so the overwhelmingly common turn stays on the path the sealed
+  // state, the history and every planning prompt already had.
+  const sentAttach = pendingAttach;
+  conv.messages.push({ role: "user", content: drcUserContent(raw, sentAttach) });
+  // Taken for THIS send: the composer clears even if the send fails, matching
+  // Se/rver's take-and-clear, so a retry never silently re-sends a file the
+  // user thinks they removed.
+  pendingAttach = [];
+  renderPending();
   conv.title = conv.title || deriveDrcTitle(conv.messages);
   conv.updatedAt = Date.now();
   $("input").value = "";
@@ -3912,6 +4034,30 @@ async function send(ev) {
 
   const retrieved = await recallContext(conv, text);
   const intro = await introspectionContext(conv, text);
+
+  // The files this send mounts into the VM. Two scopes are merged here rather
+  // than in introspectionContext, which returns a provider ONLY in developer
+  // mode — attachments have to mount with developer mode OFF, which is the
+  // ordinary case.
+  const sessionFiles = sessionFilesFor(sentAttach);
+  const hasSource = !!intro.snapshot;
+  const fileProvider =
+    sessionFiles.length || intro.fileProvider
+      ? async () => {
+          const base = intro.fileProvider ? await intro.fileProvider() : {};
+          return { session: sessionFiles, project: null, source: base.source || null };
+        }
+      : null;
+  // THE TRAP this closes: ensureSandboxBooted is idempotent and returns the
+  // in-flight bootPromise, DISCARDING a later caller's provider. The page
+  // pre-warms a BARE VM on open, so without this the attachment provider is
+  // never even called — no device, no mount, an empty /workspace, and not one
+  // error anywhere. Mounts are fixed at Linux.create, so a VM can only GAIN a
+  // scope by being discarded and rebooted. Skipped for a local runner, which
+  // mounts over DREE/1 after boot and has no VM to discard.
+  if (!usesLocalRunner(execBackendCfg())) {
+    await resetSandboxIfLacking({ files: sessionFiles.length > 0, source: hasSource });
+  }
 
   let shown = "";
   let errMsg = null;
@@ -3952,7 +4098,12 @@ async function send(ev) {
       // user's own DREE/1 runner on localhost. Sealed state, browser-direct
       // either way — the server is in neither path.
       execCfg: execBackendCfg(),
-      fileProvider: intro.fileProvider,
+      fileProvider,
+      // Stated, not inferred. drc-research.js used to derive "the site's
+      // source is mounted at /src" from the mere EXISTENCE of a provider,
+      // which attachments turn into a lie to the model.
+      sourceMounted: hasSource,
+      filesMounted: sessionFiles.length > 0,
       // The local provider's whole wire config is its user-set base URL —
       // every pipeline call already threads baseUrl down (the trajectory
       // doc's one-line send-path edit; other providers keep their registry base).
@@ -4330,6 +4481,11 @@ function prewarmDrcSandbox() {
     // /src at boot, and a bare pre-warm would be adopted (idempotent boot) and
     // lose the mount. It boots on the first source-tool call instead.
     if (state.developerMode === true) return;
+    // Same reasoning for a pending attachment, and the same policy Se/rver
+    // uses: a bare VM booted now would only be discarded by the send's
+    // resetSandboxIfLacking, so pre-warming would cost a boot to throw away.
+    // The send boots it with the files instead.
+    if (pendingAttach.length) return;
     // Ensure the selected image is applied before the boot chooses its disk.
     applyDrcSandboxImage().finally(() => {
       if (!sandboxIdle()) return;
@@ -4450,6 +4606,25 @@ $("privacybtn").addEventListener("click", () => {
 $("unlockform").addEventListener("submit", unlock);
 $("newbtn").addEventListener("click", () => generateNew().catch((e) => gateStatus(e?.message || "Failed.")));
 $("exportbtn").addEventListener("click", () => exportBackup().catch((e) => gateStatus(e?.message || "Export failed.")));
+// The paperclip. Not a teaser any more: it opens a real file picker whose
+// bytes never leave this tab. `value = ""` so re-picking the same file
+// re-fires change — the same idiom the backup import below uses.
+$("attach").addEventListener("click", () => $("attachfile").click());
+$("attachfile").addEventListener("change", async () => {
+  const input = /** @type {HTMLInputElement} */ ($("attachfile"));
+  const files = [...(input.files || [])];
+  input.value = "";
+  for (const f of files) {
+    try {
+      await ingestAttachment(f);
+    } catch {
+      workStatus(`Could not read ${sanitizeAttachName(f.name)}.`);
+    }
+  }
+  const summary = attachSummary(pendingAttach);
+  if (summary) workStatus(summary + " — they stay in this browser.");
+});
+
 $("importbtn").addEventListener("click", () => $("importfile").click());
 $("importfile").addEventListener("change", async () => {
   const file = /** @type {HTMLInputElement} */ ($("importfile")).files?.[0];

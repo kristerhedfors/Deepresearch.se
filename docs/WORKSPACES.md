@@ -137,7 +137,7 @@ capability for it.
 | **Who pays for the model** | you do — it is your key, your local machine, or your device. Or the person who lent you the workspace, for as long as they leave the allowance open | the account owner, against the site's quotas |
 | **Web search** | off by default. Either run your own search service, or use a search allowance someone lent you — in which case only the search query leaves your browser, never the conversation | on. Live web search with numbered, domain-diverse sources |
 | **Maps, Street View, host intelligence (Shodan), geocoding** | not available. These need keys the server holds, and a server-held key means a server in the data path | available as opt-in knobs |
-| **Files and documents** | stay in the browser. They can be searched locally and mounted into the Linux sandbox | uploaded to your account, text-extracted and indexed, so the assistant can retrieve across them. Originals rest readable in the cloud |
+| **Files and documents** | never leave the tab. An attached file mounts into the Linux sandbox, and the model gets an image or the text extracted from a document. There is no file index: what a document contributed is searchable only as part of the chat it was attached to. The link carries no file bytes (§3.4) | uploaded to your account, text-extracted and indexed, so the assistant can retrieve across them. Originals rest readable in the cloud |
 | **Retrieval over your material** | a local index in this browser | a real vector index, scoped to that one workspace |
 | **In-browser Linux, on-device models** | yes — identical on both tiers. Neither ever leaves the browser | yes — identical |
 | **Sharing with someone else** | send the link, and the password by a different channel. Nothing is registered anywhere | invite by workspace link or campaign, or lend your own machine's model as pooled compute |
@@ -239,8 +239,8 @@ your data.
 | Server can read the record | **no** — the fragment never reaches it | **yes, by re-deriving the key** — this is the tier's honest cost |
 | Readable by design | nothing | RAG-indexed material and workspace chats (retrieval needs plaintext) |
 | Conversations | client-side pipeline on the user's own/local provider, or borrowed grants | `/api/chat` — full server pipeline, logged in `chat_logs` unless `incognito` |
-| Material / files | in the browser (OPFS), optionally mounted into the sandbox | R2 `files/{uid}/…`, RAG-indexed into Vectorize |
-| Retrieval | browser index (IndexedDB, local cosine top-k) | Vectorize, scoped to the workspace's doc ids |
+| Material / files | in tab memory for one send; mounted into the sandbox, sent to the user's own provider. Originals are never stored, and never ride the link (§3.4) | R2 `files/{uid}/…`, RAG-indexed into Vectorize |
+| Retrieval | browser index over the workspace's chats (local cosine top-k) | Vectorize, scoped to the workspace's doc ids |
 | Server-side enrichments (Shodan, Maps, Nominatim, HF) | **not available** — each is a server-side key in a server data path | available, per-knob |
 | In-browser Linux (CheerpX) | yes | yes |
 | On-device model (WebGPU) | yes | yes |
@@ -317,7 +317,7 @@ What a Se/cure workspace can do, and what powers it:
 | Live web search | the metered web-search grant (query only) | **yes — query only**, exception 1 |
 | Borrowed completions and embeddings | the `api` proxy grant / Se/rver token | **yes — content**, exception 2, disclosed in the UI |
 | Peer compute | a pool token; the answer runs on the pool owner's machine | **yes — relayed**, `docs/COMPUTE-SHARING.md` §7 |
-| Retrieval over own material | browser RAG index (IndexedDB, cosine top-k) | no (embeddings need a grant) |
+| Retrieval over own material | browser RAG index over the workspace's chats, sealed with the state, cosine top-k | no (embeddings need a grant) |
 | In-browser Linux | CheerpX VM, files mounted from the browser | no |
 | Publishing a frozen replay | `src/pub.js`, an explicit act | yes — the published replay is public |
 | Contributing conclusions back | sealed `drskn` bundle (§5.2) | depends on the return channel |
@@ -329,11 +329,23 @@ What a Se/cure workspace can do, and what powers it:
 |---|---|---|---|
 | the link blob | wherever the link was sent | yes (AES-256-GCM) | the password holder |
 | opened workspace state (chats + keys) | browser storage (`public/js/drc-store.js`) | yes | the user's master secret |
-| attached files | browser (OPFS) | as the store holds them | the user |
-| browser RAG index | IndexedDB | no — retrieval needs plaintext chunks | the browser only |
+| an attached file's original bytes | tab memory, for one send (`public/js/drc-attach-core.js`) | n/a — written to no store at all | nobody, once the tab closes |
+| what an attachment put in a message (a document's extracted text, an image's downscaled copy) | inside the conversation, so wherever the conversation rests | yes, with the sealed state | the user's master secret |
+| browser RAG index | inside the sealed state, like everything else (`drc-rag.js`) | yes — stricter than Se/rver, where indexed chunks rest readable | the user's master secret |
 | sandbox volumes | IndexedDB (CheerpX overlay) | no | the browser only |
 | grant meters | D1 on the server | n/a — counters and a `jti`, no content | the server |
 | a published replay | R2 `pub/{slug}` | no — publishing is the point | public |
+
+**A Se/cure workspace carries no attachment bytes.** Two reasons, and they are
+independent. First, the standard: DRSW/1 §5.5 reserves `materials` — attached
+documents and RAG indexes — for a future revision, because fragment transport
+is bounded at tens of KB (DRSW/1 §9, "size") and a chunked-file convention does
+not exist yet. Second, the code: `buildWorkspacePayload`
+(`public/js/workspace-core.js`) keeps only messages whose `content` is a plain
+string, and `validateWorkspacePayload` rejects anything else, so a turn holding
+an image part is dropped from the payload rather than shrunk into it. What does
+travel is what a document contributed as ordinary message text. This matches
+how §7.2 handles a conclusion: material goes by name and id, never as bytes.
 
 ### 3.5 Exposure ledger
 
@@ -343,7 +355,7 @@ Read this as *"what does an attacker get, given exactly this"*:
 |---|---|
 | the link alone | ciphertext; must pay 8192 SHA-512 rounds per password guess |
 | the password alone | nothing — it locates nothing |
-| link + password | every section that was ticked at mint (§3.2's last column) |
+| link + password | every section that was ticked at mint (§3.2's last column) — but **no attached file**: originals never enter the payload, and a turn carrying an image part is dropped from it entirely (§3.4). A document's extracted text travels only because it is message text |
 | the server's logs and storage | nothing about the workspace itself: the fragment never arrived. Grant *meters* show a `jti`, counts, and timing |
 | a grant token from the link | a bounded, metered allowance the admin can pause (quota 0) or revoke instantly |
 | an `api` grant and the server | the prompts and documents sent through that grant — this is the disclosed exception |

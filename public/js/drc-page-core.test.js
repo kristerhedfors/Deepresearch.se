@@ -152,6 +152,96 @@ test("privacyNoticeLines: a local/on-device model keeps the conversation on the 
   assert.doesNotMatch(model, /your own API key/);
 });
 
+test("privacyNoticeLines: no attachments → no attachment line at all", () => {
+  // The notice must not grow a paragraph about files for a session that has
+  // none — absent, 0 and an empty count all read as "no files here".
+  for (const ctx of [{}, { attachments: 0 }, { provider: "OpenAI" }]) {
+    assert.equal(
+      privacyNoticeLines(ctx).find((l) => l.startsWith("Attached files:")),
+      undefined,
+    );
+  }
+});
+
+test("privacyNoticeLines: attachments on an own-key provider name it and say they can read the CONTENT", () => {
+  // The bytes are local, but the model still gets the document's contents —
+  // stopping after "read in this browser" would be the honest-looking half.
+  const line = privacyNoticeLines({ provider: "OpenAI", attachments: 2 }).find((l) =>
+    l.startsWith("Attached files:"),
+  );
+  assert.match(line, /read IN THIS BROWSER/);
+  assert.match(line, /mounted into the Linux VM running in this tab/);
+  assert.match(line, /OpenAI/);
+  assert.match(line, /your own API key/);
+  // the content, not just a filename — and blunt about who can read it
+  assert.match(line, /extracted TEXT and an image's actual CONTENT/);
+  assert.match(line, /can read the file's contents, not just its name/);
+  // attachments are tab-memory only, because the sealed state holds no bytes
+  assert.match(line, /gone when you reload/i);
+  assert.match(line, /sealed browser storage deliberately holds no file bytes/);
+});
+
+test("privacyNoticeLines: attachments on a borrowed allowance name the through-the-server path", () => {
+  // Invariant 4's exception 2: this is the one disclosed path where Se/cure
+  // CONTENT touches the server, and a file's content is exactly that.
+  const line = privacyNoticeLines({
+    provider: "Berget (borrowed)",
+    viaProxy: true,
+    attachments: 1,
+    grantsConnected: true,
+  }).find((l) => l.startsWith("Attached files:"));
+  assert.match(line, /THROUGH the DeepResearch\.Se server to Berget/);
+  assert.match(line, /borrowed, metered, time-limited allowance/);
+  assert.match(line, /carries the file's contents, not just its name/);
+  // the own-key wording would be a lie on a borrowed allowance
+  assert.doesNotMatch(line, /your own API key/);
+});
+
+test("privacyNoticeLines: attachments with a local model never leave the device", () => {
+  const line = privacyNoticeLines({ provider: "Local", local: true, attachments: 3 }).find((l) =>
+    l.startsWith("Attached files:"),
+  );
+  assert.match(line, /never leave this device at all/);
+  // no third party to name, and no key of the user's is in play
+  assert.doesNotMatch(line, /your own API key/);
+  assert.doesNotMatch(line, /THROUGH the DeepResearch\.Se server/);
+});
+
+test("privacyNoticeLines: attachments under shared compute name the peer who reads them", () => {
+  // Shared compute relays through the server to ANOTHER USER's machine, so the
+  // file's contents land with a named human — the largest disclosure of the four.
+  const line = privacyNoticeLines({ pool: true, peerLabel: "Ada", attachments: 1 }).find((l) =>
+    l.startsWith("Attached files:"),
+  );
+  assert.match(line, /THROUGH the DeepResearch\.Se server/);
+  assert.match(line, /Ada's own machine/);
+  assert.match(line, /Ada can read the file's contents, not just its name/);
+  assert.doesNotMatch(line, /your own API key/);
+});
+
+test("privacyNoticeLines: the attachment line never claims the server stores, parses or indexes the file", () => {
+  // Every posture keeps the same three negations — no byte reaches
+  // deepresearch.se, and nothing is server-side parsed or indexed.
+  for (const ctx of [
+    { provider: "OpenAI", attachments: 1 },
+    { provider: "Berget (borrowed)", viaProxy: true, attachments: 1 },
+    { provider: "Local", local: true, attachments: 1 },
+    { pool: true, peerLabel: "Ada", attachments: 1 },
+    { workspaceName: "shared kit", workspaceGrants: { llm: true }, viaProxy: true, attachments: 1 },
+  ]) {
+    const line = privacyNoticeLines(ctx).find((l) => l.startsWith("Attached files:"));
+    assert.match(
+      line,
+      /never uploaded to the DeepResearch\.Se server, never parsed on a server, never indexed on a server/,
+    );
+    // and no stray affirmative slips in: "uploaded"/"indexed" appear only
+    // under a "never", and nothing is ever said to REST on a server.
+    assert.doesNotMatch(line, /(?<!never )uploaded/i);
+    assert.doesNotMatch(line, /(?<!never )indexed/i);
+    assert.doesNotMatch(line, /stored on (?:the DeepResearch\.Se|a) server/i);
+  }
+});
+
 test("privacyNoticeLines: the web-search line follows the route", () => {
   const grant = privacyNoticeLines({ search: "grant" }).find((l) => l.startsWith("Web search:"));
   assert.match(grant, /only the search QUERY/i);
@@ -277,6 +367,14 @@ test("providerVisibilityNote: the standing model-picker disclosure per provider 
   const proxy = providerVisibilityNote("proxy");
   assert.match(proxy, /through this site's server/i);
   assert.match(proxy, /Berget/);
+  // "your words" alone understates a document or an image on the one path
+  // where Se/cure content touches the server, so the standing line names
+  // attachments unconditionally — it takes no per-session flag (that is
+  // privacyNoticeLines' job, posture-matched and only when files exist).
+  assert.match(proxy, /anything you attach/);
+  // @ts-expect-error — the standing line is provider-scoped: session state
+  // (here, pending attachments) is not an input and cannot change it.
+  assert.equal(providerVisibilityNote("openai", "OpenAI", { attachments: 2 }), openai);
 });
 
 test("unlockCelebrationSize: ~72% of the short viewport side, clamped, garbage-safe", () => {

@@ -48,6 +48,13 @@ import {
   shellCommandLabel,
 } from "./bash-core.js";
 import { AI_MODEL_NOT_A_PACKAGE_NOTE, AI_MODEL_RESEARCH_NOTE, aiModelIntent } from "./ai-models.js";
+// The SAME accessor Se/rver uses for a multimodal turn (message-content.js —
+// an import-free leaf, allowlisted for the public /cure graph). Every phase
+// below plans over TEXT, so a turn whose content is a parts array
+// ([{type:"text"},{type:"image_url"}]) must be read through this rather than
+// concatenated — string-concatenating one yields "[object Object]" in the
+// prompt, and the image bytes themselves never belong in a planning prompt.
+import { splitUserContent } from "./message-content.js";
 import { ensureSandboxBooted, execInSandbox, sandboxSupported } from "./sandbox.js";
 import { resolveExecBackend, selectRunner } from "./exec-backends-core.js";
 import {
@@ -324,12 +331,23 @@ export const drcDirectPromptWeb = ({ reportTier = "standard" } = {}) =>
 // Se/rver-only by the tier gate, so unlike the DRS prompt this one never
 // describes it. `env` is the resolved backend id; anything unrecognised falls
 // back to the browser wording, whose rules are strictly more restrictive.
-/** @param {{sourceMounted?: boolean, env?: string}} [opts] */
+//
+// `filesMounted` is the ATTACHMENT counterpart of `sourceMounted`: the VM
+// boots with the user's attached files under /workspace/ and a manifest at
+// /workspace/INDEX.txt (sandbox-files.js buildManifest), but a model that is
+// never told treats the sandbox as empty and never looks — so the paragraph is
+// emitted exactly when files were really mounted. It says less than the
+// Se/rver twin (src/prompts.js bashAgentPrompt) on purpose: this string ships
+// to the browser on every step request.
+/** @param {{sourceMounted?: boolean, filesMounted?: boolean, env?: string}} [opts] */
 export const drcBashAgentPrompt = (opts = {}) =>
   `You drive a Linux command-line sandbox for DeepResearch.Se/cure, Deepresearch.se's client-side mode. Today's date: ${today()}.\n` +
   (opts.env === "local"
     ? "A Linux container runs NATIVELY on the user's own machine, reached through a small service they started (real hardware speed) — no data leaves their computer. You are root inside it; common tools are available (coreutils, grep/sed/awk, bash, python3, bc). Assume NO network — treat the sandbox as OFFLINE and compute from local tools only.\n"
     : "A minimal Debian Linux runs entirely in the user's browser (a WASM x86 emulator). You are root; common tools are available (coreutils, grep/sed/awk, bash, python3, bc). There is NO network — treat the sandbox as OFFLINE and compute from local tools only.\n") +
+  (opts.filesMounted
+    ? "ATTACHED FILES: the user's attached files are mounted read-write at /workspace/ and persist across sessions. Run `cat /workspace/INDEX.txt` first to see what is there, then read them as inputs (cat/grep/awk/`python3 script.py /workspace/data.csv`) and write your own results under /workspace/ too.\n"
+    : "") +
   (opts.sourceMounted
     ? "INTROSPECTION (developer mode is on): the complete source tree of the Deepresearch.se site itself is mounted read-only at /src (also reachable as /workspace/source) — e.g. /src/src/pipeline.js, /src/public/js/app.js, /src/CLAUDE.md. When the user asks about the site's own code, source, implementation, or wants it explored, ls/cat/grep -rn under /src; never claim the source is unavailable.\n"
     : "") +
@@ -417,11 +435,20 @@ export function renderDrcNotes(harvest) {
 }
 
 // Conversation context for the planning phases — the last turns, bounded.
+// A turn with an attachment carries a multimodal parts array, so each line is
+// built from its TEXT parts: concatenating the raw content put a literal
+// "[object Object]" into every planning prompt. The image is not dropped
+// silently — an attachment leaves a short "[image attached]" marker so triage
+// can still see that the turn had one (the picture itself reaches the ANSWER
+// model, which receives `messages` verbatim; the planning phases run on the
+// fixed cheap json model, which need not have vision at all).
 /** @param {any[]} messages */
 export function drcContext(messages) {
   let out = "";
   for (let i = messages.length - 1; i >= 0; i--) {
-    const line = messages[i].role.toUpperCase() + ": " + messages[i].content + "\n";
+    const { text, imageUrls } = splitUserContent(messages[i].content);
+    const mark = imageUrls.length ? (text ? " " : "") + `[${imageUrls.length} image${imageUrls.length === 1 ? "" : "s"} attached]` : "";
+    const line = messages[i].role.toUpperCase() + ": " + text + mark + "\n";
     if (out.length + line.length > CONTEXT_CHARS) break;
     out = line + out;
   }
@@ -485,9 +512,23 @@ function emitChunked(text, onDelta) {
 // never boots the VM. `sandbox` is injectable for tests; defaults to the real
 // public/js/sandbox.js bridge.
 /** @param {any} opts */
-async function runDrcShellPass({ provider, apiKey, jsonModel, question, context, signal, baseUrl, onStatus, sandbox, execCfg, fileProvider, budgetS }) {
+async function runDrcShellPass({ provider, apiKey, jsonModel, question, context, signal, baseUrl, onStatus, sandbox, execCfg, fileProvider, sourceMounted, filesMounted, budgetS }) {
   const sb = sandbox || pickRunner(execCfg);
   if (!sb.supported()) return [];
+  // WHAT the boot actually mounted, stated by the caller — not inferred.
+  // This used to read `sourceMounted: !!fileProvider`, on the reasoning that
+  // in Se/cure a fileProvider exists ONLY for introspection. Attachments
+  // ended that: a provider now also mounts the user's OWN files, and the
+  // inference would have told the model the site's source tree is at /src
+  // when it is not, sending it grepping through a directory that does not
+  // exist. The source of truth for /src is the SOURCE SNAPSHOT, and for
+  // /workspace the attached files — two independent facts, so two flags.
+  // Both defaults are today's behaviour, so a caller that has not been
+  // updated is unaffected: /src falls back to the old inference, and the
+  // attachment paragraph — which did not exist at all before — stays off
+  // until someone actually mounts files.
+  const srcMounted = typeof sourceMounted === "boolean" ? sourceMounted : !!fileProvider;
+  const filesOn = filesMounted === true;
   // The /cure slider's research budget scopes the per-command ceiling, same
   // as DRS (stream.js): a 15 s question must not sit 30 s on one wedged
   // command. Injected test sandboxes just ignore the extra options argument.
@@ -506,10 +547,15 @@ async function runDrcShellPass({ provider, apiKey, jsonModel, question, context,
         provider,
         apiKey,
         jsonModel,
-        // In DRC the fileProvider exists ONLY for introspection (drc.js) —
-        // its presence means the boot mounts the source tree at /src.
         [
-          { role: "system", content: drcBashAgentPrompt({ sourceMounted: !!fileProvider, env: pickRunnerBackend(execCfg) }) },
+          {
+            role: "system",
+            content: drcBashAgentPrompt({
+              sourceMounted: srcMounted,
+              filesMounted: filesOn,
+              env: pickRunnerBackend(execCfg),
+            }),
+          },
           { role: "user", content: userMsg },
         ],
         { signal, baseUrl },
@@ -658,8 +704,10 @@ export async function runDrcSourceTools({
  * the introspection-mode source-snapshot block (built by the page from
  * introspect-core.js when developer mode is on and the conversation engages
  * the mode) — threaded exactly like the recall block; `fileProvider` is the
- * matching sandbox mount provider (the /src source tree), handed to the VM
- * boot when the bash pass runs. Emits
+ * matching sandbox mount provider (the /src source tree, the user's attached
+ * files, or both), handed to the VM boot when the bash pass runs, with
+ * `sourceMounted` / `filesMounted` saying which of the two it actually
+ * mounted. Emits
  * onStatus({type:"phase", phase, detail?}),
  * onStatus({type:"detail", label?, lines?}) — a finished phase's OUTCOME:
  * an optional completed label (the Se/rver step_done relabel) plus plain
@@ -690,6 +738,13 @@ export async function runDrcResearch({
   // routes every command to a DREE/1 runner on their own machine instead.
   execCfg = null,
   fileProvider = null,
+  // WHAT that provider mounts, stated rather than inferred (see
+  // runDrcShellPass): `sourceMounted` is the site's own source tree at /src
+  // (developer mode — the snapshot's presence is the truth), `filesMounted`
+  // the user's attached files under /workspace/. Left null they fall back to
+  // the pre-attachment behaviour.
+  sourceMounted = null,
+  filesMounted = null,
   webSearch = null,
   onStatus = () => {},
   onDelta = () => {},
@@ -720,7 +775,12 @@ export async function runDrcResearch({
   const startedAt = Date.now();
   const withinBudget = (/** @type {number} */ fraction) =>
     phaseWithinBudget(startedAt, plan.budgetMs, fraction, Date.now());
-  const question = messages[messages.length - 1]?.content || "";
+  // The latest turn's TEXT. It feeds the planning prompts, the shell-pass
+  // task line, and the deterministic intent gates (aiModelIntent/bashIntent),
+  // all of which take a string — with an attachment the content is a parts
+  // array, and using it raw put "[object Object]" in every one of them. The
+  // image itself stays on the ANSWER path, which sends `messages` verbatim.
+  const question = splitUserContent(messages[messages.length - 1]?.content).text || "";
   const recall = typeof retrieved === "string" ? retrieved.trim() : "";
   const intro = typeof introspection === "string" ? introspection.trim() : "";
   const context = drcContext(messages) + (recall ? "\n\n" + recall : "") + (intro ? "\n\n" + intro : "");
@@ -817,7 +877,7 @@ export async function runDrcResearch({
   const pureModelQuestion = aiModelIntent(question) && !bashIntent(question);
   if (bash && !pureModelQuestion) {
     try {
-      const transcript = await runDrcShellPass({ provider, apiKey, jsonModel, question, context, signal, baseUrl, onStatus, sandbox, execCfg, fileProvider, budgetS });
+      const transcript = await runDrcShellPass({ provider, apiKey, jsonModel, question, context, signal, baseUrl, onStatus, sandbox, execCfg, fileProvider, sourceMounted, filesMounted, budgetS });
       shellBlock = buildShellTranscript(transcript);
     } catch {
       shellBlock = "";

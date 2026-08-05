@@ -14,10 +14,18 @@
 // is injectable for Node tests (any Storage-shaped object); the default
 // is this browser's localStorage.
 //
-// localStorage over IndexedDB, a deliberate judgement call: DRC states
-// are text conversations (no attached-file bytes — those are DRS
-// features), so the ~5 MB quota is generous, and the synchronous
-// key-value API keeps this adapter small enough to audit at a glance.
+// localStorage over IndexedDB, a deliberate judgement call the ~5 MB quota
+// carries. DRC has file attachments now (public/js/drc-attach-core.js), so
+// the premise is no longer "there are no files" — it is that a file's
+// ORIGINAL bytes deliberately never enter a sealed state. They live in tab
+// memory for one send and are gone with the tab. The only attachment-derived
+// thing that reaches this store is what went INTO the message: a document's
+// extracted text, and an image's downscaled data URL, whose per-message char
+// budget is capped over there (MAX_TOTAL_IMAGE_CHARS) precisely so a
+// conversation stays inside this quota once base64 has inflated the seal by
+// ~4/3. So the judgement stands, and the synchronous key-value API keeps
+// this adapter small enough to audit at a glance. Anything that would put
+// raw file bytes here needs the other adapter, not a bigger cap.
 
 const PREFIX = "drc:project:"; // + blobId → base64(sealed bytes)
 

@@ -74,7 +74,7 @@ export const FEATURE_ITEMS = [
     impact: "medium",
     status: "open",
     summary:
-      "sandbox-files.js + the sandbox.js device mounts land the tiered ingest (/workspace + /mnt/<proj>-<hash>) and the /src introspection mount exists. RESIDUAL: overlay-persistence UX and the DRC-side file provider need a live pass so attachments/project files reliably reach the VM on both DRS and DRC.",
+      "sandbox-files.js + the sandbox.js device mounts land the tiered ingest (/workspace + /mnt/<proj>-<hash>) and the /src introspection mount exists. The DRC half now exists too: drc-attach-core.js maps Se/cure attachments onto the same fileProvider `session` shape planMounts consumes, with the original bytes held in tab memory and never written to the sealed state. RESIDUAL: none of it has been through a live browser pass on either tier, and overlay-persistence UX is still unaddressed.",
   },
   {
     id: "F-3",

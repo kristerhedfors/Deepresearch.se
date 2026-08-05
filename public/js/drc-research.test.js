@@ -5,6 +5,7 @@ import {
   DRC_DEPTH_TIERS,
   GAP_DEADLINE_FRACTION,
   VALIDATE_DEADLINE_FRACTION,
+  drcBashAgentPrompt,
   drcContext,
   drcDirectPrompt,
   drcDirectPromptWeb,
@@ -66,6 +67,33 @@ test("renderDrcNotes marks empty harvests honestly", () => {
   assert.match(text, /no confident facts harvested/);
 });
 
+// A turn with an attachment carries a multimodal parts array. Pins that the
+// context line is built from its TEXT parts: string-concatenating the raw
+// content put a literal "[object Object]" into every planning prompt (triage,
+// gap check, validation), and the base64 image bytes must never land in one.
+test("drcContext renders a multimodal turn as text, never [object Object]", () => {
+  const ctx = drcContext([
+    { role: "user", content: "plain string turn" },
+    { role: "assistant", content: "ok" },
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "What is in this photo?" },
+        { type: "image_url", image_url: { url: "data:image/png;base64,SECRETBYTES" } },
+      ],
+    },
+  ]);
+  assert.match(ctx, /USER: What is in this photo\? \[1 image attached\]/);
+  assert.equal(ctx.includes("[object Object]"), false);
+  assert.equal(ctx.includes("SECRETBYTES"), false); // image bytes stay off the planning wire
+  assert.match(ctx, /USER: plain string turn/); // string turns unchanged
+  // An image-only turn still shows the planner that something was attached.
+  const only = drcContext([
+    { role: "user", content: [{ type: "image_url", image_url: { url: "data:image/png;base64,AA" } }] },
+  ]);
+  assert.equal(only, "USER: [1 image attached]");
+});
+
 test("drcContext keeps the last turns inside the budget", () => {
   const messages = [
     { role: "user", content: "x".repeat(20_000) },
@@ -108,6 +136,38 @@ test("the web-search prompt variants flip the honesty rules to citation rules", 
   // The web synth prompt drops the offline "no web sources / training cutoff"
   // framing (it now HAS sources) — a guard against reusing the offline text.
   assert.doesNotMatch(drcSynthPromptWeb(), /never invent citations, bracketed numbers, or URLs/);
+});
+
+// The two mounts the sandbox may carry are INDEPENDENT facts about the boot —
+// the site's own source at /src (developer mode) and the user's attached files
+// under /workspace/ — so the prompt describes each one only when it is really
+// there. Telling the model about a mount that does not exist sends it grepping
+// an empty tree; staying silent about one that does means it never looks
+// (docs/SANDBOX-HOST-COMMANDS.md: "the model treats the sandbox as empty and
+// never looks"). All four combinations pinned.
+test("drcBashAgentPrompt: /src and /workspace are stated independently", () => {
+  // The /src paragraph itself mentions /workspace/source, so the attachment
+  // paragraph is identified by its manifest line instead.
+  const hasFiles = (/** @type {string} */ p) => p.includes("/workspace/INDEX.txt");
+  const hasSource = (/** @type {string} */ p) => p.includes("mounted read-only at /src");
+
+  const neither = drcBashAgentPrompt();
+  assert.equal(hasSource(neither), false);
+  assert.equal(hasFiles(neither), false);
+  assert.equal(neither.includes("/workspace"), false); // nothing at all about mounts
+
+  const src = drcBashAgentPrompt({ sourceMounted: true });
+  assert.equal(hasSource(src), true);
+  assert.equal(hasFiles(src), false);
+
+  const files = drcBashAgentPrompt({ filesMounted: true });
+  assert.equal(hasSource(files), false);
+  assert.equal(hasFiles(files), true);
+  assert.match(files, /read-write at \/workspace\//);
+
+  const both = drcBashAgentPrompt({ sourceMounted: true, filesMounted: true });
+  assert.equal(hasSource(both), true);
+  assert.equal(hasFiles(both), true);
 });
 
 // ---- the research time budget (the /cure slider — Se/rver's, mirrored) ---------------
@@ -812,6 +872,105 @@ describe("DRC developer-mode tool loop", () => {
     const toolNames = requests[0].tools.map((t) => t.function.name);
     assert.ok(!toolNames.includes("run_bash"));
     assert.deepEqual(toolNames.sort(), ["grep_source", "list_files", "read_file"]);
+  });
+});
+
+// ---- the bash pass: what the model is TOLD is mounted --------------------------------
+//
+// The shell step's system prompt used to infer the /src mount from
+// `!!fileProvider`, on the reasoning that in Se/cure a fileProvider exists
+// ONLY for introspection. Attachments ended that — a provider now also mounts
+// the user's own files — so the caller states both facts and the pass must use
+// what it was given, not what it can guess from the provider's existence.
+describe("runDrcResearch bash pass: the mounts are the caller's, not an inference", () => {
+  const calls = []; // every request body, in order
+  const server = http.createServer((req, res) => {
+    let raw = "";
+    req.on("data", (d) => (raw += d));
+    req.on("end", () => {
+      const body = JSON.parse(raw);
+      calls.push(body);
+      const system = body.messages[0]?.content || "";
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      // The shell step returns SHELL_DONE cold: the loop ends with no
+      // commands, so the VM never boots and the pass costs one model call.
+      res.end(sse([system.includes("You drive a Linux command-line sandbox") ? "SHELL_DONE" : "Answer."]));
+    });
+  });
+  let baseUrl;
+  before(async () => {
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    baseUrl = `http://127.0.0.1:${server.address().port}/v1`;
+  });
+  after(() => server.close());
+
+  // Injected sandbox (the module's own test seam): supported, never booted.
+  const sandbox = {
+    supported: () => true,
+    boot: async () => true,
+    exec: async () => ({ exitCode: 0, stdout: "", stderr: "" }),
+  };
+  const fileProvider = async () => ({ session: [], project: null, source: null });
+
+  const shellSystem = async (/** @type {any} */ opts, /** @type {any} */ content = "grep the mounted files") => {
+    calls.length = 0;
+    await runDrcResearch({
+      providerId: "berget",
+      apiKey: "user-berget-key",
+      model: "moonshotai/Kimi-K2.6",
+      messages: [{ role: "user", content }],
+      research: false, // one direct answer after the pass — keeps the flow short
+      bash: true,
+      sandbox,
+      onDelta: () => {},
+      baseUrl,
+      ...opts,
+    });
+    const step = calls.find((b) => (b.messages[0]?.content || "").includes("You drive a Linux command-line sandbox"));
+    assert.ok(step, "the shell pass ran");
+    return step;
+  };
+
+  const hasFiles = (/** @type {string} */ p) => p.includes("/workspace/INDEX.txt");
+  const hasSource = (/** @type {string} */ p) => p.includes("mounted read-only at /src");
+
+  test("an explicit sourceMounted:false wins over the presence of a fileProvider", async () => {
+    const step = await shellSystem({ fileProvider, sourceMounted: false, filesMounted: true });
+    // The provider exists, but it mounts ATTACHMENTS — claiming /src here
+    // would send the model grepping a tree that is not in the VM.
+    assert.equal(hasSource(step.messages[0].content), false);
+    assert.equal(hasFiles(step.messages[0].content), true);
+  });
+
+  test("sourceMounted:true describes /src; filesMounted:false leaves /workspace unmentioned", async () => {
+    const step = await shellSystem({ fileProvider, sourceMounted: true, filesMounted: false });
+    assert.equal(hasSource(step.messages[0].content), true);
+    assert.equal(hasFiles(step.messages[0].content), false);
+  });
+
+  test("no flags: the old inference stands (a fileProvider still means /src), files stay off", async () => {
+    const withProvider = await shellSystem({ fileProvider });
+    assert.equal(hasSource(withProvider.messages[0].content), true);
+    assert.equal(hasFiles(withProvider.messages[0].content), false);
+    const without = await shellSystem({});
+    assert.equal(hasSource(without.messages[0].content), false);
+    assert.equal(hasFiles(without.messages[0].content), false);
+  });
+
+  // The pass's task line is the latest user message's TEXT. With an attachment
+  // the content is a parts array, which used to be concatenated straight into
+  // the step message as "[object Object]".
+  test("the step's task carries a multimodal turn's text, not [object Object]", async () => {
+    const step = await shellSystem({ filesMounted: true }, [
+      { type: "text", text: "count the rows in the attached csv" },
+      { type: "image_url", image_url: { url: "data:image/png;base64,SECRETBYTES" } },
+    ]);
+    const user = step.messages[1].content;
+    assert.match(user, /count the rows in the attached csv/);
+    assert.equal(user.includes("[object Object]"), false);
+    assert.equal(user.includes("SECRETBYTES"), false);
+    // …and the conversation context around it is clean too.
+    assert.equal(JSON.stringify(step.messages).includes("[object Object]"), false);
   });
 });
 

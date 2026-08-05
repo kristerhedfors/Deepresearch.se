@@ -208,6 +208,14 @@ export function isPublicAsset(url, method) {
     url.pathname === "/js/search-source.js" ||
     url.pathname === "/js/drc-research.js" ||
     url.pathname === "/js/drc-store.js" ||
+    // The Se/cure ATTACH path's pure core: attachment caps, filename
+    // sanitising, the sandbox fileProvider payload, and composing a user
+    // message's content parts. /cure/drc.js imports it, so it is in the public
+    // graph under the same rule as the drc-* modules above — a 401 here takes
+    // /cure dark. Import-free apart from the pure attachment helpers it reuses
+    // (message-content.js / docs.js / exif.js / image-downscale.js, all
+    // allowlisted below), and it reaches no endpoint of ours.
+    url.pathname === "/js/drc-attach-core.js" ||
     // drc-research.js statically imports the bash-lite sandbox modules (the
     // in-browser Linux execution tier is present on DRC too): the shared pure
     // agent core (bash-core.js — also imported by the DRS driver
@@ -305,6 +313,25 @@ export function isPublicAsset(url, method) {
     // secrets.
     url.pathname === "/js/slash-core.js" ||
     url.pathname === "/js/slash-menu.js" ||
+    // ATTACHMENTS on Se/cure. The four modules the /cure composer needs to
+    // take a file, all of them import-free leaves that reach no endpoint of
+    // ours — so serving them unauthenticated exposes nothing, and the usual
+    // public-graph rule applies: a 401 on any one of them takes the whole
+    // /cure tier dark.
+    //   message-content.js — pure string builders (inlineDocBlock,
+    //     imageMetadataBlock, splitUserContent). Se/cure imports the SAME
+    //     accessors Se/rver uses so both tiers frame an attached document in
+    //     a message identically.
+    //   docs.js — the PDF/DOCX/MD/TXT parser. It runs entirely in the
+    //     browser and never calls our server, which is exactly what lets
+    //     Se/cure read an attached PDF without putting the server in the
+    //     data path.
+    //   exif.js — pure image-metadata extraction.
+    //   image-downscale.js — pure canvas downscaling.
+    url.pathname === "/js/message-content.js" ||
+    url.pathname === "/js/docs.js" ||
+    url.pathname === "/js/exif.js" ||
+    url.pathname === "/js/image-downscale.js" ||
     url.pathname === "/introspect/source-snapshot.json" ||
     // The OWASP Top 10 reference corpus — public so DRC (Se/cure, server in no
     // data path) can fetch it and ground a security assessment OFFLINE, quoting
@@ -344,6 +371,17 @@ export function isPublicAsset(url, method) {
     url.pathname === "/vendor/xterm/xterm.js" ||
     url.pathname === "/vendor/xterm/xterm.css" ||
     url.pathname === "/vendor/xterm/addon-fit.js" ||
+    // The vendored pdf.js, for Se/cure attachments: /js/docs.js dynamic-imports
+    // pdf.min.mjs only when a PDF is actually attached, and PDF parsing happens
+    // on the unauthenticated /cure tier, so it must serve without auth.
+    // The WORKER is the trap. pdf.worker.min.mjs is never named in an import
+    // statement — pdf.js fetches it at RUNTIME off GlobalWorkerOptions.workerSrc
+    // (set in docs.js), so assets.test.js's module-graph walker cannot derive
+    // it and no test fails if it goes missing. Drop this line and PDF parsing
+    // dies SILENTLY in production while the whole suite stays green. Both
+    // entries are pinned by hand for that reason; keep them.
+    url.pathname === "/vendor/pdfjs/pdf.min.mjs" ||
+    url.pathname === "/vendor/pdfjs/pdf.worker.min.mjs" ||
     // The ON-DEVICE inference tier (phone-local Bonsai —
     // docs/BONSAI-27B-PHONE-INFERENCE.md): the pure core + engine glue +
     // Web Worker /cure loads DYNAMICALLY behind the settings knob (so the

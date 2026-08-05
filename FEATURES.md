@@ -89,9 +89,30 @@ default-on. See the **execution-sandbox** skill.
 
 `sandbox-files.js` + the `sandbox.js` device mounts land the tiered ingest
 (`/workspace` + `/mnt/<proj>-<hash>`), and the `/src` introspection mount
-exists. RESIDUAL: overlay-persistence UX and the DRC-side file provider need a
-live pass so attachments/project files reliably reach the VM on both DRS and
-DRC.
+exists.
+
+**The DRC half now exists** (2026-08-05). `public/js/drc-attach-core.js` is the
+Se/cure attachment core: caps, name sanitizing, the wire content, and
+`sessionFilesFor`, which maps the pending attachments onto the same
+`{name, type, bytes}` `session` shape a `fileProvider` must resolve to and
+`planMounts` consumes. Before this, `/cure`'s only `fileProvider` was
+introspection's `/src` mount, so nothing a user attached could reach the VM on
+that tier; `public/cure/drc.js` now composes the two, and the shell pass takes
+what was mounted as two explicit flags instead of inferring `/src` from the
+provider's mere presence.
+
+Se/cure's constraint shaped the core rather than the other way round: a file's
+ORIGINAL bytes stay in tab memory for one send and are never written to the
+sealed localStorage state, and nothing about them reaches deepresearch.se. The
+per-file and per-message byte caps are set to `sandbox-files.js`'s mount budget
+(25 MB / 64 MB) so a file the composer accepts can never be silently dropped at
+mount time.
+
+**RESIDUAL, and why this stays PARTIAL.** None of it has been through a live
+browser pass on either tier — not the mount, not the overlay-persistence UX,
+which is the other half of the original residual and is untouched. The unit
+suite exercises the pure core; whether an attached PDF actually appears under
+`/workspace` in a booted CheerpX VM is a live question and has not been asked.
 
 ### F-3 · Expand the research-source registry beyond Exa + Hugging Face — 🔵 OPEN (medium)
 
@@ -575,3 +596,21 @@ its live check.
   skill, because every client reports every failure in this flow as one
   unhelpful line and the 401 + `WWW-Authenticate` step is where it usually
   dies.
+
+- **2026-08-05** — F-2's DRC half landed: `public/js/drc-attach-core.js` gives
+  Se/cure its own attachment core, and `sessionFilesFor` hands the pending
+  files to the sandbox in the `session` shape `planMounts` already consumes, so
+  the mount path is shared rather than duplicated. The tier's storage rule set
+  the caps: original bytes stay in tab memory and never enter the sealed
+  localStorage state (`public/js/drc-store.js`'s comment restated to say why
+  its ~5 MB judgement still holds), the byte caps mirror `sandbox-files.js`'s
+  mount budget so nothing accepted is dropped at mount, and an attachment adds
+  nothing to a workspace link — `buildWorkspacePayload` keeps only string
+  message content, and DRSW/1 §5.5 reserves `materials` for a revision that has
+  a chunked-file convention. Status stays 🟡 PARTIAL: nothing here has been
+  verified in a live browser, and overlay-persistence UX is untouched. Docs
+  corrected in the same pass — `/cure/help/`'s comparison row claimed local
+  file SEARCH that does not exist (Se/cure's RAG indexes chats only,
+  `drc-rag.js` writes `kind: "chat"`), and `docs/WORKSPACES.md` put Se/cure's
+  attachments in OPFS, which is a Se/rver store (`public/js/opfs.js` imports
+  the authed stack and `/cure` may not touch it).
