@@ -332,21 +332,38 @@ export const drcDirectPromptWeb = ({ reportTier = "standard" } = {}) =>
 // describes it. `env` is the resolved backend id; anything unrecognised falls
 // back to the browser wording, whose rules are strictly more restrictive.
 //
-// `filesMounted` is the ATTACHMENT counterpart of `sourceMounted`: the VM
-// boots with the user's attached files under /workspace/ and a manifest at
-// /workspace/INDEX.txt (sandbox-files.js buildManifest), but a model that is
-// never told treats the sandbox as empty and never looks — so the paragraph is
-// emitted exactly when files were really mounted. It says less than the
-// Se/rver twin (src/prompts.js bashAgentPrompt) on purpose: this string ships
-// to the browser on every step request.
+// Two independent facts about what the VM holds, both STATED by the caller
+// rather than inferred (see runDrcShellPass): `sourceMounted` is the site's
+// own source tree at /src, `filesMounted` is the user's attached files at
+// /workspace/. A model that is never told treats the sandbox as empty and
+// never looks.
+//
+// Neither branch lists the image-and-document toolchain (tesseract, poppler,
+// Pillow, zbarimg): that is baked into the SERVER-SIDE container only, which
+// Se/cure cannot reach at all, and the owner directive of 2026-08-05 keeps it
+// that way — the emulator streams its disk to the user's device, so every
+// binary baked in is bytes they pay for on boot. Told only that a tool is
+// missing, a model reads it as an accident and spends the turn hunting or
+// apt-getting it (chat_logs #1305, feedback #60), so the browser branch says
+// the absence is deliberate.
+//
+// It still promises NO vision pass, and that distinction outlived the arrival
+// of attachments (2026-08-05): Se/rver transcribes a picture before its shell
+// loop (src/image-read.js), Se/cure has no such phase, and THIS step model is
+// handed text only. So an attached image is mounted but unreadable here — the
+// answer model sees the picture itself, which is why the paragraph below sends
+// the model to the answer rather than to an OCR tool it does not have.
+//
+// Kept SHORT on purpose: this string ships to the browser and rides every step
+// request, so it stays tighter than the server's longer wording.
 /** @param {{sourceMounted?: boolean, filesMounted?: boolean, env?: string}} [opts] */
 export const drcBashAgentPrompt = (opts = {}) =>
   `You drive a Linux command-line sandbox for DeepResearch.Se/cure, Deepresearch.se's client-side mode. Today's date: ${today()}.\n` +
   (opts.env === "local"
-    ? "A Linux container runs NATIVELY on the user's own machine, reached through a small service they started (real hardware speed) — no data leaves their computer. You are root inside it; common tools are available (coreutils, grep/sed/awk, bash, python3, bc). Assume NO network — treat the sandbox as OFFLINE and compute from local tools only.\n"
-    : "A minimal Debian Linux runs entirely in the user's browser (a WASM x86 emulator). You are root; common tools are available (coreutils, grep/sed/awk, bash, python3, bc). There is NO network — treat the sandbox as OFFLINE and compute from local tools only.\n") +
+    ? "A Linux container runs NATIVELY on the user's own machine, reached through a small service they started (real hardware speed) — no data leaves their computer. You are root inside it; a basic toolset can be assumed (coreutils, grep/sed/awk, bash, python3, bc). Beyond that the toolchain is whatever the user's own image carries — this project neither builds nor controls it — so run what you need and handle its absence rather than assuming either way. Assume NO network — treat the sandbox as OFFLINE and compute from local tools only.\n"
+    : "A minimal Debian Linux runs entirely in the user's browser (a WASM x86 emulator). You are root; common tools are available (coreutils, grep/sed/awk, bash, python3, bc). It is kept minimal BY DESIGN — its disk streams to the user's device — so specialised tooling (OCR engines, PDF utilities, image libraries) is not installed and is not coming: do not hunt for it and do not plan around installing it. There is NO network — treat the sandbox as OFFLINE and compute from local tools only.\n") +
   (opts.filesMounted
-    ? "ATTACHED FILES: the user's attached files are mounted read-write at /workspace/ and persist across sessions. Run `cat /workspace/INDEX.txt` first to see what is there, then read them as inputs (cat/grep/awk/`python3 script.py /workspace/data.csv`) and write your own results under /workspace/ too.\n"
+    ? "ATTACHED FILES: the user's attached files are mounted read-write at /workspace/ and persist across sessions. Run `cat /workspace/INDEX.txt` first to see what is there, then read them as inputs (cat/grep/awk/`python3 script.py /workspace/data.csv`) and write your own results under /workspace/ too. An attached IMAGE is mounted too but cannot be read here — there is no OCR in this sandbox and none is coming; the assistant writing the final answer sees the picture itself, so leave it alone rather than trying to extract its text.\n"
     : "") +
   (opts.sourceMounted
     ? "INTROSPECTION (developer mode is on): the complete source tree of the Deepresearch.se site itself is mounted read-only at /src (also reachable as /workspace/source) — e.g. /src/src/pipeline.js, /src/public/js/app.js, /src/CLAUDE.md. When the user asks about the site's own code, source, implementation, or wants it explored, ls/cat/grep -rn under /src; never claim the source is unavailable.\n"

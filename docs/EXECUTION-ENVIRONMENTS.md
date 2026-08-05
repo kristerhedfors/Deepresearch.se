@@ -39,7 +39,7 @@ choice exposes.
 | What it is | Debian under CheerpX, an x86 emulator compiled to WebAssembly | A container/micro-VM on the user's own machine, behind a small HTTP service | An ephemeral Cloudflare Container, one per conversation, driven by a Durable Object |
 | Setup | none | one command (§3) | none |
 | Speed | emulated: ~25 s cold boot, seconds-to-minutes per CPU-bound command | native | **native; ~1–3 s container cold start** — the reason it is the default |
-| Image | one, streamed (`docs/SANDBOX-LOCAL-IMAGE.md`) | any image with `/bin/sh` | ours, built from `container/Dockerfile` |
+| Image | one, streamed, and kept minimal on purpose (§7b, `docs/SANDBOX-LOCAL-IMAGE.md`) | any image with `/bin/sh` | ours, built from `container/Dockerfile` |
 | Network | none (CheerpX networking is Tailscale-only and unused) | `none` by default, opt-in `bridge`/`host` | none (`enableInternet:false`) |
 | Sees the user's files | only what the page mounts (`sandbox-files.js`) | only what the user mounts (`MOUNT=`) | only what the page pushes (§2a) |
 | Lifetime | one VM per page, overlay persists in IndexedDB | one throwaway container per research session | one container per conversation; destroyed on new chat, on idle, or by budget (§8) |
@@ -517,8 +517,122 @@ and — the one that is easy to miss — **a new image tag in both
 `scripts/build-exec-image.sh` (`IMAGE_TAG`) and `wrangler.toml`'s `image`**.
 Then `IMAGE_TAG=<next> ./scripts/build-exec-image.sh all` and deploy.
 
+Four things, and **not a fifth**: the browser VM's package set is not brought
+along. That is policy, not an oversight — §7b.
+
 Why the tag must move: see §9's *"a new tag on every content change"*. Re-using
 the tag makes the deploy a silent no-op.
+
+## 7b. The research toolchain is container-only (owner directive, 2026-08-05)
+
+**The rule.** The image/OCR/PDF group in §7a — `tesseract-ocr` with `eng` and
+`swe`, `poppler-utils`, `python3-pil`, `zbar-tools` — belongs to the
+**server-side container image only**. The in-browser CheerpX VM keeps a minimal
+package set. Adding a tool to one image is not an argument for adding it to the
+other, and the 137 MB the OCR group cost the container (482 MB → 619 MB, §9)
+buys nothing if it is spent again on the browser side. **The gap between the
+two images is the design. It is not a backlog item, and closing it is not an
+improvement.**
+
+The reasons are specific, and every one of them is already written down
+somewhere in this repo.
+
+**Bytes added there are streamed to a phone, not stored on a server.** The
+browser VM's root filesystem is a Debian ext2 image pulled block by block over a
+WebSocket — `DISK_URL` in `public/js/sandbox.js` points at
+`wss://disks.webvm.io/debian_large_20230522_5044875331_2.ext2`, and
+`debian_large` is a full Debian install, multiple GB on disk
+(`docs/SANDBOX-LOCAL-IMAGE.md` §*What this is*). A megabyte added to
+`container/Dockerfile` sits on a machine in a Cloudflare data centre and is
+paid once, at a cold start measured in 1–3 s (§1). A megabyte added to the
+browser image is fetched over the user's own connection, by the device running
+the tab, at the moment a command first touches it.
+
+**Cold-start cost there is measured, and it is the dominant cost.**
+`docs/SANDBOX-PERFORMANCE.md` puts numbers on it: the first execution of a
+binary pulls its ELF and every library it links, so `python3 --version` costs
+8573 ms cold against 87 ms warm (98×) and `perl -e 'print 42'` costs 8333 ms
+against 108 ms (77×). One turn's trace spent 24 352 ms of a 44 s send on the VM
+boot and 290 ms on the commands themselves. The sharpest edge is what happens
+when a command loses that race: `execInSandbox` times out at 30 s, returns
+rc 124 and calls `resetSandbox`, which discards the CheerpX instance, so every
+later command in the turn answers `sandbox not ready`. A cold
+`command -v node >/dev/null && node --version || echo '(node absent)'` — a
+command written specifically to be safe when the tool is missing — took the full
+30 s and destroyed the VM, because it stats every `PATH` directory and all of
+them were cold. Adding tesseract plus two language packs to that filesystem
+means the first OCR of the turn streams a large binary, its libraries and its
+training data across the network inside a 30 s ceiling whose penalty is the loss
+of the sandbox. The container has neither property: its image is resident before
+the first command runs, and its per-command ceiling is 120 s (§8).
+
+**The two images are unrelated artifacts by construction.** CheerpX is 32-bit
+x86 only, so every binary in a browser-VM image has to be i386, and the image is
+an ext2 filesystem made with `mkfs.ext2`, loop-mounted and bootstrapped by
+`scripts/build-sandbox-image.sh` on a Linux host with root. The container is an
+ordinary `linux/amd64` OCI image, built by Docker from `container/Dockerfile`
+with `--provenance=false --sbom=false` and pushed to the managed registry (§9).
+They share no build path, no package manager invocation and no architecture, so
+there is no list to keep in sync and no drift to fix. An apt line added to one
+does not port to the other.
+
+**The default browser disk is not ours to rebuild.** `sandbox.image` in
+`src/config.js` is `""`, with `images: []` and `prefetch: false`, so the
+self-hosted path is dormant and every boot today streams Leaning Technologies'
+hosted `debian_large`. "Add tesseract to the browser VM" therefore is not a
+Dockerfile edit — it is building, uploading and live-verifying an i386 ext2
+image first, through the rollout gate in `docs/SANDBOX-LOCAL-IMAGE.md` §7 (build
+→ upload to R2 → boot on a real device under `require-corp` → flip `verified` →
+only then select it as the default). The cost lands before the tool does.
+
+**The capability is not lost, which is why the asymmetry is affordable.**
+Reading an attached picture does not depend on a shell tool in any environment.
+`src/image-read.js` is PHASE 0 of the pipeline: one vision call on the **answer
+model** transcribes the attachment and appends it as a labeled context block
+*before* triage plans a single search. It is registered in `src/enrichment.js`
+first in the core list and gated only on `state.vision` — the answer model being
+able to receive images — so it runs on a turn with no shell pass at all, and
+identically whether the shell pass later goes to the browser VM, a local runner
+or the container. It exists because of `chat_logs` #1305 (feedback #60), where a
+LinkedIn screenshot with "write a report about what you can find on this
+founder" planned zero queries and answered in 14 s against a 10-minute budget:
+the only searchable noun was "this founder", and the name was in pixels nobody
+had read. OCR in the container is the fallback for what a vision call is poor
+at — a scanned multi-page PDF, a batch of images, a barcode — not the mechanism
+for "what does this screenshot say". On Se/cure the point is sharper still:
+that tier does not accept image attachments (`DRS_FEATURES.attach` in
+`public/cure/drc.js` says so to the user), so OCR in its VM would have nothing
+to read that the user had not typed into the sandbox by hand.
+
+**Se/cure is the tier the browser VM serves, and it is the tier with the least
+budget to spend.** Everywhere else the VM is the fallback; on Se/cure it is the
+only option, because it is the only environment that needs no account, no setup
+and no server (§1). That is the tier whose whole promise is that the server is
+in no data path (invariant 4), reached most often with nothing installed and
+often on a phone. Making it stream more bytes to buy a capability phase 0
+already covers is a trade in the wrong direction.
+
+### What to do instead
+
+Someone will want a heavy tool in the browser VM anyway. In order:
+
+- **Reading an image or a PDF the user attached** — nothing to do. Phase 0 has
+  already transcribed it, on the answer model, before the shell pass started.
+- **Bulk or scanned work that genuinely needs the binaries** — the cloud
+  container (§1). It is the default on Se/rver and already carries the §7a
+  toolchain. The price is stated in §5: the commands, their output and the
+  mounted files pass through this server, which is why it is Se/rver only.
+- **A tool neither image carries** — the user's own local runner (§3). `IMAGE=`
+  takes any container image with `/bin/sh`, it runs on their machine, and the
+  call is browser-direct, so nothing crosses this server and nothing is streamed
+  into the tab.
+- **Only then**, a self-hosted browser image (`docs/SANDBOX-LOCAL-IMAGE.md`) —
+  and expect the i386 build and the verified-gated rollout described above,
+  not a package line.
+
+The three-environment choice in §1 exists precisely so that a capability gap is
+answered by picking a different machine rather than by growing the one that
+streams itself over the network.
 
 ## 8. The fences on a server-side container
 
@@ -567,7 +681,10 @@ whatever the last one carried, and `available.exec_container` stays `false`.
 ```
 
 Re-run it whenever `container/Dockerfile` changes — with a **new** `IMAGE_TAG`,
-and bump `wrangler.toml`'s `image` to match in the same commit.
+and bump `wrangler.toml`'s `image` to match in the same commit. This script and
+`scripts/build-sandbox-image.sh` build different things for different machines
+and are never changed together; a package added here does not travel to the
+browser VM (§7b).
 
 ### A new tag on every content change (2026-08-05)
 

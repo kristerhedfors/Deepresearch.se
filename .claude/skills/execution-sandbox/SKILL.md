@@ -46,7 +46,14 @@ description: >-
   its verify battery — including the two credential/registry traps (the push
   needs CLOUDFLARE_USER_API_TOKEN, not the account-owned deploy token; build
   with --provenance=false --sbom=false or the managed registry gets a
-  manifest list).
+  manifest list). ALSO load before UPDATING that image or either image's
+  package list: the tag-bump rule (wrangler deploy diffs the image STRING, so
+  re-pushing under a tag the application already carries exits 0 and changes
+  nothing), how to verify a container deploy by asking a live container what it
+  holds (POST /api/exec/exec on break-glass Basic Auth) instead of trusting the
+  success message, and the 2026-08-05 owner directive that the two images are
+  deliberately asymmetric — the OCR/PDF/image toolchain is server-container
+  only and the browser VM image stays minimal.
 ---
 
 # Execution sandbox (bash-lite)
@@ -214,6 +221,73 @@ things to keep straight when working here:
    explicit pick, which is why `resolveExecBackend` takes the tier. The cloud
    container **has run for real** since 2026-07-27 (`chat_logs` #677); what is
    still unmeasured about it is listed in `docs/EXECUTION-ENVIRONMENTS.md` §10.
+
+### The two images are deliberately asymmetric (owner directive, 2026-08-05)
+
+`container/Dockerfile` (the cloud container) and `scripts/build-sandbox-image.sh`
+(the browser VM's i386 ext2 image) carry different package lists, and the gap is
+**policy, not a backlog item.** PRs #386/#390 added an OCR/PDF/image toolchain to
+the CONTAINER only — `tesseract-ocr` plus the `eng` and `swe` language packs,
+`poppler-utils`, `python3-pil`, `zbar-tools`; 482 MB → 619 MB. The owner ruled:
+**server-side container only — keep the on-device JS-emulated Linux VM minimal.**
+The browser image stays at its `PKGS_COMMON` line (bash, coreutils, grep, sed,
+gawk, findutils, file, less, python3, jq, nodejs, git).
+
+So a session that "helpfully" mirrors the container's list into
+`scripts/build-sandbox-image.sh` is undoing a decision, not closing a gap.
+`scripts/build-sandbox-image.test.mjs` guards exactly that and fails the build
+when the OCR group turns up in the VM image.
+
+**Why the asymmetry costs nothing for the common case:** "read this screenshot"
+never depended on a binary. An attached picture is transcribed by the ANSWER
+model in **phase 0, before triage, in every environment** (`src/image-read.js`),
+so the words are in the conversation whether commands run in a container, in the
+browser VM, or not at all. Container OCR is for the BULK/scanned/PDF work an
+agent does over MOUNTED files — a scan with no text layer, a batch of page
+rasters, a barcode — where one vision call over the attachments is the wrong
+instrument. Paying +137 MB for that inside a ~500 MB emulated x86 disk streamed
+over a WebSocket is the wrong trade; paying it on a native container is free.
+
+### Updating the container image — the deploy that silently does nothing (2026-08-05)
+
+This cost a full silent no-op on 2026-08-05: the image was pushed, the verify
+battery passed, the Worker deployed, and the sandbox was unchanged.
+
+- **`wrangler deploy` diffs the image STRING, not the registry contents.** The
+  container application stores the tag it was configured with. Push different
+  bytes under a tag the application already carries and the deploy prints
+  `no changes deepresearch-se-execsandbox` / `No changes to be made`, **exits
+  0**, and every container keeps booting the OLD image.
+- **The tell:** `wrangler containers list` still showing the previous
+  `LAST MODIFIED` while the deploy claimed success.
+- **The fix:** bump the tag in BOTH `scripts/build-exec-image.sh` (`IMAGE_TAG`)
+  and `wrangler.toml`'s `image`, in the same commit. A deploy that actually did
+  something prints a real `- image …:1` / `+ image …:2` diff, then
+  `SUCCESS Modified application`, then an `active_rollout_id` with instances
+  cycling.
+- **Second trap: a plain `npx wrangler deploy` fails HALF-WAY.** It uploads the
+  Worker and then dies `✘ [ERROR] Forbidden` on the container step — wrangler
+  only reads `CLOUDFLARE_API_TOKEN`, and the account token cannot touch
+  Containers. The Worker half has already shipped by then, so the failure reads
+  as partial rather than clean. Deploy with
+  `CLOUDFLARE_API_TOKEN="$CLOUDFLARE_USER_API_TOKEN" npx wrangler deploy`.
+- `:1` remains in the registry as the rollback — the same image without the OCR
+  group.
+
+> **Do not trust the deploy's success message. Ask the running environment what
+> it contains.**
+>
+> `POST /api/exec/exec` with break-glass Basic Auth (`BASIC_AUTH_USER` /
+> `BASIC_AUTH_PASS` — the same credentials `scripts/chatlogs` and
+> `scripts/feedback` use) runs a command inside a real production container. It
+> is the only check that reads the image a user's session actually boots, rather
+> than the image you believe you shipped. On 2026-08-05 it returned
+> `tesseract 5.5.0 / leptonica-1.84.1`, `/usr/bin/pdftotext`, `/usr/bin/zbarimg`,
+> `PIL ok` and tessdata `eng osd swe`, plus a full round trip where Pillow drew
+> an image and tesseract read the text back out of it. `GET /api/exec/healthz`
+> answers on the same auth and is the cheap liveness check — but note it answers
+> even when the environment is unavailable, so it confirms reachability, not
+> contents.
 
 ## The flow
 
