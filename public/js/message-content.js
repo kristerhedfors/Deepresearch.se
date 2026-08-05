@@ -97,26 +97,120 @@ export function deriveTitle(history) {
   return text.trim().slice(0, 60) || "New conversation";
 }
 
+// How much image payload the RESENT history may carry — the latest turn's
+// own attachments included, because the server counts every image in the
+// request. Client-side mirror of the caps in src/validation.js
+// (MAX_IMAGES_PER_REQUEST 8, MAX_TOTAL_IMAGE_CHARS 750_000) and deliberately
+// held UNDER them: a request that trips a server cap is REJECTED whole, not
+// trimmed, so the budget keeps headroom rather than sailing to the limit
+// (attachments.js already downscales to 280_000 chars per image / 700_000
+// per message, so the latest turn alone can eat most of this).
+export const RETAINED_IMAGES_MAX = 6;
+export const RETAINED_IMAGE_CHARS_MAX = 600_000;
+
 /**
- * Keep images only on the latest message when sending: history is resent
- * every turn and would otherwise re-inflate each request past the provider's
- * ~1 MB body limit. Older user turns keep their text plus a marker; the
- * latest message and all non-user/string messages pass through untouched.
+ * The image parts of one message: how many, and how many data-URL chars
+ * they cost against the retention budget.
+ * @param {ChatMessage | undefined} m
+ * @returns {{count: number, chars: number}}
+ */
+function imageStats(m) {
+  if (!Array.isArray(m?.content)) return { count: 0, chars: 0 };
+  let count = 0;
+  let chars = 0;
+  for (const p of m.content) {
+    if (p?.type !== "image_url") continue;
+    count++;
+    chars += (p.image_url?.url || "").length;
+  }
+  return { count, chars };
+}
+
+/**
+ * Budgeted image RETENTION over the resent history. The name is historical:
+ * this used to strip images from every message but the last, and the ones it
+ * still strips are only those past the budget below.
+ *
+ * Why it changed (2026-08-05): history is resent in full every turn, so the
+ * old blanket strip meant the answer model saw an attachment on exactly ONE
+ * turn and nothing afterwards. Reported live — a user attached a LinkedIn
+ * screenshot, asked for a report on the NEXT turn, and claude-sonnet-5
+ * (vision-capable, and handed zero image bytes) went looking for `tesseract`
+ * in the sandbox instead of just reading the picture. The original reason
+ * for stripping is real though: unbounded resending re-inflates every
+ * request past the provider's ~1 MB body limit and past the server's
+ * per-request image caps. So the walk goes NEWEST → OLDEST and keeps image
+ * parts while both budgets hold; the first turn that doesn't fit, and
+ * everything older than it, falls back to the text-plus-marker form. Recency
+ * wins because a follow-up question is almost always about the most recent
+ * picture.
+ *
+ * The LAST message always keeps its images regardless of budget — that is
+ * what the user just attached, and the server validates the request against
+ * it (src/validation.js requires the vision path on the final turn).
+ * Non-user turns and string content pass through untouched.
+ *
+ * `retain: false` restores the old strip-everything-but-the-last walk, and
+ * the caller passes it whenever the model about to answer has NO vision.
+ * That is not a preference, it is a rejection: src/validation.js's
+ * resolveModel 400s a request whose messages carry ANY image when the
+ * selected model is text-only, and countImages (src/conversation.js) counts
+ * across the WHOLE conversation, not just the final turn. The blanket strip
+ * used to hide that — attach an image, then switch to a text-only model, and
+ * the history went out clean. With retention on, those same retained bytes
+ * would fail the switch with "does not support image input", so the client
+ * drops them for a text-only model instead. attachments.js's guard doesn't
+ * cover this: it blocks ATTACHING on a non-vision model, not switching
+ * afterwards. The final turn is left alone either way — a fresh image plus a
+ * text-only model SHOULD be rejected, and the server's message names the
+ * vision-capable alternatives. (One deliberate difference from the old walk:
+ * an earlier multimodal turn with no image parts is now passed through
+ * instead of flattened — there is nothing to strip, and its text is already
+ * valid content for any model.)
  * @param {ChatMessage[]} history
+ * @param {{retain?: boolean}} [opts] `retain: false` → images only on the last message
  * @returns {ChatMessage[]}
  */
-export function stripOldImages(history) {
-  return history.map((m, i) => {
-    if (i === history.length - 1 || m.role !== "user" || !Array.isArray(m.content)) return m;
+export function stripOldImages(history, { retain = true } = {}) {
+  const out = history.slice();
+  const lastIndex = history.length - 1;
+  let images = 0;
+  let chars = 0;
+  // Once one turn is dropped, every older one is too: retaining a turn-5
+  // image after dropping turn 2's would hand the model a history whose
+  // pictures no longer line up with the text around them. Starts spent when
+  // the answering model can't see images at all.
+  let budgetSpent = !retain;
+
+  for (let i = lastIndex; i >= 0; i--) {
+    const m = history[i];
+    const stats = imageStats(m);
+    if (i === lastIndex) {
+      images += stats.count;
+      chars += stats.chars;
+      continue;
+    }
+    if (m?.role !== "user" || !Array.isArray(m.content) || stats.count === 0) continue;
+    if (
+      !budgetSpent &&
+      images + stats.count <= RETAINED_IMAGES_MAX &&
+      chars + stats.chars <= RETAINED_IMAGE_CHARS_MAX
+    ) {
+      images += stats.count;
+      chars += stats.chars;
+      continue; // rides along, untouched
+    }
+    budgetSpent = true;
     const text = m.content
       .filter((p) => p.type === "text")
       .map((p) => p.text)
       .join("\n");
-    return {
+    out[i] = {
       role: "user",
       content: (text ? text + "\n" : "") + "[image was attached earlier in this conversation]",
     };
-  });
+  }
+  return out;
 }
 
 /**

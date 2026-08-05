@@ -305,8 +305,16 @@ describe("core purity", () => {
     // that makes it a research SOURCE like Europe PMC and arXiv, which this
     // project has always treated as core, not a third-party integration bolted
     // onto a message the way Maps and Shodan are.
+    //
+    // image-read.js joins them on the same footing (phase 0, the vision pass
+    // that transcribes an attached picture before triage plans anything). It
+    // reaches no third party of its own: the one call it makes goes to the
+    // SAME provider that is already answering this turn, through the same
+    // provider registry every phase uses — no knob, no secret, no
+    // per-request state slice, no extension descriptor.
     assert.deepEqual(imports, [
-      "./aadr.js", "./agent-spec.js", "./extensions.js", "./introspect.js", "./models-agent.js", "./scholar-metrics.js",
+      "./aadr.js", "./agent-spec.js", "./extensions.js", "./image-read.js", "./introspect.js",
+      "./models-agent.js", "./scholar-metrics.js",
     ]);
   });
 });

@@ -293,12 +293,22 @@ export function usesRemoteRunner(cfg, tier, opts = {}) {
 }
 
 /**
- * Clamp a caller's per-command ceiling into the remote runner's range. The
- * research-budget scoping stream.js and drc-research.js already do for the
- * browser VM (bash-core's execTimeoutForBudget) produces emulator-scale
- * numbers; a native runner should not be held to them, so the FLOOR applies but
- * the browser ceiling does not.
- * @param {number|undefined} requested
+ * Clamp a caller's per-command ceiling into the remote runner's range: the
+ * user's research budget scopes a command DOWN here exactly as it does on the
+ * browser VM, but the CEILING is this runner's own (120 s), not the
+ * emulator's 30 s.
+ *
+ * That intent was written down from the start and did not hold in practice.
+ * The drivers pre-clamped the budget with bash-core's execTimeoutForBudget —
+ * the browser numbers — and passed the result to whichever runner was
+ * selected, so `requested` was ALWAYS present and ALWAYS ≤ 30 s: the branch
+ * that returns the native default could never fire, and a native runner was
+ * held to the emulator's ceiling on every command. It surfaced when commands
+ * that legitimately exceed 30 s on real hardware (OCR over a full-page scan)
+ * were killed at 30 s on a machine sized to run them. The drivers now hand
+ * down the raw budget (bash-core's execBudgetMs) and each backend clamps with
+ * its own bounds — do not reintroduce a pre-clamp upstream of this.
+ * @param {number|undefined} requested per-command ceiling in ms, unclamped
  * @returns {number}
  */
 export function remoteExecTimeout(requested) {

@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 
 import {
   EXCERPT_TOTAL_CHARS,
+  RETAINED_IMAGES_MAX,
+  RETAINED_IMAGE_CHARS_MAX,
   STREAM_STALL_MS,
   asksCrossBarrier,
   asksDeviceLocation,
@@ -81,14 +83,26 @@ test("deriveTitle trims, caps at 60 chars, and falls back", () => {
   assert.equal(deriveTitle([{ role: "user", content: [{ type: "image_url", image_url: {} }] }]), "New conversation");
 });
 
+// How many image parts survive into an outgoing payload, and what they cost.
+const imagesOf = (m) => (Array.isArray(m.content) ? m.content.filter((p) => p.type === "image_url") : []);
+const imageParts = (msgs) => msgs.flatMap(imagesOf);
+const imageCount = (msgs) => imageParts(msgs).length;
+const retainedImageChars = (msgs) => imageParts(msgs).reduce((n, p) => n + p.image_url.url.length, 0);
+
+// One user turn carrying `n` images of `chars` data-URL characters each.
+const imgTurn = (text, n = 1, chars = 20) => ({
+  role: "user",
+  content: [
+    ...(text ? [{ type: "text", text }] : []),
+    ...Array.from({ length: n }, (_, i) => ({
+      type: "image_url",
+      image_url: { url: "data:image/jpeg;base64," + String(i).repeat(Math.max(1, chars - 23)) },
+    })),
+  ],
+});
+
 test("stripOldImages keeps the latest message untouched", () => {
-  const latest = {
-    role: "user",
-    content: [
-      { type: "text", text: "current question" },
-      { type: "image_url", image_url: { url: "data:image/jpeg;base64,ZZ" } },
-    ],
-  };
+  const latest = imgTurn("current question");
   const history = [{ role: "user", content: "older text" }, { role: "assistant", content: "reply" }, latest];
   const out = stripOldImages(history);
   assert.equal(out[2], latest); // same reference — untouched
@@ -96,30 +110,129 @@ test("stripOldImages keeps the latest message untouched", () => {
   assert.equal(out[1].content, "reply");
 });
 
-test("stripOldImages collapses images out of earlier user turns, keeping their text", () => {
+test("stripOldImages keeps a lone image on the last message even when it busts the budget", () => {
+  // Four images at the client's per-image ceiling — over both budgets on its
+  // own, and still sent: the server validates the request against the final
+  // turn's images.
+  const latest = imgTurn("look at these", 4, 280_000);
+  const out = stripOldImages([{ role: "user", content: "hi" }, latest]);
+  assert.equal(out[1], latest);
+  assert.equal(imageCount(out), 4);
+});
+
+test("stripOldImages retains an image attached two turns back (the tesseract regression)", () => {
+  // The 2026-08-05 report: screenshot attached, report asked for on the NEXT
+  // turn, vision model handed zero image bytes.
   const history = [
-    {
-      role: "user",
-      content: [
-        { type: "text", text: "earlier question" },
-        { type: "image_url", image_url: { url: "data:image/jpeg;base64,ZZ" } },
-      ],
-    },
-    { role: "assistant", content: "answer" },
+    imgTurn("Here is a LinkedIn screenshot"),
+    { role: "assistant", content: "I see it." },
+    { role: "user", content: "Now write me a report on that profile." },
+  ];
+  const out = stripOldImages(history);
+  assert.equal(out[0], history[0]); // same reference — the image rides along
+  assert.ok(Array.isArray(out[0].content));
+  assert.equal(imageCount(out), 1);
+});
+
+test("stripOldImages spends the image-count budget newest-first, then marks the rest", () => {
+  // 8 single-image turns + a final text question: only the newest
+  // RETAINED_IMAGES_MAX may ride along.
+  const history = [
+    ...Array.from({ length: 8 }, (_, i) => imgTurn("turn " + i)),
     { role: "user", content: "latest" },
   ];
   const out = stripOldImages(history);
-  assert.equal(out[0].content, "earlier question\n[image was attached earlier in this conversation]");
-  assert.ok(!Array.isArray(out[0].content));
+  assert.equal(imageCount(out), RETAINED_IMAGES_MAX);
+  // The newest ones survive…
+  for (let i = 8 - RETAINED_IMAGES_MAX; i < 8; i++) assert.ok(Array.isArray(out[i].content), `turn ${i} kept`);
+  // …the oldest fall back to the marker, text preserved.
+  assert.equal(out[0].content, "turn 0\n[image was attached earlier in this conversation]");
+  assert.equal(out[1].content, "turn 1\n[image was attached earlier in this conversation]");
 });
 
-test("stripOldImages marks an image-only earlier turn with no text", () => {
+test("stripOldImages respects the total-chars budget even when the image COUNT fits", () => {
+  // Three big images (250 KB each) plus a big latest turn: under the count
+  // budget, over the char budget.
   const history = [
-    { role: "user", content: [{ type: "image_url", image_url: { url: "data:image/jpeg;base64,ZZ" } }] },
+    imgTurn("old big", 1, 250_000),
+    imgTurn("newer big", 1, 250_000),
+    imgTurn("latest big", 1, 250_000),
+  ];
+  const out = stripOldImages(history);
+  assert.equal(imageCount(out), 2); // 750_000 would exceed RETAINED_IMAGE_CHARS_MAX
+  assert.ok(retainedImageChars(out) <= RETAINED_IMAGE_CHARS_MAX);
+  assert.equal(out[2], history[2]);
+  assert.ok(Array.isArray(out[1].content));
+  assert.equal(out[0].content, "old big\n[image was attached earlier in this conversation]");
+});
+
+test("stripOldImages retention stays inside the server's per-request caps", () => {
+  // src/validation.js: MAX_IMAGES_PER_REQUEST 8, MAX_TOTAL_IMAGE_CHARS
+  // 750_000 — the budget must leave headroom, not sail to the limit.
+  assert.ok(RETAINED_IMAGES_MAX < 8);
+  assert.ok(RETAINED_IMAGE_CHARS_MAX < 750_000);
+});
+
+test("stripOldImages marks an image-only turn past the budget with no text", () => {
+  const history = [
+    imgTurn("", 1, 400_000),
+    imgTurn("", 1, 400_000),
     { role: "user", content: "latest" },
   ];
   const out = stripOldImages(history);
   assert.equal(out[0].content, "[image was attached earlier in this conversation]");
+  assert.ok(Array.isArray(out[1].content)); // the newest image still fits
+});
+
+test("stripOldImages with retain:false drops every image but the last message's", () => {
+  // The non-vision model case: src/validation.js 400s a request whose
+  // conversation carries ANY image when the selected model is text-only, so
+  // switching models mid-chat must send the history clean.
+  const history = [
+    imgTurn("first picture"),
+    { role: "assistant", content: "seen" },
+    imgTurn("second picture"),
+    { role: "user", content: "now answer in text" },
+  ];
+  const kept = stripOldImages(history, { retain: true });
+  assert.equal(imageCount(kept), 2);
+
+  const out = stripOldImages(history, { retain: false });
+  assert.equal(imageCount(out), 0);
+  assert.equal(out[0].content, "first picture\n[image was attached earlier in this conversation]");
+  assert.equal(out[1], history[1]);
+  assert.equal(out[2].content, "second picture\n[image was attached earlier in this conversation]");
+  assert.equal(out[3], history[3]);
+});
+
+test("stripOldImages keeps the LAST message's images whatever retain says", () => {
+  const latest = imgTurn("read this one");
+  const history = [imgTurn("older"), latest];
+  for (const retain of [true, false]) {
+    const out = stripOldImages(history, { retain });
+    assert.equal(out[1], latest, `retain:${retain} leaves the final turn alone`);
+    assert.equal(imagesOf(out[1]).length, 1);
+  }
+  // …and only the retaining walk brings the older one along.
+  assert.equal(imageCount(stripOldImages(history, { retain: true })), 2);
+  assert.equal(imageCount(stripOldImages(history, { retain: false })), 1);
+});
+
+test("stripOldImages retains by default (no options argument)", () => {
+  const history = [imgTurn("older"), { role: "user", content: "follow-up" }];
+  assert.equal(imageCount(stripOldImages(history)), 1);
+  assert.equal(imageCount(stripOldImages(history, {})), 1);
+});
+
+test("stripOldImages leaves assistant turns and image-free arrays alone", () => {
+  const history = [
+    { role: "assistant", content: [{ type: "text", text: "structured reply" }] },
+    { role: "user", content: [{ type: "text", text: "no picture here" }] },
+    { role: "user", content: "latest" },
+  ];
+  const out = stripOldImages(history);
+  assert.equal(out[0], history[0]);
+  assert.equal(out[1], history[1]);
 });
 
 test("inlineDocBlock wraps text, metadata, and a truncation marker", () => {

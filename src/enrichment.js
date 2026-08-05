@@ -23,6 +23,7 @@
 import { runAncientSampleEnrichment } from "./aadr.js";
 import { capHasContext } from "./agent-spec.js";
 import { extensionEnrichments } from "./extensions.js";
+import { runImageReadEnrichment } from "./image-read.js";
 import { runIntrospectionEnrichment } from "./introspect.js";
 import { runModelsAgentEnrichment } from "./models-agent.js";
 import { runScholarMetricsEnrichment } from "./scholar-metrics.js";
@@ -60,6 +61,28 @@ import { runScholarMetricsEnrichment } from "./scholar-metrics.js";
 // Core enrichments: the ones that reach nothing outside this deployment.
 /** @type {Enrichment[]} */
 const CORE_ENRICHMENTS = [
+  {
+    // PHASE 0 — the image read (src/image-read.js), and FIRST for a reason:
+    // an attached picture is opaque to everything that reads the conversation
+    // afterwards (textOf flattens it to "[N image(s) attached]"), so the
+    // transcription has to exist before any other enrichment or phase looks.
+    // One vision call on the ANSWER model turns the attachment into text, and
+    // triage gets a name to plan against instead of "this founder"
+    // (chat_logs #1305 / feedback #60).
+    //
+    // The gate is `state.vision` — the cheap, state-only fact that the chosen
+    // answer model can receive images — and NOT "does this turn carry an
+    // image", because `enabled` receives only the state and the image parts
+    // live in the conversation. The runner does that check itself and is
+    // silent when there is nothing to read, which the contract above
+    // explicitly allows. Gating this way is also exactly right: with a
+    // non-vision model there is nothing this phase could do, and validation
+    // (src/validation.js) has already rejected any image-bearing request that
+    // picked one.
+    id: "image_read",
+    enabled: (state) => !!state.vision,
+    run: (c) => runImageReadEnrichment(c),
+  },
   {
     // Introspection (developer mode): a conversation asking about THIS
     // SITE's own implementation gets the deployed source snapshot appended

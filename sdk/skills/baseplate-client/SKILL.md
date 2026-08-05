@@ -99,8 +99,10 @@ any static host.
 5. **`public/js/message-content.js`** — the outgoing-message pure core:
    labeled context-block builders (attached document / image metadata /
    retrieval excerpts — each block clearly delimited, never silently blended
-   into the user's text), title derivation, `stripOldImages` (images ride
-   only on the latest turn when resending history — provider body caps),
+   into the user's text), title derivation, `stripOldImages` (a budgeted
+   image retention over the resent history: recent images ride along,
+   older ones collapse to a marker once the per-request budget is spent —
+   the name is historical, it used to strip all but the latest turn),
    and the plain-text conversation export. Import-free, Node-tested.
 6. **`public/js/turns.js`** — turn rendering: user bubbles, assistant turns
    (activity slot + streamed content + per-turn tools like Raw/Copy),

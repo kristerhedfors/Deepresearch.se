@@ -789,7 +789,10 @@ async function runQuizGeneration(ctx, quizReq) {
 /** @param {PipelineCtx} ctx */
 async function runDirectReply(ctx) {
   await streamCompletion(ctx, [
-    { role: "system", content: phasePrompt(ctx.state, "research", "answer-direct")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, spaceScene: ctx.spaceScene, demoSurface: ctx.demoSurface }) },
+    // webSearchOn: this branch produced no sources, and without the knob's
+    // actual value the model has been observed explaining that away by
+    // inventing an off toggle (prompts.js SEARCH_ON_BUT_UNUSED_NOTE).
+    { role: "system", content: phasePrompt(ctx.state, "research", "answer-direct")({ hasShell: !!ctx.shellBlock, hasSource: !!ctx.hasSource, spaceScene: ctx.spaceScene, demoSurface: ctx.demoSurface, webSearchOn: ctx.state.webSearch !== false }) },
     ...shellReplyMessages(ctx.shellBlock),
     ...withImageNudge(ctx.conversation),
   ]);
