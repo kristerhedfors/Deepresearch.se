@@ -17,6 +17,7 @@ import {
   OAUTH_SCOPES,
   REDIRECT_ALLOWLIST,
   authorizationServerMetadata,
+  isChatgptConnectorRedirect,
   isLoopbackRedirect,
   issuerFor,
   protectedResourceMetadata,
@@ -24,6 +25,52 @@ import {
   resourceMetadataUrl,
   wwwAuthenticateValue,
 } from "./oauth-metadata.js";
+
+// ---- ChatGPT's per-connector callback ---------------------------------------
+
+test("ChatGPT's current per-connector callback is allowed", () => {
+  // THE REPORTED FAILURE. The allowlist held only the legacy
+  // `connector_platform_oauth_redirect`, which OpenAI keeps working for
+  // already-published apps. A connector added today is issued a fresh
+  // callback_id and sends `…/connector/oauth/<id>`, which no exact string could
+  // match — so the authorization endpoint refused it and the user saw an
+  // unexplained "couldn't connect".
+  assert.equal(redirectAllowed("https://chatgpt.com/connector/oauth/01ABCdef_-"), true);
+  assert.equal(isChatgptConnectorRedirect("https://chatgpt.com/connector/oauth/abc123"), true);
+  // The legacy forms keep working — an already-published connector still uses
+  // them, so this is an addition and not a swap.
+  assert.equal(redirectAllowed("https://chatgpt.com/connector_platform_oauth_redirect"), true);
+});
+
+test("the ChatGPT pattern is bounded — it is a shape, not a prefix", () => {
+  // A pattern arm promises more than an exact string, so each of these is a way
+  // it could have promised too much.
+  const refused = [
+    // A lookalike host, and the classic suffix trick.
+    "https://chatgpt.com.evil.test/connector/oauth/x",
+    "https://evil.test/connector/oauth/x",
+    // Plaintext: a code handed over http is a code disclosed.
+    "http://chatgpt.com/connector/oauth/x",
+    // Credentials in the authority, which some parsers read as the host.
+    "https://user:pw@chatgpt.com/connector/oauth/x",
+    // More than one segment past the prefix — an open path is an open redirect.
+    "https://chatgpt.com/connector/oauth/x/y",
+    "https://chatgpt.com/connector/oauth/",
+    // Traversal: URL normalizes `..` before we count segments, so this escapes
+    // the prefix entirely rather than sneaking through it.
+    "https://chatgpt.com/connector/oauth/x/../../evil",
+    // A query or fragment is not part of the registered shape.
+    "https://chatgpt.com/connector/oauth/x?next=https://evil.test",
+    "https://chatgpt.com/connector/oauth/x#f",
+    // A neighbouring path that merely starts the same way.
+    "https://chatgpt.com/connector/oauth-evil/x",
+    "https://chatgpt.com/connector/x",
+  ];
+  for (const uri of refused) {
+    assert.equal(isChatgptConnectorRedirect(uri), false, `should refuse ${uri}`);
+    assert.equal(redirectAllowed(uri), false, `should refuse ${uri}`);
+  }
+});
 
 // ---- the redirect allowlist -------------------------------------------------
 
@@ -110,19 +157,39 @@ test("the resource metadata URL is where the 401 points", () => {
   );
 });
 
-test("a well-known URI is origin-relative even when the resource carries a path", () => {
+test("a resource path is INSERTED after the well-known segment, never appended to the resource", () => {
   // The regression this pins was found by probing a local Worker, not here: a
   // preview or local origin has no `mcp.` host, so its resource is
   // `<origin>/mcp` — and appending to that produced
   // `…/mcp/.well-known/oauth-protected-resource`, which 404s. A client that
   // follows the pointer finds nothing and the connection dies at step one.
+  //
+  // The path is not DROPPED either, which is what this asserted until the
+  // ChatGPT connector failure. RFC 9728 §3.1 inserts it after the well-known
+  // segment, and the distinction is load-bearing: OpenAI's setup tells people
+  // to type the endpoint WITH its `/mcp` path, and the client then validates
+  // `resource` against exactly what was typed. Collapsing both spellings onto
+  // the origin document answered the `/mcp` user with a resource they did not
+  // type — a mismatch reported as an unreachable server. Both documents are
+  // served (src/index.js); this is which one a given resource points at.
   assert.equal(
     resourceMetadataUrl("http://127.0.0.1:8788/mcp"),
-    "http://127.0.0.1:8788/.well-known/oauth-protected-resource",
+    "http://127.0.0.1:8788/.well-known/oauth-protected-resource/mcp",
   );
   assert.equal(
     resourceMetadataUrl("https://abc.workers.dev/mcp"),
-    "https://abc.workers.dev/.well-known/oauth-protected-resource",
+    "https://abc.workers.dev/.well-known/oauth-protected-resource/mcp",
+  );
+  // A bare origin is unchanged, byte for byte — the common case keeps its URL.
+  assert.equal(
+    resourceMetadataUrl("https://mcp.deepresearch.se"),
+    "https://mcp.deepresearch.se/.well-known/oauth-protected-resource",
+  );
+  // A trailing slash is not a path worth inserting: it would mint a second URL
+  // for the same resource.
+  assert.equal(
+    resourceMetadataUrl("https://mcp.deepresearch.se/"),
+    "https://mcp.deepresearch.se/.well-known/oauth-protected-resource",
   );
   // Same for the documentation link the document advertises.
   const doc = protectedResourceMetadata("http://127.0.0.1:8788/mcp", "http://127.0.0.1:8788");
@@ -158,16 +225,20 @@ test("S256 is advertised, because the spec requires a client to be able to check
   assert.ok(!doc.code_challenge_methods_supported.includes("plain"));
 });
 
-test("the advertised grants are the two that exist, and no registration endpoint", () => {
+test("the advertised grants are the two that exist, and DCR is offered alongside CIMD", () => {
   const doc = authorizationServerMetadata("https://deepresearch.se");
   assert.deepEqual(doc.grant_types_supported, ["authorization_code", "refresh_token"]);
   // client_credentials is unsupported by both vendors: every connection needs
   // user consent. Advertising it would invite a grant we refuse.
   assert.ok(!doc.grant_types_supported.includes("client_credentials"));
   assert.deepEqual(doc.response_types_supported, ["code"]);
-  // No registration_endpoint: CIMD is the intended path, and advertising DCR
-  // is what makes a client choose it.
-  assert.equal("registration_endpoint" in doc, false);
+  // BOTH registration mechanisms. This assertion was the inverse until the
+  // ChatGPT connector failure: advertising CIMD alone left a client that does
+  // not implement it with nowhere to register and no way to get a client_id, so
+  // the flow died at discovery. CIMD is still preferred — a client that reads
+  // the flag never calls /oauth/register.
+  assert.equal(doc.registration_endpoint, "https://deepresearch.se/oauth/register");
+  assert.equal(doc.client_id_metadata_document_supported, true);
 });
 
 test("endpoints hang off the issuer that is passed in", () => {

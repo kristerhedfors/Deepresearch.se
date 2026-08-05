@@ -39,6 +39,27 @@ import { getConfig } from "./config.js";
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const STATE_COOKIE = "dr_oauth";
+/**
+ * Where to land AFTER sign-in, when the arrival was not a person opening the
+ * app but a flow that has somewhere specific to resume.
+ *
+ * WHY THIS EXISTS. The connector's authorization request
+ * (`/oauth/authorize?client_id=…&code_challenge=…&state=…`) needs a signed-in
+ * account. An unauthenticated arrival used to be answered with the generic
+ * sign-in card, and the callback then hard-redirected to `/rver` — so the user
+ * signed in, landed in the app, and the authorization request they came with
+ * was GONE, along with its PKCE challenge and the client's state. The connector
+ * popup waited for a code that could never arrive. That is why the one live
+ * Claude run reached consent (the owner was already signed in) and a first-time
+ * connection could not.
+ *
+ * Its own cookie rather than a widened `state`: the CSRF state is single-use
+ * and compared byte-for-byte, and threading a payload through it would mean
+ * touching the one check that stops a forged callback. This carries no
+ * authority — it only says where to go next — and is validated as a
+ * same-origin path against a closed prefix list when it is read back.
+ */
+const NEXT_COOKIE = "dr_oauth_next";
 const STATE_TTL_S = 600;
 
 /** @param {Env} env @returns {boolean} both OAuth secrets are set */
@@ -93,15 +114,60 @@ export async function handleGoogleStart(request, env, url, log) {
     scope: "openid email profile",
     state,
   });
-  return new Response(null, {
-    status: 302,
-    headers: {
-      Location: `${env.GOOGLE_AUTH_URL || AUTH_URL}?${params}`,
-      "Set-Cookie":
-        `${STATE_COOKIE}=${state}.${await signState(env, state)}; Max-Age=${STATE_TTL_S}; ` +
-        "Path=/auth/google; Secure; HttpOnly; SameSite=Lax",
-    },
-  });
+  const headers = new Headers({ Location: `${env.GOOGLE_AUTH_URL || AUTH_URL}?${params}` });
+  headers.append(
+    "Set-Cookie",
+    `${STATE_COOKIE}=${state}.${await signState(env, state)}; Max-Age=${STATE_TTL_S}; ` +
+      "Path=/auth/google; Secure; HttpOnly; SameSite=Lax",
+  );
+  // `?next=` is only honored for the closed set of resumable flows — see
+  // safeNextPath. Anything else is dropped silently rather than refused: a
+  // stray parameter should never cost someone their sign-in.
+  const next = safeNextPath(url.searchParams.get("next"));
+  headers.append(
+    "Set-Cookie",
+    next
+      ? `${NEXT_COOKIE}=${encodeURIComponent(next)}; Max-Age=${STATE_TTL_S}; ` +
+          "Path=/auth/google; Secure; HttpOnly; SameSite=Lax"
+      : clearNextCookie(),
+  );
+  return new Response(null, { status: 302, headers });
+}
+
+/**
+ * The paths sign-in may hand control back to.
+ *
+ * A CLOSED PREFIX LIST, not "any same-origin path": this value arrives in a
+ * query string, so treating it as a general redirect target is how open
+ * redirectors are built. Only the OAuth authorization endpoint needs to survive
+ * a sign-in today, and the list is where a second one would be added
+ * deliberately.
+ *
+ * Rejected: anything not starting with a single `/` (so no absolute URL and no
+ * `//host` protocol-relative form), anything with a backslash (which some
+ * clients normalize to `/`), and anything whose path is not on the list.
+ * @param {string | null | undefined} raw
+ * @returns {string | null} the path (with its query), or null
+ */
+export function safeNextPath(raw) {
+  if (typeof raw !== "string" || !raw) return null;
+  if (!raw.startsWith("/") || raw.startsWith("//")) return null;
+  if (raw.includes("\\")) return null;
+  let parsed;
+  try {
+    // A fixed base: this is only ever a path, and parsing it against one is
+    // what makes the pathname reliable to compare.
+    parsed = new URL(raw, "https://deepresearch.se");
+  } catch {
+    return null;
+  }
+  if (parsed.pathname !== "/oauth/authorize") return null;
+  return parsed.pathname + parsed.search;
+}
+
+/** @returns {string} a Set-Cookie value that expires the return-path cookie */
+function clearNextCookie() {
+  return `${NEXT_COOKIE}=; Max-Age=0; Path=/auth/google; Secure; HttpOnly; SameSite=Lax`;
 }
 
 /**
@@ -227,13 +293,36 @@ export async function handleGoogleCallback(request, env, url, log) {
 
     log.info("login.success", { role: user.role, via: "google" });
     // The signed-in app lives at /rver (the DeepResearch.Se/rver = "deep
-    // research server" wordplay; the root redirects to DRC at /cure).
-    const headers = new Headers({ Location: "/rver" });
+    // research server" wordplay; the root redirects to DRC at /cure) — unless
+    // a resumable flow said where it wanted to go back to. Re-validated on the
+    // way out, not trusted because it was validated on the way in: the cookie
+    // is ours, but a stored value is still an input.
+    const resume = safeNextPath(readNextCookie(request));
+    if (resume) log.info("login.resume", { path: "/oauth/authorize" });
+    const headers = new Headers({ Location: resume || "/rver" });
     headers.append("Set-Cookie", clearStateCookie());
+    headers.append("Set-Cookie", clearNextCookie());
     headers.append("Set-Cookie", await createSessionCookie(env, String(user.id)));
     return new Response(null, { status: 303, headers });
   } catch (err) {
     return fail("google-failed", /** @type {any} */ (err)?.message || String(err));
+  }
+}
+
+/**
+ * The return-path cookie's raw value, if the browser sent one.
+ * @param {Request} request
+ * @returns {string | null}
+ */
+function readNextCookie(request) {
+  const m = (request.headers.get("Cookie") || "").match(
+    new RegExp(`(?:^|;\\s*)${NEXT_COOKIE}=([^;]+)`),
+  );
+  if (!m) return null;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return null;
   }
 }
 

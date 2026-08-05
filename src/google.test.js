@@ -10,7 +10,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { handleGoogleCallback } from "./google.js";
+import { handleGoogleCallback, safeNextPath } from "./google.js";
 import { signState } from "./auth.js";
 
 const noopLog = { info() {}, warn() {}, error() {}, debug() {} };
@@ -229,4 +229,76 @@ test("callback: an invite staged as pending still lands on the approval gate", a
   );
   assert.equal(db.users[0].status, "pending");
   assert.equal(db.users[0].google_sub, "sub-123");
+});
+
+// ---- resuming an OAuth authorization request across sign-in -----------------
+//
+// The connector's authorization request needs a signed-in account. Before this,
+// an unauthenticated arrival met the generic sign-in card and the callback
+// hard-redirected to /rver — so the user signed in, landed in the app, and the
+// request they arrived with (with its PKCE challenge and the client's state)
+// was gone. The popup waited for a code nobody could still mint. That is why
+// the one live Claude run reached consent (the owner was already signed in)
+// and a first-time connection could not.
+
+test("safeNextPath accepts an authorization request and nothing else", () => {
+  assert.equal(
+    safeNextPath("/oauth/authorize?client_id=x&code_challenge=y"),
+    "/oauth/authorize?client_id=x&code_challenge=y",
+  );
+  // A CLOSED list, not "any same-origin path": this value arrives in a query
+  // string, so treating it as a general redirect target is how open
+  // redirectors get built.
+  for (const bad of [
+    "https://evil.test/",
+    "//evil.test/",
+    "/\\evil.test",
+    "/rver",
+    "/admin",
+    "/oauth/authorize/../../admin",
+    "",
+    null,
+    undefined,
+  ]) {
+    assert.equal(safeNextPath(bad), null, `should refuse ${JSON.stringify(bad)}`);
+  }
+});
+
+test("sign-in returns to the authorization request instead of the app", async () => {
+  const env = { ...ENV, DB: fakeDb() };
+  const state = "0123456789abcdef0123456789abcdef";
+  const url = new URL(`https://deepresearch.se/auth/google/callback?state=${state}&code=auth-code`);
+  const request = new Request(url, {
+    headers: {
+      Cookie:
+        `dr_oauth=${state}.${await signState(ENV, state)}; ` +
+        `dr_oauth_next=${encodeURIComponent("/oauth/authorize?client_id=x&state=s")}`,
+    },
+  });
+  const res = await withStubbedFetch("user@example.com", () =>
+    handleGoogleCallback(request, env, url, noopLog),
+  );
+  assert.equal(res.headers.get("Location"), "/oauth/authorize?client_id=x&state=s");
+  // The return path is single-use: cleared in the same response that consumes
+  // it, so a later sign-in cannot be steered by a stale cookie.
+  assert.match(res.headers.getSetCookie().join("\n"), /dr_oauth_next=; Max-Age=0/);
+});
+
+test("a tampered return-path cookie falls back to the app", async () => {
+  // Re-validated on the way OUT, not trusted because it was validated on the
+  // way in: the cookie is ours, but a stored value is still an input.
+  const env = { ...ENV, DB: fakeDb() };
+  const state = "0123456789abcdef0123456789abcdef";
+  const url = new URL(`https://deepresearch.se/auth/google/callback?state=${state}&code=auth-code`);
+  const request = new Request(url, {
+    headers: {
+      Cookie:
+        `dr_oauth=${state}.${await signState(ENV, state)}; ` +
+        `dr_oauth_next=${encodeURIComponent("https://evil.test/steal")}`,
+    },
+  });
+  const res = await withStubbedFetch("user@example.com", () =>
+    handleGoogleCallback(request, env, url, noopLog),
+  );
+  assert.equal(res.headers.get("Location"), "/rver");
 });

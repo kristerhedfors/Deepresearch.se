@@ -693,6 +693,92 @@ protecting.
 
 ---
 
+## 4c. The second live run (2026-08-05): ChatGPT could not connect at all
+
+Reported as "ChatGPT MCP connection failed", alongside a connector tile showing
+a letter **D** on a green background. Five separate defects, each sufficient on
+its own to end the flow, and none of them visible to the user as anything but
+"couldn't connect".
+
+**1. ChatGPT's callback is per connector, and the allowlist only had the legacy
+one.** OpenAI now redirects to `https://chatgpt.com/connector/oauth/<callback_id>`
+and states that the previous `…/connector_platform_oauth_redirect` "continues to
+work" for apps **already published**. A connector added today gets a fresh
+`callback_id`, so no exact string could match it: `redirectAllowed` refused,
+`/oauth/authorize` rendered a refusal, and no code was ever issued. Fixed with
+`isChatgptConnectorRedirect` — a bounded SHAPE match (exact origin, the
+`/connector/oauth/` prefix, exactly one id-shaped segment, no query or
+fragment), sitting beside the exact list rather than replacing it. §2a's note
+that this URL came from integrator reports rather than OpenAI's reference is
+now settled: the reported form was the legacy one.
+
+**2. Signing in destroyed the authorization request.** `/oauth/authorize` sat
+below the identity gate, so an unauthenticated arrival met the site's generic
+sign-in card — and the Google callback hard-redirected to `/rver`. The user
+signed in, landed in the app, and the request they arrived with (PKCE challenge,
+client state) was gone; the connector popup waited for a code nobody could still
+mint. **This broke Claude too** — the 2026-08-04 run only reached consent
+because the owner was already signed in on that device, which is exactly the
+kind of accident that hides a bug of this shape. Fixed by redirecting an
+unauthenticated authorization request into `/auth/google?next=…` and carrying
+the return path in its own short-lived cookie, validated against a closed
+prefix list on the way in AND on the way out.
+
+**3. No DCR, so a client that does not speak CIMD had nowhere to register.**
+The authorization-server metadata advertised CIMD only and no
+`registration_endpoint`; `POST /oauth/register` fell through the identity gate
+and answered `401` with HTML. OpenAI's docs do describe CIMD as preferred, but
+DCR is selectable in their dialog and is what a builder who picks it uses — and
+a dead end at discovery is invisible. Fixed by building the fallback that
+`oauth-metadata.js` had described from the start (`src/oauth-register.js`). The
+recorded objection to DCR — a client row per connection — is answered by issuing
+a **signed stateless `client_id`** (`orc1.`) that carries its own registration,
+so there is still no client table. A registration cannot widen where a code may
+be sent: every `redirect_uris` entry is checked against the same allowlist, at
+registration and again at use.
+
+**4. The `resource` did not match the URL ChatGPT users are told to type.**
+OpenAI's setup says to enter the endpoint *with* its `/mcp` path (which is why
+`chatgptEndpointUrl` hands out that spelling), but only the bare-origin
+document existed and it advertised `resource: "https://mcp.deepresearch.se"`.
+A client validating `resource` against what was typed gets a mismatch it
+reports as an unreachable server. Fixed by serving the RFC 9728 §3.1
+path-inserted document at `/.well-known/oauth-protected-resource/mcp` as well,
+and by pointing the `401`'s `WWW-Authenticate` at whichever document matches
+the URL the request arrived on. Note this REVERSES a previous pin: the path
+used to be dropped, which was right about not appending to the resource and
+wrong about discarding it.
+
+**5. `GET /mcp` answered `200 text/html`.** The `mcp.` host served the
+`/connect/` page for both `/` and `/mcp`. Streamable HTTP says a server
+offering no SSE stream on `GET` returns `405`, and a client reading HTML there
+can conclude the URL is not an MCP endpoint. The bare origin still serves the
+page — a person typing the host into a browser — and `/mcp` now answers as an
+endpoint. CORS was absent throughout (`OPTIONS` on every OAuth route fell to
+the identity gate and returned an HTML `401`); the discovery documents, the
+token and registration endpoints and the MCP `401` now answer it, with
+`WWW-Authenticate` exposed.
+
+**And the green D was not a broken asset.** Every icon this site ships serves
+`200`; the connector had simply never been told any of them existed, so the
+client generated a tile from the first letter of `serverInfo.name`. Two causes,
+both fixed: `serverInfo` now carries the SEP-973 `icons` and `websiteUrl`
+fields (unknown fields are ignored by clients predating the `2025-11-25`
+revision, so this is free on the one we report), and the conventional
+root-level icon probes — `/apple-touch-icon.png` above all — used to hit the
+identity gate and get an HTML `401`, which is the *generic letter* failure
+`src/assets.js` already documented, reached by the one path its allowlist did
+not cover.
+
+**What this run says generally.** Four of these six were the same mistake:
+believing a vendor's documented preference over what its client actually sends,
+and pinning that belief in a test. `oauth-metadata.test.js` asserted the
+ABSENCE of a registration endpoint and the DROPPING of the resource path — both
+assertions were faithful to the design and both described a server ChatGPT
+cannot use. A test that pins an assumption makes it permanent.
+
+---
+
 ## 5. What it does and does not change about privacy
 
 Nothing in invariant 4 moves. An MCP call was already a **Se/rver** call:

@@ -120,7 +120,7 @@ import { getConfig } from "./config.js";
 import { handleSandboxImage, handleSandboxImageConfig } from "./sandbox-image.js";
 import { handleSpaceFeedback } from "./space.js";
 import { recordServerError } from "./server-errors.js";
-import { isPublicAsset, serveAsset } from "./assets.js";
+import { isPublicAsset, rootIconAlias, serveAsset } from "./assets.js";
 import { canonicalRedirect } from "./canonical.js";
 import { drswManifestResponse } from "./drsw-manifest.js";
 import { applySecurityHeaders } from "./security-headers.js";
@@ -134,6 +134,7 @@ import {
 } from "./oauth-metadata.js";
 import { handleAuthorizeGet, handleAuthorizePost } from "./oauth-authorize.js";
 import { handleOAuthToken } from "./oauth-token.js";
+import { handleOAuthRegister, CORS_HEADERS as OAUTH_CORS } from "./oauth-register.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -233,10 +234,18 @@ export default {
  */
 function mcpUnauthorized(url, message) {
   const res = jsonResponse(jsonRpcError(null, RPC_INVALID_REQUEST, message), 401);
-  res.headers.set(
-    "WWW-Authenticate",
-    wwwAuthenticateValue(resourceMetadataUrl(mcpEndpointUrl(url))),
-  );
+  // Point at the document for the URL THIS REQUEST came in on, not always the
+  // canonical one. A client that was configured with the `/mcp` spelling
+  // validates `resource` against what it typed, so sending it to the
+  // bare-origin document hands it a mismatch it reports as an unreachable
+  // server. Both documents exist (see the well-known routes); this picks the
+  // matching one.
+  const resource = url.pathname === "/mcp" ? `${url.origin}/mcp` : mcpEndpointUrl(url);
+  res.headers.set("WWW-Authenticate", wwwAuthenticateValue(resourceMetadataUrl(resource)));
+  // The challenge is the whole point of the response, so a browser-side client
+  // has to be able to read it.
+  res.headers.set("access-control-allow-origin", "*");
+  res.headers.set("access-control-expose-headers", "WWW-Authenticate");
   return res;
 }
 
@@ -272,7 +281,13 @@ async function route(request, env, url, log, ctx, requestId) {
   }
 
   if (isPublicAsset(url, request.method)) {
-    return { response: await serveAsset(request, env) };
+    // A root-level icon probe (/apple-touch-icon.png and friends) is served the
+    // real asset from /icons/ rather than 404ing — see ROOT_ICON_ALIASES for
+    // why a miss here ends as a generated letter tile in someone's client.
+    const iconAlias = rootIconAlias(url.pathname);
+    return {
+      response: await serveAsset(request, env, iconAlias ? url.origin + iconAlias : null),
+    };
   }
 
   // DRSW/1 node discovery (docs/WORKSPACE-PROTOCOL.md §7.1): the one file the
@@ -299,6 +314,22 @@ async function route(request, env, url, log, ctx, requestId) {
   // already live. Both clients resolve a cross-host authorization server with
   // nothing special required — `authorization_servers` is what points them at
   // it.
+  // Both documents answer CORS. They are public by construction and carry no
+  // cookie and no ambient authority, so `*` is the honest origin — and a
+  // connector dialog that runs in a browser reads them cross-origin, where a
+  // missing header is indistinguishable from an unreachable server. The methods
+  // are the ones a DOCUMENT accepts, not the registration endpoint's: an
+  // advertised method the route refuses is a preflight that agrees with nothing.
+  const DISCOVERY_CORS = { ...OAUTH_CORS, "access-control-allow-methods": "GET, HEAD, OPTIONS" };
+  if (
+    request.method === "OPTIONS" &&
+    (url.pathname === "/.well-known/oauth-protected-resource" ||
+      url.pathname === "/.well-known/oauth-authorization-server")
+  ) {
+    return {
+      response: new Response(null, { status: 204, headers: DISCOVERY_CORS }),
+    };
+  }
   if (request.method === "GET" || request.method === "HEAD") {
     if (url.pathname === "/.well-known/oauth-protected-resource") {
       return {
@@ -309,11 +340,28 @@ async function route(request, env, url, log, ctx, requestId) {
           // character, and the only way to guarantee that is for one function
           // to own both answers.
           protectedResourceMetadata(mcpEndpointUrl(url), issuerFor(url)),
+          200,
+          DISCOVERY_CORS,
+        ),
+      };
+    }
+    // THE PATH-INSERTED FORM (RFC 9728 §3.1), for the other URL a user can
+    // legitimately have typed. OpenAI's instructions say to enter the endpoint
+    // WITH its `/mcp` path, so ChatGPT looks for this document and validates
+    // `resource` against `…/mcp`; the bare-origin document above says
+    // `https://mcp.deepresearch.se` and would not match. Serving both means
+    // whichever spelling the user typed is the one that answers.
+    if (url.pathname === "/.well-known/oauth-protected-resource/mcp") {
+      return {
+        response: jsonResponse(
+          protectedResourceMetadata(`${url.origin}/mcp`, issuerFor(url)),
+          200,
+          DISCOVERY_CORS,
         ),
       };
     }
     if (url.pathname === "/.well-known/oauth-authorization-server") {
-      return { response: jsonResponse(authorizationServerMetadata(issuerFor(url))) };
+      return { response: jsonResponse(authorizationServerMetadata(issuerFor(url)), 200, DISCOVERY_CORS) };
     }
   }
 
@@ -324,6 +372,16 @@ async function route(request, env, url, log, ctx, requestId) {
   // problem rather than a malformed grant.
   if (url.pathname === "/oauth/token") {
     return { response: await handleOAuthToken(request, env, log) };
+  }
+
+  // Dynamic client registration (RFC 7591). Above the identity gate for the
+  // same reason as the documents above it: a client registers BEFORE it has any
+  // credential or any user, so requiring one is requiring the flow to have
+  // already finished. What keeps it safe is not authentication but the redirect
+  // allowlist — see src/oauth-register.js. Routed for every method so OPTIONS
+  // can answer the preflight a browser-based connector dialog sends.
+  if (url.pathname === "/oauth/register") {
+    return { response: await handleOAuthRegister(request, env, log) };
   }
 
   // ---- the MCP endpoint, key-bearing half (src/mcp.js) --------------------
@@ -354,13 +412,42 @@ async function route(request, env, url, log, ctx, requestId) {
     }
   }
 
+  // `GET /mcp` IS A PROTOCOL PROBE, not a request for the setup page. Streamable
+  // HTTP says a server that offers no SSE stream on GET answers 405; we served
+  // the `/connect/` HTML at 200 instead, and a client reading that concludes the
+  // URL is not an MCP endpoint at all. The bare origin still serves the page —
+  // that is a person typing the host into a browser — but the endpoint path
+  // answers as an endpoint.
+  if (
+    isMcpHost(url.hostname) &&
+    (request.method === "GET" || request.method === "HEAD") &&
+    url.pathname === "/mcp"
+  ) {
+    return {
+      response: jsonResponse(
+        {
+          jsonrpc: "2.0",
+          id: null,
+          error: {
+            code: -32600,
+            message:
+              "This MCP endpoint speaks Streamable HTTP: send JSON-RPC over POST. " +
+              "Setup instructions are at https://mcp.deepresearch.se/connect/.",
+          },
+        },
+        405,
+        { allow: "POST", ...OAUTH_CORS, "access-control-allow-methods": "POST, OPTIONS" },
+      ),
+    };
+  }
+
   // The dedicated `mcp.` host has nothing to serve on a GET but the setup
   // page — how to point a client at it, and where to mint the key. Public: it
   // is instructions, and a signed-out reader is exactly who needs them.
   if (
     isMcpHost(url.hostname) &&
     (request.method === "GET" || request.method === "HEAD") &&
-    (url.pathname === "/" || url.pathname === "/mcp" || url.pathname === "/connect" || url.pathname === "/connect/")
+    (url.pathname === "/" || url.pathname === "/connect" || url.pathname === "/connect/")
   ) {
     return { response: await serveAsset(request, env, url.origin + "/connect/") };
   }
@@ -652,6 +739,23 @@ async function route(request, env, url, log, ctx, requestId) {
     }
     if (url.pathname.startsWith("/api/")) {
       return { response: jsonResponse({ error: "Authentication required." }, 401) };
+    }
+    // AN AUTHORIZATION REQUEST IS RESUMED, NOT DISCARDED. Everything else that
+    // lands here is a person opening the app, for whom the sign-in card and its
+    // "/rver" landing are right. `/oauth/authorize` is not that: it carries the
+    // connector's PKCE challenge and state in its query string, and the generic
+    // card threw them away — the user signed in, arrived in the app, and the
+    // popup they came from waited for a code nobody could still mint. Sending
+    // them straight into Google with `next` set means sign-in returns to the
+    // consent screen with the request intact.
+    if (url.pathname === "/oauth/authorize" && (request.method === "GET" || request.method === "HEAD")) {
+      const next = encodeURIComponent(url.pathname + url.search);
+      return {
+        response: new Response(null, {
+          status: 302,
+          headers: { Location: `/auth/google?next=${next}`, "cache-control": "no-store" },
+        }),
+      };
     }
     // Sign-in page instead of a WWW-Authenticate challenge: installed PWAs
     // cannot show the native Basic Auth dialog (black screen on iOS).

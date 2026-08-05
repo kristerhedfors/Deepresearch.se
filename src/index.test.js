@@ -106,6 +106,103 @@ describe("the identity gate is fail-closed", () => {
     assert.equal((await resp.json()).jsonrpc, "2.0");
   });
 
+  test("GET /mcp answers as an ENDPOINT (405), not with the setup page", async () => {
+    // Streamable HTTP: a server offering no SSE stream on GET returns 405. This
+    // used to serve the /connect/ HTML at 200, and a client reading HTML there
+    // can conclude the URL is not an MCP endpoint at all — one of the 2026-08-05
+    // ChatGPT connector failures.
+    const ctx = fakeCtx();
+    const resp = await worker.fetch(new Request("https://mcp.deepresearch.se/mcp"), env(), ctx);
+    await ctx.settle();
+    assert.equal(resp.status, 405);
+    assert.equal(resp.headers.get("allow"), "POST");
+    assert.equal((await resp.json()).jsonrpc, "2.0");
+  });
+
+  test("GET / on the mcp. host still serves the setup page", async () => {
+    // The counterpart to the rule above: the bare origin is what a PERSON types
+    // into a browser, and they get instructions rather than a protocol error.
+    const ctx = fakeCtx();
+    const assets = { ASSETS: fakeAssets({ "/connect/": "<html>connect</html>" }) };
+    const resp = await worker.fetch(new Request("https://mcp.deepresearch.se/"), env(assets), ctx);
+    await ctx.settle();
+    assert.equal(resp.status, 200);
+    assert.match(await resp.text(), /connect/);
+  });
+
+  test("the 401 pointer names the document for the URL that was typed", async () => {
+    // `resource` must equal the typed URL character for character, and OpenAI
+    // tells people to type the `/mcp` form while Claude gets the bare origin.
+    // Pointing both at the origin document handed the ChatGPT user a mismatch
+    // reported as an unreachable server.
+    const ctx = fakeCtx();
+    const withPath = await worker.fetch(
+      new Request("https://mcp.deepresearch.se/mcp", { method: "POST" }),
+      env(),
+      ctx,
+    );
+    await ctx.settle();
+    assert.match(
+      withPath.headers.get("www-authenticate"),
+      /resource_metadata="https:\/\/mcp\.deepresearch\.se\/\.well-known\/oauth-protected-resource\/mcp"/,
+    );
+    // The challenge is the point of the response, so a browser client must be
+    // able to read it.
+    assert.equal(withPath.headers.get("access-control-expose-headers"), "WWW-Authenticate");
+
+    const ctx2 = fakeCtx();
+    const bare = await worker.fetch(
+      new Request("https://mcp.deepresearch.se/", { method: "POST" }),
+      env(),
+      ctx2,
+    );
+    await ctx2.settle();
+    assert.match(
+      bare.headers.get("www-authenticate"),
+      /resource_metadata="https:\/\/mcp\.deepresearch\.se\/\.well-known\/oauth-protected-resource"/,
+    );
+  });
+
+  test("both protected-resource documents are served and state their own resource", async () => {
+    for (const [path, resource] of [
+      ["/.well-known/oauth-protected-resource", "https://mcp.deepresearch.se"],
+      ["/.well-known/oauth-protected-resource/mcp", "https://mcp.deepresearch.se/mcp"],
+    ]) {
+      const ctx = fakeCtx();
+      const resp = await worker.fetch(new Request("https://mcp.deepresearch.se" + path), env(), ctx);
+      await ctx.settle();
+      assert.equal(resp.status, 200);
+      assert.equal((await resp.json()).resource, resource);
+      // Read cross-origin by a browser-based connector dialog, where a missing
+      // header is indistinguishable from an unreachable server.
+      assert.equal(resp.headers.get("access-control-allow-origin"), "*");
+    }
+  });
+
+  test("an unauthenticated authorization request is resumed, not discarded", async () => {
+    // It used to meet the generic sign-in card while the Google callback
+    // hard-redirected to /rver, so the PKCE challenge and the client's state
+    // were lost and the connector popup waited forever. This broke Claude too —
+    // it only worked for someone already signed in.
+    const resp = await call("/oauth/authorize?client_id=orc1.x&state=s&code_challenge=c");
+    assert.equal(resp.status, 302);
+    const loc = resp.headers.get("Location");
+    assert.match(loc, /^\/auth\/google\?next=/);
+    assert.match(decodeURIComponent(loc), /\/oauth\/authorize\?client_id=orc1\.x&state=s/);
+  });
+
+  test("/oauth/register is reachable WITHOUT a credential", async () => {
+    // A client registers before it has any credential or any user, so requiring
+    // one requires the flow to have already finished. It used to fall through
+    // the identity gate and answer 401 with HTML.
+    const resp = await call("/oauth/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+    });
+    assert.notEqual(resp.status, 401);
+    assert.equal(resp.headers.get("content-type"), "application/json; charset=utf-8");
+  });
+
   test("an unknown path behind the gate is 401, not 404 — no route enumeration", async () => {
     // Answering 404 for unknown paths and 401 for real ones tells an
     // unauthenticated caller which routes exist. It answers 401 for both.
