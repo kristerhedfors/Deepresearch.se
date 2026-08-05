@@ -158,6 +158,20 @@ is committed and deploys as a static asset of the same deploy that runs the
 code, "the exact code that is running" holds **by construction**: no GitHub
 fetch at runtime, no drift window, nothing to decompress anywhere.
 
+> **"git-tracked" bites when the change ADDS a file.** `git ls-files` does not
+> list an untracked one, so a bundle run *before* `git add` silently omits a
+> brand-new module or doc — the run succeeds, the `--check` passes while the
+> file is still untracked, and the artifact only goes stale the moment you
+> commit. Local `npm test` is green and CI is red on the very same tree.
+> Observed 2026-08-05 (PR #378, a new `docs/*.md`): `count` went 921 → 922 in
+> the diff, which is the tell. **Stage first, bundle second** — `git add -A`,
+> then `npm run bundle` / `bundle:docs`, then `git add -A` again and commit.
+> `bundle-docs.mjs` enumerates the same way and fails the same way. And a new
+> `docs/*.md` **cascades**: once `bundle:docs` sees it, the committed
+> `docs-rag.json` no longer matches the corpus it indexes ("docs-rag index is
+> consistent with the committed docs corpus"), so `bundle:docs-rag` is part of
+> the same fix — it needs `BERGET_API_TOKEN` and embeds the whole corpus.
+
 Three consumers, one artifact:
 
 1. **DRS server enrichment** — `src/introspect.js` reads it back through the

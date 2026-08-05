@@ -27,7 +27,8 @@ and upsert — and §10 records what it cost to learn. The provider-agnostic
 lessons are the **bulk-corpus-etl** skill.
 
 **The window was WIDENED to late 2023 on 2026-07-29: 772,658 vectors** over
-submission months 2310–2607, 2.3× the corpus, stopping at 2310 because arXiv's
+submission months 2310–2607, 2.3× the corpus — carried to **2310–2608 and
+784,744 vectors** by the 2026-08-05 delta (§1.1) — stopping at 2310 because arXiv's
 LaTeXML HTML rendering — what makes the full-text tier Worker-native (§9.9) —
 only exists from late 2023. §11 is the before/after evaluation, and it is also
 the first measurement of the SERVED path rather than the local pack. Headline:
@@ -792,6 +793,16 @@ Vectorize sharding problem to buy it.
   retrieval arm that §4.3 measured as *harmful* on unbiased queries.
 - **Keep the reranker.** It is the one stage that reliably pays, and its
   50-document depth is exactly Vectorize's `topK` ceiling with metadata.
+- **The stored `au` field is a cut, and it used to cut the wrong end.** It held
+  the first 8 authors; `storedAuthors` (`public/js/arxiv-rag-core.js`) now keeps
+  the head AND the last two, because a head-only cut drops the senior author —
+  the name a question about someone's body of work is usually about.
+  Vectors already upserted keep the old string until a re-upsert, so do not
+  read a live record as evidence either way. Note also that **this index cannot
+  answer an authorship question at all**, whatever the field holds: a personal
+  name embeds as its topics, and there is no Vectorize metadata index to filter
+  on. The MCP `authors` lookup goes to the live arXiv `au:` field instead — the
+  **mcp-server** skill has the reasoning and the report that produced it.
 
 ### 9.7 Blocked on
 

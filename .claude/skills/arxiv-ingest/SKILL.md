@@ -247,3 +247,26 @@ A delta is only repeatable if the next run can find its starting point, and
 - the date.
 
 An ingest that does not update that line has made the next delta guesswork.
+
+**And then the SERVED copy, which is a different file and is the one users
+meet.** `CORPUS_FACTS.arxiv` in `src/literature-tools.js` carries a `window`
+string and a `vectors_at_fill` count that the MCP literature tools quote **on
+every miss** — `literature_corpora` exists precisely so an agent can tell a
+real miss from an out-of-window one. A delta that grows the index without
+moving those two tells an agent that a paper it just indexed is outside the
+window, which is worse than saying nothing: it is a confident wrong answer to
+the exact question the field was added to answer.
+
+Found on 2026-08-05, the first time this runbook was used: the delta reached
+2608 and the served window still read `2310–2607`. Caught by calling
+`literature_corpora` against production and reading its `coverage_window`
+beside its `vectors_live` — which is the check, and takes one call.
+`src/literature-run.test.js` now pins the window's upper bound against the
+recorded fill so the two cannot drift apart silently again.
+
+So the ingest is not done until all four move together:
+
+1. `docs/ARXIV-RAG.md` §1 marker line (and §1's headline window, if it moved),
+2. `CORPUS_FACTS.arxiv.window` and `.vectors_at_fill` in `src/literature-tools.js`,
+3. the upper-bound assertion in `src/literature-run.test.js`,
+4. `npm run bundle` / `bundle:docs`, since 1 and 2 stale the artifacts.

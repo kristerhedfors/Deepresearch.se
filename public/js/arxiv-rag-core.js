@@ -136,6 +136,69 @@ export function truncateChars(text, max) {
   return s.slice(0, end);
 }
 
+/** Authors kept from the FRONT of a long list. */
+export const STORED_AUTHORS_HEAD = 6;
+/** Authors kept from the END of a long list — see storedAuthors. */
+export const STORED_AUTHORS_TAIL = 2;
+
+/**
+ * The author string stored in a vector's metadata.
+ *
+ * A long author list has to be cut somewhere (metadata is billed weight, and
+ * 300 chars is the cap both indexers use), but cutting it as a plain
+ * `slice(0, 8)` DROPS EXACTLY THE NAME MOST QUESTIONS ARE ABOUT. In the life
+ * sciences the senior author — the lab whose body of work someone asks after —
+ * is LAST, so a 40-author genomics paper used to store the eight people least
+ * likely to be searched for. Found the hard way: a user asked an MCP client for
+ * a named palaeogeneticist's work, several of his own group's papers came back,
+ * and his name was not in a single one of them because he was author 30-odd on
+ * each. src/literature-authors.js has the full account.
+ *
+ * So the cut keeps both ends and marks the gap. The middle authors are the ones
+ * a reader is least likely to be looking for, and an explicit "… +N more"
+ * beats a list that silently claims to be complete.
+ *
+ * NOTE FOR ANYONE READING A LIVE RECORD: this only affects vectors written
+ * AFTER it shipped. The ~2.4M already in Vectorize keep the head-only string
+ * until a re-upsert (the **pubmed-ingest** and **arxiv-rag** skills' rebuild
+ * runbooks), which is why the MCP author lookup goes to the live APIs rather
+ * than trusting this field.
+ *
+ * @param {string[]} authors
+ * @param {number} [max] the metadata character cap
+ * @returns {string}
+ */
+export function storedAuthors(authors, max = 300) {
+  const list = (Array.isArray(authors) ? authors : []).map((a) => String(a || "").trim()).filter(Boolean);
+  if (!list.length || !(max > 0)) return "";
+  const keep = STORED_AUTHORS_HEAD + STORED_AUTHORS_TAIL;
+  if (list.length <= keep) return truncateChars(list.join("; "), max);
+
+  const tail = list.slice(-STORED_AUTHORS_TAIL);
+  // The tail is the POINT of this function, so it is reserved before the head
+  // is measured — truncating the assembled string would shear off exactly the
+  // senior author this cut exists to keep. Long names make that reachable: nine
+  // 30-character names overflow 300 on their own.
+  const suffix = `; … +${list.length - keep} more; ${tail.join("; ")}`;
+  if (suffix.length >= max) return truncateChars(tail.join("; "), max);
+
+  const room = max - suffix.length;
+  /** @type {string[]} */
+  const head = [];
+  let used = 0;
+  for (const name of list.slice(0, STORED_AUTHORS_HEAD)) {
+    const cost = head.length ? name.length + 2 : name.length;
+    if (used + cost > room) break;
+    head.push(name);
+    used += cost;
+  }
+  // A head that would not fit at all still leaves a usable record: the count
+  // and the senior authors.
+  return head.length
+    ? `${head.join("; ")}${suffix}`
+    : truncateChars(`… +${list.length - STORED_AUTHORS_TAIL} more; ${tail.join("; ")}`, max);
+}
+
 /**
  * @param {ArxivPaper} paper
  * @param {string} strategy a key of PASSAGE_STRATEGIES

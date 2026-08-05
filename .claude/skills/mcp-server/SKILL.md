@@ -236,12 +236,73 @@ reachable only from inside the pipeline's own search wave.
 
 - **`literature_search`** — dense retrieval, structured records out (id, url,
   title, authors[], date, category/journal, abstract, cross-encoder score).
-  Takes **`queries`: up to 6 angles** run in parallel across both corpora.
+  Takes **`queries`: up to 6 angles** run in parallel across both corpora, and
+  **`authors`** — which does not use the corpora at all (see below).
 - **`literature_fetch`** — exact records by arXiv id / PMID, mixed in one call
   (URLs and prefixed forms accepted). How an agent follows a citation.
 - **`literature_similar`** — more-like-this from a known paper.
 - **`literature_corpora`** — live vector counts, coverage windows, stored
   fields, retrieval semantics. Contacts nothing.
+
+### The author leg — the question the corpora cannot answer (2026-08-05)
+
+**`authors` on `literature_search` does not search the hosted indexes.** It
+queries the LIVE Europe PMC (`AUTH:"Surname I"`) and arXiv (`au:`) author
+fields. That is not a shortcut; it is the only thing that works, and the reason
+is worth keeping because it will look like a bug later:
+
+1. **Dense retrieval cannot match authorship.** A personal name embeds as the
+   TOPICS it co-occurs with, so "Love Dalén's papers" retrieves ancient-DNA
+   papers by other people. Always. This is not a tuning problem.
+2. **There is no metadata index**, so no `authors CONTAINS` filter can be
+   pushed into the query even in principle (same root as `FILTER_NOTE`).
+3. **The stored author string was cut from the FRONT** — `slice(0, 8)` in both
+   indexers. In the life sciences the senior author is LAST, so a 40-author
+   genomics paper stored the eight people least likely to be asked about. Fixed
+   at the source (`storedAuthors` in `public/js/arxiv-rag-core.js` keeps head
+   AND tail), but **the ~2.4M vectors already in Vectorize keep the old string
+   until a re-upsert** — don't claim otherwise when reading a live record.
+
+The trigger was a real report: a user connected the MCP server to Claude and
+asked for a named palaeogeneticist's body of work. `search` answered
+`{"results":[]}`, `literature_search` answered with other people's ancient-DNA
+papers, and the client model concluded the corpus was empty and stopped. The
+user reported it as "Claude never searched" — which is what silence looks like
+from outside. The papers were there the whole time; only the name was missing.
+
+Three things follow from that, and each is load-bearing:
+
+- **Both sort orders are fetched and interleaved** (`CITED desc` +
+  `P_PDATE_D desc`). Citation order is what makes a *body of work* question
+  answerable — the top of a cited list is what someone is known for. Recency
+  alone answers a different question.
+- **Names are not disambiguated, and the response says so.** Europe PMC's ORCID
+  field is too thinly populated to use (checked on the records in question:
+  absent), and `AUTH:"Dalén L"` genuinely mixes a palaeogeneticist with a
+  paediatric-nutrition researcher. The lever that works is `queries` passed
+  alongside — the subject terms are ANDed onto the author query, which took a
+  live probe from 243 mixed records to 115 clean ones (2026-08-05).
+- **`search` no longer returns a bare `[]`.** OpenAI's contract fixes the
+  `results` key, not the whole object, so an empty result now carries a `note`
+  naming the three things that read as empty here and are not empty in the
+  literature: a topic outside the corpus windows, an authorship question, and a
+  query stripped to keywords. An unexplained empty is the failure mode that
+  ended the reported session.
+
+`authors` is valid **with no `queries` at all** — that is the shape the hosted
+index cannot serve, so refusing it for having no query was refusing the whole
+question. The leg is fired before the embed and awaited after the dense
+retrievals, so its latency overlaps rather than adds; and it is an enrichment
+in invariant 2's sense, so a dead live API degrades the response to its dense
+half and a dead embedder degrades it to the author records.
+
+The bilingual gate (`authorIntent`) reads a name out of the query when no
+`authors` is passed. Invariant 6 applies in full, and two traps are pinned in
+`src/literature-authors.test.js`: the possessive forms MIX languages (the report
+was literally "love daléns life works" — Swedish genitive, English noun), and a
+bare `s` genitive is ambiguous in English, so only nouns that cannot follow
+anything but a person are accepted after it, or "mammoth genomics studies"
+reads as a researcher named Mammoth Genomic.
 
 **The speed is the batching, and it is the point.** One `embedTexts` call
 covers every angle (`dense-rag.js`'s `embedQueries`), then every
@@ -626,6 +687,30 @@ of this is pure protocol logic, so it lives at the TOP of the file with
 `mcp.test.js` still loading without the pipeline (the file-layout rule), and a
 richer inbound protocol is still the *client's* model choosing to call us —
 invariant 1's ban on function calling inside the pipeline is untouched.
+
+## What a call costs (before widening the audience)
+
+`docs/MCP-COST.md` prices all 11 tools against production (2026-08-05).
+The three figures worth carrying: `deep_research` is €0.051 at the median
+of a month of real runs and **€0.62 at its analytic ceiling** (34 searches
+× the 12/7 deep-tier multiplier, plus one synthesis on the priciest model);
+a maximum-budget call actually measured **€0.2355**, because the gap check
+saturated at round 2 and spent 9 of its 34 permitted searches. The
+literature family costs €0.0021 (1 angle) to €0.0124 (6 angles) — **all of
+it the reranker**, 50 candidates × 900 chars per angle-corpus leg, measured
+at 10,198 tokens per leg at €0.10/M. The `sdk_*` four and
+`literature_fetch` / `literature_corpora` / `fetch` cost nothing.
+
+Two metering gaps decide whether the surface can be published, and both are
+in the register as P-3: **`src/literature-run.js` records no usage** (the
+searching tools are gated on the quota but never increment it, so they
+cannot exhaust it — unbounded per key), and **`/mcp` takes no
+`reserveInflight`**, so the CAP=5 concurrency bound that `/api/chat` gets
+does not apply here. `deep_research` itself meters correctly; a public
+account is capped at ~€111/month, which is `budget_eur` €8 plus 12,000
+searches at the deep tier — note `quotaExceeded` caps Berget cost in EUR
+but Exa only by COUNT, so the real Exa ceiling is 71% above what the count
+nominally prices.
 
 ## Related
 

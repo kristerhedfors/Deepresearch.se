@@ -18,6 +18,7 @@ import {
   latexSections,
   latexToText,
   denseSearch,
+  storedAuthors,
   denseSearchPacked,
   hitAtK,
   int8ToB64,
@@ -398,4 +399,56 @@ test("chunkSections is the one windowing pass both sources share", () => {
   assert.ok(chunks.length > 3);
   assert.ok(chunks.every((c) => c.text.length <= 400 && c.heading === "S"));
   assert.deepEqual(chunks.map((c) => c.seq), chunks.map((_, i) => i));
+});
+
+// ---------------------------------------------------------------------------
+// storedAuthors — the author string written into every vector's metadata.
+//
+// The cut used to be `slice(0, 8)`, which drops the LAST authors. On a
+// life-science paper that is the senior author, and it is exactly the name an
+// authorship question asks about: a user asked an MCP client for a named
+// palaeogeneticist's work, several of his own group's papers came back, and his
+// name was in none of them. src/literature-authors.js has the account.
+// ---------------------------------------------------------------------------
+
+const NAMES = (n) => Array.from({ length: n }, (_, i) => `Author ${i + 1}`);
+
+test("a short author list is stored whole", () => {
+  assert.equal(storedAuthors(["Ada Lovelace", "Alan Turing"]), "Ada Lovelace; Alan Turing");
+  assert.equal(storedAuthors(NAMES(8)).split("; ").length, 8);
+});
+
+test("a long list keeps BOTH ends — the senior author survives the cut", () => {
+  const out = storedAuthors([...NAMES(29), "Love Dalén"]);
+  assert.ok(out.includes("Love Dalén"), "the last author is present");
+  assert.ok(out.startsWith("Author 1; "), "and so is the first");
+  assert.ok(out.includes("+22 more"), "with the omission stated rather than implied");
+});
+
+test("the omitted count is exact", () => {
+  // 30 authors, 6 kept from the head and 2 from the tail.
+  assert.ok(storedAuthors(NAMES(30)).includes("+22 more"));
+  assert.ok(storedAuthors(NAMES(9)).includes("+1 more"));
+});
+
+test("the tail is reserved BEFORE the head is measured, so the cap cannot shear it", () => {
+  // Nine 60-character names overflow 300 on their own — assembling the string
+  // and then truncating would drop precisely the senior author.
+  const long = Array.from({ length: 40 }, (_, i) => `Very Long Author Name Number ${String(i + 1).padStart(30, "0")}`);
+  const out = storedAuthors(long, 300);
+  assert.ok(out.length <= 300, `stayed inside the cap (${out.length})`);
+  assert.ok(out.includes(long[long.length - 1]), "and the last author is still there");
+});
+
+test("a cap too small for anything but the tail still yields the tail", () => {
+  const out = storedAuthors(NAMES(40), 40);
+  assert.ok(out.length <= 40);
+  assert.ok(out.includes("Author 40") || out.includes("Author 39"), out);
+});
+
+test("empty and junk input give an empty string, never a throw", () => {
+  assert.equal(storedAuthors([]), "");
+  assert.equal(storedAuthors(null), "");
+  assert.equal(storedAuthors(["", "  "]), "");
+  assert.equal(storedAuthors(NAMES(20), 0), "");
 });

@@ -72,6 +72,9 @@ export const MAX_LIMIT = 25;
 export const MAX_TOTAL_RECORDS = 60;
 /** Ids per literature_fetch call. */
 export const MAX_FETCH_IDS = 20;
+/** Author names per literature_search call. More than a few is a different
+ * question, and each name costs two live API round trips. */
+export const MAX_AUTHORS = 3;
 /** The indexer's abstract cut (scripts/*-vectorize.mjs store 900 chars), so a
  * stored abstract at this length was almost certainly truncated at ingest. */
 export const STORED_ABSTRACT_CHARS = 900;
@@ -95,10 +98,15 @@ export const CORPUS_FACTS = {
     covers:
       "Preprints in physics, mathematics, computer science, quantitative biology, " +
       "statistics, economics and quantitative finance.",
+    // KEEP THIS IN STEP WITH THE INDEX. It is quoted on every miss, so a stale
+    // upper bound tells an agent a paper is out of window when it is sitting in
+    // the index — the opposite of the honest-miss this field exists for. The
+    // 2026-08-05 delta (docs/ARXIV-RAG.md §1.1) carried it to 2608, and the
+    // arxiv-ingest skill's checklist ends here for that reason.
     window:
-      "Submission months 2310–2607 (October 2023 onwards). Anything submitted before " +
+      "Submission months 2310–2608 (October 2023 onwards). Anything submitted before " +
       "October 2023 is NOT in this index — that is a window, not a retrieval failure.",
-    vectors_at_fill: 772658,
+    vectors_at_fill: 784744,
     id_format: "arXiv id, e.g. 2401.12345 (accepted with or without an `arxiv:` prefix)",
     fields: ["title", "abstract", "authors", "primary_category", "submitted", "revised"],
     live_fallback: "the arXiv API (keyword AND over abstracts), used by the research pipeline",
@@ -114,7 +122,8 @@ export const CORPUS_FACTS = {
       "'the last six months of PubMed'. It contains 2026 publications heavily, earlier " +
       "years thinly (a 1990s paper revised in 2026 is in; an untouched 2015 paper is not), " +
       "and is roughly 5.6% of abstract-bearing PubMed. Treat a miss as likely-out-of-window.",
-    vectors_at_fill: 1638756,
+    // As above: refreshed by the 2026-08-05 delta (docs/PUBMED-RAG.md §7.2).
+    vectors_at_fill: 1664586,
     id_format: "PMID, e.g. 41610285 (accepted with or without a `pmid:` prefix)",
     fields: ["title", "abstract", "authors", "journal", "date"],
     live_fallback: "Europe PMC (keyword AND, current to the hour), used by the research pipeline",
@@ -170,6 +179,9 @@ export const LITERATURE_TOOLS = [
       "fast way to cover a topic — six separate calls cost six times the latency for the " +
       "same work. Ask in natural language, not keywords: retrieval is by meaning, and " +
       "stripping a question to search terms throws away the signal the embedder uses. " +
+      "TO LIST A NAMED RESEARCHER'S WORK, PASS `authors` — semantic search cannot answer an " +
+      "authorship question (a name embeds as a topic, so 'X's papers' returns papers about " +
+      "X's subject by other people), so `authors` runs a real author-field lookup instead. " +
       "Use this to READ the literature yourself; use deep_research instead when you want " +
       "the site to plan, search the open web and write a cited answer for you.",
     input_schema: {
@@ -186,6 +198,20 @@ export const LITERATURE_TOOLS = [
         query: {
           type: "string",
           description: "A single question — convenience shorthand for a one-element `queries`.",
+        },
+        authors: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Researcher names whose papers to list — the way to answer 'what has X published', " +
+            "'X's body of work', or a bibliography request. Write the name as it is published " +
+            "('Love Dalén', 'M. Dehasque'); both the full form and the indexed 'Surname I' form " +
+            "are tried. This leg queries the LIVE Europe PMC and arXiv author fields rather than " +
+            "the hosted indexes, so it covers the full archive rather than the corpus windows — " +
+            "and it is valid on its own, with no `queries` at all. Names are NOT disambiguated: " +
+            "pass `queries` alongside and the subject terms are ANDed onto the author query, " +
+            "which is what separates two researchers who share a surname.",
+          maxItems: MAX_AUTHORS,
         },
         corpus: CORPUS_ARG,
         limit: {

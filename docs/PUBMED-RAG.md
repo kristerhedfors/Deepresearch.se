@@ -712,3 +712,17 @@ Three points specific to this corpus:
   argument filters the reranked candidate pool after retrieval; MeSH terms are
   parsed at harvest and never stored at all. Both facts are in the tool's own
   response notes rather than left for a caller to infer.
+- **The stored author list is a CUT, and until 2026-08-05 it cut the wrong
+  end.** `au` held the first 8 names. Biomedical author lists are long and the
+  senior author is LAST, so the field systematically omitted the one name a
+  question about a lab's work is usually about: a user asked an MCP client for
+  a named palaeogeneticist's papers, several of his own group's papers were
+  retrieved, and he was not listed on any of them. `storedAuthors`
+  (`public/js/arxiv-rag-core.js`) now keeps the head AND the last two with the
+  omitted count stated, reserving the tail before measuring the head so the
+  300-char cap cannot shear it off again. **This reaches only vectors written
+  after the change** — every record already in the index keeps the head-only
+  string until a re-upsert (§7's runbooks), which is why the MCP `authors`
+  lookup queries live Europe PMC rather than trusting this field. Authorship is
+  not answerable from a dense index anyway: a name embeds as its topics, and
+  there is no metadata index to filter on. See the **mcp-server** skill.
