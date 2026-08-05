@@ -16,7 +16,10 @@
 //   * a refusal comes back as a JSON-RPC *result* with isError — an MCP client
 //     reads the envelope, and a transport-level 429 reads to it as a broken
 //     server rather than a condition its model can act on;
-//   * a D1 failure fails OPEN (invariant 2);
+//   * a D1 failure fails OPEN for the RESERVATION (invariant 2) while the
+//     quota gate beside it fails CLOSED — the two directions are deliberate
+//     and the reasoning is written out above QUOTA_UNAVAILABLE_STATUS in
+//     quota.js;
 //   * the seven tools that contact no provider take NO slot — one held there
 //     would only deny the caller its own next call.
 //
@@ -33,6 +36,7 @@ import {
   SPENDING_TOOL_NAMES,
   handleMcp,
   inflightLimitToolMessage,
+  quotaUnavailableToolMessage,
 } from "./mcp.js";
 import { INFLIGHT_CAP } from "./quota.js";
 
@@ -52,13 +56,20 @@ const VEC = () => new Array(1024).fill(0.01);
  * Unknown statements (the lazy schema migration, config reads, usage reads,
  * the chat-log insert) are accepted and answer empty, which is exactly the
  * "nothing recorded yet" state each caller degrades against.
+ *
+ * `failSql` makes a SUBSET of statements throw, which is what a real D1
+ * incident usually looks like (one query erroring, not the binding vanishing)
+ * and the only way to observe the reservation's fail-open in isolation now
+ * that the quota gate beside it fails closed.
+ * @param {{ failSql?: (sql: string) => boolean }} [opts]
  */
-function mockD1() {
+function mockD1({ failSql } = {}) {
   /** @type {{ req_id: string, user_id: string, ts: number }[]} */
   const rows = [];
   /** @type {string[]} */
   const seen = [];
   const make = (sql) => {
+    if (failSql?.(sql)) throw new Error("d1 down");
     let args = [];
     return {
       sql,
@@ -359,28 +370,102 @@ describe("the refusal is a JSON-RPC result, never a transport error", () => {
 // Fail-soft (invariant 2)
 // ---------------------------------------------------------------------------
 
-describe("a D1 problem fails OPEN", () => {
-  test("a broken database does not block the call and does not 500", async () => {
-    // An admin identity, so the reservation is the ONLY D1 touch on this path
-    // (researchQuotaBlock returns early for admins). What is being pinned is
-    // reserveToolSlot's fail-open, not the quota gate's — which reads its
-    // usage windows straight from D1 and has never claimed to survive an
-    // outage.
+describe("the RESERVATION fails open", () => {
+  // Driven with an ordinary user, which is the caller the cap actually applies
+  // to: only the inflight statements throw, so the quota gate beside it reads
+  // its windows normally and the reservation's own fail-open is what decides.
+  const inflightOnly = { failSql: (/** @type {string} */ sql) => sql.includes("inflight") };
+
+  test("an errored reservation lets an ordinary user through and does not 500", async () => {
+    const db = mockD1(inflightOnly);
+    const env = /** @type {any} */ ({ DB: db, BERGET_API_TOKEN: "t" });
+    const { res, body } = await callTool(env, "literature_search", { queries: ["x"] }, { requestId: "req-nores" });
+    assert.equal(res.status, 200);
+    // It reached the tool (which then reports no corpus binding) rather than
+    // being refused by the cap or by an escaped throw.
+    assert.match(body.result.content[0].text, /No hosted corpus/i);
+  });
+
+  test("a wholly broken database does not 500 either", async () => {
+    // An admin here, and deliberately so: with a dead D1 the quota gate refuses
+    // every non-exempt caller (the test below pins that), so the admin
+    // exemption is what leaves the reservation as the only decision left to
+    // observe. This is the LAST D1 touch on an admin's path.
     const env = /** @type {any} */ ({ DB: brokenD1, BERGET_API_TOKEN: "t" });
     const { res, body } = await callTool(env, "literature_search", { queries: ["x"] }, {
       identity: admin,
       requestId: "req-nodb",
     });
     assert.equal(res.status, 200);
-    // It reached the tool (which then reports no corpus binding) rather than
-    // being refused by the cap.
     assert.match(body.result.content[0].text, /No hosted corpus/i);
   });
 
   test("no DB binding at all is likewise allowed", async () => {
+    // A site with no database is a SUPPORTED configuration, not an outage:
+    // nothing throws, so nothing is refused — for an ordinary user either.
     const env = /** @type {any} */ ({ BERGET_API_TOKEN: "t" });
     const { body } = await callTool(env, "literature_search", { queries: ["x" ] }, { requestId: "req-nobind" });
     assert.match(body.result.content[0].text, /No hosted corpus/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The QUOTA GATE fails the other way — deliberately (quota.js,
+// QUOTA_UNAVAILABLE_STATUS). Before this was chosen, the gate's D1 reads threw
+// and the throw escaped as `Literature tool failed: d1 down`: a refusal nobody
+// picked, worded so no caller could act on it.
+// ---------------------------------------------------------------------------
+
+describe("the QUOTA GATE fails closed", () => {
+  for (const tool of ["literature_search", "literature_similar", "search"]) {
+    test(`${tool} refuses an ordinary user with a readable message, not a throw`, async () => {
+      const env = /** @type {any} */ ({ DB: brokenD1, BERGET_API_TOKEN: "t" });
+      const { res, body } = await callTool(env, /** @type {any} */ (tool), { queries: ["x"], query: "x" }, {
+        requestId: `req-gate-${tool}`,
+      });
+      assert.equal(res.status, 200, "never a transport error — an MCP client reads the envelope");
+      assert.equal(body.error, undefined, "not a JSON-RPC error either");
+      assert.equal(body.result.isError, true);
+      assert.equal(body.result.content[0].text, quotaUnavailableToolMessage());
+      // The old escaped-throw wording must not come back.
+      assert.ok(!/d1 down/i.test(body.result.content[0].text), "no raw database error reaches the caller");
+    });
+  }
+
+  test("deep_research refuses too, and does not reach the pipeline", async () => {
+    const env = /** @type {any} */ ({ DB: brokenD1, BERGET_API_TOKEN: "t" });
+    const { res, body } = await callTool(env, "deep_research", { question: "x" }, { requestId: "req-gate-deep" });
+    assert.equal(res.status, 200);
+    assert.equal(body.result.isError, true);
+    // Carried out through dispatchToolCall's catch, so it wears the same
+    // "Research failed:" prefix the quota-EXCEEDED refusal has always worn.
+    assert.match(body.result.content[0].text, /quota can't be checked/i);
+    assert.ok(!/d1 down/i.test(body.result.content[0].text));
+  });
+
+  test("an ADMIN is exempt from the gate, so a dead D1 never blocks an operator", async () => {
+    const env = /** @type {any} */ ({ DB: brokenD1, BERGET_API_TOKEN: "t" });
+    const { body } = await callTool(env, "literature_search", { queries: ["x"] }, {
+      identity: admin,
+      requestId: "req-gate-admin",
+    });
+    assert.ok(!/quota/i.test(body.result.content[0].text), "an admin call is not refused by the quota gate");
+  });
+
+  test("the free tools stay reachable — they are outside the gate", async () => {
+    // An agent whose usage cannot be read should still be able to learn what
+    // exists and resolve an id it was handed; neither costs anything.
+    const env = /** @type {any} */ ({ DB: brokenD1, BERGET_API_TOKEN: "t", ARXIV_INDEX: fakeIndex() });
+    const { body } = await callTool(env, "literature_corpora", {}, { requestId: "req-gate-free" });
+    assert.equal(body.result.isError, false);
+    assert.ok(!/quota/i.test(body.result.content[0].text));
+  });
+
+  test("the message tells an LLM caller it is temporary and not its own limit", () => {
+    const msg = quotaUnavailableToolMessage();
+    assert.match(msg, /not a limit on the account/i, "or the model stops instead of retrying");
+    assert.match(msg, /try (the call )?again/i);
+    assert.ok(!/eur|€|\$/i.test(msg), "no cost figures, same rule as every other refusal here");
   });
 });
 

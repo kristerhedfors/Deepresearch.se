@@ -12,6 +12,9 @@ import {
   formatResetRelative,
   bergetCost,
   overCap,
+  quotaEnforced,
+  quotaUnavailableResponse,
+  QUOTA_UNAVAILABLE_STATUS,
   inflightLimitResponse,
   reserveInflight,
   releaseInflight,
@@ -27,6 +30,7 @@ import {
   DEFAULT_RESET_DAYS,
   MAX_RESET_DAYS,
 } from "./quota.js";
+import { DEFAULT_CONFIG } from "./config.js";
 
 const silentLog = { error() {}, warn() {}, info() {} };
 
@@ -200,6 +204,56 @@ describe("quotaExceeded", () => {
     usage.h5.berget_cost = 1;
     const blocked = quotaExceeded(usage, quota);
     assert.equal(blocked.period, "h5");
+  });
+});
+
+// The gate fails CLOSED when it cannot read usage, and these two exports are
+// what makes that a decision rather than an escaped throw. quotaEnforced is the
+// guard on the guard: a deployment that caps nothing must not be refused for a
+// limit it does not have.
+describe("quotaEnforced (is there anything to verify?)", () => {
+  const zero = () => Object.fromEntries(PERIODS.map((p) => [p, { budget_eur: 0, searches: 0 }]));
+
+  test("false when every window is uncapped", () => {
+    assert.equal(quotaEnforced(zero()), false);
+  });
+
+  test("true as soon as ONE dimension of ONE window is capped", () => {
+    for (const p of PERIODS) {
+      for (const kind of ["budget_eur", "searches"]) {
+        const q = zero();
+        q[p][kind] = 1;
+        assert.equal(quotaEnforced(q), true, `${p}.${kind} must count as enforced`);
+      }
+    }
+  });
+
+  test("a missing/garbage quota map is not treated as enforced", () => {
+    assert.equal(quotaEnforced(/** @type {any} */ (null)), false);
+    assert.equal(quotaEnforced(/** @type {any} */ ({})), false);
+  });
+
+  test("the shipped defaults DO enforce — so a degraded config refuses", () => {
+    assert.equal(quotaEnforced(effectiveQuota(DEFAULT_CONFIG, null)), true);
+  });
+});
+
+describe("quotaUnavailableResponse", () => {
+  test("503, not 429 and not 500 — temporary, upstream, retryable", () => {
+    assert.equal(QUOTA_UNAVAILABLE_STATUS, 503);
+  });
+
+  test("says it is NOT a limit on the account, so nobody hunts a quota they have", () => {
+    const { error, quota_unavailable } = quotaUnavailableResponse();
+    assert.equal(quota_unavailable, true);
+    assert.match(error, /not a limit on your account/i);
+    assert.match(error, /try again/i);
+  });
+
+  test("leaks no cost figures and no database internals", () => {
+    const { error } = quotaUnavailableResponse();
+    assert.ok(!/eur|€|\$|budget_eur/i.test(error));
+    assert.ok(!/d1|sqlite|sql/i.test(error));
   });
 });
 

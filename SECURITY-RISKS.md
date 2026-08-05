@@ -363,11 +363,11 @@ deny the caller its own next call. The refusal is a JSON-RPC result with
 transport-level 429 reads to it as a broken server. Admins are NOT exempt,
 unlike on the quota gate: that is a spend cap an operator is trusted to
 exceed, this is abuse mitigation, and an admin credential is the one whose
-leak matters most. Fail-open on any D1 trouble, as everywhere else in this
-subsystem. Unit-tested in `src/mcp-inflight.test.js` (16 tests: the slot held
-mid-retrieval and released after, release on the throwing path, the
-JSON-RPC-not-429 refusal, per-user isolation, D1 fail-open, and the exempt
-tools reserving nothing).
+leak matters most. Fail-open on any D1 trouble — unlike the quota gate beside
+it, which is (c) below. Unit-tested in `src/mcp-inflight.test.js` (24 tests:
+the slot held mid-retrieval and released after, release on the throwing path,
+the JSON-RPC-not-429 refusal, per-user isolation, the reservation's fail-open
+against the quota gate's fail-closed, and the exempt tools reserving nothing).
 
 **(b) the missing meter.** `src/literature-run.js` recorded no usage at all,
 so `literature_search` / `literature_similar` / `search` were GATED on the
@@ -387,10 +387,65 @@ now bites on its own — roughly 476 one-angle or 80 six-angle calls per
 including that the billed number is provably the provider's and not the
 char-count estimate).
 
-The two fixes are complements: (a) bounds PARALLELISM, (b) bounds RATE.
-Either alone leaves the other axis open. `deep_research` was already metered
-correctly and bounded at ~€111/account/month. Both are still owed the same
-live-verify pass as the rest of P-3.
+(a) bounds PARALLELISM and (b) bounds RATE — complements, not alternatives;
+either alone leaves the other axis open. `deep_research` was already metered
+correctly and bounded at ~€111/account/month. All three are still owed the
+same live-verify pass as the rest of P-3.
+
+**(c) The gates had no chosen FAIL DIRECTION — CLOSED 2026-08-05.** Building
+(a) turned it up: a test asserting that a broken D1 fails open came back
+`Literature tool failed: d1 down`. The reservation does fail open, exactly as
+documented; `researchQuotaBlock` then THREW. Every step of the quota gate
+reaches D1 — the lazy migration inside `getDb`, the config row, the usage
+windows — and none of those reads was wrapped, on either surface. What each
+one did before: on `/mcp` the throw came back as `Literature tool failed: d1
+down` / `Research failed: d1 down`, a refusal nobody chose and no caller can
+act on; on **`/api/chat` the same throw escaped `handleChat` altogether** and
+`src/index.js` turned it into a generic 500 — the shape a crash has, plus a
+recorded server error. So both surfaces refused, neither deliberately, and a
+D1 outage broke `/mcp` for every non-admin caller.
+
+The direction is now decided in code, the same way on both surfaces: **the
+spend gate fails CLOSED, the concurrency cap keeps failing OPEN**, and the
+reasoning sits in one place (above `QUOTA_UNAVAILABLE_STATUS` in
+`src/quota.js`). They are complements rather than an inconsistency. The quota
+gate answers "may this caller spend more of the site's money?", and the only
+honest answer when usage cannot be read is "unknown" — answering yes hands out
+unmetered spend at exactly the moment the spend also cannot be RECORDED
+(`recordUsage` writes to the same database), so the overrun would be both
+unbounded and invisible, and unlike a refused request it cannot be taken back.
+The reservation, by contrast, is abuse mitigation layered on a gate that
+already said yes; on `/api/chat` it is taken after the gate, so a degraded
+reservation implies a usage read that worked moments ago. This also matches
+the identity layer, which already degrades an unreadable account row to "no
+identity" (`identify`, `resolveMcpKeyIdentity`) — one posture throughout: when
+the account system is unavailable the account-scoped service is unavailable,
+never free.
+
+What ships with it: `/api/chat` answers **503** with `quota_unavailable` and a
+message saying it is not a limit on the account (not a 500, which reads as a
+crash, and not a 429, which would claim a limit the user has not reached);
+`/mcp` answers a JSON-RPC `isError` result carrying the same sentence, worded
+for an LLM caller so it retries later instead of stopping; both log
+`chat.quota_unverifiable` / `mcp.quota_unverifiable` with the reason
+(`config` / `usage` / `import`). Admins stay exempt on both, so an operator can
+work during the outage. A site with **no `DB` binding at all** is untouched:
+that is a supported configuration where nothing throws, so nothing is refused —
+only a database that is present and ERRORING trips this. And a deployment whose
+windows are all 0 (uncapped) is not refused either, since there is no limit an
+unreadable ledger could be hiding (`quotaEnforced`).
+
+`src/chat-handler.test.js` had already pinned the escaping-throw behaviour and
+asked, in its comment, that anyone changing it think about the quota-bypass
+consequence first. That reasoning is kept — only the mechanism moved, from an
+unhandled rejection to a chosen refusal. One neighbouring defect fell out of
+the same run: `raiseAlert` guarded its INSERT but not its `getDb`, and it is
+awaited inside `runChatStream`'s catch, so on an errored D1 the throw escaped
+the very catch that was recovering — the `emit({error})` line never ran and the
+user got a hung SSE stream. It is now best-effort in full. Pinned in
+`src/mcp-inflight.test.js`, `src/chat-handler.test.js`, `src/chat.test.js`,
+`src/quota.test.js` and `src/alerts.test.js`; the live-verify pass P-3 already
+owes should exercise a real D1 error rather than a simulated one.
 
 ### P-4 · H-2 follow-up · Flip the CSP on — 🔴 OPEN
 The CSP is fully authored in `src/security-headers.js` but `CSP_ENABLED = false`

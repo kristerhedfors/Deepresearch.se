@@ -174,7 +174,23 @@ user row shows a "quota reset · until <date>" badge while a grace window
 is live; the admin site-wide dashboard (`getUsageAllUsers`) intentionally
 still shows RAW usage so inflation stays investigable. Every stream records a
 `usage_events` row (model, tokens, searches, berget/exa cost split,
-duration). **Admins are never blocked**: enforcement (the 429 gate)
+duration).
+
+**The gate FAILS CLOSED when it cannot decide** (2026-08-05). A D1 error while
+reading the config row or the usage windows answers **503** with
+`quota_unavailable` on `/api/chat` and a JSON-RPC `isError` result on `/mcp`,
+both saying it is not a limit on the account, both logging
+`*.quota_unverifiable`. Before this it was neither: the throw escaped
+`handleChat` into a generic 500 and came back on `/mcp` as `Literature tool
+failed: d1 down`. Note the deliberate contrast with `reserveInflight` right
+beside it, which fails OPEN — the argument for each direction is written above
+`QUOTA_UNAVAILABLE_STATUS` in `src/quota.js`, and it is the same posture
+`identify()` already takes by degrading an unreadable account row to "no
+identity". Two cases stay open on purpose: no `DB` binding at all (a supported
+configuration — nothing throws) and a site whose windows are all `0`
+(`quotaEnforced`).
+
+**Admins are never blocked**: enforcement (the 429 gate)
 applies to regular users only — admin usage is still recorded and their
 panel bars keep counting past 100% (`enforced: false` in `/api/me`).
 Usage under the break-glass identity (secrets Basic Auth or legacy

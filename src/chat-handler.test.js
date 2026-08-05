@@ -32,7 +32,7 @@ import { handleChat } from "./chat.js";
 import { DEFAULT_MODEL } from "./berget.js";
 import { fakeD1 } from "./test-helpers/d1.js";
 import { fakeFetch } from "./test-helpers/fetch.js";
-import { fakeEnv, fakeLog, fakeIdentity, fakeCtx, jsonRequest } from "./test-helpers/env.js";
+import { fakeAdmin, fakeEnv, fakeLog, fakeIdentity, fakeCtx, jsonRequest } from "./test-helpers/env.js";
 
 const BERGET = "https://berget.test/v1";
 const ANSWER_MODEL = "mistralai/Mistral-Small-3.2-24B-Instruct-2506";
@@ -337,22 +337,38 @@ describe("handleChat — fail soft (invariant 2)", () => {
     assert.match(text, /The answer\./);
   });
 
-  test("a TOTAL D1 outage surfaces as an error rather than a silent answer", async () => {
-    // Pins actual, deliberate behaviour rather than an aspiration. `getDb`
-    // (src/db.js) applies the schema on first use with an uncaught
-    // `db.batch(...)`, so a database that fails EVERY statement — as opposed
-    // to an absent binding, covered above — propagates out of the handler.
-    // src/index.js turns that into a clean 500 with a request id and a
-    // recorded server error.
+  test("a TOTAL D1 outage is REFUSED — 503, and never a silent answer", async () => {
+    // This test used to pin the same DIRECTION with a worse mechanism: the
+    // throw from `getDb`'s uncaught schema `batch(...)` escaped the handler and
+    // index.js turned it into a generic 500 with a request id. Its comment
+    // asked whoever changed it to think about the quota-bypass consequence
+    // first, so: the direction is KEPT (an unreadable usage store must never
+    // degrade to "no quota enforcement" — that is free spend at exactly the
+    // moment the spend also cannot be recorded), and only the mechanism moved
+    // from an unhandled rejection to a chosen refusal. 2026-08-05, alongside
+    // the matching decision on /mcp (src/mcp-inflight.test.js).
     //
-    // That is fail-CLOSED, and for a binding that gates authentication and
-    // quotas it is the safer direction: degrading to "no database" would mean
-    // degrading to "no quota enforcement". The test therefore documents the
-    // behaviour instead of asserting it away — if someone later makes getDb
-    // swallow the error, this failing test is the prompt to think about the
-    // quota-bypass consequence first.
+    // 503, deliberately: a 500 reads as a crash, and a 429 would claim a limit
+    // the user has not reached. The reasoning — including why the concurrency
+    // reservation next to this gate keeps failing the OTHER way — is above
+    // QUOTA_UNAVAILABLE_STATUS in quota.js.
     const db = fakeD1().failOn(/.*/);
-    await assert.rejects(() => runChat({}, { db }), /D1_ERROR/);
+    const { response, text } = await runChat({}, { db });
+    assert.equal(response.status, 503);
+    const body = JSON.parse(text);
+    assert.equal(body.quota_unavailable, true);
+    assert.match(body.error, /not a limit on your account/i);
+    assert.ok(!/D1_ERROR/.test(body.error), "the raw database error stays in the logs");
+  });
+
+  test("an ADMIN still gets through a total D1 outage", async () => {
+    // Admins are exempt from the quota gate, so the refusal above is the gate
+    // deciding rather than the request path collapsing: with nothing to verify,
+    // the same dead database answers normally.
+    const db = fakeD1().failOn(/.*/);
+    const { response, text } = await runChat({}, { db, identity: fakeAdmin() });
+    assert.equal(response.status, 200);
+    assert.match(text, /The answer\./);
   });
 
   test("a truncated provider stream degrades to an error event, not a failed request", async () => {

@@ -2,7 +2,7 @@
 // resolveJsonModel (JSON-phase routing), quotaBlockedResponse (429 payload).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { quotaBlockedResponse, resolveJsonModel, summarizeSpend } from "./chat.js";
+import { handleChat, quotaBlockedResponse, resolveJsonModel, summarizeSpend } from "./chat.js";
 import { DEFAULT_MODEL } from "./berget.js";
 
 describe("summarizeSpend", () => {
@@ -116,5 +116,78 @@ describe("quotaBlockedResponse", () => {
       const res = quotaBlockedResponse({ period, kind: "budget", reset_at: Date.now() });
       assert.match(res.error, /resets/);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The quota gate's UNREADABLE case, driven through the real handler.
+//
+// Before this was decided, getConfig / getUsage threw straight out of
+// handleChat and index.js turned it into a generic 500 with a request id — the
+// same shape a crash has, and open to nobody's reading of what should happen.
+// The gate now fails CLOSED with a 503 that says so (quota.js,
+// QUOTA_UNAVAILABLE_STATUS), matching /mcp's isError refusal in spirit: the
+// SPEND gate never authorizes what it could not verify, while the concurrency
+// reservation taken just after it keeps failing OPEN, on purpose.
+//
+// Nothing here reaches the network: the catalog fetch is stubbed to fail, which
+// chat.js already degrades past.
+// ---------------------------------------------------------------------------
+
+const silentLog = { info() {}, warn() {}, error() {}, debug() {} };
+const chatCtx = /** @type {any} */ ({ waitUntil() {} });
+const user = /** @type {any} */ ({ id: "u1", role: "user", email: "u@example.com", name: "U", user: null });
+const chatAdmin = /** @type {any} */ ({ id: "adm", role: "admin", email: "a@example.com", name: "A", user: null });
+
+/** Every D1 access throws — the outage the gate has to have an answer for. */
+const deadD1 = {
+  prepare() {
+    throw new Error("d1 down");
+  },
+  batch() {
+    throw new Error("d1 down");
+  },
+};
+
+async function postChat(env, identity) {
+  const request = new Request("https://deepresearch.se/api/chat", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ messages: [{ role: "user", content: "hello" }] }),
+  });
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error("no network in unit tests");
+  };
+  try {
+    const res = await handleChat(request, env, /** @type {any} */ (silentLog), identity, chatCtx, "req-1");
+    return { res, body: await res.clone().json().catch(() => null) };
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
+describe("the quota gate on /api/chat when D1 cannot be read", () => {
+  test("refuses with 503 and a plain-language reason — never a 500, never a throw", async () => {
+    const env = /** @type {any} */ ({ DB: deadD1, BERGET_API_TOKEN: "t" });
+    const { res, body } = await postChat(env, user);
+    assert.equal(res.status, 503, "a 500 would read as a crash and a 429 as a limit the user has not hit");
+    assert.equal(body.quota_unavailable, true);
+    assert.match(body.error, /not a limit on your account/i);
+    assert.ok(!/d1 down/i.test(body.error), "no raw database error reaches the user");
+  });
+
+  test("an admin is exempt, so an operator can still work during the outage", async () => {
+    const env = /** @type {any} */ ({ DB: deadD1, BERGET_API_TOKEN: "t" });
+    const { res } = await postChat(env, chatAdmin);
+    assert.notEqual(res.status, 503, "admins are never blocked by the quota gate");
+  });
+
+  test("no database at all is a supported configuration, not an outage", async () => {
+    // getConfig returns defaults and getUsage an empty ledger, neither throws:
+    // the request proceeds exactly as it always has.
+    const env = /** @type {any} */ ({ BERGET_API_TOKEN: "t" });
+    const { res } = await postChat(env, user);
+    assert.notEqual(res.status, 503);
   });
 });

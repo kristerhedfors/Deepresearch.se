@@ -531,6 +531,66 @@ export function quotaBlockedResponse(blocked, now = Date.now()) {
 }
 
 /**
+ * Is there anything to enforce at all? Every window at 0 means "uncapped"
+ * (quotaExceeded only compares a dimension whose limit is > 0), so a quota map
+ * of nothing but zeros authorizes every request without reading usage.
+ *
+ * This is what keeps the fail-CLOSED rule below from inventing a limit on a
+ * deployment that has none: if no window is enforced, an unreadable usage
+ * store cannot change the admission decision, so it must not refuse.
+ * @param {QuotaMap} quota
+ * @returns {boolean}
+ */
+export function quotaEnforced(quota) {
+  return PERIODS.some((p) => quota?.[p]?.budget_eur > 0 || quota?.[p]?.searches > 0);
+}
+
+// THE QUOTA GATE FAILS CLOSED — deliberately, and it is the ONE gate in this
+// subsystem that does. Read it beside the fail-soft note above INFLIGHT_CAP:
+// the two are complements, and the difference is not an inconsistency.
+//
+//   * The SPEND gate (quotaExceeded, over getUsage + effectiveQuota) is a
+//     correctness barrier. Its question is "may this caller spend more of the
+//     site's money?", and the only honest answer when the usage store cannot
+//     be read is "unknown". Answering "yes" hands out unmetered spend at
+//     exactly the moment the spend also cannot be RECORDED (recordUsage writes
+//     to the same database), so the overrun is both unbounded and invisible —
+//     and unrecoverable, whereas a refused request is retried a minute later.
+//   * The CONCURRENCY cap (reserveInflight) is abuse mitigation LAYERED ON a
+//     gate that already said yes. On /api/chat it is taken after the gate, so
+//     a degraded reservation implies a usage read that worked moments ago: the
+//     request it lets through is one a working budget check already authorized.
+//     Failing open there costs a bounded burst; failing closed would deny
+//     legitimate users for nothing.
+//
+// The identity layer takes the same fail-closed direction (auth.js identify()
+// and mcp-api.js resolveMcpKeyIdentity both degrade an unreadable account row
+// to "no identity"), so this leaves one coherent posture: when the account
+// system is unavailable the account-scoped service is unavailable — never free.
+//
+// This is NOT the same as running without a database. `env.DB` absent is a
+// supported configuration (getConfig returns defaults, getUsage returns an
+// empty ledger, neither throws) and stays fully open; only a database that is
+// present and ERRORING trips this.
+/** HTTP status for an unverifiable quota: temporary, upstream, retryable. */
+export const QUOTA_UNAVAILABLE_STATUS = 503;
+
+/**
+ * The 503 payload for an admission decision that could not be made because the
+ * usage store errored. Deliberately says it is not a limit on the account, so
+ * a user does not go hunting a quota they have not reached.
+ * @returns {{ error: string, quota_unavailable: true }}
+ */
+export function quotaUnavailableResponse() {
+  return {
+    error:
+      "Your research quota can't be checked right now — the usage store is " +
+      "temporarily unavailable. This is not a limit on your account. Please try again in a minute.",
+    quota_unavailable: true,
+  };
+}
+
+/**
  * The 429 payload for a refused concurrency reservation — plain-language, no
  * internal cost figures (mirrors quotaBlockedResponse's shape, but this is a
  * rate/concurrency limit, said so explicitly).
