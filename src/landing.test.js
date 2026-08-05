@@ -19,6 +19,9 @@
 //  5. The feature-focus timeline card sits under the video, and BOTH it and
 //     /pulse/timeline.html draw through the shared pure core rather than
 //     carrying their own copy of the bucketing maths.
+//  6. That card draws the code-volume backdrop BEHIND the curves, on its own
+//     right-hand scale — the two series carry different units and must not
+//     end up sharing one axis.
 
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
@@ -153,6 +156,21 @@ describe("the feature-focus timeline on the landing", () => {
       "the card starts hidden and is only revealed once the data parses");
     assert.match(LANDING, /card\.hidden = false/);
     assert.match(LANDING, /\.catch\(\(\) => \{/, "a failed fetch must not throw on the landing");
+  });
+
+  test("the curves are drawn over the code-volume backdrop, on its own right-hand scale", () => {
+    // Two units share the plot — commits per feature (left) and lines the tree
+    // holds (right). Losing the second axis, or drawing the backdrop after the
+    // curves, is what makes the card unreadable rather than merely different.
+    assert.match(LANDING, /class="vol-area"/, "the volume backdrop is drawn");
+    assert.match(LANDING, /volumeTicks/, "…with its own scale from the core");
+    assert.match(LANDING, /class="vol-lbl"/, "…labelled on the right");
+    assert.ok(
+      LANDING.indexOf("volumeLayer(xOf)") < LANDING.indexOf("class=\"series-line\""),
+      "the backdrop goes down before the curves, never over them",
+    );
+    assert.match(LANDING, /const VW = 1000, LP = \d+, RP = (?!14\b)\d+/,
+      "the right padding must hold the volume labels");
   });
 
   test("it links through to the full timeline rather than reimplementing it", () => {
