@@ -72,7 +72,7 @@
 import { htmlResponse } from "./http.js";
 import { DEFAULT_SCOPE, OAUTH_SCOPES, redirectAllowed } from "./oauth-metadata.js";
 import { looksRegistered, resolveRegisteredClient } from "./oauth-register.js";
-import { b64url, safeEqual, sign, verifiedClaims } from "./token-crypto.js";
+import { safeEqual, sealedToken, verifiedClaims } from "./token-crypto.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -378,8 +378,7 @@ export async function mintConsentToken(env, req, uid, nowMs = Date.now()) {
     res: req.resource,
     exp: Math.floor(nowMs / 1000) + CONSENT_TTL_S,
   };
-  const payload = b64url(new TextEncoder().encode(JSON.stringify(claims)));
-  return `${CONSENT_PREFIX}.${payload}.${await sign(env, CONSENT_NS, payload)}`;
+  return sealedToken(env, CONSENT_NS, CONSENT_PREFIX, claims);
 }
 
 /**

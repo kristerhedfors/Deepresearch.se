@@ -59,7 +59,7 @@
 // so importing it pulls in no handler graph — which is what lets src/mcp.js
 // stay unit-testable without the pipeline (the file-layout rule).
 
-import { b64url, sign, verifiedClaims } from "./token-crypto.js";
+import { b64url, sealedToken, verifiedClaims } from "./token-crypto.js";
 
 /** @typedef {import('./types.js').Env} Env */
 
@@ -107,9 +107,7 @@ export async function mintMcpKey(env, userId, opts = {}) {
   const ttl = Number.isFinite(opts.ttlS) ? Math.max(60, Number(opts.ttlS)) : MCP_KEY_TTL_S;
   /** @type {McpKeyClaims} */
   const claims = { v: 1, sub: String(userId), jti, iat: now, exp: now + ttl };
-  const payload = b64url(new TextEncoder().encode(JSON.stringify(claims)));
-  const sig = await sign(env, NS, payload);
-  const token = `${MCP_KEY_PREFIX}.${payload}.${sig}`;
+  const token = await sealedToken(env, NS, MCP_KEY_PREFIX, claims);
   return { token, jti, exp: claims.exp, hint: keyHint(token) };
 }
 
