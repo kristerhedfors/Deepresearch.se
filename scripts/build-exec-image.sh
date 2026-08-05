@@ -13,7 +13,10 @@
 #   ./scripts/build-exec-image.sh push      # push to the Cloudflare managed registry
 #   ./scripts/build-exec-image.sh all       # build → verify → push  (default)
 #
-# Env overrides: IMAGE_NAME (deepresearch-exec), IMAGE_TAG (1),
+# Env overrides: IMAGE_NAME (deepresearch-exec), IMAGE_TAG (2 — keep this
+#                number in step with wrangler.toml's `image` line; the whole
+#                point of the bump below is that the two agreeing is what
+#                makes a deploy do anything),
 #                CLOUDFLARE_ACCOUNT_ID (required for push).
 #
 # ---- why `verify` exists -----------------------------------------------------

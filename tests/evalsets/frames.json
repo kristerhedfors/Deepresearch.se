@@ -1,0 +1,877 @@
+{
+ "set": "frames",
+ "kind": "multihop",
+ "origin": "https://huggingface.co/datasets/google/frames-benchmark",
+ "license": "Apache-2.0 (google/frames-benchmark, Hugging Face)",
+ "note": "Multi-hop questions over named Wikipedia pages; gold answer + gold source URLs.",
+ "sample": {
+  "seed": 20260805,
+  "n": 60,
+  "of": 824
+ },
+ "items": [
+  {
+   "id": "frames-0011",
+   "question": "As of July 1, 2024, what is the parent company of the current record label of the singer of Edge of Seventeen?",
+   "answer": "Warner Music Group",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Edge_of_Seventeen",
+    "https://en.wikipedia.org/wiki/Stevie_Nicks",
+    "https://en.wikipedia.org/wiki/Reprise_Records",
+    "https://en.wikipedia.org/wiki/Atlantic_Records",
+    "https://en.wikipedia.org/wiki/Modern_Records_(1980)",
+    "https://en.wikipedia.org/wiki/Warner_Music_Group",
+    "https://en.wikipedia.org/wiki/Warner_Records"
+   ],
+   "tags": [
+    "Tabular reasoning",
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0016",
+   "question": "On March 7th, 2012, the director James Cameron explored a very deep underseas trench.  As of August 3, 2024, how many times would the tallest building in San Francisco fit end to end from the bottom of the New Britain Trench to the surface of the ocean? The answer should be a rounded-off whole number.",
+   "answer": "28",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/James_Cameron",
+    "https://en.wikipedia.org/wiki/Solomon_Sea#Deepest_point",
+    "https://en.wikipedia.org/wiki/List_of_tallest_buildings_in_San_Francisco"
+   ],
+   "tags": [
+    "Numerical reasoning",
+    "Tabular reasoning",
+    "Post processing",
+    "Temporal reasoning"
+   ]
+  },
+  {
+   "id": "frames-0019",
+   "question": "As of August 4, 2024, in what state was the first secretary of the latest United States federal executive department born?",
+   "answer": "Pennsylvania",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/United_States_federal_executive_departments#Former_departments",
+    "https://en.wikipedia.org/wiki/United_States_Secretary_of_Homeland_Security",
+    "https://en.wikipedia.org/wiki/Tom_Ridge"
+   ],
+   "tags": [
+    "Tabular reasoning",
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0025",
+   "question": "What was the age difference between Mike Tyson and Tyson Fury on the respective days on which they lost their first ever fights? Represent the figure in years only.",
+   "answer": "12 years.",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Tyson_Fury",
+    "https://en.wikipedia.org/wiki/Mike_Tyson",
+    "https://en.wikipedia.org/wiki/Mike_Tyson_vs._Buster_Douglas",
+    "https://en.wikipedia.org/wiki/Tyson_Fury_vs_Oleksandr_Usyk"
+   ],
+   "tags": [
+    "Numerical reasoning",
+    "Post processing"
+   ]
+  },
+  {
+   "id": "frames-0026",
+   "question": "Using the Pruett rule, out of all of the blue moons that occurred between the beginning of World War I and the end of World War II, how many of them occurred on the 31st of the month?",
+   "answer": "9",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Blue_moon#Blue_moon_dates",
+    "https://en.wikipedia.org/wiki/World_War_I#",
+    "https://en.wikipedia.org/wiki/World_War_II"
+   ],
+   "tags": [
+    "Numerical reasoning",
+    "Tabular reasoning",
+    "Multiple constraints",
+    "Temporal reasoning"
+   ]
+  },
+  {
+   "id": "frames-0046",
+   "question": "As of August 1, 2024, what is the largest city of the 9th largest country by land area in Europe?",
+   "answer": "The largest city of the 9th largest country in Europe is Warsaw.",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/List_of_European_countries_by_area",
+    "https://en.wikipedia.org/wiki/Poland"
+   ],
+   "tags": [
+    "Tabular reasoning",
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0067",
+   "question": "Which player scored more than 15 goals in Eredevisie during the 21-22 season and had previously played for Auxerre?",
+   "answer": "Sébastien Haller scored 21 goals that season and previously played for Auxerre.",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/2021–22_Eredivisie",
+    "https://en.wikipedia.org/wiki/Sébastien_Haller",
+    "https://en.wikipedia.org/wiki/Loïs_Openda",
+    "https://en.wikipedia.org/wiki/Vangelis_Pavlidis",
+    "https://en.wikipedia.org/wiki/Ricky_van_Wolfswinkel"
+   ],
+   "tags": [
+    "Tabular reasoning",
+    "Multiple constraints",
+    "Temporal reasoning"
+   ]
+  },
+  {
+   "id": "frames-0133",
+   "question": "Multiple the number of Tony's won by the guest host of SNL 12/6/1997 by the number of Oscar nominations received by the 2023 film directed by Greta Gerwig. Then divide this number by the number of Grammy's won by the band behind the 1979 album \"Tusk\".",
+   "answer": "12",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Saturday_Night_Live_season_23",
+    "https://en.wikipedia.org/wiki/Nathan_Lane",
+    "https://en.wikipedia.org/wiki/List_of_awards_and_nominations_received_by_Nathan_Lane",
+    "https://en.wikipedia.org/wiki/Barbie_(film)",
+    "https://en.wikipedia.org/wiki/List_of_accolades_received_by_Barbie_(film)",
+    "https://en.wikipedia.org/wiki/Tusk_(album)",
+    "https://en.wikipedia.org/wiki/Fleetwood_Mac#Grammy_Awards"
+   ],
+   "tags": [
+    "Numerical reasoning",
+    "Tabular reasoning",
+    "Multiple constraints",
+    "Post processing",
+    "Temporal reasoning"
+   ]
+  },
+  {
+   "id": "frames-0135",
+   "question": "What is the Chinese name for the bodhisattva that the Sensoji temple is dedicated to?",
+   "answer": "Guanyin",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Sens%C5%8D-ji",
+    "https://en.wikipedia.org/wiki/Avalokite%C5%9Bvara"
+   ],
+   "tags": [
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0144",
+   "question": "What lake in Isreal supports a population of the state bird of the Indian state Haryana?",
+   "answer": "The Sea of Galilee",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Sea_of_Galilee",
+    "https://en.wikipedia.org/wiki/Black_francolin"
+   ],
+   "tags": [
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0165",
+   "question": "On what station did the television show that started in 1993 and had a star who shared a name with the third wife of King Henry VIII first run?",
+   "answer": "CBS",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Jane_Seymour",
+    "https://en.wikipedia.org/wiki/Jane_Seymour_(actress)",
+    "https://en.wikipedia.org/wiki/Dr._Quinn,_Medicine_Woman"
+   ],
+   "tags": [
+    "Tabular reasoning",
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0192",
+   "question": "Out of all of the sovereign states with U.N. membership as of January 1, 2024, that recognize Abkhazia as a sovereign state, how many of them have active volcanoes?",
+   "answer": "3, Russia, Nicaragua, and Syria.",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/List_of_sovereign_states",
+    "https://en.wikipedia.org/wiki/Lists_of_volcanoes"
+   ],
+   "tags": [
+    "Numerical reasoning",
+    "Tabular reasoning",
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0210",
+   "question": "Of the top 3 women's WTA singles ranking as of 29th July 2024, which has a father who was an ice hockey player?",
+   "answer": "Aryna Sablenka",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Women%27s_Tennis_Association",
+    "https://en.wikipedia.org/wiki/Iga_%C5%9Awi%C4%85tek",
+    "https://en.wikipedia.org/wiki/Aryna_Sabalenka",
+    "https://en.wikipedia.org/wiki/Coco_Gauff"
+   ],
+   "tags": [
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0220",
+   "question": "Demi Moore shares a birthday with which costar from the movies \"Margin Call\" and \"Deconstructing Harry\"?",
+   "answer": "Stanley Tucci",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Deconstructing_Harry",
+    "https://en.wikipedia.org/wiki/Margin_Call",
+    "https://en.wikipedia.org/wiki/Stanley_Tucci",
+    "https://en.wikipedia.org/wiki/Demi_Moore"
+   ],
+   "tags": [
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0227",
+   "question": "Of the non-Americans who have won the Phoenix Open as of 2024, who was the youngest at the time of his win?",
+   "answer": "Hideki Matsuyama",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Phoenix_Open",
+    "https://en.wikipedia.org/wiki/Nick_Taylor_(golfer)",
+    "https://en.wikipedia.org/wiki/Hideki_Matsuyama",
+    "https://en.wikipedia.org/wiki/Aaron_Baddeley",
+    "https://en.wikipedia.org/wiki/Vijay_Singh",
+    "https://en.wikipedia.org/wiki/Jesper_Parnevik",
+    "https://en.wikipedia.org/wiki/Sandy_Lyle",
+    "https://en.wikipedia.org/wiki/Bruce_Crampton",
+    "https://en.wikipedia.org/wiki/George_Knudson",
+    "https://en.wikipedia.org/wiki/Bobby_Locke"
+   ],
+   "tags": [
+    "Numerical reasoning",
+    "Temporal reasoning"
+   ]
+  },
+  {
+   "id": "frames-0234",
+   "question": "Which American actress, born the same year Denzel Washington won his first Best Actor in a Leading Role Academy Award, had a supporting role in the second season of the Netflix series \"You\"?",
+   "answer": "Jenna Ortega",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/List_of_awards_and_nominations_received_by_Denzel_Washington",
+    "https://en.wikipedia.org/wiki/Jenna_Ortega",
+    "https://en.wikipedia.org/wiki/Victoria_Pedretti",
+    "https://en.wikipedia.org/wiki/Carmela_Zumbado",
+    "https://en.wikipedia.org/wiki/Ambyr_Childers",
+    "https://en.wikipedia.org/wiki/Saffron_Burrows",
+    "https://en.wikipedia.org/wiki/Tati_Gabrielle",
+    "https://en.wikipedia.org/wiki/You_(TV_series)#Season_2_(2019)"
+   ],
+   "tags": [
+    "Numerical reasoning",
+    "Multiple constraints",
+    "Post processing",
+    "Temporal reasoning"
+   ]
+  },
+  {
+   "id": "frames-0271",
+   "question": "Which family duo both made an appearance at the 2017 Billboard Music Awards and starred together on a Disney Channel Original Series?",
+   "answer": "Miley Cyrus and Billy Ray Cyrus",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/2017_Billboard_Music_Awards",
+    "https://en.wikipedia.org/wiki/List_of_programs_broadcast_by_Disney_Channel",
+    "https://en.wikipedia.org/wiki/Hannah_Montana"
+   ],
+   "tags": [
+    "Tabular reasoning",
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0274",
+   "question": "How many more letters does the name of the city that the director of \"Whiplash\" (2014) was born in have compared the name of the city in which the film first premiered?",
+   "answer": "2",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Whiplash_(2014_film)#",
+    "https://en.wikipedia.org/wiki/Damien_Chazelle",
+    "https://en.wikipedia.org/wiki/2014_Sundance_Film_Festival"
+   ],
+   "tags": [
+    "Post processing"
+   ]
+  },
+  {
+   "id": "frames-0278",
+   "question": "A 1986 song by Peter Gabriel shares the name with a tool. What is the name of the tool and how does it look?",
+   "answer": "Sledgehammer: A tool with a large, flat, often metal head, attached to a long handle.",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Peter_Gabriel",
+    "https://en.wikipedia.org/wiki/So_(album)",
+    "https://en.wikipedia.org/wiki/Sledgehammer"
+   ],
+   "tags": [
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0291",
+   "question": "Andy Warhol made the painting Marilyn Diptych from a publicity photo of Marilyn Monroe for a film. What was the name of Monroe's character in that film?",
+   "answer": "Rose Loomis",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Marilyn_Diptych",
+    "https://en.wikipedia.org/wiki/Niagara_(1953_film)"
+   ],
+   "tags": [
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0295",
+   "question": "What Indian Empire was overrun by Huns 24 years after conventionally accepted date of the fall of the Western Roman Empire?",
+   "answer": "Gupta Empire",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Roman_Empire",
+    "https://en.wikipedia.org/wiki/List_of_ancient_great_powers",
+    "https://en.wikipedia.org/wiki/Gupta_Empire"
+   ],
+   "tags": [
+    "Numerical reasoning",
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0307",
+   "question": "This athlete was the first man to run the 100 metres in under 10 seconds at an Olympic Games. Which NFL team was he drafted by?",
+   "answer": "Miami Dolphins (Jim Hines)",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/100_metres",
+    "https://en.wikipedia.org/wiki/Jim_Hines"
+   ],
+   "tags": [
+    "Post processing"
+   ]
+  },
+  {
+   "id": "frames-0317",
+   "question": "The man who owned The Washington Post in 1932 broke the trust established by his father to gain control of the paper, only to run into the ground, lose it, and get committed to a psychiatric hospital where he died. How many days after his death did the man who purchased it in 1933 die?",
+   "answer": "6563 days",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/The_Washington_Post",
+    "https://en.wikipedia.org/wiki/Edward_Beale_McLean",
+    "https://en.wikipedia.org/wiki/Eugene_Meyer_(financier)"
+   ],
+   "tags": [
+    "Numerical reasoning",
+    "Multiple constraints",
+    "Temporal reasoning"
+   ]
+  },
+  {
+   "id": "frames-0323",
+   "question": "How many years before Starbucks introduced juice-blended Frappuccinos, was the company that is accredited for inventing the Frappuccino, founded?",
+   "answer": "31 years",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/George_Howell_(entrepreneur)#The_Coffee_Connection",
+    "https://en.wikipedia.org/wiki/Frappuccino"
+   ],
+   "tags": [
+    "Temporal reasoning"
+   ]
+  },
+  {
+   "id": "frames-0330",
+   "question": "How many years older is the police force that covers the City of London, than the political party that came 4th in the 2019 European Parliament election in Lombardy? Write the number of years in binary",
+   "answer": "10101110",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/City_of_London",
+    "https://en.wikipedia.org/wiki/City_of_London_Police",
+    "https://en.wikipedia.org/wiki/2019_European_Parliament_election_in_Lombardy",
+    "https://en.wikipedia.org/wiki/Forza_Italia_(2013)"
+   ],
+   "tags": [
+    "Numerical reasoning",
+    "Multiple constraints",
+    "Post processing",
+    "Temporal reasoning"
+   ]
+  },
+  {
+   "id": "frames-0362",
+   "question": "What NBA team was founded three years before the Apollo 11 crew landed on the moon?",
+   "answer": "The Chicago Bulls",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Moon_landing",
+    "https://en.wikipedia.org/wiki/National_Basketball_Association"
+   ],
+   "tags": [
+    "Numerical reasoning",
+    "Temporal reasoning"
+   ]
+  },
+  {
+   "id": "frames-0372",
+   "question": "Are mulberries more related to raspberries or cannabis?",
+   "answer": "Cannabis",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Morus_(plant)",
+    "https://en.wikipedia.org/wiki/Rosales",
+    "https://en.wikipedia.org/wiki/Cannabaceae",
+    "https://en.wikipedia.org/wiki/Rosaceae"
+   ],
+   "tags": [
+    "Tabular reasoning"
+   ]
+  },
+  {
+   "id": "frames-0383",
+   "question": "This town was the original location of the tallest Christmas Tree displayed at the Rockefeller Center. This was also home to the author of a famous children's book series. What is the name of this series?",
+   "answer": "Doctor Dolittle",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Rockefeller_Center_Christmas_Tree",
+    "https://en.wikipedia.org/wiki/Killingworth,_Connecticut",
+    "https://en.wikipedia.org/wiki/Hugh_Lofting",
+    "https://en.wikipedia.org/wiki/Doctor_Dolittle"
+   ],
+   "tags": [
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0393",
+   "question": "What's the star sign of the author of A Court of Thorns and Roses?",
+   "answer": "Pisces",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/A_Court_of_Thorns_and_Roses",
+    "https://en.wikipedia.org/wiki/Sarah_J._Maas",
+    "https://en.wikipedia.org/wiki/Astrological_sign"
+   ],
+   "tags": [
+    "Temporal reasoning"
+   ]
+  },
+  {
+   "id": "frames-0400",
+   "question": "How many times did the victor of the Immortal Game of 1851 lose a chess match to an American-born opponent?",
+   "answer": "2",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Immortal_Game",
+    "https://en.wikipedia.org/wiki/Adolf_Anderssen",
+    "https://en.wikipedia.org/wiki/Paul_Morphy"
+   ],
+   "tags": [
+    "Tabular reasoning",
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0411",
+   "question": "This author won the Popular Fiction Book of the Year award in 2009 at the Irish Book Awards. What is their astrological sign?",
+   "answer": "Virgo",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Irish_Book_Awards",
+    "https://en.wikipedia.org/wiki/Marian_Keyes",
+    "https://en.wikipedia.org/wiki/Astrological_sign"
+   ],
+   "tags": [
+    "Tabular reasoning",
+    "Multiple constraints",
+    "Temporal reasoning"
+   ]
+  },
+  {
+   "id": "frames-0423",
+   "question": "What was the age difference at their deaths (in years) between Edgar Allan Poe and his rival, Rufus Wilmot Griswold, multiplied by 100?",
+   "answer": "200",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Rufus_Wilmot_Griswold",
+    "https://en.wikipedia.org/wiki/Edgar_Allan_Poe"
+   ],
+   "tags": [
+    "Numerical reasoning",
+    "Post processing"
+   ]
+  },
+  {
+   "id": "frames-0445",
+   "question": "What number do you get when you add up the numbers in the postcode of the hospital John Lennon was born in?",
+   "answer": "14",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/John_Lennon",
+    "https://en.wikipedia.org/wiki/Liverpool_Maternity_Hospital"
+   ],
+   "tags": [
+    "Numerical reasoning"
+   ]
+  },
+  {
+   "id": "frames-0459",
+   "question": "David Fincher has two movies in the 90's that have numbers in the title. What is the number in the title of David Fincher's later-released movie multiplied by the ratio of the sum of all of the molars in an aardvark over the number of adult teeth in a dog?",
+   "answer": "13/3 or 4.333... (infinitely repeating decimal)",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/David_Fincher",
+    "https://en.wikipedia.org/wiki/Aardvark",
+    "https://en.wikipedia.org/wiki/Puppy_teething"
+   ],
+   "tags": [
+    "Numerical reasoning",
+    "Tabular reasoning",
+    "Temporal reasoning"
+   ]
+  },
+  {
+   "id": "frames-0468",
+   "question": "Who was the British Prime Minister in the year that the Glastonbury Festival was launched?",
+   "answer": "Edward Heath, September 1970",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Glastonbury_Festival",
+    "https://en.wikipedia.org/wiki/List_of_prime_ministers_of_the_United_Kingdom"
+   ],
+   "tags": [
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0512",
+   "question": "Andre the Giant's favorite acting role was for a 1987 film. Who was the director of that film?",
+   "answer": "Rob Reiner",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Andr%C3%A9_the_Giant",
+    "https://en.wikipedia.org/wiki/The_Princess_Bride_(film)"
+   ],
+   "tags": [
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0517",
+   "question": "What age was the Director of Inception (2010) when the film was released in the UK?",
+   "answer": "39",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Inception",
+    "https://en.wikipedia.org/wiki/Christopher_Nolan"
+   ],
+   "tags": [
+    "Numerical reasoning"
+   ]
+  },
+  {
+   "id": "frames-0537",
+   "question": "I am thinking of a movie where Hans Zimmer won a Grammy Award for his work. He won the Grammy award the same year that he did his first musical score for film director Michael Bay. Can you please tell me the name of that movie?",
+   "answer": "Crimson Tide",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Michael_Bay",
+    "https://en.wikipedia.org/wiki/Hans_Zimmer#Grammy_Awards",
+    "https://en.wikipedia.org/wiki/Bad_Boys_(1995_film)",
+    "https://en.wikipedia.org/wiki/The_Rock_(film)",
+    "https://en.wikipedia.org/wiki/Armageddon_(1998_film)",
+    "https://en.wikipedia.org/wiki/Pearl_Harbor_(film)",
+    "https://en.wikipedia.org/wiki/Bad_Boys_II",
+    "https://en.wikipedia.org/wiki/The_Island_(2005_film)",
+    "https://en.wikipedia.org/wiki/Transformers_(film)",
+    "https://en.wikipedia.org/wiki/Transformers:_Revenge_of_the_Fallen",
+    "https://en.wikipedia.org/wiki/Transformers:_Dark_of_the_Moon, https://en.wikipedia.org/wiki/Pain_%26_Gain, https://en.wikipedia.org/wiki/Transformers:_Age_of_Extinction, https://en.wikipedia.org/wiki/13_Hours:_The_Secret_Soldiers_of_Benghazi, https://en.wikipedia.org/wiki/Transformers:_The_Last_Knight, https://en.wikipedia.org/wiki/6_Underground_(film), https://en.wikipedia.org/wiki/Ambulance_(2022_film)"
+   ],
+   "tags": [
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0549",
+   "question": "Out of the following man-portable launchers, which entered service with their respective military last?  A) FGM-148 Javelin B) 9K38 Igla C) FIM-92 Stinger.",
+   "answer": "A) FGM-148 Javelin",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/FGM-148_Javelin",
+    "https://en.wikipedia.org/wiki/9K38_Igla",
+    "https://en.wikipedia.org/wiki/FIM-92_Stinger"
+   ],
+   "tags": [
+    "Temporal reasoning"
+   ]
+  },
+  {
+   "id": "frames-0586",
+   "question": "How long after Archduke Franz Ferdinand received Artstetten Castle did he have his first child?",
+   "answer": "Twelve Years",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Artstetten_Castle",
+    "https://en.wikipedia.org/wiki/Archduke_Franz_Ferdinand_of_Austria"
+   ],
+   "tags": [
+    "Numerical reasoning",
+    "Temporal reasoning"
+   ]
+  },
+  {
+   "id": "frames-0604",
+   "question": "During which year did the actor who played George Falconer in the film A Single Man receive his first Academy Award? Include the name of the film for which he won.",
+   "answer": "Colin Firth won his first Academy Award in 2011 for The King's Speech.",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/A_Single_Man",
+    "https://en.wikipedia.org/wiki/Colin_Firth",
+    "https://en.wikipedia.org/wiki/List_of_awards_and_nominations_received_by_Colin_Firth"
+   ],
+   "tags": [
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0606",
+   "question": "How many more knock-outs did Joe Louis have than Muhammad Ali?",
+   "answer": "15",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Muhammad_Ali",
+    "https://en.wikipedia.org/wiki/Joe_Louis"
+   ],
+   "tags": [
+    "Numerical reasoning",
+    "Tabular reasoning"
+   ]
+  },
+  {
+   "id": "frames-0615",
+   "question": "Which 1963 Disney film starred the same actress who played a dual role in a Disney film two years earlier about twins who plot to reunite their separated parents?",
+   "answer": "Summer Magic",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/List_of_Walt_Disney_Pictures_films",
+    "https://en.wikipedia.org/wiki/One_Hundred_and_One_Dalmatians",
+    "https://en.wikipedia.org/wiki/The_Absent-Minded_Professor",
+    "https://en.wikipedia.org/wiki/The_Parent_Trap_(1961_film)",
+    "https://en.wikipedia.org/wiki/Nikki:_Wild_Dog_of_the_North",
+    "https://en.wikipedia.org/wiki/Greyfriars_Bobby_(film)",
+    "https://en.wikipedia.org/wiki/Babes_in_Toyland_(1961_film)",
+    "https://en.wikipedia.org/wiki/Son_of_Flubber",
+    "https://en.wikipedia.org/wiki/Miracle_of_the_White_Stallions",
+    "https://en.wikipedia.org/wiki/Savage_Sam_(film)",
+    "https://en.wikipedia.org/wiki/Summer_Magic_(film), https://en.wikipedia.org/wiki/The_Incredible_Journey_(film), https://en.wikipedia.org/wiki/The_Sword_in_the_Stone_(1963_film)"
+   ],
+   "tags": [
+    "Numerical reasoning",
+    "Tabular reasoning",
+    "Multiple constraints",
+    "Temporal reasoning"
+   ]
+  },
+  {
+   "id": "frames-0623",
+   "question": "What career was shared by one of the world's oldest fathers, who had a child at the age of 96, and a man who killed his wife, named Nancy, and their son, named Daniel?",
+   "answer": "professional wrestler",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/List_of_oldest_fathers",
+    "https://en.wikipedia.org/wiki/Ramjit_Raghav",
+    "https://en.wikipedia.org/wiki/Chris_Benoit#Death",
+    "https://en.wikipedia.org/wiki/Professional_wrestling#Occupational_hazards"
+   ],
+   "tags": [
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0650",
+   "question": "Who won Britain's Got Talent in the same year that London hosted the Olympics for the third time?",
+   "answer": "Ashleigh and Pudsey",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Category:Summer_Olympics_in_London",
+    "https://en.wikipedia.org/wiki/2012_Summer_Olympics",
+    "https://en.wikipedia.org/wiki/Britain%27s_Got_Talent"
+   ],
+   "tags": [
+    "Temporal reasoning"
+   ]
+  },
+  {
+   "id": "frames-0658",
+   "question": "What is the birth town of the absent athlete from the Victory Salute statue in San Jose, California?",
+   "answer": "Peter Norman was born in Coburg, Victoria, Australia.",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Victory_Salute_(statue)",
+    "https://en.wikipedia.org/wiki/Peter_Norman"
+   ],
+   "tags": [
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0661",
+   "question": "What year was the first Uber employee born?",
+   "answer": "1983",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Uber",
+    "https://en.wikipedia.org/wiki/Ryan_Graves_(businessman)"
+   ],
+   "tags": [
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0704",
+   "question": "Who was on the British throne when the England Men’s Cricket Team first beat Australia in a Test Series?",
+   "answer": "Queen Victoria, 1882.",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/The_Ashes",
+    "https://en.wikipedia.org/wiki/List_of_British_monarchs"
+   ],
+   "tags": [
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0724",
+   "question": "Gifts to children from Krampus are principally composed of what element?",
+   "answer": "Krampus may give children a wooden rute or coal. They are both mostly composed of carbon.",
+   "goldUrls": [
+    "https://en.m.wikipedia.org/wiki/Krampus",
+    "https://en.m.wikipedia.org/wiki/Coal",
+    "https://en.m.wikipedia.org/wiki/Wood"
+   ],
+   "tags": [
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0728",
+   "question": "What medal was won in 1979 by the famous physicist who attended the oldest college in London?",
+   "answer": "Albert Einstein medal",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/University_of_Oxford#Mathematics_and_sciences",
+    "https://en.wikipedia.org/wiki/Stephen_Hawking#1975%E2%80%931990",
+    "https://en.wikipedia.org/wiki/Albert_Einstein_Medal"
+   ],
+   "tags": [
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0746",
+   "question": "who won the formula one season in the year nine people were killed on the track at the argentine grand prix, and how old were they two years before sliced bread was first sold?",
+   "answer": "Alberto Ascari, 8 years old",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Argentine_Grand_Prix",
+    "https://en.wikipedia.org/wiki/1953_Formula_One_season",
+    "https://en.wikipedia.org/wiki/Alberto_Ascari",
+    "https://en.wikipedia.org/wiki/Sliced_bread"
+   ],
+   "tags": [
+    "Numerical reasoning",
+    "Multiple constraints",
+    "Temporal reasoning"
+   ]
+  },
+  {
+   "id": "frames-0763",
+   "question": "What band had a male lead singer born on the day Mohammad Mosaddegh announced the dissolution of the Iranian parliament?",
+   "answer": "Kool & the Gang",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/1953_Iranian_parliamentary_dissolution_referendum",
+    "https://en.wikipedia.org/wiki/August_16#1901%E2%80%93present_2",
+    "https://en.wikipedia.org/wiki/James_%22J.T.%22_Taylor"
+   ],
+   "tags": [
+    "Multiple constraints",
+    "Temporal reasoning"
+   ]
+  },
+  {
+   "id": "frames-0777",
+   "question": "Which leap year happened exactly halfway between the birth of Shoghi Effendi and the founding of the college he attended?",
+   "answer": "1580",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Shoghi_Effendi",
+    "https://en.wikipedia.org/wiki/Balliol_College,_Oxford",
+    "https://en.wikipedia.org/wiki/1580"
+   ],
+   "tags": [
+    "Numerical reasoning",
+    "Multiple constraints",
+    "Temporal reasoning"
+   ]
+  },
+  {
+   "id": "frames-0791",
+   "question": "I lost a final against Greg Rusedski on grass, who won his 4th career singles title on grass against a player that once defeated me in the opening round of the US Open. I achieved my highest ranking in singles on what date?",
+   "answer": "10 July 2000",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Greg_Rusedski",
+    "https://en.wikipedia.org/wiki/Karol_Kučera",
+    "https://en.wikipedia.org/wiki/2003_US_Open_%E2%80%93_Men%27s_singles",
+    "https://en.wikipedia.org/wiki/Alexander_Popp"
+   ],
+   "tags": [
+    "Tabular reasoning",
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0804",
+   "question": "Which Pope served the longest between the Battle of the Milvian Bridge and the end of the Civil Wars of the Tetrarchy?",
+   "answer": "St. Sylvester I, whose Latin name was Silvester",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Battle_of_the_Milvian_Bridge",
+    "https://en.wikipedia.org/wiki/Civil_wars_of_the_Tetrarchy",
+    "https://en.wikipedia.org/wiki/List_of_popes"
+   ],
+   "tags": [
+    "Numerical reasoning",
+    "Multiple constraints",
+    "Post processing",
+    "Temporal reasoning"
+   ]
+  },
+  {
+   "id": "frames-0805",
+   "question": "Who won the season of the dance show that Tate McRae placed third in back in 2016?",
+   "answer": "Leon \"Kida\" Burns",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Tate_McRae",
+    "https://en.wikipedia.org/wiki/So_You_Think_You_Can_Dance:_The_Next_Generation_(American_TV_series)"
+   ],
+   "tags": [
+    "Tabular reasoning",
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0809",
+   "question": "Which governor of Shizuoka resigned due to the delayed opening of the airport?",
+   "answer": "Yoshinobu Ishikawa",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Shizuoka_Prefecture",
+    "https://en.wikipedia.org/wiki/Yoshinobu_Ishikawa"
+   ],
+   "tags": [
+    "Tabular reasoning",
+    "Post processing"
+   ]
+  },
+  {
+   "id": "frames-0813",
+   "question": "What happened at the Dyatlov Pass Incident and how did it inspire the plot of 2013 horror film Devil Pass?",
+   "answer": "The Dyatlov Pass Incident was an event in 1959 where nine Soviet Hiker's died in the Northern Ural Mountains after cutting open their tents and running into the snow for a reason without explanation. Devil Pass is a found footage film that takes place in the decades following the Dyatlov Pass Incident about a group of American students who travel to Russia to investigate the event.",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Dyatlov_Pass_incident",
+    "https://en.wikipedia.org/wiki/Devil%27s_Pass"
+   ],
+   "tags": [
+    "Multiple constraints"
+   ]
+  },
+  {
+   "id": "frames-0820",
+   "question": "This singer represented Sweden in Eurovision four years before the Sweden Democrats entered Parliament for the first time. What astrological sign was the real person behind the character she played in her first musical?",
+   "answer": "Aquarius",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Sweden_Democrats",
+    "https://en.wikipedia.org/wiki/Eurovision_Song_Contest_2006",
+    "https://en.wikipedia.org/wiki/Carola_H%C3%A4ggkvist",
+    "https://en.wikipedia.org/wiki/The_Sound_of_Music",
+    "https://en.wikipedia.org/wiki/Maria_von_Trapp",
+    "https://en.wikipedia.org/wiki/Astrological_sign"
+   ],
+   "tags": [
+    "Numerical reasoning",
+    "Temporal reasoning"
+   ]
+  },
+  {
+   "id": "frames-0821",
+   "question": "Who was the king of England when Isaac Newton first published his Principia?",
+   "answer": "James II of England",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Philosophi%C3%A6_Naturalis_Principia_Mathematica",
+    "https://en.wikipedia.org/wiki/Monarchy_of_the_United_Kingdom",
+    "https://en.wikipedia.org/wiki/James_II_of_England"
+   ],
+   "tags": [
+    "Temporal reasoning"
+   ]
+  }
+ ]
+}

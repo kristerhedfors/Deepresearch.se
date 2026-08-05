@@ -410,10 +410,10 @@ export async function consumeChatStream(body, onText, { idleMs = 0, maxMs = 0, m
 /**
  * @param {import('./types.js').Env} env
  * @param {import('./types.js').Conversation} messages
- * @param {{ model?: string, maxTokens?: number }} [opts]
+ * @param {{ model?: string, maxTokens?: number, temperature?: number }} [opts]
  * @returns {Promise<{ value: any, usage: any | null, diagnostics: { parse_mode: string, finish_reason: string | null, content_length: number } }>}
  */
-export async function completeJson(env, messages, { model, maxTokens = 900 } = {}) {
+export async function completeJson(env, messages, { model, maxTokens = 900, temperature } = {}) {
   const resp = await fetch(chatUrl(env), {
     method: "POST",
     headers: {
@@ -425,6 +425,14 @@ export async function completeJson(env, messages, { model, maxTokens = 900 } = {
       stream: false,
       max_tokens: maxTokens,
       response_format: { type: "json_object" },
+      // Omitted unless the caller asks for it. Berget is OpenAI-compatible and
+      // accepts it; the secondary providers' completeJson twins destructure
+      // only { model, maxTokens }, so this option cannot reach a wire that
+      // would refuse it — OpenAI's GPT-5-era reasoning models reject a
+      // non-default temperature outright, and Anthropic rejects it whenever
+      // extended thinking is engaged. Invariant 3 already pins every JSON
+      // planning phase to this provider, so the narrow placement costs nothing.
+      ...(temperature != null ? { temperature } : {}),
       messages,
     }),
     signal: AbortSignal.timeout(JSON_CALL_TIMEOUT_MS),

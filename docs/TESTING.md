@@ -1266,6 +1266,76 @@ reported instead. Unit tests for the pure logic are in
 `scripts/arxiv-hosted-eval.test.mjs` and `scripts/arxiv-crosscheck.test.mjs`;
 see the **arxiv-rag** skill.
 
+### The ground-truth battery (`tests/dr-eval.mjs`) — is the answer RIGHT?
+
+Added 2026-08-05. The rubric bench judges answers blind, so it measures
+whether an answer reads well; it cannot measure whether it is correct, because
+no correct answer is written down. This battery grades against published gold
+answers — **FRAMES** (824 multi-hop questions, each naming the Wikipedia pages
+it was built from), **SimpleQA** (4 326 single-fact) and **BrowseComp** (1 266
+deliberately hard to find) — sampled with a fixed seed into
+`tests/evalsets/*.json` by `scripts/dr-evalset.mjs`. BrowseComp rows stay
+XOR-obfuscated in the committed file and are decrypted at load: the
+obfuscation exists so the answers do not reach a training corpus, and a public
+repo committing them in clear would be the leak it guards against.
+
+It runs over **`POST /mcp`**, not `/api/chat` — what an external caller
+actually experiences, and a fifth copy of `postOnce` avoided.
+
+Four things it measures that nothing else here does:
+
+- **Three-way accuracy** — correct / incorrect / **not attempted**. Declining
+  to guess is not fabricating, and scoring them alike rewards confident
+  invention. The headline is accuracy, accuracy-given-attempted, and their
+  harmonic mean.
+- **Retrieval separately from synthesis.** FRAMES names its source pages, so a
+  wrong answer says which stage lost it: nothing retrieved, the right page
+  never found (`retrieval_miss`), or the right page found and misread
+  (`synthesis_miss`). The first run read 14 synthesis misses to 1 retrieval
+  miss — a score alone would only have said "61.7%".
+- **Deterministic citation reconciliation** — `[n]` markers in the prose with
+  no entry in the source list, counted rather than eyeballed.
+- **`--uplift`, the contamination control.** These three sets were rejected
+  here in 2026-07 as contaminated, correctly: they predate every training
+  cutoff in the catalogue. The control arm (`--arm nosearch`) is what makes
+  them usable anyway — it turns the memorised share from an assumption into a
+  measurement. FRAMES publishes the same control (≈0.40 closed-book, ≈0.66
+  with multi-step search), so both numbers have an external reference.
+  Measured 2026-08-05: FRAMES 35.0% → 61.7% (+26.7 points, p=0.0015), SimpleQA
+  6.7% → 88.3%. Note the second: SimpleQA turns out **not** to be memorised on
+  this catalogue at all. Publication date is not contamination; the control is.
+
+```bash
+BASIC_AUTH_USER=… BASIC_AUTH_PASS=… BERGET_API_KEY=… \
+  node tests/dr-eval.mjs --set frames,simpleqa --label base
+node tests/dr-eval.mjs --set frames --arm nosearch --label control
+node tests/dr-eval.mjs --uplift  data/dr-eval/frames-base.json data/dr-eval/frames-control.json
+node tests/dr-eval.mjs --compare data/dr-eval/frames-base.json data/dr-eval/frames-after.json
+```
+
+Verdicts are by **paired exact McNemar**, importing the test from
+`scripts/rag-eval-core.mjs` rather than re-deriving it — the discipline the
+retrieval side settled on and the bench side never adopted. At n=60 the
+independent binomial interval is ±12 points and calls almost every real effect
+noise. Run files land in `data/dr-eval/` (gitignored); the durable record is
+`tests/DR-EVAL-FINDINGS.md`. Pure logic is pinned in
+`tests/dr-eval-core.test.js`.
+
+One trap it already paid for: reusing `hf-bench-lib.mjs`'s
+`detectBenchmarkLeak` reported 9 of 30 BrowseComp runs contaminated, and 24 of
+the 27 flagged URLs were ordinary arXiv papers. That list includes `arxiv.org`,
+which is right for a battery drawn from HuggingFace-hosted ML datasets and
+wrong here, where arXiv is a registered research source. **A detector
+calibrated for one question set does not transfer to another.**
+
+Because a branch push ships to production in this account (the **deploy**
+skill, measured 2026-07-30), a before/after arm cannot use a preview URL — the
+worker's `workers.dev` subdomain is disabled, so `wrangler versions upload`
+produces no preview host. The A/B procedure is the documented one: run the
+baseline, `wrangler versions deploy <id>@100%`, verify the change is live with
+a probe that could only pass on the new code, then run the after arm. Keep the
+outgoing version id — rollback is one `versions deploy` away.
+
 ## The bench gate (routine, for pipeline-sensitive changes)
 
 The rubric bench doubles as a routine merge gate — the P7 discipline from

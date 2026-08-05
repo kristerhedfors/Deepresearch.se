@@ -70,7 +70,8 @@ import { SEARCH_SOURCES, leadSourceIds } from "./search-sources.js";
 import { mergeRetrievalSpend } from "./dense-rag.js";
 import { getModelProfile } from "./model-profiles.js";
 import { addUsage } from "./quota.js";
-import { addSources, backfillOverflowSources, sourceDigest } from "./sources.js";
+import { citationAudit, citationNote } from "./citations.js";
+import { addSources, backfillOverflowSources, sourceDigest, sourceProgress } from "./sources.js";
 import { extractNotes, mergeNotes, notesEntities } from "./notes.js";
 import {
   collectConflicts,
@@ -1672,17 +1673,34 @@ async function runGapChecks(ctx) {
       followups,
     );
     state.iterations++;
-    const sourcesBefore = state.sources.length;
+    const foundBefore = sourceProgress(state);
+    const admittedBefore = state.sources.length;
     await runSearches(ctx, followups, state.iterations);
     await maybeDigest(ctx);
     // Meaningful-action guarantee: the raised deep-tier round ceiling is only
     // worth spending while each round still finds NEW ground. If a whole
-    // follow-up wave surfaced nothing the registry didn't already hold (all
-    // deduped away, or the registry is saturated), we've reached "there isn't
-    // more to explore" — stop rather than spin further rounds against the same
-    // sources. Below the deep tiers the round cap is small enough that this
-    // rarely fires; it's the safety valve that keeps the long budgets honest.
-    if (state.sources.length === sourcesBefore) {
+    // follow-up wave surfaced nothing at all — every URL already known,
+    // whether admitted or capped, or the registry full — we've reached "there
+    // isn't more to explore" — stop rather than spin further rounds against
+    // the same sources. Below the deep tiers the round cap is small enough
+    // that this rarely fires; it's the safety valve that keeps the long
+    // budgets honest.
+    //
+    // The signal is sourceProgress(), NOT sources.length. A wave whose finds
+    // were all domain-capped leaves the registry unchanged while having found
+    // genuinely new pages, and reading that as exhaustion stopped the research
+    // early on exactly the questions that need it most: the ones whose answer
+    // lives across many pages of one authoritative origin.
+    const gained = sourceProgress(state) - foundBefore;
+    log.info("chat.gap_round", {
+      round: it,
+      searches: state.searchCount,
+      gained,
+      admitted: state.sources.length - admittedBefore,
+      capped: sourceProgress(state) - state.sources.length,
+      sources: state.sources.length,
+    });
+    if (gained === 0) {
       log.info("chat.gap_saturated", { round: it, searches: state.searchCount });
       break;
     }
@@ -1843,7 +1861,21 @@ async function runSynthesis(ctx) {
     // The bash-lite sandbox transcript (empty and absent unless the
     // experimental sandbox ran client-side for this request).
     (ctx.shellBlock ? `${ctx.shellBlock}\n\n` : "") +
-    `Numbered sources:\n${digest || "(none — searches returned nothing usable)"}\n\nWrite the answer now.`;
+    // The empty-registry case needs saying out loud. Measured on the
+    // ground-truth battery (tests/DR-EVAL-FINDINGS.md, 2026-08-05): when the
+    // searches came back with nothing, answers arrived carrying a full
+    // numbered source list whose every URL was the literal string "URL", with
+    // [1]…[10] cited throughout the prose. Every one of those was graded
+    // CORRECT — the model knew the answer and dressed it in citation
+    // furniture. An ungrounded answer that presents as sourced is the one
+    // failure this product cannot have, and "use ONLY the numbered sources"
+    // does not cover it when the list is empty.
+    (digest
+      ? `Numbered sources:\n${digest}`
+      : "Numbered sources: NONE — the searches returned nothing usable.\n" +
+        "There are no sources to cite, so do NOT write any [n] citation markers and do NOT write a Sources list. " +
+        "Answer from general knowledge if you can, and say plainly that this answer is not backed by retrieved sources.") +
+    `\n\nWrite the answer now.`;
   const synthStartedAt = Date.now();
   const draft = await streamCompletion(ctx, [
     // reportTier scales the OUTPUT's structure/comprehensiveness with the
@@ -1856,6 +1888,22 @@ async function runSynthesis(ctx) {
     },
   ]);
   recordPhase(ctx.model, "synth", Date.now() - synthStartedAt);
+  // Deterministic citation reconciliation — free, and the first time either
+  // tier has checked that the answer's [n] markers name sources that exist.
+  // Recorded, not enforced: a dangling marker is a finding for the validation
+  // phase and the log, never a deterministic edit.
+  const audit = citationAudit(draft, state.sources);
+  ctx.log.info("chat.citation_audit", {
+    cited: audit.cited.length,
+    dangling: audit.dangling,
+    unused: audit.unused.length,
+    sources: state.sources.length,
+  });
+  /** @type {any} */ (state).citations = {
+    cited: audit.cited.length,
+    dangling: audit.dangling.length,
+    unused: audit.unused.length,
+  };
   ctx.stepDone("synth", "Report drafted");
   return draft;
 }
@@ -1928,7 +1976,16 @@ async function runSinglePassValidation(ctx, draft, digest) {
       { role: "system", content: validatePrompt({ reinforceJsonOnly: ctx.reinforceJsonOnly }) },
       {
         role: "user",
-        content: `Research question:\n${lastUser}\n\nNumbered sources:\n${digest || "(none)"}\n\nDraft answer:\n${draft}`,
+        content:
+          `Research question:\n${lastUser}\n\nNumbered sources:\n${digest || "(none)"}\n\n` +
+          // The deterministic half of check (2), already done exactly and for
+          // free. The prompt asks a 24B model to scan every bracket in a
+          // multi-kilobyte report while also doing three other checks; handing
+          // it the offending numbers turns "find the problem" into "fix this
+          // one". Empty string when the audit found nothing, so the prompt is
+          // byte-identical to before on answers that are already clean.
+          citationNote(citationAudit(draft, ctx.state.sources)) +
+          `Draft answer:\n${draft}`,
       },
     ],
   });
@@ -1943,11 +2000,42 @@ async function runSinglePassValidation(ctx, draft, digest) {
     );
     ctx.emit({ status: { type: "discard_text" } });
     emitChunked(ctx, verdict.revised_answer.trim());
+    recordValidation(ctx, "revise", issues.length, draft.length, verdict.revised_answer.trim().length);
   } else if (verdict?.verdict === "pass") {
     ctx.stepDone("validate", "All claims verified against sources");
+    recordValidation(ctx, "pass", 0, draft.length, 0);
+  } else if (verdict?.verdict === "revise") {
+    // A "revise" verdict with no usable answer body used to fall into the
+    // branch below and be reported as "inconclusive", throwing its issues
+    // away. The draft is still the right thing to keep — but the fact-checker
+    // did find something, and saying so is the difference between a phase that
+    // was skipped and a phase that flagged problems it could not fix.
+    const issues = (Array.isArray(verdict.issues) ? verdict.issues : []).map(String).slice(0, 10);
+    ctx.stepDone("validate", "Fact-check flagged issues but the draft was kept as-is", issues);
+    recordValidation(ctx, "revise_unusable", issues.length, draft.length, 0);
   } else {
     ctx.stepDone("validate", "Validation inconclusive — draft kept as-is");
+    recordValidation(ctx, "unusable", 0, draft.length, 0);
   }
+}
+
+// The phase-5 outcome, recorded so the revise RATE becomes knowable. It never
+// has been: the revised answer replaces the draft before anything is
+// persisted, so `chat_logs` holds the rewrite with no trace that a rewrite
+// happened, and no retrospective scan can recover it. Ranking the
+// section-scoped-revision backlog item needs this number, and `draft_chars`
+// vs `revised_chars` is a free proxy for how much a rewrite churns.
+/**
+ * @param {PipelineCtx} ctx
+ * @param {string} verdict
+ * @param {number} issues
+ * @param {number} draftChars
+ * @param {number} revisedChars
+ */
+function recordValidation(ctx, verdict, issues, draftChars, revisedChars) {
+  const row = { verdict, issues, draft_chars: draftChars, revised_chars: revisedChars };
+  ctx.log.info("chat.validate_verdict", row);
+  /** @type {any} */ (ctx.state).validation = row;
 }
 
 // Claim-level validation (high tiers): extract the draft's check-worthy claims
@@ -2076,6 +2164,20 @@ async function verifyClaim(ctx, claim) {
 // the per-model rolling stats the budget planner uses — left off the claim
 // extract/verify/revise calls so they don't skew the canonical `validate`
 // (and other) EWMA measurements.
+// The planning phases whose output is a SCHEMA rather than prose. Sampling
+// entropy buys nothing when the answer is hardened against a schema anyway,
+// and it costs plan stability: triage decides WHICH searches run, so its
+// variance propagates into a different evidence base on every run. The bench
+// ledger measures that cost — a candidate SD of 0.63 against the 0.27 that
+// judge noise alone predicts, i.e. the answers vary run-to-run as much as the
+// scoring does, which is what currently stops the gate attributing a real
+// drift (tests/EVAL-BENCH-FINDINGS.md, 2026-07-31).
+//
+// `quiz` is deliberately NOT here. It runs through the same helper, but an
+// identical quiz for identical sources is a worse quiz, not a more
+// reproducible one.
+const GREEDY_JSON_PHASES = new Set(["triage", "gap", "validate", "claim", "digest"]);
+
 /**
  * @param {PipelineCtx} ctx
  * @param {{ label: string, statKey: string, messages: Conversation, maxTokens: number, recordStat?: boolean }} phase
@@ -2086,7 +2188,11 @@ async function jsonPhase(ctx, { label, statKey, messages, maxTokens, recordStat 
   try {
     const overrides = /** @type {Record<string, number> | null} */ (ctx.jsonProfile.maxTokensOverride);
     const max = overrides?.[statKey] ?? maxTokens;
-    const r = await completeJson(ctx.env, messages, { model: ctx.jsonModel, maxTokens: max });
+    const r = await completeJson(ctx.env, messages, {
+      model: ctx.jsonModel,
+      maxTokens: max,
+      ...(GREEDY_JSON_PHASES.has(statKey) ? { temperature: 0 } : {}),
+    });
     addUsage(ctx.state.jsonTotals, r.usage);
     ctx.log.info("chat.json_diag", { phase: label, model: ctx.jsonModel, ...r.diagnostics });
     const duration_ms = Date.now() - startedAt;

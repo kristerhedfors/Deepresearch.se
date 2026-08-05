@@ -127,6 +127,15 @@ const RESEARCH_SHAPE_SV = re(
     "gr[äa]v(?:a|er)? fram",
     "kartl[äa]gg" + L,
     "vem (?:[äa]r|var)",
+    // The Swedish half of the English "find anything/everything about" arm.
+    // Its absence was an invariant-6 gap of exactly the shape this file's own
+    // header warns about — not the `\\b` trap, but the plainer one where an
+    // English alternative simply has no counterpart, so the gate fires for
+    // "find everything about this founder" and stays silent for the Swedish a
+    // user actually types. Caught by running matched EN/SV pairs through the
+    // gate rather than by reading the two lists side by side.
+    "hitta(?:r|de)? (?:allt|all info" + L + "|n[åa]got|vad som helst)(?: (?:om|p[åa]|kring))?",
+    "s[öo]k(?:er|te)? (?:upp|reda p[åa]|fram)",
   ].join("|"),
 );
 

@@ -25,6 +25,7 @@ import { platformDiversityKey } from "./search-sources.js";
  *   plan: { maxSources: number },
  *   domainCounts?: Map<string, number>,
  *   sourceOverflow?: (SourceItem | null | undefined)[],
+ *   overflowUrls?: Set<string>,
  * }} SourceRegistryState
  */
 
@@ -84,18 +85,48 @@ export function diversityKeyOf(url) {
 export function addSources(state, items) {
   state.domainCounts ||= new Map();
   state.sourceOverflow ||= [];
+  state.overflowUrls ||= new Set();
   for (const item of items || []) {
     if (!item?.url || state.byUrl.has(item.url)) continue;
     if (state.sources.length >= state.plan.maxSources) return;
     const key = diversityKeyOf(item.url);
     const count = state.domainCounts.get(key) || 0;
     if (count >= DOMAIN_CAP) {
-      state.sourceOverflow.push(item);
+      // Deduped like the registry itself. Without this a later wave that
+      // re-finds the same capped URLs would look like new ground to
+      // sourceProgress(), and the gap loop's genuine-saturation exit — the
+      // thing that stops it spinning rounds against the same sources — would
+      // never fire.
+      if (!state.overflowUrls.has(item.url)) {
+        state.overflowUrls.add(item.url);
+        state.sourceOverflow.push(item);
+      }
       continue;
     }
     state.domainCounts.set(key, count + 1);
     pushSource(state, item);
   }
+}
+
+// How much NEW ground a wave found: sources admitted to the registry PLUS the
+// domain-capped ones parked in overflow. The gap loop's saturation exit reads
+// this rather than `sources.length`, and the difference is not academic — a
+// question whose answer lives across many pages of one authoritative domain
+// (a standards body, a government registry, one publisher's DOI prefix) hits
+// DOMAIN_CAP on its third result, so every later find lands in overflow and
+// the registry stops growing. Read as `sources.length` alone, that is
+// indistinguishable from "the web has no more to say", and the run stops
+// researching while it is still finding new pages. Those pages are real:
+// backfillOverflowSources promotes them before synthesis.
+//
+// Monotonic while the gap loop runs — its only consumer, the backfill, runs
+// after the loop has finished.
+/**
+ * @param {SourceRegistryState} state
+ * @returns {number}
+ */
+export function sourceProgress(state) {
+  return state.sources.length + (state.sourceOverflow?.length || 0);
 }
 
 // Called once before synthesis: if the domain cap left the registry short
@@ -140,16 +171,84 @@ function pushSource(state, item) {
 export function sourceDigest(sources, capChars) {
   const blocks = [];
   let used = 0;
+  let omitted = 0;
+  // Reserve room for the marker up front, so telling the truth about the
+  // truncation can never push the digest past the cap the budget planner sized
+  // the prompt against. Skipped when the cap could not afford the reserve —
+  // at that size (test fixtures; the real caps are 14 000 and up) fitting a
+  // source at all matters more than the marker's own budget.
+  const budget = capChars > MARKER_RESERVE * 2 ? capChars - MARKER_RESERVE : capChars;
   for (const s of sources) {
     const block = `[${s.n}] ${s.title}\n${s.url}\n${(s.highlights || []).join(" … ")}`.trim();
-    if (used + block.length > capChars) break;
+    if (used + block.length > budget) {
+      // `continue`, not `break`. One source with unusually long highlights
+      // used to hide EVERY source after it, however short — and the entries
+      // are numbered explicitly, so a gap in the sequence costs the reader
+      // nothing while a truncated tail costs the answer its grounding.
+      omitted++;
+      continue;
+    }
     blocks.push(block);
     used += block.length + 2;
   }
-  return blocks.join("\n\n");
+  const digest = blocks.join("\n\n");
+  if (!omitted) return digest;
+  // Say it out loud. Silently handing over a partial list invites an answer
+  // that claims coverage it does not have, and leaves the validation phase
+  // reconciling citations against a list it cannot see all of. At the common
+  // budget tier the registry can hold ~32 sources against an 18 000-char cap,
+  // so this is a routine truncation, not an edge case.
+  return `${digest}\n\n${truncationMarker(omitted)}`;
 }
 
-// The synthesis prompt already appends its own "Sources:" list, so only add a
+// Sized against the longest string truncationMarker can produce, so the
+// reserve above is always enough.
+const MARKER_RESERVE = 260;
+
+/** @param {number} omitted */
+function truncationMarker(omitted) {
+  return (
+    `[… ${omitted} further collected source${omitted === 1 ? "" : "s"} omitted here for length. ` +
+    `Cite only the numbers listed above, and do not treat this list as the complete evidence ` +
+    `base or conclude that a topic is uncovered merely because it is absent from it.]`
+  );
+}
+
+// How many of `sources` a digest at this cap actually carries — the counter
+// the log needs so a request stops reporting the registry size as if it were
+// what the model read.
+/**
+ * @param {SourceEntry[]} sources
+ * @param {number} capChars
+ * @returns {number}
+ */
+export function digestShownCount(sources, capChars) {
+  const digest = sourceDigest(sources, capChars);
+  if (!digest) return 0;
+  const blocks = digest.split("\n\n").length;
+  return digest.includes("further collected source") ? blocks - 1 : blocks;
+}
+
+// A heading a model actually writes when the synthesis prompt asks it to "End
+// with a 'Sources:' section". The old test was `/(^|\n)\s*sources\s*:/i`, which
+// only matched a bare `Sources:` at the start of a line — so every answer whose
+// model reached for `### Sources:` or `**Sources:**`, which the report-tier
+// structures in prompts.js explicitly ask for, got the list appended a SECOND
+// time. On the MCP surface that shipped two source lists in one answer: the
+// model's, built from the (possibly truncated) digest, and the registry's full
+// one, with nothing telling the reader which was authoritative.
+//
+// Swedish is here for the same reason it is in every other routing gate
+// (CLAUDE.md invariant 6): an answer written in Swedish ends with `Källor:`,
+// and matching only the English form appended an English list under it.
+const SOURCE_HEADING = /(^|\n)[ \t]*(?:[#>*_\-–—]|\d+[.)])*[ \t]*\**[ \t]*(?:sources|källor|kallor)\b[ \t]*\**[ \t]*:?[ \t]*\**[ \t]*(?:\n|$)/i;
+
+// One entry of a source list: a bracketed number and a URL on the same line.
+// Deliberately loose about what sits between them — the model's own list is
+// its own formatting, and this only has to answer "is there a list here".
+const SOURCE_ENTRY = /(^|\n)[ \t]*(?:[-*+][ \t]*)?\[\d{1,3}\][^\n]*https?:\/\//i;
+
+// The synthesis prompt already asks for its own "Sources:" list, so only add a
 // structured one when the answer text doesn't already carry it — guarantees
 // an MCP consumer always gets the source list without double-printing it.
 /**
@@ -159,7 +258,14 @@ export function sourceDigest(sources, capChars) {
  */
 export function withSources(text, sources) {
   if (!sources?.length) return text;
-  if (/(^|\n)\s*sources\s*:/i.test(text)) return text;
+  // A heading is not a list. Long generations on this catalogue are recorded
+  // stopping early — cleanly, well under the token cap — sometimes right after
+  // writing "Sources:" and sometimes mid-URL inside it
+  // (tests/EVAL-BENCH-FINDINGS.md). Suppressing on the heading alone would
+  // hand an MCP caller an answer with no usable sources at all, which is a
+  // worse failure than the double-printing this check exists to stop. So both
+  // must hold: the answer says it has a list AND at least one entry survived.
+  if (SOURCE_HEADING.test(text) && SOURCE_ENTRY.test(text)) return text;
   const list = sources.map((s) => `[${s.n}] ${s.title} — ${s.url}`).join("\n");
   return `${text}\n\nSources:\n${list}`;
 }

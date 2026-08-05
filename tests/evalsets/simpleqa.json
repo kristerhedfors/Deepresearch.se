@@ -1,0 +1,895 @@
+{
+ "set": "simpleqa",
+ "kind": "single-fact",
+ "origin": "https://openaipublic.blob.core.windows.net/simple-evals/simple_qa_test_set.csv",
+ "license": "MIT (openai/simple-evals)",
+ "note": "Short-answer factual questions with a gold answer and supporting URLs.",
+ "sample": {
+  "seed": 20260805,
+  "n": 60,
+  "of": 4326
+ },
+ "items": [
+  {
+   "id": "simpleqa-0001",
+   "question": "Who was awarded the Oceanography Society's Jerlov Award in 2018?",
+   "answer": "Annick Bricaud",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/The_Oceanography_Society",
+    "https://en.wikipedia.org/wiki/The_Oceanography_Society",
+    "https://tos.org/jerlov-medal",
+    "https://www.eurekalert.org/news-releases/490504"
+   ],
+   "tags": [
+    "Science and technology",
+    "Person"
+   ]
+  },
+  {
+   "id": "simpleqa-0005",
+   "question": "How much money, in euros, was the surgeon held responsible for Stella Obasanjo's death ordered to pay her son?",
+   "answer": "120,000",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Stella_Obasanjo#Death",
+    "https://en.wikipedia.org/wiki/Stella_Obasanjo",
+    "https://www.independent.co.uk/news/world/africa/surgeon-jailed-over-death-of-first-lady-1791712.html)",
+    "https://www.abc.net.au/news/2009-09-22/doctor-jailed-over-former-first-ladys-lipo-death/1437416)"
+   ],
+   "tags": [
+    "Politics",
+    "Number"
+   ]
+  },
+  {
+   "id": "simpleqa-0042",
+   "question": "In which season and episode of Archer does Sterling go into a rampage? Give me the season, number, and title of the episode.",
+   "answer": "Season 2, Episode 9 \"Placebo Effect\"",
+   "goldUrls": [
+    "https://archer.fandom.com/wiki/Placebo_Effect",
+    "https://archer.fandom.com/wiki/Placebo_Effect",
+    "https://www.vulture.com/article/best-archer-episodes.html",
+    "https://www.avclub.com/archers-pampage-coasts-to-a-surprisingly-boring-stop-1847685085"
+   ],
+   "tags": [
+    "TV shows",
+    "Other"
+   ]
+  },
+  {
+   "id": "simpleqa-0061",
+   "question": "What was Beloit College's Center for the Sciences renamed in 2017?",
+   "answer": "Marjorie and James Sanger Center for the Sciences.",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Beloit_College",
+    "https://www.beloit.edu/live/news/155-naming-the-science-center#:~:text=In%20October%2C%20the%20executive%20committee,Sanger%20Center%20for%20the%20Sciences.%E2%80%9D",
+    "https://www.beloit.edu/live/news/1080-science-center-named-for-sangers",
+    "https://en.wikipedia.org/wiki/Beloit_College"
+   ],
+   "tags": [
+    "Other",
+    "Other"
+   ]
+  },
+  {
+   "id": "simpleqa-0062",
+   "question": "From which dealer's shop did the Florentine authorities buy the \"Pitti Tondo\" in 1823?",
+   "answer": "Fedele Acciai",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Pitti_Tondo",
+    "https://italianreflections.wordpress.com/2023/11/19/the-michelangelo-room-florence/",
+    "https://en.wikipedia.org/wiki/Pitti_Tondo",
+    "https://www.florence-tickets.com/blog/florence/the-tondo-pitti-by-michelangelo"
+   ],
+   "tags": [
+    "Art",
+    "Person"
+   ]
+  },
+  {
+   "id": "simpleqa-0194",
+   "question": "On what date did President Kagame receive an honorary degree in Ethiopia?",
+   "answer": "JULY 2, 2016",
+   "goldUrls": [
+    "https://www.paulkagame.com/president-kagame-receives-an-honorary-degree-from-bahir-dar-university/\\nhttps://www.youtube.com/watch?v=A-SioUq2bEM&ab_channel=PaulKagame",
+    "https://www.paulkagame.com/president-kagame-receives-an-honorary-degree-from-bahir-dar-university/",
+    "https://en.igihe.com/news/president-kagame-receives-honorary-doctorate-of",
+    "https://waltainfo.com/39910/"
+   ],
+   "tags": [
+    "Politics",
+    "Date"
+   ]
+  },
+  {
+   "id": "simpleqa-0263",
+   "question": "In which town was the South African 80s child pop star Ricardo Groenewald born?",
+   "answer": "Humansdorp",
+   "goldUrls": [
+    "https://www.iol.co.za/entertainment/love-saved-ricardo-from-drugs-despair-1951840",
+    "https://rateyourmusic.com/artist/ricardo-groenewald",
+    "https://www.iol.co.za/entertainment/love-saved-ricardo-from-drugs-despair-1951840",
+    "https://www.heraldlive.co.za/news/2023-04-25-concert-to-raise-funds-for-i-love-you-daddy-singers-tombstone/"
+   ],
+   "tags": [
+    "Music",
+    "Place"
+   ]
+  },
+  {
+   "id": "simpleqa-0609",
+   "question": "In Game 2 of the '04 ALCS, who singled to lead off the 8th inning?",
+   "answer": "Trot Nixon",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/2004_American_League_Championship_Series",
+    "https://en.wikipedia.org/wiki/2004_American_League_Championship_Series",
+    "https://www.espn.com/mlb/playbyplay/_/gameId/241013110",
+    "https://www.boston.com/sports/untagged/2014/10/15/retro_recap_2004_alcs_game_2_pedro_martinez_loses_then_tells/"
+   ],
+   "tags": [
+    "Sports",
+    "Person"
+   ]
+  },
+  {
+   "id": "simpleqa-0634",
+   "question": "Which president had a meeting with Kwame Nkrumah right before the Kulungugu bomb attack?",
+   "answer": "Maurice Yameogo",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Kulungugu_bomb_attack",
+    "https://en.wikipedia.org/wiki/Kulungugu_bomb_attack",
+    "https://www.ghanacelebrities.com/2020/08/01/today-in-history-exactly-58-years-ago-today-kwame-nkrumah-survives-a-deadly-bomb-attack-in-kulungugu/",
+    "https://www.eaumf.org/ejm-blog/2017/8/1/august-1st-1962-nkrumah-is-injured-by-an-attempt-on-his-life-from-a-bomb-in-kulungugu"
+   ],
+   "tags": [
+    "Politics",
+    "Person"
+   ]
+  },
+  {
+   "id": "simpleqa-0687",
+   "question": "How many UN Volunteers served in 54 United Nations missions, agencies, funds, and programs across the globe in 2019?",
+   "answer": "8,282",
+   "goldUrls": [
+    "https://www.unv.org/Annual-report/Annual-Report-2019",
+    "https://www.unv.org/Annual-report/Annual-Report-2019#:~:text=We%20are%20proud%20of%20our,the%20history%20of%20the%20organization.\\n",
+    "https://www.un.org/en/academic-impact/unai-quiz-international-volunteer-day-0"
+   ],
+   "tags": [
+    "Politics",
+    "Number"
+   ]
+  },
+  {
+   "id": "simpleqa-0767",
+   "question": "What year did Kinoko Teikoku release their first single \"Taikutsu Shinogi\" (退屈しのぎ)?",
+   "answer": "2012",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Kinoko_Teikoku",
+    "https://en.wikipedia.org/wiki/Kinoko_Teikoku",
+    "https://genius.com/Kinoko-teikoku-taikutsu-shinogi-lyrics/q/release-date",
+    "https://medium.com/@cgalanf1/kinoko-teikoku-esta-bien-chido-be1ff97a254f"
+   ],
+   "tags": [
+    "Music",
+    "Date"
+   ]
+  },
+  {
+   "id": "simpleqa-0850",
+   "question": "In what year did Welsh broadcaster Louise Elliott join Jamie Owen as host of a weekday morning show on BBC Radio Wales?",
+   "answer": "2007",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Louise_Elliott",
+    "https://en.wikipedia.org/wiki/Louise_Elliott#:~:text=She%20later%20became%20the%20presenter,show%20on%20BBC%20Radio%20Wales.",
+    "https://en.wikipedia.org/wiki/Louise_Elliott",
+    "https://radiotoday.co.uk/2013/09/radio-wales-louise-elliott-takes-a-break/"
+   ],
+   "tags": [
+    "TV shows",
+    "Date"
+   ]
+  },
+  {
+   "id": "simpleqa-1023",
+   "question": "Prior to 2024, what year was diver Vicki Draves selected for the Most Outstanding Alumnus of the year at City College of San Francisco?",
+   "answer": "2005",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Vicki_Draves",
+    "https://en.wikipedia.org/wiki/Vicki_Draves#:~:text=Draves%20was%20inducted%20into%20the,City%20College%20of%20San%20Francisco.",
+    "https://brokeassstuart.com/2017/11/02/sfcentric-history-filipino-american-vicki-draves-made-olympic-history/",
+    "https://globalnation.inquirer.net/129594/the-olympic-triumph-of-vicki-manalo-draves"
+   ],
+   "tags": [
+    "Sports",
+    "Date"
+   ]
+  },
+  {
+   "id": "simpleqa-1079",
+   "question": "Who was awarded the IEEE/RSE James Clerk Maxwell Medal in 2015?",
+   "answer": "Lynn Conway",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/IEEE/RSE_James_Clerk_Maxwell_Medal",
+    "https://ethw.org/IEEE/RSE_James_Clerk_Maxwell_Medal",
+    "https://ieeetv.ieee.org/history/2015-ieee-honors-ieee-rse-james-clerk-maxwell-medal-lynn-conway",
+    "https://en.wikipedia.org/wiki/IEEE/RSE_James_Clerk_Maxwell_Medal"
+   ],
+   "tags": [
+    "Science and technology",
+    "Person"
+   ]
+  },
+  {
+   "id": "simpleqa-1081",
+   "question": "What was the halftime score between Liverpool and Leicester in the game from December 30, 2022?",
+   "answer": "Liverpool 2 - 1 Leicester",
+   "goldUrls": [
+    "https://www.espn.com/soccer/commentary/_/gameId/637995",
+    "https://www.espn.co.uk/football/match/_/gameId/637995/leicester-city-liverpool",
+    "https://www.espn.co.uk/football/report/_/gameId/637995",
+    "https://www.transfermarkt.co.uk/liverpool-fc_leicester-city/index/spielbericht/3838265"
+   ],
+   "tags": [
+    "Sports",
+    "Other"
+   ]
+  },
+  {
+   "id": "simpleqa-1096",
+   "question": "Who won the International Photography Awards' \"International Photographer of the Year\" award in 2005?",
+   "answer": "Jim Fiscus",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/International_Photography_Awards",
+    "https://en.wikipedia.org/wiki/International_Photography_Awards",
+    "https://www.commarts.com/columns/jim-fiscus",
+    "https://en.wikipedia.org/wiki/Jim_Fiscus"
+   ],
+   "tags": [
+    "Art",
+    "Person"
+   ]
+  },
+  {
+   "id": "simpleqa-1259",
+   "question": "When holding the Crescent Axe from Demon's Souls (2009) in two hands, what is the physical damage reduction when blocking?",
+   "answer": "55%",
+   "goldUrls": [
+    "http://demonssouls.wikidot.com/crescent-axe",
+    "http://demonssouls.wikidot.com/crescent-axe",
+    "https://www.demonssouls.com/index.php?title=Crescent_Axe&mobileaction=toggle_view_desktop"
+   ],
+   "tags": [
+    "Video games",
+    "Number"
+   ]
+  },
+  {
+   "id": "simpleqa-1326",
+   "question": "Mathematician Alexander Aitken graduated in 1920 with First Class Honors in what subject?",
+   "answer": "French and Latin",
+   "goldUrls": [
+    "https://mathshistory.st-andrews.ac.uk/Biographies/Aitken/",
+    "https://mathshistory.st-andrews.ac.uk/Biographies/Aitken/",
+    "https://proofwiki.org/wiki/Mathematician:Alexander_Craig_Aitken",
+    "https://davegiles.blogspot.com/2011/07/alexander-aitken.html"
+   ],
+   "tags": [
+    "Other",
+    "Other"
+   ]
+  },
+  {
+   "id": "simpleqa-1331",
+   "question": "In which year was the municipality of Mutatá, Antioquia, Colombia, founded?",
+   "answer": "1850",
+   "goldUrls": [
+    "https://es.wikipedia.org/wiki/Mutat%C3%A1",
+    "https://www.familysearch.org/en/wiki/Mutat%C3%A1,_Urab%C3%A1,_Antioquia,_Colombia_Genealogy",
+    "https://www.wikidata.org/wiki/Q1525997",
+    "https://www.citypopulation.de/en/colombia/antioquia/mutat%C3%A1/05480000__mutat%C3%A1/"
+   ],
+   "tags": [
+    "Geography",
+    "Date"
+   ]
+  },
+  {
+   "id": "simpleqa-1444",
+   "question": "How many competitors did Italy bring to the 1964 Winter Olympics? How many of them were male and female?",
+   "answer": "61. 53 male, 8 female.",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Italy_at_the_1964_Winter_Olympics",
+    "https://en.wikipedia.org/wiki/Italy_at_the_1964_Winter_Olympics",
+    "https://www.olympedia.org/countries/ITA"
+   ],
+   "tags": [
+    "Sports",
+    "Number"
+   ]
+  },
+  {
+   "id": "simpleqa-1510",
+   "question": "What are the names of the children of Princess Shruti Rajya Lakshmi Devi Shah and Kumar Gorakh Shumsher Jang Bahadur Rana of Nepal?",
+   "answer": "Girwani Rajya Lakshmi Devi Rana and Surangana Rajya Lakshmi Devi Rana",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Princess_Shruti_of_Nepal",
+    "https://en.wikipedia.org/wiki/Princess_Shruti_of_Nepal",
+    "https://en.nepalkhabar.com/news/detail/5557/",
+    "https://nepalbharatupdate.blogspot.com/2015/11/where-are-princess-shruti-shah-ranas.html"
+   ],
+   "tags": [
+    "Politics",
+    "Person"
+   ]
+  },
+  {
+   "id": "simpleqa-1584",
+   "question": "In which year was the Castlebridge Gospel Choir in Ireland founded?",
+   "answer": "2003",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Castlebridge",
+    "https://en.wikipedia.org/wiki/Castlebridge#Community",
+    "https://castlebridgewex.ie/local_business/castlebridge-gospel-choir/",
+    "https://alchetron.com/Castlebridge"
+   ],
+   "tags": [
+    "Music",
+    "Date"
+   ]
+  },
+  {
+   "id": "simpleqa-1601",
+   "question": "What high school did RuPaul Charles attend in California?",
+   "answer": "Patrick Henry High School",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/RuPaul",
+    "https://www.blackpast.org/african-american-history/people-african-american-history/rupaul-andre-charles-1960/",
+    "https://nationaltoday.com/birthday/rupaul/"
+   ],
+   "tags": [
+    "Other",
+    "Place"
+   ]
+  },
+  {
+   "id": "simpleqa-1633",
+   "question": "Odisha’s longest road bridge, “Netaji Subhas Chandra Bose Setu,” has been built over which tributary of the Mahanadi River?",
+   "answer": "Kathajodi",
+   "goldUrls": [
+    "https://www.gktoday.in/question/odishas-longest-road-bridge-netaji-subhas-chandra",
+    "https://www.newindianexpress.com/states/odisha/2017/Jul/19/odisha-cm-naveen-dedicates-new-bridge-connecting-bhubaneswar-and-cuttack-1630799.html#:~:text=The%20Netaji%20Setu%2C%20built%20on,and%20Barabati%20Stadium%20are%20located.",
+    "https://www.gktoday.in/question/odishas-longest-road-bridge-netaji-subhas-chandra",
+    "https://www.gktoday.in/gk-current-affairs-quiz-july-20-2017/"
+   ],
+   "tags": [
+    "Geography",
+    "Other"
+   ]
+  },
+  {
+   "id": "simpleqa-1661",
+   "question": "What record label produced Avenger's 1985 EP containing the song \"Down to the Bone\"?",
+   "answer": "Wishbone Records",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Depraved_to_Black",
+    "https://rateyourmusic.com/release/ep/avenger/depraved-to-black.p/",
+    "https://www.discogs.com/release/3509108-Avenger-Depraved-To-Black",
+    "https://www.metal-archives.com/reviews/Avenger/Depraved_to_Black/4926/"
+   ],
+   "tags": [
+    "Music",
+    "Other"
+   ]
+  },
+  {
+   "id": "simpleqa-1859",
+   "question": "In what year was the Materials for Industry-Derek Birchall Award established?",
+   "answer": "2008",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Materials_for_Industry_-_Derek_Birchall_Award#:~:text=The%20award%20was%20established%20in%202008",
+    "https://en.wikipedia.org/wiki/Materials_for_Industry_-_Derek_Birchall_Award",
+    "https://everything.explained.today/Materials_for_Industry_-_Derek_Birchall_Award/",
+    "https://infogalactic.com/info/Materials_for_Industry_-_Derek_Birchall_Award"
+   ],
+   "tags": [
+    "Science and technology",
+    "Date"
+   ]
+  },
+  {
+   "id": "simpleqa-1885",
+   "question": "Who was the 6th Prime Minister of Nepal?",
+   "answer": "Fateh Jang Shah",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Fateh_Jung_Shah",
+    "https://en.wikipedia.org/wiki/Fateh_Jung_Shah",
+    "https://web.archive.org/web/20140221184932/http://sanjaal.com/ganthan/tag/6th-prime-minister-of-nepal-fatte-jang-chautaria/",
+    "https://web.archive.org/web/20190411065907/http://www.weallnepali.com/about-nepal/prime-ministers-of-nepal"
+   ],
+   "tags": [
+    "Politics",
+    "Person"
+   ]
+  },
+  {
+   "id": "simpleqa-1932",
+   "question": "What year was LEGO part ID 3778 initially released?",
+   "answer": "1979",
+   "goldUrls": [
+    "https://www.bricklink.com/v2/catalog/catalogitem.page?P=3778#T=C",
+    "https://www.brickowl.com/catalog/lego-cypress-tree-columnar-4-x-4-x-11-5-3778"
+   ],
+   "tags": [
+    "Other",
+    "Date"
+   ]
+  },
+  {
+   "id": "simpleqa-1977",
+   "question": "What patch for the original Dark Souls made it so the Cracked Red Eye Orb is no longer consumed when connecting to an invasion fails?",
+   "answer": "1.04",
+   "goldUrls": [
+    "http://darksouls.wikidot.com/game-patches",
+    "https://darksouls.fandom.com/wiki/Patch_Information#1.02",
+    "https://darksouls.wiki.fextralife.com/PATCHES",
+    "http://darksouls.wikidot.com/game-patches"
+   ],
+   "tags": [
+    "Video games",
+    "Date"
+   ]
+  },
+  {
+   "id": "simpleqa-2099",
+   "question": "Who was convicted in 2019 of espionage by Iranian authorities in a closed-door trial in Iran?",
+   "answer": "Niloufar Bayan",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Niloufar_Bayani",
+    "https://en.wikipedia.org/wiki/Niloufar_Bayani",
+    "https://www.scholarsatrisk.org/actions/niloufar-bayani-iran/"
+   ],
+   "tags": [
+    "Politics",
+    "Person"
+   ]
+  },
+  {
+   "id": "simpleqa-2152",
+   "question": "In what year did the Costume Institute become a curatorial department?",
+   "answer": "1959",
+   "goldUrls": [
+    "https://www.metmuseum.org/about-the-met/collection-areas/the-costume-institute#:~:text=History%20of%20the%20Department&text=In%201946%2C%20with%20the%20financial,1959%20became%20a%20curatorial%20department.",
+    "https://en.wikipedia.org/wiki/Anna_Wintour_Costume_Center",
+    "https://www.forbes.com/sites/hayleycuccinello/2017/04/28/inside-the-met-gala-the-money-behind-the-first-monday-in-may/"
+   ],
+   "tags": [
+    "Art",
+    "Date"
+   ]
+  },
+  {
+   "id": "simpleqa-2227",
+   "question": "What year was the municipality of Ciénega, Boyacá, Colombia, founded?",
+   "answer": "1818",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Ci%C3%A9nega,_Boyac%C3%A1",
+    "https://en.wikipedia.org/wiki/Ci%C3%A9nega,_Boyac%C3%A1",
+    "https://www.familysearch.org/en/wiki/Ci%C3%A9nega,_M%C3%A1rquez,_Boyac%C3%A1,_Colombia_Genealogy",
+    "https://dbpedia.org/page/Ci%C3%A9nega,_Boyac%C3%A1"
+   ],
+   "tags": [
+    "Geography",
+    "Date"
+   ]
+  },
+  {
+   "id": "simpleqa-2314",
+   "question": "Which song in Alan Walker's album \"Different World\" is exactly four minutes and zero seconds long?",
+   "answer": "\"Diamond Heart\"",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Different_World_(Alan_Walker_album)",
+    "https://en.wikipedia.org/wiki/Different_World_(Alan_Walker_album)#Track_listing",
+    "https://open.spotify.com/album/3nzuGtN3nXARvvecier4K0"
+   ],
+   "tags": [
+    "Music",
+    "Other"
+   ]
+  },
+  {
+   "id": "simpleqa-2374",
+   "question": "What is the height (in meters) of the light multipurpose aircraft T-101 named Grach, based on the AN-2 biplane that was designed by Evgeny Grunin, which took its first flight on December 7, 1994?",
+   "answer": "4.86 m",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/ROS-Aeroprogress_T-101_Grach",
+    "https://en.wikipedia.org/wiki/ROS-Aeroprogress_T-101_Grach",
+    "https://avia.cofe.ru/R/ROKS-Aero-T-101-Grach-T-101-Grach-firmyi-ROKS-Aero",
+    "https://www.doc8643.com/aircraft/T101"
+   ],
+   "tags": [
+    "Science and technology",
+    "Number"
+   ]
+  },
+  {
+   "id": "simpleqa-2680",
+   "question": "In which season and episode of South Park does Randy become a chef at South Park Elementary?",
+   "answer": "Season 14, \"Crème Fraîche\"",
+   "goldUrls": [
+    "https://southpark.fandom.com/wiki/Cr%C3%A8me_Fraiche",
+    "https://en.wikipedia.org/wiki/Cr%C3%A8me_Fra%C3%AEche_(South_Park)",
+    "https://southpark.fandom.com/wiki/Cr%C3%A8me_Fraiche/Script,"
+   ],
+   "tags": [
+    "TV shows",
+    "Other"
+   ]
+  },
+  {
+   "id": "simpleqa-2798",
+   "question": "What high school did Carla Hall graduate from in Nashville, TN?",
+   "answer": "Hillsboro High School",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Carla_Hall",
+    "https://en.wikipedia.org/wiki/Carla_Hall#:~:text=Hall%20was%20born%20and%20raised,became%20a%20Certified%20Public%20Accountant.",
+    "https://kids.kiddle.co/Carla_Hall",
+    "https://michaelcera.s3.uk.io.cloud.ovh.net/who-is-carla-hall-wiki-age-bio-net-worth-career-relationship-family.html"
+   ],
+   "tags": [
+    "Other",
+    "Place"
+   ]
+  },
+  {
+   "id": "simpleqa-2804",
+   "question": "What total number of newly discovered pieces of music by Maddalena Casulana were played for the first time in 400 years on March 8, 2022, as part of BBC Radio 3's programming for International Women's Day?",
+   "answer": "12",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Maddalena_Casulana",
+    "https://www.theguardian.com/music/2022/mar/05/maddalena-casulana-missing-renaissance-madrigals-rediscovered",
+    "https://www.famouscampaigns.com/2022/03/iconic-female-composers-lost-work-to-be-heard-for-the-first-time-in-400-years/"
+   ],
+   "tags": [
+    "Music",
+    "Number"
+   ]
+  },
+  {
+   "id": "simpleqa-3005",
+   "question": "What is Donnie McClurkin's son's name?",
+   "answer": "Matthew McClurkin",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Donnie_McClurkin",
+    "https://en.wikipedia.org/wiki/Donnie_McClurkin#:~:text=McClurkin%20has%20a%20son%2C%20Matthew,new%20jack%20swing%20group%20Abstrac.",
+    "https://answersafrica.com/who-is-matthew-mcclurkin-donnie-mcclurkins-son.html#google_vignette"
+   ],
+   "tags": [
+    "Music",
+    "Person"
+   ]
+  },
+  {
+   "id": "simpleqa-3107",
+   "question": "In what round of the Nations Cup team competition at the FEI European Championships did a member of the jump crew interfere with Cian O'Connor and Good Luck?",
+   "answer": "Second",
+   "goldUrls": [
+    "https://www.chronofhorse.com/article/what-do-you-think-cian-oconnors-controversial-european-championships-round/",
+    "https://www.chronofhorse.com/article/what-do-you-think-cian-oconnors-controversial-european-championships-round/",
+    "https://www.noellefloyd.com/blogs/archives/cian-o-connor-confirms-further-action-will-be-taken-regarding-ring-interference-incident",
+    "https://www.espn.com/olympics/story/_/id/13488822/cian-oconnor-totally-gutted-ireland-showjumping-team-rio-olympics-qualification-hopes-were-wrecked"
+   ],
+   "tags": [
+    "Sports",
+    "Other"
+   ]
+  },
+  {
+   "id": "simpleqa-3141",
+   "question": "In what year did Timothy “Tim” Griffin obtain a political appointment as a Special Assistant to the Assistant Attorney General for the Criminal Division?",
+   "answer": "2001",
+   "goldUrls": [
+    "https://oig.justice.gov/sites/default/files/archive/special/s0809a/chapter5.htm",
+    "https://oig.justice.gov/sites/default/files/archive/special/s0809a/chapter5.htm",
+    "https://www.sourcewatch.org/index.php/Tim_Griffin",
+    "https://en.wikipedia.org/wiki/Tim_Griffin#:~:text=From%20March%202001%20through%20June,Assistant%20Attorney%20General%20Michael%20Chertoff.",
+    "https://encyclopediaofarkansas.net/entries/john-timothy-griffin-8473/"
+   ],
+   "tags": [
+    "Politics",
+    "Date"
+   ]
+  },
+  {
+   "id": "simpleqa-3154",
+   "question": "During which years did Richard H.G. Parry serve as Secretary-General of the International Society for Soil Mechanics and Geotechnical Engineering?",
+   "answer": "1981-1999",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/International_Society_for_Soil_Mechanics_and_Geotechnical_Engineering",
+    "https://www.issmge.org/the-society/history#:~:text=Parry%20(1981%2D1999)%2C,(1999%2D2023)%20and%20A.M.",
+    "https://www.britishgeotech.org/news/2024/01/dr-dick-parry",
+    "https://en.wikipedia.org/wiki/International_Society_for_Soil_Mechanics_and_Geotechnical_Engineering"
+   ],
+   "tags": [
+    "Science and technology",
+    "Date"
+   ]
+  },
+  {
+   "id": "simpleqa-3196",
+   "question": "In what month and year did Anna Halprin create the \"Rope Dance\" performance with Janine Antoni and Stephen Petronio in Kentfield, California?",
+   "answer": "September 2014",
+   "goldUrls": [
+    "https://www.janineantoni.net/#/rope-dance/",
+    "https://www.janineantoni.net/rope-dance",
+    "https://www.theartnewspaper.com/2016/04/27/janine-antoni-gets-wrapped-up-in-her-work-at-philadelphias-fabric-workshop"
+   ],
+   "tags": [
+    "Art",
+    "Date"
+   ]
+  },
+  {
+   "id": "simpleqa-3254",
+   "question": "Which scientist received the Gilbert Morgan Smith Medal in 2015?",
+   "answer": "Takao Kondo",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Gilbert_Morgan_Smith_Medal",
+    "https://en.wikipedia.org/wiki/Gilbert_Morgan_Smith_Medal",
+    "https://www.nasonline.org/award/gilbert-morgan-smith-medal/",
+    "https://en.wikipedia.org/wiki/Takao_Kondo"
+   ],
+   "tags": [
+    "Science and technology",
+    "Person"
+   ]
+  },
+  {
+   "id": "simpleqa-3256",
+   "question": "In which NYC borough was pharmacist David Morris Kern born?",
+   "answer": "Manhattan",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/David_Morris_Kern",
+    "https://en.wikipedia.org/wiki/David_Morris_Kern",
+    "https://www.findagrave.com/memorial/110095609/david-morris-kern",
+    "https://www.toledoblade.com/Medical/2013/05/06/Orajel-creator-David-Morris-Kern-dies-at-103/stories/feed/index.rss"
+   ],
+   "tags": [
+    "Geography",
+    "Place"
+   ]
+  },
+  {
+   "id": "simpleqa-3365",
+   "question": "Which lake in Kashmir is connected to the Khushal Sar and Gil Sar lakes via a channel known as Nallah Amir Khan?",
+   "answer": "Nigeen Lake",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Nigeen_Lake",
+    "https://srinagar.nic.in/tourist-place/nigeen-lake/",
+    "https://www.dookinternational.com/poi/nigeen-lake/84022"
+   ],
+   "tags": [
+    "Geography",
+    "Place"
+   ]
+  },
+  {
+   "id": "simpleqa-3433",
+   "question": "In which round was Martina Trevisan eliminated from the 2020 French Open – Women's Singles?",
+   "answer": "Quarterfinals",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/2020_French_Open_%E2%80%93_Women%27s_singles#Finals",
+    "https://en.wikipedia.org/wiki/2020_French_Open#:~:text=In%20the%20quarterfinals%2C%20three%20matches,Petra%20Kvitov%C3%A1%20beat%20Laura%20Siegemund.",
+    "https://cayman.loopnews.com/content/french-open-2020-swiatek-surges-semis-end-trevisan-run-0"
+   ],
+   "tags": [
+    "Sports",
+    "Other"
+   ]
+  },
+  {
+   "id": "simpleqa-3442",
+   "question": "In which year did George Bentham change the name of *Hedaroma pinifolium* to *Pimelea pinifolia*?",
+   "answer": "1865",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Darwinia_pinifolia",
+    "https://en.wikipedia.org/wiki/Darwinia_pinifolia#:~:text=In%201865%2C%20George%20Bentham%20changed%20the%20name%20to%20Pimelea%20pinifolia%20in%20Journal%20of%20the%20Linnean%20Society%2C%20Botany",
+    "https://biodiversity.org.au/nsl/services/rest/instance/apni/496609#:~:text=Darwinia%20pinifolia%20(,Hedaroma%20pinifolium%20Lindl."
+   ],
+   "tags": [
+    "Science and technology",
+    "Date"
+   ]
+  },
+  {
+   "id": "simpleqa-3661",
+   "question": "How much money in euros was awarded to the first-time winner of the Hutter Prize in 2006?",
+   "answer": "3416",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Hutter_Prize",
+    "https://en.wikipedia.org/wiki/Hutter_Prize",
+    "https://groups.google.com/g/Hutter-Prize/c/Pz-Ax23RRRM?pli=1",
+    "https://encode.su/threads/689-Alexander-Rhatushnyak-wins-Hutter-Prize!"
+   ],
+   "tags": [
+    "Science and technology",
+    "Number"
+   ]
+  },
+  {
+   "id": "simpleqa-3801",
+   "question": "How many children did actress Camille Clifford have with her second husband, Captain John Meredyth Jones-Evans?",
+   "answer": "1",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Camille_Clifford",
+    "https://en.wikipedia.org/wiki/Camille_Clifford",
+    "https://quellochepiaceavaleria.com/en/camille-clifford-perfect-body-and-iconic-gibson-girl/",
+    "https://aboutcards.blogspot.com/2007/01/camille-clifford-gibson-girl-family.html"
+   ],
+   "tags": [
+    "Other",
+    "Number"
+   ]
+  },
+  {
+   "id": "simpleqa-3807",
+   "question": "What year did Shokichi Iyanaga become Dean of the Faculty of Science at Tokyo University?",
+   "answer": "1965",
+   "goldUrls": [
+    "https://mathshistory.st-andrews.ac.uk/Biographies/Iyanaga/",
+    "https://en.wikipedia.org/wiki/Shokichi_Iyanaga",
+    "https://mathshistory.st-andrews.ac.uk/Biographies/Iyanaga/",
+    "https://prabook.com/web/shokichi.iyanaga/1305258"
+   ],
+   "tags": [
+    "History",
+    "Date"
+   ]
+  },
+  {
+   "id": "simpleqa-3918",
+   "question": "What was the first and last name of the designer who sketched the dress that Marilyn Monroe wore when she sang \"Happy Birthday\" to President Kennedy?",
+   "answer": "Bob Mackie",
+   "goldUrls": [
+    "https://www.cnn.com/style/article/kim-kardashian-bob-mackie-marilyn-monroe-intl-scli/index.html",
+    "https://www.vogue.com/article/kim-kardashian-met-gala-2022",
+    "https://www.cnn.com/style/article/kim-kardashian-bob-mackie-marilyn-monroe-intl-scli/index.html"
+   ],
+   "tags": [
+    "Art",
+    "Person"
+   ]
+  },
+  {
+   "id": "simpleqa-4006",
+   "question": "In Good Omens Season 2's episode titled \"The Clue,\" what did Crowley turn Job's goats into instead of killing them?",
+   "answer": "Crows",
+   "goldUrls": [
+    "https://www.vulture.com/article/good-omens-recap-season-2-episode-2-the-clue.html",
+    "https://goodomens.fandom.com/wiki/Crowley#:~:text=As%20he%20was%20in%20the,secretly%20turning%20them%20into%20crows.",
+    "https://www.thereviewgeek.com/goodomens-s2e2review/",
+    "https://starrymag.com/good-omens-chapter-2-the-clue-featuring-the-minisode-a-companion-to-owls/"
+   ],
+   "tags": [
+    "TV shows",
+    "Other"
+   ]
+  },
+  {
+   "id": "simpleqa-4079",
+   "question": "What month and year was Corrado Gabriele, an Italian politician, born?",
+   "answer": "November 1966",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Corrado_Gabriele",
+    "https://en.wikipedia.org/wiki/Corrado_Gabriele",
+    "https://m.famousfix.com/list/communist-refoundation-party-politicians",
+    "https://www.ranker.com/list/famous-politicians-from-italy/reference?page=2"
+   ],
+   "tags": [
+    "Politics",
+    "Date"
+   ]
+  },
+  {
+   "id": "simpleqa-4154",
+   "question": "What was the full three-word name of the crystal that the gnome who piloted the airship in the motion simulator Questor, which first opened at Busch Gardens Williamsburg in 1990, was seeking as the ultimate goal of his expedition?",
+   "answer": "Crystal of Zed",
+   "goldUrls": [
+    "https://scholar.lib.vt.edu/VA-news/ROA-Times/issues/1990/rt9006/900616/06160189.htm",
+    "https://wydaily.com/news/regional-national/2021/08/06/landmark-lost-busch-gardens-williamsburgs-hastings-village-part-2/",
+    "https://www.themeparktourist.com/busch-gardens-soarin-rip-didnt-quite-take-heres-story/",
+    "https://xvi.pages.dev/0xL2VuLndpa2lwZWRpYS5vcmcvL0J1c2NoX0dhcmRlbnNfVGFtcGFfQmF5"
+   ],
+   "tags": [
+    "Other",
+    "Other"
+   ]
+  },
+  {
+   "id": "simpleqa-4219",
+   "question": "As of August 2017, precisely how many stars were classified by the Henry Draper Catalogue?",
+   "answer": "359,083",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Henry_Draper_Catalogue",
+    "https://en.wikipedia.org/wiki/Henry_Draper_Catalogue#:~:text=In%20all%2C%20359%2C083%20stars%20were%20classified%20as%20of%20August%202017.&text=The%20HD%20catalogue%20is%20named,certain%20areas%20of%20the%20sky.",
+    "http://www.enjoyed.today/Henry_Draper_Catalogue/"
+   ],
+   "tags": [
+    "Science and technology",
+    "Number"
+   ]
+  },
+  {
+   "id": "simpleqa-4225",
+   "question": "In 1999, who presented Susan Lucci with an Emmy?",
+   "answer": "Shemar Moore",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Susan_Lucci",
+    "https://www.history.com/this-day-in-history/soap-star-susan-lucci-wins-first-emmy-after-19-nominations"
+   ],
+   "tags": [
+    "TV shows",
+    "Person"
+   ]
+  },
+  {
+   "id": "simpleqa-4246",
+   "question": "What is Frida Kahlo's largest painting called in English?",
+   "answer": "The Two Fridas.",
+   "goldUrls": [
+    "https://www.kahlo.org/two-fridas/",
+    "https://en.wikipedia.org/wiki/The_Two_Fridas",
+    "https://www.britannica.com/topic/The-Two-Fridas",
+    "https://www.kahlo.org/two-fridas/"
+   ],
+   "tags": [
+    "Art",
+    "Other"
+   ]
+  },
+  {
+   "id": "simpleqa-4267",
+   "question": "During what year did Catherine Opie receive the \"Archives of American Art Medal\" for the first time?",
+   "answer": "2016",
+   "goldUrls": [
+    "https://en.wikipedia.org/wiki/Catherine_Opie#Awards",
+    "https://www.aaa.si.edu/support/archives-of-american-art-medal-past-honorees",
+    "https://www.arts.ucla.edu/single/catherine-opie-all-american-subversive/",
+    "https://newsroom.ucla.edu/dept/faculty/opie-inducted-into-national-academy-of-art"
+   ],
+   "tags": [
+    "Art",
+    "Date"
+   ]
+  },
+  {
+   "id": "simpleqa-4304",
+   "question": "How old was Norman Rockwell when he first attended the Chase Art School?",
+   "answer": "14 years old",
+   "goldUrls": [
+    "https://societyillustrators.org/award-winners/norman-rockwell/",
+    "https://en.wikipedia.org/wiki/Norman_Rockwell",
+    "http://www.hasta-standrews.com/birthdays/2019/1/28/norman-rockwell-1894-1978",
+    "https://dailyartfixx.com/2017/02/03/norman-rockwell-1894-1978/"
+   ],
+   "tags": [
+    "Art",
+    "Number"
+   ]
+  },
+  {
+   "id": "simpleqa-4312",
+   "question": "In what year did Baleka Mbete become the Deputy President of South Africa post-apartheid?",
+   "answer": "2008",
+   "goldUrls": [
+    "https://www.sahistory.org.za/article/biography-baleka-mbete-kgositsile-brianna-t-hogg",
+    "https://en.wikipedia.org/wiki/Baleka_Mbete",
+    "https://www.pa.org.za/person/baleka-mbete/",
+    "https://www.ulwaziprogramme.org/baleka-mbete/"
+   ],
+   "tags": [
+    "Politics",
+    "Date"
+   ]
+  }
+ ]
+}
