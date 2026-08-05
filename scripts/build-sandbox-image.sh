@@ -46,6 +46,44 @@ MNT="$OUT_DIR/mnt-$ID"
 # INSIDE the VM (the SDK-dev workflow). Add tools here as we go — this list is
 # the "exactly the tools we need" surface; every addition grows the image, so
 # keep it lean and re-measure the trimmed size against the load-fast target.
+#
+#   THIS LIST IS DELIBERATELY MINIMAL AND IS *NOT* KEPT IN STEP WITH
+#   container/Dockerfile. Owner directive 2026-08-05: the new image is for the
+#   SERVER-SIDE execution sandbox ONLY, and this on-device JS-emulated Linux VM
+#   stays minimal. The two package lists are asymmetric on purpose. The
+#   OCR/PDF/image group added to container/Dockerfile in 2026-08 — tesseract-ocr
+#   plus the eng/swe language packs, poppler-utils, python3-pil, zbar-tools,
+#   which took that image from 482 MB to 619 MB — is server-side only. Do NOT
+#   mirror it here. scripts/build-sandbox-image.test.mjs fails the build if
+#   anyone does.
+#
+#   The reasons are specific to THIS image rather than general thrift:
+#
+#   - Nothing here is ever installed on the device. Every byte of every binary
+#     is streamed lazily over the network as the guest first touches it
+#     (CheerpX block devices — docs/SANDBOX-LOCAL-IMAGE.md §2), so packages
+#     nobody runs still cost: they add PATH entries and directory trees that a
+#     cold `command -v` or a `grep -r` walks over the wire.
+#   - Cold first use of a binary is nothing like it is on real hardware.
+#     Measured (docs/SANDBOX-PERFORMANCE.md §1): `python3 --version` takes
+#     8573 ms cold against 87 ms warm — 98×. And a `command -v` for a tool that
+#     is NOT installed once took the whole 30 s exec ceiling, which discards
+#     the VM and ends the turn. A heavy OCR stack is exactly the shape that
+#     turns one command into a lost session.
+#   - This VM is what the Se/cure tier runs its shell on (public/js/sandbox.js,
+#     via drc-research.js's run_bash). Se/cure has no server in its data path,
+#     so there is nothing to offload to — it is the tier that most needs the
+#     image to stay light.
+#
+#   Leaving OCR out costs no capability. An attached picture is transcribed to
+#   text by the ANSWER MODEL in phase 0, before triage (src/image-read.js), and
+#   that runs in the pipeline rather than in a shell — so it is the same
+#   whichever execution environment the commands go to, and "read this
+#   screenshot" never depended on a binary in this list.
+#
+#   The full per-environment policy is the toolchain section of
+#   docs/EXECUTION-ENVIRONMENTS.md; the image-side version is
+#   docs/SANDBOX-LOCAL-IMAGE.md §5.
 PKGS_COMMON="bash coreutils grep sed gawk findutils file less python3 jq nodejs git"
 
 mkdir -p "$OUT_DIR"

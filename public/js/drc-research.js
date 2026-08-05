@@ -340,12 +340,27 @@ export const drcDirectPromptWeb = ({ reportTier = "standard" } = {}) =>
 // Se/rver-only by the tier gate, so unlike the DRS prompt this one never
 // describes it. `env` is the resolved backend id; anything unrecognised falls
 // back to the browser wording, whose rules are strictly more restrictive.
+//
+// Neither branch lists the image-and-document toolchain (tesseract, poppler,
+// Pillow, zbarimg): that is baked into the SERVER-SIDE container only, which
+// Se/cure cannot reach at all, and the owner directive of 2026-08-05 keeps it
+// that way — the emulator streams its disk to the user's device, so every
+// binary baked in is bytes they pay for on boot. Told only that a tool is
+// missing, a model reads it as an accident and spends the turn hunting or
+// apt-getting it (chat_logs #1305, feedback #60), so the browser branch says
+// the absence is deliberate. And it says nothing about a vision pass: Se/rver
+// runs one before its shell loop (src/image-read.js), Se/cure has NO such
+// phase and takes no image attachments at all — promising one here would tell
+// the model a picture had been read when nothing read it.
+//
+// Kept SHORT on purpose: this string ships to the browser and rides every step
+// request, so it stays tighter than the server's longer wording.
 /** @param {{sourceMounted?: boolean, env?: string}} [opts] */
 export const drcBashAgentPrompt = (opts = {}) =>
   `You drive a Linux command-line sandbox for DeepResearch.Se/cure, Deepresearch.se's client-side mode. Today's date: ${today()}.\n` +
   (opts.env === "local"
-    ? "A Linux container runs NATIVELY on the user's own machine, reached through a small service they started (real hardware speed) — no data leaves their computer. You are root inside it; common tools are available (coreutils, grep/sed/awk, bash, python3, bc). Assume NO network — treat the sandbox as OFFLINE and compute from local tools only.\n"
-    : "A minimal Debian Linux runs entirely in the user's browser (a WASM x86 emulator). You are root; common tools are available (coreutils, grep/sed/awk, bash, python3, bc). There is NO network — treat the sandbox as OFFLINE and compute from local tools only.\n") +
+    ? "A Linux container runs NATIVELY on the user's own machine, reached through a small service they started (real hardware speed) — no data leaves their computer. You are root inside it; a basic toolset can be assumed (coreutils, grep/sed/awk, bash, python3, bc). Beyond that the toolchain is whatever the user's own image carries — this project neither builds nor controls it — so run what you need and handle its absence rather than assuming either way. Assume NO network — treat the sandbox as OFFLINE and compute from local tools only.\n"
+    : "A minimal Debian Linux runs entirely in the user's browser (a WASM x86 emulator). You are root; common tools are available (coreutils, grep/sed/awk, bash, python3, bc). It is kept minimal BY DESIGN — its disk streams to the user's device — so specialised tooling (OCR engines, PDF utilities, image libraries) is not installed and is not coming: do not hunt for it and do not plan around installing it. There is NO network — treat the sandbox as OFFLINE and compute from local tools only.\n") +
   (opts.sourceMounted
     ? "INTROSPECTION (developer mode is on): the complete source tree of the Deepresearch.se site itself is mounted read-only at /src (also reachable as /workspace/source) — e.g. /src/src/pipeline.js, /src/public/js/app.js, /src/CLAUDE.md. When the user asks about the site's own code, source, implementation, or wants it explored, ls/cat/grep -rn under /src; never claim the source is unavailable.\n"
     : "") +
