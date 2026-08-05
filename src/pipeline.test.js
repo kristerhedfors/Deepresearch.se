@@ -480,6 +480,26 @@ describe("gap loop stops when a follow-up wave surfaces no new sources", () => {
   });
 });
 
+// Measured on the ground-truth battery (tests/DR-EVAL-FINDINGS.md,
+// 2026-08-05): with an empty registry, answers came back carrying a numbered
+// source list whose every URL was the literal string "URL", cited [1]…[10]
+// throughout — and every one was graded CORRECT. The model knew the answer and
+// dressed it in citation furniture. "Use ONLY the numbered sources" does not
+// cover the case where there are none.
+describe("an empty source registry forbids citation markers outright", () => {
+  const src = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
+
+  test("runSynthesis says so explicitly instead of passing an empty list", () => {
+    const synth = src.slice(src.indexOf("async function runSynthesis"), src.indexOf("// Phase 5"));
+    assert.match(synth, /Numbered sources: NONE/);
+    assert.match(synth, /do NOT write any \[n\] citation markers/);
+    assert.match(synth, /not backed by retrieved sources/);
+    // And the ordinary path is untouched: a non-empty digest still goes out
+    // under the same header it always did.
+    assert.match(synth, /`Numbered sources:\\n\$\{digest\}`/);
+  });
+});
+
 describe("the web-search knob gates Exa only — depth still runs over other sources", () => {
   const src = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
 

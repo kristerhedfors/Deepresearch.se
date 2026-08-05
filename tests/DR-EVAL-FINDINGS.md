@@ -144,6 +144,38 @@ FRAMES, the 23 non-correct answers:
 finding. That is the single most actionable number in this file, and it is
 what the 2026-08-05 pipeline commit was written against.
 
+Read the labels honestly, though: `synthesis_miss` means **at least one** gold
+page was retrieved, and the misses averaged 1–2 of 3–8 gold pages. So they are
+better described as *incomplete chain retrieval plus a wrong resolution* than
+as pure reading failures. A clean split would need a per-hop gold mapping
+FRAMES does not publish.
+
+What settles the direction is the next table — mean gold-source recall within
+each outcome:
+
+| outcome | n | mean gold-source recall |
+|---|---|---|
+| correct | 37 | **42.1%** |
+| synthesis_miss | 14 | **50.2%** |
+| retrieval_miss | 1 | 0.0% |
+| abstained | 8 | 19.8% |
+
+**The answers it got right retrieved FEWER of the gold pages than the ones it
+got wrong.** Retrieval recall does not predict correctness on this set, which
+means "retrieve more of the gold pages" is not the lever it looks like — and
+it is the lever a recall number alone would have sent us to pull. The failure
+is constraint satisfaction over material already in hand.
+
+Two supporting readings. Accuracy by FRAMES reasoning type puts the weakest
+bucket where that story predicts: **Multiple constraints 53% (21/40)**, against
+Temporal 61%, Numerical 59%, Tabular 68%, Post-processing 70%. And the
+abstentions sit at 19.8% gold recall — the pipeline declines to answer
+precisely when it found little, which is the calibration behaviour you want and
+is worth not breaking.
+
+This is also why the digest fix is the right first move rather than a search
+widening: it puts more of what was *already retrieved* in front of the model.
+
 ### Citations and contamination
 
 | set | dangling markers | leak-tainted runs |
@@ -166,6 +198,80 @@ behind it. `benchmarkLeaks` in `tests/dr-eval-core.mjs` keeps the hosts these
 three sets actually live on. **A detector calibrated for one question set does
 not transfer to another**, and reusing one without re-checking its assumptions
 reports the pipeline working as the pipeline cheating.
+
+## 2026-08-05 — A/B: the four pipeline defects
+
+Baseline commit `7807b888` (production version `24657b13`) against candidate
+`1bedab2c` (version `a510d3f1`), deployed at 100% and verified live with a
+probe that could only pass on the new code. Same seed, budget, judge model and
+worker count on both arms.
+
+The candidate carries: the digest packing + truncation marker, the gap loop's
+saturation signal counting domain-capped overflow, the duplicate source-list
+fix, deterministic citation reconciliation fed to the fact-checker, and
+temperature 0 on the JSON planning phases.
+
+| set | before | after | gained | lost | exact McNemar p | verdict |
+|---|---|---|---|---|---|---|
+| FRAMES | 61.7% | **70.0%** | 8 | 3 | 0.227 | not significant |
+| SimpleQA | 88.3% | **91.7%** | 4 | 2 | 0.688 | not significant |
+| pooled | — | — | 12 | 5 | 0.143 | not significant |
+
+**Both arms moved up and neither result is significant.** +8.3 and +3.4 points
+look like a clear win and are not one: at n=60 per set, 12 gained against 5
+lost is the kind of split chance produces about one time in seven. Recorded as
+DIRECTIONALLY POSITIVE, UNPROVEN.
+
+The changes ship anyway, and the reason is worth being explicit about: they
+are bug fixes with independent evidence, not tuning chosen because a score
+moved. Nine of thirty-two retrieved sources never reaching synthesis, a gap
+loop that reads a domain-capped wave as exhaustion, and an MCP answer carrying
+two contradictory source lists are defects whether or not 120 questions can
+resolve their effect. What this battery says honestly is that it cannot yet
+resolve an effect this size — which is a fact about the instrument's power,
+and the reason to grow the sets before the next round rather than to keep
+quoting a delta.
+
+Supporting movements, none of them a verdict on their own: latency median fell
+30.5 → 27.7 s (FRAMES) and 19.0 → 18.4 s; the FRAMES loss breakdown moved
+`synthesis_miss` 14 → 9 while `retrieval_miss` went 1 → 3; SimpleQA lost its
+`no_sources` case.
+
+Source-derived metrics are **not comparable across this A/B** — the
+duplicate-list fix changes what `sources/answer` counts, from sources
+retrieved (the appended registry) to sources the model itself listed. Accuracy
+carries the verdict.
+
+### The finding that outranks the A/B: fabricated source lists
+
+Counting answers that cite `[n]` markers while listing no sources at all:
+
+| run | such answers | graded correct |
+|---|---|---|
+| SimpleQA before | 2 | 2 |
+| SimpleQA after | 5 | 5 |
+| FRAMES before | 1 | 1 |
+| FRAMES after | 1 | 1 |
+
+Present in **both** arms, so it predates this work. The shape is consistent:
+searches return nothing usable, the registry is empty, and the answer arrives
+carrying a full numbered source list whose every URL is the literal string
+`URL` — `- [1] ROS-Aeroprogress T-101 Grach - Wikipedia — URL` — with
+`[1]…[10]` cited throughout the prose.
+
+**Every one was graded correct.** The model knew the answer, had nothing to
+cite, and dressed it in citation furniture. An ungrounded answer that presents
+as sourced is the single failure this product cannot have, and it was
+invisible until something reconciled markers against the registry.
+
+`synthPrompt`'s standing instruction — "using ONLY the numbered sources
+provided" — does not cover the case where there are none. `runSynthesis` now
+says it outright when the digest is empty: no sources, so no `[n]` markers and
+no Sources list, and say plainly that the answer is not backed by retrieved
+sources. Shipped **unmeasured** — it arrived after the A/B arms had run, and
+re-running both to measure a path that fires on roughly 3% of questions was
+not the best use of the remaining budget. It is a prompt guard on a code path
+that today produces a fabrication, and the next battery will price it.
 
 ## Standing method notes
 
@@ -207,3 +313,15 @@ reports the pipeline working as the pipeline cheating.
 - **The revise rate** is now recorded (`chat.validate_verdict`) but not yet
   read back. It is the number that decides whether the section-scoped-revision
   backlog item is worth its risk.
+- **The instrument is underpowered.** 60 questions per set resolves nothing
+  smaller than roughly a 12-point swing. The A/B above moved 12 questions and
+  could not call it. Before the next round, grow FRAMES and SimpleQA to 150
+  each — the sets have 824 and 4 326 rows, the seed makes the existing 60 a
+  subset of any larger draw, and the cost is linear. That is the cheapest
+  available improvement to every future verdict.
+- **`classifyLoss` is coarse.** `synthesis_miss` fires when ANY gold page was
+  retrieved, and on FRAMES those cases averaged 1–2 of 3–8. A per-hop split
+  would need a mapping FRAMES does not publish; a middle option is a
+  `partial_retrieval` band at, say, under half the gold pages. Changing it
+  breaks comparability with everything above, so it wants to happen once,
+  deliberately, with the old labels recomputable via `--rescore`.

@@ -1858,7 +1858,21 @@ async function runSynthesis(ctx) {
     // The bash-lite sandbox transcript (empty and absent unless the
     // experimental sandbox ran client-side for this request).
     (ctx.shellBlock ? `${ctx.shellBlock}\n\n` : "") +
-    `Numbered sources:\n${digest || "(none — searches returned nothing usable)"}\n\nWrite the answer now.`;
+    // The empty-registry case needs saying out loud. Measured on the
+    // ground-truth battery (tests/DR-EVAL-FINDINGS.md, 2026-08-05): when the
+    // searches came back with nothing, answers arrived carrying a full
+    // numbered source list whose every URL was the literal string "URL", with
+    // [1]…[10] cited throughout the prose. Every one of those was graded
+    // CORRECT — the model knew the answer and dressed it in citation
+    // furniture. An ungrounded answer that presents as sourced is the one
+    // failure this product cannot have, and "use ONLY the numbered sources"
+    // does not cover it when the list is empty.
+    (digest
+      ? `Numbered sources:\n${digest}`
+      : "Numbered sources: NONE — the searches returned nothing usable.\n" +
+        "There are no sources to cite, so do NOT write any [n] citation markers and do NOT write a Sources list. " +
+        "Answer from general knowledge if you can, and say plainly that this answer is not backed by retrieved sources.") +
+    `\n\nWrite the answer now.`;
   const synthStartedAt = Date.now();
   const draft = await streamCompletion(ctx, [
     // reportTier scales the OUTPUT's structure/comprehensiveness with the
