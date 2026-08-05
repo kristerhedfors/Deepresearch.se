@@ -243,6 +243,11 @@ export function digestShownCount(sources, capChars) {
 // and matching only the English form appended an English list under it.
 const SOURCE_HEADING = /(^|\n)[ \t]*(?:[#>*_\-–—]|\d+[.)])*[ \t]*\**[ \t]*(?:sources|källor|kallor)\b[ \t]*\**[ \t]*:?[ \t]*\**[ \t]*(?:\n|$)/i;
 
+// One entry of a source list: a bracketed number and a URL on the same line.
+// Deliberately loose about what sits between them — the model's own list is
+// its own formatting, and this only has to answer "is there a list here".
+const SOURCE_ENTRY = /(^|\n)[ \t]*(?:[-*+][ \t]*)?\[\d{1,3}\][^\n]*https?:\/\//i;
+
 // The synthesis prompt already asks for its own "Sources:" list, so only add a
 // structured one when the answer text doesn't already carry it — guarantees
 // an MCP consumer always gets the source list without double-printing it.
@@ -253,7 +258,14 @@ const SOURCE_HEADING = /(^|\n)[ \t]*(?:[#>*_\-–—]|\d+[.)])*[ \t]*\**[ \t]*(?
  */
 export function withSources(text, sources) {
   if (!sources?.length) return text;
-  if (SOURCE_HEADING.test(text)) return text;
+  // A heading is not a list. Long generations on this catalogue are recorded
+  // stopping early — cleanly, well under the token cap — sometimes right after
+  // writing "Sources:" and sometimes mid-URL inside it
+  // (tests/EVAL-BENCH-FINDINGS.md). Suppressing on the heading alone would
+  // hand an MCP caller an answer with no usable sources at all, which is a
+  // worse failure than the double-printing this check exists to stop. So both
+  // must hold: the answer says it has a list AND at least one entry survived.
+  if (SOURCE_HEADING.test(text) && SOURCE_ENTRY.test(text)) return text;
   const list = sources.map((s) => `[${s.n}] ${s.title} — ${s.url}`).join("\n");
   return `${text}\n\nSources:\n${list}`;
 }

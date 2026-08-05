@@ -321,6 +321,26 @@ describe("withSources", () => {
     const body = "We consulted many sources: books, papers and interviews.";
     assert.match(withSources(body, sources), /\n\nSources:\n/);
   });
+
+  // A heading is not a list. Long generations on this catalogue are recorded
+  // stopping early and cleanly — sometimes right after writing the heading,
+  // sometimes mid-URL inside it. Suppressing on the heading alone would hand
+  // an MCP caller an answer with NO usable sources, which is worse than the
+  // double-printing the check exists to prevent.
+  test("a truncated source list still gets the registry appended", () => {
+    for (const truncated of [
+      "answer body [1].\n\n### Sources:",
+      "answer body [1].\n\n### Sources:\n",
+      "answer body [1].\n\nSources:\n- [1] A — https",
+    ]) {
+      assert.match(withSources(truncated, sources), /\n\nSources:\n\[1\] A — https:\/\/a\.com/, truncated);
+    }
+  });
+
+  test("one surviving entry is enough to count as a real list", () => {
+    const partial = "answer body [1].\n\n### Sources:\n- [1] A — https://a.com\n- [2] B — http";
+    assert.equal(withSources(partial, sources), partial);
+  });
 });
 
 describe("diversityKeyOf — hf.co owner-namespace keying", () => {
