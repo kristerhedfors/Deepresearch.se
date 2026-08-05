@@ -757,6 +757,58 @@ function arxivAngleScore(query, wanted) {
 }
 
 /**
+ * RAW Atom entries for one author query — the MCP literature family's author
+ * leg (src/literature-authors.js explains why the hosted index cannot serve an
+ * authorship question and the live API must).
+ *
+ * Deliberately NOT arxivSearch: no dense tier (the tier answers authorship
+ * wrongly, so there is nothing to fall back from), no term ladder (an author
+ * query has one rung), and `sortBy=submittedDate` because a body-of-work
+ * question wants the archive in order rather than by relevance to a name.
+ *
+ * Fails soft to [] on any status, timeout or parse failure (invariant 2).
+ *
+ * @param {import('./types.js').Logger} log
+ * @param {string} query an assembled author query — see arxivAuthorQuery
+ * @param {number} [max]
+ * @returns {Promise<ArxivEntry[]>}
+ */
+export async function arxivAuthorFetch(log, query, max = 25) {
+  const q = String(query || "").trim();
+  if (!q) return [];
+  const params = new URLSearchParams({
+    search_query: q,
+    start: "0",
+    max_results: String(max),
+    sortBy: "submittedDate",
+    sortOrder: "descending",
+  });
+  const cacheKey = arxivCacheKey(params);
+  const cached = await cacheGet(log, "arxiv.cache", cacheKey);
+  if (Array.isArray(cached)) {
+    log?.info?.("arxiv.author_cache_hit", { results: cached.length });
+    return cached;
+  }
+  try {
+    const res = await fetch(`${ARXIV_ENDPOINT}?${params}`, {
+      headers: { accept: "application/atom+xml" },
+      signal: AbortSignal.timeout(ARXIV_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      log?.warn?.("arxiv.author_http", { status: res.status });
+      return [];
+    }
+    const entries = arxivParseFeed(await res.text());
+    await cachePut(log, "arxiv.cache", cacheKey, entries, CACHE_TTL_S);
+    log?.info?.("arxiv.author", { results: entries.length });
+    return entries;
+  } catch (/** @type {any} */ err) {
+    log?.warn?.("arxiv.author_failed", { error: err?.message || String(err) });
+    return [];
+  }
+}
+
+/**
  * Which of the wave's planned queries arXiv searches: the angle that covers
  * the most of the USER'S OWN topic with the fewest terms narrowing away from
  * it. Ties keep the batch's own order (the planner's first angle is its

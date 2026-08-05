@@ -58,6 +58,25 @@
 // model chooses to call us; nothing inside here dispatches on a model's output.
 
 import { RERANK_FLOOR, denseRetrieve, embedQueries, titleAbstractDoc, withTimeout } from "./dense-rag.js";
+// src/literature-authors.js is PURE (it imports nothing), so it rides a static
+// import here exactly as src/literature-tools.js does. Only the two live API
+// clients below it are loaded dynamically, and only when a call actually asks
+// for an author — they pull the dense-tier modules in behind them.
+import {
+  AUTHOR_AMBIGUITY_NOTE,
+  AUTHOR_DETECTED_NOTE,
+  AUTHOR_LIMIT,
+  AUTHOR_LIVE_NOTE,
+  AUTHOR_PAGE_SIZE,
+  AUTHOR_SORT_NOTE,
+  arxivAuthorQuery,
+  arxivAuthorRecord,
+  europepmcAuthorQuery,
+  europepmcAuthorRecord,
+  interleaveAuthorRecords,
+  resolveAuthors,
+  topicTerms,
+} from "./literature-authors.js";
 import {
   CORPUS_FACTS,
   CORPUS_IDS,
@@ -180,6 +199,67 @@ function effectiveFloor(minScore) {
 }
 
 // ---------------------------------------------------------------------------
+// The AUTHOR leg.
+//
+// src/literature-authors.js carries the full reasoning; the short version is
+// that the hosted indexes cannot answer "everything by this person" — dense
+// retrieval reads a name as a topic, there is no metadata index to filter on,
+// and the stored author string is truncated from the end, which is where a
+// life-science senior author sits. So this leg leaves the corpus and asks
+// Europe PMC and arXiv, whose author FIELDS are real.
+//
+// It is an ENRICHMENT in invariant 2's sense: both fetches fail soft to empty,
+// and a failed author leg degrades the response to its dense half rather than
+// erroring the call.
+// ---------------------------------------------------------------------------
+
+/**
+ * Look one author up in both live APIs, concurrently.
+ * @param {import('./types.js').Logger} log
+ * @param {string} name
+ * @param {string[]} terms disambiguating topic terms
+ * @param {("arxiv"|"pubmed")[]} corpora which corpora the caller asked for
+ * @returns {Promise<{ name: string, records: any[], failed: string[] }>}
+ */
+async function lookupAuthor(log, name, terms, corpora) {
+  const { europepmcAuthorFetch } = await import("./europepmc.js");
+  const { arxivAuthorFetch } = await import("./arxiv.js");
+
+  /** @type {string[]} */
+  const failed = [];
+  const wantPubmed = corpora.includes("pubmed");
+  const wantArxiv = corpora.includes("arxiv");
+
+  const [epmc, arx] = await Promise.all([
+    wantPubmed
+      ? europepmcAuthorFetch(log, europepmcAuthorQuery(name, terms), AUTHOR_PAGE_SIZE).catch((err) => {
+          log.warn("literature.author_epmc_failed", { error: err?.message || String(err) });
+          failed.push("pubmed");
+          return { cited: [], recent: [] };
+        })
+      : Promise.resolve({ cited: [], recent: [] }),
+    wantArxiv
+      ? arxivAuthorFetch(log, arxivAuthorQuery(name, terms), AUTHOR_PAGE_SIZE).catch((err) => {
+          log.warn("literature.author_arxiv_failed", { error: err?.message || String(err) });
+          failed.push("arxiv");
+          return [];
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const pubmed = interleaveAuthorRecords(
+    (epmc.cited || []).map(europepmcAuthorRecord).filter(Boolean),
+    (epmc.recent || []).map(europepmcAuthorRecord).filter(Boolean),
+    AUTHOR_LIMIT,
+  );
+  // arXiv returns one submission-ordered slice, so there is no second sort to
+  // interleave — the same de-duplicating cap still applies.
+  const arxiv = interleaveAuthorRecords((arx || []).map(arxivAuthorRecord).filter(Boolean), [], AUTHOR_LIMIT);
+
+  return { name, records: [...pubmed, ...arxiv], failed };
+}
+
+// ---------------------------------------------------------------------------
 // literature_search
 // ---------------------------------------------------------------------------
 
@@ -192,11 +272,17 @@ function effectiveFloor(minScore) {
 export async function runLiteratureSearch(env, log, args) {
   const started = Date.now();
   const queries = normalizeQueries(args);
-  if (!queries.length) {
+  // Resolved BEFORE the empty-query guard: `authors` alone is a complete
+  // request ("everything by this person"), and rejecting it for having no
+  // query would refuse the one shape the hosted index cannot serve.
+  const { names: authorNames, detected: authorDetected } = resolveAuthors(args?.authors, queries);
+
+  if (!queries.length && !authorNames.length) {
     return fail(
       "Nothing to search for: pass `query` (one question) or `queries` (up to " +
-        `${MAX_QUERIES} angles, run in parallel). Ask in natural language — retrieval is by ` +
-        "meaning, so a full question retrieves better than keywords.",
+        `${MAX_QUERIES} angles, run in parallel), or \`authors\` to list a named researcher's ` +
+        "papers. Ask in natural language — retrieval is by meaning, so a full question " +
+        "retrieves better than keywords.",
     );
   }
   const corpora = normalizeCorpora(args?.corpus);
@@ -206,7 +292,9 @@ export async function runLiteratureSearch(env, log, args) {
   const floor = effectiveFloor(filters.minScore);
 
   const { ready, unavailable } = availableCorpora(env, corpora);
-  if (!ready.length) {
+  // A missing binding no longer ends the call outright when an author lookup
+  // was asked for: that leg is live and needs no index at all.
+  if (!ready.length && !authorNames.length) {
     return fail(
       "No hosted corpus is available in this deployment: " +
         unavailable.map((u) => `${u.corpus} (${u.reason})`).join("; ") +
@@ -214,24 +302,43 @@ export async function runLiteratureSearch(env, log, args) {
     );
   }
 
+  // The author leg is fired FIRST and awaited last, so the live APIs overlap
+  // the embed and the dense retrievals instead of adding their latency to them.
+  const authorTerms = authorNames.length ? topicTerms(queries) : [];
+  const authorWork = authorNames.length
+    ? Promise.all(authorNames.map((name) => lookupAuthor(log, name, authorTerms, corpora)))
+    : Promise.resolve([]);
+
   // ONE embedding call for every angle — the batching this whole tool is for.
-  let vectors;
+  /** @type {number[][]} */
+  let vectors = [];
   const embedStarted = Date.now();
-  try {
-    vectors = await embedQueries(env, queries);
-  } catch (/** @type {any} */ err) {
-    log.warn("literature.embed_failed", { error: err?.message || String(err) });
-    return fail(`Could not embed the queries: ${err?.message || String(err)}. The corpora are unreachable for now.`);
+  let embedFailure = "";
+  if (queries.length) {
+    try {
+      vectors = await embedQueries(env, queries);
+    } catch (/** @type {any} */ err) {
+      // With an author leg in flight this is a DEGRADED call, not a dead one —
+      // the live records are still worth returning (invariant 2).
+      embedFailure = err?.message || String(err);
+      log.warn("literature.embed_failed", { error: embedFailure });
+    }
+    if (!embedFailure && vectors.length !== queries.length) {
+      embedFailure = "the embedding provider returned an unusable result";
+    }
+    if (embedFailure && !authorNames.length) {
+      return fail(`Could not embed the queries: ${embedFailure}. The corpora are unreachable for now.`);
+    }
+    if (embedFailure) vectors = [];
   }
   const embedMs = Date.now() - embedStarted;
-  if (vectors.length !== queries.length) {
-    return fail("The embedding provider returned an unusable result; the corpora are unreachable for now.");
-  }
 
   // Every (angle × corpus) pair retrieves concurrently, bounded by the pool.
   /** @type {{ qi: number, corpus: "arxiv"|"pubmed" }[]} */
   const plan = [];
-  for (let qi = 0; qi < queries.length; qi++) for (const corpus of ready) plan.push({ qi, corpus });
+  if (vectors.length) {
+    for (let qi = 0; qi < queries.length; qi++) for (const corpus of ready) plan.push({ qi, corpus });
+  }
 
   const retrieved = await mapPool(
     plan.map(({ qi, corpus }) => async () => {
@@ -282,10 +389,29 @@ export async function runLiteratureSearch(env, log, args) {
 
   const capped = capGroups(groups, MAX_TOTAL_RECORDS);
   const merged = queries.length > 1 ? mergeRanked(capped, MAX_TOTAL_RECORDS) : null;
-  const total = capped.reduce((n, g) => n + g.records.length, 0);
+  const dense = capped.reduce((n, g) => n + g.records.length, 0);
+
+  // The live leg, awaited here so it overlapped everything above.
+  const authorGroups = (await authorWork).filter((a) => a && a.records.length);
+  const authorTotal = authorGroups.reduce((n, a) => n + a.records.length, 0);
+  for (const a of await authorWork) {
+    for (const corpus of a?.failed || []) {
+      if (!failures.some((f) => f.corpus === `${corpus} (author lookup)`)) {
+        failures.push({ corpus: `${corpus} (author lookup)`, error: "the live author API failed or timed out" });
+      }
+    }
+  }
+  const total = dense + authorTotal;
 
   /** @type {string[]} */
-  const notes = [RETRIEVAL_NOTE];
+  const notes = [];
+  if (queries.length) notes.push(RETRIEVAL_NOTE);
+  if (embedFailure) {
+    notes.push(
+      `The semantic half of this call could not run (${embedFailure}), so the records below are ` +
+        "the author lookup alone. Retry for the topical results.",
+    );
+  }
   if (filtersActive(filters)) notes.push(FILTER_NOTE);
   if (!reranked) {
     notes.push(
@@ -293,11 +419,29 @@ export async function runLiteratureSearch(env, log, args) {
         "unavailable or out of budget: `score` may be missing and the relevance floor was not applied there.",
     );
   }
-  if (!total) {
+  if (authorNames.length) {
+    notes.push(AUTHOR_LIVE_NOTE, AUTHOR_SORT_NOTE, AUTHOR_AMBIGUITY_NOTE);
+    if (authorDetected) notes.push(AUTHOR_DETECTED_NOTE);
+    if (!authorTotal) {
+      notes.push(
+        `No papers were found for ${authorNames.map((n) => `'${n}'`).join(", ")} in the live author ` +
+          "indexes. Check the spelling (both APIs match the name as indexed — 'Surname I' as well as " +
+          "the full form), and note that a lookup narrowed by subject terms can miss work outside " +
+          "that subject.",
+      );
+    }
+  } else if (!queries.length) {
+    notes.push("No author name was usable, so nothing was looked up.");
+  }
+  if (!dense && queries.length && !embedFailure) {
     notes.push(
       "Nothing cleared the relevance floor. Before concluding the literature is silent, check " +
         "literature_corpora — both indexes are windows onto their sources, and a topic outside " +
-        "the window is a miss here but not a miss in the field.",
+        "the window is a miss here but not a miss in the field." +
+        (authorNames.length
+          ? ""
+          : " If the question was about a PERSON's body of work, pass `authors` — dense retrieval " +
+            "reads a name as a topic and cannot answer authorship."),
     );
   }
   for (const u of unavailable) notes.push(`Corpus '${u.corpus}' was not searched: ${u.reason}.`);
@@ -311,6 +455,17 @@ export async function runLiteratureSearch(env, log, args) {
       count: group.records.length,
       results: shapeAbstracts(group.records, abstractMode),
     })),
+    ...(authorNames.length
+      ? {
+          authors: authorGroups.map((a) => ({
+            name: a.name,
+            count: a.records.length,
+            source: "live author-field API (Europe PMC / arXiv), not the hosted index",
+            ...(authorTerms.length ? { narrowed_by: authorTerms } : {}),
+            results: shapeAbstracts(a.records, abstractMode),
+          })),
+        }
+      : {}),
     ...(merged
       ? {
           merged: {
@@ -324,6 +479,7 @@ export async function runLiteratureSearch(env, log, args) {
       queries: queries.length,
       candidates_examined: candidates,
       records_returned: total,
+      ...(authorNames.length ? { author_records: authorTotal, authors_looked_up: authorNames } : {}),
       reranked,
       relevance_floor: floor,
       embed_ms: embedMs,
@@ -338,6 +494,9 @@ export async function runLiteratureSearch(env, log, args) {
     corpora: ready.join(","),
     candidates,
     results: total,
+    // Counts only — the author NAMES are query text and stay out of the logs
+    // for the same reason the query strings already do (invariant 4).
+    ...(authorNames.length ? { authors: authorNames.length, author_results: authorTotal } : {}),
     reranked,
     duration_ms: Date.now() - started,
   });
@@ -714,9 +873,40 @@ export async function runOpenAiSearch(env, log, args) {
     return structuredResult({ results: [], error: inner.payload?.error || "The corpora are unreachable." }, true, 0);
   }
 
-  const records = inner.payload?.queries?.[0]?.results || [];
+  // The dense records first, then the author leg's — which runLiteratureSearch
+  // adds by itself when the query asked for a person's work. Before it did,
+  // THIS was the whole failure: "Love Dalén's life works" retrieved ancient-DNA
+  // papers by other people, every one of them below the floor, and the tool
+  // answered `{"results":[]}` with nothing to say why. A client model reads
+  // that as "the corpus is empty" and stops, which is what the user reported as
+  // Claude never searching (src/literature-authors.js has the full account).
+  const records = [
+    ...(inner.payload?.queries?.[0]?.results || []),
+    ...(inner.payload?.authors || []).flatMap((/** @type {any} */ a) => a.results || []),
+  ];
   const results = openAiSearchResults(records);
   log.info("literature.openai_search", { results: results.length });
+  if (!results.length) {
+    // An empty `results` is a legal response and a useless one. OpenAI's
+    // contract fixes the `results` key, not the whole object, so the reason
+    // rides alongside it — a caller that ignores the extra field is exactly as
+    // well off as before, and one that reads it stops concluding the corpus is
+    // silent when it is only the wrong instrument.
+    return structuredResult(
+      {
+        results: [],
+        note:
+          "No match cleared the relevance floor. This searches two hosted corpora by MEANING " +
+          "(arXiv from October 2023; a PMID slice of PubMed), so three things read as empty here " +
+          "and are not empty in the literature: a topic outside those windows, a question about " +
+          "a PERSON's body of work (authorship is not something semantic retrieval can match — " +
+          "call literature_search with `authors`), and a query stripped to keywords. " +
+          "Call literature_corpora for what is actually indexed.",
+      },
+      false,
+      0,
+    );
+  }
   return structuredResult({ results }, false, results.length);
 }
 

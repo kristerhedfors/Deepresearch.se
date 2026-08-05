@@ -103,11 +103,37 @@ function pubmedRow(pmid, title, extra = {}) {
  * six queries cost one embedding request.
  * @param {{ rerank?: "ok"|"http_error"|"throw", embed?: "ok"|"throw" }} [opts]
  */
-function stubBerget({ rerank = "ok", embed = "ok" } = {}) {
-  const calls = { embed: 0, rerank: 0, embedInputs: [], rerankQueries: [] };
+function stubBerget({ rerank = "ok", embed = "ok", epmc = null, arxiv = null } = {}) {
+  const calls = {
+    embed: 0,
+    rerank: 0,
+    embedInputs: [],
+    rerankQueries: [],
+    epmc: 0,
+    arxiv: 0,
+    epmcQueries: [],
+    arxivQueries: [],
+  };
   const original = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
     const href = String(url);
+
+    // The two LIVE author APIs. Only reachable when a call asks for an author,
+    // which is itself worth asserting: a topical search must not touch them.
+    if (href.includes("europepmc")) {
+      calls.epmc++;
+      calls.epmcQueries.push(decodeURIComponent(new URL(href).searchParams.get("query") || ""));
+      if (epmc === "throw") throw new Error("europe pmc down");
+      if (epmc === "http_error") return new Response("nope", { status: 503 });
+      return jsonResponse({ resultList: { result: epmc || [] } });
+    }
+    if (href.includes("export.arxiv.org")) {
+      calls.arxiv++;
+      calls.arxivQueries.push(new URL(href).searchParams.get("search_query") || "");
+      if (arxiv === "throw") throw new Error("arxiv down");
+      return new Response(arxiv || "<feed></feed>", { status: 200 });
+    }
+
     const body = init?.body ? JSON.parse(init.body) : {};
     if (href.endsWith("/embeddings")) {
       calls.embed++;
@@ -721,6 +747,237 @@ test("runLiteratureTool routes every name and refuses the unknown one", async ()
     }
     const unknown = await runLiteratureTool(env, log, "literature_invent", {});
     assert.equal(unknown.isError, true);
+  } finally {
+    berget.restore();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The AUTHOR leg.
+//
+// The failure this exists for: an MCP client asked for a named
+// palaeogeneticist's body of work and every tool answered as if the corpus were
+// empty. It was not — his own group's papers came back, with his name cut out
+// of the stored metadata. src/literature-authors.js has the full account; these
+// pin the runner behaviour that must not regress.
+// ---------------------------------------------------------------------------
+
+/** One Europe PMC core record in the shape the live API returns. */
+function epmcRecord(pmid, title, extra = {}) {
+  return {
+    pmid,
+    doi: extra.doi ?? `10.1000/${pmid}`,
+    title,
+    authorList: { author: (extra.authors ?? ["Dehasque M", "Dalén L"]).map((fullName) => ({ fullName })) },
+    firstPublicationDate: extra.date ?? "2025-09-24",
+    journalInfo: { journal: { title: extra.journal ?? "Nature" } },
+    abstractText: extra.abstract ?? `About ${title}.`,
+    citedByCount: extra.cited ?? 42,
+  };
+}
+
+/** An arXiv Atom feed with one entry. */
+function arxivFeed(id, title, authors = ["Love Dalén"]) {
+  return `<feed xmlns="http://www.w3.org/2005/Atom"><entry>
+    <id>https://arxiv.org/abs/${id}v1</id>
+    <title>${title}</title>
+    <summary>An abstract.</summary>
+    <published>2024-12-09T10:00:00Z</published>
+    ${authors.map((a) => `<author><name>${a}</name></author>`).join("")}
+    <category term="q-bio.PE"/>
+  </entry></feed>`;
+}
+
+test("an explicit `authors` argument runs the live author lookup and returns links", async () => {
+  const berget = stubBerget({
+    epmc: [epmcRecord("40994021", "Long-term mammoth hybridization")],
+    arxiv: arxivFeed("2412.06521", "Ancient DNA from Lycoptera"),
+  });
+  const env = { BERGET_API_TOKEN: "t", ARXIV_INDEX: fakeIndex(), PUBMED_INDEX: fakeIndex() };
+  try {
+    const result = await runLiteratureSearch(env, log, { authors: ["Love Dalén"] });
+    const payload = payloadOf(result);
+    assert.equal(result.isError, false);
+
+    const group = payload.authors[0];
+    assert.equal(group.name, "Love Dalén");
+    assert.equal(group.count, 2, "both corpora contributed");
+    // The links are the deliverable — the reported failure was their absence.
+    assert.deepEqual(
+      group.results.map((r) => r.url).sort(),
+      ["https://arxiv.org/abs/2412.06521", "https://pubmed.ncbi.nlm.nih.gov/40994021/"],
+    );
+    // And the FULL author list, which the stored metadata truncates away.
+    assert.deepEqual(
+      group.results.find((r) => r.corpus === "pubmed").authors,
+      ["Dehasque M", "Dalén L"],
+    );
+    assert.equal(payload.stats.author_records, 2);
+  } finally {
+    berget.restore();
+  }
+});
+
+test("`authors` alone is a complete request — no query needed", async () => {
+  // Before this, a call with no `queries` was refused outright, which rejected
+  // exactly the shape the hosted index cannot serve.
+  const berget = stubBerget({ epmc: [epmcRecord("1", "A paper")] });
+  const env = { BERGET_API_TOKEN: "t", PUBMED_INDEX: fakeIndex() };
+  try {
+    const result = await runLiteratureSearch(env, log, { authors: ["Love Dalén"], corpus: "pubmed" });
+    assert.equal(result.isError, false);
+    assert.equal(payloadOf(result).authors[0].count, 1);
+    // No angles means no embedding call at all.
+    assert.equal(berget.calls.embed, 0);
+  } finally {
+    berget.restore();
+  }
+});
+
+test("an authorship QUESTION is detected when no `authors` argument is passed", async () => {
+  const berget = stubBerget({ epmc: [epmcRecord("1", "A paper")] });
+  const env = { BERGET_API_TOKEN: "t", PUBMED_INDEX: fakeIndex({ rows: [pubmedRow("9", "Something else")] }) };
+  try {
+    const result = await runLiteratureSearch(env, log, { query: "papers by Love Dalén", corpus: "pubmed" });
+    const payload = payloadOf(result);
+    assert.equal(payload.stats.authors_looked_up[0], "Love Dalén");
+    assert.ok(
+      payload.notes.some((n) => n.includes("read out of the query text")),
+      "and the response says the name was inferred rather than given",
+    );
+  } finally {
+    berget.restore();
+  }
+});
+
+test("a topical search never touches the live author APIs", async () => {
+  const berget = stubBerget();
+  const env = { BERGET_API_TOKEN: "t", ARXIV_INDEX: fakeIndex({ rows: [arxivRow("2401.1", "A")] }) };
+  try {
+    await runLiteratureSearch(env, log, { query: "mammoth population genomics", corpus: "arxiv" });
+    assert.equal(berget.calls.epmc, 0);
+    assert.equal(berget.calls.arxiv, 0);
+  } finally {
+    berget.restore();
+  }
+});
+
+test("query terms are ANDed onto the author query — the disambiguation lever", async () => {
+  const berget = stubBerget({ epmc: [], arxiv: "" });
+  const env = { BERGET_API_TOKEN: "t", ARXIV_INDEX: fakeIndex(), PUBMED_INDEX: fakeIndex() };
+  try {
+    await runLiteratureSearch(env, log, { authors: ["Love Dalén"], queries: ["mammoth genomics"] });
+    const q = berget.calls.epmcQueries[0];
+    assert.ok(q.includes('AUTH:"Love Dalén"'), q);
+    assert.ok(q.includes('AUTH:"Dalén L"'), "and the indexed Surname-Initial form");
+    assert.ok(q.includes("mammoth"), "narrowed by the topic");
+    assert.ok(berget.calls.arxivQueries[0].includes('au:"Love Dalén"'));
+  } finally {
+    berget.restore();
+  }
+});
+
+test("both sort orders are fetched, so 'body of work' means most-cited not just newest", async () => {
+  const berget = stubBerget({ epmc: [epmcRecord("1", "A paper")] });
+  const env = { BERGET_API_TOKEN: "t", PUBMED_INDEX: fakeIndex() };
+  try {
+    await runLiteratureSearch(env, log, { authors: ["Love Dalén"], corpus: "pubmed" });
+    assert.equal(berget.calls.epmc, 2, "one CITED pass and one date pass");
+  } finally {
+    berget.restore();
+  }
+});
+
+test("a dead author API degrades the call instead of failing it", async () => {
+  const berget = stubBerget({ epmc: "throw", arxiv: "throw" });
+  const env = { BERGET_API_TOKEN: "t", ARXIV_INDEX: fakeIndex({ rows: [arxivRow("2401.1", "A")] }) };
+  try {
+    const result = await runLiteratureSearch(env, log, {
+      queries: ["mammoth genomics"],
+      authors: ["Love Dalén"],
+      corpus: "arxiv",
+    });
+    assert.equal(result.isError, false, "the dense half still answered");
+    const payload = payloadOf(result);
+    assert.ok(payload.queries[0].count > 0, "and returned its records");
+    assert.ok(payload.notes.some((n) => n.includes("No papers were found")));
+  } finally {
+    berget.restore();
+  }
+});
+
+test("a dead embedder still returns the author records, and says the rest is missing", async () => {
+  const berget = stubBerget({ embed: "throw", epmc: [epmcRecord("1", "A paper")] });
+  const env = { BERGET_API_TOKEN: "t", PUBMED_INDEX: fakeIndex() };
+  try {
+    const result = await runLiteratureSearch(env, log, {
+      queries: ["mammoth genomics"],
+      authors: ["Love Dalén"],
+      corpus: "pubmed",
+    });
+    assert.equal(result.isError, false);
+    const payload = payloadOf(result);
+    assert.equal(payload.authors[0].count, 1);
+    assert.ok(payload.notes.some((n) => n.includes("semantic half of this call could not run")));
+  } finally {
+    berget.restore();
+  }
+});
+
+test("a dead embedder with NO author leg is still a hard error", async () => {
+  // The prior contract, unchanged: nothing to return means an error the caller
+  // can act on rather than an empty success.
+  const berget = stubBerget({ embed: "throw" });
+  const env = { BERGET_API_TOKEN: "t", ARXIV_INDEX: fakeIndex() };
+  try {
+    const result = await runLiteratureSearch(env, log, { query: "mammoth genomics", corpus: "arxiv" });
+    assert.equal(result.isError, true);
+  } finally {
+    berget.restore();
+  }
+});
+
+test("the author leg carries the caveats a caller needs to read it correctly", async () => {
+  const berget = stubBerget({ epmc: [epmcRecord("1", "A paper")] });
+  const env = { BERGET_API_TOKEN: "t", PUBMED_INDEX: fakeIndex() };
+  try {
+    const payload = payloadOf(await runLiteratureSearch(env, log, { authors: ["Love Dalén"], corpus: "pubmed" }));
+    const notes = payload.notes.join(" ");
+    assert.ok(notes.includes("LIVE"), "says these records did not come from the hosted index");
+    assert.ok(notes.includes("truncated"), "and why the index could not have answered");
+    assert.ok(notes.includes("not unique"), "and that a shared surname is not resolved");
+  } finally {
+    berget.restore();
+  }
+});
+
+test("`search` explains an empty result instead of returning a bare []", async () => {
+  // THE reported failure: `{"results":[]}` with nothing to explain it, which a
+  // client model reads as "the corpus is empty" — so it stops searching.
+  const berget = stubBerget();
+  const env = { BERGET_API_TOKEN: "t", ARXIV_INDEX: fakeIndex({ rows: [] }) };
+  try {
+    const result = await runOpenAiSearch(env, log, { query: "nothing matches this" });
+    const payload = payloadOf(result);
+    assert.deepEqual(payload.results, [], "the required shape is preserved");
+    assert.equal(result.isError, false, "an empty result is not an error");
+    assert.ok(payload.note.includes("authors"), "and it names the tool that CAN answer authorship");
+    assert.ok(payload.note.includes("literature_corpora"));
+  } finally {
+    berget.restore();
+  }
+});
+
+test("`search` surfaces author records too, so a person query returns links", async () => {
+  const berget = stubBerget({ epmc: [epmcRecord("40994021", "Mammoth hybridization")] });
+  const env = { BERGET_API_TOKEN: "t", PUBMED_INDEX: fakeIndex({ rows: [] }) };
+  try {
+    const payload = payloadOf(await runOpenAiSearch(env, log, { query: "papers by Love Dalén" }));
+    assert.equal(payload.results.length, 1);
+    assert.equal(payload.results[0].url, "https://pubmed.ncbi.nlm.nih.gov/40994021/");
+    // The id round-trips through `fetch`, which is the contract that makes a
+    // search result actionable rather than decorative.
+    assert.equal(payload.results[0].id, "pmid:40994021");
   } finally {
     berget.restore();
   }

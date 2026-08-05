@@ -48,7 +48,7 @@
 // window — because a publication-year window served by a PMID-ordered fetch is
 // the §3a bug, and the honest fix is to not pretend otherwise.
 
-import { MAX_PASSAGE_CHARS, PASSAGE_PREFIX, buildPassage, truncateChars } from "./arxiv-rag-core.js";
+import { MAX_PASSAGE_CHARS, PASSAGE_PREFIX, buildPassage, storedAuthors, truncateChars } from "./arxiv-rag-core.js";
 
 export { MAX_PASSAGE_CHARS, PASSAGE_PREFIX, buildPassage };
 
@@ -424,7 +424,10 @@ export function vectorMetadata(rec) {
     // behind a 512-token window covering query AND document, so storing more
     // than 900 chars would be paid-for weight nothing reads.
     a: truncateChars(String(rec.abstract || ""), 900),
-    au: truncateChars((rec.authors || []).slice(0, 8).join("; "), 300),
+    // Head AND tail — storedAuthors explains why a plain head-cut drops the
+    // senior author, which on a life-science paper is the name most often asked
+    // for. This corpus is where that bites hardest: its author lists are long.
+    au: storedAuthors(rec.authors || [], 300),
     j: String(rec.journal || "").slice(0, 160),
     d: String(rec.date || rec.year || "").slice(0, 10),
   };
