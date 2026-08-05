@@ -392,10 +392,10 @@ export function europepmcLadder(query) {
  * @param {import('./types.js').Logger} [log]
  * @returns {Promise<any[]>}
  */
-async function fetchPage(q, sort, log) {
+async function fetchPage(q, sort, log, pageSize = PAGE_SIZE) {
   const url =
     `${API}?query=${encodeURIComponent(q)}` +
-    `&format=json&resultType=core&pageSize=${PAGE_SIZE}` +
+    `&format=json&resultType=core&pageSize=${pageSize}` +
     (sort ? `&sort=${encodeURIComponent(sort)}` : "");
   try {
     const res = await fetch(url, {
@@ -536,6 +536,35 @@ export async function europepmcSearch(env, log, query, { skipKeys } = {}) {
     duration_ms: durationMs,
   });
   return { items: /** @type {any} */ (items), durationMs, usedKeys };
+}
+
+/**
+ * RAW records for one author query, both orderings — the MCP literature
+ * family's author leg (src/literature-authors.js explains why the hosted index
+ * cannot serve this and the live API must).
+ *
+ * Unlike europepmcSearch this does NOT consult the hosted dense tier: an
+ * authorship question is exactly the question dense retrieval answers wrongly,
+ * so there is nothing to fall back FROM. It returns the API's own core records
+ * rather than the pipeline's item shape, because the caller wants the full
+ * author list and the citation count that `toItem` flattens away.
+ *
+ * Fails soft to empty slices like every other leg here (invariant 2).
+ *
+ * @param {import('./types.js').Logger} log
+ * @param {string} query an assembled author query — see europepmcAuthorQuery
+ * @param {number} [pageSize]
+ * @returns {Promise<{ cited: any[], recent: any[] }>}
+ */
+export async function europepmcAuthorFetch(log, query, pageSize = 25) {
+  const q = String(query || "").trim();
+  if (!q) return { cited: [], recent: [] };
+  const [cited, recent] = await Promise.all([
+    fetchPage(q, "CITED desc", log, pageSize),
+    fetchPage(q, "P_PDATE_D desc", log, pageSize),
+  ]);
+  log?.info?.("europepmc.author", { results: cited.length + recent.length });
+  return { cited, recent };
 }
 
 /**

@@ -35,7 +35,7 @@ import { createInterface } from "node:readline";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { PASSAGE_PREFIX, buildPassage, truncateChars } from "../public/js/arxiv-rag-core.js";
+import { PASSAGE_PREFIX, buildPassage, storedAuthors, truncateChars } from "../public/js/arxiv-rag-core.js";
 import { embedBatch } from "./embed-providers.mjs";
 import {
   assertVectors,
@@ -87,7 +87,9 @@ export function vectorMetadata(paper) {
     // bge-reranker-v2-m3 behind a 512-token window covering query+document),
     // so storing more would be paid-for weight nothing reads.
     a: truncateChars(abstract, 900),
-    au: truncateChars((paper.authors || []).slice(0, 8).join("; "), 300),
+    // Head AND tail — storedAuthors explains why a plain head-cut loses the
+    // senior author, which is the name an authorship question is usually about.
+    au: storedAuthors(paper.authors || [], 300),
     c: String(paper.primary || (paper.categories || [])[0] || ""),
     d: String(paper.updated || "").slice(0, 10),
   };
