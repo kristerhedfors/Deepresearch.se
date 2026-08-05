@@ -100,7 +100,7 @@ export function pubmedRerankDoc(match) {
  * @param {import('./types.js').Logger} log
  * @param {string} query
  * @param {any[]} matches
- * @returns {Promise<{ ordered: any[], scored: boolean }>}
+ * @returns {Promise<{ ordered: any[], scored: boolean, tokens: number, estimated: boolean }>}
  */
 export async function pubmedRerank(env, log, query, matches) {
   return rerankMatches(env, log, query, matches, { docOf: pubmedRerankDoc, tag: "pubmed_rag" });

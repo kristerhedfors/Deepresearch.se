@@ -597,7 +597,12 @@ async function dispatchToolCall(parsed, env, log, identity, ctx, requestId, conf
         }
       }
       const { runLiteratureTool } = await import("./literature-run.js");
-      const result = await runLiteratureTool(env, log, name, args);
+      // The identity travels with the call so the runner can RECORD what it
+      // spent, not just be refused when the account has already overspent. A
+      // gate without a meter cannot bite: these tools were checked against the
+      // four-window quota from the start and never incremented it, so a key
+      // that only called them was unbounded (docs/MCP-COST.md §4b).
+      const result = await runLiteratureTool(env, log, name, args, { identity, requestId });
       log.info("mcp.literature_tool", {
         tool: name,
         user_id: identity?.id,

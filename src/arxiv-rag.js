@@ -125,7 +125,7 @@ export function arxivRerankDoc(match) {
  * @param {import('./types.js').Logger} log
  * @param {string} query
  * @param {any[]} matches
- * @returns {Promise<{ ordered: any[], scored: boolean }>}
+ * @returns {Promise<{ ordered: any[], scored: boolean, tokens: number, estimated: boolean }>}
  */
 export async function arxivRerank(env, log, query, matches) {
   return rerankMatches(env, log, query, matches, { docOf: arxivRerankDoc, tag: "arxiv_rag" });

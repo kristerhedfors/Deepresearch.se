@@ -371,7 +371,11 @@ Four things about this surface are load-bearing and easy to get wrong later:
    in the same change. `literature_fetch` (a key read) and `literature_corpora`
    (committed facts + `describe()`) are deliberately OUTSIDE it: an agent that
    has run out of budget should still be able to resolve an id it was handed
-   and learn what exists. Unlike `deep_research` these calls write no
+   and learn what exists. **The METER matches the gate exactly** (2026-08-05):
+   `runLiteratureTool` records the retrieval's spend in a `finally`, and the
+   same two tools that skip the gate leave the accumulator at zero and so
+   write no row. A gate without a meter cannot bite — that is precisely the
+   defect this closed. Unlike `deep_research` these calls write no
    `chat_logs` row — a retrieval is not an interaction to log, and the query
    text stays out of Workers Logs (only counts are logged, as the dense tiers
    already do).
@@ -750,12 +754,21 @@ at 10,198 tokens per leg at €0.10/M. The `sdk_*` four and
 `literature_fetch` / `literature_corpora` / `fetch` cost nothing.
 
 Two metering gaps decided whether the surface can be published, both in the
-register as P-3, and one is now closed. Still open: **`src/literature-run.js`
-records no usage** (the searching tools are gated on the quota but never
-increment it, so they cannot exhaust it — unbounded per key). Closed
-2026-08-05: **`/mcp` takes `reserveInflight`** on the four tools that reach a
-provider — `deep_research`, `literature_search`, `literature_similar`,
-`search` (the exported `SPENDING_TOOL_NAMES`) — released in a `finally` on
+register as P-3, and **both are now closed (2026-08-05)**.
+
+**Metering** — `src/literature-run.js` recorded no usage, so the searching
+tools were gated on the quota but never incremented it and could not exhaust
+it. `runLiteratureTool` now records in a `finally` from the cross-encoder's
+own `usage.total_tokens` (which `rerankMatches` used to read past) plus the
+embedder's, priced through `rawModelEntry` + `eurPerTokenFromBerget` because
+neither model is in the chat catalog `bergetCost` prices from — `fetchCatalog`
+filters to `model_type: "text"`, which is why `GET /api/models` lists neither.
+It counts as `berget_cost` and never as `searches`: that count is Exa's,
+calibrated to €0.005 a search.
+
+**Concurrency** — `/mcp` now takes `reserveInflight` on the four tools that
+reach a provider (`deep_research`, `literature_search`, `literature_similar`,
+`search` — the exported `SPENDING_TOOL_NAMES`), released in a `finally` on
 every exit path, so an external key gets the same CAP=5 bound `/api/chat`
 has. Three things about that shape are worth keeping: the seven free tools
 hold NO slot (one held there could only deny the caller its own next call);
@@ -765,7 +778,12 @@ admins are NOT exempt, unlike on the quota gate — a spend cap is one an
 operator is trusted to exceed, an abuse cap is not. `quota.js` is reached by
 a dynamic `import()` like everything else heavy here, so the file-layout rule
 holds; `src/mcp-inflight.test.js` drives the real `handleMcp` against an
-in-memory D1. `deep_research` itself meters correctly; a public
+in-memory D1.
+
+The two are complements, not substitutes: the cap bounds PARALLELISM, the
+meter bounds RATE. Without the meter a sequential caller was unbounded;
+without the cap the check-then-act race made every ceiling a per-connection
+one. `deep_research` itself meters correctly and always did; a public
 account is capped at ~€111/month, which is `budget_eur` €8 plus 12,000
 searches at the deep tier — note `quotaExceeded` caps Berget cost in EUR
 but Exa only by COUNT, so the real Exa ceiling is 71% above what the count

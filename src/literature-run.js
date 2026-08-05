@@ -57,7 +57,12 @@
 // times in a turn, and it keeps invariant 1 untouched — the calling client's
 // model chooses to call us; nothing inside here dispatches on a model's output.
 
-import { RERANK_FLOOR, denseRetrieve, embedQueries, titleAbstractDoc, withTimeout } from "./dense-rag.js";
+// These three reach a provider or the accounting ledgers, which is exactly why
+// this module is the dynamically imported half — see the header. berget.js is
+// already behind dense-rag.js, and quota.js pulls only db.js + berget.js.
+import { embedModel, eurPerTokenFromBerget, rawModelEntry } from "./berget.js";
+import { RERANK_FLOOR, RERANK_MODEL, denseRetrieve, embedQueries, titleAbstractDoc, withTimeout } from "./dense-rag.js";
+import { recordModelUsage, recordUsage } from "./quota.js";
 // src/literature-authors.js is PURE (it imports nothing), so it rides a static
 // import here exactly as src/literature-tools.js does. Only the two live API
 // clients below it are loaded dynamically, and only when a call actually asks
@@ -199,6 +204,181 @@ function effectiveFloor(minScore) {
 }
 
 // ---------------------------------------------------------------------------
+// METERING — what a retrieval costs, and how it reaches the quota.
+//
+// These tools were GATED on the four-window research quota from the day they
+// shipped and never INCREMENTED it, so they could not exhaust it: a key that
+// only ever called literature_search was unmetered, at €0.0021 (1 angle) to
+// €0.0124 (6 angles) a call — €1,068/day at one 6-angle call per second
+// (docs/MCP-COST.md §4b, the first of the three gaps it names).
+//
+// WHERE THE MONEY IS. Almost all of it is the cross-encoder: CANDIDATES (50)
+// documents cut to RERANK_DOC_CHARS (900) per (angle × corpus) leg, measured at
+// usage.total_tokens = 10,198 for one leg against the live endpoint, at €0.10
+// per 1M tokens = €0.00102 a leg. The single embedding call that covers every
+// angle is real but three orders of magnitude smaller (€0.03/M in, €0 out), and
+// Vectorize's ~$0.00001 per 1024-d query is below the noise floor and is not
+// billed here at all — it is neither Berget money nor an Exa search, so there is
+// no column it honestly belongs in.
+//
+// PRICING, and why it is not bergetCost(). quota.js's bergetCost prices from a
+// CHAT-catalog entry, and neither the reranker nor the embedder is in the chat
+// catalog: berget.js's fetchCatalog filters `list` to model_type "text" with
+// streaming + json_mode, which is why GET /api/models does not show them. They
+// ARE in Berget's raw /v1/models, so they are priced exactly the way src/rag.js
+// already prices an embedding call — rawModelEntry (raw entry, or null when the
+// catalog is unreachable) + eurPerTokenFromBerget (which normalizes whatever
+// unit Berget states its prices in to EUR PER TOKEN). Same currency and units as
+// every other berget_cost, which is what quotaExceeded compares against
+// budget_eur. No price is hard-coded: an invented one outlives the day Berget
+// changes it, and the fail-soft direction of an unreachable catalog is to record
+// the tokens at zero cost rather than to guess.
+//
+// COUNT DIMENSION: deliberately NOT `searches`. quotaExceeded's second dimension
+// is a straight count whose live limits (300 per 5 h … 12,000 per month) are
+// calibrated to Exa searches at €0.005 each, and `exa_cost` sits beside it as
+// Exa's own money; folding a €0.001 dense leg into that count would make one
+// column mean two prices and would show searches that bought no Exa. The EUR
+// dimension bites on its own: the 5-hour €1 budget is ~476 one-angle or ~80
+// six-angle calls, which is the bound that was missing.
+// ---------------------------------------------------------------------------
+
+/**
+ * One call's provider spend, in tokens. Accumulated across every leg — legs run
+ * concurrently, but JS is single-threaded, so `+=` needs no coordination.
+ * @typedef {Object} RetrievalSpend
+ * @property {number} embedTokens
+ * @property {number} rerankTokens
+ * @property {number} rerankCalls how many cross-encoder calls reported a cost
+ * @property {number} estimatedCalls how many of those were estimated, not measured
+ * @property {string} embedModelId the model the embedder actually answered as
+ */
+
+/** @returns {RetrievalSpend} */
+export function newRetrievalSpend() {
+  return { embedTokens: 0, rerankTokens: 0, rerankCalls: 0, estimatedCalls: 0, embedModelId: "" };
+}
+
+/**
+ * Fold one denseRetrieve result's cross-encoder cost into the running spend.
+ * @param {RetrievalSpend | null | undefined} spend
+ * @param {{ rerankTokens?: number, rerankEstimated?: boolean } | null | undefined} found
+ */
+function addRerankSpend(spend, found) {
+  if (!spend || !found?.rerankTokens) return;
+  spend.rerankTokens += found.rerankTokens;
+  spend.rerankCalls += 1;
+  if (found.rerankEstimated) spend.estimatedCalls += 1;
+}
+
+/**
+ * Fold one embedQueries result's cost into the running spend.
+ * @param {RetrievalSpend | null | undefined} spend
+ * @param {{ usage?: any, model?: string } | null | undefined} embedded
+ */
+function addEmbedSpend(spend, embedded) {
+  if (!spend || !embedded) return;
+  spend.embedTokens += Number(embedded.usage?.prompt_tokens ?? embedded.usage?.total_tokens ?? 0) || 0;
+  if (embedded.model) spend.embedModelId = embedded.model;
+}
+
+/**
+ * EUR for a call's spend, per model. Fail-soft in every direction: an
+ * unreachable catalog, an unpriced entry or a price in an unexpected unit all
+ * degrade to €0 rather than to an error or an invented number.
+ * @param {any} env
+ * @param {RetrievalSpend} spend
+ * @returns {Promise<{ berget_cost: number, by_model: Array<{ role: string, model: string, prompt_tokens: number, completion_tokens: number, berget_cost: number }> }>}
+ */
+async function priceRetrievalSpend(env, spend) {
+  const embedId = spend.embedModelId || embedModel(env);
+  const [rerankEntry, embedEntry] = await Promise.all([
+    rawModelEntry(env, RERANK_MODEL),
+    spend.embedTokens ? rawModelEntry(env, embedId) : Promise.resolve(null),
+  ]);
+  // Both are input-only workloads: a reranker emits a score, not tokens, and the
+  // embedder's output price is €0.
+  const rerankCost = spend.rerankTokens * eurPerTokenFromBerget(rerankEntry?.pricing, "input");
+  const embedCost = spend.embedTokens * eurPerTokenFromBerget(embedEntry?.pricing, "input");
+  /** @type {Array<{ role: string, model: string, prompt_tokens: number, completion_tokens: number, berget_cost: number }>} */
+  const by_model = [];
+  if (spend.rerankTokens) {
+    by_model.push({
+      role: "rerank",
+      model: RERANK_MODEL,
+      prompt_tokens: spend.rerankTokens,
+      completion_tokens: 0,
+      berget_cost: rerankCost,
+    });
+  }
+  if (spend.embedTokens) {
+    by_model.push({
+      role: "embed",
+      model: embedId,
+      prompt_tokens: spend.embedTokens,
+      completion_tokens: 0,
+      berget_cost: embedCost,
+    });
+  }
+  return { berget_cost: rerankCost + embedCost, by_model };
+}
+
+/**
+ * Record one tool call's retrieval spend against the caller's quota.
+ *
+ * NEVER throws and never rejects: this runs in runLiteratureTool's `finally`,
+ * exactly as src/mcp.js's runDeepResearch records there, and invariant 2 is
+ * absolute — a missing `usage` field, an unreachable catalog or a D1 outage
+ * degrades the ACCOUNTING, never the tool result the agent asked for.
+ *
+ * Two rows, mirroring /api/chat and deep_research: one usage_events row for
+ * ENFORCEMENT (the model column names the reranker, which is what the money
+ * went to) and the per-model usage_model_events attribution rows.
+ *
+ * @param {any} env
+ * @param {import('./types.js').Logger} log
+ * @param {{ identity?: { id?: string | number } | null, requestId?: string | null } | null | undefined} billing
+ * @param {RetrievalSpend} spend
+ * @param {number} durationMs
+ */
+export async function recordRetrievalSpend(env, log, billing, spend, durationMs) {
+  try {
+    const userId = billing?.identity?.id;
+    // No identity means nothing to charge (a direct call in a test, or a future
+    // caller outside the MCP surface), and no tokens means nothing was spent —
+    // an argument error, or one of the two deliberately exempt tools. Either way
+    // an empty row would only inflate the request count.
+    if (userId === undefined || userId === null || userId === "") return;
+    if (!spend.rerankTokens && !spend.embedTokens) return;
+
+    const { berget_cost, by_model } = await priceRetrievalSpend(env, spend);
+    await recordUsage(env, log, {
+      user_id: userId,
+      model: RERANK_MODEL,
+      prompt_tokens: spend.rerankTokens + spend.embedTokens,
+      completion_tokens: 0,
+      // Exa-only, by design — see the COUNT DIMENSION note above.
+      searches: 0,
+      berget_cost,
+      exa_cost: 0,
+      duration_ms: durationMs,
+    });
+    await recordModelUsage(env, log, { user_id: userId, request_id: billing?.requestId || null, by_model });
+    log.info("literature.spend", {
+      rerank_tokens: spend.rerankTokens,
+      embed_tokens: spend.embedTokens,
+      rerank_calls: spend.rerankCalls,
+      estimated_calls: spend.estimatedCalls,
+      berget_cost,
+    });
+  } catch (/** @type {any} */ err) {
+    // recordUsage and recordModelUsage already swallow their own D1 failures;
+    // this catch covers everything else (the catalog lookup above all).
+    log.warn("literature.spend_record_failed", { error: err?.message || String(err) });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // The AUTHOR leg.
 //
 // src/literature-authors.js carries the full reasoning; the short version is
@@ -267,9 +447,11 @@ async function lookupAuthor(log, name, terms, corpora) {
  * @param {any} env
  * @param {import('./types.js').Logger} log
  * @param {any} args
+ * @param {RetrievalSpend} [spend] the call's running provider spend, folded into
+ *   by every leg — runLiteratureTool owns it and records it in its `finally`.
  * @returns {Promise<LiteratureToolResult>}
  */
-export async function runLiteratureSearch(env, log, args) {
+export async function runLiteratureSearch(env, log, args, spend) {
   const started = Date.now();
   const queries = normalizeQueries(args);
   // Resolved BEFORE the empty-query guard: `authors` alone is a complete
@@ -317,7 +499,9 @@ export async function runLiteratureSearch(env, log, args) {
   let embedFailure = "";
   if (queries.length) {
     try {
-      vectors = await embedQueries(env, queries);
+      const embedded = await embedQueries(env, queries);
+      vectors = embedded.vectors;
+      addEmbedSpend(spend, embedded);
     } catch (/** @type {any} */ err) {
       // With an author leg in flight this is a DEGRADED call, not a dead one —
       // the live records are still worth returning (invariant 2).
@@ -352,6 +536,7 @@ export async function runLiteratureSearch(env, log, args) {
         startedAt: embedStarted,
         floor,
       });
+      addRerankSpend(spend, found);
       return { qi, corpus, found };
     }),
   );
@@ -617,8 +802,9 @@ export async function runLiteratureFetch(env, log, args) {
  * @param {any} env
  * @param {import('./types.js').Logger} log
  * @param {any} args
+ * @param {RetrievalSpend} [spend] see runLiteratureSearch
  */
-export async function runLiteratureSimilar(env, log, args) {
+export async function runLiteratureSimilar(env, log, args, spend) {
   const started = Date.now();
   const ref = parseLiteratureId(args?.id);
   if (!ref) {
@@ -665,7 +851,9 @@ export async function runLiteratureSimilar(env, log, args) {
     const text = [seedTitle, seed?.abstract || ""].filter(Boolean).join(". ").slice(0, 900);
     if (!text) return fail(`${ref.corpus}:${ref.id} carries no usable text or vector to search from.`);
     try {
-      qvec = (await embedQueries(env, [text]))[0] || null;
+      const embedded = await embedQueries(env, [text]);
+      addEmbedSpend(spend, embedded);
+      qvec = embedded.vectors[0] || null;
       vectorSource = "re-embedded title and abstract (the index did not return the stored vector)";
     } catch (/** @type {any} */ err) {
       return fail(`Could not embed the seed paper: ${err?.message || String(err)}.`);
@@ -677,9 +865,8 @@ export async function runLiteratureSimilar(env, log, args) {
   if (!ready.length) return fail("No hosted corpus is available to search in this deployment.");
 
   const retrieved = await mapPool(
-    ready.map((corpus) => async () => ({
-      corpus,
-      found: await denseRetrieve(env, log, {
+    ready.map((corpus) => async () => {
+      const found = await denseRetrieve(env, log, {
         index: indexFor(env, corpus),
         qvec: /** @type {number[]} */ (qvec),
         // The cross-encoder judges neighbours against the seed's TITLE: Berget
@@ -691,8 +878,10 @@ export async function runLiteratureSimilar(env, log, args) {
         tag: TAGS[corpus],
         startedAt: started,
         floor: effectiveFloor(filters.minScore),
-      }),
-    })),
+      });
+      addRerankSpend(spend, found);
+      return { corpus, found };
+    }),
   );
 
   /** @type {any[]} */
@@ -852,8 +1041,11 @@ function structuredResult(payload, isError, records) {
  * @param {any} env
  * @param {import('./types.js').Logger} log
  * @param {any} args
+ * @param {RetrievalSpend} [spend] passed straight through to the inner call:
+ *   the adapter is a projection of literature_search, so it meters exactly like
+ *   it and can never be the cheap way around the meter.
  */
-export async function runOpenAiSearch(env, log, args) {
+export async function runOpenAiSearch(env, log, args, spend) {
   const query = openAiQuery(args);
   if (!query) {
     return structuredResult(
@@ -863,13 +1055,18 @@ export async function runOpenAiSearch(env, log, args) {
     );
   }
 
-  const inner = await runLiteratureSearch(env, log, {
-    query,
-    limit: OPENAI_SEARCH_LIMIT,
-    // The projection carries no abstract, so retrieving them would be payload
-    // nobody reads.
-    abstract: "none",
-  });
+  const inner = await runLiteratureSearch(
+    env,
+    log,
+    {
+      query,
+      limit: OPENAI_SEARCH_LIMIT,
+      // The projection carries no abstract, so retrieving them would be payload
+      // nobody reads.
+      abstract: "none",
+    },
+    spend,
+  );
   if (inner.isError) {
     return structuredResult({ results: [], error: inner.payload?.error || "The corpora are unreachable." }, true, 0);
   }
@@ -975,29 +1172,52 @@ function fail(message) {
 
 /**
  * Run one literature tool by name.
+ *
+ * The `finally` is the whole metering seam, and it is deliberately the SAME
+ * shape src/mcp.js's runDeepResearch uses: whatever the tool did — answered,
+ * degraded, refused its arguments or threw — the provider spend it actually
+ * incurred is recorded against the caller before the result leaves. The two
+ * tools that spend nothing (literature_fetch is a key read, literature_corpora
+ * is committed facts, and `fetch` is a projection of the first) leave the
+ * accumulator at zero and so record nothing, which is the same exemption they
+ * already have from the quota GATE in src/mcp.js: an agent out of budget must
+ * still be able to resolve an id it was handed.
+ *
  * @param {any} env
  * @param {import('./types.js').Logger} log
  * @param {string} name
  * @param {any} args
+ * @param {{ identity?: { id?: string | number } | null, requestId?: string | null } | null} [billing]
+ *   who to charge. Absent (a direct call, a test) means the spend is measured
+ *   and logged but not recorded — there is nobody to record it against.
  * @returns {Promise<LiteratureToolResult>}
  */
-export async function runLiteratureTool(env, log, name, args) {
-  switch (name) {
-    case "literature_search":
-      return runLiteratureSearch(env, log, args);
-    case "literature_fetch":
-      return runLiteratureFetch(env, log, args);
-    case "literature_similar":
-      return runLiteratureSimilar(env, log, args);
-    case "literature_corpora":
-      return runLiteratureCorpora(env, log);
-    // The two adapter tools ride the same dispatch so src/mcp.js needs one
-    // dynamic import and one branch, not two of each.
-    case "search":
-      return runOpenAiSearch(env, log, args);
-    case "fetch":
-      return runOpenAiFetch(env, log, args);
-    default:
-      return fail(`Unknown literature tool: ${name}`);
+export async function runLiteratureTool(env, log, name, args, billing) {
+  const started = Date.now();
+  const spend = newRetrievalSpend();
+  try {
+    switch (name) {
+      case "literature_search":
+        return await runLiteratureSearch(env, log, args, spend);
+      case "literature_fetch":
+        return await runLiteratureFetch(env, log, args);
+      case "literature_similar":
+        return await runLiteratureSimilar(env, log, args, spend);
+      case "literature_corpora":
+        return await runLiteratureCorpora(env, log);
+      // The two adapter tools ride the same dispatch so src/mcp.js needs one
+      // dynamic import and one branch, not two of each.
+      case "search":
+        return await runOpenAiSearch(env, log, args, spend);
+      case "fetch":
+        return await runOpenAiFetch(env, log, args);
+      default:
+        return fail(`Unknown literature tool: ${name}`);
+    }
+  } finally {
+    // Never throws — see recordRetrievalSpend. A `finally` that can reject
+    // would replace the tool's result with an accounting error, which is
+    // exactly what invariant 2 forbids.
+    await recordRetrievalSpend(env, log, billing, spend, Date.now() - started);
   }
 }

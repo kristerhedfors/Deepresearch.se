@@ -10,11 +10,11 @@ nothing at a provider, the literature family costs €0.002–€0.012, and
 `deep_research` — the only expensive tool — costs €0.05 at the median and
 **€0.62 at its analytic ceiling**. The per-call numbers are not what
 decides feasibility. Three gaps do, and all three are in the metering
-rather than the price: the literature family records no usage at all, `/mcp`
-takes no concurrency reservation (**fixed 2026-08-05** — §4b(2)), and the
-model and budget overrides are open by default. Fix those three and the
-surface is affordable to publish; leave them and one key can outspend the
-site's entire current monthly bill in an afternoon.
+rather than the price: the literature family recorded no usage at all and
+`/mcp` took no concurrency reservation — **both fixed 2026-08-05** (§4b) —
+while the model and budget overrides remain open by default. With the two
+metering fixes in, the surface is affordable to publish; without them one key
+could outspend the site's entire current monthly bill in an afternoon.
 
 For context on the scale: the whole site's provider spend for the month
 this was written was **€2.05 Berget + €5.11 Exa across 211 requests**
@@ -170,12 +170,13 @@ and that is the number to reason about, not the €8 in the config.
 
 ### 4b. Three gaps, in the order they matter
 
-**(1) The literature family records no usage.** `src/literature-run.js`
-contains no `recordUsage` / `recordModelUsage` / `recordDefaultModelUsage`
-call. `literature_search` and `literature_similar` are *gated* on the quota
-— an account already exhausted by chat or `deep_research` is refused — but
-they never *increment* it, so they cannot exhaust it themselves. A key that
-only ever calls `literature_search` is unmetered:
+**(1) The literature family recorded no usage — FIXED 2026-08-05.** As
+written, `src/literature-run.js` contained no `recordUsage` /
+`recordModelUsage` call. `literature_search` and `literature_similar` were
+*gated* on the quota — an account already exhausted by chat or
+`deep_research` is refused — but never *incremented* it, so they could not
+exhaust it themselves. A key that only ever called `literature_search` was
+unmetered:
 
 | shape | per call | at 1 call/s |
 |---|---|---|
@@ -184,7 +185,30 @@ only ever calls `literature_search` is unmetered:
 
 The 6-angle call is what the tool description actively encourages ("prefer
 that over sequential calls"), and it is the cheap-per-call, expensive-in-
-aggregate shape. This is the single item to fix before publishing.
+aggregate shape. This was the single item to fix before publishing.
+
+`runLiteratureTool` now records it in a `finally`, the same shape
+`runDeepResearch` uses. Two things about the fix are worth carrying:
+
+- **The token counts are the provider's own, not estimates.** Berget's
+  `/v1/rerank` response carries a `usage` block that `rerankMatches` was
+  reading past; it is plumbed out through `denseRetrieve` now, and
+  `embedQueries` returns `embedTexts`' `usage` the same way. The chars/token
+  fallback (`RERANK_CHARS_PER_TOKEN`, derived from the 45,000-char → 10,198-
+  token measurement above) only runs when a response omits `usage` entirely.
+- **Priced from the RAW catalog, not the site one.** `quota.js`'s
+  `bergetCost` prices from a chat-catalog entry, and `fetchCatalog` filters
+  that list to streaming json_mode text models — which is why `GET
+  /api/models` shows neither model. Both are in Berget's raw `/v1/models`,
+  so the spend is priced the way `src/rag.js` already prices an embedding
+  call: `rawModelEntry` + `eurPerTokenFromBerget`. No price is hard-coded,
+  and an unreachable catalog records the tokens at €0 rather than guessing.
+
+It counts against `berget_cost` only, never `searches`: that count's live
+limits are calibrated to Exa searches at €0.005 each and sit beside
+`exa_cost`, so a €0.001 dense leg has no honest place in it. The EUR
+dimension bounds a literature-only key on its own — the 5-hour €1 budget is
+~476 one-angle or ~80 six-angle calls.
 
 **(2) `/mcp` takes no concurrency reservation — FIXED 2026-08-05.**
 `reserveInflight` (`INFLIGHT_CAP = 5`) was taken on `/api/chat`,
@@ -221,7 +245,9 @@ permissive one, and a public surface would inherit it.
 - The quota gate is enforced *before* any spend, and admins are the only
   exemption.
 - `deep_research` records `recordUsage` + `recordModelUsage` in a `finally`,
-  so a partial or failed run is still billed to the caller.
+  so a partial or failed run is still billed to the caller — and since
+  2026-08-05 `runLiteratureTool` does the same for the retrieving literature
+  tools.
 - Every tool is switchable off per account (`MCP_TOOL_CATALOG`, mirror-
   tested), and `tools/call` enforces the switch, not just `tools/list`.
 - An MCP key is never a login (test-pinned), so the blast radius of a
@@ -244,11 +270,13 @@ account at ~€111/month, and the per-call ceiling is €0.62. Tightening
 `allow_model_override` and `allow_budget_override` in the public default
 would halve the ceiling.
 
-Publishing `literature_search` / `literature_similar` / `search` is **not**
-affordable until they record usage. They are the cheapest tools per call,
-and the concurrency cap now bounds how fast one key can call them, but
-nothing they spend counts against any window — so they still have no upper
-bound of their own.
+Publishing `literature_search` / `literature_similar` / `search` was **not**
+affordable until they recorded usage — they were the cheapest tools per call
+and the only ones with no upper bound at all. Both halves of that are now
+closed: they record their reranker and embedder spend against `berget_cost`
+(§4b), and the concurrency reservation bounds how many can run at once. The
+meter bounds rate, the cap bounds parallelism; neither substitutes for the
+other, which is why both were needed.
 
 ---
 

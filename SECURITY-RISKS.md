@@ -348,9 +348,11 @@ live-verify pass (see the **live-verify** skill). A stricter fix (reserve
 estimated spend at admission, reconcile on completion) and/or Cloudflare
 rate-limiting rules remain available if the cap proves insufficient.
 **Two `/mcp` gaps found 2026-08-05 while costing the surface for possible
-public exposure (`docs/MCP-COST.md`), both in this class. (a) is now CLOSED
-(2026-08-05):** `src/mcp.js` takes the reservation on the four tools that
-reach a provider — `deep_research`, `literature_search`,
+public exposure (`docs/MCP-COST.md`), both in this class, and BOTH are now
+CLOSED (2026-08-05).**
+
+**(a) the missing reservation.** `src/mcp.js` takes the reservation on the
+four tools that reach a provider — `deep_research`, `literature_search`,
 `literature_similar` and the `search` adapter — keyed on the request id and
 released in a `finally` covering every exit path, so an external key is
 capped at 5 concurrent spending calls exactly as a browser session is. The
@@ -365,16 +367,30 @@ leak matters most. Fail-open on any D1 trouble, as everywhere else in this
 subsystem. Unit-tested in `src/mcp-inflight.test.js` (16 tests: the slot held
 mid-retrieval and released after, release on the throwing path, the
 JSON-RPC-not-429 refusal, per-user isolation, D1 fail-open, and the exempt
-tools reserving nothing). Still owed the same live-verify pass as the rest of
-P-3. **(b) remains open:** `src/literature-run.js` records no usage at all, so
-`literature_search` / `literature_similar` / `search` are GATED on the quota
-but never INCREMENT it and cannot exhaust it — measured at €0.0021–€0.0124
-per call (the reranker: 50 candidates × 900 chars per angle × corpus leg,
-10,198 tokens at €0.10/M), which is €7–€44 per hour at one call per second
-from a single key — now times at most 5 concurrent calls rather than
-whatever a client cared to open. `deep_research` itself is metered correctly
-and bounded at ~€111/account/month. Fixing (b) is the precondition for
-opening the surface.
+tools reserving nothing).
+
+**(b) the missing meter.** `src/literature-run.js` recorded no usage at all,
+so `literature_search` / `literature_similar` / `search` were GATED on the
+quota but never INCREMENTED it and could not exhaust it — measured at
+€0.0021–€0.0124 per call (the reranker: 50 candidates × 900 chars per angle ×
+corpus leg, 10,198 tokens at €0.10/M), which is €7–€44 per hour at one call
+per second from a single key. Every retrieving literature tool now records a
+`usage_events` row in a `finally` from the cross-encoder's own
+`usage.total_tokens` — which `rerankMatches` was reading past — plus the
+embedder's, priced from Berget's raw `/v1/models` catalog (neither model is
+in the chat catalog `bergetCost` prices from, because `fetchCatalog` filters
+to `model_type: "text"`). It lands in `berget_cost`, never in `searches`:
+that count is Exa's, calibrated to €0.005 a search, and folding a €0.001
+dense leg into it would make one column mean two prices. The EUR dimension
+now bites on its own — roughly 476 one-angle or 80 six-angle calls per
+5-hour window. Unit-tested in `src/literature-run.test.js` (9 tests,
+including that the billed number is provably the provider's and not the
+char-count estimate).
+
+The two fixes are complements: (a) bounds PARALLELISM, (b) bounds RATE.
+Either alone leaves the other axis open. `deep_research` was already metered
+correctly and bounded at ~€111/account/month. Both are still owed the same
+live-verify pass as the rest of P-3.
 
 ### P-4 · H-2 follow-up · Flip the CSP on — 🔴 OPEN
 The CSP is fully authored in `src/security-headers.js` but `CSP_ENABLED = false`
