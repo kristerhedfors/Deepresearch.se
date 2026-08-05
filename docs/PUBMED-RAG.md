@@ -410,8 +410,8 @@ The 647 short of the corpus's 1,639,403 are withdrawn citations: the archive
 recorded 4,503 `<DeleteCitation>` PMIDs and 647 of those were in this window, so
 the loader skipped them rather than indexing retracted work.
 
-> **last ingested archive file: `pubmed26n1558`** · vectorCount 1,644,825 ·
-> 2026-07-31. This line is the delta marker — `data/` is gitignored and the
+> **last ingested archive file: `pubmed26n1562`** · vectorCount 1,664,586 ·
+> 2026-08-05. This line is the delta marker — `data/` is gitignored and the
 > container is ephemeral, so it is the only durable record of where the next
 > incremental run should start. Update it in the same change as any ingest;
 > the **pubmed-ingest** skill is the runbook for both a delta and a rebuild.
@@ -420,6 +420,38 @@ the loader skipped them rather than indexing retracted work.
 reports `vectorCount` 1,638,756, matching the checkpoint exactly. (That count
 lags a live fill — it tracks `processedUpToMutation` — so it confirms a
 *finished* build and cannot confirm one in progress.)
+
+### 7.2 The first delta (2026-08-05)
+
+Archive files `n1559`–`n1562`, run from the **pubmed-ingest** runbook. It is
+recorded here because it is the first evidence of what a routine catch-up
+actually costs, and the numbers are less obvious than the rebuild's:
+
+```
+47,831 records → 41,031 kept → 38,191 unique citations
+4 loaders · ~24 vectors/s each · 6.4 min · 9 withdrawn PMIDs pruned
+vectorCount 1,646,226 → 1,664,586  (+18,360)
+```
+
+**Read the two numbers against each other.** 38,191 citations were pushed and
+the index grew by 18,360 — the other ~52% were *revisions* of PMIDs already
+held, upserted in place. That is the delta working as designed, not a
+double-count, and it means "how many did we push" can never stand in for "how
+much did the corpus grow".
+
+Coverage, sampled against E-utilities rather than the run's own counters:
+
+| window | sampled | present | missing |
+|---|---|---|---|
+| 2026/07 | 500 | 499 | 1 (0.2%) |
+| 2026/08 | 500 | 231 | 269 (53.8%) |
+
+The settled month is at the steady-state floor. The current month is missing
+half of itself and that is **not** a hole: the last update file was cut on the
+3rd, E-utilities indexes a citation as soon as it is deposited, and the archive
+publishes it days later. Any delta run mid-month will report this shape — which
+is why the acceptance check belongs on the newest *settled* window, never on
+the one still being written.
 
 ### 7.1 Dedup has to happen BEFORE the split, not inside each loader
 
