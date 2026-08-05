@@ -11,7 +11,7 @@
 //   3. the paired significance test that decides whether a hillclimb step
 //      earned its merge.
 
-import { objectiveGrade, xorDecrypt } from "./dr-evalset-core.mjs";
+import { hostOf, objectiveGrade, xorDecrypt } from "./dr-evalset-core.mjs";
 import { mcnemar } from "../scripts/rag-eval-core.mjs";
 
 export { objectiveGrade, mcnemar };
@@ -262,6 +262,50 @@ export function classifyLoss(r) {
   if (r.grade === "not_attempted") return "abstained";
   if (!r.goldOverlap || r.goldOverlap.goldCount === 0) return "unknown";
   return r.goldOverlap.hits > 0 ? "synthesis_miss" : "retrieval_miss";
+}
+
+// Hosts that would mean the run found the ANSWER KEY rather than the facts —
+// the "benchmark metadata leakage" tier of search-time contamination, and the
+// cheapest useful contamination check there is.
+//
+// This deliberately does NOT reuse tests/hf-bench-lib.mjs's list, and the
+// difference is the point. That list includes `arxiv.org`, which is correct
+// for a battery whose questions come from HuggingFace-hosted ML datasets: a
+// cited arXiv page there means the pipeline found the benchmark's own paper.
+// Here it is a FALSE POSITIVE — arXiv is a registered first-class research
+// source in this pipeline (src/arxiv.js, plus the hosted dense corpus), so a
+// BrowseComp run citing arXiv is doing its job. Measured on the first battery:
+// the shared list flagged 9 of 30 BrowseComp runs, and 24 of the 27 flagged
+// URLs were ordinary arXiv papers.
+//
+// These three sets are hosted on GitHub, HuggingFace and an OpenAI blob, so
+// those are what matter, alongside the homework-answer sites that mirror
+// benchmark questions wholesale.
+const LEAK_HOSTS = [
+  "huggingface.co",
+  "github.com",
+  "gist.github.com",
+  "raw.githubusercontent.com",
+  "openaipublic.blob.core.windows.net",
+  "paperswithcode.com",
+  "kaggle.com",
+  "quizlet.com",
+  "scribd.com",
+  "coursehero.com",
+];
+
+/**
+ * URLs among an answer's sources that sit on a benchmark-hosting domain.
+ * @param {{url:string}[]} sources
+ * @returns {string[]}
+ */
+export function benchmarkLeaks(sources) {
+  return (Array.isArray(sources) ? sources : [])
+    .map((s) => String(s?.url || ""))
+    .filter((u) => {
+      const h = hostOf(u);
+      return h && LEAK_HOSTS.some((d) => h === d || h.endsWith(`.${d}`));
+    });
 }
 
 /** @param {string[]} labels */

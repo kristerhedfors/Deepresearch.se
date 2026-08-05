@@ -27,6 +27,7 @@ import {
 
 import {
   aggregate,
+  benchmarkLeaks,
   buildJudgePrompt,
   classifyLoss,
   deepResearchArgs,
@@ -380,4 +381,37 @@ test("classifyLoss refuses to attribute a loss when the set publishes no gold so
 
 test("tally counts labels", () => {
   assert.deepEqual(tally(["a", "b", "a"]), { a: 2, b: 1 });
+});
+
+// ---------------------------------------------------------------------------
+// Contamination
+// ---------------------------------------------------------------------------
+
+test("benchmarkLeaks flags the hosts these three sets actually live on", () => {
+  const leaks = benchmarkLeaks([
+    { url: "https://huggingface.co/datasets/google/frames-benchmark" },
+    { url: "https://github.com/openai/simple-evals" },
+    { url: "https://gist.github.com/x/y" },
+    { url: "https://www.scribd.com/document/606733542/X" },
+    { url: "https://openaipublic.blob.core.windows.net/simple-evals/browse_comp_test_set.csv" },
+  ]);
+  assert.equal(leaks.length, 5);
+});
+
+test("benchmarkLeaks does NOT flag arXiv — it is a first-class source in this pipeline", () => {
+  // hf-bench's list includes arxiv.org, correctly, because there a cited arXiv
+  // page means the run found the benchmark's own paper. Here arXiv is a
+  // registered research source with a hosted dense corpus behind it, so the
+  // shared list flagged 9 of 30 BrowseComp runs and 24 of the 27 flagged URLs
+  // were ordinary papers. Reusing it would have reported contamination that
+  // was the pipeline working.
+  assert.deepEqual(benchmarkLeaks([{ url: "https://arxiv.org/abs/2407.13312" }]), []);
+  assert.deepEqual(benchmarkLeaks([{ url: "https://pubmed.ncbi.nlm.nih.gov/31178118/" }]), []);
+});
+
+test("benchmarkLeaks matches subdomains but not a lookalike suffix", () => {
+  assert.equal(benchmarkLeaks([{ url: "https://raw.githubusercontent.com/a/b" }]).length, 1);
+  assert.deepEqual(benchmarkLeaks([{ url: "https://notgithub.com/a" }]), []);
+  assert.deepEqual(benchmarkLeaks([]), []);
+  assert.deepEqual(benchmarkLeaks(null), []);
 });

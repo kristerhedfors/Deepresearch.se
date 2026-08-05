@@ -43,10 +43,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chatJson } from "../scripts/arxiv-berget.mjs";
-import { detectBenchmarkLeak } from "./hf-bench-lib.mjs";
 import { citationMetrics, goldSourceOverlap, parseCitations } from "./dr-evalset-core.mjs";
 import {
   aggregate,
+  benchmarkLeaks,
   buildJudgePrompt,
   classifyLoss,
   deepResearchArgs,
@@ -219,10 +219,9 @@ async function runSet(name) {
     const r = await research(item.question);
     const citations = citationMetrics(r.text);
     const goldOverlap = item.goldUrls.length ? goldSourceOverlap(r.text, item.goldUrls) : null;
-    // A run that cited the benchmark's own mirror found the answer key, not the
-    // facts. Same detector hf-bench uses, so a leak means the same thing in
-    // both ledgers.
-    const leaks = detectBenchmarkLeak(parseCitations(r.text).sources);
+    // A run that cited the benchmark's own mirror found the answer key, not
+    // the facts — the cheapest contamination check available, and free.
+    const leaks = benchmarkLeaks(parseCitations(r.text).sources);
     const g = await grade(item, r.text);
     done++;
     process.stdout.write(
@@ -329,11 +328,64 @@ function compare(fileA, fileB) {
 }
 
 // ---------------------------------------------------------------------------
+// uplift — the contamination control
+// ---------------------------------------------------------------------------
+
+/**
+ * What the PIPELINE contributed, as opposed to what the model already knew.
+ *
+ * These sets were rejected here in 2026-07 as contaminated, and that reading
+ * was correct — the questions predate every training cutoff in the catalogue.
+ * This is what makes them usable anyway: run the same questions with search
+ * OFF and the memorised share stops being an assumption and becomes a
+ * measurement. FRAMES publishes the identical control (≈0.40 closed-book,
+ * ≈0.66 with multi-step search planning), so the two numbers have an external
+ * reference rather than only each other.
+ *
+ * The number that matters most is the last one: accuracy restricted to the
+ * questions the closed-book arm got WRONG. Those are the ones where the answer
+ * had to be found rather than recalled.
+ *
+ * @param {string} searchFile @param {string} controlFile
+ */
+function uplift(searchFile, controlFile) {
+  const s = JSON.parse(fs.readFileSync(searchFile, "utf8"));
+  const c = JSON.parse(fs.readFileSync(controlFile, "utf8"));
+  const byId = (/** @type {any} */ run) => Object.fromEntries(run.rows.map((/** @type {any} */ r) => [r.id, r]));
+  const S = byId(s);
+  const C = byId(c);
+  const ids = Object.keys(S).filter((id) => id in C);
+  const sc = ids.filter((id) => S[id].grade === "correct").length;
+  const cc = ids.filter((id) => C[id].grade === "correct").length;
+  const unmemorised = ids.filter((id) => C[id].grade !== "correct");
+  const foundIt = unmemorised.filter((id) => S[id].grade === "correct").length;
+  // Questions the closed-book arm got right and the search arm got wrong —
+  // retrieval actively talking the model out of an answer it had.
+  const talkedOut = ids.filter((id) => C[id].grade === "correct" && S[id].grade !== "correct").length;
+  const v = pairedVerdict(
+    Object.fromEntries(ids.map((id) => [id, C[id].grade === "correct"])),
+    Object.fromEntries(ids.map((id) => [id, S[id].grade === "correct"])),
+  );
+  console.log(`\n── ${s.set}: research uplift over parametric memory ──────────`);
+  console.log(`  closed-book (search off)  ${pct(cc / ids.length)}  (${cc}/${ids.length})`);
+  console.log(`  with the pipeline         ${pct(sc / ids.length)}  (${sc}/${ids.length})`);
+  console.log(`  uplift                    ${((sc - cc) / ids.length) * 100 >= 0 ? "+" : ""}${(((sc - cc) / ids.length) * 100).toFixed(1)} points   exact McNemar p = ${v.p.toFixed(5)}`);
+  console.log(`  on the ${unmemorised.length} questions it did NOT already know: ${pct(foundIt / (unmemorised.length || 1))} (${foundIt}/${unmemorised.length})`);
+  console.log(`  talked out of a known answer by retrieval: ${talkedOut}`);
+  return { closedBook: cc / ids.length, withPipeline: sc / ids.length, unmemorisedAccuracy: foundIt / (unmemorised.length || 1), p: v.p };
+}
+
+// ---------------------------------------------------------------------------
 
 async function main() {
   const cmpIdx = argv.indexOf("--compare");
   if (cmpIdx >= 0) {
     compare(argv[cmpIdx + 1], argv[cmpIdx + 2]);
+    return;
+  }
+  const upIdx = argv.indexOf("--uplift");
+  if (upIdx >= 0) {
+    uplift(argv[upIdx + 1], argv[upIdx + 2]);
     return;
   }
   if (!AUTH) {
