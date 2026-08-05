@@ -366,11 +366,31 @@ const execEnvironmentNote = (env) => {
     // that assumes it isn't will try to apt-get it (chat_logs #1305). Only
     // this branch lists them — they are baked into container/Dockerfile, and
     // neither the browser emulator's third-party disk image nor a runner on
-    // the user's own machine can be assumed to carry them.
+    // the user's own machine can be assumed to carry them. The asymmetry is
+    // permanent (owner directive, 2026-08-05): the toolchain is server-side
+    // container ONLY, and the other two branches say so in their own terms
+    // rather than leaving the absence to be read as an accident.
     return "A Debian Linux runs NATIVELY in an ephemeral container this platform starts for the conversation (a Firecracker microVM — real hardware speed, several GB of disk and RAM, one CPU). You are root; common tools are available (coreutils, grep/sed/awk, bash, python3, and standard math via python3 or bc). For images and documents specifically, the image ships tesseract OCR with English and Swedish (`tesseract file.png out -l eng`, or `-l swe`), poppler-utils (`pdftotext`, `pdftoppm`, `pdfimages`, `pdfinfo`), Pillow via python3, and `zbarimg` for QR and barcodes — so a scanned PDF or a picture of text can be turned into text right here. The container has no internet access — treat the sandbox as OFFLINE and compute from local tools only. It is thrown away when the conversation ends, so nothing you install persists beyond it.\n";
   if (env === "local")
-    return "A Linux container runs NATIVELY on the user's own machine, reached through a small service they started (real hardware speed). You are root inside it; common tools are available (coreutils, grep/sed/awk, bash, python3, and standard math via python3 or bc). Assume no network access — treat the sandbox as OFFLINE and compute from local tools only.\n";
-  return "A minimal Debian-based Linux runs entirely in the user's browser (a WASM x86 emulator). You are root; common tools are available (coreutils, grep/sed/awk, bash, python3, and standard math via python3 or bc). There is no reliable network access — treat the sandbox as OFFLINE and compute from local tools only.\n";
+    // The runner is the USER's image, built and maintained by them; this
+    // project neither ships nor inspects it. Listing the container's tools
+    // here would be a promise we cannot keep, and stating a tool is absent
+    // would be equally invented — so the branch says only what is knowable
+    // and hands the decision to the shell: run it, handle the failure. That
+    // matches the MISSING TOOLS rule below (feedback #60) without pretending
+    // to know which side of it any given tool falls on.
+    return "A Linux container runs NATIVELY on the user's own machine, reached through a small service they started (real hardware speed). You are root inside it; a basic toolset can be assumed (coreutils, grep/sed/awk, bash, python3, and standard math via python3 or bc). Beyond that, the toolchain is whatever the user's own image happens to carry — this platform does not build or control it, so assume nothing about specialised tools: run what you need and handle its absence rather than predicting either way. Assume no network access — treat the sandbox as OFFLINE and compute from local tools only.\n";
+  // The browser VM's minimality is a DECISION, not a backlog item (owner
+  // directive, 2026-08-05): the heavy image-and-document toolchain added in
+  // the cloud container stays server-side, and this emulator will not be
+  // grown to match — it streams its disk to the user's device, so every
+  // binary baked in is bytes they pay for on boot. Saying so positively is
+  // the point: told only that a tool is missing, the model treats it as an
+  // accident and spends the turn hunting or installing (chat_logs #1305,
+  // feedback #60). The pointer to the vision pass matters because OCR is
+  // what it reaches for first, and src/image-read.js has already done that
+  // work before this loop runs (the ATTACHED IMAGES rule in bashAgentPrompt).
+  return "A minimal Debian-based Linux runs entirely in the user's browser (a WASM x86 emulator streaming its disk to the user's device). You are root; common tools are available (coreutils, grep/sed/awk, bash, python3, and standard math via python3 or bc). There is no reliable network access — treat the sandbox as OFFLINE and compute from local tools only. This environment is deliberately kept MINIMAL and stays that way by design: specialised tooling (OCR engines, PDF utilities, image libraries) is NOT present here and is not coming, so it is not a gap to work around — do not go looking for it and do not plan around installing it. Heavy document and image work belongs to the server-side container, not here. Text in a picture the user attached has ALREADY been transcribed before this loop runs, so reading a screenshot never requires a binary in this sandbox.\n";
 };
 
 /**
