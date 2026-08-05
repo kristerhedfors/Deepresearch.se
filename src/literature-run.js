@@ -304,7 +304,8 @@ export async function runLiteratureSearch(env, log, args) {
 
   // The author leg is fired FIRST and awaited last, so the live APIs overlap
   // the embed and the dense retrievals instead of adding their latency to them.
-  const authorTerms = authorNames.length ? topicTerms(queries) : [];
+  // The names are excluded from their own narrowing terms — see topicTerms.
+  const authorTerms = authorNames.length ? topicTerms(queries, 6, authorNames) : [];
   const authorWork = authorNames.length
     ? Promise.all(authorNames.map((name) => lookupAuthor(log, name, authorTerms, corpora)))
     : Promise.resolve([]);
