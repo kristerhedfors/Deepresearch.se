@@ -238,10 +238,14 @@ way to know that either, so it wrote absence as a property of the world rather
 than of its own search. Two things changed in the pipeline, neither of them
 specific to person research:
 
-- Synthesis is handed the **search ledger** — the angles already run
-  (`searchLedgerSection` in `src/pipeline-inputs.js`), stated as the whole
-  search rather than a sample, so "not found" and "not searched for" can be
-  told apart.
+- Synthesis is handed the **search ledger** — the queries this request actually
+  dispatched (`searchLedgerSection` over `state.issuedQueries` in
+  `src/pipeline-inputs.js`), so "not found" and "not searched for" can be told
+  apart. It says it is every angle issued only when it is; a truncated list says
+  so. The first version read the PLANNED angles and claimed exhaustiveness
+  regardless, which would have let a report name an angle nothing ever searched
+  — the same fault as the report that started this, one layer up
+  (`docs/ARCHITECTURE.md` §4.3e).
 - `synthPrompt` requires an absence claim to be **checked against the numbered
   list first**, and an uncorroborated claim to name which angles came back
   empty, rather than asserting bare absence.
@@ -393,9 +397,10 @@ independent of whether breaking them is actionable.
 - **No stored dossier.** There is no accumulation across turns and no per-person
   record anywhere in this deployment.
 - **The block never routes the request.** It is appended to the user's message,
-  so every downstream deterministic gate must read the *clean* message
-  (`ctx.cleanLastUser`) instead — and that is now how the pipeline's auxiliary
-  source gates work (`docs/ARCHITECTURE.md` §4.3c). Feedback #61 is why: the
+  so no downstream deterministic gate may read the enriched message — the
+  pipeline's auxiliary source gates read `ctx.gateLastUser`, which is the clean
+  message plus the transcription of the user's own attachment and nothing this
+  pipeline wrote (`docs/ARCHITECTURE.md` §4.3c). Feedback #61 is why: the
   block's source ladder names OpenAlex and its privacy prohibition contains the
   word "health", and reading the appended message let those two mentions lead
   the request into the peer-reviewed and life-science legs on a question about
