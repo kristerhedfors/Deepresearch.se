@@ -108,6 +108,15 @@
     #focuschart .x-lbl { fill: var(--muted); font-size: 12px; text-anchor: middle; }
     #focuschart .series-line { fill: none; stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
     #focuschart .empty-note { fill: var(--muted); font-size: 13px; text-anchor: middle; }
+    /* The code-volume backdrop: how many lines the tree HELD, on its own scale
+       at the right. It sits behind every curve and must never compete with
+       one — a flat wash well under the faintest series stroke, no outline
+       strong enough to read as a seventh feature. */
+    #focuschart .vol-area { fill: rgba(10, 46, 92, .075); stroke: none; }
+    #focuschart .vol-edge { fill: none; stroke: rgba(10, 46, 92, .22); stroke-width: 1.2; stroke-linejoin: round; }
+    #focuschart .vol-tick { stroke: rgba(10, 46, 92, .22); stroke-width: 1; }
+    #focuschart .vol-lbl { fill: var(--muted); font-size: 12px; text-anchor: start; font-variant-numeric: tabular-nums; }
+    #focuschart .vol-cap { fill: var(--muted); font-size: 11px; text-anchor: end; letter-spacing: .02em; }
     /* The chips ARE the legend — the chart carries no in-plot labels, so a
        curve's identity lives here (swatch + name + count), never in colour
        alone. An off curve keeps its hue as a hollow ring so you can still
@@ -437,7 +446,8 @@
     <h2>What work has been done and when</h2>
     <p class="fclede" id="fclede">Every commit tagged with the feature sets it
       touched, over the project's whole history. Turn a feature's graph on or
-      off below.</p>
+      off below. The shaded backdrop is how much code the project holds, on the
+      right-hand scale.</p>
     <div id="focuschart"></div>
     <div class="fclegend" id="fclegend" role="group" aria-label="Features shown"></div>
     <div class="fctools">
@@ -818,8 +828,10 @@
      problem reading the dataset leaves the card hidden. -->
 <script type="module">
   import {
-    MONTHS, activeKeys, buildBuckets, linePath, niceMax, normalizeCommits,
-    peakOf, seriesColor, seriesTotalsInWindow, svgEscape, topKeys,
+    MONTHS, activeKeys, buildBuckets, compactLines, linePath, niceMax,
+    normalizeCommits, normalizeVolume, peakOf, seriesColor,
+    seriesTotalsInWindow, svgEscape, topKeys, volumeAreaPath, volumeEdgePath,
+    volumeTicks,
   } from "/js/pulse-timeline-core.js";
 
   const card = document.getElementById("focuscard");
@@ -829,8 +841,9 @@
   const colorOf = (hex) => seriesColor(hex, false);
 
   // Geometry: a short, wide plot. No in-plot labels — the chips below are the
-  // legend, which keeps the 680px column readable at six curves.
-  const VW = 1000, LP = 46, RP = 14, TP = 10, PLOT_H = 230;
+  // legend, which keeps the 680px column readable at six curves. The right
+  // padding holds the code-volume scale; the top padding its caption.
+  const VW = 1000, LP = 46, RP = 52, TP = 26, PLOT_H = 230;
   const plotW = VW - LP - RP, plotBottom = TP + PLOT_H, H = plotBottom + 28;
   const METRIC = "commits";
   // A chip per subject is four-plus rows on a phone — more page than the chart
@@ -838,8 +851,33 @@
   const CHIPS_SHOWN = 12;
 
   let SUBJ = new Map(), ORDER = [], COMMITS = [], FULL = [0, 1], BYKEY = {};
+  let VOLUME = [];
   let visible = new Set();
   const chips = new Map();
+
+  // The code-volume backdrop, drawn FIRST so every curve sits on top of it,
+  // on its own right-hand scale (the curves count commits, this counts lines
+  // the tree holds — two units that must not share an axis).
+  function volumeLayer(xOf) {
+    if (VOLUME.length < 2) return "";
+    const peak = Math.max(...VOLUME.map((p) => p.lines));
+    const { top, values } = volumeTicks(peak);
+    const vOf = (v) => plotBottom - (v / top) * PLOT_H;
+    const area = volumeAreaPath(VOLUME, FULL[0], FULL[1], xOf, vOf, plotBottom);
+    if (!area) return "";
+    const last = VOLUME[VOLUME.length - 1];
+    let g = `<path class="vol-area" d="${area}"><title>Lines of code in the project — ` +
+      `${fmt(last.lines)} across ${fmt(last.files)} files on ${svgEscape(last.d)}</title></path>`;
+    // The top edge alone, so the shape reads as a curve rather than a smudge.
+    g += `<path class="vol-edge" d="${volumeEdgePath(VOLUME, FULL[0], FULL[1], xOf, vOf)}"/>`;
+    for (const v of values) {
+      const yy = vOf(v);
+      g += `<line class="vol-tick" x1="${VW - RP}" y1="${yy.toFixed(1)}" x2="${VW - RP + 5}" y2="${yy.toFixed(1)}"/>`;
+      g += `<text class="vol-lbl" x="${VW - RP + 9}" y="${(yy + 4).toFixed(1)}">${compactLines(v)}</text>`;
+    }
+    g += `<text class="vol-cap" x="${VW - RP + 5}" y="${TP - 10}">lines of code</text>`;
+    return g;
+  }
 
   function render() {
     const keys = ORDER.filter((k) => visible.has(k));
@@ -850,7 +888,7 @@
     const xOf = (ms) => LP + ((ms - FULL[0]) / (FULL[1] - FULL[0] || 1)) * plotW;
     const yOf = (v) => plotBottom - (v / ymax) * PLOT_H;
 
-    let g = "";
+    let g = volumeLayer(xOf);
     for (const t of [0, 0.5, 1]) {
       const yy = plotBottom - t * PLOT_H;
       g += `<line class="grid-line" x1="${LP}" y1="${yy.toFixed(1)}" x2="${VW - RP}" y2="${yy.toFixed(1)}"/>`;
@@ -876,7 +914,8 @@
 
     document.getElementById("focuschart").innerHTML =
       `<svg viewBox="0 0 ${VW} ${H}" preserveAspectRatio="xMidYMid meet" role="img" ` +
-      `aria-label="Commits per feature set over the project's history">${g}</svg>`;
+      `aria-label="Commits per feature set over the project's history, over a shaded ` +
+      `backdrop of how many lines of code the project holds">${g}</svg>`;
     syncChips();
   }
 
@@ -894,6 +933,9 @@
     .then((d) => {
       COMMITS = normalizeCommits(d.commits);
       if (!COMMITS.length) return;                 // nothing to draw — stay hidden
+      // Absent in a dataset built before the series existed; the card then
+      // simply draws no backdrop rather than failing.
+      VOLUME = normalizeVolume(d.volume);
       SUBJ = new Map((d.subjects || []).map((s) => [s.key, s]));
       ORDER = (d.subjects || []).map((s) => s.key);
       BYKEY = d.totals?.byKey || {};
@@ -946,10 +988,15 @@
 
       const from = d.range?.from, to = d.range?.to;
       if (from && to) {
+        const held = VOLUME.length
+          ? ` The shaded backdrop is how much code the project holds — ` +
+            `${fmt(VOLUME[VOLUME.length - 1].lines)} lines across ` +
+            `${fmt(VOLUME[VOLUME.length - 1].files)} files, on the right-hand scale.`
+          : "";
         document.getElementById("fclede").textContent =
           `Every commit tagged with the feature sets it touched, ${from} to ${to} — ` +
           `${fmt(COMMITS.length)} commits across ${offered.length} feature sets. ` +
-          `Turn a feature's graph on or off below.`;
+          `Turn a feature's graph on or off below.${held}`;
       }
 
       visible = new Set(topKeys(ORDER, BYKEY, METRIC, 6));

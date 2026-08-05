@@ -974,10 +974,16 @@ a key silently drops it from every returning visitor's saved curve selection.
 A SECOND surface draws the same dataset: the compact feature-focus card on
 the landing page (`public/welcome/`, under the promo video), where chips turn
 an individual feature's graph on and off, and which hides itself if the
-dataset can't be read. So the timeline's maths — time bucketing, the metric,
+dataset can't be read. That card adds one series the full page does not draw:
+the CODE-VOLUME backdrop, a filled area behind the curves showing how many
+lines the tree held at the end of each day, on its own right-hand scale in
+thousands. Its readings are measured, not accumulated — `build-pulse-timeline`
+counts the whole tree at each day's last commit and writes them into
+`timeline.json`'s `volume` block, so the curve's right-hand end agrees with
+`size.json`'s line total. So the timeline's maths — time bucketing, the metric,
 how a commit tagged with several subjects is weighed in each mode, the
-y-scale, the dark-mode colour lift, and which subjects are "the busiest
-six" — lives in the shared pure core `public/js/pulse-timeline-core.js`
+y-scale, the dark-mode colour lift, which subjects are "the busiest six", and
+the volume area and its scale — lives in the shared pure core `public/js/pulse-timeline-core.js`
 (Node-tested, public, no DOM and no fetch). Both pages import it, so neither
 can drift into its own idea of what a curve means; the landing keeps only the
 small drawing, the full page keeps the gestures. See the

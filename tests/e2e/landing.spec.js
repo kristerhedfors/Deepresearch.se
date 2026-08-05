@@ -139,6 +139,36 @@ test("Busiest 6 / All / None reset the whole set", async ({ page }) => {
   await expect(curves(page)).toHaveCount(6);
 });
 
+test("the code-volume backdrop draws behind the curves, on its own right-hand scale", async ({ page }) => {
+  await openPastIntro(page);
+
+  // The area is the backdrop; it must be the first thing in the SVG so every
+  // curve lands on top of it.
+  const first = await page.evaluate(() =>
+    document.querySelector("#focuschart svg > *")?.getAttribute("class"));
+  expect(first).toBe("vol-area");
+
+  const d = await page.locator("#focuschart .vol-area").getAttribute("d");
+  expect(d.length).toBeGreaterThan(50);
+
+  // Round thousands, ascending, on the right of the plot.
+  const labels = await page.locator("#focuschart .vol-lbl").allTextContents();
+  expect(labels.length).toBeGreaterThanOrEqual(3);
+  expect(labels[0]).toBe("0");
+  for (const l of labels.slice(1)) expect(l).toMatch(/^\d+(\.\d)?[kM]$/);
+
+  const plot = await page.locator("#focuschart svg").boundingBox();
+  const label = await page.locator("#focuschart .vol-lbl").first().boundingBox();
+  expect(label.x).toBeGreaterThan(plot.x + plot.width * 0.8);
+
+  // It is a backdrop, not a seventh feature: no chip claims it, and turning
+  // every curve off leaves it drawn.
+  await expect(page.locator('#fclegend .fcchip:text("lines of code")')).toHaveCount(0);
+  await page.locator("#fcNone").click();
+  await expect(curves(page)).toHaveCount(0);
+  await expect(page.locator("#focuschart .vol-area")).toBeVisible();
+});
+
 test("the card removes itself when the dataset cannot be read", async ({ page }) => {
   // A broken chart on the front door is worse than no chart.
   await page.route("**/pulse/timeline.json", (route) => route.fulfill({ status: 500, body: "nope" }));
