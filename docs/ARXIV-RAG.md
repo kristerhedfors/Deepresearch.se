@@ -69,6 +69,12 @@ it is absent, errors, or returns nothing above the relevance floor.
 All of it lives under `data/` (gitignored). The code, the query sets and the
 measurements are committed; the 840 MB of derived data is not.
 
+> **last ingested submission month: `2607`** · vectorCount 772,658 ·
+> 2026-07-29. This line is the delta marker — `data/` is gitignored and the
+> container is ephemeral, so it is the only durable record of where the next
+> incremental run should start. Update it in the same change as any ingest;
+> the **arxiv-ingest** skill is the runbook for both a delta and a rebuild.
+
 ### Coverage
 
 Every arXiv archive, in proportion to what arXiv published: cs is the largest

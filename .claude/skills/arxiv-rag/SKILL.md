@@ -32,6 +32,11 @@ A retrieval database over arXiv since late 2023, embedded with Berget
 manual: **`docs/ARXIV-RAG.md`**. This skill is the working knowledge — what
 bites, and what not to re-derive.
 
+> **Re-running the ingest is the `arxiv-ingest` skill.** Load that one for the
+> procedure — bringing the hosted index up to date after a gap, or rebuilding
+> the band from scratch. This skill is what the pipeline IS; that one is how to
+> run it again.
+
 > **The generalizable ETL discipline is the `bulk-corpus-etl` skill.** Load that
 > one for anything that would apply to a different corpus: enumerating from two
 > independent sources (and why one cannot detect its own gaps), "kept" vs unique
