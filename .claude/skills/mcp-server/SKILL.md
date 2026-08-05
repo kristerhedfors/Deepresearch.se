@@ -513,18 +513,45 @@ answer on any host, and `issuerFor` collapses to the request's own origin
 off the `mcp.` host — which is what lets a preview or a local run drive the
 whole flow without a second deployment.
 
-**CIMD over DCR, and no client storage.** The authorization-server document
-advertises `client_id_metadata_document_supported: true` **and** `"none"` in
-`token_endpoint_auth_methods_supported`. Both fields, or the client silently
-falls back to Dynamic Client Registration and registers a fresh client per
-connection. With CIMD the `client_id` is an HTTPS URL, so there is no client
-table and no `/register` — and no `registration_endpoint` is advertised.
+**CIMD preferred, DCR built, and still no client storage.** The
+authorization-server document advertises
+`client_id_metadata_document_supported: true` **and** `"none"` in
+`token_endpoint_auth_methods_supported`, so a capable client picks CIMD, where
+the `client_id` is an HTTPS URL and there is nothing to store.
+
+It ALSO advertises a `registration_endpoint` now, and that change is the fix
+for the 2026-08-05 ChatGPT failure. Advertising CIMD alone left any client that
+does not implement it with nowhere to obtain a `client_id` at all: the flow
+died at discovery, before consent, and reached the user as the same generic
+"couldn't connect" as everything else. `src/oauth-register.js` is RFC 7591, and
+it keeps the property CIMD was chosen for by issuing a **signed stateless**
+`client_id` (`orc1.`) that carries its own registration — so there is still no
+client table. A registration cannot widen where a code may be sent: every
+`redirect_uris` entry is checked against the same allowlist at registration and
+again at use.
+
+> **The old assertion was the bug's hiding place.** `oauth-metadata.test.js`
+> pinned the ABSENCE of a `registration_endpoint`, and a second test pinned the
+> resource path being DROPPED. Both were faithful to the design and both
+> described a server ChatGPT cannot use. A test that pins an assumption makes
+> it permanent — when a connector fails, suspect the pins before the code.
 
 **The redirect allowlist is DATA** (`REDIRECT_ALLOWLIST` +
 `redirectAllowed`): exact strings for Claude's
-`https://claude.ai/api/mcp/auth_callback` and ChatGPT's two callbacks, plus
-the RFC 8252 port-agnostic loopback for Claude Code. A third client is an
+`https://claude.ai/api/mcp/auth_callback` and ChatGPT's two LEGACY callbacks,
+plus the RFC 8252 port-agnostic loopback for Claude Code. A third client is an
 entry, not a code change.
+
+**ChatGPT's current callback is PER CONNECTOR and cannot be an entry** —
+`https://chatgpt.com/connector/oauth/<callback_id>`, matched by shape in
+`isChatgptConnectorRedirect`. This was the prime cause of the 2026-08-05
+failure: the allowlist held only `…/connector_platform_oauth_redirect`, which
+OpenAI keeps working for apps *already published*, so a connector added today
+sent a URL nothing could match and got a rendered refusal. The pattern is
+bounded like the loopback one is (exact origin, the `/connector/oauth/` prefix,
+exactly one id-shaped segment, no query or fragment, no userinfo) — a pattern
+arm is a bigger promise than a string, so it is worth reading the negative
+tests before widening it.
 
 **For ChatGPT only:** it refuses any server without tools named literally
 `search` and `fetch` (without developer mode, which is web-only and paid-tier,
@@ -547,13 +574,29 @@ reach the MCP server"), so work the handshake in order rather than guessing.
    and a `403`, a redirect to the sign-in page, or HTML instead of JSON all
    end the flow before OAuth starts. Check this first, always.
 2. **`resource` must equal the URL the user typed**, character for character.
-   This is why the advertised endpoint is the bare origin and only the bare
-   origin (`mcpEndpointUrl`); a user who typed `…/mcp` gets a mismatch, and
-   the client says nothing useful about why.
+   Claude is handed the bare origin (`mcpEndpointUrl`) and ChatGPT's form is
+   told to type `…/mcp` (`chatgptEndpointUrl`), so BOTH spellings are real and
+   both are served: the origin document at `/.well-known/oauth-protected-resource`
+   and the RFC 9728 §3.1 path-inserted one at `…/oauth-protected-resource/mcp`,
+   each stating the resource it belongs to. The `401`'s pointer picks whichever
+   matches the URL the request arrived on. Before 2026-08-05 only the origin
+   document existed, so a ChatGPT user who followed OpenAI's own instructions
+   got a mismatch and the client said nothing useful about why.
 3. **`authorization_servers[0]` is the only entry read** — both clients take
    the first and never fall back. If it points somewhere that does not serve
    the RFC 8414 document, the flow dies there.
-4. **A failure at the *last* click is ours, not the client's.** If the flow
+4. **A connector that sends the user to sign in and never comes back.** An
+   authorization request needs a signed-in account, and until 2026-08-05 an
+   unauthenticated arrival got the site's generic sign-in card while the Google
+   callback hard-redirected to `/rver` — so the request, its PKCE challenge and
+   the client's `state` were discarded and the popup waited forever. The tell is
+   that it works for whoever is already signed in and fails for everyone else,
+   which is precisely how it survived the first live run. `/oauth/authorize` now
+   redirects into `/auth/google?next=…` and `src/google.js` resumes it; the log
+   line is `login.resume`, and its absence during a failed connection means the
+   return path regressed.
+
+5. **A failure at the *last* click is ours, not the client's.** If the flow
    reaches the consent screen and **Connect** answers "This form was submitted
    from another site", read `docs/MCP-CONNECTOR.md` §4b before anything else:
    the consent page was served `Referrer-Policy: no-referrer`, which makes a
@@ -566,7 +609,7 @@ reach the MCP server"), so work the handshake in order rather than guessing.
    it: **a security response header can disable the endpoint it protects**, and
    a unit suite that builds its own requests never notices, because every test
    here set `Origin` by hand. Drive the real form in a browser.
-5. **A refused `redirect_uri` is LOGGED, deliberately.** An exact-match
+6. **A refused `redirect_uri` is LOGGED, deliberately.** An exact-match
    failure is the commonest reported ChatGPT connector problem and it is
    invisible from the outside, so the refused string goes to Workers Logs as
    **`oauth.redirect_refused`** (with `client_id`) — `wrangler tail | grep
@@ -579,12 +622,12 @@ reach the MCP server"), so work the handshake in order rather than guessing.
    client). A refused redirect renders a page and never a `Location`, on
    purpose: an unvalidated redirect target is what an open redirector is made
    of.
-6. **`invalid_grant` on refresh is correct behaviour, not a bug**, if the
+7. **`invalid_grant` on refresh is correct behaviour, not a bug**, if the
    refresh token was reused: rotation kills the old `jti` in the same call
    that mints the new one. What would be a bug is any *other* error code
    there — clients branch on `error`, and only `invalid_grant` makes a client
    re-authorize instead of retrying a dead token forever.
-7. **Latency ceilings are real**: 10 s for discovery, registration and the
+8. **Latency ceilings are real**: 10 s for discovery, registration and the
    initial token exchange, 30 s for a refresh. Past that the flow fails even
    if the request eventually completes, which reads as an intermittent
    connector.

@@ -6,9 +6,39 @@ import { readFileSync } from "node:fs";
 import { join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { isPublicAsset, buildAssetRequest, serveAsset } from "./assets.js";
+import { isPublicAsset, buildAssetRequest, rootIconAlias, serveAsset } from "./assets.js";
 
 const u = (path) => new URL("https://deepresearch.se" + path);
+
+describe("root-level icon probes", () => {
+  test("the conventional spellings are public and map to a shipped asset", () => {
+    // The reported "letter on a coloured background" is what a client draws
+    // when it can find no icon. These paths are not files, and with
+    // run_worker_first the identity gate answered each one with an HTML 401 —
+    // so a client probing /apple-touch-icon.png (the standard fallback when no
+    // <link> declares one) got an error body and fell back to a generated tile.
+    for (const path of [
+      "/apple-touch-icon.png",
+      "/apple-touch-icon-precomposed.png",
+      "/favicon.png",
+      "/icon.png",
+      "/logo.png",
+    ]) {
+      assert.equal(isPublicAsset(u(path), "GET"), true, `${path} should be public`);
+      assert.ok(rootIconAlias(path)?.startsWith("/icons/"), `${path} should alias into /icons/`);
+    }
+  });
+
+  test("only the listed spellings alias — this is not an open rewrite", () => {
+    assert.equal(rootIconAlias("/icons/icon-192.png"), null);
+    assert.equal(rootIconAlias("/app.css"), null);
+    assert.equal(rootIconAlias("/"), null);
+    // Inherited Object properties are not aliases, so a crafted path cannot
+    // reach one.
+    assert.equal(rootIconAlias("constructor"), null);
+    assert.equal(rootIconAlias("__proto__"), null);
+  });
+});
 
 describe("isPublicAsset", () => {
   test("only GET/HEAD are ever public", () => {

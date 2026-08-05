@@ -71,6 +71,7 @@
 
 import { htmlResponse } from "./http.js";
 import { DEFAULT_SCOPE, OAUTH_SCOPES, redirectAllowed } from "./oauth-metadata.js";
+import { looksRegistered, resolveRegisteredClient } from "./oauth-register.js";
 import { b64url, safeEqual, sign, verifiedClaims } from "./token-crypto.js";
 
 /** @typedef {import('./types.js').Env} Env */
@@ -168,20 +169,28 @@ export function parseAuthorizeParams(params) {
 
   const clientId = (params.get("client_id") || "").trim();
   if (!clientId) return bounce("invalid_request", "client_id is required.");
-  // CIMD: the client_id IS the document's URL, so anything that is not an
-  // https URL cannot be one. http is refused rather than upgraded — a metadata
-  // document fetched over plaintext states nothing.
-  let clientUrl;
-  try {
-    clientUrl = new URL(clientId);
-  } catch {
-    clientUrl = null;
-  }
-  if (!clientUrl || clientUrl.protocol !== "https:") {
-    return bounce(
-      "invalid_request",
-      "client_id must be the https URL of a Client ID Metadata Document (this server does not offer dynamic registration).",
-    );
+  // TWO SHAPES ARE VALID, and the prefix tells them apart before anything is
+  // fetched or verified:
+  //   - a DCR registration issued by src/oauth-register.js (`orc1.…`), whose
+  //     signature is checked in the GET handler — this parse is synchronous and
+  //     verification is not;
+  //   - a CIMD client_id, which IS the metadata document's URL, so anything
+  //     that is not an https URL cannot be one. http is refused rather than
+  //     upgraded: a metadata document fetched over plaintext states nothing.
+  if (!looksRegistered(clientId)) {
+    let clientUrl;
+    try {
+      clientUrl = new URL(clientId);
+    } catch {
+      clientUrl = null;
+    }
+    if (!clientUrl || clientUrl.protocol !== "https:") {
+      return bounce(
+        "invalid_request",
+        "client_id must be the https URL of a Client ID Metadata Document, or an identifier issued by this server's " +
+          "dynamic registration endpoint (/oauth/register).",
+      );
+    }
   }
 
   const codeChallenge = (params.get("code_challenge") || "").trim();
@@ -533,7 +542,39 @@ export async function handleAuthorizeGet(request, env, url, log, identity) {
     );
   }
 
-  const meta = await fetchClientMetadata(req.clientId);
+  // A DYNAMICALLY REGISTERED CLIENT carries its own metadata in its identifier,
+  // so there is nothing to fetch: the signature is the check, and the redirect
+  // URIs it registered play exactly the role a CIMD document's do below. A
+  // `orc1.` that does not verify is a hard refusal — it is either forged or
+  // signed under a rotated key, and neither is something to fall through to a
+  // network fetch of a string that is not a URL.
+  let registered = null;
+  if (looksRegistered(req.clientId)) {
+    registered = await resolveRegisteredClient(env, req.clientId);
+    if (!registered) {
+      log.warn("oauth.client_unverified", { client_id: req.clientId.slice(0, 24) });
+      return page(
+        errorPage(
+          "invalid_client",
+          "That client_id was not issued by this server, or is no longer valid. Remove the connector and add it again " +
+            "so it registers afresh.",
+        ),
+        400,
+      );
+    }
+  }
+
+  // A registration that named itself gets that name on the consent screen; one
+  // that did not falls back to its callback's hostname, which is the same
+  // honest answer clientDisplayName gives a CIMD client (and is what stops a
+  // 200-character signed identifier being rendered as the client's "name").
+  const meta = registered
+    ? {
+        fetched: true,
+        name: registered.name || redirectHost(req.redirectUri),
+        redirectUris: registered.redirectUris,
+      }
+    : await fetchClientMetadata(req.clientId);
 
   // The document is allowed to NARROW, never to widen — and when it answered
   // this question and the answer is no, that is a refusal we render rather

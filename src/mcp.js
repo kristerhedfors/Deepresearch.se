@@ -76,7 +76,35 @@ import { defaultMcpConfig, filterMcpTools, parseMcpConfig, resolveResearchArgs, 
 // MCP protocol revision we implement. `initialize` reports this back so the
 // client can confirm compatibility.
 export const PROTOCOL_VERSION = "2025-06-18";
-export const SERVER_INFO = { name: "deepresearch.se", version: "1.0.0" };
+
+// WHY serverInfo CARRIES ICONS. A client that is handed no icon draws one, and
+// what it draws is the first letter of `name` on a colour hashed from it — the
+// reported "D on a green background". Nothing about that is a broken asset:
+// every icon this site ships serves 200, and the connector had simply never
+// been told any of them existed.
+//
+// `icons` and `websiteUrl` are the SEP-973 fields, formalized in protocol
+// revision 2025-11-25. We still report `2025-06-18` (bumping that is a much
+// larger change — see the stateless-revision section of the mcp-server skill),
+// and that is fine here: an unknown field in `serverInfo` is ignored by a
+// client that predates it, so this costs nothing on the old revision and works
+// the moment a client reads it. Absolute URLs on the apex, not the `mcp.` host
+// — the icons live with the site, and a client fetches them unauthenticated
+// (which is what the root-icon allowlist in src/assets.js now guarantees).
+//
+// Some clients ignore it regardless and keep their own placeholder; ChatGPT's
+// connector dialog also has an icon field a person can paste a URL into. This
+// is the half we control.
+export const SERVER_INFO = {
+  name: "deepresearch.se",
+  title: "DeepResearch.se",
+  version: "1.0.0",
+  websiteUrl: "https://deepresearch.se",
+  icons: [
+    { src: "https://deepresearch.se/icons/icon-192.png", mimeType: "image/png", sizes: ["192x192"] },
+    { src: "https://deepresearch.se/icons/icon-512.png", mimeType: "image/png", sizes: ["512x512"] },
+  ],
+};
 
 // JSON-RPC 2.0 standard error codes (subset we use).
 export const RPC_PARSE_ERROR = -32700;

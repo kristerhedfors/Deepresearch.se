@@ -20,6 +20,44 @@
 // markdown renderer, and the vendored libs (all public on GitHub anyway).
 // The app itself and every /api/* stay gated.
 /**
+ * The root-level icon paths a client GUESSES, mapped to the assets we actually
+ * ship.
+ *
+ * WHY THIS EXISTS. A client that wants an icon and finds no `<link rel>` for it
+ * probes the conventional root spellings — `/apple-touch-icon.png` above all
+ * (iOS has done this since before the link tag existed, and connector and
+ * link-preview scrapers copied the behaviour). None of those paths is a file
+ * here, and `run_worker_first` puts the identity gate in front of the asset
+ * binding, so each one answered **401 with an HTML body**. The client discards
+ * that and falls back to a generated placeholder — which is exactly the
+ * "generic letter" the allowlist comment above warns about, reached by the one
+ * route the allowlist did not cover.
+ *
+ * Aliases rather than copies: one set of bytes stays authoritative, and adding
+ * a spelling is a line here rather than another PNG in the tree.
+ * @type {Record<string, string>}
+ */
+export const ROOT_ICON_ALIASES = {
+  "/apple-touch-icon.png": "/icons/apple-touch-icon.png",
+  "/apple-touch-icon-precomposed.png": "/icons/apple-touch-icon.png",
+  "/favicon.png": "/icons/icon-192.png",
+  "/icon.png": "/icons/icon-192.png",
+  "/logo.png": "/icons/icon-512.png",
+};
+
+/**
+ * The asset a root-level icon probe should be served, or null if the path is
+ * not one of them.
+ * @param {string} pathname
+ * @returns {string | null}
+ */
+export function rootIconAlias(pathname) {
+  return Object.prototype.hasOwnProperty.call(ROOT_ICON_ALIASES, pathname)
+    ? ROOT_ICON_ALIASES[pathname]
+    : null;
+}
+
+/**
  * @param {URL} url
  * @param {string} method
  * @returns {boolean}
@@ -30,6 +68,11 @@ export function isPublicAsset(url, method) {
     url.pathname === "/favicon.ico" ||
     url.pathname === "/manifest.webmanifest" ||
     url.pathname.startsWith("/icons/") ||
+    // The conventional ROOT-LEVEL icon spellings a client probes when no
+    // <link> tells it otherwise. See ROOT_ICON_ALIASES: without these the
+    // comment above describes this file's own behaviour — the probe hit the
+    // identity gate, got an HTML 401, and the client drew a letter tile.
+    rootIconAlias(url.pathname) !== null ||
     url.pathname.startsWith("/welcome/") ||
     url.pathname.startsWith("/help/") ||
     url.pathname.startsWith("/build/") ||

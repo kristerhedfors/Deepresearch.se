@@ -16,6 +16,10 @@
 // redirect allowlist each — which is why this is a LIST and not a constant,
 // and why adding a third client is data rather than code.
 //
+// THE FALLBACK IS NOW BUILT (src/oauth-register.js). It was described here from
+// the start and never implemented, which is what made this server unusable from
+// any client that does not speak CIMD — see authorizationServerMetadata below.
+//
 // THE SPLIT OF HOSTS is deliberate and is the thing to preserve:
 //   - the RESOURCE server is the MCP host (mcp.deepresearch.se) — it serves
 //     the protected-resource metadata and the 401 that points at it;
@@ -53,6 +57,11 @@ export const DEFAULT_SCOPE = "research offline_access";
  * OpenAI's own reference — kept because an exact-match failure is the
  * commonest reported ChatGPT connector problem and the cost of carrying a
  * spare entry is nothing.
+ *
+ * BOTH ChatGPT ENTRIES ARE LEGACY. OpenAI now issues a per-connector callback
+ * that no exact string can cover — see `isChatgptConnectorRedirect`, which is
+ * where a ChatGPT connector added today is actually matched. These stay for
+ * connectors published before the change.
  * @type {string[]}
  */
 export const REDIRECT_ALLOWLIST = [
@@ -78,7 +87,49 @@ export const REDIRECT_ALLOWLIST = [
 export function redirectAllowed(uri) {
   if (typeof uri !== "string" || !uri) return false;
   if (REDIRECT_ALLOWLIST.includes(uri)) return true;
+  if (isChatgptConnectorRedirect(uri)) return true;
   return isLoopbackRedirect(uri);
+}
+
+/**
+ * ChatGPT's CURRENT callback, which is PER CONNECTOR and so cannot be an exact
+ * string: `https://chatgpt.com/connector/oauth/<callback_id>`.
+ *
+ * This is what the reported failure was. The allowlist held only
+ * `…/connector_platform_oauth_redirect`, which OpenAI's own documentation now
+ * describes as the LEGACY form kept working for apps that are already
+ * published. A connector added today is issued a fresh `callback_id` and sends
+ * a URL no entry could match, so `redirectAllowed` refused it, the
+ * authorization endpoint rendered a refusal instead of redirecting, and the
+ * user saw an unexplained "couldn't connect". The legacy entries stay — an
+ * already-published connector keeps using them.
+ *
+ * Matched by SHAPE, and narrowly. A pattern arm is a bigger promise than an
+ * exact string, so it is bounded the same way `isLoopbackRedirect` is: the
+ * origin must be exactly `https://chatgpt.com` (parsed, so no
+ * `chatgpt.com.evil.test` and no userinfo trick), the path must be
+ * `/connector/oauth/` plus EXACTLY ONE more segment, that segment is restricted
+ * to an id-shaped charset, and any query or fragment disqualifies it. `URL`
+ * normalizes `..` before we look, so a traversal cannot smuggle a second
+ * segment past the count.
+ * @param {string} uri
+ * @returns {boolean}
+ */
+export function isChatgptConnectorRedirect(uri) {
+  let url;
+  try {
+    url = new URL(uri);
+  } catch {
+    return false;
+  }
+  if (url.origin !== "https://chatgpt.com") return false;
+  if (url.username || url.password) return false;
+  if (url.search || url.hash) return false;
+  const rest = url.pathname.startsWith("/connector/oauth/")
+    ? url.pathname.slice("/connector/oauth/".length)
+    : null;
+  if (!rest) return false;
+  return /^[A-Za-z0-9_-]{1,128}$/.test(rest);
 }
 
 /**
@@ -133,15 +184,25 @@ export function protectedResourceMetadata(resource, issuer) {
  * RFC 8414 authorization-server metadata — served BY THE APEX at
  * /.well-known/oauth-authorization-server.
  *
- * TWO FIELDS DECIDE HOW A CLIENT REGISTERS, and both must be present or the
- * client silently falls back to Dynamic Client Registration:
+ * TWO FIELDS MAKE A CLIENT PREFER CIMD, and both must be present or it falls
+ * back to Dynamic Client Registration:
  *   - `client_id_metadata_document_supported: true`
  *   - `"none"` in `token_endpoint_auth_methods_supported`
- * CIMD is what we want: the `client_id` is an HTTPS URL we fetch and
- * validate, so there is no client table and nothing accumulates per
- * connection. DCR's documented failure mode is the opposite — a fresh
- * registered client on every connection — which is why no
- * `registration_endpoint` is advertised here.
+ * CIMD is still what we want: the `client_id` is an HTTPS URL we fetch and
+ * validate, so there is no client table.
+ *
+ * BOTH ARE ADVERTISED NOW, and the reason is a reported failure. This document
+ * offered CIMD *only* — no `registration_endpoint` — on the reading that both
+ * hosted clients fall back to it. A client that does not implement CIMD
+ * therefore had nowhere to register and could not obtain a `client_id` at all;
+ * the flow died at discovery, before any consent screen, and reached the user
+ * as the same generic "couldn't connect" every other cause produces. That was
+ * the ChatGPT connector failure.
+ *
+ * The objection to DCR recorded here — a client row per connection — is
+ * answered by src/oauth-register.js issuing a SIGNED STATELESS `client_id`
+ * instead of storing one, so nothing accumulates and the property CIMD was
+ * chosen for survives. A CIMD-capable client still never calls `/oauth/register`.
  *
  * `code_challenge_methods_supported` is required to advertise S256 by the MCP
  * authorization spec so a client can verify support before starting.
@@ -152,6 +213,7 @@ export function authorizationServerMetadata(issuer) {
     issuer,
     authorization_endpoint: `${issuer}/oauth/authorize`,
     token_endpoint: `${issuer}/oauth/token`,
+    registration_endpoint: `${issuer}/oauth/register`,
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code", "refresh_token"],
     code_challenge_methods_supported: ["S256"],
@@ -198,7 +260,34 @@ export function wwwAuthenticateValue(resourceMetadataUrl, scope) {
  * @returns {string}
  */
 export function resourceMetadataUrl(resource) {
-  return `${originOf(resource)}/.well-known/oauth-protected-resource`;
+  return `${originOf(resource)}/.well-known/oauth-protected-resource${pathOf(resource)}`;
+}
+
+/**
+ * The resource's path, INSERTED after the well-known segment rather than
+ * appended to the resource — RFC 9728 §3.1's form, and the fix for the second
+ * URL a user can legitimately type.
+ *
+ * OpenAI's setup instructions tell people to enter the endpoint WITH its `/mcp`
+ * path (which is why src/mcp-api.js hands ChatGPT that spelling), while
+ * Claude and everything else get the bare origin. Both are real, and `resource`
+ * has to match the one that was typed character for character. So the two
+ * spellings are two documents: the origin form keeps its old URL exactly, and
+ * a resource carrying a path gets `…/oauth-protected-resource/mcp`.
+ *
+ * The empty string for a bare origin is what keeps the common case byte-for-byte
+ * unchanged. A trailing slash is not a path worth inserting either — it would
+ * produce a second URL for the same resource.
+ * @param {string} u
+ * @returns {string}
+ */
+function pathOf(u) {
+  try {
+    const p = new URL(u).pathname;
+    return p === "/" ? "" : p;
+  } catch {
+    return "";
+  }
 }
 
 /**
