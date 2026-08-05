@@ -321,6 +321,24 @@ function bare(/** @type {unknown} */ value) {
 }
 
 /**
+ * The words that describe ASKING for someone's work, in both languages — never
+ * a subject, so never a topic term. Built from the same B/E lookarounds as the
+ * gates above so the Swedish forms with å/ä/ö actually match (invariant 6).
+ */
+const AUTHORSHIP_WORDS = new RegExp(
+  `${B}(?:` +
+    // EN
+    "papers?|publications?|works?|articles?|studies|research|preprints?|output|" +
+    "by|from|of|what|has|did|everything|all|the|a|an|about|on|" +
+    // SV — the same breadth, definite forms included
+    "artiklar(?:na)?|publikationer(?:na)?|verk(?:en)?|arbeten(?:a)?|forskning(?:en)?|" +
+    "studier(?:na)?|avhandlingar(?:na)?|bibliografi(?:n|er)?|livsverk(?:et)?|" +
+    "f(?:ö|o)rfattarskap(?:et)?|av|fr(?:å|a)n|om|vad|har|allt|alla|skrivit|publicerat" +
+    `)${E}`,
+  "giu",
+);
+
+/**
  * The topic terms that disambiguate a shared surname, as an OR group. Kept
  * short deliberately: every AND term costs recall, and the point is to separate
  * two different people, not to narrow to one paper.
@@ -333,10 +351,19 @@ export function topicTerms(queries, max = 6) {
   const seen = new Set();
   for (const q of queries) {
     // Drop the authorship phrasing itself — "papers by" is not a subject.
-    const stripped = bare(q).replace(
-      /\b(?:papers?|publications?|works?|articles?|studies|research|by|from|of|what|has|did|everything|all|the|a|an)\b/giu,
-      " ",
-    );
+    //
+    // BOTH languages, and the omission was not cosmetic: Europe PMC is
+    // AND-by-default, so every survivor here is ANDed onto the author query.
+    // An English-only list left "artiklar" / "publikationer" / "forskning" in
+    // as topic terms, which asks Europe PMC for the palaeogeneticist's papers
+    // that also contain the Swedish word for "articles" — near-zero recall, and
+    // exactly the empty answer this whole change exists to stop, reappearing
+    // for the language the reporter actually wrote in.
+    //
+    // `\b` would be wrong the moment a Swedish alternative touches å/ä/ö (JS
+    // defines it over [A-Za-z0-9_]), so this uses the file's B/E lookarounds
+    // like every other bilingual gate here.
+    const stripped = bare(q).replace(AUTHORSHIP_WORDS, " ");
     for (const word of stripped.split(/\s+/)) {
       const w = word.trim();
       if (w.length < 4) continue;

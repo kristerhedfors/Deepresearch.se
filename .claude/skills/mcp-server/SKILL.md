@@ -688,6 +688,30 @@ of this is pure protocol logic, so it lives at the TOP of the file with
 richer inbound protocol is still the *client's* model choosing to call us —
 invariant 1's ban on function calling inside the pipeline is untouched.
 
+## What a call costs (before widening the audience)
+
+`docs/MCP-COST.md` prices all 11 tools against production (2026-08-05).
+The three figures worth carrying: `deep_research` is €0.051 at the median
+of a month of real runs and **€0.62 at its analytic ceiling** (34 searches
+× the 12/7 deep-tier multiplier, plus one synthesis on the priciest model);
+a maximum-budget call actually measured **€0.2355**, because the gap check
+saturated at round 2 and spent 9 of its 34 permitted searches. The
+literature family costs €0.0021 (1 angle) to €0.0124 (6 angles) — **all of
+it the reranker**, 50 candidates × 900 chars per angle-corpus leg, measured
+at 10,198 tokens per leg at €0.10/M. The `sdk_*` four and
+`literature_fetch` / `literature_corpora` / `fetch` cost nothing.
+
+Two metering gaps decide whether the surface can be published, and both are
+in the register as P-3: **`src/literature-run.js` records no usage** (the
+searching tools are gated on the quota but never increment it, so they
+cannot exhaust it — unbounded per key), and **`/mcp` takes no
+`reserveInflight`**, so the CAP=5 concurrency bound that `/api/chat` gets
+does not apply here. `deep_research` itself meters correctly; a public
+account is capped at ~€111/month, which is `budget_eur` €8 plus 12,000
+searches at the deep tier — note `quotaExceeded` caps Berget cost in EUR
+but Exa only by COUNT, so the real Exa ceiling is 71% above what the count
+nominally prices.
+
 ## Related
 
 - **pipeline-architecture** — what `runPipeline` actually does (the phases

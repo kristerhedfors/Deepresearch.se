@@ -226,6 +226,36 @@ describe("topicTerms", () => {
   test("no queries is no terms", () => {
     assert.deepEqual(topicTerms([]), []);
   });
+
+  // Invariant 6, and NOT cosmetic here. Europe PMC is AND-by-default, so every
+  // term this function keeps is ANDed onto the author query. An English-only
+  // strip list left "artiklar" / "publikationer" / "forskning" standing, which
+  // asks Europe PMC for the researcher's papers that ALSO contain the Swedish
+  // word for "articles" — near-zero recall, which is the empty answer this
+  // whole change exists to stop, reappearing for the language the original
+  // report was written in.
+  test("Swedish authorship phrasing is dropped at the same breadth as English", () => {
+    const drops = (q) => topicTerms([q]).map((t) => t.toLowerCase());
+    assert.deepEqual(drops("artiklar av Love Dalén om mammutgenomik"), ["love", "dalén", "mammutgenomik"]);
+    assert.deepEqual(drops("publikationer från Love Dalén"), ["love", "dalén"]);
+    assert.deepEqual(drops("allt Love Dalén har publicerat om mammutar"), ["love", "dalén", "mammutar"]);
+    for (const word of ["artiklar", "artiklarna", "publikationer", "forskning", "forskningen", "studier", "avhandlingar", "livsverket", "författarskap"]) {
+      assert.ok(
+        !drops(`${word} av Love Dalén om mammutar`).includes(word),
+        `"${word}" survived as a topic term and would be ANDed onto the author query`,
+      );
+    }
+    // The English half must not have regressed while the Swedish half was added.
+    assert.deepEqual(drops("papers by Love Dalén about mammoth genomics"), ["love", "dalén", "mammoth", "genomics"]);
+  });
+
+  // The å/ä/ö boundary trap that src/swedish-boundary.test.js guards repo-wide:
+  // a `\b`-built list silently fails to match anything touching those letters,
+  // with the English half still working, so the gate looks fine in review.
+  test("the Swedish forms with å/ä/ö actually match", () => {
+    assert.ok(!topicTerms(["från Love Dalén"]).some((t) => /^från$/i.test(t)));
+    assert.ok(!topicTerms(["författarskap av Love Dalén"]).some((t) => /^författarskap$/i.test(t)));
+  });
 });
 
 describe("europepmcAuthorQuery", () => {
