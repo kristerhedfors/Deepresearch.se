@@ -603,3 +603,69 @@ clothes. The generalize-and-keep-the-predecessor shape is worth recognizing on
 sight: it produces enormous, tempting duplicate groups whose two halves have
 already diverged in the one place that matters. The live question there is
 whether the predecessor should be DELETED, and that is the owner's.
+
+## 16 — 2026-08-05, the token-envelope pass
+
+Diff from `4c7a7daf` (pass 15): ~11,400 added lines in `src/`, almost all of it
+one new subsystem — the OAuth connector for the MCP surface (`oauth-metadata`,
+`oauth-register`, `oauth-authorize`, `oauth-store`, `oauth-token`, F-20) — plus
+the literature family's author leg and `mcp.js`'s tool dispatch.
+**Two cuts and one guard.**
+
+`dup-scan` returned 20 groups and every single one was already in
+`STANDING-DECLINES.md` — fully converged, as pass 12 first saw. Both cuts came
+from `line-scan`, and the more interesting of the two came from reading the new
+code rather than from either scan.
+
+- **The token-envelope mint half → `src/token-crypto.js` `sealedToken`**: the
+  module has shared the VERIFY half since it was created (`verifiedClaims`),
+  and the mint half — encode the claims, sign them under the family's
+  namespace, join `<prefix>.<payload>.<tag>` — was hand-copied into seven
+  families. Six moved: `websearch-key`, `proxy-grant`, `mcp-key`,
+  `oauth-store`, `oauth-register`, `oauth-authorize`. Every one already
+  imported `b64url` and `sign` from the sink, so the cut adds no graph edge and
+  three of them shed an import instead.
+- **The five-character HTML escape → `src/http.js` `escapeHtml`**: `login.js`
+  and `oauth-authorize.js` are the only two server-rendered page modules in the
+  tree (`grep -l "<!doctype html>" src/*.js` returns exactly those), and both
+  carried the same `HTML_ESCAPES` map and the same body. `http.js` is a
+  zero-import leaf that already owns `htmlResponse`, the wrapper for exactly
+  the documents these two produce.
+- **The guard (not a cut): the OAuth DDL.** `oauth-store.js` exports
+  `OAUTH_SCHEMA_SQL` and `db.js` carries the same six statements pasted, which
+  `docs/MCP-CONNECTOR.md` states as the design — the store owns its schema, and
+  `db.js` cannot import it back without a cycle. So the copy stays, and
+  `oauth-store.test.js` now compares the two statement sets in both directions.
+
+**How this pass read the fence, and why that is the transferable part.**
+`token-crypto.js` opens with a block headed THE FENCE, and pass after pass has
+declined the token families' mint/verify on the strength of it. Read literally
+it says the opposite of what it is usually cited for: *"What is shared stops at
+the cryptography … Do not merge the claim validation."* The envelope is
+cryptography; the claims are not. The already-shared `verifiedClaims` is the
+proof — it takes the namespace as a parameter and hands back an unvalidated
+object, which is precisely the arrangement `sealedToken` now mirrors. **A fence
+comment names a boundary, not a file.** Before treating one as a blanket
+decline, check which side of the line the candidate is actually on; the
+standing-decline row here (`mint`/`verify` pairs) was right about the pairs and
+silent about the envelope inside them. The fence was widened in the same commit
+to say so in both directions, so the next pass reads the amended version.
+
+**The seventh copy stayed.** `pool-token.js` was not moved: its
+`POOL_TOKEN_PREFIX` is `"pt1."` with the separator inside the exported
+constant, so its composition is a different string. One site out of seven
+declining on a constant's shape is the `finalePhaseBucket` trap in miniature,
+and taking six of seven is the right answer — an incomplete cut that preserves
+behavior beats a complete one that argues about it.
+
+**Method lesson — when a copy is FORCED, pin it instead of arguing about it.**
+The OAuth DDL fails the Home gate outright (the reverse import is a cycle) and
+would in any other pass be one more decline row. But the reason it fails is
+also the reason it is dangerous: nothing anywhere reconciled the two copies,
+and the divergence is invisible in both directions — `db.js` is what creates
+the tables, so a column added to the store's copy is inert, and one added to
+`db.js`'s leaves the store's own documented schema wrong. Neither breaks a
+test, a request, or a deploy. **A decline is the end of the refactoring
+question, not the end of the drift question.** Where a gate forces a copy to
+stay, the pass's output is a test that fails when they disagree — verified here
+by perturbing one index in `db.js` and watching it go red before restoring it.
