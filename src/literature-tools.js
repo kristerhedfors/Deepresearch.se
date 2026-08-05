@@ -98,10 +98,15 @@ export const CORPUS_FACTS = {
     covers:
       "Preprints in physics, mathematics, computer science, quantitative biology, " +
       "statistics, economics and quantitative finance.",
+    // KEEP THIS IN STEP WITH THE INDEX. It is quoted on every miss, so a stale
+    // upper bound tells an agent a paper is out of window when it is sitting in
+    // the index — the opposite of the honest-miss this field exists for. The
+    // 2026-08-05 delta (docs/ARXIV-RAG.md §1.1) carried it to 2608, and the
+    // arxiv-ingest skill's checklist ends here for that reason.
     window:
-      "Submission months 2310–2607 (October 2023 onwards). Anything submitted before " +
+      "Submission months 2310–2608 (October 2023 onwards). Anything submitted before " +
       "October 2023 is NOT in this index — that is a window, not a retrieval failure.",
-    vectors_at_fill: 772658,
+    vectors_at_fill: 784744,
     id_format: "arXiv id, e.g. 2401.12345 (accepted with or without an `arxiv:` prefix)",
     fields: ["title", "abstract", "authors", "primary_category", "submitted", "revised"],
     live_fallback: "the arXiv API (keyword AND over abstracts), used by the research pipeline",
@@ -117,7 +122,8 @@ export const CORPUS_FACTS = {
       "'the last six months of PubMed'. It contains 2026 publications heavily, earlier " +
       "years thinly (a 1990s paper revised in 2026 is in; an untouched 2015 paper is not), " +
       "and is roughly 5.6% of abstract-bearing PubMed. Treat a miss as likely-out-of-window.",
-    vectors_at_fill: 1638756,
+    // As above: refreshed by the 2026-08-05 delta (docs/PUBMED-RAG.md §7.2).
+    vectors_at_fill: 1664586,
     id_format: "PMID, e.g. 41610285 (accepted with or without a `pmid:` prefix)",
     fields: ["title", "abstract", "authors", "journal", "date"],
     live_fallback: "Europe PMC (keyword AND, current to the hour), used by the research pipeline",

@@ -32,6 +32,12 @@ Before either, read `docs/PUBMED-RAG.md` §5 (what the corpus costs per month)
 and §7 (what the first fill measured). This skill is the *procedure*; that
 document is the *evidence*.
 
+The sibling runbook for the other hosted corpus is **arxiv-ingest**. Same
+shape, one structural difference worth knowing before you assume they
+transfer: a PubMed delta starts at an archive FILE NUMBER, an arXiv delta at a
+DATESTAMP WINDOW — so arXiv has a whole class of silent under-harvest that
+cannot happen here.
+
 ---
 
 ## 0. Which mode you are in

@@ -30,6 +30,7 @@ import {
   runOpenAiFetch,
   runOpenAiSearch,
 } from "./literature-run.js";
+import { CORPUS_FACTS } from "./literature-tools.js";
 
 const log = { info() {}, warn() {}, error() {}, debug() {} };
 
@@ -589,7 +590,29 @@ test("a describe that fails still returns the committed facts", async () => {
   assert.equal(arxiv.vectors_live, null);
   assert.ok(arxiv.describe_error);
   // The fallback figure is still there, so the answer is useful either way.
-  assert.equal(arxiv.vectors_at_last_fill, 772658);
+  // Asserted against CORPUS_FACTS rather than a literal on purpose: a corpus
+  // delta moves that number, and a hard-coded copy here would just have to be
+  // edited alongside it — which is the drift, not a guard against it.
+  assert.equal(arxiv.vectors_at_last_fill, CORPUS_FACTS.arxiv.vectors_at_fill);
+});
+
+// The committed facts are quoted on every miss and every describe, so a corpus
+// that grew without them growing tells an agent a paper is out of window when
+// it is sitting in the index. Nothing can check them against the LIVE index
+// from a unit test — that is what `vectors_live` is for — but the two halves
+// that must not disagree with each other can be pinned: the upper bound the
+// arXiv window advertises, and the month the ingest actually reached.
+test("the arXiv window's upper bound matches the recorded fill", () => {
+  const { window: win, vectors_at_fill } = CORPUS_FACTS.arxiv;
+  const bound = win.match(/months\s+(\d{4})[–-](\d{4})/);
+  assert.ok(bound, `the arXiv window no longer states a month range: ${win}`);
+  const [, from, to] = bound;
+  assert.equal(from, "2310", "the corpus start is a fixed historical fact");
+  assert.ok(Number(to) > Number(from), "the window's upper bound must be after its start");
+  // Not a magic number: it is the figure docs/ARXIV-RAG.md records for the
+  // fill that produced this window, and the pair moves together or not at all.
+  assert.equal(vectors_at_fill, 784744, "update BOTH the window and the fill after an ingest");
+  assert.equal(to, "2608", "the 2026-08-05 delta carried the window to 2608");
 });
 
 // ---------------------------------------------------------------------------
