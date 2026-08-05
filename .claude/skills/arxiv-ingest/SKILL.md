@@ -85,18 +85,20 @@ W=$PWD/node_modules/.bin/wrangler                # never bare npx — see §5
 # --- harvest -------------------------------------------------------------
 # --months sets the DATESTAMP window (always ending today — see §4).
 # --keep-months sets which SUBMISSION months are written out.
-# DELTA: a window that reaches back past the keep band's first day, keeping
-#        only the months at or after the marker.
+# DELTA: exactly the months from the marker to now — see §4 for why one more
+#        "just to be safe" is pure cost.
 # FULL:  --months 34 and no --keep-months.
-node scripts/arxiv-harvest.mjs --months 2 --keep-months 2607-2608 --out data/arxiv-delta
+node scripts/arxiv-harvest.mjs --months 1 --keep-months 2607-2608 --out data/arxiv-delta
 
 # --- what did we get? ----------------------------------------------------
-node scripts/arxiv-corpus.mjs --corpus data/arxiv-delta/raw
+# --dir, and the harvest ROOT. Not --corpus, and not raw/.
+node scripts/arxiv-corpus.mjs --dir data/arxiv-delta
 
 # --- fill ----------------------------------------------------------------
-# Point --corpus at raw/, NOT at the harvester's --out root: the root has no
-# .jsonl shards in it, and the loader used to answer that with
-# "done — 0 vectors" and exit 0. It now throws instead, but only because this
+# --corpus, and raw/. The two scripts disagree about both the flag name and
+# the directory level, so a copy-paste between them fails — arxiv-corpus reads
+# the root, arxiv-vectorize reads raw/. Pointing the loader at the root used to
+# print "done — 0 vectors" and exit 0; it now throws, but only because this
 # happened.
 WRANGLER_BIN=$W node scripts/arxiv-vectorize.mjs \
   --index deepresearch-se-arxiv \
@@ -148,12 +150,24 @@ For a delta the rule reduces to two lines:
 
 - **Never pass `--until` for a catch-up run.** The default (today) is what
   makes the keep filter correct.
-- **Make the datestamp window reach back past the keep band's first day.** A
-  paper submitted on the 3rd of the keep band's first month and never revised
-  has its datestamp on the 3rd; a window that starts on the 20th will not
-  request it. `--months 2 --keep-months <last>-<current>` on the 5th of the
-  month gives a comfortable margin at a cost of a few thousand re-embedded
-  abstracts.
+- **Size `--months` so the window starts at the keep band's first month —
+  exactly, not earlier.** `planWindow` snaps the window start to the first of
+  its oldest month, so `--months N` on any day of the month covers N-1 whole
+  months plus the current one. For a keep band of `2607-2608` in August,
+  `--months 1` is the right answer.
+
+**A window month before the keep band cannot contribute anything, and that is
+structural, not probabilistic.** A paper's OAI datestamp is never earlier than
+its submission, so no 2607 paper has a June datestamp. Measured 2026-08-05:
+`--months 2` added a 2026-06 shard that read 39,000 records and kept **zero**
+before it was stopped, at three seconds a page against a rate budget shared
+with everything else this project asks of arXiv. "One extra month to be safe"
+is not caution here — it buys nothing and costs the scarcest resource in the
+pipeline.
+
+The margin that *does* matter runs the other way: the keep band must start at
+the last INDEXED month, not the month after it, because that month was itself
+harvested mid-month and its tail is missing.
 
 If you *do* need to repair a historical band, the fix is a SECOND PASS over
 the later datestamps keeping only the band's id-months — that is what
