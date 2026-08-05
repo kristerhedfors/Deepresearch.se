@@ -86,6 +86,20 @@ tap-to-skip, reduced-motion-skipped, watchdog-cleared, entirely fail-soft).
    circulation never change.
 6. **"workspace" stays a reserved slug** in both pub.js and the client
    parser — a publication there would shadow the feature.
+7. **No attachment bytes in a link, and none in the sealed state.** Se/cure
+   HAS file attachments (`public/js/drc-attach-core.js`, 2026-08-05 — do not
+   write "Se/cure has no files"), but a file's original bytes stay in tab
+   memory for one send: they mount into the VM and go to the user's own
+   provider, and they are never written to `drc-store.js` and never put in a
+   payload. `buildWorkspacePayload` enforces the link half structurally by
+   keeping only messages whose `content` is a plain string, so a turn holding
+   an image part is dropped rather than shrunk in; `validateWorkspacePayload`
+   rejects the same shape on open. Note the asymmetry with the sealed state,
+   which DOES accept the multimodal parts array (`validDrcContent`,
+   drc-core.js) — the link is the stricter surface, because DRSW/1 §5.5
+   reserves `materials` and §9 puts the fragment ceiling at tens of KB. If a
+   future revision carries material, it lands as `materials` with a
+   chunked-file convention, not by relaxing the string filter.
 
 ## Verifying changes
 

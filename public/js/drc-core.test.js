@@ -152,6 +152,73 @@ test("deriveDrcTitle uses the first non-empty user line", () => {
   assert.equal(deriveDrcTitle([{ role: "user", content: "x".repeat(200) }]).length, 80);
 });
 
+// A turn with an attachment carries a multimodal PARTS ARRAY, not a string.
+// Pins that the title comes from the text parts: splitting the raw content
+// threw on an array, which would have broken the sidebar entry for the whole
+// conversation. An image-only turn has no text and keeps the fallback.
+test("deriveDrcTitle derives the title from a multimodal turn's text parts", () => {
+  const parts = [
+    { type: "text", text: "\n  What is in this photo?\nmore" },
+    { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } },
+  ];
+  assert.equal(deriveDrcTitle([{ role: "user", content: parts }]), "What is in this photo?");
+  // The data URL never leaks into the title, however long it is.
+  const big = [{ type: "image_url", image_url: { url: "data:image/png;base64," + "A".repeat(500) } }];
+  assert.equal(deriveDrcTitle([{ role: "user", content: big }]), "New chat");
+});
+
+// Attachments make a user turn's content an ARRAY of wire parts. Pins that a
+// sealed state carrying one still opens: before this, ONE multimodal turn
+// anywhere in the project failed validation and the whole project — every
+// conversation, every provider key — refused to reopen.
+test("validateDrcState: a sealed multimodal turn round-trips; malformed parts still reject", async () => {
+  const { blobKey } = await deriveDrcProfile(generateDrcSecret());
+  const state = emptyDrcState();
+  state.conversations.push({
+    id: "c1",
+    title: "Photo",
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "What is in this photo?" },
+          { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } },
+        ],
+      },
+      { role: "assistant", content: "A cat." },
+    ],
+    createdAt: 1,
+    updatedAt: 2,
+  });
+  assert.equal(validateDrcState(state), true);
+  const back = await openDrcState(await sealDrcState(state, blobKey), blobKey);
+  assert.equal(validateDrcState(back), true);
+  assert.deepEqual(back, state);
+
+  // The widening is not "any array": this validator is the gate on untrusted
+  // sealed input (a .drc file, a rewritten localStorage row), so each entry
+  // must be a plain object with a recognised type AND that type's payload.
+  const withContent = (/** @type {any} */ content) => {
+    const s = emptyDrcState();
+    s.conversations.push({ id: "c1", title: "t", messages: [{ role: "user", content }], createdAt: 1, updatedAt: 1 });
+    return validateDrcState(s);
+  };
+  assert.equal(withContent([]), false); // empty — no text, no image
+  assert.equal(withContent(["hi"]), false); // bare strings are not parts
+  assert.equal(withContent([null]), false);
+  assert.equal(withContent([[{ type: "text", text: "x" }]]), false); // nested array
+  assert.equal(withContent([{ text: "x" }]), false); // no type
+  assert.equal(withContent([{ type: "script", text: "x" }]), false); // unrecognised type
+  assert.equal(withContent([{ type: "text" }]), false); // text part without text
+  assert.equal(withContent([{ type: "text", text: 7 }]), false);
+  assert.equal(withContent([{ type: "image_url" }]), false); // image part without a url
+  assert.equal(withContent([{ type: "image_url", image_url: "data:image/png;base64,AA" }]), false);
+  assert.equal(withContent([{ type: "image_url", image_url: { url: 7 } }]), false);
+  assert.equal(withContent(42), false); // and the pre-existing rejections hold
+  assert.equal(withContent(null), false);
+  assert.equal(withContent(undefined), false);
+});
+
 test("v5 onDevice: absent (older blobs) migrates to false, non-boolean rejects", () => {
   const v4 = { ...emptyDrcState(), v: 4 };
   delete v4.onDevice;

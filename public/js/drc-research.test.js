@@ -1117,3 +1117,62 @@ describe("runDrcResearch over the Anthropic wire (mock provider)", () => {
     }
   });
 });
+
+// A turn with an attachment carries a multimodal parts array. Pins that the
+// context line is built from its TEXT parts: string-concatenating the raw
+// content put a literal "[object Object]" into every planning prompt (triage,
+// gap check, validation), and the base64 image bytes must never land in one.
+test("drcContext renders a multimodal turn as text, never [object Object]", () => {
+  const ctx = drcContext([
+    { role: "user", content: "plain string turn" },
+    { role: "assistant", content: "ok" },
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "What is in this photo?" },
+        { type: "image_url", image_url: { url: "data:image/png;base64,SECRETBYTES" } },
+      ],
+    },
+  ]);
+  assert.match(ctx, /USER: What is in this photo\? \[1 image attached\]/);
+  assert.equal(ctx.includes("[object Object]"), false);
+  assert.equal(ctx.includes("SECRETBYTES"), false); // image bytes stay off the planning wire
+  assert.match(ctx, /USER: plain string turn/); // string turns unchanged
+  // An image-only turn still shows the planner that something was attached.
+  const only = drcContext([
+    { role: "user", content: [{ type: "image_url", image_url: { url: "data:image/png;base64,AA" } }] },
+  ]);
+  assert.equal(only, "USER: [1 image attached]");
+});
+
+// The two mounts the sandbox may carry are INDEPENDENT facts about the boot —
+// the site's own source at /src (developer mode) and the user's attached files
+// under /workspace/ — so the prompt describes each one only when it is really
+// there. Telling the model about a mount that does not exist sends it grepping
+// an empty tree; staying silent about one that does means it never looks
+// (docs/SANDBOX-HOST-COMMANDS.md: "the model treats the sandbox as empty and
+// never looks"). All four combinations pinned.
+test("drcBashAgentPrompt: /src and /workspace are stated independently", () => {
+  // The /src paragraph itself mentions /workspace/source, so the attachment
+  // paragraph is identified by its manifest line instead.
+  const hasFiles = (/** @type {string} */ p) => p.includes("/workspace/INDEX.txt");
+  const hasSource = (/** @type {string} */ p) => p.includes("mounted read-only at /src");
+
+  const neither = drcBashAgentPrompt();
+  assert.equal(hasSource(neither), false);
+  assert.equal(hasFiles(neither), false);
+  assert.equal(neither.includes("/workspace"), false); // nothing at all about mounts
+
+  const src = drcBashAgentPrompt({ sourceMounted: true });
+  assert.equal(hasSource(src), true);
+  assert.equal(hasFiles(src), false);
+
+  const files = drcBashAgentPrompt({ filesMounted: true });
+  assert.equal(hasSource(files), false);
+  assert.equal(hasFiles(files), true);
+  assert.match(files, /read-write at \/workspace\//);
+
+  const both = drcBashAgentPrompt({ sourceMounted: true, filesMounted: true });
+  assert.equal(hasSource(both), true);
+  assert.equal(hasFiles(both), true);
+});

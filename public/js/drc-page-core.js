@@ -209,6 +209,14 @@ export function wmHtml(s) {
  *                   USER's machine, which runs it and can read everything sent
  *   peerLabel     — how that pool's owner is shown (server-resolved; "" when
  *                   not known yet)
+ *   attachments   — how many files are attached in THIS tab right now (a
+ *                   count; `true` is accepted as "some"). Truthy = the
+ *                   attachment line appears, worded for the SAME posture as
+ *                   the model-calls line above it; 0/absent = the line is
+ *                   omitted entirely, so a session with no files never grows
+ *                   a paragraph about files. Bytes live in tab memory only —
+ *                   the sealed state deliberately holds none — so this is
+ *                   session state the caller reads live, never persisted.
  *   grantsConnected — true when any borrowed, account-connected allowance
  *                   (web search or LLM) is live in this session
  *   workspaceName — set when this session was opened from a shared secure
@@ -222,7 +230,7 @@ export function wmHtml(s) {
  *                   unspecified; falsy = none. When set the session is NOT
  *                   offline going forward.
  * @param {{provider?: string, viaProxy?: boolean, local?: boolean,
- *          pool?: boolean, peerLabel?: string,
+ *          pool?: boolean, peerLabel?: string, attachments?: number|boolean,
  *          search?: string|null, embedProvider?: string, embedBorrowed?: boolean,
  *          grantsConnected?: boolean, workspaceName?: string,
  *          workspaceGrants?: boolean|{llm?: boolean, search?: boolean}}} [ctx]
@@ -278,6 +286,29 @@ export function privacyNoticeLines(ctx = {}) {
           ? "Model calls: the model runs on YOUR OWN machine — the conversation never leaves your device, and no third party (this site's server included) is involved."
           : `Model calls: the conversation text is sent to ${provider}, directly from your browser on your own API key — they can read it; the DeepResearch.Se server is not involved.`,
   );
+  if (ctx.attachments) {
+    // Files are the one thing a user attaches without saying anything, so the
+    // line has to be explicit that the model gets the CONTENT, not a filename.
+    // The bytes really are local (read here, mounted into this tab's VM, never
+    // uploaded) — but that is the transport, not the exposure, and the same
+    // mistake the workspace line refuses to make ("offline link" ≠ "offline
+    // session") would be made here by stopping after the first sentence. So:
+    // local bytes first, then WHO reads the content on the posture actually in
+    // effect — the same four branches, in the same order, as the model line
+    // above — then the "gone on reload" fact, which is a consequence of the
+    // sealed state holding no file bytes rather than a promise on top of it.
+    lines.push(
+      "Attached files: each file is read IN THIS BROWSER and mounted into the Linux VM running in this tab — never uploaded to the DeepResearch.Se server, never parsed on a server, never indexed on a server. " +
+        (ctx.pool
+          ? `But what you ask ABOUT a file goes where the model goes: a document's extracted TEXT and an image's actual CONTENT are sent THROUGH the DeepResearch.Se server (held only while the job runs, never stored or logged) to ${peer}'s own machine — ${peer} can read the file's contents, not just its name.`
+          : ctx.viaProxy
+            ? "But what you ask ABOUT a file goes where the model goes: a document's extracted TEXT and an image's actual CONTENT pass THROUGH the DeepResearch.Se server to Berget on the borrowed, metered, time-limited allowance — the same disclosed server-touching path as your model calls, and it carries the file's contents, not just its name."
+            : ctx.local
+              ? "And what you ask ABOUT a file goes where the model goes — which is nowhere: a document's extracted TEXT and an image's actual CONTENT reach only the model running on your own machine, so the file's contents never leave this device at all."
+              : `But what you ask ABOUT a file goes where the model goes: a document's extracted TEXT and an image's actual CONTENT are sent to ${provider}, directly from your browser on your own API key — they can read the file's contents, not just its name; the DeepResearch.Se server is still not involved.`) +
+        " Attachments live in this tab's memory only — the sealed browser storage deliberately holds no file bytes — so they are gone when you reload.",
+    );
+  }
   lines.push(
     ctx.search === "self"
       ? "Web search: only the search QUERY is sent, directly from your browser to the search service you configured yourself. No DeepResearch.Se server, no third party of ours."
@@ -330,6 +361,16 @@ export function unlockCelebrationSize(w, h) {
  * be mistaken for "private from the model provider" — the chosen provider DOES
  * receive and can read the conversation — and with the local provider the line
  * flips to the strongest true statement the tier can make.
+ *
+ * Attachments (2026-08-05) add NO per-session clause here, deliberately. This
+ * line is STANDING and provider-scoped: it renders from the picked provider
+ * alone, before there is a session to describe, so making it depend on whether
+ * a file happens to be pending would both duplicate privacyNoticeLines' posture-
+ * matched attachment paragraph and make a fixed disclosure flicker with
+ * transient state. Every branch is already true of an attachment — what the
+ * request carries goes to whoever the branch names — with one wording gap that
+ * IS fixed below: the borrowed-proxy branch said "your words", which understates
+ * a document or an image, so it now names anything you attach unconditionally.
  * @param {string} providerId
  * @param {string} [label] the provider's display label (e.g. "OpenAI")
  * @returns {string} "" when no provider is picked yet
@@ -346,7 +387,7 @@ export function providerVisibilityNote(providerId, label) {
   if (id === "proxy") {
     return (
       "Your messages route through this site's server to Berget on the borrowed, metered allowance — " +
-      "the one Se/cure path where your words touch the server."
+      "the one Se/cure path where your words, and anything you attach, touch the server."
     );
   }
   const who = label || id;

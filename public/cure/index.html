@@ -162,9 +162,14 @@
         <form id="form">
           <textarea id="input" rows="1" placeholder="Ask a research question…" autofocus></textarea>
           <div id="composer-row">
-            <button id="attach" type="button" class="drs" data-feature="attach" title="Attachments — a Se/rver feature" aria-label="Attachments (a Se/rver feature)">
+            <button id="attach" type="button" title="Attach files — they stay in this browser" aria-label="Attach files">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
             </button>
+            <!-- The bytes never leave the browser: they are mounted into the
+                 in-tab Linux VM and, for images, sent straight to the user's
+                 OWN provider with their own key. No server of ours is in that
+                 path (invariant 4). -->
+            <input id="attachfile" type="file" multiple hidden>
             <button id="camera" type="button" class="drs" data-feature="camera" title="Photos — a Se/rver feature" aria-label="Photos (a Se/rver feature)">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
             </button>
@@ -192,6 +197,10 @@
             </label>
           </div>
         </form>
+        <!-- Pending attachments for the next send. Hidden until something is
+             attached, and emptied when the send takes them — these live in tab
+             memory only, so there is nothing here to restore on reload. -->
+        <div id="pending" hidden></div>
         <!-- The footer notices under the composer, DISMISSABLE via the shared ×
              (upper right): the standing "where your words go" disclosure — follows
              the model picker (drc.js renderProviderNote): the chosen provider CAN

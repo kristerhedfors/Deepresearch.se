@@ -688,6 +688,36 @@ button:disabled { opacity: .5; cursor: default; }
   padding: 0;
   display: grid; place-items: center;
 }
+/* Pending attachments, under the composer. Se/rver renders richer cards with
+   thumbnails; this tier stays a name + a remove control on purpose — the row
+   sits on the glass pane and a thumbnail strip would crowd it on a phone.
+   `[hidden]` does the hiding, so an empty row occupies nothing. */
+#pending {
+  display: flex; flex-wrap: wrap; gap: .35rem;
+  margin-top: .4rem;
+}
+#pending[hidden] { display: none; }
+.att-chip {
+  display: inline-flex; align-items: center; gap: .3rem;
+  max-width: 100%;
+  padding: .15rem .3rem .15rem .5rem;
+  border: 1px solid rgba(255, 255, 255, .6);
+  background: rgba(255, 255, 255, .35);
+  border-radius: 999px;
+  font-size: .75rem;
+}
+.att-name {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 14rem;
+}
+.att-remove {
+  background: none; border: 0; padding: 0;
+  width: 1.1rem; height: 1.1rem; flex: none;
+  border-radius: 50%;
+  color: var(--muted); font-size: .9rem; line-height: 1;
+  display: grid; place-items: center;
+}
+.att-remove:hover { color: var(--text); background: rgba(255, 255, 255, .5); }
 #send {
   border-radius: 50%;
   width: 34px; height: 34px; flex: none;

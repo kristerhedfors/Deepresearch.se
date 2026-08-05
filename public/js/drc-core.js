@@ -49,6 +49,13 @@ import {
   normalizeVaultSecret,
   vaultSecretValid,
 } from "./vault-core.js";
+// The SAME content accessor Se/rver uses (public/js/message-content.js): an
+// import-free leaf that reaches no endpoint of ours, so it obeys the rule
+// above — it is allowlisted in src/index.js's isPublicAsset alongside the
+// other /cure attachment modules, and a 401 here would take the tier dark.
+// Reused rather than re-implemented so both tiers read a multimodal turn's
+// text identically.
+import { splitUserContent } from "./message-content.js";
 
 export {
   generateVaultSecret as generateDrcSecret,
@@ -113,7 +120,9 @@ export async function deriveDrcProfile(secret) {
 //  rag: {embedder?, docs: []}}
 // — everything the page persists, the provider API keys AND the RAG index
 // (chunk text + vectors, drc-rag.js) included, sealed as one blob under
-// blobKey. Conversations are plain {role, content} text turns.
+// blobKey. Conversations are {role, content} turns; `content` is a string
+// except on a turn with an attachment, where it is the multimodal PARTS
+// ARRAY the provider wire takes ([{type:"text",…},{type:"image_url",…}]).
 export function emptyDrcState() {
   return {
     v: DRC_STATE_V,
@@ -176,6 +185,37 @@ export function emptyDrcState() {
   };
 }
 
+// The part types a stored message may carry — the OpenAI wire shape
+// drc-providers.js sends and every provider adapter understands (Anthropic
+// translates image_url into a base64 image block). ADDING A PART KIND MEANS
+// ADDING IT HERE: an unrecognised type fails validation, and validation
+// failing is total — the sealed state does not reopen at all.
+const DRC_PART_TYPES = new Set(["text", "image_url"]);
+
+/**
+ * Is one stored message's `content` a shape we accept? A plain string (every
+ * turn before attachments existed, and every text-only turn since), or a
+ * multimodal PARTS ARRAY.
+ *
+ * Deliberately strict about the array: this runs on UNTRUSTED input — a .drc
+ * backup file, or a localStorage row anything on the device could have
+ * rewritten — so "is an array" is not enough. Every entry must be a plain
+ * object with a recognised `type` and that type's payload, which is what
+ * keeps the old guarantee that a validated state can be rendered and put on
+ * the provider wire without further shape checks.
+ * @param {any} content
+ * @returns {boolean}
+ */
+function validDrcContent(content) {
+  if (typeof content === "string") return true;
+  if (!Array.isArray(content) || content.length === 0) return false;
+  return content.every((/** @type {any} */ p) => {
+    if (!p || typeof p !== "object" || Array.isArray(p) || !DRC_PART_TYPES.has(p.type)) return false;
+    if (p.type === "text") return typeof p.text === "string";
+    return !!p.image_url && typeof p.image_url === "object" && typeof p.image_url.url === "string";
+  });
+}
+
 /** @param {any} s @returns {boolean} */
 export function validateDrcState(s) {
   const ok = !!(
@@ -190,7 +230,7 @@ export function validateDrcState(s) {
         typeof c.id === "string" &&
         Array.isArray(c.messages) &&
         c.messages.every(
-          (/** @type {any} */ m) => m && typeof m.role === "string" && typeof m.content === "string",
+          (/** @type {any} */ m) => m && typeof m.role === "string" && validDrcContent(m.content),
         ),
     )
   );
@@ -285,9 +325,14 @@ export async function openDrcBackup(bytes, secret) {
 }
 
 // A conversation's display title: its first user line, like the main app.
-/** @param {{role: string, content: string}[]} messages */
+// The content may be a multimodal parts array (a turn with an attachment), so
+// the line comes from the TEXT parts — splitting the raw content threw on an
+// array, which would have broken the sidebar for a whole conversation.
+// An image-only first turn has no text and falls back to "New chat".
+/** @param {{role: string, content: string | any[]}[]} messages */
 export function deriveDrcTitle(messages) {
-  const first = messages.find((m) => m.role === "user")?.content || "New chat";
-  const line = first.split("\n").find((l) => l.trim()) || "New chat";
+  const first = messages.find((m) => m.role === "user");
+  const text = splitUserContent(first?.content).text || "New chat";
+  const line = text.split("\n").find((l) => l.trim()) || "New chat";
   return line.trim().slice(0, 80);
 }
