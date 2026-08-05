@@ -53,15 +53,14 @@ const FAKE_PROVIDER_PORT = process.env.FAKE_PROVIDER_PORT || "8799";
 const WRANGLER_VERSION = process.env.WRANGLER_VERSION || "4.118.0";
 
 /**
- * The dev server, wrapped in a restart loop.
+ * The dev server, wrapped in a restart loop — see `tests/dev-server.sh`, which
+ * is that loop and carries the full reasoning.
  *
- * The crash this exists for is not ours and is not fixable from here: a
- * transient socket drop on miniflare's internal loopback
+ * The crash it exists for is not ours and is not fixable from here: a transient
+ * socket drop on miniflare's internal loopback
  * (`#handleLoopbackCustomFetchService` → `Network connection lost.`) gets
  * escalated to a process-ending fatal by wrangler's own `ProxyController`. It
- * has now killed `wrangler dev` mid-suite seven times. The captured artifact
- * shows `Error inside ProxyWorker` exactly ONCE per run — a single transient
- * event, not a degradation, and no frame in `src/`.
+ * has now killed `wrangler dev` mid-suite a dozen times.
  *
  * Playwright's `webServer` has no restart-on-exit, so that one dropped socket
  * used to cost the ENTIRE remaining suite: every later test dies on
@@ -69,19 +68,22 @@ const WRANGLER_VERSION = process.env.WRANGLER_VERSION || "4.118.0";
  * commit range once lost 27 of 63 and then 4 of 63 — which also makes the
  * failure count meaningless as a signal about the diff.
  *
- * The loop brings the port back within a couple of seconds, so a crash costs
- * the test(s) actually in flight rather than everything after it. Paired with
- * `retries` on the mocked project, that turns this class of failure into a
- * retry instead of a red build. It deliberately does NOT mask a Worker that
- * cannot boot at all: a wrangler that exits immediately just restarts in a
- * tight loop and Playwright still times out waiting for the URL.
+ * The loop brings the port back, so a crash costs the test(s) actually in
+ * flight rather than everything after it. Paired with `retries` on the mocked
+ * project, that is meant to turn this class of failure into a retry instead of
+ * a red build — and until 2026-08-05 it did not, because the RESTART WAS
+ * SLOWER THAN THE RETRY. Occurrence 11 (run 30988531735) put the outage at
+ * 5.0 s while Playwright re-navigated ~3.2 s in, so the retry finished 0.48 s
+ * before the port came back and the build went red anyway. `dev-server.sh` cuts
+ * our own share of that gap — a 2 s sleep and a redundant `npx` resolution —
+ * measured end to end at 6.05 s → 3.39 s, a 44% cut; what is left is wrangler's
+ * own start-up, which nothing here can shorten.
+ *
+ * It deliberately does NOT mask a Worker that cannot boot at all: a wrangler
+ * that exits immediately just restarts in a loop and Playwright still times out
+ * waiting for the URL.
  */
-const WRANGLER_CMD = [
-  `npx wrangler@${WRANGLER_VERSION} dev -c wrangler.dev.toml`,
-  `--local --enable-containers=false --port ${LOCAL_PORT}`,
-].join(" ");
-const WRANGLER_SUPERVISED = `bash -c 'while true; do ${WRANGLER_CMD}; ` +
-  `code=$?; echo "[e2e] wrangler dev exited ($code) — restarting" >&2; sleep 2; done'`;
+const WRANGLER_SUPERVISED = "./tests/dev-server.sh";
 
 const envUser = process.env.BASIC_AUTH_USER;
 const envPass = process.env.BASIC_AUTH_PASS;
@@ -148,9 +150,12 @@ export default defineConfig({
           },
           {
             // Pinned and supervised — see WRANGLER_SUPERVISED above for why
-            // both, and what the seven crashes actually were.
+            // both, and what the dozen crashes actually were. The pin and the
+            // port are passed in rather than re-defaulted in the script, so
+            // this file stays the single place either is decided.
             command: WRANGLER_SUPERVISED,
             cwd: "..",
+            env: { WRANGLER_VERSION, E2E_PORT: LOCAL_PORT },
             url: LOCAL_URL,
             reuseExistingServer: !process.env.CI,
             // Cold start pulls workerd and builds the asset manifest.

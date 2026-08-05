@@ -348,19 +348,104 @@ live-verify pass (see the **live-verify** skill). A stricter fix (reserve
 estimated spend at admission, reconcile on completion) and/or Cloudflare
 rate-limiting rules remain available if the cap proves insufficient.
 **Two `/mcp` gaps found 2026-08-05 while costing the surface for possible
-public exposure (`docs/MCP-COST.md`), both in this class:** (a) `src/mcp.js`
-takes NO inflight reservation — the string does not appear in the file — so
-the four endpoints listed above do not include the one an external key
-holds, and the check-then-act race there is unbounded rather than capped at
-5; (b) `src/literature-run.js` records no usage at all, so
-`literature_search` / `literature_similar` / `search` are GATED on the quota
-but never INCREMENT it and cannot exhaust it — measured at €0.0021–€0.0124
-per call (the reranker: 50 candidates × 900 chars per angle × corpus leg,
-10,198 tokens at €0.10/M), which is €7–€44 per hour at one call per second
-from a single key, times whatever concurrency (a) allows. `deep_research`
-itself is metered correctly and bounded at ~€111/account/month. Fixing (b)
-is the precondition for opening the surface; (a) makes every other number
-here a per-connection figure rather than a per-account one.
+public exposure (`docs/MCP-COST.md`), both in this class, and BOTH are now
+CLOSED (2026-08-05).**
+
+**(a) the missing reservation.** `src/mcp.js` takes the reservation on the
+four tools that reach a provider — `deep_research`, `literature_search`,
+`literature_similar` and the `search` adapter — keyed on the request id and
+released in a `finally` covering every exit path, so an external key is
+capped at 5 concurrent spending calls exactly as a browser session is. The
+seven tools that contact no provider (the four `sdk_*`, `literature_fetch`,
+`literature_corpora`, `fetch`) stay outside it: a slot held there could only
+deny the caller its own next call. The refusal is a JSON-RPC result with
+`isError` rather than an HTTP 429 — an MCP client reads the envelope, and a
+transport-level 429 reads to it as a broken server. Admins are NOT exempt,
+unlike on the quota gate: that is a spend cap an operator is trusted to
+exceed, this is abuse mitigation, and an admin credential is the one whose
+leak matters most. Fail-open on any D1 trouble — unlike the quota gate beside
+it, which is (c) below. Unit-tested in `src/mcp-inflight.test.js` (24 tests:
+the slot held mid-retrieval and released after, release on the throwing path,
+the JSON-RPC-not-429 refusal, per-user isolation, the reservation's fail-open
+against the quota gate's fail-closed, and the exempt tools reserving nothing).
+
+**(b) the missing meter.** `src/literature-run.js` recorded no usage at all,
+so `literature_search` / `literature_similar` / `search` were GATED on the
+quota but never INCREMENTED it and could not exhaust it — measured at
+€0.0021–€0.0124 per call (the reranker: 50 candidates × 900 chars per angle ×
+corpus leg, 10,198 tokens at €0.10/M), which is €7–€44 per hour at one call
+per second from a single key. Every retrieving literature tool now records a
+`usage_events` row in a `finally` from the cross-encoder's own
+`usage.total_tokens` — which `rerankMatches` was reading past — plus the
+embedder's, priced from Berget's raw `/v1/models` catalog (neither model is
+in the chat catalog `bergetCost` prices from, because `fetchCatalog` filters
+to `model_type: "text"`). It lands in `berget_cost`, never in `searches`:
+that count is Exa's, calibrated to €0.005 a search, and folding a €0.001
+dense leg into it would make one column mean two prices. The EUR dimension
+now bites on its own — roughly 476 one-angle or 80 six-angle calls per
+5-hour window. Unit-tested in `src/literature-run.test.js` (9 tests,
+including that the billed number is provably the provider's and not the
+char-count estimate).
+
+(a) bounds PARALLELISM and (b) bounds RATE — complements, not alternatives;
+either alone leaves the other axis open. `deep_research` was already metered
+correctly and bounded at ~€111/account/month. All three are still owed the
+same live-verify pass as the rest of P-3.
+
+**(c) The gates had no chosen FAIL DIRECTION — CLOSED 2026-08-05.** Building
+(a) turned it up: a test asserting that a broken D1 fails open came back
+`Literature tool failed: d1 down`. The reservation does fail open, exactly as
+documented; `researchQuotaBlock` then THREW. Every step of the quota gate
+reaches D1 — the lazy migration inside `getDb`, the config row, the usage
+windows — and none of those reads was wrapped, on either surface. What each
+one did before: on `/mcp` the throw came back as `Literature tool failed: d1
+down` / `Research failed: d1 down`, a refusal nobody chose and no caller can
+act on; on **`/api/chat` the same throw escaped `handleChat` altogether** and
+`src/index.js` turned it into a generic 500 — the shape a crash has, plus a
+recorded server error. So both surfaces refused, neither deliberately, and a
+D1 outage broke `/mcp` for every non-admin caller.
+
+The direction is now decided in code, the same way on both surfaces: **the
+spend gate fails CLOSED, the concurrency cap keeps failing OPEN**, and the
+reasoning sits in one place (above `QUOTA_UNAVAILABLE_STATUS` in
+`src/quota.js`). They are complements rather than an inconsistency. The quota
+gate answers "may this caller spend more of the site's money?", and the only
+honest answer when usage cannot be read is "unknown" — answering yes hands out
+unmetered spend at exactly the moment the spend also cannot be RECORDED
+(`recordUsage` writes to the same database), so the overrun would be both
+unbounded and invisible, and unlike a refused request it cannot be taken back.
+The reservation, by contrast, is abuse mitigation layered on a gate that
+already said yes; on `/api/chat` it is taken after the gate, so a degraded
+reservation implies a usage read that worked moments ago. This also matches
+the identity layer, which already degrades an unreadable account row to "no
+identity" (`identify`, `resolveMcpKeyIdentity`) — one posture throughout: when
+the account system is unavailable the account-scoped service is unavailable,
+never free.
+
+What ships with it: `/api/chat` answers **503** with `quota_unavailable` and a
+message saying it is not a limit on the account (not a 500, which reads as a
+crash, and not a 429, which would claim a limit the user has not reached);
+`/mcp` answers a JSON-RPC `isError` result carrying the same sentence, worded
+for an LLM caller so it retries later instead of stopping; both log
+`chat.quota_unverifiable` / `mcp.quota_unverifiable` with the reason
+(`config` / `usage` / `import`). Admins stay exempt on both, so an operator can
+work during the outage. A site with **no `DB` binding at all** is untouched:
+that is a supported configuration where nothing throws, so nothing is refused —
+only a database that is present and ERRORING trips this. And a deployment whose
+windows are all 0 (uncapped) is not refused either, since there is no limit an
+unreadable ledger could be hiding (`quotaEnforced`).
+
+`src/chat-handler.test.js` had already pinned the escaping-throw behaviour and
+asked, in its comment, that anyone changing it think about the quota-bypass
+consequence first. That reasoning is kept — only the mechanism moved, from an
+unhandled rejection to a chosen refusal. One neighbouring defect fell out of
+the same run: `raiseAlert` guarded its INSERT but not its `getDb`, and it is
+awaited inside `runChatStream`'s catch, so on an errored D1 the throw escaped
+the very catch that was recovering — the `emit({error})` line never ran and the
+user got a hung SSE stream. It is now best-effort in full. Pinned in
+`src/mcp-inflight.test.js`, `src/chat-handler.test.js`, `src/chat.test.js`,
+`src/quota.test.js` and `src/alerts.test.js`; the live-verify pass P-3 already
+owes should exercise a real D1 error rather than a simulated one.
 
 ### P-4 · H-2 follow-up · Flip the CSP on — 🔴 OPEN
 The CSP is fully authored in `src/security-headers.js` but `CSP_ENABLED = false`
@@ -532,3 +617,4 @@ owner sign-off first (docs-drift-validation Class C).
 | 2026-07-15 | **P-2 → FIXED.** Secret-leak prevention completed across all three residuals. (1) NEW `.githooks/pre-commit` runs `scripts/scan-secrets --staged` so a credential is blocked BEFORE it enters history (pre-push stays as the second line); verified end-to-end — a planted fake `sk-…` token blocks `git commit` with redacted output, a clean tree commits normally. (2) Hooks now AUTO-ACTIVATE: `.claude/settings.json`'s SessionStart runs `scripts/install-git-hooks`, so every remote-session clone (where nearly all commits are authored) has both hooks live without manual setup — closing the inert-in-fresh-clones gap. (3) Residual (c) done: full-history scan from an unshallowed clone (`git fetch --unshallow`, 791 commits, `git log --all -p` over the §1 pattern set) — **CLEAN**, no credential-shaped token has ever been committed. (4) Residual (a) resolved as default-on: GitHub secret scanning + push protection are enabled by default on public repos (GitHub default since 2024); the Settings toggle is unreachable from a session — owner to eyeball Settings → Code security once to confirm nothing was manually disabled. Catalog mirror flipped in the same commit; `docs/SECRET-SCANNING.md` updated. |
 | 2026-07-24 | **P-12 opened — feedback authenticity/integrity is a TRUST assumption, gated on audience size.** Owner directive recorded as a register item rather than an immediate fix: the feedback pipeline trusts that a submission is authentic and its self-reported context intact, and that posture must change *before the site goes wider*. Named pieces: Se/cure attribution rides a deliberately-shareable Se/rver token (`claims.sub` of the minter — still write-only, so no read-back exposure); the direct API paths take `question`/`answer_excerpt`/`model`/`page` (scope tag included) from the client with no cross-check against what the server served (the chat path derives them server-side and is unaffected); entry creation is outside the P-3 metering, so the queue can be flooded. The two properties that keep a spoofed entry from acting on its own — no LLM anywhere in the feedback path (canned acks, 2026-07-24) and the loop's mandatory human-in-the-loop treatment of entry text as a request to evaluate — are recorded as invariants to preserve through any hardening. Landed alongside the feedback SCOPE classification (standalone vs session), which is why the trust question surfaced: the new `page` scope tag is one more client-asserted field on the direct paths. |
 | 2026-07-18 | **New write surface + P-11 opened: manual SDK-build publish (`handleBuildManualPublish`, `PUT /api/build/:slug`, F-17).** A second admin-gated write path alongside the pre-existing `DELETE` on SDK mode's `/app/<slug>/` build-publishing surface (`src/build-pub.js`), letting an already-built bundle (execution-sandbox output, a hand-assembled directory) publish without a live model turn — via `scripts/publish-app`. Reuses the UNCHANGED `publishBuild` (same caps, same traversal/extension validation, same opaque-origin `Content-Security-Policy: sandbox allow-scripts …` serving) and the same admin gate as the existing DELETE, so the isolation boundary is untouched. Marked 🟡 PARTIAL: ownership on a manual publish collapses to the shared break-glass admin identity (any admin can republish any manually-published slug), and it's owed the same live-verify pass SDK mode's own build-publish flow still owes. Full model: §3 P-11. |
+| 2026-08-05 | **P-3 `/mcp` gap (a) CLOSED.** `POST /mcp` now takes the same per-user concurrency reservation the four browser-driven endpoints have taken since 2026-07-12, on the four tools that reach a provider (`deep_research`, `literature_search`, `literature_similar`, `search`); the seven that contact no provider stay exempt. Keyed on the request id, released in a `finally` covering success, tool-level failure and a thrown error. The refusal is a JSON-RPC `isError` result, not an HTTP 429 — a bare 429 reads to an MCP client as a transport failure rather than as a condition its model can act on. Admins are not exempt (a spend cap and an abuse cap are different things, and the admin credential is the one whose leak matters most). Fail-open on any D1 trouble, including a failed dynamic import of `quota.js` — the import stays dynamic so `src/mcp.test.js` keeps loading the module without the pipeline. 16 unit tests in `src/mcp-inflight.test.js` drive the real `handleMcp` against an in-memory D1 and a fake Vectorize index. Gap (b) — `src/literature-run.js` recording no usage — remains open and is still the precondition for opening the surface. |

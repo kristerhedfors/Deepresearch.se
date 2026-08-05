@@ -17,7 +17,8 @@ import { recordChatLog, shellLogSummary } from "./chatlog.js";
 import { addUserMessage } from "./user-messages.js";
 import { adminDefaultModelValid, completeJson, DEFAULT_MODEL } from "./berget.js";
 import { resolveJsonModel as resolveJsonPhaseModel } from "./model-routing.js";
-import { exaCost, spendByModel, summarizeSpend } from "./billing.js";
+import { denseSpend, exaCost, spendByModel, summarizeSpend } from "./billing.js";
+import { newRetrievalSpend } from "./dense-rag.js";
 // Re-exported so chat.test.js (and any importer) keeps getting it from here.
 export { summarizeSpend } from "./billing.js";
 import { listChatModels } from "./providers.js";
@@ -26,13 +27,16 @@ import { clampBudget, planResearch } from "./budget.js";
 import { augmentWithLocations } from "./geocode.js";
 import { jsonResponse, sseResponse } from "./http.js";
 import { runPipeline } from "./pipeline.js";
-import { getConfig } from "./config.js";
+import { DEFAULT_CONFIG, getConfig } from "./config.js";
 import {
+  QUOTA_UNAVAILABLE_STATUS,
   effectiveQuota,
   getUsage,
   inflightLimitResponse,
   quotaBlockedResponse,
+  quotaEnforced,
   quotaExceeded,
+  quotaUnavailableResponse,
   recordModelUsage,
   recordUsage,
   releaseInflight,
@@ -249,12 +253,12 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
     return jsonResponse({ error: invalid }, 400);
   }
 
-  const { catalog, config, resolved } = await resolveChatModels(env, log, body, identity);
+  const { catalog, config, configOk, resolved } = await resolveChatModels(env, log, body, identity);
   if ("error" in resolved) return jsonResponse({ error: resolved.error }, resolved.status);
   const model = resolved.model;
   const jsonModel = resolveJsonModel(catalog, model);
 
-  const quotaBlocked = await enforceQuotaGate(env, log, config, identity);
+  const quotaBlocked = await enforceQuotaGate(env, log, config, identity, configOk);
   if (quotaBlocked) return quotaBlocked;
 
   // Per-user concurrency reservation (M-1/M-2): bounds how many expensive
@@ -677,13 +681,27 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       // Usage accounting for quotas (fails soft; never breaks the stream).
       const { prompt_tokens, completion_tokens, berget_cost } = summarizeSpend(state, catalog);
       const exa_cost = exaCost(state, config, billedSearches);
+      // The search wave's hosted-index spend (src/billing.js): the reranker and
+      // the embedder are Berget money like any other, they just are not chat
+      // models, so they are priced from the raw catalog and added here rather
+      // than inside summarizeSpend. Never throws, and a request that ran no
+      // dense retrieval returns all zeroes and adds nothing — so a run without
+      // it records exactly what it recorded before this existed.
+      const dense = await denseSpend(env, log, state);
       await recordUsage(env, log, {
         user_id: identity.id,
         model,
-        prompt_tokens,
+        // The dense tokens ride the same row: its berget_cost includes them, and
+        // a row whose cost exceeds what its tokens explain is a row nobody can
+        // reconcile. `model` still names the answer model — one row per request
+        // is what every quota and cost view counts, and the per-model split is
+        // the by_model rows below.
+        prompt_tokens: prompt_tokens + dense.prompt_tokens,
         completion_tokens,
+        // Exa's own count, deliberately — a dense leg buys no Exa search
+        // (src/billing.js, the COUNT DIMENSION note).
         searches: billedSearches,
-        berget_cost,
+        berget_cost: berget_cost + dense.berget_cost,
         exa_cost,
         duration_ms,
       });
@@ -693,7 +711,10 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
       await recordModelUsage(env, log, {
         user_id: identity.id,
         request_id: requestId,
-        by_model: spendByModel(state, catalog),
+        // …plus one row per retrieval model that ran (rerank / embed), so the
+        // "what did my budget go to" view can tell an expensive answer model
+        // from a literature-heavy turn. Empty when no dense tier ran.
+        by_model: [...spendByModel(state, catalog), ...dense.by_model],
       });
       // Full-visibility interaction log (src/chatlog.js): the complete
       // question, answer, conversation, research metadata, and any error —
@@ -957,7 +978,7 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
  * @param {Identity} [identity] the signed-in account, so its per-account models
  *   (the accepted open-catalog ones) are valid answer models here too
  * @returns {Promise<{ catalog: ModelCatalog | null, config: SiteConfig,
- *   resolved: ReturnType<typeof resolveModel> }>}
+ *   configOk: boolean, resolved: ReturnType<typeof resolveModel> }>}
  */
 async function resolveChatModels(env, log, body, identity) {
   /** @type {ModelCatalog | null} */
@@ -967,12 +988,29 @@ async function resolveChatModels(env, log, body, identity) {
   } catch (err) {
     log.warn("chat.model_catalog_unavailable", { error: /** @type {any} */ (err)?.message || String(err) });
   }
-  const config = await getConfig(env);
+  // getConfig reads D1 (and runs the lazy migration on the first call), so an
+  // errored database throws HERE, before any gate — which used to escape the
+  // handler and 500 the chat. The config has a defined "no database" fallback,
+  // so the request can still be SHAPED against it (model choice, budget clamp);
+  // what must NOT happen is the quota gate reading defaults as permission when
+  // an admin may have lowered the real limits. So the failure travels with the
+  // config as `configOk: false`, and enforceQuotaGate below turns it into a
+  // clean refusal.
+  /** @type {SiteConfig} */
+  let config;
+  let configOk = true;
+  try {
+    config = await getConfig(env);
+  } catch (err) {
+    log.warn("chat.config_unavailable", { error: /** @type {any} */ (err)?.message || String(err) });
+    config = structuredClone(DEFAULT_CONFIG);
+    configOk = false;
+  }
   // The admin can set a site default model; it only applies when valid & up.
   if (!body.model && adminDefaultModelValid(config, catalog)) {
     body.model = config.default_model;
   }
-  return { catalog, config, resolved: resolveModel(body, catalog, env, log) };
+  return { catalog, config, configOk, resolved: resolveModel(body, catalog, env, log) };
 }
 
 /**
@@ -980,19 +1018,45 @@ async function resolveChatModels(env, log, body, identity) {
  * month windows). ADMINS ARE NEVER BLOCKED: their usage is recorded and
  * their bars keep counting (past 100%), but the 429 applies to regular
  * users only.
+ *
+ * FAILS CLOSED when the decision cannot be made — an errored D1 while reading
+ * the site config or this user's usage windows answers 503, not a 500 and not
+ * a silent pass. The reasoning (and why the concurrency reservation taken just
+ * after this one deliberately fails the OTHER way) is written out above
+ * QUOTA_UNAVAILABLE_STATUS in quota.js. A site with no database at all is
+ * untouched: nothing throws there, so nothing is refused.
  * @param {Env} env
  * @param {Logger} log
  * @param {SiteConfig} config
  * @param {Identity} identity
- * @returns {Promise<Response | null>} the 429 response, or null to proceed
+ * @param {boolean} [configOk] false when `config` is the degraded fallback
+ *   rather than this site's real settings (resolveChatModels)
+ * @returns {Promise<Response | null>} the 429/503 response, or null to proceed
  */
-async function enforceQuotaGate(env, log, config, identity) {
-  const usage = await getUsage(env, identity.id, Date.now(), identity.user?.quota_reset_at);
-  const quota =
-    identity.isSecretAdmin || identity.role === "admin"
-      ? null
-      : effectiveQuota(config, identity.user);
-  if (!quota) return null;
+async function enforceQuotaGate(env, log, config, identity, configOk = true) {
+  // Admins first, so an exempt caller needs no usage read at all and cannot be
+  // refused by one that fails (same early return /mcp's researchQuotaBlock has).
+  if (identity.isSecretAdmin || identity.role === "admin") return null;
+  if (!configOk) {
+    log.warn("chat.quota_unverifiable", { user_id: identity.id, reason: "config" });
+    return jsonResponse(quotaUnavailableResponse(), QUOTA_UNAVAILABLE_STATUS);
+  }
+  const quota = effectiveQuota(config, identity.user);
+  // Nothing enforced anywhere → nothing to verify, so no usage read and no way
+  // for an unreadable one to refuse a request no limit would have stopped.
+  if (!quota || !quotaEnforced(quota)) return null;
+  /** @type {import('./quota.js').Usage} */
+  let usage;
+  try {
+    usage = await getUsage(env, identity.id, Date.now(), identity.user?.quota_reset_at);
+  } catch (err) {
+    log.warn("chat.quota_unverifiable", {
+      user_id: identity.id,
+      reason: "usage",
+      error: /** @type {any} */ (err)?.message || String(err),
+    });
+    return jsonResponse(quotaUnavailableResponse(), QUOTA_UNAVAILABLE_STATUS);
+  }
   const blocked = quotaExceeded(usage, quota);
   if (!blocked) return null;
   log.info("chat.quota_blocked", {
@@ -1219,5 +1283,10 @@ function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
     // a premium answer model's rate.
     totals: { prompt_tokens: 0, completion_tokens: 0 },
     jsonTotals: { prompt_tokens: 0, completion_tokens: 0 },
+    // The hosted arXiv/PubMed retrieval tiers' provider spend (src/dense-rag.js),
+    // accumulated across every leg the search wave runs. Not a chat model, so it
+    // is priced from Berget's RAW catalog at the end of the request rather than
+    // by summarizeSpend's catalog lookup — src/billing.js denseSpend.
+    denseTotals: newRetrievalSpend(),
   };
 }

@@ -215,12 +215,18 @@ change to the chat path doesn't silently change MCP:
    user is checked against their four-window budget BEFORE any spend. This
    is load-bearing: without it, `/mcp` would be an unmetered bypass of the
    quota `/api/chat` applies — each call runs the full pipeline for real
-   Berget + Exa money.
+   Berget + Exa money. It **fails CLOSED** when it cannot decide (a D1 error
+   reading the config row or the usage windows) — see the fail-direction note
+   below.
 5. Run `runPipeline`, collect the streamed answer into one string, append
    the Sources list (`withSources`).
 6. **Record usage** (`recordUsage`) with the split-billing totals
    (`summarizeSpend` / `exaCost` from the shared `billing.js`) so MCP spend
-   shows up in the usage bars and admin cost totals just like chat spend.
+   shows up in the usage bars and admin cost totals just like chat spend —
+   plus `denseSpend`, the fourth bucket (2026-08-05): the search wave can
+   reach the hosted arXiv/PubMed indexes, and those tokens are Berget money
+   that no chat catalog can price. Added into the SAME row, never a second
+   one. `docs/MCP-COST.md` §4d.
 
 The tool's input schema (`DEEP_RESEARCH_TOOL.inputSchema`): required
 `question`; optional `time_budget_s` (default 120, clamped 15–600), `model`
@@ -371,7 +377,11 @@ Four things about this surface are load-bearing and easy to get wrong later:
    in the same change. `literature_fetch` (a key read) and `literature_corpora`
    (committed facts + `describe()`) are deliberately OUTSIDE it: an agent that
    has run out of budget should still be able to resolve an id it was handed
-   and learn what exists. Unlike `deep_research` these calls write no
+   and learn what exists. **The METER matches the gate exactly** (2026-08-05):
+   `runLiteratureTool` records the retrieval's spend in a `finally`, and the
+   same two tools that skip the gate leave the accumulator at zero and so
+   write no row. A gate without a meter cannot bite — that is precisely the
+   defect this closed. Unlike `deep_research` these calls write no
    `chat_logs` row — a retrieval is not an interaction to log, and the query
    text stays out of Workers Logs (only counts are logged, as the dense tiers
    already do).
@@ -393,8 +403,11 @@ deliberately scores its LAST candidate below the floor, so a test that wants
 - **Add ANOTHER tool:** add its schema constant at the top, put it in
   `ALL_MCP_TOOLS`, add its `MCP_TOOL_CATALOG` entry in `src/mcp-config.js`
   **in the same change** (the mirror test fails otherwise — and an account
-  needs a way to switch it off), and branch on `parsed.params.name` in
-  `handleToolCall` — which already dispatches the `sdk_*` family by
+  needs a way to switch it off), decide whether it belongs in
+  `SPENDING_TOOL_NAMES` (does it reach a provider? then yes — it holds a
+  concurrency slot and goes behind `researchQuotaBlock`), and branch on
+  `parsed.params.name` in `dispatchToolCall` — which already dispatches the
+  `sdk_*` family by
   `SDK_TOOL_NAMES` membership before falling through to `deep_research`;
   anything matching neither is method-not-found. Any heavy work its handler
   needs stays behind a dynamic import. Ask whether the tool actually belongs
@@ -410,11 +423,13 @@ deliberately scores its LAST candidate below the floor, so a test that wants
 ## Validation ladder
 
 1. **Unit** — `node --test src/mcp.test.js src/mcp-config.test.js
-   src/mcp-key.test.js src/mcp-api.test.js`: the pure protocol helpers and
+   src/mcp-key.test.js src/mcp-api.test.js src/mcp-inflight.test.js`: the
+   pure protocol helpers and
    the loads-without-the-pipeline guarantee; the catalog⇔tool-list mirror
    and the argument resolution; the key's crypto, the not-a-login pin and
    the cross-family forgery matrix; key resolution (revoked / rotated /
-   disabled account / surface off) and the config endpoints.
+   disabled account / surface off) and the config endpoints; the concurrency
+   reservation's take/release lifecycle and its JSON-RPC refusal.
    `npm run typecheck` (all four are `// @ts-check`).
 2. **Live JSON-RPC probe** — `npm run mcp:probe` (`scripts/mcp-probe.mjs`),
    which is this rung, automated. Dependency-free, exit code = failure count.
@@ -744,16 +759,72 @@ it the reranker**, 50 candidates × 900 chars per angle-corpus leg, measured
 at 10,198 tokens per leg at €0.10/M. The `sdk_*` four and
 `literature_fetch` / `literature_corpora` / `fetch` cost nothing.
 
-Two metering gaps decide whether the surface can be published, and both are
-in the register as P-3: **`src/literature-run.js` records no usage** (the
-searching tools are gated on the quota but never increment it, so they
-cannot exhaust it — unbounded per key), and **`/mcp` takes no
-`reserveInflight`**, so the CAP=5 concurrency bound that `/api/chat` gets
-does not apply here. `deep_research` itself meters correctly; a public
+Two metering gaps decided whether the surface can be published, both in the
+register as P-3, and **both are now closed (2026-08-05)**.
+
+**Metering** — `src/literature-run.js` recorded no usage, so the searching
+tools were gated on the quota but never incremented it and could not exhaust
+it. `runLiteratureTool` now records in a `finally` from the cross-encoder's
+own `usage.total_tokens` (which `rerankMatches` used to read past) plus the
+embedder's, priced through `rawModelEntry` + `eurPerTokenFromBerget` because
+neither model is in the chat catalog `bergetCost` prices from — `fetchCatalog`
+filters to `model_type: "text"`, which is why `GET /api/models` lists neither.
+It counts as `berget_cost` and never as `searches`: that count is Exa's,
+calibrated to €0.005 a search.
+
+**Concurrency** — `/mcp` now takes `reserveInflight` on the four tools that
+reach a provider (`deep_research`, `literature_search`, `literature_similar`,
+`search` — the exported `SPENDING_TOOL_NAMES`), released in a `finally` on
+every exit path, so an external key gets the same CAP=5 bound `/api/chat`
+has. Three things about that shape are worth keeping: the seven free tools
+hold NO slot (one held there could only deny the caller its own next call);
+the refusal is a JSON-RPC `isError` result, never an HTTP 429, because an MCP
+client reads the envelope and a bare 429 reads to it as a broken server; and
+admins are NOT exempt, unlike on the quota gate — a spend cap is one an
+operator is trusted to exceed, an abuse cap is not. `quota.js` is reached by
+a dynamic `import()` like everything else heavy here, so the file-layout rule
+holds; `src/mcp-inflight.test.js` drives the real `handleMcp` against an
+in-memory D1.
+
+The two are complements, not substitutes: the cap bounds PARALLELISM, the
+meter bounds RATE. Without the meter a sequential caller was unbounded;
+without the cap the check-then-act race made every ceiling a per-connection
+one. `deep_research` itself meters correctly and always did; a public
 account is capped at ~€111/month, which is `budget_eur` €8 plus 12,000
 searches at the deep tier — note `quotaExceeded` caps Berget cost in EUR
 but Exa only by COUNT, so the real Exa ceiling is 71% above what the count
 nominally prices.
+
+### The two bounds fail in OPPOSITE directions, on purpose
+
+Decided 2026-08-05, after the concurrency work turned up that neither had a
+chosen direction at all: every step of the quota gate reaches D1 (the lazy
+migration inside `getDb`, the config row, the usage windows), none of those
+reads was wrapped, and the throw simply escaped — as `Literature tool failed:
+d1 down` here and as a generic 500 out of `handleChat` on `/api/chat`. Both
+surfaces refused, neither deliberately, and a D1 outage broke `/mcp` for every
+non-admin caller.
+
+- **The quota gate fails CLOSED.** It is the spend barrier, and "I cannot read
+  usage" is not a yes. Letting the call through would spend at exactly the
+  moment the spend cannot be RECORDED either (`recordUsage` writes to the same
+  database), so the overrun is unbounded, invisible, and unlike a refused call
+  it cannot be undone.
+- **The reservation fails OPEN**, as its `quota.js` header always said. It is
+  abuse mitigation on top of a gate that already said yes.
+
+The full argument (including why this matches `identify` /
+`resolveMcpKeyIdentity` degrading an unreadable account row to "no identity")
+lives above `QUOTA_UNAVAILABLE_STATUS` in `src/quota.js`. On this surface the
+refusal is `quotaUnavailableToolMessage()` — an `isError` result, worded so the
+client's model retries later rather than stopping, since "quota exceeded" and
+"quota unreadable" call for opposite next moves. `/api/chat` says the same
+thing as a **503** with `quota_unavailable` (not a 500, which reads as a crash;
+not a 429, which would claim a limit the user has not hit). Both log
+`*.quota_unverifiable` with the reason. Two things stay open by construction:
+a site with **no `DB` binding** (a supported configuration — nothing throws
+there, so nothing is refused) and one whose windows are all `0`
+(`quotaEnforced` — no limit for an unreadable ledger to hide).
 
 ## Related
 
@@ -761,7 +832,9 @@ nominally prices.
   the tool runs).
 - **model-routing.js** / **billing.js** — the split-routing and split-billing
   math this server shares verbatim with `chat.js` (leaf modules; don't fork
-  them).
+  them). `billing.js` also owns the hosted-retrieval bucket both channels
+  bill (`denseSpend`), priced from Berget's RAW catalog because the chat
+  catalog carries neither the cross-encoder nor the embedder.
 - **chat-logs** — MCP calls log to the same interaction log on channel
   `mcp` (status `ok` / `error` / `disconnected`).
 - **access-control** — the identity gate `/mcp` sits behind and the quota

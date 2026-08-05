@@ -913,6 +913,60 @@ suite only ever ran against a deployment:
 > only start with the NEXT test), and check whether the diff reaches `src/` or a
 > served `public/` module at all — then re-run the job.
 
+> **Both mitigations were written (PR #365), and they were still not enough —
+> because the restart was slower than the retry** (settled 2026-08-05 from the
+> occurrence 9-12 artifacts; the running ledger is the "CI's e2e job" row in
+> `docs/MAINTENANCE-OWNERS.md`). Wrangler is pinned and the `webServer` is
+> supervised, and the supervisor demonstrably works: occurrence 10's
+> `wrangler-logs` artifact holds **four** wrangler log files, one per crash plus
+> the survivor, and the port came back every time. What kept the build red is in
+> occurrence 11's job log, three lines apart:
+>
+> ```
+> 08:31:28.244  [e2e] wrangler dev exited (1) — restarting
+> 08:31:32.759  ✘ 65 [mocked] › e2e/ui.spec.js:164 (retry #1) (1.3s)
+> 08:31:33.237  [wrangler:info] Ready on http://localhost:8787
+> ```
+>
+> The one CI retry finished **0.48 s before the port returned**. So "a spec and
+> its retry both got ERR_CONNECTION_REFUSED" never meant the supervisor failed;
+> it meant the retry was spent inside a 5.0 s outage. About 3.2 s of that window
+> was ours — a hard-coded `sleep 2` and ~1.2 s of `npx` re-resolving a package
+> already in the cache (2.8 s through `npx` vs 1.7 s exec'ing the resolved entry
+> point, measured on 4 vCPU) — leaving ~1.8 s that is wrangler starting.
+>
+> The supervisor now lives in **`tests/dev-server.sh`** rather than in a shell
+> string inside `playwright.config.js`, resolves the pinned wrangler once before
+> the loop, execs it with `node` on each restart, and sleeps 0.2 s instead of
+> 2 s. Measured end to end — kill the supervised wrangler, poll until the port
+> answers again, same box and same wrangler both ways — the outage went from
+> **6049 / 6117 ms to 3597 / 3188 ms**, a 44% cut.
+> `tests/dev-server.test.js` drives that loop offline (through the
+> `E2E_WRANGLER_BIN` seam, so `npm test` resolves no package and binds no port)
+> and fails if the delay grows back, if the loop starts calling `npx` again, or
+> if someone answers the next occurrence by raising `retries` — which the record
+> says is not the fix: occurrences 8 through 12 all had `retries: 1`.
+>
+> **The margin is thin and should be read as such.** Scaled onto occurrence 11
+> the window becomes ~2.8 s against a retry that navigated ~3.2 s after the
+> exit: a 0.48 s loss turns into roughly a 0.4 s win. That gives the retry its
+> chance back; it does not make the failure impossible, and a runner as slow as
+> occurrence 10's stretches both sides. If a later occurrence shows the retry
+> running *after* `Ready on …` and still failing, the outage was never the
+> binding constraint and the next lever is the mocked project's `workers`.
+>
+> One measurement worth keeping for the next reader, because it is the strongest
+> evidence for the runner-capacity reading and it bounds it: counted at the
+> Worker's own request log, occurrence 10 served **11.8-23.6 requests/s** where
+> occurrences 9 and 11 served **37-43**, and its rate of client aborts (workerd
+> `Broken pipe` / `Connection reset by peer`, i.e. the browser walking away from
+> an in-flight response) was **0.16-0.29/s against 0.02-0.06/s**. A slow runner
+> really does crash more often — 3 crashes in that job against 1 in the others.
+> But it is not required: occurrence 9 crashed on a fast runner after 2 aborts
+> in 114 s, and the wrangler process that survived to the end of run 10 carried
+> that run's highest sustained request rate. Every fatal lands mid page-load,
+> inside a burst of dozens of concurrent `/js/*.js` module fetches.
+
 ### Looking at a rendered page from a session container
 
 A session container **can** open a real browser, and several PRs have shipped

@@ -19,6 +19,12 @@
 // it, and the research tool's arguments are reconciled against the account's
 // defaults and override policy.
 //
+// WHAT IT COSTS is bounded twice, and both bounds are the ones /api/chat
+// already applies: the four-window research QUOTA (researchQuotaBlock) and the
+// per-user CONCURRENCY reservation (SPENDING_TOOL_NAMES + reserveToolSlot).
+// Both are scoped to the tools that reach a provider; both refuse inside the
+// JSON-RPC envelope rather than at the transport.
+//
 // FILE LAYOUT — deliberate, so src/mcp.test.js can unit-test the protocol
 // without loading the pipeline: the PURE JSON-RPC helpers, envelope builders,
 // tool schema, and initialize payload are exported at the TOP with no heavy
@@ -218,6 +224,82 @@ export const ALL_MCP_TOOLS = [
   ...SDK_MCP_TOOLS,
 ];
 
+// ---------------------------------------------------------------------------
+// The SPENDING set — which tools hold a concurrency slot (P-3, 2026-08-05)
+// ---------------------------------------------------------------------------
+//
+// src/quota.js's reservation exists because the quota gate is check-then-act: a
+// request's spend is recorded only when it FINISHES, so N concurrent calls all
+// read the same pre-spend usage, all pass, and overspend by ~N×. /api/chat,
+// /api/embed, /api/quiz/grade and /api/bash/step have taken a reservation since
+// 2026-07-12; this endpoint had not, and it is the one an EXTERNAL bearer key
+// drives — no browser, no rate limiter in front of it (docs/MCP-COST.md §4b).
+//
+// Only the tools that reach a PROVIDER take a slot, and the line is exactly the
+// one the quota gate already draws:
+//
+//   deep_research      the expensive, long-running one (€0.62 at its analytic
+//                      ceiling) and the reason this matters at all
+//   literature_search  \  the reranker legs — 50 candidates × 900 chars per
+//   literature_similar  ) (angle × corpus) — which is the whole cost of the
+//   search              /  family; `search` is literature_search projected into
+//                          ChatGPT's shape, so it is gated identically or the
+//                          adapter becomes the way around the meter
+//
+// Everything else is deliberately EXEMPT, because a slot it held would be pure
+// denial of service against the caller's own next call: the four sdk_* tools
+// read a committed snapshot, literature_corpora answers from committed facts
+// plus describe(), and literature_fetch / fetch are key reads. None of them
+// contacts a provider, so none of them can participate in the race the cap
+// exists to bound — and an agent whose budget is gone should still be able to
+// resolve an id it was handed while another call is in flight.
+export const SPENDING_TOOL_NAMES = new Set([
+  TOOL_NAME,
+  "literature_search",
+  "literature_similar",
+  "search",
+]);
+
+// The refusal an over-cap caller gets. It is NOT quota.js's inflightLimitResponse:
+// that builds an HTTP 429 payload, which is right for /api/chat and wrong here —
+// an MCP client reads the JSON-RPC envelope, and a bare 429 reads to it as a
+// transport failure (a broken server) rather than as a condition its model can
+// act on. So the refusal travels the same way a quota refusal already does, as
+// an isError tool result inside a normal JSON-RPC success, worded for the LLM
+// caller that will read it: what happened, what to do, and why an immediate
+// retry is pointless. Cost figures stay out of it for the same reason
+// inflightLimitResponse's doc comment gives — a rate limit is not the place to
+// leak what the site pays.
+/**
+ * @param {{ limit: number, active: number }} limited
+ * @returns {string}
+ */
+export function inflightLimitToolMessage(limited) {
+  return (
+    `This account already has ${limited.limit} research requests running at once, ` +
+    `which is the limit for concurrent calls. Wait for one of them to finish before ` +
+    `calling again — retrying straight away will be refused the same way.`
+  );
+}
+
+// The refusal when the quota gate cannot REACH a decision — an errored D1 while
+// reading the site config or the caller's usage windows. The gate fails CLOSED
+// (the reasoning is above QUOTA_UNAVAILABLE_STATUS in quota.js), and this is
+// how that lands on this surface: a tool result with isError, exactly like the
+// quota-exceeded refusal and the concurrency one, never an HTTP 5xx and never
+// an escaped throw. Worded so the client's model does the right thing: it says
+// the condition is temporary and NOT a limit on the account, because "Research
+// quota exceeded" and "quota unreadable" call for opposite next moves — one
+// means stop for the day, the other means try again shortly.
+/** @returns {string} */
+export function quotaUnavailableToolMessage() {
+  return (
+    "Research quota can't be checked right now — the usage store is temporarily " +
+    "unavailable, so this call was not run. This is not a limit on the account and " +
+    "nothing was spent. Wait a minute and try the call again."
+  );
+}
+
 // The `tools/list` result, narrowed to what this account exposes. Called with
 // no argument it reports the full set (the default config) — which is what an
 // identity with no account row, notably the break-glass operator, gets.
@@ -358,7 +440,109 @@ export async function handleMcp(request, env, log, identity, ctx, requestId) {
   }
 }
 
-// tools/call dispatcher: the SDK manifest family, the literature family and its
+// tools/call: take a concurrency reservation for the tools that spend real
+// money, run the dispatch, and RELEASE the slot on every exit path.
+//
+// Mirrors src/chat.js's use of the same reservation. Two differences, both
+// deliberate:
+//
+//   * the release is a plain `finally` rather than one kept alive by
+//     ctx.waitUntil — this handler returns a single buffered response, so
+//     nothing continues after it the way /api/chat's stream does;
+//   * a refusal is a JSON-RPC result, not an HTTP 429 (see
+//     inflightLimitToolMessage above);
+//   * the slot is taken BEFORE the quota gate rather than after it, because on
+//     this surface the gate lives inside each tool's own branch. Nothing is
+//     lost by the swap and something is gained: a flood of over-quota calls is
+//     bounded too, so the D1 reads the gate itself performs are capped at 5 in
+//     flight rather than at however many connections a client opened.
+//
+// ADMINS ARE NOT EXEMPT, and that is the one place this diverges from the quota
+// gate a few lines down, which does exempt them. The two limits are different
+// kinds of thing: the quota is a SPEND cap, and an operator who is trusted to
+// spend without a budget is exactly who should be able to run an expensive
+// diagnostic call. The concurrency cap is ABUSE MITIGATION — it bounds the
+// check-then-act race and what a single leaked credential can drive in parallel
+// — and an admin key is the credential whose leak matters most, not least.
+// /api/chat reserves for every identity for the same reason (src/chat.js takes
+// the reservation unconditionally, after the quota gate has already let the
+// admin through), and CAP=5 concurrent research calls constrains no honest
+// operator. Exempting admins here would leave the site's most privileged
+// credential the only unbounded one on the surface an external key drives.
+/**
+ * @param {ParsedRpc} parsed
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @param {ExecutionContext} ctx
+ * @param {string} requestId
+ * @param {import('./mcp-config.js').McpConfig} config this account's exposure config
+ */
+async function handleToolCall(parsed, env, log, identity, ctx, requestId, config) {
+  const name = parsed.params?.name;
+  // A tool this account does not expose, or one that contacts no provider,
+  // takes no slot: dispatchToolCall refuses the former as unknown, and holding
+  // a slot for the latter would only deny the caller its own next call.
+  const spends = typeof name === "string" && SPENDING_TOOL_NAMES.has(name) && toolExposed(config, name);
+  if (!spends) return dispatchToolCall(parsed, env, log, identity, ctx, requestId, config);
+
+  const reserved = await reserveToolSlot(env, log, identity, requestId);
+  if (!reserved.ok) {
+    log.info("mcp.rate_limited", {
+      tool: name,
+      user_id: identity?.id,
+      active: reserved.active,
+      limit: reserved.limit,
+    });
+    return jsonResponse(jsonRpcResult(parsed.id, toolResult(inflightLimitToolMessage(reserved), true)));
+  }
+  try {
+    return await dispatchToolCall(parsed, env, log, identity, ctx, requestId, config);
+  } finally {
+    // EVERY exit path — a returned result, a tool-level failure, a thrown
+    // error, an aborted request. A leaked slot is a self-inflicted denial of
+    // service that only clears when INFLIGHT_TTL_MS ages the row out, so this
+    // must never be conditional. releaseInflight swallows its own errors.
+    await reserved.release();
+  }
+}
+
+/**
+ * Reserve one in-flight slot, fail-soft in every direction. quota.js is reached
+ * by a dynamic import for the same reason researchQuotaBlock reaches it that
+ * way: the file-layout rule at the top of this module keeps src/mcp.test.js
+ * loading without the pipeline graph, and quota.js pulls berget.js in.
+ *
+ * Invariant 2: a D1 problem — or an import that somehow fails — degrades to
+ * "allowed, holding nothing". reserveInflight already fails open on any D1
+ * error; this wrapper extends that to the import itself, so no infrastructure
+ * failure can turn into a blocked caller or a 500.
+ *
+ * @param {Env} env
+ * @param {Logger} log
+ * @param {Identity} identity
+ * @param {string} requestId the reservation key — unique per HTTP request, and
+ *   one MCP request carries exactly one tool call
+ * @returns {Promise<{ ok: true, release: () => Promise<void> } | { ok: false, limit: number, active: number }>}
+ */
+async function reserveToolSlot(env, log, identity, requestId) {
+  const noop = async () => {};
+  /** @type {typeof import('./quota.js')} */
+  let quota;
+  try {
+    quota = await import("./quota.js");
+  } catch (err) {
+    log.warn("mcp.inflight_unavailable", { error: (/** @type {any} */ (err))?.message || String(err) });
+    return { ok: true, release: noop };
+  }
+  const reserved = await quota.reserveInflight(env, identity?.id, requestId);
+  if (!reserved.ok) return reserved;
+  // A degraded reservation holds no row, so there is nothing to release.
+  if (reserved.degraded) return { ok: true, release: noop };
+  return { ok: true, release: () => quota.releaseInflight(env, requestId) };
+}
+
+// The dispatcher proper: the SDK manifest family, the literature family and its
 // two `search`/`fetch` adapters, then `deep_research`;
 // anything else — including a tool this account does not
 // expose — is an invalid-params error. The tool itself fails soft: any pipeline
@@ -373,7 +557,7 @@ export async function handleMcp(request, env, log, identity, ctx, requestId) {
  * @param {string} requestId
  * @param {import('./mcp-config.js').McpConfig} config this account's exposure config
  */
-async function handleToolCall(parsed, env, log, identity, ctx, requestId, config) {
+async function dispatchToolCall(parsed, env, log, identity, ctx, requestId, config) {
   const { id, params } = parsed;
   const name = params?.name;
   const args = params?.arguments && typeof params.arguments === "object" ? params.arguments : {};
@@ -431,7 +615,12 @@ async function handleToolCall(parsed, env, log, identity, ctx, requestId, config
         }
       }
       const { runLiteratureTool } = await import("./literature-run.js");
-      const result = await runLiteratureTool(env, log, name, args);
+      // The identity travels with the call so the runner can RECORD what it
+      // spent, not just be refused when the account has already overspent. A
+      // gate without a meter cannot bite: these tools were checked against the
+      // four-window quota from the start and never incremented it, so a key
+      // that only called them was unbounded (docs/MCP-COST.md §4b).
+      const result = await runLiteratureTool(env, log, name, args, { identity, requestId });
       log.info("mcp.literature_tool", {
         tool: name,
         user_id: identity?.id,
@@ -511,27 +700,90 @@ async function handleToolCall(parsed, env, log, identity, ctx, requestId, config
  * bypass of the quota /api/chat applies. Returns the message to hand back, or
  * null when the caller may proceed.
  *
+ * FAILS CLOSED when it cannot decide. Every step below reaches D1 — the lazy
+ * migration inside getDb, the config row, the usage windows — and any of them
+ * can throw. Before 2026-08-05 that throw simply ESCAPED: it surfaced as
+ * `Literature tool failed: d1 down` / `Research failed: d1 down`, which is a
+ * refusal nobody chose, described in a way no caller can act on. Now the
+ * failure is a decision, with its own message and its own log line. Why closed
+ * rather than open — and why the concurrency reservation around this call
+ * deliberately goes the other way — is written out above
+ * QUOTA_UNAVAILABLE_STATUS in quota.js.
+ *
  * @param {Env} env
  * @param {Logger} log
  * @param {Identity} identity
- * @param {any} [config] the site config, when the caller already loaded it
+ * @param {{ config: any, ok: boolean }} [site] the site config, when the caller
+ *   already loaded it (with whether that load actually reached the database)
  * @returns {Promise<string | null>}
  */
-async function researchQuotaBlock(env, log, identity, config) {
+async function researchQuotaBlock(env, log, identity, site) {
   if (identity?.isSecretAdmin || identity?.role === "admin") return null;
-  const [{ getUsage, quotaExceeded, effectiveQuota }, { getConfig }] = await Promise.all([
-    import("./quota.js"),
-    import("./config.js"),
-  ]);
-  const settings = config || (await getConfig(env));
-  const quota = effectiveQuota(settings, identity?.user);
-  if (!quota) return null;
-  const usage = await getUsage(env, identity.id, Date.now(), identity?.user?.quota_reset_at);
-  const blocked = quotaExceeded(usage, quota);
+  /** @type {typeof import('./quota.js')} */
+  let quota;
+  try {
+    quota = await import("./quota.js");
+  } catch (err) {
+    // Not reachable in practice (a static sibling module), but the gate's
+    // promise is that it always DECIDES: an unloadable meter is an unread one.
+    log.warn("mcp.quota_unverifiable", { user_id: identity?.id, reason: "import", error: errText(err) });
+    return quotaUnavailableToolMessage();
+  }
+  const settings = site || (await loadSiteConfig(env, log));
+  if (!settings.ok) {
+    log.warn("mcp.quota_unverifiable", { user_id: identity?.id, reason: "config" });
+    return quotaUnavailableToolMessage();
+  }
+  const limits = quota.effectiveQuota(settings.config, identity?.user);
+  // Nothing enforced anywhere → nothing to verify, and an unreadable usage
+  // store cannot change an admission no limit would have refused.
+  if (!limits || !quota.quotaEnforced(limits)) return null;
+  /** @type {import('./quota.js').Usage} */
+  let usage;
+  try {
+    usage = await quota.getUsage(env, identity.id, Date.now(), identity?.user?.quota_reset_at);
+  } catch (err) {
+    log.warn("mcp.quota_unverifiable", { user_id: identity?.id, reason: "usage", error: errText(err) });
+    return quotaUnavailableToolMessage();
+  }
+  const blocked = quota.quotaExceeded(usage, limits);
   if (!blocked) return null;
   log.info("mcp.quota_exceeded", { user_id: identity?.id, period: blocked.period, kind: blocked.kind });
   const when = `${new Date(blocked.reset_at).toISOString().slice(0, 16).replace("T", " ")} UTC`;
   return `Research quota exceeded (${blocked.period}). It resets at ${when}.`;
+}
+
+/**
+ * Load the site config, degrading to the SAME defaults config.js falls back to
+ * when there is no database at all — but SAYING SO. The distinction is the
+ * whole point: "this site has no D1" is a supported configuration whose
+ * defaults are the real settings, while "D1 threw" means the real settings are
+ * unknown, and the quota gate must not read the second as permission (an admin
+ * may have lowered the limits the defaults would hand back).
+ *
+ * Dynamically imported like everything else heavy on this surface, so
+ * src/mcp.test.js keeps loading the module without the pipeline graph.
+ * @param {Env} env
+ * @param {Logger} log
+ * @returns {Promise<{ config: any, ok: boolean }>}
+ */
+async function loadSiteConfig(env, log) {
+  const { DEFAULT_CONFIG, getConfig } = await import("./config.js");
+  try {
+    return { config: await getConfig(env), ok: true };
+  } catch (err) {
+    log.warn("mcp.config_unavailable", { error: errText(err) });
+    return { config: structuredClone(DEFAULT_CONFIG), ok: false };
+  }
+}
+
+/**
+ * The message of a thrown value, however odd the throw.
+ * @param {unknown} err
+ * @returns {string}
+ */
+function errText(err) {
+  return (/** @type {any} */ (err))?.message || String(err);
 }
 
 // ---------------------------------------------------------------------------
@@ -564,18 +816,18 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
     { adminDefaultModelValid, DEFAULT_MODEL },
     { listChatModels },
     { runPipeline },
-    { getConfig },
     { recordUsage, recordModelUsage },
-    { summarizeSpend, exaCost, spendByModel },
+    { summarizeSpend, exaCost, spendByModel, denseSpend },
+    { newRetrievalSpend },
   ] = await Promise.all([
     import("./validation.js"),
     import("./budget.js"),
     import("./berget.js"),
     import("./providers.js"),
     import("./pipeline.js"),
-    import("./config.js"),
     import("./quota.js"),
     import("./billing.js"),
+    import("./dense-rag.js"),
   ]);
 
   // Minimal single-turn conversation — the same {role, content} shape chat.js
@@ -594,7 +846,13 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
   } catch (err) {
     log.warn("mcp.model_catalog_unavailable", { error: (/** @type {any} */ (err))?.message || String(err) });
   }
-  const config = await getConfig(env);
+  // Site settings, fail-soft in SHAPE and fail-closed in ADMISSION: a D1 error
+  // here used to throw straight out of the tool as `Research failed: d1 down`.
+  // The request can still be shaped against the defaults (model, budget clamp),
+  // but `site.ok` travels to the quota gate below, which refuses rather than
+  // authorize spend against limits it could not read.
+  const site = await loadSiteConfig(env, log);
+  const config = site.config;
 
   // `args.model` is the account's default or the caller's pick, whichever the
   // exposure config allowed; the admin default only fills in when neither said.
@@ -621,10 +879,20 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
   // money), and the spend would also be invisible to the usage bars and admin
   // cost totals — see the recordUsage below. The config is already loaded here,
   // so it is passed rather than read a second time.
-  const blocked = await researchQuotaBlock(env, log, identity, config);
+  const blocked = await researchQuotaBlock(env, log, identity, site);
+  // Thrown, then caught by dispatchToolCall into an isError tool result: the
+  // refusal reaches the caller inside the JSON-RPC envelope either way. (The
+  // literature branch returns its message directly, one frame closer.)
   if (blocked) throw new Error(blocked);
 
-  const state = newRequestState(model, jsonModel, webSearch, budgetS, planResearch(model, budgetS, jsonModel));
+  const state = newRequestState(
+    model,
+    jsonModel,
+    webSearch,
+    budgetS,
+    planResearch(model, budgetS, jsonModel),
+    newRetrievalSpend(),
+  );
 
   // Collect the pipeline's streamed text deltas (and honor discard_text, the
   // post-validation reset) into one string — the MCP result is non-streaming.
@@ -652,13 +920,17 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
       const { prompt_tokens, completion_tokens, berget_cost } = summarizeSpend(state, catalog);
       const billedSearches = Math.max(0, state.searchCount - (state.cachedSearchCount || 0));
       const exa_cost = exaCost(state, config, billedSearches);
+      // The search wave's hosted-index spend, priced from Berget's raw catalog
+      // (billing.js denseSpend). Zero, and no catalog request, on a run that
+      // touched no hosted index — which is every run before this existed.
+      const dense = await denseSpend(env, log, state);
       await recordUsage(env, log, {
         user_id: identity?.id,
         model,
-        prompt_tokens,
+        prompt_tokens: prompt_tokens + dense.prompt_tokens,
         completion_tokens,
         searches: billedSearches,
-        berget_cost,
+        berget_cost: berget_cost + dense.berget_cost,
         exa_cost,
         duration_ms: Date.now() - state.startedAt,
       });
@@ -666,7 +938,7 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
       await recordModelUsage(env, log, {
         user_id: identity?.id,
         request_id: requestId,
-        by_model: spendByModel(state, catalog),
+        by_model: [...spendByModel(state, catalog), ...dense.by_model],
       });
     } catch (err) {
       log.warn("mcp.usage_record_failed", { error: (/** @type {any} */ (err))?.message || String(err) });
@@ -741,9 +1013,14 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
  * @param {boolean} webSearch
  * @param {number} budgetS
  * @param {import('./budget.js').BudgetPlan} plan
+ * @param {import('./dense-rag.js').RetrievalSpend} denseTotals the request's
+ *   dense-retrieval tally. Passed IN rather than constructed here because
+ *   dense-rag.js pulls berget.js, and this module's static half must stay free
+ *   of it (the file-layout rule at the top); runDeepResearch already has it
+ *   from its dynamic-import block.
  * @returns {McpRequestState}
  */
-function newRequestState(model, jsonModel, webSearch, budgetS, plan) {
+function newRequestState(model, jsonModel, webSearch, budgetS, plan, denseTotals) {
   return {
     startedAt: Date.now(),
     model,
@@ -770,5 +1047,9 @@ function newRequestState(model, jsonModel, webSearch, budgetS, plan) {
     byUrl: new Map(),
     totals: { prompt_tokens: 0, completion_tokens: 0 },
     jsonTotals: { prompt_tokens: 0, completion_tokens: 0 },
+    // deep_research runs the SAME pipeline as /api/chat, so its search wave
+    // reaches the same hosted arXiv/PubMed tiers and spends the same Berget
+    // money. Same bucket, priced by the same billing.js denseSpend below.
+    denseTotals,
   };
 }

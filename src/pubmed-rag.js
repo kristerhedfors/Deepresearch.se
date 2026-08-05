@@ -100,7 +100,7 @@ export function pubmedRerankDoc(match) {
  * @param {import('./types.js').Logger} log
  * @param {string} query
  * @param {any[]} matches
- * @returns {Promise<{ ordered: any[], scored: boolean }>}
+ * @returns {Promise<{ ordered: any[], scored: boolean, tokens: number, estimated: boolean }>}
  */
 export async function pubmedRerank(env, log, query, matches) {
   return rerankMatches(env, log, query, matches, { docOf: pubmedRerankDoc, tag: "pubmed_rag" });
@@ -122,10 +122,14 @@ export async function pubmedRerank(env, log, query, matches) {
  * @param {any} env
  * @param {import('./types.js').Logger} log
  * @param {string} query the natural question, not keyword-AND terms
- * @param {{ limit?: number }} [opts]
+ * @param {{ limit?: number, spend?: import('./dense-rag.js').RetrievalSpend | null }} [opts]
+ *   `spend` is the caller's running provider tally (src/dense-rag.js): the
+ *   embedding and cross-encoder tokens this lookup costs are folded into it so
+ *   the request that ran it can bill them. Omitted, nothing is tallied and the
+ *   behaviour is exactly as before.
  * @returns {Promise<PubmedItem[] | null>}
  */
-export async function pubmedRagSearch(env, log, query, { limit = 5 } = {}) {
+export async function pubmedRagSearch(env, log, query, { limit = 5, spend = null } = {}) {
   if (!pubmedRagAvailable(env)) return null;
   return denseSearch(env, log, query, {
     index: env.PUBMED_INDEX,
@@ -133,5 +137,6 @@ export async function pubmedRagSearch(env, log, query, { limit = 5 } = {}) {
     docOf: pubmedRerankDoc,
     tag: "pubmed_rag",
     limit,
+    spend,
   });
 }

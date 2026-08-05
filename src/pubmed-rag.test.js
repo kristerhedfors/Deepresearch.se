@@ -192,6 +192,68 @@ test("an index with nothing above the floor still falls through to Europe PMC", 
   assert.ok(res.usedKeys.length > 0);
 });
 
+// ---------------------------------------------------------------------------
+// The SPEND the search wave has to bill. The pipeline runs this leg through the
+// source registry, which reads `spend` off the result generically
+// (search-sources.js) and folds it into the request's tally — so a leg that
+// does not report its tokens is a leg nobody pays for.
+// ---------------------------------------------------------------------------
+
+test("a dense answer reports the provider spend the wave has to bill", async (t) => {
+  const original = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = original;
+  });
+  globalThis.fetch = stubFetch();
+  // Two candidates, because one is below rerankMatches' minimum — a single
+  // match is reordered for free and genuinely costs nothing.
+  const env = fakeEnv({
+    matches: [match("41610285", "Ancient DNA from a Neolithic site"), match("41610286", "A second candidate")],
+  });
+  const res = await europepmcSearch(env, log, "what does ancient DNA say about Neolithic sites");
+  assert.equal(res.items.length, 2);
+  assert.ok(res.spend, "the leg reports what it cost");
+  assert.ok(res.spend.rerankTokens > 0, "the cross-encoder is the whole cost of a leg");
+  assert.equal(res.spend.rerankCalls, 1);
+});
+
+test("a leg that finds nothing above the floor STILL reports what it spent", async (t) => {
+  // The fall-through to the live API does not refund the embedding and the
+  // cross-encoder — under-billing a miss would be free retrieval for any
+  // question the recent slice cannot answer.
+  const original = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = original;
+  });
+  const dense = stubFetch([0.00001, 0.00001]);
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes("ebi.ac.uk")) {
+      return new Response(JSON.stringify({ resultList: { result: [] } }), { status: 200 });
+    }
+    return dense(url, init);
+  };
+  const env = fakeEnv({ matches: [match("1", "A"), match("2", "B")] });
+  const res = await europepmcSearch(env, log, "a 2009 cohort study of statin adherence");
+  assert.equal(res.items.length, 0);
+  assert.ok(res.spend.rerankTokens > 0, "the leg was paid for whether or not it answered");
+});
+
+test("a deployment with no PubMed binding reports a ZERO tally, so nothing is billed", async (t) => {
+  const original = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = original;
+  });
+  globalThis.fetch = async () => new Response(JSON.stringify({ resultList: { result: [] } }), { status: 200 });
+  const res = await europepmcSearch({}, log, "ancient DNA mammoth genome");
+  assert.deepEqual(res.spend, {
+    embedTokens: 0,
+    rerankTokens: 0,
+    rerankCalls: 0,
+    estimatedCalls: 0,
+    embedModelId: "",
+  });
+});
+
 test("a deployment with no PubMed binding behaves exactly as before", async (t) => {
   const original = globalThis.fetch;
   t.after(() => {

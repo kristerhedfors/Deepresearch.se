@@ -38,6 +38,105 @@ export const QUERY_TIMEOUT_MS = 6000;
 export const RERANK_TIMEOUT_MS = 6000;
 export const TOTAL_BUDGET_MS = 12_000;
 
+// ---- what a rerank costs ----------------------------------------------------
+// The cross-encoder is the whole provider cost of a dense retrieval: CANDIDATES
+// documents cut to RERANK_DOC_CHARS each, scored against the query, at Berget's
+// €0.10 per 1M tokens — three orders of magnitude above the one embedding call
+// that precedes it (docs/MCP-COST.md §1).
+//
+// Berget's /v1/rerank answers with a `usage` block, which this tier used to read
+// past. It is plumbed out now (rerankMatches returns `tokens`) because a
+// MEASURED count is always better than a count inferred from string lengths, and
+// because src/literature-run.js and src/billing.js bill a quota on it.
+//
+// The ratio below is only for the case where the endpoint returns no `usage` at
+// all. Its basis is the single measurement we have of the exact shape this tier
+// sends: 50 documents cut to 900 chars scored `usage.total_tokens = 10,198` on a
+// live call, 2026-08-05 — 45,000 / 10,198 = 4.41 chars per token. The query is
+// re-tokenized once per (query, document) pair and is NOT added separately here:
+// the measured call carried a query too, so its contribution is already inside
+// the ratio, and a query is short beside a 900-char document.
+export const RERANK_CHARS_PER_TOKEN = 4.41;
+
+/**
+ * Fallback token count for a rerank whose response carried no `usage` block.
+ * Estimated, never measured — see the note above for the basis.
+ * @param {string[]} docs the documents as sent
+ * @returns {number}
+ */
+export function estimateRerankTokens(docs) {
+  let chars = 0;
+  for (const d of docs) chars += String(d || "").length;
+  return Math.round(chars / RERANK_CHARS_PER_TOKEN);
+}
+
+// ---- the running tally ------------------------------------------------------
+// Two callers spend this tier's money and both have to bill it: the MCP
+// literature tools (src/literature-run.js, one tally per tool call) and the
+// /api/chat research pipeline (src/pipeline.js, one tally per REQUEST, since a
+// request can run several legs — multiple angles, two corpora, several search
+// rounds). The tally shape and the folding are here, next to the numbers, so
+// there is one definition of what a dense retrieval costs rather than one per
+// caller. Pricing it is src/billing.js's job (priceRetrievalSpend): that needs
+// Berget's raw catalog, and this module must stay a leaf over berget.js.
+//
+// Accumulate, never overwrite — legs run concurrently, but JS is
+// single-threaded, so `+=` needs no coordination.
+
+/**
+ * One caller's provider spend from this tier, in tokens.
+ * @typedef {Object} RetrievalSpend
+ * @property {number} embedTokens
+ * @property {number} rerankTokens
+ * @property {number} rerankCalls how many cross-encoder calls reported a cost
+ * @property {number} estimatedCalls how many of those were estimated, not measured
+ * @property {string} embedModelId the model the embedder actually answered as
+ */
+
+/** @returns {RetrievalSpend} */
+export function newRetrievalSpend() {
+  return { embedTokens: 0, rerankTokens: 0, rerankCalls: 0, estimatedCalls: 0, embedModelId: "" };
+}
+
+/**
+ * Fold one denseRetrieve result's cross-encoder cost into the running spend.
+ * @param {RetrievalSpend | null | undefined} spend
+ * @param {{ rerankTokens?: number, rerankEstimated?: boolean } | null | undefined} found
+ */
+export function addRerankSpend(spend, found) {
+  if (!spend || !found?.rerankTokens) return;
+  spend.rerankTokens += found.rerankTokens;
+  spend.rerankCalls += 1;
+  if (found.rerankEstimated) spend.estimatedCalls += 1;
+}
+
+/**
+ * Fold one embedQueries result's cost into the running spend.
+ * @param {RetrievalSpend | null | undefined} spend
+ * @param {{ usage?: any, model?: string } | null | undefined} embedded
+ */
+export function addEmbedSpend(spend, embedded) {
+  if (!spend || !embedded) return;
+  spend.embedTokens += Number(embedded.usage?.prompt_tokens ?? embedded.usage?.total_tokens ?? 0) || 0;
+  if (embedded.model) spend.embedModelId = embedded.model;
+}
+
+/**
+ * Fold one tally into another — how a per-leg or per-source tally reaches the
+ * per-request one. Fail-soft in both directions: either side missing is a
+ * no-op, never a throw, because accounting must not break a search wave.
+ * @param {RetrievalSpend | null | undefined} into
+ * @param {RetrievalSpend | null | undefined} from
+ */
+export function mergeRetrievalSpend(into, from) {
+  if (!into || !from) return;
+  into.embedTokens += from.embedTokens || 0;
+  into.rerankTokens += from.rerankTokens || 0;
+  into.rerankCalls += from.rerankCalls || 0;
+  into.estimatedCalls += from.estimatedCalls || 0;
+  if (from.embedModelId) into.embedModelId = from.embedModelId;
+}
+
 // The relevance floor, applied to the CROSS-ENCODER score, never to the cosine.
 // Dense retrieval always returns its nearest neighbours however far away they
 // are, so an off-domain question gets confident nonsense instead of a miss. The
@@ -79,38 +178,51 @@ export function withTimeout(promise, ms, what) {
  * @param {string} query
  * @param {any[]} matches
  * @param {{ docOf: (m: any) => string, tag: string }} opts
- * @returns {Promise<{ ordered: any[], scored: boolean }>} `scored` says whether
- *   the cross-encoder actually ran — the caller applies the relevance floor
- *   only then, since a fallback order carries no comparable scores.
+ * @returns {Promise<{ ordered: any[], scored: boolean, tokens: number, estimated: boolean }>}
+ *   `scored` says whether the cross-encoder actually ran — the caller applies
+ *   the relevance floor only then, since a fallback order carries no comparable
+ *   scores. `tokens` is what the call cost, taken from the endpoint's own
+ *   `usage` block when it sends one and estimated from the documents' length
+ *   when it does not (`estimated` says which). A leg that never reached the
+ *   provider, or whose call failed, reports 0: what is billed is what a
+ *   response said, and under-billing a failure is the fail-soft direction.
  */
 export async function rerankMatches(env, log, query, matches, { docOf, tag }) {
-  if (matches.length < 2) return { ordered: matches, scored: false };
+  if (matches.length < 2) return { ordered: matches, scored: false, tokens: 0, estimated: false };
+  const documents = matches.map(docOf);
   try {
     const res = await fetch(`${env.BERGET_URL || "https://api.berget.ai/v1"}/rerank`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${env.BERGET_API_TOKEN}` },
-      body: JSON.stringify({ model: RERANK_MODEL, query, documents: matches.map(docOf), top_n: matches.length }),
+      body: JSON.stringify({ model: RERANK_MODEL, query, documents, top_n: matches.length }),
       signal: AbortSignal.timeout(RERANK_TIMEOUT_MS),
     });
     if (!res.ok) {
       log.warn(`${tag}.rerank_http`, { status: res.status });
-      return { ordered: matches, scored: false };
+      return { ordered: matches, scored: false, tokens: 0, estimated: false };
     }
     const json = await res.json();
+    // The provider's own count, whatever the rest of the response turns out to
+    // be: the tokens were spent before the rows were read.
+    const reported = Number(json?.usage?.total_tokens ?? json?.usage?.prompt_tokens ?? 0);
+    const estimated = !(reported > 0);
+    const tokens = estimated ? estimateRerankTokens(documents) : reported;
     const rows = json?.results || json?.data || [];
     if (!Array.isArray(rows) || !rows.length) {
       log.warn(`${tag}.rerank_empty`, {});
-      return { ordered: matches, scored: false };
+      return { ordered: matches, scored: false, tokens, estimated };
     }
     const ordered = rows
       .map((/** @type {any} */ r) => ({ i: r.index ?? 0, score: r.relevance_score ?? r.score ?? 0 }))
       .sort((/** @type {any} */ a, /** @type {any} */ b) => b.score - a.score)
       .map((r) => (matches[r.i] ? { ...matches[r.i], rerankScore: r.score } : null))
       .filter(Boolean);
-    return ordered.length ? { ordered, scored: true } : { ordered: matches, scored: false };
+    return ordered.length
+      ? { ordered, scored: true, tokens, estimated }
+      : { ordered: matches, scored: false, tokens, estimated };
   } catch (/** @type {any} */ err) {
     log.warn(`${tag}.rerank_failed`, { error: err?.message || String(err) });
-    return { ordered: matches, scored: false };
+    return { ordered: matches, scored: false, tokens: 0, estimated: false };
   }
 }
 
@@ -123,18 +235,24 @@ export async function rerankMatches(env, log, query, matches, { docOf, tag }) {
  * cost of asking it one. src/literature-run.js's parallel multi-angle search is
  * built on exactly this; denseSearch below is the one-element case.
  *
+ * The return shape MIRRORS embedTexts' own — `{ vectors, usage, model }`. It
+ * used to be the vectors alone, which threw away the provider's token report;
+ * src/literature-run.js bills on it, and a caller that wants only the vectors
+ * destructures one field.
+ *
  * @param {any} env
  * @param {string[]} queries
  * @param {{ timeoutMs?: number }} [opts]
- * @returns {Promise<number[][]>} one vector per query, in the queries' order
+ * @returns {Promise<{ vectors: number[][], usage: any, model: string }>} one
+ *   vector per query, in the queries' order, plus the call's usage and model
  */
 export async function embedQueries(env, queries, { timeoutMs = EMBED_TIMEOUT_MS } = {}) {
-  const { vectors } = await embedTexts(
+  const { vectors, usage, model } = await embedTexts(
     env,
     queries.map((q) => QUERY_PREFIX + q),
     { timeoutMs },
   );
-  return Array.isArray(vectors) ? vectors : [];
+  return { vectors: Array.isArray(vectors) ? vectors : [], usage: usage || null, model };
 }
 
 /**
@@ -164,7 +282,9 @@ export async function embedQueries(env, queries, { timeoutMs = EMBED_TIMEOUT_MS 
  * }} opts `startedAt` lets a batched caller charge the shared embedding leg
  *   against this call's budget, so one slow embed cannot let every retrieval
  *   in the batch start a 6 s cross-encoder afterwards.
- * @returns {Promise<{ matches: any[], scored: boolean, candidates: number, aboveFloor: number } | null>}
+ * @returns {Promise<{ matches: any[], scored: boolean, candidates: number, aboveFloor: number, rerankTokens: number, rerankEstimated: boolean } | null>}
+ *   `rerankTokens` is this leg's cross-encoder spend, which is what the leg
+ *   costs — a caller that meters (src/literature-run.js) sums it across legs.
  */
 export async function denseRetrieve(env, log, { index, qvec, query, docOf, tag, startedAt, floor = RERANK_FLOOR }) {
   const started = typeof startedAt === "number" ? startedAt : Date.now();
@@ -176,21 +296,30 @@ export async function denseRetrieve(env, log, { index, qvec, query, docOf, tag, 
       "vectorize query",
     );
     const matches = res?.matches || [];
-    if (!matches.length) return { matches: [], scored: false, candidates: 0, aboveFloor: 0 };
+    if (!matches.length) {
+      return { matches: [], scored: false, candidates: 0, aboveFloor: 0, rerankTokens: 0, rerankEstimated: false };
+    }
     // Out of budget → keep the dense order rather than spending another 6 s on
     // a cross-encoder.
     const spent = Date.now() - started;
     const overBudget = spent > TOTAL_BUDGET_MS - RERANK_TIMEOUT_MS;
     if (overBudget) log.warn(`${tag}.rerank_skipped`, { spent_ms: spent });
-    /** @type {{ ordered: any[], scored: boolean }} */
-    const { ordered, scored } = overBudget
-      ? { ordered: matches, scored: false }
+    /** @type {{ ordered: any[], scored: boolean, tokens: number, estimated: boolean }} */
+    const { ordered, scored, tokens, estimated } = overBudget
+      ? { ordered: matches, scored: false, tokens: 0, estimated: false }
       : await rerankMatches(env, log, query, matches, { docOf, tag });
     // The floor only applies when the cross-encoder actually scored: a fallback
     // order carries no comparable numbers, and dropping everything on the
     // strength of absent scores would turn a degraded result into no result.
     const kept = scored ? ordered.filter((m) => (m.rerankScore ?? 0) >= floor) : ordered;
-    return { matches: kept, scored, candidates: matches.length, aboveFloor: kept.length };
+    return {
+      matches: kept,
+      scored,
+      candidates: matches.length,
+      aboveFloor: kept.length,
+      rerankTokens: tokens,
+      rerankEstimated: estimated,
+    };
   } catch (/** @type {any} */ err) {
     log.warn(`${tag}.failed`, { error: err?.message || String(err) });
     return null;
@@ -215,17 +344,27 @@ export async function denseRetrieve(env, log, { index, qvec, query, docOf, tag, 
  *   docOf: (m: any) => string,
  *   tag: string,
  *   limit?: number,
- * }} opts
+ *   spend?: RetrievalSpend | null,
+ * }} opts `spend` is an OPTIONAL running tally the caller owns: this call folds
+ *   its embedding and cross-encoder tokens into it so the caller can bill them.
+ *   Omitting it is the pre-metering behaviour exactly — the tally is the only
+ *   thing it changes, and a caller with no way to bill (a test, a probe) passes
+ *   nothing. The folding is unconditional on the RESULT: an empty index, a
+ *   below-floor result and a returned-null failure all still cost whatever
+ *   reached the provider before they gave up.
  * @returns {Promise<T[] | null>}
  */
-export async function denseSearch(env, log, query, { index, itemOf, docOf, tag, limit = 5 }) {
+export async function denseSearch(env, log, query, { index, itemOf, docOf, tag, limit = 5, spend = null }) {
   const started = Date.now();
   const text = String(query || "").trim();
   if (!index || !text) return null;
   try {
-    const qvec = (await embedQueries(env, [text], { timeoutMs: EMBED_TIMEOUT_MS }))[0];
+    const embedded = await embedQueries(env, [text], { timeoutMs: EMBED_TIMEOUT_MS });
+    addEmbedSpend(spend, embedded);
+    const qvec = embedded.vectors[0];
     if (!Array.isArray(qvec)) return null;
     const found = await denseRetrieve(env, log, { index, qvec, query: text, docOf, tag, startedAt: started });
+    addRerankSpend(spend, found);
     if (!found) return null;
     if (!found.candidates) {
       log.info(`${tag}.search`, { results: 0, duration_ms: Date.now() - started });

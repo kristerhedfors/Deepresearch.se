@@ -65,6 +65,9 @@ import {
 import { runEnrichments } from "./enrichment.js";
 import { fetchContents, webSearch } from "./exa.js";
 import { SEARCH_SOURCES, leadSourceIds } from "./search-sources.js";
+// Folds a source's reported dense-retrieval spend into the request's tally —
+// the one thing the orchestrator does with it; pricing is billing.js's.
+import { mergeRetrievalSpend } from "./dense-rag.js";
 import { getModelProfile } from "./model-profiles.js";
 import { addUsage } from "./quota.js";
 import { addSources, backfillOverflowSources, sourceDigest } from "./sources.js";
@@ -2394,6 +2397,14 @@ async function runOneAuxSearch(ctx, plan) {
   const { env, log } = ctx;
   try {
     const r = await plan.source.search(env, log, plan.query, { skipKeys: plan.skipKeys });
+    // Provider spend the source reported (search-sources.js `spend`): the
+    // hosted dense tiers cost Berget money per leg, and a request runs several
+    // — multiple angles, two corpora, several gap rounds — so it ACCUMULATES
+    // into the request's tally, which src/billing.js denseSpend prices once at
+    // the end. Read generically off the result, like everything else in this
+    // loop: the orchestrator never names a source. A source that reports none
+    // (every source but the two literature legs) leaves the tally untouched.
+    mergeRetrievalSpend(ctx.state.denseTotals, r.spend);
     return { items: r.items || [], durationMs: r.durationMs || 0, usedKeys: r.usedKeys || [] };
   } catch (/** @type {any} */ err) {
     log.warn(`${plan.source.id}.search_failed`, { error: err?.message || String(err) });

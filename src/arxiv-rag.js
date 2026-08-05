@@ -125,7 +125,7 @@ export function arxivRerankDoc(match) {
  * @param {import('./types.js').Logger} log
  * @param {string} query
  * @param {any[]} matches
- * @returns {Promise<{ ordered: any[], scored: boolean }>}
+ * @returns {Promise<{ ordered: any[], scored: boolean, tokens: number, estimated: boolean }>}
  */
 export async function arxivRerank(env, log, query, matches) {
   return rerankMatches(env, log, query, matches, { docOf: arxivRerankDoc, tag: "arxiv_rag" });
@@ -144,10 +144,14 @@ export async function arxivRerank(env, log, query, matches) {
  * @param {string} query the user's/planner's natural question, NOT the
  *   keyword-AND terms — dense retrieval wants the prose, and the live tier's
  *   noise stripping would throw away the signal an embedder uses.
- * @param {{ limit?: number }} [opts]
+ * @param {{ limit?: number, spend?: import('./dense-rag.js').RetrievalSpend | null }} [opts]
+ *   `spend` is the caller's running provider tally (src/dense-rag.js): the
+ *   embedding and cross-encoder tokens this lookup costs are folded into it so
+ *   the request that ran it can bill them. Omitted, nothing is tallied and the
+ *   behaviour is exactly as before.
  * @returns {Promise<ArxivItem[] | null>}
  */
-export async function arxivRagSearch(env, log, query, { limit = 5 } = {}) {
+export async function arxivRagSearch(env, log, query, { limit = 5, spend = null } = {}) {
   if (!arxivRagAvailable(env)) return null;
   return denseSearch(env, log, query, {
     index: env.ARXIV_INDEX,
@@ -155,5 +159,6 @@ export async function arxivRagSearch(env, log, query, { limit = 5 } = {}) {
     docOf: arxivRerankDoc,
     tag: "arxiv_rag",
     limit,
+    spend,
   });
 }

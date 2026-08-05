@@ -94,9 +94,22 @@ export function fakeD1(options = {}) {
    * @returns {any}
    */
   function prepare(raw) {
+    return bound(raw, []);
+  }
+
+  /**
+   * One prepared statement with its bindings. `bind()` returns a NEW statement
+   * rather than mutating this one, which is what the real binding does — and it
+   * is load-bearing for the batch-a-rebound-statement pattern (quota.js's
+   * recordModelUsage prepares once and binds per row). A mutating fake records
+   * N copies of the LAST row's bindings, so a test asserting per-row
+   * attribution passes or fails for the wrong reason.
+   * @param {string} raw
+   * @param {unknown[]} bindings
+   * @returns {any}
+   */
+  function bound(raw, bindings) {
     const sql = norm(raw);
-    /** @type {unknown[]} */
-    let bindings = [];
     /** @param {D1Call["method"]} method */
     const record = (method) => {
       const call = { sql, raw, bindings: bindings.slice(), method };
@@ -106,8 +119,7 @@ export function fakeD1(options = {}) {
     const stmt = {
       /** @param {...unknown} values */
       bind(...values) {
-        bindings = values;
-        return stmt;
+        return bound(raw, values);
       },
       async run() {
         record("run");

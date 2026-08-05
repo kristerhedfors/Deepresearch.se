@@ -97,6 +97,17 @@ function withRemediation(row) {
 
 /**
  * Upserts one alert by type (recurrence bumps count and re-surfaces it).
+ *
+ * BEST-EFFORT IN FULL (invariant 2). Both call sites are error paths —
+ * chat.js's stream catch and answer-stream.js's model failover — so a throw
+ * from here escapes the very `catch` that was recovering, and observed
+ * 2026-08-05 that is exactly what happened on an errored D1: `getDb` threw
+ * inside the catch block, the `emit({error})` line never ran, and the user got
+ * a hung stream plus an unhandled rejection instead of the error message. The
+ * INSERT was already guarded; the getDb call (which runs the lazy migration)
+ * was not. Nothing is lost by swallowing: the caller has already written its
+ * own log line, and an alerts table that cannot be written is a symptom of an
+ * outage the same request is reporting anyway.
  * @param {Env} env
  * @param {string} type
  * @param {string} severity
@@ -104,6 +115,21 @@ function withRemediation(row) {
  * @param {unknown} [detail] truncated to 500 chars on the row
  */
 export async function raiseAlert(env, type, severity, message, detail) {
+  try {
+    await upsertAlert(env, type, severity, message, detail);
+  } catch {
+    // Swallowed — see above.
+  }
+}
+
+/**
+ * @param {Env} env
+ * @param {string} type
+ * @param {string} severity
+ * @param {string} message
+ * @param {unknown} [detail]
+ */
+async function upsertAlert(env, type, severity, message, detail) {
   const db = await getDb(env);
   if (!db) return;
   const now = Date.now();

@@ -66,7 +66,17 @@ import {
  * What a source's `search` call resolves to. `usedKeys` lists the attempt
  * keys this call consumed (hit or miss), recorded by the orchestrator so a
  * later wave's ladder skips them instead of re-fetching identical results.
- * @typedef {{ items: SearchSourceItem[], durationMs: number, usedKeys?: string[] }} SearchSourceResult
+ *
+ * `spend` is the OPTIONAL provider bill this call ran up at Berget — the
+ * dense-retrieval tally from src/dense-rag.js. Most sources spend nothing
+ * there (a plain HTTP query to a free API) and omit it; the two hosted
+ * literature legs embed the query and run a cross-encoder over 50 candidates
+ * per corpus, which is real money, and the orchestrator accumulates it across
+ * every leg of the request so src/billing.js can price it into the one usage
+ * row (pipeline.js runOneAuxSearch). Declared HERE rather than in either
+ * source, because the orchestrator reads it generically and must never name a
+ * source — the same rule the rest of this contract follows.
+ * @typedef {{ items: SearchSourceItem[], durationMs: number, usedKeys?: string[], spend?: import('./dense-rag.js').RetrievalSpend }} SearchSourceResult
  */
 
 /**
