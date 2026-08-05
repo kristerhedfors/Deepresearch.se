@@ -80,7 +80,7 @@ export const SECURITY_RISK_ITEMS = [
     severity: "medium",
     status: "open",
     summary:
-      "PARTIAL (2026-07-12): a per-user CONCURRENCY cap now bounds the check-then-act race — a D1-backed inflight reservation (CAP=5, TTL=300s, fail-soft) taken at admission and released in a finally on /api/chat, /api/embed, /api/quiz/grade, /api/bash/step; caps the ≈N× overspend at ≈CAP× (closes the spend-abuse class with the P-1 provider caps). RESIDUAL: not a true spend reservation, and the simultaneous-isolate + disconnect-release paths need a live-verify pass; keep open until verified.",
+      "PARTIAL (2026-07-12): a per-user CONCURRENCY cap now bounds the check-then-act race — a D1-backed inflight reservation (CAP=5, TTL=300s, fail-soft) taken at admission and released in a finally on /api/chat, /api/embed, /api/quiz/grade, /api/bash/step; caps the ≈N× overspend at ≈CAP× (closes the spend-abuse class with the P-1 provider caps). RESIDUAL: not a true spend reservation, and the simultaneous-isolate + disconnect-release paths need a live-verify pass; keep open until verified. TWO /mcp GAPS (2026-08-05, docs/MCP-COST.md): src/mcp.js takes NO inflight reservation, so an external MCP key is outside the CAP=5 bound entirely; and src/literature-run.js records no usage, so literature_search/literature_similar/search are gated on the quota but never increment it — €0.0021-€0.0124 per call (the reranker at 50x900 chars per angle-corpus leg), unbounded in aggregate. deep_research itself meters correctly at ~€111/account/month.",
   },
   {
     id: "P-4",
