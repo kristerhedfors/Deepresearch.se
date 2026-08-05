@@ -371,7 +371,11 @@ Four things about this surface are load-bearing and easy to get wrong later:
    in the same change. `literature_fetch` (a key read) and `literature_corpora`
    (committed facts + `describe()`) are deliberately OUTSIDE it: an agent that
    has run out of budget should still be able to resolve an id it was handed
-   and learn what exists. Unlike `deep_research` these calls write no
+   and learn what exists. **The METER matches the gate exactly** (2026-08-05):
+   `runLiteratureTool` records the retrieval's spend in a `finally`, and the
+   same two tools that skip the gate leave the accumulator at zero and so
+   write no row. A gate without a meter cannot bite — that is precisely the
+   defect this closed. Unlike `deep_research` these calls write no
    `chat_logs` row — a retrieval is not an interaction to log, and the query
    text stays out of Workers Logs (only counts are logged, as the dense tiers
    already do).
@@ -744,12 +748,19 @@ it the reranker**, 50 candidates × 900 chars per angle-corpus leg, measured
 at 10,198 tokens per leg at €0.10/M. The `sdk_*` four and
 `literature_fetch` / `literature_corpora` / `fetch` cost nothing.
 
-Two metering gaps decide whether the surface can be published, and both are
-in the register as P-3: **`src/literature-run.js` records no usage** (the
-searching tools are gated on the quota but never increment it, so they
-cannot exhaust it — unbounded per key), and **`/mcp` takes no
-`reserveInflight`**, so the CAP=5 concurrency bound that `/api/chat` gets
-does not apply here. `deep_research` itself meters correctly; a public
+Two metering gaps decided whether the surface can be published, both in the
+register as P-3. The first — **`src/literature-run.js` recorded no usage**,
+so the searching tools were gated on the quota but never incremented it and
+could not exhaust it — was **fixed 2026-08-05**: `runLiteratureTool` records
+in a `finally` from the cross-encoder's own `usage.total_tokens` (which
+`rerankMatches` used to read past) plus the embedder's, priced through
+`rawModelEntry` + `eurPerTokenFromBerget` because neither model is in the
+chat catalog `bergetCost` prices from. It counts as `berget_cost` and never
+as `searches` — that count is Exa's, calibrated to €0.005 a search. The
+second is still open: **`/mcp` takes no `reserveInflight`**, so the CAP=5
+concurrency bound that `/api/chat` gets does not apply here, which makes
+every per-account ceiling a per-connection one. `deep_research` itself meters
+correctly (and always did); a public
 account is capped at ~€111/month, which is `budget_eur` €8 plus 12,000
 searches at the deep tier — note `quotaExceeded` caps Berget cost in EUR
 but Exa only by COUNT, so the real Exa ceiling is 71% above what the count

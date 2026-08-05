@@ -352,15 +352,19 @@ public exposure (`docs/MCP-COST.md`), both in this class:** (a) `src/mcp.js`
 takes NO inflight reservation — the string does not appear in the file — so
 the four endpoints listed above do not include the one an external key
 holds, and the check-then-act race there is unbounded rather than capped at
-5; (b) `src/literature-run.js` records no usage at all, so
-`literature_search` / `literature_similar` / `search` are GATED on the quota
-but never INCREMENT it and cannot exhaust it — measured at €0.0021–€0.0124
+5; (b) `src/literature-run.js` recorded no usage at all, so
+`literature_search` / `literature_similar` / `search` were GATED on the quota
+but never INCREMENTED it and could not exhaust it — measured at €0.0021–€0.0124
 per call (the reranker: 50 candidates × 900 chars per angle × corpus leg,
 10,198 tokens at €0.10/M), which is €7–€44 per hour at one call per second
 from a single key, times whatever concurrency (a) allows. `deep_research`
-itself is metered correctly and bounded at ~€111/account/month. Fixing (b)
-is the precondition for opening the surface; (a) makes every other number
-here a per-connection figure rather than a per-account one.
+itself is metered correctly and bounded at ~€111/account/month. **(b) is
+FIXED (2026-08-05):** every retrieving literature tool now records a
+`usage_events` row from the cross-encoder's own `usage.total_tokens` plus the
+embedder's, priced from Berget's raw `/v1/models` catalog, so the EUR
+dimension bites (~476 one-angle or ~80 six-angle calls per 5-hour window).
+(a) is still open, and it makes every other number here a per-connection
+figure rather than a per-account one.
 
 ### P-4 · H-2 follow-up · Flip the CSP on — 🔴 OPEN
 The CSP is fully authored in `src/security-headers.js` but `CSP_ENABLED = false`

@@ -31,6 +31,8 @@ import {
   runOpenAiSearch,
 } from "./literature-run.js";
 import { CORPUS_FACTS } from "./literature-tools.js";
+import { RERANK_CHARS_PER_TOKEN } from "./dense-rag.js";
+import { fakeD1 } from "./test-helpers/d1.js";
 
 const log = { info() {}, warn() {}, error() {}, debug() {} };
 
@@ -100,16 +102,56 @@ function pubmedRow(pmid, title, extra = {}) {
 }
 
 /**
- * Stub Berget's two endpoints. Returns a call ledger so a test can assert that
- * six queries cost one embedding request.
- * @param {{ rerank?: "ok"|"http_error"|"throw", embed?: "ok"|"throw" }} [opts]
+ * What one leg of the cross-encoder reported against the live endpoint on
+ * 2026-08-05, for the exact shape this tier sends (CANDIDATES=50 documents cut
+ * to RERANK_DOC_CHARS=900): `usage.total_tokens`. The whole provider cost of the
+ * literature family is this number × the number of legs × €0.10/1M
+ * (docs/MCP-COST.md §1), so the stub reports it rather than a round number.
  */
-function stubBerget({ rerank = "ok", embed = "ok", epmc = null, arxiv = null } = {}) {
+const RERANK_TOKENS_PER_LEG = 10_198;
+
+/** What the embedding stub reports for a call, whatever the batch size. */
+const EMBED_TOKENS_PER_CALL = 10;
+
+/**
+ * Berget's RAW /v1/models entries for the two models this tier spends on.
+ * Neither is in the chat catalog (`GET /api/models`) — `fetchCatalog` filters
+ * that to streaming json_mode text models — which is exactly why the spend
+ * cannot be priced with quota.js's bergetCost and goes through rawModelEntry
+ * instead. The `unit` is the one Berget states, so eurPerTokenFromBerget's
+ * normalization to EUR-per-token is exercised rather than bypassed.
+ */
+const RAW_CATALOG = [
+  {
+    id: "BAAI/bge-reranker-v2-m3",
+    model_type: "reranker",
+    pricing: { input: 0.1, output: 0, currency: "EUR", unit: "€ / M Token" },
+  },
+  {
+    id: "intfloat/multilingual-e5-large",
+    model_type: "embedding",
+    pricing: { input: 0.03, output: 0, currency: "EUR", unit: "€ / M Token" },
+  },
+];
+/** EUR per token, as eurPerTokenFromBerget normalizes the entries above. */
+const RERANK_EUR_PER_TOKEN = 0.1 / 1e6;
+const EMBED_EUR_PER_TOKEN = 0.03 / 1e6;
+
+/**
+ * Stub Berget's endpoints. Returns a call ledger so a test can assert that
+ * six queries cost one embedding request.
+ * @param {{ rerank?: "ok"|"http_error"|"throw", embed?: "ok"|"throw", rerankUsage?: number|null }} [opts]
+ *   `rerankUsage: null` drops the `usage` block from the rerank response, which
+ *   is the one case the tier has to estimate a token count instead of reading it.
+ */
+function stubBerget({ rerank = "ok", embed = "ok", rerankUsage = RERANK_TOKENS_PER_LEG, epmc = null, arxiv = null } = {}) {
   const calls = {
     embed: 0,
     rerank: 0,
+    models: 0,
     embedInputs: [],
     rerankQueries: [],
+    rerankDocChars: [],
     epmc: 0,
     arxiv: 0,
     epmcQueries: [],
@@ -135,6 +177,14 @@ function stubBerget({ rerank = "ok", embed = "ok", epmc = null, arxiv = null } =
       return new Response(arxiv || "<feed></feed>", { status: 200 });
     }
 
+    // The raw model catalog, which is how the reranker and the embedder get
+    // priced. berget.js caches it for 5 minutes in a module-level variable, so
+    // this may well be asked only once across the whole file.
+    if (href.endsWith("/models")) {
+      calls.models++;
+      return jsonResponse({ data: RAW_CATALOG });
+    }
+
     const body = init?.body ? JSON.parse(init.body) : {};
     if (href.endsWith("/embeddings")) {
       calls.embed++;
@@ -142,12 +192,14 @@ function stubBerget({ rerank = "ok", embed = "ok", epmc = null, arxiv = null } =
       if (embed === "throw") throw new Error("embedder down");
       return jsonResponse({
         data: body.input.map((_, index) => ({ index, embedding: VEC() })),
-        usage: { prompt_tokens: 10 },
+        usage: { prompt_tokens: EMBED_TOKENS_PER_CALL },
+        model: "intfloat/multilingual-e5-large",
       });
     }
     if (href.endsWith("/rerank")) {
       calls.rerank++;
       calls.rerankQueries.push(body.query);
+      calls.rerankDocChars.push(body.documents.reduce((/** @type {number} */ n, d) => n + d.length, 0));
       if (rerank === "throw") throw new Error("reranker down");
       if (rerank === "http_error") return new Response("nope", { status: 503 });
       // Score descending in the order the documents arrived, so the fake's
@@ -156,6 +208,9 @@ function stubBerget({ rerank = "ok", embed = "ok", epmc = null, arxiv = null } =
       const n = body.documents.length;
       return jsonResponse({
         results: body.documents.map((_, index) => ({ index, relevance_score: index === n - 1 ? 0.001 : 1 - index * 0.1 })),
+        // Berget reports the call's own token count, which is what the tier
+        // bills on. Omitted when a test asks for the estimate path.
+        ...(rerankUsage === null ? {} : { usage: { total_tokens: rerankUsage } }),
       });
     }
     throw new Error(`unexpected fetch to ${href}`);
@@ -749,13 +804,13 @@ test("runLiteratureTool routes every name and refuses the unknown one", async ()
   try {
     for (const [name, args] of [
       ["literature_search", { query: "q" }],
-      ["literature_fetch", { ids: ["2401.1"] }],
+      ["literature_fetch", { ids: ["2401.11111"] }],
       ["literature_similar", { id: "2401.1" }],
       ["literature_corpora", {}],
       // The adapters ride the same dispatch, so src/mcp.js needs one dynamic
       // import and one branch rather than two of each.
       ["search", { query: "q" }],
-      ["fetch", { id: "2401.1" }],
+      ["fetch", { id: "2401.11111" }],
     ]) {
       const result = await runLiteratureTool(env, log, /** @type {string} */ (name), args);
       assert.equal(typeof result.text, "string", `${name} returns text`);
@@ -1001,6 +1056,252 @@ test("`search` surfaces author records too, so a person query returns links", as
     // The id round-trips through `fetch`, which is the contract that makes a
     // search result actionable rather than decorative.
     assert.equal(payload.results[0].id, "pmid:40994021");
+  } finally {
+    berget.restore();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// METERING — the spend that reaches the quota.
+//
+// These tools were GATED on the four-window research quota from the day they
+// shipped and never INCREMENTED it, so they could not exhaust it: a key that
+// only called literature_search was unmetered at €0.0021–€0.0124 a call
+// (docs/MCP-COST.md §4b). What is pinned here is the whole of that fix — that a
+// metered call records, that it records the PROVIDER'S OWN token counts rather
+// than a guess, that the deliberately exempt tools still record nothing, and
+// that no failure in any of it can reach the tool result (invariant 2).
+// ---------------------------------------------------------------------------
+
+const USAGE_INSERT = /INSERT INTO usage_events/;
+const MODEL_INSERT = /INSERT INTO usage_model_events/;
+const billing = { identity: { id: "u-42" }, requestId: "req-1" };
+
+/** The bindings recordUsage writes, by name. */
+function usageRow(db) {
+  const [call] = db.callsMatching(USAGE_INSERT);
+  if (!call) return null;
+  const [user_id, ts, model, prompt_tokens, completion_tokens, searches, berget_cost, exa_cost, duration_ms] =
+    call.bindings;
+  return { user_id, ts, model, prompt_tokens, completion_tokens, searches, berget_cost, exa_cost, duration_ms };
+}
+
+/** The per-model attribution rows, by role. */
+function modelRows(db) {
+  return Object.fromEntries(
+    db.callsMatching(MODEL_INSERT).map((c) => {
+      const [request_id, user_id, ts, role, model, prompt_tokens, completion_tokens, berget_cost] = c.bindings;
+      return [role, { request_id, user_id, ts, model, prompt_tokens, completion_tokens, berget_cost }];
+    }),
+  );
+}
+
+/** Three rows per corpus — the fake scores the LAST one below the floor. */
+function meteringEnv(db) {
+  return {
+    BERGET_API_TOKEN: "t",
+    DB: db,
+    ARXIV_INDEX: fakeIndex({
+      rows: [
+        arxivRow("2401.11111", "Kept"),
+        arxivRow("2401.22222", "Also kept"),
+        arxivRow("2401.33333", "Dropped"),
+      ],
+    }),
+    PUBMED_INDEX: fakeIndex({
+      rows: [pubmedRow("41610285", "Kept"), pubmedRow("41610286", "Also kept"), pubmedRow("41610287", "Dropped")],
+    }),
+  };
+}
+
+test("a literature_search records what it spent, priced from Berget's raw catalog", async () => {
+  const berget = stubBerget();
+  const db = fakeD1();
+  const env = meteringEnv(db);
+  try {
+    const result = await runLiteratureTool(env, log, "literature_search", { query: "q" }, billing);
+    assert.equal(result.isError, false);
+    // One angle over both corpora: one embed, two cross-encoder legs — the
+    // shape docs/MCP-COST.md prices at €0.0021.
+    assert.equal(berget.calls.embed, 1);
+    assert.equal(berget.calls.rerank, 2);
+
+    const row = usageRow(db);
+    assert.ok(row, "the enforcement row is written");
+    assert.equal(row.user_id, "u-42");
+    // The reranker is what the money went to, so it is what the enforcement
+    // row names — the per-model split lives in the attribution ledger below.
+    assert.equal(row.model, "BAAI/bge-reranker-v2-m3");
+    assert.equal(row.prompt_tokens, 2 * RERANK_TOKENS_PER_LEG + EMBED_TOKENS_PER_CALL);
+    assert.equal(row.completion_tokens, 0);
+
+    // The EUR figure is the one quotaExceeded compares against budget_eur, so
+    // it has to be in the same units as every other berget_cost: EUR, per
+    // token, normalized from Berget's "€ / M Token".
+    const expected =
+      2 * RERANK_TOKENS_PER_LEG * RERANK_EUR_PER_TOKEN + EMBED_TOKENS_PER_CALL * EMBED_EUR_PER_TOKEN;
+    assert.ok(Math.abs(row.berget_cost - expected) < 1e-12, `${row.berget_cost} ≈ ${expected}`);
+    // …and it lands where the measurement said it would.
+    assert.ok(row.berget_cost > 0.002 && row.berget_cost < 0.0021, "≈ €0.0021 for one angle over both corpora");
+
+    // Exa's two columns stay Exa's: these are not searches and they cost no
+    // Exa money, and a count calibrated to €0.005 searches must not absorb them.
+    assert.equal(row.searches, 0);
+    assert.equal(row.exa_cost, 0);
+    assert.ok(row.duration_ms >= 0);
+
+    // Attribution: one row per model that actually spent.
+    const rows = modelRows(db);
+    assert.deepEqual(Object.keys(rows).sort(), ["embed", "rerank"]);
+    assert.equal(rows.rerank.model, "BAAI/bge-reranker-v2-m3");
+    assert.equal(rows.rerank.prompt_tokens, 2 * RERANK_TOKENS_PER_LEG);
+    assert.equal(rows.embed.model, "intfloat/multilingual-e5-large");
+    assert.equal(rows.embed.prompt_tokens, EMBED_TOKENS_PER_CALL);
+    assert.equal(rows.rerank.request_id, "req-1");
+  } finally {
+    berget.restore();
+  }
+});
+
+test("the token count is the provider's own, not one inferred from the documents", async () => {
+  // Requirement in order of preference: measured beats estimated. Berget's
+  // /v1/rerank reports usage.total_tokens for the exact shape this tier sends,
+  // and the fake's documents are far shorter than 900 chars — so a recorded
+  // count that matched the documents' length would prove the report was ignored.
+  const berget = stubBerget();
+  const db = fakeD1();
+  const env = meteringEnv(db);
+  try {
+    await runLiteratureTool(env, log, "literature_search", { query: "q", corpus: "arxiv" }, billing);
+    const rows = modelRows(db);
+    assert.equal(rows.rerank.prompt_tokens, RERANK_TOKENS_PER_LEG);
+    const estimateWouldBe = Math.round(berget.calls.rerankDocChars[0] / RERANK_CHARS_PER_TOKEN);
+    assert.notEqual(rows.rerank.prompt_tokens, estimateWouldBe);
+  } finally {
+    berget.restore();
+  }
+});
+
+test("a rerank response with no usage block falls back to a stated estimate", async () => {
+  // The only case where a count is guessed. The ratio is derived from the one
+  // live measurement (45,000 document chars → 10,198 tokens), so the fallback
+  // is traceable rather than invented — and it must still bill something,
+  // because the tokens were spent whether or not the response mentioned them.
+  const berget = stubBerget({ rerankUsage: null });
+  const db = fakeD1();
+  const env = meteringEnv(db);
+  try {
+    await runLiteratureTool(env, log, "literature_search", { query: "q", corpus: "arxiv" }, billing);
+    const rows = modelRows(db);
+    assert.equal(rows.rerank.prompt_tokens, Math.round(berget.calls.rerankDocChars[0] / RERANK_CHARS_PER_TOKEN));
+    assert.ok(rows.rerank.prompt_tokens > 0);
+  } finally {
+    berget.restore();
+  }
+});
+
+test("`search` meters exactly like literature_search — the adapter is no way around it", async () => {
+  const berget = stubBerget();
+  const db = fakeD1();
+  const env = meteringEnv(db);
+  try {
+    const result = await runLiteratureTool(env, log, "search", { query: "q" }, billing);
+    assert.equal(result.isError, false);
+    const row = usageRow(db);
+    assert.ok(row, "the projection records its inner call's spend");
+    assert.equal(row.prompt_tokens, 2 * RERANK_TOKENS_PER_LEG + EMBED_TOKENS_PER_CALL);
+    // One row, not two: the adapter and the search underneath it are one call.
+    assert.equal(db.callsMatching(USAGE_INSERT).length, 1);
+  } finally {
+    berget.restore();
+  }
+});
+
+test("literature_similar records its retrieval too", async () => {
+  const berget = stubBerget();
+  const db = fakeD1();
+  const env = meteringEnv(db);
+  try {
+    const result = await runLiteratureTool(env, log, "literature_similar", { id: "2401.11111", corpus: "arxiv" }, billing);
+    assert.equal(result.isError, false);
+    const row = usageRow(db);
+    assert.ok(row);
+    // The fake rows carry no stored vector, so this call also re-embeds the
+    // seed's title and abstract — both legs are billed.
+    assert.equal(row.prompt_tokens, RERANK_TOKENS_PER_LEG + EMBED_TOKENS_PER_CALL);
+  } finally {
+    berget.restore();
+  }
+});
+
+test("the two exempt tools record nothing at all", async () => {
+  // literature_fetch is a Vectorize key read and literature_corpora is
+  // committed facts plus describe(): no embedder, no cross-encoder, no money.
+  // They sit outside the quota GATE on purpose — an agent out of budget must
+  // still be able to resolve an id it was handed — and the meter has to match
+  // the gate, or the exemption becomes a hole in one direction or a lie in the
+  // other. `fetch` is literature_fetch's projection and inherits it.
+  const berget = stubBerget();
+  const db = fakeD1();
+  const env = meteringEnv(db);
+  try {
+    for (const [name, args] of [
+      ["literature_fetch", { ids: ["2401.11111"] }],
+      ["literature_corpora", {}],
+      ["fetch", { id: "2401.11111" }],
+    ]) {
+      const result = await runLiteratureTool(env, log, /** @type {string} */ (name), args, billing);
+      assert.equal(typeof result.text, "string", `${name} still answers`);
+    }
+    assert.equal(db.callsMatching(USAGE_INSERT).length, 0, "no enforcement row");
+    assert.equal(db.callsMatching(MODEL_INSERT).length, 0, "no attribution row");
+    assert.equal(berget.calls.rerank, 0, "and nothing was spent to record");
+  } finally {
+    berget.restore();
+  }
+});
+
+test("a call that spends nothing writes no row — an argument error is not a request", async () => {
+  const berget = stubBerget();
+  const db = fakeD1();
+  const env = meteringEnv(db);
+  try {
+    const result = await runLiteratureTool(env, log, "literature_search", {}, billing);
+    assert.equal(result.isError, true, "no query and no author is refused");
+    assert.equal(db.callsMatching(USAGE_INSERT).length, 0);
+  } finally {
+    berget.restore();
+  }
+});
+
+test("recording is fail-soft: a dead ledger never touches the tool result", async () => {
+  // Invariant 2 in its strictest form. The accounting runs in a `finally`, so a
+  // D1 outage there would otherwise replace a perfectly good answer with an
+  // accounting error the agent can do nothing about.
+  const berget = stubBerget();
+  const db = fakeD1().failOn(/INSERT INTO usage/, "D1_ERROR: ledger down");
+  const env = meteringEnv(db);
+  try {
+    const result = await runLiteratureTool(env, log, "literature_search", { query: "q" }, billing);
+    assert.equal(result.isError, false, "the answer survives a failed recording");
+    assert.equal(payloadOf(result).queries[0].results.length, 4, "and is complete");
+    // It tried, which is the difference between fail-soft and never-attempted.
+    assert.ok(db.ran(USAGE_INSERT));
+  } finally {
+    berget.restore();
+  }
+});
+
+test("no identity means nothing is charged, and the tool still answers", async () => {
+  // The direct-call shape every other test in this file uses, pinned so it
+  // stays a supported path rather than an accident: there is nobody to bill.
+  const berget = stubBerget();
+  const db = fakeD1();
+  const env = meteringEnv(db);
+  try {
+    const result = await runLiteratureTool(env, log, "literature_search", { query: "q" });
+    assert.equal(result.isError, false);
+    assert.equal(db.callsMatching(USAGE_INSERT).length, 0);
   } finally {
     berget.restore();
   }
