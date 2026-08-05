@@ -53,7 +53,15 @@ mock-HTTP smoke over `node:http`), `providers.js` (the registry routing
 predicates + the catalog merge/degrade path),
 `triage.js`'s `normalizeTriage` (the triage-failure fallback),
 `sources.js` (the source registry: `hostnameOf`, `addSources`,
-`backfillOverflowSources`, `sourceDigest` — the domain-diversity logic),
+`backfillOverflowSources`, `sourceDigest` — the domain-diversity logic, plus
+the digest's SHARED budget: the measured feedback-#61 production shape
+(thirteen ~1,300-char literature blocks ahead of twenty ~400-char web pages)
+asserted visible in full at both the 18,000- and 24,000-char caps and at a
+tighter 14,000, with only the verbose blocks clipped, the tail's excerpt
+untouched and citation numbers stable and in order; dropping still happens,
+and is still reported, once even the floor share cannot fit; and the fail-soft
+cases where a malformed entry or an absent cap must degrade rather than cost
+the prompt its evidence base),
 `settings.js` (`parseSettings` coercion, `storageAvailability`, the
 generic `extensionEnabled`/`extensionEnabledMap` knob gates),
 `extensions.js` (the extension registry — the five seams core consumes
@@ -223,7 +231,17 @@ rather than thrown, which is invariant 2 at the tool boundary) —
 `resolveJsonModel` split-routing decision `chat.js` and `mcp.js` both
 delegate to), `pipeline.js` + `pipeline-inputs.js` (the flow's pure
 pieces — `normalizeTriage`, `collectConflicts`,
-`isTransientConnectStatus`, and the input-block builders/parsers),
+`isTransientConnectStatus`, and the input-block builders/parsers, including
+`searchLedgerSection`: the `Set` the pipeline actually keeps and the array
+form agreeing, junk dropped, the list capped at 24, and the two sentences
+feedback #61 turns on — that the list is the whole search rather than a
+sample, and that an unsearched angle must be reported as unsearched. Three
+guards over `pipeline.js`'s SOURCE read the file rather than importing it,
+because the bug each pins was a call site and not a unit: that both aux gates
+pass `ctx.cleanLastUser` and neither passes `ctx.lastUser`, that the aux
+registry reserve moves `plan.digestCap` and `plan.maxSources` by the same
+widening, and that synthesis logs `chat.digest_coverage` off
+`digestShownCount`),
 `notes.js` (note normalization + cross-wave merge + the bounded digest),
 `schema.js` (the validator combinators and the coerce-or-return-original
 contract), `assets.js` (the public no-auth allowlist, the caching
@@ -365,10 +383,20 @@ enrichments and surfaces** added since: `aadr.js` (the ancient-sample block —
 corpus load through the ASSETS binding, per-binding caching, and the
 declared-context gate that switches it on without a mode or a knob),
 `europepmc.js` (the life-science literature leg, whose bilingual intent gates
-are where the `\b` trap was first found), and the Deep Science pair added
+are where the `\b` trap was first found — and, since feedback #61, where the
+imperative frame is pinned silent in both languages ("Research this founder",
+"Undersök denna grundare") while the NOUN keeps firing; where an ambiguous
+word in passing stays out ("never infer ethnicity, health, religion"); and
+where the same word inside a biomedical collocation still fires ("health
+effects", "psykisk hälsa", "hjärtinfarkt")), and the Deep Science pair added
 2026-07-31 — `scholar.js` (the peer-reviewed search source: `scholarIntent`
 EN+SV over the peer-reviewed and the "proven" family, minus the commercial
-idiom, with `scholarLeadIntent` strictly narrower; the ladder that climbs by
+idiom, with `scholarLeadIntent` strictly narrower — and the two words feedback
+#61 split apart: "research" the imperative verb silent where "research" the
+noun fires, the veto scoped so a message that both instructs and asks about the
+literature still fires on its literature half, and a bare "scholar" leading
+only where it names the source and not where it names a person, with a matched
+EN/SV pair suite over the lot; the ladder that climbs by
 DROPPING terms, because terms narrow; `peerReviewed` admitting only records
 carrying positive evidence and rejecting preprints, repositories, retractions
 and the unknown, with a Google Scholar hit admitted ONLY by merging onto a

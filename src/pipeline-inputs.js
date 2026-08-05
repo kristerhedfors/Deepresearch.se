@@ -107,6 +107,40 @@ export function conflictsSection(conflicts) {
   return `Source conflicts detected during research (address each explicitly — cite both sides, never silently pick one):\n${list.map((c) => `- ${c}`).join("\n")}\n\n`;
 }
 
+// What was actually SEARCHED, handed to synthesis so a report can say where it
+// looked instead of asserting bare absence.
+//
+// Reported as feedback #61 (chat_logs #1656, 2026-08-05): a founder profile
+// came back with eleven claims marked "self-reported only" or "unverifiable",
+// and the user asked that each such conclusion be shown to have been attacked
+// from several angles first. Sixteen angles HAD been run — the report simply
+// had no way to know, so it wrote absence as a property of the world rather
+// than of its own search. docs/PERSON-RESEARCH.md §6 already requires the
+// opposite ("Say where you looked when you found nothing, so a reader can tell
+// a thin record from a thin search"); nothing supplied the information.
+//
+// Deliberately NOT more retrieval: the de-noised benchmark behind
+// budget.js's DEEP_TIER_FEATURES_ENABLED found extra pre-synthesis material
+// net-negative (2.65 → 2.43, by context dilution), and the ground-truth
+// battery puts the loss at 14:1 synthesis-over-retrieval. This adds a bounded
+// list of queries already run — no search, no model call, no new sources.
+/**
+ * @param {Set<string> | string[] | undefined} ranQueries
+ * @returns {string}
+ */
+export function searchLedgerSection(ranQueries) {
+  const all = ranQueries instanceof Set ? [...ranQueries] : Array.isArray(ranQueries) ? ranQueries : [];
+  const list = all.filter((q) => typeof q === "string" && q.trim()).slice(0, 24);
+  if (!list.length) return "";
+  return (
+    "Search angles already run for this question (this is the whole search, not a sample):\n" +
+    `${list.map((q) => `- ${q}`).join("\n")}\n` +
+    "When a claim remains uncorroborated, say which of these angles were tried and came back empty — " +
+    "a reader must be able to tell a thin public record from a thin search. Never write that no source " +
+    "exists for something none of these angles targeted; say it was not searched for.\n\n"
+  );
+}
+
 /** @typedef {{ claim: string, source_ids: number[] }} Claim */
 
 // Pure, lenient parse of the claim-extraction JSON ({claims:[{claim,

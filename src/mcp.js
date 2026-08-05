@@ -992,6 +992,10 @@ async function runDeepResearch(env, log, identity, requestId, args, question) {
     meta: {
       queries: [...state.ranQueries],
       sources: state.sources.map((s) => ({ n: s.n, title: s.title, url: s.url })),
+      // The MCP channel runs the same pipeline, so it inherits the same blind
+      // spot the /api/chat row just closed (feedback #61): sources COLLECTED is
+      // not sources the answer could read.
+      digest_shown: /** @type {any} */ (state).digestShown,
       complexity: state.complexity ?? null,
       subquestions: state.subquestions ?? [],
       cached_searches: state.cachedSearchCount || 0,

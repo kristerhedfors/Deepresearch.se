@@ -227,6 +227,28 @@ Absence of a source is absence of a source, and never evidence of anything. Most
 legitimate professional activity leaves no public trace. Say where you looked
 when you found nothing, so a reader can tell a thin record from a thin search.
 
+That requirement now has machinery behind it, because asking for it in the block
+was not enough. Feedback #61 (`chat_logs` #1656) reported a founder profile whose
+report marked eleven claims `self-reported only` or `unverifiable` and stated
+that no independent press coverage, no university page and no third-party source
+existed. Four such sources had been collected and were sitting in the numbered
+list, unread — the digest window had closed before them
+(`docs/ARCHITECTURE.md` §4.3d). Sixteen search angles had run; the report had no
+way to know that either, so it wrote absence as a property of the world rather
+than of its own search. Two things changed in the pipeline, neither of them
+specific to person research:
+
+- Synthesis is handed the **search ledger** — the angles already run
+  (`searchLedgerSection` in `src/pipeline-inputs.js`), stated as the whole
+  search rather than a sample, so "not found" and "not searched for" can be
+  told apart.
+- `synthPrompt` requires an absence claim to be **checked against the numbered
+  list first**, and an uncorroborated claim to name which angles came back
+  empty, rather than asserting bare absence.
+
+A report is still free to conclude that a claim is self-reported only. It may
+not reach that conclusion without reading the list it already has.
+
 This is the [Berkeley Protocol](https://www.ohchr.org/en/publications/policy-and-methodological-publications/berkeley-protocol-digital-open-source-investigations)'s
 three-axis model in a smaller frame: verify the **source** (who published it and
 what their access was), the **item** (is this file or record what it purports to
@@ -370,6 +392,15 @@ independent of whether breaking them is actionable.
   entry record that the method was applied and how large the block was.
 - **No stored dossier.** There is no accumulation across turns and no per-person
   record anywhere in this deployment.
+- **The block never routes the request.** It is appended to the user's message,
+  so every downstream deterministic gate must read the *clean* message
+  (`ctx.cleanLastUser`) instead — and that is now how the pipeline's auxiliary
+  source gates work (`docs/ARCHITECTURE.md` §4.3c). Feedback #61 is why: the
+  block's source ladder names OpenAlex and its privacy prohibition contains the
+  word "health", and reading the appended message let those two mentions lead
+  the request into the peer-reviewed and life-science legs on a question about
+  a founder's background. The block is a method for the answer, not a request
+  for any source, and the intent gates are deliberately kept out of its reach.
 
 ## 11. Search-query playbook
 

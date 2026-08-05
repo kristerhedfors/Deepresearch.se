@@ -149,8 +149,21 @@ export const ARXIV_LEAD_MAX_PER_REQUEST = 4;
 // ---- intent ----------------------------------------------------------------
 // An arXiv id anywhere in the message, or the site/word itself. "Preprint"
 // and its Swedish forms belong here too — nothing else means that.
+//
+// EXCEPT `förtryck`, which was here as a literal calque (för + tryck =
+// before + print) and is removed. In actual Swedish that word means
+// OPPRESSION, and it is not a rare sense — it is the only one most sentences
+// carry. Because this set also drives arxivLeadIntent, and a lead stands the
+// entire web leg down, "politiskt förtryck i Belarus" or "förtryck av kvinnor
+// i Iran" were answered out of preprints with no web search at all: feedback
+// #61's exact failure shape, reached through a dictionary word. Found while
+// auditing these gates for that incident, not reported separately.
+// Swedish loses nothing: the academic term IS "preprint" (matched below), and
+// the native form is `förhandstryck`, which is unambiguous — so it is named
+// here explicitly rather than left to a calque that collides with a noun
+// about human rights.
 const ARXIV_EXPLICIT =
-  /\barxivs?\b|arxiv\.org|\barxiv:\s*\d{4}\.\d{4,5}|\bpre[-\s]?prints?\b|\be[-\s]?prints?\b|\bförtryck(?:et|en)?\b/i;
+  /\barxivs?\b|arxiv\.org|\barxiv:\s*\d{4}\.\d{4,5}|\bpre[-\s]?prints?\b|\be[-\s]?prints?\b|\bförhandstryck(?:et|en)?\b/i;
 
 // Scientific-literature words: a message using one is asking about published
 // research, whatever the topic. Swedish carries the same breadth as English
@@ -191,6 +204,122 @@ const ARXIV_RESEARCH_INTENT_SV =
 const ARXIV_TOPIC =
   /\bllms?\b|\bslms?\b|\blarge language models?\b|\bspråkmodell(?:er(?:na)?|en)?\b|\btransformers?\b|\bneural\b|\bneurala?\b|\bnätverk(?:et|en)?\b|\bmachine learning\b|\bmaskininlärning(?:en)?\b|\bdeep learning\b|\bdjupinlärning(?:en)?\b|\breinforcement learning\b|\bförstärkningsinlärning\b|\bfine[-\s]?tun(?:e|ed|ing)\b|\bfinjuster(?:a|ing(?:en)?)\b|\bembeddings?\b|\bdiffusion models?\b|\btoken(?:s|isation|ization)?\b|\bquantis|\bquantiz|\bkvantiser|\bagents?\b|\bagent(?:er(?:na)?|en)\b|\bmulti[-\s]?agent\b|\bswarms?\b|\bsvärm(?:ar|en)?\b|\breasoning\b|\bresonemang(?:et)?\b|\binference\b|\bslutledning(?:en)?\b|\bhallucinat|\bprompt(?:s|ing)?\b|\brag\b|\bretrieval\b|\bquantum\b|\bkvant(?:mekanik|dator(?:er|n)?)\b|\bcryptograph|\bkryptografi\b|\bpost[-\s]?quantum\b|\balgorithms?\b|\balgoritm(?:er(?:na)?|en)?\b|\bgenom(?:e|ic|ics)\b|\bprotein(?:er)?\b|\bcrispr\b|\bepidemiolog|\bneuroscien|\bneurovetenskap\b|\bcosmolog|\bkosmologi\b|\bastrophys|\bastrofysik\b|\bexoplanets?\b|\bexoplanet(?:er(?:na)?|en)\b|\bsuperconduct|\bsupraled|\bgraphene\b|\bgrafen\b|\bcatalys(?:t|is)\b|\bkatalys(?:ator(?:er)?)?\b|\bsemiconduct|\bhalvledar|\bbattery chemistr|\bbatterikemi\b|\bclimate model|\bklimatmodell(?:er(?:na)?|en)?\b|\bfluid dynamic|\bströmningsmekanik\b|\btopolog|\bmanifolds?\b|\bmångfald(?:er)?\b|\bconjectures?\b|\bförmodan\b|\btheorems?\b|\bsats(?:en|er)?\b|\bproofs?\b|\bbevisföring(?:en)?\b/i;
 
+// ---- the imperative frame --------------------------------------------------
+//
+// Feedback #61 (chat_logs #1656, 2026-08-05): a user attached a LinkedIn
+// screenshot and wrote "Research this founder". The bare English imperative
+// VERB "research" is spelled exactly like the NOUN that names the published
+// record, and that noun is a stand-alone tier-1 member of ARXIV_LITERATURE, so
+// this gate fired on an instruction and the numbered source registry filled
+// with preprints about everything except the founder.
+//
+// The line to draw is verb vs noun, and it is the same one the two sibling
+// gates now draw — src/europepmc.js (`IMPERATIVE_TASK`) and src/scholar.js
+// (`RESEARCH_IMPERATIVE`):
+//
+//   VERB (must not fire): "research this founder", "study these", "please
+//        review those". An instruction addressed to the assistant. Every
+//        research turn already IS that — it carries no evidence about wanting
+//        the literature.
+//   NOUN (keeps firing): "research on X", "the latest research", "what does
+//        the research say", "peer-reviewed research". The published record.
+//
+// The frame is NEUTRALISED — replaced with a space before the literature and
+// research-phrasing tiers run — rather than deleted from the word lists, so a
+// message that both instructs and asks ("Research this founder — what do the
+// papers say about his patents?") still fires on its literature half. The
+// explicit tier is tested on the raw message for the same reason ("research
+// this arxiv paper" names the archive and is not an over-fire).
+//
+// The frame is europepmc.js's IMPERATIVE_TASK — its verb list, its object
+// lookahead, its neutralise-before-the-gate placement — merged with the
+// request lead-ins scholar.js's IMPERATIVE_LEAD already carries. Three gates
+// drawing the same line three different ways is worse than any local
+// improvement, so nothing here is invented: every part is one of the two
+// siblings', and each addition beyond europepmc's frame closes a MEASURED
+// asymmetric pair rather than a hypothetical one:
+//
+//   "Can you research this person"    true / "Kan du undersöka den här personen"  false
+//   "I want to research this founder" true / "Jag vill undersöka den här grundaren" false
+//   "How do I research this topic"    true / "Hur forskar jag om det här ämnet"  false
+//   "Research the company"            true / "Granska företaget"                 false
+//   "Do some research on this founder" true / "Gör lite efterforskningar om …"   false
+//
+// English fires in every row and Swedish in none, for one reason: `research`
+// is a stand-alone tier-1 member of ARXIV_LITERATURE and is spelled the same
+// as the verb, while Swedish uses a DIFFERENT word for the verb every time
+// (undersök / granska / studera / forska / kolla upp) and none of them is a
+// member of ARXIV_LITERATURE_SV. So the native Swedish verbs are stripped too
+// even though they fire nothing today: it keeps the frame ONE rule rather than
+// two, and keeps the parity from rotting the next time a verb is added to a
+// word list.
+//
+// The light-verb arm takes only the imperative-capable forms of "do". With
+// "does"/"did" in it, "what does the research on this topic say" — a textbook
+// NOUN question — would be neutralised.
+//
+// The object list is europepmc's plus the articles ("Research THE company"),
+// which is the one place the two siblings already disagree — scholar.js's
+// IMPERATIVE_OBJECT carries them and europepmc's does not. They are in here
+// because of the fourth row above: without them the definite-article form of
+// the reported message keeps the asymmetry alive. The cost is bounded to the
+// two verbs that are literature words at all — a sentence-initial "Research
+// the X" / "Study the X" no longer counts its own verb as evidence — and
+// "review", "survey" and "investigate" were never ARXIV_LITERATURE members, so
+// stripping them changes nothing.
+//
+// NOT `\b`: this frame carries "undersök" and "snälla", and JS's `\b` is
+// ASCII-only, so a boundary against "ö"/"ä" is dead code (see the NBs above
+// ARXIV_LITERATURE_SV and src/swedish-boundary.test.js). The object list is
+// closed with the same Unicode-aware lookahead europepmc uses.
+
+/** Where an imperative sits: at the start of the message or a sentence, or
+ * right after the words that introduce a request. EN + SV, matched pair for
+ * matched pair (scholar.js's IMPERATIVE_LEAD).
+ *
+ * The infinitive marker is REQUIRED on the want/need arm, and the "att du" on
+ * its Swedish twin: "I want you TO research this founder" is an instruction,
+ * while "I want research on mindfulness apps" is the noun with a verb of
+ * wanting in front of it. */
+const IMPERATIVE_LEAD =
+  "(?:^|[.!?;:,\\n]\\s*" +
+  "|(?:please|kindly|pls|plz|now|then|and|also|first|next|quickly|just" +
+  "|snälla|tack|och|sedan|nu|först|då|bara)\\s+" +
+  "|(?:can|could|would|will|kan|kunde|skulle)\\s+(?:you|u|du)\\s+(?:please\\s+|snälla\\s+)?" +
+  "|i\\s+(?:need|want|would\\s+like)\\s+(?:you\\s+)?to\\s+" +
+  "|jag\\s+(?:behöver|vill|skulle\\s+vilja)\\s+att\\s+du\\s+" +
+  "|(?:help|hjälp)\\s+(?:me|mig)\\s+(?:to\\s+|att\\s+)?" +
+  "|(?:let'?s|låt\\s+oss|vi\\s+behöver)\\s+" +
+  "|(?:how|hur)\\s+(?:do|can|should|ska|kan|bör)\\s+(?:i|we|you|jag|vi|man)\\s+" +
+  "(?:best\\s+|bäst\\s+)?)";
+
+/** The object an imperative takes: an article, a demonstrative or a
+ * personal/possessive pronoun, EN + SV. A closed list rather than "any word" —
+ * with a wildcard here, "Research shows that vitamin D helps" (a NOUN sentence
+ * that happens to open the message) would be neutralised. `that` and `it` are
+ * out for the same reason: "research that shows X" is a relative pronoun. */
+const IMPERATIVE_OBJECT =
+  "(?=\\s+(?:this|these|those|the|an?|him|her|them|his|their|my|our|its" +
+  "|den\\s+här|det\\s+här|de\\s+här|den\\s+där|det\\s+där|de\\s+där" +
+  "|denna|detta|dessa|den|det|de|ett?" +
+  "|honom|henne|dem|hans|hennes|deras|min|mitt|mina|vår|vårt|våra)" +
+  "(?![\\p{L}\\p{N}_]))";
+
+const IMPERATIVE_TASK = new RegExp(
+  "(?:" +
+    // "Research this founder", "Please study these", "Kan du granska den här"
+    IMPERATIVE_LEAD +
+    "(?:research|review|study|survey|investigate|look\\s+into|dig\\s+into|check\\s+out" +
+    "|granska|studera|undersök|kolla\\s+upp|kolla|analysera)" +
+    // "do some research on this founder", "gör lite research på den här grundaren"
+    "|(?:do|doing|gör(?:a|de|t)?)\\s+(?:i|we|you|jag|vi|man)?\\s*" +
+    "(?:some|the|a\\s+bit\\s+of|a\\s+little|more|lite|en\\s+del|mer)?\\s*research" +
+    "(?:\\s+(?:on|about|into|om|kring|på|för))?" +
+    ")" +
+    IMPERATIVE_OBJECT,
+  "giu",
+);
+
 /**
  * Does this message want scientific literature?
  *
@@ -200,6 +329,10 @@ const ARXIV_TOPIC =
  *  2. Research phrasing ("latest", "outperforms", "how many … work together")
  *     fires only WITH a scientific topic word, so "the latest iPhone" stays
  *     out while "latest on LLM swarm reasoning" gets in.
+ *
+ * …with the IMPERATIVE FRAME above neutralised before either tier is asked, so
+ * a verb addressed to the assistant ("Research this founder") is not read as a
+ * reference to the published record.
  *
  * Accepted tradeoff, same rationale as hfIntent's HF-radio case: a spurious
  * fire costs one free, fail-soft, keyless arXiv search whose irrelevant hits
@@ -215,9 +348,10 @@ export function arxivIntent(text) {
   const s = String(text || "");
   if (!s) return false;
   if (ARXIV_EXPLICIT.test(s)) return true;
-  if (ARXIV_LITERATURE.test(s) || ARXIV_LITERATURE_SV.test(s)) return true;
-  const research = ARXIV_RESEARCH_INTENT.test(s) || ARXIV_RESEARCH_INTENT_SV.test(s);
-  return research && ARXIV_TOPIC.test(s);
+  const asked = s.replace(IMPERATIVE_TASK, " ");
+  if (ARXIV_LITERATURE.test(asked) || ARXIV_LITERATURE_SV.test(asked)) return true;
+  const research = ARXIV_RESEARCH_INTENT.test(asked) || ARXIV_RESEARCH_INTENT_SV.test(asked);
+  return research && ARXIV_TOPIC.test(asked);
 }
 
 // Words that name some OTHER place to look. When the message asks for arXiv
@@ -328,7 +462,7 @@ const NOISE = new Set([
   "better", "smarter", "list", "find", "search", "searching", "look",
   "evidence", "findings", "results", "result", "developments", "development",
   // Swedish equivalents of every class above
-  "arkiv", "förtryck", "artikeln", "artiklar", "studie", "studier", "studien",
+  "arkiv", "förhandstryck", "artikeln", "artiklar", "studie", "studier", "studien",
   "forskning", "forskningen", "forskare", "publikation", "publikationer",
   "publicerad", "publicerade", "vetenskaplig", "vetenskapliga", "litteratur",
   "litteraturen", "avhandling", "avhandlingar", "referentgranskad", "rön",

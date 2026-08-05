@@ -582,7 +582,12 @@ JSON-hardening layer) falls back: substantial question →
    `src/providers.js`): system prompt demands an answer built **only** from
    the numbered source digest, with `[n]` citations and a "Sources:" list,
    in Markdown. Image parts of the latest user message ride along so
-   vision models can research with the image.
+   vision models can research with the image. The input also carries the
+   **search ledger** (`searchLedgerSection`): the angles already run, up
+   to 24. The prompt requires an absence claim ("no source establishes X")
+   to be checked against the numbered list first, and to name the angles
+   that came back empty. How much of the registry the digest actually
+   carried is logged as `chat.digest_coverage` (§4.3d, §11).
 5. **Post-validation** (JSON, ≤3000 tokens): fact-checks the draft against
    the same digest. `pass` → done; `revise` → the UI is told to
    **`discard_text`** and the corrected answer is emitted through the same
@@ -700,7 +705,11 @@ The UI slider sends `time_budget_s`; the planner decides how to spend it.
   - What's left buys gap rounds (each ≈ gap check + 2 searches; up to 4
     rounds at ≥300 s). Bigger budgets also raise follow-ups per round
     (3→5), the search cap (up to 20), the source registry (18→24) and the
-    digest size (14K→18K chars).
+    digest size (14K→18K chars). The two source caps move **together**: when
+    an auxiliary source's first result reserves registry slots
+    (`absorbAuxResult`), `plan.digestCap` is widened by the same count ×
+    `DIGEST_CHARS_PER_SOURCE` (1300) alongside `plan.maxSources` — see
+    §4.3d.
 - **Complexity scaling**: after triage classifies the question, a `simple`
   verdict caps gap rounds at 1 and the search cap at one wave + one
   follow-up round — only ever scaling *down*; the budget plan stays the
@@ -895,6 +904,19 @@ adding or removing a source still touches no orchestrator file:
   searches are distinct angles, chosen by the source's own `pickQuery` and
   deduped across waves as usual.
 
+**Both gates read the CLEAN, pre-enrichment message** (`ctx.cleanLastUser`),
+never the message enrichments have appended their context blocks to. A block is
+prose this pipeline wrote to itself, and a gate that matches it is answering a
+question nobody asked — costlier for `leadIntent` than for `intent`, because
+leading stands the web leg down for the whole request. Feedback #61
+(`chat_logs` #1656, 2026-08-05) is the worked example: the person-research
+enrichment's ~700-word method block names sources in its own source ladder, a
+lead gate matched one, and "Research this founder" came back led by a corpus
+with nothing to say about the subject. This is the same bug class as the quiz
+gate (`chat_logs` #360) and `externalSourceIntent`, both fixed the same way
+before it — pinned at the call site in `src/pipeline.test.js`, since the gates
+themselves are pure and already covered.
+
 **Fail-soft, like every helper phase (invariant 2):** a leading source that
 contributes nothing releases the lead — the Exa leg runs for the same batch
 and later waves are ordinary waves. "Only arXiv" can never become "no
@@ -912,6 +934,47 @@ Two related fixes landed with it, both visible in the same run:
   strictly after, putting every auxiliary source's latency straight onto the
   user's wall clock. Results are still absorbed in a fixed order (web, then
   registry order), so `[n]` numbering stays deterministic.
+
+### 4.3d The source digest is a shared budget (`src/sources.js`)
+
+The registry holds sources; the **digest** is what synthesis, the gap check
+and validation actually read. It is a character budget, and for a long time it
+was filled in pure arrival order until the cap ran out.
+
+Feedback #61 (`chat_logs` #1656, 2026-08-05) is what that costs. A 600-second
+run collected 35 sources; `[1]`–`[13]` were biomedical records of ~1,300 chars
+each (title, URL, provenance, authors, a 900-char abstract) and filled the
+18,000-char window, so the report was written from roughly the first 15 of the
+35. The subject's own university page, two press features and an interview were
+past the cut, at `[17]`, `[23]`, `[24]` and `[26]`, and the answer stated that
+no independent coverage existed. Arrival order is not relevance order:
+whichever auxiliary source returns first should not decide what the model gets
+to read.
+
+Two changes:
+
+- **The reserve pays for what it admits.** An aux source's first contribution
+  widens `plan.maxSources` to make room for it; it now widens `plan.digestCap`
+  by `DIGEST_CHARS_PER_SOURCE` (1300) per slot as well. Widening one without
+  the other does not add sources to what synthesis reads — it pushes the
+  highest-numbered ones out of an unchanged window, which is exactly the ones
+  the later gap rounds were run to find.
+- **The budget is shared rather than raced for.** `buildDigest` computes a
+  max-min **fair share** per source (water-filling, binary-searched). Sources
+  under the share pay only what they use and leave their slack to the long
+  ones. A block over the share has its **excerpt** clipped with an explicit
+  `[…]` marker; its heading and URL, the part that makes it citable, are never
+  cut. Nothing is reordered or renumbered, so `[n]` citations stay stable.
+  Dropping remains the last resort, once even the floor share (320 chars)
+  cannot fit, and is still counted and stated in the digest.
+
+`digestShownCount` reads the count straight off the builder, and synthesis logs
+`chat.digest_coverage` (`shown` / `collected` / `hidden` / `cap`). Nothing
+recorded that before, which is why the incident took a source-list diff to
+diagnose: the answer was written from roughly 15 sources while the reader was
+shown 35 beneath it, and no log said the two numbers differed. A `shown` below
+`collected` is now the direct signature of an answer that under-claims its own
+coverage.
 
 ### 4.4 SSE protocol
 
@@ -1462,7 +1525,9 @@ level via `LOG_LEVEL` (default `info`), persisted by Workers Logs
 
 - Core event vocabulary: `request.complete` / `request.failed`,
   `auth.denied`, `login.success` / `login.failed`, `chat.phase` /
-  `chat.phase_failed`, `chat.budget_cut`, `chat.complete`,
+  `chat.phase_failed`, `chat.budget_cut`, `chat.digest_coverage`
+  (how many collected sources the digest carried into synthesis:
+  `shown` / `collected` / `hidden` / `cap` — §4.3d), `chat.complete`,
   `chat.stream_failed`, `exa.search` / `exa.error`, `models.list` /
   `models.error`, plus per-integration prefixes (`shodan.*`, `maps.*`,
   `hf.*`, `<source>.search`).

@@ -71,7 +71,13 @@ import { mergeRetrievalSpend } from "./dense-rag.js";
 import { getModelProfile } from "./model-profiles.js";
 import { addUsage } from "./quota.js";
 import { citationAudit, citationNote } from "./citations.js";
-import { addSources, backfillOverflowSources, sourceDigest, sourceProgress } from "./sources.js";
+import {
+  addSources,
+  backfillOverflowSources,
+  digestShownCount,
+  sourceDigest,
+  sourceProgress,
+} from "./sources.js";
 import { extractNotes, mergeNotes, notesEntities } from "./notes.js";
 import {
   collectConflicts,
@@ -79,6 +85,7 @@ import {
   extractClaims,
   mergeFanoutQueries,
   notesSection,
+  searchLedgerSection,
   sdkReplyTail,
   shellReplyMessages,
   subquestionsSection,
@@ -518,7 +525,10 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
     // agent's `auxSources` declaration still outranks both: an agent that says
     // it uses no auxiliary sources uses none, forced or not.
     const forcedAux = Array.isArray(/** @type {any} */ (state).forceAux) ? /** @type {any} */ (state).forceAux : [];
-    if (!ctx.hasSource && !(policy.auxSources && SEARCH_SOURCES.some((s) => forcedAux.includes(s.id) || s.intent(ctx.lastUser)))) {
+    // cleanLastUser here too, and for the same reason as the two gates in
+    // planAuxSource/leadingSources: whether a source APPLIES is a fact about
+    // what the user asked, never about prose an enrichment appended to it.
+    if (!ctx.hasSource && !(policy.auxSources && SEARCH_SOURCES.some((s) => forcedAux.includes(s.id) || s.intent(ctx.cleanLastUser)))) {
       return runWithoutSearch(ctx);
     }
   }
@@ -1848,6 +1858,20 @@ async function runSynthesis(ctx) {
   backfillOverflowSources(state);
   ctx.step("synth", "Writing report…");
   const digest = sourceDigest(state.sources, plan.digestCap);
+  // How many of the collected sources synthesis can actually READ. Nothing
+  // recorded this before, which is why feedback #61 took a source-list diff to
+  // diagnose: the answer was written from 15 sources, the reader was shown 35
+  // underneath it, and no log said the two numbers differed. A shown count
+  // below `sources` is now visible in chat_logs and correlates directly with
+  // an answer that under-claims its own coverage.
+  const shown = digestShownCount(state.sources, plan.digestCap);
+  ctx.log.info("chat.digest_coverage", {
+    shown,
+    collected: state.sources.length,
+    hidden: Math.max(0, state.sources.length - shown),
+    cap: plan.digestCap,
+  });
+  /** @type {any} */ (state).digestShown = shown;
   const synthText =
     `Question:\n${lastUser}\n\nConversation context:\n${convText}\n\n` +
     // Decomposition skeleton + reported source conflicts (both empty — and
@@ -1855,6 +1879,10 @@ async function runSynthesis(ctx) {
     // disagreeing sources; see subquestionsSection/conflictsSection).
     subquestionsSection(state.subquestions) +
     conflictsSection(state.conflicts) +
+    // What was actually searched, so "no source establishes this" can be told
+    // apart from "we never looked" — and so an uncorroborated claim can name
+    // the angles that came back empty (feedback #61; PERSON-RESEARCH.md §6).
+    searchLedgerSection(state.ranQueries) +
     // Notes preamble is present only when the digest phase ran (mid/high
     // tiers); byte-identical to before at the default budget.
     notesSection(state.notes) +
@@ -2336,6 +2364,15 @@ async function runWebLeg(ctx, batch, round) {
 // sources.js keeps the per-origin cap meaningful for admitted sources.
 const MAX_AUX_SEARCHES_DEFAULT = 3;
 
+// What one extra registry slot is worth in digest characters, used when an aux
+// source's first contribution widens the registry (absorbAuxResult). Sized off
+// the measured shape rather than guessed: a Europe PMC / Scholar block runs
+// ~1,200-1,330 chars (title + url + provenance + authors capped at 180 by
+// europepmc.js + abstract capped at 900), and a typical web block ~400-670. The
+// larger figure is the right one to reserve — the sources that trigger the
+// widening are the verbose ones.
+const DIGEST_CHARS_PER_SOURCE = 1300;
+
 /**
  * One planned aux search: which source runs which of the wave's angles, and
  * which attempt keys its own ladder should skip. Planning is separated from
@@ -2367,7 +2404,18 @@ function leadingSources(ctx) {
   if (/** @type {any} */ (state).auxLeadReleased) return [];
   // An agent that declines the auxiliary sources cannot be led by one.
   if (!searchPolicyFor(state).auxSources) return [];
-  const ids = leadSourceIds(ctx.lastUser);
+  // Read from the CLEAN, pre-enrichment message (see cleanLastUser's note, and
+  // the quiz gate / externalSourceIntent above — the same bug class, a third
+  // time). Leading stands the web leg down for the WHOLE request, so an
+  // enrichment block that merely MENTIONS a source by name silently converts
+  // an ordinary question into a source-led one. Reported as feedback #61
+  // (chat_logs #1656, 2026-08-05): "Research this founder" plus a profile
+  // screenshot. An enrichment appended its own ~700-word method block to the
+  // user's message; that block's own prose names sources, a lead gate matched
+  // one, and the web leg never ran — so a question about a person came back
+  // led by a corpus that had nothing to say about them. The USER names the
+  // source they want; prose this pipeline wrote to itself does not.
+  const ids = leadSourceIds(ctx.cleanLastUser);
   // …and a source the request has narrowed away (state.auxOnly) cannot lead it
   // either: leading stands the web leg down, so a lead that planAuxSource will
   // then refuse to plan would spend the wave on nothing.
@@ -2444,7 +2492,15 @@ function planAuxSource(ctx, source, batch, leading) {
   // so it composes with any future agent that needs the same restriction.
   const only = /** @type {any} */ (state).auxOnly;
   if (Array.isArray(only) && only.length && !only.includes(source.id)) return [];
-  if (!batch.length || (!forced && !leading && !source.intent(ctx.lastUser))) return [];
+  // Intent reads the CLEAN message too, for the reason spelled out in
+  // leadingSources: enrichment blocks are prose this pipeline appended to the
+  // user's own words, and a gate that matches them is answering a question
+  // nobody asked. Feedback #61 is the worked example — a single topic word
+  // inside an enrichment block's PRIVACY PROHIBITION ("never an inference of
+  // ethnicity, health, religion…") satisfied a domain gate's subject test and
+  // routed a person's career history to a corpus about something else. A gate
+  // is a question about what the USER asked; keep it that way.
+  if (!batch.length || (!forced && !leading && !source.intent(ctx.cleanLastUser))) return [];
   state.aux ||= {};
   const st = (state.aux[source.id] ||= { count: 0, ran: new Set() });
   // How many searches this source gets THIS request. The source's own
@@ -2557,7 +2613,21 @@ function absorbAuxResult(ctx, plan, result, round) {
   // compete for real slots instead of leftovers.
   if (result.items.length && !st.reserved) {
     st.reserved = true;
-    state.plan.maxSources += Math.min(result.items.length, 8);
+    const widened = Math.min(result.items.length, 8);
+    state.plan.maxSources += widened;
+    // Widen the DIGEST in step, or the reserve is a lie. The digest is a
+    // character budget filled in arrival order, so admitting more sources
+    // without paying for their prose does not add them to what synthesis
+    // reads — it pushes the same number of sources through a window that
+    // did not move, and the ones that fall out are the highest-numbered,
+    // i.e. exactly what the later gap rounds were run to find. Feedback #61
+    // (chat_logs #1656): thirteen ~1,300-char paper blocks arrived first,
+    // filled the window, and the answer reported that no independent press
+    // coverage existed while Crunchbase News, First Round Review, a local
+    // interview and the subject's own university page sat unread at [17]
+    // through [26]. Absence of evidence is the one thing a research tool
+    // must never invent, so the reserve now covers both caps.
+    state.plan.digestCap += widened * DIGEST_CHARS_PER_SOURCE;
   }
   addSources(state, result.items);
 }

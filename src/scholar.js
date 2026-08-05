@@ -181,24 +181,54 @@ const B = "(?<![\\p{L}\\p{N}_])";
 const E = "(?![\\p{L}\\p{N}_])";
 const LETTER = "[\\p{L}]*";
 
-/** Naming Google Scholar or one of the scholarly indexes outright. */
+/** Naming Google Scholar or one of the scholarly indexes outright.
+ *
+ * Every alternative here has to be a SOURCE NAME and nothing else, because this
+ * gate LEADS (`scholarLeadIntent`) and leading stands the whole web leg down. A
+ * word that also occurs in ordinary prose therefore costs the request every web
+ * source it would have had — which is exactly the shape of feedback #61.
+ *
+ * That is why bare "scholar"/"scholars" is NOT here any more. In ordinary prose
+ * it is a PERSON ("a Rhodes scholar", "a scholar of Byzantine history",
+ * "scholars disagree about the date"), and it led on all three. Naming Scholar
+ * as a place to look is a different act and is matched by `SCHOLAR_AS_SOURCE`
+ * below. The Swedish definite "scholarn" stays bare: it is not a word in any
+ * other sense. */
 const NAMED = new RegExp(
   B +
-    "(?:google\\s*scholar|g\\.?\\s?scholar|scholar\\.google(?:\\.com)?|openalex" +
+    "(?:google\\s*scholar[ns]?|g\\.?\\s?scholar|scholar\\.google(?:\\.com)?|openalex" +
     "|semantic\\s*scholar|crossref|cross\\s?ref|web\\s+of\\s+science|scopus" +
     "|pubmed|europe\\s*pmc|doi\\.org" +
-    "|google\\s*scholar[ns]|scholar[ns]?)" +
+    "|scholarn[as]?)" +
+    E,
+  "iu",
+);
+
+/** The product name used BARE as a destination — "search scholar", "look it up
+ * in scholar", "sök i scholar", "kolla på scholar". This is the half of bare
+ * "scholar" that really is the source, split out from `NAMED` so the other half
+ * (the person) stops leading. Swedish carries the same verbs, with the
+ * ASCII-typed forms a keyboard without å/ä/ö produces (invariant 6). */
+const SCHOLAR_AS_SOURCE = new RegExp(
+  B +
+    "(?:(?:search(?:ing|ed|es)?|check(?:ing|ed)?|look(?:ing|ed)?(?:\\s+it)?(?:\\s+up)?" +
+    "|quer(?:y|ied|ying)|use|using|used|via|in|on|from|through)\\s+(?:in\\s+|on\\s+)?scholar" +
+    "|(?:s[öo]k(?:er|te)?|leta(?:r|de)?|kolla(?:r|de)?|titta(?:r|de)?|anv[äa]nd(?:er|e|s)?)" +
+    "\\s+(?:upp\\s+)?(?:i\\s+|p[åa]\\s+)?scholar)" +
     E,
   "iu",
 );
 
 /** Words that name the peer-reviewed record as a body of work, either language.
- * Swedish definite and plural forms included, which is how Swedish asks. */
+ * Swedish definite and plural forms included, which is how Swedish asks.
+ *
+ * The bare English word "research" is deliberately ABSENT — see `RESEARCH_NOUN`
+ * below for why, and for where it went. */
 const RESEARCH_WORD = new RegExp(
   B +
     "(?:peer[-\\s]?review(?:ed|s)?|per[-\\s]?review(?:ed)?|refereed" +
     "|stud(?:y|ies)|papers?|publications?|literature|journals?|articles?" +
-    "|research|evidence|meta[-\\s]?anal(?:ysis|yses)|systematic reviews?" +
+    "|evidence|meta[-\\s]?anal(?:ysis|yses)|systematic reviews?" +
     "|randomi[sz]ed (?:controlled )?trials?|rct|citations?|cited" +
     "|scientific(?:ally)?|science|academic|scholarly|findings?|replicat(?:ed|ion)" +
     "|sakkunniggransk" + LETTER + "|referentgransk" + LETTER + "|kollegialt gransk" + LETTER +
@@ -208,6 +238,118 @@ const RESEARCH_WORD = new RegExp(
     "|bevis|belägg|rön|översikt(?:er|en)?|metaanalys(?:er|en)?" +
     "|systematisk[a]? översikt" + LETTER + "|randomiserad[e]? (?:kontrollerad[e]? )?stud" + LETTER + ")" +
     E,
+  "iu",
+);
+
+// ---- "research": the noun, and the verb it is spelled like -------------------
+//
+// Feedback #61 (chat_logs #1656). A user attached a LinkedIn screenshot and
+// wrote "Research this founder". `research` was a bare alternative in
+// RESEARCH_WORD, so the gate read the English IMPERATIVE VERB as the noun that
+// names the scholarly record, this source LED, the web leg stood down, and the
+// answer's first thirteen numbered sources were lipid-nanoparticle papers,
+// MXene aerogels and a cancer-conference abstract book. Nothing about the
+// founder appeared until [14].
+//
+// So the word is split in two. English is where the ambiguity lives — one
+// spelling, both parts of speech — and the line is drawn by CONTEXT:
+//
+//   NOUN  (fires): "research on X", "the research shows", "peer-reviewed
+//                  research", "academic research", "a body of research".
+//                  Something a body of published work is qualified by,
+//                  determined by, or governs.
+//   VERB  (does not fire, on its own): "research this founder", "please
+//                  research the company", "do some research on them". An
+//                  instruction to go and look, which is what EVERY research
+//                  turn already is — it says nothing about wanting journals.
+//
+// A message can of course be both ("Research this founder — what does the
+// literature say about his patents?"), so the veto is scoped to the noun clause
+// alone and never suppresses NAMED, ASKS_THE_LITERATURE or RESEARCH_WORD.
+//
+// Swedish (invariant 6) has no such ambiguity to resolve, because it does not
+// use one word for both: the noun is "forskning(en)" / "studier" /
+// "vetenskaplig", already bare alternatives in RESEARCH_WORD above, and the
+// verb is a different word every time — the loan "researcha", the light verb
+// "gör research", and the native "undersök" / "kolla upp" / "ta reda på".
+// Parity here therefore means covering the Swedish VERB forms in the veto with
+// the same breadth as the English ones, so that the imperative a Swedish user
+// actually types is as silent as "Research this founder" now is. Pinned by the
+// parity test in src/scholar.test.js.
+
+/** "research" the NOUN — recognised by an adjective only a body of work takes,
+ * a determiner, or a verb/preposition only a body of work governs. */
+const RESEARCH_NOUN = new RegExp(
+  B +
+    "(?:" +
+    // Qualified: "peer-reviewed research", "academic research".
+    "(?:peer[-\\s]?reviewed|academic|scientific|scholarly|published|prior|previous" +
+    "|existing|current|recent|latest|new|primary|secondary|original|independent" +
+    "|empirical|clinical|medical|qualitative|quantitative|rigorous)\\s+research" +
+    // Determined: "the research", "any research", "much research".
+    "|(?:the|this|that|all|any|more|much|some|no|such|whatever)\\s+research" +
+    // Counted: "a body of research", "the state of research".
+    "|(?:body|bodies|state|field|amount|lack|piece|pieces|review|summary|overview|decades?|years?)\\s+of\\s+research" +
+    // Governing a topic: "research on ageing", "research into gut bacteria".
+    "|research\\s+(?:on|about|into|regarding|concerning|around)" +
+    // Doing what a body of work does, or naming its own furniture.
+    "|research\\s+(?:shows?|show|says?|said|suggests?|indicates?|implies|finds?|found" +
+    "|demonstrates?|supports?|confirms?|concludes?|exists?|existed|is|was|has|have|had" +
+    "|literature|papers?|articles?|studies|evidence|findings?|base|community|consensus" +
+    "|question|questions|gap|gaps|agenda)" +
+    ")" +
+    E,
+  "iu",
+);
+
+/** Where an imperative sits: at the start of the message or a sentence, or
+ * right after the words that introduce a request. EN + SV. */
+const IMPERATIVE_LEAD =
+  "(?:^|[.!?;:,\\n]\\s*" +
+  "|(?:please|kindly|pls|plz|now|then|and|also|first|next|quickly|just" +
+  "|sn[äa]lla|tack|och|sedan|nu|f[öo]rst|d[åa]|bara)\\s+" +
+  "|(?:can|could|would|will|kan|kunde|skulle)\\s+(?:you|u|du)\\s+(?:please\\s+|sn[äa]lla\\s+)?" +
+  // The infinitive marker is REQUIRED on this arm, and the "att du" on its
+  // Swedish twin. "I want you TO research this founder" is an instruction;
+  // "I want research on mindfulness apps" is the noun with a verb of wanting in
+  // front of it, and making `to` optional silently ate the second one.
+  "|i\\s+(?:need|want|would\\s+like)\\s+(?:you\\s+)?to\\s+" +
+  "|jag\\s+(?:beh[öo]ver|vill|skulle\\s+vilja)\\s+att\\s+du\\s+" +
+  "|(?:help|hj[äa]lp)\\s+(?:me|mig)\\s+(?:to\\s+|att\\s+)?" +
+  "|(?:let'?s|l[åa]t\\s+oss|vi\\s+beh[öo]ver)\\s+)";
+
+/** The object an imperative "research" takes. Deliberately a closed list of
+ * determiners and pronouns rather than "any word": with a wildcard here,
+ * "Research shows that vitamin D helps" — a textbook NOUN sentence that happens
+ * to open the message — would be vetoed as a verb. */
+const IMPERATIVE_OBJECT =
+  "(?:\\s+(?:on|about|into|regarding|up|om|kring|p[åa]|f[öo]r))?" +
+  "\\s+(?:this|that|these|those|the|a|an|my|our|your|his|her|their|its" +
+  "|him|them|it|us|me" +
+  "|den|det|de|denna|detta|dessa|h[äa]r|min|mitt|v[åa]r|v[åa]rt" +
+  "|hans|hennes|deras|honom|henne|dem)";
+
+/** "research" the IMPERATIVE VERB, addressed to the assistant. Vetoes
+ * `RESEARCH_NOUN` and nothing else.
+ *
+ * The Swedish arms are the parity half (invariant 6): the loan verb
+ * "researcha/researchar/researchade" and the light verb "gör (lite) research"
+ * are how a Swedish user gives this instruction. Neither could match
+ * RESEARCH_NOUN today — "researcha" dies on the trailing boundary — so they are
+ * written down here as the rule rather than left to an accident of suffixes,
+ * and tested. The native imperatives ("undersök", "kolla upp", "ta reda på")
+ * name no research word at all and are silent by construction; the parity test
+ * pins that too, so a later widening cannot quietly wake them. */
+const RESEARCH_IMPERATIVE = new RegExp(
+  "(?:" +
+    // "do some research on them", "gör lite research på honom"
+    "(?:do|doing|does|did|done|g[öo]r(?:a|de)?)\\s+(?:some|the|a\\s+bit\\s+of|a\\s+little|more" +
+    "|lite|en\\s+del|lite\\s+mer|mer)?\\s*research" + E +
+    // the Swedish loan verb: only ever the imperative
+    "|" + B + "researcha(?:r|de|t|s)?" + E +
+    // "Research this founder", "please research the company"
+    "|" + IMPERATIVE_LEAD + "research" + IMPERATIVE_OBJECT + E +
+    ")",
   "iu",
 );
 
@@ -266,10 +408,16 @@ const ASKS_THE_LITERATURE = new RegExp(
 export function scholarIntent(text) {
   const s = String(text || "");
   if (!s) return false;
-  if (NAMED.test(s)) return true;
+  if (NAMED.test(s) || SCHOLAR_AS_SOURCE.test(s)) return true;
   if (ASKS_THE_LITERATURE.test(s)) return true;
   if (PROVEN_WORD.test(s) && !PROVEN_IDIOM.test(s)) return true;
-  return RESEARCH_WORD.test(s);
+  if (RESEARCH_WORD.test(s)) return true;
+  // Last, and only last: the word "research" itself, which is a noun here only
+  // in the contexts RESEARCH_NOUN lists and is vetoed where the message is
+  // giving an instruction instead (feedback #61). Every clause above is
+  // unaffected by the veto, so a message that both instructs and asks about the
+  // literature still fires on its literature half.
+  return RESEARCH_NOUN.test(s) && !RESEARCH_IMPERATIVE.test(s);
 }
 
 /** Naming Scholar or the peer-reviewed record as THE place to look. Strictly
@@ -297,7 +445,7 @@ const LEAD_PHRASE = new RegExp(
 export function scholarLeadIntent(text) {
   const s = String(text || "");
   if (!s) return false;
-  return NAMED.test(s) || LEAD_PHRASE.test(s);
+  return NAMED.test(s) || SCHOLAR_AS_SOURCE.test(s) || LEAD_PHRASE.test(s);
 }
 
 /** The planner-vocabulary sentence spliced into the triage and gap prompts.

@@ -560,7 +560,10 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // Generic: the rule for what counts as naming a source lives in that
     // source's module; the orchestrator reads ids only.
     const leading = src.slice(src.indexOf("function leadingSources(ctx)"), src.indexOf("function startAuxSearches"));
-    assert.match(leading, /const ids = leadSourceIds\(ctx\.lastUser\);/);
+    // …from the CLEAN pre-enrichment message: feedback #61 (see the
+    // "auxiliary source gates" block below) — an enrichment block that merely
+    // NAMES a source must not silently lead the request.
+    assert.match(leading, /const ids = leadSourceIds\(ctx\.cleanLastUser\);/);
     // …and a source the request narrowed away (state.auxOnly — the Deep
     // Science agent restricting itself to the peer-reviewed leg) cannot lead
     // it either: a lead planAuxSource will then refuse to plan would stand the
@@ -579,7 +582,7 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // the agent's own auxSources declaration, which outranks a forced source.
     assert.match(
       src,
-      /if \(!policy\.web\) \{[\s\S]*if \(!ctx\.hasSource && !\(policy\.auxSources && SEARCH_SOURCES\.some\(\(s\) => forcedAux\.includes\(s\.id\) \|\| s\.intent\(ctx\.lastUser\)\)\)\) \{[\s\S]*return runWithoutSearch\(ctx\);/,
+      /if \(!policy\.web\) \{[\s\S]*if \(!ctx\.hasSource && !\(policy\.auxSources && SEARCH_SOURCES\.some\(\(s\) => forcedAux\.includes\(s\.id\) \|\| s\.intent\(ctx\.cleanLastUser\)\)\)\) \{[\s\S]*return runWithoutSearch\(ctx\);/,
     );
   });
 
@@ -589,7 +592,7 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // off the state and never names one.
     const plan = src.slice(src.indexOf("function planAuxSource(ctx, source"), src.indexOf("async function runOneAuxSearch"));
     assert.match(plan, /forceAux[\s\S]*\.includes\(source\.id\)/);
-    assert.match(plan, /if \(!batch\.length \|\| \(!forced && !leading && !source\.intent\(ctx\.lastUser\)\)\) return \[\];/);
+    assert.match(plan, /if \(!batch\.length \|\| \(!forced && !leading && !source\.intent\(ctx\.cleanLastUser\)\)\) return \[\];/);
   });
 
   test("a forced source survives the developer-mode source-research path (feedback #36)", () => {
@@ -705,5 +708,71 @@ describe("the answer-phase dispatch table", () => {
     // `direct` deliberately has NO boolean fallback: it is reachable only by
     // addressing an agent that declares it, so there is no mode to fall back to.
     assert.ok(!/return "direct";/.test(src.slice(src.indexOf("function answerPhaseFor"), src.indexOf("function answerPhaseFor") + 900)));
+  });
+});
+
+// The same bug class a THIRD time (after the quiz gate above and
+// externalSourceIntent): a deterministic gate reading the ENRICHMENT-appended
+// user message instead of the clean one. Reported as feedback #61 (chat_logs
+// #1656, 2026-08-05) — "Research this founder" with a LinkedIn screenshot.
+//
+// The person-research enrichment appends a ~700-word METHOD block to the
+// user's own message. Its source ladder names OpenAlex, so scholarLeadIntent
+// matched; a LEADING aux source stands the Exa leg down for the whole request
+// (`const web = policy.web && !lead.length`), so the web leg never ran and the
+// first thirteen numbered sources were cancer-conference abstract books. One
+// "health" in the block's privacy prohibition ("never an inference of
+// ethnicity, health, religion…") satisfied europepmcIntent's life-science half
+// the same way.
+//
+// The gates themselves are pure and covered by their own suites; as with the
+// quiz gate, the bug was the CALL SITE's argument, so that is what gets pinned.
+describe("auxiliary source gates read the clean (pre-enrichment) user message", () => {
+  const src = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
+
+  test("a source's intent gate uses cleanLastUser", () => {
+    assert.match(src, /source\.intent\(ctx\.cleanLastUser\)/);
+    assert.doesNotMatch(src, /source\.intent\(ctx\.lastUser\)/);
+  });
+
+  test("the lead gate uses cleanLastUser", () => {
+    // Leading is the costlier half: it stands the web leg down for the whole
+    // request and never releases while the lead keeps returning items.
+    assert.match(src, /leadSourceIds\(ctx\.cleanLastUser\)/);
+    assert.doesNotMatch(src, /leadSourceIds\(ctx\.lastUser\)/);
+  });
+});
+
+// A reserve that admits more sources without paying for their prose does not
+// add them to what synthesis READS — the digest is a character budget filled in
+// arrival order, so the extra sources push the highest-numbered ones out of the
+// window instead. That is how feedback #61's answer came to report that no
+// independent press coverage existed while four independent sources sat unread
+// past the cut.
+describe("the aux registry reserve widens the digest with it", () => {
+  const src = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
+  const reserve = src.slice(src.indexOf("if (result.items.length && !st.reserved)"));
+
+  test("both caps move together, by the same widening", () => {
+    assert.match(reserve.slice(0, 1200), /state\.plan\.maxSources \+= widened;/);
+    assert.match(reserve.slice(0, 1200), /state\.plan\.digestCap \+= widened \* DIGEST_CHARS_PER_SOURCE;/);
+  });
+
+  test("the per-source reserve is sized off the measured verbose block", () => {
+    // Europe PMC / Scholar blocks run ~1,200-1,330 chars; reserving the web
+    // figure (~400) would under-buy for exactly the sources that trigger it.
+    assert.match(src, /const DIGEST_CHARS_PER_SOURCE = 1300;/);
+  });
+});
+
+// Nothing recorded how many of the collected sources synthesis could actually
+// read, which is why feedback #61 needed a source-list diff to diagnose: the
+// answer was written from 15 sources and the reader was shown 35 beneath it.
+describe("digest coverage is observable", () => {
+  const src = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
+
+  test("synthesis logs how many sources the digest carried", () => {
+    assert.match(src, /chat\.digest_coverage/);
+    assert.match(src, /digestShownCount\(state\.sources, plan\.digestCap\)/);
   });
 });
