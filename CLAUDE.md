@@ -309,9 +309,13 @@ live — that's where this project's real bugs have come from (the
 **live-verify** skill). Editing tracked text or source can stale the
 committed introspection artifacts — `npm test` names the drift; fix with
 `npm run bundle` / `bundle:rag` / `bundle:docs` / `bundle:docs-rag`, never by
-hand. What each suite covers, the e2e fixtures/quirks, and the five eval
-harnesses (model-matrix, rubric bench, HF bench — append-only ledgers, don't
-deploy mid-battery): **`docs/TESTING.md`**.
+hand. What each suite covers, the e2e fixtures/quirks, and the six eval
+harnesses (model-matrix, rubric bench, HF bench, and since 2026-08-05 the
+GROUND-TRUTH battery `tests/dr-eval.mjs` — published gold answers over
+`POST /mcp`, a loss breakdown that separates a retrieval miss from a synthesis
+miss, and a no-search control arm that measures the memorised share instead of
+assuming it; append-only ledgers, don't deploy mid-battery):
+**`docs/TESTING.md`**.
 
 ## The SDKs and interchange standards
 
@@ -406,6 +410,7 @@ Pipeline & models:
 
 - **pipeline-architecture** — the research pipeline engine: the 5 phases, split routing, the budget planner, incident history.
 - **model-eval** — the model-matrix eval harness, `QUERY_SETS` discipline, the findings ledger, evidence-driven profiles.
+- **ground-truth-eval** — measuring whether answers are RIGHT rather than well-written: the gold-answer battery `tests/dr-eval.mjs` over `POST /mcp`, the three published sets, the no-search CONTROL ARM that measures the memorised share instead of assuming it (and why a set rejected as contaminated is usable behind one), the loss breakdown that names retrieval vs synthesis, the A/B deploy dance this account forces (no preview URL; a branch push ships to production), and the four measurement traps already paid for.
 - **add-llm-provider** — adding a new LLM provider or models: the registry seam, catalog contract, validation ladder.
 - **model-catalog-refresh** — checking which model menus need updating when a provider ships a new release (e.g. Opus 5): the replace-vs-add decision, never-invent-a-price rule, and following an id bump through every echo.
 - **tune-provider-models** — tuning new models per codified use case and running their first eval battery.

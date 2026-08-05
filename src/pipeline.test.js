@@ -449,11 +449,54 @@ describe("quiz gate reads the clean (pre-enrichment) user message", () => {
 describe("gap loop stops when a follow-up wave surfaces no new sources", () => {
   const src = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
 
-  test("runGapChecks captures the source count before the wave and breaks on no gain", () => {
-    assert.match(src, /const sourcesBefore = state\.sources\.length/);
-    assert.match(src, /if \(state\.sources\.length === sourcesBefore\)[\s\S]*?break/);
+  test("runGapChecks captures progress before the wave and breaks on no gain", () => {
+    assert.match(src, /const foundBefore = sourceProgress\(state\)/);
+    assert.match(src, /const gained = sourceProgress\(state\) - foundBefore/);
+    assert.match(src, /if \(gained === 0\)[\s\S]*?break/);
     // The break lives AFTER the searches run (it measures their yield), not before.
-    assert.match(src, /await runSearches\(ctx, followups[\s\S]*?state\.sources\.length === sourcesBefore/);
+    assert.match(src, /await runSearches\(ctx, followups[\s\S]*?gained === 0/);
+  });
+
+  // The signal must count the domain-capped finds too. Reading
+  // `state.sources.length` alone made a wave whose every result hit
+  // DOMAIN_CAP — a question whose answer lives across many pages of one
+  // authoritative origin — look identical to a wave that found nothing, and
+  // the loop stopped researching while it was still finding new pages.
+  // sourceProgress's own behaviour is pinned in src/sources.test.js.
+  test("the signal counts overflow, not just admitted sources", () => {
+    assert.doesNotMatch(
+      src,
+      /if \(state\.sources\.length === sourcesBefore\)/,
+      "the old admitted-only signal must not come back",
+    );
+    assert.match(src, /import \{[\s\S]*?sourceProgress[\s\S]*?\} from "\.\/sources\.js"/);
+  });
+
+  // Backlog #4 (docs/DEEP-RESEARCH-TECHNIQUES.md): whether rounds past the
+  // second contribute anything was unmeasurable — only the saturation break
+  // was logged, and it carried no source counts.
+  test("each round logs what it gained, so the loop's contribution is measurable", () => {
+    assert.match(src, /log\.info\("chat\.gap_round", \{[\s\S]*?gained,[\s\S]*?admitted:[\s\S]*?capped:/);
+  });
+});
+
+// Measured on the ground-truth battery (tests/DR-EVAL-FINDINGS.md,
+// 2026-08-05): with an empty registry, answers came back carrying a numbered
+// source list whose every URL was the literal string "URL", cited [1]…[10]
+// throughout — and every one was graded CORRECT. The model knew the answer and
+// dressed it in citation furniture. "Use ONLY the numbered sources" does not
+// cover the case where there are none.
+describe("an empty source registry forbids citation markers outright", () => {
+  const src = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
+
+  test("runSynthesis says so explicitly instead of passing an empty list", () => {
+    const synth = src.slice(src.indexOf("async function runSynthesis"), src.indexOf("// Phase 5"));
+    assert.match(synth, /Numbered sources: NONE/);
+    assert.match(synth, /do NOT write any \[n\] citation markers/);
+    assert.match(synth, /not backed by retrieved sources/);
+    // And the ordinary path is untouched: a non-empty digest still goes out
+    // under the same header it always did.
+    assert.match(synth, /`Numbered sources:\\n\$\{digest\}`/);
   });
 });
 
