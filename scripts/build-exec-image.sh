@@ -69,7 +69,11 @@
 set -euo pipefail
 
 IMAGE_NAME="${IMAGE_NAME:-deepresearch-exec}"
-IMAGE_TAG="${IMAGE_TAG:-1}"
+# Must match wrangler.toml's [[containers]] `image` tag, and must be BUMPED
+# whenever the image contents change: the container application diffs the image
+# STRING, so re-pushing different bytes under the same tag deploys nothing and
+# says "No changes to be made" while doing it (2026-08-05). See wrangler.toml.
+IMAGE_TAG="${IMAGE_TAG:-2}"
 LOCAL_TAG="$IMAGE_NAME:$IMAGE_TAG"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 

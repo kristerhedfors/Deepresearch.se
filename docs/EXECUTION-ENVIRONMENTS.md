@@ -462,7 +462,7 @@ the signed-in tier only and never in DeepResearch.**Se/cure**.
 | `src/exec-container.test.js` | Its contract against a fake container: availability, `bash -lc`, the timeout→124 path, output caps, the command budget across an eviction, and the stamp-guarded source mount |
 | `container/Dockerfile` | The image (Debian slim + the research toolchain, §7a), built out of band and referenced by URI |
 | `scripts/build-exec-image.sh` | `build` → `verify` (46 checks) → `push` for that image; overrides the deploy token with the user token the registry needs (§9) |
-| `wrangler.toml` | The container + Durable Object + migration block. Uncommented since 2026-07-26 and pointing at the pushed image; no deploy has carried it yet (§9) |
+| `wrangler.toml` | The container + Durable Object + migration block. LIVE since 2026-08-05 on image tag `:2` — bump that tag on every image change, or the deploy is a no-op (§9) |
 | `public/js/exec-env.js` | Also: `remoteRunnerActive()`, `execSessionId()`, `releaseExecSession()` |
 
 ## 7a. What is in the image
@@ -510,11 +510,15 @@ links MagickWand, so `libmagickcore`/`libmagickwand` arrive as its dependencies
 no matter what. Leaving `imagemagick` out drops the CLI (`magick`, `convert`),
 not the libraries; dropping `zbar-tools` is what would actually reclaim them.
 
-Changing this table means changing three things in one commit: the Dockerfile
+Changing this table means changing **four** things in one commit: the Dockerfile
 list, the `verify` battery in `scripts/build-exec-image.sh` (which asserts each
-binary resolves and that tesseract lists both `eng` and `swe`), and this
-section. Then re-run `build` → `verify` → `push`; the tag stays `:1`, so the
-next `npx wrangler deploy` picks the new image up.
+binary resolves and that tesseract lists both `eng` and `swe`), this section,
+and — the one that is easy to miss — **a new image tag in both
+`scripts/build-exec-image.sh` (`IMAGE_TAG`) and `wrangler.toml`'s `image`**.
+Then `IMAGE_TAG=<next> ./scripts/build-exec-image.sh all` and deploy.
+
+Why the tag must move: see §9's *"a new tag on every content change"*. Re-using
+the tag makes the deploy a silent no-op.
 
 ## 8. The fences on a server-side container
 
@@ -562,8 +566,42 @@ whatever the last one carried, and `available.exec_container` stays `false`.
 ./scripts/build-exec-image.sh all      # all three (default)
 ```
 
-Re-run it whenever `container/Dockerfile` changes; the tag stays `:1`, so a
-deploy picks up the new image. `wrangler.toml`'s `image` already points at it.
+Re-run it whenever `container/Dockerfile` changes — with a **new** `IMAGE_TAG`,
+and bump `wrangler.toml`'s `image` to match in the same commit.
+
+### A new tag on every content change (2026-08-05)
+
+The container application stores the image string, and `wrangler deploy` diffs
+that **string** — not the registry contents. Push different bytes under a tag
+the application already carries and the deploy prints
+
+```
+├ no changes deepresearch-se-execsandbox
+╰ No changes to be made
+```
+
+exits 0, reports success, and leaves every container booting the OLD image.
+This happened on 2026-08-05 with the OCR toolchain: the image was pushed and
+verified, the Worker deployed, and nothing about the sandbox changed. The tell
+is `wrangler containers list` — its `LAST MODIFIED` was still the previous
+push's date while the deploy claimed success.
+
+Bumping the tag makes the deploy show a real diff (`- image …:1` / `+ image
+…:2`), report `SUCCESS Modified application`, and start a rollout — visible as
+an `active_rollout_id` in `wrangler containers info`, with instances cycling
+until the new version is live.
+
+Two further notes from that session:
+
+- **`npx wrangler deploy` alone is not enough for a container change.** It
+  uploads the Worker, then dies `✘ [ERROR] Forbidden` on the container step,
+  because it reads `CLOUDFLARE_API_TOKEN` and the account token cannot touch
+  Containers. The Worker half has already shipped by then, so the failure looks
+  partial rather than clean. Use
+  `CLOUDFLARE_API_TOKEN="$CLOUDFLARE_USER_API_TOKEN" npx wrangler deploy`.
+- **The old tag stays in the registry.** `:1` is the same image without
+  tesseract, poppler-utils, Pillow and zbar, which makes it a usable rollback:
+  point `image` back at it and deploy.
 
 Until then `/api/settings` reports `available.exec_container: false`, the Settings
 picker omits the option, and the code is inert — exactly how the Shodan and Maps
@@ -604,6 +642,12 @@ Two findings the battery pinned down, both now guarded:
 
 **Pushed 2026-07-26**: `registry.cloudflare.com/<account-id>/deepresearch-exec:1`,
 digest `sha256:f0ddd1ed…`, 482 MB, confirmed in `wrangler containers images list`.
+
+**Pushed and DEPLOYED 2026-08-05**: `…/deepresearch-exec:2`, digest
+`sha256:2a894f9b…`, 619 MB — `:1` plus the OCR/PDF/image group (§7a). The
+deploy that carried it showed the `:1` → `:2` diff and `SUCCESS Modified
+application`; `wrangler containers list` moved to that timestamp and a rollout
+cycled the instances. `:1` remains in the registry as the rollback.
 
 **Rebuilt 2026-08-05** with the image/OCR/PDF group (§7a): **619 MB** locally
 (`docker images`), up 137 MB. The tag is unchanged, so this needs a `push`

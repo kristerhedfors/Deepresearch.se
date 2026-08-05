@@ -163,18 +163,31 @@ bucket_name = "deepresearch-se-storage"
 #     `dockerd &` if the socket is absent), so scripts/build-exec-image.sh builds,
 #     VERIFIES (40 checks) and pushes it from a session.
 #
-# STATUS 2026-07-26: the image is pushed —
-#   registry.cloudflare.com/<account-id>/deepresearch-exec:1  (sha256:f0ddd1ed…)
-# — and the block below is UNCOMMENTED. No deploy has carried it yet. Until one
-# does, /api/settings reports `available.exec_container: false`, the Settings
-# picker omits the option, and the feature is invisible — exactly how the Shodan
-# and Maps knobs behave without their keys. The deploy is the switch.
+# STATUS 2026-08-05: live on `:2` (sha256:2a894f9b…) — the OCR/PDF/image
+# toolchain added for feedback #60. Superseded `:1` (sha256:f0ddd1ed…), which is
+# the same image WITHOUT tesseract, poppler-utils, Pillow and zbar.
 #
-# TO ENABLE (owner):
+# ⚠️ A NEW TAG IS REQUIRED ON EVERY IMAGE CHANGE — this cost a silent no-op on
+# 2026-08-05 and the note above used to say the opposite. The container
+# application stores this string, and `wrangler deploy` diffs the STRING, not
+# the registry contents. Push different bytes under the SAME tag and the deploy
+# reports "no changes deepresearch-se-execsandbox / No changes to be made",
+# exits 0, and every container keeps booting the OLD image — `wrangler
+# containers list` still showing the previous LAST MODIFIED is the tell. So a
+# content change is a two-part edit: push the new tag, and bump `image` below in
+# the same commit. IMAGE_TAG in scripts/build-exec-image.sh carries the matching
+# default so the two cannot drift.
 #
-#   ./scripts/build-exec-image.sh all     # build → verify (40 checks) → push
-#   # then uncomment below, set `image` to the pushed URI, and deploy:
-#   npx wrangler deploy
+# TO UPDATE THE IMAGE (owner):
+#
+#   IMAGE_TAG=<next> ./scripts/build-exec-image.sh all   # build → verify (46 checks) → push
+#   # bump `image` below to the same tag, then:
+#   CLOUDFLARE_API_TOKEN="$CLOUDFLARE_USER_API_TOKEN" npx wrangler deploy
+#   # a plain `npx wrangler deploy` uploads the Worker and then dies "Forbidden"
+#   # on the container step — the account token cannot touch Containers, and the
+#   # Worker half has already shipped by the time it fails.
+#   # Confirm: `wrangler containers list` LAST MODIFIED moved, and (signed in)
+#   # /api/settings reports available.exec_container: true.
 #
 # The push needs CLOUDFLARE_USER_API_TOKEN — a Cloudflare **User** API token with
 # Workers + Containers edit. The everyday CLOUDFLARE_API_TOKEN is account-owned
@@ -198,7 +211,7 @@ bucket_name = "deepresearch-se-storage"
 
 [[containers]]
 class_name = "ExecSandbox"
-image = "registry.cloudflare.com/90aff449c1f4e5e2ac3dabc9a01904d0/deepresearch-exec:1"
+image = "registry.cloudflare.com/90aff449c1f4e5e2ac3dabc9a01904d0/deepresearch-exec:2"
 instance_type = "standard-1"
 max_instances = 10
 [containers.constraints]
