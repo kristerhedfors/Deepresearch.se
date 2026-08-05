@@ -6,7 +6,16 @@
 // the capped sourceDigest block.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { hostnameOf, diversityKeyOf, addSources, backfillOverflowSources, sourceDigest, withSources } from "./sources.js";
+import {
+  hostnameOf,
+  diversityKeyOf,
+  addSources,
+  backfillOverflowSources,
+  digestShownCount,
+  sourceDigest,
+  sourceProgress,
+  withSources,
+} from "./sources.js";
 
 function freshState(maxSources = 10) {
   return {
@@ -155,6 +164,106 @@ describe("sourceDigest", () => {
   });
 });
 
+// The digest is the ONLY view synthesis, the gap check and validation get of
+// the registry. It used to stop at the first block that would not fit and
+// return, so the sources past that point were invisible with no marker in the
+// prompt and no counter anywhere — while `chat_logs` recorded the full
+// registry, so an investigation into "why did it miss [26]?" got a row proving
+// [26] was collected.
+describe("sourceDigest — truncation is never silent", () => {
+  const bulky = (n) => ({ n, title: "T".repeat(60), url: `https://ex.se/${n}`, highlights: ["H".repeat(600)] });
+
+  test("a truncated digest says how many sources were omitted", () => {
+    const sources = Array.from({ length: 10 }, (_, i) => bulky(i + 1));
+    const digest = sourceDigest(sources, 3000);
+    assert.match(digest, /\[1\]/);
+    assert.doesNotMatch(digest, /\[10\] T/, "the tail really was cut");
+    assert.match(digest, /further collected sources omitted/, "and the model is told so");
+    assert.match(digest, /Cite only the numbers listed above/);
+  });
+
+  test("an untruncated digest carries no marker", () => {
+    assert.doesNotMatch(sourceDigest([bulky(1), bulky(2)], 20_000), /omitted here for length/);
+  });
+
+  test("one oversized source no longer hides every shorter source after it", () => {
+    // The old `break` meant a single long-highlight source truncated the whole
+    // tail. Entries are numbered explicitly, so skipping one and keeping the
+    // rest costs the reader nothing and keeps the answer its grounding.
+    const huge = { n: 1, title: "H", url: "https://h.se", highlights: ["x".repeat(4000)] };
+    const small = (n) => ({ n, title: `S${n}`, url: `https://s${n}.se`, highlights: ["y"] });
+    const digest = sourceDigest([huge, small(2), small(3)], 1200);
+    assert.doesNotMatch(digest, /\[1\] H/);
+    assert.match(digest, /\[2\] S2/);
+    assert.match(digest, /\[3\] S3/);
+  });
+
+  test("the marker never pushes the digest past the cap it was given", () => {
+    const sources = Array.from({ length: 40 }, (_, i) => bulky(i + 1));
+    for (const cap of [1000, 3000, 14_000, 18_000, 24_000]) {
+      assert.ok(sourceDigest(sources, cap).length <= cap, `cap ${cap} respected with the marker`);
+    }
+  });
+
+  test("digestShownCount reports what the model read, not what was collected", () => {
+    const sources = Array.from({ length: 10 }, (_, i) => bulky(i + 1));
+    assert.equal(digestShownCount(sources, 40_000), 10);
+    assert.ok(digestShownCount(sources, 3000) < 10);
+    assert.equal(digestShownCount([], 1000), 0);
+  });
+
+  test("the measured production shape: ~32 sources against an 18 000-char cap loses several", () => {
+    // budget.js gives the common tier maxSources 24, and pipeline.js's aux
+    // capacity reserve raises it by up to 8 per contributing source WITHOUT
+    // raising digestCap. This pins the loss as REPORTED rather than silent.
+    const sources = Array.from({ length: 32 }, (_, i) => bulky(i + 1));
+    const shown = digestShownCount(sources, 18_000);
+    assert.ok(shown < 32, "the mismatch is real");
+    assert.match(sourceDigest(sources, 18_000), new RegExp(`${32 - shown} further collected source`));
+  });
+});
+
+// The gap loop breaks when a follow-up wave found nothing new. It used to read
+// `state.sources.length`, which the domain cap holds flat whenever a wave's
+// finds were all capped — so a question whose answer lives across many pages
+// of one authoritative origin stopped researching while it was still finding
+// new pages.
+describe("sourceProgress — the gap loop's saturation signal", () => {
+  test("a wave whose finds are ALL domain-capped still counts as progress", () => {
+    const state = freshState(24);
+    addSources(state, [{ url: "https://gov.se/1" }, { url: "https://gov.se/2" }, { url: "https://gov.se/3" }]);
+    const admittedBefore = state.sources.length;
+    const before = sourceProgress(state);
+    addSources(state, [{ url: "https://gov.se/4" }, { url: "https://gov.se/5" }]);
+    assert.equal(state.sources.length, admittedBefore, "the old signal reads this as saturated");
+    assert.equal(sourceProgress(state) - before, 2, "two genuinely new pages — progress, not exhaustion");
+  });
+
+  test("a wave that re-finds only known URLs is still saturation", () => {
+    const state = freshState(24);
+    addSources(state, [{ url: "https://gov.se/1" }, { url: "https://gov.se/2" }, { url: "https://gov.se/3" }]);
+    addSources(state, [{ url: "https://gov.se/4" }]);
+    const before = sourceProgress(state);
+    // One already admitted, one already in overflow — nothing new either way.
+    addSources(state, [{ url: "https://gov.se/1" }, { url: "https://gov.se/4" }]);
+    assert.equal(sourceProgress(state) - before, 0, "overflow must dedup or saturation never fires");
+  });
+
+  test("unchanged when no overflow occurred", () => {
+    const state = freshState(24);
+    addSources(state, [{ url: "https://a.se/1" }, { url: "https://b.se/1" }]);
+    assert.equal(sourceProgress(state), state.sources.length);
+  });
+
+  test("a registry already at maxSources still reads as saturated", () => {
+    const state = freshState(2);
+    addSources(state, [{ url: "https://a.se/1" }, { url: "https://b.se/1" }]);
+    const before = sourceProgress(state);
+    addSources(state, [{ url: "https://c.se/1" }]);
+    assert.equal(sourceProgress(state) - before, 0, "a full registry can admit nothing more");
+  });
+});
+
 describe("withSources", () => {
   const sources = [
     { n: 1, title: "A", url: "https://a.com", highlights: [] },
@@ -176,6 +285,41 @@ describe("withSources", () => {
   test("does not double-print when the text already carries a Sources: list", () => {
     const already = "answer body\n\nSources:\n[1] A — https://a.com";
     assert.equal(withSources(already, sources), already);
+  });
+
+  // The detection used to be /(^|\n)\s*sources\s*:/i, which only matched a bare
+  // `Sources:` at the start of a line. Every report tier in prompts.js asks for
+  // markdown structure, so a model that reached for `### Sources:` got the list
+  // appended a SECOND time — two source lists in one MCP answer, the model's
+  // built from a possibly-truncated digest and the registry's full one, with
+  // nothing saying which was authoritative.
+  test("recognises the source list through the heading decorations models write", () => {
+    for (const heading of [
+      "### Sources:",
+      "## Sources",
+      "**Sources:**",
+      "- Sources:",
+      "#### **Sources**",
+      "SOURCES:",
+    ]) {
+      const already = `answer body\n\n${heading}\n- [1] A — https://a.com`;
+      assert.equal(withSources(already, sources), already, `did not recognise ${heading}`);
+    }
+  });
+
+  // Same rule as every other routing gate in the repo (CLAUDE.md invariant 6):
+  // a Swedish answer ends with `Källor:`, and matching only the English form
+  // appended an English list underneath it.
+  test("recognises the Swedish source heading too", () => {
+    for (const heading of ["Källor:", "### Källor:", "**Källor**", "Kallor:"]) {
+      const already = `svar\n\n${heading}\n- [1] A — https://a.com`;
+      assert.equal(withSources(already, sources), already, `did not recognise ${heading}`);
+    }
+  });
+
+  test("prose that merely mentions sources mid-sentence still gets the list", () => {
+    const body = "We consulted many sources: books, papers and interviews.";
+    assert.match(withSources(body, sources), /\n\nSources:\n/);
   });
 });
 
