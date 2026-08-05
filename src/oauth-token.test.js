@@ -25,7 +25,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { handleOAuthToken, parseTokenBody, scopeHasOffline } from "./oauth-token.js";
+import { handleOAuthToken, parseTokenBody, scopeHasOffline, successBody } from "./oauth-token.js";
 
 const log = { info() {}, warn() {}, error() {}, debug() {} };
 /** @type {any} */
@@ -193,6 +193,17 @@ test("authorization_code: form-encoded exchange returns access + refresh + scope
   assert.match(body.access_token, /^oat1\./);
   assert.equal(body.token_type, "Bearer");
   assert.ok(body.expires_in > 0 && body.expires_in <= 3600);
+  // The ceiling above used to fail intermittently and only inside the full
+  // parallel suite, which is the signature of a clock boundary rather than a
+  // race: `nowS` is read when the request arrives, `exp` inside the later mint,
+  // so a second crossing between them made `exp - nowS` 3601. successBody now
+  // clamps. Pinned directly, since the assertion above cannot distinguish
+  // "clamped" from "the two reads happened to land in the same second".
+  assert.equal(
+    successBody({ token: "oat1.x", exp: 1_000_000 + 3601 }, "research", null, 1_000_000, 3600).expires_in,
+    3600,
+    "a second crossing between the request clock and the mint clock must not advertise TTL+1",
+  );
   assert.match(body.refresh_token, /^ort1\./);
   assert.equal(body.scope, SCOPE);
 });

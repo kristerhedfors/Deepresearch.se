@@ -206,9 +206,20 @@ export function scopeHasOffline(scope) {
  * @param {number} [ttlFallback]
  * @returns {Record<string, unknown>}
  */
-function successBody(access, scope, refreshToken, nowS, ttlFallback) {
+export function successBody(access, scope, refreshToken, nowS, ttlFallback) {
   const remaining = Number.isFinite(access?.exp) ? Math.floor(access.exp - nowS) : NaN;
-  const expiresIn = Number.isFinite(remaining) && remaining > 0 ? remaining : (ttlFallback || FALLBACK_EXPIRES_IN);
+  const ceiling = ttlFallback || FALLBACK_EXPIRES_IN;
+  // CLAMPED to the TTL, and the off-by-one is real rather than theoretical.
+  // `nowS` is read once when the request arrives; `access.exp` is computed from
+  // the mint's OWN later clock read. If the wall clock crosses a second between
+  // the two — which under a loaded test runner it does, and on a cold isolate it
+  // can — then `exp - nowS` is TTL+1, and the endpoint advertises a lifetime
+  // longer than the token actually has. Harmless to a client, but it is the
+  // server contradicting itself, and it was surfacing as an intermittent
+  // failure of the "expires_in <= 3600" assertion that nobody could reproduce
+  // in isolation. Clamping states the invariant here instead of hoping the two
+  // clock reads land in the same second.
+  const expiresIn = Number.isFinite(remaining) && remaining > 0 ? Math.min(remaining, ceiling) : ceiling;
   /** @type {Record<string, unknown>} */
   const body = {
     access_token: access.token,
