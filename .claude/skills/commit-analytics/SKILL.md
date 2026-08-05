@@ -153,7 +153,11 @@ pass and about ten minutes, most of it the artifact re-embedding.
    code-volume backdrop must reach the newest date and its right-hand labels
    must be round thousands — a backdrop that stops short of the curves is a
    `volume` series that did not regenerate. If the pass changed picker
-   behaviour, run its own suite:
+   behaviour — **or the refresh changed `timeline.json`**, which is every
+   refresh — run its own suite. A dataset refresh is a real input to these
+   pages: the 2026-08-05 pass turned the curve-click test red with nothing
+   wrong but the data (it aimed at a path's bounding-box CENTRE, which is not a
+   point on the path; it now samples `getPointAtLength`). Run:
    ```bash
    cd tests && env -u HTTPS_PROXY BASIC_AUTH_USER=x BASIC_AUTH_PASS=y \
      BASE_URL=http://127.0.0.1:8788 npx playwright test --project=mocked pulse-timeline

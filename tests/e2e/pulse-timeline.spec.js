@@ -85,9 +85,17 @@ test("holding a subject shows only that curve; holding again brings the rest bac
 
 test("clicking a curve in the chart isolates it; dragging to pan selects nothing", async ({ page }) => {
   await open(page);
-  const hit = page.locator(".series-hit").first();
-  const box = await hit.boundingBox();
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  // Click a point ON the curve, sampled from the path's own geometry. The
+  // bounding box CENTRE is not a point on the path — for a curve that dips in
+  // the middle it is empty plot — so aiming there passes or fails on the shape
+  // of whatever the dataset currently holds. It went red on a routine
+  // `npm run pulse:timeline` refresh, with nothing wrong but the data.
+  const point = await page.locator(".series-hit").first().evaluate((el) => {
+    const p = el.getPointAtLength(el.getTotalLength() / 2);
+    const { x, y } = new DOMPoint(p.x, p.y).matrixTransform(el.getScreenCTM());
+    return { x, y };
+  });
+  await page.mouse.click(point.x, point.y);
   expect(await pressedCount(page)).toBe(1);
 
   await page.locator("#legTop").click();
