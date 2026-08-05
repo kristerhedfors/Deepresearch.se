@@ -133,7 +133,7 @@ test("image-only send (no text) produces image-only parts", async ({ page }) => 
   expect(msg.content.some((p) => p.type === "text")).toBeFalsy();
 });
 
-test("history resend strips images from older turns", async ({ page }) => {
+test("history resend keeps a recent image on the follow-up turn", async ({ page }) => {
   await openApp(page);
   await selectModel(page, { wantVision: true });
   const payloads = await mockChat(page);
@@ -148,13 +148,13 @@ test("history resend strips images from older turns", async ({ page }) => {
   expect(payloads).toHaveLength(2);
   // First request: multimodal.
   expect(imagesOfMessage(payloads[0].messages.at(-1))).toHaveLength(1);
-  // Second request: the older user message is flattened to a string with
-  // the marker; only 8 images/request are allowed so history must not
-  // re-inflate.
+  // Second request: the image RIDES ALONG (message-content.js's budgeted
+  // retention — a follow-up question about a picture used to reach a
+  // vision model with no picture attached). The resend stays bounded by
+  // the budget, well under the server's 8-images/750K-chars per request.
   const [first, , last] = payloads[1].messages;
-  expect(typeof first.content).toBe("string");
-  expect(first.content).toContain("Look at this image.");
-  expect(first.content).toContain("[image was attached earlier in this conversation]");
+  expect(imagesOfMessage(first)).toHaveLength(1);
+  expect(textOfMessage(first)).toContain("Look at this image.");
   expect(typeof last.content).toBe("string");
   expect(last.content).toContain("And a follow-up question.");
 });

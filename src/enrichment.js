@@ -23,8 +23,10 @@
 import { runAncientSampleEnrichment } from "./aadr.js";
 import { capHasContext } from "./agent-spec.js";
 import { extensionEnrichments } from "./extensions.js";
+import { runImageReadEnrichment } from "./image-read.js";
 import { runIntrospectionEnrichment } from "./introspect.js";
 import { runModelsAgentEnrichment } from "./models-agent.js";
+import { runPersonResearchEnrichment } from "./person-research.js";
 import { runScholarMetricsEnrichment } from "./scholar-metrics.js";
 
 /** @typedef {import('./types.js').Env} Env */
@@ -60,6 +62,28 @@ import { runScholarMetricsEnrichment } from "./scholar-metrics.js";
 // Core enrichments: the ones that reach nothing outside this deployment.
 /** @type {Enrichment[]} */
 const CORE_ENRICHMENTS = [
+  {
+    // PHASE 0 — the image read (src/image-read.js), and FIRST for a reason:
+    // an attached picture is opaque to everything that reads the conversation
+    // afterwards (textOf flattens it to "[N image(s) attached]"), so the
+    // transcription has to exist before any other enrichment or phase looks.
+    // One vision call on the ANSWER model turns the attachment into text, and
+    // triage gets a name to plan against instead of "this founder"
+    // (chat_logs #1305 / feedback #60).
+    //
+    // The gate is `state.vision` — the cheap, state-only fact that the chosen
+    // answer model can receive images — and NOT "does this turn carry an
+    // image", because `enabled` receives only the state and the image parts
+    // live in the conversation. The runner does that check itself and is
+    // silent when there is nothing to read, which the contract above
+    // explicitly allows. Gating this way is also exactly right: with a
+    // non-vision model there is nothing this phase could do, and validation
+    // (src/validation.js) has already rejected any image-bearing request that
+    // picked one.
+    id: "image_read",
+    enabled: (state) => !!state.vision,
+    run: (c) => runImageReadEnrichment(c),
+  },
   {
     // Introspection (developer mode): a conversation asking about THIS
     // SITE's own implementation gets the deployed source snapshot appended
@@ -122,6 +146,33 @@ const CORE_ENRICHMENTS = [
     id: "scholar",
     enabled: (state) => capHasContext(/** @type {any} */ (state).capability, "scholar-metrics"),
     run: (c) => runScholarMetricsEnrichment(c),
+  },
+  {
+    // The person-research METHOD (src/person-research.js): a message asking for
+    // research on a named person's public professional record gets the protocol
+    // appended — resolve identity before collecting, which sources outrank
+    // which, what raises a claim to verified, what is off-limits, and how the
+    // writeup is structured. Silent on every other turn.
+    //
+    // The odd one out in this registry, and deliberately so: it resolves
+    // NOTHING. Every enrichment above turns something the message names into
+    // data — a snapshot, a catalog, a corpus row, a metrics table. This one
+    // appends method and no facts at all, because the gap feedback #60 exposed
+    // was not missing data. The pipeline had the name, and still answered a
+    // person question the way it answers a topic question: no identity
+    // resolution, no source hierarchy, no separation of what the subject
+    // asserts from what a registry records. That is a procedure, so a constant
+    // block is the honest implementation — a phase that researched how to
+    // research would spend a model call on advice that never varies.
+    //
+    // It reaches no third party (invariant 7 has no service to name here): the
+    // block MENTIONS registries and archives the way a checklist does, and
+    // actually reaching any of them stays the ordinary search pipeline's job.
+    // Its GUARDRAILS section is the substantive work — it is what bounds "find
+    // everything about this person" to the public professional record.
+    id: "person_research",
+    enabled: () => true, // intent decides; the runner is silent on a non-person turn
+    run: (c) => runPersonResearchEnrichment(c),
   },
 ];
 

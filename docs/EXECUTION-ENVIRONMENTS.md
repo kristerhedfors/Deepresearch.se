@@ -460,10 +460,61 @@ the signed-in tier only and never in DeepResearch.**Se/cure**.
 | `public/js/sandbox-files.js` | `planMounts` (the plan every environment mounts from) + `planRemoteMount` (that plan as one ustar archive + the symlink script) |
 | `src/exec-container.js` | The server-side environment: the `/api/exec/*` DREE/1 endpoints, the `ExecSandbox` Durable Object that drives one container per session, and the server-side `/src` seed |
 | `src/exec-container.test.js` | Its contract against a fake container: availability, `bash -lc`, the timeout→124 path, output caps, the command budget across an eviction, and the stamp-guarded source mount |
-| `container/Dockerfile` | The image (Debian slim + the research toolchain), built out of band and referenced by URI |
-| `scripts/build-exec-image.sh` | `build` → `verify` (40 checks) → `push` for that image; overrides the deploy token with the user token the registry needs (§9) |
+| `container/Dockerfile` | The image (Debian slim + the research toolchain, §7a), built out of band and referenced by URI |
+| `scripts/build-exec-image.sh` | `build` → `verify` (46 checks) → `push` for that image; overrides the deploy token with the user token the registry needs (§9) |
 | `wrangler.toml` | The container + Durable Object + migration block. Uncommented since 2026-07-26 and pointing at the pushed image; no deploy has carried it yet (§9) |
 | `public/js/exec-env.js` | Also: `remoteRunnerActive()`, `execSessionId()`, `releaseExecSession()` |
+
+## 7a. What is in the image
+
+The container starts with `enableInternet:false`. There is no package manager
+that can reach anything, no pip index, no curl target — so **whatever is not in
+`container/Dockerfile` does not exist at run time**, and an agent that reaches
+for a missing tool loses the pass rather than waiting for an install. That is
+not a hypothetical: user feedback #60 arrived as a mounted LinkedIn screenshot
+where the agent ran `tesseract`, got exit 127, then burned the command timeout
+on an `apt-get install` that had nowhere to go.
+
+| Group | Packages | For |
+| --- | --- | --- |
+| Shell + text | `bash coreutils findutils diffutils grep sed gawk`, `jq bc file less tree`, `ripgrep` | the ordinary Debian commands the agent loop proposes |
+| Archives | `tar gzip bzip2 xz-utils zip unzip` | the mount bridge (GNU tar specifically — see §9) and the outbox |
+| Languages | `python3 python3-venv`, `nodejs`, `git`, `sqlite3` | scripts, `node /src/sdk/pair-cli.mjs`, local data work |
+| **Images, OCR and PDFs** | `tesseract-ocr` + `tesseract-ocr-eng` + `tesseract-ocr-swe`, `poppler-utils`, `python3-pil`, `zbar-tools` | reading an attached screenshot, scan, PDF or barcode without a network |
+
+Both tesseract language packs ship because the product answers in Swedish as
+readily as in English and `eng`-only OCR mangles Swedish diacritics — the same
+parity rule the deterministic intent gates live under. `poppler-utils` gives
+`pdftotext` for a PDF that has a text layer and `pdftoppm`/`pdfimages` for one
+that does not; `python3-pil` is Pillow, installed from apt because pip has
+nowhere to fetch from; `zbar-tools` reads the QR and barcodes on tickets and
+badges.
+
+Two neighbours are deliberately absent, and the reason is cold start rather
+than taste: `libimage-exiftool-perl` costs about 25 MB and pulls in a full
+perl, and `imagemagick` does work Pillow and `pdftoppm` already cover. Image
+size dominates the container cold start, and the cold start is what the user
+waits for on their first command, so a tool earns its megabytes.
+
+What that group costs, measured as `docker images` size on Debian 13:
+
+| Added | Size | Running total |
+| --- | --- | --- |
+| *(the toolchain before this group)* | — | 482 MB |
+| `tesseract-ocr` + `eng` + `swe` | +79 MB | 561 MB |
+| `poppler-utils`, `python3-pil` | +31 MB | 592 MB |
+| `zbar-tools` | +27 MB | **619 MB** |
+
+The last row is the one to know before anyone tries to trim this: `zbarimg`
+links MagickWand, so `libmagickcore`/`libmagickwand` arrive as its dependencies
+no matter what. Leaving `imagemagick` out drops the CLI (`magick`, `convert`),
+not the libraries; dropping `zbar-tools` is what would actually reclaim them.
+
+Changing this table means changing three things in one commit: the Dockerfile
+list, the `verify` battery in `scripts/build-exec-image.sh` (which asserts each
+binary resolves and that tesseract lists both `eng` and `swe`), and this
+section. Then re-run `build` → `verify` → `push`; the tag stays `:1`, so the
+next `npx wrangler deploy` picks the new image up.
 
 ## 8. The fences on a server-side container
 
@@ -531,7 +582,8 @@ read-only at `/src`:
 
 | Group | Checked |
 | --- | --- |
-| Toolchain | all 23 tools in the Dockerfile list resolve on PATH — nothing can be installed at run time |
+| Toolchain | all 26 tools in the Dockerfile list resolve on PATH — nothing can be installed at run time |
+| Reading images | `python3 -c "import PIL"` works, and `tesseract --list-langs` carries both `eng` and `swe` (§7a) |
 | Argv shape | `bash -lc` (`shellArgv`) keeps a usable PATH, the image ENV (`DR_EXEC`), `HOME`, and `/workspace` as cwd through a **login** shell |
 | Layout | `/workspace`, `/workspace/outbox`, `/mnt`, `/src` exist |
 | Mount bridge | GNU tar identity, plus a real `tar -xf - -C / --no-same-owner` (`mountExtractScript`) and the `-C /src` source mount |
@@ -552,6 +604,12 @@ Two findings the battery pinned down, both now guarded:
 
 **Pushed 2026-07-26**: `registry.cloudflare.com/<account-id>/deepresearch-exec:1`,
 digest `sha256:f0ddd1ed…`, 482 MB, confirmed in `wrangler containers images list`.
+
+**Rebuilt 2026-08-05** with the image/OCR/PDF group (§7a): **619 MB** locally
+(`docker images`), up 137 MB. The tag is unchanged, so this needs a `push`
+followed by a `wrangler deploy` before production runs it — until both happen,
+containers keep booting the 482 MB image and `tesseract` is still exit 127
+there.
 
 The environment carries two Cloudflare credentials and only one of them can push
 (the full table is in the **deploy** skill):

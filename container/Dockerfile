@@ -46,6 +46,33 @@ FROM debian:stable-slim
 # One layer, no recommends, caches stripped: the whole list below is what a
 # research shell is expected to find. Anything not here is unavailable at run
 # time (no network), so additions belong in this file rather than in a command.
+#
+# The last group is there because research arrives as PICTURES. A user attaches
+# a screenshot or a scanned PDF and expects the agent to read it; with no
+# network the agent cannot reach for an OCR API and cannot install one either.
+# Feedback #60 is the shape of the failure: the agent reached for `tesseract`
+# on a mounted LinkedIn screenshot, got exit 127, then spent thirty seconds in
+# an `apt-get install` that could never resolve before the timeout killed it.
+# Both language packs ship because this product answers in Swedish as readily
+# as in English, and tesseract with only `eng` turns Swedish diacritics into
+# noise. poppler-utils covers the PDF side (text layer via pdftotext, page
+# rasters via pdftoppm for the scans that have none), python3-pil is how a
+# script crops or thresholds an image before OCR — from apt, because pip has
+# nowhere to fetch from — and zbar-tools reads the QR and barcodes that turn up
+# in tickets, receipts and conference badges.
+#
+# Two obvious neighbours are left OUT on the size argument above: exiftool
+# (~25 MB and it drags in a full perl) and imagemagick, whose work here is
+# already covered by Pillow and pdftoppm. Cold start is what the user waits for,
+# so a tool earns its megabytes or it stays off.
+#
+# Measured on Debian 13, `docker images` size: 482 MB before this group,
+# 619 MB after — tesseract with both language packs is +79 MB of it,
+# poppler-utils + python3-pil +31 MB, zbar-tools +27 MB. One thing that costs
+# is worth knowing before anyone tries to trim it: zbarimg links MagickWand, so
+# libmagickcore/libmagickwand land in the image as its dependencies whatever we
+# do. Skipping `imagemagick` therefore drops the CLI (`magick`, `convert`), not
+# the libraries — and dropping zbar-tools is what would actually reclaim them.
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       bash coreutils findutils diffutils grep sed gawk \
       tar gzip bzip2 xz-utils zip unzip \
@@ -56,6 +83,10 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
       jq bc file less tree \
       ripgrep \
       sqlite3 \
+      tesseract-ocr tesseract-ocr-eng tesseract-ocr-swe \
+      poppler-utils \
+      python3-pil \
+      zbar-tools \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man /usr/share/locale
 
