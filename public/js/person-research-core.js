@@ -95,6 +95,8 @@ const RESEARCH_SHAPE_EN = re(
     "find out (?:about|more about)",
     "find (?:anything|everything|whatever|info" + "rmation?) (?:about|on)",
     "investigat" + L,
+    "review(?:ed|ing)?", // the parity partner of "granska"
+    "map(?:ping)? out",  // …and of "kartlägga"
     "vetting|background-?check",
     "who(?:'s| is| was| are)",
     "tell me (?:about|everything about|what you know about)",
@@ -137,13 +139,14 @@ const EN_ROLE =
   "person|people|individual|guy|gal|dude|man|woman|lady|" +
   "founder|co-?founder|cofounder|ceo|cto|coo|cfo|exec(?:utive)?|" +
   "candidate|applicant|author|writer|journalist|researcher|scientist|academic|" +
-  "investor|angel|entrepreneur|director|manager|owner|employee|hire";
+  "investor|angel|entrepreneur|director|manager|owner|employee|hire|profile";
 
 /** Things a person HAS. These need a possessive or a demonstrative, never a
  * bare "the": "his background" is a person, "the background of the project" is
  * not, and "a report on the subject of X" is not either — which is why
- * "subject" is absent from both lists. */
-const EN_ATTRIBUTE = "profile|background|bio|cv|r[ée]sum[ée]|career|work history|employment history";
+ * "subject" is absent from both lists. "profile" sits in the role list above
+ * instead: "the profile" is a person in every context this gate meets. */
+const EN_ATTRIBUTE = "background|bio|cv|r[ée]sum[ée]|career|work history|employment history";
 
 /** Swedish roles in the DEFINITE form, which carries its own determiner and so
  * needs none: "grundaren", "profilen", "VD:n". */
@@ -177,9 +180,12 @@ const PERSON_REFERENT = re(
     "curriculum vitae|r[ée]sum[ée]",
     // Honorifics — a person even without a role noun.
     "mr\\.?|mrs\\.?|ms\\.?|dr\\.?|prof\\.?|herr|fru|fr[öo]ken",
-    // Pronouns: only ever a person, and how a follow-up turn refers back.
-    "him|himself|herself|themselves",
-    "about (?:him|her|them)",
+    // English pronouns. Unlike their Swedish counterparts below these are safe
+    // bare: "she", "him" and "her" are only ever people in English. "they" and
+    // "them" are NOT — they take objects and companies — so they count only
+    // behind "about", where the sentence is already about a subject.
+    "he|she|him|her|hers|himself|herself",
+    "about (?:him|her|them|they)",
     // Swedish: the definite forms stand alone…
     SV_ROLE_DEF,
     // …the indefinite ones need pointing at.

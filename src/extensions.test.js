@@ -312,9 +312,15 @@ describe("core purity", () => {
     // SAME provider that is already answering this turn, through the same
     // provider registry every phase uses — no knob, no secret, no
     // per-request state slice, no extension descriptor.
+    //
+    // person-research.js is the easiest of all to justify: it reaches nothing
+    // at all. No model call, no asset, no network — a regex pair and a constant
+    // block of METHOD. There is no service for invariant 7 to be about; naming
+    // a company register in a checklist is not integrating with one, and
+    // actually searching stays the ordinary pipeline's job.
     assert.deepEqual(imports, [
       "./aadr.js", "./agent-spec.js", "./extensions.js", "./image-read.js", "./introspect.js",
-      "./models-agent.js", "./scholar-metrics.js",
+      "./models-agent.js", "./person-research.js", "./scholar-metrics.js",
     ]);
   });
 });

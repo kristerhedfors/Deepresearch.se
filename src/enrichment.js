@@ -26,6 +26,7 @@ import { extensionEnrichments } from "./extensions.js";
 import { runImageReadEnrichment } from "./image-read.js";
 import { runIntrospectionEnrichment } from "./introspect.js";
 import { runModelsAgentEnrichment } from "./models-agent.js";
+import { runPersonResearchEnrichment } from "./person-research.js";
 import { runScholarMetricsEnrichment } from "./scholar-metrics.js";
 
 /** @typedef {import('./types.js').Env} Env */
@@ -145,6 +146,33 @@ const CORE_ENRICHMENTS = [
     id: "scholar",
     enabled: (state) => capHasContext(/** @type {any} */ (state).capability, "scholar-metrics"),
     run: (c) => runScholarMetricsEnrichment(c),
+  },
+  {
+    // The person-research METHOD (src/person-research.js): a message asking for
+    // research on a named person's public professional record gets the protocol
+    // appended — resolve identity before collecting, which sources outrank
+    // which, what raises a claim to verified, what is off-limits, and how the
+    // writeup is structured. Silent on every other turn.
+    //
+    // The odd one out in this registry, and deliberately so: it resolves
+    // NOTHING. Every enrichment above turns something the message names into
+    // data — a snapshot, a catalog, a corpus row, a metrics table. This one
+    // appends method and no facts at all, because the gap feedback #60 exposed
+    // was not missing data. The pipeline had the name, and still answered a
+    // person question the way it answers a topic question: no identity
+    // resolution, no source hierarchy, no separation of what the subject
+    // asserts from what a registry records. That is a procedure, so a constant
+    // block is the honest implementation — a phase that researched how to
+    // research would spend a model call on advice that never varies.
+    //
+    // It reaches no third party (invariant 7 has no service to name here): the
+    // block MENTIONS registries and archives the way a checklist does, and
+    // actually reaching any of them stays the ordinary search pipeline's job.
+    // Its GUARDRAILS section is the substantive work — it is what bounds "find
+    // everything about this person" to the public professional record.
+    id: "person_research",
+    enabled: () => true, // intent decides; the runner is silent on a non-person turn
+    run: (c) => runPersonResearchEnrichment(c),
   },
 ];
 
