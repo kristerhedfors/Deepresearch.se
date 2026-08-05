@@ -752,6 +752,13 @@ export async function handleChat(request, env, log, identity, ctx, requestId) {
             slash: slashCmd || undefined,
             queries: [...state.ranQueries],
             sources: state.sources.map((s) => ({ n: s.n, title: s.title, url: s.url })),
+            // How many of those sources the synthesis digest could actually
+            // carry. The row above lists every source COLLECTED, which is not
+            // the same number and was silently assumed to be — feedback #61
+            // needed a source-list diff to establish that the answer had been
+            // written from 15 of 35 while the reader was shown all 35 beneath
+            // it. Undefined (and dropped) on a turn that never synthesized.
+            digest_shown: /** @type {any} */ (state).digestShown,
             complexity: state.complexity,
             subquestions: state.subquestions,
             conflicts: state.conflicts,

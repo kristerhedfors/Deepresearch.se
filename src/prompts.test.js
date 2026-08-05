@@ -279,6 +279,35 @@ describe("synthPrompt", () => {
     assert.match(synthPrompt({ hasShell: true }), /treat it as ground truth/);
   });
 
+  // Feedback #61 (2026-08-05): a founder profile marked eleven claims
+  // "self-reported only" or "unverifiable" and reported that no independent
+  // coverage existed, while four independent sources it had already collected
+  // sat in the registry unread. An absence claim is a claim about the numbered
+  // LIST, and it reads to a user as a finding about the world — so the prompt
+  // now makes the writer earn it. Unconditional: this is not a tier feature,
+  // and a brief answer can assert absence just as wrongly as a full report.
+  test("an absence claim must be checked against the numbered list, at every tier", () => {
+    for (const reportTier of ["brief", "standard", "extended", "full"]) {
+      const p = synthPrompt({ reportTier });
+      assert.match(p, /Absence is a claim/, reportTier);
+      assert.match(p, /RE-READ the numbered sources/, reportTier);
+      // The trap that produced the report: a source it had not cited elsewhere
+      // still counts against "no source establishes this".
+      assert.match(p, /a source you have not cited elsewhere still counts/, reportTier);
+    }
+  });
+
+  test("an uncorroborated claim names the angles that came back empty", () => {
+    // Pairs with the input's search-ledger block (pipeline-inputs.js
+    // searchLedgerSection) — "if the input lists" keeps it inert when the
+    // ledger is absent, so a run without one is unaffected.
+    const p = synthPrompt();
+    assert.match(p, /If the input lists the search angles already run/);
+    assert.match(p, /rather than asserting bare absence/);
+    // The other half: never call something unsearchable that was never searched.
+    assert.match(p, /must never be reported as unsearchable when no angle targeted it/);
+  });
+
   // The slider-driven report-comprehensiveness scaling (2026-07-15): the
   // reportTier option selects the output-structure block. See src/budget.js
   // reportTierFor for the budget → tier mapping.

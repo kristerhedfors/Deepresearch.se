@@ -9,6 +9,7 @@ import {
   notesSection,
   subquestionsSection,
   conflictsSection,
+  searchLedgerSection,
   extractClaims,
   mergeFanoutQueries,
   takeSearchBatch,
@@ -208,5 +209,44 @@ describe("endsWithQuestion", () => {
     assert.equal(endsWithQuestion("Ready.  "), false);
     assert.equal(endsWithQuestion(""), false);
     assert.equal(endsWithQuestion(null), false);
+  });
+});
+
+describe("searchLedgerSection", () => {
+  test("empty (absent) with no queries run", () => {
+    assert.equal(searchLedgerSection(undefined), "");
+    assert.equal(searchLedgerSection(new Set()), "");
+    assert.equal(searchLedgerSection([]), "");
+  });
+
+  test("takes the Set the pipeline actually keeps, and an array", () => {
+    // state.ranQueries is a Set<string> (types.d.ts); the array form keeps the
+    // helper usable from a caller that has already spread it.
+    const out = searchLedgerSection(new Set(["zainab ghadiyali founder", "eat cook joy austin"]));
+    assert.match(out, /- zainab ghadiyali founder/);
+    assert.match(out, /- eat cook joy austin/);
+    assert.equal(searchLedgerSection(["one angle"]), searchLedgerSection(new Set(["one angle"])));
+  });
+
+  test("says the list is exhaustive, not a sample", () => {
+    // The whole point: the writer must be able to reason about what was NOT
+    // searched. A list it reads as a sample cannot support that.
+    assert.match(searchLedgerSection(["a"]), /this is the whole search, not a sample/);
+  });
+
+  test("binds absence to the angles actually run (feedback #61)", () => {
+    const out = searchLedgerSection(["a"]);
+    assert.match(out, /say which of these angles were tried and came back empty/);
+    assert.match(out, /Never write that no source exists for something none of these angles targeted/);
+  });
+
+  test("drops junk and caps the list", () => {
+    assert.equal(searchLedgerSection(["", "   ", null, 42]), "");
+    const many = searchLedgerSection(Array.from({ length: 40 }, (_, i) => `angle ${i}`));
+    assert.equal(many.split("\n").filter((l) => l.startsWith("- ")).length, 24);
+  });
+
+  test("ends with the blank line every section builder ends with", () => {
+    assert.ok(searchLedgerSection(["a"]).endsWith("\n\n"));
   });
 });

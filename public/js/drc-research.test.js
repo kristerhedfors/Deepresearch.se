@@ -18,6 +18,7 @@ import {
   drcValidatePromptWeb,
   drcWebHarvestPrompt,
   drcPlanForBudget,
+  drcSearchLedgerSection,
   normalizeDrcNotes,
   normalizeDrcTriage,
   phaseWithinBudget,
@@ -66,6 +67,62 @@ test("renderDrcNotes marks empty harvests honestly", () => {
   assert.match(text, /no confident facts harvested/);
 });
 
+// ---- the search-angle ledger (feedback #61) ----------------------------------------
+
+test("drcSearchLedgerSection is absent when there is nothing to report", () => {
+  // The byte-identity rule: with no angles the block is the empty string, so a
+  // run that has none produces exactly the prompt input it always did.
+  assert.equal(drcSearchLedgerSection([]), "");
+  assert.equal(drcSearchLedgerSection(undefined), "");
+  assert.equal(drcSearchLedgerSection(null, { web: true }), "");
+  // Junk-only is the same as empty — no heading promising a list, then no list.
+  assert.equal(drcSearchLedgerSection(["", "   ", null, 7, {}]), "");
+  const notes = "Harvested notes (model knowledge, structured by sub-question):\nSub-question 1: Q1";
+  assert.equal(drcSearchLedgerSection([]) + notes, notes);
+});
+
+test("drcSearchLedgerSection lists the angles and calls the list exhaustive", () => {
+  // The whole point: the writer must be able to reason about what was NOT
+  // asked. A list it reads as a sample cannot support that.
+  const out = drcSearchLedgerSection(["Who founded it?", " What did she build? "]);
+  assert.match(out, /- Who founded it\?/);
+  assert.match(out, /- What did she build\?/); // trimmed
+  assert.match(out, /this is the whole harvest, not a sample/);
+  assert.ok(out.endsWith("\n\n")); // the blank line every section builder ends with
+});
+
+test("drcSearchLedgerSection binds absence to the angles actually run (feedback #61)", () => {
+  const offline = drcSearchLedgerSection(["a"]);
+  assert.match(offline, /say which of these angles came back empty/);
+  assert.match(offline, /Never present something as unknown when none of these angles asked about it/);
+  const web = drcSearchLedgerSection(["a"], { web: true });
+  assert.match(web, /say which of these angles were tried and came back empty/);
+  assert.match(web, /Never write that no source exists for something none of these angles targeted/);
+});
+
+test("drcSearchLedgerSection speaks of a harvest offline and a search on the web", () => {
+  // Offline there is no source registry at all, so the Se/rver wording ("no
+  // source exists") is a sentence this tier cannot form; the web variant, which
+  // does have numbered Sources, keeps it.
+  const offline = drcSearchLedgerSection(["a"]);
+  const web = drcSearchLedgerSection(["a"], { web: true });
+  assert.match(offline, /^Research angles already run/);
+  assert.match(web, /^Search angles already run/);
+  assert.doesNotMatch(offline, /no source exists/);
+  assert.notEqual(offline, web);
+  // The default is the offline wording (the tier's normal, grantless state).
+  assert.equal(drcSearchLedgerSection(["a"], { web: false }), offline);
+});
+
+test("drcSearchLedgerSection collapses repeats and caps the list", () => {
+  // A gap round may re-file an angle it already harvested; "the whole harvest"
+  // must stay a true statement about the lines underneath it.
+  const dup = drcSearchLedgerSection(["same angle", " same angle ", "other"]);
+  assert.equal(dup.split("\n").filter((l) => l.startsWith("- ")).length, 2);
+  const many = drcSearchLedgerSection(Array.from({ length: 40 }, (_, i) => `angle ${i}`));
+  assert.equal(many.split("\n").filter((l) => l.startsWith("- ")).length, 24);
+});
+
 test("drcContext keeps the last turns inside the budget", () => {
   const messages = [
     { role: "user", content: "x".repeat(20_000) },
@@ -108,6 +165,33 @@ test("the web-search prompt variants flip the honesty rules to citation rules", 
   // The web synth prompt drops the offline "no web sources / training cutoff"
   // framing (it now HAS sources) — a guard against reusing the offline text.
   assert.doesNotMatch(drcSynthPromptWeb(), /never invent citations, bracketed numbers, or URLs/);
+});
+
+test("both synth prompts make the writer EARN an absence claim (feedback #61)", () => {
+  // Eleven claims came back "self-reported only" or "unverifiable" while four
+  // independent sources sat unread. Absence must be re-checked against the
+  // material at hand before it is written — and it must survive every tier.
+  for (const tier of ["standard", "brief", "extended", "full"]) {
+    assert.match(drcSynthPrompt({ reportTier: tier }), /Absence is a claim/);
+    assert.match(drcSynthPromptWeb({ reportTier: tier }), /Absence is a claim/);
+  }
+  // Web: the claim is about the numbered Sources, and a re-read is ordered.
+  assert.match(drcSynthPromptWeb(), /it is a claim about the numbered Sources/);
+  assert.match(drcSynthPromptWeb(), /RE-READ the numbered Sources/);
+  assert.match(drcSynthPromptWeb(), /a source you have not cited elsewhere still counts/);
+  assert.match(drcSynthPromptWeb(), /never be reported as unsearchable when no angle targeted it/);
+  // Offline: there are no numbered sources here, so the same rule binds to the
+  // notes instead — including notes filed under another sub-question.
+  assert.match(drcSynthPrompt(), /it is a claim about the harvested notes/);
+  assert.match(drcSynthPrompt(), /RE-READ the notes/);
+  assert.match(drcSynthPrompt(), /filed under a DIFFERENT sub-question still counts/);
+  assert.doesNotMatch(drcSynthPrompt(), /numbered Sources/); // never leak the web wording offline
+  // Both defer to the input's ledger block when it is there, and neither may
+  // report an unasked question as an answered one.
+  assert.match(drcSynthPrompt(), /research angles already run/);
+  assert.match(drcSynthPromptWeb(), /search angles already run/);
+  assert.match(drcSynthPrompt(), /say it was not covered/);
+  assert.match(drcSynthPromptWeb(), /say it was not searched for/);
 });
 
 // ---- the research time budget (the /cure slider — Se/rver's, mirrored) ---------------
@@ -337,6 +421,14 @@ describe("runDrcResearch end to end (mock provider)", () => {
     assert.match(synth.body.messages.at(-1).content, /Harvested notes/);
     assert.match(synth.body.messages.at(-1).content, /fact about What is A\?/);
     assert.match(synth.body.messages.at(-1).content, /A was chosen in March/);
+    // …and, ahead of the notes, the ledger of every angle actually run — the
+    // two planned sub-questions PLUS the gap round's follow-up (feedback #61).
+    const synthUser = synth.body.messages.at(-1).content;
+    assert.match(synthUser, /^Research angles already run for this question/);
+    for (const angle of ["What is A?", "What is B?", "What changed recently?"]) {
+      assert.ok(synthUser.includes("- " + angle), angle);
+    }
+    assert.ok(synthUser.indexOf("Research angles already run") < synthUser.indexOf("Harvested notes"));
     // Triage saw the recall as part of the conversation context…
     const triage = requests.find((r) => r.phase === "triage");
     assert.match(triage.body.messages.at(-1).content, /A was chosen in March/);
@@ -344,6 +436,9 @@ describe("runDrcResearch end to end (mock provider)", () => {
     // draft grounded in recalled facts is never a false contradiction.
     const validate = requests.find((r) => r.phase === "validate");
     assert.match(validate.body.messages.at(-1).content, /A was chosen in March/);
+    // The ledger is synthesis input only — the reviewer judges the draft
+    // against the notes, exactly as on the Se/rver side.
+    assert.doesNotMatch(validate.body.messages.at(-1).content, /angles already run/);
     // Harvest stays recall-free: it extracts the MODEL's knowledge.
     for (const r of requests.filter((x) => x.phase === "harvest")) {
       assert.equal(r.body.messages.at(-1).content.includes("A was chosen in March"), false);
@@ -633,6 +728,10 @@ describe("runDrcResearch web-search grant path (mock provider)", () => {
     assert.match(synth.body.messages[0].content, /CITE claims with the bracketed Source numbers/);
     assert.match(synth.body.messages.at(-1).content, /Sources \(cite claims as \[n\]\)/);
     assert.match(synth.body.messages.at(-1).content, /\[1\] Result for What is A\?/);
+    // With live sources gathered, the ledger flips to the SEARCH wording and
+    // lists exactly the queries that were run (feedback #61).
+    assert.match(synth.body.messages.at(-1).content, /^Search angles already run for this question/);
+    assert.match(synth.body.messages.at(-1).content, /- What is A\?\n- What is B\?/);
     // The phase line surfaced "search" (not "harvest") while web search ran.
     assert.ok(phases.includes("search"));
   });
@@ -656,6 +755,9 @@ describe("runDrcResearch web-search grant path (mock provider)", () => {
     assert.match(harvest.body.messages[0].content, /From your own knowledge/);
     const synth = requests.find((r) => r.phase === "synth");
     assert.doesNotMatch(synth.body.messages.at(-1).content, /Sources \(cite claims as \[n\]\)/);
+    // The ledger follows the same fallback: no live sources, so it reports a
+    // harvest rather than promising searches that never happened.
+    assert.match(synth.body.messages.at(-1).content, /^Research angles already run for this question/);
   });
 
   test("a direct answer (research off) grounds in one web search when the grant is on", async () => {

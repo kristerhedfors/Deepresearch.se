@@ -1,0 +1,72 @@
+{
+  "branch": "claude/linkedin-person-research-feedback-z9lxq7",
+  "pr": null,
+  "requested_at": "2026-08-05",
+  "points": [
+    {
+      "label": "Researching a person searches the web, not science papers",
+      "summary": "FIX for your feedback #61: asking the site to research a person could silently switch the whole run over to scientific-paper databases, so a founder question came back with a dozen unrelated research papers as its first sources and almost nothing from the open web. WHAT TO DO: start a new chat, keep web search ON (already flipped on for you), take a screenshot of any PUBLIC founder's profile page — someone well known, or your own; please don't use a private person — attach it, and send the prefilled message. IMPORTANT: if the message box starts with a '#UC-…' tag, delete that tag first, so the message begins with the word 'Research' — the opening words are part of what is being tested. If attaching a screenshot is awkward, instead type a public founder's name and company at the end of the message. PASS = the numbered source list under the answer is made of ordinary web pages about that person and their company (profile pages, the company site, news articles, interviews), and the research steps show web searches running from the very first round. FAIL = the top of the source list is scientific papers on unrelated subjects, or no web search runs at all. Either way, please paste the first five source titles into the note.",
+      "target": "/rver",
+      "actions": [
+        { "type": "setSearch", "on": true },
+        { "type": "setBudget", "seconds": 180 },
+        { "type": "compose", "text": "Research this founder" },
+        { "type": "note", "text": "New chat first. Attach a screenshot of any PUBLIC founder's profile page (or your own) — not a private individual. Delete any '#UC-…' tag from the start of the message before sending." }
+      ],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "A full-length run: \"could not verify\" must say where it looked",
+      "summary": "FIX for the second half of your feedback #61: the report marked eleven things 'self-reported only' or 'unverifiable' and stated that no independent press coverage, no university page and no third-party source existed — while four such sources were sitting in its own numbered list, never read. Two things changed. The writing step can now see EVERY source that was collected (on a long run it used to read only the first fifteen or so, and the ones found last — exactly the ones the later rounds went looking for — fell outside what it could read). And it must now check the list before claiming something is missing, and name which search angles came back empty. WHAT TO DO: new chat, web search ON, time budget preset to the maximum ten minutes; attach the same kind of public founder profile, delete any '#UC-…' tag, and send. It runs for a while — leave it going. PASS = all three hold: (1) every 'could not verify / self-reported only / no independent coverage' sentence says which angles were searched and came back empty, instead of flatly asserting that nothing exists; (2) the answer cites source numbers from all across the list, including high ones near the end, not only the first fifteen; (3) nothing is declared non-existent that is plainly present in the source list (an interview, a university page, a news item about the person). FAIL = any bare 'no independent source exists' that the source list underneath contradicts. Please note roughly how many sources were collected and the highest source number the answer actually cites.",
+      "target": "/rver",
+      "actions": [
+        { "type": "setSearch", "on": true },
+        { "type": "setBudget", "seconds": 600 },
+        { "type": "compose", "text": "Research this founder" },
+        { "type": "note", "text": "This is the ten-minute run — start it and come back. Same kind of public profile screenshot as the previous point; delete any '#UC-…' tag before sending." }
+      ],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Regression: real science questions still reach the research literature",
+      "summary": "The rules that decide when to go to the scientific literature were NARROWED to fix the points above, so the opposite case matters just as much: a genuine science question must still come back with peer-reviewed work. Send the prefilled question with web search on (a '#UC-…' tag at the front is harmless here). PASS = the source list contains real journal papers — titles with authors, a journal name and a year — and not only news articles and blog posts; the research steps mention searching the literature. FAIL = only ordinary web pages, no papers at all. If it fails, please paste the source list into the note.",
+      "target": "/rver",
+      "actions": [
+        { "type": "setSearch", "on": true },
+        { "type": "compose", "text": "What does the latest research on intermittent fasting say about heart health?" },
+        { "type": "note", "text": "New chat. This is the inverse test of the previous two — here papers are the RIGHT answer." }
+      ],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Svenska: forskningsfrågan hittar studier, personfrågan hittar webben",
+      "summary": "The same rules were changed in Swedish as in English, and both directions need confirming. TWO SENDS, and PASS needs BOTH. (A) Send the prefilled Swedish science question — a '#UC-…' tag at the front is harmless here. Expected: the source list contains real journal papers (authors, journal, year), just like the English one. (B) Then start a NEW chat, attach the same kind of public founder profile screenshot, type exactly 'Granska den här grundaren' as the whole message (no '#UC-…' tag in front of it — the first word matters), and send with web search on. Expected: ordinary web pages about the person, no run of unrelated scientific papers at the top. PASS = both behave as described. FAIL = either the Swedish science question returns no papers, or the Swedish person question returns science papers. Please say in the note which of the two misbehaved.",
+      "target": "/rver",
+      "actions": [
+        { "type": "setSearch", "on": true },
+        { "type": "compose", "text": "Vad säger den senaste forskningen om intermittent fasta och hjärthälsa?" },
+        { "type": "note", "text": "Del A är den ifyllda frågan. Del B: ny chatt, bifoga en offentlig grundarprofil och skriv exakt 'Granska den här grundaren' — ta bort en eventuell '#UC-…'-tagg först. Båda måste stämma för ett 👍." }
+      ],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    },
+    {
+      "label": "Se/cure (/cure): the same honesty about what it did not find",
+      "summary": "The 'say where you looked' rule was mirrored into Se/cure, which runs entirely in your browser. WHAT TO DO: open /cure with your own provider key configured, and ask it to research a public founder — e.g. type 'Research this founder: <a public founder's name>, founder of <their company>'. It works with web search on or off; try whichever you have set up. PASS = wherever the answer says it cannot establish, confirm or verify something, it names the angles it looked at and which came back empty (something like 'none of the angles searched turned up an independent report of X'), instead of flatly stating that nothing exists. FAIL = bare 'no information is available' or 'this cannot be verified' with no word about what was actually tried. There is no try-it banner on /cure, so come back to the queue afterwards to record the verdict.",
+      "target": "/cure",
+      "actions": [
+        { "type": "note", "text": "/cure needs a provider key in its settings drawer. Use a PUBLIC founder (or yourself), never a private individual. Record the verdict back in the queue on /rver afterwards — the banner does not follow you to /cure." }
+      ],
+      "runs": 1,
+      "minted_id": null,
+      "verdicts": []
+    }
+  ]
+}

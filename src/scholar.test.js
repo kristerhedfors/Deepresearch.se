@@ -103,6 +103,89 @@ test("scholarIntent fires on the proven family, minus the commercial idiom", () 
   }
 });
 
+// Feedback #61 (chat_logs #1656). A user attached a LinkedIn screenshot and
+// wrote "Research this founder". The gate read the English imperative VERB as
+// the noun that names the scholarly record, this source LED, the web leg stood
+// down, and the answer's first thirteen numbered sources were lipid-nanoparticle
+// papers, MXene aerogels and a cancer-conference abstract book — nothing about
+// the founder until [14]. The reported message is the first case here, verbatim.
+test("scholarIntent reads \"research\" as an imperative verb, not as the literature", () => {
+  for (const s of [
+    "Research this founder",
+    "Research this founder for me",
+    "research this company",
+    "Please research the company behind this screenshot",
+    "Can you research him?",
+    "I need you to research their CTO",
+    "help me research this person",
+    "do some research on this founder",
+    "Research on this founder",
+    "and research the people in this photo",
+    // Swedish gives the instruction with different words entirely (invariant 6):
+    // the loan verb, the light verb, and the three native imperatives.
+    "Researcha den här grundaren",
+    "kan du researcha den här personen",
+    "gör research på den här grundaren",
+    "gör lite research om det här bolaget",
+    "Undersök den här grundaren",
+    "kolla upp den här grundaren",
+    "ta reda på vem den här grundaren är",
+    // …and the ASCII-typed forms a keyboard without å/ä/ö produces.
+    "undersok den har grundaren",
+    "ta reda pa vem grundaren ar",
+  ]) {
+    assert.equal(scholarIntent(s), false, `should not fire: ${s}`);
+    assert.equal(scholarLeadIntent(s), false, `must certainly not lead: ${s}`);
+  }
+});
+
+// The other half of the same line: the word as a NOUN still fires, and it has
+// to, or the fix above trades one silent failure for another.
+test("scholarIntent still reads \"research\" as the noun naming the record", () => {
+  for (const s of [
+    "research on gut microbiome and depression",
+    "research into microplastics in drinking water",
+    "the research shows that sleep debt is not repayable",
+    "the research that showed this was retracted later",
+    "peer-reviewed research on statins and muscle pain",
+    "academic research about teacher-student ratios",
+    "what does the latest research say about GLP-1 drugs",
+    "there is a body of research supporting this",
+    "how much research exists on cold exposure",
+    "the state of research on room-temperature superconductors",
+    "recent research findings on ocean acidification",
+    // "want" takes both — "I want you TO research this" is the instruction,
+    // "I want research on X" is the noun. The infinitive marker is the whole
+    // difference, and an early draft of the veto ate the second one.
+    "I want research on the efficacy of mindfulness apps",
+    // Swedish names the record with its own nouns — no verb collision to
+    // resolve, so the breadth lives in the words themselves.
+    "Vad säger forskningen om intermittent fasta?",
+    "finns det forskning om kalla bad",
+    "vilka studier finns om rött kött och hjärt-kärlsjukdom",
+    "den vetenskapliga litteraturen om mikroplaster",
+    "vad är forskningsläget kring D-vitamin",
+    "visa publicerade studier om kolupptag",
+  ]) {
+    assert.equal(scholarIntent(s), true, `should fire: ${s}`);
+  }
+});
+
+// The veto is scoped to the "research"-the-noun clause alone. A message that
+// both instructs AND asks about the literature still fires on its second half —
+// otherwise the fix would silence real literature questions that happen to open
+// with an instruction.
+test("the imperative veto never suppresses the other clauses", () => {
+  for (const s of [
+    "Research this founder — what does the literature say about his patents?",
+    "Please research the company and find peer-reviewed studies on their drug",
+    "Researcha den här grundaren och hitta sakkunniggranskade artiklar",
+    "Undersök den här personen. Vad säger forskningen om metoden?",
+  ]) {
+    assert.equal(scholarIntent(s), true, `should fire on its literature half: ${s}`);
+  }
+});
+
 test("scholarIntent stays out of questions with nothing scholarly in them", () => {
   for (const s of [
     "",
@@ -136,6 +219,63 @@ test("scholarLeadIntent is strictly narrower than scholarIntent", () => {
     "find studies on exercise and depression",
   ]) {
     assert.equal(scholarLeadIntent(s), false, `should not lead: ${s}`);
+  }
+});
+
+// Leading stands the whole web leg down, so every word that leads has to be a
+// SOURCE NAME and nothing else. Bare "scholar"/"scholars" was in the named list
+// and is a person far more often than it is Google Scholar — the same failure
+// shape as feedback #61, one gate over.
+test("a bare \"scholar\" leads only when it names the source, not the person", () => {
+  for (const s of [
+    "he was a Rhodes scholar before founding the company",
+    "a scholar of Byzantine history",
+    "scholars disagree about the date",
+    "she is the leading scholar on this period",
+  ]) {
+    assert.equal(scholarLeadIntent(s), false, `a person is not a source: ${s}`);
+    assert.equal(scholarIntent(s), false, `…and does not fire the wider gate either: ${s}`);
+  }
+  // Addressed AS a place to look it still counts, in both languages.
+  for (const s of [
+    "search scholar for transformer scaling laws",
+    "look it up in scholar",
+    "check scholar for this",
+    "sök i scholar efter D-vitamin",
+    "kolla på scholar",
+    "leta i scholar efter studien",
+    "sok i scholar efter D-vitamin",
+    // and the full product name, however it is written
+    "Google Scholar",
+    "kolla scholarn",
+  ]) {
+    assert.equal(scholarLeadIntent(s), true, `should lead: ${s}`);
+    assert.equal(scholarIntent(s), true, `a lead must also fire the wider gate: ${s}`);
+  }
+});
+
+// Invariant 6, mechanically. Every Swedish alternative added or changed above
+// begins or ends near å/ä/ö at least once; JavaScript's `\b` is defined over
+// [A-Za-z0-9_], so a `\b(…)\b` gate would silently drop exactly these while the
+// English half kept working. Matched EN/SV pairs are what catches it — reading
+// the two lists side by side does not.
+test("Swedish language parity: matched EN/SV pairs agree", () => {
+  /** @type {Array<[string, string, boolean]>} */
+  const pairs = [
+    ["Research this founder", "Researcha den här grundaren", false],
+    ["please research the company", "gör research på det här bolaget", false],
+    ["look this person up", "kolla upp den här personen", false],
+    ["find out who this founder is", "ta reda på vem den här grundaren är", false],
+    ["investigate this founder", "undersök den här grundaren", false],
+    ["what does the research say about vitamin D", "vad säger forskningen om D-vitamin", true],
+    ["peer-reviewed research on statins", "sakkunniggranskad forskning om statiner", true],
+    ["is there any evidence for this", "finns det några belägg för det här", true],
+    ["the scientific literature on microplastics", "den vetenskapliga litteraturen om mikroplaster", true],
+    ["search scholar for this", "sök i scholar efter det här", true],
+  ];
+  for (const [en, sv, expected] of pairs) {
+    assert.equal(scholarIntent(en), expected, `EN: ${en}`);
+    assert.equal(scholarIntent(sv), expected, `SV must agree with its EN pair: ${sv}`);
   }
 });
 

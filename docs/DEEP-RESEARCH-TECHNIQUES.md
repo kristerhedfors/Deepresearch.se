@@ -284,6 +284,8 @@ Facts from `src/pipeline.js`, `src/budget.js`, `src/sources.js`, `src/prompts.js
 | Section-scoped revision | measured (full rewrite loses 46–73% of citations) | **absent — and actively inverted**: validation emits a whole `revised_answer` |
 | Contradiction detection | suggestive | **shallow** — `gap.conflicts` strings, no cross-source claim alignment |
 | Retraction / preprint flags | measured gap in every competitor | **absent** |
+| Every collected source reaching synthesis (no arrival-order starvation) | local defect, feedback #61 | **present** since 2026-08-05 — the digest budget is shared per source and both source caps widen together |
+| Absence claims checked against the retrieved list, and against what was searched | local defect, feedback #61 | **present** since 2026-08-05 — `searchLedgerSection` + `synthPrompt`'s absence clause |
 | Evidence grading from metadata | speculative | **absent** |
 
 ### The disabled-features question
@@ -307,15 +309,45 @@ own bench arguably never tested. Any retry must be an A/B where **RCS replaces
 the raw digest** rather than supplementing it, judged on faithfulness and
 specificity rather than overall score alone.
 
-### One defect, and two things that only look like defects
+### Three defects, and two things that only look like defects
 
-**The defect: validation emits a whole `revised_answer`.** `src/prompts.js:621`
-asks for "the complete corrected answer"; `src/pipeline.js:1939` discards the
-draft and re-emits it. Full-rewrite revision is measured to retain only
+**The first defect, still open: validation emits a whole `revised_answer`.**
+`src/prompts.js:621` asks for "the complete corrected answer";
+`src/pipeline.js:1939` discards the draft and re-emits it.
+Full-rewrite revision is measured to retain only
 **27–54% of citations** ([arXiv:2606.09748](https://arxiv.org/html/2606.09748)),
 which makes our repair path the documented failure mode: the phase that exists
 to protect attribution is the phase most likely to destroy it. Section-scoped
 patching is a pure JSON-mode change and does not touch invariant 1.
+
+**The second defect, fixed 2026-08-05: digest starvation.** The digest is
+a character budget filled in arrival order, and `src/pipeline.js`'s aux capacity
+reserve used to widen `plan.maxSources` without widening `plan.digestCap` —
+admitting more sources without paying for their prose, which does not add them
+to what synthesis reads but pushes the highest-numbered ones out of an unchanged
+window. Those are the sources the later gap rounds were run to find. Measured in
+production (feedback #61, `chat_logs` #1656): thirteen ~1,300-char literature
+blocks arrived first, consumed an 18,000-char window, and the report was written
+from roughly the first 15 of 35 sources — while a university page, two press
+features and an interview sat unread at `[17]` through `[26]`. Both caps now
+move together, and the budget is shared per source rather than raced for
+(`docs/ARCHITECTURE.md` §4.3d). The class generalises past this one reserve:
+wherever a budget is filled first-come, widening one cap and not its partner
+degrades silently, in the one direction nothing measures.
+
+**The third, fixed the same day: absence written as a property of the world.**
+The same report marked eleven claims `self-reported only` or `unverifiable` and
+stated that no independent press coverage, no university page and no
+third-party source existed — four of which it had already collected. An absence
+claim is a claim about the numbered list, and nothing checked it against that
+list. The answer also had no way to know which angles had been searched, and
+sixteen had run. Synthesis is now handed the search ledger, and `synthPrompt`
+requires an absence claim to be checked against the numbered sources and to
+name the angles that came back empty. **Deliberately not more retrieval:** §6's
+de-noised bench found extra pre-synthesis material net-negative (2.65 → 2.43,
+by context dilution) and the ground-truth battery puts the loss at 14:1
+synthesis-over-retrieval, so the fix costs no search, no model call and no new
+source.
 
 **Not a defect: `verifyClaim` returning `supported` when the check fails**
 (`src/pipeline.js:2028`). The comment states the intent — a failed check must
@@ -365,13 +397,22 @@ Ordered by measured evidence ÷ cost, respecting §6.
    faithfulness metric is computed from it. Zero cost; prevents a silently
    inflated number later.
 6. **Raise per-source excerpt length toward ~1500 chars** — measured
-   (faithfulness +0.13); modest token cost. The second half, *stop silently
-   dropping sources past `digestCap`*, is DONE (2026-08-05): the digest now
-   skips an oversized block rather than stopping at it, and states how many it
-   omitted. It was measured at ~9 of 32 sources invisible to synthesis,
-   validation and the gap check at the common tier — and the ground-truth
-   battery independently read 14 synthesis misses to 1 retrieval miss on FRAMES
-   the same day, which is the same finding from the other end.
+   (faithfulness +0.13); modest token cost. After the fix below it has to be
+   argued as a change to the per-source SHARE rather than to a per-source
+   constant, since a longer excerpt is a larger claim on a shared budget.
+   ~~The second half, *stop silently dropping sources past
+   `digestCap`*~~ — DONE (2026-08-05), in two steps. First the digest stopped
+   at an oversized block; it was made to skip it and state how many it omitted,
+   measured at ~9 of 32 sources invisible to synthesis, validation and the gap
+   check at the common tier. That fixed one source hiding the rest, not the
+   case where the SUM starves the tail, which feedback #61 then hit in
+   production: thirteen verbose literature blocks each fit on their own and
+   together consumed the whole window. So the budget is now shared — a max-min
+   fair share per source, with an over-share block's excerpt clipped instead of
+   the source disappearing — and the aux capacity reserve widens `digestCap`
+   alongside `maxSources`. The ground-truth battery independently read 14
+   synthesis misses to 1 retrieval miss on FRAMES the same day the first half
+   landed, which is the same finding from the other end.
 7. **RCS as a replacement digest, behind an A/B.** measured, largest single
    lever, but contradicts a local bench — so it ships as an experiment with a
    pre-registered metric, not as a default.

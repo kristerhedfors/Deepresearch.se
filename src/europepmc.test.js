@@ -102,6 +102,96 @@ test("europepmcIntent", async (t) => {
     assert.equal(europepmcIntent("boka en tid hos läkaren"), false);
   });
 
+  // Feedback #61 (chat_logs #1656, 2026-08-05). A user attached a LinkedIn
+  // screenshot and wrote "Research this founder". Both halves of the
+  // combination gate matched text that was never about biology: the bare
+  // English imperative "research", and the single word "health" sitting inside
+  // a privacy PROHIBITION in an appended methodology block ("never an
+  // inference of ethnicity, health, religion, politics, sexuality"). The leg
+  // fired and contributed biomedical papers to a founder-background answer.
+  await t.test("the imperative verb is not a reference to the literature", () => {
+    // The verbatim reported message.
+    assert.equal(europepmcIntent("Research this founder"), false);
+    // …and the shape it arrived in, methodology block and all.
+    assert.equal(
+      europepmcIntent(
+        "Research this founder.\n\nMethodology: verifiable public facts only, " +
+          "never an inference of ethnicity, health, religion, politics, sexuality.",
+      ),
+      false,
+    );
+    for (const s of [
+      "Please research this person before the meeting",
+      "Review these three candidates",
+      "Study this profile and summarise it",
+      // Swedish parity — the loanword imperative and the native verbs, with
+      // Swedish objects (den här / denna / honom / deras).
+      "Research den här grundaren",
+      "Granska den här personen och hennes bakgrund",
+      "Undersök denna grundare inför mötet",
+      "Kolla upp honom innan mötet",
+      "Analysera dessa kandidater",
+    ]) assert.equal(europepmcIntent(s), false, s);
+  });
+
+  await t.test("the NOUN 'research' still names the published record", () => {
+    for (const s of [
+      "the latest research on vitamin D",
+      "what does the research say about cancer treatment",
+      // A relative pronoun is not a task object — `that`/`it` are deliberately
+      // absent from the imperative frame's object list.
+      "research that shows the health benefits of exercise",
+      // Mid-sentence, so the sentence-initial frame does not apply.
+      "the research this year on gut microbiome",
+      "vad säger forskningen om vitamin D",
+      "den senaste forskningen om cancerbehandling",
+    ]) assert.equal(europepmcIntent(s), true, s);
+  });
+
+  await t.test("a general word in passing is not life-science subject matter", () => {
+    for (const s of [
+      // "health" only inside the prohibition — the reported false positive.
+      "What does the research say about interest rates? " +
+        "Never infer ethnicity, health, religion or politics.",
+      "Vad säger forskningen om räntor? " +
+        "Aldrig en slutsats om etnicitet, hälsa, religion eller politik.",
+      // The rest of the ambiguous family, each in its ordinary sense.
+      "studies of a sequence of events on the assembly line",
+      "research on computer viruses in industrial control systems",
+      "our findings show the team has financial muscle",
+      "the evidence is at the heart of the argument",
+      "papers on mineral rights in northern Sweden",
+      "our research shows no startup is immune to a downturn",
+      "forskning om behandling av personuppgifter i molnet",
+      "vad säger forskningen om hur bolaget lever vidare genom omstrukturering",
+      "studier av hjärtat i staden och dess kulturliv",
+      "artiklar om hjärnan bakom affären",
+      "belägg för att bolaget har ekonomiska muskler",
+    ]) assert.equal(europepmcIntent(s), false, s);
+  });
+
+  await t.test("an ambiguous word inside a biomedical collocation still fires", () => {
+    for (const s of [
+      "Spirulina proven health benefits",
+      "research on the health effects of microplastics",
+      "what does the research say about the immune system",
+      "studies on heart rate variability",
+      "papers on de novo assembly",
+      "evidence on brain function after concussion",
+      "reviews of patient outcomes after surgery",
+      "studies on muscle mass in older adults",
+      // Swedish carries it as compounds — and every one of these starts or
+      // ends in å/ä/ö, which is the \b trap the file's boundaries avoid.
+      "studier om psykisk hälsa hos unga",
+      "forskning om hjärtinfarkt hos kvinnor",
+      "vad säger studierna om muskelmassa hos äldre",
+      "vetenskapliga rön om virusinfektioner",
+      "artiklar om hjärnskador efter smällar",
+      "en patient med migrän — vad säger forskningen",
+      "forskning om hälsosam kost",
+    ]) assert.equal(europepmcIntent(s), true, s);
+  });
+
   await t.test("needs both halves for the generic combination gate", () => {
     // A life-science word with no research framing, and research framing with
     // no life-science subject, both stay silent.
