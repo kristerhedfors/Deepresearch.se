@@ -52,7 +52,7 @@
 
 import { getDb } from "./db.js";
 import { DEFAULT_SCOPE } from "./oauth-metadata.js";
-import { b64url, safeEqual, sign, verifiedClaims } from "./token-crypto.js";
+import { b64url, safeEqual, sealedToken, verifiedClaims } from "./token-crypto.js";
 
 /** @typedef {import('./types.js').Env} Env */
 
@@ -174,18 +174,6 @@ function epochMs(now) {
   if (!Number.isFinite(now)) return Date.now();
   const n = Number(now);
   return n < 1e11 ? Math.round(n * 1000) : n;
-}
-
-/**
- * Sign a claims object into this codebase's non-JWT wire shape:
- * `<prefix>.<base64url payload>.<hex HMAC tag>`.
- * @param {Env} env @param {string} ns @param {string} prefix @param {object} claims
- * @returns {Promise<string>}
- */
-async function seal(env, ns, prefix, claims) {
-  const payload = b64url(new TextEncoder().encode(JSON.stringify(claims)));
-  const sig = await sign(env, ns, payload);
-  return `${prefix}.${payload}.${sig}`;
 }
 
 /**
@@ -346,7 +334,7 @@ export async function mintAuthCode(env, opts) {
 
   /** @type {AuthCodeClaims} */
   const claims = { v: 1, jti, iat: nowS, exp };
-  return { code: await seal(env, CODE_NS, OAUTH_CODE_PREFIX, claims), jti, exp };
+  return { code: await sealedToken(env, CODE_NS, OAUTH_CODE_PREFIX, claims), jti, exp };
 }
 
 /**
@@ -448,7 +436,7 @@ export async function mintAccessToken(env, opts) {
   const ttl = Number.isFinite(opts?.ttlS) ? Math.max(60, Number(opts?.ttlS)) : ACCESS_TOKEN_TTL_S;
   /** @type {AccessTokenClaims} */
   const claims = { v: 1, sub: userId, scope, jti: newId(), iat: nowS, exp: nowS + ttl };
-  return { token: await seal(env, ACCESS_NS, OAUTH_ACCESS_PREFIX, claims), exp: claims.exp };
+  return { token: await sealedToken(env, ACCESS_NS, OAUTH_ACCESS_PREFIX, claims), exp: claims.exp };
 }
 
 /**
@@ -513,7 +501,7 @@ export async function mintRefreshToken(env, opts) {
 
   /** @type {RefreshTokenClaims} */
   const claims = { v: 1, jti, fam, iat: nowS, exp };
-  return { token: await seal(env, REFRESH_NS, OAUTH_REFRESH_PREFIX, claims), jti };
+  return { token: await sealedToken(env, REFRESH_NS, OAUTH_REFRESH_PREFIX, claims), jti };
 }
 
 /**

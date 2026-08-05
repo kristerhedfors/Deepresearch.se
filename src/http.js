@@ -47,6 +47,36 @@ export function htmlResponse(html, status = 200) {
   });
 }
 
+/** @type {Record<string, string>} */
+const HTML_ESCAPES = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
+
+/**
+ * Escape a value for interpolation into the HTML `htmlResponse` above ships —
+ * the two server-rendered page modules (src/login.js's auth-flow pages and
+ * src/oauth-authorize.js's consent screen) carried this byte-identical.
+ *
+ * FIVE characters, not four. The apostrophe matters here specifically: these
+ * pages interpolate attacker-influenced values — a `client_id`, a redirect
+ * URI, a client name pulled from a remote metadata document — and they do it
+ * into attribute position. A copy that quietly lost `'` or `"` would render
+ * correctly on every page anyone looks at and open an attribute-context
+ * injection with nothing going red. That is why the copies were merged.
+ *
+ * NOTE this is NOT the same escape as public/js/markdown.js's, which covers
+ * four characters on purpose; do not point that one here.
+ * @param {unknown} s
+ * @returns {string}
+ */
+export function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
+}
+
 /**
  * Read a request's JSON body, or hand back the 400 to return instead.
  *

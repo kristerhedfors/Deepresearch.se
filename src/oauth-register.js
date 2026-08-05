@@ -38,7 +38,7 @@
 
 import { jsonResponse } from "./http.js";
 import { DEFAULT_SCOPE, OAUTH_SCOPES, redirectAllowed } from "./oauth-metadata.js";
-import { b64url, sign, verifiedClaims } from "./token-crypto.js";
+import { sealedToken, verifiedClaims } from "./token-crypto.js";
 
 /** @typedef {import('./types.js').Env} Env */
 
@@ -75,9 +75,8 @@ const MAX_NAME_CHARS = 120;
 export async function mintClientId(env, args) {
   const issuedAt = Math.floor((args.now ?? Date.now()) / 1000);
   const claims = { ru: args.redirectUris, nm: args.name, iat: issuedAt };
-  const payload = b64url(new TextEncoder().encode(JSON.stringify(claims)));
-  const sig = await sign(env, CLIENT_NS, payload);
-  return { clientId: `${OAUTH_CLIENT_PREFIX}.${payload}.${sig}`, issuedAt };
+  const clientId = await sealedToken(env, CLIENT_NS, OAUTH_CLIENT_PREFIX, claims);
+  return { clientId, issuedAt };
 }
 
 /**

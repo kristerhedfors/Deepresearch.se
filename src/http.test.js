@@ -8,7 +8,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
-import { htmlResponse, jsonResponse, readJsonBody, sseResponse, textResponse } from "./http.js";
+import { escapeHtml, htmlResponse, jsonResponse, readJsonBody, sseResponse, textResponse } from "./http.js";
 
 /** @param {string} body */
 const post = (body) => new Request("https://example.test/api/x", { method: "POST", body });
@@ -62,5 +62,37 @@ describe("response helpers", () => {
     const t = textResponse("plain");
     assert.equal(t.headers.get("content-type"), "text/plain; charset=utf-8");
     assert.equal(await t.text(), "plain");
+  });
+});
+
+// The escape the two server-rendered page modules share. Its value is entirely
+// in WHICH characters it covers, so that is what is asserted: the login pages
+// and the OAuth consent screen interpolate attacker-influenced values into
+// attribute position, and a copy that lost `'` or `"` would look right on
+// every page while opening an injection.
+describe("escapeHtml", () => {
+  test("escapes all five characters, apostrophe and quote included", () => {
+    assert.equal(escapeHtml(`&<>"'`), "&amp;&lt;&gt;&quot;&#39;");
+  });
+
+  test("closes the attribute-context break both page modules can be handed", () => {
+    // A client name from a remote metadata document, landing in `value="…"`.
+    assert.equal(escapeHtml(`" onload="alert(1)`), "&quot; onload=&quot;alert(1)");
+    // The same break against a single-quoted attribute.
+    assert.equal(escapeHtml(`' onload='alert(1)`), "&#39; onload=&#39;alert(1)");
+  });
+
+  test("escapes the ampersand first, so an escape is never double-decoded", () => {
+    assert.equal(escapeHtml("&lt;script&gt;"), "&amp;lt;script&amp;gt;");
+  });
+
+  test("stringifies non-strings rather than throwing", () => {
+    assert.equal(escapeHtml(null), "null");
+    assert.equal(escapeHtml(undefined), "undefined");
+    assert.equal(escapeHtml(42), "42");
+  });
+
+  test("leaves text with nothing to escape untouched", () => {
+    assert.equal(escapeHtml("DeepResearch.Se/rver"), "DeepResearch.Se/rver");
   });
 });

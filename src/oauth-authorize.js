@@ -69,10 +69,10 @@
 // be unit-tested without standing up a D1 fake; the store's own suite owns
 // whether a code is minted correctly.
 
-import { htmlResponse } from "./http.js";
+import { escapeHtml as esc, htmlResponse } from "./http.js";
 import { DEFAULT_SCOPE, OAUTH_SCOPES, redirectAllowed } from "./oauth-metadata.js";
 import { looksRegistered, resolveRegisteredClient } from "./oauth-register.js";
-import { b64url, safeEqual, sign, verifiedClaims } from "./token-crypto.js";
+import { safeEqual, sealedToken, verifiedClaims } from "./token-crypto.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -378,8 +378,7 @@ export async function mintConsentToken(env, req, uid, nowMs = Date.now()) {
     res: req.resource,
     exp: Math.floor(nowMs / 1000) + CONSENT_TTL_S,
   };
-  const payload = b64url(new TextEncoder().encode(JSON.stringify(claims)));
-  return `${CONSENT_PREFIX}.${payload}.${await sign(env, CONSENT_NS, payload)}`;
+  return sealedToken(env, CONSENT_NS, CONSENT_PREFIX, claims);
 }
 
 /**
@@ -738,14 +737,6 @@ export async function handleAuthorizePost(request, env, url, log, identity, deps
 // ---------------------------------------------------------------------------
 // The pages
 // ---------------------------------------------------------------------------
-
-/** @type {Record<string, string>} */
-const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
-
-/** @param {unknown} s @returns {string} */
-function esc(s) {
-  return String(s).replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
-}
 
 // The dark palette of public/connect/ — a reader who arrives here came from a
 // connector dialog and is on their way back to one, and this is the SERVER

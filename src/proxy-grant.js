@@ -31,7 +31,7 @@
 // (src/token-crypto.js), so src/proxy.js and the tests share ONE
 // implementation.
 
-import { b64url, sign, verifiedClaims } from "./token-crypto.js";
+import { sealedToken, verifiedClaims } from "./token-crypto.js";
 
 const GRANT_PREFIX = "prg1"; // the token-granting token (in the bundle)
 const PROXY_PREFIX = "prx1"; // the working proxy token (post-exchange)
@@ -50,19 +50,6 @@ const PROXY_NS = "proxytoken."; // HMAC message namespace for proxy tokens
  * @property {number} iat issued-at (epoch seconds)
  * @property {number} exp expiry (epoch seconds)
  */
-
-/**
- * Mint a token of a given tier from the given claims.
- * @param {Env} env
- * @param {string} prefix @param {string} ns
- * @param {ProxyClaims} claims
- * @returns {Promise<string>}
- */
-async function mint(env, prefix, ns, claims) {
-  const payload = b64url(new TextEncoder().encode(JSON.stringify(claims)));
-  const sig = await sign(env, ns, payload);
-  return `${prefix}.${payload}.${sig}`;
-}
 
 /**
  * Verify a token of a given tier; returns its claims or null on any problem
@@ -99,7 +86,7 @@ async function verify(env, prefix, ns, token, nowMs) {
 
 /** Mint a `prg1.…` GRANT token (the bundle's token-granting token). */
 export function mintGrantToken(/** @type {Env} */ env, /** @type {ProxyClaims} */ claims) {
-  return mint(env, GRANT_PREFIX, GRANT_NS, claims);
+  return sealedToken(env, GRANT_NS, GRANT_PREFIX, claims);
 }
 
 /** Verify a `prg1.…` GRANT token. @returns {Promise<ProxyClaims|null>} */
@@ -109,7 +96,7 @@ export function verifyGrantToken(/** @type {Env} */ env, /** @type {string} */ t
 
 /** Mint a `prx1.…` PROXY token (the working, post-exchange credential). */
 export function mintProxyToken(/** @type {Env} */ env, /** @type {ProxyClaims} */ claims) {
-  return mint(env, PROXY_PREFIX, PROXY_NS, claims);
+  return sealedToken(env, PROXY_NS, PROXY_PREFIX, claims);
 }
 
 /** Verify a `prx1.…` PROXY token. @returns {Promise<ProxyClaims|null>} */

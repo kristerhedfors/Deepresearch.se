@@ -13,13 +13,14 @@
 // which shares the raw tag but renders it base64url).
 //
 // THE FENCE. Each token family keeps its OWN mint/verify. What is shared stops
-// at the cryptography: `verifiedClaims` recomputes the tag, compares it in
-// constant time and decodes the payload — and hands back. Every family still
+// at the cryptography: `sealedToken` renders claims into the wire shape, and
+// `verifiedClaims` recomputes the tag, compares it in constant time and decodes
+// the payload — and hands back. Every family still BUILDS its own claims,
 // parses its own wire prefix, passes its OWN namespace in (which is what keeps
 // the families mutually unforgeable under the single SESSION_SECRET key), and
 // validates its OWN claims, which is where they differ deliberately: proxy
 // tokens carry a `svc` claim, websearch tokens don't. Do not merge the claim
-// validation, and do not grow `verifiedClaims` toward it.
+// construction or validation, and do not grow either shared helper toward it.
 //
 // Leaf module: imports nothing (the types.js import is type-only), so neither
 // consumer's handler graph is pulled into another's tests.
@@ -79,6 +80,28 @@ export async function hmacRaw(env, message) {
  */
 export async function sign(env, ns, message) {
   return toHex(await hmacRaw(env, ns + message));
+}
+
+/**
+ * Seal a claims object into this codebase's non-JWT wire shape:
+ * `<prefix>.<base64url payload>.<hex HMAC tag>` — the mint-side mirror of
+ * `verifiedClaims` below, and the step every family performs identically once
+ * it has built its own claims.
+ *
+ * The same fence applies in this direction: the caller BUILDS its claims and
+ * passes its OWN namespace and wire prefix in. Nothing here inspects, defaults
+ * or validates a claim, so the families stay mutually unforgeable under the
+ * single SESSION_SECRET key and keep differing where they differ on purpose.
+ * @param {Env} env
+ * @param {string} ns the family's message namespace
+ * @param {string} prefix the family's versioned wire prefix (no trailing dot)
+ * @param {object} claims the family's own claims object, already assembled
+ * @returns {Promise<string>}
+ */
+export async function sealedToken(env, ns, prefix, claims) {
+  const payload = b64url(new TextEncoder().encode(JSON.stringify(claims)));
+  const sig = await sign(env, ns, payload);
+  return `${prefix}.${payload}.${sig}`;
 }
 
 /**

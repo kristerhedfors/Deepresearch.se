@@ -6,6 +6,8 @@
 // missing-secret configuration-error page. src/index.js decides which one a
 // request sees.
 
+import { escapeHtml } from "./http.js";
+
 /** @typedef {import('./auth.js').Identity} Identity */
 
 const PAGE_CSS = `
@@ -158,20 +160,6 @@ export function termsPage(identity) {
   </div>
 </body>
 </html>`;
-}
-
-/** @type {Record<string, string>} */
-const HTML_ESCAPES = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
-
-/** @param {unknown} s @returns {string} */
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
 }
 
 /**
