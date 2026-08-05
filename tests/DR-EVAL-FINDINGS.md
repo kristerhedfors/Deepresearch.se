@@ -319,6 +319,14 @@ that today produces a fabrication, and the next battery will price it.
   each — the sets have 824 and 4 326 rows, the seed makes the existing 60 a
   subset of any larger draw, and the cost is linear. That is the cheapest
   available improvement to every future verdict.
+- **The duplicate source list is fixed for the common case, not every case.**
+  `withSources` now suppresses its append only when the answer carries a
+  source heading AND at least one `[n] … http` entry under it. A model that
+  writes `### Sources:` with titles but no URLs — observed live — therefore
+  still gets the registry appended, and the answer ends with two lists: an
+  unresolvable one and a complete one. That is the deliberate trade (a reader
+  must always be able to follow a citation), but replacing the model's list
+  rather than appending under it would be better, and wants its own change.
 - **`classifyLoss` is coarse.** `synthesis_miss` fires when ANY gold page was
   retrieved, and on FRAMES those cases averaged 1–2 of 3–8. A per-hop split
   would need a mapping FRAMES does not publish; a middle option is a
