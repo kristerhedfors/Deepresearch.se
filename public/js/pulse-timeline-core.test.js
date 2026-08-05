@@ -17,16 +17,21 @@ import {
   buildBuckets,
   declutterLabels,
   labelGap,
+  compactLines,
   linePath,
   metricOf,
   niceMax,
   normalizeCommits,
+  normalizeVolume,
   peakOf,
   pickStep,
   seriesColor,
   seriesTotalsInWindow,
   svgEscape,
   topKeys,
+  volumeAreaPath,
+  volumeEdgePath,
+  volumeTicks,
   wallMs,
 } from "./pulse-timeline-core.js";
 
@@ -261,6 +266,90 @@ describe("declutterLabels / labelGap", () => {
   test("a single label is left where it is", () => {
     const out = declutterLabels([{ y: 120 }], labelGap(1, 300), 0, 300);
     assert.equal(out[0].ly, 120);
+  });
+});
+
+describe("the code-volume backdrop", () => {
+  const RAW = {
+    unit: "lines",
+    days: [
+      { d: "2026-07-04", t: "2026-07-04T23:10:00+02:00", lines: 3030, files: 14 },
+      { d: "2026-07-06", t: "2026-07-06T21:00:00+02:00", lines: 18240, files: 90 },
+      { d: "2026-07-05", t: "2026-07-05T22:00:00+02:00", lines: 9100, files: 51 },
+    ],
+  };
+
+  test("normalizes to wall-clock points, oldest first", () => {
+    const pts = normalizeVolume(RAW);
+    assert.deepEqual(pts.map((p) => p.d), ["2026-07-04", "2026-07-05", "2026-07-06"]);
+    assert.equal(pts[0].ms, wallMs("2026-07-04T23:10:00+02:00"),
+      "the reading sits at its own commit's wall time, on the same axis as the curves");
+    assert.equal(pts[2].lines, 18240);
+  });
+
+  test("a dataset built before the series existed draws no backdrop", () => {
+    // The landing card must survive an older /pulse/timeline.json rather than
+    // throwing on the front door.
+    assert.deepEqual(normalizeVolume(undefined), []);
+    assert.deepEqual(normalizeVolume({}), []);
+    assert.deepEqual(normalizeVolume([{ d: "2026-07-04" }]), [], "a reading with no count is dropped");
+  });
+
+  test("accepts a bare array as well as the wrapper", () => {
+    assert.equal(normalizeVolume(RAW.days).length, 3);
+  });
+
+  test("the area closes to the baseline and the edge does not", () => {
+    const pts = normalizeVolume(RAW);
+    const [t0, t1] = [pts[0].ms, pts[2].ms];
+    const xOf = (ms) => ((ms - t0) / (t1 - t0)) * 100;
+    const yOf = (v) => 200 - (v / 20000) * 100;
+    const area = volumeAreaPath(pts, t0, t1, xOf, yOf, 200);
+    const edge = volumeEdgePath(pts, t0, t1, xOf, yOf);
+    assert.match(area, /^M0\.0 200\.0 L/, "starts on the baseline under the first reading");
+    assert.match(area, /L100\.0 200\.0 Z$/, "and closes there under the last");
+    assert.match(edge, /^M0\.0 /);
+    assert.ok(!edge.includes("Z"), "the edge is a curve, not a shape");
+    assert.equal((edge.match(/L/g) || []).length, 2, "one segment per later reading");
+  });
+
+  test("readings outside the window cannot stretch the shape", () => {
+    const pts = normalizeVolume(RAW);
+    const t0 = pts[1].ms, t1 = pts[2].ms;
+    const edge = volumeEdgePath(pts, t0, t1, (ms) => ms, (v) => v);
+    assert.equal((edge.match(/[ML]/g) || []).length, 2, "only the two readings inside the window");
+  });
+
+  test("fewer than two readings inside the window draws nothing", () => {
+    const pts = normalizeVolume(RAW);
+    assert.equal(volumeEdgePath(pts, pts[2].ms, pts[2].ms, (ms) => ms, (v) => v), "");
+    assert.equal(volumeAreaPath(pts, pts[2].ms, pts[2].ms, (ms) => ms, (v) => v, 10), "");
+  });
+
+  test("the right-hand scale lands on round thousands", () => {
+    const t = volumeTicks(293991);
+    assert.equal(t.top, 300000, "the axis top is rounded up, not the raw reading");
+    assert.deepEqual(t.values, [0, 100000, 200000, 300000]);
+    assert.deepEqual(t.values.map(compactLines), ["0", "100k", "200k", "300k"]);
+  });
+
+  test("every scale stays between two and five intervals", () => {
+    for (const peak of [420, 3030, 18240, 96000, 150000, 293991, 640000, 1250000]) {
+      const t = volumeTicks(peak);
+      const n = t.values.length - 1;
+      assert.ok(n >= 2 && n <= 5, `${peak} produced ${n} interval(s)`);
+      assert.ok(t.top >= peak, `${peak} must fit under the axis top ${t.top}`);
+      assert.equal(t.values[t.values.length - 1], t.top);
+    }
+  });
+
+  test("labels read in thousands, not in exact line counts", () => {
+    assert.equal(compactLines(0), "0");
+    assert.equal(compactLines(840), "840");
+    assert.equal(compactLines(1500), "1.5k");
+    assert.equal(compactLines(50000), "50k");
+    assert.equal(compactLines(293991), "294k");
+    assert.equal(compactLines(1250000), "1.3M");
   });
 });
 

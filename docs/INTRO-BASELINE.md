@@ -105,7 +105,7 @@ watchdog fires `arrive()` if `transitionend` is swallowed.
 | 1 | Header bar | The wordmark, the **ghost button** (→ `/cure`), the **account button** (→ `/login`). The front door wears the app's own chrome. |
 | 2 | Hero | Logo, `DeepResearch.se`, the tagline — plans its own searches, checks coverage, cites, within a time budget. |
 | 3 | Promo video | `/llm-assiterad-utveckling.mp4`, autoplay-muted-loop. |
-| 4 | `#focuscard` — "What work has been done and when" | The compact feature-focus timeline: chips as the legend/picker, `Busiest 6` / `All` / `None`, a link through to the full page. Hidden until the dataset parses. |
+| 4 | `#focuscard` — "What work has been done and when" | The compact feature-focus timeline: chips as the legend/picker, `Busiest 6` / `All` / `None`, a link through to the full page. Behind the curves, the **code-volume backdrop** — how many lines the tree holds, on its own right-hand scale in thousands (added 2026-08-05). Hidden until the dataset parses. |
 | 5 | "What this project is for" | The mission: privacy capabilities of LLM applications, stated precisely as a **deep-research security architecture**; the two tiers as the proof; still experimental; the build story as a pointer, not a lead. |
 | 6 | "The architecture, in short" | One question, two data paths — the five deterministic phases, then the paired **Se/cure** and **Se/rver** diagrams, then the link to `/architecture/`. |
 | 7 | "Some of what it does" | `ul.feat` — the capability list. Additive by R1: entries join it as capabilities ship (the **open model catalog** entry arrived 2026-07-27 with Hugging Face). No cap on its length — the ≤6 rule is the overlay's (R4), not this list's. |
@@ -115,9 +115,15 @@ watchdog fires `arrive()` if `transitionend` is swallowed.
 | 11 | `.cta` | **Sign in**, plus the invite-only / operator-approval note. |
 | 12 | Footer | Not a commercial product; never placed on the market; the use restrictions at `/build/`. |
 
+Block 4 carries **two units in one plot** and must keep them apart: the feature
+curves count commits and read against the LEFT axis, the volume backdrop counts
+lines the tree holds and reads against the RIGHT. The backdrop is drawn first,
+under every curve, in a flat wash that must never compete with one — a series
+seventh in colour and first in area would be worse than no backdrop at all.
+
 Blocks 4 and 6 draw through **shared** sources rather than local copies: the
-timeline through the pure core `/js/pulse-timeline-core.js` (the same one
-`/pulse/timeline.html` uses), the diagrams through the standalone files
+timeline and its backdrop through the pure core `/js/pulse-timeline-core.js`
+(the same one `/pulse/timeline.html` uses), the diagrams through the standalone files
 `/architecture/path-secure.svg` and `path-server.svg` (the same two
 `/architecture/` embeds). Neither may be re-inlined or re-implemented.
 
@@ -260,9 +266,9 @@ allowlist**, and **two test files that read the tree**.
 | R7 | `canned-faq.js` with `CANNED_LABEL`; no `/api/chat` on the landing | `intro-phase.test.js` — "the signed-out helper is prepackaged, never the model" |
 | R8 | First-visit gating in `drc.js` / `app.js` | UX-3 in the `ux-conventions` skill; `intro-phase.test.js` — the seen-key table |
 | R9 | `isPublicAsset` in `src/assets.js` | `intro-phase.test.js` — "every door the intro offers is reachable without auth" |
-| R10 | Shared files and pure cores | `landing.test.js` — the diagram and timeline-core suites |
+| R10 | Shared files and pure cores | `landing.test.js` — the diagram and timeline-core suites, including "the curves are drawn over the code-volume backdrop, on its own right-hand scale" |
 | R11 | Copy in the landing, the overlay, and Se/cure's greeter | `intro-phase.test.js` — the honest-framing checks |
-| R12 | `#focuscard` starts `hidden`, revealed only after the fetch parses | `landing.test.js` — "the card removes itself when the dataset can't be read" |
+| R12 | `#focuscard` starts `hidden`, revealed only after the fetch parses; a dataset with no `volume` block simply draws no backdrop | `landing.test.js` — "the card removes itself when the dataset can't be read"; `pulse-timeline-core.test.js` — "a dataset built before the series existed draws no backdrop" |
 
 Plus the repo-wide guard that already covers these pages:
 `src/static-pages.test.js` asserts every id an inline script reaches for exists

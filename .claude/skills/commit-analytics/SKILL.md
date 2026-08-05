@@ -13,11 +13,16 @@ description: >-
   build-pulse-timeline.mjs + timeline.json): the subject-taxonomy tagger, the
   multi-line / streamgraph of where feature-focus went over time, and its CURVE
   PICKER — "choose which curves are active/shown", "tap to pick subjects",
-  "toggle series", "show only one theme" on that page. ALSO the
-  "Code size" snapshot on the main pulse page (scripts/build-pulse-size.mjs +
-  public/pulse/size.json): lines/chars per language, README size, and
-  dependency counts — "update the size metrics", "refresh lines of code /
-  language breakdown / dependency count".
+  "toggle series", "show only one theme" on that page. ALSO the landing card
+  "What work has been done and when" (public/welcome/index.html +
+  public/js/pulse-timeline-core.js) and its CODE-VOLUME BACKDROP — the growing
+  filled area behind the curves showing how many lines the project holds, on a
+  right-hand scale in thousands: "update the work-done graph on the starting
+  page", "the volume graph is stale", "add/change the lines-of-code area".
+  ALSO the "Code size" snapshot on the main pulse page
+  (scripts/build-pulse-size.mjs + public/pulse/size.json): lines/chars per
+  language, README size, and dependency counts — "update the size metrics",
+  "refresh lines of code / language breakdown / dependency count".
 ---
 
 # Updating Project pulse (the commit-analytics dashboard)
@@ -85,9 +90,19 @@ pass and about ten minutes, most of it the artifact re-embedding.
 2. **Regenerate all three datasets:**
    ```bash
    npm run pulse            # public/pulse/data.json      — commits / lines / features
-   npm run pulse:timeline   # public/pulse/timeline.json  — subject-tagged focus over time
+   npm run pulse:timeline   # public/pulse/timeline.json  — focus over time + the code-volume series
    npm run pulse:size       # public/pulse/size.json      — code-size snapshot
    ```
+   `pulse:timeline` also refreshes the **code-volume series** the landing card
+   draws behind the curves — one measured reading per day, so it takes about a
+   minute rather than ten seconds and grows with the history. That is the whole
+   refresh: there is no separate command and no opt-out flag, so a pass that
+   runs this list can never ship a stale backdrop under fresh curves. Its
+   printed tail (`volume 33 reading(s) ending at 293,991 lines`) is the check —
+   the reading count must equal the day count above it, and the closing figure
+   must match `pulse:size`'s line total to within a few hundred lines (the two
+   count a line's last newline differently). A wide gap means one of them lost
+   history: see the unshallow step.
    `npm run pulse` prints how many days need review (`curated:false`). Curation
    is preserved: a day whose commit subjects are unchanged and was previously
    marked `curated:true` keeps its hand-written `summary` — only the exact git
@@ -134,8 +149,11 @@ pass and about ten minutes, most of it the artifact re-embedding.
    §"Verifying the pages in a browser" below). On `/pulse/` confirm the
    Day/Week/Month toggle switches the bars, tooltips show and the summaries
    list the right periods; on `/pulse/timeline.html` confirm the curve picker,
-   both view modes, and zoom/pan. If the pass changed picker behaviour, run its
-   own suite:
+   both view modes, and zoom/pan. Load `/` too and read the landing card: the
+   code-volume backdrop must reach the newest date and its right-hand labels
+   must be round thousands — a backdrop that stops short of the curves is a
+   `volume` series that did not regenerate. If the pass changed picker
+   behaviour, run its own suite:
    ```bash
    cd tests && env -u HTTPS_PROXY BASIC_AUTH_USER=x BASIC_AUTH_PASS=y \
      BASE_URL=http://127.0.0.1:8788 npx playwright test --project=mocked pulse-timeline
@@ -208,11 +226,11 @@ independent of `data.json` (nothing here needs re-curation):
 |---|---|
 | `scripts/pulse-themes.mjs` | The SUBJECT taxonomy (key/label/colour/blurb + a RegExp per subject) and `tagCommit(subject)` → **zero-to-many** subject keys. Pure; unit-tested. |
 | `scripts/pulse-themes.test.mjs` | Runs in `npm test` (the glob now includes `scripts/*.test.mjs`). Guards distinct colours + representative subject-line → tag cases. |
-| `scripts/build-pulse-timeline.mjs` | `npm run pulse:timeline`. Tags every commit, emits `timeline.json` (`subjects[]` registry + per-commit `{t,a,r,s}` + per-subject totals). `--audit` prints tag coverage, writes nothing. |
+| `scripts/build-pulse-timeline.mjs` | `npm run pulse:timeline`. Tags every commit, emits `timeline.json` (`subjects[]` registry + per-commit `{t,a,r,s}` + per-subject totals + the `volume` series). `--audit` prints tag coverage, writes nothing. |
 | `public/pulse/timeline.json` | The committed dataset (like `data.json`, it rides in the introspection source-snapshot, so re-run `npm run bundle`/`bundle:rag` after regenerating). |
 | `public/js/pulse-timeline-core.js` | **The shared pure core** (2026-07-26): bucketing, the metric, the multi-tag weight per mode, `niceMax`/`peakOf`, the dark-mode colour lift, `topKeys`/`activeKeys`, `linePath`, label declutter. No DOM, no fetch. Unit-tested in `public/js/pulse-timeline-core.test.js`; on the public allowlist (`src/assets.js`). |
 | `public/pulse/timeline.html` | Self-contained page: multi-line **or** streamgraph, weigh by commits **or** lines, wheel/drag/brush zoom-and-pan, the **curve picker** (below), tooltip, table fallback. Light + dark. Imports the core; keeps only its drawing + gestures. |
-| `public/welcome/index.html` | The SECOND surface (2026-07-26, feedback #32): a compact feature-focus card under the promo video on the landing — whole range, lines only, chips to turn an individual feature's graph on/off, `+N more` fold, Busiest 6 / All / None, and a link to the full page. Same core. Hides itself if the dataset can't be read. |
+| `public/welcome/index.html` | The SECOND surface (2026-07-26, feedback #32): a compact feature-focus card under the promo video on the landing — whole range, lines only, chips to turn an individual feature's graph on/off, `+N more` fold, Busiest 6 / All / None, and a link to the full page. Since 2026-08-05 the **code-volume backdrop** sits behind the curves on its own right-hand scale. Same core. Hides itself if the dataset can't be read. |
 | `tests/e2e/pulse-timeline.spec.js` | The picker's regression guard, in Playwright's free `mocked` project (`/pulse/` is a public asset, so it needs no auth and no `/api/chat`). Eight cases: defaults, tap, hold-to-isolate, tap-a-curve, drag-never-selects, the bulk buttons, persistence, and the 44px touch target. |
 
 **Two surfaces, one core — don't fork the maths.** The landing card and the
@@ -225,6 +243,52 @@ Both pages carry their module code INLINE (`<script type="module">`), which the
 `/cure` import-graph walker can't see — `src/assets.test.js` walks the inline
 blocks of both and fails if an import is missing from the public allowlist
 (the recurring 401-blanks-the-page breakage class).
+
+### The code-volume backdrop (the landing card's second series)
+
+Behind the feature curves the landing card draws how much code the project
+HOLDS — a filled area rising left to right, labelled in thousands on a
+right-hand scale (`0 · 100k · 200k · 300k`) with the caption *lines of code*.
+The curves say where the work went; the backdrop says how big the thing got.
+It ships with every refresh — `buildVolume()` runs inside
+`build-pulse-timeline.mjs`, so `npm run pulse:timeline` is the only command
+involved and there is no way to regenerate the curves without it.
+
+| Piece | Where |
+|---|---|
+| The measurement | `measureVolume(sha)` / `buildVolume()` in `scripts/build-pulse-timeline.mjs` |
+| The data | `timeline.json` → `volume: { unit: "lines", days: [{ d, t, lines, files }] }` |
+| The maths | `normalizeVolume` / `volumeEdgePath` / `volumeAreaPath` / `volumeTicks` / `compactLines` in `public/js/pulse-timeline-core.js` |
+| The drawing | `volumeLayer()` in `public/welcome/index.html` (`.vol-area` / `.vol-edge` / `.vol-tick` / `.vol-lbl` / `.vol-cap`) |
+| The pins | `pulse-timeline-core.test.js` — "the code-volume backdrop"; `src/landing.test.js` — "the curves are drawn over the code-volume backdrop" |
+
+Four things about it are load-bearing:
+
+1. **It is MEASURED, not accumulated.** Each reading is a real count of the
+   tree at that day's last commit — `git grep -I -c ""` over the whole tree in
+   one pass, minus the same generated/vendored files the churn metric excludes
+   plus the three artifacts (`docs-corpus.json`, `docs-rag.json`, `size.json`)
+   that list doesn't carry. Summing `a - r` instead looks equivalent and is
+   not: over this repo's history it drifts about 5 % high through renames and
+   binary edits. The endpoint is checkable against `pulse:size` precisely
+   because it is a measurement.
+2. **Two units, two axes.** Curves are commits and own the LEFT axis; the
+   backdrop is lines and owns the RIGHT. Never scale them together to "tidy up"
+   the plot — the numbers are four orders of magnitude apart and the curves
+   vanish.
+3. **It stays a backdrop.** Flat wash, one faint top edge, drawn before every
+   curve. If it ever reads as a series in its own right it has taken the card
+   over — the chips are the legend, and the backdrop has no chip.
+4. **A dataset without it degrades silently.** `normalizeVolume(undefined)` is
+   `[]` and the card draws curves alone, so an older `timeline.json` (or a
+   dataset from a fork) never breaks the front door.
+
+One reading per day is the resolution both the daily buckets and the eye can
+use; per-commit would multiply a 33-call loop by forty. The cost is ~0.5 s per
+day of history — about a minute today, and it grows, so it is the reason
+`pulse:timeline` is no longer instant. If that ever becomes the bottleneck,
+cache the readings by day rather than sampling fewer days: a gap in the series
+is a visible kink in the area.
 
 To refresh it: `npm run pulse:timeline`, eyeball `--audit` coverage (target
 untagged < ~15%; the tail is genuinely theme-less chore/meta commits), and if a
