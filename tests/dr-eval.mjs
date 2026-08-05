@@ -328,6 +328,43 @@ function compare(fileA, fileB) {
 }
 
 // ---------------------------------------------------------------------------
+// rescore — recompute the derived metrics from a saved run
+// ---------------------------------------------------------------------------
+
+/**
+ * Recompute every citation-derived metric on a saved run using TODAY's parser,
+ * in place.
+ *
+ * The run file keeps each answer's full text, which is what makes this
+ * possible and is the reason it does. When the source-list parser is corrected
+ * — and it has been, once, after markdown-link URLs read as zero sources and
+ * looked exactly like a retrieval regression — every previously recorded run
+ * silently stops being comparable with the next one. Re-deriving from the
+ * stored text costs nothing and keeps a baseline usable across a fix.
+ *
+ * The GRADES are not touched: those cost judge calls and re-running them would
+ * change the thing being compared.
+ *
+ * @param {string} file
+ */
+function rescore(file) {
+  const run = JSON.parse(fs.readFileSync(file, "utf8"));
+  const set = loadSet(run.set);
+  const goldById = Object.fromEntries(set.items.map(resolveItem).map((i) => [i.id, i.goldUrls]));
+  for (const row of run.rows) {
+    row.citations = citationMetrics(row.answer || "");
+    const gold = goldById[row.id] || [];
+    row.goldOverlap = gold.length ? goldSourceOverlap(row.answer || "", gold) : null;
+    row.leaks = benchmarkLeaks(parseCitations(row.answer || "").sources);
+    row.loss = classifyLoss(row);
+  }
+  run.summary = summarize(run.rows);
+  run.rescoredAt = new Date().toISOString();
+  fs.writeFileSync(file, JSON.stringify(run, null, 1) + "\n");
+  printSummary(`${run.set} · ${run.label} · ${run.arm} (rescored)`, run.summary);
+}
+
+// ---------------------------------------------------------------------------
 // uplift — the contamination control
 // ---------------------------------------------------------------------------
 
@@ -386,6 +423,11 @@ async function main() {
   const upIdx = argv.indexOf("--uplift");
   if (upIdx >= 0) {
     uplift(argv[upIdx + 1], argv[upIdx + 2]);
+    return;
+  }
+  const reIdx = argv.indexOf("--rescore");
+  if (reIdx >= 0) {
+    for (const f of argv.slice(reIdx + 1).filter((a) => !a.startsWith("--"))) rescore(f);
     return;
   }
   if (!AUTH) {

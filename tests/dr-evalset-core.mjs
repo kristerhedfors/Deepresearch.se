@@ -221,7 +221,13 @@ export function objectiveGrade(response, gold) {
  */
 export function parseCitations(text) {
   const s = String(text ?? "");
-  const srcHeadIdx = s.search(/\n#{0,4}\s*(?:Sources|Källor)\s*:?\s*\n/i);
+  // The same heading shapes src/sources.js recognises, for the same reason:
+  // models write `### Sources:`, `**Sources:**`, `- Sources:` and, in Swedish,
+  // `Källor:`. Matching only the bare form counts the whole source list as
+  // body prose and every metric downstream shifts.
+  const srcHeadIdx = s.search(
+    /\n[ \t]*(?:[#>*_\-–—]|\d+[.)])*[ \t]*\**[ \t]*(?:Sources|Källor|Kallor)\b[ \t]*\**[ \t]*:?[ \t]*\**[ \t]*\n/i,
+  );
   const body = srcHeadIdx >= 0 ? s.slice(0, srcHeadIdx) : s;
   const tail = srcHeadIdx >= 0 ? s.slice(srcHeadIdx) : "";
   /** @type {number[]} */
@@ -229,14 +235,31 @@ export function parseCitations(text) {
   for (const m of body.matchAll(/\[(\d{1,3})\]/g)) markers.push(Number(m[1]));
   /** @type {{n:number,title:string,url:string}[]} */
   const sources = [];
-  for (const m of tail.matchAll(/^\s*[-*]?\s*\[(\d{1,3})\]\s*(.*?)\s*(?:—|--|–)\s*(https?:\/\/\S+)\s*$/gm)) {
-    sources.push({ n: Number(m[1]), title: m[2], url: m[3] });
-  }
-  // Fall back to bare URLs in the tail when the em-dash layout shifts.
-  if (!sources.length && tail) {
-    for (const m of tail.matchAll(/^\s*[-*]?\s*\[(\d{1,3})\]\s*(.*?)(https?:\/\/\S+)\s*$/gm)) {
-      sources.push({ n: Number(m[1]), title: m[2].replace(/[—–-]\s*$/, "").trim(), url: m[3] });
-    }
+  // One entry per line: a bracketed number, a title, and a URL somewhere after
+  // it. Deliberately tolerant about what sits between them, because the list
+  // is the ANSWER MODEL's own formatting and it varies — `— https://…`,
+  // `- [1] Title — [https://…](https://…)` (markdown link, which cost this
+  // parser a whole run before it was handled), bold titles, no dash at all.
+  // A parser that insists on one layout silently reports zero sources for an
+  // answer that cited a dozen, and every citation metric built on it lies.
+  for (const line of tail.split("\n")) {
+    const head = line.match(/^\s*(?:(?:[-*+]|\d{1,3}[.)])\s*)*\[(\d{1,3})\]\s*(.*)$/);
+    if (!head) continue;
+    const rest = head[2];
+    const urlAt = rest.search(/https?:\/\//);
+    if (urlAt < 0) continue;
+    // Trim the wrappers a markdown link leaves on either side.
+    const url = rest
+      .slice(urlAt)
+      .split(/[\s)\]]/)[0]
+      .replace(/[.,;]+$/, "");
+    const title = rest
+      .slice(0, urlAt)
+      .replace(/[[(]\s*$/, "")
+      .replace(/\s*(?:—|--|–|-|:)\s*$/, "")
+      .replace(/\*\*/g, "")
+      .trim();
+    sources.push({ n: Number(head[1]), title, url });
   }
   return { markers, sources, body };
 }

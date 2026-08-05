@@ -209,6 +209,33 @@ test("citationMetrics measures paragraph coverage over the body only", () => {
   assert.equal(m.coverage, 0.5);
 });
 
+// The source list is the ANSWER MODEL's own formatting, and it varies. A
+// parser that insists on one layout reports zero sources for an answer that
+// cited a dozen — and every citation metric built on it then lies. This cost a
+// whole after-arm before it was handled: markdown-link URLs read as no sources
+// at all, which looked exactly like a retrieval regression.
+test("parseCitations reads the source-list layouts models actually produce", () => {
+  const layouts = [
+    "Sources:\n[1] Title — https://a.example/x",
+    "### Sources:\n- [1] Title — [https://a.example/x](https://a.example/x)",
+    "**Sources:**\n* [1] **Title** - https://a.example/x",
+    "Sources:\n1. [1] Title https://a.example/x",
+    "Källor:\n- [1] Title — https://a.example/x",
+  ];
+  for (const tail of layouts) {
+    const { sources } = parseCitations(`Body [1].\n\n${tail}`);
+    assert.equal(sources.length, 1, `no source parsed from: ${tail}`);
+    assert.equal(sources[0].n, 1);
+    assert.equal(sources[0].url, "https://a.example/x", `bad url from: ${tail}`);
+    assert.match(sources[0].title, /Title/);
+  }
+});
+
+test("parseCitations skips a list line whose URL never arrived (a truncated tail)", () => {
+  const { sources } = parseCitations("Body [1].\n\nSources:\n- [1] A — https://a.example/x\n- [2] B — http");
+  assert.equal(sources.length, 1);
+});
+
 test("citationMetrics degrades to zeros on an empty answer instead of throwing", () => {
   const m = citationMetrics("");
   assert.equal(m.sourceCount, 0);

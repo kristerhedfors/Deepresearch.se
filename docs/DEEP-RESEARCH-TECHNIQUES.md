@@ -343,21 +343,35 @@ of someone else's benchmark.
 Ordered by measured evidence ÷ cost, respecting §6.
 
 1. **Section-scoped revision instead of whole-answer rewrite.** measured; ~0
-   extra cost. Fixes the one live defect.
+   extra cost. Fixes the one live defect. Ranked on an external paper alone —
+   the revise RATE here was not merely unmeasured but unrecoverable, since the
+   rewrite replaces the draft before anything is persisted. As of 2026-08-05 it
+   is recorded (`chat.validate_verdict`, with draft/revised char counts as a
+   churn proxy), so this can be ranked on our own evidence before it is built.
 2. **Retraction + preprint flags at retrieval time.** measured competitor gap;
    zero LLM calls.
 3. **Strategy-gap prompt in the gap check** (what research strategy was missed:
    breadth vs depth) rather than what is missing from the text. measured, +15.4
    vs +2.4; zero extra calls — a prompt change.
-4. **Instrument the gap loop**: log whether rounds past the second contribute
-   sources that survive into citations. Costs nothing, and settles the round-cap
-   question with our own evidence instead of someone else's benchmark.
+4. ~~**Instrument the gap loop**~~ — HALF DONE 2026-08-05. Each round now logs
+   `chat.gap_round` with `gained` / `admitted` / `capped` / `sources`, so what a
+   round contributes is visible. The other half — whether those sources survive
+   into citations — needs a round stamp on each registry entry and is still
+   open. The same change fixed a defect the instrumentation exposed: the loop's
+   saturation exit read `sources.length`, which the domain cap holds flat, so a
+   wave whose every find was capped read as exhaustion and the run stopped
+   researching while it was still finding new pages.
 5. **Split "verified supported" from "not checked"** in `verifyClaim` before any
    faithfulness metric is computed from it. Zero cost; prevents a silently
    inflated number later.
-6. **Raise per-source excerpt length toward ~1500 chars and stop silently
-   dropping sources past `digestCap`.** measured (faithfulness +0.13); modest
-   token cost.
+6. **Raise per-source excerpt length toward ~1500 chars** — measured
+   (faithfulness +0.13); modest token cost. The second half, *stop silently
+   dropping sources past `digestCap`*, is DONE (2026-08-05): the digest now
+   skips an oversized block rather than stopping at it, and states how many it
+   omitted. It was measured at ~9 of 32 sources invisible to synthesis,
+   validation and the gap check at the common tier — and the ground-truth
+   battery independently read 14 synthesis misses to 1 retrieval miss on FRAMES
+   the same day, which is the same finding from the other end.
 7. **RCS as a replacement digest, behind an A/B.** measured, largest single
    lever, but contradicts a local bench — so it ships as an experiment with a
    pre-registered metric, not as a default.
