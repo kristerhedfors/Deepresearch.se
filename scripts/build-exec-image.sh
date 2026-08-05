@@ -13,7 +13,10 @@
 #   ./scripts/build-exec-image.sh push      # push to the Cloudflare managed registry
 #   ./scripts/build-exec-image.sh all       # build → verify → push  (default)
 #
-# Env overrides: IMAGE_NAME (deepresearch-exec), IMAGE_TAG (1),
+# Env overrides: IMAGE_NAME (deepresearch-exec), IMAGE_TAG (2 — keep this
+#                number in step with wrangler.toml's `image` line; the whole
+#                point of the bump below is that the two agreeing is what
+#                makes a deploy do anything),
 #                CLOUDFLARE_ACCOUNT_ID (required for push).
 #
 # ---- why `verify` exists -----------------------------------------------------
@@ -69,7 +72,11 @@
 set -euo pipefail
 
 IMAGE_NAME="${IMAGE_NAME:-deepresearch-exec}"
-IMAGE_TAG="${IMAGE_TAG:-1}"
+# Must match wrangler.toml's [[containers]] `image` tag, and must be BUMPED
+# whenever the image contents change: the container application diffs the image
+# STRING, so re-pushing different bytes under the same tag deploys nothing and
+# says "No changes to be made" while doing it (2026-08-05). See wrangler.toml.
+IMAGE_TAG="${IMAGE_TAG:-2}"
 LOCAL_TAG="$IMAGE_NAME:$IMAGE_TAG"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
