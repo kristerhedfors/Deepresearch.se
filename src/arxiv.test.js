@@ -128,7 +128,7 @@ test("arxivIntent", async (t) => {
       ["state of the art for exoplanets", "forskningsläget för exoplaneter"],
       ["evidence for quantum advantage", "bevis för kvantmekanik"],
       ["compare llm reasoning benchmarks", "jämför resonemang hos språkmodeller"],
-      ["is there a preprint", "finns det ett förtryck"],
+      ["is there a preprint", "finns det ett förhandstryck"],
     ];
     for (const [en, sv] of pairs) {
       assert.equal(arxivIntent(en), true, `EN: ${en}`);
@@ -137,6 +137,124 @@ test("arxivIntent", async (t) => {
     // …and the Swedish non-firing side stays quiet too.
     for (const s of ["vad är vädret i Stockholm", "bästa pizzan i Göteborg", "senaste nytt om valet"]) {
       assert.equal(arxivIntent(s), false, s);
+    }
+  });
+
+  // A dictionary word is not a source name. `förtryck` sat in ARXIV_EXPLICIT as
+  // a literal calque of "preprint" (för + tryck), but in Swedish it means
+  // OPPRESSION, and that is the only sense most sentences carry. Because the
+  // explicit set also drives arxivLeadIntent — and a lead stands the entire web
+  // leg down — every Swedish question about oppression was answered out of
+  // preprints with no web search at all. Same failure shape as feedback #61,
+  // reached through the dictionary; found while auditing these gates for it.
+  test("a Swedish question about oppression is not a request for preprints", () => {
+    for (const s of [
+      "vad är förtrycket i Nordkorea",
+      "berätta om förtryck av kvinnor i Iran",
+      "politiskt förtryck i Belarus",
+      "hur bekämpar man förtryck",
+    ]) {
+      assert.equal(arxivIntent(s), false, s);
+      // The lead is the half that did the damage: it turns web search off.
+      assert.equal(arxivLeadIntent(s), false, s);
+    }
+    // Swedish loses nothing — the academic term is "preprint", and the
+    // unambiguous native form still leads.
+    for (const s of ["finns det ett förhandstryck om detta", "is there a preprint on this"]) {
+      assert.equal(arxivIntent(s), true, s);
+      assert.equal(arxivLeadIntent(s), true, s);
+    }
+  });
+
+
+  // Feedback #61 (chat_logs #1656, 2026-08-05). A user attached a LinkedIn
+  // screenshot and wrote "Research this founder". The English imperative VERB
+  // "research" is spelled like the NOUN that names the published record, which
+  // ARXIV_LITERATURE carries as a stand-alone tier-1 word, so this gate fired
+  // on a plain instruction and the numbered source registry filled with
+  // preprints that had nothing to do with the person. The same message in
+  // Swedish fired nothing, because Swedish uses a different word for the verb
+  // — so the bug was an invariant-6 violation as well as an over-fire.
+  //
+  // The two sibling gates draw the same line: src/europepmc.js's
+  // IMPERATIVE_TASK and src/scholar.js's RESEARCH_IMPERATIVE.
+  await t.test("an imperative addressed to the assistant is not a literature ask", () => {
+    // The reported message, verbatim.
+    assert.equal(arxivIntent("Research this founder"), false);
+    assert.equal(arxivLeadIntent("Research this founder"), false);
+    for (const s of [
+      "Research this company",
+      "Research the company",
+      "Research my competitors",
+      "Study this founder",
+      "Please research these people",
+      "Can you research this person",
+      "I want you to research this founder",
+      "How do I research this person",
+      "Help me research this company",
+      "do some research on this founder",
+      "Investigate his background",
+      "Look into this startup",
+    ]) {
+      assert.equal(arxivIntent(s), false, s);
+    }
+  });
+
+  // Invariant 6 in BOTH directions: a pair that should not fire must fire in
+  // NEITHER language, and a pair that should fire must fire in BOTH. Every row
+  // below was measured firing in English and silent in Swedish before the
+  // imperative frame landed.
+  await t.test("Swedish parity for the imperative frame — neither language fires", () => {
+    const pairs = [
+      ["Research this founder", "Undersök den här grundaren"],
+      ["Research this company", "Granska det här företaget"],
+      ["Research the company", "Granska företaget"],
+      ["Research my competitors", "Granska mina konkurrenter"],
+      ["Can you research this person", "Kan du undersöka den här personen"],
+      ["Could you research the founder", "Skulle du kolla upp grundaren"],
+      ["Please research these people", "Snälla granska de här personerna"],
+      ["I want you to research this founder", "Jag vill att du undersöker den här grundaren"],
+      ["How do I research this person", "Hur ska jag undersöka den här personen"],
+      ["Help me research this company", "Hjälp mig att granska det här företaget"],
+      ["Study this founder", "Studera den här grundaren"],
+      ["do some research on this founder", "gör lite research på den här grundaren"],
+      ["how do I do research on this person", "hur gör jag research på den här personen"],
+      ["Check out their profile", "Kolla upp deras profil"],
+      ["Analyse this screenshot", "Analysera den här skärmbilden"],
+    ];
+    for (const [en, sv] of pairs) {
+      assert.equal(arxivIntent(en), false, `EN: ${en}`);
+      assert.equal(arxivIntent(sv), false, `SV: ${sv}`);
+    }
+  });
+
+  // The frame is NEUTRALISED before the word lists rather than removed from
+  // them, so the noun keeps its meaning everywhere — including in the same
+  // message as the instruction.
+  await t.test("the frame never eats a genuine literature ask, in either language", () => {
+    const pairs = [
+      ["latest arxiv papers on transformers", "senaste arxiv-artiklarna om transformers"],
+      ["what does research say about quantum error correction", "vad säger forskningen om kvantmekanik"],
+      ["what does the research on this topic say", "vad säger forskningen om det här ämnet"],
+      ["the latest research on protein folding", "den senaste forskningen om proteinveckning"],
+      ["is there peer-reviewed research on this", "finns det referentgranskad forskning om detta"],
+      ["I want research on mindfulness apps", "jag vill ha forskning om mindfulness-appar"],
+      ["Research shows that vitamin D helps", "Forskning visar att D-vitamin hjälper"],
+      // Both at once: the instruction is neutralised, the literature half is not.
+      [
+        "Research this founder — what do the papers say about his patents?",
+        "Undersök den här grundaren — vad säger artiklarna om hans patent?",
+      ],
+      // A stripped verb is never the only thing holding the message up.
+      ["Study these papers on graphene", "Studera de här artiklarna om grafen"],
+      ["Review the literature on crispr", "Granska litteraturen om crispr"],
+      // The explicit tier is read from the RAW message, so naming the archive
+      // survives the frame.
+      ["Research this arxiv paper", "Granska den här arxiv-artikeln"],
+    ];
+    for (const [en, sv] of pairs) {
+      assert.equal(arxivIntent(en), true, `EN: ${en}`);
+      assert.equal(arxivIntent(sv), true, `SV: ${sv}`);
     }
   });
 });
@@ -470,7 +588,7 @@ test("arxivLeadIntent — naming the archive makes it the place to look", async 
       "any preprints on post-quantum cryptography",
       // Swedish parity (invariant 6).
       "sök på arxiv efter artiklar om linux",
-      "finns det något förtryck om detta",
+      "finns det något förhandstryck om detta",
     ]) {
       assert.equal(arxivLeadIntent(s), true, s);
     }

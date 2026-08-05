@@ -118,6 +118,41 @@ const B = "(?<![\\p{L}\\p{N}_])";
 const E = "(?![\\p{L}\\p{N}_])";
 const LETTER = "[\\p{L}]*";
 
+/** The IMPERATIVE frame — a verb addressed to the assistant with a task object,
+ * not a reference to the scholarly record.
+ *
+ * Feedback #61 (chat_logs #1656, 2026-08-05): a user attached a LinkedIn
+ * screenshot and wrote "Research this founder". The bare English imperative
+ * "research" satisfied RESEARCH_WORD, a stray "health" satisfied the
+ * life-science half, and a founder-background question was answered partly out
+ * of the biomedical literature. The distinction that matters is verb vs noun:
+ * "research this X" is an instruction, while "research on X", "the research
+ * shows" and "studies say" name the published record. The frame is NEUTRALISED
+ * before the research-word gate rather than deleted from it, so "the latest
+ * research on statins" — the noun — keeps firing.
+ *
+ * Deliberately narrow: only a sentence-initial verb whose next word is a
+ * demonstrative or a personal/possessive pronoun counts. "the research this
+ * year showed" is mid-sentence and survives, and `that`/`it` are NOT in the
+ * object list because "research that shows X" is a relative pronoun.
+ *
+ * Swedish carries the same breadth (invariant 6): the loanword imperative
+ * ("research den här grundaren"), the native verbs granska / studera /
+ * undersök / kolla upp / analysera, and the Swedish objects den här, denna,
+ * dessa, honom, deras … Two of those native verbs are not RESEARCH_WORD
+ * members today; stripping them anyway keeps the frame one rule rather than
+ * two, and keeps the parity from rotting the next time a verb is added. */
+const IMPERATIVE_TASK = new RegExp(
+  "(?:^|[.!?;:\\n]\\s*)(?:(?:please|kindly|kan du|snälla|var vänlig(?:\\s+och)?)\\s+)?" +
+    "(?:research|review|study|survey|investigate|look\\s+into|dig\\s+into|check\\s+out" +
+    "|granska|studera|undersök|kolla\\s+upp|kolla|analysera)" +
+    "(?=\\s+(?:this|these|those|him|her|them|his|their|my|our|its" +
+    "|den\\s+här|det\\s+här|de\\s+här|den\\s+där|det\\s+där|de\\s+där" +
+    "|denna|detta|dessa|honom|henne|dem|hans|hennes|deras|min|mitt|mina|vår|vårt|våra)" +
+    "(?![\\p{L}\\p{N}_]))",
+  "giu",
+);
+
 /** Terms that name the life-science literature as a body of work, in either
  * language. Definite and plural Swedish forms included ("studien", "studierna",
  * "forskningen"), which is how Swedish actually asks.
@@ -154,36 +189,81 @@ const RESEARCH_WORD = new RegExp(
  * proven health benefits") that could not reach this source because nothing
  * short of genetics counted as life science. Health words still only fire in
  * combination with a RESEARCH_WORD, so "healthy office chairs" alone stays
- * out — it is the pairing that means "ask the literature". */
+ * out — it is the pairing that means "ask the literature".
+ *
+ * ---- what this tier deliberately does NOT contain (feedback #61) -----------
+ *
+ * A word that is ordinary general English or general Swedish is not subject
+ * matter, however biomedical its other sense. The pairing gate only asks that
+ * SOME research word appear somewhere in the same message, and a research
+ * assistant's own methodology text supplies one for free. The reported failure
+ * was exactly that: "health" reached this gate from inside a privacy
+ * PROHIBITION ("never an inference of ethnicity, health, religion …") and
+ * pulled a founder-background question into the biomedical literature.
+ *
+ * So the ambiguous words moved OUT of this tier and into LIFE_SCIENCE_PHRASE
+ * below, where they count only inside a collocation no other domain writes:
+ *
+ *   health / healthy   "company health", "a healthy margin"
+ *   heart, brain(s)    "at the heart of", "the brains behind it"
+ *   immune / immunity  "no startup is immune to a downturn"
+ *   sequence(s)        "a sequence of events"
+ *   assembly           "assembly line", "assembly language"
+ *   patient (sing.)    "be patient", "patient capital" — `patients` stays here
+ *   muscle(s)          "financial muscle"
+ *   minerals           "mineral rights", mining
+ *   virus(es)          "computer virus"
+ *   SV hjärta/hjärna   "i hjärtat av staden", "hjärnan bakom"
+ *   SV lever           the verb "lives" — `levern`, the organ, stays here
+ *   SV hälsa/hälsan    also the verb "to greet" ("hälsa på")
+ *   SV bare genom      the preposition "through" — `genomet`/`genome` stay here
+ *   SV bare dos, bare sekvenser, bare patient
+ *
+ * Swedish keeps parity through COMPOUNDING rather than through phrases:
+ * hälsoeffekt, hälsorisk, hjärtsjukdom, muskelmassa are single unambiguous
+ * words, so they live here while bare `hälsa` and `hjärta` do not.
+ *
+ * Judged ambiguous but KEPT, because the non-biomedical sense is too rare to
+ * lose the recall over: species, symptom(s), drug(s), gene(s), diagnostic,
+ * taxa, treatment(s) — whose one common non-medical sense, the GDPR-style
+ * "treatment of personal data" / "behandling av personuppgifter", is excluded
+ * by lookahead instead. */
 const LIFE_SCIENCE_WORD = new RegExp(
   B +
-    "(?:health|healthy|healthcare|medical|medicine|medicinal|clinical|clinic|patients?" +
+    "(?:healthcare|medical|medicine|medicinal|clinical|clinic|patients" +
     "|disease|diseases|illness(?:es)?|symptoms?|diagnos(?:is|es|tic)|syndrome" +
-    "|treatments?|therap(?:y|ies|eutic)|drugs?|pharmaceutical|dosages?|dosing|doses" +
+    "|treatments?(?!\\s+of\\s+(?:personal\\s+)?(?:data|information))" +
+    "|therap(?:y|ies|eutic)|drugs?|pharmaceutical|dosages?|dosing|doses" +
     "|side[-\\s]?effects?|adverse (?:effects?|events?|reactions?)|contraindicat" + LETTER +
-    "|toxicity|efficacy|supplements?|supplementation|vitamins?|minerals?|nutrients?" +
-    "|nutrition(?:al)?|diet(?:ary)?|probiotics?|antioxidants?|inflammation|immune|immunity" +
+    "|toxicity|efficacy|supplements?|supplementation|vitamins?|nutrients?" +
+    "|nutrition(?:al)?|diet(?:ary)?|probiotics?|antioxidants?|inflammation" +
     "|cancers?|tumou?rs?|diabetes|obesity|cholesterol|blood pressure|cardiovascular" +
-    "|heart|cardiac|brains?|livers?|kidneys?|lungs?|muscles?|omega[-\\s]?3|fatty acids?" +
-    "|hjärta|hjärtat|hjärna|hjärnan|lever|levern|njur(?:e|ar|arna|en)|lung(?:a|or|orna|an)" +
-    "|muskel|muskler|tarmflora|fettsyr(?:a|or|orna)" +
-    "|hälsa|hälsan|hälsoeffekt(?:er|erna|en)?|hälsofördel(?:ar|arna|en)?|hälsosam[mt]?" +
-    "|medicinsk[at]?|medicin(?:en|er)?|klinisk[at]?|patient(?:er|en|erna)?" +
+    "|cardiac|livers?|kidneys?|lungs?|omega[-\\s]?3|fatty acids?" +
+    "|njur(?:e|ar|arna|en)|lung(?:a|or|orna|an)|levern" +
+    "|tarmflora|fettsyr(?:a|or|orna)" +
+    "|hälsoeffekt(?:er|erna|en)?|hälsofördel(?:ar|arna|en)?|hälsorisk(?:er|erna|en)?" +
+    "|hälsotillstånd(?:et)?|hälsoproblem(?:et|en)?|folkhälsa(?:n)?" +
+    "|medicinsk[at]?|medicin(?:en|er)?|klinisk[at]?|patient(?:er|en|erna)" +
     "|sjukdom(?:ar|en|arna)?|symtom(?:et|en)?|symptom(?:et|en)?|diagnos(?:er|en)?" +
-    "|behandling(?:ar|en|arna)?|terapi(?:er|n)?|läkemedel|läkemedlet|dos(?:en|er|ering(?:en)?)?" +
+    "|behandling(?:ar|en|arna)?(?!\\s+av\\s+(?:person)?(?:uppgifter|data|ärenden|ansökningar))" +
+    "|terapi(?:er|n)?|läkemedel|läkemedlet|dos(?:en|er|ering(?:en)?)" +
     "|biverkning(?:ar|arna|en)?|kosttillskott(?:et)?|tillskott(?:et)?|vitamin(?:er|et|erna)?" +
     "|näringsämne(?:n|t|na)?|näringsvärde(?:t|n)?|kost(?:en)?|kostråd" +
     "|antioxidant(?:er|en)?|inflammation(?:en)?|immunförsvar(?:et)?|toxicitet" +
-    "|cancer(?:n)?|tumör(?:er|en)?|diabetes|fetma|kolesterol|blodtryck(?:et)?" +
-    "|dna|rna|genom(?:e|es|ic|ics)?|genes?|genetic(?:s|ally)?|alleles?|snps?|haplogroups?" +
-    "|haplotypes?|mitochondrial|mitogenomes?|chromosom(?:e|es|al)|sequenc(?:e|es|ing)" +
-    "|assembl(?:y|ies)|proteins?|proteom(?:e|ics)|enzyme|antibod(?:y|ies)|microbiom(?:e|es)" +
-    "|pathogens?|bacteri(?:a|um|al)|virus(?:es)?|species|taxon|taxa|phylogen(?:y|etic|omics)" +
+    // Swedish COMPOUNDS the two-word English forms, so "cancer treatment" and
+    // "cancerbehandling" have to be the same breadth (invariant 6): the suffix
+    // wildcard is what makes cancerbehandling / cancerforskning / cancerceller
+    // match, and every cancer-prefixed compound is biomedical anyway.
+    "|cancer" + LETTER + "|tumör(?:er|en)?|diabetes|fetma|kolesterol|blodtryck(?:et)?" +
+    "|dna|rna|genom(?:e|es|ic|ics|et)|genes?|genetic(?:s|ally)?|alleles?|snps?|haplogroups?" +
+    "|haplotypes?|mitochondrial|mitogenomes?|chromosom(?:e|es|al)|sequencing" +
+    "|proteins?|proteom(?:e|ics)|enzyme|antibod(?:y|ies)|microbiom(?:e|es)" +
+    "|pathogens?|bacteri(?:a|um|al)|species|taxon|taxa|phylogen(?:y|etic|omics)" +
     "|fossils?|isotopes?|radiocarbon|osteolog" + LETTER + "|dental calculus|sediment(?:ary)? dna" +
     "|population genetics|admixture|introgression|de[-\\s]?extinction|extinct(?:ion)?" +
     "|gener|genen|arvsmassa(?:n)?|arvsanlag|genetisk[at]?|genetiken|kromosom(?:er|en)?" +
-    "|sekvenser(?:ing|ad)?|protein(?:er|et)?|mikrobiom(?:et)?|patogen(?:er)?|bakteri(?:e|er|en)" +
-    "|virus(?:et)?|art(?:er|en|erna)|fylogen" + LETTER + "|fossil(?:a|en|er)?|isotop(?:er|en)?" +
+    "|sekvenser(?:ing|ad)|protein(?:er|et)?|mikrobiom(?:et)?|patogen(?:er)?|bakteri(?:e|er|en)" +
+    "|art(?:er|en|erna)|fylogen" + LETTER + "|fossil(?:a|en|er)?|isotop(?:er|en)?" +
     "|kol-?14|kol 14|radiokol|inavel|inkorsning|befolkningsgenetik|utd\u00f6d(?:a|e|d)?" +
     "|utd\u00f6ende|\u00e5terskapa" + LETTER + ")" +
     E,
@@ -196,6 +276,65 @@ const LIFE_SCIENCE_WORD = new RegExp(
  * breadth: forn-DNA / fornDNA / forntida DNA are all in live use. */
 const LIFE_SCIENCE_STRONG =
   /(?<![\p{L}\p{N}_])(?:ancient dna|adna|sedadna|palaeogenom[\p{L}\p{N}]*|paleogenom[\p{L}\p{N}]*|archaeogenetic[\p{L}\p{N}]*|palaeoproteom[\p{L}\p{N}]*|paleoproteom[\p{L}\p{N}]*|palaeogenetic[\p{L}\p{N}]*|paleogenetic[\p{L}\p{N}]*|aurignacian|pleistocene|holocene|neanderthal[\p{L}\p{N}]*|denisovan[\p{L}\p{N}]*|mammoth[\p{L}\p{N}]*|megafauna[\p{L}\p{N}]*|mitogenome[\p{L}\p{N}]*|metagenom[\p{L}\p{N}]*|deamination|radiocarbon dat[\p{L}\p{N}]*|aadr|poseidon package|genome[-\s]wide|whole[-\s]genome)|(?:forn[-\s]?dna|forntida dna|urgammalt dna|arkeogenetik[\p{L}\p{N}]*|paleogenetik[\p{L}\p{N}]*|paleogenomik[\p{L}\p{N}]*|paleoproteomik[\p{L}\p{N}]*|mitogenom[\p{L}\p{N}]*|metagenom[\p{L}\p{N}]*|neandertal[\p{L}\p{N}]*|denisova[\p{L}\p{N}]*|mammut[\p{L}\p{N}]*|megafauna[\p{L}\p{N}]*|pleistocen[\p{L}\p{N}]*|holocen[\p{L}\p{N}]*|kolfjortondatering|helgenom[\p{L}]*)(?![\p{L}\p{N}_])/iu;
+
+/** The collocations that make an AMBIGUOUS word unmistakably biomedical — the
+ * rescue tier for everything LIFE_SCIENCE_WORD deliberately dropped, so
+ * narrowing that list costs no genuine life-science routing.
+ *
+ * "health benefits" is the pair this exists for. The reported miss it must keep
+ * serving ("Spirulina proven health benefits", feedback #54) and the reported
+ * false positive it must not ("never an inference of ethnicity, health,
+ * religion …", feedback #61) differ only in what sits next to the word.
+ *
+ * EN and SV at the same breadth (invariant 6), which for Swedish mostly means
+ * COMPOUNDS — hjärtsjukdom, hjärnskada, muskelmassa, virusinfektion — plus the
+ * handful of genuine two-word forms ("psykisk hälsa", "patient med"). */
+const LIFE_SCIENCE_PHRASE = new RegExp(
+  B +
+    "(?:health[-\\s](?:benefits?|effects?|risks?|outcomes?|impacts?|implications?|claims?" +
+    "|conditions?|problems?|issues?|markers?|status|data|span)" +
+    "|(?:mental|public|physical|gut|metabolic|cardiovascular|bone|oral|reproductive" +
+    "|cognitive|maternal|infant|child|global|human) health" +
+    "|healthy (?:diet|eating|ageing|aging|weight|gut|fats?|lifestyle|volunteers?|controls?" +
+    "|adults?|subjects?|participants?)" +
+    "|heart (?:disease|health|attacks?|failure|rates?|rhythm|muscle|conditions?)" +
+    "|brain (?:health|function|activity|imaging|damage|cells?|development|tissue|scans?" +
+    "|tumou?rs?|injur(?:y|ies)|chemistry)" +
+    "|immune (?:system|response|cells?|function|status)|immunity to (?:infection|disease)" +
+    "|(?:dna|rna|gene|genome|genomic|protein|amino[-\\s]acid|reference|target) sequences?" +
+    "|(?:genome|de novo|transcriptome|metagenome) assembl(?:y|ies)" +
+    "|patient (?:with|outcomes?|care|safety|data|population|group|cohort|records?|reported)" +
+    "|muscle (?:mass|growth|strength|tissue|soreness|protein|fib(?:er|re)s?|damage|recovery)" +
+    "|vitamins? and minerals|trace minerals" +
+    "|mineral (?:supplements?|deficienc" + LETTER + "|absorption)" +
+    "|(?:influenza|corona|herpes|papilloma|rota|noro|zika|ebola|hepatitis|respiratory|rna|dna)" +
+    "[-\\s]?virus(?:es)?|virus(?:es)? (?:infections?|transmission|variants?|strains?)" +
+    "|viral (?:infections?|load|replication)" +
+    "|(?:psykisk|fysisk|allmän|god|dålig|mental) hälsa" +
+    "|hälsa och (?:sjukdom|kost|träning|välbefinnande)" +
+    "|hälsosam[mt]? (?:kost|livsstil|mat|åldrande|vikt)|hälsosamma (?:vanor|fetter|kostvanor)" +
+    "|hjärt[-\\s]?(?:sjukdom|infarkt|hälsa|kärl|frekvens|muskel|svikt|klapp)" + LETTER +
+    "|hjärn(?:skad|cell|funktion|hälsa|tumör|blödning|aktivitet|utveckling)" + LETTER +
+    "|hjärnans (?:funktion|utveckling|kemi)" +
+    "|lever(?:sjukdom|funktion|skada|fett|cirros|inflammation)" + LETTER + "|leverns" +
+    "|muskel(?:massa|styrka|tillväxt|cell|fibr|värk|protein|skada|uppbyggnad)" + LETTER +
+    "|muskler och (?:leder|skelett)" +
+    "|sekvenser av (?:dna|rna|gener)|dna[-\\s]?sekvenser|gensekvenser" +
+    "|patient(?:en)? med|virus(?:infektion|stam|variant|sjukdom)" + LETTER +
+    "|mineral(?:er|erna)? och vitaminer|vitaminer och mineral(?:er|erna)?)" +
+    E,
+  "iu",
+);
+
+/**
+ * Is this message ABOUT life science — either the core vocabulary, or one of
+ * the ambiguous words inside a collocation only biomedicine writes?
+ * @param {string} s
+ * @returns {boolean}
+ */
+function lifeScienceSubject(s) {
+  return LIFE_SCIENCE_WORD.test(s) || LIFE_SCIENCE_PHRASE.test(s);
+}
 
 /** Naming the archive itself — Europe PMC, PubMed, PMC, bioRxiv, medRxiv. */
 const NAMED =
@@ -210,7 +349,9 @@ const NAMED_PHRASE =
 /**
  * Does this message want the life-science literature at all? Conservative by
  * construction: either the subject matter is unmistakable on its own, or a
- * research word and a life-science word appear together.
+ * research word and a life-science subject appear together — with the
+ * imperative frame ("Research this founder") neutralised first, because a verb
+ * addressed to the assistant is not a reference to the published record.
  * @param {string} text the latest user message
  * @returns {boolean}
  */
@@ -219,7 +360,8 @@ export function europepmcIntent(text) {
   if (!s) return false;
   if (NAMED.test(s)) return true;
   if (LIFE_SCIENCE_STRONG.test(s)) return true;
-  return RESEARCH_WORD.test(s) && LIFE_SCIENCE_WORD.test(s);
+  const asked = s.replace(IMPERATIVE_TASK, " ");
+  return RESEARCH_WORD.test(asked) && lifeScienceSubject(asked);
 }
 
 /**
@@ -593,7 +735,7 @@ export function europepmcPickQuery(batch, topic) {
     if (!terms.length) continue;
     let score = 0;
     if (LIFE_SCIENCE_STRONG.test(q)) score += 4;
-    if (LIFE_SCIENCE_WORD.test(q)) score += 2;
+    if (lifeScienceSubject(q)) score += 2;
     // Every concept costs recall under AND, so a 6-term angle is worse than a
     // 3-term one even though it looks more precise.
     score -= Math.max(0, terms.length - 4);
