@@ -374,7 +374,8 @@ written against a draft that can still move.
 
 ### F-20 · Reach the hosted chat clients — the MCP server as a web connector — 🟡 PARTIAL (medium)
 
-**Built 2026-08-03; live acceptance outstanding.** The MCP surface was
+**Built 2026-08-03; first observed working from a Claude client 2026-08-05,
+mobile and the whole ChatGPT half still outstanding.** The MCP surface was
 reachable from a laptop and invisible from a phone: connecting meant pasting
 `claude mcp add` into a terminal — Claude Code's command, which no hosted chat
 app reads. For a research assistant that is the wrong way round.

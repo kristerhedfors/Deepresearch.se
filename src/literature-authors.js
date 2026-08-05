@@ -345,10 +345,24 @@ const AUTHORSHIP_WORDS = new RegExp(
  * @param {string[]} queries
  * @param {number} max
  */
-export function topicTerms(queries, max = 6) {
+export function topicTerms(queries, max = 6, exclude = /** @type {string[]} */ ([])) {
   /** @type {string[]} */
   const out = [];
   const seen = new Set();
+  // The AUTHOR'S OWN NAME is not a topic. When the name was read out of the
+  // query rather than passed in `authors`, its words are still sitting in that
+  // query, so "Love Daléns livsverk" yielded narrowed_by ["Love", "Daléns"] —
+  // ANDed onto a query that already restricts to that author. Harmless against
+  // Europe PMC, whose default field matches author names anyway, but a real
+  // constraint on arXiv, where `all:"Daléns"` (genitive and all) matches almost
+  // nothing and can empty an otherwise good author query. Genitive forms are
+  // stripped so "Daléns" is recognised as "Dalén".
+  for (const name of exclude) {
+    for (const part of String(name || "").split(/\s+/)) {
+      const key = part.toLowerCase().replace(/[:'’]?s$/u, "").trim();
+      if (key) seen.add(key);
+    }
+  }
   for (const q of queries) {
     // Drop the authorship phrasing itself — "papers by" is not a subject.
     //
@@ -367,8 +381,10 @@ export function topicTerms(queries, max = 6) {
     for (const word of stripped.split(/\s+/)) {
       const w = word.trim();
       if (w.length < 4) continue;
-      const key = w.toLowerCase();
-      if (seen.has(key)) continue;
+      // Normalised the same way the exclusion list above is, so "Daléns" in the
+      // query matches the excluded "Dalén" rather than slipping past it.
+      const key = w.toLowerCase().replace(/[:'’]?s$/u, "");
+      if (!key || seen.has(key)) continue;
       seen.add(key);
       out.push(w);
       if (out.length >= max) return out;

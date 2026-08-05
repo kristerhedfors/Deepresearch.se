@@ -223,6 +223,27 @@ describe("topicTerms", () => {
     assert.equal(terms.length, 4);
     assert.equal(new Set(terms.map((t) => t.toLowerCase())).size, 4);
   });
+  test("the author's own name is not a topic term", () => {
+    // "Love Daléns livsverk" yielded narrowed_by ["Love", "Daléns"] live —
+    // ANDed onto a query already restricted to that author. Benign on Europe
+    // PMC, but `all:"Daléns"` is a real constraint on arXiv and can empty an
+    // otherwise good author query.
+    assert.deepEqual(topicTerms(["Love Daléns livsverk"], 6, ["Love Dalén"]), []);
+    assert.deepEqual(topicTerms(["papers by Love Dalén"], 6, ["Love Dalén"]), []);
+  });
+
+  test("a genitive in the query still matches the excluded base name", () => {
+    assert.deepEqual(topicTerms(["Nilssons studier"], 6, ["Nilsson"]), []);
+    assert.deepEqual(topicTerms(["Nilsson:s studier"], 6, ["Nilsson"]), []);
+  });
+
+  test("real subject terms survive the exclusion", () => {
+    const terms = topicTerms(["Love Daléns work on mammoth genomics"], 6, ["Love Dalén"]);
+    assert.ok(terms.includes("mammoth"));
+    assert.ok(terms.includes("genomics"));
+    assert.ok(!terms.some((t) => /dal[ée]n/i.test(t)));
+  });
+
   test("no queries is no terms", () => {
     assert.deepEqual(topicTerms([]), []);
   });

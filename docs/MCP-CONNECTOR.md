@@ -1,12 +1,15 @@
 # Reaching the hosted chat clients — the MCP server as a web connector
 
-**Status: BUILT 2026-08-03, not yet accepted live.** The authorization server
+**Status: BUILT 2026-08-03; first observed working from a Claude client on
+2026-08-05 (§7 rung 3), still PARTIAL pending the mobile and ChatGPT halves.** The authorization server
 is `src/oauth-metadata.js` + `src/oauth-store.js` + `src/oauth-authorize.js` +
 `src/oauth-token.js`, wired into the router and the D1 schema, unit-tested,
-and described module by module in §4. What has NOT happened is the acceptance
-check in §7: nobody has added the connector on claude.ai or on ChatGPT and
-then opened the phone. Until someone has, this is a flow that passes its own
-tests, not a connector known to connect.
+and described module by module in §4. On 2026-08-05 a Claude client had this
+server connected and called its tools against production for the first time
+(§7 rung 3) — so it is no longer only a flow that passes its own tests. What
+has still NOT happened is the rest of that rung: nobody has confirmed the
+connector on the Claude MOBILE app, and nothing on the ChatGPT side has been
+attempted at all.
 
 §2, §2a and §2b stay as written — they are the vendor requirements the build
 was aimed at, dated 2026-08-03, and they remain the reference to check the
@@ -862,20 +865,37 @@ the build actually stands on it:
    then run a code exchange and a refresh. This is the sequence a client runs,
    and a failure anywhere in it surfaces as the same unhelpful "Couldn't reach
    the MCP server."
-3. **Live, on each real client — ATTEMPTED, NOT PASSED, and this is the
-   acceptance criterion.** The Claude half was driven from a phone on
+3. **Live, on each real client — the CLAUDE half is now PASSING in part; the
+   ChatGPT half is untouched.** The Claude half was driven from a phone on
    2026-08-04 and reached the consent screen before failing on the approval
-   POST (§4b — a header of ours, now fixed). Nothing past that click has been
-   observed working, so the rung stands unmet and the run has to be repeated
-   from the top. Add the connector on claude.ai in a browser, complete consent,
-   call a tool. **Then open the Claude mobile app and confirm the connector is
-   there and lists tools without any further setup.** Repeat the whole thing
-   on ChatGPT, where the connection attempt is also what settles the two
-   unknowns: whether Streamable HTTP is accepted, and whether the connector is
-   usable from the iOS app. None of it can be run from a build container — it
-   needs a browser, two accounts and two phones — and none of it can be
-   inferred from a green unit suite. Until it has been run, F-20 stays
-   `PARTIAL` and nobody should tell a user the connector works.
+   POST (§4b — a header of ours, fixed and merged as #377).
+
+   **First observed working end to end: 2026-08-05.** A Claude client had this
+   server connected and called its tools for real — `literature_corpora`
+   answered in 89 ms with live `vectorCount`s off both Vectorize bindings, and
+   the same call was used as the instrument that caught a stale
+   `CORPUS_FACTS.arxiv.window` during the #380 merge. So the server is
+   reachable from a Claude client, its tool list is discoverable, and
+   `tools/call` runs against production bindings. That is the first evidence
+   for any of it beyond a unit suite.
+
+   **Be precise about what that does and does not settle**, because the
+   temptation is to read it as the whole rung:
+
+   | | |
+   |---|---|
+   | server reachable from a Claude client | **yes, observed** |
+   | `tools/list` + `tools/call` against production | **yes, observed** |
+   | which auth path carried it (OAuth connector vs an `mck1.` key) | **not observable from inside the session** — check Workers Logs for `oauth.` events against the timestamp to settle it |
+   | the connector visible in Claude MOBILE with no further setup | **not observed** |
+   | ChatGPT: added at all, transport accepted, reachable on iOS | **not observed, all three** |
+
+   So the remaining work is unchanged in shape and smaller in size: confirm
+   the phone, and do the whole ChatGPT half. Neither can be run from a build
+   container — both need a browser, an account and a phone — and neither can
+   be inferred from a green unit suite. **F-20 stays `PARTIAL`** until the
+   mobile confirmation lands, but "nobody should tell a user the connector
+   works" is now too strong for Claude on the web: it demonstrably does.
 
 **Open questions for the owner:**
 
