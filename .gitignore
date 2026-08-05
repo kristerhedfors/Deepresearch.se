@@ -242,3 +242,7 @@ tests/starter-eval-results/
 
 # arXiv RAG working data (harvested corpus + built index shards) — see docs/ARXIV-RAG.md
 data/
+
+# Ground-truth deep-research battery run files (tests/dr-eval.mjs).
+# The evidence lives here; the durable record is tests/DR-EVAL-FINDINGS.md.
+/data/dr-eval/
