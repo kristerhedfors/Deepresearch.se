@@ -321,8 +321,12 @@ export interface RequestState {
   cachedSearchCount: number;
   /** Search waves that ran (initial + gap rounds). */
   iterations: number;
-  /** Queries already issued this request, for in-request dedup. */
+  /** Queries PLANNED this request, for in-request dedup. Written before the
+   * wave picks its legs, so it also holds angles nothing was ever asked. */
   ranQueries: Set<string>;
+  /** Queries actually DISPATCHED to a provider. The subset of ranQueries that
+   * genuinely happened — the only one the answer model may be shown. */
+  issuedQueries?: Set<string>;
   /** Numbered source registry, deduped by URL. */
   sources: SourceEntry[];
   /** URL -> registry entry, for dedup. */

@@ -204,18 +204,84 @@ const NAMED = new RegExp(
   "iu",
 );
 
+// ---- "scholar" the DESTINATION ---------------------------------------------
+//
+// Both languages are built from the same four slots, so that a phrasing added
+// to one has an obvious counterpart in the other (invariant 6 — the parity
+// pairs in src/scholar.test.js walk them together, which is what catches a
+// missing verb; reading the two lists side by side does not):
+//
+//   VERB (+ particle) (+ short object) (+ particle) (+ preposition) + "scholar"
+//
+// The first cut of this gate accepted a BARE preposition in English
+// ("in|on|from|through|via" + scholar) with no counterpart in Swedish at all —
+// so "I found it in scholar" led while "Jag hittade den i scholar" did not, and
+// English over-led on ordinary prose ("the retention rate on scholar programs"
+// stood the entire web leg down). Requiring a verb in BOTH arms closes the gap
+// in both directions: every destination phrasing keeps a verb, and prose that
+// merely contains the word does not have one in front of it.
+//
+// Every Swedish alternative also carries the ASCII-typed form a keyboard
+// without å/ä/ö produces (`sok`, `pa`, `fran`, `sla`, `hamta`, `anvand`), and
+// the boundaries are the Unicode `B`/`E` above — JavaScript's `\b` is blind to
+// å/ä/ö, so `\bslå upp\b` would never fire.
+
+/** Verbs that take a source as their destination. */
+const AS_SOURCE_VERB_EN =
+  "search(?:ing|ed|es)?|check(?:ing|ed|s)?|look(?:ing|ed|s)?|find(?:ing|s)?|found" +
+  "|fetch(?:ing|ed|es)?|grab(?:bing|bed|s)?|pull(?:ing|ed|s)?|get(?:ting|s)?|got" +
+  "|quer(?:y|ies|ied|ying)|use|uses|using|used|browse|browsing|browsed" +
+  "|consult(?:ing|ed|s)?|open(?:ing|ed|s)?|go|goes|going|went";
+/** …and their Swedish counterparts, one per English sense: söka/leta (search),
+ * kolla/titta (check, look), använda (use), hitta (find), hämta/skaffa/plocka
+ * (get, fetch), slå upp (look up), bläddra (browse), gå (go). */
+const AS_SOURCE_VERB_SV =
+  "s[öo]k(?:er|te|t|a)?|leta(?:r|de|t)?|kolla(?:r|de|t)?|titta(?:r|de|t)?" +
+  "|anv[äa]nd(?:er|e|a|s|t)?|hitta(?:r|de|t)?|h[äa]mta(?:r|de|t)?" +
+  "|sl[åa](?:r|og|git)?|bl[äa]ddra(?:r|de|t)?|skaffa(?:r|de|t)?" +
+  "|plocka(?:r|de|t)?|g[åa](?:r|tt)?|gick";
+/** The separable particle: "look it UP", "slå UPP det", "gå IN på". */
+const AS_SOURCE_PART_EN = "(?:\\s+up)?";
+const AS_SOURCE_PART_SV = "(?:\\s+(?:upp|in|ut|fram))?";
+/** A short object between verb and destination. Pronouns plus a CLOSED set of
+ * research nouns — an open "the <word>" would swallow "I found the Rhodes
+ * scholar", which is a person again. */
+const AS_SOURCE_OBJ_EN =
+  "(?:\\s+(?:it|this|that|these|those|them|him|her|one" +
+  "|the\\s+(?:paper|papers|article|articles|study|studies|citation|citations" +
+  "|reference|references|doi|title|author|abstract)))?";
+const AS_SOURCE_OBJ_SV =
+  "(?:\\s+(?:det|den|dem|denna|detta|dom|honom|henne" +
+  "|artikeln|artiklarna|studien|studierna|papperet|referensen|titeln|k[äa]llan))?";
+/** The preposition that makes it a place: "in scholar", "i scholar". Optional,
+ * because "search scholar for X" / "sök scholar efter X" name it directly. */
+const AS_SOURCE_PREP_EN =
+  "(?:\\s+(?:in|on|at|from|via|through|into|to|inside|using|with|over\\s+to))?";
+const AS_SOURCE_PREP_SV =
+  "(?:\\s+(?:i|p[åa]|fr[åa]n|via|genom|hos|till|med|inne\\s+i))?";
+/** …and what the destination is NOT: a compound noun that merely begins with
+ * the word ("scholar programs", "scholar-pristagare", "scholar athletes").
+ * A verb can sit in front of one of those in perfectly ordinary prose — "find
+ * the retention rate on scholar programs" — and leading there costs the request
+ * every web source it had. A genuine destination is never followed by these. */
+const AS_SOURCE_NOT_THE_SITE =
+  "(?![\\s-]+(?:program|programme|scheme|award|prize|athlete|student|fellow" +
+  "|pris|alumn|event|application|essay|committee|status|stipendi|utbyte)" +
+  LETTER + ")";
+
 /** The product name used BARE as a destination — "search scholar", "look it up
- * in scholar", "sök i scholar", "kolla på scholar". This is the half of bare
+ * in scholar", "I found it on scholar", "sök i scholar", "kolla på scholar",
+ * "slå upp det i scholar", "hämta den från scholar". This is the half of bare
  * "scholar" that really is the source, split out from `NAMED` so the other half
- * (the person) stops leading. Swedish carries the same verbs, with the
- * ASCII-typed forms a keyboard without å/ä/ö produces (invariant 6). */
+ * (the person) stops leading. */
 const SCHOLAR_AS_SOURCE = new RegExp(
   B +
-    "(?:(?:search(?:ing|ed|es)?|check(?:ing|ed)?|look(?:ing|ed)?(?:\\s+it)?(?:\\s+up)?" +
-    "|quer(?:y|ied|ying)|use|using|used|via|in|on|from|through)\\s+(?:in\\s+|on\\s+)?scholar" +
-    "|(?:s[öo]k(?:er|te)?|leta(?:r|de)?|kolla(?:r|de)?|titta(?:r|de)?|anv[äa]nd(?:er|e|s)?)" +
-    "\\s+(?:upp\\s+)?(?:i\\s+|p[åa]\\s+)?scholar)" +
-    E,
+    "(?:(?:" + AS_SOURCE_VERB_EN + ")" + AS_SOURCE_PART_EN + AS_SOURCE_OBJ_EN +
+    AS_SOURCE_PART_EN + AS_SOURCE_PREP_EN + "\\s+scholar" +
+    "|(?:" + AS_SOURCE_VERB_SV + ")" + AS_SOURCE_PART_SV + AS_SOURCE_OBJ_SV +
+    AS_SOURCE_PART_SV + AS_SOURCE_PREP_SV + "\\s+scholar)" +
+    E +
+    AS_SOURCE_NOT_THE_SITE,
   "iu",
 );
 

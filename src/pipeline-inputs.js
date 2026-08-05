@@ -124,20 +124,39 @@ export function conflictsSection(conflicts) {
 // net-negative (2.65 → 2.43, by context dilution), and the ground-truth
 // battery puts the loss at 14:1 synthesis-over-retrieval. This adds a bounded
 // list of queries already run — no search, no model call, no new sources.
+// The planner allows up to 34 searches (budget.js searchCeiling); the cap here
+// sits above that, so a normal request is never truncated at all and the
+// exhaustive wording is the one that actually gets used.
+const LEDGER_MAX = 40;
+
 /**
- * @param {Set<string> | string[] | undefined} ranQueries
+ * @param {Set<string> | string[] | undefined} issuedQueries queries actually DISPATCHED (state.issuedQueries), never the planned set
  * @returns {string}
  */
-export function searchLedgerSection(ranQueries) {
-  const all = ranQueries instanceof Set ? [...ranQueries] : Array.isArray(ranQueries) ? ranQueries : [];
-  const list = all.filter((q) => typeof q === "string" && q.trim()).slice(0, 24);
+export function searchLedgerSection(issuedQueries) {
+  const all = issuedQueries instanceof Set ? [...issuedQueries] : Array.isArray(issuedQueries) ? issuedQueries : [];
+  const clean = all.filter((q) => typeof q === "string" && q.trim());
+  const list = clean.slice(0, LEDGER_MAX);
   if (!list.length) return "";
+  // Say what this list IS, exactly. The first version claimed "the whole
+  // search, not a sample" unconditionally, and was wrong two ways: it was
+  // built from the PLANNED angles rather than the issued ones, and it silently
+  // cut at 24 while the planner allows up to 34 searches. A prompt that
+  // overstates its own evidence is the same defect as an answer that does —
+  // which is the defect this block exists to prevent, so it does not get to
+  // commit it. Truncation now says so rather than being smoothed over.
+  const complete = clean.length === list.length;
+  const head = complete
+    ? "Search angles already run for this question (this is every angle that was issued, not a sample):\n"
+    : `Search angles already run for this question — showing ${list.length} of ${clean.length} issued:\n`;
   return (
-    "Search angles already run for this question (this is the whole search, not a sample):\n" +
+    head +
     `${list.map((q) => `- ${q}`).join("\n")}\n` +
     "When a claim remains uncorroborated, say which of these angles were tried and came back empty — " +
     "a reader must be able to tell a thin public record from a thin search. Never write that no source " +
-    "exists for something none of these angles targeted; say it was not searched for.\n\n"
+    (complete
+      ? "exists for something none of these angles targeted; say it was not searched for.\n\n"
+      : "exists for something none of these angles targeted; say it was not searched for. This list is partial, so do not describe it as exhaustive.\n\n")
   );
 }
 

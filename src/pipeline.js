@@ -257,6 +257,7 @@ function demoSurfaces(text, prior = "") {
  *   lastUser: string,
  *   convText: string,
  *   cleanLastUser: string,
+ *   gateLastUser: string,
  *   cleanConvText: string,
  *   imageParts: import('./types.js').ContentPart[],
  *   emitDelta: (text: string) => void,
@@ -453,6 +454,17 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
     // answer degrades to a summary of those excerpts (the security-assessment
     // UX bug). Synthesis still uses the excerpt-bearing lastUser/convText above.
     cleanLastUser: textOf(lastUserMessage(conversation)?.content),
+    // What a SOURCE-ROUTING gate reads: the clean message plus the words read
+    // off the user's own attachment. The clean message alone is right for
+    // gates that must ignore prose the pipeline appended to itself, but an
+    // image transcription is not that — it is the user's question, in a form
+    // textOf() flattens to "[1 image attached]". Without it, photographing a
+    // paper's record page and asking "what is this about" routes on a message
+    // with no subject in it. Bounded by image-read.js's own MAX_BLOCK_CHARS.
+    gateLastUser: [
+      textOf(lastUserMessage(conversation)?.content),
+      /** @type {any} */ (state).imageReadText || "",
+    ].filter(Boolean).join("\n"),
     cleanConvText: formatConversation(conversation),
     // Image parts of the latest user message ride along into synthesis so a
     // vision model can research with the image as context.
@@ -528,7 +540,7 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
     // cleanLastUser here too, and for the same reason as the two gates in
     // planAuxSource/leadingSources: whether a source APPLIES is a fact about
     // what the user asked, never about prose an enrichment appended to it.
-    if (!ctx.hasSource && !(policy.auxSources && SEARCH_SOURCES.some((s) => forcedAux.includes(s.id) || s.intent(ctx.cleanLastUser)))) {
+    if (!ctx.hasSource && !(policy.auxSources && SEARCH_SOURCES.some((s) => forcedAux.includes(s.id) || s.intent(ctx.gateLastUser)))) {
       return runWithoutSearch(ctx);
     }
   }
@@ -1882,7 +1894,7 @@ async function runSynthesis(ctx) {
     // What was actually searched, so "no source establishes this" can be told
     // apart from "we never looked" — and so an uncorroborated claim can name
     // the angles that came back empty (feedback #61; PERSON-RESEARCH.md §6).
-    searchLedgerSection(state.ranQueries) +
+    searchLedgerSection(/** @type {any} */ (state).issuedQueries) +
     // Notes preamble is present only when the digest phase ran (mid/high
     // tiers); byte-identical to before at the default budget.
     notesSection(state.notes) +
@@ -2301,6 +2313,14 @@ async function runSearches(ctx, queries, round) {
 async function runWebLeg(ctx, batch, round) {
   const { env, log, emit, state } = ctx;
   state.searchCount += batch.length;
+  // ISSUED, not planned. `ranQueries` is written by takeSearchBatch before the
+  // legs are chosen, so it also holds angles this wave never sent anywhere —
+  // the web knob was off, or an aux source was leading and stood this leg
+  // down. The search ledger handed to synthesis must be a record of what was
+  // actually asked, or it invites the answer to attest to searches that never
+  // happened. That is the same defect the ledger exists to prevent, so it is
+  // not allowed to be the ledger's own bug.
+  for (const query of batch) (state.issuedQueries ||= new Set()).add(query);
   // Every search event names its provider (`source` slug + `service` display
   // name): the client's cards must always make clear WHICH provider ran a
   // search — a user report showed hub and web searches rendering identically.
@@ -2373,6 +2393,18 @@ const MAX_AUX_SEARCHES_DEFAULT = 3;
 // widening are the verbose ones.
 const DIGEST_CHARS_PER_SOURCE = 1300;
 
+// …and the ceiling that reserve may never push the digest past. Four aux
+// sources reserving 8 slots each would otherwise add 41,600 chars on top of
+// the full tier's 24,000 — roughly 18k tokens of digest. `DEFAULT_MODEL` is a
+// 32k-context model and is selectable as an ANSWER model, and a synthesis
+// context overflow is explicitly not failover-eligible (answer-stream.js): the
+// turn returns "the conversation is too long" and no answer at all. Trading a
+// few tail sources for a dead chat is a bad trade in both directions, so the
+// reserve stops here. 36,000 leaves the full tier real room to grow (+50%)
+// while keeping the digest near 9k tokens, well inside 32k alongside an 8,192
+// token answer and the rest of the prompt.
+const DIGEST_CAP_CEILING = 36_000;
+
 /**
  * One planned aux search: which source runs which of the wave's angles, and
  * which attempt keys its own ladder should skip. Planning is separated from
@@ -2415,7 +2447,7 @@ function leadingSources(ctx) {
   // one, and the web leg never ran — so a question about a person came back
   // led by a corpus that had nothing to say about them. The USER names the
   // source they want; prose this pipeline wrote to itself does not.
-  const ids = leadSourceIds(ctx.cleanLastUser);
+  const ids = leadSourceIds(ctx.gateLastUser);
   // …and a source the request has narrowed away (state.auxOnly) cannot lead it
   // either: leading stands the web leg down, so a lead that planAuxSource will
   // then refuse to plan would spend the wave on nothing.
@@ -2500,7 +2532,7 @@ function planAuxSource(ctx, source, batch, leading) {
   // ethnicity, health, religion…") satisfied a domain gate's subject test and
   // routed a person's career history to a corpus about something else. A gate
   // is a question about what the USER asked; keep it that way.
-  if (!batch.length || (!forced && !leading && !source.intent(ctx.cleanLastUser))) return [];
+  if (!batch.length || (!forced && !leading && !source.intent(ctx.gateLastUser))) return [];
   state.aux ||= {};
   const st = (state.aux[source.id] ||= { count: 0, ran: new Set() });
   // How many searches this source gets THIS request. The source's own
@@ -2592,6 +2624,10 @@ function absorbAuxResult(ctx, plan, result, round) {
   // whose ladders would collapse to the same attempt skip it instead of
   // re-fetching the same repos (the three-identical-hub-searches trace).
   for (const k of result.usedKeys) st.ran.add(k);
+  // An aux leg's query is an issued search too, and on a lead wave it may be
+  // the ONLY thing issued — so the ledger would otherwise be empty on exactly
+  // the requests where knowing what was asked matters most.
+  (state.issuedQueries ||= new Set()).add(plan.key || plan.query);
   emit({
     status: {
       type: "search_done",
@@ -2627,7 +2663,10 @@ function absorbAuxResult(ctx, plan, result, round) {
     // interview and the subject's own university page sat unread at [17]
     // through [26]. Absence of evidence is the one thing a research tool
     // must never invent, so the reserve now covers both caps.
-    state.plan.digestCap += widened * DIGEST_CHARS_PER_SOURCE;
+    state.plan.digestCap = Math.min(
+      state.plan.digestCap + widened * DIGEST_CHARS_PER_SOURCE,
+      DIGEST_CAP_CEILING,
+    );
   }
   addSources(state, result.items);
 }
