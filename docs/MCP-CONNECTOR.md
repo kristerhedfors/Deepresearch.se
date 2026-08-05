@@ -477,7 +477,12 @@ row, no lookup on the hot path, revocation by refusing the refresh. Redemption
 old `jti` in the same call that mints the new one, so a public client's
 rotation cannot half-happen. The table's DDL is exported as
 `OAUTH_SCHEMA_SQL` and pasted into `src/db.js`, so the store owns its own
-schema.
+schema. Pasted rather than imported because `oauth-store.js` imports `getDb`
+from `db.js` and the reverse edge would be a cycle — and because the copy is
+therefore unavoidable, `oauth-store.test.js` compares the two BOTH ways.
+Without that guard a column added to one copy alone fails nothing: `db.js` is
+what actually creates the tables, so a store-side edit is inert and a
+`db.js`-side edit leaves the store's own schema quietly wrong.
 
 **`src/oauth-authorize.js` — the consent screen and code issuance.** The one
 page a human sees in the whole flow, and it needs a signed-in identity: an

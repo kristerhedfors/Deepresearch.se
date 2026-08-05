@@ -4,14 +4,15 @@
 // codec round-trips arbitrary bytes without padding chars, toHex renders
 // deterministically, safeEqual is exact and type-strict, `sign` is
 // namespace-separated, deterministic, and fail-closed without SESSION_SECRET,
-// `hmacRaw` is the one tag both renderings are built from, and
-// `verifiedClaims` stops at the cryptography — it hands back an UNVALIDATED
-// claims object and rejects a tag from another namespace.
+// `hmacRaw` is the one tag both renderings are built from, and the mint/verify
+// pair `sealedToken` / `verifiedClaims` stops at the cryptography — it renders
+// already-assembled claims into the wire shape and hands back an UNVALIDATED
+// claims object, rejecting a tag from another namespace in both directions.
 // (Each token family's own mint/verify stays covered by websearch-key.test.js
 // and proxy-grant.test.js.)
 import test from "node:test";
 import assert from "node:assert/strict";
-import { b64url, b64urlDecode, hmacRaw, toHex, safeEqual, sign, verifiedClaims } from "./token-crypto.js";
+import { b64url, b64urlDecode, hmacRaw, toHex, safeEqual, sealedToken, sign, verifiedClaims } from "./token-crypto.js";
 
 const SECRET = "d0a2d4e838e1c1c7c65fef7b784c9623ee113f8aab5da9aab9d62f8a311109de";
 const env = { SESSION_SECRET: SECRET };
@@ -90,6 +91,41 @@ test("hmacRaw without SESSION_SECRET throws (fail closed)", async () => {
 // opens with. It stops at the cryptography: what it returns is an unvalidated
 // claims object, and each family checks its own claims afterwards.
 const payloadOf = (obj) => b64url(new TextEncoder().encode(JSON.stringify(obj)));
+
+// sealedToken is the mint-side mirror: it renders already-assembled claims into
+// the `<prefix>.<payload>.<tag>` wire shape and nothing else.
+test("sealedToken renders the three-segment wire shape verbatim", async () => {
+  const claims = { jti: "a", svc: "web", exp: 42 };
+  const token = await sealedToken(env, "proxytoken.", "prx1", claims);
+  const parts = token.split(".");
+  assert.equal(parts.length, 3);
+  assert.equal(parts[0], "prx1");
+  assert.equal(parts[1], payloadOf(claims));
+  assert.equal(parts[2], await sign(env, "proxytoken.", parts[1]));
+});
+
+test("sealedToken and verifiedClaims are inverses under the same namespace", async () => {
+  const claims = { jti: "b", uid: "7", quota: 25 };
+  const [, payload, sig] = (await sealedToken(env, "websearch.", "wsk1", claims)).split(".");
+  assert.deepEqual(await verifiedClaims(env, "websearch.", payload, sig), claims);
+});
+
+// The namespace is what keeps the families mutually unforgeable under the one
+// SESSION_SECRET, so passing it in has to survive the shared mint: identical
+// claims sealed under two namespaces must not verify under each other's.
+test("sealedToken keeps the families namespace-separated", async () => {
+  const claims = { jti: "c", exp: 99 };
+  const [, pWeb, sWeb] = (await sealedToken(env, "websearch.", "wsk1", claims)).split(".");
+  const [, pProxy, sProxy] = (await sealedToken(env, "proxytoken.", "prx1", claims)).split(".");
+  assert.equal(pWeb, pProxy); // same claims, same payload
+  assert.notEqual(sWeb, sProxy); // different namespace, different tag
+  assert.equal(await verifiedClaims(env, "proxytoken.", pWeb, sWeb), null);
+  assert.equal(await verifiedClaims(env, "websearch.", pProxy, sProxy), null);
+});
+
+test("sealedToken fails closed with no signing key, rather than sealing unsigned", async () => {
+  await assert.rejects(() => sealedToken({}, "pool.", "pt1", { jti: "d" }), /SESSION_SECRET/);
+});
 
 test("verifiedClaims returns the decoded claims for a well-signed payload", async () => {
   const payload = payloadOf({ jti: "a", svc: "web", exp: 42 });

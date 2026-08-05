@@ -22,7 +22,7 @@
 // (src/token-crypto.js), so websearch.js and its tests share ONE
 // implementation.
 
-import { b64url, sign, verifiedClaims } from "./token-crypto.js";
+import { sealedToken, verifiedClaims } from "./token-crypto.js";
 
 const TOKEN_PREFIX = "wsk1"; // versioned wire prefix
 const NS = "websearch."; // HMAC message namespace for grant tokens
@@ -46,9 +46,7 @@ const NS = "websearch."; // HMAC message namespace for grant tokens
  * @returns {Promise<string>}
  */
 export async function mintWebSearchToken(env, claims) {
-  const payload = b64url(new TextEncoder().encode(JSON.stringify(claims)));
-  const sig = await sign(env, NS, payload);
-  return `${TOKEN_PREFIX}.${payload}.${sig}`;
+  return sealedToken(env, NS, TOKEN_PREFIX, claims);
 }
 
 /**

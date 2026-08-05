@@ -40,7 +40,7 @@ import {
   s256Challenge,
   verifyAccessToken,
 } from "./oauth-store.js";
-import { splitStatements } from "./db.js";
+import { SCHEMA, splitStatements } from "./db.js";
 import { fakeD1 } from "./test-helpers/d1.js";
 import { identify } from "./auth.js";
 import { mintMcpKey, verifyMcpKey } from "./mcp-key.js";
@@ -496,6 +496,30 @@ test("OAUTH_SCHEMA_SQL splits into statements db.js can prepare", () => {
   for (const s of statements) assert.match(s, /^CREATE (TABLE|INDEX) IF NOT EXISTS/);
   assert.ok(statements.some((s) => /oauth_codes \(/.test(s)));
   assert.ok(statements.some((s) => /oauth_refresh_tokens \(/.test(s)));
+});
+
+// THE COPY THIS GUARDS. src/db.js carries these six statements a second time,
+// pasted rather than imported, and that is deliberate: oauth-store.js imports
+// getDb FROM db.js, so db.js importing the DDL back would be a cycle
+// (docs/MCP-CONNECTOR.md — "exported as OAUTH_SCHEMA_SQL and pasted into
+// src/db.js, so the store owns its own schema"). What was missing is anything
+// that notices when the two stop agreeing. Adding a column or an index to one
+// copy alone fails NOTHING otherwise: db.js is what actually creates the
+// tables, so a store-side edit is simply inert, and a db.js-side edit leaves
+// the store's own documented schema quietly wrong. Compared both ways.
+const normalize = (/** @type {string} */ s) => s.replace(/\s+/g, " ").trim();
+
+test("db.js's pasted copy of the OAuth DDL matches OAUTH_SCHEMA_SQL exactly", () => {
+  const owned = splitStatements(OAUTH_SCHEMA_SQL).map(normalize);
+  const applied = splitStatements(SCHEMA)
+    .map(normalize)
+    .filter((s) => /\boauth_(codes|refresh_tokens)\b/.test(s));
+
+  // Every statement the store declares is one db.js actually applies …
+  for (const s of owned) assert.ok(applied.includes(s), `db.js SCHEMA is missing: ${s}`);
+  // … and db.js applies no oauth_* statement the store does not declare.
+  for (const s of applied) assert.ok(owned.includes(s), `OAUTH_SCHEMA_SQL is missing: ${s}`);
+  assert.equal(applied.length, owned.length);
 });
 
 // ---------------------------------------------------------------------------
