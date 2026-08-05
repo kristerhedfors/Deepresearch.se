@@ -12,6 +12,12 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  DEFAULT_EXEC_TIMEOUT_MS,
+  MIN_EXEC_TIMEOUT_MS,
+  execBudgetMs,
+  execTimeoutForBudget,
+} from "./bash-core.js";
+import {
   DEFAULT_RUNNER_URL,
   DREE_PROTOCOL,
   EXEC_AUTO,
@@ -166,6 +172,43 @@ test("remoteExecTimeout clamps into the native range, default when absent", () =
   assert.equal(remoteExecTimeout(1_000), MIN_REMOTE_EXEC_TIMEOUT_MS); // budget-scoped floor
   assert.equal(remoteExecTimeout(999_999), REMOTE_EXEC_TIMEOUT_MS);
   assert.equal(remoteExecTimeout(20_000), 20_000);
+});
+
+// The whole point of handing the budget down UNCLAMPED (bash-core's
+// execBudgetMs): each backend applies its own ceiling. The regression this
+// pins is the drivers pre-clamping with the BROWSER's execTimeoutForBudget,
+// which made every native command inherit the emulator's 30 s — a scan OCR
+// that needs 60 s was killed on hardware that could run it.
+test("a generous budget resolves to 30 s on the browser VM and 120 s on a native runner", () => {
+  const requested = execBudgetMs(600); // a 10-minute research budget
+  assert.equal(requested, 600_000); // unclamped on the way down
+  assert.equal(execTimeoutForBudget(600), DEFAULT_EXEC_TIMEOUT_MS); // browser: 30 s
+  assert.equal(remoteExecTimeout(requested), REMOTE_EXEC_TIMEOUT_MS); // native: 120 s
+  // The leak itself: pre-clamping first pins the native runner at 30 s.
+  assert.equal(remoteExecTimeout(execTimeoutForBudget(600)), DEFAULT_EXEC_TIMEOUT_MS);
+  assert.notEqual(DEFAULT_EXEC_TIMEOUT_MS, REMOTE_EXEC_TIMEOUT_MS);
+});
+
+test("a small budget still scopes BOTH backends down (chat_logs #522)", () => {
+  assert.equal(execTimeoutForBudget(15), 15_000);
+  assert.equal(remoteExecTimeout(execBudgetMs(15)), 15_000);
+  // …and the floor holds on both, so a tiny budget can't strangle a command.
+  assert.equal(execTimeoutForBudget(1), MIN_EXEC_TIMEOUT_MS);
+  assert.equal(remoteExecTimeout(execBudgetMs(1)), MIN_REMOTE_EXEC_TIMEOUT_MS);
+  // No budget: each backend keeps its own default.
+  assert.equal(execBudgetMs(null), undefined);
+  assert.equal(remoteExecTimeout(execBudgetMs(null)), REMOTE_EXEC_TIMEOUT_MS);
+});
+
+test("the browser resolution is unchanged by the raw pass-down, budget for budget", () => {
+  // sandbox.js's execInSandbox clamps whatever it is handed into
+  // [MIN_EXEC_TIMEOUT_MS, DEFAULT_EXEC_TIMEOUT_MS]; feeding it the raw budget
+  // must land exactly where the old pre-clamp did.
+  const browserClamp = (ms) =>
+    ms === undefined ? DEFAULT_EXEC_TIMEOUT_MS : Math.max(MIN_EXEC_TIMEOUT_MS, Math.min(DEFAULT_EXEC_TIMEOUT_MS, ms));
+  for (const budgetS of [null, undefined, 0, -5, 1, 4, 5, 10, 15, 29.5, 30, 60, 270, 600]) {
+    assert.equal(browserClamp(execBudgetMs(budgetS)), execTimeoutForBudget(budgetS), `budget ${budgetS}`);
+  }
 });
 
 // ---- parsers ----------------------------------------------------------------
