@@ -1,14 +1,14 @@
 {
-  "generated": "2026-08-06T08:18:09.161Z",
+  "generated": "2026-08-06T08:38:15.517Z",
   "repo": "kristerhedfors/deepresearch.se",
   "range": {
     "from": "2026-07-04",
     "to": "2026-08-06"
   },
   "totals": {
-    "commits": 1394,
-    "added": 446910,
-    "removed": 110233,
+    "commits": 1397,
+    "added": 446948,
+    "removed": 110261,
     "features": 166
   },
   "commits": [
@@ -8375,6 +8375,24 @@
       "a": 236,
       "r": 11,
       "f": 0
+    },
+    {
+      "t": "2026-08-06T09:54:19+02:00",
+      "a": 4,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-08-06T10:21:15+02:00",
+      "a": 30,
+      "r": 22,
+      "f": 0
+    },
+    {
+      "t": "2026-08-06T10:26:15+02:00",
+      "a": 4,
+      "r": 4,
+      "f": 0
     }
   ],
   "days": [
@@ -10129,11 +10147,14 @@
     },
     {
       "date": "2026-08-06",
-      "commits": 8,
-      "added": 1911,
-      "removed": 441,
+      "commits": 11,
+      "added": 1949,
+      "removed": 469,
       "features": 1,
       "subjects": [
+        "owners: occurrences 13-14 of the CI e2e crash, and the signature that moved",
+        "pulse + artifacts: regenerate against the merged tree",
+        "ledger: record PR #398 and the bug class it closes",
         "sdk mode: finish a build the output ceiling cut off, never show half a file",
         "pulse: refresh commit analytics, feature timeline and code-size through 2026-08-06",
         "docs: reconcile the documentation surface with the code",
@@ -10143,7 +10164,7 @@
         "docs + artifacts: reconcile with the five corrections, and regenerate",
         "pipeline: five defects #392 introduced, found by adversarially reviewing it"
       ],
-      "summary": "A maintenance day, and an adversarial review of the day before it: reviewing the previous day's pipeline work turned up five defects it had introduced, all fixed, and Agent Studio learned to finish a build the output ceiling had cut off rather than show half a file. Refactor pass 17 then moved the source digest out of the registry into its own module, taking the max-min fair-share solver with it and giving it property tests it never had while it was private. The documentation pass reconciled fifteen undocumented test suites and one client module back into TESTING.md and CODE-LAYOUT.md, and the pulse datasets were refreshed — the tagger widened first, since the OAuth connector had been landing untagged.",
+      "summary": "A maintenance day, and an adversarial review of the day before it: reviewing the previous day's pipeline work turned up five defects it had introduced, all fixed, and Agent Studio learned to finish a build the output ceiling had cut off rather than show half a file. Refactor pass 17 then moved the source digest out of the registry into its own module, taking the max-min fair-share solver with it and giving it property tests it never had while it was private. The documentation pass reconciled fifteen undocumented test suites and one client module back into TESTING.md and CODE-LAYOUT.md, the pulse datasets were refreshed — the tagger widened first, since the OAuth connector had been landing untagged — and occurrences 13-14 of the CI e2e crash were measured and routed to the PR that owns them.",
       "curated": true
     }
   ]
