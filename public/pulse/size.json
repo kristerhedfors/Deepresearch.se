@@ -1,9 +1,9 @@
 {
-  "generated": "2026-08-05T12:45:13.315Z",
+  "generated": "2026-08-06T08:34:56.521Z",
   "totals": {
-    "files": 1003,
-    "lines": 294304,
-    "chars": 17307821,
+    "files": 1030,
+    "lines": 307729,
+    "chars": 18057111,
     "languages": 13,
     "dependencies": 0,
     "devDependencies": 4
@@ -22,65 +22,65 @@
     {
       "ext": "js, mjs",
       "label": "JavaScript",
-      "files": 652,
-      "lines": 210968,
-      "chars": 9582139
+      "files": 672,
+      "lines": 219925,
+      "chars": 10024309
     },
     {
       "ext": "md",
       "label": "Markdown",
-      "files": 172,
-      "lines": 59692,
-      "chars": 3902226
+      "files": 175,
+      "lines": 61770,
+      "chars": 4089353
     },
     {
       "ext": "html",
       "label": "HTML",
       "files": 21,
-      "lines": 8225,
-      "chars": 456579
+      "lines": 8290,
+      "chars": 461114
     },
     {
       "ext": "json, webmanifest",
       "label": "JSON",
-      "files": 62,
-      "lines": 5523,
-      "chars": 2933007
+      "files": 66,
+      "lines": 7715,
+      "chars": 3040942
     },
     {
       "ext": "css",
       "label": "CSS",
       "files": 5,
-      "lines": 5269,
-      "chars": 236148
+      "lines": 5299,
+      "chars": 237222
     },
     {
       "ext": "(none)",
       "label": "Other",
       "files": 23,
-      "lines": 2368,
-      "chars": 91366
+      "lines": 2403,
+      "chars": 93446
     },
     {
       "ext": "sh",
       "label": "Shell",
       "files": 6,
-      "lines": 618,
-      "chars": 30613
+      "lines": 669,
+      "chars": 33778
     },
     {
       "ext": "ts",
       "label": "TypeScript",
       "files": 1,
-      "lines": 545,
-      "chars": 21870
+      "lines": 549,
+      "chars": 22139
     },
     {
       "ext": "toml",
       "label": "TOML",
       "files": 3,
-      "lines": 385,
-      "chars": 19760
+      "lines": 398,
+      "chars": 20695
     },
     {
       "ext": "py",

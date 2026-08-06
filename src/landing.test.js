@@ -123,6 +123,18 @@ describe("the first-visit overlay", () => {
     assert.ok(words <= 140, `the overlay runs to ${words} words; keep it under ~140`);
   });
 
+  test("frames the browser-only tier as ONE option, not the whole property", () => {
+    // The overlay is the first sentence anyone reads about the site, so an
+    // unqualified "runs entirely in your browser" reads as a property of the
+    // whole property rather than of one tier — while most of the feature set
+    // lives server-side, in the signed-in cloud tier (owner report, 2026-08-06).
+    const browser = CARD.indexOf("entirely in your browser");
+    assert.ok(browser > -1, "the client-side tier stays on the overlay — it is a real capability");
+    const bullet = CARD.slice(browser, CARD.indexOf("</li>", browser));
+    assert.match(bullet, /server-side/,
+      "the same bullet must place the fuller feature set server-side, in the cloud");
+  });
+
   test("still offers both halves and the dismiss", () => {
     assert.match(CARD, /It does/);
     assert.match(CARD, /It doesn't/);
