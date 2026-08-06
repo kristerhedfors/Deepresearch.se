@@ -85,6 +85,16 @@ overlay opens over a page nobody has read, so a does/doesn't grid with no
 subject lands on nothing. The overlay is a doorway, not the page — **six
 bullets and ~140 words are the ceiling**.
 
+Six bullets are all the room there is, so each one is read as a statement about
+the *site*, not about a tier. The client-side tier is the one that goes wrong
+here: "runs entirely in your browser, on your own key" was written as an
+unqualified **does**, and an owner read it as the whole property being
+client-side (2026-08-06). It is one capability of two tiers, and the larger
+feature set — workspaces, projects and the vault, RAG, the MCP server, Agent
+Studio, Orchestrator, the Models agent — runs **server-side, in the cloud**,
+behind the approval-gated tier. The browser bullet therefore carries its own
+qualifier, in the same bullet rather than a later one nobody joins up.
+
 ### 2.3 The ghost mascot and its bubble — `#mascot`, `#mbubble`
 
 Dismissing the overlay starts the mascot: the ghost travels in and stops just
@@ -267,7 +277,7 @@ allowlist**, and **two test files that read the tree**.
 | R8 | First-visit gating in `drc.js` / `app.js` | UX-3 in the `ux-conventions` skill; `intro-phase.test.js` — the seen-key table |
 | R9 | `isPublicAsset` in `src/assets.js` | `intro-phase.test.js` — "every door the intro offers is reachable without auth" |
 | R10 | Shared files and pure cores | `landing.test.js` — the diagram and timeline-core suites, including "the curves are drawn over the code-volume backdrop, on its own right-hand scale" |
-| R11 | Copy in the landing, the overlay, and Se/cure's greeter | `intro-phase.test.js` — the honest-framing checks |
+| R11 | Copy in the landing, the overlay, and Se/cure's greeter | `intro-phase.test.js` — the honest-framing checks; `landing.test.js` — "frames the browser-only tier as ONE option, not the whole property" |
 | R12 | `#focuscard` starts `hidden`, revealed only after the fetch parses; a dataset with no `volume` block simply draws no backdrop | `landing.test.js` — "the card removes itself when the dataset can't be read"; `pulse-timeline-core.test.js` — "a dataset built before the series existed draws no backdrop" |
 
 Plus the repo-wide guard that already covers these pages:
