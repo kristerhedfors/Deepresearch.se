@@ -73,7 +73,7 @@
       "layer": 1, "class": "X", "deps": ["baseplate-worker", "baseplate-client"],
       "skill": "sdk/skills/web-search/SKILL.md",
       "provides": "Default search provider client (Exa pattern), the pluggable-backend shared core (SearXNG/self-hosted, browser-direct on the client tier), edge result cache, the numbered source registry with per-origin diversity caps, auxiliary search-source registry (HF Hub pattern)",
-      "reference": ["src/exa.js", "src/websearch-backends.js", "public/js/websearch-backends-core.js", "src/sources.js", "src/search-sources.js", "src/edge-cache.js", "src/hf.js"],
+      "reference": ["src/exa.js", "src/websearch-backends.js", "public/js/websearch-backends-core.js", "src/sources.js", "src/source-digest.js", "src/search-sources.js", "src/edge-cache.js", "src/hf.js"],
       "acceptance": "Registry/diversity unit tests; mocked backend dispatch tests; one live search probe; fallback-to-default verified"
     },
     {

@@ -669,3 +669,64 @@ test, a request, or a deploy. **A decline is the end of the refactoring
 question, not the end of the drift question.** Where a gate forces a copy to
 stay, the pass's output is a test that fails when they disagree — verified here
 by perturbing one index in `db.js` and watching it go red before restoring it.
+
+## 17 — 2026-08-06, the digest-renderer pass
+
+Diff from `70824e70` (pass 16): ~6,300 added lines, one day of work — the
+person-research family (`src/person-research.js` + `public/js/person-research-core.js`),
+`src/image-read.js`, `public/js/citations-core.js` + its `src/citations.js`
+façade, `public/js/drc-attach-core.js` and Se/cure attachments, and growth in
+`sources.js`, `scholar.js`, `europepmc.js`, `arxiv.js`, `prompts.js`.
+**One cut.**
+
+Both scans were fully converged: `dup-scan` returned 19 groups and `line-scan
+--run 8` 84 runs, and every entry in either was already in
+`STANDING-DECLINES.md`. The cut came from the reading pass, and it is the
+type-1 seam the skill ranks first.
+
+- **The source digest → `src/source-digest.js`**: `sources.js` had grown a
+  complete second concern. The registry proper — dedupe, arrival-order
+  numbering, the per-origin diversity cap, overflow backfill — is about 160
+  lines; sitting under it were another 205 that render that registry into the
+  numbered block the prompts see, with their own five constants (`SEP_CHARS`,
+  `MIN_SHARE`, `MIN_TAIL`, `CLIP_MARK`, `MARKER_RESERVE`), a max-min fair-share
+  solver, a clipper, a builder and a truncation marker. Every one of them pure,
+  every one of them private, and the whole block reachable only through two
+  exported one-liners. Moved verbatim with its comments; `sources.js`
+  re-exports `sourceDigest` and `digestShownCount`, so all fourteen call sites
+  in `pipeline.js` and `orchestrator.js` are untouched. This is the
+  `googlemaps.js` → `googlemaps-blocks.js` shape: the registry stays the
+  registry, its prompt-facing renderer becomes its companion.
+
+**What the cut bought, and why that is the point of a type-1 seam.** The
+fair-share solver is the single piece of this subsystem with a real algorithm
+in it — a binary search for the largest per-source share the budget can
+afford — and while it was a private function inside the registry module, no
+test stated its properties. Everything about it was covered incidentally,
+through `sourceDigest` against fixtures where every source is the same size.
+`source-digest.test.js` now states them directly: a short source keeps its
+slack instead of being clipped to an equal split, the chosen share is the
+largest the budget affords (the digest fills >90% of its window), and shown-count
+and length are monotone in the cap across 200-odd caps — the property an
+off-by-one in the search breaks in the middle of the range rather than
+everywhere. Verified by perturbation: replacing `fairShare` with
+`Math.floor(budget / parts.length)` turns two of the three red, and the
+existing `sources.test.js` behaviour suite stays fully green, which is what
+proves the move was verbatim.
+
+**Method note — a re-export is worth a test line.** The behavioural digest
+tests stayed in `sources.test.js` reaching through the re-export, deliberately:
+that suite is now also the seam's pin. The new file adds one assertion that
+`sources.js`'s `sourceDigest` is identity-equal to the new module's, so a later
+pass that "tidies" the re-export into a wrapper with a different signature goes
+red at the boundary rather than somewhere downstream in a prompt.
+
+**Four declines and one survey batch**, all recorded: the buffered-ctx override
+shared by `orchestrator.js` and `runSdkBuildDeterministic` (Verbatim — the
+ceiling constant and both sinks are exactly what differ), `answerPhaseFor`
+(Verbatim — reads the `ANSWER_PHASE_RUNNERS` dispatch table),
+`demoSurfaces` (Home — would drag `demo-core.js` and the scene registry into
+`pipeline-inputs.js` to save ten lines), and `searchPolicyFor` (Bar). The four
+new subsystems all shipped factored, three of them as the class-X façade pair
+the convention asks for.
+
