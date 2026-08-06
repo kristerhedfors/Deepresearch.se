@@ -61,7 +61,19 @@ tighter 14,000, with only the verbose blocks clipped, the tail's excerpt
 untouched and citation numbers stable and in order; dropping still happens,
 and is still reported, once even the floor share cannot fit; and the fail-soft
 cases where a malformed entry or an absent cap must degrade rather than cost
-the prompt its evidence base),
+the prompt its evidence base. The digest MOVED to `source-digest.js` on
+2026-08-06 and `sources.js` re-exports it, so these behavioural cases
+now also pin that seam),
+`source-digest.js` (the same digest at its own module, covering what the
+behavioural cases above cannot state while the share solver is reached only
+through rendered output: max-min fairness as a PROPERTY — a short source keeps
+its slack rather than being clipped to an equal split of the budget, the share
+chosen is the largest the budget affords, and both shown-count and digest
+length are monotone in the cap across the whole range, which is where an
+off-by-one in the binary search hides. Perturbation-checked: an equal-split
+solver turns two of the three red. Plus an identity assertion that
+`sources.js`'s re-export IS this module's function, so a later tidy into a
+wrapper fails at the seam instead of downstream in a prompt),
 `settings.js` (`parseSettings` coercion, `storageAvailability`, the
 generic `extensionEnabled`/`extensionEnabledMap` knob gates),
 `extensions.js` (the extension registry — the five seams core consumes
@@ -208,7 +220,42 @@ and `mcp-config.js` (the per-account exposure policy: the catalog mirrors the
 tool list `mcp.js` serves exactly, unreadable input degrades to the
 everything-exposed default that preceded it, out-of-range budgets are clamped
 rather than honoured, the master switch outranks every individual tool row, and
-`filterMcpTools` drops uncatalogued names) — plus the LITERATURE tool family
+`filterMcpTools` drops uncatalogued names) and `mcp-inflight.js` (the
+per-account concurrency gate over the spending tools: a slot is taken and
+released, the refusal comes back as a JSON-RPC result rather than a transport
+error so a client renders it, the free tools reserve nothing, and the two
+failure directions are deliberately opposite — a reservation that cannot be
+recorded fails OPEN, a quota gate that cannot be read fails CLOSED) — plus
+the OAUTH CONNECTOR family that makes the surface addable in Claude and
+ChatGPT (built 2026-08-03): `oauth-metadata.js` (redirect-URI matching as
+DATA, so a new client is an allowlist entry and not an edit — both hosted
+clients' callbacks, ChatGPT's per-connector callback as a bounded SHAPE rather
+than a prefix anyone can extend, RFC 8252 loopback matching with the port
+ignored but without becoming a hole, a lookalike host refused rather than
+fuzzily accepted, and the protected-resource document naming exactly one
+issuer at the URL the 401 points to), `oauth-register.js` (dynamic
+registration: a minted `client_id` round-trips its own registration while an
+identifier this server did not sign does not resolve, a CIMD id is never
+mistaken for one, registration CANNOT widen where a code may be sent, one bad
+`redirect_uri` refuses the whole request, and a form-encoded body is refused
+with a reason that names the trap), `oauth-authorize.js` (the authorization
+request: an unallowed or missing `redirect_uri` RENDERS the error instead of
+bouncing to it — there is nowhere safe to bounce — while every other error
+bounces with the state intact; `response_type=code` only, PKCE mandatory and
+S256 only, and an unknown scope is dropped rather than fatal),
+`oauth-store.js` (the code itself: the `oac1.<payload>.<hex sig>` wire shape
+against RFC 7636's Appendix B vector, a code that discloses NOTHING but its
+own id — user, scope and redirect stay in the row — single use enforced in D1
+so two simultaneous redemptions produce exactly one winner, a wrong verifier
+burning the code so there is one guess and no more while a MALFORMED one does
+not, and a `plain` challenge refused at mint so no PKCE-less code can exist),
+and `oauth-token.js` (the exchange: `parseTokenBody` reading form encoding
+including `+` as space, accepting JSON too and sniffing an unlabelled body,
+because a 415 here reads to a client as an unexplained connect failure; a
+refresh token only when the granted scope carries `offline_access`; and every
+rejection — wrong verifier, mismatched redirect, replayed code — as
+`invalid_grant`, with each missing parameter naming itself) — plus the
+LITERATURE tool family
 the same clients reach (added 2026-08-01): `literature-tools.js` (the pure
 half — four MCP-ready schemas, `normalizeQueries` merging `query` with
 `queries` under a cap, `normalizeCorpora` defaulting to both, the date padding
@@ -226,7 +273,12 @@ result saying what it means, `similar` falling back to re-embedding when the
 index returns no vector and naming the window when the seed is outside the
 corpus, and every degrade path — one corpus down, the cross-encoder lost, the
 embedder dead, a binding missing — reported as a described `isError` result
-rather than thrown, which is invariant 2 at the tool boundary) —
+rather than thrown, which is invariant 2 at the tool boundary) and
+`literature-authors.js` (the author leg: `authorIntent` in both languages with
+its own Swedish-parity block per invariant 6 — including the ambiguous bare-s
+genitive and the reported failure asserted verbatim — plus what it must NOT
+fire on, the name heuristics, and the two corpora's author queries,
+record mappers and interleave),
 `model-routing.js` (the shared
 `resolveJsonModel` split-routing decision `chat.js` and `mcp.js` both
 delegate to), `pipeline.js` + `pipeline-inputs.js` (the flow's pure
@@ -428,7 +480,35 @@ CAPTCHA detection, since that page answers 200 — the profile block attributing
 every number to Scholar and refusing to imply peer review, `parseVenueTable`
 refusing a layout it does not know, and the enrichment restricting EVERY turn
 to the peer-reviewed source while folding in venue metrics with no outbound
-request). **Account memory** (2026-07-30, `docs/ACCOUNT-MEMORY.md`):
+request), plus the two added 2026-08-05/06 — `image-read.js` (the attached-image
+transcription: a turn without an image completely silent so the message array is
+byte-identical, an attached image folded in as a labeled block that tells later
+phases it is NOT a source, and the whole fail-soft surface of invariant 2 —
+a provider error, a thrown fetch with the connect timeout's shape, an
+accepted-then-stalled stream cut by the bound rather than waited out, and an
+empty completion all leaving the conversation unchanged, with `readImages`
+asserted to return a string on every path and never throw; the shipped guards
+are asserted to actually bound the call, rather than the test's own) and
+`person-research.js` + `public/js/person-research-core.js` (the person-research
+gate, both tiers off the one core: what users actually sent in feedback #60
+firing it, a topic, a company or a product NOT firing it, full Swedish parity
+per invariant 6, the methodology block, and the enrichment silent when the
+message names nobody — never throwing whatever it is handed).
+`answer-stream.js` covers the streaming failover seam:
+`isTransientConnectStatus` retrying provider-side statuses ONLY,
+`contextOverflowMessage` rewriting the context-window 400 and nothing else, and
+`stripImageParts` returning the SAME array when there is nothing to strip (so
+the retry sends byte-identical input), dropping images while keeping the text,
+and leaving an image-only turn with non-empty content rather than an empty one.
+`dense-rag.js` covers the shared presentation and accounting layer under both
+hosted literature tiers: `authorsLine` and `citationHighlights` asserted to cut
+an abstract and abbreviate an author list IDENTICALLY across the two tiers
+(the drift that a third copy of the constant would reintroduce), and the token
+tally — several legs ACCUMULATING into one tally rather than overwriting it,
+omitting the tally leaving `denseSearch` exactly as it was, a rerank response
+with no usage block ESTIMATED rather than dropped, and a dead reranker costing
+nothing and still returning results, because accounting never breaks a wave.
+**Account memory** (2026-07-30, `docs/ACCOUNT-MEMORY.md`):
 `memory.js` covers the write gates rather than the note model — `memoryUserId`
 refusing a break-glass identity, since a shared credential has no personal
 memory; the knob off by default and only an explicit stored `true` enabling it;
@@ -518,6 +598,20 @@ toggle, `normalizeSearchBackend`'s backend/URL/key/results normalization,
 the `parseProjectPath`/`parsePublicationRef` deep-link parsers incl. the
 reserved "workspace" slug, and
 `wmHtml`'s escape-then-tighten wordmark rendering),
+`drc-attach-core.js` (Se/cure's attachment intake, added 2026-08-05 — the
+pure half of the pane `public/cure/drc.js` only calls into:
+`sanitizeAttachName` keeping the basename of a traversal-looking name,
+stripping control characters, capping length and never returning empty; and
+`addPending` as a pure list transform that never mutates its input, refusing
+past each of the five bounds — image count, document count, per-file bytes,
+total bytes, per-image and total data-URL chars — with a message that names
+the size rather than a bare failure, truncating a document's inlined text at
+the character cap, and handling degenerate input without throwing),
+`citations-core.js` (the citation audit shared by the server through the
+one-line façade `src/citations.js`: `splitSourcesTail` separating a model's
+own Sources section from its prose, `citationNumbers` reading the `[n]`
+references out of it, `citationAudit` reconciling those against the registry,
+and `citationNote` phrasing what validation is told),
 `ondevice-core.js` (the on-device tier's pure core: the Bonsai model
 catalog, `planModelFiles` over the HF tree listing, `downloadProgress`,
 the incremental `createSha256`, `createThinkFilter`, `capabilityVerdict`,
