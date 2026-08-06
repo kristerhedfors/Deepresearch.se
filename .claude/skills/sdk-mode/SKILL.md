@@ -247,7 +247,25 @@ to the right group in `SDK_SHOWCASE` — don't renumber existing ids.
      line, `parseFileBlocks` collects, `publishBuild` publishes, then the
      user gets `stripFileBlocks(draft)` (the prose only) + the same
      `sdkReplyTail` closing. A draft with no FILE blocks is shown unchanged
-     (a plain reply). The SDK context block
+     (a plain reply).
+     **A draft that hits the output ceiling MID-FILE is the other way this
+     path breaks the same promise (feedback #30, chat_logs #650 — stopped at
+     32768 output tokens, inside an attribute).** No fence closed, so
+     `parseFileBlocks` returned zero files, the no-blocks branch treated the
+     draft as a plain reply, and a raw half-written index.html scrolled by
+     with no app and no link — feedback #13's complaint through a different
+     door. Raising the ceiling does not fix it; ANY ceiling truncates. So:
+     `findUnterminatedFileBlock` detects the still-open trailing block, ONE
+     bounded continuation (`buildContinuationTurns` — the fragment as an
+     assistant turn so the roles alternate, then "resume from exactly
+     there") finishes it, and `mergeContinuation` splices the two into one
+     parseable draft (dropping a re-opened fence, preferring the model's own
+     restart when it writes a fresh `FILE:` line). Fail-soft per invariant 2
+     — a failed continuation leaves the turn as truncated as it already was.
+     `stripFileBlocks` strips an unterminated block too, so half a file
+     NEVER reaches the user, and a build with nothing publishable ends on
+     `sdkCutOffNote` (what happened + build it in smaller pieces) instead of
+     dumping code. The SDK context block
      (`buildSdkContextBlock`) teaches the convention and carries the module
      catalog; it is appended to the conversation the way the introspection
      block is.
