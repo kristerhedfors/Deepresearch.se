@@ -20,9 +20,10 @@ runs. Every later phase sees it: the planner writes queries against the source
 ladder, the search waves inherit the language rule, synthesis writes to the
 output structure and the guardrails.
 
-The block carries **no facts about anyone**. It is a protocol, held near 700
-words because it rides in the context of every person turn. This document is the
-long form, and it costs nothing per request.
+The block carries **no facts about anyone**. It is a protocol, capped at 900
+words because it rides in the context of every person turn — currently 874, so
+the next addition to it has to displace something. This document is the long
+form, and it costs nothing per request.
 
 ## 2. Why it exists
 
@@ -61,6 +62,47 @@ referent**, and either half alone is a different question:
 A miss costs a less careful report. A false fire spends about 900 tokens and
 pushes person-shaped caveats into an answer nobody asked for, so the gate stays
 conservative.
+
+### 3.1 Who counts as a person (feedback #62)
+
+The referent list was first written from the cases the enrichment was built for
+— founders, candidates, executives, researchers — and that turned out to be a
+narrower idea of "a person" than users have. A request to research a streamer,
+a poker player or an influencer named nobody the gate could see, so the block
+never attached and **its guardrails never attached with it**. That is the wrong
+way round: someone with an audience and a handle is far more likely to be a
+private individual than a chief executive is, so the group that most needed the
+professional-record-only bound was the one group never getting it.
+
+Three additions close it, in both languages:
+
+- **Media and creator roles** — streamer, youtuber, influencer, creator,
+  podcaster, blogger, gamer, artist, musician, actor, comedian, athlete, coach,
+  presenter, commentator, celebrity, champion. Swedish takes these as loanwords
+  with native endings, so `streamern`, `youtubaren`, `poddaren` and
+  `kreatören` are spelled out rather than derived.
+- **`<game> player`** — "player" alone is a market participant and a browser
+  element, so it counts only behind a named game or sport. English writes two
+  words (`poker player`), Swedish writes a **compound** (`pokerspelaren`), and
+  the two are built separately for that reason.
+- **A handle, and the phrases that introduce one** — `@allinbritney` carries no
+  role noun at all, and a person known by a handle rather than a legal name is
+  otherwise unreachable. A leading boundary keeps email addresses out (a letter
+  precedes their `@`) and a negative lookahead keeps package scopes out
+  (`@cloudflare/workers-types`). `goes by`, `streams as`, `kallar sig` and
+  `går under namnet` are admitted; a bare `known as` is **not**, because "a
+  technique known as beam search" is not a person.
+
+Four words are deliberately **kept out**, each for a collision this codebase
+actually has: `model` (a language model), `host` (a hostname), `star`
+(astronomy), and bare `player`. Two more — `artist` and `atlet` — are admitted
+only in their Swedish *definite* forms, because the indefinite list is matched
+with the `L` suffix wildcard and `artist` + `L` would swallow "den här
+artistiska stilen".
+
+The one entry here that was a pure invariant-6 break rather than a missing role
+is **`damen`**: `lady` had been in the English list from the start, so "the lady
+called Britney" fired and "damen som kallas Britney" did not.
 
 Both halves take Swedish with the same breadth as English (invariant 6):
 definite forms (`grundaren`, `profilen`, `VD:n`), indefinite forms behind a
@@ -123,6 +165,17 @@ collection starting on the wrong person.
 Six rungs, strongest first. The rule that makes it a ladder rather than a list:
 **only rungs 1-3, which are independent of the subject, can raise a claim to
 verified. Rungs 4-6 establish what was said, not what is true.**
+
+**Where the ladder does not apply.** The rungs below describe a corporate or
+academic footprint. A creator, performer or competitor usually has none — no
+company number, no patent, no DOI — and a method that does not say so sends a
+poker player's research to Bolagsverket and then reads the silence as
+significant. So the block carries one exception beside the ladder rule: for a
+media subject, empty rungs 1-3 are **expected and are not a finding**, and the
+independent record is instead the organiser's own result data, the platform's
+verifiable account metadata, and originated reporting in that field. The
+collision census matters more for these subjects, not less, because a mononym
+or a handle is the highest-collision identifier there is.
 
 ### Rung 1 — statutory registries and regulatory filings
 
@@ -432,10 +485,18 @@ verify anything.
 ## 12. Tests
 
 `public/js/person-research-core.test.js` — the gate on the verbatim reported
-message, the shape/referent conjunction, the topic questions that must stay
-silent, the "Swedish language parity" suite of matched EN/SV pairs (the
-enforcement pattern from `src/googlemaps.test.js`), and content assertions for
-the ladder rule, every hard prohibition and the `USING THIS BLOCK` tail.
+messages of feedback #60 and #62, the shape/referent conjunction, the topic
+questions that must stay silent, the "Swedish language parity" suite of matched
+EN/SV pairs (the enforcement pattern from `src/googlemaps.test.js`), and content
+assertions for the ladder rule, the media-subject exception, every hard
+prohibition and the `USING THIS BLOCK` tail.
+
+Each deliberate exclusion is pinned as a negative rather than left to a comment:
+`model`, `host` and `star` must not be read as people, `the market players` and
+`the media player` must not fire while `this poker player` must, an email
+address and a package scope must not be read as handles, and `a technique known
+as beam search` must not be read as a self-naming phrase. Those are the
+assertions that will fail if a future widening of the role list overreaches.
 
 `src/person-research.test.js` — the enrichment contract: silent and the
 conversation unchanged when the gate misses, block appended plus a visible step
