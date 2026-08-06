@@ -32,7 +32,8 @@
 // research" would spend a model call and a slice of the budget on advice that
 // does not change between requests, and would be one more thing to fail soft
 // around (invariant 2). The cost is real but bounded and paid only on person
-// turns: the block is deliberately held near 700 words, and the long form —
+// turns: the block is capped at 900 words by its own test and currently sits at
+// 874, so the next thing added to it has to displace something. The long form —
 // the nine-phase protocol, each rung's traps, the legal grounding — lives in
 // docs/PERSON-RESEARCH.md where it costs nothing per turn.
 //
@@ -93,7 +94,9 @@ const RESEARCH_SHAPE_EN = re(
     "due dilig" + L,
     "profile (?:of|on)",
     "find out (?:about|more about)",
-    "find (?:anything|everything|whatever|info" + "rmation?) (?:about|on)",
+    // "find what you can about" is the inversion of the "what can you find on"
+    // arm at the top of this list, and had no entry of its own.
+    "find (?:anything|everything|whatever|info" + "rmation?|what (?:you|u) can) (?:about|on)",
     "investigat" + L,
     "review(?:ed|ing)?", // the parity partner of "granska"
     "map(?:ping)? out",  // …and of "kartlägga"
@@ -134,7 +137,8 @@ const RESEARCH_SHAPE_SV = re(
     // "find everything about this founder" and stays silent for the Swedish a
     // user actually types. Caught by running matched EN/SV pairs through the
     // gate rather than by reading the two lists side by side.
-    "hitta(?:r|de)? (?:allt|all info" + L + "|n[åa]got|vad som helst)(?: (?:om|p[åa]|kring))?",
+    "hitta(?:r|de)? (?:allt|all info" + L + "|n[åa]got|vad som helst|vad du kan)" +
+      "(?: (?:om|p[åa]|kring))?",
     "s[öo]k(?:er|te)? (?:upp|reda p[åa]|fram)",
   ].join("|"),
 );
@@ -149,6 +153,42 @@ const EN_ROLE =
   "founder|co-?founder|cofounder|ceo|cto|coo|cfo|exec(?:utive)?|" +
   "candidate|applicant|author|writer|journalist|researcher|scientist|academic|" +
   "investor|angel|entrepreneur|director|manager|owner|employee|hire|profile";
+
+/** The same thing for people whose public record is a MEDIA one rather than a
+ * corporate or academic one: creators, performers, competitors.
+ *
+ * Their absence was feedback #62's second half. The list above was drawn from
+ * the founder/candidate/researcher cases the enrichment was built for, so
+ * "research the streamer called Britney" named nobody the gate could see and
+ * the METHOD BLOCK never attached — meaning its GUARDRAILS never attached
+ * either. That is the wrong way round: a streamer, a poker player or an
+ * influencer is far MORE often a private individual with a public handle than
+ * a chief executive is, so the group that most needs the professional-record-
+ * only bound was the one group that never got it.
+ *
+ * Kept OUT deliberately, each for a collision this codebase actually has:
+ * "model" (a language model), "host" (a hostname), "star" (astronomy), and
+ * bare "player" — a market has players and a browser has a media player, so it
+ * is admitted through EN_PLAYER below instead, behind the game being played. */
+const EN_ROLE_PUBLIC =
+  "streamer|youtuber|influencer|(?:content )?creator|podcaster|blogger|vlogger|" +
+  "tiktoker|gamer|artist|musician|singer|rapper|dj|actor|actress|comedian|dancer|" +
+  "athlete|coach|presenter|broadcaster|commentator|celebrity|public figure|champion";
+
+/** The games and sports whose "<game> player" is a person. Written out rather
+ * than taken as "<any word> player" because that is precisely what would
+ * readmit "the market player" and "the media player". The Swedish counterpart
+ * is a COMPOUND ("pokerspelaren"), so it is built separately below — the same
+ * two-words-vs-one-word split that has caught this repo's bilingual gates
+ * before. */
+const GAME =
+  "poker|chess|go|bridge|backgammon|darts|snooker|pool|billiards|e-?sports|" +
+  "tennis|golf|football|soccer|basketball|baseball|hockey|cricket|rugby|" +
+  "volleyball|handball|badminton|padel|squash";
+const EN_PLAYER = "(?:" + GAME + ") player";
+const SV_PLAYER_STEM =
+  "(?:poker|schack|bridge|dart|biljard|e-?sport|tennis|golf|fotbolls?|basket|" +
+  "innebandy|is-?hockey|hockey|handbolls?|badminton|padel|squash)spelar";
 
 /** Things a person HAS. These need a possessive or a demonstrative, never a
  * bare "the": "his background" is a person, "the background of the project" is
@@ -167,22 +207,58 @@ const SV_ROLE_DEF =
   "f[öo]rfattaren|forskaren|journalisten|investeraren|entrepren[öo]ren|" +
   "chefen|[äa]garen|anst[äa]llde|" +
   "profilen|linkedin-?profilen|cv:?t|meritf[öo]rteckning" + L + "|" +
-  "killen|tjejen|mannen|kvinnan|" +
+  // "damen" is the parity partner of "lady", and its absence is the one half of
+  // feedback #62 that was a pure invariant-6 break rather than a missing role:
+  // "the lady called Britney" fired, "damen som kallas Britney" did not.
+  "killen|tjejen|mannen|kvinnan|damen|damerna|" +
+  // The media/creator roles, definite. Swedish takes these as loanwords with
+  // native endings ("streamern", "youtubaren"), so both are spelled out.
+  "streamern|streamaren|youtubern|youtubaren|influencern|" +
+  "poddaren|podcastaren|bloggaren|vloggaren|tiktokaren|" +
+  "artisten|musikern|s[åa]ngaren|s[åa]ngerskan|rapparen|" +
+  "sk[åa]despelaren|sk[åa]despelerskan|komikern|dansaren|" +
+  "idrottaren|atleten|tr[äa]naren|programledaren|k[äa]ndisen|" +
+  "kreat[öo]ren|inneh[åa]llsskaparen|m[äa]staren|" +
+  SV_PLAYER_STEM + "(?:en|na)|" +
   "honom|henne|hens";
 
 /** Swedish roles in the INDEFINITE form, which need a demonstrative or a
- * possessive to be about somebody in particular. */
+ * possessive to be about somebody in particular.
+ *
+ * These are matched with the `L` suffix wildcard, so a stem that is also the
+ * stem of a common ADJECTIVE readmits what the demonstrative was supposed to
+ * exclude: "artist" + L matches "den här artistiska stilen" and "atlet" + L
+ * matches "den här atletiska typen". Both are therefore admitted only in their
+ * definite forms above ("artisten", "atleten"), where no wildcard follows. */
 const SV_ROLE_INDEF =
   "person|grundare|medgrundare|kandidat|s[öo]kande|f[öo]rfattare|forskare|" +
   "journalist|investerare|entrepren[öo]r|chef|[äa]gare|profil|kille|tjej|" +
-  "man|kvinna|bakgrund";
+  "man|kvinna|bakgrund|" +
+  "streamer|youtubare|influencer|poddare|podcastare|bloggare|vloggare|" +
+  "tiktokare|musiker|s[åa]ngare|rappare|sk[åa]despelare|komiker|dansare|" +
+  "idrottare|tr[äa]nare|programledare|k[äa]ndis|kreat[öo]r|inneh[åa]llsskapare|" +
+  SV_PLAYER_STEM + "e";
 
 const PERSON_REFERENT = re(
   [
     // A determiner or possessive plus a role noun (English)…
-    "(?:this|that|these|those|the|his|her|their|whose|our|your)\\s+(?:" + EN_ROLE + ")s?",
+    "(?:this|that|these|those|the|his|her|their|whose|our|your)\\s+(?:" +
+      EN_ROLE + "|" + EN_ROLE_PUBLIC + "|" + EN_PLAYER + ")s?",
     // …and a possessive or demonstrative plus an attribute.
     "(?:this|that|his|her|their|whose)\\s+(?:" + EN_ATTRIBUTE + ")",
+    // A social handle. Somebody known by a handle rather than a legal name is
+    // the case the role lists cannot reach at all — the reported message named
+    // its subject only as "@allinbritney" — and a handle is a person far more
+    // often than it is anything else. The leading boundary re() applies keeps
+    // an email address out (a letter precedes its "@"), and the (?!/) keeps a
+    // package scope out ("@cloudflare/workers-types").
+    "@[\\p{L}\\p{N}_.]{3,}(?!/)",
+    // …and how such a person gets named in prose, in both languages. A quoted
+    // nickname alone is NOT admitted: "a technique known as X" is not a person,
+    // so what counts is a phrase that only a person can be the subject of.
+    "goes by|known online as|streams as|posts as|plays as|" +
+      "nick ?names?|screen ?names?|whose (?:handle|username|nick) is",
+    "kallar sig|g[åa]r under namnet|smeknamn" + L + "|k[äa]nd online som|streamar som",
     // The platform where a professional profile lives, in any spelling. On a
     // screenshot turn this is what the image transcription puts into the text.
     "linked-? ?in(?:-?profil" + L + ")?",
@@ -286,6 +362,11 @@ const LINES = [
   "6. The profile itself.",
   "LADDER RULE: only rungs 1-3, which are independent of the subject, can raise a claim to VERIFIED. " +
     "Rungs 4-6 establish what was said, not what is true.",
+  "MEDIA AND CREATOR SUBJECTS: where the public role is a creator, performer or competitor rather " +
+    "than a corporate or academic one, rungs 1-3 are usually EMPTY — that is expected, and it is not " +
+    "a finding. The independent record is instead the organiser's own result data, the platform's " +
+    "verifiable account metadata, and originated reporting in that field. A mononym or a handle is " +
+    "the highest-collision identifier there is, so the collision census matters more here, not less.",
   "",
   "VERIFY. Two independent sources for any contested or high-consequence claim, and independence is " +
     "about ORIGIN, not URL count: five outlets running one press release are one source, and LinkedIn " +
@@ -308,7 +389,8 @@ const LINES = [
     "activity or the de-anonymisation of a pseudonymous account; no face matching or reverse image " +
     "search on a likeness; no attempt to reach non-public systems or paywalled records; no contact " +
     "with the subject or their colleagues under any pretext. Two positive obligations: the subject " +
-    "may be a PRIVATE individual — a founder is not automatically a public figure, so scrutiny scales " +
+    "may be a PRIVATE individual — a founder is not automatically a public figure, and neither is " +
+    "someone with an audience, so scrutiny scales " +
     "to their actual public role — and adverse or ambiguous findings need the subject's comment " +
     "before anyone acts on them. Report roles, dates and documents; never infer character, competence " +
     "or motive, and never read a gap in the record as a red flag.",

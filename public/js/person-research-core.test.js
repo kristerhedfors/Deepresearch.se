@@ -64,6 +64,96 @@ describe("the gate fires on what users actually sent (feedback #60)", () => {
   });
 });
 
+// ---- the creator/performer half (feedback #62) ------------------------------
+
+describe("the gate fires on public roles that are not corporate (feedback #62)", () => {
+  // chat_logs #1668's sibling report: "Research the lady called Britney in
+  // poker cash games on youtube". That one message DID fire — via "lady" — but
+  // the report it prompted named the real hole: the role list was drawn from
+  // founders, candidates and researchers, so a streamer, an influencer or a
+  // poker player named nobody the gate could see. The block never attached, so
+  // its GUARDRAILS never attached either — to the group most likely to be a
+  // private individual with a public handle.
+  test("the verbatim reported message", () => {
+    assert.equal(
+      personResearchIntent("Research the lady called Britney in poker cash games on youtube"),
+      true,
+    );
+  });
+
+  test("the creator and performer roles the list was missing", () => {
+    for (const q of [
+      "research the streamer called Britney",
+      "write a report on this youtuber",
+      "research this influencer",
+      "what can you find on this content creator",
+      "look up this podcaster",
+      "background on the artist",
+      "who is this athlete?",
+      "tell me about this gamer",
+      "due diligence on this celebrity",
+      "profile of the comedian",
+      "what do you know about this musician",
+      "look up the actor in that clip",
+    ]) {
+      assert.equal(personResearchIntent(q), true, q);
+    }
+  });
+
+  test("a game or sport qualifies 'player'; nothing else does", () => {
+    // The reported subject is a poker player, but "player" bare is a market
+    // participant and a media element. Only the named games count.
+    for (const q of [
+      "find what you can about this poker player",
+      "research the chess player",
+      "background on this tennis player",
+    ]) {
+      assert.equal(personResearchIntent(q), true, q);
+    }
+    for (const q of [
+      "research the market players in this space",
+      "research the players in the smartphone market",
+      "research the media player in the browser",
+    ]) {
+      assert.equal(personResearchIntent(q), false, q);
+      assert.equal(personReferent(q), false, q);
+    }
+  });
+
+  test("a handle names a person the role lists cannot reach", () => {
+    // The report's own example: Google's first hit for the subject was an
+    // Instagram handle, and "@allinbritney" contains no role noun at all.
+    assert.equal(personResearchIntent("research @allinbritney"), true);
+    assert.equal(personReferent("@allinbritney"), true);
+    // An email address is not a handle — a letter precedes its "@" …
+    assert.equal(personReferent("email krister.hedfors@gmail.com the report"), false);
+    // … and neither is a package scope.
+    assert.equal(personReferent("research @cloudflare/workers-types"), false);
+    // Too short to be a handle.
+    assert.equal(personReferent("@ab"), false);
+  });
+
+  test("self-naming phrases, but not a bare 'known as'", () => {
+    assert.equal(personResearchIntent("research the person who goes by Britney"), true);
+    assert.equal(personResearchIntent("undersök personen som kallar sig Britney"), true);
+    // "known as" alone attaches to anything; only a phrase a person can be the
+    // subject of counts.
+    assert.equal(personReferent("a technique known as beam search"), false);
+    assert.equal(personReferent("an algorithm known as PageRank"), false);
+  });
+
+  test("the roles kept OUT, each for a collision this codebase has", () => {
+    for (const q of [
+      "what can you find about this model", // a language model
+      "research the host header handling", // a hostname
+      "what can you find about the star in this system", // astronomy
+    ]) {
+      assert.equal(personResearchIntent(q), false, q);
+      assert.equal(personReferent(q), false, q);
+    }
+  });
+});
+
 // ---- what must NOT fire -----------------------------------------------------
 
 describe("a topic, a company or a product does not fire the gate", () => {
@@ -149,6 +239,26 @@ describe("Swedish language parity — every gate takes Swedish forms", () => {
     ["find everything about this founder", "hitta allt om den här grundaren"],
     ["find information about this person", "hitta all information om den här personen"],
     ["find anything about the candidate", "hitta något om kandidaten"],
+    // Feedback #62. "damen" is the one entry here that was a PURE parity break
+    // rather than a missing role: "lady" was in the English list from the
+    // start, so this exact pair fired in English and was silent in Swedish.
+    ["research the lady called Britney", "undersök damen som kallas Britney"],
+    // The creator/performer roles, added to both arms in the same change. The
+    // Swedish half is where the work is: these are loanwords carrying native
+    // endings ("streamern", "youtubaren"), and "player" is TWO words in English
+    // and a COMPOUND in Swedish ("pokerspelaren"), which is the shape that has
+    // left this repo's bilingual gates half-dead before.
+    ["research the streamer", "undersök streamern"],
+    ["what can you find on this influencer", "vad kan du hitta om den här influencern"],
+    ["look up the poker player", "kolla upp pokerspelaren"],
+    ["review the youtuber", "granska youtubaren"],
+    ["find out about the artist", "ta reda på mer om artisten"],
+    ["who is the celebrity?", "vem är kändisen?"],
+    ["find what you can about this podcaster", "hitta vad du kan om den här poddaren"],
+    ["background on the actor", "bakgrund om skådespelaren"],
+    ["report on this content creator", "rapport om den här kreatören"],
+    ["dig up what you can on the football player", "gräv fram vad du kan om fotbollsspelaren"],
+    ["research the person who goes by that name", "undersök personen som kallar sig det namnet"],
   ];
 
   for (const [en, sv] of PAIRS) {
@@ -186,6 +296,10 @@ describe("Swedish language parity — every gate takes Swedish forms", () => {
       "vem ar hon?",
       "undersok forfattaren",
       "granska den har profilen",
+      // The creator roles reached from the same keyboard.
+      "undersok streamern",
+      "kolla upp pokerspelaren",
+      "vem ar kandisen?",
     ]) {
       assert.equal(personResearchIntent(q), true, q);
     }
@@ -277,6 +391,26 @@ describe("the methodology block", () => {
       assert.ok(i > at, `${rung} is out of ladder order`);
       at = i;
     }
+  });
+
+  test("the ladder tells a media subject that empty rungs 1-3 are not a finding", () => {
+    // The other half of feedback #62. Once the gate reaches streamers and
+    // poker players, the ladder they meet is registries, patents and journals
+    // — all of which are empty for them. Without this note the method sends a
+    // creator's research to Bolagsverket and reads the silence as significant,
+    // which is the complaint that opened the report ("clearly a poker player
+    // profile should not be searched for in peer-review research").
+    assert.match(block, /MEDIA AND CREATOR SUBJECTS/);
+    assert.match(block, /rungs 1-3 are usually EMPTY — that is expected, and it is not a finding/);
+    assert.match(block, /organiser's own result data/);
+    assert.match(block, /mononym or a handle is the highest-collision identifier/);
+    // It sits with the ladder it qualifies, after the rule it is an exception to.
+    assert.ok(block.indexOf("LADDER RULE") < block.indexOf("MEDIA AND CREATOR SUBJECTS"));
+    assert.ok(block.indexOf("MEDIA AND CREATOR SUBJECTS") < block.indexOf("VERIFY."));
+  });
+
+  test("the public-figure guardrail covers an audience, not just a title", () => {
+    assert.match(block, /a founder is not automatically a public figure, and neither is someone with an audience/);
   });
 
   test("the LADDER RULE states which rungs can verify", () => {
