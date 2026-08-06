@@ -17,8 +17,10 @@ import {
   buildSdkContextBlock,
   buildSecureSourceDigest,
   buildTargetFor,
+  findUnterminatedFileBlock,
   makeFileLineScanner,
   manifestFromSnapshot,
+  mergeContinuation,
   parseFileBlocks,
   runSdkTool,
   stripFileBlocks,
@@ -131,6 +133,66 @@ test("stripFileBlocks: removes the blocks, keeps the prose around them", () => {
   assert.equal(stripFileBlocks("  plain reply\nwith lines  "), "plain reply\nwith lines");
   assert.equal(stripFileBlocks(""), "");
   assert.equal(stripFileBlocks(/** @type {any} */ (null)), "");
+});
+
+// ---- the truncated build (feedback #30, chat_logs #650) ---------------------
+// The draft stopped at the output ceiling mid-attribute, so no fence ever
+// closed. parseFileBlocks saw zero files and the raw half-written index.html
+// was shown to the user as prose, with no app and no link.
+
+const truncated =
+  "Here's the stripped-down client.\n\nFILE: index.html\n```html\n<!doctype html>\n" +
+  '<div class="brand-sub">client-side · calls go';
+
+test("findUnterminatedFileBlock: catches the file the model was still writing", () => {
+  const cut = findUnterminatedFileBlock(truncated);
+  assert.equal(cut.path, "index.html");
+  assert.ok(cut.content.startsWith("<!doctype html>"));
+  assert.equal(truncated.slice(cut.at + 1).startsWith("FILE: index.html"), true);
+  // A well-formed draft has nothing open — every block terminated.
+  assert.equal(
+    findUnterminatedFileBlock("FILE: index.html\n```html\n<h1>Hi</h1>\n```\n\nDone!"),
+    null,
+  );
+  // Complete files followed by a truncated one: only the last is open.
+  const mixed = "FILE: a.html\n```html\n<h1>A</h1>\n```\n\nFILE: b.css\n```css\nbody { colo";
+  assert.equal(findUnterminatedFileBlock(mixed).path, "b.css");
+  assert.equal(findUnterminatedFileBlock("no files here"), null);
+  assert.equal(findUnterminatedFileBlock(""), null);
+  assert.equal(findUnterminatedFileBlock(/** @type {any} */ (null)), null);
+});
+
+test("stripFileBlocks: a truncated trailing block never reaches the user", () => {
+  const prose = stripFileBlocks(truncated);
+  assert.equal(prose, "Here's the stripped-down client.");
+  assert.ok(!prose.includes("doctype"));
+  assert.ok(!prose.includes("brand-sub"));
+  assert.ok(!prose.includes("FILE:"));
+});
+
+test("mergeContinuation: splices the remainder into one parseable draft", () => {
+  const merged = mergeContinuation(truncated, ' to the provider</div>\n```\n\nThat\'s the whole app.');
+  const files = parseFileBlocks(merged);
+  assert.equal(files.length, 1);
+  assert.equal(files[0].path, "index.html");
+  assert.ok(files[0].content.endsWith("to the provider</div>"));
+  assert.equal(findUnterminatedFileBlock(merged), null);
+  assert.equal(stripFileBlocks(merged), "Here's the stripped-down client.\n\nThat's the whole app.");
+});
+
+test("mergeContinuation: survives the two ways a model resumes badly", () => {
+  // It re-opens a fence before continuing — the opener must not land in the file.
+  const refenced = mergeContinuation(truncated, "```html\n to the provider</div>\n```");
+  assert.ok(!parseFileBlocks(refenced)[0].content.includes("```"));
+  // It restarts the whole file — its version replaces the truncated opening.
+  const restarted = mergeContinuation(truncated, "FILE: index.html\n```html\n<!doctype html>\n<p>v2</p>\n```");
+  const files = parseFileBlocks(restarted);
+  assert.equal(files.length, 1);
+  assert.equal(files[0].content, "<!doctype html>\n<p>v2</p>");
+  assert.ok(!files[0].content.includes("brand-sub"));
+  // Nothing usable back, or nothing open to continue: the draft is untouched.
+  assert.equal(mergeContinuation(truncated, "   "), truncated);
+  assert.equal(mergeContinuation("plain reply", "more"), "plain reply");
 });
 
 test("makeFileLineScanner: reports each FILE line once, only when its line is complete", () => {

@@ -335,21 +335,82 @@ export function parseFileBlocks(text) {
   return [...out].map(([path, content]) => ({ path, content }));
 }
 
+// The SAME opening, with no closing fence: a draft that hit the token ceiling
+// mid-file (feedback #30, chat_logs #650 — the completion stopped at exactly
+// 32768 output tokens, in the middle of an attribute). FILE_BLOCK_RE needs the
+// closing fence, so a truncated build parsed as ZERO files and the whole raw
+// index.html was shown as if it were prose. Anchored at the end of the text so
+// it can only ever match the trailing, still-open block.
+const OPEN_FILE_BLOCK_RE = /(?:^|\n)FILE:[ \t]*([^\n]+)\n+```[^\n]*\n([\s\S]*)$/;
+
+/**
+ * Find the trailing FILE block whose fenced body was never closed — i.e. the
+ * file the model was still writing when its output was cut off. Returns null
+ * for a well-formed draft (every block terminated) and for plain prose.
+ * @param {string} text
+ * @returns {{ path: string, content: string, at: number } | null} `at` is the
+ *   offset where the unterminated block starts (its `FILE:` line).
+ */
+export function findUnterminatedFileBlock(text) {
+  if (typeof text !== "string" || !text) return null;
+  // Everything up to the end of the LAST complete block is already accounted
+  // for; only the remainder can hold an unterminated one.
+  FILE_BLOCK_RE.lastIndex = 0;
+  let end = 0;
+  while (FILE_BLOCK_RE.exec(text)) end = FILE_BLOCK_RE.lastIndex;
+  const rest = text.slice(end);
+  const m = OPEN_FILE_BLOCK_RE.exec(rest);
+  if (!m) return null;
+  const path = sanitizeBuildPath(m[1]);
+  if (!path) return null;
+  return { path, content: m[2], at: end + m.index };
+}
+
 /**
  * Strip the FILE blocks out of a build draft, leaving only the prose the user
  * should read. The deterministic path publishes the files and shows this
  * remainder — never the raw file contents (feedback #13: a whole index.html
- * scrolled through the chat instead of a build).
+ * scrolled through the chat instead of a build). A truncated trailing block
+ * goes too (feedback #30) — half a file is still a file, and showing it is the
+ * same broken promise.
  * @param {string} text
  * @returns {string}
  */
 export function stripFileBlocks(text) {
   if (typeof text !== "string" || !text) return "";
+  const open = findUnterminatedFileBlock(text);
+  const body = open ? text.slice(0, open.at) : text;
   FILE_BLOCK_RE.lastIndex = 0;
-  return text
+  return body
     .replace(FILE_BLOCK_RE, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+/**
+ * Splice a continuation completion onto a truncated build draft, so the two
+ * together parse as one well-formed set of FILE blocks.
+ *
+ * The continuation is asked for the REMAINDER of the cut-off file, but models
+ * routinely re-open a fence first ("```html") or lead with a line of prose;
+ * both would land inside the file's content. So a leading fence-opener is
+ * dropped, and if the continuation restarts the whole file with its own
+ * `FILE:` line the original truncated opening is discarded in its favour.
+ * @param {string} draft The truncated draft.
+ * @param {string} continuation The follow-up completion's text.
+ * @returns {string} The merged draft (the original unchanged when there is
+ *   nothing usable to splice on).
+ */
+export function mergeContinuation(draft, continuation) {
+  const base = typeof draft === "string" ? draft : "";
+  let cont = typeof continuation === "string" ? continuation : "";
+  if (!cont.trim()) return base;
+  const open = findUnterminatedFileBlock(base);
+  if (!open) return base;
+  // The model started the file over — take its version whole.
+  if (/(?:^|\n)FILE:[ \t]*\S/.test(cont)) return `${base.slice(0, open.at)}\n${cont.replace(/^\n+/, "")}`;
+  cont = cont.replace(/^[ \t]*```[^\n]*\n/, ""); // a re-opened fence
+  return base + cont;
 }
 
 // A `FILE: <path>` marker line on its own (the block regex needs the whole
