@@ -285,7 +285,7 @@ Facts from `src/pipeline.js`, `src/budget.js`, `src/sources.js`, `src/prompts.js
 | Contradiction detection | suggestive | **shallow** — `gap.conflicts` strings, no cross-source claim alignment |
 | Retraction / preprint flags | measured gap in every competitor | **absent** |
 | Every collected source reaching synthesis (no arrival-order starvation) | local defect, feedback #61 | **present** since 2026-08-05 — the digest budget is shared per source and both source caps widen together |
-| Absence claims checked against the retrieved list, and against what was searched | local defect, feedback #61 | **present** since 2026-08-05 — `searchLedgerSection` + `synthPrompt`'s absence clause |
+| Absence claims checked against the retrieved list, and against what was searched | local defect, feedback #61 | **present** since 2026-08-05 — `searchLedgerSection` (over the queries actually issued, after a first cut that listed the planned ones) + `synthPrompt`'s absence clause |
 | Evidence grading from metadata | speculative | **absent** |
 
 ### The disabled-features question
@@ -335,6 +335,14 @@ move together, and the budget is shared per source rather than raced for
 wherever a budget is filled first-come, widening one cap and not its partner
 degrades silently, in the one direction nothing measures.
 
+That fix then had to be bounded. Pairing the caps left the reserve free to grow
+without limit — four aux sources reserving eight slots each take a 24,000-char
+digest to 65,600 — and a synthesis context overflow is not failover-eligible,
+so the overrun does not cost a few tail sources, it costs the whole answer.
+`DIGEST_CAP_CEILING` (36,000) is where it stops. The pattern repeats the one
+above with the sign flipped: a cap raised in the safe direction and a cap raised
+in the fatal one look identical in the code.
+
 **The third, fixed the same day: absence written as a property of the world.**
 The same report marked eleven claims `self-reported only` or `unverifiable` and
 stated that no independent press coverage, no university page and no
@@ -348,6 +356,22 @@ de-noised bench found extra pre-synthesis material net-negative (2.65 → 2.43,
 by context dilution) and the ground-truth battery puts the loss at 14:1
 synthesis-over-retrieval, so the fix costs no search, no model call and no new
 source.
+
+The ledger's own first cut then committed the error it was built to stop. It
+read `state.ranQueries` — the angles the planner writes before a wave picks its
+legs — and told the model "this is the whole search, not a sample". With the web
+knob off, or an aux source leading and standing the web leg down, those angles
+were never issued, so the block asked the answer to report which of them came
+back empty when nothing had been asked. It also cut silently at 24 while the
+planner allows 34 searches. Corrected the same day: a separate
+`state.issuedQueries` recorded at the two real dispatch points, a cap of 40, and
+"showing N of M issued" in place of the exhaustiveness claim
+(`docs/ARCHITECTURE.md` §4.3e). The general rule is worth keeping: **a prompt
+block that asserts a property of the evidence has to be able to satisfy the
+assertion** — the same claim in an answer is what feedback #61 reported.
+**Se/cure** had it right and **Se/rver** did not; the client-side ledger is
+built from completed harvest entries, so the correct implementation was already
+in the repo, in the other tier.
 
 **Not a defect: `verifyClaim` returning `supported` when the check fails**
 (`src/pipeline.js:2028`). The comment states the intent — a failed check must
@@ -410,9 +434,10 @@ Ordered by measured evidence ÷ cost, respecting §6.
    together consumed the whole window. So the budget is now shared — a max-min
    fair share per source, with an over-share block's excerpt clipped instead of
    the source disappearing — and the aux capacity reserve widens `digestCap`
-   alongside `maxSources`. The ground-truth battery independently read 14
-   synthesis misses to 1 retrieval miss on FRAMES the same day the first half
-   landed, which is the same finding from the other end.
+   alongside `maxSources`, up to `DIGEST_CAP_CEILING` (36,000 chars) — the
+   other bound this item now has to be argued inside. The ground-truth battery
+   independently read 14 synthesis misses to 1 retrieval miss on FRAMES the same
+   day the first half landed, which is the same finding from the other end.
 7. **RCS as a replacement digest, behind an A/B.** measured, largest single
    lever, but contradicts a local bench — so it ships as an experiment with a
    pre-registered metric, not as a default.

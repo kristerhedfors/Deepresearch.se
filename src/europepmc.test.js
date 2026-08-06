@@ -134,6 +134,39 @@ test("europepmcIntent", async (t) => {
     ]) assert.equal(europepmcIntent(s), false, s);
   });
 
+  // The over-correction that followed the fix above. Neutralising the frame
+  // ran BEFORE the research-word test, so when "research" was the message's
+  // only research word the pairing had nothing left to pair with and a plainly
+  // biomedical question routed to no source at all. The frame is only allowed
+  // to devalue the VERB; the subject still decides.
+  await t.test("the imperative frame vetoes the verb, not the message", () => {
+    for (const s of [
+      "Research this drug's side effects",
+      "Research this disease's known treatments",
+      "Research this patient cohort's outcomes",
+      "Research my mother's diagnosis",
+      "Research his cancer prognosis",
+      "Investigate these adverse events",
+      // Swedish at the same breadth — the native imperatives, whose verbs are
+      // not RESEARCH_WORD members at all, so the subject is the whole case.
+      "Undersök den här sjukdomen",
+      "Granska dessa symtom",
+      "Undersök den här medicinens biverkningar",
+    ]) assert.equal(europepmcIntent(s), true, s);
+    // The control that proves the verb/noun line is still drawn where feedback
+    // #61 put it: the same subject behind the NOUN was never in doubt.
+    assert.equal(europepmcIntent("The research on this drug's side effects"), true);
+    // …and the veto still lands wherever the subject is not biomedical.
+    for (const s of [
+      "Research this founder",
+      "Undersök den här grundaren",
+      "Granska den här personen",
+    ]) assert.equal(europepmcIntent(s), false, s);
+    // A subject with no framing at all is still the combination gate — the
+    // imperative branch does not turn the subject tier into a lone trigger.
+    assert.equal(europepmcIntent("what species of tree is this"), false);
+  });
+
   await t.test("the NOUN 'research' still names the published record", () => {
     for (const s of [
       "the latest research on vitamin D",
@@ -189,6 +222,91 @@ test("europepmcIntent", async (t) => {
       "artiklar om hjärnskador efter smällar",
       "en patient med migrän — vad säger forskningen",
       "forskning om hälsosam kost",
+    ]) assert.equal(europepmcIntent(s), true, s);
+  });
+
+  // Invariant 6, enforced as PAIRS rather than as two lists. Moving the
+  // ambiguous words into the collocation tier covered English well and Swedish
+  // poorly — the Swedish arms assumed users write compounds (hälsoeffekt,
+  // hjärtsjukdom) while they actually write the separated form (hälsa och …,
+  // hjärtat och …). Seven matched pairs fired in English and were silent in
+  // Swedish, and none of the English-only tests could see it: a missing
+  // counterpart is invisible in a list and impossible to miss in a pair. Every
+  // case below therefore walks BOTH languages through the gate against one
+  // shared verdict, and adding an English case here forces its Swedish twin.
+  await t.test("matched EN/SV pairs get the same verdict", () => {
+    /** @param {[string, string]} pair @param {boolean} expected */
+    const pair = ([en, sv], expected) => {
+      assert.equal(europepmcIntent(en), expected, `EN: ${en}`);
+      assert.equal(europepmcIntent(sv), expected, `SV: ${sv}`);
+    };
+
+    /** @type {Array<[string, string]>} */
+    const fires = [
+      ["Studies on health outcomes of shift work", "Studier om hälsa och skiftarbete"],
+      ["Studies on heart health and exercise", "Studier om hjärtat och träning"],
+      ["Papers on brain function during sleep", "Artiklar om hjärnan under sömn"],
+      ["Research on muscle mass in older adults", "Forskning om muskler hos äldre"],
+      ["Papers on virus transmission in schools", "Artiklar om virus i skolor"],
+      ["Research on dosing of melatonin", "Forskning om dos av melatonin"],
+      ["Papers on DNA sequences in ancient bone", "Artiklar om sekvenser i forntida ben"],
+      // "hjärt- och kärlsjukdomar" is THE Swedish term for cardiovascular
+      // disease and matched nothing in either direction before: `sjukdom`
+      // cannot start inside `kärlsjukdomar`, and the hyphen-plus-conjunction
+      // splits the compound the hjärt- collocations expect.
+      ["Studies on cardiovascular disease", "Studier om hjärt- och kärlsjukdomar"],
+      // The imperative frame, both languages, over a biomedical subject.
+      ["Research this drug's side effects", "Undersök den här medicinens biverkningar"],
+    ];
+    for (const p of fires) pair(p, true);
+
+    /** @type {Array<[string, string]>} */
+    const silent = [
+      // The reported false positive the narrowing exists for.
+      ["Research this founder", "Undersök den här grundaren"],
+      [
+        "What does the research say about interest rates? " +
+          "Never infer ethnicity, health, religion or politics.",
+        "Vad säger forskningen om räntor? " +
+          "Aldrig en slutsats om etnicitet, hälsa, religion eller politik.",
+      ],
+      // Each ambiguous word in its ordinary, non-biomedical sense — the reason
+      // the separated Swedish forms need a frame rather than the bare word.
+      [
+        "research on computer viruses in industrial control systems",
+        "forskning om datavirus i industriella styrsystem",
+      ],
+      ["the evidence is at the heart of the argument", "beläggen finns i hjärtat av argumentet"],
+      ["papers on the brains behind the deal", "artiklar om hjärnan bakom affären"],
+      [
+        "our findings show the team has financial muscle",
+        "belägg för att bolaget har ekonomiska muskler",
+      ],
+      [
+        "studies of a sequence of events on the assembly line",
+        "studier av en sekvens av händelser vid löpande bandet",
+      ],
+      // `hälsa` is also the verb "to greet", which is why its frame excludes
+      // the particle: "gå och hälsa PÅ" is a visit, not a health question.
+      ["studies of how to greet a customer", "vi ska gå och hälsa på farmor efter studien"],
+      ["show me the latest research on interest rates", "visa senaste forskningen om räntor"],
+    ];
+    for (const p of silent) pair(p, false);
+  });
+
+  // The separated Swedish forms in their own right, beyond the reported pairs.
+  await t.test("the Swedish separated forms carry the collocation tier", () => {
+    for (const s of [
+      "forskning om hälsan hos unga",
+      "studier om kost och hälsa",
+      "artiklar om träning och hjärtat",
+      "vad säger forskningen om hjärnan",
+      "studier om muskler och leder",
+      "forskning om sekvenser av dna",
+      "studier om virus hos fladdermöss",
+      "forskning om dosen av D-vitamin",
+      "studier om kärlsjukdomar",
+      "forskning om hjärt-kärlsjukdom",
     ]) assert.equal(europepmcIntent(s), true, s);
   });
 

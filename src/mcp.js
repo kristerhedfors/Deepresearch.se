@@ -1047,6 +1047,10 @@ function newRequestState(model, jsonModel, webSearch, budgetS, plan, denseTotals
     cachedSearchCount: 0,
     iterations: 1,
     ranQueries: new Set(),
+    // Queries actually DISPATCHED, as opposed to ranQueries' planned set. The
+    // two diverge whenever a wave's web leg stands down (knob off, or an aux
+    // source leading), and only this one may be shown to the answer model.
+    issuedQueries: new Set(),
     sources: [],
     byUrl: new Map(),
     totals: { prompt_tokens: 0, completion_tokens: 0 },

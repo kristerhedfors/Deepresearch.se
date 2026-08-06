@@ -583,11 +583,12 @@ JSON-hardening layer) falls back: substantial question →
    the numbered source digest, with `[n]` citations and a "Sources:" list,
    in Markdown. Image parts of the latest user message ride along so
    vision models can research with the image. The input also carries the
-   **search ledger** (`searchLedgerSection`): the angles already run, up
-   to 24. The prompt requires an absence claim ("no source establishes X")
-   to be checked against the numbered list first, and to name the angles
-   that came back empty. How much of the registry the digest actually
-   carried is logged as `chat.digest_coverage` (§4.3d, §11).
+   **search ledger** (`searchLedgerSection`): the queries actually
+   dispatched, up to 40 (§4.3e). The prompt requires an absence claim
+   ("no source establishes X") to be checked against the numbered list
+   first, and to name the angles that came back empty. How much of the
+   registry the digest actually carried is logged as
+   `chat.digest_coverage` (§4.3d, §11).
 5. **Post-validation** (JSON, ≤3000 tokens): fact-checks the draft against
    the same digest. `pass` → done; `revise` → the UI is told to
    **`discard_text`** and the corrected answer is emitted through the same
@@ -708,8 +709,8 @@ The UI slider sends `time_budget_s`; the planner decides how to spend it.
     digest size (14K→18K chars). The two source caps move **together**: when
     an auxiliary source's first result reserves registry slots
     (`absorbAuxResult`), `plan.digestCap` is widened by the same count ×
-    `DIGEST_CHARS_PER_SOURCE` (1300) alongside `plan.maxSources` — see
-    §4.3d.
+    `DIGEST_CHARS_PER_SOURCE` (1300) alongside `plan.maxSources`, up to
+    `DIGEST_CAP_CEILING` (36,000 chars) — see §4.3d.
 - **Complexity scaling**: after triage classifies the question, a `simple`
   verdict caps gap rounds at 1 and the search cap at one wave + one
   follow-up round — only ever scaling *down*; the budget plan stays the
@@ -904,18 +905,28 @@ adding or removing a source still touches no orchestrator file:
   searches are distinct angles, chosen by the source's own `pickQuery` and
   deduped across waves as usual.
 
-**Both gates read the CLEAN, pre-enrichment message** (`ctx.cleanLastUser`),
-never the message enrichments have appended their context blocks to. A block is
-prose this pipeline wrote to itself, and a gate that matches it is answering a
-question nobody asked — costlier for `leadIntent` than for `intent`, because
-leading stands the web leg down for the whole request. Feedback #61
-(`chat_logs` #1656, 2026-08-05) is the worked example: the person-research
-enrichment's ~700-word method block names sources in its own source ladder, a
-lead gate matched one, and "Research this founder" came back led by a corpus
-with nothing to say about the subject. This is the same bug class as the quiz
-gate (`chat_logs` #360) and `externalSourceIntent`, both fixed the same way
-before it — pinned at the call site in `src/pipeline.test.js`, since the gates
-themselves are pure and already covered.
+**Neither gate reads the enriched message.** A context block is prose this
+pipeline wrote to itself, and a gate that matches it is answering a question
+nobody asked — costlier for `leadIntent` than for `intent`, because leading
+stands the web leg down for the whole request. Feedback #61 (`chat_logs` #1656,
+2026-08-05) is the worked example: the person-research enrichment's ~700-word
+method block names sources in its own source ladder, a lead gate matched one,
+and "Research this founder" came back led by a corpus with nothing to say about
+the subject. This is the same bug class as the quiz gate (`chat_logs` #360) and
+`externalSourceIntent`, both fixed the same way before it — pinned at the call
+site in `src/pipeline.test.js`, since the gates themselves are pure and already
+covered.
+
+What they read is `ctx.gateLastUser`: the clean pre-enrichment message **plus
+`state.imageReadText`**, the vision transcription of the user's own attachment.
+The first fix used `ctx.cleanLastUser` alone, which was right for prose the
+pipeline authored and wrong for the transcription — an attachment is the user's
+question, in the one form `textOf` flattens to "[1 image attached]". A
+photographed record page plus "vad handlar den här om?" left the gates with a
+message that had no subject in it at all. The transcription is bounded by
+`image-read.js`'s own `MAX_BLOCK_CHARS`, is held for routing only, and is
+deliberately not on the `state.imageRead` counters object that `chat_logs`
+records (§11).
 
 **Fail-soft, like every helper phase (invariant 2):** a leading source that
 contributes nothing releases the lead — the Exa leg runs for the same batch
@@ -958,7 +969,15 @@ Two changes:
   by `DIGEST_CHARS_PER_SOURCE` (1300) per slot as well. Widening one without
   the other does not add sources to what synthesis reads — it pushes the
   highest-numbered ones out of an unchanged window, which is exactly the ones
-  the later gap rounds were run to find.
+  the later gap rounds were run to find. That reserve was first written with no
+  upper bound, which is the dangerous direction: four aux sources reserving
+  eight slots each take a 24,000-char digest to 65,600, and a synthesis context
+  overflow is **not** failover-eligible (`answer-stream.js`), so the turn
+  returns "the conversation is too long" and no answer at all. `DEFAULT_MODEL`
+  is a 32k-context model and is selectable as an answer model, so the reserve
+  now stops at `DIGEST_CAP_CEILING` (36,000 chars) — 50% above the full tier's
+  24,000, and roughly 9k tokens of digest, which sits inside 32k alongside an
+  8,192-token answer and the rest of the prompt.
 - **The budget is shared rather than raced for.** `buildDigest` computes a
   max-min **fair share** per source (water-filling, binary-searched). Sources
   under the share pay only what they use and leave their slack to the long
@@ -975,6 +994,39 @@ diagnose: the answer was written from roughly 15 sources while the reader was
 shown 35 beneath it, and no log said the two numbers differed. A `shown` below
 `collected` is now the direct signature of an answer that under-claims its own
 coverage.
+
+### 4.3e The search ledger lists what was ISSUED (`src/pipeline-inputs.js`)
+
+`searchLedgerSection` hands synthesis the queries this request actually sent, so
+"no source says this" can be told apart from "we never looked" and an
+uncorroborated claim can name the angles that came back empty (§4.2 phase 4,
+feedback #61).
+
+Its first cut was built from `state.ranQueries` and told the answer model the
+list was "the whole search, not a sample". Both halves were wrong.
+`ranQueries` is written by `takeSearchBatch` when the wave is *planned*, before
+the wave picks its legs, so it also holds angles that were never sent anywhere —
+the web knob was off, or an aux source was leading and stood the web leg down.
+And the list was silently cut at 24 while the planner allows up to 34 searches
+(`budget.js` `searchCeiling`). A block whose whole purpose is to stop an answer
+overstating its evidence was overstating its own; the same claim in an answer is
+the bug feedback #61 reported.
+
+Three corrections, 2026-08-05:
+
+- `state.issuedQueries` is a separate set, recorded at the two points where a
+  query is really dispatched — `runWebLeg` and `absorbAuxResult`. The aux point
+  matters most: on a lead wave the aux leg may be the only thing issued, so
+  without it the ledger would be empty on exactly the requests where knowing
+  what was asked matters.
+- The cap is 40, above the planner's 34-search ceiling, so an ordinary request
+  is never truncated.
+- Truncation says "showing N of M issued" and drops the exhaustiveness claim,
+  rather than being smoothed over.
+
+Se/cure never had this defect: its client-side ledger is built from completed
+harvest entries, so it always listed what ran. This was Se/rver as the broken
+twin of a correct implementation.
 
 ### 4.4 SSE protocol
 
@@ -1535,6 +1587,11 @@ level via `LOG_LEVEL` (default `info`), persisted by Workers Logs
   at `debug` only — `info`+ carries counts, durations, statuses, token
   usage. (Content-level visibility lives in the separate, opt-out-able
   `chat_logs` interaction log, §9 — a deliberate, disclosed exception.)
+  Request state splits along the same line where an enrichment holds text:
+  `state.imageRead` is the shape a vision read produced (`images`, `chars`)
+  and is what gets recorded; `state.imageReadText` is the transcription
+  itself, kept only so the source gates can route on it (§4.3c), and is
+  logged nowhere.
 - Correlation: every response carries `x-request-id`; the same id lands in
   the `chat_logs` row and in the client's `(ref …)` error strings, so a
   user report, the interaction log, and Workers Logs all join on it. See

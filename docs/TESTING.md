@@ -233,15 +233,20 @@ delegate to), `pipeline.js` + `pipeline-inputs.js` (the flow's pure
 pieces — `normalizeTriage`, `collectConflicts`,
 `isTransientConnectStatus`, and the input-block builders/parsers, including
 `searchLedgerSection`: the `Set` the pipeline actually keeps and the array
-form agreeing, junk dropped, the list capped at 24, and the two sentences
-feedback #61 turns on — that the list is the whole search rather than a
-sample, and that an unsearched angle must be reported as unsearched. Three
-guards over `pipeline.js`'s SOURCE read the file rather than importing it,
-because the bug each pins was a call site and not a unit: that both aux gates
-pass `ctx.cleanLastUser` and neither passes `ctx.lastUser`, that the aux
+form agreeing, junk dropped, and the sentences feedback #61 turns on — that an
+unsearched angle must be reported as unsearched, and that the list claims to be
+every angle issued ONLY when it is one. The cap is pinned at 40 and pinned above
+the planner's own 34-search ceiling, so a real request never reaches the partial
+wording; a 55-angle list has to say "showing 40 of 55 issued" and drop the
+exhaustiveness sentence. Guards over `pipeline.js`'s
+SOURCE read the file rather than importing it, because the bug each pins was a
+call site and not a unit: that every aux gate passes `ctx.gateLastUser` and none
+passes `ctx.lastUser`, that `gateLastUser` is composed of the clean message and
+`state.imageReadText`, that the ledger is built from `state.issuedQueries` and
+never from `state.ranQueries` with both dispatch points recording, that the aux
 registry reserve moves `plan.digestCap` and `plan.maxSources` by the same
-widening, and that synthesis logs `chat.digest_coverage` off
-`digestShownCount`),
+widening and clamps it at `DIGEST_CAP_CEILING`, and that synthesis logs
+`chat.digest_coverage` off `digestShownCount`),
 `notes.js` (note normalization + cross-wave merge + the bounded digest),
 `schema.js` (the validator combinators and the coerce-or-return-original
 contract), `assets.js` (the public no-auth allowlist, the caching
@@ -388,7 +393,14 @@ imperative frame is pinned silent in both languages ("Research this founder",
 "Undersök denna grundare") while the NOUN keeps firing; where an ambiguous
 word in passing stays out ("never infer ethnicity, health, religion"); and
 where the same word inside a biomedical collocation still fires ("health
-effects", "psykisk hälsa", "hjärtinfarkt")), and the Deep Science pair added
+effects", "psykisk hälsa", "hjärtinfarkt"). The follow-up to that fix added
+the two suites it needed: the frame vetoing the VERB rather than the message
+("Research this drug's side effects" and "Undersök den här sjukdomen" fire,
+"Research this founder" and "Undersök den här grundaren" do not, and a bare
+subject with no framing is still the combination gate), and a MATCHED-PAIR
+suite that walks each case through both languages against one shared verdict —
+the shape invariant 6 needs, since a missing Swedish counterpart is invisible
+in a list and impossible to miss in a pair), and the Deep Science pair added
 2026-07-31 — `scholar.js` (the peer-reviewed search source: `scholarIntent`
 EN+SV over the peer-reviewed and the "proven" family, minus the commercial
 idiom, with `scholarLeadIntent` strictly narrower — and the two words feedback
@@ -396,7 +408,11 @@ idiom, with `scholarLeadIntent` strictly narrower — and the two words feedback
 noun fires, the veto scoped so a message that both instructs and asks about the
 literature still fires on its literature half, and a bare "scholar" leading
 only where it names the source and not where it names a person, with a matched
-EN/SV pair suite over the lot; the ladder that climbs by
+EN/SV pair suite over the lot — extended after the same review found the
+destination gate asymmetric, so every phrasing is now asserted as one verdict
+across both languages, plus the ASCII-typed Swedish forms and the compound
+nouns that merely begin with the word ("scholar programs", "scholar-pristagare")
+which must not lead even with a verb in front of them; the ladder that climbs by
 DROPPING terms, because terms narrow; `peerReviewed` admitting only records
 carrying positive evidence and rejecting preprints, repositories, retractions
 and the unknown, with a Google Scholar hit admitted ONLY by merging onto a

@@ -1275,6 +1275,10 @@ function newRequestState(model, jsonModel, webSearch, budgetS, extras = {}) {
     cachedSearchCount: 0, // searches served from the Exa result cache (not billed)
     iterations: 1, // search waves (initial + gap rounds that ran)
     ranQueries: new Set(),
+    // Queries actually DISPATCHED, as opposed to ranQueries' planned set. The
+    // two diverge whenever a wave's web leg stands down (knob off, or an aux
+    // source leading), and only this one may be shown to the answer model.
+    issuedQueries: new Set(),
     sources: [], // numbered registry, deduped by URL
     byUrl: new Map(),
     // Budget-gated notes digest (src/pipeline.js maybeDigest, mid/high tiers):

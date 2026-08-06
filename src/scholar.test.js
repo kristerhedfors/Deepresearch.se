@@ -254,6 +254,80 @@ test("a bare \"scholar\" leads only when it names the source, not the person", (
   }
 });
 
+// The destination gate, walked as MATCHED PAIRS (invariant 6). The first cut of
+// this gate accepted a bare preposition in English with no Swedish counterpart,
+// so "I found it in scholar" led and "Jag hittade den i scholar" did not — a
+// hole no side-by-side reading of the two lists exposed, because each list
+// looked reasonable on its own. Every row here therefore asserts ONE verdict
+// across both languages; adding a phrasing to one arm without its counterpart
+// fails here rather than in production.
+test("scholar-as-a-destination: matched EN/SV pairs agree", () => {
+  /** @type {Array<[string, string, boolean]>} */
+  const pairs = [
+    // the four measured holes, verbatim
+    ["I found it in scholar", "Jag hittade den i scholar", true],
+    ["I found it on scholar", "Jag hittade den på scholar", true],
+    ["get it from scholar", "hämta den från scholar", true],
+    ["look it up in scholar", "slå upp det i scholar", true],
+    // …and the same four typed without å/ä/ö
+    ["I found it on scholar", "Jag hittade den pa scholar", true],
+    ["get it from scholar", "hamta den fran scholar", true],
+    ["look it up in scholar", "sla upp det i scholar", true],
+    // the rest of the verb set, one row per sense
+    ["search scholar for transformer scaling laws", "sök i scholar efter skalningslagar", true],
+    ["search scholar for transformer scaling laws", "sok i scholar efter skalningslagar", true],
+    ["check scholar for this", "kolla på scholar efter det här", true],
+    ["look in scholar for the study", "leta i scholar efter studien", true],
+    ["use scholar for this", "använd scholar för det här", true],
+    ["use scholar for this", "anvand scholar for det har", true],
+    ["query scholar for citations", "sök i scholar efter citeringar", true],
+    ["fetch the paper from scholar", "hämta artikeln från scholar", true],
+    ["look up the study in scholar", "slå upp studien i scholar", true],
+    ["find the article on scholar", "hitta artikeln på scholar", true],
+    ["browse scholar", "bläddra i scholar", true],
+    ["go to scholar", "gå in på scholar", true],
+    ["go to scholar", "ga in pa scholar", true],
+    ["I used scholar for this", "jag använde scholar för det här", true],
+    // the person, in both languages, must stay silent on both sides
+    ["a Rhodes scholar from Oxford", "en Rhodes-scholar från Oxford", false],
+    ["he went to Oxford as a Rhodes scholar", "han gick på Oxford som Rhodes scholar", false],
+    ["I used to be a scholar", "jag brukade vara scholar", false],
+    ["I found the Rhodes scholar's profile", "Jag hittade den där scholar-profilen", false],
+    ["look at this scholar", "titta på den där scholar-typen", false],
+    // "scholar" heading a compound noun is not the site, verb in front or not
+    [
+      "What is the retention rate on scholar programs in the US?",
+      "Vad är kvarhållningsgraden på scholar-program i USA?",
+      false,
+    ],
+    ["find the retention rate on scholar programs", "hitta kvarhållningsgraden för scholar-program", false],
+    ["she is going to scholar events this year", "hon går på scholar-event i år", false],
+    ["look up scholar award winners", "slå upp scholar-pristagare", false],
+  ];
+  for (const [en, sv, expected] of pairs) {
+    assert.equal(scholarLeadIntent(en), expected, `EN: ${en}`);
+    assert.equal(scholarLeadIntent(sv), expected, `SV must agree with its EN pair: ${sv}`);
+    // …and a lead is always also a fire, so the pairs pin both gates at once.
+    if (expected) {
+      assert.equal(scholarIntent(en), true, `a lead must also fire the wider gate: ${en}`);
+      assert.equal(scholarIntent(sv), true, `a lead must also fire the wider gate: ${sv}`);
+    }
+  }
+});
+
+// The naming of the FULL product still leads whatever sits around it — the
+// tightening above is about the bare word only.
+test("the full product name leads regardless of the surrounding words", () => {
+  for (const s of [
+    "search google scholar for citations of this paper",
+    "sök i google scholar efter citeringar av den här artikeln",
+    "scholar.google.com",
+    "kolla scholarn",
+  ]) {
+    assert.equal(scholarLeadIntent(s), true, `should lead: ${s}`);
+  }
+});
+
 // Invariant 6, mechanically. Every Swedish alternative added or changed above
 // begins or ends near å/ä/ö at least once; JavaScript's `\b` is defined over
 // [A-Za-z0-9_], so a `\b(…)\b` gate would silently drop exactly these while the

@@ -192,6 +192,19 @@ export async function runImageReadEnrichment(c, guards = IMAGE_READ_GUARDS) {
   // from "the read never ran" — the SHAPE only: never the transcription, never
   // the question.
   /** @type {any} */ (state).imageRead = { images: parts.length, chars: text.length };
+  // The transcription itself, kept for ROUTING only and deliberately NOT on
+  // the line above — that object is what chat_logs records, and the rule there
+  // is shape without content. This field is never logged and never leaves the
+  // request.
+  //
+  // Routing needs it because the words in a user's own attachment are the
+  // user's own question. The aux-source gates read the CLEAN pre-enrichment
+  // message so that prose the pipeline appended to itself cannot route a
+  // request (feedback #61) — but this transcription is not that. It is what
+  // the user actually put in front of us, and without it someone who
+  // photographs a paper's record page and asks "vad handlar den här om?" gets
+  // a message with no subject in it at all.
+  /** @type {any} */ (state).imageReadText = text;
 
   if (!text) {
     // Fail soft and VISIBLY: the step already told the user a read had started,
