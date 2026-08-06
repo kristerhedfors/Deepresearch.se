@@ -285,3 +285,19 @@ export function sdkReplyTail(prose, files, published) {
   }
   return `${prose ? "\n\n" : ""}${parts.join("\n\n")}`;
 }
+
+/**
+ * The note a build turn ends on when the model's output hit the token ceiling
+ * mid-file and the continuation could not close it either (feedback #30,
+ * chat_logs #650). Says what happened and what to do next — the one thing it
+ * must never do is show the half-written file, which is what shipped instead
+ * of a link.
+ * @param {string} path The file that was cut off.
+ * @param {boolean} anyPublished Whether other, complete files did publish.
+ * @returns {string}
+ */
+export function sdkCutOffNote(path, anyPublished = false) {
+  return anyPublished
+    ? `\n\n_(\`${path}\` ran past the length limit and is not part of the published build. Ask me to write just that file and I'll add it to the same app.)_`
+    : `\n\n_(The build ran past the length limit while writing \`${path}\`, so there's no live app to link this turn. Ask me to build it again in smaller pieces — a shorter first version, or one file at a time — and each piece gets published as it lands.)_`;
+}
