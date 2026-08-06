@@ -563,7 +563,7 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // …from the CLEAN pre-enrichment message: feedback #61 (see the
     // "auxiliary source gates" block below) — an enrichment block that merely
     // NAMES a source must not silently lead the request.
-    assert.match(leading, /const ids = leadSourceIds\(ctx\.cleanLastUser\);/);
+    assert.match(leading, /const ids = leadSourceIds\(ctx\.gateLastUser\);/);
     // …and a source the request narrowed away (state.auxOnly — the Deep
     // Science agent restricting itself to the peer-reviewed leg) cannot lead
     // it either: a lead planAuxSource will then refuse to plan would stand the
@@ -582,7 +582,7 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // the agent's own auxSources declaration, which outranks a forced source.
     assert.match(
       src,
-      /if \(!policy\.web\) \{[\s\S]*if \(!ctx\.hasSource && !\(policy\.auxSources && SEARCH_SOURCES\.some\(\(s\) => forcedAux\.includes\(s\.id\) \|\| s\.intent\(ctx\.cleanLastUser\)\)\)\) \{[\s\S]*return runWithoutSearch\(ctx\);/,
+      /if \(!policy\.web\) \{[\s\S]*if \(!ctx\.hasSource && !\(policy\.auxSources && SEARCH_SOURCES\.some\(\(s\) => forcedAux\.includes\(s\.id\) \|\| s\.intent\(ctx\.gateLastUser\)\)\)\) \{[\s\S]*return runWithoutSearch\(ctx\);/,
     );
   });
 
@@ -592,7 +592,7 @@ describe("the web-search knob gates Exa only — depth still runs over other sou
     // off the state and never names one.
     const plan = src.slice(src.indexOf("function planAuxSource(ctx, source"), src.indexOf("async function runOneAuxSearch"));
     assert.match(plan, /forceAux[\s\S]*\.includes\(source\.id\)/);
-    assert.match(plan, /if \(!batch\.length \|\| \(!forced && !leading && !source\.intent\(ctx\.cleanLastUser\)\)\) return \[\];/);
+    assert.match(plan, /if \(!batch\.length \|\| \(!forced && !leading && !source\.intent\(ctx\.gateLastUser\)\)\) return \[\];/);
   });
 
   test("a forced source survives the developer-mode source-research path (feedback #36)", () => {
@@ -731,14 +731,14 @@ describe("auxiliary source gates read the clean (pre-enrichment) user message", 
   const src = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
 
   test("a source's intent gate uses cleanLastUser", () => {
-    assert.match(src, /source\.intent\(ctx\.cleanLastUser\)/);
+    assert.match(src, /source\.intent\(ctx\.gateLastUser\)/);
     assert.doesNotMatch(src, /source\.intent\(ctx\.lastUser\)/);
   });
 
   test("the lead gate uses cleanLastUser", () => {
     // Leading is the costlier half: it stands the web leg down for the whole
     // request and never releases while the lead keeps returning items.
-    assert.match(src, /leadSourceIds\(ctx\.cleanLastUser\)/);
+    assert.match(src, /leadSourceIds\(ctx\.gateLastUser\)/);
     assert.doesNotMatch(src, /leadSourceIds\(ctx\.lastUser\)/);
   });
 });
@@ -755,7 +755,8 @@ describe("the aux registry reserve widens the digest with it", () => {
 
   test("both caps move together, by the same widening", () => {
     assert.match(reserve.slice(0, 1200), /state\.plan\.maxSources \+= widened;/);
-    assert.match(reserve.slice(0, 1200), /state\.plan\.digestCap \+= widened \* DIGEST_CHARS_PER_SOURCE;/);
+    assert.match(reserve.slice(0, 1600), /state\.plan\.digestCap = Math\.min\(/);
+    assert.match(reserve.slice(0, 1600), /DIGEST_CAP_CEILING,/);
   });
 
   test("the per-source reserve is sized off the measured verbose block", () => {
@@ -774,5 +775,55 @@ describe("digest coverage is observable", () => {
   test("synthesis logs how many sources the digest carried", () => {
     assert.match(src, /chat\.digest_coverage/);
     assert.match(src, /digestShownCount\(state\.sources, plan\.digestCap\)/);
+  });
+});
+
+// The follow-up to #392's own review. Three defects that fix introduced, all
+// found by adversarially re-reading it rather than by a user report.
+describe("what the source-routing gates read, and what the ledger may claim", () => {
+  const src = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
+
+  // #392 moved the aux gates onto the CLEAN message so prose the pipeline
+  // appended to itself could not route a request. It moved one thing too many:
+  // the vision transcription of the user's OWN attachment also rides in the
+  // enriched message, and that is the user's question, not our prose. A photo
+  // of a paper's record page plus "what is this about" routed on a message
+  // with no subject in it.
+  test("the gates read the clean message PLUS the user's own attachment", () => {
+    assert.match(src, /gateLastUser: \[/);
+    assert.match(src, /\(state\)\.imageReadText \|\| ""/);
+    for (const call of [/leadSourceIds\(ctx\.gateLastUser\)/, /source\.intent\(ctx\.gateLastUser\)/, /s\.intent\(ctx\.gateLastUser\)/]) {
+      assert.match(src, call);
+    }
+    // The thing #392 was right about stays fixed: never the enriched message.
+    assert.doesNotMatch(src, /leadSourceIds\(ctx\.lastUser\)/);
+    assert.doesNotMatch(src, /source\.intent\(ctx\.lastUser\)/);
+  });
+
+  // ranQueries is written by takeSearchBatch BEFORE the wave picks its legs,
+  // so it also holds angles nothing was ever asked — the web knob off, or an
+  // aux source leading and standing the web leg down. Showing those to the
+  // answer model invites it to attest to searches that never happened, which
+  // is the very error class the ledger exists to prevent.
+  test("the ledger is built from DISPATCHED queries, never the planned set", () => {
+    assert.match(src, /searchLedgerSection\(\/\*\* @type \{any\} \*\/ \(state\)\.issuedQueries\)/);
+    assert.doesNotMatch(src, /searchLedgerSection\(state\.ranQueries\)/);
+    // Both dispatch points record: the web leg, and the aux leg (which on a
+    // lead wave is the only thing that ran).
+    const web = src.slice(src.indexOf("async function runWebLeg"));
+    assert.match(web.slice(0, 1200), /issuedQueries \|\|= new Set\(\)\)\.add\(query\)/);
+    const absorb = src.slice(src.indexOf("function absorbAuxResult"));
+    assert.match(absorb.slice(0, 1200), /issuedQueries \|\|= new Set\(\)\)\.add\(plan\.key \|\| plan\.query\)/);
+  });
+
+  // The reserve #392 added was unbounded in the direction that kills a turn:
+  // four aux sources could push a 24,000-char digest to 65,600, and a
+  // synthesis context overflow is not failover-eligible — the user gets no
+  // answer at all rather than a shorter one.
+  test("the digest reserve has a ceiling", () => {
+    assert.match(src, /const DIGEST_CAP_CEILING = 36_000;/);
+    const reserve = src.slice(src.indexOf("if (result.items.length && !st.reserved)"));
+    assert.match(reserve.slice(0, 1600), /Math\.min\(/);
+    assert.match(reserve.slice(0, 1600), /DIGEST_CAP_CEILING,/);
   });
 });

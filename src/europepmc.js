@@ -131,6 +131,16 @@ const LETTER = "[\\p{L}]*";
  * before the research-word gate rather than deleted from it, so "the latest
  * research on statins" — the noun — keeps firing.
  *
+ * What the frame is NOT is a veto over the whole message. Neutralising it first
+ * also cost "Research this drug's side effects" its only research word, and a
+ * plainly biomedical question then reached no source at all. So the frame
+ * decides only what the VERB is worth: an imperative "research" is not evidence
+ * that the user wants the LITERATURE, while a life-science SUBJECT is
+ * independent evidence that Europe PMC is a useful leg. The veto then lands
+ * exactly where the reported failure was — an imperative over a subject that is
+ * not biomedical at all ("Research this founder"). See europepmcIntent for the
+ * order that follows from this.
+ *
  * Deliberately narrow: only a sentence-initial verb whose next word is a
  * demonstrative or a personal/possessive pronoun counts. "the research this
  * year showed" is mid-sentence and survives, and `that`/`it` are NOT in the
@@ -219,9 +229,14 @@ const RESEARCH_WORD = new RegExp(
  *   SV bare genom      the preposition "through" — `genomet`/`genome` stay here
  *   SV bare dos, bare sekvenser, bare patient
  *
- * Swedish keeps parity through COMPOUNDING rather than through phrases:
- * hälsoeffekt, hälsorisk, hjärtsjukdom, muskelmassa are single unambiguous
- * words, so they live here while bare `hälsa` and `hjärta` do not.
+ * Swedish keeps parity through COMPOUNDING where it compounds: hälsoeffekt,
+ * hälsorisk, hjärtsjukdom, muskelmassa are single unambiguous words, so they
+ * live here while bare `hälsa` and `hjärta` do not. That is only half of how
+ * Swedish is actually written, though — "hälsa och skiftarbete", "muskler hos
+ * äldre", "hjärnan under sömn" are the separated forms users type, and reading
+ * the compound as the whole of the Swedish side is what left this gate firing
+ * in English and silent in Swedish on seven matched pairs (invariant 6). The
+ * separated forms are LIFE_SCIENCE_SV_SEPARATED, below LIFE_SCIENCE_PHRASE.
  *
  * Judged ambiguous but KEPT, because the non-biomedical sense is too rare to
  * lose the recall over: species, symptom(s), drug(s), gene(s), diagnostic,
@@ -255,6 +270,13 @@ const LIFE_SCIENCE_WORD = new RegExp(
     // wildcard is what makes cancerbehandling / cancerforskning / cancerceller
     // match, and every cancer-prefixed compound is biomedical anyway.
     "|cancer" + LETTER + "|tumör(?:er|en)?|diabetes|fetma|kolesterol|blodtryck(?:et)?" +
+    // "hjärt- och kärlsjukdomar" is THE Swedish term for cardiovascular
+    // disease, and the hyphen-plus-conjunction is how it is always written.
+    // Nothing matched it before: `sjukdom` cannot start inside `kärlsjukdomar`
+    // (the B boundary sees the `l`), and the hjärt- collocations below expect a
+    // suffix immediately after `hjärt`. `kärlsjukdom` is unambiguous on its own,
+    // so it belongs here rather than in the collocation tier.
+    "|(?:hjärt[-–\\s]*(?:och\\s+)?)?kärlsjukdom" + LETTER +
     "|dna|rna|genom(?:e|es|ic|ics|et)|genes?|genetic(?:s|ally)?|alleles?|snps?|haplogroups?" +
     "|haplotypes?|mitochondrial|mitogenomes?|chromosom(?:e|es|al)|sequencing" +
     "|proteins?|proteom(?:e|ics)|enzyme|antibod(?:y|ies)|microbiom(?:e|es)" +
@@ -286,9 +308,11 @@ const LIFE_SCIENCE_STRONG =
  * false positive it must not ("never an inference of ethnicity, health,
  * religion …", feedback #61) differ only in what sits next to the word.
  *
- * EN and SV at the same breadth (invariant 6), which for Swedish mostly means
- * COMPOUNDS — hjärtsjukdom, hjärnskada, muskelmassa, virusinfektion — plus the
- * handful of genuine two-word forms ("psykisk hälsa", "patient med"). */
+ * The Swedish arms here are the COMPOUNDS — hjärtsjukdom, hjärnskada,
+ * muskelmassa, virusinfektion — plus the handful of fixed two-word forms
+ * ("psykisk hälsa", "patient med"). The separated forms Swedish also uses need
+ * a different disambiguator and live in LIFE_SCIENCE_SV_SEPARATED below; both
+ * tiers together are what makes this half match the English one (invariant 6). */
 const LIFE_SCIENCE_PHRASE = new RegExp(
   B +
     "(?:health[-\\s](?:benefits?|effects?|risks?|outcomes?|impacts?|implications?|claims?" +
@@ -311,29 +335,84 @@ const LIFE_SCIENCE_PHRASE = new RegExp(
     "[-\\s]?virus(?:es)?|virus(?:es)? (?:infections?|transmission|variants?|strains?)" +
     "|viral (?:infections?|load|replication)" +
     "|(?:psykisk|fysisk|allmän|god|dålig|mental) hälsa" +
-    "|hälsa och (?:sjukdom|kost|träning|välbefinnande)" +
     "|hälsosam[mt]? (?:kost|livsstil|mat|åldrande|vikt)|hälsosamma (?:vanor|fetter|kostvanor)" +
     "|hjärt[-\\s]?(?:sjukdom|infarkt|hälsa|kärl|frekvens|muskel|svikt|klapp)" + LETTER +
     "|hjärn(?:skad|cell|funktion|hälsa|tumör|blödning|aktivitet|utveckling)" + LETTER +
     "|hjärnans (?:funktion|utveckling|kemi)" +
     "|lever(?:sjukdom|funktion|skada|fett|cirros|inflammation)" + LETTER + "|leverns" +
     "|muskel(?:massa|styrka|tillväxt|cell|fibr|värk|protein|skada|uppbyggnad)" + LETTER +
-    "|muskler och (?:leder|skelett)" +
-    "|sekvenser av (?:dna|rna|gener)|dna[-\\s]?sekvenser|gensekvenser" +
+    "|dna[-\\s]?sekvenser|gensekvenser" +
     "|patient(?:en)? med|virus(?:infektion|stam|variant|sjukdom)" + LETTER +
     "|mineral(?:er|erna)? och vitaminer|vitaminer och mineral(?:er|erna)?)" +
     E,
   "iu",
 );
 
+/** The SEPARATED Swedish forms of the same ambiguous words — the half of
+ * Swedish usage the compound assumption missed.
+ *
+ * English disambiguates an ambiguous word with the noun after it ("heart
+ * disease", "brain function", "muscle mass"). The compound tier above assumed
+ * Swedish always answers that with one word — hjärtsjukdom, hjärnfunktion,
+ * muskelmassa — and it does, when the concept HAS a compound. It does not when
+ * the ambiguous word is the topic and the rest of the phrase is the context:
+ * "hälsa och skiftarbete", "hjärtat och träning", "hjärnan under sömn",
+ * "muskler hos äldre", "virus i skolor", "dos av melatonin", "sekvenser i
+ * forntida ben". Every one of those has an English counterpart that fires, and
+ * every one was silent — seven matched pairs, which is the invariant-6 failure
+ * this tier closes.
+ *
+ * The disambiguator here is therefore the FRAME rather than a following noun:
+ * the linking word that makes the ambiguous term the subject of a question, or
+ * — where the figurative sense has a frame of its own — the absence of that
+ * frame. Each arm names the non-biomedical sense it has to exclude, because
+ * that sense is the only reason the word is not simply in LIFE_SCIENCE_WORD:
+ *
+ *   hälsa      the verb "to greet" ("hälsa på"), and the privacy prohibition's
+ *              comma list ("etnicitet, hälsa, religion"), where the word stands
+ *              between commas and never in a linking frame
+ *   hjärta     "i hjärtat av staden", "hjärtat i staden"
+ *   hjärna     "hjärnan bakom affären" — the mastermind, and the only common
+ *              figurative frame, so this arm excludes it rather than listing
+ *              every literal one
+ *   muskler    "ekonomiska/finansiella muskler"
+ *   virus      the computer sense
+ *   dos        "en dos av humor"
+ *   sekvenser  "en sekvens av händelser", film sequences
+ *
+ * The arms stop at the linking word so the shared E boundary still applies —
+ * an alternative ending in `\s` can never satisfy a non-word lookahead. */
+const LIFE_SCIENCE_SV_SEPARATED = new RegExp(
+  B +
+    "(?:hälsa(?:n)?\\s+(?:och|hos|bland|i|under|vid|efter|över)" +
+    "|och\\s+hälsa(?:n)?(?!\\s+på)" +
+    "|(?<!i\\s)hjärta(?:t|ts)?\\s+(?:och|hos|efter|under|vid|samt)" +
+    "|och\\s+hjärtat" +
+    "|hjärn(?:a|an|or|orna)(?!\\s+bakom)" +
+    "|(?<!(?:ekonomisk|finansiell|politisk|militär|kulturell)[at]?\\s)muskler(?:na)?" +
+    "|virus(?:et|en)?\\s+(?:i|hos|bland|på|från)" +
+    "(?!\\s+(?:dator|datorn|datorer|system|systemet|nätverket|mobilen|koden|filen|servern))" +
+    "|dos(?:en|erna)?\\s+(?:av|med)(?!\\s+(?:humor|verklighet|realism|ironi|självdistans))" +
+    "|sekvenser(?:na)?\\s+(?:av|i|från|ur|hos)\\s+(?:dna|rna|gener|generna|arvsmassan" +
+    "|forntida|gammalt|gamla|fossila|mänskliga|bakteriella|virala|prover|proverna" +
+    "|ben|benen|tänder|skelett|vävnad(?:en)?))" +
+    E,
+  "iu",
+);
+
 /**
- * Is this message ABOUT life science — either the core vocabulary, or one of
- * the ambiguous words inside a collocation only biomedicine writes?
+ * Is this message ABOUT life science — the core vocabulary, an ambiguous word
+ * inside a collocation only biomedicine writes, or the Swedish separated form
+ * of one of those collocations?
  * @param {string} s
  * @returns {boolean}
  */
 function lifeScienceSubject(s) {
-  return LIFE_SCIENCE_WORD.test(s) || LIFE_SCIENCE_PHRASE.test(s);
+  return (
+    LIFE_SCIENCE_WORD.test(s) ||
+    LIFE_SCIENCE_PHRASE.test(s) ||
+    LIFE_SCIENCE_SV_SEPARATED.test(s)
+  );
 }
 
 /** Naming the archive itself — Europe PMC, PubMed, PMC, bioRxiv, medRxiv. */
@@ -348,10 +427,25 @@ const NAMED_PHRASE =
 
 /**
  * Does this message want the life-science literature at all? Conservative by
- * construction: either the subject matter is unmistakable on its own, or a
- * research word and a life-science subject appear together — with the
- * imperative frame ("Research this founder") neutralised first, because a verb
- * addressed to the assistant is not a reference to the published record.
+ * construction, and asked in a fixed order because the two halves are not worth
+ * the same:
+ *
+ * 1. an unmistakable subject (a named archive, LIFE_SCIENCE_STRONG) needs
+ *    nothing else;
+ * 2. NO life-science subject anywhere → no, whatever else the message says;
+ * 3. a research word that SURVIVES the imperative neutralisation names the
+ *    published record ("the latest research on statins", "vad säger studierna")
+ *    → yes;
+ * 4. otherwise the only research framing was the imperative verb itself. That
+ *    verb is worth nothing on its own — but the subject already established in
+ *    step 2 is worth something, so "Research this drug's side effects" and
+ *    "Undersök den här sjukdomen" are served while "Research this founder" and
+ *    "Undersök den här grundaren" fall out at step 2, which is what feedback
+ *    #61 asked for.
+ *
+ * Step 4 is deliberately restricted to a message that WAS framed as a task: a
+ * bare subject with no framing at all ("what species of tree is this") stays
+ * the combination gate it has always been.
  * @param {string} text the latest user message
  * @returns {boolean}
  */
@@ -361,7 +455,10 @@ export function europepmcIntent(text) {
   if (NAMED.test(s)) return true;
   if (LIFE_SCIENCE_STRONG.test(s)) return true;
   const asked = s.replace(IMPERATIVE_TASK, " ");
-  return RESEARCH_WORD.test(asked) && lifeScienceSubject(asked);
+  const framedAsTask = asked !== s;
+  if (!lifeScienceSubject(asked)) return false;
+  if (RESEARCH_WORD.test(asked)) return true;
+  return framedAsTask;
 }
 
 /**

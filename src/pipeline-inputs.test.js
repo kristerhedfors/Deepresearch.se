@@ -213,37 +213,48 @@ describe("endsWithQuestion", () => {
 });
 
 describe("searchLedgerSection", () => {
-  test("empty (absent) with no queries run", () => {
+  test("empty (absent) with nothing issued", () => {
     assert.equal(searchLedgerSection(undefined), "");
     assert.equal(searchLedgerSection(new Set()), "");
     assert.equal(searchLedgerSection([]), "");
   });
 
-  test("takes the Set the pipeline actually keeps, and an array", () => {
-    // state.ranQueries is a Set<string> (types.d.ts); the array form keeps the
-    // helper usable from a caller that has already spread it.
-    const out = searchLedgerSection(new Set(["zainab ghadiyali founder", "eat cook joy austin"]));
-    assert.match(out, /- zainab ghadiyali founder/);
+  test("takes the Set the pipeline keeps, and an array", () => {
+    const out = searchLedgerSection(new Set(["founder background", "eat cook joy austin"]));
+    assert.match(out, /- founder background/);
     assert.match(out, /- eat cook joy austin/);
     assert.equal(searchLedgerSection(["one angle"]), searchLedgerSection(new Set(["one angle"])));
   });
 
-  test("says the list is exhaustive, not a sample", () => {
-    // The whole point: the writer must be able to reason about what was NOT
-    // searched. A list it reads as a sample cannot support that.
-    assert.match(searchLedgerSection(["a"]), /this is the whole search, not a sample/);
+  test("claims exhaustiveness only when the list IS exhaustive", () => {
+    // The first version asserted "the whole search, not a sample" always, and
+    // was wrong two ways — it read the PLANNED angles, and it cut silently at
+    // 24 while the planner allows 34 searches. A block whose whole purpose is
+    // to stop an answer overstating its evidence must not overstate its own.
+    assert.match(searchLedgerSection(["a"]), /every angle that was issued, not a sample/);
+    const many = searchLedgerSection(Array.from({ length: 55 }, (_, i) => `angle ${i}`));
+    assert.match(many, /showing 40 of 55 issued/);
+    assert.doesNotMatch(many, /not a sample/);
+    assert.match(many, /This list is partial, so do not describe it as exhaustive/);
+    assert.equal(many.split("\n").filter((l) => l.startsWith("- ")).length, 40);
   });
 
-  test("binds absence to the angles actually run (feedback #61)", () => {
+  test("the cap sits above the planner's own search ceiling", () => {
+    // budget.js allows at most 34 searches, so a real request never truncates
+    // and never reaches the partial wording.
+    const at34 = searchLedgerSection(Array.from({ length: 34 }, (_, i) => `angle ${i}`));
+    assert.match(at34, /every angle that was issued/);
+    assert.doesNotMatch(at34, /showing/);
+  });
+
+  test("binds absence to the angles actually issued (feedback #61)", () => {
     const out = searchLedgerSection(["a"]);
     assert.match(out, /say which of these angles were tried and came back empty/);
     assert.match(out, /Never write that no source exists for something none of these angles targeted/);
   });
 
-  test("drops junk and caps the list", () => {
+  test("drops junk", () => {
     assert.equal(searchLedgerSection(["", "   ", null, 42]), "");
-    const many = searchLedgerSection(Array.from({ length: 40 }, (_, i) => `angle ${i}`));
-    assert.equal(many.split("\n").filter((l) => l.startsWith("- ")).length, 24);
   });
 
   test("ends with the blank line every section builder ends with", () => {
