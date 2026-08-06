@@ -238,8 +238,14 @@ export const SUBJECTS = /** @type {Subject[]} */ ([
     key: "mcp",
     label: "MCP server",
     color: "#2c8ec4", // extended · sky
-    blurb: "The site exposed AS an MCP deep_research tool (JSON-RPC over /mcp).",
-    test: /\b(mcp\b|json-rpc|deep_research tool|streamable-http|tools\/(list|call))\b/,
+    blurb: "The site exposed AS an MCP deep_research tool (JSON-RPC over /mcp), and the OAuth connector that makes it addable in Claude and ChatGPT.",
+    // Widened 2026-08-06 for the OAuth CONNECTOR (F-20), which was landing
+    // almost entirely untagged: thirteen commits saying "connector", "OAuth
+    // <endpoint>" or "well-known" and never "MCP". Bare `oauth` is
+    // deliberately NOT here — it also matches the Google sign-in work
+    // (canonical-host redirect_uri fixes), which belongs to `access`; the
+    // endpoint suffix is what makes it this connector.
+    test: /\b(mcp\b|json-rpc|deep_research tool|streamable-http|tools\/(list|call)|oauth[- ](connector|store|token|authorize|register|metadata|consent|ddl|fl[öo]de)|connector|kopplare|well-known|pkce|dynamic client registration|dynamisk klientregistrering)\b/i,
   },
   {
     key: "publish",

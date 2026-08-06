@@ -50,6 +50,8 @@ const CASES = [
   ["Se/rver tokens: one ticket, one JWT — consolidated upstream-API grants", ["grants"]],
   ["Nearby-place asks run a location-biased Google Places search", ["maps"]],
   ["Help mode: the documentation-first layer of introspection", ["help", "introspection"]],
+  ["OAuth connector: the discovery documents and the redirect allowlist", ["mcp"]],
+  ["Fix the discovery pointer: a well-known URI is origin-relative", ["mcp"]],
   ["refactor(client): split embeds registry and recovery transport from stream.js", ["refactor"]],
   ["security: mechanical secret-leak prevention — scanner + pre-push hook (P-2)", ["security"]],
   ["auth: canonicalize www -> apex so Google OAuth redirect_uri matches", ["access"]],
@@ -82,6 +84,7 @@ const SV_PARITY = [
   ["Biomedicinska träffar hämtas nu från det andra korpuset", "pubmed"],
   ["Expertgranskade källor och haplogrupperna som saknades", "science"],
   ["Rymdanimationen: stegseparation utan att tappa höjden", "games"],
+  ["OAuth-flödet: kopplare mot Claude och ChatGPT", "mcp"],
 ];
 
 for (const [line, key] of SV_PARITY) {

@@ -1,15 +1,15 @@
 {
-  "generated": "2026-08-05T12:44:06.932Z",
+  "generated": "2026-08-06T07:25:35.095Z",
   "repo": "kristerhedfors/deepresearch.se",
   "range": {
     "from": "2026-07-04",
-    "to": "2026-08-05"
+    "to": "2026-08-06"
   },
   "totals": {
-    "commits": 1352,
-    "added": 431077,
-    "removed": 109166,
-    "features": 164
+    "commits": 1393,
+    "added": 446616,
+    "removed": 110212,
+    "features": 166
   },
   "commits": [
     {
@@ -8123,6 +8123,252 @@
       "a": 1,
       "r": 0,
       "f": 0
+    },
+    {
+      "t": "2026-08-05T14:24:40+02:00",
+      "a": 82,
+      "r": 54,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T14:27:44+02:00",
+      "a": 69,
+      "r": 27,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T14:30:11+02:00",
+      "a": 32,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T14:35:35+02:00",
+      "a": 3690,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T14:35:41+02:00",
+      "a": 87,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T14:50:13+02:00",
+      "a": 627,
+      "r": 26,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T14:52:53+02:00",
+      "a": 136,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T15:03:58+02:00",
+      "a": 315,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T15:06:20+02:00",
+      "a": 1514,
+      "r": 136,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T15:11:32+02:00",
+      "a": 1594,
+      "r": 71,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T15:12:39+02:00",
+      "a": 309,
+      "r": 26,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T15:15:00+02:00",
+      "a": 59,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T15:17:18+02:00",
+      "a": 715,
+      "r": 7,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T15:21:07+02:00",
+      "a": 16,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T15:21:37+02:00",
+      "a": 426,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T15:32:05+02:00",
+      "a": 155,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T15:35:57+02:00",
+      "a": 4,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T15:37:03+02:00",
+      "a": 9,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T15:39:05+02:00",
+      "a": 5,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T15:56:36+02:00",
+      "a": 43,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T15:58:05+02:00",
+      "a": 8,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T16:01:28+02:00",
+      "a": 4,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T16:14:16+02:00",
+      "a": 83,
+      "r": 22,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T16:22:19+02:00",
+      "a": 4,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T16:31:02+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T22:42:46+02:00",
+      "a": 482,
+      "r": 15,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T22:52:08+02:00",
+      "a": 2,
+      "r": 2,
+      "f": 1
+    },
+    {
+      "t": "2026-08-05T23:08:32+02:00",
+      "a": 1833,
+      "r": 116,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T23:10:47+02:00",
+      "a": 3,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T23:21:25+02:00",
+      "a": 3,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T23:23:04+02:00",
+      "a": 1599,
+      "r": 62,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T23:42:52+02:00",
+      "a": 3,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T23:52:56+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-08-05T23:54:40+02:00",
+      "a": 7,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-08-06T01:14:18+02:00",
+      "a": 557,
+      "r": 57,
+      "f": 0
+    },
+    {
+      "t": "2026-08-06T01:23:18+02:00",
+      "a": 160,
+      "r": 57,
+      "f": 0
+    },
+    {
+      "t": "2026-08-06T01:27:37+02:00",
+      "a": 5,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-08-06T08:51:43+02:00",
+      "a": 378,
+      "r": 208,
+      "f": 0
+    },
+    {
+      "t": "2026-08-06T08:52:09+02:00",
+      "a": 3,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-08-06T08:56:57+02:00",
+      "a": 113,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-08-06T09:19:53+02:00",
+      "a": 401,
+      "r": 86,
+      "f": 1
     }
   ],
   "days": [
@@ -9809,11 +10055,45 @@
     },
     {
       "date": "2026-08-05",
-      "commits": 23,
-      "added": 7387,
-      "removed": 568,
-      "features": 2,
+      "commits": 57,
+      "added": 21309,
+      "removed": 1194,
+      "features": 3,
       "subjects": [
+        "ledger: record PR #393, and retire the sentence it made false",
+        "ledger: record PR #393",
+        "ledger: record PRs #391 and #392",
+        "Se/cure accepts attachments, and they mount into the in-tab Linux VM",
+        "artifacts: regenerate after the ledger stamp",
+        "ledger: stamp PR #392 into the owners registry and the test-request file",
+        "pipeline: the answer said no independent source existed; four were in its own list",
+        "Regenerate the artifacts with the new test file TRACKED",
+        "The research toolchain is server-side only; the browser VM stays minimal",
+        "ledger: record PR #390",
+        "ledger: record PRs #387, #388 and #389",
+        "Bump the exec image to :2 — a same-tag push deploys nothing",
+        "ledger: record PRs #384, #385 and #386",
+        "ledger: record PR #386 and the three subsystems it now owns",
+        "Two defects found while merging #383-#386",
+        "chore: regenerate the introspection artifacts after rebasing onto main",
+        "ledger: the duplicate source list is fixed for the common case, not every case",
+        "synthesis: with no sources retrieved, forbid citation markers outright",
+        "docs: register the ground-truth battery, and re-derive rather than re-run",
+        "sources: a heading is not a list — keep the append when the list is truncated",
+        "eval: measure research uplift, and stop counting arXiv as contamination",
+        "pipeline: four defects the ground-truth battery made visible",
+        "eval: a ground-truth deep-research battery over the MCP server",
+        "bundle: regenerate every introspection artifact against the settled tree",
+        "docs: the person-research long form, and regenerate the introspection artifacts",
+        "e2e: click a curve where the curve actually is, not at its bbox centre",
+        "Give a person question the method a person question needs (feedback #60)",
+        "Pin the exec-timeout ceiling leak that would have killed OCR at 30 s",
+        "Read the attached picture, then research what it shows (feedback #60)",
+        "landing: draw the code-volume backdrop behind the work-done curves",
+        "Record refactor pass 16: the declines, the ledger, the artifacts",
+        "test: guard the OAuth DDL copy db.js carries against oauth-store.js",
+        "refactor: share the five-character HTML escape in http.js",
+        "refactor: share the token-envelope mint half in token-crypto.js",
         "ledger: record PR #383",
         "bundle: regenerate the introspection artifacts",
         "Meter the chat pipeline's dense retrieval: the same hole, on the higher-traffic path",
@@ -9838,7 +10118,25 @@
         "pubmed: delta ingest through pubmed26n1562; record what it cost",
         "skills: add arxiv-ingest, the missing arXiv refresh runbook"
       ],
-      "summary": "Closed the /mcp spend gaps: the literature tools and the chat pipeline's dense retrieval now meter the retrieval they were only gated on, the spending tools take an inflight reservation, the quota gate fails closed on both surfaces, and all eleven tools were priced against production. The ChatGPT connector became connectable and gained an icon, author search answers \"everything by this researcher\" for real, and both corpora took delta ingests (arXiv through submission month 2608, PubMed through pubmed26n1562) with the missing arxiv-ingest runbook written up.",
+      "summary": "The heaviest day of the range, and most of it came out of one instrument: a ground-truth deep-research battery run over the MCP server exposed four pipeline defects at once — an answer that said no independent source existed while four sat in its own list, a duplicate source list, citation markers emitted with nothing retrieved, and a truncated list losing its append. All four were fixed and the eval was taught to measure research uplift instead of counting arXiv as contamination. Feedback #60 landed as two features: a person question now gets a person's methodology, and an attached picture is read before the research runs. Se/cure gained attachments that mount into the in-tab Linux VM. Dense retrieval got metered on both the MCP tools and the higher-traffic chat path, /mcp got a concurrency cap, and the quota gate got a chosen fail direction — closed. Refactor pass 16 shared the token-envelope mint and the HTML escape. The arXiv and PubMed indexes both took a delta ingest, and the landing card gained its code-volume backdrop.",
+      "curated": true
+    },
+    {
+      "date": "2026-08-06",
+      "commits": 7,
+      "added": 1617,
+      "removed": 420,
+      "features": 1,
+      "subjects": [
+        "pulse: refresh commit analytics, feature timeline and code-size through 2026-08-06",
+        "docs: reconcile the documentation surface with the code",
+        "Refactor pass 17: the source digest moves out of the registry",
+        "ledger: record PRs #394 and #395, and the branch-reuse rule break",
+        "ledger: stamp PR #395 into the owners registry, and regenerate",
+        "docs + artifacts: reconcile with the five corrections, and regenerate",
+        "pipeline: five defects #392 introduced, found by adversarially reviewing it"
+      ],
+      "summary": "A maintenance day, and an adversarial review of the day before it: reviewing the previous day's pipeline work turned up five defects it had introduced, all fixed. Refactor pass 17 then moved the source digest out of the registry into its own module, taking the max-min fair-share solver with it and giving it property tests it never had while it was private. The documentation pass reconciled fifteen undocumented test suites and one client module back into TESTING.md and CODE-LAYOUT.md, and the pulse datasets were refreshed — the tagger widened first, since the OAuth connector had been landing untagged.",
       "curated": true
     }
   ]
