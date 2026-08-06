@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-06T07:23:50.455Z",
+  "generated": "2026-08-06T08:16:29.944Z",
   "repo": "kristerhedfors/deepresearch.se",
   "range": {
     "from": "2026-07-04",
@@ -218,8 +218,8 @@
     }
   ],
   "totals": {
-    "commits": 1393,
-    "tagged": 1222,
+    "commits": 1394,
+    "tagged": 1223,
     "byKey": {
       "sandbox": {
         "commits": 95,
@@ -302,9 +302,9 @@
         "removed": 3640
       },
       "sdk": {
-        "commits": 44,
-        "added": 26192,
-        "removed": 1758
+        "commits": 45,
+        "added": 26428,
+        "removed": 1769
       },
       "agents": {
         "commits": 18,
@@ -388,8 +388,8 @@
       },
       "pulse": {
         "commits": 17,
-        "added": 4698,
-        "removed": 1095
+        "added": 4705,
+        "removed": 1102
       },
       "artifacts": {
         "commits": 186,
@@ -601,9 +601,9 @@
       },
       {
         "d": "2026-08-06",
-        "t": "2026-08-06T09:19:53+02:00",
-        "lines": 307162,
-        "files": 985
+        "t": "2026-08-06T09:43:32+02:00",
+        "lines": 307101,
+        "files": 983
       }
     ]
   },
@@ -12225,10 +12225,18 @@
     },
     {
       "t": "2026-08-06T09:19:53+02:00",
-      "a": 34,
-      "r": 25,
+      "a": 41,
+      "r": 32,
       "s": [
         "pulse"
+      ]
+    },
+    {
+      "t": "2026-08-06T09:43:32+02:00",
+      "a": 236,
+      "r": 11,
+      "s": [
+        "sdk"
       ]
     }
   ]

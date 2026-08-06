@@ -1,14 +1,14 @@
 {
-  "generated": "2026-08-06T07:25:35.095Z",
+  "generated": "2026-08-06T08:18:09.161Z",
   "repo": "kristerhedfors/deepresearch.se",
   "range": {
     "from": "2026-07-04",
     "to": "2026-08-06"
   },
   "totals": {
-    "commits": 1393,
-    "added": 446616,
-    "removed": 110212,
+    "commits": 1394,
+    "added": 446910,
+    "removed": 110233,
     "features": 166
   },
   "commits": [
@@ -8366,9 +8366,15 @@
     },
     {
       "t": "2026-08-06T09:19:53+02:00",
-      "a": 401,
-      "r": 86,
+      "a": 459,
+      "r": 96,
       "f": 1
+    },
+    {
+      "t": "2026-08-06T09:43:32+02:00",
+      "a": 236,
+      "r": 11,
+      "f": 0
     }
   ],
   "days": [
@@ -10123,11 +10129,12 @@
     },
     {
       "date": "2026-08-06",
-      "commits": 7,
-      "added": 1617,
-      "removed": 420,
+      "commits": 8,
+      "added": 1911,
+      "removed": 441,
       "features": 1,
       "subjects": [
+        "sdk mode: finish a build the output ceiling cut off, never show half a file",
         "pulse: refresh commit analytics, feature timeline and code-size through 2026-08-06",
         "docs: reconcile the documentation surface with the code",
         "Refactor pass 17: the source digest moves out of the registry",
@@ -10136,7 +10143,7 @@
         "docs + artifacts: reconcile with the five corrections, and regenerate",
         "pipeline: five defects #392 introduced, found by adversarially reviewing it"
       ],
-      "summary": "A maintenance day, and an adversarial review of the day before it: reviewing the previous day's pipeline work turned up five defects it had introduced, all fixed. Refactor pass 17 then moved the source digest out of the registry into its own module, taking the max-min fair-share solver with it and giving it property tests it never had while it was private. The documentation pass reconciled fifteen undocumented test suites and one client module back into TESTING.md and CODE-LAYOUT.md, and the pulse datasets were refreshed — the tagger widened first, since the OAuth connector had been landing untagged.",
+      "summary": "A maintenance day, and an adversarial review of the day before it: reviewing the previous day's pipeline work turned up five defects it had introduced, all fixed, and Agent Studio learned to finish a build the output ceiling had cut off rather than show half a file. Refactor pass 17 then moved the source digest out of the registry into its own module, taking the max-min fair-share solver with it and giving it property tests it never had while it was private. The documentation pass reconciled fifteen undocumented test suites and one client module back into TESTING.md and CODE-LAYOUT.md, and the pulse datasets were refreshed — the tagger widened first, since the OAuth connector had been landing untagged.",
       "curated": true
     }
   ]
