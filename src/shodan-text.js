@@ -29,9 +29,101 @@
 // takes free text as its input.
 
 import { textOf, lastUserMessage } from "./conversation.js";
-import { extractTargets } from "./shodan.js";
 
 /** @typedef {import('./types.js').Conversation} Conversation */
+
+// Bounds on how much one message can fan out to Shodan — keeps credit spend
+// and CPU/latency predictable regardless of how many host-shaped tokens a
+// message happens to contain.
+const MAX_HOSTNAMES = 4;
+const MAX_IPS = 4;
+
+/**
+ * The publicly-routable IPv4s and hostnames extracted from one message.
+ * @typedef {{ ips: string[], hostnames: string[] }} ShodanTargets
+ */
+
+// ---- target extraction (pure — exported for unit tests) --------------------
+
+// File extensions that the FQDN pattern would otherwise mistake for a
+// hostname (e.g. "report.pdf", "diagram.png"). The label after the final
+// dot is checked against this set and dropped if it matches.
+const FILE_EXTENSIONS = new Set([
+  "pdf", "docx", "doc", "txt", "md", "rtf", "odt", "csv", "xlsx", "xls", "pptx", "ppt",
+  "png", "jpg", "jpeg", "webp", "gif", "svg", "bmp", "tiff", "ico", "heic",
+  "mp3", "mp4", "mov", "avi", "wav", "webm", "mkv",
+  "zip", "tar", "gz", "rar", "7z",
+  "js", "ts", "css", "html", "htm", "json", "xml", "yaml", "yml", "py", "rb", "go", "rs", "sh",
+]);
+
+const IPV4_RE = /\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b/g;
+// A hostname is one or more dot-separated DNS labels ending in an alphabetic
+// TLD of 2-24 chars. Case-insensitive; the URL/email-boundary handling is
+// done by inspecting the surrounding characters below.
+const HOST_RE = /(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,23}/gi;
+
+// True for an IPv4 that is private, loopback, link-local, multicast, or
+// otherwise not a publicly routable address worth (or possible) to query on
+// Shodan. Wasting a query credit on 192.168.x.x also leaks nothing useful.
+/**
+ * @param {number} a first octet
+ * @param {number} b second octet
+ */
+function isPublicIpv4(a, b) {
+  if (a === 0 || a === 10 || a === 127 || a >= 224) return false; // this-net, private, loopback, multicast/reserved
+  if (a === 169 && b === 254) return false; // link-local
+  if (a === 172 && b >= 16 && b <= 31) return false; // private
+  if (a === 192 && b === 168) return false; // private
+  if (a === 100 && b >= 64 && b <= 127) return false; // CGNAT
+  return true;
+}
+
+// Extracts publicly-routable IPv4s and plausible hostnames from free text.
+// Deduped, capped, and de-noised (private IPs, file names, email addresses,
+// and any hostname that is really just an IP are all excluded). Returns
+// { ips, hostnames }.
+/**
+ * @param {unknown} text free text to scan
+ * @returns {ShodanTargets}
+ */
+export function extractTargets(text) {
+  const raw = typeof text === "string" ? text : "";
+  const ips = [];
+  const seenIp = new Set();
+  for (const m of raw.matchAll(IPV4_RE)) {
+    const octets = [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])];
+    if (octets.some((o) => o > 255)) continue;
+    if (!isPublicIpv4(octets[0], octets[1])) continue;
+    const ip = octets.join(".");
+    if (seenIp.has(ip)) continue;
+    seenIp.add(ip);
+    if (ips.length < MAX_IPS) ips.push(ip);
+  }
+
+  const hostnames = [];
+  const seenHost = new Set();
+  for (const m of raw.matchAll(HOST_RE)) {
+    const host = m[0].toLowerCase().replace(/\.$/, "");
+    // Skip an email address's domain (the char before the match is '@').
+    if (m.index > 0 && raw[m.index - 1] === "@") continue;
+    // Skip a TRUNCATED tail of a longer token. HOST_RE's label class is
+    // ASCII-only and /i does not extend it to å/ä/ö, so an internationalized
+    // domain matched only from its last ASCII run: "räksmörgås.se" yielded
+    // "s.se" — not a miss but a WRONG host, quietly queried on Shodan and
+    // leaked outward (found by shodan-enrichment.test.js, 2026-08-07). Any
+    // letter or digit immediately before the match means we are looking at
+    // the tail of something bigger, so there is no host here to query.
+    if (m.index > 0 && /[\p{L}\p{N}]/u.test(raw[m.index - 1])) continue;
+    // Skip anything that is actually a dotted IP (already handled above).
+    if (/^\d+(\.\d+)+$/.test(host)) continue;
+    const tld = host.slice(host.lastIndexOf(".") + 1);
+    if (FILE_EXTENSIONS.has(tld)) continue;
+    if (seenHost.has(host)) continue;
+    seenHost.add(host);
+    if (hostnames.length < MAX_HOSTNAMES) hostnames.push(host);
+  }
+  return { ips, hostnames };
+}
 
 /**
  * What pickShodanTarget resolves a conversation turn into — the contract
