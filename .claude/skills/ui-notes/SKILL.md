@@ -283,8 +283,13 @@ description: >-
   Dismiss doesn't require leaving the main app. **Zero-retention
   discipline**: the `user_messages` D1 table has no content column at
   all — only `type`/`period`/`kind` enums and timestamps ever get stored,
-  nothing derived from a chat message or a model's answer, matching the
-  privacy notice's promise that conversations are never stored. "Quota
+  nothing derived from a chat message or a model's answer. The reason is the
+  column shape itself, not a site-wide promise: this used to be justified as
+  "matching the privacy notice's promise that conversations are never stored",
+  which stopped being true when the 2026-07-16 directive made cloud storage
+  implicit on Se/rver (invariant 4), and feedback #63 found that stale wording
+  still shipping in user-facing copy. The table's silence is a local guarantee
+  and outlives the sentence that used to explain it. "Quota
   available again" isn't a separately logged event — a stored
   `quota_exceeded` row is annotated `resolved` at READ time by comparing
   its `(period, kind)` against the caller's CURRENT quota state
