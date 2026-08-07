@@ -428,11 +428,31 @@ const execSpeedNote = (env) => {
   );
 };
 
-/** @param {{ sourceMounted?: boolean, sdkMode?: boolean, env?: string }} [opts] @returns {string} */
+// What the sandbox holds when it holds NOTHING — no attached files, no source
+// mount, no build to reconnoitre. Until 2026-08-07 the attachments paragraph
+// below was unconditional and opened with "Run `cat /workspace/INDEX.txt`
+// first", so an empty VM still carried a standing order to look at the disk
+// before anything else. Feedback #64 caught the result: "Osint on revsec" — a
+// question about a company nobody here has ever heard of — was answered by
+// searching the filesystem for it. The client now DECLARES whether files are
+// mounted (stream.js sendNeedsMounts → /api/bash/step `files_mounted`), the
+// same contract Se/cure has had all along (drc-research.js drcBashAgentPrompt
+// `filesMounted`), and when nothing is mounted the model is told so plainly
+// AND told where such a question is actually answered. Without the second half
+// the model still runs `ls` to check for itself.
+const EMPTY_SANDBOX_NOTE =
+  "NOTHING IS MOUNTED for this request: no files are attached and /workspace holds only what you create. Do not go looking on disk for whatever the user asked about — this machine is offline and carries no information about any person, company, product, domain or event in the outside world, so `ls`, `find` and `grep` over the filesystem cannot find it and only burn the turn.\n" +
+  "A question about an external subject is answered by the research pipeline's WEB SEARCH, which runs after you and does not need you: reply SHELL_DONE on the first turn. Run commands only when the task is genuinely local work — computing, converting, generating or checking something from what you are given.\n";
+
+/** @param {{ sourceMounted?: boolean, sdkMode?: boolean, env?: string, filesMounted?: boolean }} [opts] @returns {string} */
 export const bashAgentPrompt = (opts = {}) =>
   `You drive a Linux command-line sandbox for Deepresearch.se. Today's date: ${today()}.\n` +
   execEnvironmentNote(opts.env) +
-  "If the user attached files, they are mounted read-write and persist across sessions: this chat's files are in /workspace/ and the active project's files in /workspace/<projectname>/ (a symlink to a /mnt mount). Run `cat /workspace/INDEX.txt` first to see what's available; if it is missing, no files were attached. Read them as inputs and write any results under /workspace/.\n" +
+  (opts.filesMounted
+    ? "ATTACHED FILES: the user's files are mounted read-write and persist across sessions — this chat's files in /workspace/ and the active project's files in /workspace/<projectname>/ (a symlink to a /mnt mount). Run `cat /workspace/INDEX.txt` to see what's available, read them as inputs, and write any results under /workspace/.\n"
+    : opts.sourceMounted || opts.sdkMode
+      ? ""
+      : EMPTY_SANDBOX_NOTE) +
   (opts.sourceMounted
     ? "INTROSPECTION (developer mode is on): the complete source tree of the Deepresearch.se site itself is mounted read-only at /src (also reachable as /workspace/source) — e.g. /src/src/pipeline.js, /src/public/js/app.js, /src/CLAUDE.md. When the user asks about the site's own code, source, implementation, or wants it explored, ls/cat/grep -rn under /src; never claim the source is unavailable.\n" +
       "Both SDKs ride in that tree at /src/sdk/ — the Platform SDK (manifest sdk/MANIFEST.json, one skill playbook per module under sdk/skills/) builds a whole platform, the Agent SDK (sdk/AGENTS.json, docs/AGENT-PLATFORM.md) defines a single agent. One CLI serves both when node is present: `node /src/sdk/pair-cli.mjs list|show <id>|plan <id...>|validate|agents|agent <id>` — if node is missing, read the manifests and skills directly with cat/grep instead.\n"

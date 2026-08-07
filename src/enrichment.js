@@ -22,6 +22,7 @@
 
 import { runAncientSampleEnrichment } from "./aadr.js";
 import { capHasContext } from "./agent-spec.js";
+import { runEntityResearchEnrichment } from "./entity-research.js";
 import { extensionEnrichments } from "./extensions.js";
 import { runImageReadEnrichment } from "./image-read.js";
 import { runIntrospectionEnrichment } from "./introspect.js";
@@ -174,6 +175,31 @@ const CORE_ENRICHMENTS = [
     enabled: () => true, // intent decides; the runner is silent on a non-person turn
     run: (c) => runPersonResearchEnrichment(c),
   },
+  {
+    // The entity-research METHOD (src/entity-research.js) — the sibling of the
+    // one above and, like it, method rather than data. Where person-research
+    // asks whether the SUBJECT is a person, this one reads the request SHAPE:
+    // "osint on …", "due diligence on …", "bakgrundskoll på …". That is the
+    // difference feedback #64 turned on. "Osint on revsec" names no role, no
+    // company suffix and no pronoun, so no referent test can classify it — and
+    // the name belonged to four unrelated organisations, which the report
+    // handled by profiling all of them at once.
+    //
+    // It appends two rules: resolve the subject before profiling it (and ASK,
+    // once, when the retrieved sources show more than one), and size the report
+    // to the research time the user bought — the deepest tier shaped like a
+    // TIBER-EU targeted threat intelligence report, the shallowest a short
+    // profile. The tier comes from `state.plan.reportTier`, which is why this
+    // runner reads state at all where person-research does not.
+    //
+    // LAST in the registry, after person_research, so on an OSINT question
+    // about a named individual the two blocks read in that order: the method
+    // and its guardrails first, then how to resolve the subject and how big the
+    // answer should be. Both firing on one turn is correct, not a double-fire.
+    id: "entity_research",
+    enabled: () => true, // intent decides; the runner is silent on every other turn
+    run: (c) => runEntityResearchEnrichment(c),
+  },
 ];
 
 // The effective registry — the pre-pipeline counterpart of the search-source
@@ -208,7 +234,7 @@ export async function runEnrichments(env, log, emit, step, stepDone, conversatio
       // Only an actual conversation replaces the one we hold. A runner that
       // slips and resolves to null/undefined used to have that nullish value
       // flow straight into the NEXT runner's ctx and out of here — and since
-      // person_research runs last and defensively returns `conversation || []`,
+      // the last runner in the registry defensively returns what it was handed,
       // the request would then proceed with an EMPTY conversation: the user's
       // question silently deleted rather than the turn failing. Containment
       // here is the same promise the catch below makes (invariant 2).

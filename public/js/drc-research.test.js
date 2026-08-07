@@ -1161,7 +1161,14 @@ test("drcBashAgentPrompt: /src and /workspace are stated independently", () => {
   const neither = drcBashAgentPrompt();
   assert.equal(hasSource(neither), false);
   assert.equal(hasFiles(neither), false);
-  assert.equal(neither.includes("/workspace"), false); // nothing at all about mounts
+  // Silence about the mounts is no longer enough (feedback #64): with nothing
+  // mounted the prompt must SAY so, and say where a question about an outside
+  // subject is actually answered — a model told nothing runs `ls` to find out.
+  // What it must still never do is describe files as being available.
+  assert.match(neither, /NOTHING IS MOUNTED/);
+  assert.match(neither, /do not go looking on disk/);
+  assert.match(neither, /the right first turn is SHELL_DONE/);
+  assert.doesNotMatch(neither, /read-write at \/workspace\//);
 
   const src = drcBashAgentPrompt({ sourceMounted: true });
   assert.equal(hasSource(src), true);

@@ -54,6 +54,10 @@ const EXPECTED_ORDER = [
   "aadr",
   "scholar",
   "person_research",
+  // Last, and after person_research on purpose: on an OSINT question about a
+  // named individual both fire, and the method plus its guardrails must be read
+  // before the rule about resolving which subject it is (feedback #64).
+  "entity_research",
 ];
 
 const EXTENSION_IDS = ["shodan", "maps"];
@@ -146,7 +150,7 @@ describe("the enrichment registry — membership and order", () => {
     // CORE_ENRICHMENTS and every other test still passes.
     const { warns, out } = await runReal(hostileConversation(), everythingOn());
     assert.deepEqual(idsThatRan(warns), EXPECTED_ORDER);
-    // …and the failure of all eight left the conversation exactly as it came in.
+    // …and the failure of all nine left the conversation exactly as it came in.
     assert.equal(typeof out, "object");
   });
 
@@ -222,7 +226,7 @@ describe("the enrichment registry — membership and order", () => {
     // Every other gate is off in a bare state, so it is the only runner reached
     // — its own intent gate decides, not the registry.
     const { warns } = await runReal(hostileConversation(), {});
-    assert.deepEqual(idsThatRan(warns), ["person_research"]);
+    assert.deepEqual(idsThatRan(warns), ["person_research", "entity_research"]);
   });
 
   test("the registry is language-independent", async () => {
@@ -252,8 +256,8 @@ describe("gating", () => {
     // The hostile conversation makes "was run called?" observable: any runner
     // that were reached would throw and log. Only person_research does.
     const { warns, out } = await runReal(hostileConversation(), { vision: false, introspection: false });
-    assert.deepEqual(idsThatRan(warns), ["person_research"]);
-    assert.equal(warns.length, 1);
+    assert.deepEqual(idsThatRan(warns), ["person_research", "entity_research"]);
+    assert.equal(warns.length, 2);
     assert.equal(typeof out, "object");
   });
 
@@ -265,14 +269,14 @@ describe("gating", () => {
 
   test("emptyExtensionState() (the MCP channel's shape) leaves both extensions off", async () => {
     const { warns } = await runReal(hostileConversation(), { ext: emptyExtensionState() });
-    assert.deepEqual(idsThatRan(warns), ["person_research"]);
+    assert.deepEqual(idsThatRan(warns), ["person_research", "entity_research"]);
   });
 
   test("an extension fires only on its own slice", async () => {
     const only = async (ext) => idsThatRan((await runReal(hostileConversation(), { ext })).warns);
-    assert.deepEqual(await only({ shodan: { on: true } }), ["shodan", "person_research"]);
-    assert.deepEqual(await only({ maps: { on: true } }), ["maps", "person_research"]);
-    assert.deepEqual(await only({ shodan: { on: false }, maps: { on: false } }), ["person_research"]);
+    assert.deepEqual(await only({ shodan: { on: true } }), ["shodan", "person_research", "entity_research"]);
+    assert.deepEqual(await only({ maps: { on: true } }), ["maps", "person_research", "entity_research"]);
+    assert.deepEqual(await only({ shodan: { on: false }, maps: { on: false } }), ["person_research", "entity_research"]);
   });
 
   test("an ordinary Deep Research turn leaves aadr and scholar OFF", async () => {
@@ -285,7 +289,7 @@ describe("gating", () => {
       const { warns } = await runReal(hostileConversation(), { capability });
       assert.deepEqual(
         idsThatRan(warns),
-        ["person_research"],
+        ["person_research", "entity_research"],
         `capability ${JSON.stringify(capability)} must not enable aadr/scholar`,
       );
     }
@@ -295,24 +299,25 @@ describe("gating", () => {
     const { warns } = await runReal(hostileConversation(), {
       capability: { context: ["ancient-samples"] },
     });
-    assert.deepEqual(idsThatRan(warns), ["aadr", "person_research"]);
+    assert.deepEqual(idsThatRan(warns), ["aadr", "person_research", "entity_research"]);
   });
 
   test("a capability declaring scholar-metrics turns scholar on — and only scholar", async () => {
     const { warns } = await runReal(hostileConversation(), {
       capability: { context: ["scholar-metrics"] },
     });
-    assert.deepEqual(idsThatRan(warns), ["scholar", "person_research"]);
+    assert.deepEqual(idsThatRan(warns), ["scholar", "person_research", "entity_research"]);
   });
 
   test("the core knobs each enable exactly their own entry", async () => {
     const only = async (state) => idsThatRan((await runReal(hostileConversation(), state)).warns);
-    assert.deepEqual(await only({ vision: true }), ["image_read", "person_research"]);
-    assert.deepEqual(await only({ introspection: true }), ["introspect", "person_research"]);
-    assert.deepEqual(await only({ modelsMode: true }), ["models", "person_research"]);
+    assert.deepEqual(await only({ vision: true }), ["image_read", "person_research", "entity_research"]);
+    assert.deepEqual(await only({ introspection: true }), ["introspect", "person_research", "entity_research"]);
+    assert.deepEqual(await only({ modelsMode: true }), ["models", "person_research", "entity_research"]);
     // Falsy knobs stay off — the gates coerce rather than test for `true`.
     assert.deepEqual(await only({ vision: 0, introspection: "", modelsMode: null }), [
       "person_research",
+      "entity_research",
     ]);
   });
 

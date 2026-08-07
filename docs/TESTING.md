@@ -494,6 +494,16 @@ gate, both tiers off the one core: what users actually sent in feedback #60
 firing it, a topic, a company or a product NOT firing it, full Swedish parity
 per invariant 6, the methodology block, and the enrichment silent when the
 message names nobody — never throwing whatever it is handed).
+`entity-research.js` + `public/js/entity-research-core.js` cover the sibling
+method from feedback #64: the verbatim reported message firing the gate, an
+ordinary research request not firing it, the matched EN/SV `PAIRS` table with a
+live demonstration of the `\b` trap, the subject-resolution rule and both of its
+brakes (an anchor already supplied resolves it, and it never asks twice), each
+report tier carrying its own scaffold and no other with word count strictly
+increasing across the tiers, the TIBER tier's content contract plus the
+frameworks pinned OUT by name because no ECB TIBER document carries them, and
+the enrichment contract — the tier read from `state.plan`, an unknown tier
+falling back to standard, and a frozen state bag still yielding the block.
 `answer-stream.js` covers the streaming failover seam:
 `isTransientConnectStatus` retrying provider-side statuses ONLY,
 `contextOverflowMessage` rewriting the context-window 400 and nothing else, and

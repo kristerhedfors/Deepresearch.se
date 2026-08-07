@@ -1235,7 +1235,8 @@ async function maybeRunShellLoop(turn, opts) {
     // to settle first; a no-op when the live VM already has what's needed
     // (notably: a dev-mode pre-warm already carries /src and is kept).
     // Meaningless for a local runner — there is no VM here to hold mounts.
-    if (!remoteExec) await resetSandboxIfLacking(sendNeedsMounts(opts));
+    const mounts = sendNeedsMounts(opts);
+    if (!remoteExec) await resetSandboxIfLacking(mounts);
 
     let booted = false;
     let ran = 0;
@@ -1310,6 +1311,13 @@ async function maybeRunShellLoop(turn, opts) {
       exec: (command) => runner.exec(command, { timeoutMs: execTimeoutMs, maxStdoutBytes: GUEST_STDOUT_CAP_BYTES }),
       ensureReady: bootOnce,
       sdk: sdkSend,
+      // Whether this send mounts any of the user's OWN files. Only the client
+      // knows, and the step prompt used to describe /workspace unconditionally
+      // — including the instruction to read its index FIRST — so a send with
+      // nothing mounted still opened by searching the disk (feedback #64:
+      // "Osint on revsec" answered by looking for files). The same fact
+      // Se/cure has always declared (drc-research.js `filesMounted`).
+      files: mounts.files,
       // Tell the step model which machine it is driving (browser emulator vs a
       // native container) so its command choices match the real cost model.
       execEnv: execEnvResolved().backend,

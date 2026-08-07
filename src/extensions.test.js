@@ -325,9 +325,18 @@ describe("core purity", () => {
     // block of METHOD. There is no service for invariant 7 to be about; naming
     // a company register in a checklist is not integrating with one, and
     // actually searching stays the ordinary pipeline's job.
+    //
+    // entity-research.js is its sibling and stands on exactly the same ground:
+    // a regex pair and a constant block of method, reaching nothing. It names
+    // TIBER-EU and MITRE ATT&CK the way the person block names a company
+    // register — as vocabulary a report is written in, not as a service anyone
+    // integrates with. Note in particular that it is NOT the Shodan extension's
+    // core half: an attack-surface question can reach both, but this module has
+    // no knob, no secret, no state slice and no descriptor, and it would behave
+    // identically in a deployment where Shodan had never been registered.
     assert.deepEqual(imports, [
-      "./aadr.js", "./agent-spec.js", "./extensions.js", "./image-read.js", "./introspect.js",
-      "./models-agent.js", "./person-research.js", "./scholar-metrics.js",
+      "./aadr.js", "./agent-spec.js", "./entity-research.js", "./extensions.js", "./image-read.js",
+      "./introspect.js", "./models-agent.js", "./person-research.js", "./scholar-metrics.js",
     ]);
   });
 });
