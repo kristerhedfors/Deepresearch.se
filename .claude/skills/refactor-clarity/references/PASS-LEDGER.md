@@ -730,3 +730,88 @@ ceiling constant and both sinks are exactly what differ), `answerPhaseFor`
 new subsystems all shipped factored, three of them as the class-X façade pair
 the convention asks for.
 
+
+## 18 — 2026-08-07, the misplaced-half pass (nine parallel surveyors)
+
+Diff from `45dacf72` (pass 17): ~9,750 added lines — the Shodan family's intent
+gate (`src/shodan-text.js`, new, +382; `shodan.js` +210; `shodan-enrichment.js`
++75), the new research helpers (`entity-research-core.js` +298,
+`query-focus-core.js` +194 and their façades), and growth in `pipeline.js`,
+`conversation.js`, `enrichment.js`, `prompts.js`, `sdk-core.js`.
+**Three cuts, plus two registry-drift fixes that matter more than one of them.**
+
+Both scans were converged before the pass began: `dup-scan` returned 14 groups
+and every one was already a decline row, and of `line-scan --run 8`'s 84 runs
+only three fell outside the register — one of which (`features.js` /
+`panels.js` / `security-risks.js`) was a shared IMPORT CLUSTER from `board.js`,
+i.e. the shared core working. **All three cuts came from the reading pass**, and
+all three are the same shape: not a concern that needs splitting, but a piece
+that was placed on the wrong side of a split someone else had already made.
+
+- **`buildContinuationTurns` + `CONTINUE_TAIL_CHARS` → `src/pipeline-inputs.js`.**
+  The feedback-#30 truncation fix put `sdkCutOffNote` in `pipeline-inputs.js` at
+  authoring time and left its sibling behind in `pipeline.js`. Pure `Msg[]`
+  builder over one argument, zero new runtime imports, and its constant has a
+  single binding in the tree so it travels without a `finalePhaseBucket`
+  divergence. Newly testable: the tail-slice length and the assistant-then-user
+  alternation its JSDoc says "some backends" require had no test at all.
+- **The target-extraction band → `src/shodan-text.js`.** `shodan-text.js`'s
+  header claims it was "split out of shodan.js the same way googlemaps-text.js
+  was split out of googlemaps.js" — while importing `extractTargets` BACK from
+  the network client, which made it the only `-text.js` in the repo that was not
+  a leaf. `googlemaps.js` imports `googlemaps-text.js`, not the reverse. The
+  band (five symbols, two caps, one typedef) moved with its comments, including
+  the `räksmörgås.se` IDN-truncation note recording a WRONG host quietly queried
+  and leaked outward. `shodan.js` re-exports, so the test's import is unchanged.
+- **`exa.js` reaches `itemsDigest` through the `websearch-backends.js` façade.**
+  The core's own docstring carried the apology — "byte-identical to the shape
+  exa.js emits, so synthesis reads every backend the same way" — while exa.js
+  open-coded it. The symbol was ALREADY re-exported by a façade exa.js ALREADY
+  imported, so the cut is one name on an existing import line.
+
+**Method lesson — the highest-yield question was "which side of an existing
+split is this on?", not "what needs splitting?".** Every cut this pass was
+already-factored code with one piece misfiled, and in two of three the file's
+own header or docstring stated the convention it was breaking. That makes
+`grep`ping the apology (the skill's step-3 advice) worth more than it sounds:
+here the apologies were not comments confessing a copy, they were headers
+asserting a property the file did not have. **Read a module's header as a
+CLAIM to be checked, not as a description.**
+
+**The pass's most valuable finding was not a cut.** `SECURE_SOURCE_REFS`
+(`public/js/sdk-core.js`) was missing `drc-page-core.js` AND
+`drc-attach-core.js` — the two Se/cure cores carved out of `drc.js` by the most
+recent passes, both statically imported by it. The two most recently extracted
+pieces of the tier were the two SDK mode's distiller could not see, and
+`drc-attach-core.js` was absent from `sdk/MANIFEST.json`'s `secure-tier` module
+as well. `sdk/MANIFEST.json`'s `enrichments` module likewise never listed
+`shodan-text.js` or `shodan-enrichment.js`, hiding 382 lines of intent routing.
+Nothing goes red for any of this — `sdk_validate` checks that SKILL files exist,
+never the reference paths. **The finishing checklist's first two items are
+first for a reason, and a pass should verify them for PRIOR passes' cuts, not
+only its own.**
+
+**Seventeen decline rows recorded**, from nine parallel surveyors over the
+Shodan family, the pipeline growth, the new research family,
+conversation/enrichment/stream, the five largest unexamined server modules, the
+four largest client modules, `public/cure/drc.js`, and the two unregistered scan
+hits. Three deserve re-reading: the token VERIFY tail (the sink and the edge
+both exist and it still declines — the scan's run starts one line BELOW the
+divergence, and the hex-vs-base64url tag rendering IS the family separation
+under one `SESSION_SECRET`); `corpusRows` (Home PASSES, and it is explicitly
+NOT the `finalePhaseBucket` trap — verified by checking that neither file
+contains `process.env` at all); and `lastUserText`, where the move would
+MANUFACTURE that trap by separating a pure function from an impure near-twin
+whose text-part separator differs, inviting a later "de-duplication" that would
+silently flip four routing gates.
+
+**Two register corrections.** The `pipeline.js` whole-file bullet named a
+`src/build-tools.js` sink that does not exist and never has. And row 55's
+parenthetical "no script in the repo imports from `src/` at all" is now false —
+five `scripts/` entries do.
+
+**A guard worth adding, not a cut** (the `OAUTH_SCHEMA_SQL` pattern):
+`entity-research-core.js:208` re-declares the `ReportTier` union locally because
+the tier gate forbids a `public/js` core importing `src/types.d.ts`. The copy is
+correct and forced; nothing detects divergence, so a fifth tier would leave
+`DEPTH_LINES` silently falling back to `standard`.
