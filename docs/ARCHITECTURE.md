@@ -543,8 +543,20 @@ Phase details:
    branch. Results are appended as labeled context blocks so triage,
    search and synthesis all see them. `enrichment.js` itself names no
    service — the third-party ones arrive from the extension registry
-   (§4.2a); the only enrichment declared in core is introspection, which
-   reads this repo's own committed snapshot.
+   (§4.2a), and none of the core rows is an integration: the image read,
+   introspection's committed snapshot, the model catalog, the
+   ancient-sample corpus, Scholar's venue metrics, and the two **method**
+   rows below.
+
+   A row appends one of two kinds of block, and the registry entry says
+   which. **Data** is the default and covers almost everything: the
+   transcription of the user's own photo, matched corpus rows, a metrics
+   table, the priced catalog. **Method** (`method: true`, set by
+   `person_research` and `entity_research` and nothing else) is prose
+   about how to research and how to shape the answer — it names no
+   subject and asserts no fact. The distinction is consumed in exactly
+   one place, §4.2b: data is legitimate material to write search queries
+   from, and method never is.
 1. **Triage** (JSON, ≤500 tokens): sees the formatted conversation + latest
    message; returns `direct` | `clarify` (one question) | `research` with
    multi-angle queries (count from the budget plan) — plus a `complexity`
@@ -687,6 +699,68 @@ The import-graph half is the load-bearing one: if no core module imports
 integration cannot break the core, whatever the comments say. Wire names
 (`shodan_mcp`, `google_maps`, `shodan_hosts`, `maps_intent`, `maps_embed_key`)
 are pinned by the same suite — the cut moved code, never shipped contracts.
+
+### 4.2b The three views of the conversation (`src/pipeline.js`)
+
+`PipelineCtx` carries the conversation three times, because its readers do
+three different jobs with it:
+
+| View | What it holds | Who reads it |
+|---|---|---|
+| `cleanLastUser` / `cleanConvText`, and `gateLastUser` (the clean message **plus** `state.imageReadText`) | the pre-enrichment message — nothing this pipeline wrote | the deterministic gates: which source legs a request searches at all (§4.3c) |
+| `planLastUser` / `planConvText` | the enriched conversation **minus** the recorded method blocks | the three phases that WRITE web-search queries — triage, the gap check, the sub-question fan-out |
+| `lastUser` / `convText` | the enriched conversation, every appended block intact | synthesis, and everything else that consumes material rather than planning searches |
+
+The planning view was added 2026-08-07 from feedback #65, an OSINT turn. A
+user answered a disambiguation question with the bare "Tiber style threat
+intel"; `entityResearchIntent` fires on that phrasing alone, with no subject
+required, so 945 words of TIBER-EU and MITRE ATT&CK scaffolding were appended
+to it. Triage read the result as the latest user message and planned against
+the report FORMAT instead of the company — the block's own prose was visible
+in the first query string.
+
+Neither existing view fits here. The clean pair drops the data enrichments a
+planner legitimately writes queries from, the transcription of the user's own
+photo above all. The enriched pair carries method prose, which is the shape of
+the answer and can never be a search target. So the planning view is the
+enriched conversation with the method blocks lifted back out.
+
+The mechanism is two small pieces. `runEnrichments` records what a `method`
+row appended by diffing the last user message around its run and pushing the
+added tail onto `state.methodBlocks` — the registry knows which rows are
+method rows (§4.2 phase 0), so nothing has to be kept in sync with a block's
+own text, and a runner stays free to be silent. `withoutMethodBlocks`
+(`src/conversation.js`) then removes those recorded strings by exact
+substring: it returns the same array reference when nothing was stripped,
+never trims text the user wrote, and leaves image parts alone, so an
+attachment survives the strip the way it survived the append. Fail-soft, like
+every helper: with nothing recorded the planner sees exactly what it saw
+before this existed.
+
+**Synthesis deliberately keeps reading the enriched pair.** The method block
+is what the answer is meant to follow; stripping it there would delete the
+thing the enrichment exists to apply.
+
+The prompt layer carries the same rule in words. `SUBJECT_VS_FORMAT_RULE`
+(`src/prompts.js`, spliced into `triagePrompt` and `gapPrompt`) says a named
+report format, deliverable or methodology — TIBER-EU, a SWOT, a due-diligence
+memo, a dossier, "rapport", "hotbild", "hotanalys", "bakgrundskoll" — is the
+shape of the answer and never the topic to search for, that every query must
+gather facts about the subject, and that a message naming only a format
+resolves its subject from the conversation like any other back-reference. EN
+and SV examples are paired, per invariant 6.
+
+This is the **fourth** instance of one bug class — a consumer reading the
+enriched message when it should read the user's — after the quiz gate
+(`chat_logs` #360), `externalSourceIntent`, and feedback #61's source ladder
+(§4.3c). It is the first outside a deterministic gate, which is why
+`src/pipeline.test.js`'s existing call-site guards stayed green through it;
+they now pin the three planning phases as well. One known sibling is
+deliberately unfixed: `runQuizGeneration` still reads the enriched pair while
+its routing gate reads `ctx.cleanLastUser`. A quiz is written from collected
+material rather than searched for, so the exposure is smaller — but it is the
+same shape, and it is recorded in `docs/MAINTENANCE-OWNERS.md` rather than
+left to be rediscovered.
 
 ### 4.3 Time-budget planner (`src/budget.js`)
 
@@ -927,6 +1001,10 @@ message that had no subject in it at all. The transcription is bounded by
 `image-read.js`'s own `MAX_BLOCK_CHARS`, is held for routing only, and is
 deliberately not on the `state.imageRead` counters object that `chat_logs`
 records (§11).
+
+The gates are not the only readers that must not take an appended block for
+the user's question. The phases that write the search queries have their own
+view of the conversation for the same reason — §4.2b.
 
 **Fail-soft, like every helper phase (invariant 2):** a leading source that
 contributes nothing releases the lead — the Exa leg runs for the same batch

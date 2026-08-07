@@ -35,10 +35,14 @@
 // thrown non-Error) — exactly the inputs the fail-soft contract exists for.
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test, { describe } from "node:test";
 
+import { lastUserText, withoutMethodBlocks } from "./conversation.js";
 import { runEnrichments } from "./enrichment.js";
-import { EXTENSIONS, emptyExtensionState } from "./extensions.js";
+import { entityResearchBlock } from "./entity-research.js";
+import { EXTENSIONS, emptyExtensionState, extensionEnrichments } from "./extensions.js";
+import { personResearchBlock } from "./person-research.js";
 import { fakeLog } from "./test-helpers/env.js";
 import { withFakeFetch } from "./test-helpers/fetch.js";
 
@@ -573,6 +577,210 @@ describe("fail-soft (CLAUDE.md invariant 2)", () => {
       // undefined to [] and the request proceeded with the user's question
       // deleted. Now the nullish return never leaves the failing runner.
       assert.deepEqual(out, conversation);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+// Live feedback #65. Enrichments append two KINDS of block to the last user
+// message, and the difference is invisible to everything except the QUERY
+// PLANNER. Most append DATA it legitimately needs — a transcription of the
+// user's own photo, matched corpus rows, a metrics table, the model catalog.
+// Exactly two append METHOD: person_research's protocol (874 words) and
+// entity_research's report scaffold (945 at the `full` tier), prose that names
+// no subject and asserts no fact. A four-word "Tiber style threat intel" grew
+// 945 words of TIBER-EU and MITRE ATT&CK, triage read the result as "the
+// latest user message", and the first web query went looking for the report
+// FORMAT instead of for the company.
+//
+// runEnrichments is where the two are told apart: a registry row marked
+// `method: true` has whatever it appended recorded on `state.methodBlocks` — by
+// DIFFING the last user message around its run, so nothing has to be kept in
+// sync with the block's own text — and src/pipeline.js builds its planning view
+// with withoutMethodBlocks(convo, state.methodBlocks).
+//
+// The method rows here are the REAL ones, because a method row cannot be faked:
+// `withProbes` reaches the registry through extensions.js extensionEnrichments(),
+// which builds every entry as `{ id, enabled, run }` and carries no `method` key
+// at all (an extension resolves something the message names, so it appends data
+// by construction — pinned below). The probe seam still drives the data half,
+// where that is exactly what is wanted.
+describe("method blocks are recorded for the query planner (feedback #65)", () => {
+  // Verbatim from the feedback each method exists for.
+  const PERSON_TURN = "Write a report about what you can find on this founder"; // #60
+  const ENTITY_TURN = "Osint on revsec"; // #64
+  // Both gates fire on this one: the request SHAPE is a dossier and the subject
+  // is a named individual. The registry order (person_research, then
+  // entity_research) is what decides the order of the two recorded blocks.
+  const BOTH_TURN = "do an osint report on the founder Anna Svensson";
+  // Neither method gate fires, and no other enrichment is enabled by `{}`.
+  const QUIET_TURN = "what is the capital of France?";
+
+  const turn = (/** @type {string} */ text) => [{ role: "user", content: text }];
+
+  test("a method row records exactly the block it appended — not the whole message", async () => {
+    // The recorded string has to be the BLOCK: withoutMethodBlocks removes it by
+    // exact substring, so a recording that carried the user's own words with it
+    // would delete the question the planner exists to plan against.
+    const person = {};
+    await runReal(turn(PERSON_TURN), person);
+    assert.deepEqual(/** @type {any} */ (person).methodBlocks, [personResearchBlock()]);
+
+    const entity = {};
+    await runReal(turn(ENTITY_TURN), entity);
+    // No `state.plan`, so entity-research falls back to the "standard" tier the
+    // same way every other reportTier consumer does.
+    assert.deepEqual(/** @type {any} */ (entity).methodBlocks, [entityResearchBlock("standard")]);
+
+    for (const [state, asked] of [[person, PERSON_TURN], [entity, ENTITY_TURN]]) {
+      for (const block of /** @type {any} */ (state).methodBlocks) {
+        assert.equal(
+          block.includes(/** @type {string} */ (asked)),
+          false,
+          "a recorded block must carry none of what the user typed",
+        );
+      }
+    }
+  });
+
+  test("what is recorded is what withoutMethodBlocks needs to restore the planning view", async () => {
+    // The round trip is the whole contract: enrich → record → strip must hand
+    // the planner back the message the user actually typed.
+    const state = {};
+    const { out } = await runReal(turn(PERSON_TURN), state);
+    assert.notEqual(lastUserText(out), PERSON_TURN, "the block really was appended");
+    const planning = withoutMethodBlocks(out, /** @type {any} */ (state).methodBlocks);
+    assert.equal(lastUserText(planning), PERSON_TURN);
+  });
+
+  test("a DATA enrichment records nothing — the planner must keep seeing data blocks", async () => {
+    // The load-bearing half of the design. `method` is absent by default and
+    // that default is the right one: a block resolving something the message
+    // NAMES (the photo transcription, the corpus rows, the catalog) is exactly
+    // what a planner should be writing queries from. Marking a data row would
+    // hide the user's own attachment from triage.
+    const state = {};
+    const conversation = turn(QUIET_TURN);
+    const DATA = "[HOST INTELLIGENCE] basalt.se — 443/tcp open";
+    await withProbes(
+      [probe("data", async (c) => [{ role: "user", content: `${lastUserText(c.conversation)}\n\n${DATA}` }])],
+      async (run) => {
+        const out = await run({}, fakeLog(), NOOP_CTX.emit, NOOP_CTX.step, NOOP_CTX.stepDone, conversation, state);
+        assert.ok(lastUserText(out).includes(DATA), "the data row did append");
+        assert.equal(/** @type {any} */ (state).methodBlocks, undefined);
+      },
+    );
+  });
+
+  test("a SILENT method row records nothing — no empty entry, no array", async () => {
+    // Both method runners are silent far more often than they fire (every turn
+    // that is not a person or dossier request), and a silent runner returns the
+    // conversation by reference. Recording an empty string there would make
+    // withoutMethodBlocks a no-op with a cost, and `state.methodBlocks` a bag
+    // that is never absent.
+    const state = {};
+    const conversation = turn(QUIET_TURN);
+    const { out, warns } = await runReal(conversation, state);
+    assert.equal(out, conversation, "the conversation came back by reference");
+    assert.equal(/** @type {any} */ (state).methodBlocks, undefined);
+    assert.deepEqual(warns, []);
+  });
+
+  test("both method rows record when both fire, in registry order", async () => {
+    // An OSINT question about a named individual: the person method and its
+    // guardrails first, then the subject-resolution rule and the report size.
+    // Both firing on one turn is correct, not a double-fire (feedback #64) —
+    // and the planner has to be able to strip BOTH.
+    const state = {};
+    const { out } = await runReal(turn(BOTH_TURN), state);
+    const blocks = /** @type {any} */ (state).methodBlocks;
+    assert.equal(blocks.length, 2);
+    assert.deepEqual(blocks, [personResearchBlock(), entityResearchBlock("standard")]);
+    // Registry order, stated as the property that matters rather than as the
+    // constants above: the person block precedes the entity one in the message
+    // as well as in the record.
+    const text = lastUserText(out);
+    assert.ok(text.indexOf(blocks[0]) < text.indexOf(blocks[1]));
+    assert.equal(lastUserText(withoutMethodBlocks(out, blocks)), BOTH_TURN);
+  });
+
+  test("a method row whose runner returns a non-array records nothing", async () => {
+    // The dropped-return case (pinned above for data rows) reached through a
+    // REAL method row: handed a conversation that is not an array, both method
+    // runners defensively hand it straight back, so `next` is not a Conversation.
+    // `Array.isArray(next)` gates the recording exactly as it gates the
+    // assignment — nothing is diffed against a value that is not a conversation.
+    const state = {};
+    const { out, log } = await runReal(/** @type {any} */ ("not a conversation"), state);
+    assert.equal(/** @type {any} */ (state).methodBlocks, undefined);
+    assert.equal(out, "not a conversation", "and the caller's value is untouched");
+    assert.match(log.text(), /person_research\.enrichment_dropped/);
+    assert.match(log.text(), /entity_research\.enrichment_dropped/);
+  });
+
+  test("a frozen state does not break the run (invariant 2)", async () => {
+    // The recording is a WRITE to request state, which is the one new way this
+    // could take down a chat — module scope is strict, so the assignment throws
+    // rather than failing silently. It is caught at the write, not at the
+    // runner: the blocks still reach the conversation, the planner simply sees
+    // them the way it did before feedback #65, and no runner is blamed in the
+    // log for something it did not do.
+    const state = Object.freeze({});
+    const conversation = turn(BOTH_TURN);
+    /** @type {any} */
+    let result;
+    await assert.doesNotReject(async () => {
+      result = await runReal(conversation, state);
+    });
+    const text = lastUserText(result.out);
+    assert.ok(text.startsWith(BOTH_TURN), "the user's question survives");
+    assert.ok(text.includes(personResearchBlock()), "the person method still applied");
+    assert.ok(text.includes(entityResearchBlock("standard")), "the entity method still applied");
+    assert.equal(/** @type {any} */ (state).methodBlocks, undefined);
+    assert.deepEqual(result.warns, [], "the frozen write is not reported as a runner failure");
+  });
+
+  // `ENRICHMENTS` is not exported (see this file's header), so WHICH rows carry
+  // the flag is pinned the way pipeline.test.js pins a call site: over the
+  // source itself. The extension half needs no source read — extensionEnrichments()
+  // is exported and builds the entries.
+  describe("the flag is on exactly the two method rows", () => {
+    const SRC = readFileSync(new URL("./enrichment.js", import.meta.url), "utf8");
+    // One chunk per CORE_ENRICHMENTS entry: from its `id:` line to the next
+    // one's (the last runs to end of file).
+    const entries = SRC.split(/\n {4}id: "/)
+      .slice(1)
+      .map((chunk) => /** @type {[string, string]} */ ([chunk.slice(0, chunk.indexOf('"')), chunk]));
+
+    test("the source parse sees the core registry the rest of this file observes", () => {
+      // Guards the two assertions below: a parse that matched nothing would
+      // make them both vacuously true.
+      assert.deepEqual(entries.map(([id]) => id), CORE_IDS);
+    });
+
+    test("person_research and entity_research are marked, and no other core row is", () => {
+      const marked = entries.filter(([, chunk]) => /\n {4}method: true,/.test(chunk)).map(([id]) => id);
+      assert.deepEqual(marked, ["person_research", "entity_research"]);
+    });
+
+    test("the extension seam carries no method flag at all", () => {
+      // Also why a probe can never be a method row: extensionEnrichments()
+      // rebuilds each descriptor as `{ id, enabled, run }`. An extension
+      // resolves something the message NAMES, which is data by construction.
+      for (const e of extensionEnrichments()) {
+        assert.equal("method" in e, false, `${e.id} must not be a method row`);
+      }
+    });
+
+    test("the recording is gated on the row being a method row AND returning a conversation", () => {
+      assert.match(
+        SRC,
+        /if \(e\.method && Array\.isArray\(next\)\) noteMethodBlock\(state, before, lastUserText\(next\)\)/,
+      );
+      // The `before` snapshot is taken only for method rows — reading the last
+      // user message on every enrichment would be work no other row needs.
+      assert.match(SRC, /const before = e\.method \? lastUserText\(convo\) : ""/);
     });
   });
 });

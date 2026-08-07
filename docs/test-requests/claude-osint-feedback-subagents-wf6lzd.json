@@ -1,0 +1,46 @@
+{
+  "branch": "claude/osint-feedback-subagents-wf6lzd",
+  "pr": null,
+  "requested_at": "2026-08-07",
+  "points": [
+    {
+      "label": "Feedback #65: an OSINT follow-up that names only a report format searches for the subject, not for the format",
+      "summary": "FIX for feedback #65 (request c8b28240, chat_logs #1681/#1682). Reported: 'when tasked with producing a report such as the one requested, you should not start off by searching the web for those report!' and 'the first web search seems to contain prompt material!'. Both came from one mechanism — the entity-research method block (about 900 words of TIBER-EU vocabulary at the deepest research setting) was appended to the four-word message 'Tiber style threat intel', and the step that writes web-search queries was reading the two concatenated. Repeat the original steps: Deep Research mode, web search on, research time at maximum, ask 'Osint revsec', then answer the clarifying question with 'Tiber style threat intel'. PASS = the activity steps show searches naming revsec (the company, its people, ownership, products, news), and NO search query contains report-standard vocabulary (TIBER-EU, MITRE ATT&CK, 'threat actors', 'threat scenarios', 'digital presence'); the answer still arrives shaped as a threat-intelligence report, because the method still reaches synthesis. FAIL = any query aimed at the report standard or its methodology, or block prose visible in a query string. Note that being asked WHICH RevSec you mean is correct and unchanged — there are at least four unrelated ones.",
+      "target": "/rver",
+      "actions": [
+        {
+          "type": "note",
+          "text": "Verified offline against the exact reported turn: the query planner was being handed 5,697 characters (almost all of it the appended block) and is now handed the user's own 24, with 'Osint revsec' still in the conversation context above it so the format-only follow-up resolves to the company. Synthesis still receives the full block. This on-device run is the live confirmation."
+        }
+      ],
+      "runs": 1,
+      "verdicts": []
+    },
+    {
+      "label": "Feedback #65 (Swedish twin): a format-only follow-up in Swedish behaves the same",
+      "summary": "Invariant 6 check on the same fix. The Swedish dossier phrasings stand alone in the gate exactly as the English ones do, so a Swedish format-only reply reaches the same path. Steps: Deep Research mode, web search on, research time at maximum, ask 'Osint på revsec', then answer the clarifying question with 'hotbild i TIBER-stil'. PASS = the searches name revsec and no query is aimed at the report standard; the answer is in Swedish. FAIL = queries about TIBER/hotanalys methodology, or the Swedish turn behaving differently from its English twin.",
+      "target": "/rver",
+      "actions": [
+        {
+          "type": "note",
+          "text": "The planner rule lists the Swedish format words (rapport, hotbild, hotanalys, bakgrundskoll) beside the English ones; this run confirms the behaviour, not just the wording."
+        }
+      ],
+      "runs": 1,
+      "verdicts": []
+    },
+    {
+      "label": "Feedback #62 follow-up: a person question still routes to the open web, not to journals",
+      "summary": "Regression check that the #65 fix did not disturb the person-research path #62 fixed, and confirmation of the two items handed off from that thread. Steps: Deep Research mode, web search on, ask 'Research the lady called ”Britney” in poker cash games on youtube'. PASS = the activity steps show a person-research step applied, the sources are YouTube, poker media and forums, and NO academic database is queried; the answer holds the public-professional-record limits (no home address, no family, no personnummer). FAIL = clinical or psychology papers returning for a question that never mentioned research, or no person-research step at all. Also try the Swedish twin 'undersök damen som kallas Britney' — it must behave the same.",
+      "target": "/rver",
+      "actions": [
+        {
+          "type": "note",
+          "text": "Checked offline against the live gate: the verbatim reported message, the Swedish twin, the creator/streamer/poker roles and a bare @handle all register as person questions now. This run is the on-device confirmation that the routing follows."
+        }
+      ],
+      "runs": 1,
+      "verdicts": []
+    }
+  ]
+}

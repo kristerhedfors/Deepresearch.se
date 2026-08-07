@@ -60,6 +60,7 @@ import {
   textOf,
   withAppendedText,
   withImageNudge,
+  withoutMethodBlocks,
   withoutStarterTags,
 } from "./conversation.js";
 import { runEnrichments } from "./enrichment.js";
@@ -262,6 +263,8 @@ function demoSurfaces(text, prior = "") {
  *   cleanLastUser: string,
  *   gateLastUser: string,
  *   cleanConvText: string,
+ *   planLastUser: string,
+ *   planConvText: string,
  *   imageParts: import('./types.js').ContentPart[],
  *   emitDelta: (text: string) => void,
  *   step: (id: string, label: string) => void,
@@ -469,6 +472,28 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
       /** @type {any} */ (state).imageReadText || "",
     ].filter(Boolean).join("\n"),
     cleanConvText: formatConversation(conversation),
+    // What the QUERY-PLANNING phases read — triage, the gap check, the
+    // sub-question fan-out: the enriched conversation MINUS the method blocks
+    // (src/conversation.js withoutMethodBlocks). A third view, and it has to
+    // be, because neither of the other two is right here. The clean pair drops
+    // the DATA enrichments the planner legitimately writes queries from — the
+    // transcription of the user's own photo above all. The enriched pair
+    // carries method prose that is not a topic and must never become a search
+    // string. Feedback #65: "Tiber style threat intel" planned against 945
+    // words of appended TIBER-EU scaffold, so the first query went after the
+    // report format and carried the block's own words with it.
+    //
+    // The fourth instance of a bug class this pipeline keeps paying for (quiz
+    // gate, externalSourceIntent, the #61 source ladder, now query
+    // generation), and the first outside a deterministic gate — which is why
+    // pipeline.test.js's call-site guards were green through it.
+    ...(() => {
+      const planConvo = withoutMethodBlocks(convo, /** @type {any} */ (state).methodBlocks);
+      return {
+        planLastUser: textOf(lastUserMessage(planConvo)?.content),
+        planConvText: formatConversation(planConvo),
+      };
+    })(),
     // Image parts of the latest user message ride along into synthesis so a
     // vision model can research with the image as context.
     imageParts: imagePartsOf(lastUserMessage(convo)),
@@ -703,7 +728,10 @@ async function runWithoutSearch(ctx) {
  * @returns {Promise<TriageDecision>}
  */
 async function runTriage(ctx) {
-  const { state, lastUser, convText, step, stepDone } = ctx;
+  // planLastUser/planConvText, NOT lastUser/convText: this phase WRITES the
+  // web-search queries, and an appended method block is the one thing that can
+  // never be a search target (feedback #65 — see the ctx note).
+  const { state, planLastUser: lastUser, planConvText: convText, step, stepDone } = ctx;
   step("plan", "Analyzing request…");
   const triage = await jsonPhase(ctx, {
     label: "triage",
@@ -1619,7 +1647,8 @@ export function subquestionsAreIndependent(state) {
 }
 /** @param {PipelineCtx} ctx */
 async function runSubquestionFanout(ctx) {
-  const { log, state, reinforceJsonOnly, lastUser, convText } = ctx;
+  // The planning view — this phase writes follow-up queries (feedback #65).
+  const { log, state, reinforceJsonOnly, planLastUser: lastUser, planConvText: convText } = ctx;
   const plan = state.plan;
   if (!wantsSubqFanout(plan)) return;
   if (!subquestionsAreIndependent(state)) return;
@@ -1687,7 +1716,8 @@ async function runSubquestionFanout(ctx) {
 // won't allow another round.
 /** @param {PipelineCtx} ctx */
 async function runGapChecks(ctx) {
-  const { log, state, reinforceJsonOnly, lastUser, convText } = ctx;
+  // The planning view — this phase writes follow-up queries (feedback #65).
+  const { log, state, reinforceJsonOnly, planLastUser: lastUser, planConvText: convText } = ctx;
   const plan = state.plan;
   const est = plan.estimates;
 

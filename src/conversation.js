@@ -128,6 +128,85 @@ export function appendToLast(message, block) {
   return message;
 }
 
+// The conversation with METHOD blocks removed — the view the QUERY-PLANNING
+// phases read (triage, the gap check, the sub-question fan-out).
+//
+// Enrichments append two KINDS of block to the user's message, and the
+// difference only matters here. Most append DATA the planner legitimately
+// needs: a transcription of the user's own photo, matched corpus rows, a
+// metrics table, the model catalog. Two append METHOD — person-research's
+// protocol and entity-research's report scaffold — prose about HOW to research
+// and how to shape the answer, naming no subject and asserting no fact.
+//
+// Feedback #65 is what that distinction costs when it is not drawn. A user
+// answered a disambiguation question with "Tiber style threat intel"; the
+// entity-research gate fires on that phrasing alone, so ~945 words of TIBER-EU
+// and MITRE ATT&CK scaffolding were appended to a four-word message, and triage
+// read the result as "the latest user message". The planner searched the web
+// for the report FORMAT instead of for the company, and the block's own prose
+// was visible in the first query. Method text is the one thing that can never
+// be a search target: it is the shape of the answer, not the topic.
+//
+// The blocks are verbatim constants recorded by runEnrichments, so exact
+// substring removal is exact — no matcher, nothing to drift. Fail-soft in the
+// only direction that matters: with nothing recorded the conversation passes
+// through untouched, which is the behaviour that shipped before this existed.
+// SYNTHESIS still reads the enrichment-bearing conversation; stripping there
+// would delete the method the block exists to apply.
+/**
+ * @param {Msg[]} conversation
+ * @param {string[]} [blocks]
+ * @returns {Msg[]}
+ */
+export function withoutMethodBlocks(conversation, blocks) {
+  if (!Array.isArray(conversation) || !Array.isArray(blocks) || !blocks.length) return conversation;
+  const present = blocks.filter((b) => typeof b === "string" && b.length);
+  if (!present.length) return conversation;
+  // null means "this text held no block" — the caller then keeps the original
+  // object untouched. Without that distinction the tidy-up below would trim
+  // and re-space every user message on every turn, which is a change to text
+  // the user wrote and none of this function's business.
+  const strip = (/** @type {string} */ text) => {
+    let out = text;
+    for (const b of present) {
+      if (out.includes(b)) out = out.split(b).join("");
+    }
+    return out === text ? null : out.replace(/\n{3,}/g, "\n\n").trim();
+  };
+  let touched = false;
+  const next = conversation.map((m) => {
+    if (m?.role !== "user") return m;
+    if (typeof m.content === "string") {
+      const stripped = strip(m.content);
+      if (stripped === null) return m;
+      touched = true;
+      return { ...m, content: stripped };
+    }
+    if (!Array.isArray(m.content)) return m;
+    let changed = false;
+    const parts = [];
+    for (const p of m.content) {
+      if (p?.type !== "text" || typeof p.text !== "string") {
+        parts.push(p); // an image part is never touched: the attachment
+        continue;      // survives the strip exactly as it survived the append
+      }
+      const stripped = strip(p.text);
+      if (stripped === null) {
+        parts.push(p);
+        continue;
+      }
+      changed = true;
+      // A part that was ONLY the block goes away; one the user wrote into
+      // keeps what they wrote.
+      if (stripped) parts.push({ ...p, text: stripped });
+    }
+    if (!changed) return m;
+    touched = true;
+    return { ...m, content: parts };
+  });
+  return touched ? next : conversation;
+}
+
 // Text of the user message BEFORE the latest one (the prior turn's question),
 // or "" when there is no earlier user turn. Triage's fallback uses it to seed
 // a search from the established topic when the latest message is a bare

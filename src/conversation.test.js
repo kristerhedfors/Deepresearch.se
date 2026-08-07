@@ -2,7 +2,7 @@
 // view, image counting, last/previous user turn, non-mutating appenders).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { textOf, countImages, lastUserMessage, lastUserText, appendToLast, previousUserText, imagePartsOf, formatConversation, withImageNudge, withAppendedText, withAppendedImage, starterRefOf, withoutStarterTags } from "./conversation.js";
+import { textOf, countImages, lastUserMessage, lastUserText, appendToLast, previousUserText, imagePartsOf, formatConversation, withImageNudge, withAppendedText, withAppendedImage, starterRefOf, withoutStarterTags, withoutMethodBlocks } from "./conversation.js";
 
 describe("previousUserText", () => {
   test("returns the user message before the latest one", () => {
@@ -150,6 +150,90 @@ describe("appendToLast", () => {
     assert.equal(appendToLast(undefined, "block"), undefined);
     const odd = { role: "user", content: 42 };
     assert.equal(appendToLast(odd, "block"), odd, "returned unchanged rather than corrupted");
+  });
+});
+
+// Feedback #65. The user answered a disambiguation question with "Tiber style
+// threat intel"; the entity-research gate fires on that phrasing alone, so 945
+// words of TIBER-EU scaffold were appended to a four-word message and the query
+// planner read the result as the question. It searched for the report format
+// instead of for the company, and the block's own prose showed up in the first
+// query. This is the strip that gives the planning phases the message back.
+describe("withoutMethodBlocks", () => {
+  const BLOCK = "--- ENTITY RESEARCH METHOD ---\nStructure it as a TIBER-EU report.";
+
+  test("removes an appended block from string content", () => {
+    const convo = [{ role: "user", content: `Tiber style threat intel\n\n${BLOCK}` }];
+    const out = withoutMethodBlocks(convo, [BLOCK]);
+    assert.equal(out[0].content, "Tiber style threat intel");
+  });
+
+  test("drops the block's own text part and keeps the attachment", () => {
+    const convo = [{
+      role: "user",
+      content: [
+        { type: "text", text: "research this founder" },
+        { type: "image_url", image_url: { url: "data:," } },
+        { type: "text", text: BLOCK },
+      ],
+    }];
+    const out = withoutMethodBlocks(convo, [BLOCK]);
+    assert.equal(out[0].content.length, 2, "the block's part is gone");
+    assert.equal(out[0].content[0].text, "research this founder");
+    assert.equal(out[0].content[1].type, "image_url", "the photo survives the strip as it survived the append");
+  });
+
+  test("strips every recorded block when both method enrichments fired", () => {
+    // An OSINT question about a named individual runs person_research and then
+    // entity_research; both blocks land on the one message, and that is
+    // correct, not a double-fire.
+    const PERSON = "--- PERSON RESEARCH METHOD ---\nResolve identity first.";
+    const convo = [{ role: "user", content: `osint on the founder\n\n${PERSON}\n\n${BLOCK}` }];
+    const out = withoutMethodBlocks(convo, [PERSON, BLOCK]);
+    assert.equal(out[0].content, "osint on the founder");
+  });
+
+  test("does not mutate the conversation it was handed", () => {
+    const original = `Tiber style threat intel\n\n${BLOCK}`;
+    const convo = [{ role: "user", content: original }];
+    withoutMethodBlocks(convo, [BLOCK]);
+    assert.equal(convo[0].content, original, "the enriched conversation synthesis reads is untouched");
+  });
+
+  test("leaves assistant turns alone", () => {
+    // Only a user message is ever appended to; an assistant turn that happens
+    // to quote the same words is the model's output, not the pipeline's prose.
+    const convo = [{ role: "assistant", content: `I applied it: ${BLOCK}` }];
+    const out = withoutMethodBlocks(convo, [BLOCK]);
+    assert.equal(out[0].content, `I applied it: ${BLOCK}`);
+  });
+
+  test("passes the conversation through when nothing was recorded", () => {
+    // The fail-soft direction that matters: with no method block on the turn —
+    // which is most turns — the planner sees exactly what it saw before this
+    // existed, and the SAME array reference comes back.
+    const convo = [{ role: "user", content: "what is the capital of Sweden?" }];
+    assert.equal(withoutMethodBlocks(convo, []), convo);
+    assert.equal(withoutMethodBlocks(convo, undefined), convo);
+    assert.equal(withoutMethodBlocks(convo, [""]), convo);
+    assert.equal(withoutMethodBlocks(convo, [BLOCK]), convo, "a block that is not present changes nothing");
+  });
+
+  test("never throws on a malformed conversation", () => {
+    assert.doesNotThrow(() => withoutMethodBlocks(/** @type {any} */ (null), [BLOCK]));
+    assert.doesNotThrow(() => withoutMethodBlocks([null, { role: "user" }, { role: "user", content: 42 }], [BLOCK]));
+  });
+
+  test("a message that was ONLY the block survives as an empty message, not a crash", () => {
+    // The image-only send: textOf() flattens the typed text to nothing, so the
+    // block can be the whole of the last user message's text.
+    const convo = [{
+      role: "user",
+      content: [{ type: "image_url", image_url: { url: "data:," } }, { type: "text", text: BLOCK }],
+    }];
+    const out = withoutMethodBlocks(convo, [BLOCK]);
+    assert.equal(out[0].content.length, 1);
+    assert.equal(out[0].content[0].type, "image_url");
   });
 });
 

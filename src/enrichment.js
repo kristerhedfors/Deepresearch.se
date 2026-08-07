@@ -22,6 +22,7 @@
 
 import { runAncientSampleEnrichment } from "./aadr.js";
 import { capHasContext } from "./agent-spec.js";
+import { lastUserText } from "./conversation.js";
 import { runEntityResearchEnrichment } from "./entity-research.js";
 import { extensionEnrichments } from "./extensions.js";
 import { runImageReadEnrichment } from "./image-read.js";
@@ -53,10 +54,17 @@ import { runScholarMetricsEnrichment } from "./scholar-metrics.js";
  * One registry entry: `id` is the log/step slug, `enabled` the per-request
  * gate (a knob resolved in chat.js, or an extension's own slice of
  * `state.ext`), and `run` returns the (possibly augmented) conversation.
+ * `method` marks the rows that append METHOD PROSE rather than data — how to
+ * research, how to shape the answer — so the query-planning phases can read
+ * past them (src/conversation.js withoutMethodBlocks). Absent means data, which
+ * is the right default: a block that resolves something the message NAMES is
+ * exactly what a planner should be writing queries from. Only prose that names
+ * no subject and asserts no fact sets it.
  * @typedef {{
  *   id: string,
  *   enabled: (state: RequestState) => boolean,
  *   run: (ctx: EnrichmentCtx) => Promise<Conversation>,
+ *   method?: boolean,
  * }} Enrichment
  */
 
@@ -174,6 +182,7 @@ const CORE_ENRICHMENTS = [
     id: "person_research",
     enabled: () => true, // intent decides; the runner is silent on a non-person turn
     run: (c) => runPersonResearchEnrichment(c),
+    method: true, // protocol, not facts — the planner must not search for it
   },
   {
     // The entity-research METHOD (src/entity-research.js) — the sibling of the
@@ -199,6 +208,12 @@ const CORE_ENRICHMENTS = [
     id: "entity_research",
     enabled: () => true, // intent decides; the runner is silent on every other turn
     run: (c) => runEntityResearchEnrichment(c),
+    // The scaffold is the SHAPE of the answer, never the topic. Feedback #65
+    // is what it cost when the planner could not tell the two apart: a bare
+    // "Tiber style threat intel" carried 945 words of TIBER-EU and MITRE
+    // ATT&CK into triage, which then searched for the report instead of for
+    // the company.
+    method: true,
   },
 ];
 
@@ -210,6 +225,31 @@ const CORE_ENRICHMENTS = [
 // the core ones so an appended source snapshot is the last thing added.
 /** @type {Enrichment[]} */
 const ENRICHMENTS = [...extensionEnrichments(), ...CORE_ENRICHMENTS];
+
+// Records what a METHOD enrichment just appended, so the query-planning phases
+// can read the conversation without it (src/pipeline.js `planLastUser` /
+// `planConvText`). The block is the added TAIL of the last user message —
+// appendToLast only ever appends — so the suffix is the whole of it.
+//
+// Fail-soft in every branch, and in the direction that keeps a chat working:
+// if nothing is recorded the planner simply sees what it saw before this
+// existed. A frozen state (the enrichment suite pins that case) throws on the
+// assignment and is caught here.
+/**
+ * @param {RequestState} state
+ * @param {string} before
+ * @param {string} after
+ */
+function noteMethodBlock(state, before, after) {
+  try {
+    if (!after || !after.startsWith(before)) return;
+    const added = after.slice(before.length).trim();
+    if (!added) return;
+    const s = /** @type {any} */ (state);
+    if (!Array.isArray(s.methodBlocks)) s.methodBlocks = [];
+    s.methodBlocks.push(added);
+  } catch { /* a planning view that keeps the block is the pre-#65 behaviour */ }
+}
 
 // Runs every enabled enrichment in registry order. A throwing runner is
 // contained here (the conversation passes through unchanged) so a buggy
@@ -230,7 +270,14 @@ export async function runEnrichments(env, log, emit, step, stepDone, conversatio
   for (const e of ENRICHMENTS) {
     if (!e.enabled(state)) continue;
     try {
+      // A method row's block is recorded by DIFFING the last user message
+      // around its run, rather than by asking the runner to hand it back. That
+      // keeps the knowledge in this registry: a runner stays free to decide it
+      // has nothing to say (both method runners are silent far more often than
+      // not), and nothing needs to be kept in sync with the block's own text.
+      const before = e.method ? lastUserText(convo) : "";
       const next = await e.run({ env, log, emit, step, stepDone, conversation: convo, state });
+      if (e.method && Array.isArray(next)) noteMethodBlock(state, before, lastUserText(next));
       // Only an actual conversation replaces the one we hold. A runner that
       // slips and resolves to null/undefined used to have that nullish value
       // flow straight into the NEXT runner's ctx and out of here — and since

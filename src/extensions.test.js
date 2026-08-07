@@ -334,9 +334,18 @@ describe("core purity", () => {
     // core half: an attack-surface question can reach both, but this module has
     // no knob, no secret, no state slice and no descriptor, and it would behave
     // identically in a deployment where Shodan had never been registered.
+    //
+    // conversation.js is the odd entry and the only one that is not an
+    // enrichment: the registry reads lastUserText to record what a `method`
+    // row appended (feedback #65), so the query-planning phases can plan
+    // without it. It is this repo's own message-shape helper — no service, no
+    // knob, no network — and the alternative was asking every runner to hand
+    // its block back, which would have put the same knowledge in nine places
+    // instead of one.
     assert.deepEqual(imports, [
-      "./aadr.js", "./agent-spec.js", "./entity-research.js", "./extensions.js", "./image-read.js",
-      "./introspect.js", "./models-agent.js", "./person-research.js", "./scholar-metrics.js",
+      "./aadr.js", "./agent-spec.js", "./conversation.js", "./entity-research.js", "./extensions.js",
+      "./image-read.js", "./introspect.js", "./models-agent.js", "./person-research.js",
+      "./scholar-metrics.js",
     ]);
   });
 });
