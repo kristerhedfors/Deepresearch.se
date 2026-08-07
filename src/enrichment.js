@@ -204,7 +204,16 @@ export async function runEnrichments(env, log, emit, step, stepDone, conversatio
   for (const e of ENRICHMENTS) {
     if (!e.enabled(state)) continue;
     try {
-      convo = await e.run({ env, log, emit, step, stepDone, conversation: convo, state });
+      const next = await e.run({ env, log, emit, step, stepDone, conversation: convo, state });
+      // Only an actual conversation replaces the one we hold. A runner that
+      // slips and resolves to null/undefined used to have that nullish value
+      // flow straight into the NEXT runner's ctx and out of here — and since
+      // person_research runs last and defensively returns `conversation || []`,
+      // the request would then proceed with an EMPTY conversation: the user's
+      // question silently deleted rather than the turn failing. Containment
+      // here is the same promise the catch below makes (invariant 2).
+      if (Array.isArray(next)) convo = next;
+      else log.warn(`${e.id}.enrichment_dropped`, { returned: next === null ? "null" : typeof next });
     } catch (/** @type {any} */ err) {
       log.warn(`${e.id}.enrichment_failed`, { error: err?.message || String(err) });
     }

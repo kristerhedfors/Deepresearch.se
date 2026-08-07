@@ -156,22 +156,29 @@ describe("logging seam", () => {
   test("the chat_logs meta keys are the shipped ones", () => {
     const state = { ext: emptyExtensionState() };
     state.ext.shodan.count = 3;
+    state.ext.shodan.intent = "latest-host";
     state.ext.maps.count = 1;
     state.ext.maps.intent = "matched";
     assert.deepEqual(extensionLogMeta(state), {
       shodan_hosts: 3,
+      shodan_intent: "latest-host",
       google_maps: 1,
       maps_intent: "matched",
     });
   });
 
   test("an extension that never ran contributes no routing trace", () => {
-    // maps_intent must stay undefined so JSON.stringify drops the key —
-    // an absent trace, not a fabricated one.
+    // maps_intent / shodan_intent must stay undefined so JSON.stringify drops
+    // the key — an absent trace, not a fabricated one. That is what makes a
+    // zero counter readable: `shodan_hosts: 0` WITHOUT `shodan_intent` means
+    // the knob was off; with it, the runner ran and matched nothing.
     const meta = extensionLogMeta({ ext: emptyExtensionState() });
     assert.equal(meta.maps_intent, undefined);
+    assert.equal(meta.shodan_intent, undefined);
     assert.equal(meta.shodan_hosts, 0);
-    assert.equal("maps_intent" in JSON.parse(JSON.stringify(meta)), false);
+    const round = JSON.parse(JSON.stringify(meta));
+    assert.equal("maps_intent" in round, false);
+    assert.equal("shodan_intent" in round, false);
   });
 });
 

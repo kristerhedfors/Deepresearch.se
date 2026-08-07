@@ -65,7 +65,18 @@ export function countImages(messages) {
  * @returns {Msg | undefined}
  */
 export function lastUserMessage(conversation) {
-  return [...conversation].reverse().find((m) => m.role === "user");
+  // Guarded rather than spread blind: every caller already handles "no user
+  // message" via `?.`, but a non-array (or a null entry) used to throw
+  // `conversation is not iterable` straight out of an enrichment runner whose
+  // contract is that it degrades instead — the one hole in maps-enrichment's
+  // otherwise complete fail-soft, found by src/maps-enrichment.test.js on
+  // 2026-08-07. Unreachable from /api/chat (validation rejects such bodies
+  // first), so this closes an asymmetry, not a live bug.
+  if (!Array.isArray(conversation)) return undefined;
+  for (let i = conversation.length - 1; i >= 0; i--) {
+    if (conversation[i]?.role === "user") return conversation[i];
+  }
+  return undefined;
 }
 
 // The latest user message's text — the ENRICHMENT reading, which is not
