@@ -204,7 +204,12 @@ export async function webSearch(env, log, query, depth = {}, opts = {}) {
   }
 
   const data = await resp.json().catch(() => ({}));
-  const results = /** @type {any[]} */ (Array.isArray(data.results) ? data.results : []);
+  // Optional chaining, not `data.results`: `.catch()` above only guards a
+  // PARSE failure, and a 200 whose body is the JSON literal `null` parses
+  // fine — then `data.results` throws straight out of a function whose whole
+  // contract is that it never throws (invariant 2). runWebLeg awaits these in
+  // a bare Promise.all, so that TypeError errored the entire chat request.
+  const results = /** @type {any[]} */ (Array.isArray(data?.results) ? data.results : []);
   const durationMs = Date.now() - startedAt;
   log.info("exa.search", {
     duration_ms: durationMs,
@@ -305,7 +310,8 @@ export async function fetchContents(env, urls, log) {
   }
 
   const data = await resp.json().catch(() => ({}));
-  const rows = /** @type {any[]} */ (Array.isArray(data.results) ? data.results : []);
+  // Same null-body guard as webSearch above — see the comment there.
+  const rows = /** @type {any[]} */ (Array.isArray(data?.results) ? data.results : []);
   const results = rows
     .map((r) => ({
       url: r.url || "",

@@ -93,16 +93,25 @@ export const EXTENSIONS = [
         "default OFF (opt-in — enriching a query with Shodan sends the host/IP to a " +
         "third party, so it stays off until asked for).",
     },
-    // Nothing to read off the body: the lookup targets are extracted from the
-    // message itself (shodan.js extractTargets).
-    resolveState: (_body, on) => ({ on, count: 0 }),
+    // Nothing to read off the body: what to ask Shodan about is derived from
+    // the conversation itself (shodan-text.js pickShodanTarget).
+    resolveState: (_body, on) => ({ on, count: 0, intent: undefined }),
     enabled: (slice) => !!slice.on,
     run: (c, slice) => runShodanEnrichment(c.env, c.log, c.step, c.stepDone, c.conversation, slice),
-    logMeta: (slice) => ({ shodan_hosts: slice.count || 0 }),
+    logMeta: (slice) => ({
+      shodan_hosts: slice.count || 0,
+      // Which matcher decided (or "none") — the routing trace scripts/chatlogs
+      // surfaces, the same shape as maps_intent. Undefined (key dropped by
+      // JSON.stringify) when the knob was off and the enrichment never ran,
+      // which is what makes `shodan_hosts: 0` readable: without this, a turn
+      // where the knob was off and a turn where the lookup found nothing were
+      // indistinguishable in the log (chat_logs #1670, 2026-08-06).
+      shodan_intent: slice.intent,
+    }),
     capability: {
       order: 8,
       text:
-        "Shodan host intelligence. When your message names an IP address or hostname, the site can look it up on Shodan and fold in its open ports, running services, hosting organization/ASN, location, and known CVEs, cited in the answer. Example: \"what services and known vulnerabilities does <hostname> expose?\". TURN ON/OFF: Account panel → Settings → \"Shodan host intelligence\", OFF by default (only the host/IP is sent to Shodan, never your question).",
+        "Shodan host intelligence. When your message names an IP address or hostname — or asks about open ports, exposed services, an attack surface or known CVEs for a host named earlier in the conversation or for a company by name — the site can look it up on Shodan and fold in its open ports, running services, hosting organization/ASN, location, and known CVEs, cited in the answer. Shodan search filters you type yourself (org:, hostname:, port:, product:, …) are passed through. Examples: \"what services and known vulnerabilities does <hostname> expose?\", \"find open ports at <company>\". TURN ON/OFF: Account panel → Settings → \"Shodan host intelligence\", OFF by default (only the host/IP or the search query is sent to Shodan, never your question).",
     },
   },
   {

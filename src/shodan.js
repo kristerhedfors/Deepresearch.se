@@ -129,6 +129,14 @@ export function extractTargets(text) {
     const host = m[0].toLowerCase().replace(/\.$/, "");
     // Skip an email address's domain (the char before the match is '@').
     if (m.index > 0 && raw[m.index - 1] === "@") continue;
+    // Skip a TRUNCATED tail of a longer token. HOST_RE's label class is
+    // ASCII-only and /i does not extend it to å/ä/ö, so an internationalized
+    // domain matched only from its last ASCII run: "räksmörgås.se" yielded
+    // "s.se" — not a miss but a WRONG host, quietly queried on Shodan and
+    // leaked outward (found by shodan-enrichment.test.js, 2026-08-07). Any
+    // letter or digit immediately before the match means we are looking at
+    // the tail of something bigger, so there is no host here to query.
+    if (m.index > 0 && /[\p{L}\p{N}]/u.test(raw[m.index - 1])) continue;
     // Skip anything that is actually a dotted IP (already handled above).
     if (/^\d+(\.\d+)+$/.test(host)) continue;
     const tld = host.slice(host.lastIndexOf(".") + 1);
@@ -308,18 +316,33 @@ function hostDetailLine(h) {
 //   { block, details, count, ips, durationMs }
 // where `block` is the labeled context text to append to the conversation
 // and `details` are the per-host one-liners for the UI step.
+//
+// `targets` lets the caller supply the hosts rather than have them re-read
+// off the latest message — that is how the walk-back route (shodan-text.js)
+// hands over a host an EARLIER turn named. Omitted, it extracts from the
+// latest user message exactly as before.
 /**
  * @param {import('./types.js').Env} env
  * @param {import('./types.js').Logger} log
  * @param {import('./types.js').Conversation} conversation
+ * @param {ShodanTargets} [targets] hosts to look up, instead of re-extracting
  * @returns {Promise<{ block: string, details: string[], count: number, ips: string[], durationMs: number } | null>}
  */
-export async function runShodanLookup(env, log, conversation) {
+export async function runShodanLookup(env, log, conversation, targets) {
   const startedAt = Date.now();
-  if (!shodanAvailable(env)) return null;
-  const lastUser = textOf(lastUserMessage(conversation)?.content);
-  const { ips, hostnames } = extractTargets(lastUser);
-  if (!ips.length && !hostnames.length) return null;
+  if (!shodanAvailable(env)) {
+    log.info("shodan.skipped", { reason: "no_api_key" });
+    return null;
+  }
+  const supplied = targets && (targets.ips?.length || targets.hostnames?.length);
+  const lastUser = supplied ? "" : textOf(lastUserMessage(conversation)?.content);
+  const { ips, hostnames } = supplied
+    ? { ips: targets.ips || [], hostnames: targets.hostnames || [] }
+    : extractTargets(lastUser);
+  if (!ips.length && !hostnames.length) {
+    log.info("shodan.skipped", { reason: "no_targets" });
+    return null;
+  }
 
   const resolved = await resolveHostnames(env, log, hostnames);
   // Build the ordered set of unique IPs to look up, remembering which
@@ -336,7 +359,19 @@ export async function runShodanLookup(env, log, conversation) {
     seen.add(ip);
     lookups.push({ ip, resolvedFrom: host });
   }
-  if (!lookups.length) return null;
+  if (!lookups.length) {
+    // THE SILENT HOLE THAT COST AN INVESTIGATION (2026-08-07). A hostname-only
+    // ask whose /dns/resolve came back 200 with nothing usable died here
+    // logging absolutely nothing, so `shodan_hosts: 0` in the chat_logs meta
+    // was indistinguishable from "the knob was off" and from "Shodan has no
+    // record" — see chat_logs #1670. Every no-op on this path now says so.
+    log.info("shodan.skipped", {
+      reason: "unresolved",
+      hostnames: hostnames.length,
+      resolved: resolved.size,
+    });
+    return null;
+  }
 
   const results = await Promise.all(
     lookups.map(async ({ ip, resolvedFrom }) => {
@@ -369,6 +404,169 @@ export async function runShodanLookup(env, log, conversation) {
   return {
     block: buildShodanBlock(hosts, notFound),
     details: hosts.map(hostDetailLine).concat(notFound.map((t) => `${t} — no Shodan record`)),
+    count: hosts.length,
+    ips: hosts.map((h) => h.ip),
+    durationMs,
+  };
+}
+
+// ---- the search leg --------------------------------------------------------
+//
+// The host lookup above answers "what is on THIS machine". The search leg
+// answers "which machines belong to this ORGANIZATION" — the question
+// "find open ports at <company>" actually asks, and the one the integration
+// could not answer at all before 2026-08-07 (chat_logs #1670-#1672: a user
+// who names a company rather than a host got web-scraped shodan.io pages
+// instead of Shodan data, with the wrong IP in the answer).
+//
+// The query is never the user's sentence: shodan-text.js rebuilds it from
+// recognized filter tokens or a single extracted organization name, so the
+// minimum-request posture holds on a route whose input is free text.
+
+// How many search matches to fold in. Shodan bills one query credit per
+// page of 100; one page is plenty for a research context block, and the
+// per-host cap keeps the block readable.
+const MAX_SEARCH_HOSTS = 8;
+
+/**
+ * One host as the search endpoint describes it — a thinner shape than
+ * ShodanHost, because /shodan/host/search returns banners rather than the
+ * merged host record.
+ * @typedef {object} ShodanSearchHost
+ * @property {string} ip
+ * @property {string} org
+ * @property {string} location
+ * @property {string[]} hostnames
+ * @property {number[]} ports
+ * @property {string[]} products
+ * @property {string[]} vulns
+ */
+
+/**
+ * Folds the banner list Shodan's search returns into one entry per IP.
+ * Pure — exported for unit tests.
+ * @param {any} data raw /shodan/host/search payload
+ * @returns {ShodanSearchHost[]}
+ */
+export function summarizeSearch(data) {
+  /** @type {Map<string, ShodanSearchHost>} */
+  const byIp = new Map();
+  for (const m of Array.isArray(data?.matches) ? data.matches : []) {
+    const ip = typeof m?.ip_str === "string" ? m.ip_str : "";
+    if (!ip) continue;
+    if (!byIp.has(ip)) {
+      if (byIp.size >= MAX_SEARCH_HOSTS) continue;
+      byIp.set(ip, {
+        ip,
+        org: typeof m.org === "string" ? m.org : "",
+        location: [m?.location?.city, m?.location?.country_name].filter((s) => typeof s === "string" && s).join(", "),
+        hostnames: [],
+        ports: [],
+        products: [],
+        vulns: [],
+      });
+    }
+    const host = /** @type {ShodanSearchHost} */ (byIp.get(ip));
+    if (Number.isFinite(m.port) && !host.ports.includes(m.port) && host.ports.length < MAX_PORTS) host.ports.push(m.port);
+    for (const h of Array.isArray(m.hostnames) ? m.hostnames : []) {
+      if (typeof h === "string" && !host.hostnames.includes(h) && host.hostnames.length < MAX_HOSTNAMES_PER_HOST) host.hostnames.push(h);
+    }
+    const product = typeof m.product === "string" ? m.product.trim() : "";
+    if (product && !host.products.includes(product) && host.products.length < MAX_PRODUCTS) host.products.push(product);
+    const vulnsRaw = Array.isArray(m.vulns) ? m.vulns : m.vulns && typeof m.vulns === "object" ? Object.keys(m.vulns) : [];
+    for (const v of vulnsRaw) {
+      if (typeof v === "string" && !host.vulns.includes(v) && host.vulns.length < MAX_VULNS) host.vulns.push(v);
+    }
+  }
+  for (const host of byIp.values()) host.ports.sort((a, b) => a - b);
+  return [...byIp.values()];
+}
+
+/** @param {ShodanSearchHost} h */
+function renderSearchHost(h) {
+  const lines = [`Host ${h.ip} (https://www.shodan.io/host/${h.ip}):`];
+  if (h.org) lines.push(`  Organization: ${h.org}`);
+  if (h.location) lines.push(`  Location: ${h.location}`);
+  if (h.hostnames.length) lines.push(`  Hostnames: ${h.hostnames.join(", ")}`);
+  if (h.ports.length) lines.push(`  Open ports: ${h.ports.join(", ")}`);
+  if (h.products.length) lines.push(`  Services: ${h.products.join(", ")}`);
+  if (h.vulns.length) lines.push(`  Known CVEs: ${h.vulns.join(", ")}`);
+  return lines.join("\n");
+}
+
+/**
+ * The labeled context block for a search. Says what was searched for and how
+ * many matches the whole query has, so the model can be honest about a
+ * result set that was truncated. Pure — exported for unit tests.
+ * @param {string} query the query that was run
+ * @param {ShodanSearchHost[]} hosts
+ * @param {number} total Shodan's total match count for the query
+ */
+export function buildShodanSearchBlock(query, hosts, total) {
+  if (!hosts.length) {
+    return (
+      "\n\n--- Shodan host intelligence ---\n" +
+      `A Shodan search for \`${query}\` returned no hosts. Nothing in Shodan's database matches it.\n` +
+      SHODAN_RELEVANCE_NOTE +
+      "\n--- End of Shodan host intelligence ---"
+    );
+  }
+  const shown = hosts.length;
+  const scope =
+    Number.isFinite(total) && total > shown
+      ? `Showing ${shown} of ${total} hosts matching \`${query}\`.`
+      : `${shown} host${shown === 1 ? "" : "s"} matching \`${query}\`.`;
+  return (
+    "\n\n--- Shodan host intelligence (live search results from Shodan.io) ---\n" +
+    `${scope}\n\n` +
+    hosts.map(renderSearchHost).join("\n\n") +
+    "\n" +
+    SHODAN_RELEVANCE_NOTE +
+    "\n--- End of Shodan host intelligence ---"
+  );
+}
+
+/** @param {ShodanSearchHost} h */
+function searchDetailLine(h) {
+  const bits = [];
+  if (h.ports.length) bits.push(`${h.ports.length} port${h.ports.length === 1 ? "" : "s"}`);
+  if (h.hostnames.length) bits.push(h.hostnames[0]);
+  if (h.vulns.length) bits.push(`${h.vulns.length} CVE${h.vulns.length === 1 ? "" : "s"}`);
+  return bits.length ? `${h.ip} — ${bits.join(", ")}` : h.ip;
+}
+
+/**
+ * Runs one Shodan search. Fails soft in every branch, exactly like the host
+ * lookup: a missing key, a rejected query, an error or an empty result set
+ * all degrade to "no host intelligence" rather than touching the chat.
+ * @param {import('./types.js').Env} env
+ * @param {import('./types.js').Logger} log
+ * @param {string} query the rebuilt query (never the user's sentence)
+ * @returns {Promise<{ block: string, details: string[], count: number, ips: string[], durationMs: number } | null>}
+ */
+export async function runShodanSearch(env, log, query) {
+  const startedAt = Date.now();
+  if (!shodanAvailable(env)) {
+    log.info("shodan.skipped", { reason: "no_api_key" });
+    return null;
+  }
+  const q = String(query || "").trim();
+  if (!q) {
+    log.info("shodan.skipped", { reason: "empty_query" });
+    return null;
+  }
+  const data = await shodanGet(env, log, "/shodan/host/search", { query: q, minify: "true" });
+  const durationMs = Date.now() - startedAt;
+  if (!data) {
+    log.info("shodan.skipped", { reason: "search_failed", duration_ms: durationMs });
+    return null;
+  }
+  const hosts = summarizeSearch(data);
+  const total = Number.isFinite(data.total) ? data.total : hosts.length;
+  log.info("shodan.search", { duration_ms: durationMs, hosts: hosts.length, total, query_chars: q.length });
+  return {
+    block: buildShodanSearchBlock(q, hosts, total),
+    details: hosts.length ? hosts.map(searchDetailLine) : [`${q} — no matching hosts`],
     count: hosts.length,
     ips: hosts.map((h) => h.ip),
     durationMs,
