@@ -91,7 +91,7 @@
       "layer": 2, "class": "C", "deps": ["baseplate-client", "provider-registry", "sealed-crypto"],
       "skill": "sdk/skills/secure-tier/SKILL.md",
       "provides": "The wholly-in-browser assistant: chat-first UX, browser-direct providers incl. keyless local server, sealed project state in browser storage, the twin look-and-feel with dimmed server-only affordances, deep links, encrypted backup files, the minimal-server-by-design page",
-      "reference": ["public/cure/index.html", "public/cure/drc.js", "public/cure/drc.css", "public/js/drc-core.js", "public/js/drc-store.js", "public/js/drc-page-core.js"],
+      "reference": ["public/cure/index.html", "public/cure/drc.js", "public/cure/drc.css", "public/js/drc-core.js", "public/js/drc-store.js", "public/js/drc-page-core.js", "public/js/drc-attach-core.js"],
       "acceptance": "Works served from a static host; no authenticated endpoint in the module graph (test-pinned); state round-trips sealed"
     },
     {
