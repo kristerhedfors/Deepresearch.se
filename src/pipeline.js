@@ -60,9 +60,11 @@ import {
   textOf,
   withAppendedText,
   withImageNudge,
+  withoutMethodBlocks,
   withoutStarterTags,
 } from "./conversation.js";
 import { runEnrichments } from "./enrichment.js";
+import { focusQueriesOnSubject } from "./query-focus.js";
 import { fetchContents, webSearch } from "./exa.js";
 import { SEARCH_SOURCES, leadSourceIds } from "./search-sources.js";
 // Folds a source's reported dense-retrieval spend into the request's tally —
@@ -262,6 +264,8 @@ function demoSurfaces(text, prior = "") {
  *   cleanLastUser: string,
  *   gateLastUser: string,
  *   cleanConvText: string,
+ *   planLastUser: string,
+ *   planConvText: string,
  *   imageParts: import('./types.js').ContentPart[],
  *   emitDelta: (text: string) => void,
  *   step: (id: string, label: string) => void,
@@ -469,6 +473,28 @@ export async function runPipeline(env, log, emit, conversation, model, state) {
       /** @type {any} */ (state).imageReadText || "",
     ].filter(Boolean).join("\n"),
     cleanConvText: formatConversation(conversation),
+    // What the QUERY-PLANNING phases read — triage, the gap check, the
+    // sub-question fan-out: the enriched conversation MINUS the method blocks
+    // (src/conversation.js withoutMethodBlocks). A third view, and it has to
+    // be, because neither of the other two is right here. The clean pair drops
+    // the DATA enrichments the planner legitimately writes queries from — the
+    // transcription of the user's own photo above all. The enriched pair
+    // carries method prose that is not a topic and must never become a search
+    // string. Feedback #65: "Tiber style threat intel" planned against 945
+    // words of appended TIBER-EU scaffold, so the first query went after the
+    // report format and carried the block's own words with it.
+    //
+    // The fourth instance of a bug class this pipeline keeps paying for (quiz
+    // gate, externalSourceIntent, the #61 source ladder, now query
+    // generation), and the first outside a deterministic gate — which is why
+    // pipeline.test.js's call-site guards were green through it.
+    ...(() => {
+      const planConvo = withoutMethodBlocks(convo, /** @type {any} */ (state).methodBlocks);
+      return {
+        planLastUser: textOf(lastUserMessage(planConvo)?.content),
+        planConvText: formatConversation(planConvo),
+      };
+    })(),
     // Image parts of the latest user message ride along into synthesis so a
     // vision model can research with the image as context.
     imageParts: imagePartsOf(lastUserMessage(convo)),
@@ -696,6 +722,14 @@ async function runWithoutSearch(ctx) {
 }
 
 // Phase 1: decide direct reply | clarifying question | research plan, and
+// Whether a METHOD enrichment appended anything on this turn — the first of the
+// two conditions the query focus is gated on (feedback #65). Reads the same
+// record the planning view is built from, so the two cannot drift apart.
+/** @param {any} state @returns {boolean} */
+function methodBlocksApplied(state) {
+  return Array.isArray(state?.methodBlocks) && state.methodBlocks.length > 0;
+}
+
 // announce the decision via the "plan" step. For "research" the returned
 // queries are already capped to the budget plan's angle count.
 /**
@@ -703,7 +737,10 @@ async function runWithoutSearch(ctx) {
  * @returns {Promise<TriageDecision>}
  */
 async function runTriage(ctx) {
-  const { state, lastUser, convText, step, stepDone } = ctx;
+  // planLastUser/planConvText, NOT lastUser/convText: this phase WRITES the
+  // web-search queries, and an appended method block is the one thing that can
+  // never be a search target (feedback #65 — see the ctx note).
+  const { state, planLastUser: lastUser, planConvText: convText, step, stepDone } = ctx;
   step("plan", "Analyzing request…");
   const triage = await jsonPhase(ctx, {
     label: "triage",
@@ -738,7 +775,27 @@ async function runTriage(ctx) {
     stepDone("plan", "Need to narrow the scope first", [], { route: "clarify" });
     return decision;
   }
-  const queries = decision.queries.slice(0, state.plan.queries);
+  // The deterministic half of the subject-vs-format split (feedback #65). The
+  // prompt rule alone does not hold on the fixed JSON planner this phase runs
+  // on (invariant 3), so the angles that came back about the report FORMAT are
+  // dropped here. Disengages entirely when no method block applied or the
+  // conversation resolves no subject — a question genuinely about a framework
+  // still searches that framework. See public/js/query-focus-core.js.
+  const focused = focusQueriesOnSubject(decision.queries, {
+    cleanText: ctx.cleanConvText,
+    methodApplied: methodBlocksApplied(state),
+  });
+  if (focused.dropped.length) {
+    ctx.log.info("chat.query_focus", { dropped: focused.dropped.length, kept: focused.queries.length });
+  }
+  const queries = focused.queries.slice(0, state.plan.queries);
+  // The sub-questions steer every later round, so a format sub-question
+  // ("What is the TIBER-EU framework?") re-seeds the same angles the gap check
+  // would otherwise chase all over again.
+  decision.subquestions = focusQueriesOnSubject(decision.subquestions || [], {
+    cleanText: ctx.cleanConvText,
+    methodApplied: methodBlocksApplied(state),
+  }).queries;
   // Thread the triage decomposition into the request state: the gap check
   // audits coverage against each sub-question and synthesis must address
   // them (see gapPrompt/synthPrompt); complexity caps research depth below
@@ -1619,7 +1676,8 @@ export function subquestionsAreIndependent(state) {
 }
 /** @param {PipelineCtx} ctx */
 async function runSubquestionFanout(ctx) {
-  const { log, state, reinforceJsonOnly, lastUser, convText } = ctx;
+  // The planning view — this phase writes follow-up queries (feedback #65).
+  const { log, state, reinforceJsonOnly, planLastUser: lastUser, planConvText: convText } = ctx;
   const plan = state.plan;
   if (!wantsSubqFanout(plan)) return;
   if (!subquestionsAreIndependent(state)) return;
@@ -1687,7 +1745,8 @@ async function runSubquestionFanout(ctx) {
 // won't allow another round.
 /** @param {PipelineCtx} ctx */
 async function runGapChecks(ctx) {
-  const { log, state, reinforceJsonOnly, lastUser, convText } = ctx;
+  // The planning view — this phase writes follow-up queries (feedback #65).
+  const { log, state, reinforceJsonOnly, planLastUser: lastUser, planConvText: convText } = ctx;
   const plan = state.plan;
   const est = plan.estimates;
 
@@ -1737,7 +1796,12 @@ async function runGapChecks(ctx) {
 
     const followups = (!gap || gap.complete || !Array.isArray(gap.queries))
       ? []
-      : gap.queries.filter((/** @type {any} */ q) => typeof q === "string" && q.trim()).slice(0, plan.followups);
+      // Same focus as triage's (feedback #65): a later round must not go back
+      // to searching the report standard the first round was steered off.
+      : focusQueriesOnSubject(
+          gap.queries.filter((/** @type {any} */ q) => typeof q === "string" && q.trim()),
+          { cleanText: ctx.cleanConvText, methodApplied: methodBlocksApplied(state) },
+        ).queries.slice(0, plan.followups);
 
     if (followups.length === 0) {
       // Deep budget, mostly unspent, first "sufficient" verdict(s): challenge

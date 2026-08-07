@@ -85,6 +85,44 @@ describe("triagePrompt", () => {
     assert.match(p, /skriv en rapport om/);
   });
 
+  // Feedback #65 (2026-08-07): "Osint revsec" → a clarifying question → "Tiber
+  // style threat intel", and the planner wrote its queries about TIBER-EU —
+  // the framework's methodology and how such reports are structured — while
+  // the company the request was about got no query at all. "you should not
+  // start off by searching the web for those report! Make searches to gather
+  // information needed to produce the report instead!"
+  test("researches the subject, never the report format the user asked for", () => {
+    const p = triagePrompt(3);
+    assert.match(p, /Separate the SUBJECT of the research from the FORMAT/);
+    assert.match(p, /describes the SHAPE OF THE ANSWER, never the topic to search for/);
+    assert.match(p, /NEVER aim a query at the format itself/);
+    assert.match(p, /must gather FACTS ABOUT THE SUBJECT/);
+    // The exact deliverable that produced the bug is named, so the model
+    // cannot read the rule as being about some other kind of format.
+    assert.match(p, /TIBER-EU threat-intelligence report/);
+  });
+
+  // The second half of #65: "Tiber style threat intel" carries no pronoun and
+  // no back-reference marker, so FOLLOWUP_RESOLUTION_RULE never fires on it —
+  // yet it is exactly as unsearchable on its own, and the subject sits in the
+  // earlier turns.
+  test("resolves a format-only follow-up to the subject the conversation established", () => {
+    const p = triagePrompt(3);
+    assert.match(p, /names ONLY a format/);
+    assert.match(p, /Tiber style threat intel/);
+    assert.match(p, /resolve it exactly as you would a back-reference/);
+    assert.match(p, /write every query about that subject/);
+  });
+
+  // Invariant 6: the format vocabulary is taught in Swedish as well, the same
+  // way the image and quiz rules pair their examples.
+  test("names Swedish report formats beside the English ones", () => {
+    const p = triagePrompt(3);
+    assert.match(p, /"rapport", "hotbild", "hotanalys", "bakgrundskoll"/);
+    assert.match(p, /gör en SWOT/);
+    assert.match(p, /skriv en hotbild/);
+  });
+
   test("reinforceJsonOnly appends the JSON-only line when true, omits it by default", () => {
     const withReinforce = triagePrompt(3, { reinforceJsonOnly: true });
     const without = triagePrompt(3);
@@ -190,6 +228,18 @@ describe("gapPrompt", () => {
     const p = gapPrompt([], 2);
     assert.match(p, /ORIGINAL question in the conversation/);
     assert.match(p, /one narrow thread of a broader question is itself a gap/);
+  });
+
+  // Feedback #65 (2026-08-07): the follow-up round is planned from the same
+  // question text, so a wave that started on the subject can still drift into
+  // "how a TIBER-EU report is written" if only triage carries the rule.
+  test("aims follow-up queries at the subject, not at the requested report format", () => {
+    const p = gapPrompt([], 2);
+    assert.match(p, /Separate the SUBJECT of the research from the FORMAT/);
+    assert.match(p, /NEVER aim a query at the format itself/);
+    assert.match(p, /must gather FACTS ABOUT THE SUBJECT/);
+    // Swedish parity travels with the rule (invariant 6).
+    assert.match(p, /"rapport", "hotbild", "hotanalys", "bakgrundskoll"/);
   });
 
   test("reinforceJsonOnly toggle behaves the same as triagePrompt's", () => {

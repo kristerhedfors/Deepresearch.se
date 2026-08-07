@@ -827,3 +827,97 @@ describe("what the source-routing gates read, and what the ledger may claim", ()
     assert.match(reserve.slice(0, 1600), /DIGEST_CAP_CEILING,/);
   });
 });
+
+// Live feedback #65. The FOURTH instance of one bug class — a phase reading the
+// enrichment-contaminated message instead of the view it actually needs — after
+// the quiz gate (chat_logs #360), externalSourceIntent, and the #61 source
+// ladder. It is the first instance OUTSIDE a deterministic gate, which is
+// exactly why every call-site guard above this one stayed green through it: a
+// reader who follows docs/MAINTENANCE-OWNERS.md back to those guards finds them
+// clean and stops, because they pin gate ARGUMENTS and this defect is in a
+// phase's own destructure.
+//
+// The mechanism: enrichments append context blocks to the user's message before
+// any model call, and two of them (person_research, entity_research) append
+// METHOD PROSE — how to research the subject, how to shape the report. The
+// three JSON phases that WRITE web-search query strings were reading
+// ctx.lastUser / ctx.convText, so a bare "Tiber style threat intel" arrived at
+// the planner with 945 words of TIBER-EU / MITRE ATT&CK scaffold attached; it
+// planned queries against the report FORMAT instead of the company, with the
+// block's own prose visible in the first query.
+//
+// Neither existing view fixes it. The CLEAN pair drops the DATA enrichments a
+// planner legitimately writes queries from (the transcription of the user's own
+// photo above all — that is the user's question). So the fix is a third view,
+// planLastUser/planConvText = withoutMethodBlocks(convo, state.methodBlocks),
+// and the three phases destructure it under the old names.
+//
+// As with the quiz and aux-source pins: withoutMethodBlocks is pure and covered
+// by conversation.test.js. The bug was WHICH VIEW THE PHASE READ, so the
+// destructure is what gets pinned — and pinned per phase, sliced to each
+// function body, because a whole-file /planLastUser/ match would pass with two
+// of the three regressed.
+describe("the query-writing phases plan from the method-block-free view", () => {
+  const src = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
+
+  // The `const { … } = ctx;` line that opens a phase, sliced to that phase's
+  // own body so one phase's destructure can never satisfy another's assertion.
+  const destructureOf = (from, to) => {
+    const start = src.indexOf(from);
+    const end = src.indexOf(to);
+    assert.ok(start !== -1, `slice start not found: ${from}`);
+    assert.ok(end > start, `slice end not found after start: ${to}`);
+    const line = src.slice(start, end).match(/^\s*const \{[^}]*\} = ctx;/m);
+    assert.ok(line, `no ctx destructure in ${from}`);
+    return line[0];
+  };
+
+  // Reads the plan view under the old names, and — after the two aliases are
+  // struck out — has no bare lastUser/convText left to have read instead.
+  const assertPlansFromCleanView = (line) => {
+    assert.match(line, /planLastUser: lastUser/);
+    assert.match(line, /planConvText: convText/);
+    const withoutAliases = line.replace(/plan(?:LastUser|ConvText): (?:lastUser|convText),?\s*/g, "");
+    assert.doesNotMatch(withoutAliases, /\blastUser\b/, "the raw enriched lastUser must not come back");
+    assert.doesNotMatch(withoutAliases, /\bconvText\b/, "the raw enriched convText must not come back");
+  };
+
+  test("runTriage plans from planLastUser/planConvText", () => {
+    assertPlansFromCleanView(
+      destructureOf("async function runTriage", "async function runQuizGeneration"),
+    );
+  });
+
+  test("runSubquestionFanout plans from planLastUser/planConvText", () => {
+    assertPlansFromCleanView(
+      destructureOf("async function runSubquestionFanout", "async function runGapChecks"),
+    );
+  });
+
+  test("runGapChecks plans from planLastUser/planConvText", () => {
+    assertPlansFromCleanView(
+      destructureOf("async function runGapChecks", "async function maybeDigest"),
+    );
+  });
+
+  // Without this the three pins above are satisfiable by a plan view that is
+  // just the enriched pair under another name.
+  test("the plan view is the conversation minus its method blocks", () => {
+    assert.match(src, /import \{[\s\S]*?withoutMethodBlocks[\s\S]*?\} from "\.\/conversation\.js"/);
+    assert.match(src, /withoutMethodBlocks\(convo, \/\*\* @type \{any\} \*\/ \(state\)\.methodBlocks\)/);
+    assert.match(src, /planLastUser: textOf\(lastUserMessage\(planConvo\)\?\.content\)/);
+    assert.match(src, /planConvText: formatConversation\(planConvo\)/);
+  });
+
+  test("PipelineCtx declares the third view", () => {
+    const upto = src.slice(0, src.indexOf("}} PipelineCtx"));
+    const typedef = upto.slice(upto.lastIndexOf("@typedef {{"));
+    assert.match(typedef, /^\s*\*\s+planLastUser: string,$/m);
+    assert.match(typedef, /^\s*\*\s+planConvText: string,$/m);
+    // The other two views stay — synthesis still reads the enriched pair (the
+    // method block IS what the answer is meant to follow) and the gates still
+    // read the clean one.
+    assert.match(typedef, /^\s*\*\s+lastUser: string,$/m);
+    assert.match(typedef, /^\s*\*\s+cleanLastUser: string,$/m);
+  });
+});

@@ -449,16 +449,27 @@ independent of whether breaking them is actionable.
   entry record that the method was applied and how large the block was.
 - **No stored dossier.** There is no accumulation across turns and no per-person
   record anywhere in this deployment.
-- **The block never routes the request.** It is appended to the user's message,
-  so no downstream deterministic gate may read the enriched message — the
-  pipeline's auxiliary source gates read `ctx.gateLastUser`, which is the clean
-  message plus the transcription of the user's own attachment and nothing this
-  pipeline wrote (`docs/ARCHITECTURE.md` §4.3c). Feedback #61 is why: the
-  block's source ladder names OpenAlex and its privacy prohibition contains the
-  word "health", and reading the appended message let those two mentions lead
-  the request into the peer-reviewed and life-science legs on a question about
-  a founder's background. The block is a method for the answer, not a request
-  for any source, and the intent gates are deliberately kept out of its reach.
+- **The block never routes the request, and is never searched for.** It is
+  appended to the user's message, so no downstream deterministic gate may read
+  the enriched message — the pipeline's auxiliary source gates read
+  `ctx.gateLastUser`, which is the clean message plus the transcription of the
+  user's own attachment and nothing this pipeline wrote
+  (`docs/ARCHITECTURE.md` §4.3c). Feedback #61 is why: the block's source ladder
+  names OpenAlex and its privacy prohibition contains the word "health", and
+  reading the appended message let those two mentions lead the request into the
+  peer-reviewed and life-science legs on a question about a founder's
+  background.
+
+  The same holds for the phases that WRITE the queries. This is one of exactly
+  two registry rows flagged `method: true` (the other is entity research), which
+  is how `runEnrichments` records what it appended: triage, the gap check and
+  the sub-question fan-out then plan from `ctx.planLastUser` /
+  `ctx.planConvText`, the enriched conversation minus those recorded blocks
+  (§4.2b). Feedback #65 bought that seam on the sibling block, and this one
+  carries the same risk — a ~875-word protocol naming registries, archives and
+  verification procedure is a rich set of things to search for and none of them
+  is the subject. The block is a method for the answer, not a request for any
+  source and not a topic; synthesis alone reads it.
 
 ## 11. Search-query playbook
 

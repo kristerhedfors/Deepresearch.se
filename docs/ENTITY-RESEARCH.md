@@ -62,6 +62,12 @@ to resolve the subject and how big the answer should be. Each runner sees the
 conversation as the previous one left it, and person research's block carries no
 dossier phrase, so it cannot trigger this gate by itself.
 
+The row also carries `method: true` — one of exactly two in the registry, the
+other being `person_research`. That flag is how `runEnrichments` knows to record
+what this block appended, so the query-planning phases can read the conversation
+without it (`docs/ARCHITECTURE.md` §4.2b). Every other row appends data, and
+data is what a planner should be writing queries from.
+
 `enabled: () => true`. There is no knob, no chat mode and no request field: the
 intent gate inside the runner decides, and the runner is silent otherwise.
 `runEnrichments` runs before triage (`src/pipeline.js`), so the planner, the
@@ -98,6 +104,39 @@ pronoun, so any referent test would veto exactly the request the rule exists
 for. The phrase list does that work instead — each entry already means a
 dossier, and nobody writes "due diligence" or "hotbild" about a topic they have
 not named.
+
+**What standing alone costs.** A gate with no referent conjunct fires on a
+message that names no subject, and the block is the same 945 words either way.
+Feedback #65 is that bill: a user answered a clarifying question with "Tiber
+style threat intel", the security-framing family matched it, and the full
+scaffold attached to a message whose subject sat in the previous turns.
+The planner then read the enriched message as the question and searched for the
+report format rather than for the company.
+
+That failure has an uncomfortable source: §5's disambiguation turn is what
+manufactures format-only follow-ups. Ask which entity, and the reply is often a
+few words carrying an instruction and no name. Narrowing the gate is the wrong
+lever — the request that most needs the rule is exactly the one with a bare
+token in it — so the fix is downstream, and it took two pieces.
+
+**First, what the planner may read.** The three phases that write web-search
+queries stopped seeing the method block at all: they read `ctx.planLastUser` /
+`ctx.planConvText`, the enriched conversation minus the blocks `runEnrichments`
+recorded (`docs/ARCHITECTURE.md` §4.2b). The triage and gap prompts carry the
+same split in words — a format-only message resolves its subject from the
+conversation like any other back-reference.
+
+**Second, what the planner writes anyway.** A/B on the reported conversation
+showed the block leak gone and the framework queries still there: two of three
+angles went after TIBER-EU, and a live run through `POST /mcp` (`chat_logs`
+#1692) spent 3 of 9 queries and 8 of 24 sources on ECB framework pages. The
+words were tried on the fixed JSON planner triage is pinned to and did not hold
+there, and neither remedy was available — a stronger model is closed by
+invariant 3, a tool call by invariant 1. So the angles that name a format and
+none of the subject's own words are dropped by deterministic code after the
+planner returns (`src/query-focus.js`, `docs/ARCHITECTURE.md` §4.2c), gated on
+a method block having applied AND a subject resolving. That gating is what
+keeps "what is TIBER-EU?" searching TIBER-EU.
 
 Two entries carry their own bound. `open sources` and `öppna källor` need a
 connective (`about|on|regarding|for`, `om|på|kring|för`), because the bare noun
@@ -150,6 +189,14 @@ The first half of the block, identical at every tier:
    were set aside.
 6. **The collision is itself a finding**, even in a single-subject report: a
    reader searching that name later will land on the others too.
+
+Rule 5 has a second job nobody planned for it. The turn after a disambiguation
+question is where the user replies with a format and no subject ("the second
+one, Tiber style"), which is the shape that broke query planning in feedback #65
+(§4). The block tells the answer to carry on with the subject already
+established; the planner is held to the same reading by `SUBJECT_VS_FORMAT_RULE`
+in `src/prompts.js` and by the planning view of the conversation
+(`docs/ARCHITECTURE.md` §4.2b).
 
 Rules 4 and 5 are the brakes, and they are why this fix does not become the next
 complaint. Over-clarifying is this project's most reported failure mode:
@@ -284,13 +331,26 @@ contact under a pretext.
   line and one state entry record the tier and the block's size, and the test
   asserts that `revsec` never appears in the logs. There is no accumulation
   across turns and no per-subject record in this deployment.
-- **The block never routes the request.** It is appended to the user's message,
-  and the pipeline's source gates read `ctx.gateLastUser` — the clean message
-  plus the transcription of the user's own attachment, and nothing the pipeline
-  wrote (`docs/ARCHITECTURE.md` §4.3c). Feedback #61 is why that separation
-  exists, and this block argues for keeping it: it names TIBER-EU, MITRE ATT&CK,
-  attack surface and threat actors, the exact vocabulary that would drag an
-  ordinary company question into a security source leg if a gate could read it.
+- **The block never routes the request, and never becomes one.** It is appended
+  to the user's message, and two sets of readers are kept away from it. The
+  pipeline's source gates read `ctx.gateLastUser` — the clean message plus the
+  transcription of the user's own attachment, and nothing the pipeline wrote
+  (`docs/ARCHITECTURE.md` §4.3c). The three phases that write web-search queries
+  — triage, the gap check, the sub-question fan-out — read `ctx.planLastUser` /
+  `ctx.planConvText`, the enriched conversation minus the recorded method blocks
+  (§4.2b). Feedback #61 bought the first separation and feedback #65 the second,
+  and this block argues for both: it names TIBER-EU, MITRE ATT&CK, attack
+  surface and threat actors, the exact vocabulary that drags an ordinary company
+  question into a security source leg if a gate can read it, and into a search
+  for the report format if a planner can. Synthesis still reads the enriched
+  message, because the block is the method the answer is meant to follow.
+- **Keeping the block out of the planner's view does not by itself keep the
+  format out of its queries.** Measured, the fixed JSON planner kept writing
+  framework angles from the user's own words, so a second, deterministic pass
+  drops the angles that name a format and none of the subject's words
+  (`src/query-focus.js`, §4.2c). It engages only when a method block applied on
+  the turn and the conversation resolves a subject, so a question genuinely
+  about a framework still searches that framework.
 - **Server side only.** A Worker enrichment, on `/api/chat` and `/mcp` alike
   (both build a plan, so the tier is present on both). The Se/cure client
   pipeline does not carry it.

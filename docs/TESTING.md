@@ -34,10 +34,18 @@ Berget/Exa/D1: `budget.js`
 start/reset including month-boundary wraps, quota merging/clamping,
 breach detection, cost calc), `model-profiles.js` (override merging,
 clone-not-share of nested fields), `alerts.js` (error classification),
-`conversation.js` (message/content helpers), `validation.js` (message
+`conversation.js` (message/content helpers, plus `withoutMethodBlocks` — an
+appended method block removed from string and multipart content, the
+attachment surviving the strip, both method blocks removed when both
+enrichments fired, assistant turns and the caller's array left alone, and the
+same reference back when nothing was stripped), `validation.js` (message
 and image caps, model resolution), `prompts.js` (structural assertions
 on every prompt builder — the anti-injection note, the independent-
-source rule, the JSON-only reinforcement toggle), `chat.js`
+source rule, the JSON-only reinforcement toggle, and the subject-vs-format
+rule in `triagePrompt` and `gapPrompt`: a named report format is the shape of
+the answer and never a search target, a format-only message resolves its
+subject from the conversation, and the Swedish formats named beside the
+English ones per invariant 6), `chat.js`
 (`quotaBlockedResponse` via its `quota.js` re-export, `resolveJsonModel`,
 `summarizeSpend` via its `billing.js` re-export), `billing.js` (the shared split-billing spend
 math directly: `summarizeSpend`'s three model buckets each at their own
@@ -293,7 +301,13 @@ wording; a 55-angle list has to say "showing 40 of 55 issued" and drop the
 exhaustiveness sentence. Guards over `pipeline.js`'s
 SOURCE read the file rather than importing it, because the bug each pins was a
 call site and not a unit: that every aux gate passes `ctx.gateLastUser` and none
-passes `ctx.lastUser`, that `gateLastUser` is composed of the clean message and
+passes `ctx.lastUser`, that the three query-writing phases (`runTriage`,
+`runGapChecks`, `runSubquestionFanout`) plan from `planLastUser`/`planConvText`
+and that `PipelineCtx` declares that third view built through
+`withoutMethodBlocks` — the feedback-#65 guard, mutation-verified, and the first
+instance of this bug class that landed outside a deterministic gate, which is
+why the older guards stayed green through it — that `gateLastUser` is composed
+of the clean message and
 `state.imageReadText`, that the ledger is built from `state.issuedQueries` and
 never from `state.ranQueries` with both dispatch points recording, that the aux
 registry reserve moves `plan.digestCap` and `plan.maxSources` by the same
@@ -504,6 +518,32 @@ increasing across the tiers, the TIBER tier's content contract plus the
 frameworks pinned OUT by name because no ECB TIBER document carries them, and
 the enrichment contract — the tier read from `state.plan`, an unknown tier
 falling back to standard, and a frozen state bag still yielding the block.
+`enrichment.js` covers the registry's method/data split those two rows
+introduced (feedback #65): a method row recording exactly the block it appended
+rather than the whole message, what it records being what `withoutMethodBlocks`
+needs to restore the planning view, a DATA row and a SILENT method row both
+recording nothing, both method rows recording in registry order when both fire,
+a runner returning a non-array recording nothing, a frozen state leaving the run
+intact (invariant 2), and — read off the module source, since the flag is a
+registry fact rather than a call — that `person_research` and `entity_research`
+are the only core rows marked and that the extension seam carries no method flag
+at all.
+`public/js/query-focus-core.test.js` covers the deterministic half of the same
+feedback (`docs/ARCHITECTURE.md` §4.2c): the reported conversation's format
+angles dropped and its on-topic one kept, both disengagement gates asserted as
+the untouched input back (no method block on the turn; a conversation that
+resolves no subject, which is what keeps "what is TIBER-EU?" searching
+TIBER-EU), the two halves of `isFormatChasingQuery` pinned against the cases
+that shaped them — an ordinary widening angle naming no format left alone, and
+"How has the Tiber-EU framework been applied in practice?" dropped, the one
+observed case an earlier all-words-are-format draft let through — the
+subject-only fallback when every angle was chasing the format, a matched EN/SV
+pair suite over the format vocabulary per invariant 6 (including a Swedish
+dossier turn cut and a Swedish question about the framework left alone), the
+`\b` trap demonstrated live on `ångbåt` since a `\w`-class tokeniser would
+shred every accented word into unmatchable fragments, and the invariant-2
+surface — a non-array list, a missing context, blank members and an unparseable
+query all degrading rather than throwing.
 `answer-stream.js` covers the streaming failover seam:
 `isTransientConnectStatus` retrying provider-side statuses ONLY,
 `contextOverflowMessage` rewriting the context-window 400 and nothing else, and
