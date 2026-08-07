@@ -192,9 +192,16 @@ export function loginPage(flash) {
     <h1>Deepresearch.se</h1>
     ${messages[flash] || ""}
     <a class="gbtn" href="/auth/google">${G_SVG} Continue with Google</a>
+    <!-- Feedback #63. This said "your conversations are never stored on the
+         server", which stopped being true with the 2026-07-16 directive that
+         made cloud storage implicit on this tier (invariant 4). It is the
+         first promise a prospective account holder reads, so it is the one
+         that must not overstate. The help page and the privacy notice have
+         said the accurate version all along. -->
     <p class="muted">Sign in with your Google account. New accounts start
-    with a standard research quota; your conversations are never stored on
-    the server.</p>
+    with a standard research quota. On this tier your conversations are kept —
+    encrypted — in this site's storage so your history follows your account,
+    until you delete them.</p>
   </div>
 </body>
 </html>`;

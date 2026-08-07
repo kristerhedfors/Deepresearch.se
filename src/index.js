@@ -24,7 +24,7 @@
 //   src/models-api.js — /api/models/{catalog,verify,enable,disable}: the model
 //                      LIFECYCLE — explore every provider, evaluate against the
 //                      established checks, enable for every agent
-//   src/storage.js   — opt-in R2 cloud storage (/api/convos, /api/files, /api/storage)
+//   src/storage.js   — implicit R2 cloud storage (/api/convos, /api/files, /api/storage)
 //   src/rag.js       — document RAG: /api/embed proxy + /api/rag/* (Vectorize)
 //   src/quiz-api.js  — /api/quiz/grade: free-text quiz-answer grading (src/quiz.js)
 //   src/games.js     — /api/games: the games registry/shelf + per-game dispatch
@@ -1144,7 +1144,8 @@ async function routeApi(request, env, url, log, identity, ctx, requestId) {
   if (url.pathname.startsWith("/api/rag/")) {
     return handleRag(request, env, url, log, identity);
   }
-  // Opt-in cloud storage: encrypted conversation/project records + files.
+  // Implicit cloud storage (invariant 4, 2026-07-16 — the TIER is the choice,
+  // there is no off state): encrypted conversation/project records + files.
   if (
     url.pathname === "/api/convos" ||
     url.pathname.startsWith("/api/convos/") ||
