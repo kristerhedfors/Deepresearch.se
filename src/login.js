@@ -176,6 +176,13 @@ export function loginPage(flash) {
     disabled: '<p class="err">This account has been disabled by the site owner.</p>',
     nodb: '<p class="err">Sign-in is temporarily unavailable (accounts database not configured).</p>',
   };
+  // The storage sentence below used to promise that conversations are never
+  // stored on the server. That stopped being true with the 2026-07-16
+  // directive making cloud storage implicit on this tier (invariant 4), and it
+  // shipped stale until a user reported it (feedback #63). It is the first
+  // promise a prospective account holder reads, so it is the one that must not
+  // overstate. Keep this note in the JS, NOT in the template below — an HTML
+  // comment would ship the retired sentence to every visitor's page source.
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -193,8 +200,9 @@ export function loginPage(flash) {
     ${messages[flash] || ""}
     <a class="gbtn" href="/auth/google">${G_SVG} Continue with Google</a>
     <p class="muted">Sign in with your Google account. New accounts start
-    with a standard research quota; your conversations are never stored on
-    the server.</p>
+    with a standard research quota. On this tier your conversations are kept —
+    encrypted — in this site's storage so your history follows your account,
+    until you delete them.</p>
   </div>
 </body>
 </html>`;

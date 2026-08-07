@@ -71,11 +71,53 @@ test("tier tailoring: privacy/apikey answers differ between drc and drs", () => 
   const drsPriv = matchCanned("is it private", { tier: "drs" }).answer;
   assert.notEqual(drcPriv, drsPriv);
   assert.match(drcPriv, /nothing to log/i);
-  assert.match(drsPriv, /answer-recovery/i);
+  assert.match(drsPriv, /wherever the model you pick lives/i);
+
+  // Feedback #63. This answer carried three claims that were not true, and the
+  // reporter caught the first: "questions are processed by EU-hosted models"
+  // (false the moment you pick Claude or GPT — provider-region.js flags both
+  // 🇺🇸 in the menu on the same screen); "conversations aren't stored
+  // server-side beyond a ≤15-minute answer-recovery buffer" (cloud storage is
+  // implicit and indefinite — invariant 4's 2026-07-16 directive); and "logs
+  // carry metadata only" (that describes Workers Logs; `chat_logs` keeps the
+  // full question and answer). The last two understated what is kept, which is
+  // the direction a privacy claim must never be wrong in.
+  assert.doesNotMatch(drsPriv, /processed by EU-hosted models/i);
+  assert.doesNotMatch(drsPriv, /metadata only/i);
+  assert.doesNotMatch(drsPriv, /aren't stored server-side/i);
+  // What replaced them has to keep saying the uncomfortable half.
+  assert.match(drsPriv, /until you delete them/i);
+  assert.match(drsPriv, /full question and answer/i);
 
   const drcKey = matchCanned("api key", { tier: "drc" }).answer;
   const drsKey = matchCanned("api key", { tier: "drs" }).answer;
   assert.notEqual(drcKey, drsKey);
+});
+
+// Invariant 6: the Swedish twin makes the same claims, so a correction applied
+// to one arm and not the other leaves the falsehood shipping in Swedish. The
+// three defects feedback #63 found were present in both.
+test("the Swedish privacy answer carries the same corrections as the English", () => {
+  const sv = matchCanned("sparar ni mina meddelanden", { tier: "drs" });
+  assert.equal(sv.lang, "sv");
+  assert.doesNotMatch(sv.answer, /EU-hostade modeller/i);
+  assert.doesNotMatch(sv.answer, /endast metadata/i);
+  assert.doesNotMatch(sv.answer, /lagras inte på servern/i);
+  assert.match(sv.answer, /där modellen du väljer finns/i);
+  assert.match(sv.answer, /tills du raderar dem/i);
+  assert.match(sv.answer, /hela frågan och hela svaret/i);
+});
+
+// Both arms name the country the conversation actually reaches, and both agree
+// with provider-region.js — the module the model menu renders its flags from,
+// on the same screen as this answer.
+test("both arms flag Sweden and the US the way the model menu does", () => {
+  for (const [probe, lang] of [["is it private", "en"], ["är det anonymt", "sv"]]) {
+    const a = matchCanned(probe, { tier: "drs" });
+    assert.equal(a.lang, lang, probe);
+    assert.ok(a.answer.includes("🇸🇪"), `${lang}: names Sweden's flag`);
+    assert.ok(a.answer.includes("🇺🇸"), `${lang}: names the US flag`);
+  }
 });
 
 test("start CTA is tier-specific: DRC points to a key, DRS points to sign-in", () => {
@@ -107,7 +149,7 @@ test("fallback: unmatched text still returns a labeled, non-empty reply", () => 
 
 test("default tier is drs when unspecified", () => {
   const r = matchCanned("is it private");
-  assert.match(r.answer, /answer-recovery/i);
+  assert.match(r.answer, /wherever the model you pick lives/i);
 });
 
 test("answers use the secure-first, full-URL wordmark form (no scheme)", () => {
