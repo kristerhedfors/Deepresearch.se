@@ -48,10 +48,13 @@ export {
  * @param {object[]} messages
  * @param {ShellRun[]} transcript
  * @param {typeof fetch} [fetchImpl]
- * @param {{ sdk?: boolean, execEnv?: string }} [opts] - sdk: an Agent Studio
- *   (SDK-mode) send; the step prompt then steers file creation to the build
- *   tools (feedback #7). execEnv: the resolved execution environment id, so the
- *   step prompt describes the machine the commands really run on (2026-07-27).
+ * @param {{ sdk?: boolean, execEnv?: string, files?: boolean }} [opts] - sdk: an
+ *   Agent Studio (SDK-mode) send; the step prompt then steers file creation to
+ *   the build tools (feedback #7). execEnv: the resolved execution environment
+ *   id, so the step prompt describes the machine the commands really run on
+ *   (2026-07-27). files: whether this send mounts any of the user's own files,
+ *   so an EMPTY sandbox is described as empty instead of being handed a
+ *   standing order to read /workspace first (feedback #64).
  * @returns {Promise<{ commands: string[], done: boolean, reasoning: string }>}
  */
 export async function fetchShellStep(messages, transcript, fetchImpl = fetch, opts = {}) {
@@ -62,9 +65,13 @@ export async function fetchShellStep(messages, transcript, fetchImpl = fetch, op
       // `exec_env` tells the step model WHERE its commands will run, so it is
       // not briefed on the browser emulator's cost model while the commands
       // actually run natively in the cloud container (2026-07-27).
+      // `files_mounted` tells it WHAT is in there — sent on every step, true
+      // or false, because the absence of the flag cannot be told apart from a
+      // send that mounts nothing (feedback #64).
       body: JSON.stringify({
         messages,
         transcript,
+        files_mounted: opts.files === true,
         ...(opts.sdk ? { sdk_mode: true } : {}),
         ...(opts.execEnv ? { exec_env: opts.execEnv } : {}),
       }),
@@ -99,12 +106,13 @@ export async function fetchShellStep(messages, transcript, fetchImpl = fetch, op
  *   fetchImpl?: typeof fetch,
  *   sdk?: boolean,
  *   execEnv?: string,
+ *   files?: boolean,
  * }} params
  * @returns {Promise<ShellRun[]>}
  */
-export function runShellLoop({ messages, exec, ensureReady, onStep, onExec, onResult, maxRounds = MAX_SHELL_ROUNDS, fetchImpl = fetch, sdk = false, execEnv = "" }) {
+export function runShellLoop({ messages, exec, ensureReady, onStep, onExec, onResult, maxRounds = MAX_SHELL_ROUNDS, fetchImpl = fetch, sdk = false, execEnv = "", files = false }) {
   return coreRunShellLoop({
-    step: (transcript) => fetchShellStep(messages, transcript, fetchImpl, { sdk, execEnv }),
+    step: (transcript) => fetchShellStep(messages, transcript, fetchImpl, { sdk, execEnv, files }),
     exec,
     ensureReady,
     onStep,

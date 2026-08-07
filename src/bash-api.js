@@ -114,11 +114,20 @@ export async function handleBashStep(request, env, log, identity) {
         // string can never reach the prompt): WHERE the commands will run, so
         // the step model is not briefed on the browser emulator's cost model
         // while its commands run natively in the cloud container.
+        // files_mounted (client-declared, prompt-shaping only — no capability
+        // rides on it): whether THIS send mounts any of the user's own files.
+        // The client is the only place that knows (stream.js sendNeedsMounts),
+        // and without it the prompt used to describe /workspace on every send
+        // and order the model to read its index FIRST — so a question about a
+        // company nobody has heard of was answered by searching the disk for
+        // it (feedback #64). Se/cure has always declared it (drcBashAgentPrompt
+        // `filesMounted`); this is the Se/rver half of the same contract.
         {
           role: "system",
           content: bashAgentPrompt({
             sourceMounted: sourceMounted,
             sdkMode: body?.sdk_mode === true,
+            filesMounted: body?.files_mounted === true,
             env: EXEC_ENVS.includes(body?.exec_env) ? String(body.exec_env) : "",
           }),
         },

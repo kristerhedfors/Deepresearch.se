@@ -77,7 +77,27 @@ describe("fetchShellStep", () => {
     const transcript = [{ command: "pwd", exitCode: 0, stdout: "/root\n", stderr: "" }];
     await fetchShellStep(messages, transcript, /** @type {any} */ (fake));
     assert.equal(captured.url, "/api/bash/step");
-    assert.deepEqual(captured.body, { messages, transcript });
+    assert.deepEqual(captured.body, { messages, transcript, files_mounted: false });
+  });
+
+  // Feedback #64 (2026-08-07): the step prompt described /workspace on every
+  // send and told the model to read its index FIRST, so "Osint on revsec" was
+  // answered by searching the disk. Only the client knows whether anything is
+  // mounted — and unlike sdk_mode this flag rides on EVERY request, true or
+  // false, because a missing field and a send that mounts nothing are the same
+  // bytes on the wire and the server would have to guess between them.
+  test("files opt always declares files_mounted, both ways", async () => {
+    let captured;
+    const fake = async (_url, init) => {
+      captured = JSON.parse(init.body);
+      return { ok: true, json: async () => ({ commands: [], done: true, reasoning: "" }) };
+    };
+    await fetchShellStep([], [], /** @type {any} */ (fake), { files: true });
+    assert.equal(captured.files_mounted, true);
+    await fetchShellStep([], [], /** @type {any} */ (fake), { files: false });
+    assert.equal(captured.files_mounted, false);
+    await fetchShellStep([], [], /** @type {any} */ (fake));
+    assert.equal(captured.files_mounted, false); // declared even when unstated
   });
 
   // Feedback #7 (2026-07-24): on an Agent Studio send the step prompt must

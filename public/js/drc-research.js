@@ -380,7 +380,15 @@ export const drcBashAgentPrompt = (opts = {}) =>
     : "A minimal Debian Linux runs entirely in the user's browser (a WASM x86 emulator). You are root; common tools are available (coreutils, grep/sed/awk, bash, python3, bc). It is kept minimal BY DESIGN — its disk streams to the user's device — so specialised tooling (OCR engines, PDF utilities, image libraries) is not installed and is not coming: do not hunt for it and do not plan around installing it. There is NO network — treat the sandbox as OFFLINE and compute from local tools only.\n") +
   (opts.filesMounted
     ? "ATTACHED FILES: the user's attached files are mounted read-write at /workspace/ and persist across sessions. Run `cat /workspace/INDEX.txt` first to see what is there, then read them as inputs (cat/grep/awk/`python3 script.py /workspace/data.csv`) and write your own results under /workspace/ too. An attached IMAGE is mounted too but cannot be read here — there is no OCR in this sandbox and none is coming; the assistant writing the final answer sees the picture itself, so leave it alone rather than trying to extract its text.\n"
-    : "") +
+    : opts.sourceMounted
+      ? ""
+      : // Nothing is mounted at all. Se/rver's prompt used to describe
+        // /workspace even then, and a question about an unfamiliar name was
+        // answered by searching the disk for it (feedback #64). This tier
+        // never carried that instruction, but the second half of the fix
+        // belongs here too: told only that the sandbox is empty, a model
+        // still runs `ls` to check for itself.
+        "NOTHING IS MOUNTED: no files are attached and /workspace holds only what you create. This machine is offline and knows nothing about any person, company, product or domain in the outside world, so do not go looking on disk for what the user asked about — a question about an external subject is answered by the web search that runs after you, and the right first turn is SHELL_DONE. Run commands only for genuinely local work.\n") +
   (opts.sourceMounted
     ? "INTROSPECTION (developer mode is on): the complete source tree of the Deepresearch.se site itself is mounted read-only at /src (also reachable as /workspace/source) — e.g. /src/src/pipeline.js, /src/public/js/app.js, /src/CLAUDE.md. When the user asks about the site's own code, source, implementation, or wants it explored, ls/cat/grep -rn under /src; never claim the source is unavailable.\n"
     : "") +

@@ -456,6 +456,55 @@ describe("bashAgentPrompt", () => {
     assert.doesNotMatch(off, /\/src\b/);
   });
 
+  // Feedback #64 (2026-08-07): "Osint on revsec" — a company nobody in the
+  // sandbox has heard of — was answered by searching the filesystem for it.
+  // The attachments paragraph was unconditional and opened with "Run `cat
+  // /workspace/INDEX.txt` first", so an empty VM carried a standing order to
+  // read the disk before anything else. The client now declares what is
+  // mounted, and the empty case says so.
+  describe("what the sandbox holds is declared, not assumed (feedback #64)", () => {
+    test("with files mounted, /workspace is described and its index named", () => {
+      const p = bashAgentPrompt({ filesMounted: true });
+      assert.match(p, /ATTACHED FILES/);
+      assert.match(p, /\/workspace\/INDEX\.txt/);
+      assert.match(p, /mounted read-write/);
+      // The empty-sandbox wording must not also be present — the two are
+      // alternatives, and both at once is a prompt contradicting itself.
+      assert.doesNotMatch(p, /NOTHING IS MOUNTED/);
+    });
+
+    test("with nothing mounted, the sandbox is stated EMPTY and no first read is ordered", () => {
+      const p = bashAgentPrompt();
+      assert.match(p, /NOTHING IS MOUNTED/);
+      assert.match(p, /no files are attached/);
+      // The defect itself: no instruction to read the disk first.
+      assert.doesNotMatch(p, /\/workspace\/INDEX\.txt/);
+      assert.doesNotMatch(p, /Run `cat/);
+    });
+
+    // Saying the sandbox is empty is only half the fix. A model told that and
+    // nothing else still runs `ls` to check for itself, so the note also says
+    // where a question about an outside subject IS answered.
+    test("an external subject is routed to the web search, not to the filesystem", () => {
+      const p = bashAgentPrompt();
+      assert.match(p, /Do not go looking on disk/);
+      assert.match(p, /no information about any person, company, product, domain or event/);
+      assert.match(p, /WEB SEARCH/);
+      assert.match(p, /reply SHELL_DONE on the first turn/);
+    });
+
+    // The empty-sandbox note answers "there is nothing here to work on". A
+    // source mount or an Agent Studio build turn is exactly the case where
+    // there IS — telling those to stop on the first turn would undo feedback
+    // #41 (a build turn with no sandbox action at all).
+    test("the empty-sandbox note stands down when /src is mounted or a build is running", () => {
+      assert.doesNotMatch(bashAgentPrompt({ sourceMounted: true }), /NOTHING IS MOUNTED/);
+      assert.doesNotMatch(bashAgentPrompt({ sdkMode: true }), /NOTHING IS MOUNTED/);
+      // …and neither of those regains the attachment paragraph it never had.
+      assert.doesNotMatch(bashAgentPrompt({ sourceMounted: true }), /ATTACHED FILES/);
+    });
+  });
+
   test("teaches the outbox convention (the download flow's guest side)", () => {
     const p = bashAgentPrompt();
     assert.match(p, /\/workspace\/outbox/);
