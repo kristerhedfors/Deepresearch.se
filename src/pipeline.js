@@ -82,6 +82,7 @@ import {
 } from "./sources.js";
 import { extractNotes, mergeNotes, notesEntities } from "./notes.js";
 import {
+  buildContinuationTurns,
   collectConflicts,
   conflictsSection,
   extractClaims,
@@ -1400,32 +1401,6 @@ async function runSdkBuildDeterministic(ctx, manifest, secureDigest, sdk = { tar
   // Complete files shipped, one didn't: say which, rather than leaving a build
   // that silently lacks a file the reply talks about.
   if (cut) emitChunked(ctx, sdkCutOffNote(cut.path, !!published));
-}
-
-// How much of the cut-off file to hand back as the continuation's context. The
-// model needs enough to resume mid-syntax, not the whole file — the draft it is
-// continuing already cost a full output budget.
-const CONTINUE_TAIL_CHARS = 4_000;
-
-/**
- * The two turns that ask for the remainder of a truncated file: the fragment as
- * an assistant turn (so the roles still alternate — consecutive user turns are
- * rejected by some backends) and the instruction to resume from it.
- * @param {{ path: string, content: string }} cut
- * @returns {import('./conversation.js').Msg[]}
- */
-function buildContinuationTurns(cut) {
-  return /** @type {any} */ ([
-    { role: "assistant", content: `…${cut.content.slice(-CONTINUE_TAIL_CHARS)}` },
-    {
-      role: "user",
-      content:
-        `That reply was cut off by the output limit, part-way through \`${cut.path}\`. ` +
-        `Continue from exactly where it stopped: output ONLY the remaining content of ${cut.path} — no preamble, ` +
-        "no explanation, and do not repeat or restart what is already written above. Close the fenced block with ```, " +
-        "then write any files still missing in the same FILE: convention, then your short report.",
-    },
-  ]);
 }
 
 /** @param {PipelineCtx} ctx */
