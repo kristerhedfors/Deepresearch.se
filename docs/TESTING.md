@@ -528,6 +528,22 @@ intact (invariant 2), and — read off the module source, since the flag is a
 registry fact rather than a call — that `person_research` and `entity_research`
 are the only core rows marked and that the extension seam carries no method flag
 at all.
+`public/js/query-focus-core.test.js` covers the deterministic half of the same
+feedback (`docs/ARCHITECTURE.md` §4.2c): the reported conversation's format
+angles dropped and its on-topic one kept, both disengagement gates asserted as
+the untouched input back (no method block on the turn; a conversation that
+resolves no subject, which is what keeps "what is TIBER-EU?" searching
+TIBER-EU), the two halves of `isFormatChasingQuery` pinned against the cases
+that shaped them — an ordinary widening angle naming no format left alone, and
+"How has the Tiber-EU framework been applied in practice?" dropped, the one
+observed case an earlier all-words-are-format draft let through — the
+subject-only fallback when every angle was chasing the format, a matched EN/SV
+pair suite over the format vocabulary per invariant 6 (including a Swedish
+dossier turn cut and a Swedish question about the framework left alone), the
+`\b` trap demonstrated live on `ångbåt` since a `\w`-class tokeniser would
+shred every accented word into unmatchable fragments, and the invariant-2
+surface — a non-array list, a missing context, blank members and an unparseable
+query all degrading rather than throwing.
 `answer-stream.js` covers the streaming failover seam:
 `isTransientConnectStatus` retrying provider-side statuses ONLY,
 `contextOverflowMessage` rewriting the context-window 400 and nothing else, and

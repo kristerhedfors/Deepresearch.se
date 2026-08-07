@@ -554,9 +554,11 @@ Phase details:
    table, the priced catalog. **Method** (`method: true`, set by
    `person_research` and `entity_research` and nothing else) is prose
    about how to research and how to shape the answer — it names no
-   subject and asserts no fact. The distinction is consumed in exactly
-   one place, §4.2b: data is legitimate material to write search queries
-   from, and method never is.
+   subject and asserts no fact. The distinction is consumed by the query
+   planner and nowhere else: data is legitimate material to write search
+   queries from, and method never is (§4.2b strips the method blocks out
+   of the planning view; §4.2c reads the same record to know the turn is
+   dossier-shaped).
 1. **Triage** (JSON, ≤500 tokens): sees the formatted conversation + latest
    message; returns `direct` | `clarify` (one question) | `research` with
    multi-angle queries (count from the budget plan) — plus a `complexity`
@@ -748,7 +750,9 @@ memo, a dossier, "rapport", "hotbild", "hotanalys", "bakgrundskoll" — is the
 shape of the answer and never the topic to search for, that every query must
 gather facts about the subject, and that a message naming only a format
 resolves its subject from the conversation like any other back-reference. EN
-and SV examples are paired, per invariant 6.
+and SV examples are paired, per invariant 6. Those words were then measured on
+the model that actually reads them, and they do not hold on their own — §4.2c
+is the deterministic half.
 
 This is the **fourth** instance of one bug class — a consumer reading the
 enriched message when it should read the user's — after the quiz gate
@@ -761,6 +765,88 @@ its routing gate reads `ctx.cleanLastUser`. A quiz is written from collected
 material rather than searched for, so the exposure is smaller — but it is the
 same shape, and it is recorded in `docs/MAINTENANCE-OWNERS.md` rather than
 left to be rediscovered.
+
+### 4.2c Dropping the planner's format-chasing angles (`src/query-focus.js`)
+
+§4.2b took the method block away from the planner. Feedback #65 had a second
+half, and taking the block away did not fix it.
+
+**The measurement.** The same conversation, A/B against the deployed triage
+prompt, on the fixed JSON planner the phase is pinned to (invariant 3 — Mistral
+Small). `Osint revsec` → the clarifying question → `Tiber style threat intel`:
+
+| | planned queries | a sub-question it wrote |
+|---|---|---|
+| with the method block (before §4.2b) | `TIBER-EU threat intelligence framework`, `RevSec cybersecurity threat intelligence`, `TIBER style threat intelligence for cybersecurity firms` | "How can a TIBER-style threat intelligence report be **structured** for a cybersecurity firm like RevSec?" |
+| without it (§4.2b shipped) | `Tiber-EU threat intelligence framework`, `Tiber-EU threat intelligence examples`, `RevSec cyber threat intelligence` | "What is the Tiber-EU framework for threat intelligence?" |
+
+The block leak is genuinely gone: no query quotes the scaffold any more, and
+the "how should the report be structured" sub-question disappears. Two of three
+angles still went after the standard. A live end-to-end run through `POST /mcp`
+(`chat_logs` #1692) showed the same thing in production — 9 planned queries of
+which 3 were purely about TIBER-EU, 8 of 24 sources were ECB/TIBER framework
+pages, and the answer reached the speculation "RevSec likely aligns with the
+TIBER-EU framework by…" about a company it had barely searched for.
+
+So `SUBJECT_VS_FORMAT_RULE` is prompt text, and prompt text does not hold on
+that model. It was measured there rather than assumed to work, which is the
+only reason that is known. Both of the usual remedies are closed: the phase
+cannot be moved to a stronger model (invariant 3 pins it) and it cannot be
+given a tool to call (invariant 1). What is left is deterministic code over
+the planner's OUTPUT, which is `src/query-focus.js` — a façade over the pure
+core `public/js/query-focus-core.js`, so the Se/cure tier can import the same
+file as a served module.
+
+**Two gates, both required before anything is dropped.** The failure this
+filter could cause is worse than the one it fixes, so it is built to disengage:
+
+1. A **method block applied** on this turn (`methodBlocksApplied(state)` — the
+   same `state.methodBlocks` record §4.2b's strip reads, so the two cannot
+   drift). The request is dossier-shaped, and a format name in it is a request
+   for a shape.
+2. The conversation resolves a **subject**. `subjectTokens(text)` is its
+   content words minus stopwords minus the format vocabulary; empty means the
+   request IS about the format.
+
+**The drop rule.** `isFormatChasingQuery(q, subject)` is true when the query
+reaches for at least one format word AND for none of the subject's words. Both
+halves carry weight. Requiring a format word keeps an ordinary widening angle
+("Accenture acquisition 2020") out of the filter's way — it names no format and
+simply does not repeat the subject. Requiring the absence of *every* subject
+word lets a mostly-format query stay when it is on topic ("RevSec cyber threat
+intelligence"). An earlier draft asked instead whether every word was format
+vocabulary; it was too weak by one observed case, since "How has the Tiber-EU
+framework been applied in practice?" survived it on `applied` and `practice`.
+
+The format vocabulary names report standards and format nouns — tiber, gtir,
+cbest, swot, dossier, report, framework, template, guidance, example — with the
+Swedish forms at equal breadth per invariant 6: rapport, hotbild, hotanalys,
+bakgrundskoll, underrättelse, ramverk, mall and the rest. A list that only knew
+English would disengage on every Swedish dossier turn and quietly do nothing.
+
+`focusQueriesOnSubject` returns its input untouched when either gate fails or
+the input is malformed, and never returns nothing: if every angle was chasing
+the format, the subject's own words become the single query, which is the
+user's phrasing with the report name taken out.
+
+**The case that must never break.** "What is TIBER-EU?" fires the
+entity-research gate on the word alone, so gate 1 holds — but once the format
+words are removed nothing is left, so gate 2 fails, the filter disengages, and
+the question searches TIBER-EU. That is correct, and it is the reason the whole
+design is gated rather than unconditional.
+
+**Where it is wired** (`src/pipeline.js`, all three reading `ctx.cleanConvText`
+for the subject):
+
+1. triage's `decision.queries`, before the `plan.queries` slice;
+2. triage's `decision.subquestions` — these steer every later round, so a
+   format sub-question re-seeds the angles the first pass just removed;
+3. the gap round's `followups`, so a later round cannot go back to the standard
+   the first round was steered off.
+
+It logs `chat.query_focus {dropped, kept}` when it drops anything, and says
+nothing at all otherwise, which is what makes a spurious line in the log a
+usable regression signal.
 
 ### 4.3 Time-budget planner (`src/budget.js`)
 

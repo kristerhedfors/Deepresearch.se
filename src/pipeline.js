@@ -64,6 +64,7 @@ import {
   withoutStarterTags,
 } from "./conversation.js";
 import { runEnrichments } from "./enrichment.js";
+import { focusQueriesOnSubject } from "./query-focus.js";
 import { fetchContents, webSearch } from "./exa.js";
 import { SEARCH_SOURCES, leadSourceIds } from "./search-sources.js";
 // Folds a source's reported dense-retrieval spend into the request's tally —
@@ -721,6 +722,14 @@ async function runWithoutSearch(ctx) {
 }
 
 // Phase 1: decide direct reply | clarifying question | research plan, and
+// Whether a METHOD enrichment appended anything on this turn — the first of the
+// two conditions the query focus is gated on (feedback #65). Reads the same
+// record the planning view is built from, so the two cannot drift apart.
+/** @param {any} state @returns {boolean} */
+function methodBlocksApplied(state) {
+  return Array.isArray(state?.methodBlocks) && state.methodBlocks.length > 0;
+}
+
 // announce the decision via the "plan" step. For "research" the returned
 // queries are already capped to the budget plan's angle count.
 /**
@@ -766,7 +775,27 @@ async function runTriage(ctx) {
     stepDone("plan", "Need to narrow the scope first", [], { route: "clarify" });
     return decision;
   }
-  const queries = decision.queries.slice(0, state.plan.queries);
+  // The deterministic half of the subject-vs-format split (feedback #65). The
+  // prompt rule alone does not hold on the fixed JSON planner this phase runs
+  // on (invariant 3), so the angles that came back about the report FORMAT are
+  // dropped here. Disengages entirely when no method block applied or the
+  // conversation resolves no subject — a question genuinely about a framework
+  // still searches that framework. See public/js/query-focus-core.js.
+  const focused = focusQueriesOnSubject(decision.queries, {
+    cleanText: ctx.cleanConvText,
+    methodApplied: methodBlocksApplied(state),
+  });
+  if (focused.dropped.length) {
+    ctx.log.info("chat.query_focus", { dropped: focused.dropped.length, kept: focused.queries.length });
+  }
+  const queries = focused.queries.slice(0, state.plan.queries);
+  // The sub-questions steer every later round, so a format sub-question
+  // ("What is the TIBER-EU framework?") re-seeds the same angles the gap check
+  // would otherwise chase all over again.
+  decision.subquestions = focusQueriesOnSubject(decision.subquestions || [], {
+    cleanText: ctx.cleanConvText,
+    methodApplied: methodBlocksApplied(state),
+  }).queries;
   // Thread the triage decomposition into the request state: the gap check
   // audits coverage against each sub-question and synthesis must address
   // them (see gapPrompt/synthPrompt); complexity caps research depth below
@@ -1767,7 +1796,12 @@ async function runGapChecks(ctx) {
 
     const followups = (!gap || gap.complete || !Array.isArray(gap.queries))
       ? []
-      : gap.queries.filter((/** @type {any} */ q) => typeof q === "string" && q.trim()).slice(0, plan.followups);
+      // Same focus as triage's (feedback #65): a later round must not go back
+      // to searching the report standard the first round was steered off.
+      : focusQueriesOnSubject(
+          gap.queries.filter((/** @type {any} */ q) => typeof q === "string" && q.trim()),
+          { cleanText: ctx.cleanConvText, methodApplied: methodBlocksApplied(state) },
+        ).queries.slice(0, plan.followups);
 
     if (followups.length === 0) {
       // Deep budget, mostly unspent, first "sufficient" verdict(s): challenge
