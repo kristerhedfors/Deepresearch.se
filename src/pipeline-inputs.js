@@ -301,3 +301,32 @@ export function sdkCutOffNote(path, anyPublished = false) {
     ? `\n\n_(\`${path}\` ran past the length limit and is not part of the published build. Ask me to write just that file and I'll add it to the same app.)_`
     : `\n\n_(The build ran past the length limit while writing \`${path}\`, so there's no live app to link this turn. Ask me to build it again in smaller pieces — a shorter first version, or one file at a time — and each piece gets published as it lands.)_`;
 }
+
+// How much of the cut-off file to hand back as the continuation's context. The
+// model needs enough to resume mid-syntax, not the whole file — the draft it is
+// continuing already cost a full output budget.
+const CONTINUE_TAIL_CHARS = 4_000;
+
+/**
+ * The two turns that ask for the remainder of a truncated file: the fragment as
+ * an assistant turn (so the roles still alternate — consecutive user turns are
+ * rejected by some backends) and the instruction to resume from it.
+ *
+ * The one builder here that never returns []: it is called only on the
+ * truncation branch, so the byte-identical-input discipline above is unaffected.
+ * @param {{ path: string, content: string }} cut
+ * @returns {import('./conversation.js').Msg[]}
+ */
+export function buildContinuationTurns(cut) {
+  return /** @type {any} */ ([
+    { role: "assistant", content: `…${cut.content.slice(-CONTINUE_TAIL_CHARS)}` },
+    {
+      role: "user",
+      content:
+        `That reply was cut off by the output limit, part-way through \`${cut.path}\`. ` +
+        `Continue from exactly where it stopped: output ONLY the remaining content of ${cut.path} — no preamble, ` +
+        "no explanation, and do not repeat or restart what is already written above. Close the fenced block with ```, " +
+        "then write any files still missing in the same FILE: convention, then your short report.",
+    },
+  ]);
+}

@@ -82,7 +82,7 @@
       "layer": 1, "class": "S", "deps": ["research-pipeline"],
       "skill": "sdk/skills/enrichments/SKILL.md",
       "provides": "The enrichment contract (deterministic target extraction → bounded privacy-minimal lookup → capped summary → ONE labeled context block → fail soft → counted), the registry seam, worked integrations (geocode, Shodan, Maps incl. vision describe), EN+SV intent-gate parity",
-      "reference": ["src/enrichment.js", "src/maps-enrichment.js", "src/geocode.js", "src/shodan.js", "src/googlemaps.js", "src/googlemaps-text.js", "src/googlemaps-blocks.js"],
+      "reference": ["src/enrichment.js", "src/maps-enrichment.js", "src/geocode.js", "src/shodan.js", "src/shodan-text.js", "src/shodan-enrichment.js", "src/googlemaps.js", "src/googlemaps-text.js", "src/googlemaps-blocks.js"],
       "acceptance": "Pure gates/builders unit-tested with language parity; live probe per integration; chat never errors when an enrichment fails"
     },
     {
@@ -91,7 +91,7 @@
       "layer": 2, "class": "C", "deps": ["baseplate-client", "provider-registry", "sealed-crypto"],
       "skill": "sdk/skills/secure-tier/SKILL.md",
       "provides": "The wholly-in-browser assistant: chat-first UX, browser-direct providers incl. keyless local server, sealed project state in browser storage, the twin look-and-feel with dimmed server-only affordances, deep links, encrypted backup files, the minimal-server-by-design page",
-      "reference": ["public/cure/index.html", "public/cure/drc.js", "public/cure/drc.css", "public/js/drc-core.js", "public/js/drc-store.js", "public/js/drc-page-core.js"],
+      "reference": ["public/cure/index.html", "public/cure/drc.js", "public/cure/drc.css", "public/js/drc-core.js", "public/js/drc-store.js", "public/js/drc-page-core.js", "public/js/drc-attach-core.js"],
       "acceptance": "Works served from a static host; no authenticated endpoint in the module graph (test-pinned); state round-trips sealed"
     },
     {

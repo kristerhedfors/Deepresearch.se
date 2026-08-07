@@ -50,8 +50,11 @@ function safeLog(log) {
 }
 
 /**
- * Builds the compact LLM-friendly numbered digest — byte-identical to the
- * shape exa.js emits, so synthesis reads every backend the same way.
+ * Builds the compact LLM-friendly numbered digest — the shape exa.js emits, so
+ * synthesis reads every backend the same way. exa.js open-coded a byte-identical
+ * copy of this until 2026-08-07 and now calls it through the websearch-backends.js
+ * façade, so "every backend agrees" is enforced by there being one body rather
+ * than promised by this comment.
  * @param {SearchItem[]} items
  * @returns {string}
  */

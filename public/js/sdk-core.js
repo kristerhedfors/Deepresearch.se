@@ -617,6 +617,13 @@ export const SECURE_SOURCE_REFS = [
   "public/js/drc-research.js",
   "public/js/drc-store.js",
   "public/js/drc-rag.js",
+  // Added 2026-08-07. Both are Se/cure cores carved out of drc.js by earlier
+  // refactor passes and statically imported by it, and both were missed here at
+  // the time — so the two most recently extracted pieces of the tier were the
+  // two the distiller could not see. drc-attach-core.js was missing from
+  // sdk/MANIFEST.json's secure-tier module as well.
+  "public/js/drc-page-core.js",
+  "public/js/drc-attach-core.js",
   "sdk/skills/secure-tier/SKILL.md",
 ];
 

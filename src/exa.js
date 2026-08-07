@@ -7,7 +7,7 @@
 
 import { cacheGet, cachePut } from "./edge-cache.js";
 import { getConfig } from "./config.js";
-import { resolveSearchBackend, runBackendSearch } from "./websearch-backends.js";
+import { itemsDigest, resolveSearchBackend, runBackendSearch } from "./websearch-backends.js";
 
 const EXA_URL = "https://api.exa.ai/search";
 const EXA_CONTENTS_URL = "https://api.exa.ai/contents";
@@ -223,12 +223,7 @@ export async function webSearch(env, log, query, depth = {}, opts = {}) {
     return { ...failure(`No results found for: ${query}`), durationMs };
   }
 
-  const content = results
-    .map((r, i) => {
-      const highlights = Array.isArray(r.highlights) ? r.highlights.join(" … ") : "";
-      return `[${i + 1}] ${r.title || "(untitled)"}\n${r.url}\n${highlights}`.trim();
-    })
-    .join("\n\n");
+  const content = itemsDigest(results);
 
   const result = {
     content,
