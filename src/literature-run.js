@@ -203,14 +203,27 @@ export async function mapPool(tasks, limit = RETRIEVAL_POOL) {
 }
 
 /**
- * The relevance floor a call asked for. A caller's `min_score` above the tier's
- * own floor is pushed DOWN into retrieval rather than applied afterwards, so a
- * strict caller gets a full result set of strong matches instead of two
- * survivors of a list truncated at the default floor.
+ * The relevance floor a call asked for. A caller's `min_score` is pushed into
+ * retrieval rather than applied afterwards, so a strict caller gets a full
+ * result set of strong matches instead of two survivors of a list truncated at
+ * the default floor.
+ *
+ * An explicit `min_score` is honoured in BOTH directions. It used to be clamped
+ * up to `RERANK_FLOOR`, which silently discarded a lower value — and a lower
+ * value is exactly what a Swedish caller needs: the cross-encoder's ORDERING is
+ * cross-lingually right (the gold document sits at reranked #1 in 9 of 11
+ * Swedish needles) while its absolute SCALE collapses 20x-2000x on a Swedish
+ * query against an English abstract, so the correct paper is scored 3e-3 and
+ * dropped by a floor written for English scores. No scalar floor fixes that —
+ * genuine vernacular-Swedish hits fall INSIDE the nonsense-control band, so
+ * lowering the default would admit junk (docs/RAG-EVAL-LEDGER.md, 2026-08-08).
+ * Letting a caller who knows what it is doing opt out is the recoverable
+ * version of the same dead end; the applied value is echoed in
+ * `stats.relevance_floor`, and every record carries its own score.
  * @param {number|null} minScore
  */
 function effectiveFloor(minScore) {
-  return minScore !== null && minScore > RERANK_FLOOR ? minScore : RERANK_FLOOR;
+  return minScore !== null ? minScore : RERANK_FLOOR;
 }
 
 // ---------------------------------------------------------------------------
@@ -548,9 +561,12 @@ export async function runLiteratureSearch(env, log, args, spend) {
   }
   if (!dense && queries.length && !embedFailure) {
     notes.push(
-      "Nothing cleared the relevance floor. Before concluding the literature is silent, check " +
-        "literature_corpora — both indexes are windows onto their sources, and a topic outside " +
-        "the window is a miss here but not a miss in the field." +
+      "Nothing cleared the relevance floor. Before concluding the literature is silent: if the " +
+        "query was not in English, retry with `min_score: 0.001` — the reranker orders " +
+        "cross-language pairs correctly but scores them far lower, so a right answer can sit just " +
+        "under the default floor. Otherwise check literature_corpora — both indexes are windows " +
+        "onto their sources, and a topic outside the window is a miss here but not a miss in the " +
+        "field." +
         (authorNames.length
           ? ""
           : " If the question was about a PERSON's body of work, pass `authors` — dense retrieval " +
@@ -1022,10 +1038,12 @@ export async function runOpenAiSearch(env, log, args, spend) {
         results: [],
         note:
           "No match cleared the relevance floor. This searches two hosted corpora by MEANING " +
-          "(arXiv from October 2023; a PMID slice of PubMed), so three things read as empty here " +
+          "(arXiv from October 2023; a PMID slice of PubMed), so four things read as empty here " +
           "and are not empty in the literature: a topic outside those windows, a question about " +
           "a PERSON's body of work (authorship is not something semantic retrieval can match — " +
-          "call literature_search with `authors`), and a query stripped to keywords. " +
+          "call literature_search with `authors`), a query stripped to keywords, and a query " +
+          "written in a language other than English — the reranker orders those correctly but " +
+          "scores them far lower, so retry with `min_score: 0.001` before believing this. " +
           "Call literature_corpora for what is actually indexed.",
       },
       false,

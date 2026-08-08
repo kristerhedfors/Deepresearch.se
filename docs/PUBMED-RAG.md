@@ -255,6 +255,39 @@ at ~2.2 KB per kept record — **8.0 GB for the 3.4 M kept rows** of the
 update-file set. Budget on kept ROWS, not on unique citations: the 56% that
 deduplicate away are still written to disk first.
 
+### 4.2 Adding a named list of PMIDs
+
+A reading list, a bibliography, the references of one review — "index exactly
+these 150 citations" — is the one shape the archive cannot serve. Those PMIDs
+are scattered across the whole file set, mostly below any window worth
+harvesting, so filling them from the archive means downloading tens of
+gigabytes to keep a few hundred kilobytes. `--pmids` fetches them through
+E-utilities `efetch` instead, which is not the bulk sweep NCBI's guidelines
+warn about: 200 ids per request, so a 150-PMID list is one call.
+
+```bash
+node scripts/pubmed-harvest.mjs --pmids data/my-pmids.txt --out data/pubmed-pmids
+node scripts/pubmed-vectorize.mjs --index deepresearch-se-pubmed \
+  --corpus data/pubmed-pmids/raw --work data/pubmed-pmids/vectorize
+```
+
+`efetch` returns the same DTD as the archive files, so the records go through
+the same `takeBlocks` → `parseArticle` → `keepRecord` path and the JSONL is
+identical in shape. The run has no window: it prints the list size instead of a
+`windowNote()`, and it refuses `--min-file` / `--max-files` / `--max-records`
+rather than ignoring them. There is no `<DeleteCitation>` on this channel, so
+no `done.json` is written and `--prune` has nothing to do.
+
+**Both ways a citation can disappear here are silent at the transport level,
+and both were reproduced against the live API on 2026-08-08.** A PMID naming a
+book (GeneReviews — 20301295) comes back as `<PubmedBookArticle>`, which the
+article parser does not match; a PMID PubMed does not hold (999999999) is
+simply absent, HTTP 200 with no `<ERROR>` element. Three ids requested, two
+blocks parsed, nothing raised. So every requested id is reconciled into one of
+four buckets — kept, dropped by a filter, book, never returned — the buckets
+are asserted to add up before the shard is renamed into place, and the ids
+`efetch` did not return are written to `state/<shard>-missing.txt`.
+
 ---
 
 ## 5. How much to import — the cost model and the recommendation
@@ -415,6 +448,13 @@ the loader skipped them rather than indexing retracted work.
 > container is ephemeral, so it is the only durable record of where the next
 > incremental run should start. Update it in the same change as any ingest;
 > the **pubmed-ingest** skill is the runbook for both a delta and a rebuild.
+>
+> **A `--pmids` top-up is NOT a delta and must not move this marker.** It adds
+> named citations from anywhere in PubMed's history, so it says nothing about
+> how far up the archive the load-order window has been swept. Moving the
+> marker after one would make the next delta skip every file between — a silent
+> hole of exactly the kind §6 exists to prevent. Record it in §7 instead, as
+> the 2026-08-08 ingest is recorded.
 
 **Verified against Vectorize's own count**, not the loader's: `vectorize info`
 reports `vectorCount` 1,638,756, matching the checkpoint exactly. (That count
@@ -577,6 +617,45 @@ index by only 6,069 (1,638,756 → 1,644,825), so roughly two-thirds overwrote a
 citation already indexed. That is the id-keyed upsert doing exactly what it
 should — the update file carries the corrected abstract and the index takes the
 correction — and it is why a delta needs no record of what is already there.
+
+### 7.9 The first named-bibliography ingest (2026-08-08)
+
+The first use of `--pmids` (§4.2) in anger, and the first measurement of what
+the load-order window costs a *named researcher* rather than a sampled month.
+
+Love Dalén has **169** PubMed-indexed papers (Europe PMC, `AUTH:"Dalen L"`
+filtered to author entries whose `firstName` is `Love` — the raw author query
+returns 243 and mixes in a paediatric-psychology researcher and two Norwegian
+plant scientists). Checked by `get_by_ids` rather than by querying the index,
+**18 of the 169 were in the corpus**. Not a retrieval failure: 89% of his work
+predates the 2026 baseline and had not been revised since, so it was never in
+the fetch window. Among the absent were the *Nature* million-year-old mammoth
+genomes, the 2015 Wrangel Island genomes, the 2014 polar bear genomes and the
+2020 prehistoric-dog paper.
+
+```
+his 169:  151 requested → 140 kept, 11 short_abstract, 0 books, 0 unreturned  (1 efetch call)
+adjacent:  87 requested →  84 kept,  3 short_abstract, 0 books, 0 unreturned  (1 efetch call)
+                                     224 vectors, two embed batches, ~15 s of fill
+```
+
+Verified afterwards by id: **158 of 169**. The 11 that stayed out are replies,
+corrections and policy letters below the 200-character abstract floor — the
+same rule the rest of the corpus obeys, so they are correctly excluded rather
+than lost. The 84 adjacent papers are landmark work by *other* groups (Kap
+København, the 780–560 kyr horse, mapDamage, the draft Neanderthal genome), so
+the corpus does not answer every question about a field with one lab's output.
+
+Two operational notes. `wrangler` is **not** a devDependency, and setting
+`WRANGLER_BIN=npx` silently drops the `wrangler` argument — the upsert fails
+with `could not determine executable to run`. Install it and point
+`WRANGLER_BIN` at `node_modules/.bin/wrangler`. And Vectorize's query path is
+**eventually consistent**: `get-vectors` returned the new ids immediately while
+`get_by_ids` still reported them missing for tens of seconds. Do not conclude a
+fill failed from one immediate read-back.
+
+Retrieval before and after is in `docs/RAG-EVAL-LEDGER.md` (2026-08-08),
+measured on the committed gold set `scripts/pubmed-dalen-goldset.json`.
 
 ### 7.7 A Swedish measurement trap that nearly became a false bug report
 

@@ -1,0 +1,478 @@
+{
+ "v": 1,
+ "corpus": "pubmed",
+ "note": "Hand-written NEEDLE gold set over the published work of Love Dalén (Centre for Palaeogenetics, Stockholm) — one query per paper, that paper is the single right answer. Unlike a `rag-eval.mjs goldset` set this one is COMMITTED, because it is pinned to named papers rather than to a sampled load-order window: it stays meaningful across re-ingests, which is what open item 4 in docs/RAG-EVAL-LEDGER.md asks for. Authorship on every `gold` was verified mechanically against the Europe PMC author field (an author entry with lastName Dalén AND firstName Love) rather than inferred from the topic — 'Dalen L' is ambiguous, and a Lancet food-additives trial (PMID 17825405) belongs to a different person. Membership of every `gold` in the hosted index was verified by id through get_by_ids, never by querying the index, which would have selected for documents that retrieve well. 140 of these papers were added to the index by an explicit-PMID ingest on 2026-08-08 (docs/PUBMED-RAG.md §8); before it, 18 of his 169 PubMed-indexed papers were in the corpus.",
+ "arms": {
+  "en": "English.",
+  "sv": "VERNACULAR Swedish — the everyday Germanic register a Swedish speaker actually types: fjällämmel, grottlejon, ullhårig noshörning, skräckvarg, jättesengångare.",
+  "svsci": "SCIENTIFIC Swedish — the same question carrying Latin/Greek scientific vocabulary and binomials: Lemmus lemmus, populationsstruktur, paleogenomisk, effektiv populationsstorlek. Paired with `sv` on the SAME document, so the gap between the two arms isolates REGISTER from topic. This pairing is the instrument that tested docs/RAG-EVAL-LEDGER.md's previously untested cognate hypothesis; run it with `--langs en,sv,svsci`."
+ },
+ "needle": [
+  {
+   "gold": "pmid:17420452",
+   "year": 2007,
+   "en": "Did the arctic fox follow its habitat north when the ice retreated, or did the southern populations simply die out?",
+   "sv": "Följde fjällräven med sin livsmiljö norrut när isen drog sig tillbaka, eller dog de sydliga bestånden helt enkelt ut?",
+   "svsci": "Uppvisar Vulpes lagopus habitatspårning efter senaste glacialen, eller utdöende av perifera populationer utanför refugier?",
+   "title": "Ancient DNA reveals lack of postglacial habitat tracking in the arctic fox."
+  },
+  {
+   "gold": "pmid:20356891",
+   "year": 2010,
+   "en": "Did the last mammoth population keep losing genetic variation during its final millennia of isolation, or did it stay stable until it disappeared?",
+   "sv": "Fortsatte den sista mammutstammen att tappa ärftlig variation under sina sista årtusenden i avskildhet, eller höll den sig stabil ända tills den försvann?",
+   "svsci": "Skedde fortsatt förlust av mitokondriell variation i den sista Mammuthus primigenius-populationen under isoleringen, eller var den demografiskt stabil fram till utdöendet?",
+   "title": "Temporal genetic change in the last remaining population of woolly mammoth."
+  },
+  {
+   "gold": "pmid:22362080",
+   "year": 2012,
+   "en": "Was there a population replacement among Neanderthals in western Europe before modern humans arrived there?",
+   "sv": "Byttes neandertalarna i västra Europa ut mot en annan grupp innan den moderna människan kom dit?",
+   "svsci": "Finns belägg för populationsomsättning hos Homo neanderthalensis i västra Europa under tidig MIS 3, före anatomiskt moderna människors ankomst?",
+   "title": "Partial genetic turnover in neandertals: continuity in the East and population replacement in the West."
+  },
+  {
+   "gold": "pmid:22443459",
+   "year": 2012,
+   "en": "What did nuclear microsatellite markers show about how much genetic variation mammoths lost at the end of the Pleistocene?",
+   "sv": "Vad visade kärnmarkörer om hur mycket ärftlig variation mammutarna förlorade i slutet av istiden?",
+   "svsci": "Vad visade autosomala mikrosatellitmarkörer om förlusten av genetisk variation hos Mammuthus primigenius vid slutet av pleistocen?",
+   "title": "Microsatellite genotyping reveals end-Pleistocene decline in mammoth autosomal genetic variation."
+  },
+  {
+   "gold": "pmid:24813606",
+   "year": 2014,
+   "en": "How recently did polar bears and brown bears split, and which genes show the strongest signs of selection in polar bears?",
+   "sv": "Hur nyligen skildes isbjörnen och brunbjörnen åt, och vilka arvsanlag visar starkast spår av urval hos isbjörnen?",
+   "svsci": "När divergerade Ursus maritimus och Ursus arctos, och vilka gener uppvisar starkast positiv selektion i isbjörnslinjen?",
+   "title": "Population genomics reveal recent speciation and rapid evolutionary adaptation in polar bears."
+  },
+  {
+   "gold": "pmid:25913407",
+   "year": 2015,
+   "en": "What did two complete mammoth genomes — one from Wrangel Island and one much older from Siberia — reveal about inbreeding before extinction?",
+   "sv": "Vad visade två fullständiga mammutgenom, ett från Wrangels ö och ett mycket äldre från Sibirien, om inavel före utdöendet?",
+   "svsci": "Vad visade två högtäckande genom av Mammuthus primigenius om heterozygotiförlust och runs of homozygosity inför utdöendet?",
+   "title": "Complete genomes reveal signatures of demographic and genetic declines in the woolly mammoth."
+  },
+  {
+   "gold": "pmid:26004765",
+   "year": 2015,
+   "en": "What did a 35,000-year-old wolf from the Taimyr Peninsula show about when dogs and wolves separated?",
+   "sv": "Vad visade en 35 000 år gammal varg från Tajmyrhalvön om när hundar och vargar skildes åt?",
+   "svsci": "Vad visade ett direktdaterat paleogenom av Canis lupus från Tajmyr om divergenstiden mellan hund och varg och om mutationshastigheten?",
+   "title": "Ancient wolf genome reveals an early divergence of domestic dog ancestors and admixture into high-latitude breeds."
+  },
+  {
+   "gold": "pmid:29103934",
+   "year": 2017,
+   "en": "Why are so many more of the mammoth remains that have been found male rather than female?",
+   "sv": "Varför är så många fler av de mammutlämningar som hittats hanar än honor?",
+   "svsci": "Varför föreligger en signifikant överrepresentation av hanar bland genomiskt könsbestämda Mammuthus primigenius-lämningar?",
+   "title": "Genome-Based Sexing Provides Clues about Behavior and Social Structure in the Woolly Mammoth."
+  },
+  {
+   "gold": "pmid:29289355",
+   "year": 2017,
+   "en": "Why is present-day genetic diversity a poor guide to how much an endangered species has recently declined, and what sampling fixes it?",
+   "sv": "Varför säger dagens ärftliga mångfald så lite om hur mycket en hotad art nyligen minskat, och vilken slags provtagning löser det?",
+   "svsci": "Varför korrelerar genomövergripande diversitet dåligt med aktuell populationsstorlek, och hur avhjälper temporal provtagning av museimaterial detta?",
+   "title": "Quantifying Temporal Genomic Erosion in Endangered Species."
+  },
+  {
+   "gold": "pmid:30150744",
+   "year": 2018,
+   "en": "Does any DNA from the extinct cave bear still survive inside living bears today?",
+   "sv": "Lever något av grottbjörnens arvsmassa kvar i dagens björnar?",
+   "svsci": "Kvarstår introgredierade segment från Ursus spelaeus i genomen hos nu levande Ursus arctos, och i vilken andel?",
+   "title": "Partial genomic survival of cave bears in living brown bears."
+  },
+  {
+   "gold": "pmid:30595519",
+   "year": 2018,
+   "en": "What did century-old museum specimens reveal about inbreeding and genetic load in the two kinds of eastern gorilla?",
+   "sv": "Vad avslöjade hundraåriga museiexemplar om inavel och skadliga anlag hos de två sorternas östliga gorilla?",
+   "svsci": "Vad visade historiska museigenom om inavelsgrad och genetisk last hos Gorilla beringei graueri jämfört med bergsgorilla?",
+   "title": "Historical Genomes Reveal the Genomic Consequences of Recent Population Decline in Eastern Gorillas."
+  },
+  {
+   "gold": "pmid:31511700",
+   "year": 2019,
+   "en": "How was a 1.77-million-year-old rhinoceros from Georgia placed in the family tree when its DNA was long gone?",
+   "sv": "Hur kunde en 1,77 miljoner år gammal noshörning från Georgien placeras i släktträdet när dess arvsmassa sedan länge var borta?",
+   "svsci": "Hur löstes Stephanorhinus fylogenetiska position med emaljproteom från Dmanisi när aDNA-bevarande är otillräckligt på denna tidsskala?",
+   "title": "Early Pleistocene enamel proteome from Dmanisi resolves Stephanorhinus phylogeny."
+  },
+  {
+   "gold": "pmid:31839456",
+   "year": 2019,
+   "en": "Did the Carolina parakeet show genetic warning signs of decline before it went extinct, and how did it tolerate a toxic plant?",
+   "sv": "Fanns det ärftliga varningstecken på tillbakagång hos karolinaparakiten innan den dog ut, och hur tålde den en giftig växt?",
+   "svsci": "Uppvisade Conuropsis carolinensis demografisk nedgång eller långa homozygota segment före utdöendet, och vilka varianter kopplas till karboxyatraktylosidtolerans?",
+   "title": "Evolutionary History, Genomic Adaptation to Toxic Diet, and Extinction of the Carolina Parakeet."
+  },
+  {
+   "gold": "pmid:32587022",
+   "year": 2020,
+   "en": "When did sled dogs adapted to the Arctic first appear, and where does their ancestry come from?",
+   "sv": "När uppstod slädhundarna som är anpassade till Arktis, och varifrån kommer deras härkomst?",
+   "svsci": "När etablerades arktiskt adapterade haplotyper hos slädhundar, och vilket bidrag har pleistocena sibiriska Canis lupus-populationer?",
+   "title": "Arctic-adapted dogs emerged at the Pleistocene-Holocene transition."
+  },
+  {
+   "gold": "pmid:32724178",
+   "year": 2020,
+   "en": "How long ago did the cave lion split from the lion, and were there several distinct kinds of cave lion?",
+   "sv": "Hur länge sedan skildes grottlejonet från lejonet, och fanns det flera skilda sorters grottlejon?",
+   "svsci": "När divergerade grottlejonets och Panthera leos mitokondriella linjer, och hur många reciprokt monofyletiska mitogenomklader föreligger?",
+   "title": "Early Pleistocene origin and extensive intra-species diversity of the extinct cave lion."
+  },
+  {
+   "gold": "pmid:32795436",
+   "year": 2020,
+   "en": "Was the woolly rhinoceros already in decline when people arrived, or did it stay stable until close to its extinction?",
+   "sv": "Var ullhårig noshörning redan på tillbakagång när människan kom, eller höll den sig stabil ända fram till strax före utdöendet?",
+   "svsci": "Minskade den effektiva populationsstorleken hos Coelodonta antiquitatis efter människans ankomst, eller förblev den stabil fram till nära utdöendet?",
+   "title": "Pre-extinction Demographic Stability and Genomic Signatures of Adaptation in the Woolly Rhinoceros."
+  },
+  {
+   "gold": "pmid:33065008",
+   "year": 2020,
+   "en": "How distant is the extinct scimitar-toothed cat from living cats, and was it rare or common?",
+   "sv": "Hur avlägset släkt är den utdöda sabeltandade katten med dagens kattdjur, och var den sällsynt eller vanlig?",
+   "svsci": "Hur djupt divergerad är Homotherium latidens från nu levande Felidae, och vad antyder dess heterozygoti om abundans?",
+   "title": "Genomic Adaptations and Evolutionary History of the Extinct Scimitar-Toothed Cat, Homotherium latidens."
+  },
+  {
+   "gold": "pmid:33122379",
+   "year": 2020,
+   "en": "How many separate dog lineages already existed 11,000 years ago, and did dog history follow human history?",
+   "sv": "Hur många skilda hundlinjer fanns redan för 11 000 år sedan, och följde hundarnas historia människornas?",
+   "svsci": "Hur många distinkta härkomstlinjer hos Canis familiaris förelåg för 11 000 år sedan, och i vilken utsträckning speglar de mänsklig populationshistoria?",
+   "title": "Origins and genetic legacy of prehistoric dogs."
+  },
+  {
+   "gold": "pmid:33597750",
+   "year": 2021,
+   "en": "What is the oldest DNA ever recovered, and what did it reveal about where the Columbian mammoth came from?",
+   "sv": "Vilket är det äldsta arvsmassa som någonsin utvunnits, och vad avslöjade den om varifrån columbimammuten kom?",
+   "svsci": "Vad visade genomövergripande data från tidigpleistocena Mammuthus-specimen om Mammuthus columbis hybridursprung?",
+   "title": "Million-year-old DNA sheds light on the genomic history of mammoths."
+  },
+  {
+   "gold": "pmid:33896938",
+   "year": 2021,
+   "en": "Do the last Sumatran rhinoceros populations suffer more from inbreeding or from a build-up of harmful mutations?",
+   "sv": "Lider de sista sumatranoshörningarna mest av inavel eller av en anhopning av skadliga anlag?",
+   "svsci": "Uppvisar kvarvarande populationer av Dicerorhinus sumatrensis förhöjd inavelsgrad eller förhöjd mutationsbörda?",
+   "title": "Genomic insights into the conservation status of the world's last remaining Sumatran rhinoceros populations."
+  },
+  {
+   "gold": "pmid:34433011",
+   "year": 2021,
+   "en": "When did the African and Eurasian rhinoceros lineages split, and is their low genetic diversity old or recent?",
+   "sv": "När skildes de afrikanska och eurasiska noshörningslinjerna åt, och är deras låga ärftliga mångfald gammal eller ny?",
+   "svsci": "När divergerade afrikanska och eurasiska Rhinocerotidae-linjer, och är den låga heterozygotin ett långvarigt drag eller nyligen förvärrat?",
+   "title": "Ancient and modern genomes unravel the evolutionary history of the rhinoceros family."
+  },
+  {
+   "gold": "pmid:35119923",
+   "year": 2022,
+   "en": "What explains the thick bark-like skin of Steller's sea cow, and was it already declining before humans wiped it out?",
+   "sv": "Vad förklarar Stellers sjökos tjocka, barkliknande hud, och var den redan på tillbakagång innan människan utrotade den?",
+   "svsci": "Vilka geninaktiveringar förklarar Hydrodamalis gigas hyperkeratotiska hudfenotyp, och vad visar demografisk rekonstruktion om abundans före 1741?",
+   "title": "Genomic basis for skin phenotype and cold adaptation in the extinct Steller's sea cow."
+  },
+  {
+   "gold": "pmid:35711062",
+   "year": 2022,
+   "en": "What did a 100,000-year-old polar bear genome reveal about gene flow between polar bears and brown bears?",
+   "sv": "Vad avslöjade arvsmassan från en 100 000 år gammal isbjörn om genutbytet mellan isbjörnar och brunbjörnar?",
+   "svsci": "Vad visade ett paleogenom av Ursus maritimus om riktningen och omfattningen av forntida genflöde till Ursus arctos?",
+   "title": "A polar bear paleogenome reveals extensive ancient gene flow from polar bears into brown bears."
+  },
+  {
+   "gold": "pmid:35768506",
+   "year": 2022,
+   "en": "Do dogs descend from one wolf population or two, and how connected were wolf populations during the Ice Age?",
+   "sv": "Härstammar hundar från en eller två vargstammar, och hur sammanlänkade var vargarna under istiden?",
+   "svsci": "Har Canis familiaris enkel eller dubbel härkomst från Canis lupus, och hur låg var populationsdifferentieringen under sen pleistocen?",
+   "title": "Grey wolf genomic history reveals a dual ancestry of dogs."
+  },
+  {
+   "gold": "pmid:37030294",
+   "year": 2023,
+   "en": "Were the woolly mammoth's cold adaptations already in place when the species arose, or did they evolve later?",
+   "sv": "Fanns mammutens köldanpassningar redan när arten uppstod, eller utvecklades de senare?",
+   "svsci": "Var Mammuthus primigenius köldadaptiva varianter fixerade redan vid artens uppkomst, eller fortsatte positiv selektion under de senaste 700 000 åren?",
+   "title": "Genomics of adaptive evolution in the woolly mammoth."
+  },
+  {
+   "gold": "pmid:37344276",
+   "year": 2023,
+   "en": "How do purging and drift each shape the burden of harmful mutations as a population shrinks and then recovers?",
+   "sv": "Hur påverkar rensning respektive slump mängden skadliga anlag när en stam först krymper och sedan återhämtar sig?",
+   "svsci": "Hur formar selektiv purging respektive genetisk drift den genetiska lastens sammansättning under populationsnedgång och återhämtning?",
+   "title": "Purging and accumulation of genetic load in conservation."
+  },
+  {
+   "gold": "pmid:37797036",
+   "year": 2023,
+   "en": "How far back in time can ancient DNA now reach, and what limits how long DNA survives?",
+   "sv": "Hur långt tillbaka i tiden når forntida arvsmassa i dag, och vad sätter gränsen för hur länge den överlever?",
+   "svsci": "Hur långt in i tidig pleistocen når paleogenomiken, och vilka faktorer begränsar DNA:s överlevnad över geologisk tid?",
+   "title": "Deep-time paleogenomics and the limits of DNA survival."
+  },
+  {
+   "gold": "pmid:38684726",
+   "year": 2024,
+   "en": "Could today's Arctic actually feed a reintroduced mammoth-like grazer, and at what density?",
+   "sv": "Skulle dagens Arktis faktiskt kunna föda en återinförd mammutliknande betare, och i vilken täthet?",
+   "svsci": "Är samtida arktiska ekosystem tillräckligt produktiva för en Mammuthus primigenius-proxy, och vilken individtäthet per km² medger tillgänglig biomassa?",
+   "title": "Assessing contemporary Arctic habitat availability for a woolly mammoth proxy."
+  },
+  {
+   "gold": "pmid:38942016",
+   "year": 2024,
+   "en": "Did the mammoths on Wrangel Island slowly deteriorate genetically over their last 6,000 years, or were they stable right up to the end?",
+   "sv": "Försämrades mammutarna på Wrangels ö ärftligt under sina sista 6 000 år, eller var de stabila ända in i slutet?",
+   "svsci": "Ackumulerade Wrangelpopulationen av Mammuthus primigenius genetisk last under isoleringen, och vilka varianter rensades bort?",
+   "title": "Temporal dynamics of woolly mammoth genome erosion prior to extinction."
+  },
+  {
+   "gold": "pmid:38996487",
+   "year": 2024,
+   "en": "Can the folded three-dimensional structure of chromosomes survive in a body frozen tens of thousands of years ago?",
+   "sv": "Kan kromosomernas tredimensionella struktur överleva i en kropp som frusit för tiotusentals år sedan?",
+   "svsci": "Bevaras kromatinets tredimensionella arkitektur, inklusive kompartment och Barr-kroppar, i 52 000 år gammal Mammuthus primigenius-hud?",
+   "title": "Three-dimensional genome architecture persists in a 52,000-year-old woolly mammoth skin sample."
+  },
+  {
+   "gold": "pmid:40202893",
+   "year": 2025,
+   "en": "What do the very oldest mammoth mitochondrial genomes show about where the later mammoth lineages came from?",
+   "sv": "Vad visar de allra äldsta mammutarnas mitokondriella arvsmassa om varifrån de senare mammutlinjerna kom?",
+   "svsci": "Var faller tidig- och mellanpleistocena Mammuthus-mitogenom i förhållande till senpleistocena klader, och vad antyder det om ursprunget?",
+   "title": "A Million Years of Mammoth Mitogenome Evolution."
+  },
+  {
+   "gold": "pmid:40587810",
+   "year": 2025,
+   "en": "How young a species is the Norwegian lemming, and does it exchange genes with the Siberian lemming?",
+   "sv": "Hur ung art är fjällämmeln, och utbyter den arvsanlag med sibirisk lämmel?",
+   "svsci": "Hur nyligen uppstod Lemmus lemmus som art, och föreligger genflöde med Lemmus sibiricus?",
+   "title": "Genome analyses suggest recent speciation and postglacial isolation in the Norwegian lemming."
+  },
+  {
+   "gold": "pmid:40758875",
+   "year": 2025,
+   "en": "What animals lived in Arctic Norway during the last glacial period, according to a bone-bearing cave deposit?",
+   "sv": "Vilka djur levde i arktiska Norge under den senaste istiden, enligt ett benförande grottlager?",
+   "svsci": "Vilken faunasammansättning dokumenterar bulk-bone-metabarkodning från Arne Qvamgrotta, och till vilket marint isotopstadium dateras avlagringen?",
+   "title": "A 75,000-y-old Scandinavian Arctic cave deposit reveals past faunal diversity and paleoenvironment."
+  },
+  {
+   "gold": "pmid:40902595",
+   "year": 2025,
+   "en": "Can bacteria that actually lived inside mammoths be recovered, as opposed to microbes that colonised the remains after death?",
+   "sv": "Går det att återfinna bakterier som faktiskt levde inuti mammutar, till skillnad från mikrober som kolonisera lämningarna efter döden?",
+   "svsci": "Kan värdassocierade mikrobiella klader särskiljas från postmortala kolonisatörer i Mammuthus-lämningar, och hur gammalt är det äldsta autentiserade fyndet?",
+   "title": "Ancient host-associated microbes obtained from mammoth remains."
+  },
+  {
+   "gold": "pmid:41067227",
+   "year": 2025,
+   "en": "Did hippos really disappear from central Europe when the last glacial began, or did they hang on much later?",
+   "sv": "Försvann flodhästarna verkligen från Centraleuropa när den senaste istiden började, eller fanns de kvar långt senare?",
+   "svsci": "Begränsas Hippopotamus amphibius i Centraleuropa till eem-interglacialen, eller föreligger daterade fynd från mellersta weichsel?",
+   "title": "Ancient DNA and dating evidence for the dispersal of hippos into central Europe during the last glacial."
+  },
+  {
+   "gold": "pmid:41240910",
+   "year": 2026,
+   "en": "Has anyone recovered RNA — not just DNA — from an extinct Ice Age animal, and what did it show?",
+   "sv": "Har någon lyckats få fram RNA, alltså inte bara arvsmassa, ur ett utdött istidsdjur, och vad visade det?",
+   "svsci": "Har transkriptionsprofiler återvunnits från Mammuthus primigenius, och vilken vävnadsspecifik reglering kunde rekonstrueras?",
+   "title": "Ancient RNA expression profiles from the extinct woolly mammoth."
+  },
+  {
+   "gold": "pmid:36777713",
+   "year": 2021,
+   "en": "Does the surviving island population of kakapo carry more or fewer harmful mutations than the mainland population that died out?",
+   "sv": "Bär de kakapor som överlevt på ön på fler eller färre skadliga mutationer än de som fanns kvar på fastlandet?",
+   "svsci": "Uppvisar den kvarvarande ö-populationen av kakapo lägre mutationsbörda än den utdöda fastlandspopulationen?",
+   "title": "Population genomics of the critically endangered kākāpō."
+  },
+  {
+   "gold": "pmid:40994021",
+   "year": 2025,
+   "en": "Did woolly and Columbian mammoths interbreed in North America, and what did specimens from British Columbia show?",
+   "sv": "Parade sig ullhårig mammut och columbimammut med varandra i Nordamerika?",
+   "svsci": "Finns genomiska belägg för genflöde mellan Mammuthus primigenius och M. columbi i British Columbia?",
+   "title": "Genomic and morphological analysis reveals long-term mammoth hybridization in British Columbia, Canada."
+  },
+  {
+   "gold": "pmid:41530912",
+   "year": 2026,
+   "en": "Did the woolly rhinoceros show signs of inbreeding or a shrinking population in the centuries before it went extinct?",
+   "sv": "Fanns det tecken på inavel eller en krympande stam hos ullhårig noshörning strax innan den dog ut?",
+   "svsci": "Uppvisade Coelodonta antiquitatis genomisk erosion eller minskande effektiv populationsstorlek före utdöendet?",
+   "title": "Genome Shows no Recent Inbreeding in Near-Extinction Woolly Rhinoceros Sample Found in Ancient Wolf's Stomach."
+  },
+  {
+   "gold": "pmid:41629962",
+   "year": 2026,
+   "en": "When did the three cryptic species in the field vole complex split from one another?",
+   "sv": "När skildes de tre snarlika arterna av åkersork från varandra?",
+   "svsci": "När divergerade Microtus agrestis, M. lavernedii och M. rozianus enligt moderna och forntida genom?",
+   "title": "The evolutionary history of the field vole species complex revealed by modern and ancient genomes."
+  },
+  {
+   "gold": "pmid:41787358",
+   "year": 2026,
+   "en": "Is the Norwegian lemming a single continuous population, or is it split into groups by geography?",
+   "sv": "Är fjällämmeln en enda sammanhängande stam, eller är den uppdelad i skilda grupper i olika delar av fjällkedjan?",
+   "svsci": "Uppvisar Lemmus lemmus populationsstruktur med isolering genom avstånd enligt helgenomdata?",
+   "title": "Whole genomes reveal subpopulations and isolation-by-distance patterns in the Norwegian lemming."
+  },
+  {
+   "gold": "pmid:41845022",
+   "year": 2026,
+   "en": "What could be read out of a mummified porcupine recovered from Yukon permafrost, and how old was it?",
+   "sv": "Vad kunde man utläsa ur ett mumifierat piggsvin som hittades i tjälen i Yukon, och hur gammalt var det?",
+   "svsci": "Vad visade genomisk identifiering och mitogenomsekvensering av en mumifierad Erethizon dorsatum från permafrost i Yukon?",
+   "title": "Genomic identification and complete mitochondrial recovery of a Late Holocene porcupine (Erethizon dorsatum) mummy from Yukon permafrost."
+  },
+  {
+   "gold": "pmid:41957296",
+   "year": 2026,
+   "en": "What genetic change makes some least weasels stay brown through the winter instead of turning white, and how old is that variant?",
+   "sv": "Vilken ärftlig förändring gör att en del småvesslor förblir bruna på vintern i stället för att bli vita, och hur gammal är den?",
+   "svsci": "Vilken MC1R-variant ligger bakom vinterbrun pälsfärg hos Mustela nivalis, och hur länge har polymorfismen bevarats?",
+   "title": "Balanced polymorphism underlies long-standing adaptation for seasonal camouflage in the least weasel."
+  },
+  {
+   "gold": "pmid:41973920",
+   "year": 2026,
+   "en": "What did a genome recovered from northern Swedish lake sediment reveal about how brown bears recolonised Scandinavia after the ice age?",
+   "sv": "Vad visade arvsmassan ur en sjöbotten i norra Sverige om hur björnen vandrade tillbaka efter istiden?",
+   "svsci": "Vad visade ett sedimentärt miljögenom från norra Sverige om Ursus arctos rekolonisering av Fennoskandien under tidig holocen?",
+   "title": "Ancient environmental genome reveals a migratory brown bear individual in Early Holocene Scandinavia."
+  },
+  {
+   "gold": "pmid:42235515",
+   "year": 2026,
+   "en": "Were cave lions and modern lions separate lineages, and is there any sign that they interbred?",
+   "sv": "Var grottlejonet och dagens lejon skilda linjer, och finns det spår av att de fick ungar tillsammans?",
+   "svsci": "Utgjorde grottlejonet och Panthera leo separata evolutionära linjer, och finns belägg för genflöde mellan dem?",
+   "title": "Paleogenomes reveal the evolutionary relationship between modern and cave lions."
+  },
+  {
+   "gold": "pmid:42508403",
+   "year": 2026,
+   "en": "Where does the extinct dire wolf sit in the dog family tree, and how much of its ancestry comes from each lineage?",
+   "sv": "Var i hunddjurens släktträd hör den utdöda skräckvargen hemma, och varifrån kommer dess arv?",
+   "svsci": "Vilken fylogenetisk position intar Aenocyon dirus inom Canidae, och hur fördelar sig dess härkomst mellan linjerna?",
+   "title": "On the ancestry and evolution of the extinct dire wolf."
+  },
+  {
+   "gold": "pmid:42532037",
+   "year": 2026,
+   "en": "Do the sex ratios of mammoth remains at large bone sites show that people hunted them, rather than the animals dying naturally?",
+   "sv": "Visar könsfördelningen bland mammutben på stora fyndplatser att människor jagade dem, i stället för att djuren dog av sig själva?",
+   "svsci": "Indikerar genetisk könsbestämning av Mammuthus primigenius-material en antropogen ackumulering snarare än naturlig mortalitet?",
+   "title": "Paleogenomic sex inference of mammoth remains sheds light on the anthropogenic nature of bone accumulations."
+  },
+  {
+   "gold": "pmid:36477129",
+   "year": 2022,
+   "complementary": "Kjær/Willerslev. The deep-time record BEYOND his — and the paper most often misattributed to him. He is not an author; a set that cannot separate the two is measuring topic, not authorship.",
+   "en": "What is the oldest environmental DNA recovered, and what ecosystem did it reconstruct in northern Greenland?",
+   "sv": "Vilket är det äldsta DNA som hittats i mark och sediment, och hur såg landskapet ut i norra Grönland?",
+   "svsci": "Vilken ålder har det äldsta sedimentära miljö-DNA:t från Kap København-formationen, och vilken ekosystemsammansättning rekonstruerades?",
+   "title": "A 2-million-year-old ecosystem in Greenland uncovered by environmental DNA."
+  },
+  {
+   "gold": "pmid:23803765",
+   "year": 2013,
+   "complementary": "Orlando/Willerslev. The 780-560 kyr horse genome — the record the million-year mammoth paper explicitly broke, so the two must be separable.",
+   "en": "Which genome held the record for the oldest ever sequenced before the mammoth work, and how did it change the age of the horse genus?",
+   "sv": "Vilken arvsmassa var den äldsta som någonsin avlästs innan mammutarbetet, och hur ändrade den åldern på hästsläktet?",
+   "svsci": "Vilket permafrostbevarat Equus-exemplar gav det äldsta genomet före 2021, och hur reviderades släktets uppkomstdatering?",
+   "title": "Recalibrating Equus evolution using the genome sequence of an early Middle Pleistocene horse."
+  },
+  {
+   "gold": "pmid:24019490",
+   "year": 2013,
+   "complementary": "Dabney/Meyer. The extraction chemistry that made deep-time palaeogenomics possible at all.",
+   "en": "What extraction method made it possible to recover DNA fragments shorter than 40 base pairs from Middle Pleistocene bone?",
+   "sv": "Vilken metod gjorde det möjligt att få fram mycket korta DNA-bitar ur ben som är hundratusentals år gamla?",
+   "svsci": "Vilket silikabaserat extraktionsprotokoll återvinner molekyler under 40 baspar, och vilket mitogenom rekonstruerades från Sima de los Huesos?",
+   "title": "Complete mitochondrial genome sequence of a Middle Pleistocene cave bear reconstructed from ultrashort DNA fragments."
+  },
+  {
+   "gold": "pmid:23613487",
+   "year": 2013,
+   "complementary": "Jonsson/Orlando. The damage-pattern tool every aDNA authentication in his papers depends on.",
+   "en": "Which tool estimates ancient DNA damage patterns and rescales base qualities so deaminated sites are down-weighted?",
+   "sv": "Vilket verktyg mäter hur gammalt DNA brutits ned och viktar ned de positioner där skadan sitter?",
+   "svsci": "Vilket program ger approximativa bayesianska skattningar av deamineringsgrad och fragmentering i aDNA, och omskalar baskvaliteter?",
+   "title": "mapDamage2.0: fast approximate Bayesian estimates of ancient DNA damage parameters."
+  },
+  {
+   "gold": "pmid:10970224",
+   "year": 2000,
+   "complementary": "Cooper/Poinar. The authentication doctrine the whole field is built on.",
+   "en": "What criteria were laid down for authenticating ancient DNA and separating it from modern contamination?",
+   "sv": "Vilka krav ställdes upp för att avgöra om gammalt DNA är äkta och inte förorening från nutid?",
+   "svsci": "Vilka autenticeringskriterier — oberoende replikering, dedikerade renrum, extraktionsblanka prov — formulerades för aDNA-studier?",
+   "title": "Ancient DNA: do it right or not at all."
+  },
+  {
+   "gold": "pmid:25435267",
+   "year": 2015,
+   "complementary": "Whiteley/Tallmon. The management intervention his genomic-erosion work is diagnosis for.",
+   "en": "Is bringing in immigrants to a small inbred population usually beneficial, or is outbreeding depression the bigger risk?",
+   "sv": "Är det oftast bra att flytta in nya individer i en liten inavlad stam, eller är risken för utavelsdepression större?",
+   "svsci": "Överväger fitnessvinsterna av genetisk räddning risken för utavelsdepression i små isolerade populationer?",
+   "title": "Genetic rescue to the rescue."
+  },
+  {
+   "gold": "pmid:20448178",
+   "year": 2010,
+   "complementary": "Green/Paabo. The ancient-hominin half of the field, adjacent to his Neanderthal mtDNA work.",
+   "en": "What did the first draft Neanderthal genome show about interbreeding with modern humans?",
+   "sv": "Vad visade det första utkastet till neandertalarnas arvsmassa om att de fick barn med moderna människor?",
+   "svsci": "Vilken andel neandertalskt genflöde till icke-afrikanska populationer indikerade det första utkastsgenomet?",
+   "title": "A draft sequence of the Neandertal genome."
+  },
+  {
+   "gold": "pmid:34969841",
+   "year": 2022,
+   "complementary": "Massilani/Meyer. Sediment DNA at micrometre resolution — the methodological counterpart to his sedaDNA brown bear.",
+   "en": "Does DNA in cave sediments float freely and migrate between layers, or does it stay put?",
+   "sv": "Rör sig DNA fritt mellan lagren i grottsediment, eller stannar det där det hamnade?",
+   "svsci": "Visar mikromorfologisk provtagning i Denisovagrottan att sedimentärt DNA är fritt rörligt mellan stratigrafiska enheter?",
+   "title": "Microstratigraphic preservation of ancient faunal and hominin DNA in Pleistocene cave sediments."
+  },
+  {
+   "gold": "pmid:32031213",
+   "year": 2020,
+   "complementary": "Fry/Lynch. The functional assay that TESTS the Wrangel deleterious-load claim instead of inferring it.",
+   "en": "Has anyone experimentally tested whether the harmful mutations in the Wrangel Island mammoth actually broke the genes?",
+   "sv": "Har någon faktiskt testat i labbet om de skadliga mutationerna hos mammuten på Wrangels ö verkligen slog ut generna?",
+   "svsci": "Har funktionella assays av resurrekterade Wrangelmammutgener påvisat loss-of-function-alleler?",
+   "title": "Functional Architecture of Deleterious Genetic Variants in the Genome of a Wrangel Island Mammoth."
+  },
+  {
+   "gold": "pmid:40927892",
+   "year": 2026,
+   "complementary": "Jensen-Seaman et al. The critique of the dire wolf de-extinction claim, opposite the paper he co-authored on dire wolf ancestry.",
+   "en": "What is the argument that the announced dire wolf de-extinction was not actually a de-extinction?",
+   "sv": "Vad går invändningen ut på att den utannonserade återskapade skräckvargen egentligen inte var någon återskapad art?",
+   "svsci": "På vilka grunder hävdas att den påstådda de-extinktionen av Aenocyon dirus i själva verket är en fenotypisk approximation åstadkommen genom redigering av Canis lupus?",
+   "title": "The dire wolf (Aenocyon dirus) resurrection that wasn't."
+  }
+ ]
+}

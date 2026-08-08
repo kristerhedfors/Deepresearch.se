@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   ARTICLE_TAG,
+  BOOK_TAG,
   MIN_ABSTRACT_CHARS,
   RECORDS_PER_FILE,
   abstractText,
@@ -130,6 +131,44 @@ test("takeBlocks returns whole records and keeps the torn tail", () => {
   // Feeding the tail back with the remainder of the stream completes it.
   const next = takeBlocks(rest + `><PMID Version="1">1</PMID></MedlineCitation></PubmedArticle>`);
   assert.equal(next.blocks.length, 1);
+});
+
+// An `efetch.fcgi?db=pubmed&retmode=xml` response, which is the other channel
+// this core parses (scripts/pubmed-harvest.mjs --pmids). Same DTD as the
+// archive files — the DOCTYPE and the <PubmedBookArticle> shape are copied from
+// a live response for 41610285,33301246,20301295 (2026-08-08) — which is the
+// whole reason an explicit PMID list needs no second parser.
+const BOOK = `<PubmedBookArticle><BookDocument><PMID Version="1">20301295</PMID>
+<ArticleIdList><ArticleId IdType="bookaccession">NBK1116</ArticleId></ArticleIdList>
+<Book><Publisher><PublisherName>University of Washington, Seattle</PublisherName></Publisher>
+<BookTitle book="gene">GeneReviews</BookTitle></Book></BookDocument></PubmedBookArticle>`;
+
+const EFETCH_RESPONSE = `<?xml version="1.0" ?>
+<!DOCTYPE PubmedArticleSet PUBLIC "-//NLM//DTD PubMedArticle, 1st January 2025//EN" "https://dtd.nlm.nih.gov/ncbi/pubmed/out/pubmed_250101.dtd">
+<PubmedArticleSet>
+${ARTICLE}
+${BOOK}
+</PubmedArticleSet>`;
+
+test("an efetch response parses through the SAME path as an archive file", () => {
+  const { blocks, rest } = takeBlocks(EFETCH_RESPONSE);
+  assert.equal(blocks.length, 1, "only <PubmedArticle> matches — the book is not an article");
+  assert.equal(parseArticle(blocks[0]).id, "pmid:41610285");
+  assert.ok(!rest.includes(BOOK_TAG), "the tail is a fragment, not a dropped record");
+});
+
+test("a book record is COUNTABLE rather than silently absent", () => {
+  // Three ids requested, two records returned, one of them a book: an id that
+  // names a book chapter (GeneReviews, PMID 20301295) comes back as
+  // <PubmedBookArticle> with no MedlineCitation at all, so the article parser
+  // sees nothing and reports nothing. A caller reconciling requested against
+  // returned has to be able to tell that apart from an id PubMed does not
+  // hold, so the container tag is exported and the same buffer walker reads it.
+  const books = takeBlocks(EFETCH_RESPONSE, BOOK_TAG).blocks;
+  assert.equal(books.length, 1);
+  assert.match(books[0], /<BookDocument>\s*<PMID[^>]*>20301295<\/PMID>/);
+  assert.equal(parseArticle(books[0]), null, "there is no MedlineCitation PMID to take");
+  assert.deepEqual(takeBlocks(ARTICLE, BOOK_TAG).blocks, [], "an article is not a book");
 });
 
 test("takeBlocks does not grow the buffer without bound when there is no record", () => {
