@@ -140,14 +140,38 @@ there are. **A prediction that survives one case and fails the next is worth
 more than the case that generated it** — this one cost an ingest to falsify and
 should not have to be falsified again.
 
+**Confirmed a second time, at 1.44x the volume.** The second arm added 8,662
+more ids (28,227 enumerated, 28,204 indexed, arXiv 786,094 → 798,774). Paired
+against the same pre-ingest baseline: EN r@10 **identical**, SV r@10
+**identical**, EN r@1 one loss (p=1.0000). Two independent ingests into the
+same neighbourhood, neither of which moved recall. The density rule stands and
+the volume rule remains dead.
+
+**Latency did move, and that is the first real cost seen.** Paired sign over
+the same queries: slower on 66, faster on 43, **p=0.0346** — significant where
+the earlier +8.7k ingest was not (p=0.5692). A 1.6% larger index is not doing
+that on its own; the likelier reading is that the added documents sit close
+enough to these queries to enter the candidate pool and be reranked, paying
+cross-encoder time without changing the ordering. That is worth watching as the
+remaining 19 arms land: **recall is unmoved but the work is not free**, and a
+corpus can get more expensive to search before it gets worse to search.
+
 ### Open
 
-1. The 21-arm enumeration is 1 arm done of 21 (19,565 ids), so the AI-security
-   arXiv corpus is a substantial START, not the complete field. The measurement
-   above is therefore a control for the density hypothesis, not a final
-   number for the domain. Finishing the arms will add mostly-recent papers,
-   which is where the density effect WOULD be expected to bite — that is the
-   experiment worth running next, and it now has a stated prediction to test.
+1. The enumeration is 2 arms of 21 (28,227 ids), so the AI-security arXiv
+   corpus is a substantial START, not the complete field. The rebuilt
+   enumerator projects ~1,333 requests and ~3.7 h for the remaining arms,
+   against ~4,318 requests and ~10.9 h for the old design — which in practice
+   never finished at all.
+2. **A cheaper channel exists and the repo's own verdict on it was wrong.**
+   OAI-PMH was abandoned here for enumeration, but `ListSets` exposes 183 sets
+   down to leaf categories (`cs:cs:CR`), which nothing in the code or docs
+   recorded. Measured: full cs.CR, all years — 50,798 records, 41 pages, 369
+   seconds, abstracts on every record, zero 503s with no sleep at all. The
+   original incident is now explicable: `set=cs` (top-level) and a bare `from=`
+   both hang past 100 s, while the same request scoped to a LEAF set is
+   instant. Switching the enumerator to leaf sets is the obvious next move and
+   needs no new dependency. Full evidence in `data/aisec/enumeration-options.md`.
 2. Whether the Swedish register effect is corpus-specific or vocabulary-specific
    is now a sharper question than it was, with a cheap experiment attached.
 
