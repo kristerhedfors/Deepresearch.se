@@ -96,13 +96,58 @@ too small at n=19. **Do not treat the arXiv Swedish result as a refutation of
 the standing finding.** A paired arXiv EN/SV/SVSCI set is the experiment that
 would settle it, and it does not exist yet.
 
+### The prediction above was WRONG, and the correction is the useful part
+
+This entry originally predicted that aisec/arXiv would score WORSE once the
+field around its cited papers was ingested, by analogy with the ancient-DNA
+regression. **19,548 AI-security arXiv papers were then ingested and it did
+not happen.** Paired over the same 111 needles:
+
+| arm | metric | lost | gained | p | verdict |
+|---|---|---|---|---|---|
+| EN | r@10 | 0 | 0 | 1.0000 | **identical** |
+| EN | r@1 | 1 | 0 | 1.0000 | not significant |
+| SV | r@1 / r@10 | 0 | 0 | 1.0000 | identical |
+
+`inPool` unchanged at 84.8/89.5. Latency paired sign p=0.5692. Runs
+`data/eval/arxiv-aisec-ax{,-after}.json`.
+
+The two ingests differ in a way the original phrasing missed, and it is
+visible in the net counts rather than the gross ones:
+
+| | pushed | index before → after | genuinely NEW |
+|---|---|---|---|
+| ancient DNA → PubMed | 28,599 | 1,665,539 → 1,694,272 | **+28,733** |
+| AI security → arXiv | 19,548 | 786,094 → 794,803 | **+8,709** |
+
+Two-thirds of the arXiv push was an UPSERT over papers already indexed — the
+recent AI-security work, which the arXiv window (October 2023 onward) already
+held, and which is exactly what these questions are mostly about. What was
+genuinely added was 8,709 OLDER papers, 2013–2023, which are not close
+neighbours of a question about a 2024 jailbreak benchmark.
+
+So the correct statement is narrower than the one first written:
+
+> Competition degrades retrieval when the added documents land in the SAME
+> NEIGHBOURHOOD as the gold. Corpus volume alone does not. The ancient-DNA
+> ingest put 28.6k ancient-DNA papers around ancient-DNA needles; this one put
+> 8.7k older papers around mostly-recent needles.
+
+That also means the ancient-DNA regression is better read as a
+neighbourhood-density effect than as a "bigger corpus is worse" effect, and a
+future ingest can be predicted from where its documents land, not how many
+there are. **A prediction that survives one case and fails the next is worth
+more than the case that generated it** — this one cost an ingest to falsify and
+should not have to be falsified again.
+
 ### Open
 
-1. The AI-security arXiv corpus is enumerated but not yet ingested; its 21 arms
-   are running. Until it lands, aisec/arXiv retrieval is measured against a
-   corpus that holds the cited papers but not the field around them — which,
-   per the finding above, likely makes it look BETTER than it will once the
-   neighbourhood fills in. Re-measure after.
+1. The 21-arm enumeration is 1 arm done of 21 (19,565 ids), so the AI-security
+   arXiv corpus is a substantial START, not the complete field. The measurement
+   above is therefore a control for the density hypothesis, not a final
+   number for the domain. Finishing the arms will add mostly-recent papers,
+   which is where the density effect WOULD be expected to bite — that is the
+   experiment worth running next, and it now has a stated prediction to test.
 2. Whether the Swedish register effect is corpus-specific or vocabulary-specific
    is now a sharper question than it was, with a cheap experiment attached.
 
