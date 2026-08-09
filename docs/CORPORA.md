@@ -85,7 +85,7 @@ domain fills below.
 
 ## 4. The domains filled deliberately
 
-On top of the bulk sweeps, four subjects were filled by name — every paper
+On top of the bulk sweeps, five subjects were filled by name — every paper
 found for a topic, regardless of date — because the bulk windows alone left
 them unusable. Each has a published evaluation set of questions whose answers
 are verified present in the corpus.
@@ -95,7 +95,24 @@ are verified present in the corpus.
 | Ancient DNA / palaeogenomics | PubMed | 180 | the field's foundational papers predate the load window |
 | AI cybersecurity | arXiv + PubMed | 180 | its foundations are 2013–2018, below the arXiv band |
 | AI consciousness | arXiv + PubMed | 180 | reaches into the 1990s |
+| Longevity and ageing biology | PubMed + arXiv | 180 | a life-science field whose landmarks run from the 1950s to now |
 | Palaeogenomics bibliography | PubMed | 56 | one research group's own output, spread across thirty years |
+
+The longevity domain is lopsided between the corpora in a way worth stating,
+because it is what these fills look like when a field genuinely lives in one
+place. Ageing biology is PubMed's; arXiv holds only the quantitative slice —
+mortality modelling, evolutionary theory, systems-biology models, ageing-clock
+machine learning — and that slice is **996 papers in the whole archive**. Not a
+filtering artefact: `senescence` appears in 81 arXiv abstracts in total,
+`epigenetic clock` in 5, `geroscience` and `senolytic` in none. A small honest
+corpus beats an inflated one, so it was left small.
+
+Searching arXiv for this subject also has a trap that shaped the filter: **on
+arXiv, "aging" is usually physics.** `ti:aging` matches 7,535 papers, most of
+them about glassy dynamics, stellar populations or network ageing, and "an
+ageing population" is boilerplate in papers about fall-detection or elder-care
+robotics — including a Chandra catalogue of M31 whose ageing population is
+X-ray binaries.
 
 **Coverage of what those questions cite:** 260 cited arXiv ids across all sets,
 0 unanswerable. 386 cited PMIDs, 1 unanswerable — `pmid:10970224`, whose record
