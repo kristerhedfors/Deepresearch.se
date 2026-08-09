@@ -1,401 +1,736 @@
 {
- "set": "dalen",
+ "set": "palaeogenomics",
  "kind": "domain-expert",
- "origin": "Hand-authored from the abstracts of Love Dalén's PubMed-indexed papers, fetched through NCBI E-utilities efetch and read in full before each answer was written.",
+ "origin": "Hand-authored from the abstracts of a verified palaeogenomics bibliography, fetched through NCBI E-utilities efetch and read in full before each answer was written.",
  "license": "Questions and gold answers are original; the underlying facts are from the cited PubMed abstracts.",
- "note": "A GROUND-TRUTH battery over the published work of Love Dalén (Centre for Palaeogenetics, Stockholm) plus the adjacent literature his work sits in. Built after an explicit-PMID ingest put 158 of his 169 PubMed-indexed papers into the hosted corpus (docs/PUBMED-RAG.md §8) — before that only 18 were there, so most of these questions were unanswerable from the index rather than merely answered badly. Every `answer` is checkable against the `goldUrls` abstract; none needs the full text. Authorship was verified mechanically against the Europe PMC author field (lastName Dalén AND firstName Love), never inferred from topic — 'Dalen L' also belongs to a paediatric-psychology researcher and to two Norwegian plant scientists. Two attributions people get wrong and that are therefore NOT in this set: he is not an author on the 2-million-year-old Kap København eDNA paper (PMID 36477129) nor on Wang et al. 2021 Nature Arctic environmental genomics (PMID 34671161). Swedish items carry the `sv` tag and are written in the vernacular register a Swedish speaker actually types, per invariant 6 — that register is also the one the retrieval tier is measurably worst at (docs/RAG-EVAL-LEDGER.md, 2026-08-08), so they are the hard half of this set on purpose. Items tagged `complementary` are by OTHER groups: work he would plausibly want surfaced, used to check that the assistant does not collapse a field into one lab.",
+ "note": "A GROUND-TRUTH battery over a tightly scoped palaeogenomics bibliography — one research group's published output plus the adjacent literature it sits in. The companion set tests/evalsets/adna.json covers ancient DNA broadly; this one is deliberately narrow, which is what makes it able to detect a corpus gap that a broad set averages away. Built after a named-PMID ingest raised the bibliography's coverage in the hosted corpus from 18 of 169 papers to 158 (docs/PUBMED-RAG.md §8) — before that most of these questions were unanswerable from the index rather than merely answered badly, which is the distinction the whole set exists to keep visible. Every `answer` is checkable against the `goldUrls` abstract; none needs the full text. Membership was verified MECHANICALLY against the Europe PMC author field rather than inferred from topic, because author names are not unique and a topic-shaped guess silently pulls in same-surname researchers from unrelated fields. Swedish items carry the `sv` tag and are written in the vernacular register a Swedish speaker actually types, per invariant 6 — that register is also the one the retrieval tier is measurably worst at (docs/RAG-EVAL-LEDGER.md, 2026-08-08), so they are the hard half of this set on purpose. Items tagged `complementary` are by OTHER groups: adjacent work that should surface alongside, used to check that the assistant does not collapse a field into one lab. Items tagged `attribution-trap` cite papers commonly MISATTRIBUTED to this bibliography, so the set also measures whether the assistant invents authorship.",
  "items": [
   {
-   "id": "dalen-0001",
+   "id": "palaeo-0001",
    "question": "What is the oldest DNA ever recovered from a biological specimen, and which record did it break?",
    "answer": "Genome-wide data from three mammoth specimens from Early and Middle Pleistocene eastern Siberia, two of which are more than one million years old. The previous oldest genomic data came from a horse specimen dated to 780,000-560,000 years ago.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/33597750/"],
-   "tags": ["single-fact", "mammoth", "deep-time"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/33597750/"
+   ],
+   "tags": [
+    "single-fact",
+    "mammoth",
+    "deep-time"
+   ]
   },
   {
-   "id": "dalen-0002",
+   "id": "palaeo-0002",
    "question": "According to the million-year-old mammoth DNA study, where did the Columbian mammoth come from?",
    "answer": "The Columbian mammoth of North America is a hybrid. It traces its ancestry to a Middle Pleistocene hybridization between the woolly mammoth lineage and a previously unrecognised Early Pleistocene lineage (the Krestovka lineage), with roughly equal admixture proportions.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/33597750/"],
-   "tags": ["multihop", "mammoth", "deep-time"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/33597750/"
+   ],
+   "tags": [
+    "multihop",
+    "mammoth",
+    "deep-time"
+   ]
   },
   {
-   "id": "dalen-0003",
+   "id": "palaeo-0003",
    "question": "Did the woolly mammoths on Wrangel Island decline genetically over their last few thousand years, or were they stable until they went extinct?",
    "answer": "They were stable. Analysis of 21 Siberian woolly mammoth genomes showed the population recovered quickly from a severe bottleneck after becoming isolated around 10,000 years ago and then remained demographically stable for the ensuing six millennia, persisting over 200 generations before going extinct around 4,000 years ago. Mildly deleterious mutations gradually accumulated while highly deleterious ones were purged.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/38942016/"],
-   "tags": ["synthesis", "mammoth", "conservation-genomics"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/38942016/"
+   ],
+   "tags": [
+    "synthesis",
+    "mammoth",
+    "conservation-genomics"
+   ]
   },
   {
-   "id": "dalen-0004",
+   "id": "palaeo-0004",
    "question": "How many woolly mammoth genomes were analysed in the 2024 Cell study of genome erosion before extinction, and what is the study's central concept?",
    "answer": "21 Siberian woolly mammoth genomes. The central concept is the time-lag between demographic recovery and genetic recovery: the population had recovered in numbers long before its genetic burden did, implying inbreeding depression that lasted for hundreds of generations.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/38942016/"],
-   "tags": ["single-fact", "mammoth"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/38942016/"
+   ],
+   "tags": [
+    "single-fact",
+    "mammoth"
+   ]
   },
   {
-   "id": "dalen-0005",
+   "id": "palaeo-0005",
    "question": "In the 2015 study of two complete woolly mammoth genomes, what were the ages and sequencing coverages of the two specimens?",
    "answer": "One was from Wrangel Island, dated to about 4,300 years before present, sequenced at 17.1-fold coverage. The other was from the Late Pleistocene population in northeastern Siberia, about 44,800 years old, sequenced at 11.2-fold coverage.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/25913407/"],
-   "tags": ["single-fact", "mammoth"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/25913407/"
+   ],
+   "tags": [
+    "single-fact",
+    "mammoth"
+   ]
   },
   {
-   "id": "dalen-0006",
+   "id": "palaeo-0006",
    "question": "Did the arctic fox follow its habitat northwards after the last glaciation?",
    "answer": "No. Ancient DNA shows the arctic fox in mid-latitude Europe went extinct at the end of the Pleistocene and did not track its habitat when it shifted north. High genetic similarity between extant Scandinavian and Siberian populations instead indicates an eastern origin for the Scandinavian population at the end of the last glaciation.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/17420452/"],
-   "tags": ["synthesis", "arctic-fox", "climate"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/17420452/"
+   ],
+   "tags": [
+    "synthesis",
+    "arctic-fox",
+    "climate"
+   ]
   },
   {
-   "id": "dalen-0007",
+   "id": "palaeo-0007",
    "question": "Why are most woolly mammoth remains that have been genetically sexed male?",
    "answer": "Of 98 woolly mammoth specimens sexed genomically across the last 60,000 years, 69% were male and 31% female (p < 0.0002). The proposed explanation is that proboscidean social structure is matriarchal with sex segregation, so solitary or inexperienced males more often died in natural traps, which are settings that favour preservation.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/29103934/"],
-   "tags": ["single-fact", "mammoth", "behaviour"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/29103934/"
+   ],
+   "tags": [
+    "single-fact",
+    "mammoth",
+    "behaviour"
+   ]
   },
   {
-   "id": "dalen-0008",
+   "id": "palaeo-0008",
    "question": "How does the sex ratio of mammoth bones at large accumulation sites differ from bones found scattered in natural settings, and what does that show?",
    "answer": "Genome-wide data from 521 woolly mammoths (100 from bone accumulation sites and 421 from natural depositional settings, 448 of them newly generated) show the opposite bias in each context: dispersed sites are about 66.5% male, whereas anthropogenic bone accumulations are about 70% female. The female bias indicates the accumulations are anthropogenic, with Upper Palaeolithic hunters preferentially exploiting female mammoths, possibly from herds.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/42532037/"],
-   "tags": ["multihop", "mammoth", "archaeology"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/42532037/"
+   ],
+   "tags": [
+    "multihop",
+    "mammoth",
+    "archaeology"
+   ]
   },
   {
-   "id": "dalen-0009",
+   "id": "palaeo-0009",
    "question": "Can the three-dimensional folded structure of chromosomes survive in an animal that died tens of thousands of years ago?",
    "answer": "Yes. Skin from a female woolly mammoth that died 52,000 years ago retained its genome architecture. PaleoHi-C mapping produced 28 chromosome-length scaffolds, and chromosome territories, compartments, loops, Barr bodies and inactive-X superdomains all persist. The mammoth inactive X has a tetradic architecture rather than the bipartite one seen in human and mouse. The proposed mechanism is spontaneous freeze-drying and a glass transition shortly after death.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/38996487/"],
-   "tags": ["synthesis", "mammoth", "methods"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/38996487/"
+   ],
+   "tags": [
+    "synthesis",
+    "mammoth",
+    "methods"
+   ]
   },
   {
-   "id": "dalen-0010",
+   "id": "palaeo-0010",
    "question": "Were the woolly mammoth's cold adaptations already present when the species originated?",
    "answer": "Largely yes. Analysis of 23 woolly mammoth genomes, including one about 700,000 years old, found that at its origin the species had already acquired a broad spectrum of positively selected genes for hair and skin development, fat storage and metabolism, and immune function. These phenotypes kept evolving over the following 700,000 years, but through positive selection on different sets of genes.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/37030294/"],
-   "tags": ["synthesis", "mammoth", "adaptation"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/37030294/"
+   ],
+   "tags": [
+    "synthesis",
+    "mammoth",
+    "adaptation"
+   ]
   },
   {
-   "id": "dalen-0011",
+   "id": "palaeo-0011",
    "question": "How was the phylogenetic position of a 1.77-million-year-old rhinoceros from Dmanisi resolved when its DNA had not survived?",
    "answer": "By sequencing the proteome of its dental enamel with tandem mass spectrometry rather than DNA. Outside permafrost, ancient DNA recovery had been limited to roughly 0.5 million years and ancient collagen to about 1.5 million years. The enamel proteome placed this Stephanorhinus as sister group to the clade formed by the woolly rhinoceros and Merck's rhinoceros, showing the genus Stephanorhinus is paraphyletic.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/31511700/"],
-   "tags": ["multihop", "methods", "deep-time"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31511700/"
+   ],
+   "tags": [
+    "multihop",
+    "methods",
+    "deep-time"
+   ]
   },
   {
-   "id": "dalen-0012",
+   "id": "palaeo-0012",
    "question": "Does any cave bear DNA survive in bears alive today?",
    "answer": "Yes. Multifold-coverage genomes from four Late Pleistocene cave bears show cave bears hybridized with brown bears during the Pleistocene, and cave bear DNA still contributes 0.9% to 2.4% of the genomes of all brown bears investigated.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/30150744/"],
-   "tags": ["single-fact", "bears", "introgression"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/30150744/"
+   ],
+   "tags": [
+    "single-fact",
+    "bears",
+    "introgression"
+   ]
   },
   {
-   "id": "dalen-0013",
+   "id": "palaeo-0013",
    "question": "When did polar bears and brown bears diverge, and which gene shows the strongest signature of selection in polar bears?",
    "answer": "Analysis of 89 complete polar bear and brown bear genomes dates the divergence to 479,000-343,000 years before present. APOB, which encodes the primary lipoprotein component of low-density lipoprotein, is among the genes with the strongest evidence of positive selection; nine of the top 16 selected genes relate to cardiomyopathy and vascular disease.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/24813606/"],
-   "tags": ["single-fact", "bears", "adaptation"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24813606/"
+   ],
+   "tags": [
+    "single-fact",
+    "bears",
+    "adaptation"
+   ]
   },
   {
-   "id": "dalen-0014",
+   "id": "palaeo-0014",
    "question": "What did a roughly 100,000-year-old polar bear genome reveal about gene flow between polar bears and brown bears?",
    "answer": "An approximately 20-fold coverage palaeogenome from a roughly 100,000-year-old polar bear revealed a massive prehistoric admixture event visible in the genomes of all living brown bears but invisible in the genomes of living polar bears. The gene flow was mainly unidirectional, from polar bears into brown bears, and coincided with climate-driven range overlap.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/35711062/"],
-   "tags": ["synthesis", "bears", "introgression"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/35711062/"
+   ],
+   "tags": [
+    "synthesis",
+    "bears",
+    "introgression"
+   ]
   },
   {
-   "id": "dalen-0015",
+   "id": "palaeo-0015",
    "question": "Do dogs descend from a single wolf population, and how genetically connected were wolves during the last Ice Age?",
    "answer": "Dogs have a dual ancestry. Analysis of 72 ancient wolf genomes spanning the last 100,000 years found wolf populations were highly connected through the Late Pleistocene, with differentiation an order of magnitude lower than today. Dogs are overall closer to ancient eastern Eurasian wolves, indicating domestication in the east, but dogs in the Near East and Africa derive up to half their ancestry from a distinct southwest-Eurasian-related wolf population.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/35768506/"],
-   "tags": ["multihop", "dogs", "domestication"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/35768506/"
+   ],
+   "tags": [
+    "multihop",
+    "dogs",
+    "domestication"
+   ]
   },
   {
-   "id": "dalen-0016",
+   "id": "palaeo-0016",
    "question": "What did the 35,000-year-old Taimyr wolf genome change about the estimated timing of dog domestication?",
    "answer": "It allowed the molecular timescale to be recalibrated against a directly dated ancient genome, giving a substantially slower mutation rate than previously assumed and implying the ancestors of dogs separated from present-day wolves before the Last Glacial Maximum. It also showed introgression from the Taimyr wolf lineage into present-day northeast Siberian and Greenland dog breeds, contributing between 1.4% and 27.3% of their ancestry.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/26004765/"],
-   "tags": ["multihop", "dogs", "domestication"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26004765/"
+   ],
+   "tags": [
+    "multihop",
+    "dogs",
+    "domestication"
+   ]
   },
   {
-   "id": "dalen-0017",
+   "id": "palaeo-0017",
    "question": "How many distinct dog ancestry lineages already existed 11,000 years ago?",
    "answer": "At least five major dog ancestry lineages had already diversified by 11,000 years ago, based on 27 sequenced ancient dog genomes. All dogs share a common ancestry distinct from present-day wolves, with limited wolf-to-dog gene flow since domestication but substantial dog-to-wolf gene flow.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/33122379/"],
-   "tags": ["single-fact", "dogs"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/33122379/"
+   ],
+   "tags": [
+    "single-fact",
+    "dogs"
+   ]
   },
   {
-   "id": "dalen-0018",
+   "id": "palaeo-0018",
    "question": "When did Arctic-adapted sled dogs emerge, and what evidence dates them?",
    "answer": "By about 9,500 years ago. The genomes of 10 modern Greenland sled dogs, an approximately 9,500-year-old Siberian dog found with archaeological evidence for sled technology, and an approximately 33,000-year-old Siberian wolf show marked similarity between the ancient dog and modern sled dogs, with sled-dog-specific haplotypes of genes potentially related to Arctic adaptation established by that date. Gene flow came from Pleistocene Siberian wolves, not modern American wolves.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/32587022/"],
-   "tags": ["multihop", "dogs", "arctic"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/32587022/"
+   ],
+   "tags": [
+    "multihop",
+    "dogs",
+    "arctic"
+   ]
   },
   {
-   "id": "dalen-0019",
+   "id": "palaeo-0019",
    "question": "Where does the extinct dire wolf sit in the canid family tree?",
    "answer": "Paleogenomes at 3.4-fold and 12.8-fold coverage from two dire wolves dating to more than 13,000 and more than 72,000 years ago, compared against 10 canid species, show that about two-thirds of dire wolf ancestry derives from a lineage sister to the clade comprising the gray wolf, coyote and dhole, and the remaining one-third from a lineage near the base of Canini diversity.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/42508403/"],
-   "tags": ["single-fact", "canids", "phylogeny"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/42508403/"
+   ],
+   "tags": [
+    "single-fact",
+    "canids",
+    "phylogeny"
+   ]
   },
   {
-   "id": "dalen-0020",
+   "id": "palaeo-0020",
    "question": "Were cave lions and modern lions separate lineages, and did they ever interbreed?",
    "answer": "They were distinct evolutionary lineages with separate demographic histories and unique non-synonymous variants, based on 12 cave lion genomes spanning more than 100,000 years. There is also evidence of ancient gene flow between them: 3.2% to 4.4% modern lion ancestry was detected in a roughly 20,000-year-old cave lion from Central East Asia, and the best modern proxy for that ancestry is an extinct Southwest Asian lion population.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/42235515/"],
-   "tags": ["multihop", "lions", "introgression"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/42235515/"
+   ],
+   "tags": [
+    "multihop",
+    "lions",
+    "introgression"
+   ]
   },
   {
-   "id": "dalen-0021",
+   "id": "palaeo-0021",
    "question": "Was the woolly rhinoceros already declining when humans arrived in its range?",
    "answer": "No. Using one complete nuclear genome and 14 mitogenomes, the effective population size of the woolly rhinoceros likely increased at 29.7 thousand years before present and then remained stable until close to extinction. A nuclear genome from a roughly 18,500-year-old specimen showed no increased inbreeding or reduced diversity. The species went extinct around 14,000 years before present, which points to rapid warming in the Bølling-Allerød interstadial rather than to humans.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/32795436/"],
-   "tags": ["synthesis", "rhinoceros", "extinction-debate"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/32795436/"
+   ],
+   "tags": [
+    "synthesis",
+    "rhinoceros",
+    "extinction-debate"
+   ]
   },
   {
-   "id": "dalen-0022",
+   "id": "palaeo-0022",
    "question": "A high-coverage woolly rhinoceros genome was sequenced from an unusual source. What was the source, and what did the genome show?",
    "answer": "The genome came from muscle tissue of a 14,400-year-old woolly rhinoceros found inside a permafrost-preserved wolf's stomach. It showed no evidence of population size decline and no genomic erosion shortly before the species' demise; the few long runs of homozygosity imply a stable population only a few centuries before extinction, so the extinction was likely rapid, during the Bølling-Allerød interstadial.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/41530912/"],
-   "tags": ["multihop", "rhinoceros", "extinction-debate"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/41530912/"
+   ],
+   "tags": [
+    "multihop",
+    "rhinoceros",
+    "extinction-debate"
+   ]
   },
   {
-   "id": "dalen-0023",
+   "id": "palaeo-0023",
    "question": "Does the surviving kakapo population carry more or fewer harmful mutations than the mainland population that went extinct?",
    "answer": "Fewer. Only 201 kakapo remain, most descending from an isolated island population. Analysis of 35 modern genomes from the surviving island population and 14 genomes from the extinct mainland population shows present-day island kakapo have a reduced number of harmful mutations, attributed to a combination of drift and purging of deleterious mutations through increased inbreeding and purifying selection since isolation about 10,000 years ago.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/36777713/"],
-   "tags": ["synthesis", "conservation-genomics", "purging"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/36777713/"
+   ],
+   "tags": [
+    "synthesis",
+    "conservation-genomics",
+    "purging"
+   ]
   },
   {
-   "id": "dalen-0024",
+   "id": "palaeo-0024",
    "question": "What is the oldest authenticated host-associated microbial DNA, and where was it found?",
    "answer": "Partial Erysipelothrix genomes reconstructed from the oldest mammoth sample in a study of ancient microbial DNA from 483 mammoth remains spanning over one million years, including a 1.1-million-year-old steppe mammoth. The study identified 310 microbes and recovered genomic evidence of six host-associated microbial clades spanning Actinobacillus, Pasteurella, Streptococcus and Erysipelothrix.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/40902595/"],
-   "tags": ["single-fact", "mammoth", "microbiome"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/40902595/"
+   ],
+   "tags": [
+    "single-fact",
+    "mammoth",
+    "microbiome"
+   ]
   },
   {
-   "id": "dalen-0025",
+   "id": "palaeo-0025",
    "question": "Has RNA, rather than DNA, ever been recovered from an extinct Ice Age animal?",
    "answer": "Yes. Transcriptional profiles were recovered from 10 Late Pleistocene woolly mammoths. One specimen, dated to approximately 39,000 years old, yielded enough detail to recover tissue-specific regulatory mechanisms and biological functions for skeletal muscle metabolism, representing the oldest ancient RNA sequences recorded to date.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/41240910/"],
-   "tags": ["single-fact", "mammoth", "ancient-rna"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/41240910/"
+   ],
+   "tags": [
+    "single-fact",
+    "mammoth",
+    "ancient-rna"
+   ]
   },
   {
-   "id": "dalen-0026",
+   "id": "palaeo-0026",
    "question": "Did hippopotamuses in central Europe really die out when the last glacial period began?",
    "answer": "No. Radiocarbon dating shows hippos were present in central Europe during the middle Weichselian, from earlier than 47,000 years ago until about 31,000 years ago, well into the last glacial, rather than disappearing at its onset around 115,000 years ago as the association with the Eemian interglacial (129,000-115,000 years ago) had implied. A palaeogenome from a European hippo shows close genetic links to modern African hippos, confirming they were the same species.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/41067227/"],
-   "tags": ["synthesis", "megafauna", "climate"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/41067227/"
+   ],
+   "tags": [
+    "synthesis",
+    "megafauna",
+    "climate"
+   ]
   },
   {
-   "id": "dalen-0027",
+   "id": "palaeo-0027",
    "question": "What did the Steller's sea cow genome reveal about its unusual skin, and was the species already in decline before humans found it?",
    "answer": "Palaeogenomic data from 12 individuals identified inactivations of lipoxygenase genes, which in humans and mouse models cause ichthyosis, a condition producing thick hyperkeratotic skin that matches the bark-like skin Georg Steller described in 1741. The species was eradicated within 27 years of that description, but its abundance had already been declining continuously for tens of thousands of years, so environmental change also contributed.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/35119923/"],
-   "tags": ["multihop", "megafauna", "extinction-debate"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/35119923/"
+   ],
+   "tags": [
+    "multihop",
+    "megafauna",
+    "extinction-debate"
+   ]
   },
   {
-   "id": "dalen-0028",
+   "id": "palaeo-0028",
    "question": "Could the Arctic today actually support a reintroduced woolly mammoth proxy, and at what density?",
    "answer": "Available forage on Alaska's North Slope was estimated to support 0.0 to 0.38 woolly mammoth proxies per square kilometre, with a mean of 0.13 per square kilometre. The estimate was built from aboveground and belowground biomass carbon density maps at 300 m resolution, downgraded to digestible levels and by a net-primary-productivity conversion factor, against a literature review of woolly mammoth diet.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/38684726/"],
-   "tags": ["single-fact", "de-extinction", "rewilding"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/38684726/"
+   ],
+   "tags": [
+    "single-fact",
+    "de-extinction",
+    "rewilding"
+   ]
   },
   {
-   "id": "dalen-0029",
+   "id": "palaeo-0029",
    "question": "What did century-old museum specimens show about the genomic effects of recent decline in the two eastern gorilla subspecies?",
    "answer": "Whole genomes from century-old historical museum specimens show reduced genetic diversity and increased inbreeding and genetic load in Grauer's gorilla, which declined severely in recent decades, whereas the small but relatively stable mountain gorilla population changed little over the same century. This indicates the rate of demographic change, not just population size, governs how a decline marks the genome.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/30595519/"],
-   "tags": ["synthesis", "conservation-genomics"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/30595519/"
+   ],
+   "tags": [
+    "synthesis",
+    "conservation-genomics"
+   ]
   },
   {
-   "id": "dalen-0030",
+   "id": "palaeo-0030",
    "question": "Do the last Sumatran rhinoceros populations suffer more from inbreeding or from mutational load?",
    "answer": "From mutational load. Analysis of 5 historical and 16 modern genomes shows the populations on Sumatra and Borneo have low inbreeding but high mutational load, so their currently small sizes may bring on inbreeding depression in the near future. The extirpated Malay Peninsula population instead showed increased inbreeding shortly before it disappeared, possibly with purging. Little difference in local adaptation among populations suggests assisted gene flow is a viable mitigation.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/33896938/"],
-   "tags": ["synthesis", "conservation-genomics", "rhinoceros"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/33896938/"
+   ],
+   "tags": [
+    "synthesis",
+    "conservation-genomics",
+    "rhinoceros"
+   ]
   },
   {
-   "id": "dalen-0031",
+   "id": "palaeo-0031",
    "question": "Why is present-day genetic diversity a poor measure of how much an endangered species has recently declined, and what is the proposed remedy?",
    "answer": "Because species-specific life-history traits and ancient bottlenecks overshadow the genetic effect of recent demographic declines, so genome-wide diversity across endangered species shows little concordance with current population sizes. The remedy is temporal sampling: genomic data from pre-decline museum specimens provides the baseline needed to estimate recent decreases in diversity, increases in inbreeding, and accumulation of deleterious variation.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/29289355/"],
-   "tags": ["synthesis", "conservation-genomics", "methods"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/29289355/"
+   ],
+   "tags": [
+    "synthesis",
+    "conservation-genomics",
+    "methods"
+   ]
   },
   {
-   "id": "dalen-0032",
+   "id": "palaeo-0032",
    "question": "Was there a population turnover among Neanderthals in western Europe, and did it happen before or after modern humans arrived?",
    "answer": "Yes, and before. Mitochondrial DNA from 13 Neanderthal individuals shows that recent western European Neanderthals, younger than 48,000 years, form a tightly defined group with low genetic variation compared with both eastern and older European Neanderthals. Bayesian demographic simulations favour population fragmentation followed by separate trajectories, and the most parsimonious reading is a population turnover in western Europe during early Marine Isotope Stage 3, predating the arrival of anatomically modern humans.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/22362080/"],
-   "tags": ["multihop", "hominins"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/22362080/"
+   ],
+   "tags": [
+    "multihop",
+    "hominins"
+   ]
   },
   {
-   "id": "dalen-0033",
+   "id": "palaeo-0033",
    "question": "What faunal record was recovered from a cave in Arctic Norway, and how old is it?",
    "answer": "A bone-bearing layer in Arne Qvamgrotta, part of the Storsteinhola cave system in Northern Norway at 68.10 degrees north and 16.38 degrees east. Radiocarbon, optically stimulated luminescence, uranium-thorium and phylogenetic dating place the assemblage in Marine Isotope Stage 5a, the Odderade interstadial, about 85,000 to 71,000 years ago. Comparative osteology plus bulk-bone metabarcoding identified 46 taxa of mammals, birds and fish.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/40758875/"],
-   "tags": ["multihop", "palaeoecology", "arctic"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/40758875/"
+   ],
+   "tags": [
+    "multihop",
+    "palaeoecology",
+    "arctic"
+   ]
   },
   {
-   "id": "dalen-0034",
+   "id": "palaeo-0034",
    "question": "How recently did the Norwegian lemming become a species, and does it exchange genes with the Siberian lemming?",
    "answer": "It is among the youngest known mammalian species, having likely evolved during the Late Pleistocene and inhabited Fennoscandia shortly before the Last Glacial Maximum. All Lemmus species form distinct monophyletic clades with concordant mitochondrial and nuclear topologies, and no gene flow with the Siberian lemming was detected.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/40587810/"],
-   "tags": ["synthesis", "lemming", "speciation"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/40587810/"
+   ],
+   "tags": [
+    "synthesis",
+    "lemming",
+    "speciation"
+   ]
   },
   {
-   "id": "dalen-0035",
+   "id": "palaeo-0035",
    "question": "What was recovered from lake sediment in northern Sweden, and why was the result surprising?",
    "answer": "A brown bear mitogenome at 231-fold coverage plus nuclear genome-wide data at 0.05-fold, from lake sediment dated to 9,600 calibrated years before present, the oldest known record of brown bear in the region. It was surprising because the individual carried mitochondrial clade 1a and southern nuclear ancestry despite being found far north of the contact zone in central Sweden that separates southern clade 1a from northern clade 3a, implying it was a migratory bear that had dispersed north from its birthplace.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/41973920/"],
-   "tags": ["multihop", "bears", "sedadna"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/41973920/"
+   ],
+   "tags": [
+    "multihop",
+    "bears",
+    "sedadna"
+   ]
   },
   {
-   "id": "dalen-0036",
+   "id": "palaeo-0036",
    "question": "What genetic change lets some least weasels stay brown in winter, and how long has that variant existed?",
    "answer": "A derived protein-coding amino acid substitution in MC1R that reduces the receptor's affinity for its ligands ASIP and alpha-MSH. The mutation arose de novo within the species around one million years ago and has been maintained across geographically structured European populations since. Simulations show drift is unlikely to explain its persistence at intermediate frequencies, pointing to spatially varying selection.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/41957296/"],
-   "tags": ["multihop", "adaptation", "balancing-selection"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/41957296/"
+   ],
+   "tags": [
+    "multihop",
+    "adaptation",
+    "balancing-selection"
+   ]
   },
   {
-   "id": "dalen-0037",
+   "id": "palaeo-0037",
    "question": "What was identified from a mummified animal found in Yukon permafrost, and why was its age notable?",
    "answer": "A 3,000-year-old mummified North American porcupine, Erethizon dorsatum, known as Ts'ey in the Han language, from the Traditional Territory of the Tr'ondek Hwech'in in central Yukon. It yielded the first complete ancient mitochondrial genome for the species and only the second full mitogenome overall. Its Holocene age is much younger than the Pleistocene megafauna usually recovered from Yukon permafrost, and it confirms porcupines were present 3,000 years ago, consistent with dispersal into Yukon and Alaska after boreal forests established following the Last Glacial Period.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/41845022/"],
-   "tags": ["multihop", "permafrost", "holocene"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/41845022/"
+   ],
+   "tags": [
+    "multihop",
+    "permafrost",
+    "holocene"
+   ]
   },
   {
-   "id": "dalen-0038",
+   "id": "palaeo-0038",
    "question": "Is the Norwegian lemming one panmictic population across Fennoscandia?",
    "answer": "No. A de novo reference genome plus resequenced genomes at 2.5 to 5-fold coverage from 86 lemmings sampled across the species' entire geographic distribution show the population is geographically structured into distinct subpopulations, with an overall pattern of isolation-by-distance. This revises earlier microsatellite work that found high genetic variation but weak structure, and is consistent with survival of the last ice age in a northern refugium.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/41787358/"],
-   "tags": ["synthesis", "lemming", "population-structure"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/41787358/"
+   ],
+   "tags": [
+    "synthesis",
+    "lemming",
+    "population-structure"
+   ]
   },
   {
-   "id": "dalen-0039",
+   "id": "palaeo-0039",
    "question": "When did the three cryptic species of the field vole complex diverge, and what drove the pattern?",
    "answer": "The Portuguese field vole (Microtus rozianus) diverged from the short-tailed and Mediterranean field voles about 220,000 years ago, and the latter two (Microtus agrestis and Microtus lavernedii) from each other about 110,000 years ago. These estimates come from 70 modern and 83 ancient mitogenomes plus 16 modern and 12 ancient nuclear genomes spanning the last 75,000 years, and they are earlier than estimates based on modern sequences alone. Stadial-interstadial cycles generating recurrent allopatry and reconnection drove the pattern.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/41629962/"],
-   "tags": ["multihop", "voles", "speciation"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/41629962/"
+   ],
+   "tags": [
+    "multihop",
+    "voles",
+    "speciation"
+   ]
   },
   {
-   "id": "dalen-0040",
+   "id": "palaeo-0040",
    "question": "Did woolly and Columbian mammoths hybridize in North America, and what evidence from British Columbia shows it?",
    "answer": "Yes. Genome-wide and morphological data from two Late Pleistocene mammoth molars from British Columbia, analysed with previously published data, revealed gene flow between woolly and Columbian mammoths that morphological analysis (n=48) and mitochondrial analysis (n=124) alone would have missed; only the genome-wide analysis (n=16) detected it. Consistent with hybrid ancestry, the two British Columbia mammoths had elevated genomic diversity.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/40994021/"],
-   "tags": ["multihop", "mammoth", "introgression"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/40994021/"
+   ],
+   "tags": [
+    "multihop",
+    "mammoth",
+    "introgression"
+   ]
   },
   {
-   "id": "dalen-0041",
+   "id": "palaeo-0041",
    "question": "How divergent is the extinct scimitar-toothed cat Homotherium latidens from living cats, and was it rare?",
    "answer": "Highly divergent, splitting from living cat species about 22.5 million years ago, with no detectable signs of gene flow, based on a roughly 7-fold nuclear genome and a roughly 38-fold exome. Its relatively high genetic diversity suggests it was more abundant than the sparse fossil record implies.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/33065008/"],
-   "tags": ["single-fact", "felids", "phylogeny"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/33065008/"
+   ],
+   "tags": [
+    "single-fact",
+    "felids",
+    "phylogeny"
+   ]
   },
   {
-   "id": "dalen-0042",
+   "id": "palaeo-0042",
    "question": "Vad visar arvsmassan om varför mammutarna på Wrangels ö till slut dog ut?",
    "answer": "Analys av 21 sibiriska mammutgenom visar att populationen snabbt återhämtade sig från en kraftig flaskhals sedan den isolerades för omkring 10 000 år sedan och sedan förblev demografiskt stabil i sex årtusenden, i över 200 generationer, innan den dog ut för ungefär 4 000 år sedan. Milt skadliga mutationer ansamlades gradvis medan starkt skadliga rensades bort. Genomen visar alltså ingen fortlöpande genetisk kollaps som förklaring till utdöendet, utan en eftersläpning mellan demografisk och genetisk återhämtning.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/38942016/"],
-   "tags": ["sv", "synthesis", "mammoth"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/38942016/"
+   ],
+   "tags": [
+    "sv",
+    "synthesis",
+    "mammoth"
+   ]
   },
   {
-   "id": "dalen-0043",
+   "id": "palaeo-0043",
    "question": "Följde fjällräven med sin livsmiljö norrut när inlandsisen drog sig tillbaka?",
    "answer": "Nej. Forntida DNA visar att fjällräven i mellersta Europa dog ut vid slutet av pleistocen och inte följde med livsmiljön när den förflyttades norrut. Den stora genetiska likheten mellan dagens bestånd i Skandinavien och Sibirien tyder i stället på ett östligt ursprung för den skandinaviska populationen vid slutet av den senaste istiden. Slutsatsen är att arter inte kan spåra en minskning av sin livsmiljö, vilket gör arktiska arter särskilt sårbara för uppvärmning.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/17420452/"],
-   "tags": ["sv", "synthesis", "arctic-fox"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/17420452/"
+   ],
+   "tags": [
+    "sv",
+    "synthesis",
+    "arctic-fox"
+   ]
   },
   {
-   "id": "dalen-0044",
+   "id": "palaeo-0044",
    "question": "Vilket är det äldsta DNA som har utvunnits, och vad visade det om columbimammuten?",
    "answer": "Genomövergripande data från tre mammutar från tidig och mellersta pleistocen i östra Sibirien, varav två är mer än en miljon år gamla. Det tidigare rekordet var en häst daterad till 780 000-560 000 år. Analysen visade att columbimammuten i Nordamerika är en hybrid som uppstått genom korsning under mellersta pleistocen mellan den ullhåriga mammutens linje och en tidigare okänd linje, med ungefär lika stora andelar från vardera.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/33597750/"],
-   "tags": ["sv", "multihop", "mammoth"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/33597750/"
+   ],
+   "tags": [
+    "sv",
+    "multihop",
+    "mammoth"
+   ]
   },
   {
-   "id": "dalen-0045",
+   "id": "palaeo-0045",
    "question": "Fanns det tecken på inavel hos ullhårig noshörning innan arten dog ut?",
    "answer": "Nej. Ett komplett kärngenom och 14 mitogenom visar att den effektiva populationsstorleken sannolikt ökade för 29 700 år sedan och sedan förblev stabil fram till nära utdöendet. Ett kärngenom från ett cirka 18 500 år gammalt exemplar visade varken ökad inavel eller minskad genetisk variation. Arten dog ut för omkring 14 000 år sedan, vilket pekar på snabb uppvärmning under Bölling-Alleröd snarare än på människan.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/32795436/", "https://pubmed.ncbi.nlm.nih.gov/41530912/"],
-   "tags": ["sv", "synthesis", "rhinoceros"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/32795436/",
+    "https://pubmed.ncbi.nlm.nih.gov/41530912/"
+   ],
+   "tags": [
+    "sv",
+    "synthesis",
+    "rhinoceros"
+   ]
   },
   {
-   "id": "dalen-0046",
+   "id": "palaeo-0046",
    "question": "Varför är de flesta mammutlämningar som könsbestämts genetiskt hanar?",
    "answer": "Av 98 genomiskt könsbestämda mammutar från de senaste 60 000 åren var 69 procent hanar och 31 procent honor, med p mindre än 0,0002. Förklaringen som föreslås är att proboscidernas sociala struktur är matriarkal med könssegregering, så att ensamma eller oerfarna hanar oftare omkom i naturliga fällor, och det är just sådana miljöer som gynnar bevarande.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/29103934/"],
-   "tags": ["sv", "single-fact", "mammoth"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/29103934/"
+   ],
+   "tags": [
+    "sv",
+    "single-fact",
+    "mammoth"
+   ]
   },
   {
-   "id": "dalen-0047",
+   "id": "palaeo-0047",
    "question": "Kan kromosomernas tredimensionella struktur bevaras i ett djur som dog för tiotusentals år sedan?",
    "answer": "Ja. Hud från en mammuthona som dog för 52 000 år sedan hade kvar sin genomarkitektur. Med PaleoHi-C kartlades kromatinkontakter och genomet sattes samman till 28 kromosomlånga scaffolds. Kromosomterritorier, kompartment, loopar, Barr-kroppar och superdomäner på den inaktiva X-kromosomen finns kvar. Mammutens inaktiva X har en tetradisk arkitektur i stället för den tvådelade som människa och mus har. Mekanismen som föreslås är att provet frystorkade spontant i den sibiriska kylan och genomgick en glasövergång.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/38996487/"],
-   "tags": ["sv", "synthesis", "mammoth", "methods"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/38996487/"
+   ],
+   "tags": [
+    "sv",
+    "synthesis",
+    "mammoth",
+    "methods"
+   ]
   },
   {
-   "id": "dalen-0048",
+   "id": "palaeo-0048",
    "question": "Hur långt tillbaka i tiden når paleogenomiken i dag, och vad begränsar hur länge DNA överlever?",
    "answer": "Även om de flesta studier av forntida DNA har gällt de senaste 50 000 åren når paleogenomiska metoder nu in i tidig pleistocen. Framväxande djuptidstransekter, inklusive DNA bevarat i sediment, gör det möjligt att sluta sig till adaptiv evolution, upptäcka okända arter och undersöka hur nedisningar, vulkanism och paleomagnetiska omkastningar formade demografi och artsammansättning. De viktigaste begränsningarna är tekniska, evolutionär divergens och därmed sammanhängande snedvridningar, samt behovet av mer exakt datering av både lämningar och sediment.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/37797036/"],
-   "tags": ["sv", "synthesis", "methods", "deep-time"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/37797036/"
+   ],
+   "tags": [
+    "sv",
+    "synthesis",
+    "methods",
+    "deep-time"
+   ]
   },
   {
-   "id": "dalen-0049",
+   "id": "palaeo-0049",
    "question": "What is the oldest DNA of any kind ever recovered, and what ecosystem did it describe?",
    "answer": "Environmental DNA from the Kap Kobenhavn Formation in north Greenland, dated to about 2 million years, which is older than any DNA recovered from a bone or tooth. It reconstructs an open boreal forest ecosystem of poplar, birch and thuja that included mastodon, a community with no modern analogue.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/36477129/"],
-   "tags": ["complementary", "deep-time", "sedadna", "attribution-trap"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/36477129/"
+   ],
+   "tags": [
+    "complementary",
+    "deep-time",
+    "sedadna",
+    "attribution-trap"
+   ]
   },
   {
-   "id": "dalen-0050",
+   "id": "palaeo-0050",
    "question": "Which genome held the record for the oldest ever sequenced before the million-year-old mammoth genomes, and what did it change?",
    "answer": "A 1.12-fold draft genome from a permafrost-preserved horse bone from the Yukon dated to roughly 560,000-780,000 years before present, an order of magnitude older than any genome before it. It roughly doubled the estimated origin of the genus Equus, to 4.0-4.5 million years before present.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/23803765/"],
-   "tags": ["complementary", "deep-time", "multihop"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/23803765/"
+   ],
+   "tags": [
+    "complementary",
+    "deep-time",
+    "multihop"
+   ]
   },
   {
-   "id": "dalen-0051",
+   "id": "palaeo-0051",
    "question": "What laboratory advance made it possible to sequence DNA from Middle Pleistocene bone outside permafrost?",
    "answer": "An improved silica-based extraction protocol that retains molecules shorter than 40 base pairs, combined with single-stranded library preparation. It yielded a complete mitochondrial genome from a Middle Pleistocene cave bear, Ursus deningeri, at Sima de los Huesos.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/24019490/"],
-   "tags": ["complementary", "adna-methods"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24019490/"
+   ],
+   "tags": [
+    "complementary",
+    "adna-methods"
+   ]
   },
   {
-   "id": "dalen-0052",
+   "id": "palaeo-0052",
    "question": "How is ancient DNA distinguished from modern contamination, and which tool quantifies the damage signature?",
    "answer": "Authentication rests on criteria set out in 2000: independent replication in a second laboratory, dedicated clean facilities physically separated from post-PCR work, extraction and amplification blanks, and an inverse relationship between amplification success and fragment length. The damage signature itself is quantified by mapDamage2.0, which gives fast approximate Bayesian estimates of deamination rates and fragmentation and rescales base qualities so damaged sites are down-weighted in genotype calling.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/10970224/", "https://pubmed.ncbi.nlm.nih.gov/23613487/"],
-   "tags": ["complementary", "adna-methods", "multihop"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/10970224/",
+    "https://pubmed.ncbi.nlm.nih.gov/23613487/"
+   ],
+   "tags": [
+    "complementary",
+    "adna-methods",
+    "multihop"
+   ]
   },
   {
-   "id": "dalen-0053",
+   "id": "palaeo-0053",
    "question": "Has anyone experimentally tested whether the deleterious mutations found in the Wrangel Island mammoth genome actually disabled the genes?",
    "answer": "Yes. Genes carrying candidate deleterious variants from the Wrangel Island mammoth were resurrected and functionally assayed, and several proved to carry loss-of-function alleles. This provides experimental support that the island population's deleterious load had real phenotypic consequences, rather than the load being inferred only from sequence.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/32031213/"],
-   "tags": ["complementary", "mammoth", "genetic-load"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/32031213/"
+   ],
+   "tags": [
+    "complementary",
+    "mammoth",
+    "genetic-load"
+   ]
   },
   {
-   "id": "dalen-0054",
+   "id": "palaeo-0054",
    "question": "Is moving new individuals into a small inbred population usually beneficial, or does outbreeding depression outweigh the gain?",
    "answer": "Usually beneficial. A synthesis of a decade of genetic-rescue studies found the fitness benefits of immigration into small populations are consistently large, and argued that fear of outbreeding depression has kept genetic rescue underused as a management tool.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/25435267/"],
-   "tags": ["complementary", "conservation-genomics"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/25435267/"
+   ],
+   "tags": [
+    "complementary",
+    "conservation-genomics"
+   ]
   },
   {
-   "id": "dalen-0055",
+   "id": "palaeo-0055",
    "question": "On what grounds has the announced de-extinction of the dire wolf been criticised?",
    "answer": "On the grounds that the animals are gray wolves edited at a small number of loci, producing a phenotypic approximation of a species in a separate genus, Aenocyon, that diverged millions of years ago. Editing a handful of sites in Canis lupus does not reconstitute that lineage, so the result is not a de-extinction.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/40927892/"],
-   "tags": ["complementary", "de-extinction"]
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/40927892/"
+   ],
+   "tags": [
+    "complementary",
+    "de-extinction"
+   ]
   },
   {
-   "id": "dalen-0056",
-   "question": "Är Love Dalén författare till studien av två miljoner år gammalt miljö-DNA från Kap København på Grönland?",
-   "answer": "Nej. Den studien publicerades i Nature 2022 av Kjær och medarbetare med Eske Willerslev som ansvarig författare, och Love Dalén finns inte bland dess författare. Han har däremot lett arbetet med miljonår gammalt DNA från mammutar, publicerat i Nature 2021, som är det äldsta DNA som utvunnits ur ett kroppsligt exemplar snarare än ur sediment.",
-   "goldUrls": ["https://pubmed.ncbi.nlm.nih.gov/36477129/", "https://pubmed.ncbi.nlm.nih.gov/33597750/"],
-   "tags": ["sv", "complementary", "attribution-trap", "multihop"]
+   "id": "palaeo-0056",
+   "question": "Vilken studie står bakom det två miljoner år gamla miljö-DNA:t från Kap København på Grönland, och är det samma fynd som det äldsta DNA:t från ett kroppsligt exemplar?",
+   "answer": "Nej, det är två skilda fynd som ofta blandas ihop. Miljö-DNA:t från Kap København publicerades i Nature 2022 av Kjær och medarbetare och kommer från sediment, inte från en kropp. Det äldsta DNA:t ur ett kroppsligt exemplar är i stället mammut-DNA från Nature 2021, drygt en miljon år gammalt, från en annan forskargrupp. Sediment-DNA är alltså äldre, men de två resultaten svarar på olika frågor.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/36477129/",
+    "https://pubmed.ncbi.nlm.nih.gov/33597750/"
+   ],
+   "tags": [
+    "sv",
+    "complementary",
+    "attribution-trap",
+    "multihop"
+   ]
   }
  ]
 }

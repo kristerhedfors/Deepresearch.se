@@ -623,13 +623,13 @@ correction — and it is why a delta needs no record of what is already there.
 The first use of `--pmids` (§4.2) in anger, and the first measurement of what
 the load-order window costs a *named researcher* rather than a sampled month.
 
-Love Dalén has **169** PubMed-indexed papers (Europe PMC, `AUTH:"Dalen L"`
-filtered to author entries whose `firstName` is `Love` — the raw author query
+The target bibliography held **169** PubMed-indexed papers (Europe PMC, an
+`AUTH:` query filtered on the author's given name — the raw surname query
 returns 243 and mixes in a paediatric-psychology researcher and two Norwegian
-plant scientists). Checked by `get_by_ids` rather than by querying the index,
-**18 of the 169 were in the corpus**. Not a retrieval failure: 89% of his work
-predates the 2026 baseline and had not been revised since, so it was never in
-the fetch window. Among the absent were the *Nature* million-year-old mammoth
+plant scientists, which is why the filter is mechanical rather than by topic).
+Checked by `get_by_ids` rather than by querying the index, **18 of the 169 were
+in the corpus**. Not a retrieval failure: 89% of that work predates the 2026
+baseline and had not been revised since, so it was never in the fetch window. Among the absent were the *Nature* million-year-old mammoth
 genomes, the 2015 Wrangel Island genomes, the 2014 polar bear genomes and the
 2020 prehistoric-dog paper.
 
@@ -655,7 +655,7 @@ with `could not determine executable to run`. Install it and point
 fill failed from one immediate read-back.
 
 Retrieval before and after is in `docs/RAG-EVAL-LEDGER.md` (2026-08-08),
-measured on the committed gold set `scripts/pubmed-dalen-goldset.json`.
+measured on the committed gold set `scripts/pubmed-palaeogenomics-goldset.json`.
 
 ### 7.10 The whole ancient-DNA literature (2026-08-09)
 

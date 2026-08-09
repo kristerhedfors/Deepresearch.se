@@ -306,6 +306,29 @@ were wrong at some point in this build:
   path — and the gap went unnoticed for days because nothing had ever run a
   query set against production.
 
+### 10.1 Publish the shape, and generate it
+
+State what the corpus holds somewhere a USER can read, not only a maintainer:
+here `docs/CORPORA.md` and the public `/corpora/` page, both written by
+`node scripts/build-corpora.mjs`. Two rules earned the hard way.
+
+**Derive it from the index, never from the fill.** A count of what a run pushed
+cannot describe an index, because other runs pushed too — the same reason one
+enumeration cannot detect its own gaps (§2). Page the index and count what is
+actually there.
+
+**Say how each number was obtained.** A figure read off the index today and a
+figure recorded during a harvest age completely differently: the first is
+re-derivable, the second never is. Labelling them the same way is how a page
+keeps a two-year-old harvest statistic looking current.
+
+The cost of skipping this is not hypothetical. An internal note told the
+research agents that nothing before October 2023 was in the arXiv index while
+42,307 papers sat below that line — because named-list fills reach underneath
+whatever bound the maintainer is watching, and the sentence was hand-maintained
+rather than measured. Every agent hitting a miss in that range was told to stop
+looking.
+
 ## 11. The failure mode to design against
 
 Across this whole build, almost nothing crashed. What went wrong was **work

@@ -95,6 +95,16 @@ export function isPublicAsset(url, method) {
     // open it without an account). The dataset is derived from the public
     // git history, so serving it unauthenticated exposes nothing new.
     url.pathname.startsWith("/pulse/") ||
+    // What is ingested (/corpora/): the page plus its generated dataset
+    // (corpora/data.json), describing what the two hosted research indexes
+    // hold and — the part that matters — what they do not. Public for the
+    // same reason as /pulse/: it is reachable from BOTH tiers, and a reader
+    // deciding whether a search result means "absent" or "not retrieved"
+    // needs it before they have an account. The dataset is aggregate counts
+    // over public bibliographic corpora — no user content, no per-account
+    // state, nothing a paper's own arXiv or PubMed listing does not say.
+    url.pathname === "/corpora" ||
+    url.pathname.startsWith("/corpora/") ||
     // The space-animations showcase (/space/): an archive of playable
     // wireframe animations answering common space questions. Public like
     // /pulse/ — a promotional/educational surface with nothing user-specific;

@@ -44,6 +44,13 @@ bites, and what not to re-derive.
 > the checkpoint, Vectorize's billing model and serialization traps, and the
 > relevance floor. This skill keeps only what is specific to arXiv.
 
+> **For "what is in the index TODAY", do not read this section — run
+> `node scripts/build-corpora.mjs`, or read `docs/CORPORA.md` / the published
+> page `/corpora/`, which it generates.** Named-list fills cover no month, so
+> every hard count below starts ageing as soon as one lands. The figures here
+> describe the 2026-07-29 widening, which is what the rest of this skill is
+> about.
+
 **Status (2026-07-29): the abstract tier is BUILT, HOSTED and WIDENED.**
 **772,658 vectors** over submission months **2310–2607** — 34 months, 2.3× the
 original 13-month build — at **99.6%** per-month index coverage. It stops at

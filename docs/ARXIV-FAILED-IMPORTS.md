@@ -19,7 +19,7 @@ when the snapshot was taken, and why is it still absent now — and for most of 
 | 3b | **A stub that clears the lowered floor.** Length is a proxy for content, not a test of it, and one withdrawal notice is long enough to pass. | 1 | `0907.1413` — `This paper is withdrawn due to some errors, which are corrected in arXiv:0912.0071v4 [cs.LG].` (93 chars) | Ingested, knowingly | None. It is a factual record that points at its own replacement, so it is left in rather than special-cased. If withdrawal notices ever become a retrieval problem, the fix is a pattern test in `indexableRow()`, not a higher floor. |
 | 4 | **Administrative stub — withdrawal / removal notice.** The whole abstract is arXiv's own notice; there is no research content to embed and retrieving one as evidence is worse than retrieving nothing. | 2 | `1311.4906` — abstract, verbatim and entire: `This paper has been withdrawn by the author(s)` (46 chars); also `cs/0511015`, `This article is taken out.` (26) | **Permanent** | None. Excluded at any floor worth setting. |
 | 5 | **Novelty one-word abstract.** Real papers, but the abstract carries no retrievable signal — only the title does. | 2 | `1902.02322` — abstract, verbatim and entire: `No.` (3 chars); also `1602.00251`, `Not really.` (11) | **Permanent (policy)** | None. Kept out for the same reason as #4; both are within one edit of being admissible if the owner decides a title-only vector is worth having. |
-| 6 | **Zero-length abstract** — unembeddable, the standing cross-corpus example. | 1 (PubMed, not arXiv) | `pmid:10970224` (cited by `tests/evalsets/dalen.json`) | **Permanent** | None. `parseArgs` now refuses `--min-abstract 0` so this class can never be admitted by accident. |
+| 6 | **Zero-length abstract** — unembeddable, the standing cross-corpus example. | 1 (PubMed, not arXiv) | `pmid:10970224` (cited by `tests/evalsets/palaeogenomics.json`) | **Permanent** | None. `parseArgs` now refuses `--min-abstract 0` so this class can never be admitted by accident. |
 | 7 | **Malformed id poisoning a whole batch** (`incorrect_id_format_for_…`, which takes ~360 good ids down with it). | **0 occurrences** | — | n/a | Checked, not found: all four lists lint to 0 malformed, 0 duplicate and 0 needing normalisation under `canonicalId`. The peel-off-and-retry loop in `harvestIds` is in place if one ever appears. |
 | 8 | **Withdrawn or never-existent id.** | **0 occurrences** | — | n/a | arXiv returned every id asked for: 1,218/1,218 and 140/140 on the two named lists, `0 rejected, 0 not returned, 0 unusable`. |
 | 9 | **Interrupted harvest leaving a `.part`.** A 24,248-id AI-security delta was killed mid-run at 14:49 with 2,261 rows written. | 1 run | `data/aisec/ax3/raw/ids-arxiv-delta.jsonl.part` | **Fixable — re-run** | `harvestIds` truncates and renames on success, so the recovery is simply to re-run: it completed 24,248/24,248 in 69 `id_list` calls / 273.6 s. |
@@ -62,7 +62,7 @@ from the stale `cited-*` files:
 | `aisec` | 180 | 163 | 207 | **0** | 19 | 0 |
 | `aicon` | 180 | 53 | 53 | **0** | 137 | 0 |
 | `adna` | 180 | 0 | 0 | — | 187 | 0 |
-| `dalen` | 56 | 0 | 0 | — | 48 | **1** (`pmid:10970224`) |
+| `palaeogenomics` | 56 | 0 | 0 | — | 48 | **1** (`pmid:10970224`) |
 | `browsecomp` | 30 | 0 | 0 | — | 0 | — |
 | `frames` | 60 | 0 | 0 | — | 0 | — |
 | `simpleqa` | 60 | 0 | 0 | — | 0 | — |
