@@ -163,12 +163,12 @@ measurements are correct; they are measuring different questions.
 The instrument is a **third language arm**. `run --langs` reads the gold set's
 keys directly, so a needle can carry `en`, `sv` AND `svsci` — the same question
 in vernacular and in scientific Swedish, about the SAME document, which is what
-isolates register from topic. `scripts/pubmed-dalen-goldset.json` is the worked
+isolates register from topic. `scripts/pubmed-palaeogenomics-goldset.json` is the worked
 example. If you are asked whether Swedish "works", ask which Swedish, and
 measure both:
 
 ```bash
-node scripts/rag-eval.mjs run --corpus pubmed --gold scripts/pubmed-dalen-goldset.json \
+node scripts/rag-eval.mjs run --corpus pubmed --gold scripts/pubmed-palaeogenomics-goldset.json \
   --label x --langs en,sv,svsci
 ```
 

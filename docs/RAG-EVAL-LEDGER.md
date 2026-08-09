@@ -442,15 +442,15 @@ Two results, one gold set. The first is a corpus result and the second is a
 retrieval result, and they are in the same entry because the first is what made
 the second measurable.
 
-**Gold set.** `scripts/pubmed-dalen-goldset.json` — 57 hand-written needles over
-the published work of Love Dalén (47) and the adjacent literature by other
-groups (10). Committed, unlike every previous PubMed gold set, because it is
+**Gold set.** `scripts/pubmed-palaeogenomics-goldset.json` — 57 hand-written
+needles over one palaeogenomics group's published work (47) and the adjacent
+literature by other groups (10). Committed, unlike every previous PubMed gold set, because it is
 pinned to NAMED papers rather than to a sampled load-order window, so it stays
 meaningful across re-ingests. That closes open item 4 of the 2026-08-01 entry
 for PubMed. Membership of every `gold` was verified by `get_by_ids`, never by
-querying the index. Authorship was verified against the Europe PMC author field
-(lastName Dalén AND firstName Love), which matters: `AUTH:"Dalen L"` returns 243
-records of which only 216 are his.
+querying the index. Authorship was verified mechanically against the Europe PMC author field —
+surname AND given name, not surname alone — which matters: the bare surname
+query returns 243 records of which only 216 belong to the intended author.
 
 It carries **three** language arms, not two — `en`, `sv` and `svsci` — where
 `sv` is vernacular Swedish (*fjällämmel*, *grottlejon*, *ullhårig noshörning*)
@@ -532,7 +532,7 @@ Paired McNemar over the 57 needles, floor 0.01 → 0.001:
 
 SV r@10 63.2 → 78.9, floorLoss 22.8 → 5.3. **Zero losses in any arm.** Latency
 paired sign p=0.1401 — no cost. Runs:
-`data/eval/pubmed-dalen-final-{default,low}.json`.
+`data/eval/pubmed-palaeo-final-{default,low}.json`.
 
 The tool description and both empty-result notes changed in the same commit;
 they told an agent to raise `min_score` and to call `literature_corpora`, and

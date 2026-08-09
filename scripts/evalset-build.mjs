@@ -48,14 +48,14 @@ const DIFFICULTY = new Set(["single-fact", "multihop", "synthesis"]);
 
 /**
  * Per-set identity. `exclude` names a file of ids the set must NOT cite —
- * the mechanism that keeps a "look beyond this researcher" set honest.
+ * the mechanism that keeps a "look beyond this group" set honest.
  */
 const SETS = {
   adna: {
     kind: "domain-expert",
-    exclude: "data/dalen/pmids-all.txt",
+    exclude: "data/palaeogenomics/pmids-all.txt",
     note:
-      "Ancient-DNA questions BEYOND one researcher's own output — the companion to tests/evalsets/dalen.json, which covers Love Dalén's own papers. Nothing here cites a paper he authored; that is enforced against data/dalen/pmids-all.txt rather than trusted. Four domains: ancient humans and hominins, megafauna and palaeoecology, methods and chemistry, and the applied edge (pathogens, domestication, conservation, de-extinction). Swedish items are tagged `sv` and written in the VERNACULAR register, which is the register hosted retrieval is measurably worst at (docs/RAG-EVAL-LEDGER.md, 2026-08-08) — they are the hard half of this set deliberately. Items tagged `trap` are ones where the naive answer is a common misconception or a superseded result, and the gold answer states the correction.",
+      "Ancient-DNA questions BEYOND one research group's own output — the companion to tests/evalsets/palaeogenomics.json, which covers that group's own papers. Nothing here cites a paper it authored; that is enforced against a committed id list rather than trusted, so the two sets stay genuinely disjoint and a gain on one cannot be a gain on the other in disguise. Four domains: ancient humans and hominins, megafauna and palaeoecology, methods and chemistry, and the applied edge (pathogens, domestication, conservation, de-extinction). Swedish items are tagged `sv` and written in the VERNACULAR register, which is the register hosted retrieval is measurably worst at (docs/RAG-EVAL-LEDGER.md, 2026-08-08) — they are the hard half of this set deliberately. Items tagged `trap` are ones where the naive answer is a common misconception or a superseded result, and the gold answer states the correction.",
   },
   aisec: {
     kind: "domain-expert",

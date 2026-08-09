@@ -1,0 +1,82 @@
+{
+  "v": 1,
+  "generated": "2026-08-09T18:39:16.283Z",
+  "corpora": [
+    {
+      "id": "arxiv",
+      "name": "arXiv",
+      "kind": "Preprints — physics, mathematics, computer science, quantitative biology, statistics, economics, quantitative finance",
+      "index": "deepresearch-se-arxiv",
+      "vectors": 823097,
+      "idExample": "2401.12345",
+      "recorded": {
+        "measured": "2026-08-09",
+        "channel": "OAI-PMH ListRecords, plus named-id lists through the Atom query API",
+        "note": "The bulk band was swept month by month. Everything below it arrived through topic-targeted named-list fills, which is why older coverage is dense for some subjects and near-absent for others."
+      }
+    },
+    {
+      "id": "pubmed",
+      "name": "PubMed",
+      "kind": "Biomedical and life-science literature — MEDLINE journals, plus bioRxiv and medRxiv records",
+      "index": "deepresearch-se-pubmed",
+      "vectors": 1731517,
+      "idExample": "pmid:41787358",
+      "recorded": {
+        "measured": "2026-07-31",
+        "channel": "the NLM daily-update archive files, newest first",
+        "recordsRead": 3776137,
+        "recordsKept": 3397607,
+        "uniqueCitations": 1639403,
+        "repeatRate": 0.559,
+        "withDoi": 0.993,
+        "withMesh": 0.667,
+        "truncatedPassages": 0.88,
+        "note": "Defined as a PMID / load-order window — everything NLM has loaded or revised since the 2026 baseline was cut on 2026-01-29 — NOT as a publication-date range. The update files carry recent EDITS, so they include old papers that were revised."
+      }
+    }
+  ],
+  "domains": [
+    {
+      "id": "adna",
+      "name": "Ancient DNA / palaeogenomics",
+      "corpora": [
+        "pubmed"
+      ],
+      "evalSet": "tests/evalsets/adna.json",
+      "questions": 180
+    },
+    {
+      "id": "aisec",
+      "name": "AI cybersecurity",
+      "corpora": [
+        "arxiv",
+        "pubmed"
+      ],
+      "evalSet": "tests/evalsets/aisec.json",
+      "questions": 180
+    },
+    {
+      "id": "aicon",
+      "name": "AI consciousness",
+      "corpora": [
+        "arxiv",
+        "pubmed"
+      ],
+      "evalSet": "tests/evalsets/aicon.json",
+      "questions": 180
+    },
+    {
+      "id": "palaeogenomics",
+      "name": "Palaeogenomics bibliography",
+      "corpora": [
+        "pubmed"
+      ],
+      "evalSet": "tests/evalsets/palaeogenomics.json",
+      "questions": 56
+    }
+  ],
+  "totals": {
+    "vectors": 2554614
+  }
+}

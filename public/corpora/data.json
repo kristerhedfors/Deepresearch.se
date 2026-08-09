@@ -151,12 +151,12 @@
       "questions": 180
     },
     {
-      "id": "dalen",
-      "name": "Love Dalén bibliography",
+      "id": "palaeogenomics",
+      "name": "Palaeogenomics bibliography",
       "corpora": [
         "pubmed"
       ],
-      "evalSet": "tests/evalsets/dalen.json",
+      "evalSet": "tests/evalsets/palaeogenomics.json",
       "questions": 56
     }
   ],

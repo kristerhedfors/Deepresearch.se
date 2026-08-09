@@ -136,7 +136,7 @@ const DOMAINS = [
   { id: "adna", name: "Ancient DNA / palaeogenomics", corpora: ["pubmed"], evalSet: "tests/evalsets/adna.json", questions: 180 },
   { id: "aisec", name: "AI cybersecurity", corpora: ["arxiv", "pubmed"], evalSet: "tests/evalsets/aisec.json", questions: 180 },
   { id: "aicon", name: "AI consciousness", corpora: ["arxiv", "pubmed"], evalSet: "tests/evalsets/aicon.json", questions: 180 },
-  { id: "dalen", name: "Love Dalén bibliography", corpora: ["pubmed"], evalSet: "tests/evalsets/dalen.json", questions: 56 },
+  { id: "palaeogenomics", name: "Palaeogenomics bibliography", corpora: ["pubmed"], evalSet: "tests/evalsets/palaeogenomics.json", questions: 56 },
 ];
 
 async function measureArxiv(index, skipShape) {

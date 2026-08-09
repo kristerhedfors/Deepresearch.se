@@ -41,8 +41,8 @@
 // Europe PMC and arXiv both expose real author-field search, which is the one
 // thing dense retrieval cannot imitate:
 //
-//     AUTH:"Dalén L"                       → 243 papers, sortable by citations
-//     AUTH:"Dalén L" AND (mammoth OR "ancient DNA")  → 115, disambiguated
+//     AUTH:"<surname> <initial>"                       → 243 papers, sortable by citations
+//     AUTH:"<surname> <initial>" AND (mammoth OR "ancient DNA")  → 115, disambiguated
 //
 // Measured against the live API on 2026-08-05. Sorting by citation count is
 // what makes this answer "life works" rather than "recent works": the top of a
@@ -51,8 +51,8 @@
 // ladder uses, because either one alone is stale or untested.
 //
 // AUTHOR NAMES ARE NOT UNIQUE and this module does not pretend otherwise. The
-// probe above surfaced a paediatric-nutrition trial by a different "Dalen L"
-// inside the palaeogeneticist's results. Europe PMC's ORCID field is populated
+// probe above surfaced a paediatric-nutrition trial by a same-surname author
+// inside a palaeogeneticist's results. Europe PMC's ORCID field is populated
 // too thinly to disambiguate on (checked on the same records: absent), so the
 // honest tool is one that says so and offers the lever that works — a `topic`
 // that ANDs subject terms onto the author query, which took that same search
