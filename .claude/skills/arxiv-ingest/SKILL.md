@@ -374,9 +374,23 @@ beside its `vectors_live` — which is the check, and takes one call.
 `src/literature-run.test.js` now pins the window's upper bound against the
 recorded fill so the two cannot drift apart silently again.
 
-So the ingest is not done until all four move together:
+So the ingest is not done until all five move together:
 
 1. `docs/ARXIV-RAG.md` §1 marker line (and §1's headline window, if it moved),
-2. `CORPUS_FACTS.arxiv.window` and `.vectors_at_fill` in `src/literature-tools.js`,
+2. `CORPUS_FACTS.arxiv.window` and `.vectors_at_fill` in `src/literature-tools.js`
+   — **derive these, do not edit them by hand**: `node scripts/arxiv-window.mjs`
+   pages the index and prints the sentence to paste (see the warning below),
 3. the upper-bound assertion in `src/literature-run.test.js`,
-4. `npm run bundle` / `bundle:docs`, since 1 and 2 stale the artifacts.
+4. `node scripts/build-corpora.mjs`, which regenerates `public/corpora/data.json`
+   behind the PUBLIC `/corpora/` page. This is the one an operator forgets,
+   because nothing in the test suite fails when it is stale — the page simply
+   starts telling readers a number that is no longer true,
+5. `npm run bundle` / `bundle:docs`, since 1, 2 and 4 stale the artifacts.
+
+> **A named-list fill (`--ids`) does NOT move the §1 marker** — it covers no
+> month — **but it DOES change everything else on this list.** That asymmetry is
+> how `CORPUS_FACTS.arxiv.window` came to claim that nothing before October 2023
+> was in the index while 42,307 papers sat below that line: every fill dutifully
+> left the marker alone, and the window sentence was never re-derived because it
+> looked like the marker's business. The upper bound was guarded; the drift
+> happened underneath it. Run `arxiv-window.mjs` after ANY fill, named or not.

@@ -184,6 +184,15 @@ researcher's corpus coverage was **18 of 169** and every retrieval number over
 their work was measuring absence, not retrieval. Coverage-first is the rule for
 a topic slice as much as for a month.
 
+> Before the per-id check, know the SHAPE you are working against:
+> `docs/CORPORA.md` and the page it generates, `/corpora/`
+> (`node scripts/build-corpora.mjs`). Neither corpus is a uniform window any
+> more — arXiv is a swept band 2310–2607 PLUS topic-shaped tails back to 1991,
+> and PubMed is a load-order slice rather than a date range — so whether a
+> gold's absence is surprising depends entirely on which region it falls in.
+> Sampling needles without that in hand produces a set whose difficulty is an
+> accident of the fill history.
+
 **A committed gold set can name a document the index cannot HOLD.** A generated
 set is sampled from the index, so its golds are present by construction. A
 hand-written one keyed on chosen documents is not: a 2000 *Science* piece with

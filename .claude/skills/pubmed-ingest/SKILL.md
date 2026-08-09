@@ -291,3 +291,19 @@ A delta is only repeatable if the next run can find its starting point, and
 - the date.
 
 An ingest that does not update that line has made the next delta guesswork.
+
+Then regenerate the PUBLIC view of the corpus, which is a separate artifact and
+is nobody's habit yet:
+
+```bash
+node scripts/build-corpora.mjs --only pubmed    # ~7 min: pages every PMID
+node scripts/build-corpora.mjs --skip-shape     # seconds: live counts only
+npm run bundle && npm run bundle:docs           # the dataset is committed
+```
+
+That writes `public/corpora/data.json` behind `/corpora/`, the page that tells
+readers what this corpus does and does not contain. **Nothing in the test suite
+fails when it is stale** — the page just quietly starts stating a size that is no
+longer true, which is exactly how a corpus claim rots in public rather than in
+CI. A named-PMID fill counts here even though it must NOT move the §1 marker:
+the marker tracks archive files, and a named list covers none.
