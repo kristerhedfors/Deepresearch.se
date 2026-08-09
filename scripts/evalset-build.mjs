@@ -134,7 +134,7 @@ const hasSwedishLetters = (/** @type {string} */ s) => /[åäöÅÄÖ]/.test(s);
  * Is this text actually written in Swedish?
  *
  * Diacritics alone cannot answer it. An English question citing Frässle,
- * Müller, Schrödinger or Dalén carries å/ä/ö and is not Swedish — that exact
+ * Müller, Schrödinger or Ekström carries å/ä/ö and is not Swedish — that exact
  * false positive fired on a real item about binocular rivalry. Function words
  * are the reliable signal instead: they are frequent, they are not borrowed
  * into English prose, and no Swedish sentence long enough to be a question

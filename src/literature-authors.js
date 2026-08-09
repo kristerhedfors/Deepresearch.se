@@ -13,7 +13,7 @@
 // from the outside.
 //
 // It was not silence. THE PAPERS WERE THERE. The dense tier returned several of
-// that researcher's own group's papers; his name simply was not in any of them.
+// that researcher's own group's papers; their name simply was not in any of them.
 // Three separate causes stack, and each one alone is enough to lose an author:
 //
 //   1. THE STORED AUTHOR LIST IS TRUNCATED TO THE FIRST FEW NAMES. Both
@@ -25,7 +25,7 @@
 //   2. DENSE RETRIEVAL CANNOT SEARCH BY AUTHORSHIP. The embedding of a personal
 //      name carries no authorship signal — it retrieves papers that TALK about
 //      the topics that name co-occurs with. Asking multilingual-e5-large for
-//      "Love Dalén's papers" is asking it for ancient-DNA papers, and that is
+//      "Elsa Ekström's papers" is asking it for ancient-DNA papers, and that is
 //      exactly and only what it returns.
 //   3. NEITHER INDEX CARRIES A VECTORIZE METADATA INDEX. So even with complete
 //      author strings there is no server-side `authors CONTAINS` filter to push
@@ -89,7 +89,7 @@ const E = "(?![\\p{L}\\p{N}_])";
 
 /** A personal name as it appears after "by" / "av": one to four capitalised
  * words, allowing the particles Swedish and continental names actually carry
- * ("van", "von", "de", "af", "af Bjerkén"). Unicode-aware so "Dalén",
+ * ("van", "von", "de", "af", "af Bjerkén"). Unicode-aware so "Ekström",
  * "Öberg" and "Ångström" are names rather than three-letter fragments. */
 const NAME = "(?:\\p{Lu}[\\p{L}'’-]+|van|von|de|del|af|der|den)(?:\\s+(?:\\p{Lu}[\\p{L}'’-]+|van|von|de|del|af|der|den)){0,3}";
 
@@ -118,7 +118,7 @@ const BY_PATTERNS = [
 
 /**
  * The nouns that name a body of work, in both languages. One list, because the
- * possessive forms MIX: the reported failure was literally "love daléns life
+ * possessive forms MIX: the reported failure was literally "elsa ekströms life
  * works" — a Swedish genitive on the name with an English noun after it, which
  * is how a Swedish speaker writing to an English-language assistant actually
  * types. Splitting the noun sets by language would have refused exactly the
@@ -148,7 +148,7 @@ const PERSONAL_WORK_NOUNS =
 
 /**
  * "<name>'S works" — the possessive forms. English writes "'s", Swedish writes
- * a bare "s" on the name ("Daléns arbeten") and a colon-s on a name already
+ * a bare "s" on the name ("Ekströms arbeten") and a colon-s on a name already
  * ending in a sibilant ("Nilsson:s").
  */
 const POSSESSIVE_PATTERNS = [
@@ -157,7 +157,7 @@ const POSSESSIVE_PATTERNS = [
   `${B}(?<name>${NAME})(?:['’]s|:s)\\s+(?:${WORK_NOUNS})${E}`,
   // A bare `s` is not — see PERSONAL_WORK_NOUNS.
   `${B}(?<name>${NAME})s\\s+(?:${PERSONAL_WORK_NOUNS})${E}`,
-  // No genitive at all — "Love Dalén life works", "Dalén bibliography". Tighter
+  // No genitive at all — "Elsa Ekström life works", "Ekström bibliography". Tighter
   // again: with no possessive marker, only the nouns that are meaningless
   // except after a person survive. "mammoth forskning" must not read as a
   // researcher called Mammoth.
@@ -176,11 +176,11 @@ const NOT_A_NAME =
 
 /**
  * Words that can sit at either END of a captured run without being part of the
- * name. The gates match case-INSENSITIVELY (a user typing "love daléns life
+ * name. The gates match case-INSENSITIVELY (a user typing "elsa ekströms life
  * works" — the exact phrasing that produced the reported failure — has no
  * capitals to match on), which means `\p{Lu}` in NAME stops discriminating and
- * an auxiliary can be swallowed: "everything Love Dalén has published" captured
- * "Love Dalén has". Trimming these off both ends is what keeps the capture a
+ * an auxiliary can be swallowed: "everything Elsa Ekström has published" captured
+ * "Elsa Ekström has". Trimming these off both ends is what keeps the capture a
  * name.
  */
 const EDGE_STOPWORDS = new RegExp(
@@ -199,10 +199,10 @@ const EDGE_STOPWORDS = new RegExp(
  * Trim the words that can bracket a captured run without belonging to the name.
  *
  * Two passes, because two different things put junk in the capture. Auxiliaries
- * and articles ride along on either end ("Love Dalén has" from "everything Love
- * Dalén has published"). And a conversational lead-in gets swallowed whenever
- * the text is all lowercase — "tell me about love daléns life works" captured
- * "me about love dalén", because with nothing capitalised there is no signal
+ * and articles ride along on either end ("Elsa Ekström has" from "everything Elsa
+ * Ekström has published"). And a conversational lead-in gets swallowed whenever
+ * the text is all lowercase — "tell me about elsa ekströms life works" captured
+ * "me about elsa ekström", because with nothing capitalised there is no signal
  * separating a lead-in from a name.
  *
  * When the text DOES carry capitals, that signal exists and is used: leading
@@ -232,7 +232,7 @@ export function trimNameEdges(name, caseSignificant = false) {
  * @param {string} name
  * @param {boolean} [caseSignificant] true when the source text contained ANY
  *   capital letter. Then a name must carry one, which is what separates
- *   "papers by Love Dalén" from "papers by mammoth genomics". In an all-
+ *   "papers by Elsa Ekström" from "papers by mammoth genomics". In an all-
  *   lowercase question capitalisation carries no signal at all, so the check is
  *   dropped rather than applied to text that cannot satisfy it — the cost of
  *   the resulting false positive is two live queries that return nothing plus a
@@ -246,7 +246,7 @@ export function looksLikeName(name, caseSignificant = false) {
   if (parts.every((p) => NOT_A_NAME.test(p))) return false;
   if (caseSignificant && !parts.some((p) => /^\p{Lu}/u.test(p))) return false;
   // A single bare word is a name only if it is not a topic word — "papers by
-  // Dalén" is a name, "papers by Nature" is not.
+  // Ekström" is a name, "papers by Nature" is not.
   if (parts.length === 1) return !NOT_A_NAME.test(parts[0]) && parts[0].length > 2;
   return true;
 }
@@ -351,12 +351,12 @@ export function topicTerms(queries, max = 6, exclude = /** @type {string[]} */ (
   const seen = new Set();
   // The AUTHOR'S OWN NAME is not a topic. When the name was read out of the
   // query rather than passed in `authors`, its words are still sitting in that
-  // query, so "Love Daléns livsverk" yielded narrowed_by ["Love", "Daléns"] —
+  // query, so "Elsa Ekströms livsverk" yielded narrowed_by ["Elsa", "Ekströms"] —
   // ANDed onto a query that already restricts to that author. Harmless against
   // Europe PMC, whose default field matches author names anyway, but a real
-  // constraint on arXiv, where `all:"Daléns"` (genitive and all) matches almost
+  // constraint on arXiv, where `all:"Ekströms"` (genitive and all) matches almost
   // nothing and can empty an otherwise good author query. Genitive forms are
-  // stripped so "Daléns" is recognised as "Dalén".
+  // stripped so "Ekströms" is recognised as "Ekström".
   for (const name of exclude) {
     for (const part of String(name || "").split(/\s+/)) {
       const key = part.toLowerCase().replace(/[:'’]?s$/u, "").trim();
@@ -381,8 +381,8 @@ export function topicTerms(queries, max = 6, exclude = /** @type {string[]} */ (
     for (const word of stripped.split(/\s+/)) {
       const w = word.trim();
       if (w.length < 4) continue;
-      // Normalised the same way the exclusion list above is, so "Daléns" in the
-      // query matches the excluded "Dalén" rather than slipping past it.
+      // Normalised the same way the exclusion list above is, so "Ekströms" in the
+      // query matches the excluded "Ekström" rather than slipping past it.
       const key = w.toLowerCase().replace(/[:'’]?s$/u, "");
       if (!key || seen.has(key)) continue;
       seen.add(key);
@@ -396,7 +396,7 @@ export function topicTerms(queries, max = 6, exclude = /** @type {string[]} */ (
 /**
  * Europe PMC's author query. `AUTH:"Surname I"` is the field it indexes, and it
  * also matches the full form, so the caller's spelling is passed through rather
- * than reformatted into initials — reformatting "Love Dalén" to "Dalén L"
+ * than reformatted into initials — reformatting "Elsa Ekström" to "Ekström E"
  * guesses at which part is the surname and gets Chinese and Spanish names
  * wrong.
  *
@@ -409,7 +409,7 @@ export function europepmcAuthorQuery(name, terms = []) {
   const parts = who.split(" ");
   /** @type {string[]} */
   const forms = [`AUTH:"${who}"`];
-  // "Love Dalén" is indexed as "Dalén L". Add that form so the natural spelling
+  // "Elsa Ekström" is indexed as "Ekström E". Add that form so the natural spelling
   // finds the record, without dropping the full form that preprint servers use.
   if (parts.length >= 2) {
     const surname = parts[parts.length - 1];

@@ -419,8 +419,8 @@ test("a short author list is stored whole", () => {
 });
 
 test("a long list keeps BOTH ends — the senior author survives the cut", () => {
-  const out = storedAuthors([...NAMES(29), "Love Dalén"]);
-  assert.ok(out.includes("Love Dalén"), "the last author is present");
+  const out = storedAuthors([...NAMES(29), "Elsa Ekström"]);
+  assert.ok(out.includes("Elsa Ekström"), "the last author is present");
   assert.ok(out.startsWith("Author 1; "), "and so is the first");
   assert.ok(out.includes("+22 more"), "with the omission stated rather than implied");
 });

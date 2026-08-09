@@ -10526,7 +10526,7 @@
       "removed": 24,
       "features": 0,
       "subjects": [
-        "Index Love Dalén's work, and measure what vernacular Swedish costs"
+        "Index a research group's full bibliography, and measure what vernacular Swedish costs"
       ],
       "summary": "An explicit-id channel in the PubMed harvester filled out the palaeogenomics literature, which the load-order window had never reached. A committed gold set then put vernacular Swedish recall at 63.2 against 98.2 for English, most of the loss being the relevance floor discarding documents the reranker had already ranked first.",
       "curated": true

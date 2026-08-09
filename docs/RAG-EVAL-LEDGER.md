@@ -331,7 +331,7 @@ population genetics, and domestication genomics from archaeological material.
 ### The enumeration was validated against two independent positive sets
 
 A query cannot detect its own gaps, so recall was measured against sets the
-query had no hand in choosing: Dalén's 169 papers plus 90 curated adjacent
+query had no hand in choosing: one palaeogenomics group's 169 papers plus 90 curated adjacent
 landmarks (259), and — separately — the 187 papers four question authors
 independently cited while writing an eval set. Raw recall 75.7% and 88.2%;
 **~99% and ~97%** once modern conservation genomics of extant species is

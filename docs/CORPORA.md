@@ -95,7 +95,7 @@ are verified present in the corpus.
 | Ancient DNA / palaeogenomics | PubMed | 180 | the field's foundational papers predate the load window |
 | AI cybersecurity | arXiv + PubMed | 180 | its foundations are 2013–2018, below the arXiv band |
 | AI consciousness | arXiv + PubMed | 180 | reaches into the 1990s |
-| Love Dalén bibliography | PubMed | 56 | a specific researcher's work, spread across thirty years |
+| Palaeogenomics bibliography | PubMed | 56 | one research group's own output, spread across thirty years |
 
 **Coverage of what those questions cite:** 260 cited arXiv ids across all sets,
 0 unanswerable. 386 cited PMIDs, 1 unanswerable — `pmid:10970224`, whose record

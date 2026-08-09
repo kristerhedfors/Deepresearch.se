@@ -217,7 +217,7 @@ export const LITERATURE_TOOLS = [
           description:
             "Researcher names whose papers to list — the way to answer 'what has X published', " +
             "'X's body of work', or a bibliography request. Write the name as it is published " +
-            "('Love Dalén', 'M. Dehasque'); both the full form and the indexed 'Surname I' form " +
+            "('Elsa Ekström', 'M. Dehasque'); both the full form and the indexed 'Surname I' form " +
             "are tried. This leg queries the LIVE Europe PMC and arXiv author fields rather than " +
             "the hosted indexes, so it covers the full archive rather than the corpus windows — " +
             "and it is valid on its own, with no `queries` at all. Names are NOT disambiguated: " +

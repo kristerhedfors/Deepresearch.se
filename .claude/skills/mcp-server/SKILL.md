@@ -258,7 +258,7 @@ fields. That is not a shortcut; it is the only thing that works, and the reason
 is worth keeping because it will look like a bug later:
 
 1. **Dense retrieval cannot match authorship.** A personal name embeds as the
-   TOPICS it co-occurs with, so "Love Dalén's papers" retrieves ancient-DNA
+   TOPICS it co-occurs with, so "Elsa Ekström's papers" retrieves ancient-DNA
    papers by other people. Always. This is not a tuning problem.
 2. **There is no metadata index**, so no `authors CONTAINS` filter can be
    pushed into the query even in principle (same root as `FILTER_NOTE`).
@@ -284,7 +284,7 @@ Three things follow from that, and each is load-bearing:
   alone answers a different question.
 - **Names are not disambiguated, and the response says so.** Europe PMC's ORCID
   field is too thinly populated to use (checked on the records in question:
-  absent), and `AUTH:"Dalén L"` genuinely mixes a palaeogeneticist with a
+  absent), and `AUTH:"Ekström E"` genuinely mixes a palaeogeneticist with a
   paediatric-nutrition researcher. The lever that works is `queries` passed
   alongside — the subject terms are ANDed onto the author query, which took a
   live probe from 243 mixed records to 115 clean ones (2026-08-05).
@@ -305,7 +305,7 @@ half and a dead embedder degrades it to the author records.
 The bilingual gate (`authorIntent`) reads a name out of the query when no
 `authors` is passed. Invariant 6 applies in full, and two traps are pinned in
 `src/literature-authors.test.js`: the possessive forms MIX languages (the report
-was literally "love daléns life works" — Swedish genitive, English noun), and a
+was literally "elsa ekströms life works" — Swedish genitive, English noun), and a
 bare `s` genitive is ambiguous in English, so only nouns that cannot follow
 anything but a person are accepted after it, or "mammoth genomics studies"
 reads as a researcher named Mammoth Genomic.
