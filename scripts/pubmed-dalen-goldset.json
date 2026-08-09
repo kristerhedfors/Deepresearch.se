@@ -421,13 +421,13 @@
    "title": "mapDamage2.0: fast approximate Bayesian estimates of ancient DNA damage parameters."
   },
   {
-   "gold": "pmid:10970224",
-   "year": 2000,
-   "complementary": "Cooper/Poinar. The authentication doctrine the whole field is built on.",
-   "en": "What criteria were laid down for authenticating ancient DNA and separating it from modern contamination?",
-   "sv": "Vilka krav ställdes upp för att avgöra om gammalt DNA är äkta och inte förorening från nutid?",
-   "svsci": "Vilka autenticeringskriterier — oberoende replikering, dedikerade renrum, extraktionsblanka prov — formulerades för aDNA-studier?",
-   "title": "Ancient DNA: do it right or not at all."
+   "gold": "pmid:30875054",
+   "year": 2019,
+   "complementary": "Renaud/Orlando. Authentication and contamination assessment — the doctrine the field is built on, in its tooled form. It REPLACED Cooper & Poinar's 2000 'Ancient DNA: do it right or not at all' (pmid:10970224), which is the better-known statement of the same idea but carries NO abstract in PubMed at all, so it can never be embedded and the needle was unanswerable by construction. A hand-written gold set can name a document the index cannot hold; a generated one cannot. `rag-eval.mjs run` now checks membership and says so out loud.",
+   "en": "What tools exist to test whether ancient DNA data are authentic rather than modern contamination?",
+   "sv": "Vilka verktyg finns för att avgöra om gammalt DNA verkligen är äkta och inte förorening från nutida människor?",
+   "svsci": "Vilka metoder kvantifierar postmortem-skademönster och andelen nutida human kontaminering i aDNA-dataset?",
+   "title": "Authentication and Assessment of Contamination in Ancient DNA."
   },
   {
    "gold": "pmid:25435267",
