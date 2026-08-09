@@ -52,9 +52,48 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 // machinery lives in scripts/vectorize-upsert.mjs, shared with the PubMed fill.
 const EMBED_BATCH = 256;
 
+/**
+ * The abstract floor the index applies to itself: a row whose abstract is
+ * shorter than this is not embedded. It exists so a bulk sweep does not fill
+ * the index with rows that carry no content — above all arXiv's ADMINISTRATIVE
+ * stubs, whose whole abstract is "This paper has been withdrawn by the
+ * author(s)" (46 chars) or "This article is taken out." (26).
+ *
+ * It is a blunt proxy, and on a NAMED list of ids it is blunt in a way that
+ * shows: of 1,218 explicitly requested AI-consciousness papers, exactly 8 never
+ * reached the index and all 8 were floor drops — two administrative stubs and
+ * six real one-or-two-sentence abstracts (81-188 chars), including a 1995
+ * quant-ph paper whose abstract is its table of contents. Nothing was broken;
+ * the corpus-wide default simply does not fit a list somebody wrote out by
+ * hand. Hence `--min-abstract`: the DEFAULT is unchanged, so every existing
+ * pipeline behaves exactly as before, and a named-id fill can lower it
+ * deliberately and say so.
+ */
+export const INDEX_ABSTRACT_FLOOR = 200;
+
+/**
+ * Is this corpus row one the index should hold?
+ *
+ * Split out of corpusRows (which is an async generator over a directory, and so
+ * untestable without a filesystem) purely so the rule itself is unit-tested.
+ * @param {any} row
+ * @param {number} [minAbstract]
+ */
+export function indexableRow(row, minAbstract = INDEX_ABSTRACT_FLOOR) {
+  const abstract = String(row?.abstract || "");
+  return abstract.length >= minAbstract && abstract.trim().length > 0;
+}
+
 /** @param {string[]} argv */
 export function parseArgs(argv) {
-  const out = { index: "deepresearch-se-arxiv", corpus: "data/arxiv/raw", work: "data/arxiv/vectorize", limit: 0, dryRun: false };
+  const out = {
+    index: "deepresearch-se-arxiv",
+    corpus: "data/arxiv/raw",
+    work: "data/arxiv/vectorize",
+    limit: 0,
+    minAbstract: INDEX_ABSTRACT_FLOOR,
+    dryRun: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     const [flag, inline] = argv[i].split("=");
     const value = () => (inline !== undefined ? inline : argv[++i]);
@@ -62,11 +101,16 @@ export function parseArgs(argv) {
     else if (flag === "--corpus") out.corpus = String(value());
     else if (flag === "--work") out.work = String(value());
     else if (flag === "--limit") out.limit = Number(value());
+    else if (flag === "--min-abstract") out.minAbstract = Number(value());
     else if (flag === "--dry-run") out.dryRun = true;
     else if (flag === "--help" || flag === "-h") out.help = true;
     else throw new Error(`Unknown flag: ${flag}`);
   }
   if (!Number.isFinite(out.limit) || out.limit < 0) throw new Error("--limit must be >= 0");
+  // 0 would embed rows with an empty abstract — the one case that is not a
+  // policy choice but a PERMANENT miss (nothing to embed), and the reason the
+  // PubMed sibling carries pmid:10970224 as an unanswerable needle forever.
+  if (!Number.isFinite(out.minAbstract) || out.minAbstract < 1) throw new Error("--min-abstract must be >= 1");
   return out;
 }
 
@@ -116,8 +160,9 @@ export function vectorLine(paper, values) {
  * @param {string} dir
  * @param {Set<string>} skip ids already pushed (checkpoint)
  * @param {number} limit 0 = no cap
+ * @param {number} [minAbstract] the abstract floor — see INDEX_ABSTRACT_FLOOR
  */
-async function* corpusRows(dir, skip, limit) {
+async function* corpusRows(dir, skip, limit, minAbstract = INDEX_ABSTRACT_FLOOR) {
   const files = (await readdir(dir)).filter((f) => f.endsWith(".jsonl")).sort().reverse();
   // A corpus directory with no shards in it is ALWAYS a mistake, and a silent
   // one: the run pushes nothing, prints "done — 0 vectors" and exits 0. The
@@ -142,7 +187,7 @@ async function* corpusRows(dir, skip, limit) {
       }
       const id = String(row?.id || "");
       if (!id || seen.has(id) || skip.has(id)) continue;
-      if (!row.abstract || row.abstract.length < 200) continue; // the index's own filter
+      if (!indexableRow(row, minAbstract)) continue; // the index's own filter
       seen.add(id);
       yield row;
       if (limit && ++yielded >= limit) {
@@ -156,7 +201,7 @@ async function* corpusRows(dir, skip, limit) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    console.log("usage: node scripts/arxiv-vectorize.mjs [--index NAME] [--corpus DIR] [--limit N] [--dry-run]");
+    console.log("usage: node scripts/arxiv-vectorize.mjs [--index NAME] [--corpus DIR] [--limit N] [--min-abstract N] [--dry-run]");
     return;
   }
   const corpusDir = join(ROOT, args.corpus);
@@ -237,7 +282,7 @@ async function main() {
     batch = [];
   };
 
-  for await (const row of corpusRows(corpusDir, pushed, args.limit)) {
+  for await (const row of corpusRows(corpusDir, pushed, args.limit, args.minAbstract)) {
     batch.push(row);
     if (batch.length >= EMBED_BATCH) await flush();
   }
