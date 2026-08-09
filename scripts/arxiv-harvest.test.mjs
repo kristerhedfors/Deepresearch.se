@@ -334,6 +334,36 @@ test("batchIds packs FEWER old-style ids per call, which a fixed count would get
   for (const batch of batchIds(old)) assert.ok(batch.join(",").length <= ID_LIST_BUDGET);
 });
 
+test("the id_list separator goes on the wire RAW, or the byte budget is a lie", () => {
+  // URLSearchParams encodes a comma as %2C — three bytes where the separator
+  // needs one — so a batch measured as 3,897 bytes leaves as 4,689 and arXiv
+  // answers "Request Line is too large (4689 > 4094)". Since batchIds budgets
+  // against the raw join, the request MUST be built with raw commas for the
+  // budget to mean anything. This asserts the two agree.
+  const ids = batchIds(Array.from({ length: 800 }, (_, i) => `2401.${String(10000 + i)}`))[0];
+
+  const encoded = new URL("https://export.arxiv.org/api/query");
+  encoded.searchParams.set("id_list", ids.join(","));
+  assert.ok(encoded.toString().includes("%2C"), "URLSearchParams does encode the comma — that is the trap");
+
+  // What fetchIdList actually builds.
+  const raw = `https://export.arxiv.org/api/query?id_list=${ids.join(",")}&max_results=${ids.length}`;
+  assert.ok(!raw.includes("%2C"), "the request must carry raw commas");
+  // The path+query is what counts against arXiv's 4,094-byte request line.
+  const requestLine = new URL(raw).pathname + new URL(raw).search;
+  assert.ok(requestLine.length <= 4094, `request line is ${requestLine.length} bytes, over arXiv's 4094 limit`);
+  assert.ok(encoded.toString().length > raw.length, "the encoded form is strictly larger, which is why it 400s");
+});
+
+test("old-style ids keep their slash on the wire too", () => {
+  // %2F would cost two extra bytes each, on exactly the ids that are already
+  // the longest — the ones a 1990s-reaching list is full of.
+  const ids = ["cond-mat/0603313", "hep-th/9711200"];
+  const raw = `https://export.arxiv.org/api/query?id_list=${ids.join(",")}&max_results=${ids.length}`;
+  assert.ok(raw.includes("cond-mat/0603313"), "the slash must not be percent-encoded");
+  assert.ok(!raw.includes("%2F"));
+});
+
 test("batchIds cannot loop on an id longer than the whole budget", () => {
   const batches = batchIds(["2401.10001", "x".repeat(ID_LIST_BUDGET + 50), "2401.10002"], ID_LIST_BUDGET);
   assert.equal(batches.flat().length, 3, "the oversized id is still sent — arXiv rejects it by name");

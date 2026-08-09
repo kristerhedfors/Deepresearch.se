@@ -751,13 +751,21 @@ async function harvestShard(shard, opts) {
  * @returns {Promise<string>}
  */
 export async function fetchIdList(ids, log = () => {}) {
-  const url = new URL(API);
-  url.searchParams.set("id_list", ids.join(","));
-  // ALWAYS sent. Without it the API answers with TEN entries whatever the
-  // batch size — HTTP 200, no warning (measured 2026-08-09: 20 ids in, 10
-  // entries out). Nothing downstream could tell that from 10 absent papers.
-  url.searchParams.set("max_results", String(ids.length));
-  return fetchOai(url, log, { allow400: true });
+  // The query string is assembled by hand, NOT with URLSearchParams, because
+  // URLSearchParams percent-encodes a comma as %2C — three bytes where the
+  // separator needs one. The byte budget below is measured against arXiv's
+  // 4,094-byte request-line limit, so tripling every separator overshoots it:
+  // 373 modern ids are 3,897 bytes raw and 4,689 encoded, and arXiv answers
+  // `400 Request Line is too large (4689 > 4094)`. A raw comma is legal in a
+  // query string and arXiv accepts it, which is what makes the budget real.
+  // Old-style ids carry a `/` for the same reason — encoding it to %2F would
+  // cost two extra bytes each on exactly the ids that are already longest.
+  const url = `${API}?id_list=${ids.join(",")}&max_results=${ids.length}`;
+  // `max_results` is ALWAYS sent. Without it the API answers with TEN entries
+  // whatever the batch size — HTTP 200, no warning (measured 2026-08-09: 20
+  // ids in, 10 entries out). Nothing downstream could tell that from 10
+  // absent papers.
+  return fetchOai(new URL(url), log, { allow400: true });
 }
 
 /**
