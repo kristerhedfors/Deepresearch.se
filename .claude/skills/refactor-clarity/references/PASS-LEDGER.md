@@ -815,3 +815,88 @@ five `scripts/` entries do.
 the tier gate forbids a `public/js` core importing `src/types.d.ts`. The copy is
 correct and forced; nothing detects divergence, so a fifth tier would leave
 `DEPTH_LINES` silently falling back to `standard`.
+
+
+## 19 — 2026-08-09, the instruments pass
+
+Diff from `9216b4ef` (pass 18): ~15,200 added lines, of which all but ~200 are
+`scripts/` and `tests/`. One subsystem family, arriving in parallel across two
+corpora: the arXiv enumeration/window/set-harvest trio (`arxiv-enumerate.mjs`
++540, `arxiv-oai-sets.mjs` +521, `arxiv-window.mjs` +251), the named-id harvest
+paths on both sides (`arxiv-harvest.mjs` +697, `pubmed-harvest.mjs` +323), and
+the gold-set builder `evalset-build.mjs` +378. The `src/` diff is prose and
+behaviour only — the literature tier's Swedish `min_score` floor, the corpus
+window sentence, two stale privacy promises. **One cut and one guard.**
+
+Both scanners were converged before the pass began: `dup-scan` returned 14
+groups and every one was already a decline row, and of `line-scan --run 8`'s 84
+runs only the `arxiv-vectorize`/`pubmed-vectorize` pair fell outside the
+register — which is decline #80, unchanged. Both outputs came from reading, and
+both are about a number that is supposed to be one number.
+
+- **`INDEX_ABSTRACT_FLOOR` → `public/js/arxiv-rag-core.js`.** The 200-char
+  index-membership rule was declared three times: exported twice under the same
+  name (`arxiv-vectorize.mjs`, `arxiv-harvest.mjs`) and once more as a bare
+  literal (`arxiv-corpus.mjs`). Only one site APPLIES it — `arxiv-corpus.mjs`
+  draws the local pack from the same population so the local and hosted nDCG
+  columns in `docs/ARXIV-RAG.md` stay comparable, and `arxiv-harvest.mjs` only
+  PREDICTS the drop so a named `--ids` list can be answered before a paid fill.
+  The sink was decided by the code twice over: `arxiv-rag-core.js` already owns
+  every other constant describing an indexed arXiv row (`MAX_PASSAGE_CHARS`,
+  `STORED_AUTHORS_HEAD`, `FULLTEXT_CHUNK_CHARS`), and `public/js/pubmed-core.js`
+  — which holds the identical constant as `MIN_ABSTRACT_CHARS` — opens by naming
+  `arxiv-rag-core.js` as the division it copied. Two of the three sites already
+  had the edge. **`rag-eval.mjs`'s `--min-abstract` default deliberately stayed a
+  literal**: that command runs over BOTH corpora, so binding it to the arXiv
+  constant would make a PubMed sample follow an arXiv number — decline #68's
+  reasoning, and the thing that keeps this cut from being one row too wide.
+- **The guard: the coverage ratchet's test globs** (the `OAUTH_SCHEMA_SQL`
+  pattern). `scripts/coverage.mjs` re-runs the suite in order to measure it, so
+  it carries its own `TEST_GLOBS` beside `package.json`'s `test` script, under a
+  "kept in sync" comment and nothing that checks it. CI runs `npm test` and then
+  `npm run coverage:check` as a separate ratchet step, so that list decides which
+  suite the ratchet measures. The copy is forced — `package.json` cannot import a
+  module, and deriving means parsing an npm command string, where a flag added to
+  `test` would arrive as a glob — so it is pinned in both directions. Making that
+  possible needed the top-level run moved behind the main guard every other
+  `scripts/` file uses; nothing imported the module, and without the guard an
+  import ran the entire suite under coverage, which is exactly why the list had
+  no test. Both pins verified by perturbation.
+
+**Why a constant was worth a cut here.** `INDEX_ABSTRACT_FLOOR` is smaller than
+`esc`, which has been declined five times. The bar gate is answered by
+consequence, as in passes 14 and 15: a drifted floor makes the harvest report a
+confident wrong number about a fill that has not happened yet, and makes the
+local pack a quietly different corpus from the hosted index whose scores are
+printed next to it. No error, no failed run, no red test — and the second one
+corrupts a comparison rather than a value, which is the case pass 15 named when
+it shared the graded-relevance rubric. Both outputs this pass are that same
+shape: **an instrument's own settings are worth single-sourcing at a size that
+would not otherwise earn it, because what drifts is not the answer but the
+meaning of the answer.**
+
+**Method lesson — the loudest asymmetry in the tree was the one to leave
+alone.** The obvious pass-18-style reading was that `arxiv-harvest.mjs` is on
+the wrong side of a split its PubMed sibling already made: PubMed's harvest
+imports its pure half from a core, arXiv's keeps ~380 pure lines in a 1,141-line
+CLI that two other CLIs then import FROM. What settled it was reading the
+sibling's header instead of comparing silhouettes. `pubmed-core.js` states its
+charter — "so the harvester, the corpus reporter, the vectorizer and the tests
+all run the same code" — and names `arxiv-rag-core.js` as the model it followed.
+arXiv's core already exists; the OAI parsers simply have no consumer that is not
+a harvester, so the condition that produced PubMed's core is absent. **Read the
+sibling's stated reason before copying its shape** — the same false symmetry
+decline #92 recorded for a `shodan-blocks.js`. That reading is also what located
+the cut, because it is what identified `arxiv-rag-core.js` as arXiv's corpus core
+rather than merely its retrieval core.
+
+**Six decline rows and one survey batch recorded**, including two from
+`dup-scan --collisions` that a body-hash pass alone would have mis-sorted
+(`vectorMetadata`, same name and role across the two corpora with different
+bodies; `withTimeout`, same name and tier with a cancel hook on one side only).
+
+**Checklist verification for prior passes** (pass 18's standing advice): all 215
+`reference` paths in `sdk/MANIFEST.json` resolve, and `SECURE_SOURCE_REFS` still
+covers the two cores pass 18 added. No file was created, moved, renamed or split
+this pass, so neither list, nor `src/assets.js`'s public-module allowlist, needed
+an entry.
