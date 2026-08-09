@@ -5,13 +5,18 @@ description: >-
   `deepresearch-se-pubmed` — "refresh PubMed", "bring the PubMed index up to
   date", "catch up on the last month of PubMed", "rebuild the PubMed corpus
   from scratch", "the biomedical index is stale", or when scheduling that
-  refresh. Two runbooks in one skill because they are the same pipeline with a
-  different starting file: a FULL rebuild (empty index, ~1.64 M citations,
-  ~2.3 h of held turn, ~EUR 13.55) and a DELTA (only the archive files added
-  since the last run, minutes, cents). Covers how to find the last-ingested
-  file without a surviving checkpoint, why a delta needs no record of what is
-  already in the index, the annual-baseline cutover that turns a delta back
-  into a rebuild, and the four traps that broke the first fill. For the
+  refresh. ALSO load it to index a NAMED LIST of citations — "index these
+  PMIDs", "add this researcher's papers", "make sure this bibliography is
+  searchable", "the corpus does not have X's work" — which is the `--pmids`
+  mode. THREE runbooks in one skill because they are the same pipeline with a
+  different starting point: a FULL rebuild (empty index, ~1.64 M citations,
+  ~2.3 h of held turn, ~EUR 13.55), a DELTA (only the archive files added
+  since the last run, minutes, cents), and a NAMED LIST (explicit PMIDs through
+  E-utilities efetch, seconds — and it must never move the delta marker).
+  Covers how to find the last-ingested file without a surviving checkpoint, why
+  a delta needs no record of what is already in the index, the annual-baseline
+  cutover that turns a delta back into a rebuild, the two ways efetch loses a
+  citation silently, and the four traps that broke the first fill. For the
   measurements, cost model and constraints see docs/PUBMED-RAG.md; for the
   provider-agnostic discipline see the **bulk-corpus-etl** skill.
 ---
@@ -42,19 +47,51 @@ cannot happen here.
 
 ## 0. Which mode you are in
 
-| | full rebuild | delta |
-|---|---|---|
-| when | the index is empty, the passage/metadata shape changed, or NLM cut a new annual baseline | routine catch-up |
-| starts at | the first file above the baseline (`n1335` for the 2026 baseline) | the file after the last ingested |
-| volume | ~1.64 M citations | ~30–60 k per week of updates |
-| wall clock | ~2.3 h at ~200 vectors/s across 8 loaders | minutes |
-| embeddings | ~€13.55 | cents |
+| | full rebuild | delta | **named list** |
+|---|---|---|---|
+| when | the index is empty, the passage/metadata shape changed, or NLM cut a new annual baseline | routine catch-up | a bibliography, a reading list, one author's works — "index exactly these citations" |
+| starts at | the first file above the baseline (`n1335` for the 2026 baseline) | the file after the last ingested | nowhere; it has no window |
+| volume | ~1.64 M citations | ~30–60 k per week of updates | as many as you list |
+| wall clock | ~2.3 h at ~200 vectors/s across 8 loaders | minutes | seconds |
+| embeddings | ~€13.55 | cents | fractions of a cent |
 
 **The annual baseline cutover is the one that catches people.** NLM cuts a new
 baseline every December and renumbers from `pubmed<YY>n0001`. When that
 happens the old file numbers are meaningless, the delta marker is stale, and
 the only correct move is a FULL rebuild against the new baseline. Check the
 year prefix in the listing before trusting a delta.
+
+### The named-list mode (`--pmids`), and the one rule that makes it safe
+
+`node scripts/pubmed-harvest.mjs --pmids <file> --out <dir>` fetches an explicit
+PMID list through E-utilities `efetch` (200 ids per request) instead of
+streaming archive files. Same parser, same filters, identical JSONL — so the
+vectorize leg is unchanged. Full description: `docs/PUBMED-RAG.md` §4.2.
+
+Reach for it when the load-order window is the reason something is missing
+rather than a retrieval failure. The 2026-08-08 case: a named researcher's 169
+PubMed-indexed papers, of which the corpus held **18**, because 89% of the work
+predates the baseline and had not been revised since. Filling that from the
+archive would mean downloading tens of gigabytes for a few hundred kilobytes.
+
+> **A `--pmids` run is NOT a delta and must never move the delta marker in
+> `docs/PUBMED-RAG.md` §7.** It adds citations from anywhere in PubMed's
+> history, so it says nothing about how far up the archive the load-order sweep
+> has reached. Moving the marker makes the next delta skip every file in
+> between — a silent hole of exactly the kind §6's verification exists to catch.
+> Record the run in §7 instead.
+
+Two things that will bite, both reproduced:
+
+- **`efetch` loses records silently.** A book PMID returns
+  `<PubmedBookArticle>`, which the article parser does not match; a PMID PubMed
+  does not hold is simply absent, HTTP 200, no `<ERROR>`. The harvester now
+  reconciles every requested id into kept / filtered / book / never-returned and
+  asserts they sum before renaming the shard — do not weaken that.
+- **Records below the 200-char abstract floor are dropped, and that is
+  correct.** Replies, corrections and policy letters go; 11 of 151 and 3 of 87
+  in the first run. They are not retrievable text and the rest of the corpus
+  obeys the same rule.
 
 ---
 

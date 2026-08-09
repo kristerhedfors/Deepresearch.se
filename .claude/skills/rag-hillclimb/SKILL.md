@@ -13,8 +13,16 @@ description: >-
   decides every verdict (an eyeballed rate difference at n=150 is noise), the
   loss-breakdown table that says WHICH stage to work on, and the append-only
   ledger docs/RAG-EVAL-LEDGER.md that stops a settled negative result being
-  re-proposed. For BUILDING a corpus see **bulk-corpus-etl**; for the arXiv
-  corpus's own facts see **arxiv-rag**; for re-running the PubMed ingest see
+  re-proposed. ALSO the place to start when retrieval is bad for ONE topic,
+  field or researcher rather than across the board — check membership with
+  get_by_ids first, because "the index cannot find it" and "the index does not
+  have it" look identical from a query and only one of them is a retrieval
+  problem. And when the complaint is about a LANGUAGE, ask which register:
+  a generated gold set writes in the document's own scientific vocabulary and
+  therefore cannot see a vernacular failure, which is why a third `svsci` arm
+  exists beside `en` and `sv`. For BUILDING a corpus see **bulk-corpus-etl**;
+  for the arXiv corpus's own facts see **arxiv-rag**; for re-running the PubMed
+  ingest — including the `--pmids` mode that fills a coverage hole — see
   **pubmed-ingest**.
 ---
 
@@ -143,6 +151,38 @@ both arms.
 **Swedish is measured WITH diacritics.** Stripping them costs orders of
 magnitude of score and has manufactured a false invariant-6 bug report once
 (`docs/PUBMED-RAG.md` §7.7).
+
+**A generated gold set cannot detect a REGISTER problem, because it writes in
+the document's own register.** `goldset` asks a model to write the question each
+paper answers, from that paper's abstract — so its Swedish is a near-translation
+of an English abstract, and inherits the abstract's Latin/Greek scientific
+vocabulary. That made PubMed Swedish parity look fine (2026-08-01, r@1 p=0.701)
+while vernacular Swedish was losing 35 points of r@10 (2026-08-08). Both
+measurements are correct; they are measuring different questions.
+
+The instrument is a **third language arm**. `run --langs` reads the gold set's
+keys directly, so a needle can carry `en`, `sv` AND `svsci` — the same question
+in vernacular and in scientific Swedish, about the SAME document, which is what
+isolates register from topic. `scripts/pubmed-dalen-goldset.json` is the worked
+example. If you are asked whether Swedish "works", ask which Swedish, and
+measure both:
+
+```bash
+node scripts/rag-eval.mjs run --corpus pubmed --gold scripts/pubmed-dalen-goldset.json \
+  --label x --langs en,sv,svsci
+```
+
+**When a gold set must survive re-ingests, pin it to NAMED documents.** Every
+generated set is sampled from a load-order window, so it silently stops being
+comparable the moment the corpus changes. A hand-written set keyed on chosen
+PMIDs stays valid across ingests and can be committed — which is the only way a
+before/after separated by a corpus change means anything.
+
+**Distinguish "the index cannot retrieve it" from "the index does not have
+it".** Ask `get_by_ids` before you conclude anything about recall. A named
+researcher's corpus coverage was **18 of 169** and every retrieval number over
+their work was measuring absence, not retrieval. Coverage-first is the rule for
+a topic slice as much as for a month.
 
 ## The control set is half of `probe`
 
