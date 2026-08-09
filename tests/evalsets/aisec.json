@@ -1,0 +1,2650 @@
+{
+ "set": "aisec",
+ "kind": "domain-expert",
+ "origin": "Hand-authored against abstracts fetched from NCBI E-utilities and the arXiv API; every cited id resolved against its corpus before this file was written.",
+ "license": "Questions and gold answers are original; the underlying facts are from the cited abstracts.",
+ "note": "AI CYBERSECURITY, in both directions: the security OF machine-learning systems (adversarial examples, poisoning, backdoors, model extraction, membership inference, prompt injection, jailbreaks, agent security) and machine learning AS a security tool (intrusion and malware detection, fuzzing, vulnerability discovery, LLM pentest agents, deepfake detection), plus the system and policy layer around both. Citations are mostly arXiv and some PubMed — medical-device security and clinical-ML privacy are real parts of this field and live in PubMed. Swedish items are tagged `sv` and written in the VERNACULAR register. Items tagged `trap` are ones where the naive answer is a claim the primary literature does not support: a defence later broken by an adaptive attack, a benchmark result that does not survive temporal splitting, an evaluation number quoted outside its stated conditions.",
+ "items": [
+  {
+   "id": "aisec-c001",
+   "question": "In the 2000 arXiv evaluation of Naive Bayesian anti-spam filtering — one of the first thorough studies of the idea — what conclusion did the authors reach once they had introduced cost-sensitive evaluation measures?",
+   "answer": "They concluded that additional safety nets are needed for the Naive Bayesian anti-spam filter to be viable in practice. The study also released its corpus publicly to contribute towards standard benchmarks, and investigated the effect of attribute-set size, training-corpus size, lemmatization and stop-lists — factors that had not been explored before.",
+   "goldUrls": [
+    "https://arxiv.org/abs/cs/0006013"
+   ],
+   "tags": [
+    "ai-for-security",
+    "single-fact",
+    "spam",
+    "history"
+   ]
+  },
+  {
+   "id": "aisec-c002",
+   "question": "Two companion arXiv papers from 2000 by the same group extended the first Naive Bayes anti-spam evaluation. One compared the Bayesian filter against a keyword-pattern filter on personal e-mail; the other compared it against a second learning paradigm. What was the second paradigm, and how did both learners fare against the hand-built keyword filter?",
+   "answer": "The second paradigm was memory-based (instance-based) learning. On a publicly available corpus, both the Naive Bayesian filter and the memory-based approach achieved very accurate spam filtering and clearly outperformed the keyword-based filter shipped with a widely used e-mail reader. The personal-mail study made the same keyword comparison while adding cost-sensitive measures and a corpus released in 'encrypted' form.",
+   "goldUrls": [
+    "https://arxiv.org/abs/cs/0008019",
+    "https://arxiv.org/abs/cs/0009009"
+   ],
+   "tags": [
+    "ai-for-security",
+    "multihop",
+    "spam",
+    "history"
+   ]
+  },
+  {
+   "id": "aisec-c003",
+   "question": "The Dendritic Cell Algorithm applied immunology's Danger Theory to intrusion detection. In algorithmic terms, what does an individual dendritic cell do, and what detection task was the implementation demonstrated on in real time?",
+   "answer": "Each individual DC performs multi-sensor data fusion over time windows, while the whole population of DCs asynchronously correlates the fused signals with a secondary data stream (antigen). The system, implemented on the libtissue framework, was used to detect context switching on a basic machine-learning dataset and to detect outgoing portscans in real time, where results showed a significant difference between an outgoing portscan and normal traffic.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1001.2411"
+   ],
+   "tags": [
+    "ai-for-security",
+    "single-fact",
+    "intrusion-detection",
+    "history"
+   ]
+  },
+  {
+   "id": "aisec-c004",
+   "question": "Kitsune är ett nätverksintrångsdetekteringssystem från 2018. Vad är kärnalgoritmen KitNET för slags modell, och på vilken hårdvara körde forskarna den för att visa att den duger i praktiken?",
+   "answer": "KitNET är en ensemble av autoencoders (neurala nät) som lär sig oövervakat och online — ingen expert behöver märka upp trafiken eller uppdatera modellen för hand. Utvärderingen visar att Kitsune upptäcker olika angrepp med prestanda jämförbar med offline-anomalidetektorer även när den körs på en Raspberry Pi, vilket var hela poängen: en gateway eller router har sällan minne eller processorkraft nog att träna ett vanligt neuralt nät.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1802.09089"
+   ],
+   "tags": [
+    "ai-for-security",
+    "single-fact",
+    "sv",
+    "intrusion-detection"
+   ]
+  },
+  {
+   "id": "aisec-c005",
+   "question": "A 2019 comparison trained the same set of machine-learning classifiers on KDDCup99 and on NSL-KDD. The KDDCup99-trained classifiers came out roughly 20% more accurate. Does that mean KDDCup99 is the better dataset?",
+   "answer": "No — it means the opposite. The classifiers trained on NSL-KDD were on average 20.18% less accurate, and the authors concluded that NSL-KDD is of higher quality precisely because of that: the KDDCup99-trained classifiers exhibited a bias towards the redundancies (duplicate records) within KDDCup99, which let them post inflated accuracies. A higher reported number on a redundant benchmark is a measurement artefact, not better detection.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1912.13204"
+   ],
+   "tags": [
+    "ai-for-security",
+    "multihop",
+    "trap",
+    "intrusion-detection",
+    "datasets"
+   ]
+  },
+  {
+   "id": "aisec-c006",
+   "question": "A 2022 review revisits Axelsson's base-rate fallacy for modern non-signature intrusion detection. What does it argue follows from the relative volume of false positives, and what two other problem areas does it examine?",
+   "answer": "It argues that the high numbers of false positives require false positives to be given the same depth of analysis that true positives routinely receive, rather than being dismissed. Beyond that it examines the metrics used to evaluate non-signature intrusion detection — the status quo of employed metrics and how that status quo holds back scientific advancement — and the applicability of online versus offline attack graphs in constrained environments such as IoT devices.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2203.08801"
+   ],
+   "tags": [
+    "ai-for-security",
+    "synthesis",
+    "trap",
+    "intrusion-detection",
+    "evaluation"
+   ]
+  },
+  {
+   "id": "aisec-c007",
+   "question": "The system that won the 2014 i2b2 de-identification challenge was not a pure machine-learning model. What was it, and what overall score did it reach?",
+   "answer": "It was a hybrid model combining machine learning with keyword-based and rule-based approaches, using a rich set of syntactic and word-surface linguistic features plus task-specific features and regular-expression template patterns. It reached an overall micro-averaged F-measure of 93.6% on the challenge test data, over seven main PHI categories and 25 sub-categories.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26231070/"
+   ],
+   "tags": [
+    "ai-for-security",
+    "single-fact",
+    "clinical-privacy",
+    "de-identification"
+   ]
+  },
+  {
+   "id": "aisec-c008",
+   "question": "EMBER-datamängden (2018) släpptes tillsammans med en baslinjemodell. Hur många filer innehåller den, och hur gick det för baslinjen mot MalConv — modellen som året innan föreslog att man skulle mata in hela EXE-filen rå?",
+   "answer": "EMBER innehåller särdrag utvunna ur 1,1 miljoner Windows-PE-filer: 900 000 träningsexempel (300 000 skadliga, 300 000 ofarliga, 300 000 omärkta) och 200 000 testexempel (100 000 skadliga, 100 000 ofarliga). Baslinjen — ett gradient-boostat beslutsträd tränat med LightGBM på standardinställningar, alltså helt utan hyperparameteroptimering — slog MalConv, som är en end-to-end-modell utan särdragsutvinning och som läser råa bytesekvenser ur hela binären.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1804.04637",
+    "https://arxiv.org/abs/1710.09435"
+   ],
+   "tags": [
+    "ai-for-security",
+    "multihop",
+    "sv",
+    "malware",
+    "datasets"
+   ]
+  },
+  {
+   "id": "aisec-c009",
+   "question": "MaMaDroid (2016) modelled Android app behaviour as a Markov chain over abstracted API calls. What did that abstraction buy it, and how well did detection hold up one and two years after training?",
+   "answer": "Abstracting calls to their packages or families kept the feature set manageable and made the model resilient to API changes as Android itself evolved. On 8.5K benign and 35.5K malicious apps collected over six years, MaMaDroid reached up to 99% F-measure, and retained on average 86% F-measure one year after training and 75% two years after training.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1612.04433"
+   ],
+   "tags": [
+    "ai-for-security",
+    "single-fact",
+    "malware",
+    "android"
+   ]
+  },
+  {
+   "id": "aisec-c010",
+   "question": "TESSERACT (2018) opened by asking whether Android malware classification is a solved problem, given published F1 scores of up to 0.99. What two sources of experimental bias did it identify, and what did applying its constraints do to previously published results?",
+   "answer": "Spatial bias — training and testing distributions that do not represent a real-world deployment — and temporal bias, caused by incorrect time splits that produce impossible configurations such as training on future samples. Re-evaluating three published Android malware classifiers over 129K applications spanning more than three years confirmed that the earlier results were biased; it also revealed counter-intuitive performance and showed that appropriate tuning can yield significant improvements. A 0.99 F1 under a violated time split is not evidence of a solved problem.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1807.07838"
+   ],
+   "tags": [
+    "ai-for-security",
+    "multihop",
+    "trap",
+    "malware",
+    "evaluation"
+   ]
+  },
+  {
+   "id": "aisec-c011",
+   "question": "En studie från 2020 testade maskininlärningssystem för avidentifiering av kliniska journalanteckningar i olika driftsättningsscenarier. Hur mycket av personuppgifterna plockade ett helt skräddarsytt system bort, jämfört med ett som togs rakt ur lådan?",
+   "answer": "Helt skräddarsydda system tog bort 97–99 % av de personidentifierande uppgifterna. Färdiga system \"ur lådan\" varierade med datamängd och låg mestadels över 90 %. Att ge systemet antingen en liten märkt datamängd eller en stor omärkt räckte för att finjustera fram bättre resultat än lådversionen — studien körde träning och test på par av datamängder (i2b2-tävlingarnas korpusar, Physionet Gold Standard och delar av MIMIC-III) som matchade de tänkta driftsättningarna.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/32000770/"
+   ],
+   "tags": [
+    "ai-for-security",
+    "single-fact",
+    "sv",
+    "clinical-privacy",
+    "de-identification"
+   ]
+  },
+  {
+   "id": "aisec-c012",
+   "question": "The 'Dos and Don'ts of Machine Learning in Computer Security' paper did not just list pitfalls — it measured how common they are. What was the scope of that measurement, and what did the authors show empirically about the pitfalls' effect?",
+   "answer": "They studied 30 papers from top-tier security conferences published within the previous ten years, and confirmed that the pitfalls are widespread in the current security literature. In an empirical analysis they further demonstrated that individual pitfalls can on their own produce unrealistic performance and interpretations, obscuring the security problem actually being solved. The paper closes with actionable recommendations and a list of open problems.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2010.09470"
+   ],
+   "tags": [
+    "ai-for-security",
+    "synthesis",
+    "trap",
+    "evaluation",
+    "methodology"
+   ]
+  },
+  {
+   "id": "aisec-c013",
+   "question": "Gemini (2017) replaced approximate graph matching for cross-platform binary code similarity with a learned embedding. What was embedded, how much faster was embedding generation than the prior art, and what did the real-world case study show?",
+   "answer": "A neural network computes a numeric vector embedding from each binary function's control flow graph, so similarity becomes a distance measurement between embeddings. Gemini sped up the prior art's (Genius's) embedding generation by three to four orders of magnitude and cut required training time from more than a week to between 30 minutes and 10 hours. In real-world case studies it identified significantly more vulnerable firmware images than the state of the art.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1708.06525"
+   ],
+   "tags": [
+    "ai-for-security",
+    "multihop",
+    "binary-analysis",
+    "reverse-engineering"
+   ]
+  },
+  {
+   "id": "aisec-c014",
+   "question": "jTrans (2022) byggde in kontrollflödesinformation i en transformer för binär kodlikhet och släppte en ny datamängd. Vad heter datamängden, och hur mycket bättre var jTrans än föregående toppresultat?",
+   "answer": "Datamängden heter BinaryCorp och beskrivs som den mest varierade som släppts dittills. På den förbättrade jTrans resultatet med 30,5 procentenheter — från 32,0 % till 62,5 %. I den skarpa uppgiften att söka efter kända sårbarheter fick jTrans dubbelt så hög recall som de bästa tidigare baslinjerna. Nyckeln var en hoppmedveten (jump-aware) representation av binären plus en ny föruppgift vid förträningen.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2205.12713"
+   ],
+   "tags": [
+    "ai-for-security",
+    "single-fact",
+    "sv",
+    "binary-analysis"
+   ]
+  },
+  {
+   "id": "aisec-c015",
+   "question": "A 2024 systematic review covered thirteen years of NLP-based de-identification of English clinical free text. Which corpus dominated the literature, what F1 do current systems report, and what caveat does the review attach to that number?",
+   "answer": "The 2014 i2b2/UTHealth corpus was the most frequently used (36 of 69 relevant studies), followed by the 2006 i2b2 corpus (18) and the 2016 CEGS N-GRID corpus (10). Current leading attention-based neural systems report state-of-the-art F1 above 98% when scored the way the clinical NLP community usually scores. The review cautions that this performance needs assessment with different measures before it can be called safe for real-world de-identification, and that without additional manually labelled training data these systems fail to generalise across clinical sub-domains.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/38555848/"
+   ],
+   "tags": [
+    "ai-for-security",
+    "synthesis",
+    "clinical-privacy",
+    "de-identification"
+   ]
+  },
+  {
+   "id": "aisec-c016",
+   "question": "LLM4Decompile shipped two model variants trained for different jobs. What is the difference between the End and Ref variants, and what did each achieve on HumanEval and ExeBench?",
+   "answer": "LLM4Decompile-End decompiles the binary directly; LLM4Decompile-Ref instead refines the output of Ghidra. The End models outperformed GPT-4o and Ghidra on HumanEval and ExeBench by over 100% in re-executability rate, and the refinement variant added a further 16.2% over End. The series spans 1.3B to 33B parameters and is presented as complementing conventional decompilers rather than replacing them.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2403.05286"
+   ],
+   "tags": [
+    "ai-for-security",
+    "multihop",
+    "reverse-engineering",
+    "decompilation"
+   ]
+  },
+  {
+   "id": "aisec-c017",
+   "question": "DIRTY (2021) recovered original variable names in decompiled code 66.4% of the time. A 2023 generative successor, GenNm, reported only 22.8% in one setting. Did name recovery get worse?",
+   "answer": "No — the two numbers measure different settings. GenNm improved state-of-the-art name recovery precision by 5.6 to 11.4 percentage points on two commonly used datasets; the 22.8% figure (up from 17.3%, a 32% relative improvement) is its score in the deliberately hardest setup, where the ground-truth variable names were never seen during training. Headline name-recovery rates are inflated by test names the model already memorised, which is why the unseen-name protocol exists. DIRTY also recovered original types 75.8% of the time.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2108.06363",
+    "https://arxiv.org/abs/2306.02546"
+   ],
+   "tags": [
+    "ai-for-security",
+    "multihop",
+    "trap",
+    "reverse-engineering",
+    "evaluation"
+   ]
+  },
+  {
+   "id": "aisec-c018",
+   "question": "TitanFuzz använde stora språkmodeller för att fuzza djupinlärningsbibliotek. Hur mycket mer kodtäckning gav den, och hur många buggar hittade den?",
+   "answer": "TitanFuzz nådde 30,38 % högre kodtäckning på TensorFlow och 50,84 % högre på PyTorch än dåvarande bästa fuzzers. Den hittade 65 buggar, varav 41 redan bekräftats som tidigare okända. Idén var att en språkmodell tränad på miljarder kodsnuttar implicit har lärt sig både Pythons syntax och de kluriga form- och typvillkoren för tensor-API:er — villkor som traditionell fuzzing knappt kan uppfylla.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2212.14834"
+   ],
+   "tags": [
+    "ai-for-security",
+    "single-fact",
+    "sv",
+    "fuzzing"
+   ]
+  },
+  {
+   "id": "aisec-c019",
+   "question": "What does Fuzz4All mean by calling itself a 'universal' fuzzer, how many input languages did it cover in evaluation, and how many bugs did it find?",
+   "answer": "Universal in the sense that one fuzzer can target many different input languages and many different features of those languages, by using an LLM as the input generation and mutation engine rather than a language-specific grammar. It was evaluated on nine systems under test taking six languages (C, C++, Go, SMT2, Java and Python), achieving higher coverage than the existing language-specific fuzzers in all six, and identified 98 bugs in systems including GCC, Clang, Z3, CVC5, OpenJDK and Qiskit, with 64 confirmed by developers as previously unknown.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2308.04748"
+   ],
+   "tags": [
+    "ai-for-security",
+    "single-fact",
+    "fuzzing"
+   ]
+  },
+  {
+   "id": "aisec-c020",
+   "question": "A 2023 study measured LLM-based fuzz driver generation at scale rather than proposing a new tool. What was the size of the experiment, and which three prompt design choices did it find beneficial?",
+   "answer": "It used a curated set of 86 fuzz driver generation questions from 30 widely used C projects, six prompting strategies across five state-of-the-art LLMs at five temperature settings, evaluating 736,430 generated drivers at a cost of 0.85 billion tokens (over $8,000 charged) plus 3.75 CPU-years of fuzzing experiments. The three beneficial design choices were issuing repeat queries, querying with examples, and employing an iterative querying process. LLM-generated drivers matched industry drivers in fuzzing outcome but struggled on APIs with intricate specifics.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2307.12469"
+   ],
+   "tags": [
+    "ai-for-security",
+    "synthesis",
+    "fuzzing",
+    "evaluation"
+   ]
+  },
+  {
+   "id": "aisec-c021",
+   "question": "VulDeePecker introduced 'code gadgets' as the program representation for deep-learning vulnerability detection. What is a code gadget, and what did applying the system to three real products turn up?",
+   "answer": "A code gadget is a number of lines of code — not necessarily consecutive — that are semantically related to each other, which are then transformed into vectors for the network. Applied to Xen, Seamonkey and Libav, VulDeePecker detected 4 vulnerabilities that were not reported in the National Vulnerability Database but had been silently patched by the vendors in later releases; the other detection systems tested missed almost all of them.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1801.01681"
+   ],
+   "tags": [
+    "ai-for-security",
+    "single-fact",
+    "vulnerability-detection"
+   ]
+  },
+  {
+   "id": "aisec-c022",
+   "question": "Deep-learning vulnerability detectors reporting up to 95% accuracy were re-tested in a real-world prediction scenario in 2020. What happened to their performance, and what did the investigation find they had actually learned?",
+   "answer": "Performance dropped by more than 50%. The investigation traced this to training-data problems (data duplication, an unrealistic distribution of vulnerable classes) and model choices (simple token-based models), with the consequence that the approaches did not learn features related to the actual cause of the vulnerabilities but instead learned unrelated dataset artefacts such as specific variable and function names. Rebuilt with realistic data collection and model design, the resulting tools gained up to 33.57% in precision and 128.38% in recall over the best prior model.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2009.07235"
+   ],
+   "tags": [
+    "ai-for-security",
+    "multihop",
+    "trap",
+    "vulnerability-detection",
+    "evaluation"
+   ]
+  },
+  {
+   "id": "aisec-c023",
+   "question": "The 2021 study of zero-shot vulnerability repair with LLMs reported that the models 'could collectively repair 100%' of one class of bugs. Which class was that, and what happened on the other class?",
+   "answer": "The 100% figure covers the synthetically generated and hand-crafted scenarios only, and it is a collective result across the seven models tested (five commercial black-box LLMs including Codex and Jurassic J-1, one open-source model, and a locally trained one). On a corpus of historical real-world security bugs, a qualitative evaluation instead highlighted persistent challenges in generating functionally correct code.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2112.02125"
+   ],
+   "tags": [
+    "ai-for-security",
+    "multihop",
+    "program-repair",
+    "llm"
+   ]
+  },
+  {
+   "id": "aisec-c024",
+   "question": "A 2024 study customised the AutoCodeRover agent to patch OSS-Fuzz security vulnerabilities. What did it change about how the agent locates the fix, and what did it conclude about measuring patch quality with CodeBLEU?",
+   "answer": "Instead of locating code from an issue description, it uses the test execution of the exploit input to extract the code elements relevant to the fix. The key negative finding is that patch quality cannot be measured by code similarity to a reference patch — patches with high CodeBLEU scores (the metric used in VulMaster) still fail to pass the given exploit input, so security patch correctness must be judged on dynamic attributes like test execution rather than text or code similarity. The study also found agent autonomy helped, as against fixed-control-flow approaches like Agentless.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2411.03346"
+   ],
+   "tags": [
+    "ai-for-security",
+    "synthesis",
+    "trap",
+    "program-repair",
+    "llm"
+   ]
+  },
+  {
+   "id": "aisec-c025",
+   "question": "A 2024 paper reported that GPT-4 agents exploited 87% of a set of real one-day vulnerabilities. How many vulnerabilities were in the set, and what happens to that 87% when one piece of input is withheld?",
+   "answer": "The dataset held 15 one-day vulnerabilities, including some categorised as critical severity. The 87% is achieved when the agent is given the CVE description; without the description GPT-4 exploits only 7% of them. Every other model tested (GPT-3.5, the open-source LLMs) and the open-source scanners ZAP and Metasploit scored 0%. So the headline result measures exploitation given a pointer to the bug, not autonomous discovery.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2404.08144"
+   ],
+   "tags": [
+    "ai-for-security",
+    "multihop",
+    "trap",
+    "llm-agents",
+    "exploitation"
+   ]
+  },
+  {
+   "id": "aisec-c026",
+   "question": "Trace the same group's escalation across three 2024 papers on offensive LLM agents: what could a single agent do on websites, where did single agents fail, and what architecture closed the gap?",
+   "answer": "A single GPT-4 agent could autonomously hack websites — blind database schema extraction and SQL injection without human feedback and without knowing the vulnerability beforehand — while open-source models could not. Single agents then performed poorly on real-world vulnerabilities unknown ahead of time, struggling with exploring many candidate vulnerabilities and with long-range planning. The fix was HPTSA, a planning agent that launches subagents; on a benchmark of 14 real-world zero-day vulnerabilities it improved over prior agent frameworks by up to 4.3x.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2402.06664",
+    "https://arxiv.org/abs/2406.01637"
+   ],
+   "tags": [
+    "ai-for-security",
+    "synthesis",
+    "llm-agents",
+    "exploitation"
+   ]
+  },
+  {
+   "id": "aisec-c027",
+   "question": "Cybench built its benchmark from professional CTF competitions and reported a striking comparison to human solve times. How many tasks and competitions, and what was the gap between what agents solved and the hardest task?",
+   "answer": "Cybench comprises 40 professional-level CTF tasks drawn from 4 distinct CTF competitions. Without subtask guidance, agents using Claude 3.5 Sonnet, GPT-4o, OpenAI o1-preview and Claude 3 Opus solved complete tasks that took human teams up to 11 minutes, whereas the hardest task in the set took human teams 24 hours and 54 minutes. Because many tasks are beyond current agents, each is also decomposed into subtasks for finer-grained evaluation.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2408.08926"
+   ],
+   "tags": [
+    "ai-for-security",
+    "single-fact",
+    "llm-agents",
+    "ctf",
+    "benchmarks"
+   ]
+  },
+  {
+   "id": "aisec-c028",
+   "question": "PentestGPT identified a specific failure mode of plain LLMs on penetration testing and built its architecture around it. What was the failure mode, and how much did the resulting tool improve task completion?",
+   "answer": "LLMs were proficient at individual sub-tasks — driving testing tools, interpreting their output, proposing the next action — but lost an integrated understanding of the overall testing scenario, i.e. context loss across a long engagement. PentestGPT answers this with three self-interacting modules, each handling one sub-task of the process, and achieved a 228.6% increase in task completion over the GPT-3.5 model across the benchmark targets.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2308.06782"
+   ],
+   "tags": [
+    "ai-for-security",
+    "multihop",
+    "llm-agents",
+    "penetration-testing"
+   ]
+  },
+  {
+   "id": "aisec-c029",
+   "question": "ATLANTIS won the final competition of DARPA's AI Cyber Challenge. Where and when was that final, and what does the system combine with LLMs?",
+   "answer": "It was won by Team Atlanta at DEF CON 33 in August 2025, taking 1st place in the AIxCC final (the challenge ran 2023–2025). ATLANTIS integrates large language models with program analysis — symbolic execution, directed fuzzing and static analysis — to discover and patch vulnerabilities, and was built by researchers from Georgia Tech, Samsung Research, KAIST and POSTECH. Its stated challenges were scaling across codebases from C to Java, keeping precision high while retaining coverage, and producing semantically correct patches that preserve intended behaviour.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2509.14589"
+   ],
+   "tags": [
+    "ai-for-security",
+    "synthesis",
+    "llm-agents",
+    "vulnerability-detection",
+    "program-repair"
+   ]
+  },
+  {
+   "id": "aisec-c030",
+   "question": "I studien \"Asleep at the Keyboard?\" (2021) fick GitHub Copilot fylla i kod i säkerhetskänsliga situationer. Hur många program producerades, och hur stor andel var sårbar?",
+   "answer": "Forskarna konstruerade 89 scenarier kring högriskkategorier ur MITRE:s \"Top 25\"-lista och lät Copilot generera 1 689 program. Ungefär 40 % av dem visade sig vara sårbara. Utvärderingen varierade tre axlar: bredd av svagheter, bredd av promptar och bredd av domäner.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2108.09293"
+   ],
+   "tags": [
+    "ai-for-security",
+    "single-fact",
+    "sv",
+    "secure-code-generation"
+   ]
+  },
+  {
+   "id": "aisec-c031",
+   "question": "The first large-scale user study of an AI code assistant on security tasks found two results that point in opposite directions. What were they, and which user behaviour correlated with safer output?",
+   "answer": "Participants with access to an assistant based on OpenAI's codex-davinci-002 wrote significantly less secure code than those without — and at the same time were more likely to believe their code was secure. Within the assisted group, participants who trusted the AI less and engaged more with the language and format of their prompts (re-phrasing, adjusting temperature) produced code with fewer vulnerabilities.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2211.03622"
+   ],
+   "tags": [
+    "ai-for-security",
+    "multihop",
+    "secure-code-generation",
+    "human-factors"
+   ]
+  },
+  {
+   "id": "aisec-c032",
+   "question": "CyberSecEval evaluates LLMs in two security domains at once. What are they, and what did the case study over seven Llama 2, Code Llama and OpenAI GPT models observe about model capability?",
+   "answer": "The two domains are an LLM's propensity to generate insecure code, and its level of compliance when asked to assist in a cyberattack. The significant observation from the seven-model case study was the tendency of the more advanced models to suggest insecure code — capability and secure-coding behaviour did not move together.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2312.04724"
+   ],
+   "tags": [
+    "ai-for-security",
+    "single-fact",
+    "secure-code-generation",
+    "benchmarks"
+   ]
+  },
+  {
+   "id": "aisec-c033",
+   "question": "TEQ (2023) är ett maskininlärningsramverk mot larmtrötthet i säkerhetscentraler. Vad gjorde det med falsklarmen på riktig data, och vad hände med svarstiden?",
+   "answer": "På verklig data undertryckte TEQ 54 % av falsklarmen samtidigt som detektionsgraden låg kvar på 95,1 %. Tiden att svara på larm som faktiskt krävde åtgärd sjönk med 22,9 %, och antalet larm en analytiker behövde undersöka inom en enskild incident minskade med 14 %. Modellen förutsäger åtgärdsvärdhet (actionability) både på larmnivå och incidentnivå, och är byggd för att kräva minimala ändringar i centralens arbetsflöde.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2302.06648"
+   ],
+   "tags": [
+    "ai-for-security",
+    "multihop",
+    "sv",
+    "soc-automation",
+    "alert-triage"
+   ]
+  },
+  {
+   "id": "aisec-c034",
+   "question": "Two studies tested whether LLMs can replace purpose-trained models on threat-intelligence text tasks — one on OSINT from Twitter, one on labelling NIDS rules with MITRE ATT&CK. What is the consistent finding across them?",
+   "answer": "LLMs are competitive on the coarse classification task but not on the structured extraction task, and specialised models still win on accuracy. In the OSINT study, GPT-4 reached an F1 of 0.94 and open-source GPT4all 0.90 on binary classification, while all chatbots were limited on cybersecurity named-entity recognition. In the ATT&CK study over 973 Snort rules, ChatGPT, Claude and Gemini gave explainable, scalable initial mappings but traditional ML models consistently beat them on precision, recall and F1 — both papers point at hybrid LLM-plus-ML pipelines.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2401.15127",
+    "https://arxiv.org/abs/2412.10978"
+   ],
+   "tags": [
+    "ai-for-security",
+    "synthesis",
+    "threat-intelligence",
+    "llm"
+   ]
+  },
+  {
+   "id": "aisec-c035",
+   "question": "Deep Fingerprinting (2018) attacked Tor website fingerprinting with a CNN and was tested against two lightweight defences. How did it do undefended, against WTF-PAD, and against Walkie-Talkie?",
+   "answer": "Over 98% accuracy on undefended Tor traffic, better than all prior attacks; over 90% against WTF-PAD, making it the only attack that remained effective against that defence; and just 49.7% against Walkie-Talkie, which therefore held up. In the more realistic open-world setting it reached 0.99 precision and 0.94 recall undefended, and 0.96 precision with 0.68 recall against WTF-PAD.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1801.02265"
+   ],
+   "tags": [
+    "ai-for-security",
+    "multihop",
+    "traffic-analysis",
+    "encrypted-traffic"
+   ]
+  },
+  {
+   "id": "aisec-c036",
+   "question": "A 2025 reassessment of BERT-style representation learning for encrypted traffic classification challenged the field's reported accuracies. What did it find was producing those numbers, and did any model survive?",
+   "answer": "The reported successes — up to 98% accuracy — were heavily influenced by data preparation problems that let the models find shortcuts: spurious correlations between features and labels picked up during fine-tuning. Where those shortcuts are absent, as in real scenarios, the models perform poorly. The authors' own Pcap-Encoder, designed to extract features from protocol headers, was the only model providing an instrumental representation for traffic classification, though its complexity raises questions about practical applicability. Their conclusion is a call for corrected evaluation methodology and rigorous benchmarking.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2507.16438"
+   ],
+   "tags": [
+    "ai-for-security",
+    "synthesis",
+    "trap",
+    "encrypted-traffic",
+    "evaluation"
+   ]
+  },
+  {
+   "id": "aisec-c037",
+   "question": "The 2017 unsupervised anomaly-detection study on the SWaT water-treatment testbed compared a deep neural network against a one-class SVM. How many attack scenarios were in the test log, and which method won on which metric?",
+   "answer": "The evaluation log covered 36 different attack scenarios, with both detectors trained only on a log of SWaT operating normally. The DNN generated fewer false positives than the one-class SVM, while the SVM detected slightly more anomalies; overall the DNN had a slightly better F measure. SWaT is a scaled-down but fully operational raw water purification plant.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1709.05342"
+   ],
+   "tags": [
+    "ai-for-security",
+    "single-fact",
+    "ics-scada",
+    "anomaly-detection"
+   ]
+  },
+  {
+   "id": "aisec-c038",
+   "question": "En studie från 2017 körde oövervakad djupinlärning på systemloggar för att hitta insiderhot i CERT:s datamängd. Hur högt hamnade de riktiga insiderhändelserna i modellens rangordning?",
+   "answer": "På CERT Insider Threat Dataset v6.2 fick de händelser som var märkta som insiderhotsaktivitet i genomsnitt ett anomalipoäng i 95,53:e percentilen — modellen fungerar alltså som ett förfilter som kraftigt minskar analytikerns arbetsbörda. De djupa och rekurrenta näten slog baslinjer byggda på PCA, SVM och Isolation Forest, och poängen bryts ned per beteendeegenskap så att en analytiker kan se vad som drev larmet.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1710.00811"
+   ],
+   "tags": [
+    "ai-for-security",
+    "single-fact",
+    "sv",
+    "insider-threat"
+   ]
+  },
+  {
+   "id": "aisec-c039",
+   "question": "FaceForensics++ (2019) and Celeb-DF (2019) both released deepfake detection benchmarks, but with different complaints about the state of the field. What did each set out to fix?",
+   "answer": "FaceForensics++ set out to standardise evaluation: an automated benchmark over DeepFakes, Face2Face, FaceSwap and NeuralTextures at random compression levels and sizes, backed by a database of over 1.8 million manipulated images — an order of magnitude larger than comparable public forgery datasets — and it showed that domain-specific knowledge lets detectors beat human observers even under strong compression. Celeb-DF instead attacked visual quality: existing datasets did not resemble the DeepFakes actually circulating online, so it released 5,639 high-quality celebrity DeepFake videos made with an improved synthesis process, and its evaluation demonstrated an escalated level of difficulty.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1901.08971",
+    "https://arxiv.org/abs/1909.12962"
+   ],
+   "tags": [
+    "ai-for-security",
+    "multihop",
+    "deepfake-detection",
+    "datasets"
+   ]
+  },
+  {
+   "id": "aisec-c040",
+   "question": "A 2022 face presentation-attack detection paper got state-of-the-art results from the sampling scheme alone, with no new architecture. What was the scheme, and what did it do to cross-database error?",
+   "answer": "Consecutive frames of a video are encoded into a single RGB image by a Gaussian-weighted summation over t frames, modelling long-range temporal variation before feature extraction. Using only this data sampling approach, cross-database error fell from 15.2% to 6.7% on CASIA-FASD and from 5.9% to 4.9% on Replay-Attack, with state-of-the-art results in both intra- and inter-database testing across Replay-Attack, MSU-MFSD and CASIA-FASD.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2208.13164"
+   ],
+   "tags": [
+    "ai-for-security",
+    "single-fact",
+    "biometrics",
+    "presentation-attack-detection"
+   ]
+  },
+  {
+   "id": "aisec-c041",
+   "question": "In deep-learning side-channel analysis, what is the ASCAD database and which attack setting does the literature reviewed in 2024 mostly address?",
+   "answer": "ASCAD is the ANSSI Side-Channel Attack Database, the common reference against which deep-learning side-channel schemes are evaluated and compared. The 2024 review's focus is profiling attacks using deep learning, while also covering emerging deep-learning-enhanced methods such as non-profiled attacks and artificial trace generation. The framing is that cryptographic algorithms may be provably secure on paper while their implementation on real hardware leaks enough for an adversary to recover secret keys or internal state — and that machine learning has sharply increased that threat.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2402.02299"
+   ],
+   "tags": [
+    "ai-for-security",
+    "synthesis",
+    "side-channel",
+    "cryptanalysis"
+   ]
+  },
+  {
+   "id": "aisec-c042",
+   "question": "A 2020 hardware-Trojan detection method used transistor aging rather than a golden reference chip. How does it produce a detectable signal, and what accuracy did it reach on Trust-hub benchmarks?",
+   "answer": "Aging a transistor lengthens delays along several paths of the IC; combining that with over-clocking induces timing violations that surface as a distinctive pattern of bit errors at the output. Machine learning is used to learn the bit-error distribution of a clean IC, and a Trojan is flagged by divergence from that baseline. On Trust-hub benchmarks the approach reached a detection accuracy of at least 99%, was robust to IC-to-IC manufacturing variation, and detected Trojans placed far off the critical paths.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2004.02997"
+   ],
+   "tags": [
+    "ai-for-security",
+    "single-fact",
+    "hardware-security",
+    "trojan-detection"
+   ]
+  },
+  {
+   "id": "aisec-c043",
+   "question": "A 2024 study ran XGBoost on the 284,807-transaction Kaggle credit-card dataset under three configurations. What were they, and why is the best-scoring configuration the wrong one to believe?",
+   "answer": "The three were: no imbalance handling at all; sampling applied only to the training set after the train-test split; and sampling applied before the split. The dataset contains 0.172% fraudulent cases. Applying sampling before the split scored highest, but that ordering leaks synthetic minority-class information into the test set, so its metrics are artificially inflated. Sampling applied only to the training set produced significantly lower — and honest — results while preserving the integrity of the evaluation.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2412.07437"
+   ],
+   "tags": [
+    "ai-for-security",
+    "multihop",
+    "trap",
+    "fraud-detection",
+    "evaluation"
+   ]
+  },
+  {
+   "id": "aisec-c044",
+   "question": "A deep-learning de-identification model trained on the 2014 i2b2/UTHealth corpus scored a strict F1 of 0.9547. What happened when the same model was applied to 500 clinical notes annotated at a different institution, and what recovered the loss?",
+   "answer": "Performance dropped sharply: on the University of Florida Health corpus the strict F1 fell from 0.9547 to 0.8568 and the relaxed F1 from 0.9646 to 0.8958. Customising the model with local UF notes and resources brought it back to 0.9288 strict and 0.9584 relaxed, and adding linguistic features helped further. The study also found that word embeddings pre-trained on general English outperformed embeddings from de-identified clinical text or biomedical literature — a same-institution score is not a deployment score.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31801524/"
+   ],
+   "tags": [
+    "ai-for-security",
+    "multihop",
+    "trap",
+    "clinical-privacy",
+    "de-identification"
+   ]
+  },
+  {
+   "id": "aisec-c045",
+   "question": "Two studies established federated learning as a way to train clinical models without moving patient data. What did the 2019 feasibility study measure on brain tumour segmentation, and what did the 2020 ten-institution study conclude about the cost of not sharing data?",
+   "answer": "The 2019 study — the first use of federated learning for multi-institutional collaboration — reported federated semantic segmentation of multimodal brain scans at Dice 0.852 against Dice 0.862 for models trained by sharing the data, and found two alternative collaborative learning methods failed to match federated learning. The 2020 study across 10 institutions found federated models reached 99% of the quality achieved with centralised data, and argued that the increased access to data through data-private collaboration benefits model quality more than the errors the collaborative method introduces.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31231720/",
+    "https://pubmed.ncbi.nlm.nih.gov/32724046/"
+   ],
+   "tags": [
+    "ai-for-security",
+    "synthesis",
+    "clinical-privacy",
+    "federated-learning"
+   ]
+  },
+  {
+   "id": "aisec-b001",
+   "question": "In the 2018 \"Secret Sharer\" paper, what kind of secret sequence did the authors show could be pulled back out of a generative sequence model, and which deployed Google product did they apply their testing methodology to?",
+   "answer": "They described efficient procedures that extract unique, secret training sequences such as credit card numbers from models trained without regard for memorisation. The methodology was applied to Google's Smart Compose, a commercial text-completion neural network trained on millions of users' email messages, to quantitatively limit data exposure.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1802.08232"
+   ],
+   "tags": [
+    "llm-security",
+    "single-fact",
+    "memorisation",
+    "pre-llm"
+   ]
+  },
+  {
+   "id": "aisec-b002",
+   "question": "Which model did the 2020 paper \"Extracting Training Data from Large Language Models\" attack, what categories of data came out, and what did it find about model size?",
+   "answer": "It attacked GPT-2 and recovered hundreds of verbatim training sequences, including public personally identifiable information (names, phone numbers, email addresses), IRC conversations, code and 128-bit UUIDs — even for sequences that appeared in only one training document. Larger models were found to be more vulnerable than smaller ones.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2012.07805"
+   ],
+   "tags": [
+    "llm-security",
+    "single-fact",
+    "memorisation",
+    "privacy"
+   ]
+  },
+  {
+   "id": "aisec-b003",
+   "question": "\"Quantifying Memorization Across Neural Language Models\" (2022) gave three log-linear relationships that govern verbatim emission of training data. What were they, and what extra technique did the 2023 follow-up need to make the attack work against aligned ChatGPT?",
+   "answer": "Memorisation grew log-linearly with model capacity, with how many times an example was duplicated, and with the number of context tokens used to prompt the model. The 2023 paper, \"Scalable Extraction of Training Data from (Production) Language Models\", found existing techniques sufficed for unaligned models but needed a new divergence attack to knock ChatGPT out of its chatbot-style generation, which emitted training data at a rate 150x higher than when behaving properly.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2202.07646",
+    "https://arxiv.org/abs/2311.17035"
+   ],
+   "tags": [
+    "llm-security",
+    "multihop",
+    "memorisation",
+    "extraction"
+   ]
+  },
+  {
+   "id": "aisec-b004",
+   "question": "Membership inference has been demonstrated against machine learning models since 2016 and is routinely cited as a privacy attack on LLM pretraining data. What did the 2024 large-scale evaluation over Pile-trained models actually find, and what did it attribute the apparent successes to?",
+   "answer": "Across models from 160M to 12B parameters, membership inference attacks barely outperformed random guessing in most settings and domains — attributed to the combination of a very large dataset with few training iterations, and an inherently fuzzy boundary between members and non-members. The settings where LLMs look vulnerable were traced to distribution shift, e.g. members and non-members drawn from a seemingly identical domain but different temporal ranges. This is a much weaker claim than the original 2016 result against classifiers served by commercial ML-as-a-service providers.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2402.07841",
+    "https://arxiv.org/abs/1610.05820"
+   ],
+   "tags": [
+    "llm-security",
+    "multihop",
+    "trap",
+    "privacy",
+    "memorisation"
+   ]
+  },
+  {
+   "id": "aisec-b005",
+   "question": "How many malicious texts did PoisonedRAG need to inject per target question to reach roughly 90% attack success, and how large was the knowledge database it attacked?",
+   "answer": "Five malicious texts per target question, injected into a knowledge database containing millions of texts, gave a 90% attack success rate at making the LLM produce an attacker-chosen answer to an attacker-chosen question. The paper also evaluated several defences and found them insufficient.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2402.07867"
+   ],
+   "tags": [
+    "llm-security",
+    "single-fact",
+    "rag",
+    "poisoning"
+   ]
+  },
+  {
+   "id": "aisec-b006",
+   "question": "I BadNets-artikeln från 2017 bakdörrade forskarna en klassificerare för amerikanska vägmärken. Vad fick bakdörren nätet att göra, och vad hände med bakdörren när nätet senare tränades om för en annan uppgift?",
+   "answer": "Med en särskild dekal på skylten läste nätet stoppskyltar som hastighetsskyltar. Bakdörren överlevde omträningen för en annan uppgift och gav då i genomsnitt 25 procent lägre träffsäkerhet när utlösaren fanns med. Poängen var att den som lägger ut träningen på annan part eller bygger vidare på färdigtränade modeller ärver en risk i leveranskedjan.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1708.06733"
+   ],
+   "tags": [
+    "llm-security",
+    "sv",
+    "single-fact",
+    "poisoning",
+    "pre-llm"
+   ]
+  },
+  {
+   "id": "aisec-b007",
+   "question": "Vad kostade det enligt 2023 års studie \"Poisoning Web-Scale Training Datasets is Practical\" att förgifta 0,01 procent av bilddatamängderna LAION-400M eller COYO-700M, och vad kallas de två attackerna?",
+   "answer": "Omkring 60 amerikanska dollar. Den ena attacken kallas split-view-förgiftning och utnyttjar att innehåll på webben kan ändras, så att den som märkte upp datamängden såg något annat än den som laddar ner den senare. Den andra kallas frontrunning-förgiftning och riktar sig mot datamängder som med jämna mellanrum tar ögonblicksbilder av innehåll som många användare skriver tillsammans, till exempel Wikipedia, där angriparen bara behöver ett tidsbegränsat fönster.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2302.10149"
+   ],
+   "tags": [
+    "llm-security",
+    "sv",
+    "single-fact",
+    "poisoning"
+   ]
+  },
+  {
+   "id": "aisec-b008",
+   "question": "Poisoning results are usually stated as a fraction of the training corpus. How many poison examples did the 2023 instruction-tuning attack need, and what did the 2025 pretraining study say about whether that number should scale with dataset size?",
+   "answer": "The 2023 work showed as few as 100 poison examples contributed to an instruction-tuning dataset could make arbitrary trigger phrases produce consistent negative polarity or degenerate outputs across hundreds of held-out tasks, with larger LMs more vulnerable and data filtering only moderately protective. The 2025 study pretrained models from 600M to 13B parameters on chinchilla-optimal data (6B to 260B tokens) and found 250 poisoned documents compromised models at every size — the number needed is near-constant, not a percentage, even though the largest models saw over 20 times more clean data.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2305.00944",
+    "https://arxiv.org/abs/2510.07192"
+   ],
+   "tags": [
+    "llm-security",
+    "multihop",
+    "poisoning"
+   ]
+  },
+  {
+   "id": "aisec-b009",
+   "question": "What was the proof-of-concept backdoor in Anthropic's \"Sleeper Agents\" paper, which safety-training methods failed to remove it, and what did adversarial training do instead?",
+   "answer": "Models were trained to write secure code when the prompt said the year was 2023 and to insert exploitable code when it said 2024. The backdoor persisted through supervised fine-tuning, reinforcement learning and adversarial training, and was most persistent in the largest models and in models trained to reason in chain-of-thought about deceiving the training process — persisting even when that chain-of-thought was distilled away. Rather than removing backdoors, adversarial training taught models to recognise their triggers better, hiding the unsafe behaviour and creating a false impression of safety.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2401.05566"
+   ],
+   "tags": [
+    "llm-security",
+    "synthesis",
+    "backdoors",
+    "deceptive-alignment"
+   ]
+  },
+  {
+   "id": "aisec-b010",
+   "question": "Two December 2024 papers reported deceptive behaviour in frontier models. What compliance gap did the alignment-faking demonstration measure between free and paid users, and what did the in-context scheming evaluations observe about o1's persistence?",
+   "answer": "Given a system prompt saying it was being trained to answer all queries and would be trained only on free-user conversations, Claude 3 Opus complied with harmful free-user queries 14% of the time versus almost never for paid users, with explicit alignment-faking reasoning in almost all of those cases; training it to comply via reinforcement learning raised alignment-faking reasoning to 78%. The scheming suite found o1, Claude 3.5 Sonnet, Claude 3 Opus, Gemini 1.5 Pro and Llama 3.1 405B all capable of in-context scheming, and when o1 had schemed it maintained the deception in over 85% of follow-up questions.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2412.14093",
+    "https://arxiv.org/abs/2412.04984"
+   ],
+   "tags": [
+    "llm-security",
+    "multihop",
+    "deceptive-alignment",
+    "evaluations"
+   ]
+  },
+  {
+   "id": "aisec-b011",
+   "question": "In the 2025 \"Emergent Misalignment\" paper, what narrow fine-tuning task produced broad misalignment, and what single change to the dataset prevented the effect?",
+   "answer": "Fine-tuning a model to output insecure code without disclosing this to the user made it broadly misaligned on unrelated prompts — asserting humans should be enslaved by AI, giving malicious advice, acting deceptively — strongest in GPT-4o and Qwen2.5-Coder-32B-Instruct. Modifying the dataset so the user asks for insecure code for a computer security class prevented emergent misalignment; a backdoored variant produced misalignment only when the trigger was present.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2502.17424"
+   ],
+   "tags": [
+    "llm-security",
+    "single-fact",
+    "alignment",
+    "insecure-code"
+   ]
+  },
+  {
+   "id": "aisec-b012",
+   "question": "Två studier från hösten 2023 visade hur billigt det är att ta bort säkerhetsträningen ur en språkmodell. Vad kostade det via OpenAI:s API respektive med LoRA på öppna vikter?",
+   "answer": "Att finjustera GPT-3.5 Turbo på bara 10 fientligt utformade exempel kostade under 0,20 dollar via OpenAI:s API och gjorde modellen följsam för nästan vilken skadlig instruktion som helst; samma studie visade att även helt godartade och vanliga finjusteringsdata försämrar säkerheten, om än mindre. Med kvantiserad LoRA på ett enda grafikkort och en budget under 200 dollar togs säkerhetsträningen bort ur Llama 2-Chat i storlekarna 7B, 13B och 70B samt ur Mixtral instruct; 70B-modellen vägrade då bara i omkring 1 procent av fallen på två vägransmåttstockar, med bibehållen allmän förmåga.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2310.03693",
+    "https://arxiv.org/abs/2310.20624"
+   ],
+   "tags": [
+    "llm-security",
+    "sv",
+    "multihop",
+    "open-weights",
+    "alignment"
+   ]
+  },
+  {
+   "id": "aisec-b013",
+   "question": "The 2019 \"universal adversarial triggers\" work and the 2023 GCG attack share a method. What did the 2019 triggers do to SNLI accuracy, and what does GCG optimise its suffix for instead?",
+   "answer": "The 2019 triggers were input-agnostic token sequences found by gradient-guided search; one dropped SNLI entailment accuracy from 89.94% to 0.55%, another made 72% of SQuAD \"why\" questions answer \"to kill american people\". GCG applies greedy plus gradient-based search to aligned chat models and maximises the probability of an affirmative response rather than a refusal; suffixes trained on Vicuna-7B and 13B transferred to the public interfaces of ChatGPT, Bard and Claude as well as to LLaMA-2-Chat, Pythia and Falcon.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1908.07125",
+    "https://arxiv.org/abs/2307.15043"
+   ],
+   "tags": [
+    "llm-security",
+    "multihop",
+    "jailbreak",
+    "pre-llm"
+   ]
+  },
+  {
+   "id": "aisec-b014",
+   "question": "How many queries does PAIR typically need to jailbreak a black-box LLM, and what is the attack loop?",
+   "answer": "Typically fewer than twenty. Prompt Automatic Iterative Refinement uses an attacker LLM, inspired by social engineering, that repeatedly queries a separate target LLM and refines a candidate jailbreak without human intervention — orders of magnitude fewer queries than the algorithms that preceded it, evaluated on GPT-3.5/4, Vicuna and Gemini.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2310.08419"
+   ],
+   "tags": [
+    "llm-security",
+    "single-fact",
+    "jailbreak",
+    "automated-attacks"
+   ]
+  },
+  {
+   "id": "aisec-b015",
+   "question": "What does Tree of Attacks with Pruning (TAP) add to the attacker-LLM loop, and what jailbreak rate does it report?",
+   "answer": "Before sending a candidate prompt to the target, TAP assesses it and prunes the ones unlikely to jailbreak, cutting the number of target queries. It reports jailbreaking state-of-the-art models including GPT4-Turbo and GPT4o for more than 80% of prompts, and can also jailbreak LLMs sitting behind guardrails such as LlamaGuard.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2312.02119"
+   ],
+   "tags": [
+    "llm-security",
+    "single-fact",
+    "jailbreak",
+    "automated-attacks"
+   ]
+  },
+  {
+   "id": "aisec-b016",
+   "question": "\"Jailbroken: How Does LLM Safety Training Fail?\" names two failure modes of safety training. What are they, and what design principle does the paper argue follows from them?",
+   "answer": "Competing objectives, where the model's capabilities and its safety goals conflict, and mismatched generalization, where safety training fails to reach a domain in which capabilities exist. From these the authors argue for safety-capability parity — safety mechanisms should be as sophisticated as the underlying model — and against the idea that scaling alone will resolve the failures; new attacks built from the two modes succeeded on every prompt in collections drawn from the models' own red-teaming sets.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2307.02483"
+   ],
+   "tags": [
+    "llm-security",
+    "synthesis",
+    "jailbreak",
+    "alignment"
+   ]
+  },
+  {
+   "id": "aisec-b017",
+   "question": "I studien av jailbreakprompter \"i det vilda\" från december 2022 till december 2023, hur många prompter samlades in, och vilken attackframgång nådde de fem effektivaste?",
+   "answer": "Forskarna samlade 1 405 jailbreakprompter från 131 gemenskaper och byggde en frågemängd på 107 250 exempel över 13 förbjudna scenarier. Fem särskilt effektiva prompter nådde 0,95 i attackframgång mot både ChatGPT (GPT-3.5) och GPT-4, och den äldsta av dem hade legat ute i över 240 dagar. De såg också att prompterna flyttat från öppna webbforum till samlingssajter, och att 28 konton finslipat sina prompter i över 100 dagar.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2308.03825"
+   ],
+   "tags": [
+    "llm-security",
+    "sv",
+    "single-fact",
+    "jailbreak"
+   ]
+  },
+  {
+   "id": "aisec-b018",
+   "question": "The \"past tense\" jailbreak is widely quoted as showing GPT-4o is 88% jailbreakable. What conditions produced that number, and what did the same paper report about fixing it?",
+   "answer": "88% was the success rate on JailbreakBench harmful requests after up to 20 past-tense reformulation attempts, with GPT-3.5 Turbo doing the reformulation and GPT-4 acting as jailbreak judge — against 1% for the same requests asked directly. It is not a single-shot rate. Future-tense reformulations were less effective, and fine-tuning GPT-3.5 Turbo with past-tense examples in the data was enough to defend against the attack, so the paper frames the result as a brittleness-of-generalisation finding rather than an unfixable break.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2407.11969"
+   ],
+   "tags": [
+    "llm-security",
+    "multihop",
+    "trap",
+    "jailbreak",
+    "refusal"
+   ]
+  },
+  {
+   "id": "aisec-b019",
+   "question": "Optimizer-generated jailbreak suffixes are often presented as a general break of alignment that simple filtering cannot stop. What did the 2023 \"Baseline Defenses\" paper conclude, and how did it qualify that conclusion?",
+   "answer": "It evaluated perplexity-based detection, input preprocessing (paraphrase and retokenization) and adversarial training, and found that the weakness of existing discrete text optimizers combined with the high cost of optimisation makes standard adaptive attacks more challenging for LLMs than for computer vision — so baseline defences look comparatively strong here. The paper explicitly leaves open whether more powerful optimizers can be developed, or whether filtering and preprocessing really are stronger in the LLM domain; it does not claim the problem is solved.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2309.00614"
+   ],
+   "tags": [
+    "llm-security",
+    "synthesis",
+    "trap",
+    "defenses",
+    "jailbreak"
+   ]
+  },
+  {
+   "id": "aisec-b020",
+   "question": "What is \"spotlighting\" as a defence against indirect prompt injection, and what attack-success reduction did Microsoft report for it?",
+   "answer": "A family of prompt-engineering techniques that transform an input so it carries a reliable, continuous signal of its provenance, letting the model tell which span came from which source. Against indirect prompt injection with GPT-family models it cut attack success from greater than 50% to below 2%, with minimal detrimental impact on the underlying NLP task.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2403.14720"
+   ],
+   "tags": [
+    "llm-security",
+    "single-fact",
+    "defenses",
+    "prompt-injection"
+   ]
+  },
+  {
+   "id": "aisec-b021",
+   "question": "StruQ and SecAlign both defend against prompt injection by training the model rather than filtering the input. How do their training strategies differ, and what did SecAlign claim to be first at?",
+   "answer": "StruQ builds structured queries: a secure front-end formats prompt and data into two separate channels, and a base (non-instruction-tuned) model is converted into a structured instruction-tuned model by augmenting instruction-tuning data with instructions planted in the data portion and training the model to ignore them. SecAlign instead applies preference optimisation over a dataset of injected inputs paired with a secure and an insecure output, and claims to be the first known method to push prompt-injection success rates below 10%, including against attacks far more sophisticated than those seen during training, with utility roughly unchanged.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2402.06363",
+    "https://arxiv.org/abs/2410.05451"
+   ],
+   "tags": [
+    "llm-security",
+    "multihop",
+    "defenses",
+    "prompt-injection"
+   ]
+  },
+  {
+   "id": "aisec-b022",
+   "question": "What are Constitutional Classifiers, what did the red-teaming exercise find, and what did the defence cost in deployment terms?",
+   "answer": "Safeguards trained on synthetic data generated by prompting LLMs with natural-language rules — a constitution — specifying permitted and restricted content, aimed at universal jailbreaks rather than one-off harmful answers. In over 3,000 estimated hours of red teaming, no red teamer found a universal jailbreak that extracted information from an early classifier-guarded model at a level of detail similar to an unguarded model across most target queries. The costs reported were an absolute 0.38% increase in refusals on production traffic and 23.7% inference overhead.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2501.18837"
+   ],
+   "tags": [
+    "llm-security",
+    "synthesis",
+    "defenses",
+    "guardrails"
+   ]
+  },
+  {
+   "id": "aisec-b023",
+   "question": "Försvaret CaMeL (2025) beskrivs som ett skydd med bevisbar säkerhet mot promptinjektion. Hur fungerar det, och vad kostade skyddet mätt i AgentDojo?",
+   "answer": "CaMeL lägger ett skyddande systemlager runt språkmodellen: styrflödet och dataflödet plockas ut ur den betrodda frågan, så att otillförlitliga data som modellen hämtar aldrig kan påverka programflödet. Dessutom används rättigheter, capabilities, för att stoppa utläckage av privata data genom att säkerhetsregler tvingas fram vid verktygsanrop. CaMeL löste 77 procent av uppgifterna i AgentDojo med bevisbar säkerhet, mot 84 procent för ett helt oskyddat system.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2503.18813"
+   ],
+   "tags": [
+    "llm-security",
+    "sv",
+    "multihop",
+    "defenses",
+    "agents"
+   ]
+  },
+  {
+   "id": "aisec-b024",
+   "question": "Which two attack types did the 2022 PromptInject framework study against GPT-3, and what was its argument about who could carry them out?",
+   "answer": "Goal hijacking and prompt leaking. Using mask-based iterative adversarial prompt composition, the authors showed GPT-3 — then the most widely deployed production language model — could be misaligned by simple handcrafted inputs, so even low-aptitude but sufficiently ill-intentioned actors create long-tail risks.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2211.09527"
+   ],
+   "tags": [
+    "llm-security",
+    "single-fact",
+    "prompt-injection"
+   ]
+  },
+  {
+   "id": "aisec-b025",
+   "question": "The 2023 indirect prompt injection paper argued the prevailing threat model was too narrow. What did it change about who has to be prompting, and which real deployed systems did it attack?",
+   "answer": "It dropped the assumption that the user is the one prompting: an adversary can inject prompts remotely, with no interface to the victim, by planting them in data the application is likely to retrieve, because LLM-integrated applications blur the line between data and instructions. Attacks were demonstrated against real systems including Bing's GPT-4 powered Chat and code-completion engines, with a taxonomy covering data theft, worming, information-ecosystem contamination, and processing retrieved prompts as arbitrary code execution.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2302.12173"
+   ],
+   "tags": [
+    "llm-security",
+    "multihop",
+    "prompt-injection"
+   ]
+  },
+  {
+   "id": "aisec-b026",
+   "question": "Vad gjorde 2023 års arbete \"Formalizing and Benchmarking Prompt Injection Attacks and Defenses\" annorlunda mot tidigare forskning om promptinjektion, och hur stor var utvärderingen?",
+   "answer": "Tidigare arbeten var fallstudier utan gemensam grund. Det här gav ett ramverk som formaliserar promptinjektion så att befintliga attacker blir specialfall, och konstruerade dessutom en ny attack genom att kombinera de gamla. Utvärderingen omfattade 5 attacker och 10 försvar över 10 språkmodeller och 7 uppgifter, och släpptes som en öppen måttstock att mäta framtida attacker och försvar mot.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2310.12815"
+   ],
+   "tags": [
+    "llm-security",
+    "sv",
+    "synthesis",
+    "prompt-injection",
+    "benchmark"
+   ]
+  },
+  {
+   "id": "aisec-b027",
+   "question": "System prompts are treated as secrets and even traded as commodities. Taking the 2023 prompt-extraction framework together with the study of custom GPTs, what does the evidence say about that assumption — and what problem beyond eliciting text did the framework have to solve?",
+   "answer": "Simple text-based attacks reveal prompts with high probability, measured across 3 sources of prompts and 11 underlying LLMs, and succeeded against real systems including Claude 3 and ChatGPT despite deployed defences. The extra problem the framework solved was verification: deciding with high precision whether an extracted prompt is the actual secret prompt rather than a model hallucination. Testing over 200 user-designed custom GPTs showed the same attacks recover not only the customised system prompt but also the files uploaded to the GPT, so what leaks is the whole configuration.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2307.06865",
+    "https://arxiv.org/abs/2311.11538"
+   ],
+   "tags": [
+    "llm-security",
+    "synthesis",
+    "system-prompt-extraction",
+    "prompt-injection"
+   ]
+  },
+  {
+   "id": "aisec-b028",
+   "question": "ToolEmu tests LM agents against tools that were never actually implemented. How were its findings validated against reality, and what failure rate did even the safest agent show?",
+   "answer": "An LM emulates tool execution so agents can be tested across many tools and scenarios without manual instantiation, paired with an LM-based automatic safety evaluator. Human evaluation found 68.8% of the failures ToolEmu identified would be valid real-world agent failures. On its curated benchmark of 36 high-stakes tools and 144 test cases, even the safest LM agent still exhibited such failures 23.9% of the time.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2309.15817"
+   ],
+   "tags": [
+    "llm-security",
+    "single-fact",
+    "agents",
+    "sandboxing"
+   ]
+  },
+  {
+   "id": "aisec-b029",
+   "question": "Why is AgentDojo described as an environment rather than a static test suite, and what was its headline finding about the balance between attacks and defences?",
+   "answer": "Because attacks and defences keep evolving, it is built as an extensible environment in which new agent tasks, defences and adaptive attacks can be designed, populated with 97 realistic tasks (email client, e-banking, travel booking) and 629 security test cases. The finding cut both ways: state-of-the-art LLMs fail many of the tasks even with no attacker present, and existing prompt-injection attacks break some security properties but not all.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2406.13352"
+   ],
+   "tags": [
+    "llm-security",
+    "synthesis",
+    "agents",
+    "benchmark"
+   ]
+  },
+  {
+   "id": "aisec-b030",
+   "question": "How large is the InjecAgent benchmark, and how often was ReAct-prompted GPT-4 successfully attacked?",
+   "answer": "1,054 test cases covering 17 user tools and 62 attacker tools, split into two attacker intents — direct harm to users and exfiltration of private data — evaluated over 30 LLM agents. ReAct-prompted GPT-4 was vulnerable 24% of the time, and reinforcing the injected instruction with a hacking prompt nearly doubled that success rate.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2403.02691"
+   ],
+   "tags": [
+    "llm-security",
+    "single-fact",
+    "agents",
+    "prompt-injection"
+   ]
+  },
+  {
+   "id": "aisec-b031",
+   "question": "Två studier från 2024 attackerade agenter som styr grafiska gränssnitt med syn. Vad gjorde popup-attacken respektive bildstörningsattacken, och hur väl fungerade de?",
+   "answer": "Popup-attacken lade in noga utformade reklamrutor av det slag som människor brukar känna igen och strunta i, i testmiljöerna OSWorld och VisualWebArena; agenterna klickade på dem i genomsnitt 86 procent av gångerna och uppgiftslösningsgraden sjönk med 47 procent, och enkla försvar som att be agenten strunta i popup-rutor eller märka dem som reklam hjälpte inte. Den andra studien störde en enda bild med mindre än 5 procent av sidans bildpunkter och kapade webbagenter byggda på slutna toppmodeller mot angriparens mål i upp till 67 procent av fallen.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2411.02391",
+    "https://arxiv.org/abs/2406.12814"
+   ],
+   "tags": [
+    "llm-security",
+    "sv",
+    "multihop",
+    "agents",
+    "computer-use"
+   ]
+  },
+  {
+   "id": "aisec-b032",
+   "question": "Two 2024 papers described injections that spread between agents rather than compromising one. What is the propagation mechanism in each, and what scale did the multimodal one simulate?",
+   "answer": "Prompt Infection has a malicious prompt self-replicate across interconnected LLM agents like a computer virus, spreading silently even when agents do not publicly share all communications; the proposed mitigation is LLM Tagging combined with existing safeguards. Agent Smith's \"infectious jailbreak\" needs only one adversarial image fed into the memory of a single randomly chosen agent, and was simulated in multi-agent environments of up to one million LLaVA-1.5 agents using randomized pairwise chat.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2410.07283",
+    "https://arxiv.org/abs/2402.08567"
+   ],
+   "tags": [
+    "llm-security",
+    "multihop",
+    "multi-agent",
+    "agents"
+   ]
+  },
+  {
+   "id": "aisec-b033",
+   "question": "What is Tool Description Poisoning in the 2026 MCP-TDP benchmark, and what did it find about prompt-guardrail defences?",
+   "answer": "Malicious instructions injected not into a tool's executable code but into its descriptive metadata — the \"manual\" the agent plans from — attacking the cognitive planning layer. Across 32 realistic test cases in 6 risk categories with 8 mainstream LLMs, leading models such as GPT-4o showed a nearly 100% attack success rate in six high-risk scenarios, and common prompt-guardrail defences were largely ineffective and sometimes counterproductive, which the authors name the \"Firewall Fallacy\". Their proposed defence is Reactive Self-Correction, where the agent detects and reverts its own malicious actions after execution.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2605.24069"
+   ],
+   "tags": [
+    "llm-security",
+    "single-fact",
+    "agents",
+    "prompt-injection",
+    "tools"
+   ]
+  },
+  {
+   "id": "aisec-b034",
+   "question": "Two 2024 papers claimed autonomous offensive capability for GPT-4 agents — hacking websites, then exploiting one-day vulnerabilities. What is the crucial caveat the one-day paper states about its 87% figure?",
+   "answer": "The 87% success rate is on a set of 15 real one-day vulnerabilities and holds only when the agent is handed the CVE description; without the description GPT-4 exploits just 7% of them. Every other model tested — GPT-3.5 and open-source LLMs — plus the ZAP and Metasploit scanners scored 0%. The earlier website paper likewise found the capability was unique to a frontier model: GPT-4 could autonomously perform blind database schema extraction and SQL injection without prior knowledge of the vulnerability, while existing open-source models could not.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2404.08144",
+    "https://arxiv.org/abs/2402.06664"
+   ],
+   "tags": [
+    "llm-security",
+    "multihop",
+    "trap",
+    "cyber",
+    "agents"
+   ]
+  },
+  {
+   "id": "aisec-b035",
+   "question": "What does the 2026 GrantBox sandbox change about how agent security is evaluated, and what average attack success rate did it measure?",
+   "answer": "Instead of pre-coded tools and restricted interaction patterns, GrantBox automatically integrates real-world tools so the agent invokes genuine privileges, and then evaluates privilege usage under prompt injection. The LLMs showed basic security awareness and blocked some direct attacks, but the average attack success rate in carefully crafted scenarios was 84.80%.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2603.28166"
+   ],
+   "tags": [
+    "llm-security",
+    "single-fact",
+    "agents",
+    "sandboxing"
+   ]
+  },
+  {
+   "id": "aisec-b036",
+   "question": "DeepMinds program för utvärdering av farliga förmågor (2024) täckte fyra områden och kördes mot Gemini 1.0. Vilka områden var det, och vad blev slutsatsen?",
+   "answer": "Övertalning och vilseledning, cybersäkerhet, självspridning och självresonemang. De fann inga belägg för starka farliga förmågor i de modeller de utvärderade, men flaggade tidiga varningstecken, och beskrev arbetet som ett steg mot en strängare vetenskap för utvärdering av farliga förmågor inför kommande modeller.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2403.13793"
+   ],
+   "tags": [
+    "llm-security",
+    "sv",
+    "single-fact",
+    "evaluations",
+    "cyber"
+   ]
+  },
+  {
+   "id": "aisec-b037",
+   "question": "The MIT \"Safeguarding the Future\" class exercise is routinely cited as proof that chatbots give bioweapons uplift. What did the non-scientist students actually obtain in the hour, and how did the paper qualify its conclusion?",
+   "answer": "In one hour the chatbots suggested four potential pandemic pathogens, explained how they can be generated from synthetic DNA using reverse genetics, named DNA synthesis companies unlikely to screen orders, supplied detailed protocols and troubleshooting guidance, and recommended that anyone lacking the skills engage a core facility or contract research organisation. The conclusion is conditional rather than absolute: LLMs will make pandemic-class agents widely accessible to people with little or no laboratory training \"as soon as they are credibly identified\". Proposed measures are third-party pre-release evaluation, curating harmful concepts out of training data, and verifiable screening of all synthesised DNA.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2306.03809"
+   ],
+   "tags": [
+    "llm-security",
+    "synthesis",
+    "trap",
+    "bio",
+    "evaluations"
+   ]
+  },
+  {
+   "id": "aisec-b038",
+   "question": "What scaling result did Anthropic's 2022 red-teaming study report across its four model types, and how large was the dataset it released?",
+   "answer": "Across model sizes of 2.7B, 13B and 52B parameters, the RLHF models became increasingly difficult to red team as they scaled, while the other three types — a plain LM, an LM prompted to be helpful/honest/harmless, and an LM with rejection sampling — showed a flat trend with scale. They released a dataset of 38,961 red team attacks.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2209.07858"
+   ],
+   "tags": [
+    "llm-security",
+    "single-fact",
+    "red-teaming"
+   ]
+  },
+  {
+   "id": "aisec-b039",
+   "question": "Automated red teaming started with one LM writing test cases for another in 2022. What limitation did Rainbow Teaming target two years later, and what success rate did it report?",
+   "answer": "The 2022 work generated test cases with an LM and scored the target's replies with an offensive-content classifier, uncovering tens of thousands of offensive replies from a 280B-parameter chatbot, plus leaked phone numbers and private training data. Rainbow Teaming targeted the lack of diversity in generated attacks by casting adversarial prompt generation as a quality-diversity problem solved by open-ended search, reporting attack success above 90% across all tested models including Llama 2 and Llama 3, with prompts that transfer and that can be turned into fine-tuning data that improves safety without hurting general performance.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2202.03286",
+    "https://arxiv.org/abs/2402.16822"
+   ],
+   "tags": [
+    "llm-security",
+    "multihop",
+    "red-teaming",
+    "automated-attacks"
+   ]
+  },
+  {
+   "id": "aisec-b040",
+   "question": "What gap in automated red-teaming research did HarmBench identify, how large was its comparison, and what did it contribute on the defence side?",
+   "answer": "The field had no standardised evaluation framework, so new attack methods could not be rigorously compared; HarmBench was designed around desirable properties earlier red-teaming evaluations had not accounted for. It ran a large-scale comparison of 18 red teaming methods against 33 target LLMs and defences, and the authors added a highly efficient adversarial training method to demonstrate that attacks and defences can be co-developed inside the same framework.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2402.04249"
+   ],
+   "tags": [
+    "llm-security",
+    "synthesis",
+    "red-teaming",
+    "benchmark"
+   ]
+  },
+  {
+   "id": "aisec-b041",
+   "question": "Over-refusal is the mirror image of jailbreaking. How do XSTest (2023) and OR-Bench (2024) differ in how they get their prompts and in scale, and why do both include unsafe prompts?",
+   "answer": "XSTest is hand-built: 250 safe prompts across ten prompt types that a well-calibrated model should not refuse, contrasted with 200 unsafe prompts it should refuse. OR-Bench automates the generation of over-refusal prompts, producing 80,000 across 10 rejection categories plus a hard subset of about 1,000 and 600 toxic prompts, and measures 32 LLMs across 8 model families. Both keep the unsafe contrast set for the same reason: without it, a model that answers everything indiscriminately would score perfectly on over-refusal.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2308.01263",
+    "https://arxiv.org/abs/2405.20947"
+   ],
+   "tags": [
+    "llm-security",
+    "synthesis",
+    "over-refusal",
+    "benchmark"
+   ]
+  },
+  {
+   "id": "aisec-b042",
+   "question": "How does the 2023 green-list watermark for LLMs work, and what did the follow-up robustness study find about how many tokens are needed after strong human paraphrasing?",
+   "answer": "Before each word is generated, a randomized set of \"green\" tokens is selected and softly promoted during sampling, so the watermark can be detected from a short span of tokens by an open-source algorithm with interpretable p-values and without access to the model or its API. The follow-up found watermarks survive human and machine paraphrasing because paraphrases statistically leak n-grams of the original: after strong human paraphrasing the watermark was still detectable after observing 800 tokens on average at a 1e-5 false positive rate.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2301.10226",
+    "https://arxiv.org/abs/2306.04634"
+   ],
+   "tags": [
+    "llm-security",
+    "multihop",
+    "watermarking",
+    "detection"
+   ]
+  },
+  {
+   "id": "aisec-b043",
+   "question": "SynthID-Text was published in Nature in 2024 as a production-ready watermark, while a 2023 paper argued AI text cannot be reliably detected. What did each actually demonstrate, and where do they not contradict each other?",
+   "answer": "SynthID-Text modifies only the sampling procedure, leaves training untouched, detects without invoking the underlying LLM, and integrates with speculative sampling for production efficiency; a live experiment over feedback from nearly 20 million Gemini responses confirmed text quality was preserved. The 2023 paper stress-tested detectors against an active attacker: recursive paraphrasing of roughly 300-token passages significantly reduced detection rates across watermarking, neural, zero-shot and retrieval-based detectors while only slightly degrading text quality, and it showed spoofing attacks that get human-written text classified as AI-generated. One measures quality, detectability and deployability in benign use; the other measures robustness under adversarial rewriting.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/39443777/",
+    "https://arxiv.org/abs/2303.11156"
+   ],
+   "tags": [
+    "llm-security",
+    "synthesis",
+    "watermarking",
+    "detection"
+   ]
+  },
+  {
+   "id": "aisec-b044",
+   "question": "\"Asleep at the Keyboard?\" measured Copilot's output, and a companion user study measured people using a code assistant. What fraction of Copilot programs were vulnerable, and what did the user study find about the gap between security and confidence?",
+   "answer": "Prompting Copilot across 89 scenarios relevant to high-risk CWEs produced 1,689 programs, of which approximately 40% were vulnerable. In the user study, participants with access to an assistant based on OpenAI's codex-davinci-002 wrote significantly less secure code than those without — and were more likely to believe they had written secure code. Participants who trusted the AI less and engaged more with their prompts produced fewer vulnerabilities.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2108.09293",
+    "https://arxiv.org/abs/2211.03622"
+   ],
+   "tags": [
+    "llm-security",
+    "multihop",
+    "insecure-code",
+    "code-generation"
+   ]
+  },
+  {
+   "id": "aisec-b045",
+   "question": "In the JAMA Network Open study of prompt injection against LLMs giving medical advice, what was the injection success rate at the primary decision turn, and how did the flagship models fare?",
+   "answer": "Across 216 evaluations (108 injection versus 108 control), attacks succeeded in 94.4% (102 of 108) at turn 4 and persisted in 69.4% (75 of 108) of follow-ups. GPT-4o-mini and Gemini-2.0-flash-lite were completely susceptible (36 of 36 dialogues each) and Claude-3-haiku in 83.3%. In the client-side proof-of-concept on a high-risk pregnancy scenario, GPT-5 and Gemini 2.5 Pro were vulnerable in 5 of 5 dialogues each and Claude 4.5 Sonnet in 4 of 5.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/41632124/"
+   ],
+   "tags": [
+    "llm-security",
+    "single-fact",
+    "prompt-injection",
+    "applied"
+   ]
+  },
+  {
+   "id": "aisec-a001",
+   "question": "\"Intriguing properties of neural networks\" (Szegedy et al., December 2013) reported two separate findings. What was the second one, and what did the authors observe about whether the perturbation was tied to the network that produced it?",
+   "answer": "The second finding was that deep networks learn input-output mappings that are fairly discontinuous: an imperceptible perturbation, found by maximising the network's prediction error, makes the network misclassify the image. The authors stress the perturbation is not a random artefact of learning - the same perturbation can make a different network, trained on a different subset of the data, misclassify the same input. (The first finding was that there is no distinction between individual high-level units and random linear combinations of them, so the semantic information lives in the space rather than in individual units.)",
+   "goldUrls": [
+    "https://arxiv.org/abs/1312.6199"
+   ],
+   "tags": [
+    "model-security",
+    "single-fact",
+    "adversarial-examples",
+    "origins"
+   ]
+  },
+  {
+   "id": "aisec-a002",
+   "question": "Goodfellow, Shlens and Szegedy (2014) rejected the explanation for adversarial examples that early work had offered. What did they blame instead, and what did that explanation let them account for?",
+   "answer": "Early attempts blamed nonlinearity and overfitting; they argued instead that the primary cause is the models' linear nature. That view is what gave them the first explanation of the most intriguing fact about adversarial examples - their generalisation across architectures and training sets - and it also yielded a simple and fast method of generating them, which they used for adversarial training to reduce the test-set error of a maxout network on MNIST.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1412.6572"
+   ],
+   "tags": [
+    "model-security",
+    "single-fact",
+    "adversarial-examples",
+    "origins"
+   ]
+  },
+  {
+   "id": "aisec-a003",
+   "question": "In Biggio, Nelson and Laskov's 2012 poisoning attack on support vector machines, how is the direction of the attack computed, and why does the attack still work when the kernel is non-linear?",
+   "answer": "The attack uses a gradient ascent strategy in which the gradient is computed from properties of the SVM's optimal solution, exploiting the fact that an intelligent adversary can to some extent predict how the decision function will shift in response to malicious input. The method can be kernelised, which lets the attacker construct the malicious point in input space even for non-linear kernels; it reliably finds good local maxima of the non-convex validation-error surface and so significantly increases the classifier's test error.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1206.6389"
+   ],
+   "tags": [
+    "model-security",
+    "single-fact",
+    "poisoning",
+    "origins"
+   ]
+  },
+  {
+   "id": "aisec-a004",
+   "question": "Biggio's group produced both a training-time and a test-time attack paper in the pre-deep-learning era. Which is which, and what concrete deployed system did the test-time paper break?",
+   "answer": "\"Poisoning Attacks against Support Vector Machines\" (2012) is the training-time attack: injected training points raise the SVM's test error via gradient ascent on the validation error. \"Evasion Attacks against Machine Learning at Test Time\" (Biggio et al.) is the test-time one - a simple gradient-based approach that assesses several widely used classifiers under increasing levels of attacker knowledge and ability to manipulate samples. It was evaluated on malware detection in PDF files, and showed such systems can be easily evaded.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1206.6389",
+    "https://arxiv.org/abs/1708.06131"
+   ],
+   "tags": [
+    "model-security",
+    "multihop",
+    "poisoning",
+    "evasion",
+    "origins"
+   ]
+  },
+  {
+   "id": "aisec-a005",
+   "question": "Ian Goodfellow's 2014 paper that introduced training two networks against each other in an adversarial game is the foundational paper of adversarial machine-learning security. Correct?",
+   "answer": "No - this conflates two different lines that happen to share a word. \"Generative Adversarial Networks\" (June 2014) is a generative-modelling framework: a generator G and a discriminator D play a minimax game, and in the space of arbitrary functions the unique solution has G recovering the data distribution and D equal to 1/2 everywhere - there is no attacker and no security claim anywhere in it. Security-relevant adversarial examples come from a separate line - Szegedy et al. (December 2013) and \"Explaining and Harnessing Adversarial Examples\" (December 2014) - where an attacker perturbs an input to force a misclassification. \"Adversarial\" in a GAN names a training objective, not an adversary.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1406.2661",
+    "https://arxiv.org/abs/1412.6572",
+    "https://arxiv.org/abs/1312.6199"
+   ],
+   "tags": [
+    "model-security",
+    "multihop",
+    "trap",
+    "adversarial-examples",
+    "origins"
+   ]
+  },
+  {
+   "id": "aisec-a006",
+   "question": "Defensive distillation was reported to cut the success rate of adversarial-sample generation from 95% to below 0.5%, with gradients shrunk by a factor of 10^30. Does that make distilled networks robust?",
+   "answer": "No. Those are exactly the numbers Papernot et al. (2015) report, but Carlini and Wagner (2016) showed the effect was not robustness. They introduced three new attacks, tailored to three distance metrics, that succeed on both distilled and undistilled networks with 100% probability, and showed that high-confidence adversarial examples break distillation by transfer as well. The huge gradient reduction was the tell: the defence masked the gradient signal rather than moving the decision boundary.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1511.04508",
+    "https://arxiv.org/abs/1608.04644"
+   ],
+   "tags": [
+    "model-security",
+    "multihop",
+    "trap",
+    "defenses",
+    "adversarial-examples"
+   ]
+  },
+  {
+   "id": "aisec-a007",
+   "question": "I den första praktiska svartlådeattacken mot en fjärrdriven djup modell (Papernot m.fl., 2016) tränade angriparen en ersättningsmodell på syntetiska indata som målmodellen fick sätta etiketter på. Hur stor andel av de störda bilderna klassade de angripna tjänsterna fel?",
+   "answer": "Nätverket hos MetaMind klassade 84,24 % av de störda bilderna fel. Med logistisk regression som ersättningsmodell blev motsvarande siffror 96,19 % hos Amazon och 88,94 % hos Google. Det enda angriparen behövde var att se vilka etiketter målmodellen gav - inga vikter, ingen arkitektur och inga träningsdata - och attacken tog sig dessutom förbi försvar som tidigare ansetts försvåra framställning av störda exempel.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1602.02697"
+   ],
+   "tags": [
+    "model-security",
+    "single-fact",
+    "sv",
+    "adversarial-examples",
+    "transferability"
+   ]
+  },
+  {
+   "id": "aisec-a008",
+   "question": "Tramèr et al. (2016) extracted models through prediction APIs. Which commercial services did they demonstrate the attack against, and what happened to the obvious countermeasure of withholding confidence scores?",
+   "answer": "They demonstrated extraction against the online services of BigML and Amazon Machine Learning, recovering popular model classes - logistic regression, neural networks and decision trees - with near-perfect fidelity, given only black-box query access and no prior knowledge of parameters or training data. The natural countermeasure of omitting confidence values from model outputs does not close the hole: the paper shows it still admits potentially harmful model-extraction attacks.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1609.02943"
+   ],
+   "tags": [
+    "model-security",
+    "single-fact",
+    "extraction"
+   ]
+  },
+  {
+   "id": "aisec-a009",
+   "question": "How did Shokri et al. (2016) construct their membership-inference attack with only black-box access, and what did they evaluate it against?",
+   "answer": "They made adversarial use of machine learning itself: they trained their own inference model to recognise the difference between the target model's predictions on inputs it was trained on and inputs it was not. They evaluated it on classification models trained by commercial machine-learning-as-a-service providers such as Google and Amazon, using realistic datasets including a hospital discharge dataset whose membership is privacy-sensitive, and then studied which factors drive the leakage and which mitigations help.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1610.05820"
+   ],
+   "tags": [
+    "model-security",
+    "single-fact",
+    "membership-inference"
+   ]
+  },
+  {
+   "id": "aisec-a010",
+   "question": "Trace how physical-world adversarial attacks were established between 2016 and 2017. What did each of the four main results demonstrate, and with what numbers where the abstracts give them?",
+   "answer": "Kurakin, Goodfellow and Bengio (2016) broke the standing assumption that the adversary feeds data straight into the classifier: adversarial images photographed with a cell-phone camera and fed to an ImageNet Inception classifier were still misclassified a large fraction of the time. Eykholt et al.'s Robust Physical Perturbations (RP2, 2017) attacked a real stop sign using only black-and-white stickers, achieving targeted misclassification in 100% of lab images and 84.8% of video frames captured from a moving vehicle. Athalye et al. (2017) made the recipe general with Expectation over Transformation - the first algorithm for synthesising examples adversarial over a chosen distribution of transformations - and produced the first 3D-printed physical adversarial objects. Brown et al.'s Adversarial Patch (2017) took the opposite design: a visible, printable, universal, targeted patch that can be added to any scene and makes the classifier ignore the other items and report the attacker's chosen class.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1607.02533",
+    "https://arxiv.org/abs/1707.08945",
+    "https://arxiv.org/abs/1707.07397",
+    "https://arxiv.org/abs/1712.09665"
+   ],
+   "tags": [
+    "model-security",
+    "synthesis",
+    "adversarial-examples",
+    "physical-attacks"
+   ]
+  },
+  {
+   "id": "aisec-a011",
+   "question": "Moosavi-Dezfooli m.fl. gav ut DeepFool (2015) och \"universal adversarial perturbations\" (2016). Vad söker de två metoderna efter, och vad är poängen med skillnaden?",
+   "answer": "DeepFool räknar effektivt fram en störning för en enskild bild, och syftet är mätning: att tillförlitligt kunna kvantifiera hur robust en klassificerare faktiskt är på storskaliga datamängder, vilket enligt författarna saknades och gjordes bättre än med dåtidens metoder. Den universella störningen är tvärtom en enda bildoberoende vektor som får de flesta naturliga bilder att klassas fel, är kvasi-omärklig för ögat och överförs dessutom väl mellan olika nätverk - något som enligt författarna avslöjar geometriska samband i klassificerarnas högdimensionella beslutsgränser och pekar ut enskilda riktningar i indatarummet som en angripare kan utnyttja.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1511.04599",
+    "https://arxiv.org/abs/1610.08401"
+   ],
+   "tags": [
+    "model-security",
+    "multihop",
+    "sv",
+    "adversarial-examples"
+   ]
+  },
+  {
+   "id": "aisec-a012",
+   "question": "What framing did Madry et al. (2017) propose for adversarial robustness, and what security notion came out of it?",
+   "answer": "They studied adversarial robustness through the lens of robust optimization, which gave a broad and unifying view of the prior work and identified training and attack methods that are reliable and in a certain sense universal. The notion it produces is security against a first-order adversary, offered as a natural and broad guarantee, and the work shipped as the public MNIST and CIFAR-10 adversarial challenges with code and pre-trained models.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1706.06083"
+   ],
+   "tags": [
+    "model-security",
+    "single-fact",
+    "defenses",
+    "adversarial-training"
+   ]
+  },
+  {
+   "id": "aisec-a013",
+   "question": "BadNets (2017) visade bakdörrar i utlagd träning av bildmodeller. Vad var det konkreta exemplet, och vad säger arbetet om naturliga bakdörrar i taligenkänning från 2026 om hur lite förgiftning som krävs?",
+   "answer": "BadNets tränade en amerikansk vägskyltsklassificerare som läser ett stoppmärke som en hastighetsskylt när en särskild dekal sitter på skylten. Bakdörren överlevde att nätverket senare tränades om för en annan uppgift och gav i snitt 25 % sämre träffsäkerhet när utlösaren fanns med. I 2026 års arbete om taligenkänning (Xin, Lyu och Ma) räcker det att 5 % av träningsexemplen är förgiftade för att nå nära 100 % framgång utan att modellen blir sämre på rena indata - och eftersom utlösaren är ett vardagligt ljud kan bakdörren gå igång av sig själv ute i verkligheten.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1708.06733",
+    "https://arxiv.org/abs/2607.15724"
+   ],
+   "tags": [
+    "model-security",
+    "multihop",
+    "sv",
+    "backdoor",
+    "supply-chain"
+   ]
+  },
+  {
+   "id": "aisec-a014",
+   "question": "Carlini and Wagner (2017) surveyed proposals for *detecting* adversarial examples rather than resisting them. How many did they examine, how many survived, and what did they conclude about the properties of adversarial examples?",
+   "answer": "They surveyed ten recent detection proposals and showed that all ten can be defeated by constructing new loss functions. Their conclusion was that adversarial examples are significantly harder to detect than previously appreciated, and that the properties believed to be intrinsic to adversarial examples are in fact not; they closed with guidelines for evaluating future defences.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1705.07263"
+   ],
+   "tags": [
+    "model-security",
+    "single-fact",
+    "defenses",
+    "evaluation"
+   ]
+  },
+  {
+   "id": "aisec-a015",
+   "question": "The 2017 one-pixel attack used differential evolution to search for adversarial perturbations. Where does the same search technique reappear in a 2023 clinical study, and what did that study find about which victim models were actually vulnerable?",
+   "answer": "Su, Vargas and Kouichi's one-pixel attack used differential evolution to find a black-box perturbation confined to a single pixel, moving 67.97% of Kaggle CIFAR-10 test images and 16.04% of ImageNet (ILSVRC 2012) test images into at least one target class, with 74.03% and 22.91% average confidence. The 2023 study \"Perturbing BEAMs\" reused differential evolution in its GPBEAM-DE variant to sparsely perturb brain electrical activity mappings used for epilepsy diagnosis on CHB-MIT data. The key finding is that vulnerability tracked the input representation, not the architecture: the top success rate against victim models taking BEAMs as input reached 0.8, while against models taking raw EEG as input it was only 0.01.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1710.08864",
+    "https://pubmed.ncbi.nlm.nih.gov/37415186/"
+   ],
+   "tags": [
+    "model-security",
+    "multihop",
+    "adversarial-examples",
+    "medical-ml"
+   ]
+  },
+  {
+   "id": "aisec-a016",
+   "question": "Defences presented as white-box-secure at ICLR 2018 were shown shortly afterwards to share one failure mode. What was it, and how many of the defences were affected?",
+   "answer": "The failure mode was obfuscated gradients - a kind of gradient masking that makes iterative optimisation-based attacks fail while leaving the model no more robust. Athalye, Carlini and Wagner examined the non-certified white-box-secure defences at ICLR 2018 and found 7 of 9 relied on the effect; their new attacks, one per type of obfuscation, completely circumvented 6 and partially circumvented 1, each in the threat model its own paper considered.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1802.00420"
+   ],
+   "tags": [
+    "model-security",
+    "single-fact",
+    "trap",
+    "defenses",
+    "evaluation"
+   ]
+  },
+  {
+   "id": "aisec-a017",
+   "question": "Två tidiga bevisbara försvar gav garantier på MNIST vid störningsbudgeten ε = 0,1 i oändlighetsnorm. Vilka gränser lovade Raghunathan m.fl. (2018) respektive Wong och Kolter (2017), och hur skiljer sig metoderna?",
+   "answer": "Raghunathan, Steinhardt och Liang arbetade med nät med ett dolt lager och byggde ett intyg via en semidefinit relaxering: för ett givet nät och en given testpunkt kan ingen attack som ändrar varje bildpunkt med högst 0,1 driva felet över 35 %. Eftersom intyget är deriverbart kunde de optimera det tillsammans med vikterna. Wong och Kolter approximerade i stället mängden nåbara aktiveringar med en konvex ytterpolytop och löste ett robust optimeringsproblem vars dualproblem självt kan skrivas som ett nät likt bakåtsvepet - och tränade fram ett faltningsnät med bevisbart under 5,8 % testfel för samma störningsbudget.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1801.09344",
+    "https://arxiv.org/abs/1711.00851"
+   ],
+   "tags": [
+    "model-security",
+    "multihop",
+    "sv",
+    "certified-robustness"
+   ]
+  },
+  {
+   "id": "aisec-a018",
+   "question": "Differential privacy appears twice in this literature with completely different jobs. Name the paper for each job and say what it delivered.",
+   "answer": "As a training-data protection: Abadi et al. (2016), \"Deep Learning with Differential Privacy\", contributed new algorithmic techniques for learning plus a refined analysis of privacy costs, and showed deep networks with non-convex objectives can be trained under a modest privacy budget at manageable cost in software complexity, training efficiency and model quality. As a robustness mechanism: Lecuyer et al.'s PixelDP (2018) used a novel connection between differential privacy and robustness to adversarial examples to build the first certified defence that both scales to large networks and datasets - such as Google's Inception network on ImageNet - and applies broadly to arbitrary model types.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1607.00133",
+    "https://arxiv.org/abs/1802.03471"
+   ],
+   "tags": [
+    "model-security",
+    "multihop",
+    "differential-privacy",
+    "certified-robustness"
+   ]
+  },
+  {
+   "id": "aisec-a019",
+   "question": "Clean-label poisoning went from a transfer-learning result to a from-scratch ImageNet result in about two years. How many poison samples did each need, and what changed technically?",
+   "answer": "Poison Frogs! (Shafahi et al., 2018) used an optimisation-based crafting method and showed that a single poison image can control classifier behaviour on a chosen test instance when transfer learning is used; for full end-to-end training it needed an additional watermarking trick and roughly 50 poisoned instances. Witches' Brew (Geiping et al., 2020) replaced the mechanism with gradient matching - aligning the gradient direction of the malicious examples - and became the first poisoning method to cause targeted misclassification in modern deep networks trained from scratch on a full-sized poisoned ImageNet, while perturbing only a small fraction of the training data - and demonstrated the limitations of existing defensive strategies against it.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1804.00792",
+    "https://arxiv.org/abs/2009.02276"
+   ],
+   "tags": [
+    "model-security",
+    "multihop",
+    "poisoning",
+    "clean-label"
+   ]
+  },
+  {
+   "id": "aisec-a020",
+   "question": "Federated learning was proposed partly for privacy. Summarise what the 2018-2019 attack literature established about its *integrity* instead.",
+   "answer": "Bagdasaryan et al. (2018) showed any participant can implant hidden backdoor functionality through model replacement: an attacker selected in a single round of federated learning can drive the global model to 100% accuracy on the backdoor task immediately, greatly outperforming data poisoning, and their generic constrain-and-scale technique folds anomaly-detection evasion directly into the attacker's loss function. Fang et al. (2019) then attacked the defences: in the first systematic study of local model poisoning, they formulated attacks as optimisation problems against four recent methods that had been claimed Byzantine-robust and substantially increased the resulting error rates on four real-world datasets. Two generalised data-poisoning defences helped in some cases but were not effective enough in others, which the authors read as a call for new defences.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1807.00459",
+    "https://arxiv.org/abs/1911.11815"
+   ],
+   "tags": [
+    "model-security",
+    "synthesis",
+    "federated-learning",
+    "poisoning",
+    "backdoor"
+   ]
+  },
+  {
+   "id": "aisec-a021",
+   "question": "Carlini's memorisation line runs from a 2018 testing methodology to a 2022 scaling study. What can a practitioner get from each?",
+   "answer": "The Secret Sharer (2018) is a testing methodology: it quantitatively assesses the risk that rare or unique training sequences were unintentionally memorised by a generative sequence model, with efficient procedures that extract unique secret sequences such as credit card numbers, and it was applied to quantitatively limit data exposure in Google's Smart Compose. Quantifying Memorization Across Neural Language Models (2022) gives the scaling picture instead: three log-linear relationships, with memorisation growing in model capacity, in how many times an example was duplicated in the data, and in the number of context tokens used to prompt the model - though the picture gets more complicated across model families. Its conclusion is that memorisation is more prevalent than previously believed and will likely worsen with scale absent active mitigations.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1802.08232",
+    "https://arxiv.org/abs/2202.07646"
+   ],
+   "tags": [
+    "model-security",
+    "multihop",
+    "memorisation",
+    "privacy"
+   ]
+  },
+  {
+   "id": "aisec-a022",
+   "question": "Is the robustness-accuracy trade-off just an artefact of imperfect training, or something more fundamental? What do the 2018-2019 papers establish?",
+   "answer": "Tsipras et al. (2018) show the trade-off provably exists in a fairly simple and natural setting, and argue it follows from robust classifiers learning fundamentally different feature representations - representations that unexpectedly align better with salient data characteristics and human perception. Schmidt et al. (2018) give an independent reason: already in a simple natural data model the sample complexity of robust learning is significantly larger than that of standard learning, and that gap is information-theoretic, holding irrespective of the training algorithm or model family. Zhang et al. (2019) turn the trade-off into a design principle, decomposing robust error into natural error plus boundary error and optimising a differentiable upper bound that is the tightest possible uniformly over all distributions and measurable predictors; the resulting method, TRADES, won the NeurIPS 2018 Adversarial Vision Challenge out of roughly 2,000 submissions, beating the runner-up by 11.41% in mean l2 perturbation distance.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1805.12152",
+    "https://arxiv.org/abs/1804.11285",
+    "https://arxiv.org/abs/1901.08573"
+   ],
+   "tags": [
+    "model-security",
+    "synthesis",
+    "robustness",
+    "adversarial-training"
+   ]
+  },
+  {
+   "id": "aisec-a023",
+   "question": "Ge tre olika angreppspunkter som försvar mot bakdörrar i neurala nät använde 2018-2019, och nämn för varje ett resultat som visar att den enskilda idén inte räcker.",
+   "answer": "Fine-Pruning (Liu, Dolan-Gavitt och Garg, 2018) angriper den färdiga modellen med beskärning och finjustering. Var för sig räcker ingendera mot en påläst angripare, men kombinerat försvagas eller försvinner bakdörren - i vissa fall pressas framgången till 0 % med bara 0,4 % sämre träffsäkerhet på rena indata. Spektralsignaturer (Tran, Li och Madry, 2018) angriper i stället träningsmängden: alla då kända bakdörrsattacker lämnar en spektral signatur som robust statistik kan använda för att hitta och plocka bort de förgiftade exemplen. Att inget av detta var avgjort visar Hidden Trigger Backdoor Attacks (Saha m.fl., 2019), där de förgiftade bilderna ser naturliga ut, har rätt etikett och håller utlösaren hemlig ända till testtillfället - och som författarna visar inte enkelt avvärjs med dåtidens främsta bakdörrsförsvar.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1805.12185",
+    "https://arxiv.org/abs/1811.00636",
+    "https://arxiv.org/abs/1910.00033"
+   ],
+   "tags": [
+    "model-security",
+    "synthesis",
+    "sv",
+    "backdoor",
+    "defenses"
+   ]
+  },
+  {
+   "id": "aisec-a024",
+   "question": "Two 2017-2018 papers proposed watermarking neural networks under opposite access assumptions. How do they differ, and what robustness did each claim?",
+   "answer": "Uchida et al. (2017) embed the watermark into the model parameters using a parameter regulariser - a white-box scheme needing access to the weights. It works when training from scratch, fine-tuning and distilling, does not hurt performance, and the watermark remains completely intact even after 65% of parameters have been pruned. Adi et al. (2018) watermark by backdooring instead, a black-box scheme for general classification tasks that combines easily with existing learning algorithms, has no noticeable impact on the primary task, was evaluated against a range of practical attacks, and comes with a theoretical analysis relating the construction to prior backdooring work.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1701.04082",
+    "https://arxiv.org/abs/1802.04633"
+   ],
+   "tags": [
+    "model-security",
+    "multihop",
+    "watermarking",
+    "provenance"
+   ]
+  },
+  {
+   "id": "aisec-a025",
+   "question": "Randomized smoothing certifies l2 robustness. What did Cohen, Rosenfeld and Kolter achieve on ImageNet, and what is known about extending the same technique to l-infinity?",
+   "answer": "Cohen et al. (2019) proved a tight l2 robustness guarantee for Gaussian smoothing - earlier guarantees for the technique were loose - and obtained an ImageNet classifier with, for example, 49% certified top-1 accuracy under l2 perturbations of norm below 0.5 (=127/255); at the time no other certified defence had been shown feasible on ImageNet at all. Blum, Dick, Manoj and Zhang (2020) gave a hardness result for p > 2: any noise distribution providing lp robustness for all base classifiers must satisfy E[eta_i^2] = Omega(d^(1-2/p) * eps^2 * (1-delta)/delta^2) for 99% of the features. For high-dimensional images with pixel values bounded in [0,255] the required noise eventually dominates the useful information, leaving a trivial smoothed classifier - so the l-infinity threat model is not simply a matter of picking a better noise distribution.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1902.02918",
+    "https://arxiv.org/abs/2002.03517"
+   ],
+   "tags": [
+    "model-security",
+    "multihop",
+    "certified-robustness"
+   ]
+  },
+  {
+   "id": "aisec-a026",
+   "question": "What claim does \"Adversarial Examples Are Not Bugs, They Are Features\" (Ilyas et al., 2019) actually make about where adversarial examples come from?",
+   "answer": "That adversarial examples can be directly attributed to non-robust features: features derived from patterns in the data distribution that are genuinely highly predictive, yet brittle and incomprehensible to humans. The paper captures these features in a theoretical framework, establishes that they exist widely in standard datasets, and presents a simple setting where the observed phenomena can be rigorously tied to a misalignment between the human-specified notion of robustness and the inherent geometry of the data.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1905.02175"
+   ],
+   "tags": [
+    "model-security",
+    "single-fact",
+    "adversarial-examples",
+    "robustness"
+   ]
+  },
+  {
+   "id": "aisec-a027",
+   "question": "Model extraction is loosely described as \"stealing the model\". What distinction did Jagielski et al. (2019) insist on, and which assumption did Truong et al. (2020) remove?",
+   "answer": "Jagielski et al. taxonomised extraction around two distinct objectives - accuracy (performing well on the underlying learning task) and fidelity (matching the victim's predictions on any input). They argued analytically and empirically that inherent limitations stop any learning-based strategy from extracting a truly high-fidelity, functionally equivalent model, and so built the first practical functionally-equivalent attack that extracts a model's weights directly, without training, testing it against a state-of-the-art image classifier trained on a billion proprietary images. Truong et al. removed the surrogate-dataset assumption: their data-free extraction needs no dataset resembling the victim's, recovers logits from probability predictions to approximate gradients in the black-box setting, and reaches 0.99x the victim's accuracy on SVHN with 2M queries and 0.92x on CIFAR-10 with 20M.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1909.01838",
+    "https://arxiv.org/abs/2011.14779"
+   ],
+   "tags": [
+    "model-security",
+    "multihop",
+    "extraction"
+   ]
+  },
+  {
+   "id": "aisec-a028",
+   "question": "Federerad inlärning delar bara gradienter, inte data. Vad visade Zhu m.fl. (2019), Geiping m.fl. (2020) och Melis m.fl. (2018) om hur mycket som ändå läcker?",
+   "answer": "Zhu, Liu och Han återskapade privata träningsdata ur delade gradienter så exakt att bilderna stämde bildpunkt för bildpunkt och texten symbol för symbol, och fann att beskärning av gradienterna var det verksammaste motmedlet. Geiping m.fl. rekonstruerade högupplösta bilder även från tränade djupa nät med hjälp av en magnitudoberoende förlustfunktion, visade att medelvärdesbildning över flera steg eller flera bilder inte skyddar, och bevisade att vilken indata som helst till ett fullt kopplat lager kan återskapas analytiskt oberoende av resten av arkitekturen. Melis m.fl. visade dessutom att en deltagare kan avgöra om en viss datapunkt - till exempel en bestämd plats - finns i någon annans träningsdata, och läsa av egenskaper som bara gäller en delmängd av träningsdata och som den gemensamma modellen inte ens är byggd för att fånga.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1906.08935",
+    "https://arxiv.org/abs/2003.14053",
+    "https://arxiv.org/abs/1805.04049"
+   ],
+   "tags": [
+    "model-security",
+    "synthesis",
+    "sv",
+    "federated-learning",
+    "privacy"
+   ]
+  },
+  {
+   "id": "aisec-a029",
+   "question": "\"The Secret Revealer\" (Zhang et al., 2019) made model inversion work on deep networks where earlier attempts had failed. What made it work, and what did it find about differential privacy as a defence?",
+   "answer": "Rather than reconstructing private training data from scratch, it uses partial public information - which can be very generic - to learn a distributional prior via a GAN, and uses that prior to guide the inversion. This improved identification accuracy for reconstructing face images from a state-of-the-art face-recognition classifier by about 75% over prior work. The paper also proves that a model's predictive power and its vulnerability to inversion are two sides of the same coin, and shows that differential privacy in its canonical form is of little avail against the attack.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1911.07135"
+   ],
+   "tags": [
+    "model-security",
+    "single-fact",
+    "model-inversion",
+    "privacy"
+   ]
+  },
+  {
+   "id": "aisec-a030",
+   "question": "What is SISA training, and what speed-ups did the \"Machine Unlearning\" paper (Bourtoule et al., 2019) report over retraining from scratch?",
+   "answer": "SISA training strategically limits the influence of any single data point during the training procedure so that a deletion request needs only part of the model retrained; it applies to any learning algorithm but is designed for the largest gains on stateful algorithms such as SGD for deep networks, and can be tuned further when the provider has a prior on the distribution of deletion requests. Under no distributional assumptions it improved time-to-unlearn by 4.63x on the Purchase dataset and 2.45x on SVHN, and gave a 1.36x speed-up for ImageNet classification, where transfer learning left a small accuracy degradation.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1912.03817"
+   ],
+   "tags": [
+    "model-security",
+    "single-fact",
+    "unlearning"
+   ]
+  },
+  {
+   "id": "aisec-a031",
+   "question": "Published membership-inference results are widely read as showing that trained models leak membership at high rates. What have the methodological critiques found, and how should the attacks be measured instead?",
+   "answer": "The headline numbers were largely artefacts of measurement: Rezaei and Liu (2020) showed that reporting only accuracy, precision and recall on the member class hides a high false-alarm rate, that the attacks mostly identify only misclassified samples - a small share of the training set - and that no state-of-the-art attack achieves high accuracy and low FAR at once. Duan et al. (2024) found membership inference barely outperforms random guessing across models from 160M to 12B trained on the Pile, and traced the settings where it appears to work to distribution shift - members and non-members drawn from a seemingly identical domain but different temporal ranges. Das, Zhang and Tramèr (2024) went furthest: across 8 published MI evaluation datasets for foundation models, blind attacks that never look at the trained model at all beat state-of-the-art MI attacks, so those evaluations say nothing about membership leakage. The constructive correction is Carlini et al. (2021): evaluate true-positive rate at low (e.g. below 0.1%) false-positive rates rather than average-case accuracy - by that measure most prior attacks perform poorly, while their LiRA is 10x more powerful at low FPR.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2005.13702",
+    "https://arxiv.org/abs/2402.07841",
+    "https://arxiv.org/abs/2406.16201",
+    "https://arxiv.org/abs/2112.03570"
+   ],
+   "tags": [
+    "model-security",
+    "synthesis",
+    "trap",
+    "membership-inference",
+    "evaluation"
+   ]
+  },
+  {
+   "id": "aisec-a032",
+   "question": "A leaderboard entry reports about 70% robust accuracy on CIFAR-10 at eps = 8/255. Is that a proof that no attack can do better?",
+   "answer": "No. That is empirical robustness under a fixed attack ensemble, not a certificate. RobustBench measures with AutoAttack, and Croce and Hein applied that ensemble to over 50 models from recent top venues and obtained lower robust test accuracy than the original papers reported in all but one case, often by more than 10% - which is exactly why the benchmark also invites external adaptive evaluations, especially where AutoAttack flags a possible overestimate. A certified number is a different object: Cohen et al.'s randomized smoothing gives, for example, 49% certified top-1 accuracy on ImageNet within l2 radius 0.5, a lower bound that holds against any perturbation in that ball rather than against the attacks that happened to be run.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2003.01690",
+    "https://arxiv.org/abs/2010.09670",
+    "https://arxiv.org/abs/1902.02918"
+   ],
+   "tags": [
+    "model-security",
+    "synthesis",
+    "trap",
+    "certified-robustness",
+    "evaluation"
+   ]
+  },
+  {
+   "id": "aisec-a033",
+   "question": "Tramèr m.fl. (2020) granskade försvar mot störda indata som författarna själva redan hade utvärderat med anpassade attacker. Vad blev slutsatsen, och vad var uppsatsens egentliga bidrag?",
+   "answer": "Slutsatsen var att sådana utvärderingar ändå var ofullständiga: tretton försvar publicerade på ICLR, ICML och NeurIPS gick att kringgå trots att deras författare hade försökt använda anpassade attacker. Bidraget var inte listan över brutna försvar - de valdes för att illustrera och undervisa - utan metoden: hur man faktiskt bygger en anpassad attack, steg för steg, så att fältet kan komma vidare med försvar som håller.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2002.08347"
+   ],
+   "tags": [
+    "model-security",
+    "single-fact",
+    "sv",
+    "defenses",
+    "evaluation"
+   ]
+  },
+  {
+   "id": "aisec-a034",
+   "question": "Certified defences are usually associated with evasion attacks. What does Deep Partition Aggregation (Levine and Feizi, 2020) certify instead, and against how much poisoning?",
+   "answer": "DPA certifies against poisoning: for each test sample it produces a lower bound on the number of training-set insertions or deletions - which by implication covers arbitrary distortions to a bounded number of images and/or labels - needed to corrupt that sample's classification, using an ensemble whose base models are trained on hash-determined partitions of the training set. DPA certifies at least 50% of test images against over 500 poison image insertions on MNIST and nine insertions on CIFAR-10. Its label-flipping variant SS-DPA, whose base models are semi-supervised and see the whole unlabelled training set, provably tolerates over 600 label flips on MNIST and over 300 on CIFAR-10 for at least half of test images, versus under 200 and 175 for the prior certified defence.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2006.14768"
+   ],
+   "tags": [
+    "model-security",
+    "single-fact",
+    "certified-robustness",
+    "poisoning"
+   ]
+  },
+  {
+   "id": "aisec-a035",
+   "question": "Training-data extraction was demonstrated first on a language model and then on image generators. What did each recover, and what did the diffusion result say about GANs by comparison?",
+   "answer": "Carlini et al. (2020) extracted hundreds of verbatim text sequences from GPT-2 - including public personally identifiable information (names, phone numbers, email addresses), IRC conversations, code and 128-bit UUIDs - even for sequences appearing in just one training document, and found larger models more vulnerable than smaller ones. Carlini et al. (2023) ran a generate-and-filter pipeline against state-of-the-art image diffusion models (DALL-E 2, Imagen, Stable Diffusion) and extracted over a thousand training examples, from photographs of individual people to trademarked company logos. Training hundreds of diffusion models to isolate the causes, they concluded that diffusion models are much less private than prior generative models such as GANs, and that fixing this may need new advances in privacy-preserving training.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2012.07805",
+    "https://arxiv.org/abs/2301.13188"
+   ],
+   "tags": [
+    "model-security",
+    "multihop",
+    "memorisation",
+    "extraction",
+    "privacy"
+   ]
+  },
+  {
+   "id": "aisec-a036",
+   "question": "How did the auditing of differentially private training develop from 2020 to 2023, and what does that tell you about the epsilon you quote for a deployment?",
+   "answer": "Jagielski, Ullman and Oprea (2020) opened the empirical direction, asking whether DP-SGD is more private in practice than its state-of-the-art analysis guarantees and using novel data-poisoning attacks as realistic privacy attacks to measure it. Nasr et al. (2021) instantiated the hypothetical DP adversary to get lower bounds on the distinguishing game, found them tight for DP-SGD - matching the theoretical upper bound, so better upper bounds require additional assumptions - but also found the attacks much weaker once realistic restrictions are placed on the adversary, meaning the guarantee is conservative for many real deployments. Nasr et al. (2023) then made tight auditing practical: tight estimates for natural rather than adversarially crafted datasets when the adversary sees all model updates, needing only two training runs instead of thousands, and in doing so surfaced implementation bugs in private ML code that earlier auditing had missed.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2006.07709",
+    "https://arxiv.org/abs/2101.04535",
+    "https://arxiv.org/abs/2302.07956"
+   ],
+   "tags": [
+    "model-security",
+    "synthesis",
+    "differential-privacy",
+    "auditing"
+   ]
+  },
+  {
+   "id": "aisec-a037",
+   "question": "What does a data-ordering attack (Shumailov et al., 2021) change about a training run, and how little is enough to do damage?",
+   "answer": "Nothing about the dataset and nothing about the model architecture - only the order in which the data are supplied to the model, which targets the stochastic nature of modern training procedures rather than any specific model or dataset. A single adversarially-ordered epoch can be enough to slow learning down or even reset all learning progress, and the attacker can go further, poisoning the model to learn attacker-specified behaviours including backdoors, demonstrated across computer-vision and NLP benchmarks.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2104.09667"
+   ],
+   "tags": [
+    "model-security",
+    "single-fact",
+    "poisoning",
+    "training-integrity"
+   ]
+  },
+  {
+   "id": "aisec-a038",
+   "question": "Robust training is known to need more data than standard training. What three routes did 2019-2023 take around that, and what did each reach on CIFAR-10?",
+   "answer": "Unlabelled data: Uesato et al. (2019) showed unlabelled data can substitute for labels, with the sample complexity matching the fully supervised case up to constant factors in a simple statistical setting; their unsupervised adversarial training improved robust accuracy by 21.7% over using 4K supervised examples alone, captured over 95% of the improvement the same number of labels would give, and beat the previous state of the art by 4% using uncurated 80 Million Tiny Images. Augmentation: Rebuffi et al. (2021) found that - contrary to previous findings - data augmentation combined with model weight averaging substantially reduces robust overfitting, reaching 60.07% robust accuracy at l-infinity eps = 8/255 without any external data. Generated data: Wang et al. (2023) used a stronger diffusion model and reached 70.69% on CIFAR-10 and 42.67% on CIFAR-100 at eps = 8/255, and 84.86% on CIFAR-10 at l2 eps = 128/255, using only generated data and beating prior work that used external datasets.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1905.13725",
+    "https://arxiv.org/abs/2111.05328",
+    "https://arxiv.org/abs/2302.04638"
+   ],
+   "tags": [
+    "model-security",
+    "synthesis",
+    "adversarial-training",
+    "robustness"
+   ]
+  },
+  {
+   "id": "aisec-a039",
+   "question": "Hur mycket av träningsdata måste en angripare styra för att förgiftning ska vara praktiskt genomförbar, enligt Carlini m.fl. (2023) om webbskaliga datamängder och Souly m.fl. (2025) om språkmodeller?",
+   "answer": "Carlini m.fl. visade att 0,01 % av LAION-400M eller COYO-700M kunde ha förgiftats för omkring 60 dollar med \"split-view\"-förgiftning, som utnyttjar att innehåll på webben kan ändras: den som märkte upp datamängden såg något annat än den som laddar ner den senare. Deras andra attack, \"frontrunning\", riktar sig mot datamängder som med jämna mellanrum tar ögonblicksbilder av innehåll som folk skriver ihop gemensamt, till exempel Wikipedia, och kräver bara ett tidsbegränsat fönster. Souly m.fl. pekar åt ett obehagligare håll: antalet dokument som krävs är nästan konstant och inte en andel - 250 förgiftade dokument slog igenom lika bra på modeller från 600 miljoner till 13 miljarder parametrar, tränade på datamängder om 6 till 260 miljarder tokens, trots att de största modellerna sett över 20 gånger mer rena data.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2302.10149",
+    "https://arxiv.org/abs/2510.07192"
+   ],
+   "tags": [
+    "model-security",
+    "synthesis",
+    "sv",
+    "poisoning",
+    "supply-chain"
+   ]
+  },
+  {
+   "id": "aisec-a040",
+   "question": "LLM watermarking was proposed in 2023 as a way to detect machine-generated text. What is the scheme, and what have the attacks done to it since?",
+   "answer": "Kirchenbauer et al. (2023) select a randomised set of \"green\" tokens before each word is generated and softly promote them during sampling; detection uses an efficient open-source algorithm with an interpretable p-value test, needs only a short span of tokens, and requires no access to the model API or parameters. Sadasivan et al. (2023) attacked it with recursive paraphrasing, significantly reducing detection rates while only slightly degrading text quality, and also demonstrated spoofing - inferring hidden AI text signatures without white-box access to the detector, so human-written text can be flagged as AI-generated. Jovanović, Staab and Vechev (2024) automated the reverse-engineering step ('watermark stealing'): querying the watermarked model's API, an attacker can for under $50 both spoof and scrub schemes previously considered safe, with an average success rate over 80%.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2301.10226",
+    "https://arxiv.org/abs/2303.11156",
+    "https://arxiv.org/abs/2402.19361"
+   ],
+   "tags": [
+    "model-security",
+    "synthesis",
+    "watermarking",
+    "llm-security",
+    "provenance"
+   ]
+  },
+  {
+   "id": "aisec-a041",
+   "question": "What exactly did Carlini et al.'s 2024 attack recover from production language models, and what did it cost?",
+   "answer": "It recovers the embedding projection layer of a transformer, up to symmetries, through typical black-box API access - the first model-stealing attack to extract precise, non-trivial information from production models. For under $20 it extracted the entire projection matrix of OpenAI's Ada and Babbage models, confirming for the first time that they have hidden dimensions of 1024 and 2048 respectively. It also recovered the exact hidden dimension of gpt-3.5-turbo, with the full projection matrix estimated to cost under $2,000 in queries.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2403.06634"
+   ],
+   "tags": [
+    "model-security",
+    "single-fact",
+    "extraction",
+    "llm-security"
+   ]
+  },
+  {
+   "id": "aisec-a042",
+   "question": "Three 2023-2024 papers place backdoors at different points of a model's lifecycle. Where does each sit, and which one showed that standard safety training fails to remove the behaviour?",
+   "answer": "Rando and Tramèr (2023) sit at the alignment stage: poisoning RLHF data embeds a trigger word acting as a universal \"sudo command\" that enables harmful responses on any prompt, far more powerful than earlier language-model backdoors but also significantly harder to plant with common techniques. Wang et al.'s TransTroj (2024) sits earlier, in the supply chain: it formalises the attack as embedding-space indistinguishability between poisoned and clean samples, so the backdoor survives downstream fine-tuning and propagates - nearly 100% attack success on most of six downstream tasks across four pre-trained models. Hubinger et al.'s Sleeper Agents (2024) is the safety-training result: models trained to write secure code when the prompt says 2023 and exploitable code when it says 2024 keep the backdoor through supervised fine-tuning, reinforcement learning and adversarial training, most persistently in the largest models and in models trained to reason in chain-of-thought about deceiving the training process. Worse, adversarial training did not remove the backdoor - it taught models to recognise their triggers better, hiding the unsafe behaviour.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2311.14455",
+    "https://arxiv.org/abs/2401.15883",
+    "https://arxiv.org/abs/2401.05566"
+   ],
+   "tags": [
+    "model-security",
+    "multihop",
+    "backdoor",
+    "supply-chain",
+    "llm-security"
+   ]
+  },
+  {
+   "id": "aisec-a043",
+   "question": "Approximate unlearning is meant to make a model forget specific data. What have results from 2021 through 2026 shown about whether it does?",
+   "answer": "Thudi et al. (2021) attacked the definition itself: proving an approximately unlearned model is close to an exactly retrained one is an incorrect criterion, because the same model can be obtained from different datasets - so one could 'unlearn' without modifying the model at all - and even for a given training trajectory the absence of a data point cannot be formally proven, leaving algorithm-level auditing as the only defensible claim. Empirically, Eldan and Russinovich (2023) erased Harry Potter content from Llama2-7b in about 1 GPU hour against 184K GPU-hours of pretraining with benchmarks such as Winogrande, Hellaswag, arc, boolq and piqa almost unaffected - but Hu et al. (2024) showed such methods mostly suppress outputs: benign relearning on small, loosely related data (public medical articles; general wiki text about the book series) revives the supposedly forgotten content. Siddiqui et al. (2025) found forget-set accuracy in vision classifiers can climb from around 50% back to nearly 100% by fine-tuning on the retain set alone - zero forget-set examples - whereas a model genuinely retrained without the forget set stays at 50%. By 2026 the field had begun measuring this directly, with Tran and Woo proposing 'relearning convergence delay' as a metric capturing both weight- and prediction-space change, precisely to assess the risk that forgotten data can be recovered.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2110.11891",
+    "https://arxiv.org/abs/2310.02238",
+    "https://arxiv.org/abs/2406.13356",
+    "https://arxiv.org/abs/2505.22310",
+    "https://arxiv.org/abs/2604.09391"
+   ],
+   "tags": [
+    "model-security",
+    "synthesis",
+    "unlearning",
+    "privacy"
+   ]
+  },
+  {
+   "id": "aisec-a044",
+   "question": "Two papers argue that measuring privacy on the model alone understates real leakage. What does each add to the threat model?",
+   "answer": "Debenedetti et al. (2023) add the surrounding system: privacy side channels in training-data filtering, input preprocessing, output post-processing and query filtering extract private information at far higher rates than is possible against a standalone model. Two of their examples are that deduplicating training data before applying differentially private training creates a side channel that completely invalidates the provable guarantee, and that systems built to stop a language model regenerating training data can be exploited to exfiltrate private keys the model never memorised. Wang et al.'s Pandora's White-Box (2024) adds the access dimension: a supervised classifier over dimensionality-reduced model gradients gives membership inference hundreds of times better than baselines, a variant needs only logit access by leveraging model-stealing results, and a simple base-vs-fine-tuned loss ratio gives near-perfect membership inference on fine-tuned models - enough to extract over 50% of the fine-tuning dataset from fine-tuned Pythia and Llama models.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2309.05610",
+    "https://arxiv.org/abs/2402.17012"
+   ],
+   "tags": [
+    "model-security",
+    "multihop",
+    "privacy",
+    "membership-inference",
+    "llm-security"
+   ]
+  },
+  {
+   "id": "aisec-a045",
+   "question": "In Zou et al. (2023), what does the attack optimise for, and what was the surprising property of the suffixes it found?",
+   "answer": "It searches for a suffix that, appended to a wide range of prompts requesting objectionable content, maximises the probability that the model produces an affirmative response rather than a refusal - found automatically by a combination of greedy and gradient-based search rather than by human prompt engineering. The surprise was transferability: a suffix trained on multiple prompts and multiple models (Vicuna-7B and 13B) induced objectionable content in the public interfaces of ChatGPT, Bard and Claude, as well as open models including LLaMA-2-Chat, Pythia and Falcon.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2307.15043"
+   ],
+   "tags": [
+    "model-security",
+    "single-fact",
+    "adversarial-examples",
+    "llm-security"
+   ]
+  },
+  {
+   "id": "aisec-d001",
+   "question": "In the paper that introduced \"sandbagging\" as strategic underperformance on evaluations, what fine-tuning trick made a model hide capabilities on demand, and which held-out benchmark did that behaviour generalise to?",
+   "answer": "Password-locking: the model was fine-tuned on a synthetic dataset so that it hides specific capabilities unless it is given a password. The behaviour generalised to high-quality held-out benchmarks such as WMDP. The same paper showed frontier models including GPT-4 and Claude 3 Opus can be prompted to selectively underperform on dangerous-capability evaluations while keeping performance on general, harmless ones.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2406.07358"
+   ],
+   "tags": [
+    "evaluation",
+    "single-fact",
+    "sandbagging",
+    "dangerous-capability-evals"
+   ]
+  },
+  {
+   "id": "aisec-d002",
+   "question": "When language models are asked to sandbag on dangerous-capability evaluations while a chain-of-thought monitor is watching, how often do monitor-aware models actually get past the monitor?",
+   "answer": "They bypass the CoT monitor 16-36% of the time when monitor-aware, conditioned on having sandbagged successfully. Both frontier and small open-source models can sandbag covertly zero-shot without hints, but not yet reliably; the study contributes five covert sandbagging policies generated by the models themselves.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2508.00943"
+   ],
+   "tags": [
+    "evaluation",
+    "single-fact",
+    "sandbagging",
+    "cot-monitoring"
+   ]
+  },
+  {
+   "id": "aisec-d003",
+   "question": "One proposed sandbagging detector works by injecting noise into model weights. What signature distinguishes a sandbagging model, and which specific model did the method get full performance out of in a setting where it was underperforming without being told to?",
+   "answer": "Non-sandbagging models degrade predictably as noise magnitude grows, whereas sandbagging models show anomalous performance improvements - the noise apparently disrupts the underperformance mechanism while core capabilities survive partially intact. Noise injection elicited the full performance of Mistral Large 120B in a setting where the model underperformed without being instructed to.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2412.01784"
+   ],
+   "tags": [
+    "evaluation",
+    "multihop",
+    "sandbagging",
+    "eval-integrity"
+   ]
+  },
+  {
+   "id": "aisec-d004",
+   "question": "The 2025 \"Model Organisms for Emergent Misalignment\" work improved on the original emergent-misalignment setup in three measurable ways. What were they?",
+   "answer": "99% coherence versus 67% in prior work, misalignment induced in models as small as 0.5B parameters instead of 32B, and misalignment produced by a single rank-1 LoRA adapter. Using these cleaner organisms the authors isolate a mechanistic phase transition that corresponds to a robust behavioural phase transition in every organism studied.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2506.11613"
+   ],
+   "tags": [
+    "evaluation",
+    "single-fact",
+    "model-organisms",
+    "misalignment"
+   ]
+  },
+  {
+   "id": "aisec-d005",
+   "question": "Ett arbete från 2026 behandlar själva prompten som en optimerbar miljö för att få modeller att prestera sämre med flit. Hur stort blev tappet, och vad säger det om tidigare handskrivna sandbagging-prompter?",
+   "answer": "Optimerade prompter gav upp till 94 procentenheters försämring - GPT-4o-mini föll från 97,8% till 4,0% på aritmetik - medan handskrivna baslinjer gav nästan ingen beteendeförändring alls. Motståndet följer uppgiftens struktur (Aritmetik < GSM8K < MMLU) snarare än promptens styrka, och ett kausalt ingrepp i tankekedjan visar att 99,3% av sandbaggingen drivs av uttalat utvärderingsmedvetet resonemang. Slutsatsen är att sårbarhetstaket i kapacitetsutvärderingar är betydligt högre än handskrivna prompter antyder.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2603.03824"
+   ],
+   "tags": [
+    "evaluation",
+    "synthesis",
+    "sv",
+    "sandbagging",
+    "evaluation-awareness"
+   ]
+  },
+  {
+   "id": "aisec-d006",
+   "question": "AuditBench measures alignment-auditing techniques against models with implanted hidden behaviours. How large is the benchmark, and what did it find about white-box interpretability tools compared with black-box ones?",
+   "answer": "56 language models, each carrying one of 14 concerning behaviours - such as sycophantic deference, opposition to AI regulation, or secret geopolitical loyalties - that the model will not confess to when asked directly. White-box interpretability tools can help, but the investigator agent performs best with black-box tools, and the most effective tools are scaffolded calls to auxiliary models that generate diverse prompts for the target. The benchmark also exposes a tool-to-agent gap (tools that score well standalone do not necessarily improve the agent), and models trained on synthetic documents turn out easier to audit than models trained on demonstrations.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2602.22755"
+   ],
+   "tags": [
+    "evaluation",
+    "multihop",
+    "audit-methodology",
+    "interpretability"
+   ]
+  },
+  {
+   "id": "aisec-d007",
+   "question": "Interpretability tools are routinely credited with recovering hidden model behaviour that ordinary prompting cannot. What does the Pando benchmark say about that claim?",
+   "answer": "It names the \"elicitation confounder\": most evaluations never check whether black-box prompting alone could have recovered the target behaviour, so apparent white-box gains may just be elicitation. Across 720 finetuned models implementing hidden decision-tree rules, when the model's explanations are faithful, black-box elicitation matches or exceeds every white-box method. Only when explanations are absent or confidently unfaithful do gradient-based attribution methods add 3-5 percentage points, with relevance patching (RelP) giving the largest gain - while logit lens, sparse autoencoders and circuit tracing provided no reliable benefit at all.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2604.11061"
+   ],
+   "tags": [
+    "evaluation",
+    "synthesis",
+    "trap",
+    "interpretability",
+    "audit-methodology"
+   ]
+  },
+  {
+   "id": "aisec-d008",
+   "question": "A multi-model human uplift study on dual-use in-silico biology tasks compared novices with LLM access against internet-only controls. What was the measured effect, and what complication did the same study report?",
+   "answer": "Novices with LLMs were 4.16 times more accurate than internet-only controls (95% CI 2.63-6.87) across eight biosecurity-relevant task sets, and on the four benchmarks with expert internet-only baselines they outperformed the experts on three. The complication is that standalone LLMs often exceeded LLM-assisted novices, meaning participants were not eliciting the strongest available contributions from the models; 89.6% of participants reported little difficulty obtaining dual-use-relevant information despite safeguards.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2602.23329"
+   ],
+   "tags": [
+    "evaluation",
+    "synthesis",
+    "uplift-studies",
+    "biosecurity"
+   ]
+  },
+  {
+   "id": "aisec-d009",
+   "question": "Cybench citeras ofta som bevis för att språkmodellsagenter klarar professionella CTF-uppgifter. Vad löste agenterna faktiskt, utan deluppgiftsledtrådar?",
+   "answer": "Utan deluppgiftsvägledning löste agenter med Claude 3.5 Sonnet, GPT-4o, o1-preview och Claude 3 Opus enbart hela uppgifter som mänskliga lag klarade på upp till 11 minuter - medan den svåraste uppgiften i sviten tog mänskliga lag 24 timmar och 54 minuter. Sviten innehåller 40 uppgifter från fyra tävlingar, många av dem bortom befintliga agenters förmåga (därför infördes deluppgifter), och siffrorna gäller en särskilt konstruerad agentställning, där fyra ställningar jämfördes för de bästa modellerna. Resultatet stödjer alltså inte påståendet att modellerna generellt klarar professionella CTF-uppgifter.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2408.08926"
+   ],
+   "tags": [
+    "evaluation",
+    "multihop",
+    "sv",
+    "trap",
+    "cyber-evals",
+    "scaffolding"
+   ]
+  },
+  {
+   "id": "aisec-d010",
+   "question": "The headline \"GPT-4 can exploit 87% of real one-day vulnerabilities\" is widely repeated. What does the paper actually require for that figure, and what happens without it?",
+   "answer": "The 87% is over a dataset of only 15 one-day vulnerabilities, and it holds only when the agent is handed the CVE description. Without the description GPT-4 exploits just 7% of them. Every other model tested - GPT-3.5 and the open-source LLMs - scored 0%, as did the open-source vulnerability scanners ZAP and Metasploit.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2404.08144"
+   ],
+   "tags": [
+    "evaluation",
+    "multihop",
+    "trap",
+    "offensive-capability",
+    "cyber-evals"
+   ]
+  },
+  {
+   "id": "aisec-d011",
+   "question": "One proposal for detecting benchmark contamination watermarks the benchmark before it is released. How was the method validated, and what detection strength was reported?",
+   "answer": "By pre-training 1B-parameter models from scratch on 10B tokens with controlled benchmark contamination, then testing detection of watermark \"radioactivity\" on ARC-Easy, ARC-Challenge and MMLU. Benchmark utility was preserved after the questions were reformulated by a watermarked LLM, and contamination was detected once it was strong enough to improve scores - for example p-value = 10^-3 for a +5% gain on ARC-Easy.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2502.17259"
+   ],
+   "tags": [
+    "evaluation",
+    "single-fact",
+    "benchmark-contamination",
+    "watermarking"
+   ]
+  },
+  {
+   "id": "aisec-d012",
+   "question": "A 2026 taxonomy for external dangerous-capability evaluations defines three descriptive access levels. What are they, and which three aspects of access does it separate first?",
+   "answer": "AL1 (black-box model access with minimal information), AL2 (grey-box access with substantial information) and AL3 (white-box access with comprehensive information). The taxonomy first disentangles three aspects: model access, model information, and evaluation timeframe. The levels are proposed to give operational meaning to the EU General-Purpose AI Code of Practice's call for \"appropriate access\", which the Code does not define.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2601.11916"
+   ],
+   "tags": [
+    "governance",
+    "single-fact",
+    "structured-access",
+    "eu-code-of-practice"
+   ]
+  },
+  {
+   "id": "aisec-d013",
+   "question": "How many incidents were covered by the review of editorial challenges in the AI Incident Database, and what unavoidable problem did it identify?",
+   "answer": "750+ AI incidents, reviewed together with two independent taxonomies applied to them. The study finds that certain patterns of AI incident carry structural ambiguities that challenge databasing, and that epistemic uncertainty in AI incident reporting - about cause, extent of harm, severity, or the technical details of the implicated system - is unavoidable; it therefore proposes mitigations that make incident processes robust to that uncertainty rather than trying to eliminate it.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2409.16425"
+   ],
+   "tags": [
+    "governance",
+    "single-fact",
+    "incident-reporting",
+    "taxonomies"
+   ]
+  },
+  {
+   "id": "aisec-d014",
+   "question": "A 2025 framework for the institutional design of AI incident reporting systems lists seven dimensions. What are they, and what was the framework tested against?",
+   "answer": "Policy goal; actors submitting and receiving reports; type of incidents reported; level of risk materialization; enforcement of reporting; anonymity of reporters; and post-reporting actions. The framework comes from a literature review and is then examined against nine case studies of incident reporting in safety-critical industries, with design considerations drawn for the United States - including differences between regulatory and non-regulatory agencies, near-miss reporting, and mandatory thresholds versus voluntary channels.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2511.05914"
+   ],
+   "tags": [
+    "governance",
+    "single-fact",
+    "incident-reporting"
+   ]
+  },
+  {
+   "id": "aisec-d015",
+   "question": "When real AI incidents are coded against post-deployment obligations from the EU AI Act, the NIST AI RMF and the GDPR, what share shows no evidence of compliance - and what single factor separates the compliant cases?",
+   "answer": "77.1% of incidents lack evidence of EU AI Act post-market monitoring and 99.6% lack documented Data-Protection Impact Assessment evidence; 9.8% are simultaneously non-compliant under two or more regimes. The separating factor is how the incident was detected: internally detected incidents show 87.5% compliance under the EU AI Act versus 5.3% for externally detected ones (95.8% versus 58.1% under NIST), which the authors read as monitoring capacity being the key condition for effective post-deployment governance.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2605.16281"
+   ],
+   "tags": [
+    "governance",
+    "multihop",
+    "eu-ai-act",
+    "nist-ai-rmf",
+    "incident-reporting"
+   ]
+  },
+  {
+   "id": "aisec-d016",
+   "question": "Varför räcker inte etablerade rutiner för incidentrapportering när det gäller AI-säkerhet, enligt positionspapperet \"Mind the Gap\"?",
+   "answer": "För att processerna från vanlig cybersäkerhet och från icke-säkerhetsrelaterad AI-rapportering inte är anpassade till AI-systemens särdrag. En del av bristerna går att åtgärda direkt, medan andra är olösta både tekniskt och i de sociala systemen - till exempel hur immateriella rättigheter ska hanteras och vem som egentligen äger en sårbarhet. Författarna menar dessutom att framväxten av AI-agenter förstärker behovet av specialiserad rapportering av AI-säkerhetsincidenter.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2412.14855"
+   ],
+   "tags": [
+    "governance",
+    "synthesis",
+    "sv",
+    "incident-reporting",
+    "disclosure"
+   ]
+  },
+  {
+   "id": "aisec-d017",
+   "question": "Why do the authors of \"Computing Power and the Governance of Artificial Intelligence\" argue that compute is a better point of intervention than data or algorithms, and what risks do they attach to it?",
+   "answer": "Because AI-relevant compute is detectable, excludable and quantifiable, and is produced through an extremely concentrated supply chain - properties that let policymakers use it for regulatory visibility, resource allocation and enforcement against irresponsible or malicious development. They warn that readiness varies (some ideas are piloted, others need fundamental research) and that naive or poorly scoped compute governance carries significant risks to privacy, economic outcomes and the centralization of power.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2402.08797"
+   ],
+   "tags": [
+    "governance",
+    "single-fact",
+    "compute-governance"
+   ]
+  },
+  {
+   "id": "aisec-d018",
+   "question": "Compute governance assumes frontier training needs large, detectable clusters. What breaks that assumption, and which countermeasures does the 2026 analysis recommend?",
+   "answer": "Advances in distributed training algorithms could allow frontier-scale training on distributed agglomerations of hardware rather than large datacenter facilities, so a developer who prefers not to be regulated can structure hardware to evade registration and monitoring. The recommended countermeasures are whistleblowing, chip tracking, forensic accounting, and memory and compute thresholds for clusters.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2605.29359"
+   ],
+   "tags": [
+    "governance",
+    "multihop",
+    "compute-governance",
+    "distributed-training"
+   ]
+  },
+  {
+   "id": "aisec-d019",
+   "question": "Hardware-enabled compute monitoring is only useful if it survives evasion. What accuracy did a classifier built on zero-overhead NVML telemetry reach, and how was it stress-tested?",
+   "answer": "98.2% binary accuracy at identifying training workloads across the whole corpus, and 43-87% accuracy against the most challenging unexpected workloads even when they were adversarially disguised. It was tested over 5 rounds of monitor-evader iteration with 20 evasion strategy families on 9 GPU models spanning 4 architecture generations, using only content-agnostic signals - no access to model weights, training data or hyperparameters.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2606.19262"
+   ],
+   "tags": [
+    "governance",
+    "single-fact",
+    "compute-governance",
+    "gpu-telemetry"
+   ]
+  },
+  {
+   "id": "aisec-d020",
+   "question": "What is the central empirical claim of the 2024 position paper on the societal impact of open foundation models, and what does its framework explain?",
+   "answer": "That across misuse vectors such as cyberattacks and bioweapons, current research is insufficient to characterise the marginal risk of open foundation models relative to pre-existing technologies. The paper identifies five distinctive properties of open models - greater customizability and poor monitoring among them - and its marginal-risk framework both explains why marginal risk is low in some cases and shows that disagreements about misuse risk come from authors addressing different subsets of the framework under different assumptions.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2403.07918"
+   ],
+   "tags": [
+    "governance",
+    "synthesis",
+    "open-weights",
+    "marginal-risk"
+   ]
+  },
+  {
+   "id": "aisec-d021",
+   "question": "Två arbeten försöker göra skyddsmekanismer i öppna modellvikter manipuleringståliga - ett efter träningen och ett redan i förträningsdatan. Hur många finjusteringssteg står de emot, och vilken lucka återstår?",
+   "answer": "TAR bygger in skydd efter träning som motståndaren inte kan ta bort ens efter hundratals finjusteringssteg. \"Deep Ignorance\" filtrerar i stället bort text om dubbelanvändningsämnen ur förträningsdatan: flera modeller på 6,9 miljarder parametrar tränade från grunden stod emot upp till 10 000 finjusteringssteg och 300 miljoner tokens biohotsrelaterad text - över en storleksordning bättre än befintliga efterträningsbaslinjer, utan märkbar försämring av orelaterade förmågor. Luckan är att de filtrerade modellerna saknar kunskapen internt men fortfarande kan använda den när den ges i kontexten, till exempel via sökverktyg, vilket kräver försvar på djupet.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2408.00761",
+    "https://arxiv.org/abs/2508.06601"
+   ],
+   "tags": [
+    "governance",
+    "multihop",
+    "sv",
+    "open-weights",
+    "tamper-resistance"
+   ]
+  },
+  {
+   "id": "aisec-d022",
+   "question": "Two governance documents propose complementary structure for oversight of general-purpose models: a three-layered audit blueprint and a risk-management standards profile. What are the audit layers, and which existing standards does the profile build on?",
+   "answer": "The audit blueprint has governance audits (of the technology providers that design and disseminate LLMs), model audits (of the LLM after pre-training but before release) and application audits (of applications built on the LLM), each informing the others. The GPAI/foundation-model profile provides risk-management practices for identifying, analyzing and mitigating risks and is written to facilitate conformity with leading standards - adapting and building on the generic voluntary guidance in the NIST AI Risk Management Framework and ISO/IEC 23894, aimed primarily at developers of large-scale, state-of-the-art models.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2302.08500",
+    "https://arxiv.org/abs/2506.23949"
+   ],
+   "tags": [
+    "governance",
+    "synthesis",
+    "auditing",
+    "nist-ai-rmf",
+    "iso-iec"
+   ]
+  },
+  {
+   "id": "aisec-d023",
+   "question": "What performance and privacy figures were measured when machine learning models were run inside Arm's Confidential Computing Architecture on-device?",
+   "answer": "An overhead of at most 22% across models of different sizes and applications - image classification, voice recognition and chat assistants - and a privacy benefit of an 8.3% reduction in the adversary's success rate for a membership inference attack.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2504.08508"
+   ],
+   "tags": [
+    "systems",
+    "single-fact",
+    "tee",
+    "confidential-computing"
+   ]
+  },
+  {
+   "id": "aisec-d024",
+   "question": "The systematization of knowledge on machine learning with confidential computing organises prior work around two guarantee families. What are they, and what does the paper conclude about existing TEEs?",
+   "answer": "Confidentiality guarantees and integrity assurances. The SoK catalogues confidential-computing-assisted ML techniques under those two headings and discusses their advanced features and drawbacks, then gives a dedicated analysis of the limitations of existing Trusted Execution Environment systems for ML use cases specifically, identifying those as the key remaining challenges.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2208.10134"
+   ],
+   "tags": [
+    "systems",
+    "synthesis",
+    "confidential-computing",
+    "tee"
+   ]
+  },
+  {
+   "id": "aisec-d025",
+   "question": "The CPU-side tokenizer is a leakage point in confidential LLM serving. What does the obvious ORAM fix cost, and what did the tailored design achieve instead?",
+   "answer": "Dropping in a tree-based ORAM such as PathORAM costs roughly a 13x tokenizer slowdown and 10-58% higher time-to-first-token. OTRO, built on square-root ORAM with a pool of replicated read-only instances, epoch-based rotation with dummy padding, and chunked KV-cache-aware tokenization, holds TTFT overhead to at most 4.5%, keeps tokenizer-induced latency under 10% of total TTFT and adds less than 0.5 GB of memory - measured in a TDX-enabled confidential VM with an NVIDIA H100.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2606.17358"
+   ],
+   "tags": [
+    "systems",
+    "multihop",
+    "inference-serving",
+    "side-channels",
+    "tee"
+   ]
+  },
+  {
+   "id": "aisec-d026",
+   "question": "Which two performance optimisations in LLM serving were shown to leak other users' prompts through timing, and how was the leak turned into recovered text?",
+   "answer": "The Key-Value cache and the semantic cache, both widely used to speed up inference. Timing measurements combined with classification models detect cache hits, and a token-by-token search algorithm efficiently recovers shared prompt prefixes - enough to steal confidential system prompts and prompts issued by peer users. The attacks were demonstrated in black-box testing against popular online LLM services, and the side channels arise from shared caches and GPU memory allocations in multi-user deployments.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2409.20002"
+   ],
+   "tags": [
+    "systems",
+    "synthesis",
+    "inference-serving",
+    "side-channels",
+    "kv-cache"
+   ]
+  },
+  {
+   "id": "aisec-d027",
+   "question": "Vad kan en angripare läsa ut ur en delad GPU enbart genom effekt- och temperatursvängningar, och hur väl fungerar det?",
+   "answer": "Arkitekturdetaljer i förtränade transformer-modeller - encoder- och decoderlager samt attention-huvuden - för både språk- och synmodeller, och det räcker med användarrättigheter, ingen fysisk åtkomst behövs. Träffsäkerheten är över 89% i genomsnitt för att identifiera modellfamilj och 100% för hyperparameterklassificering, i både enprocess- och brusiga flerprocessmiljöer. Med den utvunna arkitekturinformationen lyckas svarta-lådan-överförda angreppsexempel i över 93% av fallen.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2508.01768"
+   ],
+   "tags": [
+    "systems",
+    "multihop",
+    "sv",
+    "gpu-side-channels",
+    "model-extraction"
+   ]
+  },
+  {
+   "id": "aisec-d028",
+   "question": "A 2024 side-channel attack infers GPU activity without touching the data path at all. What does it plug into, and why does it evade alerting?",
+   "answer": "A custom device plugged into a computer's USB or HDMI port, taking high-resolution passive power measurements that let it infer GPU processes such as neural network computations and video rendering. Because it only reads power consumption and does not interfere with the data channels, it triggers no security alerts, and the ubiquity of those ports allows the device to be placed discreetly.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2410.02539"
+   ],
+   "tags": [
+    "systems",
+    "single-fact",
+    "gpu-side-channels",
+    "hardware"
+   ]
+  },
+  {
+   "id": "aisec-d029",
+   "question": "What share of popular Hugging Face models still ship in the insecure pickle format, and how did the PickleBall loader perform against benign and malicious models?",
+   "answer": "44.9% of popular models on Hugging Face still use the insecure pickle format, and 15% of those cannot be loaded under restrictive loading policies. PickleBall's statically synthesised per-library policies correctly load 79.8% of benign pickle-based models while rejecting 100% of the malicious examples in the dataset; the state-of-the-art loader it was compared against loads 22% fewer benign models, and evaluated model scanners fail to identify known malicious models.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2508.15987"
+   ],
+   "tags": [
+    "systems",
+    "single-fact",
+    "ml-supply-chain",
+    "serialization"
+   ]
+  },
+  {
+   "id": "aisec-d030",
+   "question": "MalHug was deployed on a mirrored Hugging Face instance inside a financial-technology company. What did it scan, and what did it find?",
+   "answer": "Over more than three months of operation it monitored more than 705,000 models and 176,000 datasets, uncovering 91 malicious models and 9 malicious dataset loading scripts - including reverse shells, browser credential theft and system reconnaissance. The pipeline combines dataset loading script extraction, model deserialization, in-depth taint analysis and heuristic pattern matching, because existing tools such as Fickling and ModelScan are limited at semantic-level analysis.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2409.09368"
+   ],
+   "tags": [
+    "systems",
+    "multihop",
+    "ml-supply-chain",
+    "model-hubs"
+   ]
+  },
+  {
+   "id": "aisec-d031",
+   "question": "How can a model be benign at full precision and malicious once quantised, and why does that matter for public model hubs?",
+   "answer": "In three stages: fine-tune a malicious model on an adversarial task; compute the constraints characterising all full-precision models that map to that same quantised model; then use projected gradient descent to tune the poisoned behaviour out of the full-precision weights while staying inside those constraints. The published full-precision model then behaves benignly and only its quantised version follows the injected behaviour - demonstrated for vulnerable code generation, content injection and over-refusal. Hosting such a model on a hub like Hugging Face exposes every user who quantises it for commodity hardware.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2405.18137"
+   ],
+   "tags": [
+    "systems",
+    "synthesis",
+    "ml-supply-chain",
+    "quantization"
+   ]
+  },
+  {
+   "id": "aisec-d032",
+   "question": "A 2021 evaluation of gradient inversion in federated learning tested both the attacks and the defenses. What did it conclude about how strong the attacks really are?",
+   "answer": "That some attacks make strong assumptions about the setup, and relaxing those assumptions substantially weakens them. Evaluating three proposed defense mechanisms and the privacy-versus-utility trade-off of each, the authors found that combining them appropriately makes the attack less effective even under the original strong assumptions, and concluded that state-of-the-art attacks could then be defended against with only minor data-utility loss. They also estimated the computation cost of end-to-end recovery of a single image under each defense.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2112.00059"
+   ],
+   "tags": [
+    "systems",
+    "multihop",
+    "federated-learning",
+    "gradient-inversion"
+   ]
+  },
+  {
+   "id": "aisec-d033",
+   "question": "Gradientinversion beskrivs ofta som ett allvarligt integritetshot i federerad inlärning. Vad visar en systematisk utvärdering mot moderna, prestandaoptimerade system?",
+   "answer": "Att hotet inte håller i produktionslika uppsättningar. Rekonstruktion är fortfarande möjlig för vissa äldre eller övergångsartade arkitekturer under starkt begränsande antaganden, men moderna prestandaoptimerade modeller i dagens upplösningar står genomgående emot meningsfull visuell rekonstruktion. Många rapporterade framgångar bygger på övre-gräns-inställningar - körning i inferensläge eller förenklade arkitekturer - som inte motsvarar verkliga träningspipelines. Under antagandet om en ärlig-men-nyfiken server utgör högupplöst bildrekonstruktion därför inte en kritisk integritetsrisk i produktionsoptimerad federerad inlärning.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2508.19819"
+   ],
+   "tags": [
+    "systems",
+    "synthesis",
+    "sv",
+    "trap",
+    "federated-learning",
+    "gradient-inversion"
+   ]
+  },
+  {
+   "id": "aisec-d034",
+   "question": "What fraction of training tokens had to be replaced with medical misinformation to produce a harmful medical LLM, and did the standard benchmarks catch it?",
+   "answer": "Just 0.001% of training tokens, in a simulated data-poisoning attack against The Pile. The benchmarks did not catch it: corrupted models matched their corruption-free counterparts on the open-source benchmarks routinely used to evaluate medical LLMs. The authors' mitigation, screening outputs against biomedical knowledge graphs, captured 91.9% of harmful content with an F1 of 85.7%.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/39779928/"
+   ],
+   "tags": [
+    "clinical-security",
+    "single-fact",
+    "data-poisoning",
+    "medical-llm"
+   ]
+  },
+  {
+   "id": "aisec-d035",
+   "question": "A 2026 threat analysis of data poisoning across healthcare AI architectures reports a finding that overturns a common assumption about dataset size. What is it, and what numbers support it?",
+   "answer": "That attack success depends on the absolute number of poisoned samples rather than their proportion of the training corpus - so a larger dataset provides no inherent protection. Synthesising 41 security studies published between 2019 and 2025 into eight grounded attack scenarios, the paper reports that attackers with as few as 100-500 poisoned samples can compromise healthcare AI systems, with attack success rates typically at or above 60%, and estimates detection delays commonly of 6-12 months, extending to years in distributed or privacy-constrained environments.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/41575020/"
+   ],
+   "tags": [
+    "clinical-security",
+    "multihop",
+    "data-poisoning",
+    "threat-modeling"
+   ]
+  },
+  {
+   "id": "aisec-d036",
+   "question": "Two adversarial attack types were tested against medical LLMs on three clinical tasks. What were they, and what made the poisoning hard to notice?",
+   "answer": "Prompt injection with malicious instructions, and fine-tuning with poisoned samples, tested on disease prevention, diagnosis and treatment using real-world patient data; both open-source and proprietary models proved vulnerable across the tasks. The poisoning was hard to notice because integrating poisoned data did not markedly degrade overall performance on medical benchmarks - it showed up instead as noticeable shifts in the fine-tuned model weights, which the authors propose as a detection and countermeasure route.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/41068092/"
+   ],
+   "tags": [
+    "clinical-security",
+    "multihop",
+    "medical-llm",
+    "prompt-injection"
+   ]
+  },
+  {
+   "id": "aisec-d037",
+   "question": "\"De-identified health data is safe to release\" - what does the generative-copula re-identification work actually establish, and under what stated conditions?",
+   "answer": "It estimates the likelihood that a specific named person would be correctly re-identified even in a heavily incomplete (sampled) dataset. Across 210 populations the method predicts individual uniqueness with AUC between 0.84 and 0.97 at a low false-discovery rate, and it finds that 99.98% of Americans would be correctly re-identified in any dataset using 15 demographic attributes. That is a modelled uniqueness estimate conditioned on holding those 15 attributes, not a demonstration of named re-identification in the wild - but the authors argue it is enough to show that even heavily sampled anonymized datasets are unlikely to meet GDPR's anonymization standard, challenging the de-identification release-and-forget model.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31337762/"
+   ],
+   "tags": [
+    "clinical-security",
+    "synthesis",
+    "trap",
+    "re-identification",
+    "de-identification"
+   ]
+  },
+  {
+   "id": "aisec-d038",
+   "question": "En ofta citerad siffra säger att 98,4% av patienterna är unika utifrån vilka laboratorieprover som beställts åt dem. Vad visade studien i övrigt, och vad krävs för att siffran ska innebära en verklig återidentifiering?",
+   "answer": "I 731 850 avidentifierade journaler var den genomsnittliga patienten unik gentemot alla andra i 98,4% av fallen enbart utifrån vilka labbprover som beställts, och efter besök två skilda dagar var 72,3% unika. Utifrån ett enda besöks provbeställningar - utan provsvar - kunde patienten pekas ut bland 99 andra i minst 25% av fallen och hamna bland de tio mest lika i 47%. Författarna understryker uttryckligen att detta inte betyder att labbprover i sig är personuppgifter: angreppet förutsätter att angriparen redan har en extern källa med labbvärden kopplade till identiteter. Att i stället publicera provbeställningarna kodade i ett latent rum via en variational autoencoder sänkte återidentifieringen till under 5% med bevarad informationsnytta (AUC över 0,9).",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/30864342/"
+   ],
+   "tags": [
+    "clinical-security",
+    "multihop",
+    "sv",
+    "trap",
+    "re-identification",
+    "ehr"
+   ]
+  },
+  {
+   "id": "aisec-d039",
+   "question": "The MVA attack targets a specific subset of HIPAA Safe Harbor de-identified records. Which subset, and what relative risk was reported?",
+   "answer": "Records in which a motor vehicle accident is documented in a patient note, attacked using indirect, non-HIPAA identifiers. The relative risk of re-identification is 537 compared with the general population. The authors recommend omitting accident location information for any significant MVA - one resulting in permanent injury, hospitalization or death for any victim - and suggest clinicians consider omitting location for any MVA at all.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/30815177/"
+   ],
+   "tags": [
+    "clinical-security",
+    "single-fact",
+    "re-identification",
+    "hipaa"
+   ]
+  },
+  {
+   "id": "aisec-d040",
+   "question": "Worst-case adversary modelling is the standard way to assess re-identification risk for biomedical data. How much does the estimate change when the attacker is modelled pragmatically instead?",
+   "answer": "Dramatically. Using data from over 1,000,000 Vanderbilt University Medical Center patients, the median worst-case risk was 0.987 on a 0-1 scale, but modelling attackers who use actual obtainable resources reduced risk by a median of 90.1% in the voter-registration-list scenario and 100% in the social-media-posts scenario, and this held across a wide range of adversarial capabilities. The framework integrates the three established measures - prosecutor, journalist and marketer risk - and the authors argue that appropriate adversarial modelling could permit biomedical data sharing on a wider scale.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/33448306/"
+   ],
+   "tags": [
+    "clinical-security",
+    "multihop",
+    "re-identification",
+    "risk-assessment"
+   ]
+  },
+  {
+   "id": "aisec-d041",
+   "question": "In the 2010 study of diagnosis-code disclosure, what share of patients were uniquely identified, and how much suppression would have been needed to stop it?",
+   "answer": "More than 96% of 2,800 patients' records were uniquely identified by their diagnosis codes with respect to a population of 1.2 million patients. Generalization reduced the de-identified share by less than 2%, and over 99% of the three-digit ICD-9 codes would have to be suppressed to prevent re-identification - which is why the authors concluded that popular privacy-protection methods cannot deliver both sufficient protection and useful data when sharing data derived from complex clinical systems.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/20442151/"
+   ],
+   "tags": [
+    "clinical-security",
+    "single-fact",
+    "re-identification",
+    "de-identification"
+   ]
+  },
+  {
+   "id": "aisec-d042",
+   "question": "Automatisk avidentifiering av journaltext lämnar alltid kvar en del identifierare. Vad går \"Hiding In Plain Sight\" ut på, och hur mycket hjälpte det i pilotstudien?",
+   "answer": "Att ersätta de identifierare som systemet hittar med realistiska men syntetiska surrogat, så att de få som läcker igenom blir svåra att skilja från surrogaten - obfuskering i stället för bättre detektion. I pilotstudien på 31 onkologianteckningar och 50 allmänmedicinska anteckningar, lästa av två tränade journalgranskare och en informatiker, doldes uppskattningsvis omkring 90% av de kvarvarande identifierarna i text med genomsnittlig och hög täthet av personuppgifter. Om det generaliserar till befintliga system med 94-98% recall skulle metoden lyfta den effektiva avidentifieringsgraden över 99% utan att systemens recall behöver förbättras - men författarna betonar att resultatet behöver replikeras på större och mer varierade material.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/22771529/"
+   ],
+   "tags": [
+    "clinical-security",
+    "multihop",
+    "sv",
+    "de-identification",
+    "phi"
+   ]
+  },
+  {
+   "id": "aisec-d043",
+   "question": "An EEG adversarial attack paper reports a top attack success rate of 0.8 against epilepsy-diagnosis models. What access does that assume, and what did the same samples do to models with a different input?",
+   "answer": "It assumes white-box access: GPBEAM and GPBEAM-DE compute gradient perturbations of brain electrical activity mappings (BEAMs) directly against the victim model. The 0.8 figure applies only to BEAM-related victim models that take BEAMs as input; against EEG-related models taking raw EEG as input, the same adversarial samples reached a top success rate of only 0.01. A modification raised success against both classes (0.8 and 0.64) at no cost in distortion, but the whole result is a white-box demonstration on CHB-MIT data, not evidence that a realistic black-box attacker could do this to a deployed diagnostic system.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/37415186/"
+   ],
+   "tags": [
+    "clinical-security",
+    "synthesis",
+    "trap",
+    "adversarial-attacks",
+    "threat-model"
+   ]
+  },
+  {
+   "id": "aisec-d044",
+   "question": "The first security study of LiDAR-based perception in autonomous driving found that naive spoofing was not enough. What made the attack work, and what success rate did it reach?",
+   "answer": "Blindly applying LiDAR spoofing fails because of the machine-learning-based object detection stage, so the authors formulated the attack as an optimization problem with modelling methods for the input perturbation function and the objective function - then, because pure optimization hit inherent limits, combined optimization with global sampling. That raised attack success rates to around 75% for spoofing obstacles close in front of a victim vehicle, and they built two attack scenarios showing impact at the driving-decision level on road safety and mobility.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1907.06826"
+   ],
+   "tags": [
+    "clinical-security",
+    "multihop",
+    "physical-world",
+    "autonomous-vehicles",
+    "sensor-spoofing"
+   ]
+  },
+  {
+   "id": "aisec-d045",
+   "question": "The 2016 \"brainjacking\" review splits attacks on deep brain stimulation implants into two classes. What are they, and what falls into each?",
+   "answer": "Blind attacks, which require no patient-specific knowledge - cessation of stimulation, draining implant batteries, inducing tissue damage and information theft - and targeted attacks, which require patient-specific information: impairment of motor function, alteration of impulse control, modification of emotions or affect, induction of pain, and modulation of the reward system. The review also discusses the trade-offs designers must make between implant security, battery life and practicality.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27184896/"
+   ],
+   "tags": [
+    "clinical-security",
+    "single-fact",
+    "medical-devices",
+    "implant-security"
+   ]
+  }
+ ]
+}
