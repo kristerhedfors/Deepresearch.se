@@ -6,6 +6,7 @@
 //   node scripts/pubmed-harvest.mjs --max-files 4          # the 4 newest files
 //   node scripts/pubmed-harvest.mjs --max-records 1500000  # ~the last 12 months
 //   node scripts/pubmed-harvest.mjs --min-file 1200        # everything from n1200 up
+//   node scripts/pubmed-harvest.mjs --pmids ids.txt        # exactly these citations
 //
 // ---- the channel, and why it is not E-utilities ---------------------------
 //
@@ -16,6 +17,26 @@
 // instead — 40.9 M citations at 3 req/s is not a plan. So this reads the
 // archive, and scripts/pubmed-enumerate.mjs uses E-utilities for the second,
 // independent count that cross-checks it.
+//
+// ---- --pmids: the one case the archive cannot serve ------------------------
+//
+// A NAMED list — "index exactly these 150 citations", a reading list, a
+// bibliography, the references of one review — is the opposite problem. The
+// PMIDs are scattered across the whole archive, most of them below any window
+// worth harvesting, so serving 150 records from the files means downloading
+// tens of gigabytes to keep a few hundred kilobytes. E-utilities `efetch` is
+// the right channel for that shape and is nothing like the bulk sweep the
+// guidelines warn against: 150 ids is ONE request (EFETCH_BATCH ids at a time,
+// through the paced client in scripts/pubmed-enumerate.mjs).
+//
+// It returns the same DTD as the archive files, so it goes through the SAME
+// takeBlocks → parseArticle → keepRecord path and the JSONL it writes is
+// byte-identical in shape. That is the whole design: no second parser, no
+// second record layout, no second set of filters to keep in step.
+//
+// What it does NOT share with the archive path is a window. There is no file
+// order, no "newest first", no load-order note — the window is the list, and
+// the run prints that rather than a windowNote() it would have to invent.
 //
 // ---- newest first, and what the window IS ---------------------------------
 //
@@ -63,10 +84,11 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGunzip } from "node:zlib";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { deletedPmids, keepRecord, parseArticle, parseListing, planHarvest, takeBlocks, windowNote } from "../public/js/pubmed-core.js";
+import { BOOK_TAG, deletedPmids, keepRecord, parseArticle, parseListing, planHarvest, takeBlocks, windowNote } from "../public/js/pubmed-core.js";
+import { eutilsFetch } from "./pubmed-enumerate.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const FTP = "https://ftp.ncbi.nlm.nih.gov/pubmed";
@@ -79,10 +101,16 @@ const THROTTLE_ATTEMPTS = 12;
 const ERROR_ATTEMPTS = 4;
 const FILE_PAUSE_MS = 1000;
 
+/** The archive-window flags. Meaningless against an explicit PMID list, and
+ * silently ignoring one is how a run ends up harvesting something other than
+ * what its command line says. */
+const WINDOW_FLAGS = { maxFiles: "--max-files", maxRecords: "--max-records", minFile: "--min-file" };
+
 /** @param {string[]} argv */
 export function parseArgs(argv) {
   const out = {
     out: "data/pubmed",
+    pmids: "",
     maxFiles: 0,
     maxRecords: 0,
     minFile: 0,
@@ -95,6 +123,7 @@ export function parseArgs(argv) {
     const [flag, inline] = argv[i].split("=");
     const value = () => (inline !== undefined ? inline : argv[++i]);
     if (flag === "--out") out.out = String(value());
+    else if (flag === "--pmids") out.pmids = String(value());
     else if (flag === "--max-files") out.maxFiles = Number(value());
     else if (flag === "--max-records") out.maxRecords = Number(value());
     else if (flag === "--min-file") out.minFile = Number(value());
@@ -106,6 +135,60 @@ export function parseArgs(argv) {
   }
   for (const k of ["maxFiles", "maxRecords", "minFile", "minYear"]) {
     if (!Number.isFinite(out[k]) || out[k] < 0) throw new Error(`--${k} must be a non-negative number`);
+  }
+  if (out.pmids) {
+    const clash = Object.entries(WINDOW_FLAGS).filter(([k]) => out[k]).map(([, flag]) => flag);
+    if (clash.length) {
+      throw new Error(`--pmids takes an explicit list, not a window: ${clash.join(", ")} cannot be combined with it`);
+    }
+  }
+  return out;
+}
+
+/** ids per `efetch` call. NCBI's guideline is to switch to POST above a few
+ * hundred ids; 200 keeps the URL near 2 KB, so a GET is safe and a 150-PMID
+ * list is a single request. */
+export const EFETCH_BATCH = 200;
+
+/**
+ * The PMID list file → unique PMIDs, in the order given.
+ *
+ * Accepts what a list pasted out of PubMed, a spreadsheet column or a
+ * bibliography actually looks like: one id per line or comma/space separated,
+ * blank lines, `#` comments, and the `PMID` label PubMed's own export puts in
+ * front of the number. The label is stripped from the LINE rather than matched
+ * as a prefix on the token, because PubMed writes it as `PMID: 41610285` —
+ * with a space — so a token-level prefix leaves a bare `PMID:` behind and the
+ * most common paste of all fails.
+ *
+ * Anything else THROWS rather than being skipped. A silently dropped id is
+ * indistinguishable from an id PubMed does not hold, and the entire point of
+ * this path is that the caller named the records — so "I asked for 150 and got
+ * 149" has to have exactly one possible cause, reported at the end.
+ *
+ * @param {string} text
+ * @returns {string[]}
+ */
+export function parsePmidList(text) {
+  /** @type {string[]} */
+  const out = [];
+  const seen = new Set();
+  for (const line of String(text || "").split("\n")) {
+    const stripped = line.replace(/#.*$/, "").replace(/\bpmids?\s*:?\s*/gi, " ");
+    for (const token of stripped.split(/[\s,;]+/)) {
+      if (!token) continue;
+      // Leading zeros are consumed by the pattern, not counted against the
+      // 9-digit ceiling: a zero-padded column is still a valid list, and the
+      // highest PMID as of 2026 is 8 digits (41.6 M).
+      const pmid = (token.match(/^0*(\d{1,9})$/) || [])[1];
+      // Number(), so "0033301246" and "33301246" are the same id rather than
+      // two entries one of which can never be reconciled against a response.
+      if (!pmid || !Number(pmid)) throw new Error(`not a PMID: ${JSON.stringify(token)}`);
+      const bare = String(Number(pmid));
+      if (seen.has(bare)) continue;
+      seen.add(bare);
+      out.push(bare);
+    }
   }
   return out;
 }
@@ -255,15 +338,219 @@ export async function harvestFile(file, dir, tmpDir, filters) {
   return stats;
 }
 
+/**
+ * One `efetch` call for a batch of PMIDs, as XML text.
+ *
+ * Split out from harvestPmids so a test can hand it canned XML: everything
+ * interesting about this path is the RECONCILIATION, and reconciliation logic
+ * that can only be exercised against the live NCBI is logic nobody tests.
+ *
+ * @param {string[]} ids
+ * @returns {Promise<string>}
+ */
+export async function efetchArticles(ids) {
+  return (await eutilsFetch("efetch.fcgi", { id: ids.join(","), retmode: "xml" })).text();
+}
+
+/** The PMID of a `<PubmedBookArticle>`, which lives under `<BookDocument>`
+ * rather than `<MedlineCitation>` and so is invisible to parseArticle.
+ * @param {string} block
+ * @returns {string}
+ */
+function bookPmid(block) {
+  const m = String(block).match(/<BookDocument>\s*<PMID[^>]*>(\d+)<\/PMID>/) || String(block).match(/<PMID[^>]*>(\d+)<\/PMID>/);
+  return m ? m[1] : "";
+}
+
+/**
+ * @typedef {{
+ *   requested: number, batches: number, articles: number, books: number,
+ *   kept: number, dropped: number, reasons: Record<string, number>,
+ *   bookPmids: string[], missing: string[], unrequested: string[],
+ *   nameless: number, shard: string
+ * }} PmidHarvestStats
+ */
+
+/**
+ * Harvest an EXPLICIT list of PMIDs through E-utilities into the same JSONL
+ * the archive path writes — same takeBlocks, same parseArticle, same
+ * keepRecord, so the rows are indistinguishable downstream.
+ *
+ * The return value is a full RECONCILIATION of requested against returned,
+ * and that is the reason this function exists rather than a loop in main().
+ * Both ways a citation can vanish here are SILENT at the transport level, and
+ * both were reproduced against the live API on 2026-08-08:
+ *
+ *   * a PMID that names a BOOK (GeneReviews and friends — PMID 20301295) comes
+ *     back as `<PubmedBookArticle>`, which takeBlocks does not match, so three
+ *     ids in produced two blocks out with no error anywhere;
+ *   * a PMID PubMed does not hold (999999999) is simply absent from the
+ *     response — HTTP 200, no `<ERROR>` element, nothing.
+ *
+ * A run that reported "150 kept" while quietly indexing 148 would be exactly
+ * the failure mode this corpus's whole verification discipline exists to
+ * prevent, so every requested id ends in one of four buckets — kept, dropped
+ * by a filter, book, or never returned — and the buckets are asserted to add
+ * up before the shard is renamed into place.
+ *
+ * @param {string[]} pmids
+ * @param {string} dir the corpus `raw/` directory
+ * @param {{ minYear?: number, minAbstract?: number, languages?: string[] }} filters
+ * @param {{ batch?: number, name?: string, fetchXml?: (ids: string[]) => Promise<string>,
+ *           onBatch?: (done: number, total: number) => void }} [opts]
+ * @returns {Promise<PmidHarvestStats>}
+ */
+export async function harvestPmids(pmids, dir, filters, opts = {}) {
+  const batchSize = opts.batch || EFETCH_BATCH;
+  const fetchXml = opts.fetchXml || efetchArticles;
+  // Two lists harvested into one --out must not clobber each other's shard,
+  // so the name carries the list's identity rather than being a constant.
+  const shard = `pmids-${String(opts.name || "list").replace(/[^a-z0-9._-]+/gi, "-")}.jsonl`;
+  const wanted = [...new Set(pmids.map((p) => String(p).trim()).filter(Boolean))];
+
+  const partPath = join(dir, `${shard}.part`);
+  const sink = createWriteStream(partPath);
+  /** How each PMID the response carried was disposed of. */
+  const seen = new Map();
+  /** @type {PmidHarvestStats} */
+  const stats = {
+    requested: wanted.length,
+    batches: 0,
+    articles: 0,
+    books: 0,
+    kept: 0,
+    dropped: 0,
+    reasons: {},
+    bookPmids: [],
+    missing: [],
+    unrequested: [],
+    nameless: 0,
+    shard,
+  };
+
+  for (let i = 0; i < wanted.length; i += batchSize) {
+    const slice = wanted.slice(i, i + batchSize);
+    const xml = await fetchXml(slice);
+    stats.batches++;
+    const { blocks } = takeBlocks(xml);
+    const books = takeBlocks(xml, BOOK_TAG).blocks;
+    // Zero records for a whole batch is a changed DTD, a rejected request that
+    // still came back 200, or a `retmode` that stopped being XML — never a
+    // legitimate answer for a batch of real ids. Loud, like the archive path's
+    // "parsed 0 records" guard, because the alternative is a smaller corpus
+    // reported as a success.
+    if (!blocks.length && !books.length) {
+      throw new Error(`efetch returned 0 records for ${slice.length} ids (batch ${stats.batches}) — refusing to write a shard`);
+    }
+    let pending = "";
+    for (const block of blocks) {
+      stats.articles++;
+      const rec = parseArticle(block);
+      if (!rec) {
+        // A block with no PMID cannot be attributed to a requested id, so it
+        // is counted separately rather than folded into the drop reasons —
+        // otherwise the four buckets stop adding up and the check below fires
+        // for the wrong reason.
+        stats.nameless++;
+        continue;
+      }
+      const verdict = keepRecord(rec, filters);
+      if (!verdict.keep) {
+        stats.dropped++;
+        stats.reasons[verdict.reason] = (stats.reasons[verdict.reason] || 0) + 1;
+        seen.set(rec.pmid, `dropped:${verdict.reason}`);
+        continue;
+      }
+      stats.kept++;
+      seen.set(rec.pmid, "kept");
+      pending += `${JSON.stringify(rec)}\n`;
+      if (pending.length > 1 << 20) {
+        sink.write(pending);
+        pending = "";
+      }
+    }
+    for (const block of books) {
+      stats.books++;
+      const pmid = bookPmid(block);
+      if (pmid) {
+        stats.bookPmids.push(pmid);
+        seen.set(pmid, "book");
+      }
+    }
+    if (pending) sink.write(pending);
+    opts.onBatch?.(Math.min(i + batchSize, wanted.length), wanted.length);
+  }
+
+  await new Promise((resolve, reject) => sink.end((err) => (err ? reject(err) : resolve(undefined))));
+
+  stats.missing = wanted.filter((p) => !seen.has(p));
+  const wantedSet = new Set(wanted);
+  // A PMID that was merged into another record comes back under its CURRENT
+  // id, so the response can carry ids nobody asked for. The row is still the
+  // right citation and is kept; it is named here because it is also why an id
+  // can be "missing" while nothing went wrong.
+  stats.unrequested = [...seen.keys()].filter((p) => !wantedSet.has(p));
+
+  const accounted = wanted.filter((p) => seen.has(p)).length + stats.missing.length;
+  if (accounted !== wanted.length) {
+    throw new Error(`accounting is broken: ${accounted} dispositions for ${wanted.length} requested PMIDs`);
+  }
+  // Nothing kept means the shard would be an empty file that the fill happily
+  // reports as "done — 0 vectors". At this scale that is always a mistake.
+  if (!stats.kept) {
+    throw new Error(
+      `kept 0 of ${wanted.length} requested PMIDs (${stats.books} books, ${stats.missing.length} not returned, ` +
+        `drops: ${JSON.stringify(stats.reasons)}) — refusing to write an empty shard; --min-abstract 0 keeps short abstracts`,
+    );
+  }
+
+  await rename(partPath, partPath.replace(/\.part$/, ""));
+  return stats;
+}
+
+/**
+ * Print the reconciliation. Every requested id lands in exactly one bucket and
+ * the line says so out loud, because "150 requested / 150 in the index" is the
+ * only claim this path is allowed to make without checking.
+ * @param {PmidHarvestStats} stats
+ * @param {string} missingPath
+ */
+function reportPmidHarvest(stats, missingPath) {
+  console.log(
+    `done — ${stats.kept} kept of ${stats.requested} requested ` +
+      `(${stats.dropped} dropped by filters, ${stats.books} book records, ${stats.missing.length} not returned by efetch) ` +
+      `in ${stats.batches} efetch call${stats.batches === 1 ? "" : "s"}`,
+  );
+  if (stats.dropped) console.log(`  drop reasons: ${JSON.stringify(stats.reasons)}`);
+  if (stats.books) {
+    console.log(
+      `  ${stats.books} BOOK record(s) — <PubmedBookArticle> has no abstract element this corpus can embed, so they are skipped, not lost silently: ` +
+        stats.bookPmids.slice(0, 10).join(", "),
+    );
+  }
+  if (stats.nameless) console.log(`  ${stats.nameless} article block(s) carried no PMID — the response shape may have changed`);
+  if (stats.unrequested.length) {
+    console.log(`  ${stats.unrequested.length} record(s) came back under an id that was not asked for (merged PMIDs): ${stats.unrequested.slice(0, 10).join(", ")}`);
+  }
+  if (stats.missing.length) {
+    console.log(`  ${stats.missing.length} PMID(s) NOT returned by efetch — written to ${missingPath}`);
+    console.log(`    e.g. ${stats.missing.slice(0, 10).join(", ")}`);
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
     console.log(
       "usage: node scripts/pubmed-harvest.mjs [--out DIR] [--max-files N] [--max-records N]\n" +
         "                                      [--min-file N] [--min-year YYYY] [--min-abstract N]\n" +
-        "                                      [--languages eng,swe]\n\n" +
+        "                                      [--languages eng,swe]\n" +
+        "       node scripts/pubmed-harvest.mjs --pmids FILE [--out DIR] [--min-abstract N]\n\n" +
         "Files are fetched NEWEST FIRST. The window is a PMID/load-order window;\n" +
-        "--min-year trims it rather than defining one.",
+        "--min-year trims it rather than defining one.\n\n" +
+        "--pmids reads an explicit list (one PMID per line, `#` comments allowed)\n" +
+        "and fetches exactly those citations through E-utilities. It has no window,\n" +
+        "so it cannot be combined with --min-file / --max-files / --max-records.",
     );
     return;
   }
@@ -276,6 +563,34 @@ async function main() {
   await mkdir(stateDir, { recursive: true });
   await mkdir(tmpDir, { recursive: true });
   const statePath = join(stateDir, "done.json");
+
+  if (args.pmids) {
+    const listPath = join(ROOT, args.pmids);
+    const pmids = parsePmidList(await readFile(listPath, "utf8"));
+    if (!pmids.length) throw new Error(`${args.pmids}: no PMIDs in the list`);
+    // Not windowNote(): there is no file order and no load-order window to
+    // describe here, and printing one would be a claim about coverage that
+    // this path cannot make. The window IS the list.
+    console.log(`window = an EXPLICIT list of ${pmids.length} PMIDs (no archive listing, no load-order window)`);
+    const filters = { minYear: args.minYear || undefined, minAbstract: args.minAbstract, languages: args.languages };
+    const started = Date.now();
+    const stats = await harvestPmids(pmids, rawDir, filters, {
+      name: basename(listPath).replace(/\.[^.]*$/, ""),
+      onBatch: (done, total) => console.log(`  efetch ${done}/${total}`),
+    });
+    // Written even when empty, so "which ids did PubMed not have" is a file
+    // the next run can diff rather than something scrolled off a terminal.
+    const missingPath = join(stateDir, `${stats.shard.replace(/\.jsonl$/, "")}-missing.txt`);
+    await writeFile(missingPath, stats.missing.join("\n") + (stats.missing.length ? "\n" : ""));
+    reportPmidHarvest(stats, missingPath);
+    console.log(`  shard: ${join(args.out, "raw", stats.shard)} (${((Date.now() - started) / 1000).toFixed(1)}s)`);
+    // No done.json is written: efetch carries no <DeleteCitation>, so there is
+    // no withdrawn set for this channel. The fill's --state reads an absent
+    // file as "nothing withdrawn", which is exactly right here — and --prune
+    // against a list is meaningless, not merely unnecessary.
+    console.log(`fill it: node scripts/pubmed-vectorize.mjs --index deepresearch-se-pubmed --corpus ${join(args.out, "raw")} --work ${join(args.out, "vectorize")}`);
+    return;
+  }
 
   /** @type {{ files: Record<string, any>, deleted: string[] }} */
   let state = { files: {}, deleted: [] };

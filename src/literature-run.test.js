@@ -373,6 +373,26 @@ test("a caller's min_score is pushed into retrieval, not applied to a truncated 
   }
 });
 
+test("min_score is honoured BELOW the default floor, which is what rescues a non-English query", async () => {
+  const berget = stubBerget();
+  const rows = Array.from({ length: 5 }, (_, i) => arxivRow(`2401.${i}`, `Paper ${i}`));
+  const env = { BERGET_API_TOKEN: "t", ARXIV_INDEX: fakeIndex({ rows }) };
+  try {
+    // The stub scores 1.0, 0.9, 0.8, 0.7, 0.001 — the last one is the shape of a
+    // real Swedish hit: the reranker put it in the right place but scored it
+    // 20x-2000x lower than the same question in English, so the 0.01 default
+    // drops the correct paper. Clamping min_score UP made that unrecoverable.
+    const payload = payloadOf(await runLiteratureSearch(env, log, { query: "q", corpus: "arxiv", min_score: 0.0005 }));
+    assert.equal(payload.queries[0].results.length, 5, "a floor below the default must keep the low-scored row");
+    assert.equal(payload.stats.relevance_floor, 0.0005, "the applied floor is echoed, so a lowered floor is visible");
+    // The score travels with the record, so a caller that lowers the floor can
+    // still see how weak the match is rather than trusting the order blindly.
+    assert.equal(payload.queries[0].results.at(-1).score, 0.001);
+  } finally {
+    berget.restore();
+  }
+});
+
 test("one corpus failing degrades the call instead of failing it", async () => {
   const berget = stubBerget();
   const env = {

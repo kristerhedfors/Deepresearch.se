@@ -248,8 +248,12 @@ export const LITERATURE_TOOLS = [
         min_score: {
           type: "number",
           description:
-            "Drop records whose cross-encoder relevance score is below this. The tier already " +
-            "applies a floor of 0.01; raise it (0.1–0.5) when you want only strong matches.",
+            "The cross-encoder relevance floor to retrieve at, REPLACING the tier's default of " +
+            "0.01 in either direction. Raise it (0.1–0.5) when you want only strong matches. " +
+            "LOWER it (0.001) when a non-English query returns nothing: the reranker orders " +
+            "cross-language pairs correctly but scores them far lower than the same question in " +
+            "English, so a right answer can sit just under the default floor. Every record " +
+            "carries its own `score`, so a lowered floor is inspectable rather than blind.",
         },
         abstract: {
           type: "string",

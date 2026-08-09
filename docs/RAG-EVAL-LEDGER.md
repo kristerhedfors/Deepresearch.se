@@ -17,6 +17,129 @@ The instrument is `scripts/rag-eval.mjs`, the procedure is the
 
 ---
 
+## 2026-08-08 — vernacular Swedish, and the floor that cannot move in either direction
+
+Two results, one gold set. The first is a corpus result and the second is a
+retrieval result, and they are in the same entry because the first is what made
+the second measurable.
+
+**Gold set.** `scripts/pubmed-dalen-goldset.json` — 57 hand-written needles over
+the published work of Love Dalén (47) and the adjacent literature by other
+groups (10). Committed, unlike every previous PubMed gold set, because it is
+pinned to NAMED papers rather than to a sampled load-order window, so it stays
+meaningful across re-ingests. That closes open item 4 of the 2026-08-01 entry
+for PubMed. Membership of every `gold` was verified by `get_by_ids`, never by
+querying the index. Authorship was verified against the Europe PMC author field
+(lastName Dalén AND firstName Love), which matters: `AUTH:"Dalen L"` returns 243
+records of which only 216 are his.
+
+It carries **three** language arms, not two — `en`, `sv` and `svsci` — where
+`sv` is vernacular Swedish (*fjällämmel*, *grottlejon*, *ullhårig noshörning*)
+and `svsci` is the same question in scientific Swedish (*Lemmus lemmus*,
+*populationsstruktur*, *paleogenomisk*). The two Swedish arms ask about the SAME
+documents, so the difference between them isolates register from topic. That
+pairing is the instrument; run it with `--langs en,sv,svsci`.
+
+### Result 1 — the corpus held 18 of his 169 papers, and now holds 158
+
+Measured by id against the Europe PMC bibliography, not by asking the index.
+The load-order window is the reason: 89% of his work was published before the
+2026 baseline and had not been revised since, so it was never in the fetch
+window. The flagship *Nature* million-year-old mammoth DNA paper (PMID 33597750)
+was absent, as were the 2015 Wrangel genomes, the 2014 polar bears and the 2020
+prehistoric dogs.
+
+An explicit-PMID ingest (`pubmed-harvest.mjs --pmids`, `docs/PUBMED-RAG.md`
+§4.2) added **140** of his papers and **84** complementary ones, 224 vectors
+total. The 11 of his that remain out are letters, replies and corrections that
+fall below the corpus-wide 200-character abstract floor — the same rule the rest
+of the corpus uses, so this is correct rather than a shortfall.
+
+This is not a retrieval improvement and is not reported as one. It is the
+difference between a question being answerable and not: English r@10 over his
+career went from structurally unmeasurable to **98.2%**.
+
+### Result 2 — the register effect, and why no floor value fixes it
+
+Baseline over the 57 needles, pool 50, floor 0.01:
+
+| lang | inPool | r@1 | r@5 | r@10 | MRR | floorLoss |
+|---|---|---|---|---|---|---|
+| EN | 98.2 | 87.7 | 96.5 | 98.2 | 91.0 | 0 |
+| SV (vernacular) | 86.0 | 50.9 | 61.4 | 63.2 | 55.9 | **22.8** |
+| SVSCI (scientific) | 93.0 | 80.7 | 91.2 | 93.0 | 85.7 | 0 |
+
+Loss breakdown, SV: 14.0 never retrieved, 0 rerank demoted, **22.8 floored out**.
+So the dominant loss is not the embedding and not the ordering — it is the
+floor. The cross-encoder puts the right paper at reranked #1 and then its score
+is thrown away: the same document scores 0.003–0.005 against a vernacular
+Swedish query and 0.83–0.98 against the scientific Swedish one.
+
+**This settles the hypothesis the 2026-08-01 entry recorded as untested.** That
+entry found PubMed Swedish parity HOLDS (r@1 p=0.701) and guessed the mechanism
+was that Swedish clinical terminology is Latin/Greek and near-identical to
+English. The guess was right, and it is also why that measurement missed this:
+its gold set was LLM-generated from each paper's own abstract, so its Swedish
+was a near-translation of the document — cognate-rich by construction, which is
+not what a researcher types. Parity holds on cognate vocabulary and fails on
+native Germanic vocabulary. A Swedish speaker asking about *fjällämmeln* is in
+the failing register.
+
+**No scalar floor fixes it, and this extends the standing negative result.** The
+2026-08-01 entry established the floor cannot be RAISED, because genuine Swedish
+queries score below the adjacent-domain control. It cannot be LOWERED either:
+vernacular-Swedish true positives (0.003–0.005) land inside the nonsense-control
+band (pizza 0.0007–0.0078). Recovering the blackout needs F ≤ 3.5e-3; rejecting
+the pizza query needs F ≥ 7.8e-3. **The default stays at 0.01.** Three
+alternative gates were measured and all three overlap: absolute rerank score
+(inverted 16×), dense cosine (0.7033 genuine vs 0.7634 off-domain), and a
+scale-free top/p50 slate ratio (4.2 vs 131.0).
+
+### What shipped: the floor became recoverable, not different
+
+`effectiveFloor` (`src/literature-run.js`) clamped an explicit `min_score` UP to
+`RERANK_FLOOR`, so a caller could raise the floor but a lower value was silently
+discarded and the response honestly reported `relevance_floor: 0.01`. It now
+honours an explicit `min_score` in both directions. No default moves.
+
+Paired McNemar over the 57 needles, floor 0.01 → 0.001:
+
+| arm | metric | lost | gained | p | verdict |
+|---|---|---|---|---|---|
+| EN | r@1 / r@10 | 0 | 0 | 1.0000 | identical |
+| SV | r@1 | 0 | **8** | **0.0078** | **BETTER** |
+| SV | r@10 | 0 | **9** | **0.0039** | **BETTER** |
+| SVSCI | r@1 / r@10 | 0 | 0 | 1.0000 | identical |
+
+SV r@10 63.2 → 78.9, floorLoss 22.8 → 5.3. **Zero losses in any arm.** Latency
+paired sign p=0.1401 — no cost. Runs:
+`data/eval/pubmed-dalen-final-{default,low}.json`.
+
+The tool description and both empty-result notes changed in the same commit;
+they told an agent to raise `min_score` and to call `literature_corpora`, and
+neither hinted that a non-English query may need the floor lowered. A capability
+nothing tells the caller about is not a capability.
+
+### Open
+
+1. **The real fix is untested and is not this one.** Making the rerank pair
+   monolingual — translating the query to English for the rerank leg only
+   (`src/dense-rag.js`, `rerankMatches`) — is the only axis the evidence points
+   at, since the embedding is already aligned (`inPool` SV vs EN is a paired
+   0/0) and the ordering is already right. It adds a call inside a search wave
+   against `TOTAL_BUDGET_MS = 12_000`, so it must be A/B'd on latency as well as
+   recall; the pool 50→100 entry is the precedent for a change killed on latency
+   alone.
+2. **`denseSearch` takes no floor parameter**, so `/api/chat` cannot lower it
+   even now. There the miss degrades to the live Europe PMC ladder rather than
+   to nothing, which is why only the MCP surface shows a blackout — but it also
+   means the fix above is the only thing that would help the pipeline path.
+3. **14% of SV needles are never retrieved at all**, which the floor cannot
+   touch. That is the dense stage, and it is the same ceiling the 2026-08-01
+   entry named for both corpora.
+
+---
+
 ## 2026-08-01 — the first two-corpus baseline
 
 The instrument was generalized from arXiv-only to corpus-agnostic in the same

@@ -108,16 +108,30 @@ export function monthQuery(month, opts = {}) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
+ * One paced, retried E-utilities call, returned UNREAD so the caller decides
+ * how to decode it.
+ *
+ * This module owns the whole E-utilities channel for the project — the `tool`
+ * and `email` identification NCBI asks registered clients for, the optional
+ * api_key, the 3/s pacing and the 429/5xx backoff. `esearch` wants JSON and
+ * `efetch` (scripts/pubmed-harvest.mjs --pmids) wants XML, and the ONE thing
+ * that must not happen is a second fetcher growing next to this one with its
+ * own idea of the rate limit: two clients pacing themselves independently are
+ * two clients exceeding the limit together. So the transport is split out here
+ * and `eutils()` below is the JSON convenience over it.
+ *
  * @param {string} path
- * @param {Record<string, string>} params
+ * @param {Record<string, string>} params `retmode` defaults to json and may be overridden
+ * @returns {Promise<Response>}
  */
-async function eutils(path, params) {
+export async function eutilsFetch(path, params) {
   const qs = new URLSearchParams({ db: "pubmed", retmode: "json", tool: TOOL, email: EMAIL, ...params });
   if (process.env.NCBI_API_KEY) qs.set("api_key", process.env.NCBI_API_KEY);
+  const accept = qs.get("retmode") === "json" ? "application/json" : "*/*";
   for (let attempt = 1; ; attempt++) {
     await sleep(PAUSE_MS);
-    const res = await fetch(`${EUTILS}/${path}?${qs}`, { headers: { accept: "application/json" } });
-    if (res.ok) return res.json();
+    const res = await fetch(`${EUTILS}/${path}?${qs}`, { headers: { accept } });
+    if (res.ok) return res;
     // 429 here means the 3/s ceiling was crossed; back off rather than
     // immediately trying a different query, which is what earns a longer block.
     if ((res.status === 429 || res.status >= 500) && attempt < 6) {
@@ -126,6 +140,14 @@ async function eutils(path, params) {
     }
     throw new Error(`${path}: HTTP ${res.status}`);
   }
+}
+
+/**
+ * @param {string} path
+ * @param {Record<string, string>} params
+ */
+async function eutils(path, params) {
+  return (await eutilsFetch(path, params)).json();
 }
 
 /**
