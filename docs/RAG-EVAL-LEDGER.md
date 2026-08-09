@@ -17,6 +17,97 @@ The instrument is `scripts/rag-eval.mjs`, the procedure is the
 
 ---
 
+## 2026-08-09 (later) — two more domains, and what makes a domain hard to retrieve
+
+Same treatment as the ancient-DNA run, applied to **AI cybersecurity** and **AI
+consciousness**, across BOTH corpora this time. The interesting result is not
+either domain's number; it is that the four domain×corpus arms differ by 27
+points of r@10 with the same pipeline, the same authors and the same
+instructions — and the ordering is explainable.
+
+### What was ingested
+
+| | PubMed | arXiv |
+|---|---|---|
+| AI consciousness | 16,196 | 1,210 |
+| AI cybersecurity | 20,907 | *enumeration in progress* |
+| eval-set citations (both) | 142 | 140 |
+
+PubMed 1,694,272 → 1,731,517. The arXiv side of AI security is a 21-arm
+enumeration still running; the eval set does not depend on it, because every
+paper the questions cite was ingested by name first.
+
+### The measurement
+
+180 questions per domain, used as needles (each item with exactly one gold
+paper is a needle: the question is the query, that paper is the right answer).
+These are QA questions, not purpose-built needles — several are deliberately
+about a debate rather than one paper — so this is a harder instrument than the
+hand-written sets.
+
+| set | corpus | lang | n | r@1 | r@10 | never retrieved |
+|---|---|---|---|---|---|---|
+| aicon | arXiv | EN | 27 | 96.3 | **100** | 0 |
+| aisec | arXiv | SV | 19 | 84.2 | **89.5** | 10.5 |
+| aisec | arXiv | EN | 92 | 77.2 | **84.8** | 15.2 |
+| aisec | PubMed | EN | 13 | 69.2 | **84.6** | 15.4 |
+| aicon | PubMed | EN | 71 | 60.6 | **73.2** | 21.1 |
+| aicon | PubMed | SV | 23 | 47.8 | **56.5** | 34.8 |
+
+(The two smallest arms — aisec/PubMed SV n=3 and aicon/arXiv SV n=6 — are
+reported in the run files but are too small to read.)
+
+### The finding: difficulty tracks vocabulary distinctiveness, not subject matter
+
+The same domain scores **100** on arXiv and **73.2** on PubMed. Same questions'
+authors, same pipeline, same day. The difference is how distinctive the
+domain's vocabulary is *within its corpus*:
+
+- arXiv holds ~2,600 consciousness papers in 786k vectors. "Consciousness
+  indicator properties" has essentially one candidate.
+- PubMed holds ~18,000 in 1.73M, and the vocabulary — consciousness, awareness,
+  attention, theory, integration — is shared with thousands of clinical and
+  cognitive papers that are not about machine consciousness at all. Every query
+  competes against near-neighbours.
+
+That is the same mechanism as the 2026-08-09 (earlier) regression, seen from
+the other side: there, adding 28.6k topical papers demoted the needles that
+already lived in that neighbourhood. Here, a domain that arrives already
+crowded starts demoted. **Retrieval difficulty is a property of the
+neighbourhood, not of the question** — which means a recall number is only
+comparable across domains if the corpus density is comparable too, and it
+usually is not.
+
+Ancient DNA sat at 88.9 EN on the same instrument, between the two.
+
+### Swedish did not behave the way PubMed taught us to expect
+
+On arXiv, vernacular Swedish **beat** English on AI security (89.5 vs 84.8,
+n=19). The 2026-08-08 entry established a large vernacular-Swedish penalty on
+PubMed and traced it to the cross-encoder's score scale collapsing on a
+Swedish-query/English-document pair. That penalty is absent here, and on
+PubMed consciousness it reappears (56.5 vs 73.2).
+
+Two readings, and this measurement cannot separate them: AI-security Swedish is
+heavily cognate (promptinjektion, autentisering, kryptering) where consciousness
+Swedish is native Germanic (medvetande, upplevelse, uppmärksamhet) — which is
+exactly the mechanism the 2026-08-08 entry proposed; or the arXiv arm is simply
+too small at n=19. **Do not treat the arXiv Swedish result as a refutation of
+the standing finding.** A paired arXiv EN/SV/SVSCI set is the experiment that
+would settle it, and it does not exist yet.
+
+### Open
+
+1. The AI-security arXiv corpus is enumerated but not yet ingested; its 21 arms
+   are running. Until it lands, aisec/arXiv retrieval is measured against a
+   corpus that holds the cited papers but not the field around them — which,
+   per the finding above, likely makes it look BETTER than it will once the
+   neighbourhood fills in. Re-measure after.
+2. Whether the Swedish register effect is corpus-specific or vocabulary-specific
+   is now a sharper question than it was, with a cheap experiment attached.
+
+---
+
 ## 2026-08-09 — the whole ancient-DNA literature, and what a topical corpus costs its own needles
 
 **+28,599 vectors**, 1,665,539 → 1,694,272. The PubMed index now holds
