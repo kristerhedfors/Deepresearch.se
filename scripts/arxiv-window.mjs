@@ -88,14 +88,41 @@ export function bucketByMonth(ids) {
 }
 
 /**
- * The largest run of CONSECUTIVE months, which is the part of the index that
- * behaves like a window. Everything outside it is topic-shaped and must not be
- * described as a window — that is the whole point of the split.
+ * A month counts as SWEPT when it holds at least half as many papers as a
+ * typical fully-swept month — the median of the twelve fattest months, which
+ * is a robust stand-in for "one month of arXiv" without hard-coding a number
+ * that ages.
+ * @param {Map<string, number>} months
+ */
+export function sweptThreshold(months) {
+  const top = [...months.values()].sort((a, b) => b - a).slice(0, 12);
+  if (!top.length) return 0;
+  return (top[Math.floor(top.length / 2)] * 0.5) || 0;
+}
+
+/**
+ * The longest run of consecutive SWEPT months — the part of the index that
+ * genuinely behaves like a window.
+ *
+ * The first version of this looked for the longest consecutive run of months
+ * that held ANY papers at all, and on the real index that returned
+ * 0704-2608: every month since April 2007 holds at least one paper, so the
+ * run spans almost the whole archive. It would have described an index whose
+ * 2007 holds 83 papers and whose 2024 holds 242,630 as one uniform band —
+ * replacing a sentence that was too narrow with one far too wide, which is
+ * the more dangerous direction, because it tells an agent to keep digging in
+ * a decade the index barely covers.
+ *
+ * Contiguity is not coverage. A scattering of topic-fill papers makes a month
+ * non-empty without making it swept, so the density test is what separates
+ * the two.
+ *
  * @param {Map<string, number>} months
  * @returns {{ from: string, to: string, count: number } | null}
  */
-export function densestBand(months) {
-  const keys = [...months.keys()].sort();
+export function sweptBand(months) {
+  const floor = sweptThreshold(months);
+  const keys = [...months.keys()].sort().filter((k) => (months.get(k) || 0) >= floor);
   if (!keys.length) return null;
   const next = (/** @type {string} */ m) => {
     const y = Number(m.slice(0, 2));
@@ -121,16 +148,18 @@ export function densestBand(months) {
  * @param {{ months: Map<string, number>, old: number, total: number }} hist
  */
 export function windowSentence(hist) {
-  const band = densestBand(hist.months);
+  const band = sweptBand(hist.months);
   if (!band) return "This index is empty.";
   const outside = hist.total - band.count;
   const pct = ((outside / hist.total) * 100).toFixed(1);
   const monthName = (/** @type {string} */ m) =>
     `${["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][Number(m.slice(2)) - 1]} 20${m.slice(0, 2)}`;
   return (
-    `Submission months ${band.from}-${band.to} (${monthName(band.from)} onwards) are covered in bulk. ` +
-    `A further ${outside.toLocaleString("en-US")} papers (${pct}%) sit OUTSIDE that band, reaching back to the 1990s: ` +
-    `these arrived through topic-targeted fills, so older coverage is dense for some subjects and absent for others. ` +
+    `Submission months ${band.from}-${band.to} (${monthName(band.from)} to ${monthName(band.to)}) are swept in bulk — ` +
+    `${band.count.toLocaleString("en-US")} papers across every subject arXiv carries. ` +
+    `A further ${outside.toLocaleString("en-US")} papers (${pct}%) sit OUTSIDE that band, reaching back to 1991. ` +
+    `Those arrived through topic-targeted fills, so pre-${band.from} coverage is dense for some subjects ` +
+    `(AI security, AI consciousness, ancient DNA) and near-absent for others. ` +
     `A pre-${band.from} miss is therefore NOT proof the paper is out of window — retry with different terms before concluding it is absent.`
   );
 }
@@ -156,9 +185,14 @@ export async function* listIds(index, onPage) {
     if (!res.ok || !json?.success) throw new Error(`vectorize list: HTTP ${res.status}`);
     const vectors = json.result?.vectors || json.result?.ids || [];
     for (const v of vectors) yield typeof v === "string" ? v : v.id;
-    onPage?.(++pages);
-    cursor = json.result?.cursor || "";
-    if (!cursor || !vectors.length) return;
+    onPage?.(++pages, json.result?.totalCount ?? 0);
+    // The paging contract is `isTruncated` + `nextCursor`, NOT the `cursor`
+    // most Cloudflare list endpoints use. Reading the wrong field does not
+    // error — it returns page one and stops, which looks like a complete
+    // 1,000-vector index rather than like a bug. Trust isTruncated, and let
+    // main() cross-check the total against `totalCount`.
+    cursor = json.result?.nextCursor || "";
+    if (!json.result?.isTruncated || !cursor || !vectors.length) return;
   }
 }
 
@@ -170,19 +204,28 @@ async function main() {
   }
   const started = Date.now();
   const ids = [];
-  for await (const id of listIds(opts.index, (n) => {
+  let reportedTotal = 0;
+  for await (const id of listIds(opts.index, (n, total) => {
+    reportedTotal = total || reportedTotal;
     if (n % 100 === 0) process.stderr.write(`  ${n} pages…\n`);
   })) {
     ids.push(id);
   }
+  // A short read is the failure mode that does not announce itself: paging on
+  // the wrong cursor field returns page one and looks like a small index. The
+  // endpoint reports its own totalCount, so refuse to describe a window from a
+  // listing that does not match it.
+  if (reportedTotal && ids.length !== reportedTotal) {
+    throw new Error(`listed ${ids.length} ids but the index reports ${reportedTotal} — refusing to describe a window from a partial listing`);
+  }
   const hist = bucketByMonth(ids);
-  const band = densestBand(hist.months);
+  const band = sweptBand(hist.months);
   const sorted = [...hist.months.entries()].sort();
 
   console.log(`index ${opts.index}: ${hist.total.toLocaleString("en-US")} ids in ${((Date.now() - started) / 1000).toFixed(1)}s`);
   console.log(`pre-2007 style ids (no month in the id): ${hist.old.toLocaleString("en-US")}`);
   if (band) {
-    console.log(`densest consecutive band: ${band.from}-${band.to}, ${band.count.toLocaleString("en-US")} papers`);
+    console.log(`swept band: ${band.from}-${band.to}, ${band.count.toLocaleString("en-US")} papers`);
     console.log(`outside that band: ${(hist.total - band.count).toLocaleString("en-US")}`);
   }
   console.log("\nby year:");

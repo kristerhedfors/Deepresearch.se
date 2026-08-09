@@ -98,15 +98,27 @@ export const CORPUS_FACTS = {
     covers:
       "Preprints in physics, mathematics, computer science, quantitative biology, " +
       "statistics, economics and quantitative finance.",
-    // KEEP THIS IN STEP WITH THE INDEX. It is quoted on every miss, so a stale
-    // upper bound tells an agent a paper is out of window when it is sitting in
-    // the index — the opposite of the honest-miss this field exists for. The
-    // 2026-08-05 delta (docs/ARXIV-RAG.md §1.1) carried it to 2608, and the
-    // arxiv-ingest skill's checklist ends here for that reason.
+    // KEEP THIS IN STEP WITH THE INDEX — and MEASURE it, do not edit it by hand:
+    // `node scripts/arxiv-window.mjs` pages the index and prints this sentence.
+    //
+    // It is quoted on every miss, so it does harm in both directions: too
+    // narrow and an agent abandons a paper that is sitting in the index; too
+    // wide and a real boundary gets reported as a retrieval failure.
+    //
+    // The previous version said "anything submitted before October 2023 is NOT
+    // in this index". That was true when the index was one datestamp band with
+    // an upper bound to bump per delta, and false by 42,307 papers once
+    // named-list fills (`arxiv-harvest.mjs --ids`) started reaching back thirty
+    // years. The drift happened UNDERNEATH the bound the comment was guarding,
+    // which is why measuring beats maintaining.
     window:
-      "Submission months 2310–2608 (October 2023 onwards). Anything submitted before " +
-      "October 2023 is NOT in this index — that is a window, not a retrieval failure.",
-    vectors_at_fill: 784744,
+      "Submission months 2310–2607 (October 2023 to July 2026) are swept in bulk — 780,790 papers " +
+      "across every subject arXiv carries. A further 42,307 papers (5.1%) sit OUTSIDE that band, " +
+      "reaching back to 1991. Those arrived through topic-targeted fills, so pre-2310 coverage is " +
+      "dense for some subjects (AI security, AI consciousness, ancient DNA) and near-absent for " +
+      "others. A pre-2310 miss is therefore NOT proof the paper is out of window — retry with " +
+      "different terms before concluding it is absent.",
+    vectors_at_fill: 823097,
     id_format: "arXiv id, e.g. 2401.12345 (accepted with or without an `arxiv:` prefix)",
     fields: ["title", "abstract", "authors", "primary_category", "submitted", "revised"],
     live_fallback: "the arXiv API (keyword AND over abstracts), used by the research pipeline",
