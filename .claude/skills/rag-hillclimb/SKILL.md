@@ -184,6 +184,30 @@ researcher's corpus coverage was **18 of 169** and every retrieval number over
 their work was measuring absence, not retrieval. Coverage-first is the rule for
 a topic slice as much as for a month.
 
+**A committed gold set can name a document the index cannot HOLD.** A generated
+set is sampled from the index, so its golds are present by construction. A
+hand-written one keyed on chosen documents is not: a 2000 *Science* piece with
+no abstract at all rode in a committed set for a week, scoring as a permanent
+miss in every language arm and quietly costing English r@10 a point retrieval
+had actually earned. `run` now checks membership before it measures and names
+unanswerable needles out loud — read that warning before you read the table.
+
+**Recall is not comparable across ingests, because the corpus is the other
+variable.** Adding 28.6k ancient-DNA papers moved all six needle metrics down —
+17 losses against 1 gain — with `inPool` unchanged and `rerank demoted`
+appearing for the first time. Nothing retrieved worse; there were simply more
+plausible documents in the same neighbourhood, and a few golds lost their
+place. So a before/after that spans an ingest measures TWO changes at once. Say
+which one you mean, and if you want to attribute a retrieval change to a
+pipeline change, hold the corpus fixed.
+
+**Six underpowered tests all pointing the same way is not "no effect".** Each
+of those six was individually non-significant (p from 0.125 to 0.5 at n=56) and
+reporting "no significant change" would have been true and misleading. The
+tests are not independent — r@1 and r@10 share needles, the language arms share
+documents — so pooling them overstates significance too. State the direction,
+the counts, and the dependence, and let the reader see all three.
+
 ## The control set is half of `probe`
 
 ```bash

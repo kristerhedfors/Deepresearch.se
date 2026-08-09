@@ -357,6 +357,29 @@ async function cmdRun(argv) {
   let needle = [];
   if (goldPath) needle = (await readJson(goldPath)).needle || [];
   if (limit) needle = needle.slice(0, limit);
+
+  // A needle whose gold document is not IN the index cannot be retrieved by
+  // any query in any language, so it scores as a miss in every arm and drags
+  // every rate down by 1/n while looking exactly like a retrieval failure.
+  // A generated gold set cannot have this problem — it is sampled from the
+  // index. A hand-written one keyed on chosen documents can, and did: a 2000
+  // Science piece with no abstract at all was carried in a committed set,
+  // silently costing English r@10 a point that retrieval had actually earned.
+  // Checking membership is one batched read, so it is never worth skipping.
+  if (needle.length) {
+    const goldIds = [...new Set(needle.map((q) => q.gold).filter(Boolean))];
+    const present = new Set((await getByIdsBatched(goldIds, { corpus: c.id })).map((r) => String(r.id)));
+    const absent = goldIds.filter((g) => !present.has(g));
+    if (absent.length) {
+      console.log(`\n  !! ${absent.length}/${goldIds.length} needles are UNANSWERABLE — their gold is not in the index:`);
+      for (const g of absent.slice(0, 12)) {
+        const q = needle.find((n) => n.gold === g);
+        console.log(`     ${g}  ${q?.title || ""}`.slice(0, 110));
+      }
+      if (absent.length > 12) console.log(`     … and ${absent.length - 12} more`);
+      console.log(`     Every rate below is depressed by these. Ingest them or drop them; do not read the numbers first.\n`);
+    }
+  }
   /** @type {any[]} */
   let topicalQueries = [];
   try {

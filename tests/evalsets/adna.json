@@ -1,0 +1,2623 @@
+{
+ "set": "adna",
+ "kind": "domain-expert",
+ "origin": "Hand-authored against PubMed abstracts fetched through NCBI E-utilities; every cited PMID resolved before this file was written.",
+ "license": "Questions and gold answers are original; the underlying facts are from the cited PubMed abstracts.",
+ "note": "Ancient-DNA questions BEYOND one researcher's own output — the companion to tests/evalsets/dalen.json, which covers Love Dalén's own papers. Nothing here cites a paper he authored; that is enforced by scripts/adna-evalset.mjs against data/dalen/pmids-all.txt rather than trusted. Four domains: ancient humans and hominins, megafauna and palaeoecology, methods and chemistry, and the applied edge (pathogens, domestication, conservation, de-extinction). Swedish items are tagged `sv` and written in the VERNACULAR register, which is the register hosted retrieval is measurably worst at (docs/RAG-EVAL-LEDGER.md, 2026-08-08) — they are the hard half of this set deliberately. Items tagged `trap` are ones where the naive answer is a common misconception or a superseded result, and the gold answer states the correction.",
+ "items": [
+  {
+   "id": "adna-p001",
+   "question": "In the 1998 PNAS study that first recovered plague DNA from the dental pulp of French plague-grave skeletons, how many of the twelve suspected 'plague teeth' yielded the Yersinia pestis pla sequence, and how many of the negative-control teeth did?",
+   "answer": "The pla (plasminogen activator) sequence was recovered from 6 of the 12 plague-grave teeth and from 0 of the 7 negative-control teeth (Fisher exact test, P < 0.034). Drancourt and colleagues also amplified rpoB, and the sequences were indistinguishable from those of modern Y. pestis isolates.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/9770538/"
+   ],
+   "tags": [
+    "pathogens",
+    "single-fact",
+    "plague",
+    "methods"
+   ]
+  },
+  {
+   "id": "adna-p002",
+   "question": "When Taubenberger and colleagues first characterised the 1918 'Spanish' influenza virus in 1997, which five coding regions did they sequence fragments of, and what subtype and lineage did the sequences indicate?",
+   "answer": "They sequenced nine RNA fragments from the coding regions of haemagglutinin, neuraminidase, nucleoprotein, matrix protein 1 and matrix protein 2, recovered from formalin-fixed, paraffin-embedded lung tissue of a 1918 victim. The sequences were consistent with a novel H1N1 influenza A virus belonging to the subgroup of strains infecting humans and swine, not the avian subgroup.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/9065404/"
+   ],
+   "tags": [
+    "pathogens",
+    "single-fact",
+    "influenza"
+   ]
+  },
+  {
+   "id": "adna-p003",
+   "question": "Three roughly 1,000-year-old mycobacterial genomes from Peruvian skeletons settled whether tuberculosis was present in the Americas before European contact. Which animal-adapted lineage were the ancient strains most closely related to, and what did the same study estimate for the age of the M. tuberculosis complex?",
+   "answer": "The pre-Columbian Peruvian strains were distinct from known human-adapted forms and were most closely related to strains adapted to seals and sea lions, implicating marine mammals in trans-oceanic transmission. Two independent dating approaches placed the most recent common ancestor of the M. tuberculosis complex at less than 6,000 years ago, supporting a Holocene rather than Pleistocene dispersal.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/25141181/"
+   ],
+   "tags": [
+    "pathogens",
+    "multihop",
+    "tuberculosis"
+   ]
+  },
+  {
+   "id": "adna-p004",
+   "question": "A high-coverage Yersinia pestis genome from a sixth-century burial near Munich was published in 2016. What coverage was achieved, and what did comparison with an earlier lower-coverage Justinianic genome from the same region reveal?",
+   "answer": "The genome was reconstructed at 17.9-fold coverage and carried 30 unique substitutions. Comparison identified 19 false-positive substitutions in a previously published lower-coverage Y. pestis genome from another site of the same period and region, which was otherwise genetically identical — implying low plague diversity in rural southern Germany in the sixth century.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27578768/"
+   ],
+   "tags": [
+    "pathogens",
+    "single-fact",
+    "plague",
+    "methods"
+   ]
+  },
+  {
+   "id": "adna-p005",
+   "question": "What did the ~3800-year-old Yersinia pestis genomes from the Samara region change about the accepted timing of flea-borne bubonic plague?",
+   "answer": "The Late Bronze Age strains from Samara were clearly distinct from the Late Neolithic/Bronze Age (LNBA) lineage and carried the components needed for flea adaptation, showing that the full capacity for flea-mediated transmission causing bubonic plague evolved more than 1,000 years earlier than had previously been suggested. The authors proposed that several Y. pestis lineages were established during the Bronze Age, some persisting to the present.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/29884871/"
+   ],
+   "tags": [
+    "pathogens",
+    "single-fact",
+    "plague"
+   ]
+  },
+  {
+   "id": "adna-p006",
+   "question": "The Justinianic Plague is routinely credited with killing tens of millions and helping end antiquity. What did the 2019 PNAS multi-proxy reassessment by Mordechai and colleagues actually find?",
+   "answer": "They examined eight independent datasets — written sources, legislation, coinage, papyri, inscriptions, pollen, ancient DNA and mortuary archaeology — and found that none of them, individually or together, supports the maximalist reconstruction. The evidence instead suggests broad demographic and economic continuity across the plague period, so the claim that the Justinianic Plague caused mass mortality and reshaped late antiquity is not supported. Note that this is an argument about the demographic scale and consequences, not a denial that Y. pestis circulated: ancient genomes confirm the pathogen was present.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31792176/"
+   ],
+   "tags": [
+    "pathogens",
+    "synthesis",
+    "trap",
+    "plague",
+    "epidemiology"
+   ]
+  },
+  {
+   "id": "adna-p007",
+   "question": "How many near-complete variola virus genomes were reconstructed from Viking Age northern European remains in the 2020 Science study, and how do they relate to the variola viruses circulating before eradication?",
+   "answer": "Viral sequences were recovered from 13 northern European individuals, 11 of them dated to about 600-1050 CE, and near-complete variola genomes were reconstructed for four of them. These sequences form a now-extinct sister clade to the modern variola viruses, predate the earliest confirmed smallpox cases by roughly 1,000 years, and show distinct patterns of gene inactivation; the most recent common ancestor of variola virus was dated to about 1,700 years ago.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/32703849/"
+   ],
+   "tags": [
+    "pathogens",
+    "single-fact",
+    "smallpox",
+    "ancient-virus"
+   ]
+  },
+  {
+   "id": "adna-p008",
+   "question": "A 1912 measles virus genome was used to date the split between measles virus and rinderpest virus. What divergence date did the analysis give, and why does that date matter for the earliest possible establishment of measles in humans?",
+   "answer": "Selection-aware molecular clock modelling of the sequenced 1912 measles genome placed the measles/rinderpest divergence potentially as early as the sixth century BCE. Because that divergence is the earliest point at which measles could have become established in human populations, the result pushes the plausible emergence of measles back well before the medieval period, possibly coinciding with the rise of large cities.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/32554594/"
+   ],
+   "tags": [
+    "pathogens",
+    "multihop",
+    "measles",
+    "molecular-clock"
+   ]
+  },
+  {
+   "id": "adna-p009",
+   "question": "Hur många mikrobiella genom lyckades forskarna sätta ihop från de åtta autentiserade palaeofekalieproverna från sydvästra USA och Mexiko, och hur stor andel av de säkraste tarmgenomen var tidigare obeskrivna arter?",
+   "answer": "Från åtta autentiserade prover av 1 000-2 000 år gammal palaeofekalie rekonstruerades 498 genom av medelhög till hög kvalitet. Av de 181 genom som hade starkast stöd för att både vara gamla och komma från människotarm motsvarade 39 procent tidigare obeskrivna arter. Proverna liknade mer icke-industrialiserade än industrialiserade tarmfloror och innehöll påtagligt färre antibiotikaresistens- och mucinnedbrytande gener.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/33981035/"
+   ],
+   "tags": [
+    "pathogens",
+    "single-fact",
+    "sv",
+    "microbiome",
+    "palaeofaeces"
+   ]
+  },
+  {
+   "id": "adna-p010",
+   "question": "The 2022 Nature paper on immune-gene evolution during the Black Death reported ERAP2 variant rs2549794 as the strongest selection candidate. What did the published critique of that analysis argue, and how did the original authors respond?",
+   "answer": "Klunk et al. analysed 206 ancient DNA extracts from London and Denmark, identified 245 highly differentiated variants in the London data (four replicated in Denmark), and estimated a selection coefficient of roughly 0.39 for the ERAP2 variant. Barton et al. argued the claim is unsupported: with an appropriate randomization test the enrichment P value rises by ten orders of magnitude and is no longer significant, a technical error in allele-frequency estimation means none of the four reported loci actually pass the filtering thresholds, the thresholds do not correct adequately for multiple testing, and they found no significant frequency change at rs2549794. The original authors replied with new data and analyses that they say still recover the immune-locus enrichment and still leave rs2549794 as the strongest candidate. The strong selection coefficient should therefore be reported as contested, not established.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/36261521/",
+    "https://pubmed.ncbi.nlm.nih.gov/36993413/",
+    "https://pubmed.ncbi.nlm.nih.gov/39972229/"
+   ],
+   "tags": [
+    "pathogens",
+    "multihop",
+    "trap",
+    "selection",
+    "plague"
+   ]
+  },
+  {
+   "id": "adna-p011",
+   "question": "Medieval Winchester produced the first ancient Mycobacterium leprae genome from a non-human host. How many samples were screened, what coverage did the genomes reach, and what was the key phylogenetic relationship?",
+   "answer": "Twenty-five human and twelve red squirrel samples from two archaeological sites in Winchester were studied, and four medieval M. leprae genomes — including one from a red squirrel — were reconstructed at about 2.2-fold average coverage. All strains fell on branch 3, and the medieval squirrel strain was more closely related to medieval human strains from Winchester than to modern English red squirrel strains, indicating undetected circulation of M. leprae in non-human hosts in the Middle Ages.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/38703773/"
+   ],
+   "tags": [
+    "pathogens",
+    "multihop",
+    "leprosy",
+    "zoonosis"
+   ]
+  },
+  {
+   "id": "adna-p012",
+   "question": "Vad visade de fyra treponemgenomen från nästan 2 000 år gamla mänskliga kvarlevor i Brasilien om treponemsjukdomarnas ursprung, och vilken underart låg de närmast?",
+   "answer": "De fyra rekonstruerade genomen låg närmast Treponema pallidum endemicum, alltså den underart som orsakar bejel — trots att bejel i dag hör hemma i torra områden, vilket ifrågasätter den paleopatologiska indelningen av underarterna. Ett genom med hög täckning användes för att förbättra den molekylära klockan och placerade splittringen mellan de moderna T. pallidum-underarterna klart i förkolumbiansk tid.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/38267579/"
+   ],
+   "tags": [
+    "pathogens",
+    "synthesis",
+    "sv",
+    "syphilis",
+    "treponema"
+   ]
+  },
+  {
+   "id": "adna-p013",
+   "question": "The 1994 PNAS mtDNA study of European, African and Indian cattle argued for two independent domestications. How did the two mitochondrial lineages map onto the taurine/zebu split, and how old was the estimated divergence?",
+   "answer": "The sequences fell into two very distinct geographic lineages that did not correspond to the taurine-zebu (hump) dichotomy: all European and African breeds, including African zebu, formed one lineage and all Indian breeds the other. A molecular clock placed the divergence of the two clades at at least 200,000 years — far older than a single domestication 8,000-10,000 years ago — implying separate domestications of Bos taurus and Bos indicus from already-divergent aurochs populations.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/8146187/"
+   ],
+   "tags": [
+    "domestication",
+    "single-fact",
+    "cattle"
+   ]
+  },
+  {
+   "id": "adna-p014",
+   "question": "In the 1997 Science paper that first used mitochondrial control-region sequences to date dog domestication, how many wolves and dogs were sampled, and what origin date did the sequence divergence suggest?",
+   "answer": "Vilà and colleagues analysed control-region sequences from 162 wolves at 27 localities and 140 domestic dogs representing 67 breeds. Most dog sequences formed a divergent monophyletic clade sharing no sequences with wolves, and the divergence within that clade suggested dogs originated more than 100,000 years before present. (Later archaeological and ancient-genome work has not supported an origin that old; the claim here is what the 1997 mtDNA calibration implied.)",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/9180076/"
+   ],
+   "tags": [
+    "domestication",
+    "single-fact",
+    "dog"
+   ]
+  },
+  {
+   "id": "adna-p015",
+   "question": "The 2003 Science study of ancient maize DNA targeted three genes controlling plant architecture, storage protein synthesis and starch production. By when were modern-type alleles present, and at which point was selection apparently still incomplete?",
+   "answer": "Alleles typical of contemporary maize were already present in Mexican maize by 4,400 years ago at the genes studied. However, at one of the three genes allelic selection may still not have been complete as recently as 2,000 years ago, showing that biochemical selection continued long after the morphological domestication syndrome had appeared.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/14615538/"
+   ],
+   "tags": [
+    "domestication",
+    "multihop",
+    "maize",
+    "crops"
+   ]
+  },
+  {
+   "id": "adna-p016",
+   "question": "What did the 2009 ancient-DNA study of nuclear coat-colour genes conclude about when coat-colour variation appeared in horses, and what did the authors infer from that about the timing of domestication?",
+   "answer": "Coat-colour variation in horses was found to begin around the third millennium before the common era. From this the authors concluded that it is unlikely that horse domestication substantially predates the appearance of coat-colour variation, using colour polymorphism as a proxy for relaxed natural selection under human control.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/19390039/"
+   ],
+   "tags": [
+    "domestication",
+    "single-fact",
+    "horse",
+    "selection"
+   ]
+  },
+  {
+   "id": "adna-p017",
+   "question": "What evidence did the 2016 Science study of a Neolithic Irish dog genome and 59 ancient dogs use to argue for a dual origin of dogs, and what divergence date did it report?",
+   "answer": "The study combined genetic sequences from 59 ancient dogs with a 28x genome from a late Neolithic dog from Newgrange, Ireland, dated to about 4,800 years before present. It found a deep split separating modern East Asian and Western Eurasian dogs dated to roughly 14,000-6,400 years ago — commensurate with or several millennia after the first appearance of dogs in Europe and East Asia — together with a sharp discontinuity in ancient mitochondrial haplotype frequencies in Europe. The authors read this as independent domestication in Eastern and Western Eurasia from distinct wolf populations, with East Eurasian dogs later partially replacing European Palaeolithic dogs.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27257259/"
+   ],
+   "tags": [
+    "domestication",
+    "synthesis",
+    "dog"
+   ]
+  },
+  {
+   "id": "adna-p018",
+   "question": "Przewalskis häst kallas ofta världens sista äkta vildhäst. Vad visade de 42 forntida hästgenomen från 2018, varav 20 från Botai, om den saken — och hur mycket Botai-släktskap finns i tamhästar?",
+   "answer": "Studien visade tvärtom att Przewalskis hästar är förvildade ättlingar till de hästar som hölls vid Botai för omkring 5 500 år sedan, alltså inte genuint vilda hästar. Tamhästar från cirka 4 000 år sedan och framåt bär bara omkring 2,7 procent Botai-släktskap, vilket innebär att ett nästan fullständigt genomiskt utbyte ligger bakom den moderna tamhästen.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/29472442/"
+   ],
+   "tags": [
+    "domestication",
+    "multihop",
+    "trap",
+    "sv",
+    "horse"
+   ]
+  },
+  {
+   "id": "adna-p019",
+   "question": "The 2019 analysis of 67 ancient Near Eastern cattle genomes found a Bronze Age shift. What was introgressing, roughly when, and why did the authors conclude the process was male-driven?",
+   "answer": "The genomes showed a rapid, region-wide introgression of zebu (Bos indicus) ancestry from the Indus Valley, dated to around 4.2 thousand years ago and linked to the onset of a widespread multicentury drought. Because the genome-wide admixture was not accompanied by a corresponding turnover in mitochondrial DNA — mtDNA showed stasis — the introgression must have been male-mediated, consistent with herders selecting arid-adapted zebu bulls.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31296769/"
+   ],
+   "tags": [
+    "domestication",
+    "multihop",
+    "cattle",
+    "introgression"
+   ]
+  },
+  {
+   "id": "adna-p020",
+   "question": "Palaeogenomic work on 28 archaeological grape seeds from France found one seed that matched a modern cultivar exactly. Which cultivar, what was the seed's date, and how long a period of vegetative propagation does that imply?",
+   "answer": "A seed dated to about 1100 CE was a genetic match to 'Savagnin Blanc', implying roughly 900 years of uninterrupted vegetative (clonal) propagation. The same study found seeds with identical genetic signatures at different Roman sites and seeds in parent-offspring relationships with varieties grown today.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31182840/"
+   ],
+   "tags": [
+    "domestication",
+    "single-fact",
+    "grape",
+    "crops"
+   ]
+  },
+  {
+   "id": "adna-p021",
+   "question": "Hur många forntida hästgenom byggde 2021 års Nature-studie på, var placerade den tamhästens hemtrakt, och vilka två gener pekades ut som mål för stark selektion?",
+   "answer": "Studien kartlade populationsförändringarna med 273 forntida hästgenom och pekade ut de västeurasiska stäpperna, särskilt nedre Volga-Don-området, som den moderna tamhästens hemtrakt. Stark selektion konstaterades vid generna GSDMC och ZFPM1, kopplade till rörelseapparat och beteende. Hästarna spred sig snabbt från omkring 2000 f.Kr., vilket innebär att studien avvisar kopplingen mellan ridning och jamnajakulturens expansion in i Europa omkring 3000 f.Kr.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/34671162/"
+   ],
+   "tags": [
+    "domestication",
+    "multihop",
+    "sv",
+    "horse",
+    "selection"
+   ]
+  },
+  {
+   "id": "adna-p022",
+   "question": "Chickens are often said to have been domesticated in China or the Indus Valley some 8,000-10,000 years ago. What did the 2022 PNAS assessment of ~600 sites in 89 countries conclude instead?",
+   "answer": "The first unambiguous domestic chicken bones come from Neolithic Ban Non Wat in central Thailand, dated to about 1650-1250 BCE, and chickens were not domesticated in the Indian subcontinent. Chickens did not reach Central China, South Asia or Mesopotamia until the late second millennium BCE, and Ethiopia and Mediterranean Europe only by about 800 BCE. The authors link the origin to dry rice and millet cultivation drawing arboreal red junglefowl into the human niche, rather than to a much earlier Chinese domestication.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/35666876/"
+   ],
+   "tags": [
+    "domestication",
+    "synthesis",
+    "trap",
+    "chicken"
+   ]
+  },
+  {
+   "id": "adna-p023",
+   "question": "Domestic cats are commonly assumed to have spread into Europe with Neolithic farmers. What did the 2025 Science analysis of 87 ancient and modern cat genomes find about when and from where they actually arrived?",
+   "answer": "The analysis found that domestic cats did not spread to Europe with Neolithic farmers. They were introduced roughly 2,000 years ago, probably from North Africa. A separate, earlier introduction of wildcats from Northwest Africa in the first millennium BCE may account for the present-day wild population on Sardinia.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/41308130/"
+   ],
+   "tags": [
+    "domestication",
+    "single-fact",
+    "cat"
+   ]
+  },
+  {
+   "id": "adna-p024",
+   "question": "Eight female Texas pumas were released into Florida in 1995 to rescue the remnant Florida panther population. What did the 2010 assessment report for population size, heterozygosity and the remaining problems?",
+   "answer": "Panther numbers increased threefold, genetic heterozygosity doubled, survival and fitness measures improved, and inbreeding correlates declined significantly. The authors nonetheless flagged continued habitat loss, persistent inbreeding, infectious agents and possible habitat saturation as new dilemmas, so the rescue is a qualified rather than an unconditional success.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/20929847/"
+   ],
+   "tags": [
+    "conservation",
+    "single-fact",
+    "genetic-rescue"
+   ]
+  },
+  {
+   "id": "adna-p025",
+   "question": "What fraction of their genome are mountain gorillas typically homozygous across, and what did the 2015 Science study say this inbreeding had done to their deleterious variation?",
+   "answer": "Mountain gorillas are typically homozygous across 34% of their sequence. The two eastern gorilla subspecies had declined over the past 100,000 years, giving very low genetic diversity and an increased overall burden of deleterious variation; the recent, extensive inbreeding has, however, led to the purging of severely deleterious recessive mutations from the population.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/25859046/"
+   ],
+   "tags": [
+    "conservation",
+    "single-fact",
+    "purging",
+    "inbreeding"
+   ]
+  },
+  {
+   "id": "adna-p026",
+   "question": "Vad visade uppföljningen av den naturliga invandringen till den svårt inavlade skandinaviska vargstammen om avkommans framgång, och vilken mekanism föreslog författarna?",
+   "answer": "Avkomman till invandrare hade signifikant högre framgång både med att bilda par och med att föröka sig än avkomman till inavlade, inhemska par. Författarna menar att inavelsdepression är mekanismen bakom skillnaden: hårt inavlade vargar har sannolikt både sämre överlevnad under sin utvandring från födelsereviret och sämre konkurrensförmåga när de ska finna en partner. Det är ett av mycket få dokumenterade fall av genetisk räddning hos stora rovdjur.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27497431/"
+   ],
+   "tags": [
+    "conservation",
+    "single-fact",
+    "sv",
+    "genetic-rescue",
+    "wolf"
+   ]
+  },
+  {
+   "id": "adna-p027",
+   "question": "How did the 2018 yellow warbler study connect genomic variation to observed population declines, and what claim does the abstract actually make about causation?",
+   "answer": "Integrating population genomics with environmental data across the breeding range, the study identified genomic variation associated with climate and found that populations requiring the greatest shifts in allele frequencies to keep pace with future climate change were the ones that had already suffered the largest population declines. The abstract frames this as suggesting that failure to adapt may already have negatively affected populations and that genomic adaptation should be integrated into species distribution models — a correlational, predictive claim rather than a demonstration that maladaptation caused the declines. (The paper also drew a published Comment, to which the authors responded.)",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/29302012/",
+    "https://pubmed.ncbi.nlm.nih.gov/30072513/"
+   ],
+   "tags": [
+    "conservation",
+    "multihop",
+    "genomic-vulnerability",
+    "climate"
+   ]
+  },
+  {
+   "id": "adna-p028",
+   "question": "Channel Island foxes have among the lowest genetic diversity of any mammal, yet all six island populations persist. What explanation did the 2018 study give, and what management warning followed from it?",
+   "answer": "Genomes spanning 1929 to 2009 showed the foxes have been at small population size with low diversity for many generations; morphological data showed an absence of inbreeding depression; and population-genetic simulations indicated that long-term small population size purged strongly deleterious recessive alleles, which explains the persistence. The management implication the authors drew is that for such a population, genetic restoration through human-assisted gene flow could be counterproductive or even harmful — the opposite of the standard genetic-rescue prescription.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/30415705/"
+   ],
+   "tags": [
+    "conservation",
+    "synthesis",
+    "trap",
+    "purging",
+    "genetic-rescue"
+   ]
+  },
+  {
+   "id": "adna-p029",
+   "question": "The Isle Royale wolves are the textbook case of inbreeding depression. What did whole-genome sequencing identify as the genetic mechanism, and why is that relevant to the wolves later translocated there?",
+   "answer": "Whole-genome sequencing and morphological analysis, with population-genetic simulations and comparison to wolves of varied demographic history, indicated that the severe inbreeding depression was caused by increased homozygosity of strongly deleterious recessive mutations. That matters for the subsequent mainland-to-island translocation because migrants from a large source population carry a high hidden (masked) burden of exactly those recessive mutations, which inbreeding in the small recipient population will expose.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31149628/"
+   ],
+   "tags": [
+    "conservation",
+    "multihop",
+    "inbreeding",
+    "wolf"
+   ]
+  },
+  {
+   "id": "adna-p030",
+   "question": "Analysis of 60 genomes from six ibex species and the domestic goat produced an apparently contradictory result about mutation load in Alpine ibex. What were the two opposing signals, and what population size threshold did the authors flag?",
+   "answer": "The Alpine ibex bottlenecks showed concurrent purging of highly deleterious mutations but accumulation of mildly deleterious ones — recolonisation bottlenecks induced both relaxed selection and purging. The study also found that historic bottlenecks, rather than current conservation status, predict genome-wide variation, and warned that even populations of about 1,000 individuals accumulate mildly deleterious mutations, so declines below that level should be prevented.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/32081890/"
+   ],
+   "tags": [
+    "conservation",
+    "multihop",
+    "purging",
+    "mutation-load"
+   ]
+  },
+  {
+   "id": "adna-p031",
+   "question": "Kyriazis, Wayne and Lohmueller's 2021 simulations produced a counterintuitive recommendation about where to source migrants for a genetic rescue. What was it, and what is the reasoning?",
+   "answer": "They concluded that genetic rescue is broadly effective, but its effectiveness can be greatly increased by drawing migrants from small or moderate-sized source populations rather than from large ones. The reasoning is that under realistic dominance models large populations harbour high levels of recessive strongly deleterious variation hidden in the heterozygous state, whereas smaller populations carry less of it; the recommendation therefore shifts the goal from maximising genetic diversity to minimising strongly deleterious variation.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/33552534/"
+   ],
+   "tags": [
+    "conservation",
+    "synthesis",
+    "mutation-load",
+    "genetic-rescue"
+   ]
+  },
+  {
+   "id": "adna-p032",
+   "question": "Some genomic studies have argued conservation should manage functional genetic variation rather than genome-wide variation. What position did Kardos and colleagues take in their 2021 PNAS paper?",
+   "answer": "They argued the opposite: population genetics theory and empirical results show that conserving genome-wide genetic variation is generally the best approach to prevent inbreeding depression and loss of adaptive potential from driving populations toward extinction. Focusing on presumably functional variation will only occasionally be feasible, will often be misleading, and is counterproductive when prioritised over genome-wide variation.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/34772759/"
+   ],
+   "tags": [
+    "conservation",
+    "synthesis",
+    "policy",
+    "genetic-diversity"
+   ]
+  },
+  {
+   "id": "adna-p033",
+   "question": "With roughly ten animals left, the vaquita would seem doomed by inbreeding. What did whole-genome sequencing of 20 vaquitas and the accompanying simulations conclude, and why?",
+   "answer": "The analysis concluded the vaquita is not doomed to extinction by inbreeding depression: its historical rarity has left it with a low burden of segregating deleterious variation, which reduces the risk of inbreeding depression. Genome-informed, individual-based stochastic simulations indicated the species can recover if gillnet bycatch mortality is halted immediately — the binding constraint is fishing mortality, not genetics.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/35511971/"
+   ],
+   "tags": [
+    "conservation",
+    "multihop",
+    "mutation-load",
+    "extinction-risk"
+   ]
+  },
+  {
+   "id": "adna-p034",
+   "question": "Hur mycket ökade den realiserade genetiska belastningen hos den skandinaviska vargstammen under fem generationers inavel, och hur många genom byggde slutsatsen på?",
+   "answer": "Den realiserade belastningen per individ — skadliga mutationer i homozygot tillstånd — ökade med 45 procent i proteinkodande gener under fem generationers inavel. Slutsatsen bygger på totalt 209 genom från den skandinaviska stammen och från grannpopulationerna i norra Europa; stammen grundades av bara tre vargar på 1980-talet. Invandrare gav en tillfällig genetisk räddningseffekt genom att flytta skadliga alleler från homozygot till heterozygot tillstånd, men utan varaktig kontakt med Finland och Ryssland exponerades de skadliga mutationerna igen.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/36458895/"
+   ],
+   "tags": [
+    "conservation",
+    "single-fact",
+    "sv",
+    "mutation-load",
+    "wolf"
+   ]
+  },
+  {
+   "id": "adna-p035",
+   "question": "The IUCN Guidelines on Reintroductions were used in 2014 to build a candidate-screening framework for de-extinction. How many questions does the framework pose, and which three extinct taxa were used as worked examples?",
+   "answer": "Seddon, Moehrenschlager and Ewen translated the IUCN Guidelines on Reintroductions and Other Conservation Translocations into ten questions to be addressed early in candidate selection, in order to eliminate unsuitable reintroduction candidates. They applied the questions to the thylacine, the Yangtze River dolphin and the Xerces blue butterfly. Their framing is that de-extinction is fundamentally a conservation translocation problem, not a laboratory achievement.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24513302/"
+   ],
+   "tags": [
+    "de-extinction",
+    "synthesis",
+    "policy",
+    "reintroduction"
+   ]
+  },
+  {
+   "id": "adna-p036",
+   "question": "Bucardon, den pyreneiska stenbocken, kallas ofta det första utdöda djur som återuppväckts genom kloning 2003. Vad hände egentligen med den klonade ungen, och hur många embryon och mottagardjur krävdes?",
+   "answer": "En enda morfologiskt normal bucardohona föddes med kejsarsnitt — och dog några minuter efter födseln på grund av fysiska defekter i lungorna. Vägen dit gick via 285 rekonstruerade embryon i försök 1 och 154 i försök 2; dräktighet uppnåddes i 0 av 8 livmoderöverföringar och 7 av 49 äggledaröverföringar, och bara en mottagare bar dräktigheten till fullgången tid. Kärn-DNA bekräftade att klonen var genetiskt identisk med donatorcellerna, tagna 1999 från det sista levande djuret, som dog år 2000.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/19167744/"
+   ],
+   "tags": [
+    "de-extinction",
+    "single-fact",
+    "trap",
+    "sv",
+    "cloning"
+   ]
+  },
+  {
+   "id": "adna-p037",
+   "question": "What did the 2017 prioritisation analysis of de-extinction candidates from New Zealand and New South Wales conclude about the effect of resurrected species on extant threatened species?",
+   "answer": "Using extant analogues and a prioritisation protocol, the study found that publicly funding conservation of resurrected species would mean fewer extant species could be conserved — a net biodiversity loss — even under optimistic assumptions that resurrection itself is externally sponsored and that actions can share costs with analogue species. If the full establishment and maintenance costs were publicly funded, the sacrifices in extant species conservation could be substantial. Only fully external sponsorship could benefit extant threatened species, and even then the benefits would be outweighed by opportunity costs.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28812662/"
+   ],
+   "tags": [
+    "de-extinction",
+    "synthesis",
+    "policy",
+    "opportunity-cost"
+   ]
+  },
+  {
+   "id": "adna-p038",
+   "question": "Passenger pigeons had surprisingly low genetic diversity for the most abundant bird in North America. What did the 2017 genomic study attribute this to, and what earlier explanation for their rapid extinction did it contradict?",
+   "answer": "Analysing 41 mitochondrial and 4 nuclear passenger pigeon genomes plus 2 band-tailed pigeon genomes, the study concluded that the species' very large population size allowed faster adaptive evolution and more efficient removal of harmful mutations, and that this selection drove the large loss of neutral genetic diversity. The finding contradicts earlier results suggesting that population instability contributed to the species' surprisingly rapid extinction.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/29146814/"
+   ],
+   "tags": [
+    "de-extinction",
+    "multihop",
+    "trap",
+    "passenger-pigeon",
+    "selection"
+   ]
+  },
+  {
+   "id": "adna-p039",
+   "question": "The thylacine and canids are the classic case of mammalian convergent evolution. What did the 2018 thylacine genome say about the molecular basis of that convergence, and about the species' demography before European arrival?",
+   "answer": "Comparative genomic analysis showed that amino acid homoplasies between thylacine and canids are largely consistent with neutral evolution, and that the genes and pathways under positive selection differ markedly between the two — supporting adaptive convergence driven primarily by cis-regulatory rather than protein-coding change. Demographic analysis of the pouch-young genome indicated a long-term decline in genetic diversity beginning well before humans arrived in Australia. Retroposon insertions placed the thylacine as the basal lineage in Dasyuromorphia.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/29230027/"
+   ],
+   "tags": [
+    "de-extinction",
+    "multihop",
+    "thylacine",
+    "convergent-evolution"
+   ]
+  },
+  {
+   "id": "adna-p040",
+   "question": "How many northern white rhinoceros individuals are represented in the induced pluripotent stem cell bank reported in 2021, and what reprogramming method was used?",
+   "answer": "Induced pluripotent stem cells were generated from Frozen Zoo-cryopreserved fibroblasts of nine genetically diverse northern white rhinoceros individuals, plus two southern white rhinoceros individuals. A non-integrating Sendai virus reprogramming method was used, and the cells' pluripotency and differentiation potential were confirmed with purpose-developed analyses.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/33406994/"
+   ],
+   "tags": [
+    "de-extinction",
+    "single-fact",
+    "biobanking",
+    "rhinoceros"
+   ]
+  },
+  {
+   "id": "adna-p041",
+   "question": "How many species were represented in the San Diego Zoo Frozen Zoo living cell collection as analysed in 2023, what share of IUCN Threatened amphibians, birds, mammals and reptiles is that, and how far could sampling within existing zoo collections raise it?",
+   "answer": "The collection held 965 species, including 5% of all IUCN Red List Threatened amphibians, birds, mammals and reptiles. Sampling from within existing zoo and aquarium collections — an additional 707 Threatened species — could raise representation to 16.6%. The whooping crane, crested ibis and Siberian crane were identified as high-priority species for future cryobanking.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/37283210/"
+   ],
+   "tags": [
+    "de-extinction",
+    "single-fact",
+    "biobanking",
+    "cryopreservation"
+   ]
+  },
+  {
+   "id": "adna-p042",
+   "question": "Vad var det egentliga nya i att Przewalskis häst klonades från nedfrysta celler, och varför valdes just den individ vars celler användes?",
+   "answer": "Två friska kloner producerades mellan 2020 och 2023 med somatisk kärnöverföring mellan arter, och det var första gången flera friska kloner av en hotad art överlevt den perinatala perioden. Cellinjen kom från hingsten med stambokssnummer 615, kallad Kuporovitch, som levde 1975-1998 och som en släktskapsanalys visade var underrepresenterad i den levande populationen — därför skulle en klon vara värdefull i aveln. Alla omkring 1 800 nu levande Przewalskihästar härstammar från de tolv hästar som fångades in mellan 1898 och 1947.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/40075896/"
+   ],
+   "tags": [
+    "de-extinction",
+    "multihop",
+    "sv",
+    "cloning",
+    "biobanking"
+   ]
+  },
+  {
+   "id": "adna-p043",
+   "question": "In 2025 a biotechnology company announced it had resurrected the dire wolf. What did the animals actually consist of, according to the anatomists' commentary published in The Anatomical Record?",
+   "answer": "The company edited gray wolf nuclear genomes to include a selection of differences identified in dire wolf fossils, or in other genes thought to replicate the effect of those differences. The result was three pups possessing a small amount of dire-wolf-like DNA, born to a surrogate domestic dog — that is, edited gray wolves, not resurrected Aenocyon dirus. The commentary discusses the realities of the method, its results and the ethical aspects of so-called de-extinction.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/40927892/"
+   ],
+   "tags": [
+    "de-extinction",
+    "single-fact",
+    "trap",
+    "dire-wolf",
+    "genome-editing"
+   ]
+  },
+  {
+   "id": "adna-p044",
+   "question": "A 2025 welfare-ethics analysis of the engineered dire-wolf-like canids used a specific animal welfare framework and identified a conceptual problem with the project. Which framework, and what was the problem?",
+   "answer": "The analysis used the five domains model to assess welfare risks for the engineered animals, the surrogate mothers, and other animals potentially affected by future reintroduction or escape. Its central conceptual finding was ontological ambiguity: it is unclear whether the animals created are resurrected species, hybrids, or novel organisms. Current welfare of the engineered animals was judged manageable, but long-term wellbeing — particularly under rewilding — was not.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/40646738/"
+   ],
+   "tags": [
+    "de-extinction",
+    "synthesis",
+    "ethics",
+    "dire-wolf"
+   ]
+  },
+  {
+   "id": "adna-p045",
+   "question": "The BioRescue consortium's programme for the northern white rhinoceros rests on three legs. What are they, and which milestones had actually been reached as of the 2026 review?",
+   "answer": "The three legs are advanced assisted reproductive technologies (IVF and embryo transfer), stem-cell-associated techniques aimed at in vitro gametogenesis, and a pangenetic rescue strategy that draws on DNA sequence information from northern white rhino museum specimens combined with gene editing to broaden the future population's diversity. Reported milestones: 26 non-surgical oocyte collections in northern white rhinos with in vitro maturation and embryo generation, a first pregnancy in a southern white rhino surrogate after heterologous embryo transfer, two southern white rhino embryonic stem cell lines, northern white rhino iPSC lines from somatic tissue, and robust primordial germ cell-like cell induction as a first step toward in vitro gametogenesis. Only two non-reproductive females remain.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/42309770/"
+   ],
+   "tags": [
+    "de-extinction",
+    "multihop",
+    "rhinoceros",
+    "assisted-reproduction"
+   ]
+  },
+  {
+   "id": "adna-h001",
+   "question": "In the 1985 paper that opened up ancient human DNA, how many Egyptian mummies were screened, which one actually worked, and what was in the clone?",
+   "answer": "Twenty-three mummies were investigated for DNA content. Only one — a 2,400-year-old mummy of a child — contained DNA that could be molecularly cloned in a plasmid vector. The clone contained two members of the Alu family of human repetitive DNA, identified by hybridisation and sequencing, and the work showed that substantial pieces of mummy DNA (3.4 kilobases) can be cloned with little or no postmortem modification.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/3990798/"
+   ],
+   "tags": [
+    "hominin",
+    "single-fact",
+    "history-of-field",
+    "egypt"
+   ]
+  },
+  {
+   "id": "adna-h002",
+   "question": "Which specimen produced the first Neandertal DNA sequence, and what did the 1997 paper conclude from it?",
+   "answer": "The Neandertal type specimen found in 1856 in western Germany (Feldhofer). Krings et al. sequenced clones from short overlapping PCR products to recover a previously unknown mitochondrial sequence that falls outside the variation of modern humans, and estimated that the common ancestor of the Neandertal and modern human mtDNAs is about four times older than the common ancestor of modern human mtDNAs. They concluded that Neandertals went extinct without contributing mtDNA to modern humans.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/9230299/"
+   ],
+   "tags": [
+    "hominin",
+    "single-fact",
+    "neanderthal",
+    "mtdna"
+   ]
+  },
+  {
+   "id": "adna-h003",
+   "question": "How much DNA actually survived in the Tyrolean Iceman, and what did his mitochondrial type turn out to be?",
+   "answer": "On the order of 10 genome equivalents per gram of tissue, so only multi-copy sequences could be analysed and amplifying mtDNA fragments longer than roughly 100–200 base pairs was difficult. One hypervariable segment of the mitochondrial control region was determined independently in two laboratories from internal samples, and it placed this roughly 5,000-year-old Late Neolithic individual within the genetic variation of contemporary Europeans, most closely related to central and northern European mitochondrial types.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/8209259/"
+   ],
+   "tags": [
+    "hominin",
+    "single-fact",
+    "methods",
+    "europe"
+   ]
+  },
+  {
+   "id": "adna-h004",
+   "question": "The second Neanderthal mtDNA sequence came from the Caucasus. Which site, how old was the specimen, and how divergent was it from the first Neanderthal sequence?",
+   "answer": "Mezmaiskaya Cave in the northern Caucasus. The specimen was radiocarbon dated to about 29,000 years, making it one of the latest living Neanderthals then known, and its mtDNA showed 3.48% divergence from the Feldhofer Neanderthal sequenced by Krings et al. in 1997. Phylogenetically the two Neanderthals formed a clade distinct from modern humans, giving no support to the multiregional hypothesis.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/10761915/",
+    "https://pubmed.ncbi.nlm.nih.gov/9230299/"
+   ],
+   "tags": [
+    "hominin",
+    "multihop",
+    "neanderthal",
+    "mtdna"
+   ]
+  },
+  {
+   "id": "adna-h005",
+   "question": "Did any Cro-Magnon remains ever turn out to carry Neanderthal-like mitochondrial DNA?",
+   "answer": "No. Caramelli et al. (2003) typed mtDNA hypervariable region I from two anatomically modern Cro-Magnon-type individuals dated to about 23,000 and 25,000 years ago, following the most stringent validation standards of the time. Their sequences fall well within the range of variation of today's humans and differ sharply from the chronologically closer Neanderthal sequences — a genetic discontinuity that is difficult to reconcile with both groups contributing to the present-day European gene pool.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/12743370/",
+    "https://pubmed.ncbi.nlm.nih.gov/9230299/"
+   ],
+   "tags": [
+    "hominin",
+    "multihop",
+    "neanderthal",
+    "europe"
+   ]
+  },
+  {
+   "id": "adna-h006",
+   "question": "Before nuclear data existed, how big was the sample used to argue against a Neandertal mtDNA contribution to early modern humans, and what exactly could it rule out?",
+   "answer": "Serre et al. (2004) analysed 24 Neandertal and 40 early modern human remains. Four Neandertals and five early modern humans were preserved well enough to expect DNA; all four Neandertals yielded Neandertal-type mtDNA and none of the five early modern humans did. Combined with the mtDNA data then available, this excluded any large genetic contribution by Neandertals to early modern humans, but the authors explicitly stated it does not rule out a smaller contribution.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/15024415/"
+   ],
+   "tags": [
+    "hominin",
+    "single-fact",
+    "neanderthal",
+    "mtdna"
+   ]
+  },
+  {
+   "id": "adna-h007",
+   "question": "The 2006 paper reporting one million base pairs of Neanderthal nuclear DNA put the modern human–Neanderthal sequence divergence at about 500,000 years. Should that dataset be taken at face value?",
+   "answer": "No — that dataset was shown to be compromised. Green et al. (Nature 2006) direct-sequenced over one million base pairs of hominoid nuclear DNA from a 38,000-year-old Neanderthal fossil described as exceptionally free of modern human contamination, and reported an average modern human–Neanderthal divergence of about 500,000 years. Wall and Kim (PLoS Genetics 2007) reanalysed it alongside the other 2006 study that sequenced the SAME fossil and showed the two datasets are not consistent with each other, pointing to serious data-quality problems in one of them, possibly from modern human DNA contaminants and/or a high rate of sequencing errors.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/17108958/",
+    "https://pubmed.ncbi.nlm.nih.gov/17937503/"
+   ],
+   "tags": [
+    "hominin",
+    "multihop",
+    "trap",
+    "neanderthal",
+    "contamination"
+   ]
+  },
+  {
+   "id": "adna-h008",
+   "question": "What did the first ancient DNA test of lactase persistence in Neolithic Europeans find, and which hypothesis did it support?",
+   "answer": "Burger et al. (2007) obtained high-confidence lactase-persistence-associated genotypes from eight Neolithic and one Mesolithic human remains and did not observe the allele most commonly associated with lactase persistence in Europeans in any of them. That supports the culture-historical hypothesis — the allele was rare until dairying began and then rose in frequency under strong selection — rather than the reverse-cause hypothesis that dairying was adopted by populations that already had high lactase-persistence allele frequencies.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/17360422/"
+   ],
+   "tags": [
+    "hominin",
+    "single-fact",
+    "adaptation",
+    "lactase"
+   ]
+  },
+  {
+   "id": "adna-h009",
+   "question": "What fraction of late central European hunter-gatherers carried mitochondrial types that are rare in central Europeans today?",
+   "answer": "82%. Bramanti et al. (2009) compared new mtDNA sequences from late European hunter-gatherer skeletons with those of early farmers and modern Europeans and found large genetic differences between all three groups that population continuity alone cannot explain — persuasive evidence that central Europe's first farmers were not descendants of the local hunter-gatherers but immigrated at the onset of the Neolithic.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/19729620/"
+   ],
+   "tags": [
+    "hominin",
+    "single-fact",
+    "neolithic",
+    "europe"
+   ]
+  },
+  {
+   "id": "adna-h010",
+   "question": "How much sequence, and from how many individuals, made up the 2010 draft Neandertal genome — and what was the key comparative result?",
+   "answer": "More than 4 billion nucleotides from three individuals. Compared against the genomes of five present-day humans from different parts of the world, Neandertals shared more genetic variants with present-day humans in Eurasia than with present-day humans in sub-Saharan Africa, indicating gene flow from Neandertals into the ancestors of non-Africans that occurred before the Eurasian groups diverged from each other. The same paper flagged regions possibly under positive selection in ancestral modern humans, including genes involved in metabolism and in cognitive and skeletal development.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/20448178/"
+   ],
+   "tags": [
+    "hominin",
+    "single-fact",
+    "neanderthal",
+    "introgression"
+   ]
+  },
+  {
+   "id": "adna-h011",
+   "question": "Mitochondrial studies concluded there was no Neanderthal contribution to modern humans, and then the nuclear genome said there was. Was the mitochondrial work simply wrong?",
+   "answer": "No — it was right about mitochondrial DNA and was over-read as a claim about the whole genome. Krings et al. (1997) showed Neandertal mtDNA falls outside modern human variation and concluded Neandertals contributed no mtDNA. Serre et al. (2004), screening 24 Neandertal and 40 early modern human remains, could exclude only a LARGE mtDNA contribution and said so explicitly. The draft nuclear genome (Green et al. 2010) then found Neandertals share more variants with Eurasians than with sub-Saharan Africans, demonstrating nuclear gene flow into the ancestors of non-Africans. Both stand: no surviving Neandertal mtDNA lineage in modern humans, but real autosomal introgression.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/9230299/",
+    "https://pubmed.ncbi.nlm.nih.gov/15024415/",
+    "https://pubmed.ncbi.nlm.nih.gov/20448178/"
+   ],
+   "tags": [
+    "hominin",
+    "synthesis",
+    "trap",
+    "neanderthal",
+    "introgression"
+   ]
+  },
+  {
+   "id": "adna-h012",
+   "question": "What did the first complete mitochondrial genome from Denisova Cave show about the age of that lineage?",
+   "answer": "Krause et al. (2010) recovered a complete mtDNA sequence from a bone excavated in 2008 in Denisova Cave in the Altai Mountains of southern Siberia. It represented a previously unknown type of hominin mtDNA whose common ancestor with anatomically modern human and Neanderthal mtDNAs dates to about 1.0 million years ago, implying a migration out of Africa distinct from that of the ancestors of Neanderthals and of modern humans. The cave stratigraphy suggested this hominin lived close in time and space to both Neanderthals and modern humans.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/20336068/"
+   ],
+   "tags": [
+    "hominin",
+    "single-fact",
+    "denisovan",
+    "mtdna"
+   ]
+  },
+  {
+   "id": "adna-h013",
+   "question": "What coverage was the first Denisovan nuclear genome, and how much did that population contribute to present-day Melanesians?",
+   "answer": "About 1.9-fold coverage, from a finger bone. Reich et al. (2010) showed the individual came from a group that shares a common origin with Neanderthals but was NOT involved in the gene flow from Neanderthals into Eurasians, and that this population contributed 4–6% of the genetic material in the genomes of present-day Melanesians. A tooth found in the same cave carried a mitochondrial genome highly similar to the finger bone's and shared no derived morphological features with Neanderthals or modern humans — which is how the group came to be named Denisovans.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/21179161/",
+    "https://pubmed.ncbi.nlm.nih.gov/20336068/"
+   ],
+   "tags": [
+    "hominin",
+    "multihop",
+    "denisovan",
+    "introgression"
+   ]
+  },
+  {
+   "id": "adna-h014",
+   "question": "The 2012 high-coverage Denisovan genome relied on a new lab method. What coverage did it reach, and what did it say about Denisovan genetic diversity?",
+   "answer": "30×, made possible by a new DNA library preparation method. Direct estimation of Denisovan heterozygosity from that genome indicated genetic diversity in these archaic hominins was extremely low. The quality also allowed tentative dating of the specimen from the 'missing evolution' in its genome, detailed measurement of Denisovan and Neandertal admixture into present-day humans, and a near-complete catalogue of genetic changes that swept to high frequency in modern humans since their divergence from Denisovans.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/22936568/"
+   ],
+   "tags": [
+    "hominin",
+    "single-fact",
+    "denisovan",
+    "methods"
+   ]
+  },
+  {
+   "id": "adna-h015",
+   "question": "Vad visade egentligen de första skandinaviska stenåldersgenomen om bönderna jämfört med jägarna-samlarna?",
+   "answer": "Skoglund m.fl. (2012) fick fram 249 miljoner baspar genomiskt DNA från ungefär 5 000 år gamla lämningar i Skandinavien: tre jägare-samlare och en bonde. Bonden var genetiskt mest lik dagens sydeuropéer, medan jägarna-samlarna hade en tydligt annorlunda signatur som liknar dagens nordeuropéer — trots att de levde i samma område. Slutsatsen var att jordbruket spreds med migration från södra Europa, och att den blandning som följde i migrationens spår formade dagens europeiska genpool.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/22539720/"
+   ],
+   "tags": [
+    "hominin",
+    "multihop",
+    "sv",
+    "neolithic",
+    "scandinavia"
+   ]
+  },
+  {
+   "id": "adna-h016",
+   "question": "How many streams of Asian gene flow did the 2012 continent-wide genotype study of Native Americans identify, and how were they distributed?",
+   "answer": "At least three. Reich et al. (2012) assembled data from 52 Native American and 17 Siberian groups genotyped at 364,470 SNPs. Most Native Americans descend entirely from a single ancestral population the authors call 'First American'; speakers of Eskimo-Aleut languages from the Arctic inherit almost half their ancestry from a second stream of Asian gene flow; and the Na-Dene-speaking Chipewyan of Canada inherit roughly one tenth from a third. The initial peopling followed a southward, coast-facilitated expansion with sequential splits and little subsequent gene flow, especially in South America.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/22801491/"
+   ],
+   "tags": [
+    "hominin",
+    "multihop",
+    "americas",
+    "peopling"
+   ]
+  },
+  {
+   "id": "adna-h017",
+   "question": "How old is the Tianyuan Cave individual, what was actually sequenced from him, and where does he sit relative to present-day populations?",
+   "answer": "About 40,000 years old, from Tianyuan Cave outside Beijing. Fu et al. (2013) used hybridisation enrichment to determine the mitochondrial genome, the entire non-repetitive portion of chromosome 21 (~30 Mbp), and over 3,000 polymorphic sites across the nuclear genome. He derived from a population ancestral to many present-day Asians and Native Americans but postdating the divergence of Asians from Europeans, and he carried proportions of archaic-derived variants similar to present-day people in mainland Asia.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/23341637/"
+   ],
+   "tags": [
+    "hominin",
+    "single-fact",
+    "east-asia",
+    "upper-palaeolithic"
+   ]
+  },
+  {
+   "id": "adna-h018",
+   "question": "Var Sima de los Huesos-människorna denisovaner eller neandertalare? Det första DNA-resultatet pekade ju mot denisovaner.",
+   "answer": "Neandertalare. Det första mitokondriegenomet från Sima de los Huesos (Meyer m.fl. 2014) var närmast besläktat med denisovanernas mtDNA, vilket gjorde bilden förvirrande. När kärn-DNA sedan togs fram ur två specimen (Meyer m.fl. 2016) visade det att Sima-människorna — daterade till omkring 430 000 år, ett fyndmaterial med minst 28 individer — var släkt med neandertalarna och inte med denisovanerna. Alltså måste populationssplittringen mellan neandertalare och denisovaner vara äldre än 430 000 år. Det denisovanlika mtDNA:t fanns kvar även i 2016 års material, vilket bland annat kan förklaras med att neandertalarnas mitokondriella genpool byttes ut senare i deras historia.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24305051/",
+    "https://pubmed.ncbi.nlm.nih.gov/26976447/"
+   ],
+   "tags": [
+    "hominin",
+    "synthesis",
+    "sv",
+    "trap",
+    "sima-de-los-huesos"
+   ]
+  },
+  {
+   "id": "adna-h019",
+   "question": "What did the high-quality Altai Neanderthal genome reveal about the woman's parents?",
+   "answer": "Prüfer et al. (2014) showed that the parents of the Neanderthal woman from the Altai Mountains were related at the level of half-siblings, and that mating among close relatives was common among her recent ancestors. The same study sequenced a Caucasus Neanderthal to low coverage and inferred several gene-flow events among Neanderthals, Denisovans and early modern humans, possibly including gene flow into Denisovans from an unknown archaic group, plus a definitive list of substitutions fixed in modern humans after the split from the ancestors of Neanderthals and Denisovans.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24352235/"
+   ],
+   "tags": [
+    "hominin",
+    "single-fact",
+    "neanderthal",
+    "inbreeding"
+   ]
+  },
+  {
+   "id": "adna-h020",
+   "question": "Two 2014 papers mapped Neanderthal ancestry in living people using different approaches. What did each add, and where did they converge?",
+   "answer": "Sankararaman et al. (Nature) inferred Neanderthal haplotypes in 1,004 present-day humans: regions with a high frequency of Neanderthal alleles are enriched for genes affecting keratin filaments, while regions of REDUCED Neanderthal ancestry are enriched in genes, testis-biased genes are especially depleted, and there is an approximately fivefold reduction of Neanderthal ancestry on the X chromosome — a signature consistent with male hybrid sterility. Vernot and Akey (Science) recovered introgressed sequence directly from 379 European and 286 East Asian genomes: more than 15 gigabases spanning about 20% of the Neandertal genome at a 5% false discovery rate, likewise inferring fitness costs to hybridisation, admixture both before and after the divergence of non-African modern humans, and adaptive variation at skin-phenotype loci. Both converge on selection having removed much Neanderthal ancestry while a minority of variants was retained adaptively.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24476815/",
+    "https://pubmed.ncbi.nlm.nih.gov/24476670/"
+   ],
+   "tags": [
+    "hominin",
+    "synthesis",
+    "introgression",
+    "selection"
+   ]
+  },
+  {
+   "id": "adna-h021",
+   "question": "How do we know the Neanderthal gene flow into the Ust'-Ishim individual's ancestors was recent relative to when he lived?",
+   "answer": "From the length of the introgressed segments. Fu et al. (2014) sequenced this ~45,000-year-old modern human male from western Siberia to high quality and found he carries a similar AMOUNT of Neanderthal ancestry to present-day Eurasians, but the Neanderthal segments are substantially longer than in present-day people — implying the gene flow into his ancestors occurred 7,000–13,000 years before he lived. The genome also gave an autosomal mutation rate estimate of 0.4–0.6 × 10⁻⁹ per site per year.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/25341783/"
+   ],
+   "tags": [
+    "hominin",
+    "single-fact",
+    "introgression",
+    "dating"
+   ]
+  },
+  {
+   "id": "adna-h022",
+   "question": "Hur kommer det sig att tibetaner klarar den låga syrehalten på hög höjd — stämmer det att det kommer från denisovaner?",
+   "answer": "Ja. Huerta-Sánchez m.fl. (2014) omsekvenserade regionen kring hypoxigenen EPAS1 hos 40 tibetaner och 40 hankineser och fann en mycket ovanlig haplotypstruktur som bara kan förklaras övertygande med introgression av DNA från denisovaner eller denisovanlika individer. När de sökte i ett bredare urval av världens populationer fanns den selekterade haplotypen bara hos denisovaner och tibetaner, och i mycket låg frekvens hos hankineser. Haplotypens längd, och att den saknas i alla andra populationer, gör ofullständig linjesortering till en osannolik förklaring.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/25043035/"
+   ],
+   "tags": [
+    "hominin",
+    "single-fact",
+    "sv",
+    "denisovan",
+    "adaptation",
+    "high-altitude"
+   ]
+  },
+  {
+   "id": "adna-h023",
+   "question": "What are the three ancestral populations proposed for present-day Europeans in 2014, and what was the unexpected component inside the farmers?",
+   "answer": "West European hunter-gatherers, who contributed to all Europeans but not to Near Easterners; ancient north Eurasians related to Upper Palaeolithic Siberians, who contributed to both Europeans and Near Easterners; and early European farmers, mainly of Near Eastern origin but also carrying west European hunter-gatherer ancestry. Lazaridis et al. (2014) sequenced a ~7,000-year-old farmer from Germany and eight ~8,000-year-old hunter-gatherers from Luxembourg and Sweden and analysed them with 2,345 contemporary humans. The unexpected component was that the early European farmers had roughly 44% ancestry from a 'Basal Eurasian' population that split off before the diversification of the other non-African lineages.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/25230663/"
+   ],
+   "tags": [
+    "hominin",
+    "multihop",
+    "europe",
+    "admixture-graph"
+   ]
+  },
+  {
+   "id": "adna-h024",
+   "question": "What did the La Braña-1 genome say about pigmentation and immunity in pre-agricultural Europeans, and how does that line up with the later selection scan on 230 ancient Eurasians?",
+   "answer": "Olalde et al. (2014) sequenced an approximately 7,000-year-old Mesolithic individual from La Braña-Arintero in León, Spain — the first complete pre-agricultural European genome — and found he carried ANCESTRAL alleles at several skin-pigmentation genes, so the light skin of modern Europeans was not yet ubiquitous in Mesolithic times, while a significant number of derived, putatively adaptive pathogen-resistance variants found in modern Europeans were already present. Mathieson et al. (2015), scanning 230 West Eurasians who lived between 6500 and 300 BC (163 newly reported), then detected selection at loci associated with diet, pigmentation and immunity, plus two independent episodes of selection on height.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24463515/",
+    "https://pubmed.ncbi.nlm.nih.gov/26595274/"
+   ],
+   "tags": [
+    "hominin",
+    "multihop",
+    "adaptation",
+    "pigmentation",
+    "immunity"
+   ]
+  },
+  {
+   "id": "adna-h025",
+   "question": "Hur mycket av snörkeramikernas arv kommer egentligen från jamnajafolket på stäppen?",
+   "answer": "Ungefär 75 %. Haak m.fl. (2015) tog fram genomdata för 69 européer som levde för 8 000–3 000 år sedan genom att anrika nästan 400 000 positioner, och visade att den sena neolitiska snörkeramiska kulturen i Tyskland för omkring 4 500 år sedan härledde cirka 75 % av sitt arv från jamnajafolket — en massiv migration in i Europas kärnland från dess östra utkant. Stäpparvet finns kvar hos alla undersökta centraleuropéer fram till åtminstone för 3 000 år sedan och är allmänt förekommande hos dagens européer. Samma studie visade att jamnajafolket härstammade både från östeuropeiska jägare-samlare och från en population med främre-orientaliskt ursprung.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/25731166/"
+   ],
+   "tags": [
+    "hominin",
+    "single-fact",
+    "sv",
+    "steppe",
+    "yamnaya",
+    "indo-european"
+   ]
+  },
+  {
+   "id": "adna-h026",
+   "question": "Where does the Caucasus hunter-gatherer lineage sit in the Eurasian tree, and what does it contribute to the steppe story?",
+   "answer": "Jones et al. (2015) sequenced a Late Upper Palaeolithic male (13,300 years, 1.4-fold) and a Mesolithic male (9,700 years, 15.4-fold) from western Georgia and showed Caucasus hunter-gatherers belong to a distinct ancient clade that split from western hunter-gatherers around 45,000 years ago and from the ancestors of Neolithic farmers around 25,000 years ago, near the Last Glacial Maximum. CHG genomes contributed significantly to the Yamnaya steppe herders who migrated into Europe around 3000 BC — which supplies a source for the Near Eastern-related ancestry Haak et al. (2015) found in Yamnaya alongside eastern European hunter-gatherer ancestry.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26567969/",
+    "https://pubmed.ncbi.nlm.nih.gov/25731166/"
+   ],
+   "tags": [
+    "hominin",
+    "synthesis",
+    "steppe",
+    "hunter-gatherers",
+    "caucasus"
+   ]
+  },
+  {
+   "id": "adna-h027",
+   "question": "Y-chromosome diversity shows a bottleneck that mitochondrial DNA does not. When was it, and what is the leading explanation?",
+   "answer": "Karmin et al. (2015), from 456 geographically diverse high-coverage Y chromosomes (299 newly reported), dated the Y-chromosomal MRCA in Africa to 254 thousand years (95% CI 192–307) and found non-African founder haplogroups clustering at 47–52 thousand years, but also inferred a second strong bottleneck in Y lineages within the last 10,000 years that mtDNA-based demographic reconstructions do not show — implying increased variance in male reproductive success. Zeng, Aw and Feldman (2018) gave the leading sociocultural explanation: the formation of patrilineal kin groups plus competition between those groups, so whole patrilines are lost together, which mathematically reproduces the inferred male-specific bottleneck 5,000–7,000 years before present.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/25770088/",
+    "https://pubmed.ncbi.nlm.nih.gov/29802241/"
+   ],
+   "tags": [
+    "hominin",
+    "synthesis",
+    "y-chromosome",
+    "social-organisation"
+   ]
+  },
+  {
+   "id": "adna-h028",
+   "question": "The 4,500-year-old Ethiopian 'Mota' genome was reported to show Eurasian backflow reaching even Yoruba and Mbuti at 6–7%. How solid is that number?",
+   "answer": "It does not stand — the result was corrected. The 2015 Science report presented a 12.5× genome of Mota and claimed the Eurasian backflow reached Central, West and Southern Africa, with Yoruba and Mbuti carrying 6–7% Eurasian ancestry. A 2016 erratum traced this to a bioinformatics error: a script needed to convert samtools output for PLINK was not run when merging Mota with the contemporary SNP panel, so positions homozygous for the human reference were dropped as missing data. With them included, 255,922 of 256,540 panel SNPs could be called in Mota and there is NO detectable Western Eurasian component in Yoruba and Mbuti; the title was changed from 'throughout the African continent' to 'in Eastern Africa'. The authors credited Pontus Skoglund and David Reich with detecting the problem. The migration into East Africa from a source genetically close to early Neolithic farmers is unaffected.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26449472/",
+    "https://pubmed.ncbi.nlm.nih.gov/26912899/"
+   ],
+   "tags": [
+    "hominin",
+    "multihop",
+    "trap",
+    "africa",
+    "erratum"
+   ]
+  },
+  {
+   "id": "adna-h029",
+   "question": "Which sequenced modern human carries the most Neanderthal ancestry, how much, and how recent was the admixture in his family?",
+   "answer": "The Oase 1 individual from Peştera cu Oase, Romania, dated to 37,000–42,000 years ago. Fu et al. (2015) estimated that on the order of 6–9% of his genome is Neanderthal-derived, more than any other modern human sequenced to date, and found three chromosomal segments of Neanderthal ancestry over 50 centimorgans in size — indicating a Neanderthal ancestor as recently as four to six generations back. He nevertheless does not share more alleles with later Europeans than with East Asians, so the Oase population did not contribute substantially to later Europeans.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26098372/"
+   ],
+   "tags": [
+    "hominin",
+    "single-fact",
+    "introgression",
+    "europe"
+   ]
+  },
+  {
+   "id": "adna-h030",
+   "question": "Hade istidens européer mer neandertal-DNA än vad vi har idag?",
+   "answer": "Ja. Fu m.fl. (2016) analyserade genomdata från 51 eurasier som levde för ungefär 45 000–7 000 år sedan och visade att andelen neandertal-DNA sjönk från 3–6 % till omkring 2 % under den perioden, vilket stämmer med naturligt urval mot neandertalvarianter i moderna människor. Samma studie visade att de allra tidigaste moderna människorna i Europa inte bidrog till dagens européer, medan alla individer mellan ca 37 000 och 14 000 år sedan härstammar från en enda grundarpopulation som ingår i dagens européers arv, och att en komponent besläktad med dagens befolkningar i Främre Orienten spreds i Europa efter ca 14 000 år sedan.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27135931/"
+   ],
+   "tags": [
+    "hominin",
+    "multihop",
+    "sv",
+    "introgression",
+    "europe",
+    "selection"
+   ]
+  },
+  {
+   "id": "adna-h031",
+   "question": "Did gene flow between modern humans and Neanderthals only run one way?",
+   "answer": "No. Kuhlwilm et al. (2016) analysed the genomes of a Neanderthal and a Denisovan from the Altai together with chromosome 21 from two Neanderthals in Spain and Croatia, and found that a population that diverged early from other modern humans in Africa contributed genetically to the ancestors of the ALTAI Neanderthals roughly 100,000 years ago — far earlier than the well-known Neanderthal-to-modern-human gene flow 47,000–65,000 years ago. No such contribution was detected in the Denisovan or in the two European Neanderthals, so this early event was geographically restricted, possibly occurring in the Near East.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26886800/"
+   ],
+   "tags": [
+    "hominin",
+    "synthesis",
+    "neanderthal",
+    "introgression"
+   ]
+  },
+  {
+   "id": "adna-h032",
+   "question": "Did farming spread through the Near East and into South Asia by farmers moving, or by local hunter-gatherers taking it up?",
+   "answer": "Ancient DNA repeatedly favours local adoption at the origins and movement of people afterwards. Lazaridis et al. (2016), from 44 ancient Near Easterners spanning about 12,000–1,400 BC, showed the first farmers of the southern Levant (Israel and Jordan) and of the Zagros Mountains (Iran) were strongly genetically differentiated from each other and each descended from LOCAL hunter-gatherers. Shinde et al. (2019), reporting a genome from the Indus Valley Civilization, found a mixture of ancient-Iranian-related and Southeast Asian hunter-gatherer ancestry with little if any Steppe pastoralist ancestry, and the Iranian-related component derives from a lineage that branched before early Iranian farmers, herders and hunter-gatherers separated — contradicting a large-scale eastward spread of western Iranian farmers. The subsequent expansions were demographic: Anatolian-related farmers westward into Europe, Levantine-related southward into East Africa, Iranian-related northward onto the steppe and eastward into South Asia.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27459054/",
+    "https://pubmed.ncbi.nlm.nih.gov/31495572/"
+   ],
+   "tags": [
+    "hominin",
+    "synthesis",
+    "neolithic",
+    "near-east",
+    "south-asia"
+   ]
+  },
+  {
+   "id": "adna-h033",
+   "question": "When did Aboriginal Australian and Papuan ancestors diverge from each other, and when did they split from Eurasians?",
+   "answer": "Malaspinas et al. (2016) generated high-coverage genomes for 83 Aboriginal Australians (Pama-Nyungan speakers) and 25 Papuans from the New Guinea Highlands. Papuan and Aboriginal Australian ancestors diversified 25,000–40,000 years ago, indicating pre-Holocene population structure within Sahul, while all studied Aboriginal Australians descend from a single founding population that differentiated about 10,000–32,000 years ago. Aboriginal Australians and Papuans diverged from Eurasians 51,000–72,000 years ago following a single out-of-Africa dispersal, with subsequent archaic admixture.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27654914/"
+   ],
+   "tags": [
+    "hominin",
+    "single-fact",
+    "oceania",
+    "peopling"
+   ]
+  },
+  {
+   "id": "adna-h034",
+   "question": "När skildes de första moderna människopopulationerna åt, enligt de forntida sydafrikanska genomen?",
+   "answer": "För 350 000–260 000 år sedan. Schlebusch m.fl. (2017) sekvenserade sju forntida individer från KwaZulu-Natal i Sydafrika med upp till 13× täckning: tre stenåldersjägare-samlare (ca 2 000 år gamla) som genetiskt liknade dagens sydliga sangrupper, och fyra järnåldersbönder (300–500 år gamla) som liknade dagens bantutalare. Skattningen flyttar den djupaste splittringen bland moderna människor bakåt i tiden och sammanfaller med de anatomiska förändringarna från arkaiska till moderna människor i den lokala fossilhistorien. De uppskattade också att alla nutida khoe-san-grupper har 9–30 % genetisk inblandning från östafrikaner respektive eurasier.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28971970/"
+   ],
+   "tags": [
+    "hominin",
+    "single-fact",
+    "sv",
+    "africa",
+    "divergence"
+   ]
+  },
+  {
+   "id": "adna-h035",
+   "question": "Why did the Vindija Neandertal genome matter when a high-quality Altai genome already existed?",
+   "answer": "Because Vindija sits much closer to the Neandertals who actually mixed with us. Prüfer et al. (2017) sequenced a female Neandertal from about 50,000 years ago at Vindija Cave, Croatia, to roughly 30× — until then the only high-quality Neandertal genome was the Altai individual from southern Siberia (Prüfer et al. 2014). She carried 1.6 differences per 10,000 base pairs between her two genome copies, fewer than present-day humans, suggesting small Neandertal population sizes. Being more closely related to the Neandertals that mixed with the ancestors of present-day humans outside sub-Saharan Africa than the Siberian individual, she allowed 10–20% more Neandertal DNA to be identified in present-day humans, including variants involved in low-density lipoprotein cholesterol concentrations and schizophrenia.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28982794/",
+    "https://pubmed.ncbi.nlm.nih.gov/24352235/"
+   ],
+   "tags": [
+    "hominin",
+    "multihop",
+    "neanderthal",
+    "introgression"
+   ]
+  },
+  {
+   "id": "adna-h036",
+   "question": "What did the first substantial set of ancient African genomes change about the picture of African population structure?",
+   "answer": "Skoglund et al. (2017) assembled genome-wide data from 16 prehistoric Africans and showed the anciently divergent lineage that forms the primary ancestry of the southern African San once had a much wider distribution: it contributed roughly two-thirds of the ancestry of Malawi hunter-gatherers about 8,100–2,500 years ago and roughly one-third of Tanzanian hunter-gatherers about 1,400 years ago. They documented complete replacement of local hunter-gatherers by farmers spreading from western Africa in some regions, and tracked herders by showing that the population of a ~3,100-year-old pastoralist from Tanzania contributed ancestry from northeastern to southern Africa, including a ~1,200-year-old southern African pastoralist. The deepest African diversifications proved complex — either repeated gene flow among geographically disparate groups, or a lineage diverging more deeply than the San's contributing unevenly to western African populations.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28938123/"
+   ],
+   "tags": [
+    "hominin",
+    "synthesis",
+    "africa",
+    "population-structure"
+   ]
+  },
+  {
+   "id": "adna-h037",
+   "question": "Vad säger DNA från megalitgravarna om vilka som byggde dem, och hur skiljer sig stridsyxekulturen från den bilden?",
+   "answer": "Sánchez-Quinto m.fl. (2019) sekvenserade 24 individer från fem megalitgravar i norra och västra Europa och fann nära släktband mellan de gravlagda, betydligt fler män än kvinnor i megalitgravarna på Brittiska öarna, samma Y-haplotyper som återkommer över tid, och till och med släktskap mellan individer i olika irländska gravar — alltså patrilinjära släktgrupper knutna till monumenten. Individerna var genetiskt lika lokala jordbrukargrupper i sin egen tid och bar spår av inblandning från jägare-samlare. Stridsyxekulturen är något annat: Malmström m.fl. (2019) sekvenserade elva individer daterade till 3330–1665 f.Kr. från nuvarande Sverige, Estland och Polen (0,26–3,24× täckning) och visade att stridsyxefolket bär arv från stäppherdar vid Svarta havet, vilket bara kan förklaras med invandring till Skandinavien, samt att de återanvände den äldre trattbägarkulturens megalitgravar.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/30988179/",
+    "https://pubmed.ncbi.nlm.nih.gov/31594508/"
+   ],
+   "tags": [
+    "hominin",
+    "multihop",
+    "sv",
+    "kinship",
+    "scandinavia",
+    "megaliths"
+   ]
+  },
+  {
+   "id": "adna-h038",
+   "question": "Was the Bell Beaker phenomenon spread by migration or by cultural diffusion?",
+   "answer": "The answer differs by region, which is why either blanket claim is wrong. Olalde et al. (2018) generated genome-wide data from 400 Neolithic, Copper Age and Bronze Age Europeans, 226 of them associated with Beaker-complex artefacts. Between Iberia and central Europe they detected only limited genetic affinity among Beaker-associated individuals and therefore EXCLUDED migration as an important mechanism of spread between those two regions. But migration had a key role in the further dissemination of the complex: in Britain the spread of the Beaker complex introduced high levels of steppe-related ancestry and was associated with replacement of approximately 90% of the island's gene pool within a few hundred years.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/29466337/"
+   ],
+   "tags": [
+    "hominin",
+    "synthesis",
+    "trap",
+    "bell-beaker",
+    "britain",
+    "iberia"
+   ]
+  },
+  {
+   "id": "adna-h039",
+   "question": "What is an 'Ancient Beringian', and what does the Upward Sun River genome do to the Beringian standstill model?",
+   "answer": "Moreno-Mayar et al. (2018) sequenced the USR1 infant from Upward Sun River, Alaska (~11.5 thousand years ago) to about 17× and found she is most closely related to Native Americans but falls BASAL to all previously sequenced ancient and contemporary Native Americans — a distinct population they named Ancient Beringians. Demographic modelling puts the split of the single founding population from East Asians at 36 ± 1.5 ka with gene flow persisting until about 25 ± 1.1 ka, gene flow from ancient north Eurasians into all Native Americans at 25–20 ka, Ancient Beringians branching off at 22–18.1 ka, and the basal northern and southern Native American branches diverging at 17.5–14.6 ka, probably south of the North American ice sheets. This supports long-term genetic structure in ancestral Native Americans consistent with the standstill model, and implies a later back-migration of northern Native Americans that replaced or absorbed the Ancient Beringians in the far north.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/29323294/"
+   ],
+   "tags": [
+    "hominin",
+    "synthesis",
+    "americas",
+    "peopling",
+    "beringia"
+   ]
+  },
+  {
+   "id": "adna-h040",
+   "question": "Africans have essentially no Neanderthal ancestry — is that right?",
+   "answer": "No, and that is a measurement artefact as much as a biological claim. Chen et al. (2020) introduced IBDmix, a probabilistic method that — unlike existing approaches — does not use a modern reference population, and applied it to 2,504 individuals. African individuals carry a considerably stronger signal of Neanderthal ancestry than previously thought. The authors attribute this to two things: genuine Neanderthal ancestry from migrations back into Africa, predominantly from ancestral Europeans, and gene flow INTO Neanderthals from an early dispersing group of humans out of Africa. Remnants of Neanderthal genomes survive in every modern human population studied to date.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/32004458/",
+    "https://pubmed.ncbi.nlm.nih.gov/20448178/"
+   ],
+   "tags": [
+    "hominin",
+    "multihop",
+    "trap",
+    "introgression",
+    "africa"
+   ]
+  },
+  {
+   "id": "adna-h041",
+   "question": "How do the Neanderthal and Denisovan Y chromosomes relate to ours, and why is that phylogeny strange?",
+   "answer": "Petr et al. (2020) sequenced Y chromosomes from two Denisovans and three Neanderthals. The Denisovan Y split around 700,000 years ago from a lineage shared by Neanderthal and modern human Y chromosomes, which then diverged from each other around 370,000 years ago. That is strange because the autosomal genomes group Neanderthals with Denisovans relative to modern humans. The archaic Y phylogeny instead mirrors the mitochondrial phylogeny, indicating replacement of both the mitochondrial and the Y-chromosomal gene pools in late Neanderthals — plausible if the low effective population size of Neanderthals produced an increased genetic load relative to modern humans.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/32973032/"
+   ],
+   "tags": [
+    "hominin",
+    "multihop",
+    "y-chromosome",
+    "neanderthal",
+    "denisovan"
+   ]
+  },
+  {
+   "id": "adna-h042",
+   "question": "Vad hittade man egentligen när man DNA-testade de gravlagda i Newgrange?",
+   "answer": "Cassidy m.fl. (2020) sekvenserade 44 hela genom från irländsk förhistoria och fann, i den mest utsmyckade nischen i gånggriften Newgrange, en vuxen man som var son till ett förstagradsincestuöst par. Socialt sanktionerade förbindelser av det slaget är mycket sällsynta och dokumenterade nästan uteslutande hos politisk-religiösa eliter — polygyna och patrilinjära kungahus ledda av gudakungar. De hittade dessutom släktingar till honom i två andra stora gånggriftskomplex 150 km västerut, och kostskillnader plus finskalig haplotypstruktur som tillsammans talar för hierarki. Eliten uppstod mot bakgrund av en snabb maritim kolonisation som trängde undan en unik mesolitisk isolatpopulation, men enstaka spår av irländska jägare-samlare finns kvar i den neolitiska befolkningen.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/32555485/"
+   ],
+   "tags": [
+    "hominin",
+    "single-fact",
+    "sv",
+    "kinship",
+    "neolithic",
+    "ireland"
+   ]
+  },
+  {
+   "id": "adna-h043",
+   "question": "What did the Chagyrskaya Cave genomes show about how a Neanderthal community was organised?",
+   "answer": "Skov et al. (2022) obtained genome-wide nuclear data plus mitochondrial and Y-chromosome sequences from 13 Neanderthals — 11 from Chagyrskaya Cave and 2 from Okladnikov Cave in the Altai. Some Chagyrskaya individuals were closely related, including a father–daughter pair and a pair of second-degree relatives, showing at least some of them lived at the same time. Up to one-third of these individuals' genomes consisted of long segments of homozygosity, indicating a small community. Y-chromosome diversity was an order of magnitude lower than mitochondrial diversity, a pattern best explained by female migration between communities.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/36261548/"
+   ],
+   "tags": [
+    "hominin",
+    "multihop",
+    "neanderthal",
+    "social-organisation"
+   ]
+  },
+  {
+   "id": "adna-h044",
+   "question": "How does the ERAP2 result from Black Death samples connect a past epidemic to present-day disease risk?",
+   "answer": "Klunk et al. (2022) characterised genetic variation around immune-related genes in 206 ancient DNA extracts from two European populations before, during and after the Black Death, a pandemic that killed up to 30–50% of the population. Immune loci were strongly enriched for highly differentiated sites relative to non-immune loci. Of 245 highly differentiated variants identified in the London dataset, four replicated in an independent Danish cohort. For one, rs2549794, the selected allele is associated with production of a full-length rather than truncated ERAP2 transcript, with variation in cytokine response to Yersinia pestis, and with increased ability of macrophages to control intracellular Y. pestis. Those protective variants overlap alleles that are today associated with increased susceptibility to autoimmune diseases.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/36261521/"
+   ],
+   "tags": [
+    "hominin",
+    "multihop",
+    "immunity",
+    "selection",
+    "plague"
+   ]
+  },
+  {
+   "id": "adna-h045",
+   "question": "Where do ancient DNA and linguistic phylogenetics currently disagree about the Indo-European homeland?",
+   "answer": "On whether the Pontic-Caspian steppe is the ultimate origin or a secondary stage. Heggarty et al. (2023) built an Indo-European core-vocabulary database eliminating past cognate-coding inconsistencies and ran an ancestry-enabled phylogenetic analysis, obtaining a root age of about 8,120 years before present — not consistent with the Steppe hypothesis (~6,000 yr B.P.), though it does not rule out an initial homeland south of the Caucasus with a subsequent branch northward onto the steppe and then across Europe, a hybrid model. Lazaridis et al. (2022), sequencing 727 ancient individuals across Anatolia, Southeastern Europe and West Asia over 10,000 years, argued along similar lines from the genetics: Yamnaya pastoralists formed on the steppe and spread into the Balkans and across the Caucasus into Armenia, leaving many patrilineal descendants, but had negligible impact on Anatolia — unlike every other region where Indo-European languages were spoken — which points to a West Asian homeland for the Indo-Anatolian family with only secondary dispersals from the steppe. Both depart from the strict steppe origin that Haak et al. (2015) supported.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/37499002/",
+    "https://pubmed.ncbi.nlm.nih.gov/36007055/",
+    "https://pubmed.ncbi.nlm.nih.gov/25731166/"
+   ],
+   "tags": [
+    "hominin",
+    "synthesis",
+    "indo-european",
+    "language",
+    "steppe"
+   ]
+  },
+  {
+   "id": "adna-m001",
+   "question": "In the 1984 Nature paper that founded ancient DNA — the first genetic data ever recovered from an extinct species — how much mitochondrial sequence was obtained from the quagga, and how far did it differ from a mountain zebra?",
+   "answer": "Two cloned mtDNA fragments totalling 229 nucleotide pairs were sequenced from dried muscle of a museum quagga (Equus quagga, extinct 1883). They differed from the corresponding mountain zebra mtDNA by 12 base substitutions, implying a common ancestor 3-4 Myr ago. DNA was extracted in amounts approaching 1% of what fresh muscle would yield, and was of relatively low molecular weight.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/6504142/"
+   ],
+   "tags": [
+    "megafauna",
+    "single-fact",
+    "quagga",
+    "history-of-adna"
+   ]
+  },
+  {
+   "id": "adna-m002",
+   "question": "The 1984 quagga paper concluded there had been \"little or no postmortem modification\" of the sequences. What did the 1987 follow-up by the same group conclude instead, and did it support the idea that the quagga's closest relative was the domestic horse?",
+   "answer": "No. Higuchi et al. (1987) added domestic horse and plains zebra sequences and found the quagga and plains zebra identical at all silent sites, while the horse differed from both by 11 silent substitutions — so the horse-as-closest-relative hypothesis received no support. Crucially, they attributed the two remaining coding differences between quagga and plains zebra to postmortem change in the quagga DNA, qualifying the 1984 claim of negligible postmortem modification. They also estimated the mean mtDNA divergence rate in Equus at roughly 2% per million years.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/2822938/",
+    "https://pubmed.ncbi.nlm.nih.gov/6504142/"
+   ],
+   "tags": [
+    "megafauna",
+    "multihop",
+    "trap",
+    "quagga",
+    "dna-damage"
+   ]
+  },
+  {
+   "id": "adna-m003",
+   "question": "Twenty years after the first quagga sequences, a multi-individual study revisited the animal. How many quaggas were sampled, and when did the quagga diverge from the plains zebra?",
+   "answer": "Leonard et al. (2005) isolated DNA from eight quaggas plus one plains zebra (Equus burchelli burchelli). The quagga showed little genetic diversity and had diverged from the plains zebra very recently — probably during the penultimate glacial maximum — showing that Pleistocene climate change shaped African as well as Holarctic phylogeography.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/17148190/"
+   ],
+   "tags": [
+    "megafauna",
+    "single-fact",
+    "quagga",
+    "phylogeography"
+   ]
+  },
+  {
+   "id": "adna-m004",
+   "question": "The 2004 Science study of Beringian steppe bison is usually cited against the overkill hypothesis. What is the actual chronological argument it makes?",
+   "answer": "Bayesian analysis of serially sampled ancient DNA showed a large, diverse bison population across Beringia until about 37,000 years before present, after which genetic diversity declined dramatically. That decline coincides with environmental change at the onset of the last glacial cycle, whereas archaeological evidence does not place large human populations in eastern Beringia until more than 15,000 years later — so the collapse began long before people could have caused it.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/15567864/"
+   ],
+   "tags": [
+    "megafauna",
+    "synthesis",
+    "bison",
+    "beringia",
+    "extinction-debate"
+   ]
+  },
+  {
+   "id": "adna-m005",
+   "question": "When did bison first enter North America, according to the combined palaeontological and palaeogenomic study of 2017, and how many dispersal waves were identified?",
+   "answer": "Two waves from Asia: the earlier at roughly 195,000-135,000 years ago and a Late Pleistocene one at roughly 45,000-21,000 years ago. The oldest well-constrained North American bison fossil is a 130,000-year-old steppe bison (Bison cf. priscus) from the Yukon; a roughly 120,000-year-old giant long-horned Bison latifrons from Snowmass, Colorado was also sequenced, with 44 further Late Pleistocene mitogenomes analysed. First entry therefore falls in the sea-level lowstand of marine isotope stage 6, rejecting earlier claimed records.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28289222/"
+   ],
+   "tags": [
+    "megafauna",
+    "single-fact",
+    "bison",
+    "beringia"
+   ]
+  },
+  {
+   "id": "adna-m006",
+   "question": "Vad visade forntida DNA om visentens (Bison bonasus) ursprung, och vad har grottmålningar med saken att göra?",
+   "answer": "Visenten uppstod genom hybridisering mellan den utdöda stäppbisonen (Bison priscus) och förfäder till uroxen (Bos primigenius) för mer än 120 000 år sedan, och bär upp till 10 % uroxarv i sitt genom. De två formerna växlade ekologisk dominans i takt med stora miljöskiften i minst 55 000 år, och istidens grottkonstnärer avbildade två tydligt skilda morfologiska former som stämmer med dessa utbytesskeden, kring senaste istidsmaximum för ungefär 21 000-18 000 år sedan.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27754477/"
+   ],
+   "tags": [
+    "megafauna",
+    "multihop",
+    "sv",
+    "bison",
+    "hybridisation"
+   ]
+  },
+  {
+   "id": "adna-m007",
+   "question": "När skildes grottbjörnens (Ursus spelaeus) och brunbjörnens linjer enligt DNA-studien från 2001, och vilket material byggde slutsatsen på?",
+   "answer": "För omkring 1,2 miljoner år sedan — grottbjörnen avvek alltså långt före uppdelningen mellan de europeiska brunbjörnslinjerna. Slutsatsen byggde på kontrollregionssekvenser från tio grottbjörnsprover daterade till mellan 130 000 och 20 000 år före nutid, plus en komplett cytokrom b-sekvens från ett särskilt välbevarat prov.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/11231157/"
+   ],
+   "tags": [
+    "megafauna",
+    "single-fact",
+    "sv",
+    "cave-bear",
+    "phylogeny"
+   ]
+  },
+  {
+   "id": "adna-m008",
+   "question": "Why were ancient DNA libraries long depleted of molecules shorter than 40 bp, and what did fixing that make possible at Sima de los Huesos?",
+   "answer": "The loss happens during DNA extraction, not in the ground. Dabney et al. (2013) presented an improved silica-based extraction that retrieves the ultrashort fragments and, combined with single-stranded library preparation, reconstructed the complete mitochondrial genome of a Middle Pleistocene cave bear (Ursus deningeri) from Sima de los Huesos, Atapuerca, Spain — a specimen in which virtually all DNA was shorter than 50 bp. The sequence is an early-diverging sister lineage to all Western European Late Pleistocene cave bears, and proved that authentic ancient DNA survives for hundreds of thousands of years outside permafrost.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24019490/"
+   ],
+   "tags": [
+    "megafauna",
+    "multihop",
+    "cave-bear",
+    "methods"
+   ]
+  },
+  {
+   "id": "adna-m009",
+   "question": "What did the 2017 sabretooth mitogenomics paper establish about the divergence between Smilodon and Homotherium, and about how long Homotherium persisted in Europe?",
+   "answer": "Partial mitogenomes from one Smilodon populator and three Homotherium specimens placed Machairodontinae as a well-supported clade distinct from all living felids, with a deep Smilodon-Homotherium split around 18 million years. Ancient DNA confirmed the identity of a unique Late Pleistocene European Homotherium fossil, strengthening the evidence that the genus occurred in Europe more than 200,000 years later than previously believed. Limited diversity between American and European specimens supports treating all post-Villafranchian Homotherium as a single species, H. latidens.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/29056454/"
+   ],
+   "tags": [
+    "megafauna",
+    "multihop",
+    "sabretooth",
+    "late-survival"
+   ]
+  },
+  {
+   "id": "adna-m010",
+   "question": "How old is the Smilodon populator specimen that yielded a draft nuclear genome, and what does that make it?",
+   "answer": "It is dated to 13,182 ± 90 cal BP, which makes it the oldest palaeogenome from South America to date — a region notoriously bad for ancient DNA preservation. The genome confirmed a deep divergence of roughly 20.65 Ma within sabre-toothed cats and showed no gene flow between Smilodon and contemporary Felidae.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/35098251/"
+   ],
+   "tags": [
+    "megafauna",
+    "single-fact",
+    "sabretooth",
+    "genome-assembly"
+   ]
+  },
+  {
+   "id": "adna-m011",
+   "question": "Jättehjorten (Megaloceros giganteus) kallas ofta \"irländsk älg\". Vilken nu levande hjort är den närmast släkt med, enligt Lister med medarbetare 2005?",
+   "answer": "Varken älgen eller kronhjorten/wapitin — både DNA-data och morfologiska data stödde oberoende av varandra att jättehjorten är systergrupp till dovhjorten (Dama). Nyare morfologiska studier hade dessförinnan velat flytta arten närmare kronhjort och wapiti, men den analysen återupprättade dovhjortssläktskapet. Studien var dessutom den första som lyckades utvinna och sekvensera DNA från arten.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/16148942/"
+   ],
+   "tags": [
+    "megafauna",
+    "multihop",
+    "trap",
+    "sv",
+    "giant-deer",
+    "phylogeny"
+   ]
+  },
+  {
+   "id": "adna-m012",
+   "question": "How late did the giant deer survive, and where — and what does that date do to the standard end-Pleistocene extinction story for the species?",
+   "answer": "Stuart et al. (2004) dated giant deer in western Siberia to about 6,900 radiocarbon years BP, roughly 7,700 calendar years ago — more than three millennia later than the previously accepted terminal date. Its final demise therefore has to be explained by Holocene, not Pleistocene, events. Both giant deer and woolly mammoth underwent dramatic distributional shifts driven largely by climatic and vegetational change before disappearing, and their differing responses reflect major ecological differences.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/15470427/"
+   ],
+   "tags": [
+    "megafauna",
+    "multihop",
+    "giant-deer",
+    "late-survival",
+    "extinction-debate"
+   ]
+  },
+  {
+   "id": "adna-m013",
+   "question": "In the 1996 study of Mylodon darwinii, what fraction of the extracted DNA was actually sloth, and what did the phylogeny imply about arboreality in sloths?",
+   "answer": "Only about 1/1000 of the total extracted DNA originated from the sloth; much of the rest was bacterial and fungal. Despite that, more than 1,100 bp of mitochondrial rDNA were reconstructed from short amplification products (35 ground sloth remains were screened; two Mylodon specimens yielded amplifiable DNA). Mylodon proved closer to two-toed than to three-toed sloths, implying that an arboreal lifestyle evolved at least twice among sloths.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/8552600/"
+   ],
+   "tags": [
+    "megafauna",
+    "single-fact",
+    "ground-sloth",
+    "phylogeny"
+   ]
+  },
+  {
+   "id": "adna-m014",
+   "question": "Ancient faeces resisted PCR until 1998. What chemical trick unlocked them, and what did the Gypsum Cave coprolite reveal about vegetation change?",
+   "answer": "Maillard cross-links between reducing sugars and amino groups were shown to exist in the Pleistocene coprolite; N-phenacylthiazolium bromide, which cleaves such cross-links, made amplification possible. The coprolite from Gypsum Cave, Nevada was identified as Shasta ground sloth (Nothrotheriops shastensis), and DNA from seven groups of plants was recovered from it. That plant assemblage exists today only about 800 metres higher in elevation than the cave.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/9665881/"
+   ],
+   "tags": [
+    "megafauna",
+    "single-fact",
+    "ground-sloth",
+    "coprolite",
+    "palaeoecology"
+   ]
+  },
+  {
+   "id": "adna-m015",
+   "question": "The 2003 Science paper that launched sedimentary ancient DNA sampled two very different settings. What was recovered from each?",
+   "answer": "From five Siberian permafrost cores spanning 400,000 to 10,000 years old: at least 19 different plant taxa — including what were then the oldest authenticated ancient DNA sequences known — plus megafaunal sequences of mammoth, bison and horse. From temperate cave sediments in New Zealand: DNA of extinct biota including two species of ratite moa and 29 plant taxa characteristic of the pre-human environment. Both came from deposits without obvious macrofossils.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/12702808/"
+   ],
+   "tags": [
+    "megafauna",
+    "single-fact",
+    "sedadna",
+    "permafrost"
+   ]
+  },
+  {
+   "id": "adna-m016",
+   "question": "Macrofossil surveys put the extinction of mammoth and horse in northwestern North America at 15,000-13,000 cal yr BP. What did sedimentary DNA from interior Alaska change about that, and why does it matter for the overkill debate?",
+   "answer": "Sedimentary ancient DNA from perennially frozen, securely dated sediments showed that woolly mammoth and horse persisted in interior Alaska until at least 10,500 yr BP — several thousand years later than the macrofossil latest-appearance dates. Because sedaDNA can detect the 'ghost ranges' of dwindling populations that bone surveys miss, this contradicts claims that Holocene mammoth survival in Beringia was confined to isolated high-latitude islands, and it means mammoth and horse overlapped with humans for millennia in the very region where people entered the Americas — against extinction within centuries of human arrival, and against an extraterrestrial impact.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/20018740/"
+   ],
+   "tags": [
+    "megafauna",
+    "multihop",
+    "sedadna",
+    "late-survival",
+    "extinction-debate"
+   ]
+  },
+  {
+   "id": "adna-m017",
+   "question": "The mammoth steppe is popularly described as a grassland. What did the first large-scale circumpolar plant metabarcoding study of Arctic sediments find instead?",
+   "answer": "For most of the last 50,000 years the Arctic vegetation was dry steppe-tundra dominated by forbs — non-graminoid herbaceous vascular plants — not by graminoids. Diversity declined markedly during the Last Glacial Maximum (25-15 kyr BP) while forbs remained dominant, and only after 10 kyr BP did moist tundra dominated by woody plants and graminoids appear. Megafaunal diets, reconstructed in the same study, included both forbs and graminoids, so the authors explicitly question the predominance of a graminoid-dominated Late Quaternary mammoth steppe.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24499916/"
+   ],
+   "tags": [
+    "megafauna",
+    "synthesis",
+    "trap",
+    "sedadna",
+    "mammoth-steppe",
+    "palaeodiet"
+   ]
+  },
+  {
+   "id": "adna-m018",
+   "question": "The 2021 circumpolar environmental-genomics study of 535 permafrost and lake sediment samples reported two very late survival dates. What were they, and what did the same study conclude about the human role?",
+   "answer": "Woolly mammoth persisted in northern Siberia until 3.9 ± 0.2 ka and woolly rhinoceros until 9.8 ± 0.2 ka, enabled by the persistence of steppe-tundra vegetation there. Across the 50,000-year record humans appear to have been only a minor factor in driving animal distributions, whereas higher effective precipitation and a rising proportion of wetland plants had negative effects on animal diversity. The mammoth environmental DNA also revealed a previously unsampled mitochondrial lineage.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/34671161/"
+   ],
+   "tags": [
+    "megafauna",
+    "synthesis",
+    "sedadna",
+    "late-survival",
+    "mammoth"
+   ]
+  },
+  {
+   "id": "adna-m019",
+   "question": "How old is the Kap København environmental DNA record from North Greenland, and which animals and trees did it place there?",
+   "answer": "About two million years old. The eDNA describes an open boreal forest with mixed vegetation of poplar, birch and thuja plus Arctic and boreal shrubs and herbs, and animals including hare, mastodon, reindeer, rodents and geese — with marine taxa such as horseshoe crab and green algae indicating a climate warmer than today. The reconstructed ecosystem has no modern analogue, and the survival of such old DNA is attributed to its binding to mineral surfaces.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/36477129/"
+   ],
+   "tags": [
+    "megafauna",
+    "single-fact",
+    "sedadna",
+    "arctic",
+    "deep-time"
+   ]
+  },
+  {
+   "id": "adna-m020",
+   "question": "What were the age and coverage of the Middle Pleistocene horse genome published in 2013, and by how much did it move the origin of the genus Equus?",
+   "answer": "A 1.12-fold coverage draft genome from a permafrost horse bone dated to approximately 560,000-780,000 years before present — at the time the oldest full genome by almost an order of magnitude. It placed the origin of the lineage giving rise to all extant horses, zebras and donkeys at 4.0-4.5 million years ago, twice the conventionally accepted age of the genus, and dated the Przewalski's/domestic horse divergence to 38,000-72,000 years BP with no evidence of recent admixture.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/23803765/"
+   ],
+   "tags": [
+    "megafauna",
+    "single-fact",
+    "horse",
+    "deep-time"
+   ]
+  },
+  {
+   "id": "adna-m021",
+   "question": "Where were modern domestic horses domesticated according to the 2021 study of 273 ancient genomes, and which two genes showed strong selection?",
+   "answer": "In the Western Eurasian steppes, specifically the lower Volga-Don region — not Botai, Iberia or Anatolia. The lineage expanded rapidly across Eurasia from about 2000 BC, replacing almost all other local populations in step with Sintashta spoke-wheeled chariots, with strong selection at GSDMC and ZFPM1 for locomotor and behavioural traits. The timing rejects the idea that horseback riding drove the Yamnaya expansion into Europe around 3000 BC.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/34671162/"
+   ],
+   "tags": [
+    "megafauna",
+    "multihop",
+    "horse",
+    "domestication"
+   ]
+  },
+  {
+   "id": "adna-m022",
+   "question": "Palaeontologists have long placed the straight-tusked elephant Palaeoloxodon antiquus within or beside Elephas. What did its palaeogenome show?",
+   "answer": "The opposite: nuclear and mitochondrial data from four German P. antiquus fossils (Neumark-Nord, about 120 ka, and Weimar-Ehringsdorf, about 244 ka) show it was a close relative of the extant African forest elephant, Loxodonta cyclotis. Species referred to Palaeoloxodon are most parsimoniously explained as having diverged from the Loxodonta lineage, meaning Loxodonta has not been confined to Africa — an outcome the authors say requires substantial revision of elephant evolution.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28585920/",
+    "https://pubmed.ncbi.nlm.nih.gov/12187389/"
+   ],
+   "tags": [
+    "megafauna",
+    "single-fact",
+    "trap",
+    "elephantid",
+    "phylogeny"
+   ]
+  },
+  {
+   "id": "adna-m023",
+   "question": "Mediterranean island dwarf elephantids were long assumed to all derive from Elephas. What did ancient DNA from Tilos and from Crete show, and how short was the oldest fragment?",
+   "answer": "The 2002 study got 228 bp of cytochrome b from the Tilos dwarf elephant and read it as supporting a Palaeoloxodon-Elephas clade. The 2006 follow-up, using whole-genome multiple displacement amplification on specimens from 4,200 to 800,000 years old, recovered only 43 bp from the 800,000-year-old sample — one of the oldest DNA fragments then retrieved — and placed the Cretan dwarf firmly inside the mammoth clade, justifying the name Mammuthus creticus rather than Elephas creticus. Tilos and Cyprus forms remained within Elephas, so island dwarfism arose independently more than once.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/17148428/",
+    "https://pubmed.ncbi.nlm.nih.gov/12187389/"
+   ],
+   "tags": [
+    "megafauna",
+    "multihop",
+    "island-dwarfism",
+    "elephantid"
+   ]
+  },
+  {
+   "id": "adna-m024",
+   "question": "How much sequence did the 2008 woolly mammoth nuclear genome paper report, and what did it say about the mammoth-elephant divergence rate?",
+   "answer": "4.17 billion bases of sequence, of which 3.3 billion (80%) were woolly mammoth. The estimated divergence rate between mammoth and African elephant is half that between human and chimpanzee; two particular mammoths differed by about one-eighth as much as either differed from African elephant, corresponding to a separation of 1.5-2.0 Myr between them. The estimated probability that orthologous elephant and mammoth amino acids differ is 0.002, about one residue per protein.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/19020620/"
+   ],
+   "tags": [
+    "megafauna",
+    "single-fact",
+    "mammoth",
+    "genome-assembly"
+   ]
+  },
+  {
+   "id": "adna-m025",
+   "question": "Reanalysing the published mainland and Wrangel Island mammoth genomes, what signature of small population size did Rogers and Slatkin find, and what coat phenotype did they predict?",
+   "answer": "The 4,300-year-old Wrangel mammoth, from a population with an effective size more than 43-fold lower than the 45,000-year-old mainland population, carried more deletions, a larger proportion of deletions hitting genes, more candidate retrogenes and more premature stop codons — consistent with genomic meltdown. They also found high rates of loss of olfactory receptors and urinary proteins, and two independent loss-of-function mutations at FOXQ1, which would confer a satin coat phenotype.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28253255/"
+   ],
+   "tags": [
+    "megafauna",
+    "synthesis",
+    "mammoth",
+    "genomic-erosion",
+    "island"
+   ]
+  },
+  {
+   "id": "adna-m026",
+   "question": "När dog de sista mammutarna på S:t Paul Island i Alaska ut, och vad pekar bevisen ut som orsak?",
+   "answer": "För 5 600 ± 100 år sedan, enligt fem oberoende utdöendeindikatorer — vilket gör det till ett av de bäst daterade förhistoriska utdöendena. Vegetationens sammansättning var stabil under utdöendefönstret och människor kom till ön först 1787 e.Kr., så ingendera kan ha varit drivkraften. I stället sammanföll utdöendet med krympande sötvattentillgång och torrare klimat mellan 7 850 och 5 600 år sedan, när stigande havsnivå minskade öns yta; mammutarnas egen aktivitet kring sjön försämrade sannolikt vattenkvaliteten ytterligare.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27482085/"
+   ],
+   "tags": [
+    "megafauna",
+    "multihop",
+    "sv",
+    "mammoth",
+    "island",
+    "late-survival"
+   ]
+  },
+  {
+   "id": "adna-m027",
+   "question": "Vad visade myskoxens forntida DNA om människans roll i artens tillbakagång?",
+   "answer": "Ingen roll som drivkraft. Den mitokondriella mångfalden var mycket högre under pleistocen och genomgick flera expansioner och sammandragningar under de senaste 60 000 åren: en stor och mångformig population i nordöstra Sibirien — det geografiska ursprunget för alla undersökta prover — dog ut lokalt omkring 45 000 14C-år före nutid, mångfalden ökade igen omkring 30 000, minskade omkring 18 000 och återhämtade sig först under mellersta holocen. Människans ankomst till myskoxens utbredningsområde påverkade inte mångfalden, och myskoxe och människa spred sig till Grönland samtidigt.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/20212118/"
+   ],
+   "tags": [
+    "megafauna",
+    "single-fact",
+    "sv",
+    "musk-ox",
+    "extinction-debate"
+   ]
+  },
+  {
+   "id": "adna-m028",
+   "question": "What does the mitochondrial phylogeography of the American mastodon say about how the species used the far north during glacial cycles?",
+   "answer": "Thirty-five complete mitogenomes revealed multiple lineages, including two distinct clades from eastern Beringia that arose at different times — a pattern of repeated northward expansion followed by local extirpation as glacial cycles turned over. Consistent with that, northern mastodons show lower genetic diversity than the endemic clades south of the continental ice sheets.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/32873779/"
+   ],
+   "tags": [
+    "megafauna",
+    "multihop",
+    "mastodon",
+    "phylogeography",
+    "range-shift"
+   ]
+  },
+  {
+   "id": "adna-m029",
+   "question": "Grey wolves survived the Late Pleistocene extinctions, yet something wolf-shaped did go extinct in Beringia. What was it, and what evidence identified it?",
+   "answer": "A specialised, genetically distinct eastern Beringian wolf ecomorph. None of the 16 mtDNA haplotypes recovered from 20 Pleistocene eastern Beringian wolves was shared with any modern wolf; they were instead closest to Late Pleistocene Eurasian wolves. Skull shape, tooth wear and stable isotopes (delta-13C, delta-15N) indicate these animals were specialised hunters and scavengers of extinct megafauna, so the species survived in North America only because more generalised forms existed elsewhere.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/17583509/"
+   ],
+   "tags": [
+    "megafauna",
+    "single-fact",
+    "wolf",
+    "beringia",
+    "palaeodiet"
+   ]
+  },
+  {
+   "id": "adna-m030",
+   "question": "The standard model derived Eurasian cave hyenas from multiple out-of-Africa migrations between 3.5 and 0.35 Ma. What did radiocarbon-dated Chinese specimens do to that model?",
+   "answer": "They inverted it. Mitochondrial sequences from radiocarbon-dated Chinese Pleistocene hyenas gave a far more recent timescale of 430,000-163,000 years ago and indicated that both extinct cave hyenas and living African spotted hyenas descend from a widespread Late Pleistocene Eurasian population that was only subsequently restricted to Africa. Coalescent simulation and Bayes-factor comparison of the competing population models favoured this Eurasian-origin scenario, which foregrounds the Eurasian steppe grasslands rather than Africa alone.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24320717/"
+   ],
+   "tags": [
+    "megafauna",
+    "synthesis",
+    "hyena",
+    "phylogeography"
+   ]
+  },
+  {
+   "id": "adna-m031",
+   "question": "Varifrån kom de första europeiska mitogenomen från ullhårig noshörning, och vad visade de?",
+   "answer": "Ur koproliter — fossil spillning — från grotthyena i två tyska grottor, Bockstein-Loch och Hohlenstein-Stadel, från mellanpaleolitiska lager. De två proverna gav 27 % respektive 81 % täckning av noshörningens mitogenom (och 27 % respektive 59 % av grotthyenans). De europeiska sekvenserna är genetiskt skilda från de sibiriska populationerna, och uppdelningen kan sammanfalla med de äldsta europeiska fossilfynden av arten — men DNA:t var kraftigt nedbrutet, vilket begränsar slutsatserna.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/37909055/"
+   ],
+   "tags": [
+    "megafauna",
+    "single-fact",
+    "sv",
+    "woolly-rhino",
+    "coprolite"
+   ]
+  },
+  {
+   "id": "adna-m032",
+   "question": "Hur gammalt var det brittiska uroxeprov som gav det första uroxgenomet, och vad avslöjade jämförelsen med moderna nötkreatur?",
+   "answer": "Cirka 6 750 år gammalt ben. Uroxen (Bos primigenius) faller ut som en distinkt yttergrupp till tamboskapslinjen Bos taurus, vilket stöder ett övervägande nära-österländskt ursprung för europeiska nötkreatur. Samtidigt delar traditionella brittiska och irländska raser fler genetiska varianter med detta uroxeprov än andra europeiska populationer, vilket talar för lokalt genflöde från vilda uroxar in i deras förfäder — kanske genom att tidiga herdar medvetet blandade in vilda djur. Jämförelsen byggde på 81 ytterligare nötkreatursgenom och SNP-data från 1 225 moderna djur.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26498365/"
+   ],
+   "tags": [
+    "megafauna",
+    "multihop",
+    "sv",
+    "aurochs",
+    "domestication"
+   ]
+  },
+  {
+   "id": "adna-m033",
+   "question": "Three Dinornis moa species were recognised on size grounds. What did the first sex-linked nuclear sequences from an extinct species show, and how extreme was the dimorphism?",
+   "answer": "On each island the three morphological forms were a single species whose size varied by sex and habitat — mitochondrial sequences were already indistinguishable within an island, forming separate North and South Island clades. The largest females were about 280% the weight and 150% the height of the largest males, a degree of reversed sexual size dimorphism unprecedented among birds and terrestrial mammals.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/12968178/"
+   ],
+   "tags": [
+    "megafauna",
+    "single-fact",
+    "moa",
+    "taxonomy"
+   ]
+  },
+  {
+   "id": "adna-m034",
+   "question": "Were New Zealand's moa already declining when Polynesians arrived? What does the genetic evidence say?",
+   "answer": "No. Allentoft et al. (2014) combined radiocarbon dating with mitochondrial and purpose-built nuclear microsatellite markers on 281 moa from four sympatric species across five adjacent deposits, mostly from the last 4,000 years before extinction. The millennia before extinction show remarkable genetic stability in all four species — no loss of heterozygosity, no shifts in allele frequencies — contradicting earlier claims of a pre-settlement decline. The extinction was too rapid to register in the gene pools at all, consolidating moa as the fastest documented human-facilitated megafaunal extinction.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24639531/"
+   ],
+   "tags": [
+    "megafauna",
+    "synthesis",
+    "trap",
+    "moa",
+    "extinction-debate"
+   ]
+  },
+  {
+   "id": "adna-m035",
+   "question": "What is the empirically measured half-life of DNA in bone, and what are the conditions and caveats attached to that number?",
+   "answer": "521 years — but only as an average for a 242 bp mtDNA fragment, measured across 158 radiocarbon-dated moa bones from a geographically constrained New Zealand assemblage with an effective burial temperature of 13.1 °C, giving a per-nucleotide fragmentation rate of 5.50 × 10^-6 per year. That is almost 400 times slower than predicted from published in vitro DNA depurination kinetics at pH 5, the exponential model explains only part of the variance (R² = 0.39), and much sample-to-sample variation is taphonomic rather than age-related. Nuclear DNA degraded at least twice as fast as mtDNA.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/23055061/"
+   ],
+   "tags": [
+    "megafauna",
+    "single-fact",
+    "dna-damage",
+    "methods",
+    "moa"
+   ]
+  },
+  {
+   "id": "adna-m036",
+   "question": "What coverage and completeness did the 2024 little bush moa nuclear genome reach, and what did it settle about moa winglessness?",
+   "answer": "From a single South Island fossil bone of Anomalopteryx didiformis: a complete mitochondrial genome at 249.9x depth and almost 900 megabases of a male nuclear genome at roughly 4-5x, contiguous enough to identify more than 85% of avian universal single-copy orthologs. Long-term effective population size was estimated at about 240,000. The wingless moa phenotype is likely not attributable to gene loss or pseudogenization; the assembly also revealed a diverse olfactory receptor repertoire and opsins with sensitivity into the ultraviolet.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/38781323/"
+   ],
+   "tags": [
+    "megafauna",
+    "single-fact",
+    "moa",
+    "genome-assembly"
+   ]
+  },
+  {
+   "id": "adna-m037",
+   "question": "Ratite biogeography was long explained by Gondwanan vicariance. Which two lineages did mitogenomes of extinct elephant birds pair up, and what does that imply?",
+   "answer": "Elephant birds (Aepyornithidae) of Madagascar are the closest relatives of the New Zealand kiwi, and are distant from the basal ostrich lineage. Since Africa and Madagascar separated early, this strongly contradicts continental vicariance and instead supports flighted dispersal in all major ratite lineages, with convergent gigantism and flightlessness following early Tertiary expansion into the diurnal herbivory niche after the dinosaurs died out.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24855267/"
+   ],
+   "tags": [
+    "megafauna",
+    "multihop",
+    "elephant-bird",
+    "biogeography"
+   ]
+  },
+  {
+   "id": "adna-m038",
+   "question": "Australian megafaunal eggshell exploited by humans before 50 ka was attributed to Genyornis newtoni, then reattributed to a giant megapode — which would acquit humans of that extinction. How was the dispute resolved, and did ancient DNA settle it?",
+   "answer": "By palaeoproteomics, not ancient DNA. Reconstructed ancient protein sequences from the Pleistocene eggshell were used to assess its evolutionary proximity to living birds and rejected the mound-building megapode hypothesis, supporting attribution to Genyornis newtoni; morphometric data agreed. Authentic ancient DNA could not be confirmed from these highly degraded samples — protein survives longer than DNA but has inferior phylogenetic resolution, which is exactly why the question had to be framed narrowly.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/35609205/"
+   ],
+   "tags": [
+    "megafauna",
+    "multihop",
+    "trap",
+    "genyornis",
+    "palaeoproteomics",
+    "australia"
+   ]
+  },
+  {
+   "id": "adna-m039",
+   "question": "The passenger pigeon numbered billions yet had low genetic diversity. Two genomic studies gave opposite explanations — what were they, and which way did the larger dataset point?",
+   "answer": "Hung et al. (2014) inferred a long-term effective population size about 1/10,000 of the 1800s census estimate and argued the bird was an 'outbreak' species whose drastic natural fluctuations interacted with human exploitation. Murray et al. (2017), using 41 mitochondrial and 4 nuclear passenger pigeon genomes plus 2 band-tailed pigeon genomes, concluded the opposite: the large population size allowed faster adaptive evolution and more efficient removal of harmful mutations, and it was that selection which drove the huge loss of neutral diversity — explicitly contradicting the population-instability explanation for the rapid extinction.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/29146814/",
+    "https://pubmed.ncbi.nlm.nih.gov/24979776/"
+   ],
+   "tags": [
+    "megafauna",
+    "synthesis",
+    "trap",
+    "passenger-pigeon",
+    "genomic-erosion"
+   ]
+  },
+  {
+   "id": "adna-m040",
+   "question": "Was the great auk in trouble before humans started hunting it intensively, and what would hunting alone have been sufficient to do?",
+   "answer": "No. Complete mitochondrial genomes of 41 individuals from across the range, combined with GPS-based ocean current data and population viability analysis, gave no evidence that great auks were at risk of extinction before intensive human hunting began in the early 16th century. The viability analyses further show that human hunting alone — even without any environmental change — could have been sufficient to drive the species extinct.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31767056/"
+   ],
+   "tags": [
+    "megafauna",
+    "multihop",
+    "great-auk",
+    "extinction-debate"
+   ]
+  },
+  {
+   "id": "adna-m041",
+   "question": "Var kom torsken i vikingatidens Haithabu ifrån, enligt forntida DNA?",
+   "answer": "Från det nordostarktiska torskbeståndet — samma bestånd som burit Lofotenfisket i norra Norge i århundraden. Fiskbenen visade sig, trots att de är porösa och spröda, ge 15-46 % endogent DNA, tillräckligt för helgenomrekonstruktion av 15 vikingatida (800-1066 e.Kr.) och medeltida (1066-1280 e.Kr.) torskindivider från Tyskland, Norge och Storbritannien. Fisk från handelsplatserna hade blandat ursprung och skilde sig statistiskt från de lokala bestånden, vilket visar att Nordatlantens marina resurser fördes långväga redan under vikingatiden.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28784790/"
+   ],
+   "tags": [
+    "megafauna",
+    "multihop",
+    "sv",
+    "fish",
+    "archaeogenomics"
+   ]
+  },
+  {
+   "id": "adna-m042",
+   "question": "How did bowhead whales respond to the Pleistocene-Holocene transition, and what is the projection for their core habitat this century?",
+   "answer": "They tracked their habitat rather than declining: the bowhead shifted its range northwards during the rapid climate change of the Pleistocene-Holocene transition, Late Pleistocene lineages survived into the Holocene, and effective female population size increased rapidly, concurrent with a threefold increase in core suitable habitat. The same habitat modelling estimates that core suitable habitat will be almost halved by the end of this century, and the authors stress that responses to climate change are species specific and hard to predict.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/23575681/"
+   ],
+   "tags": [
+    "megafauna",
+    "synthesis",
+    "marine-mammal",
+    "range-shift"
+   ]
+  },
+  {
+   "id": "adna-m043",
+   "question": "What does the 2004 Science review conclude about climate versus humans as the cause of the continental late Pleistocene extinctions?",
+   "answer": "Neither alone. Evidence from palaeontology, climatology, archaeology and ecology supports a human contribution on some continents, but human hunting was not solely responsible for the pattern everywhere; it was the intersection of human impacts with pronounced climatic change that drove the precise timing and geography of extinction in the Northern Hemisphere. New Australian evidence supported a human role there while the climate correlation was weak or contested, and the Southern Hemisphere picture was still unfolding.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/15459379/"
+   ],
+   "tags": [
+    "megafauna",
+    "synthesis",
+    "extinction-debate"
+   ]
+  },
+  {
+   "id": "adna-m044",
+   "question": "Cooper et al. (2015) compared 31 megafaunal time series against Northern Hemisphere climate records. Which kind of climate event lined up with turnover — cold stadials or warming interstadials?",
+   "answer": "Warming. Rapid climate changes associated with interstadial warming events over the past 56,000 years were strongly associated with the regional replacement or extinction of major genetic clades or species of megafauna. Ancient DNA revealed many cryptic biotic transitions well before the Pleistocene/Holocene boundary, confirming the importance of climate in these population extinctions — and suggesting that the metapopulation structures needed to survive repeated rapid shifts were what human impacts then disrupted.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26250679/"
+   ],
+   "tags": [
+    "megafauna",
+    "synthesis",
+    "extinction-debate",
+    "turnover"
+   ]
+  },
+  {
+   "id": "adna-m045",
+   "question": "In Patagonia, humans arrived just before a cold phase. When did the megafaunal extinction actually happen there, and how does the sequence compare with North America?",
+   "answer": "Genetic and radiocarbon data from 89 and 71 Patagonian megafaunal bones identified a narrow extinction phase at 12,280 ± 110 years ago — some 1 to 3 thousand years after the first human presence, and not during the Antarctic Cold Reversal stadial that followed human arrival but only once that stadial ended and warming began. The sequence of climate and extinction events was temporally inverted between North and South America, yet in both cases extinctions waited until human presence and climate warming coincided, implicating continental-scale metapopulation connectivity in survival.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27386563/"
+   ],
+   "tags": [
+    "megafauna",
+    "synthesis",
+    "extinction-debate",
+    "south-america"
+   ]
+  },
+  {
+   "id": "adna-t001",
+   "question": "In the 1989 study that first characterised DNA extracted from dry soft-tissue remains between 4 and 13,000 years old, what kinds of chemical damage were found, and why did that make molecular cloning a poor strategy?",
+   "answer": "The DNA was invariably of low average molecular size and damaged by oxidative processes, showing modified pyrimidines and sugar residues, baseless (abasic) sites and intermolecular cross-links. These lesions make molecular cloning difficult, so PCR amplification of short mitochondrial fragments was used instead.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/2928314/"
+   ],
+   "tags": [
+    "methods",
+    "single-fact",
+    "damage",
+    "history"
+   ]
+  },
+  {
+   "id": "adna-t002",
+   "question": "Which three spontaneous chemical processes did Lindahl's 1993 Nature review identify as the main routes of DNA decay, and what did he conclude they imply for fossils?",
+   "answer": "Hydrolysis, oxidation and non-enzymatic methylation. In living cells these occur at significant rates and are counteracted by specific DNA repair; without repair the same spontaneous decay sets the limits on how much DNA can be recovered from fossils.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/8469282/"
+   ],
+   "tags": [
+    "methods",
+    "single-fact",
+    "chemistry",
+    "damage"
+   ]
+  },
+  {
+   "id": "adna-t003",
+   "question": "Amino-acid racemization in amber-entombed insects was reported to be slowed by more than four orders of magnitude, and this was used to argue that DNA fragments of many hundreds of base pairs should survive in amber. Did the prediction hold?",
+   "answer": "No. Bada et al. (1994) found the racemization rate in amber insect inclusions retarded by a factor greater than 10,000 relative to other surface environments, inferred that depurination would be similarly retarded, and concluded that DNA fragments of many hundreds of base pairs should be preserved. Austin et al. (1997) then made rigorous attempts to reproduce DNA sequences from amber- and copal-preserved bees and flies and detected no authentic ancient insect DNA, concluding that DNA does not survive over millions of years even in amber, the most promising fossil environment.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/11539553/",
+    "https://pubmed.ncbi.nlm.nih.gov/9149422/"
+   ],
+   "tags": [
+    "methods",
+    "synthesis",
+    "trap",
+    "authentication",
+    "survival"
+   ]
+  },
+  {
+   "id": "adna-t004",
+   "question": "What aspartic-acid D/L threshold did Poinar et al. (1996) propose as a screen for endogenous ancient DNA, and what did they find in the specimens said to yield million-year-old sequences?",
+   "answer": "Above a D/L ratio of 0.08 for aspartic acid, no ancient DNA sequences could be retrieved. The palaeontological finds from which purportedly million-year-old sequences had been reported showed extensive racemization, indicating that the amino acids present were mainly contaminants; amino acids in some amber-preserved insects were the exception.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/8629020/"
+   ],
+   "tags": [
+    "methods",
+    "single-fact",
+    "authentication",
+    "screening"
+   ]
+  },
+  {
+   "id": "adna-t005",
+   "question": "What did the 2003 Science study of permafrost and cave sediments recover in the absence of any macrofossils?",
+   "answer": "Five Siberian permafrost cores ranging from about 400,000 to 10,000 years old yielded at least 19 different plant taxa plus megafaunal sequences including mammoth, bison and horse (reported as the oldest authenticated ancient DNA then known), while temperate New Zealand cave sediments gave sequences of two moa species and 29 plant taxa characteristic of the prehuman environment.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/12702808/"
+   ],
+   "tags": [
+    "methods",
+    "single-fact",
+    "sedadna"
+   ]
+  },
+  {
+   "id": "adna-t006",
+   "question": "What is 'thermal age' as used to rank fossil sites for ancient-DNA work, and what degradation mechanism does the ranking assume?",
+   "answer": "It is the reconstructed cumulative temperature history of a fossil rather than its calendar age. Smith et al. (2003) reconstructed the thermal history of a number of northwest European Neanderthal cave sites and ranked them by the relative likelihood of ancient DNA survival, under the assumption that depurination is the principal mechanism of DNA degradation; they applied the same reasoning to the claimed amplifications from Lake Mungo, Australia.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/14580590/"
+   ],
+   "tags": [
+    "methods",
+    "synthesis",
+    "thermal-age",
+    "survival"
+   ]
+  },
+  {
+   "id": "adna-t007",
+   "question": "The Vindija G1 Neandertals were directly radiocarbon dated in 1998/1999 to about 28,000-29,000 14C years ago. What changed, and what does it show about dating specimens used for genetic work?",
+   "answer": "After improved bone pretreatment, in particular ultrafiltration of the collagen to remove younger contaminating carbon, the same Vindija G1 specimens were redated to about 32,000-33,000 14C years ago and possibly earlier. Residual modern carbon makes bones appear too young, so late-Neandertal-survival and interaction scenarios built on the original dates do not stand.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/16407102/"
+   ],
+   "tags": [
+    "methods",
+    "multihop",
+    "trap",
+    "radiocarbon",
+    "contamination"
+   ]
+  },
+  {
+   "id": "adna-t008",
+   "question": "Hur visade man att DNA kan vandra nedåt mellan lagren i grottsediment, och vad betyder det för tolkningen av sediment-DNA?",
+   "answer": "I två grottor på Nordön i Nya Zeeland hittades får-DNA i lager som också innehöll moa-DNA, alltså i avlagringar från tiden före européernas ankomst. Eftersom får inte fanns där då måste arvsmassan ha sjunkit nedåt genom lagren. Mängden får-DNA minskade ju äldre sedimentet var. Samma studie visade också att sediment-DNA knappast blåser in med vinden: rester av djuren själva eller deras spillning måste ha bäddats in i sedimentet för att DNA:t ska gå att hitta.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/17255121/"
+   ],
+   "tags": [
+    "methods",
+    "synthesis",
+    "trap",
+    "sv",
+    "sedadna"
+   ]
+  },
+  {
+   "id": "adna-t009",
+   "question": "Vad består den optimerade utvinningsmetoden för gammalt DNA från 2007 av, och vad hände med alla de extra tillsatser som brukade blandas i buffertarna?",
+   "answer": "Benet löses upp i en buffert som bara innehåller EDTA och proteinas K, och DNA:t binds sedan till kiseldioxid med hjälp av guanidiniumtiocyanat. De flesta övriga tillsatser som rutinmässigt brukade blandas i gav inget högre utbyte alls, ibland tvärtom lägre. Att tillsätta BSA i själva PCR-blandningen hjälpte däremot mot hämmande ämnen i extrakten, och olika polymeraser skilde sig tydligt åt i hur ofta de gav lyckad avläsning.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/17390541/"
+   ],
+   "tags": [
+    "methods",
+    "single-fact",
+    "sv",
+    "extraction"
+   ]
+  },
+  {
+   "id": "adna-t010",
+   "question": "What two features of sequence data from a Neandertal, a mammoth and a cave bear did Briggs et al. (2007) use to infer the chemistry behind post-mortem damage?",
+   "answer": "First, purines are overrepresented at the positions adjacent to the breaks in the ancient DNA, indicating that depurination contributes to fragmentation. Second, substitutions caused by miscoding cytosines are vastly overrepresented and drastically clustered at the ends of the molecules, while other substitutions are rare. Their model converts these patterns into estimates of the cytosine deamination rate in single- and double-stranded portions, the length of single-stranded ends, and the frequency of nicks.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/17715061/"
+   ],
+   "tags": [
+    "methods",
+    "single-fact",
+    "damage",
+    "deamination"
+   ]
+  },
+  {
+   "id": "adna-t011",
+   "question": "What does treatment with uracil-DNA-glycosylase plus endonuclease VIII do to an ancient DNA extract, and what biological signal survived the treatment?",
+   "answer": "Uracil-DNA-glycosylase removes the uracil residues created by cytosine deamination and endonuclease VIII repairs most of the resulting abasic sites, leaving the undamaged parts of the fragments intact and greatly increasing sequence accuracy. Neandertal sequences produced with this protocol still retained in vivo CpG methylation patterns.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/20028723/"
+   ],
+   "tags": [
+    "methods",
+    "single-fact",
+    "library",
+    "udg"
+   ]
+  },
+  {
+   "id": "adna-t012",
+   "question": "What rate of sample misidentification did double indexing reveal in single-indexed Illumina multiplex sequencing, and what was the dominant cause?",
+   "answer": "About 0.3%, orders of magnitude higher than expected. The predominant source of error was the occurrence of mixed clusters on the flow cell; cross-contaminated indexed oligonucleotides and bulk amplification of indexed libraries made it worse. Putting an index in both adapters lets such reads be identified and removed.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/22021376/"
+   ],
+   "tags": [
+    "methods",
+    "single-fact",
+    "indexing",
+    "library"
+   ]
+  },
+  {
+   "id": "adna-t013",
+   "question": "Can the mean fragment length of a library be used as a rough clock for how old a specimen is?",
+   "answer": "No. Across mitochondrial data from tissues ranging between 18 and 60,000 years old, fragment length was found not to decrease consistently over time. Of the three molecular features examined, only the frequency of apparent C-to-T substitutions towards the 5' ends of molecules tends to increase with age, which is why deamination and not fragment length is the useful discriminator between recent and ancient sources. Strand breaks occurred preferentially before purine residues by what may be at least two mechanisms that are still not understood.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/22479540/"
+   ],
+   "tags": [
+    "methods",
+    "multihop",
+    "trap",
+    "damage",
+    "authentication"
+   ]
+  },
+  {
+   "id": "adna-t014",
+   "question": "Why do default BWA settings mishandle ancient reads, and how much does tuning them recover?",
+   "answer": "BWA was developed for mapping undamaged reads from platforms with low rates of indel-type errors, whereas ancient reads are short, damaged, and produced on platforms with different error profiles, so defaults discard genuine endogenous fragments. Schubert et al. (2012) showed that modifying BWA parameters in a platform-specific manner (at acceptable run times), together with trimming likely damaged read ends and best-hit filtering for human contamination, increased the number of high-quality endogenous hits recovered by up to 33%.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/22574660/"
+   ],
+   "tags": [
+    "methods",
+    "multihop",
+    "mapping"
+   ]
+  },
+  {
+   "id": "adna-t015",
+   "question": "Hur kunde man visa att mjölkhushållning fanns i Sahara redan under femte årtusendet f.Kr., utan vare sig ben eller arvsmassa att gå på?",
+   "answer": "Genom fettrester som sugits in i keramikkärlens gods. Kolisotopvärdena (delta-13C och Delta-13C) för de viktigaste fettsyrorna i skärvorna visade entydigt mjölkfett, jämfört mot en nyinsamlad referenssamling av fetter från moderna afrikanska idisslare. Det är det första säkra kemiska belägget för mjölkhushållning i förhistoriens gröna Sahara och ger en bakgrund till när laktostålighet började löna sig i Afrika.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/22722200/"
+   ],
+   "tags": [
+    "methods",
+    "multihop",
+    "sv",
+    "lipids",
+    "isotopes"
+   ]
+  },
+  {
+   "id": "adna-t016",
+   "question": "What made a 30-fold Denisovan genome possible from a single small bone, and what did that depth allow that a low-coverage genome cannot?",
+   "answer": "A new single-stranded DNA library preparation method. At 30x the genome permits a direct estimate of Denisovan heterozygosity, which turned out to be extremely low, tentative dating of the specimen from the 'missing evolution' in its genome, detailed measurements of Denisovan and Neandertal admixture into present-day humans, and a near-complete catalogue of genetic changes that swept to high frequency in modern humans after the split from Denisovans.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/22936568/"
+   ],
+   "tags": [
+    "methods",
+    "multihop",
+    "library",
+    "single-stranded"
+   ]
+  },
+  {
+   "id": "adna-t017",
+   "question": "The figure 'the half-life of DNA is 521 years' is widely quoted as if it were a constant. What was actually measured, and under what conditions?",
+   "answer": "Mitochondrial DNA was measured in 158 radiocarbon-dated moa bones from one geographically constrained New Zealand fossil assemblage. The 521 years is the average half-life of a 242 bp mtDNA sequence at an effective burial temperature of 13.1 degrees C, corresponding to a per-nucleotide fragmentation rate of 5.50 x 10^-6 per year. It is not a universal constant: the exponential model fitted only loosely (R-squared = 0.39), most of the sample-to-sample variance could not be explained by geologic age and is attributed to taphonomy and bone diagenesis, nuclear DNA in the same bones degraded at least twice as fast as mtDNA, and the measured rate was almost 400 times slower than predicted from published in vitro depurination kinetics at pH 5.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/23055061/"
+   ],
+   "tags": [
+    "methods",
+    "single-fact",
+    "trap",
+    "kinetics",
+    "survival"
+   ]
+  },
+  {
+   "id": "adna-t018",
+   "question": "How was the mitochondrial molecular clock calibrated directly from ancient sequences rather than from fossils, and what bound did that give on the non-African separation?",
+   "answer": "Mitochondrial genomes from ten securely dated ancient modern humans spanning 40,000 years were used as calibration points, yielding a direct estimate of the mitochondrial substitution rate. The resulting clock gives divergence times in agreement with earlier fossil- and archaeology-calibrated estimates and implies that non-Africans separated from the most closely related sub-Saharan African mtDNAs (haplogroup L3) less than 62,000-95,000 years ago, excluding most of the older dates suggested by de novo nuclear mutation-rate estimates. A single locus like mtDNA gives biased population divergence times but valid upper bounds.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/23523248/"
+   ],
+   "tags": [
+    "methods",
+    "synthesis",
+    "molecular-clock",
+    "tip-calibration"
+   ]
+  },
+  {
+   "id": "adna-t019",
+   "question": "Which four parameters of ancient DNA molecules does mapDamage 2.0 estimate, and what does it do with base quality scores?",
+   "answer": "Under a Bayesian model assuming damage depends only on sequencing position and post-mortem deamination, it estimates the average length of single-stranded overhangs (lambda), the nick frequency (nu), and cytosine deamination rates separately for double-stranded regions and for overhangs. It then rescales base quality scores according to each base's probability of being damaged.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/23613487/"
+   ],
+   "tags": [
+    "methods",
+    "single-fact",
+    "tools",
+    "damage"
+   ]
+  },
+  {
+   "id": "adna-t020",
+   "question": "Ancient DNA libraries are strikingly deficient in molecules shorter than 40 bp. Where is that material lost, and what did recovering it demonstrate about preservation?",
+   "answer": "The loss occurs during DNA extraction rather than in the ground. An improved silica-based extraction that efficiently retrieves ultrashort molecules, combined with single-stranded library preparation, produced the complete mitochondrial genome of a Middle Pleistocene cave bear (Ursus deningeri) from Sima de los Huesos in Spain, proving that authentic ancient DNA can be preserved for hundreds of thousands of years outside permafrost, in a sample where virtually all DNA was reduced to fragments shorter than 50 bp.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24019490/"
+   ],
+   "tags": [
+    "methods",
+    "multihop",
+    "extraction",
+    "survival"
+   ]
+  },
+  {
+   "id": "adna-t021",
+   "question": "How does a post-mortem degradation (PMD) score rescue a heavily contaminated specimen, and what was the demonstration case?",
+   "answer": "Each fragment is evaluated for the likelihood that it originated from a model with post-mortem degradation, that is, whether it carries the miscoding-lesion damage signature, summarised as a post-mortem degradation score; fragments unlikely to come from present-day sources are retained and the rest discarded. Applied to a contaminated Neandertal specimen from Okladnikov Cave in Siberia, the reconstructed mitochondrial genome proved more closely related to western Neandertal variation than earlier analyses could discern.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24469802/"
+   ],
+   "tags": [
+    "methods",
+    "synthesis",
+    "contamination",
+    "authentication"
+   ]
+  },
+  {
+   "id": "adna-t022",
+   "question": "Vad är poängen med att bara delvis behandla ett gammalt DNA-bibliotek med uracil-DNA-glykosylas i stället för fullt ut?",
+   "answer": "Behandlingen ställs in så att de typiska skadorna finns kvar i de yttersta baserna men nästan helt försvinner inne i molekylen. Då räcker ett och samma bibliotek både för att styrka att DNA:t verkligen är gammalt och för befolkningsgenetiska analyser, i stället för att man måste bygga två. Metoden kombinerades med ett unikt streckkodspar som fästs redan vid ligeringen, så att sammanblandning från det steget och framåt syns, och med korta ofullständiga adaptrar som gör infångningen mer träffsäker och fylls på först strax före avläsningen.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/25487342/"
+   ],
+   "tags": [
+    "methods",
+    "synthesis",
+    "sv",
+    "library",
+    "udg"
+   ]
+  },
+  {
+   "id": "adna-t023",
+   "question": "Var i klippbenet sitter det bästa gamla DNA:t, och hur stor är skillnaden mot resten av benet?",
+   "answer": "I den täta benvävnaden inuti öronkapseln, den del som brukar kallas del C. Andelen eget DNA där kunde vara upp till 65 gånger högre än i den täta delen runt öronkapseln (del B) och upp till 177 gånger högre än i det svampiga benet (del A). Även för prover från heta miljöer, torra som fuktiga, där andelen låg under en procent, visade skademönstren att åtminstone en del av avläsningarna kommer från äkta gamla molekyler.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26086078/"
+   ],
+   "tags": [
+    "methods",
+    "single-fact",
+    "sv",
+    "sampling",
+    "petrous"
+   ]
+  },
+  {
+   "id": "adna-t024",
+   "question": "Vilka två egenskaper hos fragmenten använder schmutzi för att skilja gammalt DNA från nutida, och hur mycket främmande DNA tål metoden?",
+   "answer": "Mönstren av cytosinomvandling, alltså deamineringen, och fördelningen av fragmentlängder. De skattas växelvis tillsammans med själva konsensussekvensen i en upprepad slinga. Programmet får fram den äkta mitokondriesekvensen även när mer än hälften av materialet är nutida förorening, och ger tillförlitliga skattningar av föroreningsgraden när täckningen räcker till.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26458810/"
+   ],
+   "tags": [
+    "methods",
+    "single-fact",
+    "sv",
+    "contamination"
+   ]
+  },
+  {
+   "id": "adna-t025",
+   "question": "What did the 2021 rewrite of the EAGER pipeline change relative to the 2016 original?",
+   "answer": "EAGER (2016) integrated preprocessing, mapping, authentication, quality assessment and genotyping of ancient genomes into a single pipeline. nf-core/eager (2021) is an entirely redesigned and extended version built in Nextflow within the nf-core initiative, targeting three themes: accessibility and adaptability to different computing configurations, reproducibility of analytical standards, and being updated to current routine ancient-genomic practice, with nf-core providing long-term maintenance.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27036623/",
+    "https://pubmed.ncbi.nlm.nih.gov/33777521/"
+   ],
+   "tags": [
+    "methods",
+    "multihop",
+    "pipelines",
+    "reproducibility"
+   ]
+  },
+  {
+   "id": "adna-t026",
+   "question": "What does gargammel simulate, and why would you want simulated ancient reads at all?",
+   "answer": "Given a set of known reference genomes it simulates the entire molecular process, from post-mortem DNA fragmentation and damage through contamination to experimental sequencing errors, reproducing most of the biases seen in real ancient datasets. That lets investigators measure in silico how fragmentation, damage and contamination would affect a downstream analysis, against a known truth, before trusting the method on real specimens.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27794556/"
+   ],
+   "tags": [
+    "methods",
+    "single-fact",
+    "simulation",
+    "benchmarking"
+   ]
+  },
+  {
+   "id": "adna-t027",
+   "question": "How does the ssDNA2.0 protocol attach the first adapter without CircLigase, and what practical gains followed?",
+   "answer": "It ligates single-stranded DNA to an adapter with T4 DNA ligase, using a splinter oligonucleotide carrying a stretch of random bases hybridised to a 3'-biotinylated donor oligonucleotide; splinters with 7 or 8 random nucleotides minimise ligation bias. Compared with CircLigase it allows higher adapter concentrations in the ligation, tolerates more input DNA, is less costly and automates better. Most strikingly, for tissues stored in formalin for many years, single-stranded library preparation raised library yields by several orders of magnitude.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28119419/"
+   ],
+   "tags": [
+    "methods",
+    "multihop",
+    "library",
+    "single-stranded"
+   ]
+  },
+  {
+   "id": "adna-t028",
+   "question": "Is the petrous bone always the better sampling choice over tooth cementum?",
+   "answer": "Not systematically. In matched skulls, endogenous DNA averaged 40.0% for petrous bone and 16.4% for tooth cementum against 2.2% for parietal skull bone, and petrous outperformed cementum overall (p = 0.001), but that difference was driven largely by one cluster of Viking skeletons with poorly preserved teeth; in the remaining skeletons there was no systematic difference between the two substrates. Petrous samples also showed significantly higher C-to-T deamination damage and a lower mitochondrial-to-nuclear ratio than cementum, and petrous bones from cremated individuals contained no measurable authentic human DNA.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28129388/"
+   ],
+   "tags": [
+    "methods",
+    "synthesis",
+    "trap",
+    "sampling",
+    "petrous"
+   ]
+  },
+  {
+   "id": "adna-t029",
+   "question": "What did targeted mitochondrial enrichment of cave sediments establish about hominin occupation?",
+   "answer": "Neandertal DNA was detected in eight archaeological layers from four caves in Eurasia, including sites and layers where no hominin remains have been found, and Denisovan DNA was retrieved from a Middle Pleistocene layer near the bottom of the Denisova Cave stratigraphy. Cave sediments are therefore a rich source of ancient mammalian DNA that often includes traces of hominin DNA, allowing presence to be established without a fossil.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28450384/"
+   ],
+   "tags": [
+    "methods",
+    "single-fact",
+    "sedadna",
+    "capture"
+   ]
+  },
+  {
+   "id": "adna-t030",
+   "question": "How are peptides in tooth enamel used to determine the sex of a skeleton, and what does the method do that osteology and DNA cannot?",
+   "answer": "A minimally destructive surface acid etch of the tooth enamel releases amelogenin, and nanoflow liquid chromatography mass spectrometry then identifies the sex-chromosome-linked isoforms of that enamel-forming protein. Conventional morphological sexing reaches at most about 95% accuracy and only for adults with an intact cranium and os coxae, and there is no reliable morphological method for infants and juveniles. Enamel is the hardest tissue in the body, survives burial even when the rest of the skeleton and its DNA have decayed, and is difficult to cross-contaminate.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/29229823/"
+   ],
+   "tags": [
+    "methods",
+    "multihop",
+    "palaeoproteomics",
+    "sex-determination"
+   ]
+  },
+  {
+   "id": "adna-t031",
+   "question": "Hur låg täckning klarar READ när man vill bestämma släktskap mellan förhistoriska individer, och vad hittade upphovsmännen med metoden?",
+   "answer": "Ned till ungefär 0,1 gångers hagelgevärstäckning per arvsmassa räcker för att fastställa släktskap upp till andra graden mellan två individer. Vanliga verktyg för nutida DNA kräver säkra genotyper i dubbel uppsättning, vilket gammalt och trasigt material sällan ger. När metoden kördes på redan publicerat material föll en grupp om fem nära besläktade män ut från en och samma snörkeramiska plats i dagens Tyskland, vilket tyder på att man bodde patrilokalt, alltså att kvinnorna flyttade in till männens boplats.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/29684051/"
+   ],
+   "tags": [
+    "methods",
+    "single-fact",
+    "sv",
+    "kinship"
+   ]
+  },
+  {
+   "id": "adna-t032",
+   "question": "Is index hopping confined to patterned flow cells with ExAmp chemistry?",
+   "answer": "No. Swap rates of 0.2% to 6% were observed in all sequencing runs on HiSeqX, HiSeq 3000/4000 and NovaSeq, but even non-ExAmp chemistry instruments display trace levels of index swapping. Rates also differ vastly between library preparation methods. The remedy is non-redundant (non-combinatorial) dual indexing, which allows swapped reads to be flagged and filtered out completely.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/29739332/"
+   ],
+   "tags": [
+    "methods",
+    "multihop",
+    "trap",
+    "indexing",
+    "contamination"
+   ]
+  },
+  {
+   "id": "adna-t033",
+   "question": "Vilka två förbehandlingar av ben- och tandmjöl används för att bli av med främmande DNA, och vilken är effektivast?",
+   "answer": "Natriumhypoklorit, alltså vanligt klorin, är den effektivaste: den förstör det främmande DNA som bundits eller på annat sätt fastnat på ytan av pulvret. Den andra och mindre förstörande behandlingen är en fosfatbuffert som i stället lossar och sköljer bort ytbundet DNA.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/30875039/"
+   ],
+   "tags": [
+    "methods",
+    "single-fact",
+    "sv",
+    "decontamination"
+   ]
+  },
+  {
+   "id": "adna-t034",
+   "question": "What did five years of negative controls reveal about contamination in an ultraclean ancient DNA laboratory, and what reporting standard did the authors recommend?",
+   "answer": "Across 144 negative controls (extraction blanks and no-template amplification controls), the contaminant taxonomic profile of the ultraclean ancient DNA laboratory was unique compared with ordinary molecular biology laboratories, and it changed over time according to researcher, month and season, so no single historical blank characterises a lab. A commercial extraction kit carried higher microbial diversity and more human-associated taxa than the home-made silica protocol. They recommend at minimum that extraction blank controls be included and sequenced with every batch of extractions, and that the contribution of laboratory contamination be assessed and reported in every high-throughput metagenomic study.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/30887686/"
+   ],
+   "tags": [
+    "methods",
+    "synthesis",
+    "contamination",
+    "metagenomics"
+   ]
+  },
+  {
+   "id": "adna-t035",
+   "question": "Why does reference bias hit ancient data harder than modern data, and which downstream analyses does it distort?",
+   "answer": "Fragments carrying the reference allele map more readily or get higher quality scores. In ancient data a large proportion of fragments are shorter than 50 bp, which reduces the number of mismatches that can be accepted and increases the probability of multiple matching sites, and most studies of ancient humans use pseudo-haploid data sampling a single read per site. Most genomic regions show little to no mapping bias, but the biased subset can skew population allele sharing, heterozygosity estimates and estimates of archaic ancestry. Bias strength is negatively correlated with fragment length, and post-mapping filtering strategies reduce its impact substantially.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31348818/"
+   ],
+   "tags": [
+    "methods",
+    "multihop",
+    "reference-bias",
+    "mapping"
+   ]
+  },
+  {
+   "id": "adna-t036",
+   "question": "How old is the oldest RNA sequenced so far, and what evidence shows the transcripts are genuinely ancient rather than modern contamination?",
+   "answer": "RNA was sequenced from the permafrost-preserved liver of a roughly 14,300-year-old Pleistocene canid, alongside two historical wolf skins. Authenticity rests on hallmarks of real RNA-seq data: the presence of exon-exon junctions, high endogenous ribosomal RNA content, biologically meaningful tissue specificity closely resembling equivalent modern control tissue, and independent technical library replicates run on two high-throughput sequencing platforms.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31361744/"
+   ],
+   "tags": [
+    "methods",
+    "synthesis",
+    "ancient-rna",
+    "authentication"
+   ]
+  },
+  {
+   "id": "adna-t037",
+   "question": "What made the Gigantopithecus enamel proteome remarkable in preservation terms, and what phylogenetic question did it settle?",
+   "answer": "The proteins came from a 1.9-million-year-old Gigantopithecus blacki molar from Chuifeng Cave in subtropical China, and the thermal age of those sequences is about five times greater than that of any previously published mammalian proteome or genome, extending palaeoproteomics into geographies and periods previously considered incompatible with molecular preservation. The proteome places Gigantopithecus as a sister clade to orangutans (genus Pongo), with a common ancestor about 12-10 million years ago.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31723270/"
+   ],
+   "tags": [
+    "methods",
+    "synthesis",
+    "palaeoproteomics",
+    "enamel"
+   ]
+  },
+  {
+   "id": "adna-t038",
+   "question": "What does the HOPS pipeline add over ordinary metagenomic classification of archaeological samples?",
+   "answer": "HOPS (Heuristic Operations for Pathogen Screening) is an automated bacterial screening pipeline for ancient DNA that returns not only species identification but detailed authenticity information for each candidate, so that high-throughput screening of archaeological material can single out credible candidates for genome-level analysis rather than reporting raw taxonomic hits.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31842945/"
+   ],
+   "tags": [
+    "methods",
+    "single-fact",
+    "metagenomics",
+    "pathogens"
+   ]
+  },
+  {
+   "id": "adna-t039",
+   "question": "Does genotype imputation remove reference bias in ultra-low-coverage ancient genomes?",
+   "answer": "It mitigates it but does not eliminate it. A two-step pipeline was evaluated for common variants at 0.05x to 1x coverage: genotype likelihoods in Beagle, filtering for confident genotypes, then imputing the missing ones. That two-step approach outperformed single-step imputation from genotype likelihoods, which suggests current genotype callers do not fully account for errors in ancient sequences. In a Neolithic Hungarian genome the accuracy for heterozygous common variants was about 90% at 0.05x coverage and above 97% at 0.5x.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/33122697/"
+   ],
+   "tags": [
+    "methods",
+    "multihop",
+    "trap",
+    "imputation",
+    "reference-bias"
+   ]
+  },
+  {
+   "id": "adna-t040",
+   "question": "Down to what coverage can contamination in male ancient genomes be estimated with hapCon, and what assumption bounds its validity?",
+   "answer": "hapCon uses a Li and Stephens haplotype-copying model on the haploid X chromosome, treating mismatches as either error or contamination, and gives useful estimates at coverages as low as 0.1x for 1240k SNP capture data and 0.02x for whole-genome sequencing, with lower variance and narrower confidence intervals than the commonly used ANGSD X-based estimator. It shows little bias for contamination up to 25-30%, provided the contaminating source is specified within the right continental genetic variation, and works on samples up to about 45,000 years old across global ancestries.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/35695771/"
+   ],
+   "tags": [
+    "methods",
+    "single-fact",
+    "contamination",
+    "low-coverage"
+   ]
+  },
+  {
+   "id": "adna-t041",
+   "question": "What is the age of the oldest environmental DNA recovered so far, and what is the proposed reason it survived?",
+   "answer": "About two million years, from the Kap København Formation in North Greenland. The record describes an open boreal forest ecosystem with poplar, birch and thuja plus Arctic and boreal shrubs and herbs, together with mitochondrial DNA from mastodon, reindeer, rodents, geese and hare, and marine species including horseshoe crab and green algae, an assemblage with no modern analogue. The authors attribute the survival of such ancient eDNA to its binding to mineral surfaces.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/36477129/"
+   ],
+   "tags": [
+    "methods",
+    "single-fact",
+    "sedadna",
+    "survival"
+   ]
+  },
+  {
+   "id": "adna-t042",
+   "question": "How do the 1240k reagent and the two commercial assays that replaced it compare, and how many rounds of enrichment are worth doing?",
+   "answer": "Tested on a common set of 27 ancient DNA libraries, all three assays effectively enrich many hundreds of thousands of SNPs, and for all of them one round of enrichment produces data as useful as two. The Twist Ancient DNA assay gave the highest coverages, the greatest uniformity on targeted positions, and almost no bias toward enriching one allele over the other relative to shotgun sequencing. Hundreds of thousands of targeted SNPs were also identified where 1240k shows minimal allelic bias, which lets 1240k, Twist and shotgun datasets be co-analysed. In-solution enrichment underlies more than 70% of individuals with genome-scale ancient DNA published to date.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/36517229/"
+   ],
+   "tags": [
+    "methods",
+    "synthesis",
+    "capture",
+    "1240k"
+   ]
+  },
+  {
+   "id": "adna-t043",
+   "question": "Besides identifying the species, what second piece of information can a ZooMS collagen peptide fingerprint provide, and what did the high-resolution version change in practice?",
+   "answer": "The deamidation value of specific collagen peptides, which supports a dating estimate; at the Middle Palaeolithic site of Caours, bones from the same geological layers gave deamidation values with low standard deviation. Moving to MALDI-FTICR with a 96-well sample preparation and optimised collagen extraction and digestion reduced the required bone by a factor of about ten, down to the milligram scale, and made deamidation quantification robust at high throughput, including for small or burned fragments that cannot be identified osteologically.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/37130053/"
+   ],
+   "tags": [
+    "methods",
+    "multihop",
+    "zooms",
+    "palaeoproteomics"
+   ]
+  },
+  {
+   "id": "adna-t044",
+   "question": "What coverage does ancIBD require, and what segment lengths can it call?",
+   "answer": "ancIBD uses a hidden Markov model over imputed genotype probabilities and accurately identifies identity-by-descent segments longer than 8 cM at an average depth above 0.25x for whole-genome sequencing or above 1x for 1240k SNP capture data. Applied to 4,248 ancient Eurasian individuals it identified relatives out to the sixth degree and long IBD sharing between Corded Ware and Yamnaya groups, indicating co-ancestry within only a few hundred years.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/38123640/"
+   ],
+   "tags": [
+    "methods",
+    "multihop",
+    "kinship",
+    "ibd"
+   ]
+  },
+  {
+   "id": "adna-t045",
+   "question": "How can a dietary radiocarbon reservoir offset be corrected when the local freshwater reservoir effect is not independently constrained?",
+   "answer": "By exploiting tissues that formed at different times in the same person: multiple linear regression of the differences in 14C, delta-13C and delta-15N between bones and teeth of the same individual was used to predict dietary reservoir effects of up to about 900 years at Sakhtysh in central European Russia. The approach applies where freshwater reservoir effects are poorly constrained and grave goods cannot be dated directly, and it moved the Lyalovo burials to the early fifth millennium BCE and the Volosovo burials to the mid-fourth to early third millennium.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/38381818/"
+   ],
+   "tags": [
+    "methods",
+    "multihop",
+    "radiocarbon",
+    "reservoir-effect"
+   ]
+  }
+ ]
+}

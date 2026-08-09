@@ -17,6 +17,127 @@ The instrument is `scripts/rag-eval.mjs`, the procedure is the
 
 ---
 
+## 2026-08-09 — the whole ancient-DNA literature, and what a topical corpus costs its own needles
+
+**+28,599 vectors**, 1,665,539 → 1,694,272. The PubMed index now holds
+**31,156 of the 31,310** abstract-bearing ancient-DNA citations PubMed has ever
+carried, back to 1961. The 154 absent are exactly accounted for: 143 below the
+200-character abstract floor and 11 `<PubmedBookArticle>` records with no
+abstract element at all. Verified by id, not by the loader's counters.
+
+The enumeration is `scripts/pubmed-adna-query.txt` (committed, reproduces the
+list exactly). It is 4.9× the naive union of "ancient DNA"-style phrases,
+because whole subfields never use them: ancient pathogens, ancient human
+population genetics, and domestication genomics from archaeological material.
+
+### The enumeration was validated against two independent positive sets
+
+A query cannot detect its own gaps, so recall was measured against sets the
+query had no hand in choosing: Dalén's 169 papers plus 90 curated adjacent
+landmarks (259), and — separately — the 187 papers four question authors
+independently cited while writing an eval set. Raw recall 75.7% and 88.2%;
+**~99% and ~97%** once modern conservation genomics of extant species is
+excluded as out of scope. Both validation sets carry a substantial
+conservation-genomics component, so the raw denominator actively pushes the
+query toward a literature that is *not* the target corpus — which is why both
+numbers are reported rather than the flattering one.
+
+Precision on a random 30 is **53% ancient-DNA-adjacent, 27% core**. Recall was
+chosen over precision deliberately, but only where the trade was measured:
+every rejected expansion had its marginal records sampled. The leaks that
+pruning removed are worth keeping written down, because each looks harmless:
+`"a-DNA"[tiab]` tokenizes to the phrase "a DNA" (+49,664), bare `extinction`
+is mostly **fear-extinction** neuroscience (+45,473), `graves` is **Graves'
+disease** (+31,000), `fossil` is **fossil fuel**, `moa` is **mechanism of
+action**, `quagga` is **quagga mussel**, `mumm*` is **aphid mummies**.
+`Fossils`/`Paleontology`[MeSH] and `Pleistocene` were near-zero precision under
+a permissive molecular gate; `Hominidae`[MeSH] subsumes *Homo sapiens* and is
+23.7M records.
+
+### The negative result: a topical corpus demotes its own needles
+
+Same 57-needle gold set, same configuration, 56 pairs (one needle was replaced
+— see below):
+
+| arm | metric | lost | gained | p | verdict |
+|---|---|---|---|---|---|
+| EN | r@1 | 2 | 0 | 0.5000 | not significant |
+| EN | r@10 | 2 | 0 | 0.5000 | not significant |
+| SV | r@1 | 4 | 0 | 0.1250 | not significant |
+| SV | r@10 | 3 | 0 | 0.2500 | not significant |
+| SVSCI | r@1 | 4 | 1 | 0.3750 | not significant |
+| SVSCI | r@10 | 2 | 0 | 0.5000 | not significant |
+
+EN r@10 98.2 → 94.7, SV 63.2 → 57.9, SVSCI 93.0 → 89.5.
+
+**No single test is significant, and reading that as "no effect" would be
+wrong.** All six metrics moved the same way: **17 losses against 1 gain**
+across the arms. The tests are not independent (r@1 and r@10 share needles;
+the three arms share documents), so the pooled sign test's p≈0.0001 overstates
+the case — but the direction is not in doubt, and the mechanism is
+mechanistically expected rather than mysterious. `rerank demoted` appears in
+the English arm for the first time (0 → 3.5%), which is the signature of new
+documents outranking the gold rather than of the gold vanishing: `inPool` is
+unchanged at 98.2% for EN.
+
+We added ~28.6k documents into precisely the topical neighbourhood these
+needles live in. Competition went up; a few golds lost their place. That is the
+price of the corpus being complete, and it is the right trade here — but it
+means **needle recall measured on a growing corpus is not comparable across
+ingests unless the corpus is held fixed**, and a future entry that reports a
+recall change should say which of the two moved.
+
+Latency: median 1388 → 1435 ms, p95 2853 → 4716, paired sign p=0.0549.
+
+### What the corpus bought
+
+The measurement that matters for the reason the ingest happened. Before it,
+**53 of the 187** papers the new eval set cites were in the index (28%); every
+question about the other 134 was measuring absence. After, **187/187**.
+
+Retrieval over those 180 questions used as needles — note they were written as
+QA questions, several deliberately about a debate rather than one paper, so
+this is a harder instrument than a purpose-built needle set:
+
+| lang | n | inPool | r@1 | r@5 | r@10 | never retrieved | floored out |
+|---|---|---|---|---|---|---|---|
+| EN | 126 | 89.7 | 75.4 | 84.1 | **88.9** | 10.3 | 0.8 |
+| SV (vernacular) | 30 | 76.7 | 56.7 | 66.7 | **70.0** | 23.3 | 6.7 |
+
+The Swedish gap is the same one the 2026-08-08 entry characterised, unchanged
+by a 19× larger topical corpus — as expected, since its cause is the
+cross-encoder's score scale, not what the index contains.
+
+### A committed gold set can name a document the index cannot hold
+
+`pmid:10970224` — Cooper & Poinar, *Ancient DNA: do it right or not at all* —
+was a needle in the committed set. PubMed carries **no abstract** for it, so it
+can never be embedded, so the needle was unanswerable in every language arm and
+scored as a permanent miss. It was one of the three `short_abstract` drops
+reported at ingest time on 2026-08-08 and never connected to the gold set.
+
+The direction of the error is worth stating: it **depressed** that entry's
+figures. English r@10 was 98.2% over 57 needles and the single "never
+retrieved" was this needle — so retrieval over answerable needles was 100%.
+
+A generated gold set cannot have this problem; it is sampled from the index. A
+hand-written one keyed on chosen documents can, which is a failure mode that
+arrived *with* committed gold sets. `rag-eval.mjs run` now verifies membership
+before it measures anything and names unanswerable needles out loud. Replaced
+with Renaud/Orlando 2019 (`pmid:30875054`), same subject, has an abstract.
+
+### Open
+
+1. **Precision was traded for recall and the bill has not been read.** 53%
+   adjacent means roughly half the new records are off-target. Dropping the
+   weakest arm of the query gives ~24k at ~+15pp precision for −17 validation
+   papers. Nobody has measured whether that improves needle recall — it is the
+   obvious next experiment, and this entry's regression is the reason to run it.
+2. The Swedish register gap is untouched and its fix is still the untested
+   monolingual-rerank change from 2026-08-08.
+
+---
+
 ## 2026-08-08 — vernacular Swedish, and the floor that cannot move in either direction
 
 Two results, one gold set. The first is a corpus result and the second is a

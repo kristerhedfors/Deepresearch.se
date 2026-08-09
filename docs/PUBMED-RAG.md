@@ -657,6 +657,54 @@ fill failed from one immediate read-back.
 Retrieval before and after is in `docs/RAG-EVAL-LEDGER.md` (2026-08-08),
 measured on the committed gold set `scripts/pubmed-dalen-goldset.json`.
 
+### 7.10 The whole ancient-DNA literature (2026-08-09)
+
+The second and much larger `--pmids` job (§4.2), and the first one aimed at a
+FIELD rather than a bibliography: every abstract-bearing ancient-DNA citation
+PubMed has ever carried.
+
+```
+enumerated   31,310  (33,049 before `AND hasabstract`)
+already in    2,557  — 8%, because this literature is mostly older than the load-order window
+harvested    28,753 requested → 28,599 kept, 143 short_abstract, 11 books, 0 unreturned (144 efetch calls, 5m33s)
+filled       28,599 vectors at ~29/s (17 min across three resumable runs)
+verified     31,156 / 31,310 present by id — the 154 absent are exactly the 143 + 11
+index        1,665,539 → 1,694,272
+```
+
+The enumeration lives in **`scripts/pubmed-adna-query.txt`**, committed because
+a corpus nobody can reproduce cannot be extended or audited. Decade shape is
+`scripts/pubmed-adna-decades.txt`: 38 pre-1970, 148 in the 1970s, 370 in the
+1980s, then 1,520 / 5,935 / 13,711 / 12,645.
+
+**8% already indexed is the expected number, not a bug.** The hosted index is a
+load-order window above the 2026 baseline (§2), and ancient-DNA literature is
+mostly old and unrevised — the same effect §7.9 measured for one author, where
+89% of his output predated the baseline.
+
+Two things this run is worth remembering for:
+
+**The fill must be chunked, and it resumes.** A single `pubmed-vectorize.mjs`
+run over 28.6k rows takes ~17 minutes, which is longer than an agent session's
+command timeout. `--limit N` plus the checkpoint in `--work` makes this a
+non-problem: re-running continues where it stopped, and `--limit` counts rows
+PUSHED this run, not rows read. Three runs at 6k/12k/11k finished it.
+
+**Recall was validated against sets the query did not choose.** A query cannot
+detect its own gaps. Two independent positive sets were used — a named
+researcher's bibliography, and the papers a separate group of question authors
+cited — giving ~99% and ~97% recall once modern conservation genomics of
+extant species is excluded as out of scope. The measured precision cost, the
+leaks pruning removed (`extinction` is mostly fear-extinction neuroscience;
+`graves` is Graves' disease; `moa` is mechanism of action), and the retrieval
+effect on existing needles are all in `docs/RAG-EVAL-LEDGER.md` (2026-08-09).
+That entry records a real cost: a corpus this topical DEMOTES its own needles,
+17 losses against 1 gain across six metrics.
+
+> Like §7.9 this was a named-list job, so it did **not** move the delta marker
+> in §7. The marker still reads `pubmed26n1562`; the load-order sweep has not
+> advanced, and a delta run should still start there.
+
 ### 7.7 A Swedish measurement trap that nearly became a false bug report
 
 The first Swedish probe looked alarming — two of five paired queries returned

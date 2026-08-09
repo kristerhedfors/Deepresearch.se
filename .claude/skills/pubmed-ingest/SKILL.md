@@ -91,7 +91,37 @@ Two things that will bite, both reproduced:
 - **Records below the 200-char abstract floor are dropped, and that is
   correct.** Replies, corrections and policy letters go; 11 of 151 and 3 of 87
   in the first run. They are not retrievable text and the rest of the corpus
-  obeys the same rule.
+  obeys the same rule. Watch for the knock-on: if one of those PMIDs is also a
+  needle in a gold set, that needle is now unanswerable and will read as a
+  retrieval failure forever. Re-check gold sets after any ingest.
+
+### A named list can be a whole FIELD, not just a bibliography
+
+The 2026-08-09 run took the same path to 31,310 PMIDs — every abstract-bearing
+ancient-DNA citation in PubMed, back to 1961 — and nothing about the mechanics
+changed. Two things that only show up at that size:
+
+- **Chunk the fill; it resumes.** 28.6k rows is ~17 minutes at ~29 vectors/s,
+  longer than an agent's command timeout. `--limit N` plus the checkpoint in
+  `--work` makes that a non-issue: re-running continues where it stopped, and
+  `--limit` counts rows PUSHED this run, not rows read. Three runs at 6k/12k/11k
+  finished it. Do NOT background it — the ingest skill's own trap list records
+  background processes dying at turn boundaries.
+- **Validate the enumeration against sets the query did not choose.** A query
+  cannot detect its own gaps. Use two independent positive sets and report raw
+  AND scope-adjusted recall separately; if a validation set is partly off-target
+  (a palaeogeneticist's bibliography also contains modern conservation
+  genomics), the raw denominator will push the query toward the wrong
+  literature. Commit the query string — a corpus nobody can reproduce cannot be
+  extended or audited.
+
+The precision leaks worth knowing before designing one of these, all measured:
+`extinction[tiab]` is mostly **fear-extinction** neuroscience (+45,473),
+`graves` is **Graves' disease** (+31,000), `moa` is **mechanism of action**,
+`fossil` is **fossil fuel**, `quagga` is **quagga mussel**, `mumm*` is **aphid
+mummies**, and `"a-DNA"[tiab]` tokenizes to the phrase "a DNA" (+49,664).
+`Fossils`/`Paleontology`[MeSH] are near-zero precision under a permissive
+molecular gate, and `Hominidae`[MeSH] subsumes *Homo sapiens* — 23.7M records.
 
 ---
 
