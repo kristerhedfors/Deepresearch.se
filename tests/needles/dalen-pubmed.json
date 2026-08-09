@@ -1,0 +1,60 @@
+{
+  "note": "Hand-written paired EN/SV needles over 11 PMIDs verified present in deepresearch-se-pubmed (get_by_ids, 2026-08-08). Queries paraphrase the CONTRIBUTION, avoid the title's distinctive noun phrases, and the SV half is idiomatic Swedish with correct diacritics — the discipline scripts/rag-eval.mjs goldset applies, done by hand because this is a palaeogenomics slice, not a random month sample.",
+  "needle": [
+    {
+      "gold": "pmid:41787358",
+      "en": "How is genetic structure distributed across the range of the Norwegian lemming, and is there isolation by distance?",
+      "sv": "Hur ser den genetiska strukturen ut hos fjällämmel över hela utbredningsområdet, och finns isolering genom avstånd?"
+    },
+    {
+      "gold": "pmid:42235515",
+      "en": "Were cave lions a separate lineage from modern lions, and did the two ever interbreed?",
+      "sv": "Var grottlejon en egen utvecklingslinje skild från nutida lejon, och förekom genflöde mellan dem?"
+    },
+    {
+      "gold": "pmid:41530912",
+      "en": "Did woolly rhinoceros show inbreeding or genomic erosion shortly before the species went extinct?",
+      "sv": "Uppvisade ullhårig noshörning inavel eller genomisk utarmning strax innan arten dog ut?"
+    },
+    {
+      "gold": "pmid:42532037",
+      "en": "Can the sex ratio of mammoth remains tell whether large bone accumulations were made by humans?",
+      "sv": "Kan könsfördelningen bland mammutlämningar avslöja om stora benansamlingar skapats av människor?"
+    },
+    {
+      "gold": "pmid:41957296",
+      "en": "What genetic variation decides whether weasels turn white in winter, and how old is that variation?",
+      "sv": "Vilken genetisk variation avgör om vesslor blir vita på vintern, och hur gammal är den variationen?"
+    },
+    {
+      "gold": "pmid:41845022",
+      "en": "What did DNA from a mummified rodent preserved in Yukon permafrost reveal about its species and its age?",
+      "sv": "Vad avslöjade DNA från en mumifierad gnagare bevarad i permafrost i Yukon om art och ålder?"
+    },
+    {
+      "gold": "pmid:41629962",
+      "en": "How did the three cryptic species in the field vole complex diverge, according to ancient and modern genomes?",
+      "sv": "Hur skildes de tre kryptiska arterna i åkersorkkomplexet åt enligt forntida och nutida genom?"
+    },
+    {
+      "gold": "pmid:41973920",
+      "en": "What can DNA from lake sediment say about brown bear recolonisation of Scandinavia after the last ice age?",
+      "sv": "Vad kan DNA ur sjösediment säga om brunbjörnens återkolonisering av Skandinavien efter senaste istiden?"
+    },
+    {
+      "gold": "pmid:42508403",
+      "en": "Where does the extinct dire wolf sit in the canid family tree, and which lineages contributed to its ancestry?",
+      "sv": "Var i hunddjurens släktträd hör den utdöda skräckvargen hemma, och vilka linjer bidrog till dess härkomst?"
+    },
+    {
+      "gold": "pmid:40994021",
+      "en": "Is there evidence of gene flow between woolly and Columbian mammoths in northwestern North America?",
+      "sv": "Finns det belägg för genflöde mellan ullhårig mammut och Columbiamammut i nordvästra Nordamerika?"
+    },
+    {
+      "gold": "pmid:36777713",
+      "en": "How much deleterious variation has accumulated in the tiny surviving population of a flightless New Zealand parrot?",
+      "sv": "Hur mycket skadlig genetisk variation har ansamlats i den lilla kvarvarande populationen av en flygoförmögen nyzeeländsk papegoja?"
+    }
+  ]
+}

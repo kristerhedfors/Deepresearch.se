@@ -12,7 +12,10 @@ description: >-
   under-harvests. Covers finding the last-indexed month without a surviving
   checkpoint, why a delta needs no record of what is already indexed, why there
   is no prune leg, and how to verify against an enumeration that is not the
-  run's own counters. For the measurements and design see docs/ARXIV-RAG.md;
+  run's own counters. ALSO the CATEGORY mode (§6b, `arxiv-oai-sets.mjs`) —
+  "index everything arXiv has on cryptography and security", harvesting a whole
+  leaf category set at a measured 138 rec/s, and the two OAI request shapes
+  that do not answer at all. For the measurements and design see docs/ARXIV-RAG.md;
   for retrieval quality see **rag-hillclimb**; for the corpus-agnostic
   discipline see **bulk-corpus-etl**.
 ---
@@ -37,13 +40,14 @@ This skill is the *procedure*. `docs/ARXIV-RAG.md` is the *evidence*, the
 
 ## 0. Which mode you are in
 
-| | full rebuild | delta |
-|---|---|---|
-| when | the index is empty, the passage/metadata shape changed, or the covered band is being widened | routine catch-up |
-| covers | 2310 → current month (34+ months) | the months since the last ingest |
-| volume | ~772 k papers | ~25–30 k new submissions per month |
-| wall clock | many hours — the harvest alone is rate-limited to 1 connection / 3 s | ~10 min per month of catch-up |
-| embeddings | ~€6 | cents |
+| | full rebuild | delta | named list |
+|---|---|---|---|
+| when | the index is empty, the passage/metadata shape changed, or the covered band is being widened | routine catch-up | "index exactly these papers" — a bibliography, a survey's references, a curated corpus |
+| covers | 2310 → current month (34+ months) | the months since the last ingest | nothing but the ids given, any year back to the 1990s |
+| volume | ~772 k papers | ~25–30 k new submissions per month | whatever the list holds |
+| wall clock | many hours — the harvest alone is rate-limited to 1 connection / 3 s | ~10 min per month of catch-up | ~3 s per ~360 ids |
+| embeddings | ~€6 | cents | cents |
+| moves the §1 marker? | yes | yes | **no — §6a** |
 
 **The band starts at 2310 and that is deliberate, not a leftover.** arXiv's
 LaTeXML HTML rendering — the thing that makes the full-text tier Worker-native
@@ -233,6 +237,112 @@ node scripts/rag-eval.mjs probe    --corpus arxiv
 The control must return nothing above the relevance floor. Expect the current
 month to be incomplete — the mirror lists a paper once its PDF is built, and
 the last days of the month are simply not there yet.
+
+---
+
+## 6a. The named-list mode (`--ids`)
+
+A list of arXiv ids is not a window, and the datestamp harvest cannot serve one
+without sweeping every month the ids fall in. `--ids` fetches exactly the named
+papers through the Atom query API's `id_list` — the sibling of PubMed's
+`--pmids`, and the same reconciliation discipline:
+
+```bash
+node scripts/arxiv-harvest.mjs --ids data/my-ids.txt --out data/arxiv-ids
+node scripts/arxiv-vectorize.mjs --index deepresearch-se-arxiv \
+  --corpus data/arxiv-ids/raw --work data/arxiv-ids/vectorize
+```
+
+Read the reconciliation line before the fill, not after it. Every requested id
+lands in one of four buckets — kept, unusable, rejected by arXiv, never
+returned — and the ids arXiv did not return go to
+`data/arxiv-ids/state/ids-<list>-missing.txt`. `NODE_USE_ENV_PROXY=1` is
+required for both legs behind the agent proxy.
+
+**Do NOT move the §1 delta marker after one of these.** A named list covers no
+month, so the marker would claim coverage nobody harvested — and the next delta
+would start above a month that was never swept. Same for `CORPUS_FACTS.arxiv`:
+the `window` string is about the datestamp harvest. `vectors_at_fill` does move
+if the list was large enough to matter, and that is a judgement call, not a
+rule.
+
+**When a named list comes up short, check the abstract floor before anything
+else.** Measured over four fills on 2026-08-09 — 1,218 AI-consciousness ids and
+28,227 AI-security ids — that was the cause of *every* residual miss, without
+exception: the harvest returned 100% of what it asked for, and the fill dropped
+the rows whose abstract is under 200 characters. Roughly nine in ten of those
+are real one- or two-sentence abstracts (Carlini and Wagner's `1607.04311` is
+146 characters); the rest are administrative stubs whose whole abstract is
+`This paper has been withdrawn by the author(s)`. Re-run the fill with
+`--min-abstract 50` and the checkpoint makes every already-pushed row a no-op.
+Keep the default on a bulk window harvest.
+
+And check the list is still stale before working it: these lists are membership
+snapshots, not error logs, and the usual reason an id is in one is that nobody
+regenerated the file after the fill that resolved it. One `getByIdsBatched` read
+answers it. Vectorize is eventually consistent, so never conclude a fill failed
+from a read taken seconds after the upsert.
+
+The traps this mode has that §5 does not are all in `docs/ARXIV-RAG.md` §3.1,
+and every one of them is silent — an unknown id is HTTP 200 with nothing in it,
+one malformed id 400s the whole ~360-id batch, a missing `max_results`
+truncates the answer to ten, and the `http://` host arXiv's own docs give
+returns a 0-byte body through this environment's proxy. The script handles all
+four; the reason to read them is that the same shapes turn up whenever anyone
+writes another arXiv client.
+
+---
+
+## 6b. The category mode (`arxiv-oai-sets.mjs --sets`)
+
+A third starting point, added 2026-08-09: harvest whole **categories** rather
+than a month band or a list of ids.
+
+```bash
+export NODE_USE_ENV_PROXY=1
+node scripts/arxiv-oai-sets.mjs --list-sets                        # what exists
+node scripts/arxiv-oai-sets.mjs --sets cs:cs:CR,cs:cs:AI --out data/arxiv-sets
+node scripts/arxiv-oai-sets.mjs --sets cs:cs:CR --from 2026-07-25  # a delta
+node scripts/arxiv-vectorize.mjs --index deepresearch-se-arxiv \
+  --corpus data/arxiv-sets/raw --work data/arxiv-sets/vectorize
+```
+
+It writes the same JSONL as the datestamp harvester — it imports `parseRecord`
+and `parsePage` from it — so `arxiv-corpus.mjs` and `arxiv-vectorize.mjs` read
+it unchanged.
+
+**Why this exists.** OAI-PMH was written off here as unreliable, and that
+verdict covered too much ground. What is slow and throttle-prone is the
+datestamp window; a `set=`-scoped sweep is a different query. Measured
+2026-08-09: full `cs.CR`, all years, 41 pages, **50,798 records in 369 s at 138
+rec/s with zero 503s and no sleep between requests**, abstracts on every record.
+Cross-checked against an independent snapshot of the same category (50,560) to
+within 0.47%. At the compliant `--pause 3000` default that is ~490 s; the six
+AI-relevant leaves are ~2.5 h.
+
+**Two shapes do not answer, and the script refuses both by name** — `set=cs`
+(whole archive) returned nothing in 120 s, twice, and `from=<date>` with no set
+returned nothing in 100 s. Only leaf sets work, where a leaf is what nothing
+else extends: `cs:cs:CR` has three parts, `physics:gr-qc` has two. `--list-sets`
+prints all 174 sets and marks the 155 leaves.
+
+**Which mode to pick.** A category — "index everything arXiv has on
+cryptography and security" — is this one. The band the hosted index covers is
+still §2's month window: harvesting all of arXiv this way would mean 174 sets
+and every cross-listed paper several times. A named bibliography is §6a.
+
+**It does not move the §1 delta marker** either, for §6a's reason: a set harvest
+covers categories, not submission months. Its `manifest.json` is stamped
+`channel: "oai-sets"` and carries no month window, so nothing downstream can
+mistake it for a band.
+
+**The parquet snapshot was considered and rejected.** A community Hugging Face
+mirror of arXiv metadata scans the whole corpus in ~5 minutes, faster than any
+of this, and was measured complete to its cut date. Taking it would mean a new
+dev dependency (**duckdb**, which `docs/DEPENDENCIES.md` §5/§8 requires arguing
+one at a time) and a bot account's snapshot with no guaranteed refresh. Do not
+re-open it without new evidence on those two points; the seven-channel
+comparison is `data/aisec/enumeration-options.md`.
 
 ---
 

@@ -65,6 +65,29 @@ function trackedFiles() {
   return out.split("\0").filter(Boolean);
 }
 
+/**
+ * Files that WOULD be in the snapshot if they were tracked.
+ *
+ * The snapshot enumerates `git ls-files`, so a file that has merely been
+ * created is invisible to it. Write a doc, regenerate, `git add -A`, commit —
+ * and the artifact is one file short of the tree it claims to describe, which
+ * only surfaces later as a STALE failure in CI. That sequence is easy to walk
+ * into (it cost two CI cycles in one session), and the failure names the
+ * artifact rather than the missed file, so the warning points at the cause.
+ *
+ * Untracked is not an error: a scratch file in the tree is ordinary. This only
+ * warns, and only about paths the snapshot would otherwise have taken.
+ */
+function untrackedCandidates() {
+  const out = execFileSync("git", ["ls-files", "-z", "--others", "--exclude-standard"], { cwd: ROOT, encoding: "utf8" });
+  return out
+    .split("\0")
+    .filter(Boolean)
+    .filter((p) => TEXT_EXT.test(p))
+    .filter((p) => !EXCLUDE.some((re) => re.test(p)))
+    .sort();
+}
+
 export function buildSnapshotJson() {
   const paths = trackedFiles()
     .filter((p) => TEXT_EXT.test(p))
@@ -104,6 +127,16 @@ function main() {
         `STALE: ${OUT} does not match the working tree.\n` +
           "Re-run `npm run bundle` (node scripts/bundle-source.mjs) and commit the result.",
       );
+      // The likeliest cause, named rather than left to be rediscovered: the
+      // snapshot took a file that was untracked when it last ran.
+      const missed = untrackedCandidates();
+      if (missed.length) {
+        console.error(
+          `\nNote: ${missed.length} untracked file(s) would belong in the snapshot. ` +
+            "The snapshot enumerates `git ls-files`, so `git add` them BEFORE regenerating:\n" +
+            missed.map((p) => `  ${p}`).join("\n"),
+        );
+      }
       process.exit(1);
     }
     console.log(`${OUT} is up to date.`);

@@ -684,10 +684,21 @@ test("the arXiv window's upper bound matches the recorded fill", () => {
   const [, from, to] = bound;
   assert.equal(from, "2310", "the corpus start is a fixed historical fact");
   assert.ok(Number(to) > Number(from), "the window's upper bound must be after its start");
-  // Not a magic number: it is the figure docs/ARXIV-RAG.md records for the
-  // fill that produced this window, and the pair moves together or not at all.
-  assert.equal(vectors_at_fill, 784744, "update BOTH the window and the fill after an ingest");
-  assert.equal(to, "2608", "the 2026-08-05 delta carried the window to 2608");
+  // Not a magic number: it is the figure `node scripts/arxiv-window.mjs`
+  // measured off the live index, and the pair moves together or not at all.
+  assert.equal(vectors_at_fill, 823097, "update BOTH the window and the fill after an ingest");
+  // 2607, NOT the 2608 delta marker in docs/ARXIV-RAG.md §1 — and the gap is
+  // the point rather than an oversight. The marker records how far the last
+  // sweep REACHED; this window records how far the index is actually DENSE.
+  // 2608 was cut mid-month and holds 4,168 papers against a ~25,000 norm, so
+  // advertising it as covered would promise a month that is 16% there.
+  assert.equal(to, "2607", "the window ends at the last FULLY swept month, not at the delta marker");
+  // The band is not the whole index any more. Named-list fills reach back
+  // thirty years, and a window sentence that mentions only the band is the
+  // exact drift this pair of numbers exists to catch — so require the
+  // out-of-band material to be stated too.
+  assert.match(win, /OUTSIDE that band/, "the window must state the out-of-band material, not only the band");
+  assert.match(win, /NOT proof/, "a pre-band miss must not be presented as proof of absence");
 });
 
 // ---------------------------------------------------------------------------

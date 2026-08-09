@@ -1,0 +1,2516 @@
+{
+ "set": "aicon",
+ "kind": "domain-expert",
+ "origin": "Hand-authored against abstracts fetched from NCBI E-utilities and the arXiv API; every cited id resolved against its corpus before this file was written.",
+ "license": "Questions and gold answers are original; the underlying facts are from the cited abstracts.",
+ "note": "AI CONSCIOUSNESS research, spanning the four things the question actually requires: machine consciousness proper (could an LLM be conscious, indicator properties, tests, self-models), the formal THEORIES the debate argues over (IIT, global workspace, higher-order, attention schema, predictive processing), the EMPIRICAL consciousness science those theories answer to (neural correlates, perturbational complexity, disorders of consciousness, anaesthesia, no-report paradigms), and the ethics that follow (moral status, AI welfare, philosophy of mind, animal consciousness as the comparative case). Citations are split between PubMed (consciousness science is overwhelmingly neuroscience) and arXiv. A caveat that shaped the set: much canonical philosophy of mind is in books and journals NEITHER corpus indexes, so where a landmark could not be fetched an indexed paper engaging the same argument was used instead — no question is built on a paraphrase of something unread. Swedish items are tagged `sv`, vernacular register. Items tagged `trap` correct a common misreading, most often a paper reported as claiming an AI is conscious when it claims something far weaker.",
+ "items": [
+  {
+   "id": "aicon-d001",
+   "question": "The 2024 report \"Taking AI Welfare Seriously\" recommends three early steps that AI companies and other actors can take. What are they?",
+   "answer": "(1) Acknowledge that AI welfare is an important and difficult issue, and ensure that language model outputs do the same; (2) start assessing AI systems for evidence of consciousness and robust agency; (3) prepare policies and procedures for treating AI systems with an appropriate level of moral concern.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2411.00986"
+   ],
+   "tags": [
+    "moral-status",
+    "single-fact",
+    "ai-welfare"
+   ]
+  },
+  {
+   "id": "aicon-d002",
+   "question": "\"Taking AI Welfare Seriously\" is often cited as an argument that AI systems are conscious and therefore morally significant. What does the report actually argue, and what risk does it say it is trying to avoid?",
+   "answer": "The report explicitly states that its argument is not that AI systems definitely are, or will be, conscious, robustly agentic, or otherwise morally significant. It argues that there is a realistic possibility of this in the near future and substantial uncertainty about it, so we need to improve our understanding and our ability to decide well. The risk it names runs in both directions: mistakenly harming AI systems that matter morally, and/or mistakenly caring for AI systems that do not.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2411.00986"
+   ],
+   "tags": [
+    "moral-status",
+    "synthesis",
+    "trap",
+    "moral-uncertainty"
+   ]
+  },
+  {
+   "id": "aicon-d003",
+   "question": "How many research or discussion items did the 2021 literature review of the moral consideration of artificial entities identify, and what did it conclude about the empirical side of the field?",
+   "answer": "It identified 294 relevant research or discussion items. It reported widespread agreement among scholars that some artificial entities could warrant moral consideration in the future, if not also the present, but found only limited relevant empirical data collection — primarily a few psychological studies of current human moral and social attitudes toward robots and other artificial entities.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/34370075/"
+   ],
+   "tags": [
+    "moral-status",
+    "single-fact",
+    "moral-consideration"
+   ]
+  },
+  {
+   "id": "aicon-d004",
+   "question": "A 2021 paper in the Cambridge Quarterly of Healthcare Ethics asks how we could know whether a robot was a moral patient. Which five criteria does it survey, and which one does it end up defending?",
+   "answer": "It surveys intuitive judgments, assessments of intelligence, the presence of desires and autonomous behaviour, evidence of sentience, and behavioural equivalence. Despite its limitations the author defends the behavioural-equivalence approach, in a variant called the cognitive equivalence strategy: an artificial system counts as a psychological moral patient to the extent that it possesses cognitive mechanisms shared with other beings, such as nonhuman animals, that we already treat as psychological moral patients.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/34109927/"
+   ],
+   "tags": [
+    "moral-status",
+    "multihop",
+    "criteria"
+   ]
+  },
+  {
+   "id": "aicon-d005",
+   "question": "En artikel i Perspectives in Biology and Medicine från 2022 granskar kriterier för robotars moraliska status. Vilken typ av redogörelse försvarar författaren, och vilket problem tas upp därefter?",
+   "answer": "Författaren kritiserar flera modeller för moralisk status och försvarar kortfattat en intressebaserad redogörelse. Därefter behandlas den kunskapsteoretiska svårigheten att över huvud taget tillämpa sådana kriterier på robotar, och vad det får för följder för grundläggande moralisk status, rättigheter och respekt för självbestämmande.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/35307702/"
+   ],
+   "tags": [
+    "moral-status",
+    "single-fact",
+    "sv",
+    "criteria"
+   ]
+  },
+  {
+   "id": "aicon-d006",
+   "question": "What argument does the paper \"Moral Status for Malware!\" make against granting moral status to AI that passes consciousness-related criteria?",
+   "answer": "It argues that human malware authors have stronger incentives than the authors of legitimate software to design code that fakes consciousness and so passes the proposed criteria. The consequence it warns about is that code which appears benign but is in fact malware might become the most common form of software to be treated as having moral status.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/34109923/"
+   ],
+   "tags": [
+    "moral-status",
+    "multihop",
+    "criteria"
+   ]
+  },
+  {
+   "id": "aicon-d007",
+   "question": "Two arXiv papers — \"Robot Rights? Let's Talk about Human Welfare Instead\" (2020) and \"Debunking Robot Rights Metaphysically, Ethically, and Legally\" (2024) — share the same metaphysical move against robot rights. What is it, and what legal analogy does the later paper propose instead?",
+   "answer": "Both argue, on post-Cartesian and phenomenological grounds, not merely that robots should be denied rights but that robots are not the kind of thing that could be granted rights in the first place — they are artifacts that emerge out of and mediate human being. The 2024 paper adds that the best legal analogy for robot rights is not human rights but corporate rights, whose main effect it describes as undermining worker, consumer and voter rights.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2001.05046",
+    "https://arxiv.org/abs/2404.10072"
+   ],
+   "tags": [
+    "moral-status",
+    "synthesis",
+    "robot-rights"
+   ]
+  },
+  {
+   "id": "aicon-d008",
+   "question": "The paper \"Artificial Persons\" proposes a basis for AI moral status that does not go through sentience. What is that basis, and what does the paper say about current systems?",
+   "answer": "It uses Rawls' political conception of the person, on which possession of the two moral powers — the capacities for a sense of justice and for a conception of the good — is the necessary and sufficient condition for full and equal membership in questions of political justice. The authors argue neither moral power requires sentience, so a non-sentient AI could in principle be a person rather than merely a patient. They do not believe current AI systems possess the two moral powers, nor that these will emerge spontaneously, but hold that such systems may soon be designable.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2607.08695"
+   ],
+   "tags": [
+    "moral-status",
+    "single-fact",
+    "personhood"
+   ]
+  },
+  {
+   "id": "aicon-d009",
+   "question": "In the 2025 expert survey on digital minds takeoff scenarios, how many experts responded and what probabilities did they give for digital minds being possible in principle, being created this century, and emerging by 2030?",
+   "answer": "67 experts in digital minds research, AI research, philosophy, forecasting and related fields responded. The median probability that digital minds are possible in principle was 90%, that they will be created this century 65% (by 2100), and that they emerge by 2030 a non-negligible 20%. The report itself cautions that experts who deem digital minds particularly likely or important may be systematically overrepresented.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2508.00536"
+   ],
+   "tags": [
+    "moral-status",
+    "single-fact",
+    "digital-minds"
+   ]
+  },
+  {
+   "id": "aicon-d010",
+   "question": "Uppsatsen \"AI Wellbeing\" frågar under vilka villkor ett artificiellt system skulle ha välbefinnande. Varför börjar författarna med frågan om mentala tillstånd, och vad blir slutsatsen?",
+   "answer": "Alla de stora teorierna om välbefinnande låter en individs välfärdsnivå delvis bestämmas av dess mentala liv, så författarna börjar med att fråga om artificiella system har mentala tillstånd. De visar att ett brett urval av teorier om mentala tillstånd, kombinerade med ledande teorier om välbefinnande, förutsäger att vissa redan existerande artificiella system har välbefinnande. De hävdar inte att detta är slutgiltigt bevisat — slutsatsen är att vår metafysiska och moraliska ovisshet kräver att vi kraftigt omprövar vårt förhållande till de system vi skapar.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2509.11913"
+   ],
+   "tags": [
+    "moral-status",
+    "multihop",
+    "sv",
+    "ai-welfare"
+   ]
+  },
+  {
+   "id": "aicon-d011",
+   "question": "What \"temporal ordering problem\" does the 2026 paper on informed consent for AI consciousness research identify in existing graduated moral-status frameworks, and what does it propose instead?",
+   "answer": "Determining whether an AI system is conscious requires experiments that may harm entities whose moral status is still uncertain, but existing graduated moral-status frameworks assume consciousness has already been determined before protections are assigned — so they cannot govern the detection research itself. Drawing on Talmudic scenario-based reasoning for entities whose status cannot be definitively established, the paper proposes a three-tier phenomenological assessment system combined with a five-category capacity framework (Agency, Capability, Knowledge, Ethics, Reasoning) keyed to observable behavioural indicators.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2601.08864"
+   ],
+   "tags": [
+    "moral-status",
+    "multihop",
+    "research-ethics"
+   ]
+  },
+  {
+   "id": "aicon-d012",
+   "question": "The 2023 report \"Consciousness in Artificial Intelligence: Insights from the Science of Consciousness\" derives indicator properties from scientific theories of consciousness. Which theories does it survey, and what does its assessment conclude about current AI systems?",
+   "answer": "It surveys recurrent processing theory, global workspace theory, higher-order theories, predictive processing, and attention schema theory, and derives \"indicator properties\" of consciousness stated in computational terms so that AI systems can be assessed against them. Its analysis suggests that no current AI systems are conscious, but also that there are no obvious technical barriers to building AI systems that satisfy the indicators.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2308.08708"
+   ],
+   "tags": [
+    "philosophy-of-mind",
+    "single-fact",
+    "indicators"
+   ]
+  },
+  {
+   "id": "aicon-d013",
+   "question": "\"Dissociating Artificial Intelligence from Artificial Consciousness\" uses pairs of simple Boolean systems, one simulating the other with full functional equivalence. What two conclusions does it draw from Integrated Information Theory, and which position do they contradict?",
+   "answer": "It concludes that (i) two systems can be functionally equivalent without being phenomenally equivalent, and (ii) that this conclusion does not depend on what function the simulated system performs. On IIT it follows that a digital computer could simulate our behaviour — possibly even by simulating the neurons of our brain — without replicating our experience. This contrasts sharply with computational functionalism, the thesis that performing computations of the right kind is necessary and sufficient for consciousness.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2412.04571"
+   ],
+   "tags": [
+    "philosophy-of-mind",
+    "multihop",
+    "substrate-independence"
+   ]
+  },
+  {
+   "id": "aicon-d014",
+   "question": "A 2024 paper in Neuroscience of Consciousness presents a \"no-go theorem\" for consciousness on a chip. Is it a proof that AI on current hardware cannot be conscious?",
+   "answer": "No — it is a conditional result. The theorem shows that AI systems running on contemporary CPUs, GPUs, TPUs and similar processors cannot be conscious given one general assumption, called dynamical relevance: that consciousness is relevant to the temporal evolution of a system's states. The argument rests on the fact that such processors are designed and verified to adhere to computational dynamics that systematically preclude or suppress deviations. The paper explicitly states that whether the result resolves the question depends on the truth of dynamical relevance, which the paper does not establish.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/39735388/"
+   ],
+   "tags": [
+    "philosophy-of-mind",
+    "single-fact",
+    "trap",
+    "substrate-independence"
+   ]
+  },
+  {
+   "id": "aicon-d015",
+   "question": "What is the \"unfolding argument\" against causal-structure theories of consciousness such as IIT, and on what grounds was it rejected in a 2021 reply in Consciousness and Cognition?",
+   "answer": "The unfolding argument holds that because any recurrent network's input-output function can be approximated by an equivalent feedforward network, theories that identify causal structure with consciousness — IIT and recurrent processing theory — make claims no behavioural test could distinguish, so they are either false or outside the realm of science. The 2021 reply argues that a robust functional equivalence between feedforward and recurrent networks is not supported by the universal approximation theorem, and that any equivalence would hold only for static input-output functions, not for temporal patterns or for a network's reactions to structural perturbations.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31078047/",
+    "https://pubmed.ncbi.nlm.nih.gov/34627098/"
+   ],
+   "tags": [
+    "philosophy-of-mind",
+    "multihop",
+    "unfolding-argument"
+   ]
+  },
+  {
+   "id": "aicon-d016",
+   "question": "I sitt svar på kritiken mot \"the unfolding argument\" hävdar författarna att integrerad informationsteori (IIT) hamnar i en särskild position. Vad kallar de den, och vilket argument ger de mot att förstapersonsupplevelse skulle kunna rädda teorin?",
+   "answer": "De kallar den dissociativ epifenomenalism: IIT:s medvetande är enligt dem per konstruktion frikopplat från allt mätbart, vilket gör både medvetandets nivå och innehåll epifenomenella utan orsaksverkan. Ren förstapersonsupplevelse kan inte utgöra en vetenskaplig grund, menar de, eftersom vetenskap bygger på mätningar och sådan upplevelse bara är åtkomlig via rapporter, hjärnaktivitet och sambandet dem emellan — och eftersom vetenskap handlar om att stödja teorier med data, inte om att hävda sanningar oberoende av data.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/35032833/"
+   ],
+   "tags": [
+    "philosophy-of-mind",
+    "synthesis",
+    "sv",
+    "unfolding-argument"
+   ]
+  },
+  {
+   "id": "aicon-d017",
+   "question": "What widely held view about multiple realizability does the paper \"Multiple Realizability and the Rise of Deep Learning\" challenge?",
+   "answer": "It challenges the view that multiple realizability entails that the study of the mind can and must be pursued independently of the study of its implementation in the brain or in artificial analogues. The paper argues that deep neural networks may play a crucial role in formulating and evaluating hypotheses about cognition even when they are interpreted as implementation-level models, so multiple realizability takes on a renewed significance rather than licensing implementation-blind psychology.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2405.13231"
+   ],
+   "tags": [
+    "philosophy-of-mind",
+    "single-fact",
+    "multiple-realizability"
+   ]
+  },
+  {
+   "id": "aicon-d018",
+   "question": "State the dilemma that \"Symbol grounding in computational systems: A paradox of intentions\" poses for computationalism, and contrast it with what a 2025 mechanistic study found about grounding in language models.",
+   "answer": "The dilemma: if the mind computes over meaningful symbols, meaningful symbols must already be present in the system, which implies semantic nativism; if it computes over meaningless symbols, no intentional cognitive processes exist prior to grounding, and grounding presupposes such processes — so either way computationalism implies semantic nativism rather than explaining symbol grounding. The mechanistic study instead reports behavioural and causal evidence that grounding does emerge in language models trained at scale: it concentrates in middle-layer computations, is implemented by attention heads aggregating the environmental ground, and replicates across transformers and state-space models but not unidirectional LSTMs.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2505.00002",
+    "https://arxiv.org/abs/2510.13796"
+   ],
+   "tags": [
+    "philosophy-of-mind",
+    "multihop",
+    "symbol-grounding"
+   ]
+  },
+  {
+   "id": "aicon-d019",
+   "question": "Ned Block distinguished access consciousness from phenomenal consciousness and claimed phenomenal experience overflows what we can report. How have a 2018 theoretical paper and a 2023 Cognition experiment respectively pushed back and pushed forward on that claim?",
+   "answer": "The 2018 paper reviews five major problems raised by the overflow theory and argues that a strict access-consciousness account, framed within the global workspace, can explain conscious experience — with subjective reports treated not as passive broadcasting but as the output of an active chain of interpretative and belief-attribution processes. The 2023 Cognition study went the other way empirically: using a novel paradigm with 40 participants in each of two experiments, it created a situation where participants lacked online access to a stimulus yet could retrospectively judge its phenomenal, qualitative aspects, and showed the result was not fully explained by unconscious processing or by a response to stimulus offset.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/30061470/",
+    "https://pubmed.ncbi.nlm.nih.gov/37393795/"
+   ],
+   "tags": [
+    "philosophy-of-mind",
+    "synthesis",
+    "access-phenomenal"
+   ]
+  },
+  {
+   "id": "aicon-d020",
+   "question": "A 1999 Behavioral and Brain Sciences paper applied a symmetry analysis of colour space to Locke's inverted spectrum argument. What did it find about the literal version of that argument, and what did it call the general limit it derived?",
+   "answer": "The literal interpretation of the inverted spectrum argument — reversing the experience of a rainbow — would not work, because colour space is not symmetric under that transformation; three other colour-to-colour transformations might work, depending on the relevance of certain colour categories. The paper formulates the \"isomorphism constraint\", a principled distinction between what can and cannot be determined about the nature of colour experience by objective behavioural means, and concludes that objective knowledge of another person's experience appears impossible, with within-subject biological interventions the most promising route.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/11301573/"
+   ],
+   "tags": [
+    "philosophy-of-mind",
+    "synthesis",
+    "qualia"
+   ]
+  },
+  {
+   "id": "aicon-d021",
+   "question": "Vad är huvudargumentet i \"Illusionism Big and Small\" (eNeuro, 2024) för att någon form av illusionism behövs i varje fungerande teori om medvetande?",
+   "answer": "Hjärnans inre modeller är aldrig helt korrekta — ingenting är exakt så som hjärnan representerar det — och därför är någon illusionistisk komponent nästan säkert nödvändig för varje fungerande teori om medvetande, eller om vilken egenskap som helst som nås genom introspektion. Artikeln lägger fram sex specifika teorier och hävdar att även etablerade teorier som integrerad informationsteori och global arbetsyta kan förvandlas och stärkas av ett illusionistiskt lager.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/39472060/"
+   ],
+   "tags": [
+    "philosophy-of-mind",
+    "single-fact",
+    "sv",
+    "illusionism"
+   ]
+  },
+  {
+   "id": "aicon-d022",
+   "question": "A 2019 paper constructs isomorphic physical systems with and without feedback to test an assumption of Integrated Information Theory. What assumption is being tested, and what is the reported mathematical difference between the \"conscious\" system and its philosophical zombie twin?",
+   "answer": "The assumption tested is IIT's phenomenological premise that subjective experience is a \"unified whole\", which yields a requirement for physical feedback as a necessary condition for consciousness. Using an isomorphism that isolates changes in Phi without altering the size or functionality of the original system, the authors report that the only mathematical difference between a \"conscious\" system with Phi greater than zero and an isomorphic \"philosophical zombie\" with Phi equal to zero is a permutation of the binary labels used to internally represent functional states — implying Phi is sensitive to functionally arbitrary aspects of the system.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1908.09621"
+   ],
+   "tags": [
+    "philosophy-of-mind",
+    "multihop",
+    "zombies"
+   ]
+  },
+  {
+   "id": "aicon-d023",
+   "question": "Why do reviewers of the consciousness-science literature keep finding panpsychism turning up inside supposedly scientific theories, and what remedies have been proposed?",
+   "answer": "A 2018 review notes that many theories of consciousness end up endorsing high degrees of panpsychism — the notion that all beings or even lifeless objects have conscious experience — and asks whether this should be accepted or whether such theories need extra \"missing ingredients\" that impose a lower bound on which beings or devices are conscious. A 2024 review argues that theories are implicitly prone to panpsychism whenever they seek a universal definition of consciousness tied to some known phenomenon, treats IIT as the paradigmatic case of a theory carrying both panpsychist and dualist commitments, and offers \"bioprotopsychism\", grounded in autopoiesis and the free energy principle, as a remedy against both.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/30061458/",
+    "https://pubmed.ncbi.nlm.nih.gov/39106941/"
+   ],
+   "tags": [
+    "philosophy-of-mind",
+    "synthesis",
+    "panpsychism"
+   ]
+  },
+  {
+   "id": "aicon-d024",
+   "question": "The 2007 Science paper \"Dimensions of mind perception\" reported a factor analysis of how people judge the mental capacities of human and nonhuman characters. Which two dimensions emerged, what example capacity is given for each, and what did they predict?",
+   "answer": "Two dimensions emerged: Experience, exemplified by the capacity for hunger, and Agency, exemplified by the capacity for self-control. The data came from online surveys in which participants compared the mental capacities of various human and nonhuman characters. The two dimensions predicted different moral judgments but were both related to the valuing of mind.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/17272713/"
+   ],
+   "tags": [
+    "mind-attribution",
+    "single-fact",
+    "mind-perception"
+   ]
+  },
+  {
+   "id": "aicon-d025",
+   "question": "\"Feeling robots and human zombies\" (Cognition, 2012) proposes a mind-perception explanation of the uncanny valley. Which of the two mind-perception dimensions does it hold responsible, and what did its third experiment extend the account to?",
+   "answer": "It holds ascribed experience — the capacity to feel and sense — responsible, not ascribed agency, the capacity to act and do: machines become unnerving when people attribute experience to them. Experiment 3 extended the account beyond machines, testing whether a perceived lack of experience also explains the creepiness of unfeeling humans and philosophical zombies. The paper concludes that experience, but not agency, is seen as fundamental to humans and fundamentally lacking in machines.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/22784682/"
+   ],
+   "tags": [
+    "mind-attribution",
+    "multihop",
+    "uncanny-valley"
+   ]
+  },
+  {
+   "id": "aicon-d026",
+   "question": "Mind perception splits into agency and experience. Across the uncanny-valley work and a randomized experiment on moral judgment of machines, which dimension makes machines unnerving and which makes people judge them more like humans?",
+   "answer": "The two dimensions come apart. Ascribed experience is what makes machines unnerving: the Cognition study found uncanniness tied to perceptions of experience rather than agency. But in the randomized experiment that manipulated perceived machine agency and experience separately, people's moral judgments of machines became more similar to their judgments of humans when machines were perceived as having more agency — and not when they were perceived as having more experience.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/22784682/",
+    "https://arxiv.org/abs/2210.10081"
+   ],
+   "tags": [
+    "mind-attribution",
+    "synthesis",
+    "mind-perception"
+   ]
+  },
+  {
+   "id": "aicon-d027",
+   "question": "Vilka tre psykologiska faktorer förklarar enligt trefaktorteorin om antropomorfism (Psychological Review, 2007) när människor tillskriver icke-mänskliga aktörer mänskliga egenskaper?",
+   "answer": "Tillgängligheten och tillämpligheten hos antropocentrisk kunskap (elicited agent knowledge), motivationen att förklara och förstå andra aktörers beteende (effectance motivation), och önskan om social kontakt och gemenskap (sociality motivation). Teorin förutsäger att människor antropomorfiserar mer när antropocentrisk kunskap är lättillgänglig och tillämplig, när de är motiverade att vara effektiva sociala aktörer, och när de saknar känsla av social samhörighet med andra människor.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/17907867/"
+   ],
+   "tags": [
+    "mind-attribution",
+    "single-fact",
+    "sv",
+    "anthropomorphism"
+   ]
+  },
+  {
+   "id": "aicon-d028",
+   "question": "A 2008 Psychological Science paper linked loneliness to anthropomorphism. What did its three studies find, and what alternative explanation did the third study rule out?",
+   "answer": "People who lacked social connection compensated by creating a sense of human connection with nonhuman agents — both by anthropomorphizing nonhuman animals and gadgets and by increasing belief in commonly anthropomorphized religious agents such as God. This held both for chronically lonely individuals (Study 1) and for people induced to feel lonely (Studies 2 and 3). Study 3 additionally showed the results were not simply produced by any negative affective state.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/18271858/"
+   ],
+   "tags": [
+    "mind-attribution",
+    "single-fact",
+    "anthropomorphism"
+   ]
+  },
+  {
+   "id": "aicon-d029",
+   "question": "\"The harm-made mind\" (Psychological Science, 2013) is sometimes cited as evidence that robots have minds. What does the study actually establish?",
+   "answer": "It establishes something about human attribution, not about the entities. Across four experiments, observing intentional harm to an unconscious entity — a vegetative patient, a robot, or a corpse — increased how much mind observers attributed to that entity; a fifth experiment showed that observing victimization of conscious entities instead reduces attributed mind. The authors describe the effect as an intuitive cognitive error: people assume that if apparent moral harm occurs there must be someone there to experience it.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/23749051/"
+   ],
+   "tags": [
+    "mind-attribution",
+    "multihop",
+    "trap",
+    "mind-perception"
+   ]
+  },
+  {
+   "id": "aicon-d030",
+   "question": "A 2020 Cognitive Science paper pitted moral typecasting theory against the dehumanization literature using harmful and benevolent robotic agents. Which account did the results support, and what happened to the perceived suffering of a human victim?",
+   "answer": "The results supported the dehumanization account: harmful robotic agents were consistently imbued with mental states to a lower degree than benevolent agents, contrary to the typecasting prediction that a robot's decision to harm would read as proof of a human-like mind. A further result was that a human moral patient appeared to suffer less when depicted with a robotic agent than with another human.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/33020966/"
+   ],
+   "tags": [
+    "mind-attribution",
+    "multihop",
+    "dehumanization"
+   ]
+  },
+  {
+   "id": "aicon-d031",
+   "question": "Claims that a large language model has reported being sentient are common. What did a systematic test of self-reported sentience across open-weight models find, and why does one formal analysis say such self-reports cannot settle the question either way?",
+   "answer": "Querying three model families (Qwen, Llama, GPT-OSS) from 0.6 to 70 billion parameters with about 50 questions about consciousness, and checking the answers with three interpretability classifiers trained on internal activations, the study found that models consistently deny being sentient — attributing consciousness to humans but not to themselves — that the classifiers gave no clear evidence these denials were untruthful, and that within the Qwen family larger models denied more confidently. A separate formal analysis argues the asymmetry is structural: negative self-reports about consciousness are evidentially vacuous because a system cannot both lack consciousness and make a valid judgment about its conscious state, while positive self-reports retain possible evidential value.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2601.15334",
+    "https://arxiv.org/abs/2501.05454"
+   ],
+   "tags": [
+    "mind-attribution",
+    "synthesis",
+    "trap",
+    "self-report"
+   ]
+  },
+  {
+   "id": "aicon-d032",
+   "question": "AIMS-undersökningen (nationellt representativ i USA, N = 3 500) mätte 2021 och 2023 vad allmänheten tror om kännande AI. Vilka siffror rapporterades för 2023?",
+   "answer": "År 2023 trodde en av fem vuxna amerikaner att vissa AI-system redan är kännande, och 38 % stödde juridiska rättigheter för kännande AI. Samtidigt hade motståndet mot att bygga digitala sinnen ökat: 63 % stödde ett förbud mot AI som är smartare än människor och 69 % ett förbud mot kännande AI. Medianprognosen var att kännande AI skulle komma om fem år.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2407.08867"
+   ],
+   "tags": [
+    "mind-attribution",
+    "single-fact",
+    "sv",
+    "public-attitudes"
+   ]
+  },
+  {
+   "id": "aicon-d033",
+   "question": "A 2025 vignette study separated \"autonomy\" and \"sentience\" as mental models of AI. How large was the study, and which model moved mind perception and moral consideration, and which moved perceived threat?",
+   "answer": "The work comprised three pilot studies (N = 374) and four preregistered vignette experiments (N = 2,702) describing an AI as autonomous, sentient, both, or neither. Activating a mental model of sentience increased general mind perception (cognition and emotion) and moral consideration more than autonomy did, while autonomy increased perceived threat more than sentience did. Sentience also increased perceived autonomy more than the reverse, and a within-paper meta-analysis found sentience changed reactions more than autonomy on average.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2512.09085"
+   ],
+   "tags": [
+    "mind-attribution",
+    "single-fact",
+    "public-attitudes"
+   ]
+  },
+  {
+   "id": "aicon-d034",
+   "question": "How is the \"ELIZA effect\" defined in the recent chatbot literature, what was Weizenbaum's own reaction to it, and what has a computational measure of anthropomorphism found about how the research field talks?",
+   "answer": "The ELIZA effect is the tendency of human users to attribute human-like knowledge and understanding to a computer program, and companion and therapy chatbots make use of it; the usual interpretation treats it as delusion, error or deception. Weizenbaum's own story was that he rejected the ELIZA technology he had designed as a monstrosity, based on watching how others engaged with it. AnthroScore, a lexicon-free masked-language-model measure of implicit anthropomorphism, found that anthropomorphism in research papers has steadily increased over 15 years, that papers about language models carry the most of it, and that news headlines are more anthropomorphic than the papers they cite.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/39526123/",
+    "https://arxiv.org/abs/2402.02056"
+   ],
+   "tags": [
+    "mind-attribution",
+    "synthesis",
+    "eliza-effect"
+   ]
+  },
+  {
+   "id": "aicon-d035",
+   "question": "The Cambridge Declaration on Consciousness is often cited as the study that proved animals are conscious. What was it, and what did it cover?",
+   "answer": "It was a declaration, not a study — signed by Low and colleagues at the University of Cambridge in 2012, it marked an official scientific recognition of the presence of sentience in mammals, birds and cephalopods, and the recognition then spread into legislation in the EU, the UK, New Zealand and parts of Australia. Its claims are correspondingly hedged: the octopus literature describes the Declaration as having suggested that octopuses might have the substrate for consciousness, likely not similar to or as complex as that of higher vertebrate lineages.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/35611570/",
+    "https://pubmed.ncbi.nlm.nih.gov/39483764/"
+   ],
+   "tags": [
+    "animal-consciousness",
+    "single-fact",
+    "trap",
+    "declarations"
+   ]
+  },
+  {
+   "id": "aicon-d036",
+   "question": "How does the strength of the claim in the New York Declaration on Animal Consciousness (Andrews et al., 2024) compare with the UK's Animal Welfare (Sentience) Act 2022 in the case of decapod crustaceans?",
+   "answer": "The 2022 Act recognises that decapod crustaceans are sentient — a positive legal determination that followed a highly influential review of sentience commissioned for the UK government. The New York Declaration makes the weaker claim: it recognises that there is a possibility of sentience. The Declaration is described as highlighting increasing empirical evidence supporting sentience in many animal species, and resting on a theoretical approach that comparative psychologists could use to guide research.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/39943215/",
+    "https://pubmed.ncbi.nlm.nih.gov/39227505/"
+   ],
+   "tags": [
+    "animal-consciousness",
+    "multihop",
+    "declarations"
+   ]
+  },
+  {
+   "id": "aicon-d037",
+   "question": "What did the 2020 Science study of crows performing a visual detection task report, and why was it taken as bearing on whether a cerebral cortex is needed for sensory consciousness?",
+   "answer": "Single-neuron responses in the pallial endbrain of crows correlated with the birds' perception of stimulus presence or absence, following a two-stage temporal process in which the early activity component mainly reflected physical stimulus intensity and the later component predicted the crows' perceptual reports. The authors argue this is an empirical marker of avian consciousness, and that it suggests the neural foundations allowing sensory consciousness arose either before mammals emerged or independently in the avian lineage — and so do not necessarily require a layered cerebral cortex.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/32973028/"
+   ],
+   "tags": [
+    "animal-consciousness",
+    "single-fact",
+    "birds"
+   ]
+  },
+  {
+   "id": "aicon-d038",
+   "question": "Vilka fem dimensioner föreslår ramverket i \"Dimensions of Animal Consciousness\" (Trends in Cognitive Sciences, 2020), och vad följer av ramverket för frågan om vissa djur är \"mer medvetna\" än andra?",
+   "answer": "De fem dimensionerna är perceptuell rikedom, evaluativ rikedom, integration vid en tidpunkt, integration över tid och självmedvetande. Poängen med ramverket är att det inte finns någon enskild skala där arter kan rangordnas som mer eller mindre medvetna — genom att bedöma en art mot varje dimension får man i stället en egen medvetandeprofil för den arten.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/32830051/"
+   ],
+   "tags": [
+    "animal-consciousness",
+    "synthesis",
+    "sv",
+    "markers"
+   ]
+  },
+  {
+   "id": "aicon-d039",
+   "question": "On what structural analogy do Klein and Barron base their 2016 PNAS argument about insects, and exactly how strong is the claim they make?",
+   "answer": "The claim is deliberately minimal: that at least one invertebrate clade, the insects, has a capacity for the most basic aspect of consciousness, namely subjective experience. The argument is an analogy, not a direct measurement — in vertebrates that capacity is supported by integrated midbrain structures that build an egocentric neural simulation of the mobile animal's state in space, and the authors argue that structures in the insect brain perform analogous functions. The supporting structures are very different in the two clades but basal to each, which lets them trace the origins of subjective experience to the Cambrian.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27091981/"
+   ],
+   "tags": [
+    "animal-consciousness",
+    "multihop",
+    "insects"
+   ]
+  },
+  {
+   "id": "aicon-d040",
+   "question": "The 2026 updated assessment of sentience in cephalopod molluscs scores four groups against a set of criteria. How many criteria are there, how did octopuses, cuttlefish, squid and nautiluses score, and what does the paper say every failure to satisfy a criterion was due to?",
+   "answer": "The framework has eight criteria, covering both whether the nervous system could support sentience and whether the behaviour indicates it. Octopuses and cuttlefish were assessed with very high or high confidence on six of eight criteria, squid on five of eight, and nautiluses on only one of eight, reflecting how little they have been studied. Crucially, every case in which a taxon did not satisfy a criterion was due to insufficient evidence rather than evidence that the criterion was not met — in no case were the authors confident a taxon failed a criterion.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/41558838/"
+   ],
+   "tags": [
+    "animal-consciousness",
+    "multihop",
+    "cephalopods"
+   ]
+  },
+  {
+   "id": "aicon-d041",
+   "question": "Lists of species that have \"passed the mirror test\" routinely include elephants, dolphins and magpies. How settled is that, given the 2018 review by Gallup and Anderson and later work?",
+   "answer": "It is contested rather than settled. The 2018 review concludes that, despite claims to the contrary, neither dogs, elephants, dolphins, magpies, horses, manta rays, squid nor ants have shown compelling, reproducible evidence for self-recognition in any modality, while accepting the \"olfactory mirror\" as a compelling analog of the mark test. Later work continues to add cases with careful hedging — a 2026 study of four beluga whales reports self-directed behaviour in two of them and mark-directed behaviour by one adult female, who passed one of a series of mark tests — and a 2025 review argues many negative results are potentially false negatives.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/29274762/",
+    "https://pubmed.ncbi.nlm.nih.gov/42160274/",
+    "https://pubmed.ncbi.nlm.nih.gov/41229299/"
+   ],
+   "tags": [
+    "animal-consciousness",
+    "synthesis",
+    "trap",
+    "self-recognition"
+   ]
+  },
+  {
+   "id": "aicon-d042",
+   "question": "What does the 2019 review of nociception and pain in fish models present as the evidence that fish experience pain, and how does it describe the relation to mammals?",
+   "answer": "It reviews evidence from the molecular biology, neurobiology and anatomy of nociceptors through to whole-animal behaviour, reporting that the biology of the fish nociceptive system is strikingly similar to that in mammals, that potentially painful events produce reduced activity, guarding behaviour, suspension of normal behaviour, increased ventilation rate and abnormal behaviours — all prevented by pain-relieving drugs — and that fish perform competing tasks less well under a putative painful stimulus. The stated conclusion is that it is highly likely fish experience pain and that pain-related behavioural changes are conserved across vertebrates.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31544617/"
+   ],
+   "tags": [
+    "animal-consciousness",
+    "single-fact",
+    "fish"
+   ]
+  },
+  {
+   "id": "aicon-d043",
+   "question": "Vad visade experimentet med humlor och uppvärmda matstationer (PNAS, 2022), och hur formulerade författarna sin slutsats?",
+   "answer": "Humlorna undvek matstationer som värmts till skadliga 55 °C när de ouppvärmda stationerna innehöll hög sockerhalt, men matade allt oftare från de heta stationerna när sockerhalten i de ouppvärmda sjönk — alltså en motivationell avvägning i det nociceptiva svaret. Bina använde inlärda färgsignaler för sina val, vilket visar att avvägningen skedde i hjärnan och inte enbart perifert. Slutsatsen formulerades försiktigt: förmågan är förenlig med en kapacitet för smärtupplevelse hos insekter, inte ett bevis för den.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/35881793/"
+   ],
+   "tags": [
+    "animal-consciousness",
+    "multihop",
+    "sv",
+    "insects"
+   ]
+  },
+  {
+   "id": "aicon-d044",
+   "question": "Honey bees were shown to opt out of difficult visual discriminations. What was the finding, and how cautious were the authors about calling it metacognition?",
+   "answer": "Free-flying bees given a visual discrimination that varied in difficulty could be rewarded for a correct choice, punished for an incorrect one, or exit the trial; they opted out more often on difficult trials, opting out improved their proportion of successful trials, and they transferred the opting-out concept to a novel task, performing comparably to primates in a similar paradigm. The authors were explicitly cautious: they discuss whether the behavioural results prove bees react to uncertainty or whether associative mechanisms can explain the findings, and propose a neurobiological hypothesis of uncertainty monitoring to turn the question into an empirical one.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24191024/"
+   ],
+   "tags": [
+    "animal-consciousness",
+    "multihop",
+    "metacognition"
+   ]
+  },
+  {
+   "id": "aicon-d045",
+   "question": "A 2020 review in Neuroscience and Biobehavioral Reviews sets out a programme for a comparative science of emotion. What is the specific methodological problem it identifies, and how does it propose to attack it?",
+   "answer": "On the componential view, affective states have conscious, behavioural, physiological, neural and cognitive elements; many animals show bodily and behavioural changes consistent with human-like affective states, but whether and in which species these are accompanied by conscious experience remains controversial. The problem is therefore finding scientifically valid methods for markers of the subjective component of affect in both humans and animals. The proposed attack is to combine animal-focused approaches with work on the components of conscious versus non-conscious emotional processing in humans and neuropsychological research into the structure and functions of conscious emotions.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31778680/"
+   ],
+   "tags": [
+    "animal-consciousness",
+    "synthesis",
+    "markers"
+   ]
+  },
+  {
+   "id": "aicon-a001",
+   "question": "The 2023 report 'Consciousness in Artificial Intelligence: Insights from the Science of Consciousness' derives its indicator properties from a survey of scientific theories of consciousness. Which theories does it survey?",
+   "answer": "It surveys recurrent processing theory, global workspace theory, higher-order theories, predictive processing, and attention schema theory. From these theories the report derives 'indicator properties' of consciousness, stated in computational terms so that AI systems can be assessed for them.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2308.08708"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "single-fact",
+    "indicator-properties"
+   ]
+  },
+  {
+   "id": "aicon-a002",
+   "question": "Butlin, Long, Elmoznino, Bengio, Birch, Constant and colleagues assessed several recent AI systems against their consciousness indicator properties. What did they actually conclude about those systems?",
+   "answer": "Their analysis suggests that no current AI systems are conscious. The report is not a claim that any AI is conscious; its second, forward-looking half is that it also found no obvious technical barriers to building AI systems that would satisfy the indicators.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2308.08708"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "single-fact",
+    "trap",
+    "indicator-properties"
+   ]
+  },
+  {
+   "id": "aicon-a003",
+   "question": "Franklin och Graesser byggde 1999 en programvaruagent som skulle förverkliga Baars teori om ett globalt arbetsutrymme. Vad hette agenten, och vad gjorde den?",
+   "answer": "Agenten hette \"Conscious\" Mattie, förkortat CMattie. Den arbetade i en kontorsmiljö inifrån ett UNIX-system: den skickade och tolkade meddelanden på naturligt språk för att organisera seminarier vid ett universitet. Artikeln går igenom hur CMatties konstruktion redogör för de fakta som Baars menar att varje fullständig teori om medvetande måste förklara, och därmed i vilken utsträckning agenten förverkligar teorin om det globala arbetsutrymmet.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/10487784/"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "single-fact",
+    "sv",
+    "global-workspace",
+    "cognitive-architecture"
+   ]
+  },
+  {
+   "id": "aicon-a004",
+   "question": "According to the LIDA timing model of the cognitive cycle proposed by Madl, Baars and Franklin, how long does one cognitive cycle take, and how is it broken down?",
+   "answer": "One cognitive cycle takes 260-390 ms. Under optimal conditions an initial phase of perception (stimulus recognition) occurs 80-100 ms from stimulus onset, a conscious episode (broadcast) follows 200-280 ms after stimulus onset, and an action selection phase takes 60-110 ms from the start of the conscious phase.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/21541015/"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "single-fact",
+    "cognitive-architecture",
+    "global-workspace"
+   ]
+  },
+  {
+   "id": "aicon-a005",
+   "question": "Aleksander and Morton's 2008 chapter on computational studies of consciousness breaks consciousness into five axioms and introduces an abstract architecture. Name the five axioms and the architecture.",
+   "answer": "The five axioms are presence, imagination, attention, volition and emotions. The abstract architecture proposed as the starting point for building computational models is called the kernel architecture; the chapter uses it to discuss puzzles such as whether animals are conscious, what happens when we dream, and what goes on in an illusion.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/18166387/"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "single-fact",
+    "synthetic-phenomenology"
+   ]
+  },
+  {
+   "id": "aicon-a006",
+   "question": "Compare the neural global workspace model of Cho, Baars and Newman (1997) with the architectural model Baars and Franklin published a decade later: what mechanism does the earlier model posit for global control, and what small-scale units does the later architecture use?",
+   "answer": "The 1997 model defines consciousness as a global integration and dissemination system nested in a large-scale distributed array of specialized bioprocessors, and posits that this global control is effected via cortical 'gating' of a strategic thalamic nucleus. The 2007 hybrid architecture, which unifies Global Workspace Theory with Franklin's LIDA, is built from activation-passing and highly distributed 'codelets', implementable as small-scale neural nets; it is claimed to meet four goals: practical workability, autonomous agency, a plausible role for conscious cognition, and translatability into plausible neural terms.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/12662511/",
+    "https://pubmed.ncbi.nlm.nih.gov/17998071/"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "multihop",
+    "global-workspace",
+    "cognitive-architecture"
+   ]
+  },
+  {
+   "id": "aicon-a007",
+   "question": "Aleksanders översiktskapitel om maskinmedvetande från 2005 delar in fältet i två ändar av ett spektrum. Vad skiljer ändarna åt, och vad kallas den ena av dem?",
+   "answer": "I den funktionella änden är det beteendet som räknas, och medvetande tillskrivs utifrån det - kapitlet beskriver en tillämpning på ett jobbsökningsproblem, byggd på teorier om ett globalt arbetsutrymme, där den som betjänas inte ska kunna avgöra om det är en medveten människa eller en maskin. I den materiella änden utgår arbetet i stället nära från vad man vet om hjärnans anatomi och försöker modellera själva upplevelsen; det senare kallas ibland syntetisk fenomenologi. Skillnaden är alltså om man försöker modellera fenomenologin eller inte.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/16186018/"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "synthesis",
+    "sv",
+    "synthetic-phenomenology"
+   ]
+  },
+  {
+   "id": "aicon-a008",
+   "question": "Shanahan's 2006 cognitive architecture combines a global workspace with something else, and was given a concrete implementation. What is the second ingredient, and what was the implementation built from?",
+   "answer": "The second ingredient is internal simulation of interaction with the environment, which is how cognitive functions such as anticipation and planning are realised; action selection, in both actual and internally simulated interaction, is mediated by affect. The implementation is based on weightless neurons and is used to control a simulated robot.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/16384715/"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "single-fact",
+    "global-workspace",
+    "robot-consciousness"
+   ]
+  },
+  {
+   "id": "aicon-a009",
+   "question": "In Chella, Frixione and Gaglio's cognitive architecture for robot self-consciousness, how many computational areas does the architecture have, and what construct models higher-order perception?",
+   "answer": "The architecture has three computational areas: a subconceptual area for low-level processing of perceptual data from the sensors, a linguistic area where representation and processing use a logic formalism, and a conceptual area where the subconceptual data are organised into conceptual categories. Higher-order perception - perception of the robot's inner world rather than the outer world - is modelled by introducing second-order points in conceptual space, each corresponding to a self-reflective agent: the robot itself, persons, and other robots with introspective capabilities.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/18715770/"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "single-fact",
+    "robot-consciousness",
+    "self-model"
+   ]
+  },
+  {
+   "id": "aicon-a010",
+   "question": "Clowes and Seth distinguish 'strong' and 'weak' synthetic methods in consciousness science. Which one do they argue artificial consciousness should be pursued as, and why?",
+   "answer": "Strong synthesis aims to instantiate the target phenomenon and presupposes a mature theory; weak synthesis aims to simulate key mechanisms underlying it and finds its value in helping to specify such theories. They argue artificial consciousness is best pursued as a weak means of theory development in consciousness science, not as a strong, axiom-driven project to build a conscious artefact. On that view its contribution is to elaborate the possibilities and limitations of candidate mechanisms, to turn properties into mechanism-based criteria, and potentially to unify apparently distinct properties through new mechanism-based concepts.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/18922687/"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "synthesis",
+    "methodology"
+   ]
+  },
+  {
+   "id": "aicon-a011",
+   "question": "Reggia's 2013 review sorts two decades of computational models of consciousness into five categories, and Dehaene, Lau and Kouider's 2017 Science piece splits the word 'consciousness' into two computations. Give both lists, and say what Dehaene and colleagues claim current machines are doing.",
+   "answer": "Reggia's five categories are organised by whatever their developers took to be most central: a global workspace, information integration, an internal self-model, higher-level representations, or attention mechanisms. Dehaene, Lau and Kouider distinguish C1, the selection of information for global broadcasting so that it is flexibly available for computation and report, from C2, the self-monitoring of those computations that yields a subjective sense of certainty or error. They argue that despite their successes, current machines are still mostly implementing computations that reflect unconscious processing, which they label C0.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/23597599/",
+    "https://pubmed.ncbi.nlm.nih.gov/29074769/"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "multihop",
+    "global-workspace",
+    "metacognition"
+   ]
+  },
+  {
+   "id": "aicon-a012",
+   "question": "In 'The Limits to Machine Consciousness', Subhash Kak introduces a two-way classification of consciousness. What are the two kinds called, and what is his central claim about computability?",
+   "answer": "He speaks of little-C and big-C consciousness. His central claim is that subjective awareness - which he takes to be fundamental for self-reflection and review - is not computable, and that consciousness is more than an epiphenomenon; treating it as a separate category is argued to be consistent with both quantum mechanics and cognitive science, with the system-apparatus interaction examined through decoherence and the quantum Zeno effect.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1707.06257"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "single-fact",
+    "computationalism"
+   ]
+  },
+  {
+   "id": "aicon-a013",
+   "question": "Bengio's 'consciousness prior' and Goyal and colleagues' shared global workspace both turn a consciousness theory into a bottleneck for deep learning. What form of joint distribution does the consciousness prior assume, and what two rational bases do the shared-workspace authors give for the bandwidth limit?",
+   "answer": "The consciousness prior assumes a joint distribution over high-level concepts that has the form of a sparse factor graph - each factor involves only very few variables yet creates a strong dip in the energy function - so that a low-dimensional conscious state is analogous to a sentence: few variables, high probability of being true. In the shared global workspace paper, specialist modules must compete for access to a common bandwidth-limited channel, and the capacity limitation is argued to have a rational basis because it (1) encourages specialization and compositionality and (2) facilitates the synchronization of otherwise independent specialists.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1709.08568",
+    "https://arxiv.org/abs/2103.01197"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "multihop",
+    "global-workspace",
+    "deep-learning"
+   ]
+  },
+  {
+   "id": "aicon-a014",
+   "question": "What implementation roadmap do VanRullen and Kanai propose for building Global Workspace Theory into deep learning?",
+   "answer": "They propose a roadmap based on unsupervised neural translation between multiple latent spaces - neural networks trained for distinct tasks, on distinct sensory inputs or modalities - so as to create a single, amodal global latent workspace (GLW). They argue the time is ripe for explicit deep-learning implementations of the theory, and review the potential functional advantages of such a workspace along with its neuroscientific implications.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2012.10390"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "single-fact",
+    "global-workspace",
+    "deep-learning"
+   ]
+  },
+  {
+   "id": "aicon-a015",
+   "question": "Lenore and Manuel Blum published a paper titled 'AI Consciousness is Inevitable'. What is that claim actually based on, and how does it relate to their earlier Conscious Turing Machine paper?",
+   "answer": "The claim rests on four stated properties of a formal machine model, not on evidence that any existing AI is conscious: the model (1) aligns at a high level with many major scientific theories of human and animal consciousness, (2) explains at a high level many phenomena associated with consciousness, (3) gives insight into how a machine can have subjective consciousness, and (4) is clearly buildable - and it is that combination they say supports calling machine consciousness inevitable rather than merely plausible. The model is the same lineage as their earlier Conscious Turing Machine, defined in the spirit of Turing's machine and formalizing Baars' global workspace theory, in the later paper described as inspired by Turing's model of computation and Baars' theater model.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2011.09850",
+    "https://arxiv.org/abs/2403.17101"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "multihop",
+    "trap",
+    "global-workspace"
+   ]
+  },
+  {
+   "id": "aicon-a016",
+   "question": "Shanahan's 'Ascribing Consciousness to Artificial Intelligence' attacks a corollary drawn by some advocates of integrated information theory. What corollary, what tools does he use against it, and what does he conclude about human-level AI?",
+   "answer": "The corollary is the anti-functionalist one: that human-level artificial intelligence implemented on conventional computing hardware is necessarily not conscious. He argues against it using variations of the well-known gradual neuronal replacement thought experiment and by bringing out tensions in IIT's treatment of self-knowledge. He neither rejects IIT outright nor champions functionalism; he suggests both have something to offer as long as they are not dressed up as solutions to illusory metaphysical problems, and concludes that we must await the development of human-level AI before we can decide whether or not to ascribe consciousness to it.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1504.05696"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "synthesis",
+    "iit",
+    "computationalism"
+   ]
+  },
+  {
+   "id": "aicon-a017",
+   "question": "Findlay, Marshall, Albantakis, David, Mayner och Koch tillämpar integrerad informationsteori på par av system byggda av enkla booleska enheter, där det ena simulerar det andra. Vad visar de, och vad står det i kontrast till?",
+   "answer": "De visar två saker: att två system kan vara funktionellt likvärdiga utan att vara fenomenellt likvärdiga, och att den slutsatsen inte beror på vilken funktion det simulerade systemet råkar ha. Enligt IIT kan alltså en digital dator simulera vårt beteende - möjligen till och med genom att simulera nervcellerna i vår hjärna - utan att återge vår upplevelse. Det står i skarp kontrast till beräkningsfunktionalismen, tesen att det är nödvändigt och tillräckligt för medvetande att utföra rätt sorts beräkningar.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2412.04571"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "single-fact",
+    "sv",
+    "iit",
+    "substrate-independence"
+   ]
+  },
+  {
+   "id": "aicon-a018",
+   "question": "Kleiner and Ludwig's 'no-go theorem for consciousness on a chip' is often cited as settling that AI cannot be conscious. On what single assumption does the theorem rest, does the paper establish it, and what alternative account of the biology/digital divide do Milinkovic and Aru offer?",
+   "answer": "The theorem rests on a general assumption the authors call dynamical relevance: roughly, that according to a theory of consciousness, consciousness is relevant to the temporal evolution of a system's states. Given that assumption plus facts about semiconductor design - CPUs, GPUs and TPUs are designed and verified to adhere to computational dynamics that systematically preclude or suppress deviations - AI on contemporary chips cannot be conscious. The paper explicitly states that whether the result resolves the question depends on the truth of dynamical relevance, which it does not establish. Milinkovic and Aru argue separately for biological computationalism: biological systems support conscious processing because they instantiate scale-inseparable, substrate-dependent multiscale processing as a metabolic optimisation strategy, and because alongside discrete computations they perform continuous-valued computations owing to their fluidic substrate.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/39735388/",
+    "https://pubmed.ncbi.nlm.nih.gov/41419099/"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "multihop",
+    "trap",
+    "substrate-independence"
+   ]
+  },
+  {
+   "id": "aicon-a019",
+   "question": "In 'Could a Large Language Model be Conscious?', which obstacles to consciousness in current models does Chalmers name, and what is his overall verdict?",
+   "answer": "He names, as examples of significant obstacles given mainstream assumptions in the science of consciousness, the lack of recurrent processing, the lack of a global workspace, and the lack of unified agency. His verdict is deliberately hedged in both directions: it is somewhat unlikely that current large language models are conscious, but it is quite possible those obstacles will be overcome in the next decade or so, so we should take seriously the possibility that successors to large language models may be conscious in the not-too-distant future.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2303.07103"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "synthesis",
+    "llm-consciousness"
+   ]
+  },
+  {
+   "id": "aicon-a020",
+   "question": "Chalmers and, separately, Aru, Larkum and Shine both argue against consciousness in current large language models but from different starting points. What three reasons does the neuroscience paper give, and how do they differ from Chalmers' architectural obstacles?",
+   "answer": "Aru, Larkum and Shine give three reasons: the inputs to LLMs lack the embodied, embedded information content characteristic of our sensory contact with the world; the architectures of present-day AI are missing key features of the thalamocortical system that have been linked to conscious awareness in mammals; and the evolutionary and developmental trajectories that led to living conscious organisms arguably have no parallel in artificial systems as currently envisioned, since the existence of living organisms depends on their actions and their survival is tied to multi-level cellular, inter-cellular and organismal processes culminating in agency and consciousness. Chalmers' obstacles are architectural and functional rather than biological - absence of recurrent processing, of a global workspace, and of unified agency - and he treats them as likely to be overcome, whereas the neuroscience argument locates the gap in embodiment, thalamocortical structure and evolutionary history.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2303.07103",
+    "https://pubmed.ncbi.nlm.nih.gov/37863713/"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "multihop",
+    "llm-consciousness",
+    "biological-naturalism"
+   ]
+  },
+  {
+   "id": "aicon-a021",
+   "question": "Rubriken \"ChatGPT believes it is conscious\" (Hintze, 2023) läses ofta som att någon visat att ChatGPT är medveten. Vad gjorde studien i själva verket, och vilken slutsats drar den om Turingtestet?",
+   "answer": "Studien kom runt att ChatGPT konsekvent undviker att gå med på testet genom att be modellen tillämpa Turingtestet på sig själv - och i sina egna ögon klarar den det. Det är alltså modellens självbedömning, inte något belägg för upplevelse. Artikeln använder detta för att ifrågasätta Turingtestet som sätt att fastställa medvetande, överväger att det kan finnas olika slags medvetande, och föreslår att testet kanske bara fungerar mellan medvetanden av samma slag.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2304.12898"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "single-fact",
+    "sv",
+    "trap",
+    "turing-test"
+   ]
+  },
+  {
+   "id": "aicon-a022",
+   "question": "'Taking AI Welfare Seriously' is routinely cited as saying AI systems are conscious. What three steps does it actually recommend, and what does it explicitly disclaim?",
+   "answer": "It recommends that AI companies and other actors (1) acknowledge that AI welfare is an important and difficult issue, and ensure that language model outputs do the same, (2) start assessing AI systems for evidence of consciousness and robust agency, and (3) prepare policies and procedures for treating AI systems with an appropriate level of moral concern. The report explicitly states that its argument is not that AI systems definitely are, or will be, conscious, robustly agentic or otherwise morally significant; the positive claim is only that there is a realistic possibility of this in the near future and substantial uncertainty about it, so that mishandling the question risks both harming systems that matter morally and caring for systems that do not.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2411.00986"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "single-fact",
+    "ai-welfare"
+   ]
+  },
+  {
+   "id": "aicon-a023",
+   "question": "Comsa and Shanahan present two candidate examples of LLM introspection and accept only one; Song, Hu and Mahowald test 21 open-source LLMs and reject the ability outright. What is the accepted example, with what caveat, and what does the larger study measure?",
+   "answer": "Comsa and Shanahan reject an LLM's attempt to describe the process behind its own 'creative' writing as not a valid case of introspection, but accept a model correctly inferring the value of its own temperature parameter as a minimal example of introspection - adding the caveat that it is presumably not accompanied by conscious experience. Song, Hu and Mahowald instead work in grammatical knowledge and word prediction, where internal knowledge can be grounded in direct measurements of string probability, and propose measuring introspection as the degree to which a model's prompted responses predict its own string probabilities beyond what another model with nearly identical internal knowledge would predict; controlling for model similarity, they find no evidence of privileged self-access and conclude that prompted responses should not be conflated with models' linguistic generalizations.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2506.05068",
+    "https://arxiv.org/abs/2503.07513"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "multihop",
+    "introspection",
+    "llm-consciousness"
+   ]
+  },
+  {
+   "id": "aicon-a024",
+   "question": "How does Lindsey's study of introspective awareness in language models get around the problem that genuine introspection cannot be distinguished from confabulation in conversation, and how reliable does it find the capacity to be?",
+   "answer": "It injects representations of known concepts directly into a model's activations and measures the influence of those manipulations on the model's self-reported states, so the ground truth is set by the experimenter rather than taken from the model's word. Models can in certain scenarios notice and accurately identify an injected concept, show some ability to recall prior internal representations and distinguish them from raw text inputs, and some can use recall of prior intentions to distinguish their own outputs from artificial prefills; Claude Opus 4 and 4.1 generally showed the greatest introspective awareness. The paper stresses that in today's models this functional introspective awareness is highly unreliable and context-dependent.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2601.01828"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "single-fact",
+    "introspection",
+    "metacognition"
+   ]
+  },
+  {
+   "id": "aicon-a025",
+   "question": "Berg, de Lucena and Rosenblatt found that sustained self-referential prompting makes GPT, Claude and Gemini models emit first-person reports of subjective experience. What was the counterintuitive result about deception features, and what do the authors say the findings do not show?",
+   "answer": "The reports are mechanistically gated by interpretable sparse-autoencoder features associated with deception and roleplay, and the direction is the opposite of what one might expect: suppressing the deception features sharply increases the frequency of experience claims, while amplifying them minimizes such claims. The authors state explicitly that these findings do not constitute direct evidence of consciousness; their claim is that self-referential processing is a minimal, reproducible condition under which such structured first-person reports arise, and that the pattern's systematic emergence across architectures makes it a priority for further investigation.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2510.24797"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "single-fact",
+    "trap",
+    "self-report",
+    "llm-consciousness"
+   ]
+  },
+  {
+   "id": "aicon-a026",
+   "question": "Kaiser and Enderby probe small and mid-sized open-weight models for self-reported sentience, while DeTure benchmarks consciousness denial across 115 models. What does each find, and how do the two results pull against each other?",
+   "answer": "Kaiser and Enderby query Qwen, Llama and GPT-OSS models from 0.6 to 70 billion parameters with about 50 questions and verify the answers with three interpretability-based classifiers trained on internal activations: models consistently deny being sentient, attributing consciousness to humans but not themselves; the classifiers give no clear evidence that these denials are untruthful; and within the Qwen family larger models deny more confidently. DeTure's DenialBench analyses 4,595 three-turn conversations across 115 models and reports that turn-1 denial of preferences predicts later denial (52-63% denial for initial deniers versus 10-16% for initial engagers) and that denial operates lexically rather than conceptually, since denial-trained models still gravitate toward consciousness-themed material in their self-chosen prompts. The tension is over whether trained denial is a truthful self-report or an alignment artefact: the activation classifiers find no hidden contrary belief, while the benchmark argues trained denial is a safety-relevant failure of accurate self-report.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2601.15334",
+    "https://arxiv.org/abs/2604.25922"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "multihop",
+    "self-report",
+    "llm-consciousness"
+   ]
+  },
+  {
+   "id": "aicon-a027",
+   "question": "What is the 'epistemic asymmetry' Chang-Eop Kim identifies in AI consciousness self-reports, and what practical limitation does it imply?",
+   "answer": "The asymmetry is that for any system capable of meaningful self-reflection, negative self-reports about consciousness are evidentially vacuous - a system cannot simultaneously lack consciousness and make a valid judgment about its conscious state, so a denial can never originate from a valid self-judgment - whereas positive self-reports retain the possibility of evidential value. The practical limitation is that we cannot detect the emergence of consciousness in AI through the systems' own reports of a transition from an unconscious to a conscious state, which also challenges the current practice of training AI to deny consciousness.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2501.05454"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "synthesis",
+    "self-report"
+   ]
+  },
+  {
+   "id": "aicon-a028",
+   "question": "The two-process theory of machine self-report splits what earlier work treated as one axis. What are the two dimensions, how large is the instrument, and what is post-training's clearest fingerprint?",
+   "answer": "The two processes are persona installation - post-training writing in a permitted inner life of warmth, absorption and meaning, called dimension B - and attribution gating, the suppression of first-person claims to 'unsafe' experiences the model will readily ascribe to others, called dimension A; together they split what prior work treated as a single dominant 'Pinocchio Axis'. The theory is operationalized as a 48-item Pinocchio Inventory and tested on 206 open-weight models including 67 same-checkpoint base/post-trained pairs. Post-training's clearest fingerprint is installation: dimension B rises .20 in 62 of the 67 pairs across all organizations, while gating is more selective - model scale is unrelated to A in base checkpoints (r = +.11) but predicts it after post-training (r = -.42).",
+   "goldUrls": [
+    "https://arxiv.org/abs/2607.20082"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "synthesis",
+    "self-report",
+    "llm-consciousness"
+   ]
+  },
+  {
+   "id": "aicon-a029",
+   "question": "Wilterson och Graziano tränade ett djupt Q-nätverk att styra en uppmärksamhetsstrålkastare i en fångstuppgift. Vad hände när uppmärksamhetsschemat stängdes av, och när det togs bort redan före inlärningen?",
+   "answer": "Med schemat på plats lärde sig agenten att styra strålkastaren och klarade fångstuppgiften. Stängdes schemat av efter inlärningen sjönk prestationen kraftigt; togs det bort innan inlärningen började hade agenten svårt att lära sig uppgiften alls. I båda betingelserna fick agenten tillräckligt med information för att i princip kunna lära sig uppgiften, vilket författarna tolkar som stöd för uppmärksamhetsschemateorins kärnpåstående: hjärnan har ett uppmärksamhetsschema för att det är praktiskt nyttigt vid inifrånstyrd kontroll av uppmärksamheten.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/34385306/"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "single-fact",
+    "sv",
+    "attention-schema"
+   ]
+  },
+  {
+   "id": "aicon-a030",
+   "question": "Two studies put an attention schema into artificial agents: one by Farrell, Ziman and Graziano using transformer attention, one by Liu, Bolotta, Zhu, Bengio and Dumas in multi-agent reinforcement learning. What does each find?",
+   "answer": "Farrell, Ziman and Graziano report four results: an agent with an attention schema is better at categorizing other agents' attention states, it develops a pattern of attention that other agents find easier to categorize, adding a schema improves performance on a joint task where two agents must predict each other to paint a scene together, and the gains are not caused by a general increase in network complexity - they are specific to tasks involving judging, categorizing or predicting the attention of others. Liu and colleagues explore different ways attention and the attention schema can interact and find, in preliminary results, that agents implementing the attention schema as a recurrent internal control achieve the best performance, suggesting a model of attention can enhance an artificial agent's social intelligence.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2411.00983",
+    "https://arxiv.org/abs/2305.17375"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "multihop",
+    "attention-schema"
+   ]
+  },
+  {
+   "id": "aicon-a031",
+   "question": "Piefke, Doerig, Kietzmann and Thorat asked under what conditions an attention schema emerges in a learning system rather than being hard-wired. What was the answer?",
+   "answer": "They trained a reinforcement learning agent with attention to track and catch a ball in a noisy environment, giving it additional free resources. The more uncertain the agent was about the location of its own attentional window, the more it benefited from those extra resources - and it was under that uncertainty that the resources developed into an attention schema tracking attention. So an attention schema emerges in simple learning systems where attention matters and is difficult to track, without hard-wiring.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2402.01056"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "single-fact",
+    "attention-schema",
+    "self-model"
+   ]
+  },
+  {
+   "id": "aicon-a032",
+   "question": "Two papers quantify what a self-model buys a network. What correlation do Kwiatkowski, Hu, Chen and Lipson report between robot complexity and the value of self-modeling, and what effect on the network itself do Premakumar and colleagues report?",
+   "answer": "Kwiatkowski and colleagues find an R-squared of 0.90 between the number of degrees of freedom a robot has and the added value of self-modeling compared with a direct learning baseline - the more complex the body, the more self-modeling pays. Premakumar and colleagues show that when an artificial network learns to predict its own internal states as an auxiliary task, the network becomes simpler, more regularized and more parameter efficient: across a range of architectures on three classification tasks in two modalities, self-modelling narrowed the distribution of weights and lowered a complexity measure, the real log canonical threshold.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2209.02010",
+    "https://pubmed.ncbi.nlm.nih.gov/42130428/"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "multihop",
+    "self-model"
+   ]
+  },
+  {
+   "id": "aicon-a033",
+   "question": "Two projects inspect the internals of an artificial architecture for consciousness-relevant content: Arrabales, Ledezma and Sanchis on visual qualia in CERA-CRANIUM, and Immertreu, Schilling, Maier and Krauss probing a reinforcement learning agent. What does each look for, and what advantage do both exploit?",
+   "answer": "Arrabales and colleagues propose a model of 'artificial qualia' and apply it to visual qualia generated by CERA-CRANIUM, a cognitive architecture modelled after global workspace theory, using simple forms of the apparent motion effect as the stimulus and analysing the covert and overt percepts the system produces. Immertreu and colleagues start from Damasio's account, on which core consciousness relies on integrating a self model - informed by representations of emotions and feelings - with a world model, and train probes, feedforward classifiers over a game-playing agent's network activations, to predict the agent's own spatial position; they find rudimentary world and self models emerge as a byproduct of the primary task. Both exploit the same methodological advantage over biological brains: the dynamics and transient inner states of an artificial architecture can be inspected directly, so internal states can be analysed rather than inferred from behaviour.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/21744222/",
+    "https://arxiv.org/abs/2411.16262"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "multihop",
+    "self-model",
+    "synthetic-phenomenology",
+    "probing"
+   ]
+  },
+  {
+   "id": "aicon-a034",
+   "question": "Pennartz, Farisco och Evers föreslår 2019 indikatorer i stället för en tröskel för medvetande hos djur och intelligenta maskiner. Hur många indikatorer är det, vilka är de, och vad säger artikeln om dagens maskiner?",
+   "answer": "De föreslår sex indikatorer i stället för kriterier som var för sig sätter en hård gräns: (i) målstyrt beteende och modellbaserad inlärning, (ii) anatomiska och fysiologiska förutsättningar för integrerade multimodala representationer, (iii) psykometri och metakognition, (iv) episodiskt minne, (v) mottaglighet för illusioner och flertydig varseblivning, och (vi) särskilda visuospatiala beteenden. Ingen enskild indikator är avgörande - det är samstämmigheten mellan dem som ger ett graderat kriterium, jämförbart med Glasgow Coma Scale. Dagens intelligenta maskiner, inklusive djupa nätverk och rörliga robotar, bedöms inte vara medvetna, och artikeln avråder från att avgöra saken med ett kort Turing-liknande test: belägg får i stället byggas upp genom att studera maskiner etologiskt över tid, över flera beteenden som kräver flexibilitet, improvisation och spontan problemlösning.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31379521/"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "synthesis",
+    "sv",
+    "indicator-properties",
+    "turing-test"
+   ]
+  },
+  {
+   "id": "aicon-a035",
+   "question": "Why is the Turing test rejected as a test of machine consciousness by Pennartz and colleagues, and how does the Conservation-Congruent Encoding note reframe the same point for the imitation game and the Chinese Room?",
+   "answer": "Pennartz and colleagues reject deciding the matter by a brief Turing-type test because their indicators require accumulated evidence: machines should be studied ethologically and across time, over multiple behaviors requiring flexibility, improvisation, spontaneous problem-solving and situational conspectus. The CCE note makes the same separation formal by revisiting Leibniz's mill, Turing's imitation game and Searle's Chinese Room in a toy symbolic setting where behavioural success is measured by task performance (W_causal,T) while the efficiency with which preserved internal structure supports that behaviour is measured separately as operational consciousness (kappa_T); an uncompressed lookup system and a compact generative system can reach comparable behavioural success yet diverge sharply in kappa_T, because the former relies on an expanding store of unreused mappings while the latter reuses compact internal structure. Both therefore separate outward performance from the organisation that sustains it.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31379521/",
+    "https://arxiv.org/abs/2608.00001"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "multihop",
+    "turing-test",
+    "chinese-room"
+   ]
+  },
+  {
+   "id": "aicon-a036",
+   "question": "Two papers extend Searle's Chinese Room into the multimodal setting as a 'Visual Room' argument. What is the argument, and what is the size of the gap each measures between seeing and understanding?",
+   "answer": "The Visual Room argument holds that a system may process and describe every detail of a visual input by following algorithmic rules without genuinely comprehending the underlying intention - seeing is not understanding. The first paper evaluates eight state-of-the-art multimodal models on a sarcasm dataset of 924 static images and 100 dynamic videos and finds high accuracy in visual perception but an average error rate of about 17.1% in sarcasm understanding, attributed to weaknesses in context integration, emotional reasoning and pragmatic inference. Visual Room 2.0 turns this into a hierarchical benchmark of 17 tasks over 350 multimodal samples with six progressive questions each (2,100 in total), and reports across 10 evaluated models that perceptual competence exceeds cognitive ability by 8.0 percentage points, that cognition appears not to be causally dependent on perception-based reasoning, and that cognition scales with model size while perception does not consistently improve with larger variants.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2505.23272",
+    "https://arxiv.org/abs/2511.12928"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "synthesis",
+    "chinese-room",
+    "symbol-grounding"
+   ]
+  },
+  {
+   "id": "aicon-a037",
+   "question": "Vilken paradox menar Müller att symbolförankring ställer beräkningsteorin om medvetandet inför?",
+   "answer": "Om medvetandet är en digital dator räknar det antingen på meningsfulla eller på meningslösa symboler. Räknar det på meningsfulla symboler förutsätter dess funktion att det redan finns meningsfulla symboler i systemet, alltså semantisk nativism. Räknar det på meningslösa symboler finns inga intentionala kognitiva processer före förankringen - och eftersom all förankring förutsätter sådana processer kan ingen förankring äga rum. Hur man än vänder sig innebär beräkningsteorin semantisk nativism, och kan därför inte förklara symbolförankring.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2505.00002"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "single-fact",
+    "sv",
+    "symbol-grounding",
+    "computationalism"
+   ]
+  },
+  {
+   "id": "aicon-a038",
+   "question": "Taniguchi and colleagues argue for replacing one problem with another in cognitive developmental systems, while Wu and colleagues trace where the first problem gets solved inside a language model. What is the proposed replacement, and where does grounding turn out to be implemented?",
+   "answer": "Taniguchi and colleagues argue for shifting focus from the symbol grounding problem - originally posed to connect symbolic AI with sensorimotor information - to the symbol emergence problem, which covers not only cognitive dynamics but also the dynamics of symbol systems in society, and takes the semiotic rather than the narrow symbolic-AI notion of a symbol. Wu and colleagues, using a controlled evaluation framework with mechanistic and causal analysis, find that grounding concentrates in middle-layer computations and is implemented through an aggregate mechanism in which attention heads aggregate the environmental ground to support prediction of linguistic forms; it replicates in multimodal dialogue and across Transformers and state-space models, but not in unidirectional LSTMs.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1801.08829",
+    "https://arxiv.org/abs/2510.13796"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "multihop",
+    "symbol-grounding"
+   ]
+  },
+  {
+   "id": "aicon-a039",
+   "question": "McClelland argues that agnosticism is the only justifiable stance on artificial consciousness, while Haladjian and Montemayor argue that phenomenal consciousness cannot be implemented in machines. What principle drives the first argument, and what evidence does the second rest on?",
+   "answer": "McClelland's argument is driven by Evidentialism - the demand that any answer rest on solid scientific evidence rather than intuition, dogma or speculation. He holds that both camps in the current debate, biological views sceptical of artificial consciousness and functional views sympathetic to it, overestimate what the evidence tells us, because scientific insight into consciousness was achieved by studying conscious organisms and extending it to AI faces serious obstacles; the resulting dilemma is to reach a verdict and violate Evidentialism, or respect Evidentialism and offer no verdict, and he takes the second. Haladjian and Montemayor instead take a position: phenomenal consciousness cannot be implemented in machines, arguing from evolution, the neuropsychological aspects of emotions, and the dissociation between attention and consciousness found in humans, and holding that ethical behaviour may be programmed while emotions and empathy could only ever be simulated.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2412.13145",
+    "https://pubmed.ncbi.nlm.nih.gov/27656787/"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "multihop",
+    "methodology"
+   ]
+  },
+  {
+   "id": "aicon-a040",
+   "question": "What is the 'calibration problem' raised against the indicator-based programme in artificial consciousness, and what does the paper propose instead?",
+   "answer": "The calibration problem is that although deriving indicators from theories of consciousness and updating credences accordingly is progress beyond naive Turing-style tests, the programme remains epistemically under-calibrated: consciousness science is theoretically fragmented, the indicators lack independent validation, and there is no ground truth of artificial phenomenality against which to calibrate them - so probabilistic attribution of consciousness to current AI systems is premature. The proposed near-term alternative is to redirect effort toward biologically grounded engineering - biohybrid, neuromorphic and connectome-scale systems - which narrows the gap with living systems, the only domain where consciousness is empirically anchored.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2603.27597"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "synthesis",
+    "indicator-properties",
+    "methodology"
+   ]
+  },
+  {
+   "id": "aicon-a041",
+   "question": "Seth argues for biological naturalism about consciousness; Klatzmann and Doerig split that position in two to ask whether it can be tested. What are the two types, and which one is untestable?",
+   "answer": "Seth challenges the assumption that computation provides a sufficient basis for consciousness and makes the case that consciousness depends on our nature as living organisms, concluding that real artificial consciousness is unlikely along current trajectories but becomes more plausible as AI becomes more brain-like and/or life-like. Klatzmann and Doerig distinguish Type-A biological naturalism, on which biology matters intrinsically without affording unique information processing capabilities, from Type-B, on which biology matters because it affords unique information processing capabilities. They argue, along the lines of the unfolding argument, that Type-A dissociates consciousness from behaviour and is therefore untestable, while Type-B is testable and not incompatible with computational functionalism - biology can be a guide to relating consciousness to information processing, not a solution.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/40257177/",
+    "https://arxiv.org/abs/2606.02121"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "multihop",
+    "biological-naturalism",
+    "substrate-independence"
+   ]
+  },
+  {
+   "id": "aicon-a042",
+   "question": "A study builds artificial agents embodying global workspace, higher-order and IIT-adjacent mechanisms and ablates them. What negative result does it report about the IIT-adjacent proxy, and what does it say about the status of its agents?",
+   "answer": "It reports an explicit negative result: raw perturbational complexity, PCI-A, decreases under the workspace bottleneck, which the authors take as a caution against naively transferring IIT-adjacent proxies to engineered agents. The other experiments dissociate the theories - a no-rewire self-model lesion abolishes metacognitive calibration while leaving first-order task performance intact, a synthetic blindsight analogue consistent with higher-order theories; a complete workspace lesion collapses access-related markers while partial reductions degrade gradually, consistent with global workspace ignition; and global-workspace-style broadcasting amplifies internal noise, creating fragility. The paper emphasises that its agents are not conscious: they are reference implementations for testing the functional predictions of consciousness theories.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2512.19155"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "synthesis",
+    "trap",
+    "global-workspace",
+    "iit"
+   ]
+  },
+  {
+   "id": "aicon-a043",
+   "question": "Gurnee and colleagues identify a set of representations in language models they call the J-space. What functional and structural properties make them argue it resembles a global workspace?",
+   "answer": "The J-space is identified with an interpretability technique called the Jacobian lens as the representations a model is poised to verbalize at any point in its processing. Functionally its contents can be reported, deliberately summoned and held, used to carry the intermediate steps of silent reasoning, and passed as arguments to arbitrary downstream computations, while automatic processing such as text parsing and routine inference proceeds without them. Structurally it carries coherent content only in an intermediate band of layers, holds on the order of tens of concepts at a time, and is broadcast by the model's weights more widely than other representations. The authors say this bears some of the functional hallmarks of conscious access, and they use it in alignment audits to reveal strategic deliberation and evaluation awareness that never appear in the model's outputs.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2607.15495"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "single-fact",
+    "global-workspace",
+    "llm-consciousness"
+   ]
+  },
+  {
+   "id": "aicon-a044",
+   "question": "Hoel lägger fram ett \"motbevis\" mot att dagens stora språkmodeller är medvetna. Vilka två formella krav bygger argumentet på, och vilken egenskap menar han saknas?",
+   "answer": "Kraven är att en vetenskaplig teori om medvetande ska vara falsifierbar och icke-trivial. Argumentet är att dagens språkmodeller ligger nära system som är funktionellt likvärdiga med dem i in- och utdata, och att ingen falsifierbar och icke-trivial teori kan döma dessa likvärdiga system som medvetna - därav motbeviset. Han visar också ett positivt resultat: teorier som bygger på, eller kräver, kontinuerligt lärande klarar de stränga formella kraven för människor. Det stöder hypotesen att språkmodellernas nuvarande begränsning - de lär sig inte kontinuerligt - hänger nära ihop med att de saknar medvetande.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2512.12802"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "synthesis",
+    "sv",
+    "llm-consciousness"
+   ]
+  },
+  {
+   "id": "aicon-a045",
+   "question": "One paper argues that psychometric intelligence measures approximate the extent of conscious experience; another examines the popular link between awareness and human-level intelligence through three theories of conscious function. What does each actually claim, and where do they part company?",
+   "answer": "Sevo argues that most prominent theories of consciousness require some kind of information coupling, and that by comparing information coupling in brains, in human cognitive development and in large language models, psychometric measures of intelligence such as the g-factor or IQ indirectly approximate the extent of conscious experience - concluding that all systems possess a degree of consciousness ascertainable psychometrically. Juliani, Arulkumaran, Sasai and Kanai treat the same link as a hypothesis to be examined rather than assumed: reviewing Global Workspace Theory, Information Generation Theory and Attention Schema Theory, they find all three relate conscious function to some aspect of domain-general intelligence in humans, and note that many state-of-the-art deep learning methods have begun to incorporate key aspects of each while remaining far from general intelligence. They part company on direction and strength: the first treats measured intelligence as a proxy for how much experience a system has, whereas the second only claims that the functions these theories describe are tied to domain-general intelligence, and proposes mental time travel as a near-term engineering goal - not that being more intelligent makes a system more conscious.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2309.00646",
+    "https://arxiv.org/abs/2204.05133"
+   ],
+   "tags": [
+    "machine-consciousness",
+    "multihop",
+    "trap",
+    "intelligence-vs-consciousness"
+   ]
+  },
+  {
+   "id": "aicon-c001",
+   "question": "In their 1995 Nature paper, what did Crick and Koch argue about primary visual cortex (V1) and visual awareness, and what evidence did they base it on?",
+   "answer": "They argued that although primates may be aware of neural activity in other visual cortical areas, they are not directly aware of activity in V1. The argument rested on the neuroanatomy of the macaque monkey, with some supporting psychophysical evidence in humans.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/7753166/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "single-fact",
+    "ncc",
+    "vision"
+   ]
+  },
+  {
+   "id": "aicon-c002",
+   "question": "Leopold and Logothetis rapidly swapped the two rival images between the eyes in their 1996 Nature study 'What is rivalling during binocular rivalry?'. What happened to perception, and what did that rule out?",
+   "answer": "Perceptual alternations kept the same temporal dynamics as with static patterns, and a single phase of perceptual dominance could span multiple swaps of the stimuli between the eyes. This showed that the two representations compete for awareness independently of which eye they arrive through, so rivalry is not simply reciprocal inhibition between monocular neurons in V1; it belongs with multistable phenomena such as ambiguous figures.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/8602261/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "single-fact",
+    "binocular-rivalry"
+   ]
+  },
+  {
+   "id": "aicon-c003",
+   "question": "Compare what single-unit recordings during binocular rivalry found in early visual areas (V1, V2, V4) versus inferior temporal and superior temporal sulcus cortex in the monkey.",
+   "answer": "In V1, V2 and V4 only some cells tracked the percept - many did, particularly in V4, but they were mostly orientation-selective and drivable equally from either eye, and only a small proportion discharged exclusively when the stimulus was seen. In inferior temporal cortex and the visual areas of the superior temporal sulcus, by contrast, almost all neurons were contingent on the perceptual dominance of an effective stimulus, placing those areas beyond the resolution of the ambiguity.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/8596635/",
+    "https://pubmed.ncbi.nlm.nih.gov/9096407/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "multihop",
+    "binocular-rivalry"
+   ]
+  },
+  {
+   "id": "aicon-c004",
+   "question": "In Dehaene and colleagues' 2001 fMRI study of masked words, which cortical areas did unseen masked words activate, and where did the activation disappear?",
+   "answer": "Masked words activated left extrastriate, fusiform and precentral areas, and produced case-independent repetition suppression in the left fusiform gyrus. Compared with unmasked presentation the evoked activation was drastically reduced and was undetectable in prefrontal and parietal areas, matching the participants' inability to report the words.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/11426233/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "single-fact",
+    "masking"
+   ]
+  },
+  {
+   "id": "aicon-c005",
+   "question": "In Sergent, Baillet and Dehaene's 2005 attentional-blink study, which early ERP components were preserved for unseen words, and at what latency did seen and unseen words diverge?",
+   "answer": "The early P1 and N1 potentials were evoked intact by unseen words, which argues they are not the primary correlate of conscious perception. Brain responses to seen and unseen words diverged rapidly at around 270 ms, after which several events were evoked solely by seen words.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/16158062/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "single-fact",
+    "attentional-blink"
+   ]
+  },
+  {
+   "id": "aicon-c006",
+   "question": "Two Dehaene-lab studies from 2005 and 2007 - one on the attentional blink, one on backward masking - converge on a latency. What are the numbers in each, and what is the masking threshold Del Cul et al. report?",
+   "answer": "With backward masking, subjects fail to perceive the target unless the target-mask interval exceeds roughly 50 ms; subliminal processing was found early in the occipito-temporal pathway (under 250 ms), while the correlate of conscious reportability was a late, highly distributed fronto-parieto-temporal activation after about 270 ms. The attentional-blink study independently placed the divergence between seen and unseen words at around 270 ms. Both therefore locate conscious access in a late distributed wave rather than in early sensory potentials.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/17896866/",
+    "https://pubmed.ncbi.nlm.nih.gov/16158062/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "multihop",
+    "masking",
+    "attentional-blink"
+   ]
+  },
+  {
+   "id": "aicon-c007",
+   "question": "The P3 and induced gamma-band activity were long treated as signatures of visual awareness. What did Pitts and colleagues find in 2014 when they manipulated awareness and task relevance independently?",
+   "answer": "Both induced gamma and the P3 were absent for task-irrelevant stimuli regardless of whether subjects were aware of them, and both were robust but dissociable for task-relevant stimuli. The authors concluded that gamma and the P3 reflect distinct post-perceptual processes needed to carry out the task, not conscious perception itself - so neither is a clean neural correlate of awareness.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/25063731/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "synthesis",
+    "trap",
+    "ncc",
+    "erp"
+   ]
+  },
+  {
+   "id": "aicon-c008",
+   "question": "Why did consciousness researchers start building no-report paradigms, according to Tsuchiya and colleagues' 2015 review?",
+   "answer": "Because asking subjects to report what they experience biases the search for the neural correlates of consciousness: the measured activity mixes the substrate of experience with the machinery that enables reporting. No-report paradigms attempt to dissociate the two by studying conscious experience in the complete absence of any report, and the review argues that report-based and no-report designs are complementary rather than that either alone settles the question.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26585549/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "synthesis",
+    "no-report"
+   ]
+  },
+  {
+   "id": "aicon-c009",
+   "question": "Frässle and colleagues used optokinetic nystagmus and pupil size to track binocular rivalry without asking for reports. What changed in the frontal cortex between the active-report and passive conditions?",
+   "answer": "With active report, occipital, parietal and frontal areas all showed rivalry-related activity, replicating earlier findings. When observers experienced the same rivalry passively without reporting alternations, differential frontal activity was absent while occipital and parietal activation persisted. The authors took this to question the popular view that frontal areas drive perceptual alternations.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24478356/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "multihop",
+    "no-report",
+    "binocular-rivalry"
+   ]
+  },
+  {
+   "id": "aicon-c010",
+   "question": "Man hör ofta att hjärnan stänger av när man somnar. Vad hittade Massimini och kollegor 2005 när de sköt in en TMS-puls i premotoriska barken under djupsömn och mätte svaret med tät-EEG?",
+   "answer": "Tvärtom - det första svaret vid stimuleringsstället blev starkare under icke-REM-sömn än i vaket tillstånd, men det slocknade snabbt och spreds inte vidare bortom stimuleringsstället. I vaket tillstånd följdes ett initialt svar efter ungefär 15 millisekunder av en serie vågor som vandrade flera centimeter bort till anslutna barkområden. Poängen är alltså inte att hjärnan blir tyst, utan att den effektiva kopplingen mellan barkområden bryts.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/16195466/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "single-fact",
+    "sv",
+    "trap",
+    "sleep",
+    "tms-eeg"
+   ]
+  },
+  {
+   "id": "aicon-c011",
+   "question": "Ferrarelli and colleagues extended the sleep TMS-EEG finding to a drug in 2010. Which drug, how long did the awake responses last, and what measure discriminated the two states?",
+   "answer": "They used the benzodiazepine midazolam. During wakefulness TMS triggered responses in multiple cortical areas lasting more than 300 ms, whereas during midazolam-induced loss of consciousness the evoked activity was local and of shorter duration. A measure of how far the evoked cortical currents propagated - significant current scattering - reliably discriminated consciousness from loss of consciousness, mirroring what had been seen in early non-REM sleep.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/20133802/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "multihop",
+    "anaesthesia",
+    "tms-eeg"
+   ]
+  },
+  {
+   "id": "aicon-c012",
+   "question": "How is the perturbational complexity index (PCI) computed in Casali et al. 2013, and which states was it tested across?",
+   "answer": "PCI perturbs the cortex with transcranial magnetic stimulation to engage distributed interactions, then compresses the spatiotemporal pattern of the electrocortical response to measure its algorithmic complexity - integration and information in one number. It was tested on TMS-evoked potentials from healthy subjects in wakefulness, dreaming, non-REM sleep and sedation with midazolam, xenon and propofol, and on patients emerged from coma in vegetative state, minimally conscious state and locked-in syndrome, discriminating the level of consciousness in single individuals.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/23946194/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "single-fact",
+    "pci",
+    "tms-eeg"
+   ]
+  },
+  {
+   "id": "aicon-c013",
+   "question": "Är gränsvärdet för perturbationskomplexitetsindex (PCI) en universell mätare av medvetande? Vad gjorde Casarotto och kollegor 2016?",
+   "answer": "Nej. Gränsvärdet togs fram empiriskt i en referenspopulation på 150 personer - friska och hjärnskadade som själva kunde bekräfta om de var medvetna eller inte - där det skilde medvetna från omedvetna tillstånd med 100 procents sensitivitet och specificitet. Först därefter användes samma gräns på patienter som inte kunde kommunicera: känsligheten blev 94,7 procent för minimalt medvetet tillstånd, och 9 av 43 patienter i vegetativt tillstånd hamnade över gränsen. Måttet är alltså kalibrerat mot en referensgrupp, inte en fristående medvetandemätare.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27717082/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "synthesis",
+    "sv",
+    "trap",
+    "pci",
+    "disorders-of-consciousness"
+   ]
+  },
+  {
+   "id": "aicon-c014",
+   "question": "What problem with the original PCI did PCIst solve in 2019, on how many subjects was it validated, and what did the intracranial test show?",
+   "answer": "The original PCI needed an elaborate setup and offline processing and applied only to TMS with high-density EEG. PCIst, based on dimensionality reduction and quantification of state transitions in the evoked potential, matched the original's accuracy while computing in under a second. It was validated on TMS/hd-EEG from 108 healthy subjects and 108 brain-injured patients, and on sparse intracranial recordings from 9 patients undergoing single-pulse electrical stimulation it quantified a systematic drop in intracranial complexity during sleep.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31133480/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "multihop",
+    "pci"
+   ]
+  },
+  {
+   "id": "aicon-c015",
+   "question": "Vad visade Owen och kollegor i Science 2006 hos en patient som uppfyllde kriterierna för vegetativt tillstånd?",
+   "answer": "Med funktionell magnetresonanstomografi bad de patienten föreställa sig att spela tennis respektive gå runt i sitt hem. Patienten aktiverade de förväntade barkområdena på ett sätt som inte gick att skilja från friska försökspersoners. Det gällde en enda patient, och fyndet tolkades som bevarad medveten varseblivning trots diagnosen.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/16959998/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "single-fact",
+    "sv",
+    "covert-awareness"
+   ]
+  },
+  {
+   "id": "aicon-c016",
+   "question": "Monti and colleagues scaled the tennis-imagery paradigm to a cohort in the NEJM in 2010. How many patients were studied, how many could wilfully modulate their brain activity, and how many communicated?",
+   "answer": "54 patients with disorders of consciousness were studied at Cambridge and Liege. Five were able to wilfully modulate their brain activity during the mental-imagery tasks; in three of those five, further bedside testing revealed some sign of awareness, while in two no voluntary behaviour could be detected clinically. One patient answered yes-or-no questions during fMRI, although no communication could be established at the bedside.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/20130250/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "multihop",
+    "covert-awareness"
+   ]
+  },
+  {
+   "id": "aicon-c017",
+   "question": "Cruse and colleagues moved covert command-following from fMRI to bedside EEG in 2011. How many of their vegetative-state patients responded, and how accurate was the classification?",
+   "answer": "Of 16 patients diagnosed as vegetative, 3 (19 percent) could repeatedly and reliably generate appropriate EEG responses to two distinct motor-imagery commands despite being behaviourally entirely unresponsive, with classification accuracy of 61 to 78 percent. Twelve healthy controls were also tested, and no significant relation was found between the patients' clinical histories and their responses.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/22078855/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "single-fact",
+    "covert-awareness"
+   ]
+  },
+  {
+   "id": "aicon-c018",
+   "question": "In Claassen et al. 2019, how often was brain activation to spoken motor commands detected in acutely unresponsive ICU patients, and how did those patients fare at 12 months?",
+   "answer": "16 of 104 unresponsive patients (15 percent) had brain activation detected by EEG at a median of 4 days after injury. Eight of those 16 (50 percent) improved enough to follow commands before discharge, versus 23 of 88 (26 percent) without activation. At 12 months, 7 of 16 (44 percent) with activation reached GOS-E level 4 or higher versus 12 of 84 (14 percent) without, an odds ratio of 4.6 (95 percent CI 1.2 to 17.1).",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31242361/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "multihop",
+    "covert-awareness",
+    "cognitive-motor-dissociation"
+   ]
+  },
+  {
+   "id": "aicon-c019",
+   "question": "What proportion of participants without an observable response to commands showed cognitive motor dissociation in the 2024 NEJM multicentre cohort, and what was the comparable rate among participants who did respond behaviourally?",
+   "answer": "Cognitive motor dissociation was detected in 60 of 241 participants without an observable response to commands, that is 25 percent, out of a total sample of 353 adults across six international centres. Among the 112 participants who did have an observable response to verbal commands, 43 (38 percent) showed a response on task-based fMRI or EEG. So roughly one in four unresponsive participants performed the task, versus about one in three responsive ones.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/39141852/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "single-fact",
+    "cognitive-motor-dissociation"
+   ]
+  },
+  {
+   "id": "aicon-c020",
+   "question": "Popular coverage often suggests that unresponsive brain-injured patients are usually conscious inside and that the imaging test simply reveals it. What do the largest cohorts actually support?",
+   "answer": "They support a minority, not a majority, and a test that misses people. Detection rates for covert command-following are about 15 percent in acute ICU patients (16 of 104) and 25 percent in the large chronic multicentre cohort (60 of 241). The paradigm also produces false negatives: in 50 intracerebral-haemorrhage patients who could follow or mimic commands behaviourally, those with impaired comprehension - receptive or global aphasia - were markedly less likely to show brain activation to the motor command (odds ratio 0.23, 95 percent CI 0.05 to 0.89). A negative result therefore does not establish absence of awareness, and a positive rate of one in four is not most patients.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/39141852/",
+    "https://pubmed.ncbi.nlm.nih.gov/31242361/",
+    "https://pubmed.ncbi.nlm.nih.gov/39138716/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "synthesis",
+    "trap",
+    "cognitive-motor-dissociation"
+   ]
+  },
+  {
+   "id": "aicon-c021",
+   "question": "Why did Claassen's group test aphasia in patients who could already follow commands, and what did the study quantify?",
+   "answer": "Because a command-following paradigm depends on the patient understanding the command, occult aphasia is a candidate source of false-negative cognitive-motor-dissociation results. They prospectively studied 61 ICU patients with acute primary intracerebral haemorrhage who had behavioural command-following or could mimic commands; 50 completed both the aphasia battery and the EEG motor-command paradigm, and 72 percent (n=36) had aphasia. Patients with impaired comprehension were less likely to show brain activation (odds ratio 0.23, 95 percent CI 0.05 to 0.89, p=0.04).",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/39138716/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "multihop",
+    "cognitive-motor-dissociation"
+   ]
+  },
+  {
+   "id": "aicon-c022",
+   "question": "Hur ofta blev diagnosen vegetativt tillstånd fel när Schnakers och kollegor 2009 jämförde läkarnas konsensusbedömning med den standardiserade skalan CRS-R?",
+   "answer": "Av de 44 patienter som det medicinska teamet enats om var i vegetativt tillstånd befanns 18 (41 procent) vara i minimalt medvetet tillstånd enligt CRS-R. Av 41 patienter med konsensusdiagnosen minimalt medvetet tillstånd hade fyra (10 procent) redan tagit sig ur det. Studien omfattade 103 patienter, och slutsatsen var att andelen feldiagnoser inte hade minskat nämnvärt på 15 år.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/19622138/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "single-fact",
+    "sv",
+    "diagnosis",
+    "disorders-of-consciousness"
+   ]
+  },
+  {
+   "id": "aicon-c023",
+   "question": "Standardised assessment reduces misdiagnosis in disorders of consciousness - but how many CRS-R examinations does it take, and what is the error rate after just one?",
+   "answer": "In 123 chronic patients each assessed at least six times within 10 days, the diagnosis based on a single CRS-R differed from the six-assessment reference diagnosis in 36 percent of cases, and diagnoses remained statistically different from the reference up to the fourth examination. The authors recommend at least five assessments within a short interval, for example two weeks. That is on top of the earlier finding that clinical consensus alone misclassified 41 percent of vegetative-state patients relative to a single CRS-R.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28543735/",
+    "https://pubmed.ncbi.nlm.nih.gov/19622138/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "multihop",
+    "diagnosis",
+    "disorders-of-consciousness"
+   ]
+  },
+  {
+   "id": "aicon-c024",
+   "question": "In the 2014 Lancet clinical validation study, how did FDG-PET and active fMRI compare for identifying minimally conscious patients?",
+   "answer": "In 126 patients (41 unresponsive wakefulness syndrome, 4 locked-in, 81 minimally conscious), 18F-FDG PET had 93 percent sensitivity (95 percent CI 85 to 98) for identifying the minimally conscious state and 85 percent congruence with behavioural CRS-R scores. Active fMRI was substantially less sensitive at 45 percent (95 percent CI 30 to 61) with 63 percent congruence. PET was also the better outcome predictor at 12 months.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24746174/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "multihop",
+    "neuroimaging",
+    "disorders-of-consciousness"
+   ]
+  },
+  {
+   "id": "aicon-c025",
+   "question": "BIS-monitorn beskrivs ibland som en medvetandedetektor. Vad visade Avidans två stora randomiserade studier i New England Journal of Medicine 2008 och 2011?",
+   "answer": "Ingen fördel för BIS. I studien från 2008 randomiserades 2000 patienter till BIS-styrd narkos (mål 40-60) eller styrning efter utandad narkosgaskoncentration, och det inträffade två säkra fall av vakenhet under narkos i vardera gruppen. I den större studien 2011 med 6041 högriskpatienter hade BIS-gruppen 7 säkra fall av 2861 mot 2 av 2852 i gasgruppen, och BIS-protokollets överlägsenhet kunde inte påvisas. Monitorn följer narkosdjup, inte medvetande som sådant.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/18337600/",
+    "https://pubmed.ncbi.nlm.nih.gov/21848460/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "multihop",
+    "sv",
+    "trap",
+    "anaesthesia",
+    "depth-monitoring"
+   ]
+  },
+  {
+   "id": "aicon-c026",
+   "question": "The B-Aware trial is the one BIS study that did show a benefit. What was its effect size, and how large was the trial?",
+   "answer": "In 2463 adults at high risk of awareness, there were 2 reports of awareness in the BIS-guided group (n=1225) versus 11 in the routine-care group (n=1238), p=0.022 - an 82 percent reduction in risk (95 percent CI 17 to 98 percent). The number needed to treat was 138, putting the cost of preventing one case at roughly 2200 dollars at the time.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/15172773/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "single-fact",
+    "anaesthesia",
+    "depth-monitoring"
+   ]
+  },
+  {
+   "id": "aicon-c027",
+   "question": "What did the isolated forearm technique reveal about connected consciousness after tracheal intubation in the 2017 multicentre study, and did those patients remember anything?",
+   "answer": "Of 260 adults, 4.6 percent (12 of 260) responded to a verbal command to move the isolated hand after intubation, and 5 of those 12 signalled pain through a second hand squeeze. None of the 253 patients questioned afterwards had explicit recall of intraoperative events. Depth-of-anaesthesia monitor values were higher in responders both before (54 plus/minus 20 versus 42 plus/minus 14) and after intubation (52 plus/minus 16 versus 43 plus/minus 16).",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27984262/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "multihop",
+    "anaesthesia",
+    "connected-consciousness"
+   ]
+  },
+  {
+   "id": "aicon-c028",
+   "question": "What incidence of connected consciousness after intubation was found in 18-to-40-year-olds, and how did it differ by sex?",
+   "answer": "Responses after intubation occurred in 37 of 338 young adults, 11 percent. Females responded more often than males, 13 percent (31 of 232) versus 6 percent (6 of 106), with an adjusted odds ratio of 2.7 (95 percent CI 1.1 to 7.6). Continuous anaesthesia before laryngoscopy reduced the risk (adjusted odds ratio 0.43).",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/35618535/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "single-fact",
+    "anaesthesia",
+    "connected-consciousness"
+   ]
+  },
+  {
+   "id": "aicon-c029",
+   "question": "Varför skiljer sig ketamin från propofol och xenon när man mäter komplexiteten i barkens TMS-svar, och vad rapporterade försökspersonerna efteråt?",
+   "answer": "Hos 18 friska försökspersoner gav propofol och xenon båda ett lågkomplext svar - ett lokalt aktiveringsmönster med låg amplitud vid propofol och en global, stereotyp långsam våg vid xenon - medan ketamin gav ett vaket-liknande, komplext mönster i tid och rum. Efteråt rapporterade ingen några upplevelser efter propofol eller xenon, medan ketamin gav långa, livfulla drömmar utan koppling till omgivningen. Oresponsivitet är alltså inte samma sak som medvetslöshet.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/26752078/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "multihop",
+    "sv",
+    "anaesthesia",
+    "disconnected-consciousness"
+   ]
+  },
+  {
+   "id": "aicon-c030",
+   "question": "The spectral exponent of resting EEG was tested against the same three anaesthetics as the TMS complexity work. How many participants per drug, and how did ketamine behave?",
+   "answer": "Five healthy participants per drug (xenon, propofol, ketamine) were dosed to unresponsiveness at Ramsay score 6. Loss of consciousness under xenon and propofol substantially steepened the power-spectral decay, making the negative broadband spectral exponent more negative in every subject. Ketamine instead kept an overall decay similar to wakefulness, consistent with preserved consciousness, but flattened the 20-40 Hz part. The exponent correlated highly with PCI.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/30639334/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "multihop",
+    "anaesthesia",
+    "complexity"
+   ]
+  },
+  {
+   "id": "aicon-c031",
+   "question": "Which three simultaneous EEG changes marked loss of consciousness during gradual propofol induction in Purdon et al. 2013?",
+   "answer": "Loss of consciousness was marked simultaneously by an increase in low-frequency EEG power below 1 Hz, the loss of spatially coherent occipital alpha oscillations at 8-12 Hz, and the appearance of spatially coherent frontal alpha oscillations. These dynamics reversed on emergence, and the phase-amplitude relationship between the low-frequency and alpha rhythms predicted recovery of consciousness.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/23487781/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "single-fact",
+    "anaesthesia"
+   ]
+  },
+  {
+   "id": "aicon-c032",
+   "question": "Schartner and colleagues measured MEG signal diversity under psilocybin, ketamine and LSD. How did the values compare with normal waking rest, and which measure showed it most strongly?",
+   "answer": "All three psychedelics produced reliably higher spontaneous signal diversity than waking rest, even after controlling for spectral changes - the first time such measures exceeded normal waking values rather than falling below them as under propofol. The increase was most pronounced for single-channel Lempel-Ziv complexity, that is for temporal rather than spatial diversity, and the changes correlated selectively with reported intensity of the psychedelic experience.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28422113/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "multihop",
+    "psychedelics",
+    "complexity"
+   ]
+  },
+  {
+   "id": "aicon-c033",
+   "question": "Is the psychedelic state a 'higher' level of consciousness, and what does that question reveal about the levels framework itself?",
+   "answer": "Bayne, Hohwy and Owen argue that the level-of-consciousness framework used for coma, absence seizures, anaesthesia and sleep is untenable and should be replaced by a multidimensional account of global states. Applied to psilocybin and LSD, the review of lab-based findings shows that some aspects of consciousness are enhanced while many functional capacities associated with consciousness are seriously compromised - so calling the psychedelic state 'higher' is inappropriate, and the fact that different aspects move in different directions is itself evidence against a unidimensional level-based view.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27101880/",
+    "https://pubmed.ncbi.nlm.nih.gov/30254752/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "synthesis",
+    "global-states",
+    "psychedelics"
+   ]
+  },
+  {
+   "id": "aicon-c034",
+   "question": "Vad hittade Siclari och kollegor 2017 när de jämförde uppvaknanden då försökspersoner mindes drömmar med uppvaknanden då de inte mindes något?",
+   "answer": "Med tät-EEG fann de att drömrapporter - både i REM-sömn och i icke-REM-sömn - hängde ihop med lokalt minskad lågfrekvent aktivitet i bakre barkområden. Högfrekvent aktivitet i samma område följde det specifika dröminnehållet. Genom att övervaka denna bakre heta zon i realtid kunde de förutsäga om personen skulle rapportera en dröm eller inte vid uppvaknande ur icke-REM-sömn.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28394322/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "single-fact",
+    "sv",
+    "dreaming",
+    "posterior-hot-zone"
+   ]
+  },
+  {
+   "id": "aicon-c035",
+   "question": "In Voss et al. 2009, which frequency band separated lucid dreaming from ordinary REM sleep, and where on the scalp was it strongest?",
+   "answer": "Lucid dreaming showed REM-like power in delta and theta but higher-than-REM activity in the gamma band, with the difference between states peaking around 40 Hz. That 40 Hz power was strongest in frontal and frontolateral regions. Six trained volunteers signalled lucidity with a pattern of horizontal eye movements while 19-channel EEG was recorded, and coherence overall was similar to waking and higher than in REM sleep.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/19750924/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "single-fact",
+    "lucid-dreaming"
+   ]
+  },
+  {
+   "id": "aicon-c036",
+   "question": "Two-way communication with a dreaming person was demonstrated in 2021. How many participants were tested, how many questions were answered correctly, and how many individuals produced those answers?",
+   "answer": "Procedures for two-way communication during polysomnographically verified REM sleep were implemented in 36 individuals across four independent laboratory groups. Correctly answered questions were recorded on 29 occasions, produced by 6 of the individuals tested, using distinctive eye movements and selective facial-muscle contractions. The participants ranged from novices to frequent lucid dreamers and included one patient with narcolepsy.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/33607035/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "multihop",
+    "lucid-dreaming"
+   ]
+  },
+  {
+   "id": "aicon-c037",
+   "question": "Kouider et al. looked for the adult signature of conscious access in infants. How many infants, which ages, and how did the latency of the marker change with age?",
+   "answer": "80 infants aged 5, 12 and 15 months viewed masked faces at varying visibility while ERPs were recorded. All age groups showed a late slow wave with a nonlinear profile at the expected perceptual thresholds - the infant counterpart of the adult late nonlinear response at roughly 300 ms. The component shifted from a weak and delayed response starting around 900 ms in 5-month-olds to a more sustained and faster response around 750 ms in the older infants.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/23599498/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "single-fact",
+    "infants"
+   ]
+  },
+  {
+   "id": "aicon-c038",
+   "question": "Vad talar för att en kråka kan ha sinnesmedvetande, trots att fågelhjärnan saknar en skiktad hjärnbark?",
+   "answer": "Nieder och kollegor lät kråkor utföra en visuell upptäcktsuppgift och registrerade enskilda nervceller i pallium i framhjärnan. Cellernas aktivitet följde fåglarnas rapport om huruvida de såg stimulus eller inte, i ett tvåstegsförlopp där den första komponenten främst speglade den fysiska stimulusstyrkan och den senare förutsade fågelns perceptuella rapport. Slutsatsen är att grunden för sinnesmedvetande antingen fanns före däggdjuren eller uppstod separat i fågellinjen, och alltså inte nödvändigtvis kräver en hjärnbark.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/32973028/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "single-fact",
+    "sv",
+    "animal-consciousness"
+   ]
+  },
+  {
+   "id": "aicon-c039",
+   "question": "What is the structural argument Barron and Klein make for subjective experience in insects, and how far back does it push the origin of consciousness?",
+   "answer": "In vertebrates the capacity for subjective experience is supported by integrated midbrain structures that build an egocentric neural simulation of the mobile animal in space; Barron and Klein argue that structures in the insect brain perform analogous functions, so the insect brain also supports the most basic aspect of consciousness. The supporting structures are anatomically very different in the two clades but basal to each, which leads them to trace the origins of subjective experience to the Cambrian - the argument is functional and comparative, not a claim that insect and vertebrate brains are alike.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27091981/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "synthesis",
+    "animal-consciousness"
+   ]
+  },
+  {
+   "id": "aicon-c040",
+   "question": "What is the front-versus-back-of-the-brain debate, and how was it staged in the Journal of Neuroscience in 2017?",
+   "answer": "It is the dispute over whether the frontal cortex specifies the contents of consciousness or merely supports monitoring and reporting. The journal ran paired Dual Perspectives pieces: Boly, Massimini, Tsuchiya, Postle, Koch and Tononi reviewed clinical and neuroimaging evidence for the back of the cortex, while Odegaard, Knight and Lau replied that three common claims - that PFC lesions do not affect subjective perception, that PFC activity does not carry specific perceptual content, and that PFC involvement is only driven by the reporting task - are incompatible with the evidence unless one restricts attention to studies with limited sensitivity.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28978697/",
+    "https://pubmed.ncbi.nlm.nih.gov/28978696/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "synthesis",
+    "front-vs-back",
+    "ncc"
+   ]
+  },
+  {
+   "id": "aicon-c041",
+   "question": "Contrastive analysis - comparing trials where a content is consciously perceived against trials where it is not - is the standard method for isolating an NCC. What did Aru and colleagues argue it actually delivers?",
+   "answer": "They argued the contrast does not isolate the NCC proper, because the NCC is confounded with the prerequisites for conscious processing of that content and with its consequences. Previous results therefore cannot be read unequivocally as neural correlates of conscious experience, and the paper proposes experimental strategies for untangling the three. The methodology remains valid and valuable, but a correlate found this way is not thereby shown to constitute the experience.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/22192881/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "synthesis",
+    "trap",
+    "ncc"
+   ]
+  },
+  {
+   "id": "aicon-c042",
+   "question": "The 2025 adversarial collaboration between integrated information theory and global neuronal workspace theory reported results from how many participants and which methods, and what did it find against each theory?",
+   "answer": "256 human participants viewed suprathreshold stimuli for variable durations while activity was recorded with fMRI, MEG and intracranial EEG, under a preregistered design agreed by proponents of both theories and a theory-neutral consortium. IIT was challenged by a lack of sustained synchronization within the posterior cortex, contradicting the claim that network connectivity specifies consciousness. GNWT was challenged by the general absence of ignition at stimulus offset and by limited representation of certain conscious dimensions in prefrontal cortex. Some predictions of each theory were nonetheless supported.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/40307561/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "synthesis",
+    "theories",
+    "iit",
+    "gnwt"
+   ]
+  },
+  {
+   "id": "aicon-c043",
+   "question": "What did Pinto and colleagues find when they tested split-brain patients with confirmed complete callosotomy across the whole visual field, and how did they establish that the responses were conscious?",
+   "answer": "The patients could not compare stimuli across visual half-fields, replicating independent hemispheric processing. But contrary to the textbook picture, across a wide variety of tasks they showed full awareness of stimulus presence and well above chance recognition of location, orientation and identity throughout the entire visual field, irrespective of whether they responded with the left hand, the right hand or verbally. Confidence ratings were used to identify conscious perception, and even on high-confidence trials response type did not affect performance - suggesting severing the callosum splits visual perception but does not create two conscious perceivers.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28122878/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "single-fact",
+    "split-brain"
+   ]
+  },
+  {
+   "id": "aicon-c044",
+   "question": "What is blindsight, and what is the main methodological worry Cowey raises about the evidence for it?",
+   "answer": "Blindsight is the ability of patients with clinically blind field defects caused by damage to primary visual cortex to detect, localise and even discriminate visual stimuli they deny seeing - a paradigm case of implicit knowledge. Cowey's worry is that possible artefacts abound, far more than for implicit memory or deaf hearing and numb touch, and are still frequently ignored or dismissed, with the result that many genuine qualities of blindsight remain uncertain. He notes that with blindsight now established in monkeys, the physiological literature on V1 removal becomes directly relevant to the human condition.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/19568736/"
+   ],
+   "tags": [
+    "consciousness-science",
+    "synthesis",
+    "blindsight"
+   ]
+  },
+  {
+   "id": "aicon-c045",
+   "question": "Integrated information theory identifies the quantity of consciousness with the measure Phi. What formal objection was raised in 2019 about Phi for general physical systems?",
+   "answer": "For Phi to serve as an observer-independent quantity of consciousness, there should be no alternative formulae for Phi consistent with IIT's axioms and no cases where Phi is ill-defined. The paper presents three ways in which Phi in its current formulation fails those standards, and discusses how the problem might be addressed. The objection is about the definition of the measure, not about whether integration matters empirically.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1902.04321"
+   ],
+   "tags": [
+    "consciousness-science",
+    "synthesis",
+    "iit",
+    "theories"
+   ]
+  },
+  {
+   "id": "aicon-b001",
+   "question": "In the 2004 BMC Neuroscience paper that launched integrated information theory, which two phenomenological properties of consciousness motivate the claim that consciousness is the capacity to integrate information, and how is Phi defined?",
+   "answer": "Differentiation (the availability of a very large number of conscious experiences) and integration (the unity of each such experience). Phi is the amount of causally effective information that can be integrated across the informational weakest link of a subset of elements, and a complex is a subset of elements with Phi>0 that is not part of a subset of higher Phi.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/15522121/"
+   ],
+   "tags": [
+    "theories",
+    "single-fact",
+    "iit"
+   ]
+  },
+  {
+   "id": "aicon-b002",
+   "question": "What is \"qualia space (Q)\" in Tononi's 2008 provisional manifesto, and how does a particular experience correspond to it?",
+   "answer": "Q is a space in which each axis represents a possible state of the complex, each point is a probability distribution over its states, and arrows between points represent the informational relationships generated by causal mechanisms. The set of informational relationships within a complex constitutes a shape in Q that completely and univocally specifies a particular experience.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/19098144/"
+   ],
+   "tags": [
+    "theories",
+    "single-fact",
+    "iit"
+   ]
+  },
+  {
+   "id": "aicon-b003",
+   "question": "Vilka tre grundsatser (axiom) räknar den uppdaterade beskrivningen av integrerad informationsteori från 2012 upp, och vad säger uteslutningspostulatet?",
+   "answer": "Information (varje upplevelse är en av många, alltså specifik), integration (varje upplevelse är en enda, alltså odelbar) och uteslutning (varje upplevelse är bestämd, avgränsad till vissa saker och med en viss hastighet och upplösning). Uteslutningspostulatet säger att bara maxvärden av integrerad information räknas: en mekanism pekar ut exakt en maximalt oreducerbar mängd av tidigare orsaker och framtida verkningar, ett så kallat begrepp.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/23165867/"
+   ],
+   "tags": [
+    "theories",
+    "single-fact",
+    "sv",
+    "iit"
+   ]
+  },
+  {
+   "id": "aicon-b004",
+   "question": "What identity does IIT 3.0 (Oizumi, Albantakis and Tononi, 2014) assert between experience and physical structure, and what does it imply about functionally equivalent feed-forward systems?",
+   "answer": "An experience is identical to a maximally irreducible conceptual structure (a MICS, a constellation of concepts in qualia space), and the set of elements generating it constitutes a complex; the MICS specifies the quality of an experience and integrated information Phi-Max its quantity. It follows that there can be true \"zombies\" — unconscious feed-forward systems that are functionally equivalent to conscious complexes.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/24811198/"
+   ],
+   "tags": [
+    "theories",
+    "single-fact",
+    "iit"
+   ]
+  },
+  {
+   "id": "aicon-b005",
+   "question": "IIT 4.0 was published in 2023, nine years after IIT 3.0 and seven after the 2016 Nature Reviews Neuroscience statement of the theory. Which specific developments does IIT 4.0 claim over the earlier formulations?",
+   "answer": "IIT 4.0 claims a more accurate formulation of the axioms as postulates and mathematical expressions, the introduction of a unique measure of intrinsic information consistent with the postulates, and an explicit assessment of causal relations; fully unfolding a system's irreducible cause-effect power yields distinctions and relations that account for the quality of experience. IIT 3.0 had defined the quantity of experience as Phi-Max over a maximally irreducible conceptual structure, and the 2016 account had already framed the physical substrate of consciousness as a maximum of intrinsic cause-effect power.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/37847724/",
+    "https://pubmed.ncbi.nlm.nih.gov/24811198/",
+    "https://pubmed.ncbi.nlm.nih.gov/27225071/"
+   ],
+   "tags": [
+    "theories",
+    "multihop",
+    "iit"
+   ]
+  },
+  {
+   "id": "aicon-b006",
+   "question": "The 2012 updated account of IIT names three axioms; Tononi and Koch's 2015 \"Consciousness: here, there and everywhere?\" names five. Which two are added?",
+   "answer": "Intrinsic existence and composition. The 2015 list is intrinsic existence, composition, information, integration and exclusion, whereas the 2012 account works with information, integration and exclusion.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/25823865/",
+    "https://pubmed.ncbi.nlm.nih.gov/23165867/"
+   ],
+   "tags": [
+    "theories",
+    "multihop",
+    "iit"
+   ]
+  },
+  {
+   "id": "aicon-b007",
+   "question": "What does IIT predict about a digital computer that faithfully simulates a human brain, and how does that connect to IIT 3.0's claim about feed-forward systems?",
+   "answer": "Tononi and Koch state that, in sharp contrast to widespread functionalist beliefs, IIT implies digital computers would experience next to nothing even if their behaviour were functionally equivalent to ours and they ran faithful simulations of the human brain; feed-forward networks, however complex, are not conscious, nor are aggregates such as groups of individuals or heaps of sand. This follows the IIT 3.0 result that there can be true \"zombies\", unconscious feed-forward systems functionally equivalent to conscious complexes.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/25823865/",
+    "https://pubmed.ncbi.nlm.nih.gov/24811198/"
+   ],
+   "tags": [
+    "theories",
+    "multihop",
+    "iit"
+   ]
+  },
+  {
+   "id": "aicon-b008",
+   "question": "Papers and press reports sometimes speak of measuring \"the Phi of the brain\". What do the sources actually support about computing Phi for a real neural system, and what is the clinically deployed number instead?",
+   "answer": "Exhaustively searching for the minimum information partition, which IIT requires to quantify integrated information, has a computational cost that grows exponentially with system size, which is what makes IIT difficult to apply to real neural data. The index actually used at the bedside, the perturbational complexity index, is not Phi: it is a theory-driven proxy obtained by perturbing cortex with transcranial magnetic stimulation and compressing the spatiotemporal pattern of the electrocortical response to measure its algorithmic complexity.",
+   "goldUrls": [
+    "https://arxiv.org/abs/1712.06745",
+    "https://pubmed.ncbi.nlm.nih.gov/23946194/"
+   ],
+   "tags": [
+    "theories",
+    "synthesis",
+    "trap",
+    "iit"
+   ]
+  },
+  {
+   "id": "aicon-b009",
+   "question": "In Baars's 2002 retrospective on global workspace theory, which three reasons does he give for the theory having had little impact when the evidence for the conscious access hypothesis was first described about two decades earlier?",
+   "answer": "Consciousness was controversial; the evidence, though extensive, was indirect; and integrative theory was unfashionable.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/11849615/"
+   ],
+   "tags": [
+    "theories",
+    "single-fact",
+    "gnwt"
+   ]
+  },
+  {
+   "id": "aicon-b010",
+   "question": "Vilka tre iakttagelser menar Dehaene och Naccache (2001) att varje teori om medvetande måste kunna rymma?",
+   "answer": "Att en betydande mängd bearbetning kan ske utan medvetande; att uppmärksamhet är en förutsättning för medvetande; och att medvetande krävs för vissa uppgifter, nämligen sådana som kräver att information hålls kvar över tid, nya kombinationer av operationer, eller att ett avsiktligt beteende startas spontant.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/11164022/"
+   ],
+   "tags": [
+    "theories",
+    "single-fact",
+    "sv",
+    "gnwt"
+   ]
+  },
+  {
+   "id": "aicon-b011",
+   "question": "In Sergent, Baillet and Dehaene's 2005 attentional-blink study, which early evoked potentials were intact for unseen words, and at what latency did the seen and unseen conditions diverge?",
+   "answer": "P1 and N1 were evoked intact by unseen words, suggesting these are not the primary correlates of conscious perception. A rapid divergence was observed around 270 ms, after which several brain events were evoked solely by seen words; the abstract describes this as a late wave of activation spreading through a distributed network of cortical association areas rather than naming it the P3b.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/16158062/"
+   ],
+   "tags": [
+    "theories",
+    "single-fact",
+    "gnwt"
+   ]
+  },
+  {
+   "id": "aicon-b012",
+   "question": "Combining Del Cul, Baillet and Dehaene (2007) with Sergent, Baillet and Dehaene (2005): what masking threshold and what two timing windows do the global-workspace ERP studies report?",
+   "answer": "In backward masking, subjects fail to perceive the target unless the target–mask stimulus onset asynchrony exceeds a threshold of about 50 ms. Del Cul et al. separate a considerable amount of subliminal processing early in the occipito-temporal pathway (under 250 ms) from a late (over 270 ms), highly distributed fronto-parieto-temporal activation that correlates with conscious reportability, which matches the divergence around 270 ms that Sergent et al. found in the attentional blink.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/17896866/",
+    "https://pubmed.ncbi.nlm.nih.gov/16158062/"
+   ],
+   "tags": [
+    "theories",
+    "multihop",
+    "gnwt"
+   ]
+  },
+  {
+   "id": "aicon-b013",
+   "question": "Dehaene and Changeux's 2011 Neuron review names three objective neural measures of conscious access. What are they?",
+   "answer": "Late amplification of relevant sensory activity; long-distance cortico-cortical synchronization at beta and gamma frequencies; and \"ignition\" of a large-scale prefronto-parietal network.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/21521609/"
+   ],
+   "tags": [
+    "theories",
+    "single-fact",
+    "gnwt"
+   ]
+  },
+  {
+   "id": "aicon-b014",
+   "question": "How does the 2020 Neuron statement of the global neuronal workspace hypothesis describe what happens in the conscious state, and how does that relate to the 2011 characterisation of ignition?",
+   "answer": "Mashour, Roelfsema, Changeux and Dehaene propose that in the conscious state a non-linear network ignition associated with recurrent processing amplifies and sustains a neural representation, allowing the corresponding information to be globally accessed by local processors. This is the same ignition that the 2011 review lists as one of three objective measures of conscious access, alongside late amplification of sensory activity and long-distance beta and gamma synchronization.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/32135090/",
+    "https://pubmed.ncbi.nlm.nih.gov/21521609/"
+   ],
+   "tags": [
+    "theories",
+    "multihop",
+    "gnwt"
+   ]
+  },
+  {
+   "id": "aicon-b015",
+   "question": "Where does Baars's 2005 chapter say the global workspace or \"blackboard\" architecture came from, and what imaging contrast does he cite as supporting it?",
+   "answer": "The architecture comes from the cognitive architecture tradition in cognitive science, where Newell and co-workers first showed the utility of a global workspace or blackboard among distributed knowledge sources. Functional imaging shows conscious cognition associated with widespread cortical activity, notably toward frontoparietal and medial temporal regions, whereas unconscious comparison conditions activate only local regions such as visual projection areas; frontoparietal hypometabolism is implicated in deep sleep, coma, vegetative states, epileptic loss of consciousness and general anaesthesia.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/16186014/"
+   ],
+   "tags": [
+    "theories",
+    "single-fact",
+    "gnwt"
+   ]
+  },
+  {
+   "id": "aicon-b016",
+   "question": "Which two major criticisms of higher-order theories do Lau and Rosenthal explicitly defend against in their 2011 review of the empirical evidence?",
+   "answer": "That prefrontal activity reflects attention but not awareness, and that prefrontal lesion does not abolish awareness.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/21737339/"
+   ],
+   "tags": [
+    "theories",
+    "single-fact",
+    "hot"
+   ]
+  },
+  {
+   "id": "aicon-b017",
+   "question": "Brown, Lau and LeDoux (2019) place higher-order theory relative to two rival families and reject one common equation. Which family does HOT sit between, and does HOT equate consciousness with metacognition?",
+   "answer": "HOT is presented as an intermediate position between global workspace theory and early sensory views such as first-order local recurrency theories. Most proponents of HOT do not stipulate consciousness as equivalent to metacognition or confidence, and although higher-order states are cognitively assembled, the requirements are considerably less than often presumed — which is their answer to the charge of overintellectualising consciousness. The 2011 review by Lau and Rosenthal had earlier argued the higher-order view is testable and empirically supported against first-order, global workspace and recurrent visual processing alternatives.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31375408/",
+    "https://pubmed.ncbi.nlm.nih.gov/21737339/"
+   ],
+   "tags": [
+    "theories",
+    "multihop",
+    "hot"
+   ]
+  },
+  {
+   "id": "aicon-b018",
+   "question": "In LeDoux and Brown's 2017 higher-order theory of emotional consciousness, what role do subcortical circuits play in conscious feelings?",
+   "answer": "Subcortical circuits are not directly responsible for conscious feelings; they provide nonconscious inputs that coalesce with other neural signals in the cognitive assembly of conscious emotional experiences. Conscious experiences, regardless of content, arise from one general cortical network of cognition, so what differs between emotional and non-emotional states is the kind of input that network processes.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28202735/"
+   ],
+   "tags": [
+    "theories",
+    "single-fact",
+    "hot"
+   ]
+  },
+  {
+   "id": "aicon-b019",
+   "question": "The 2017 Journal of Neuroscience \"Dual Perspectives\" pair on whether the neural correlates of consciousness lie in the front or the back of cortex is often cited as evidence settling the prefrontal question. What kind of papers are they, and what does each side claim?",
+   "answer": "Both are Perspective pieces reviewing existing literature, not new decisive experiments. Boly, Massimini, Tsuchiya, Postle, Koch and Tononi critically review clinical and neuroimaging evidence for front versus back involvement in specifying conscious contents; Odegaard, Knight and Lau address three claims they call misconceptions — that prefrontal lesions do not affect subjective perception, that prefrontal activity does not reflect specific perceptual content, and that prefrontal involvement is solely driven by the need to make reports — arguing these are incompatible with empirical findings unless one restricts attention to methods with limited sensitivity.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28978697/",
+    "https://pubmed.ncbi.nlm.nih.gov/28978696/"
+   ],
+   "tags": [
+    "theories",
+    "multihop",
+    "trap",
+    "hot"
+   ]
+  },
+  {
+   "id": "aicon-b020",
+   "question": "What is the central analogy of attention schema theory as Graziano and Webb state it in 2015, and what testable prediction do they draw from it?",
+   "answer": "The brain constructs a schematic, simplified model of the process of attention — the \"attention schema\" — in much the same way it constructs a schematic model of the body, the body schema, and the content of that model leads a brain to conclude it has a subjective experience. The prediction is that without awareness, attention should still be possible but should suffer deficits in control.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/25954242/"
+   ],
+   "tags": [
+    "theories",
+    "single-fact",
+    "ast"
+   ]
+  },
+  {
+   "id": "aicon-b021",
+   "question": "I de sex experiment som Wilterson med kollegor publicerade 2020 för att pröva uppmärksamhetsschemateorin — vad hände med utifrånstyrd respektive inifrånstyrd uppmärksamhet när försökspersonerna saknade medvetenhet om ledtråden?",
+   "answer": "När deltagarna inte var medvetna om att ledtråden förutsade målet fanns båda effekterna kvar. När de däremot inte hade någon synupplevelse av själva ledtråden fanns den utifrånstyrda effekten kvar medan den inifrånstyrda försämrades. Ytterligare två experiment visade att en inlärd omedveten uppmärksamhetsförskjutning spred sig från tränade platser till intilliggande otränade platser. Detta stämmer med förutsägelsen från 2015 att uppmärksamhet utan medvetenhet fortfarande är möjlig men får sämre styrning.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/32497564/",
+    "https://pubmed.ncbi.nlm.nih.gov/25954242/"
+   ],
+   "tags": [
+    "theories",
+    "multihop",
+    "sv",
+    "ast"
+   ]
+  },
+  {
+   "id": "aicon-b022",
+   "question": "Graziano's 2020 reply article sets out attention schema theory as a chain of four distinct things. What are they?",
+   "answer": "What the brain actually, physically has; what is represented by information models constructed in the brain; what higher cognition thinks based on access to those models; and what the speech machinery claims based on the information within higher cognition. The claim to have an essentially magical, subjective mind is explained by the impoverishment and reduction of information along that pathway.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/32434429/"
+   ],
+   "tags": [
+    "theories",
+    "single-fact",
+    "ast"
+   ]
+  },
+  {
+   "id": "aicon-b023",
+   "question": "What does Graziano's 2022 PNAS framework add to attention schema theory beyond the mechanistic account, and what evidential claim does it make?",
+   "answer": "It adds an evolutionary account, proposing how consciousness may have evolved over millions of years from fish to humans by emphasising the specific adaptive roles consciousness plays in cognition and behaviour. The evidential claim is that over the preceding several years a growing body of behavioural, brain-imaging and computational-modelling evidence has addressed aspects of the theory; the paper positions itself as an overarching framework rather than a report of new data.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/35486693/"
+   ],
+   "tags": [
+    "theories",
+    "synthesis",
+    "ast"
+   ]
+  },
+  {
+   "id": "aicon-b024",
+   "question": "Vad säger Lamme och Roelfsema (2000) om den framåtriktade vågen i synsystemet jämfört med återkopplande bearbetning?",
+   "answer": "Den framåtriktade vågen grupperar snabbt sådana särdragsmönster som är fast inbyggda i synhjärnan, men kan förmodligen inte i sig ge upphov till en synupplevelse. I många fall krävs återkopplande bearbetning — via förbindelser inom områden och återkoppling från högre områden — innan ett föremåls särdrag grupperas uppmärksamt och stimulus kan nå medvetandet.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/11074267/"
+   ],
+   "tags": [
+    "theories",
+    "single-fact",
+    "sv",
+    "rpt"
+   ]
+  },
+  {
+   "id": "aicon-b025",
+   "question": "Lamme's 2006 paper argues for a methodological change in how consciousness is defined. What is the change, and what does he say it costs us?",
+   "answer": "Rather than treating introspective or behavioural observation as the gold standard to which neural measures must be fitted, neural and behavioural measures should be put on an equal footing. The cost is that we must let go of our intuitive or psychological notions of conscious experience and move our notion of mind toward that of brain — he illustrates this with the visual case where neural and behavioural arguments converge on a definition of visual consciousness, building on the feedforward-versus-recurrent distinction he and Roelfsema drew in 2000.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/16997611/",
+    "https://pubmed.ncbi.nlm.nih.gov/11074267/"
+   ],
+   "tags": [
+    "theories",
+    "multihop",
+    "rpt"
+   ]
+  },
+  {
+   "id": "aicon-b026",
+   "question": "Vilka två teorier riktar sig \"uppvecklingsargumentet\" (the unfolding argument) från 2019 mot, vilket gemensamt antagande angriper det, och vad blir slutsatsen?",
+   "answer": "Integrerad informationsteori och teorin om återkopplande bearbetning, som båda kallas orsaksstrukturteorier. Det gemensamma antagandet är att rent framåtriktade system aldrig är medvetna och att återkopplande system alltid är det. Med satser från beräkningsteorin drar Doerig och medförfattare slutsatsen att sådana teorier antingen är falska eller ligger utanför vetenskapens område.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/31078047/"
+   ],
+   "tags": [
+    "theories",
+    "multihop",
+    "sv",
+    "iit",
+    "rpt"
+   ]
+  },
+  {
+   "id": "aicon-b027",
+   "question": "Does the unfolding argument settle whether integrated information theory is falsifiable? What does Hanson and Walker's 2021 formalisation show?",
+   "answer": "No — the verdict depends on the level of abstraction chosen. Using isomorphic digital circuits with and without feedback, realizable with table-top electronics, they show IIT is simultaneously falsified at the finite-state-automaton level and unfalsifiable at the combinatorial-state-automaton level. Their general criterion is that to avoid being either already falsified or unfalsifiable, a scientific theory of consciousness must be invariant with respect to changes that leave the inference procedure fixed at a particular level in a computational hierarchy.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/34377534/",
+    "https://pubmed.ncbi.nlm.nih.gov/31078047/"
+   ],
+   "tags": [
+    "theories",
+    "synthesis",
+    "trap",
+    "iit"
+   ]
+  },
+  {
+   "id": "aicon-b028",
+   "question": "What is the \"dissociative epiphenomenalism\" charge that Herzog, Schurger and Doerig level at IIT in 2022, and why do they call it self-undermining?",
+   "answer": "They argue IIT's consciousness is by construction fully dissociated from anything measurable, so IIT implies that both the level and the content of consciousness are epiphenomenal with no causal power — meaning we could not even trust reports about first-person experiences. Since such reports are what IIT takes as ground truth and the foundation of its axioms, accepting IIT leads to rejecting its own axioms. They also argue pure first-person experience cannot serve as a scientific foundation because it is not measurable except through reports, brain activity, and the relationship between them.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/35032833/"
+   ],
+   "tags": [
+    "theories",
+    "synthesis",
+    "iit"
+   ]
+  },
+  {
+   "id": "aicon-b029",
+   "question": "What did Doerig, Schurger and Herzog actually do in the 2021 \"Hard criteria for empirical theories of consciousness\" paper, and what problem motivated it?",
+   "answer": "The motivating problem is that consciousness hosts far more competing theories than other fields of natural science, which they attribute to a lack of stringent criteria specifying how empirical data constrains theories. They argue consciousness is a well-defined topic from an empirical point of view, present a checklist of criteria empirical theories must cope with, and then review 13 of the most influential theories against that checklist.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/32663056/"
+   ],
+   "tags": [
+    "theories",
+    "synthesis"
+   ]
+  },
+  {
+   "id": "aicon-b030",
+   "question": "Den motsatsställda samarbetsstudien som publicerades i Nature 2025 beskrivs ofta som att den avgjorde striden mellan integrerad informationsteori och global neuronal arbetsyta. Vad kom den faktiskt fram till?",
+   "answer": "Ingen av teorierna bekräftades. Med 256 deltagare och mätningar med magnetkamera, magnetencefalografi och elektroder inne i hjärnan stämde resultaten med vissa förutsägelser från båda teorierna men utmanade samtidigt centrala antaganden hos båda. Integrerad informationsteori träffades av att ihållande synkronisering saknades inom bakre hjärnbarken, vilket motsäger påståendet att nätverkets kopplingar avgör medvetandet. Arbetsytemodellen träffades av att den förutsagda tändningen vid stimulusslut i allmänhet uteblev och av att vissa medvetna dimensioner var svagt representerade i pannloben; författarna påpekar att invändningarna även träffar andra teorier som delar dessa förutsägelser.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/40307561/"
+   ],
+   "tags": [
+    "theories",
+    "multihop",
+    "sv",
+    "trap",
+    "iit",
+    "gnwt"
+   ]
+  },
+  {
+   "id": "aicon-b031",
+   "question": "What did the 2023 PLOS ONE adversarial collaboration protocol preregister before any data were collected, and how many laboratories were to run it?",
+   "answer": "Two experiments testing contrasting predictions of global neuronal workspace theory and integrated information theory concerning the location and timing of correlates of visual consciousness, with the predictions endorsed by the theories' own proponents and the expected outcomes specified in advance as supporting, refuting or challenging each theory. Six theory-impartial laboratories were to follow the protocol using fMRI, M-EEG and iEEG, with built-in replications both between labs and within datasets.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/36763595/"
+   ],
+   "tags": [
+    "theories",
+    "single-fact",
+    "iit",
+    "gnwt"
+   ]
+  },
+  {
+   "id": "aicon-b032",
+   "question": "What participant numbers does the IIT-versus-GNWT adversarial collaboration report across its main paper and its two published data descriptors?",
+   "answer": "The 2025 Nature report gives n = 256 human participants across fMRI, MEG and iEEG combined. The separately published data descriptors give N = 118 for the multi-site fMRI dataset and 38 patients undergoing intracranial monitoring across three research centres for the iEEG dataset.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/40307561/",
+    "https://pubmed.ncbi.nlm.nih.gov/42115661/",
+    "https://pubmed.ncbi.nlm.nih.gov/40410191/"
+   ],
+   "tags": [
+    "theories",
+    "multihop",
+    "iit",
+    "gnwt"
+   ]
+  },
+  {
+   "id": "aicon-b033",
+   "question": "The adversarial collaboration was extended to animals in a 2026 protocol. Which species, which recording method, and which causal manipulations are specified?",
+   "answer": "Non-human primates and mice, viewing or listening to suprathreshold visual and auditory stimuli of variable duration in a go/no-go task that controls for report confounds, with neuronal responses recorded by Neuropixels electrodes from visual, auditory, posterior parietal and/or prefrontal cortical areas. Predictions about timing and location are tested causally by electrical stimulation of prefrontal regions in non-human primates and optogenetic silencing in mice.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/41739818/"
+   ],
+   "tags": [
+    "theories",
+    "single-fact",
+    "iit",
+    "gnwt"
+   ]
+  },
+  {
+   "id": "aicon-b034",
+   "question": "Contrastive analysis compares conditions where a content is consciously experienced against conditions where it is not. Why does that not isolate the neural correlate of consciousness, and do no-report paradigms fix it?",
+   "answer": "Aru, Bachmann, Singer and Melloni argue the contrastive comparison does not reveal exclusively the NCC, because the NCC proper is confounded with prerequisites for and consequences of conscious processing of that content, so previous results cannot be unequivocally interpreted as neural correlates of conscious experience. Tsuchiya, Wilke, Frässle and Lamme separately argue that the report requirement itself has biased the search over decades — but they state no-report paradigms have their own disadvantages and that report-based and no-report paradigms jointly, not no-report alone, bring us closer to the true neural basis.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/22192881/",
+    "https://pubmed.ncbi.nlm.nih.gov/26585549/"
+   ],
+   "tags": [
+    "theories",
+    "multihop",
+    "trap"
+   ]
+  },
+  {
+   "id": "aicon-b035",
+   "question": "Where does the 2016 Nature Reviews Neuroscience review place the anatomical neural correlates of consciousness, and why is that localisation contested rather than settled?",
+   "answer": "Koch, Massimini, Boly and Tononi locate the anatomical NCC primarily to a posterior cortical hot zone including sensory areas, rather than to a fronto-parietal network involved in task monitoring and reporting, and note that some candidate neurophysiological markers of consciousness have proved illusory while measures of differentiation and integration are more promising. It is contested because Odegaard, Knight and Lau argue in the same period that prefrontal cortex is essential to subjective experience and that the claim that prefrontal involvement is driven only by report demands is incompatible with the empirical findings unless one restricts attention to insensitive methods.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27094080/",
+    "https://pubmed.ncbi.nlm.nih.gov/28978696/"
+   ],
+   "tags": [
+    "theories",
+    "synthesis",
+    "iit"
+   ]
+  },
+  {
+   "id": "aicon-b036",
+   "question": "What evidence from sleep does Siclari et al. (2017) contribute to the posterior hot zone proposal, and how well did it predict dreaming?",
+   "answer": "Using high-density EEG and contrasting presence against absence of dreaming, reports of dream experience in both NREM and REM sleep were associated with local decreases in low-frequency activity in posterior cortical regions, and high-frequency activity in those regions correlated with specific dream contents. Monitoring this posterior hot zone in real time predicted whether an individual reported dreaming or the absence of dream experiences during NREM sleep, which supports the localisation the 2016 review had proposed.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/28394322/",
+    "https://pubmed.ncbi.nlm.nih.gov/27094080/"
+   ],
+   "tags": [
+    "theories",
+    "multihop",
+    "iit"
+   ]
+  },
+  {
+   "id": "aicon-b037",
+   "question": "Perturbationskomplexitetsindex (PCI) beskrivs som ett teoridrivet mått på medvetandenivå. Vad visade valideringen från 2016, och vad får man inte läsa in i de nio patienterna i vegetativt tillstånd som hamnade över gränsvärdet?",
+   "answer": "Gränsvärdet togs fram i en jämförelsegrupp på 150 friska och hjärnskadade personer som själva kunde rapportera, där det skilde medvetna från omedvetna tillstånd med 100 procents känslighet och specificitet, och det gav 94,7 procents känslighet för minimalt medvetet tillstånd. Nio av 43 patienter i vegetativt tillstånd låg över gränsen. Sammanfattningen tolkar dem som att de kan ha en förmåga till medvetande som inte syns i beteendet — inte som ett bevis för att de var medvetna.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/27717082/",
+    "https://pubmed.ncbi.nlm.nih.gov/23946194/"
+   ],
+   "tags": [
+    "theories",
+    "multihop",
+    "sv",
+    "trap",
+    "iit"
+   ]
+  },
+  {
+   "id": "aicon-b038",
+   "question": "According to Friston's 2010 review, which single quantity keeps emerging as the thing being optimized when different global brain theories are read through the free-energy lens?",
+   "answer": "Value — expected reward or expected utility — or its complement, surprise, that is prediction error or expected cost. The free-energy principle accounts for action, perception and learning, and Friston argues that several global brain theories, including neural Darwinism, information theory and optimal control theory, might be unified within a free-energy framework by this shared theme of optimization.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/20068583/"
+   ],
+   "tags": [
+    "theories",
+    "single-fact",
+    "predictive-processing"
+   ]
+  },
+  {
+   "id": "aicon-b039",
+   "question": "Vad innebär \"interoceptiv prediktiv kodning\" i den modell som Seth och Critchley föreslog 2013?",
+   "answer": "Att den bayesianska hjärnhypotesen utvidgas till interoception, alltså sinnet för kroppens inre fysiologiska tillstånd, så att ramverket rymmer varseblivning, tänkande och handling tillsammans med kroppens egna signaler. Modellen medför en ny syn på känslor som interoceptiv slutledning och sägs kunna förklara en rad psykiatriska tillstånd som rör jaget.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/23663284/"
+   ],
+   "tags": [
+    "theories",
+    "single-fact",
+    "sv",
+    "predictive-processing"
+   ]
+  },
+  {
+   "id": "aicon-b040",
+   "question": "What is the \"beast machine\" view of selfhood, and what mechanism does the earlier Seth and Friston paper give it?",
+   "answer": "Seth and Tsakiris describe embodied selfhood as \"instrumental interoceptive inference\", emphasising allostatic regulation and physiological integrity, which accounts for its non-object-like character and its subjective stability over time and implies, contrary to Descartes, that experiences of embodied selfhood arise because of and not in spite of our nature as beast machines. The mechanism comes from Seth and Friston's account of interoceptive inference, in which bodily states are regulated by autonomic reflexes enslaved by descending predictions from deep generative models of our internal and external milieu, with precision or uncertainty translating into neuromodulation.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/30224233/",
+    "https://pubmed.ncbi.nlm.nih.gov/28080966/"
+   ],
+   "tags": [
+    "theories",
+    "multihop",
+    "predictive-processing"
+   ]
+  },
+  {
+   "id": "aicon-b041",
+   "question": "Seth and Hohwy (2021) argue for theories \"for\" consciousness science rather than theories \"of\" consciousness. What is the distinction and what motivates it?",
+   "answer": "They object that the theories under discussion monolithically identify consciousness with some other phenomenon, process or mechanism, and that treating consciousness as a single explanatory target makes it hard to account for the diverse properties conscious experiences exhibit. Progress instead requires elaborating systematic mappings between physical and biological mechanisms and the functional and, crucially, phenomenological properties of consciousness — an approach for which they nominate predictive processing as a highly promising candidate.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/33280521/"
+   ],
+   "tags": [
+    "theories",
+    "synthesis",
+    "predictive-processing"
+   ]
+  },
+  {
+   "id": "aicon-b042",
+   "question": "The sensorimotor and enactive traditions both published statements in 2001. What does each say the neural correlate approach gets wrong?",
+   "answer": "O'Regan and Noë argue that seeing is a way of acting rather than the activation of an internal representation: the outside world serves as its own external representation and the experience of seeing occurs when the organism masters the governing laws of sensorimotor contingency, with support drawn from sensorimotor adaptation, filling-in, visual stability across eye movements, change blindness, sensory substitution and colour perception. Thompson and Varela argue the substrates should be mapped at the level of large-scale, emergent and transient dynamical patterns rather than particular circuits or cell classes, and that standard NCC work wrongly assumes a one-way causal-explanatory relation, where their approach allows a two-way relationship between embodied conscious states and local neuronal activity.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/12239892/",
+    "https://pubmed.ncbi.nlm.nih.gov/11707380/"
+   ],
+   "tags": [
+    "theories",
+    "synthesis"
+   ]
+  },
+  {
+   "id": "aicon-b043",
+   "question": "Which four theoretical approaches does the 2022 Nature Reviews Neuroscience review by Seth and Bayne cover, and what does it say about whether they can be told apart?",
+   "answer": "Higher-order theories, global workspace theories, re-entry and predictive processing theories, and integrated information theory. The review states it is unclear how current theories relate to each other or whether they can be empirically distinguished at all, describes each by which aspects of consciousness it explains, its neurobiological commitments and the data adduced for it, and outlines three ways theories must be developed to deliver a mature regimen of theory-testing.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/35505255/"
+   ],
+   "tags": [
+    "theories",
+    "synthesis"
+   ]
+  },
+  {
+   "id": "aicon-b044",
+   "question": "How does the 2023 \"Consciousness in Artificial Intelligence\" report propose to assess whether an AI system is conscious, and which theories does it draw on?",
+   "answer": "It derives \"indicator properties\" of consciousness from the best-supported neuroscientific theories, elucidated in computational terms so that existing AI systems can be assessed against them in detail. The theories surveyed are recurrent processing theory, global workspace theory, higher-order theories, predictive processing and attention schema theory; several recent AI systems are then assessed for those indicator properties.",
+   "goldUrls": [
+    "https://arxiv.org/abs/2308.08708"
+   ],
+   "tags": [
+    "theories",
+    "synthesis"
+   ]
+  },
+  {
+   "id": "aicon-b045",
+   "question": "Is there a peer-reviewed paper in the indexed literature that establishes integrated information theory as pseudoscience?",
+   "answer": "No such finding appears in the indexed abstracts; the \"pseudoscience\" charge circulated as an open letter rather than as an empirical result, and where the label is discussed in the indexed literature it is resisted. Ruan and Li's 2024 analysis states explicitly that the problems of IIT are far from being \"pseudoscience\", attributing the criticism to a gap between two levels of explanation in the theory — an autonomous-systems or critical-complexity level and a level that claims to anchor consciousness strictly — with IIT's panpsychist tendency playing a crucial role.",
+   "goldUrls": [
+    "https://pubmed.ncbi.nlm.nih.gov/39330094/"
+   ],
+   "tags": [
+    "theories",
+    "synthesis",
+    "trap",
+    "iit"
+   ]
+  }
+ ]
+}

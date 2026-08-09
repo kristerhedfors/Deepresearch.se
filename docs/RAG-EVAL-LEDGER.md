@@ -17,6 +17,304 @@ The instrument is `scripts/rag-eval.mjs`, the procedure is the
 
 ---
 
+## 2026-08-09 (latest) — the neighbourhood rule predicts POOL PRESSURE, not recall
+
+The third arXiv ingest, and the first one deliberately shaped to make the
+standing rule fail: **24,212 AI-security papers from the named-list backlog
+fill (plus ~60 previously floor-dropped), landing directly in the AI-security
+needles' own neighbourhood.** arXiv 798,774 → **823,097** vectors. 24,086 of
+the additions are pre-2310, i.e. below the swept window.
+
+The rule as the 2026-08-09 (later) entry left it — *competition degrades
+retrieval when the added documents land in the SAME NEIGHBOURHOOD as the gold;
+volume alone does not* — predicts a measurable degradation here. It did not
+arrive, and the amendment is the entry.
+
+### Instrument and pairing
+
+`data/aisec/needles-arxiv.json`, the same 111 needles (92 EN / 19 SV) as both
+prior arms, so only the distractor count varies. **0 of 111 needles
+unanswerable** — the membership guard printed nothing.
+
+> **Caveat found after this entry was written, and it qualifies the n.** The
+> needle sets are now committed under `tests/needles/` (they lived only in
+> gitignored `data/` before — open item 4 below), and pinning them turned up
+> that three of them ask more than one question about the same paper. This set
+> is **111 needles over 109 distinct papers**; the AI-consciousness control arm
+> is worse, **33 needles over 27 papers**, with `2411.00986` asked three times,
+> twice in nearly the same words. A paper asked twice counts twice in a recall
+> rate, so the independent evidence is slightly thinner than each n suggests.
+> Small enough here not to disturb a verdict that rests on 2 discordant pairs,
+> and left UNCHANGED rather than deduped: editing a set breaks its pairing with
+> the runs above it. The counts are pinned in `tests/needles.test.js` so the
+> overstatement cannot grow silently, and the next generation of aicon-arxiv
+> should drop the paraphrases — as a new set with a new baseline.
+
+Paired against **`data/eval/arxiv-aisec-ax-c1.json`** (ran 14:01Z, 798,774
+vectors). That is the most recent *pre-ingest* state of the three saved runs:
+`-ax` is 786,094 and `-ax-after` is 794,854, both further back and separated
+from this ingest by an extra arm each. Post-run:
+`data/eval/arxiv-post-backlog-ingest.json`.
+
+### The verdict: no significant recall change, for the third ingest running
+
+| arm | metric | before | after | paired | lost | gained | p |
+|---|---|---|---|---|---|---|---|
+| EN | r@1 | 76.1 | 73.9 | 91 | 2 | 0 | **0.5000** |
+| EN | r@10 | 84.8 | 82.6 | 91 | 2 | 0 | **0.5000** |
+| SV | r@1 | 84.2 | 84.2 | 19 | 0 | 0 | 1.0000 |
+| SV | r@10 | 89.5 | 89.5 | 19 | 0 | 0 | 1.0000 |
+
+EN r@5 81.5 → 79.3, MRR 78.9 → 76.7. **The prediction failed.** A 2.2-point
+r@10 drop resting on two discordant needles is exactly the effect size the
+ledger's own rule says not to report as a result.
+
+### Loss breakdown — the whole move is in the dense stage
+
+| run | lang | in top10 | never retrieved | rerank demoted | floored out |
+|---|---|---|---|---|---|
+| aisec-ax-c1 | EN | 84.8 | 15.2 | 0 | 0 |
+| post-backlog-ingest | EN | 82.6 | **17.4** | 0 | 0 |
+| aisec-ax-c1 | SV | 89.5 | 10.5 | 0 | 0 |
+| post-backlog-ingest | SV | 89.5 | 10.5 | 0 | 0 |
+
+Both golds fell out of the **candidate pool**, not out of the reranking. Unlike
+the ancient-DNA regression, `rerank demoted` stayed at 0 in both arms — so this
+is not the same failure mode wearing the same name.
+
+### Latency: NOT significant, and it went the other way
+
+| run | median | p95 | embed | query | rerank |
+|---|---|---|---|---|---|
+| aisec-ax-c1 | 1495 | 2269 | 383 | 412 | 787 |
+| post-backlog-ingest | 1384 | 2648 | 360 | 326 | 855 |
+
+Paired sign: slower on 52, faster on 58, **p=0.6338**. The previous entry's
+p=0.0346 latency cost **did not reproduce** on a larger ingest into the same
+neighbourhood. Rerank time did rise (787 → 855) while query time fell
+(412 → 326), so treat the one significant latency result as unreplicated rather
+than as an established trend.
+
+### What DID move, and it is measurable
+
+Recall is a coarse instrument here. The candidate pool underneath it moved, and
+that is visible in the saved runs:
+
+| | aisec needles (target neighbourhood) | aicon needles (control) |
+|---|---|---|
+| paired needles | 111 | 33 |
+| dense pool slots turned over | **531 / 5,550 = 9.6%** | 51 / 1,650 = 3.1% |
+| of those entrants, pre-2310 | **99.1%** | 88.2% |
+| gold's dense rank worse / better | **6 / 0** | 1 / 0 |
+
+Gold dense-rank displacement, exact binomial over the 6 discordant needles:
+**p=0.03125** (87 unchanged). The AI-consciousness control moved 3.1% of its
+pool *despite* its baseline being 786,094 — i.e. spanning **three** ingests and
++37k vectors against the target arm's one and +24.3k. The added documents went
+where they were aimed.
+
+### The additions are pre-2310, and they hurt the pre-2310 golds
+
+Splitting the same 111 needles by the age of their gold:
+
+| gold age band | needles | pool churn | gold rank worse / better |
+|---|---|---|---|
+| pre-2310 (the band the ingest filled) | 56 | **13.0%** | **5 / 0** |
+| in-window (2310 onward) | 55 | 6.0% | 1 / 0 |
+
+Both r@10 losses are pre-2310 golds, and both were already at the pool's edge:
+`2208.13164` at denseRank **42/50** and `1412.6572` at **39/50**, each pushed
+out by a cohort of newly indexed pre-2310 papers. The 87 golds that did not
+move had slack to spare.
+
+### The amendment
+
+The rule predicted degradation and the paired test found none, so the rule as
+written about **recall** is wrong — the second prediction of this shape to fail,
+and it is not rescued by pointing at the direction of two needles.
+
+> **Amended.** Same-neighbourhood additions produce **pool pressure**, which is
+> directly measurable and did appear here (9.6% vs 3.1% churn, gold rank 6/0
+> worse, p=0.03125, concentrated in the age band the ingest filled). **Recall is
+> a lagging, threshold indicator of that pressure**: it moves only for golds
+> whose slack in the candidate pool is already gone. Neighbourhood predicts the
+> pressure; the gold's existing rank predicts whether the pressure costs
+> anything.
+
+That reconciles all four ingests without special-casing any of them: ancient
+DNA crossed the threshold (and only there did `rerank demoted` appear); the two
+earlier arXiv arms and this one did not. It also makes the next prediction
+cheap and falsifiable — **the needles at risk are the ones sitting near
+denseRank 50 before the ingest, and they can be listed in advance.** Measure
+pool churn and gold-rank displacement, not r@10, when the ingest is small
+relative to the corpus.
+
+Practical consequence for this corpus: the AI-security backlog fill cost
+nothing readable in recall, and the remaining arms can proceed. Re-measure with
+the same 111 needles.
+
+---
+
+## 2026-08-09 (later) — two more domains, and what makes a domain hard to retrieve
+
+Same treatment as the ancient-DNA run, applied to **AI cybersecurity** and **AI
+consciousness**, across BOTH corpora this time. The interesting result is not
+either domain's number; it is that the four domain×corpus arms differ by 27
+points of r@10 with the same pipeline, the same authors and the same
+instructions — and the ordering is explainable.
+
+### What was ingested
+
+| | PubMed | arXiv |
+|---|---|---|
+| AI consciousness | 16,196 | 1,210 |
+| AI cybersecurity | 20,907 | *enumeration in progress* |
+| eval-set citations (both) | 142 | 140 |
+
+PubMed 1,694,272 → 1,731,517. The arXiv side of AI security is a 21-arm
+enumeration still running; the eval set does not depend on it, because every
+paper the questions cite was ingested by name first.
+
+### The measurement
+
+180 questions per domain, used as needles (each item with exactly one gold
+paper is a needle: the question is the query, that paper is the right answer).
+These are QA questions, not purpose-built needles — several are deliberately
+about a debate rather than one paper — so this is a harder instrument than the
+hand-written sets.
+
+| set | corpus | lang | n | r@1 | r@10 | never retrieved |
+|---|---|---|---|---|---|---|
+| aicon | arXiv | EN | 27 | 96.3 | **100** | 0 |
+| aisec | arXiv | SV | 19 | 84.2 | **89.5** | 10.5 |
+| aisec | arXiv | EN | 92 | 77.2 | **84.8** | 15.2 |
+| aisec | PubMed | EN | 13 | 69.2 | **84.6** | 15.4 |
+| aicon | PubMed | EN | 71 | 60.6 | **73.2** | 21.1 |
+| aicon | PubMed | SV | 23 | 47.8 | **56.5** | 34.8 |
+
+(The two smallest arms — aisec/PubMed SV n=3 and aicon/arXiv SV n=6 — are
+reported in the run files but are too small to read.)
+
+### The finding: difficulty tracks vocabulary distinctiveness, not subject matter
+
+The same domain scores **100** on arXiv and **73.2** on PubMed. Same questions'
+authors, same pipeline, same day. The difference is how distinctive the
+domain's vocabulary is *within its corpus*:
+
+- arXiv holds ~2,600 consciousness papers in 786k vectors. "Consciousness
+  indicator properties" has essentially one candidate.
+- PubMed holds ~18,000 in 1.73M, and the vocabulary — consciousness, awareness,
+  attention, theory, integration — is shared with thousands of clinical and
+  cognitive papers that are not about machine consciousness at all. Every query
+  competes against near-neighbours.
+
+That is the same mechanism as the 2026-08-09 (earlier) regression, seen from
+the other side: there, adding 28.6k topical papers demoted the needles that
+already lived in that neighbourhood. Here, a domain that arrives already
+crowded starts demoted. **Retrieval difficulty is a property of the
+neighbourhood, not of the question** — which means a recall number is only
+comparable across domains if the corpus density is comparable too, and it
+usually is not.
+
+Ancient DNA sat at 88.9 EN on the same instrument, between the two.
+
+### Swedish did not behave the way PubMed taught us to expect
+
+On arXiv, vernacular Swedish **beat** English on AI security (89.5 vs 84.8,
+n=19). The 2026-08-08 entry established a large vernacular-Swedish penalty on
+PubMed and traced it to the cross-encoder's score scale collapsing on a
+Swedish-query/English-document pair. That penalty is absent here, and on
+PubMed consciousness it reappears (56.5 vs 73.2).
+
+Two readings, and this measurement cannot separate them: AI-security Swedish is
+heavily cognate (promptinjektion, autentisering, kryptering) where consciousness
+Swedish is native Germanic (medvetande, upplevelse, uppmärksamhet) — which is
+exactly the mechanism the 2026-08-08 entry proposed; or the arXiv arm is simply
+too small at n=19. **Do not treat the arXiv Swedish result as a refutation of
+the standing finding.** A paired arXiv EN/SV/SVSCI set is the experiment that
+would settle it, and it does not exist yet.
+
+### The prediction above was WRONG, and the correction is the useful part
+
+This entry originally predicted that aisec/arXiv would score WORSE once the
+field around its cited papers was ingested, by analogy with the ancient-DNA
+regression. **19,548 AI-security arXiv papers were then ingested and it did
+not happen.** Paired over the same 111 needles:
+
+| arm | metric | lost | gained | p | verdict |
+|---|---|---|---|---|---|
+| EN | r@10 | 0 | 0 | 1.0000 | **identical** |
+| EN | r@1 | 1 | 0 | 1.0000 | not significant |
+| SV | r@1 / r@10 | 0 | 0 | 1.0000 | identical |
+
+`inPool` unchanged at 84.8/89.5. Latency paired sign p=0.5692. Runs
+`data/eval/arxiv-aisec-ax{,-after}.json`.
+
+The two ingests differ in a way the original phrasing missed, and it is
+visible in the net counts rather than the gross ones:
+
+| | pushed | index before → after | genuinely NEW |
+|---|---|---|---|
+| ancient DNA → PubMed | 28,599 | 1,665,539 → 1,694,272 | **+28,733** |
+| AI security → arXiv | 19,548 | 786,094 → 794,803 | **+8,709** |
+
+Two-thirds of the arXiv push was an UPSERT over papers already indexed — the
+recent AI-security work, which the arXiv window (October 2023 onward) already
+held, and which is exactly what these questions are mostly about. What was
+genuinely added was 8,709 OLDER papers, 2013–2023, which are not close
+neighbours of a question about a 2024 jailbreak benchmark.
+
+So the correct statement is narrower than the one first written:
+
+> Competition degrades retrieval when the added documents land in the SAME
+> NEIGHBOURHOOD as the gold. Corpus volume alone does not. The ancient-DNA
+> ingest put 28.6k ancient-DNA papers around ancient-DNA needles; this one put
+> 8.7k older papers around mostly-recent needles.
+
+That also means the ancient-DNA regression is better read as a
+neighbourhood-density effect than as a "bigger corpus is worse" effect, and a
+future ingest can be predicted from where its documents land, not how many
+there are. **A prediction that survives one case and fails the next is worth
+more than the case that generated it** — this one cost an ingest to falsify and
+should not have to be falsified again.
+
+**Confirmed a second time, at 1.44x the volume.** The second arm added 8,662
+more ids (28,227 enumerated, 28,204 indexed, arXiv 786,094 → 798,774). Paired
+against the same pre-ingest baseline: EN r@10 **identical**, SV r@10
+**identical**, EN r@1 one loss (p=1.0000). Two independent ingests into the
+same neighbourhood, neither of which moved recall. The density rule stands and
+the volume rule remains dead.
+
+**Latency did move, and that is the first real cost seen.** Paired sign over
+the same queries: slower on 66, faster on 43, **p=0.0346** — significant where
+the earlier +8.7k ingest was not (p=0.5692). A 1.6% larger index is not doing
+that on its own; the likelier reading is that the added documents sit close
+enough to these queries to enter the candidate pool and be reranked, paying
+cross-encoder time without changing the ordering. That is worth watching as the
+remaining 19 arms land: **recall is unmoved but the work is not free**, and a
+corpus can get more expensive to search before it gets worse to search.
+
+### Open
+
+1. The enumeration is 2 arms of 21 (28,227 ids), so the AI-security arXiv
+   corpus is a substantial START, not the complete field. The rebuilt
+   enumerator projects ~1,333 requests and ~3.7 h for the remaining arms,
+   against ~4,318 requests and ~10.9 h for the old design — which in practice
+   never finished at all.
+2. **A cheaper channel exists and the repo's own verdict on it was wrong.**
+   OAI-PMH was abandoned here for enumeration, but `ListSets` exposes 183 sets
+   down to leaf categories (`cs:cs:CR`), which nothing in the code or docs
+   recorded. Measured: full cs.CR, all years — 50,798 records, 41 pages, 369
+   seconds, abstracts on every record, zero 503s with no sleep at all. The
+   original incident is now explicable: `set=cs` (top-level) and a bare `from=`
+   both hang past 100 s, while the same request scoped to a LEAF set is
+   instant. Switching the enumerator to leaf sets is the obvious next move and
+   needs no new dependency. Full evidence in `data/aisec/enumeration-options.md`.
+2. Whether the Swedish register effect is corpus-specific or vocabulary-specific
+   is now a sharper question than it was, with a cheap experiment attached.
+
+---
+
 ## 2026-08-09 — the whole ancient-DNA literature, and what a topical corpus costs its own needles
 
 **+28,599 vectors**, 1,665,539 → 1,694,272. The PubMed index now holds
@@ -443,9 +741,24 @@ tried".
    abstract is not available to sample from, and needles written from the
    *last third* of a long abstract — the text the single-passage build discards
    — have to be generated from the harvested corpus on disk.
-4. **A carryover gold set is not yet pinned for PubMed.** The arXiv discipline
-   is to re-use the same needles across a corpus change so only the distractor
-   count varies. The sets built here (`data/eval/*-gold.json`) are the first
-   generation; `data/` is gitignored and ephemeral, so the next corpus change
-   should regenerate them from the same seed (`rag-eval-v1`) and months, which
-   the sampler makes deterministic.
+4. ~~**A carryover gold set is not yet pinned for PubMed.**~~ **Closed
+   2026-08-09.** The six hand-written needle sets now live in `tests/needles/`
+   and are guarded by `tests/needles.test.js`. They had lived only in gitignored
+   `data/`, so each one died with the container that produced it — which
+   quietly defeated the discipline they exist for: re-using the SAME needles
+   across a corpus change is what makes only the distractor count vary, and a
+   regenerated set changes the thing being measured. A paired test across two
+   different needle sets is not a paired test.
+
+   Committing them immediately paid for itself by surfacing two things nobody
+   had noticed: **two incompatible file shapes are in circulation** (paired
+   `{gold, en, sv}` versus per-row `{gold, id, en}` / `{gold, id, sv}`, where a
+   repeated `gold` is correct and a missing `en` is a Swedish query, not a
+   defect), and **three sets ask more than one question about the same paper**,
+   so their reported n overstates the independent evidence. Both are pinned
+   rather than fixed, for the reason in the caveat above: editing a set breaks
+   its pairing with every run already in this ledger.
+
+   Still open underneath it: the *sampled* PubMed sets (`data/eval/*-gold.json`)
+   remain ephemeral and should be regenerated from seed `rag-eval-v1`, which the
+   sampler makes deterministic.

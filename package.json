@@ -23,6 +23,7 @@
     "proof:agents": "node scripts/agent-proof.mjs",
     "mcp:probe": "node scripts/mcp-probe.mjs",
     "arxiv:harvest": "node scripts/arxiv-harvest.mjs",
+    "arxiv:sets": "node scripts/arxiv-oai-sets.mjs",
     "arxiv:corpus": "node scripts/arxiv-corpus.mjs",
     "arxiv:goldset": "node scripts/arxiv-goldset.mjs",
     "arxiv:index": "node scripts/arxiv-index.mjs",

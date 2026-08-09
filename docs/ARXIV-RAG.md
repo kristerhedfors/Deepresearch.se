@@ -75,6 +75,8 @@ measurements are committed; the 840 MB of derived data is not.
 > container is ephemeral, so it is the only durable record of where the next
 > incremental run should start. Update it in the same change as any ingest;
 > the **arxiv-ingest** skill is the runbook for both a delta and a rebuild.
+> A **named-list** run (`--ids`, §3.1) does not touch this line — it covers no
+> month, so moving the marker after one would claim coverage nobody harvested.
 
 ### 1.1 The first delta (2026-08-05)
 
@@ -127,6 +129,7 @@ harvest ─→ corpus ─→ passages ─→ embed ─→ int8 pack ─┐
 | Stage | Script | Notes |
 |---|---|---|
 | Harvest | `scripts/arxiv-harvest.mjs` | OAI-PMH, month-sharded, resumable |
+| Harvest (by category) | `scripts/arxiv-oai-sets.mjs` | OAI-PMH scoped to a leaf category set, resumable per category (§3.2) |
 | Corpus | `scripts/arxiv-corpus.mjs` | dedup, filter, deterministic sampling |
 | Build | `scripts/arxiv-index.mjs` | passages → embeddings → binary pack |
 | Search | `scripts/arxiv-search.mjs` | four retrieval pipelines; `dense_rerank` is the default, `--deep` adds the full-text stage |
@@ -159,9 +162,10 @@ completed the whole year in **~40 minutes** the following day. Plan it as an
 unattended job and do not calibrate from a run taken during flow control.
 
 Enumeration is a separate question from harvesting, and OAI-PMH is the wrong
-tool for it: `scripts/arxiv-gcs.mjs` lists the same window from a public mirror
-in **39 seconds**, which is what makes cross-validating the harvest cheap
-enough to do every time (§10.2).
+tool for enumerating a *window*: `scripts/arxiv-gcs.mjs` lists the same window
+from a public mirror in **39 seconds**, which is what makes cross-validating the
+harvest cheap enough to do every time (§10.2). Enumerating a *category* is a
+different question again, and there OAI-PMH wins outright — §3.2.
 
 Three things about the feed cost real time to discover, and all are load-bearing:
 
@@ -188,6 +192,199 @@ in every month shard that touched it — so dedup by id is mandatory rather
 than defensive. It also means the harvester's own "kept" counter is **not** a
 document count: one run kept 339,263 records that deduplicated to 327,742
 papers.
+
+### 3.1 Adding a named list of arXiv ids
+
+A reading list, the references of one survey, a curated corpus reaching back to
+the 1990s — "index exactly these papers" — is the one shape the datestamp
+window cannot serve. Those ids are scattered across thirty years of submission
+months, so filling them from `ListRecords` means sweeping every month they fall
+in and discarding the rest. `--ids` fetches them through the **Atom query API's
+`id_list`** instead, the sibling of PubMed's `--pmids`
+(`docs/PUBMED-RAG.md` §4.2).
+
+```bash
+node scripts/arxiv-harvest.mjs --ids data/my-ids.txt --out data/arxiv-ids
+node scripts/arxiv-vectorize.mjs --index deepresearch-se-arxiv \
+  --corpus data/arxiv-ids/raw --work data/arxiv-ids/vectorize
+```
+
+The list takes one id per line or comma-separated, with `#` comments, `arXiv:`
+prefixes, version suffixes and `arxiv.org/abs|pdf` URLs — all of which are
+normalised to the canonical id. Anything else **throws** rather than being
+skipped: a silently dropped id is indistinguishable from an id arXiv does not
+hold, and the point of this path is that the caller named the records.
+
+**Why not OAI-PMH `GetRecord`.** It takes one identifier per call, and arXiv
+asks for one request every three seconds — 3 s per paper, 83 hours for 100k
+ids. `id_list` takes a whole batch per request, so the same 100k is ~90 minutes.
+The price is that the two channels speak different schemas, so unlike the
+PubMed sibling this path cannot reuse the archive parser: `parseAtomEntry` is a
+second parser that emits the **same keys in the same order** as `parseRecord`,
+pinned by a test. Verified on `hep-th/9711200` — seven of eight fields byte-
+identical, and the eighth is a documented semantic difference: OAI's `<updated>`
+is the last **metadata** touch (2014-11-17), Atom's is the latest **version's**
+date (1998-01-22). Nothing routes on it; the submission month comes from the id
+everywhere it matters, and `updated` only reaches the index as the display
+field `d`.
+
+**Batches are bounded by BYTES, not by a row count.** arXiv's front end caps the
+HTTP request line at 4,094 bytes — 365 modern ids gave 4,062 and HTTP 200; 370
+gave `Request Line is too large (4117 > 4094)`. POST is documented but 400s on
+this API. A modern id is 10 characters and `cond-mat.stat-mech/0603313`
+normalises to 16, so a fixed id count tuned on recent papers would start failing
+the moment a list reached back past 2007.
+
+**Six ways an id can vanish here, every one of them silent, all reproduced
+against the live API on 2026-08-09.**
+
+| what | what it looks like | what the harvester does |
+|---|---|---|
+| arXiv does not hold the id (`2401.99999`) | HTTP 200, `totalResults 0`, no error element | `missing` bucket → `state/<shard>-missing.txt` |
+| old-style id with its subject class (`math.GT/0309136`) | matches nothing; the lookup form is archive-only `math/0309136`, which is also what OAI's `<id>` carries | normalised before the request |
+| the prefixed or upper-cased form (`arXiv:2301.07041`, `CS/0501001`) | matches nothing | normalised before the request |
+| `max_results` omitted | the answer is truncated to **ten** entries whatever the batch size | always sent, set to the batch size |
+| the `http://` host arXiv's own docs give | **0-byte body**, no error, no non-200 (through this environment's egress proxy; https is fine) | endpoint is https, and a response that is not an Atom feed is a hard error rather than N absent ids |
+| one unparseable id (`foo/0501001`) | HTTP 400 for the **whole batch**, taking ~360 good ids with it, body naming the offender | the id is peeled off by name and the batch retried |
+
+So every requested id ends in exactly one of four buckets — kept, unusable,
+rejected by arXiv, never returned — the buckets are **summed and asserted**
+against the request before the `.part` shard is renamed into place, and the ids
+arXiv did not return are written to `state/<shard>-missing.txt`.
+
+Two things the run deliberately does not do. It writes no `manifest.json`: that
+file records a datestamp window and a month count, and writing one beside a list
+of forty papers would be a false coverage claim. And it does not drop short
+abstracts — the OAI path does not either, so the JSONL stays the same corpus —
+but it **counts** the rows that fall under the index's own 200-character floor
+and says so, because with a named list "why is my paper not in the index" has to
+be answerable before the embeddings are paid for. `--min-abstract` turns the
+count into a filter.
+
+> **A named-list run is NOT a delta.** It says nothing about which submission
+> months are complete, so it must **not** move the delta marker in §1. The
+> markers there track the datestamp-window harvest and only that.
+
+The fill has the same flag, for the same reason and with the same default.
+`scripts/arxiv-vectorize.mjs --min-abstract N` moves the 200-character floor
+that `corpusRows` applies; leave it off and nothing changes. It exists because
+of what the floor does to a hand-written list. On 2026-08-09 a list of 1,218
+AI-consciousness ids harvested 1,218/1,218 and 1,210 reached the index. All
+eight of the missing were floor drops — six real one- or two-sentence abstracts
+(81–188 chars, one of them a 1995 quant-ph paper whose abstract is its table of
+contents) and two administrative stubs whose entire abstract is `This paper has
+been withdrawn by the author(s)` and `This article is taken out.` The same
+pattern accounted for every residual miss on the AI-security fills, including
+Carlini and Wagner's `1607.04311`, whose abstract is 146 characters.
+
+So on a named list the floor drops papers somebody asked for by name. **50** is
+the operational value for that case: it admits `1911.07682` ("Deep neural
+networks are vulnerable to adversarial attacks.", 59 chars) and still excludes
+the withdrawal stubs and the two novelty abstracts (`1902.02322` is `No.`,
+`1602.00251` is `Not really.`). It is a floor, not an off switch —
+`--min-abstract 0` is rejected, because a row with an empty abstract has nothing
+to embed and is a permanent miss rather than a policy choice. The rule itself is
+the exported `indexableRow()` and is pinned in
+`scripts/arxiv-vectorize.test.mjs`. A bulk window harvest should keep the
+default: at corpus scale the floor is what stops the index filling with stubs.
+
+### 3.2 Harvesting a whole category: the leaf-set channel
+
+`scripts/arxiv-oai-sets.mjs` harvests whole arXiv categories — all years,
+abstracts included — by scoping `ListRecords` to a **leaf category set** rather
+than to a datestamp window.
+
+```bash
+node scripts/arxiv-oai-sets.mjs --list-sets                       # what exists
+node scripts/arxiv-oai-sets.mjs --sets cs:cs:CR,cs:cs:AI --out data/arxiv-sets
+node scripts/arxiv-oai-sets.mjs --sets cs:cs:CR --from 2026-07-25 # a delta
+```
+
+**The record above was too broad, and this section corrects it.** The verdict
+this project carried was that OAI-PMH kept failing and that enumeration belonged
+to the Atom query API. Every failure on record was a datestamp-window sweep. A
+`set=`-scoped sweep is a different query against a different index, and it does
+not behave the same way. Measured 2026-08-09 from a session container; the probe
+scripts are in `data/aisec/probe/`.
+
+`ListSets` answers in ~500 ms with 183 entries over **174 distinct sets, 155 of
+them harvestable leaves**, and they reach the leaf category: `cs:cs:CR`, `cs:cs:AI`, `stat:stat:ML`,
+`physics:cond-mat:stat-mech`. The nine repeated specs are the physics
+sub-archives with no subcategories (`gr-qc`, `hep-ex/lat/ph/th`, `math-ph`,
+`nucl-ex/th`, `quant-ph`), listed once as a sub-archive and once as their own
+leaf — so a leaf is what nothing else extends, not a spec with three parts.
+
+Full `cs.CR`, all years, paged to exhaustion:
+
+```
+41 pages · 50,798 records · 369 s · 138 rec/s · 0 × HTTP 503
+```
+
+Zero flow control across 41 consecutive requests **with no sleep at all**.
+~1,300 records and 3.0–3.9 MB per page; the first page in 650–740 ms, steady
+state 10–14 s. Abstracts on every record — 1,300 `<abstract>` per 1,300
+`<record>` — plus categories, authors, doi, journal-ref, created, updated. That
+is the same `metadataPrefix=arXiv` payload the month-shard harvester parses, and
+`arxiv-oai-sets.mjs` imports `parseRecord`/`parsePage` from
+`scripts/arxiv-harvest.mjs` rather than reimplementing them, so the two channels
+emit one JSONL shape by construction. `arxiv-corpus.mjs`, `arxiv-index.mjs` and
+`arxiv-vectorize.mjs` read it unchanged.
+
+**Two request shapes do not answer at all, and both are refused by name.**
+
+| request | result |
+|---|---|
+| `set=cs:cs:CR` (leaf) | 1,300 records, first page in 650 ms |
+| `set=cs:cs:CR&from=2026-07-25` (leaf + date) | 656 records, 1 page, 11 s |
+| `set=cs` (whole archive) | **no response in 120 s**, twice |
+| `from=2026-07-25`, no set | **no response in 100 s** |
+
+The channel is cheap only when it is scoped to a leaf. A stall is
+indistinguishable from a slow page until the timeout fires, which is very likely
+the real shape of the incident this file recorded as "OAI-PMH is unreliable". So
+the script rejects an archive-wide set offline, before any request, and checks
+every other set against `ListSets` — a set the hierarchy extends is the `set=cs`
+shape in general form. Both errors quote the measurement, because the next
+session will otherwise re-derive it at two minutes a try.
+
+**Pacing.** The 138 rec/s was measured with no pause. That is a fact about the
+server, not a licence: the default is `--pause 3000` and sets run sequentially,
+which puts the same cs.CR harvest at ~490 s (~104 rec/s). The six AI-relevant
+leaves — cs.CR, cs.LG, cs.AI, cs.CL, cs.CV, stat.ML, ~917 k records before
+dedupe — project to ~2.5 h.
+
+**Cross-validated, because one channel cannot detect its own gaps.** OAI
+`set=cs:cs:CR` returned 50,798 records; a parquet snapshot of the same category
+counts 50,560. The two share no implementation and agree to **0.47%**, the
+difference being the snapshot's post-cut tail.
+
+Which channel for which target:
+
+| target | channel |
+|---|---|
+| a submission-month band across all of arXiv (what the hosted index covers) | `arxiv-harvest.mjs --months` (§3) |
+| one or more categories, any year | `arxiv-oai-sets.mjs --sets` |
+| the last few days of a category | `arxiv-oai-sets.mjs --sets … --from` |
+| a named list of ids | `arxiv-harvest.mjs --ids` (§3.1) |
+
+A set harvest covers categories, not months, so it **must not** move the delta
+marker in §1 — the same rule §3.1 states for named lists. Cross-listed papers
+arrive once per harvested set, so `kept` counts records rather than documents;
+`arxiv-corpus.mjs` dedupes by id, as it already must for month shards. Shards
+are named after the set (`cs-cs-CR.jsonl`), which keeps them out of the
+`YYYY-MM.jsonl` namespace and means `arxiv-corpus.mjs --months` does not match
+them.
+
+**The parquet snapshot is not being taken, deliberately.** A community
+Hugging Face mirror of arXiv metadata scans the whole corpus in ~5 minutes and
+was measured to be complete to its cut date, which is faster than anything here.
+It is rejected anyway, for two reasons that have nothing to do with speed: the
+query path needs **duckdb**, a runtime dependency this repo does not carry and
+would have to argue through `docs/DEPENDENCIES.md` §5/§8, and the data is a bot
+account's snapshot with no guarantee of a next refresh. The leaf-set channel is
+arXiv-official, needs nothing but `fetch`, and is 1.5–2.5 h rather than 5
+minutes. That trade was made on 2026-08-09; the full comparison of the seven
+channels considered is `data/aisec/enumeration-options.md`.
 
 ---
 
@@ -646,8 +843,10 @@ researching is exactly the kind of thing this project exists to demonstrate.
 |---|---|
 | `public/js/arxiv-rag-core.js` | pure core: passages, tokenizer, BM25, RRF, pooling, metrics, shard validation |
 | `public/js/arxiv-rag-core.test.js` | unit tests for all of it |
-| `scripts/arxiv-harvest.mjs` | OAI-PMH harvester |
-| `scripts/arxiv-harvest.test.mjs` | unit tests for the harvest/sample/gold-set pure logic |
+| `scripts/arxiv-harvest.mjs` | OAI-PMH harvester (`--months`), plus the named-list channel over the Atom query API (`--ids`, §3.1) |
+| `scripts/arxiv-harvest.test.mjs` | unit tests for the harvest/sample/gold-set pure logic and the `--ids` reconciliation |
+| `scripts/arxiv-oai-sets.mjs` | OAI-PMH harvester scoped to a leaf CATEGORY set (`--sets`, `--from`), §3.2 — same rows, resumable per category |
+| `scripts/arxiv-oai-sets.test.mjs` | unit tests for the leaf-set guard, the resumption protocol, checkpoints, and the shared row shape |
 | `scripts/arxiv-corpus.mjs` | corpus loading, dedup, deterministic sampling |
 | `scripts/arxiv-berget.mjs` | Berget client: embeddings, rerank, JSON chat, adaptive re-truncation |
 | `scripts/arxiv-index.mjs` | the index builder |
