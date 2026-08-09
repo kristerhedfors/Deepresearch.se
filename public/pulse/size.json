@@ -1,9 +1,9 @@
 {
-  "generated": "2026-08-09T19:22:23.607Z",
+  "generated": "2026-08-09T19:39:03.160Z",
   "totals": {
     "files": 1081,
-    "lines": 333959,
-    "chars": 19672081,
+    "lines": 334007,
+    "chars": 19676054,
     "languages": 14,
     "dependencies": 0,
     "devDependencies": 4
@@ -23,22 +23,22 @@
       "ext": "js, mjs",
       "label": "JavaScript",
       "files": 702,
-      "lines": 233943,
-      "chars": 10694005
+      "lines": 233967,
+      "chars": 10696199
     },
     {
       "ext": "md",
       "label": "Markdown",
       "files": 179,
-      "lines": 64348,
-      "chars": 4303997
+      "lines": 64371,
+      "chars": 4305694
     },
     {
       "ext": "json, webmanifest",
       "label": "JSON",
       "files": 79,
-      "lines": 17004,
-      "chars": 3733193
+      "lines": 17005,
+      "chars": 3733275
     },
     {
       "ext": "html",

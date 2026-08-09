@@ -1,14 +1,14 @@
 {
-  "generated": "2026-08-09T19:23:35.012Z",
+  "generated": "2026-08-09T19:37:37.856Z",
   "repo": "kristerhedfors/deepresearch.se",
   "range": {
     "from": "2026-07-04",
     "to": "2026-08-09"
   },
   "totals": {
-    "commits": 1449,
-    "added": 475469,
-    "removed": 111537,
+    "commits": 1450,
+    "added": 475998,
+    "removed": 111620,
     "features": 171
   },
   "commits": [
@@ -8705,6 +8705,12 @@
       "a": 134,
       "r": 6,
       "f": 0
+    },
+    {
+      "t": "2026-08-09T21:33:28+02:00",
+      "a": 529,
+      "r": 83,
+      "f": 0
     }
   ],
   "days": [
@@ -10527,11 +10533,12 @@
     },
     {
       "date": "2026-08-09",
-      "commits": 28,
-      "added": 15913,
-      "removed": 888,
+      "commits": 29,
+      "added": 16442,
+      "removed": 971,
       "features": 3,
       "subjects": [
+        "Refresh the activity graph through 2026-08-09, and make the phrase enough",
         "Record refactor pass 19: the declines, the ledger, the docs, the artifacts",
         "Refactor pass 19: pin the coverage ratchet's forced copy of the test globs",
         "Stop join() reparenting an absolute --out into the checkout",
@@ -10561,7 +10568,7 @@
         "Add the merge/validate step four parallel question authors need",
         "Persist the ingest mode and the register trap as skills"
       ],
-      "summary": "The arXiv enumerator was rebuilt around the 30-second timeout the API actually charges for and gained leaf-category harvesting plus an explicit-id mode, and three literatures went in through them: the whole ancient-DNA record back to 1961, AI security and AI consciousness, with paired measurement finding that retrieval cost tracks neighbourhood density rather than corpus size. 540 new gold questions across those domains landed with the needle sets committed rather than left in a container, a fixed and de-identified evaluation set, and /corpora/ published as a generated answer to what the indexes actually hold.",
+      "summary": "The arXiv enumerator was rebuilt around the 30-second timeout the API actually charges for and gained leaf-category harvesting plus an explicit-id mode, and three literatures went in through them: the whole ancient-DNA record back to 1961, AI security and AI consciousness, with paired measurement finding that retrieval cost tracks neighbourhood density rather than corpus size. 540 new gold questions across those domains landed with the needle sets committed rather than left in a container, a fixed and de-identified evaluation set, and /corpora/ published as a generated answer to what the indexes actually hold. The day closed with this dashboard's own refresh, which added a corpus-ingest subject and fixed a literature pattern that had matched nothing in the project's whole history.",
       "curated": true
     }
   ]

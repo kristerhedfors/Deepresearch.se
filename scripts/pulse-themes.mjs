@@ -78,7 +78,9 @@ export const SUBJECTS = /** @type {Subject[]} */ ([
     label: "Research pipeline",
     color: "#1baf7a", // slot 5 · aqua
     blurb: "Triage → search → gap → synthesis → validation; budgets, notes, routing.",
-    test: /\b(pipeline|triage|synthesis|synth\b|gap[- ]check|research (depth|notes|phase|step|space)|research-depth|budget|time slider|answer[- ]stream|notes[- ]digest|model[- ]routing)\b/,
+    // Widened 2026-08-09: the query-writing / report-tier phases were shipping
+    // under narrative subjects that never said "pipeline".
+    test: /\b(pipeline|triage|synthesis|synth\b|gap[- ]check|research (depth|notes|phase|step|space|plan|planner)|research-depth|forskningsplan(en|er|erna)?|budget|time slider|answer[- ]stream|notes[- ]digest|model[- ]routing|query[- ]writing|fr[åa]geskrivning(en|ar|arna)?|report (tier|length|size|format)|rapport(niv[åa]|l[äa]ngd)(en)?|subject-vs-format)\b/,
   },
   {
     key: "hf",
@@ -102,11 +104,21 @@ export const SUBJECTS = /** @type {Subject[]} */ ([
     test: /\b(pubmed\w*|medline|biomedic(al|ine)|biomedicin(sk|ska)?)\b/,
   },
   {
+    key: "ingest",
+    label: "Corpus ingest",
+    color: "#c17d11", // extended · ochre (nearest hue admin, OKLab 0.088 — the palette's
+    // closest pair stays search/storage at 0.034)
+    blurb: "Filling the hosted indexes: the harvest runbooks, the delta runs, the domain and named-list fills.",
+    test: /\b(ingest\w*|harvest\w*|backfill\w*|oai-pmh|delta (run|ingest)|corpus (harvest|build|fill|growth)|named[- ]list (fill|ingest|sweep)|indexering(en|ar|arna)?|inl[äa]sning(en|ar|arna)?|sk[öo]rd(a|ar|arna|ade|as|en|erna)?)\b/,
+  },
+  {
     key: "science",
     label: "Deep Science & literature",
     color: "#00713d", // extended · deep emerald
     blurb: "The peer-reviewed agents: Deep Science, Google Scholar, palaeogenomics and the ancient-DNA corpus.",
-    test: /\b(deep science|djupvetenskap|scholar|palaeogenom\w*|paleogenom\w*|arkeogenetik|peer[- ]?review(ed|s|ing)?|expertgranskad|fackgranskad|europe ?pmc|ancient (dna|sample|individual|genom\w*)|forntida dna|haplogroup\w*|haplogrupp\w*|radiocarbon|kolfjortonda\w*|venue metric)\b/,
+    // `ancient (dna|…)` required a SPACE and so matched 0 commits in all of
+    // history — the corpus writes "ancient-DNA". Hyphen class, both languages.
+    test: /\b(deep science|djupvetenskap|scholar|palaeogenom\w*|paleogenom\w*|arkeogenetik|peer[- ]?review(ed|s|ing)?|expertgranskad|fackgranskad|europe ?pmc|ancient[- ](dna|sample|individual|genom\w*)|forntida[- ]dna|haplogroup\w*|haplogrupp\w*|radiocarbon|kolfjortonda\w*|venue metric)\b/,
   },
   {
     key: "grants",
@@ -204,7 +216,9 @@ export const SUBJECTS = /** @type {Subject[]} */ ([
     label: "Testing & try-it",
     color: "#00967d", // extended · pine
     blurb: "Unit/e2e suites, the try-it queue, test-request batches, verdicts.",
-    test: /\b(test(s|ing|-requests?|-feedback|-batch|-point|-queue|able)?|try-it|\/try\/|e2e|fixture|verdict|spec\b|coverage|stamp(ed|s)? minted|queue #|eval\b|eval-|benchmark|\bbench\b|rubric|ci\b|github action(s)?|browser suite)\b/,
+    // Widened 2026-08-09 for the gold-answer / question-set authoring that
+    // landed untagged: "gold needle sets", "question authors", "Add 180 … questions".
+    test: /\b(test(s|ing|-requests?|-feedback|-batch|-point|-queue|able)?|try-it|\/try\/|e2e|fixture|verdict|spec\b|coverage|stamp(ed|s)? minted|queue #|eval\b|eval-|benchmark|\bbench\b|rubric|ci\b|github action(s)?|browser suite|gold[- ]?(needle|answer|question|set)s?|needle sets?|question (set|bank|author|writer)s?|fr[åa]gebank(en|er|erna)?|\d+ [\w'’-]+(?: [\w'’-]+){0,4} (questions|fr[åa]g(or|orna)))\b/,
   },
   {
     key: "admin",
