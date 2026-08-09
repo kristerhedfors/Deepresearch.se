@@ -106,6 +106,26 @@ test("a Swedish question left untagged is caught, so the sv count cannot silentl
   assert.ok(validateItems([untagged]).some((e) => e.includes("not tagged sv")));
 });
 
+test("an English question citing a foreign name is NOT mistaken for Swedish", () => {
+  // Diacritics alone cannot decide this: plenty of researchers in these fields
+  // are called Frässle, Müller, Schrödinger or Dalén. This exact case fired as
+  // a false positive on a real item before the check moved to function words.
+  const foreignNames = [
+    "Frässle and colleagues used optokinetic nystagmus to track binocular rivalry. What changed?",
+    "What did Müller and Schrödinger conclude about the measurement problem in this setting?",
+    "Which of Dalén's collaborators sequenced the specimen, and in what year did they publish?",
+  ];
+  for (const question of foreignNames) {
+    assert.deepEqual(validateItems([ok({ question })]), [], `false positive on: ${question}`);
+  }
+});
+
+test("one stray Swedish-looking token is not enough to call a question Swedish", () => {
+  // "att" also appears inside quoted foreign titles; a single hit must not trip it.
+  const q = ok({ question: 'The paper titled "Ett steg" was cited here — what did the authors measure?' });
+  assert.deepEqual(validateItems([q]), []);
+});
+
 test("non-Latin script pasted into a question is rejected — it is invisible and matches nothing", () => {
   // A Cyrillic 'е' inside an otherwise Latin word.
   const errs = validateItems([ok({ question: "What did the first draft Nеanderthal genome show about it?" })]);

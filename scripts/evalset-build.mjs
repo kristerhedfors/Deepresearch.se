@@ -31,7 +31,12 @@ import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
 import { basename, join } from "node:path";
 
 const EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
-const ARXIV_API = "http://export.arxiv.org/api/query";
+// HTTPS, not HTTP. arXiv's own docs give the http:// form and it works from a
+// normal network, but behind this environment's egress proxy it returns a
+// 0-byte body with no error — which would make every arXiv citation look
+// unresolvable and fail the whole set for a reason that has nothing to do with
+// the citations.
+const ARXIV_API = "https://export.arxiv.org/api/query";
 const TOOL = "deepresearch.se";
 const EMAIL = process.env.PUBMED_CONTACT || "info@deepresearch.se";
 const ESUMMARY_BATCH = 200;
@@ -112,6 +117,30 @@ const isLatinOnly = (s) => /^[\p{Script=Latin}\p{Script=Common}\p{Script=Inherit
 const hasSwedishLetters = (/** @type {string} */ s) => /[åäöÅÄÖ]/.test(s);
 
 /**
+ * Is this text actually written in Swedish?
+ *
+ * Diacritics alone cannot answer it. An English question citing Frässle,
+ * Müller, Schrödinger or Dalén carries å/ä/ö and is not Swedish — that exact
+ * false positive fired on a real item about binocular rivalry. Function words
+ * are the reliable signal instead: they are frequent, they are not borrowed
+ * into English prose, and no Swedish sentence long enough to be a question
+ * avoids all of them. Two independent hits are required so a single stray
+ * token (an "att" inside a quoted title) does not trip it.
+ * @param {string} s
+ */
+const looksSwedish = (s) => {
+  const words = String(s).toLowerCase().match(/[\p{L}]+/gu) || [];
+  const seen = new Set(words.filter((w) => SWEDISH_FUNCTION_WORDS.has(w)));
+  return seen.size >= 2;
+};
+const SWEDISH_FUNCTION_WORDS = new Set([
+  "och", "att", "är", "som", "för", "inte", "med", "vad", "hur", "vilka", "vilken", "vilket",
+  "den", "det", "de", "en", "ett", "på", "av", "till", "från", "eller", "men", "har", "hade",
+  "kan", "kunde", "ska", "skulle", "man", "sig", "när", "där", "här", "över", "under", "mellan",
+  "efter", "före", "genom", "mot", "utan", "varför", "vilka", "sina", "sitt", "deras",
+]);
+
+/**
  * Structural checks — everything that does not need the network.
  * @param {any[]} items
  * @param {Set<string>} excludePmids PMIDs whose author is the researcher this set looks beyond
@@ -149,7 +178,7 @@ export function validateItems(items, excludePmids = new Set()) {
     if (tags.includes("sv") && !hasSwedishLetters(`${it.question} ${it.answer}`)) {
       errors.push(`${where}: tagged sv but carries no å/ä/ö — diacritics were probably stripped`);
     }
-    if (!tags.includes("sv") && hasSwedishLetters(it.question || "")) {
+    if (!tags.includes("sv") && looksSwedish(it.question || "")) {
       errors.push(`${where}: question looks Swedish but is not tagged sv`);
     }
 
