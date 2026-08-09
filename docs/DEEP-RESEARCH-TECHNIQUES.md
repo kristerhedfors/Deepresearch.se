@@ -85,8 +85,10 @@ synthesis buys the first curve and pays the second.
 ## 3. Research over the scientific literature
 
 This is where the strongest human-comparison results live, and where our hosted
-arXiv (772,658 vectors) and PubMed (~1.65M) indexes make us unusually
-well-placed.
+arXiv and PubMed indexes make us unusually well-placed. Current sizes and
+coverage: `CORPORA.md`, or the published `/corpora/` page it describes — both
+generated off the live indexes, because a count written into prose here would
+be wrong by the next fill.
 
 **PaperQA2's RCS is the largest single measured lever**
 ([arXiv:2409.13740](https://arxiv.org/abs/2409.13740)). After dense retrieval,

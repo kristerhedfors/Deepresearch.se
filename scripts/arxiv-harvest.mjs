@@ -133,7 +133,7 @@
 
 import { createWriteStream } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { INDEX_ABSTRACT_FLOOR } from "../public/js/arxiv-rag-core.js";
@@ -1052,10 +1052,10 @@ async function main() {
   }
 
   if (args.ids) {
-    const listPath = join(ROOT, args.ids);
+    const listPath = resolve(ROOT, args.ids);
     const ids = parseIdList(await readFile(listPath, "utf8"));
     if (!ids.length) throw new Error(`${args.ids}: no arXiv ids in the list`);
-    const outDir = join(ROOT, args.out);
+    const outDir = resolve(ROOT, args.out);
     const rawDir = join(outDir, "raw");
     const stateDir = join(outDir, "state");
     await mkdir(rawDir, { recursive: true });
@@ -1107,7 +1107,7 @@ async function main() {
   // the band's id-months:
   //   --months 13 --keep-months 2310-2506        (datestamps 2025-07 -> today)
   if (args.keepMonths) plan.idMonths = new Set(expandIdMonths(args.keepMonths));
-  const outDir = join(ROOT, args.out);
+  const outDir = resolve(ROOT, args.out);
   await mkdir(join(outDir, "raw"), { recursive: true });
   await mkdir(join(outDir, "state"), { recursive: true });
   console.log(

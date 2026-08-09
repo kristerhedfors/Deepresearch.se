@@ -1,0 +1,166 @@
+{
+  "v": 1,
+  "generated": "2026-08-09T16:22:56.905Z",
+  "corpora": [
+    {
+      "id": "arxiv",
+      "name": "arXiv",
+      "kind": "Preprints — physics, mathematics, computer science, quantitative biology, statistics, economics, quantitative finance",
+      "index": "deepresearch-se-arxiv",
+      "vectors": 823097,
+      "idExample": "2401.12345",
+      "recorded": {
+        "measured": "2026-08-09",
+        "channel": "OAI-PMH ListRecords, plus named-id lists through the Atom query API",
+        "note": "The bulk band was swept month by month. Everything below it arrived through topic-targeted named-list fills, which is why older coverage is dense for some subjects and near-absent for others."
+      },
+      "shape": {
+        "kind": "submission-month",
+        "measuredAt": "2026-08-09T16:16:18.688Z",
+        "band": {
+          "from": "2310",
+          "to": "2607",
+          "count": 780790
+        },
+        "outsideBand": 42307,
+        "preModernIds": 420,
+        "byYear": {
+          "2007": 83,
+          "2008": 120,
+          "2009": 222,
+          "2010": 334,
+          "2011": 286,
+          "2012": 391,
+          "2013": 409,
+          "2014": 541,
+          "2015": 611,
+          "2016": 895,
+          "2017": 1500,
+          "2018": 2668,
+          "2019": 3834,
+          "2020": 5502,
+          "2021": 6345,
+          "2022": 7297,
+          "2023": 63629,
+          "2024": 242630,
+          "2025": 282990,
+          "2026": 202390
+        },
+        "sentence": "Submission months 2310-2607 (October 2023 to July 2026) are swept in bulk — 780,790 papers across every subject arXiv carries. A further 42,307 papers (5.1%) sit OUTSIDE that band, reaching back to 1991. Those arrived through topic-targeted fills, so pre-2310 coverage is dense for some subjects (AI security, AI consciousness, ancient DNA) and near-absent for others. A pre-2310 miss is therefore NOT proof the paper is out of window — retry with different terms before concluding it is absent."
+      }
+    },
+    {
+      "id": "pubmed",
+      "name": "PubMed",
+      "kind": "Biomedical and life-science literature — MEDLINE journals, plus bioRxiv and medRxiv records",
+      "index": "deepresearch-se-pubmed",
+      "vectors": 1731517,
+      "idExample": "pmid:41787358",
+      "recorded": {
+        "measured": "2026-07-31",
+        "channel": "the NLM daily-update archive files, newest first",
+        "recordsRead": 3776137,
+        "recordsKept": 3397607,
+        "uniqueCitations": 1639403,
+        "repeatRate": 0.559,
+        "withDoi": 0.993,
+        "withMesh": 0.667,
+        "truncatedPassages": 0.88,
+        "note": "Defined as a PMID / load-order window — everything NLM has loaded or revised since the 2026 baseline was cut on 2026-01-29 — NOT as a publication-date range. The update files carry recent EDITS, so they include old papers that were revised."
+      },
+      "shape": {
+        "kind": "pmid-load-order",
+        "measuredAt": "2026-08-09T16:22:56.904Z",
+        "unparsed": 0,
+        "byBand": {
+          "0M": 296,
+          "1M": 555,
+          "2M": 563,
+          "3M": 435,
+          "4M": 54,
+          "5M": 22,
+          "6M": 330,
+          "7M": 732,
+          "8M": 1419,
+          "9M": 1562,
+          "10M": 1688,
+          "11M": 1935,
+          "12M": 2685,
+          "13M": 21,
+          "14M": 674,
+          "15M": 2645,
+          "16M": 2518,
+          "17M": 2966,
+          "18M": 2828,
+          "19M": 3748,
+          "20M": 3306,
+          "21M": 4200,
+          "22M": 4447,
+          "23M": 4506,
+          "24M": 4901,
+          "25M": 5550,
+          "26M": 5721,
+          "27M": 5555,
+          "28M": 8978,
+          "29M": 9808,
+          "30M": 12314,
+          "31M": 13094,
+          "32M": 15741,
+          "33M": 19467,
+          "34M": 19408,
+          "35M": 15785,
+          "36M": 18570,
+          "37M": 50414,
+          "38M": 114046,
+          "39M": 152070,
+          "40M": 177608,
+          "41M": 552125,
+          "42M": 486227
+        }
+      }
+    }
+  ],
+  "domains": [
+    {
+      "id": "adna",
+      "name": "Ancient DNA / palaeogenomics",
+      "corpora": [
+        "pubmed"
+      ],
+      "evalSet": "tests/evalsets/adna.json",
+      "questions": 180
+    },
+    {
+      "id": "aisec",
+      "name": "AI cybersecurity",
+      "corpora": [
+        "arxiv",
+        "pubmed"
+      ],
+      "evalSet": "tests/evalsets/aisec.json",
+      "questions": 180
+    },
+    {
+      "id": "aicon",
+      "name": "AI consciousness",
+      "corpora": [
+        "arxiv",
+        "pubmed"
+      ],
+      "evalSet": "tests/evalsets/aicon.json",
+      "questions": 180
+    },
+    {
+      "id": "palaeogenomics",
+      "name": "Palaeogenomics bibliography",
+      "corpora": [
+        "pubmed"
+      ],
+      "evalSet": "tests/evalsets/palaeogenomics.json",
+      "questions": 56
+    }
+  ],
+  "totals": {
+    "vectors": 2554614
+  }
+}
