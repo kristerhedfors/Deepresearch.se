@@ -59,6 +59,10 @@
 //     (CS/0501001);
 //   * omitting `max_results` silently truncates the answer to TEN entries,
 //     whatever the batch size, so it is always sent;
+//   * requesting the `http://` host arXiv's own docs give returns a 0-BYTE BODY
+//     through this environment's egress proxy — no error, no non-200 — so the
+//     endpoint is https and parseAtomFeed refuses anything that is not a feed
+//     rather than reporting an empty transport as a list of absent ids;
 //   * one unparseable id fails the WHOLE batch with HTTP 400
 //     (`incorrect_id_format_for_foo/0501001`), taking ~360 good ids with it —
 //     so a rejected id is peeled off by name and the batch retried, rather
@@ -102,12 +106,21 @@
 // when sent), while genuine errors keep a short one.
 
 import { createWriteStream } from "node:fs";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OAI = "https://oaipmh.arxiv.org/oai";
+// HTTPS, and it is NOT interchangeable with the `http://` form arXiv's own API
+// documentation gives — do not "fix" this back to match the docs. Measured
+// 2026-08-09 from a session container: `http://export.arxiv.org/api/query?…`
+// comes back through the egress proxy as a **0-byte body with no error and no
+// non-200 status**, while the identical https request returns the full feed.
+// A harvester on the http form would report every id as "not returned" and
+// write nothing, which is indistinguishable from a correct run against a list
+// of ids arXiv does not hold. parseAtomFeed's `isFeed` check is the guard that
+// turns that into a hard failure instead.
 const API = "https://export.arxiv.org/api/query";
 const UA = "deepresearch.se-arxiv-harvest/1.0 (+https://deepresearch.se)";
 
@@ -456,6 +469,24 @@ export function batchIds(ids, budget = ID_LIST_BUDGET) {
 }
 
 /**
+ * The canonical arXiv id an Atom `<entry>` is about, or "" when there is none.
+ *
+ * Separate from parseAtomEntry because the RECONCILIATION needs the id even
+ * when the row is unusable. An entry with no `<summary>` still names a paper
+ * arXiv did return, and folding it in with the ids that never came back would
+ * put it in missing.txt — telling the operator to go re-fetch something they
+ * already have.
+ *
+ * @param {string} xml
+ * @returns {string}
+ */
+export function entryId(xml) {
+  // An error entry carries an `arxiv.org/api/errors#…` id, so it fails the
+  // canonical-id test rather than needing a separate shape check.
+  return canonicalId(tagText(xml, "id"));
+}
+
+/**
  * One Atom `<entry>` → the same corpus row parseRecord builds from an OAI
  * record: the same keys, in the same order, so the two channels' JSONL is
  * interchangeable downstream. arxiv-harvest.test.mjs pins that against a real
@@ -463,16 +494,13 @@ export function batchIds(ids, budget = ID_LIST_BUDGET) {
  *
  * Returns null for an entry the index cannot use — the API's own error entries
  * (`<id>https://arxiv.org/api/errors#…`), and the rare record with no abstract
- * or title.
+ * or title. Use entryId to attribute one of those to a requested id.
  *
  * @param {string} xml
  * @returns {{ id: string, title: string, abstract: string, authors: string[], categories: string[], primary: string, updated: string, doi: string } | null}
  */
 export function parseAtomEntry(xml) {
-  const rawId = tagText(xml, "id");
-  // An error entry carries an `arxiv.org/api/errors#…` id, so it fails the
-  // canonical-id test rather than needing a separate shape check.
-  const id = canonicalId(rawId);
+  const id = entryId(xml);
   if (!id) return null;
   const title = tagText(xml, "title");
   // Atom calls the abstract `<summary>`; OAI calls it `<abstract>`. This is the
@@ -735,8 +763,8 @@ export async function fetchIdList(ids, log = () => {}) {
 /**
  * @typedef {{
  *   requested: number, batches: number, entries: number, kept: number,
- *   unusable: number, rejected: string[], missing: string[], unrequested: string[],
- *   belowIndexFloor: number, shard: string
+ *   unusable: number, unattributed: number, rejected: string[], missing: string[],
+ *   unrequested: string[], belowIndexFloor: number, shard: string
  * }} IdHarvestStats
  */
 
@@ -789,6 +817,7 @@ export async function harvestIds(ids, dir, opts = {}) {
     entries: 0,
     kept: 0,
     unusable: 0,
+    unattributed: 0,
     rejected: [],
     missing: [],
     unrequested: [],
@@ -796,7 +825,29 @@ export async function harvestIds(ids, dir, opts = {}) {
     shard,
   };
 
-  const batches = batchIds(wanted, opts.budget);
+  try {
+    return await runIdBatches(wanted, { batches: batchIds(wanted, opts.budget), sink, seen, stats, fetchXml, log, minAbstract, opts, partPath });
+  } catch (err) {
+    // Close the stream and take the `.part` with us. The rename-on-success
+    // discipline already means a `.part` is never mistaken for a finished
+    // shard, but leaving a half-written one behind invites a rerun to be
+    // diffed against garbage. `writableEnded` because the accounting guards
+    // throw AFTER the stream is closed, and end()ing twice raises
+    // ERR_STREAM_ALREADY_FINISHED on top of the real error.
+    if (!sink.writableEnded) await new Promise((r) => sink.end(r));
+    await rm(partPath, { force: true });
+    throw err;
+  }
+}
+
+/** The body of harvestIds, split out only so the failure path above can be one
+ * `catch`. Not exported: the reconciliation contract belongs to harvestIds.
+ * @param {string[]} wanted
+ * @param {any} ctx
+ * @returns {Promise<IdHarvestStats>}
+ */
+async function runIdBatches(wanted, ctx) {
+  const { batches, sink, seen, stats, fetchXml, log, minAbstract, opts, partPath } = ctx;
   let done = 0;
   for (const [i, batch] of batches.entries()) {
     // A batch can need more than one request: arXiv rejects the whole call for
@@ -833,14 +884,21 @@ export async function harvestIds(ids, dir, opts = {}) {
         stats.entries++;
         const rec = parseAtomEntry(entry);
         if (!rec) {
-          // An entry with no readable id cannot be attributed to a requested
-          // id, so it is counted on its own rather than folded into a bucket —
-          // otherwise the sum below stops adding up for the wrong reason.
-          stats.unusable++;
+          // Attribute it if the entry names a paper at all: an abstract-less
+          // entry is an id arXiv DID return, and calling it "not returned"
+          // would put it in missing.txt as work to redo. An entry with no
+          // readable id at all is a shape change and is counted on its own.
+          const id = entryId(entry);
+          if (id) {
+            seen.set(id, "unusable");
+            stats.unusable++;
+          } else {
+            stats.unattributed++;
+          }
           continue;
         }
         if (rec.abstract.length < minAbstract) {
-          seen.set(rec.id, "short");
+          seen.set(rec.id, "unusable");
           stats.unusable++;
           continue;
         }
@@ -871,9 +929,17 @@ export async function harvestIds(ids, dir, opts = {}) {
   // while nothing went wrong.
   stats.unrequested = [...seen.keys()].filter((id) => !wantedSet.has(id));
 
-  const accounted = wanted.filter((id) => seen.has(id)).length + stats.missing.length;
+  // THE CHECK THIS FUNCTION EXISTS FOR. Summing the buckets, not counting the
+  // keys of `seen` — the latter is true by construction (missing is defined as
+  // its complement) and would pass while an id was counted in two buckets or a
+  // duplicate entry inflated `kept`.
+  const accounted = stats.kept + stats.unusable + stats.rejected.length + stats.missing.length;
   if (accounted !== wanted.length) {
-    throw new Error(`accounting is broken: ${accounted} dispositions for ${wanted.length} requested ids`);
+    throw new Error(
+      `accounting is broken: ${stats.kept} kept + ${stats.unusable} unusable + ${stats.rejected.length} rejected + ` +
+        `${stats.missing.length} missing = ${accounted}, for ${wanted.length} requested ids` +
+        (stats.unrequested.length ? ` (${stats.unrequested.length} came back under an id nobody asked for: ${stats.unrequested.slice(0, 5).join(", ")})` : ""),
+    );
   }
   // Nothing kept means the shard would be an empty file the fill happily
   // reports as "done — 0 vectors". For a list the caller wrote out by hand

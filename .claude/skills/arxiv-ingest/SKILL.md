@@ -37,13 +37,14 @@ This skill is the *procedure*. `docs/ARXIV-RAG.md` is the *evidence*, the
 
 ## 0. Which mode you are in
 
-| | full rebuild | delta |
-|---|---|---|
-| when | the index is empty, the passage/metadata shape changed, or the covered band is being widened | routine catch-up |
-| covers | 2310 → current month (34+ months) | the months since the last ingest |
-| volume | ~772 k papers | ~25–30 k new submissions per month |
-| wall clock | many hours — the harvest alone is rate-limited to 1 connection / 3 s | ~10 min per month of catch-up |
-| embeddings | ~€6 | cents |
+| | full rebuild | delta | named list |
+|---|---|---|---|
+| when | the index is empty, the passage/metadata shape changed, or the covered band is being widened | routine catch-up | "index exactly these papers" — a bibliography, a survey's references, a curated corpus |
+| covers | 2310 → current month (34+ months) | the months since the last ingest | nothing but the ids given, any year back to the 1990s |
+| volume | ~772 k papers | ~25–30 k new submissions per month | whatever the list holds |
+| wall clock | many hours — the harvest alone is rate-limited to 1 connection / 3 s | ~10 min per month of catch-up | ~3 s per ~360 ids |
+| embeddings | ~€6 | cents | cents |
+| moves the §1 marker? | yes | yes | **no — §6a** |
 
 **The band starts at 2310 and that is deliberate, not a leftover.** arXiv's
 LaTeXML HTML rendering — the thing that makes the full-text tier Worker-native
@@ -233,6 +234,42 @@ node scripts/rag-eval.mjs probe    --corpus arxiv
 The control must return nothing above the relevance floor. Expect the current
 month to be incomplete — the mirror lists a paper once its PDF is built, and
 the last days of the month are simply not there yet.
+
+---
+
+## 6a. The named-list mode (`--ids`)
+
+A list of arXiv ids is not a window, and the datestamp harvest cannot serve one
+without sweeping every month the ids fall in. `--ids` fetches exactly the named
+papers through the Atom query API's `id_list` — the sibling of PubMed's
+`--pmids`, and the same reconciliation discipline:
+
+```bash
+node scripts/arxiv-harvest.mjs --ids data/my-ids.txt --out data/arxiv-ids
+node scripts/arxiv-vectorize.mjs --index deepresearch-se-arxiv \
+  --corpus data/arxiv-ids/raw --work data/arxiv-ids/vectorize
+```
+
+Read the reconciliation line before the fill, not after it. Every requested id
+lands in one of four buckets — kept, unusable, rejected by arXiv, never
+returned — and the ids arXiv did not return go to
+`data/arxiv-ids/state/ids-<list>-missing.txt`. `NODE_USE_ENV_PROXY=1` is
+required for both legs behind the agent proxy.
+
+**Do NOT move the §1 delta marker after one of these.** A named list covers no
+month, so the marker would claim coverage nobody harvested — and the next delta
+would start above a month that was never swept. Same for `CORPUS_FACTS.arxiv`:
+the `window` string is about the datestamp harvest. `vectors_at_fill` does move
+if the list was large enough to matter, and that is a judgement call, not a
+rule.
+
+The traps this mode has that §5 does not are all in `docs/ARXIV-RAG.md` §3.1,
+and every one of them is silent — an unknown id is HTTP 200 with nothing in it,
+one malformed id 400s the whole ~360-id batch, a missing `max_results`
+truncates the answer to ten, and the `http://` host arXiv's own docs give
+returns a 0-byte body through this environment's proxy. The script handles all
+four; the reason to read them is that the same shapes turn up whenever anyone
+writes another arXiv client.
 
 ---
 

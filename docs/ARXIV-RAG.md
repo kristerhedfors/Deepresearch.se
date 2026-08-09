@@ -75,6 +75,8 @@ measurements are committed; the 840 MB of derived data is not.
 > container is ephemeral, so it is the only durable record of where the next
 > incremental run should start. Update it in the same change as any ingest;
 > the **arxiv-ingest** skill is the runbook for both a delta and a rebuild.
+> A **named-list** run (`--ids`, §3.1) does not touch this line — it covers no
+> month, so moving the marker after one would claim coverage nobody harvested.
 
 ### 1.1 The first delta (2026-08-05)
 
@@ -188,6 +190,78 @@ in every month shard that touched it — so dedup by id is mandatory rather
 than defensive. It also means the harvester's own "kept" counter is **not** a
 document count: one run kept 339,263 records that deduplicated to 327,742
 papers.
+
+### 3.1 Adding a named list of arXiv ids
+
+A reading list, the references of one survey, a curated corpus reaching back to
+the 1990s — "index exactly these papers" — is the one shape the datestamp
+window cannot serve. Those ids are scattered across thirty years of submission
+months, so filling them from `ListRecords` means sweeping every month they fall
+in and discarding the rest. `--ids` fetches them through the **Atom query API's
+`id_list`** instead, the sibling of PubMed's `--pmids`
+(`docs/PUBMED-RAG.md` §4.2).
+
+```bash
+node scripts/arxiv-harvest.mjs --ids data/my-ids.txt --out data/arxiv-ids
+node scripts/arxiv-vectorize.mjs --index deepresearch-se-arxiv \
+  --corpus data/arxiv-ids/raw --work data/arxiv-ids/vectorize
+```
+
+The list takes one id per line or comma-separated, with `#` comments, `arXiv:`
+prefixes, version suffixes and `arxiv.org/abs|pdf` URLs — all of which are
+normalised to the canonical id. Anything else **throws** rather than being
+skipped: a silently dropped id is indistinguishable from an id arXiv does not
+hold, and the point of this path is that the caller named the records.
+
+**Why not OAI-PMH `GetRecord`.** It takes one identifier per call, and arXiv
+asks for one request every three seconds — 3 s per paper, 83 hours for 100k
+ids. `id_list` takes a whole batch per request, so the same 100k is ~90 minutes.
+The price is that the two channels speak different schemas, so unlike the
+PubMed sibling this path cannot reuse the archive parser: `parseAtomEntry` is a
+second parser that emits the **same keys in the same order** as `parseRecord`,
+pinned by a test. Verified on `hep-th/9711200` — seven of eight fields byte-
+identical, and the eighth is a documented semantic difference: OAI's `<updated>`
+is the last **metadata** touch (2014-11-17), Atom's is the latest **version's**
+date (1998-01-22). Nothing routes on it; the submission month comes from the id
+everywhere it matters, and `updated` only reaches the index as the display
+field `d`.
+
+**Batches are bounded by BYTES, not by a row count.** arXiv's front end caps the
+HTTP request line at 4,094 bytes — 365 modern ids gave 4,062 and HTTP 200; 370
+gave `Request Line is too large (4117 > 4094)`. POST is documented but 400s on
+this API. A modern id is 10 characters and `cond-mat.stat-mech/0603313`
+normalises to 16, so a fixed id count tuned on recent papers would start failing
+the moment a list reached back past 2007.
+
+**Six ways an id can vanish here, every one of them silent, all reproduced
+against the live API on 2026-08-09.**
+
+| what | what it looks like | what the harvester does |
+|---|---|---|
+| arXiv does not hold the id (`2401.99999`) | HTTP 200, `totalResults 0`, no error element | `missing` bucket → `state/<shard>-missing.txt` |
+| old-style id with its subject class (`math.GT/0309136`) | matches nothing; the lookup form is archive-only `math/0309136`, which is also what OAI's `<id>` carries | normalised before the request |
+| the prefixed or upper-cased form (`arXiv:2301.07041`, `CS/0501001`) | matches nothing | normalised before the request |
+| `max_results` omitted | the answer is truncated to **ten** entries whatever the batch size | always sent, set to the batch size |
+| the `http://` host arXiv's own docs give | **0-byte body**, no error, no non-200 (through this environment's egress proxy; https is fine) | endpoint is https, and a response that is not an Atom feed is a hard error rather than N absent ids |
+| one unparseable id (`foo/0501001`) | HTTP 400 for the **whole batch**, taking ~360 good ids with it, body naming the offender | the id is peeled off by name and the batch retried |
+
+So every requested id ends in exactly one of four buckets — kept, unusable,
+rejected by arXiv, never returned — the buckets are **summed and asserted**
+against the request before the `.part` shard is renamed into place, and the ids
+arXiv did not return are written to `state/<shard>-missing.txt`.
+
+Two things the run deliberately does not do. It writes no `manifest.json`: that
+file records a datestamp window and a month count, and writing one beside a list
+of forty papers would be a false coverage claim. And it does not drop short
+abstracts — the OAI path does not either, so the JSONL stays the same corpus —
+but it **counts** the rows that fall under the index's own 200-character floor
+and says so, because with a named list "why is my paper not in the index" has to
+be answerable before the embeddings are paid for. `--min-abstract` turns the
+count into a filter.
+
+> **A named-list run is NOT a delta.** It says nothing about which submission
+> months are complete, so it must **not** move the delta marker in §1. The
+> markers there track the datestamp-window harvest and only that.
 
 ---
 
@@ -646,8 +720,8 @@ researching is exactly the kind of thing this project exists to demonstrate.
 |---|---|
 | `public/js/arxiv-rag-core.js` | pure core: passages, tokenizer, BM25, RRF, pooling, metrics, shard validation |
 | `public/js/arxiv-rag-core.test.js` | unit tests for all of it |
-| `scripts/arxiv-harvest.mjs` | OAI-PMH harvester |
-| `scripts/arxiv-harvest.test.mjs` | unit tests for the harvest/sample/gold-set pure logic |
+| `scripts/arxiv-harvest.mjs` | OAI-PMH harvester (`--months`), plus the named-list channel over the Atom query API (`--ids`, §3.1) |
+| `scripts/arxiv-harvest.test.mjs` | unit tests for the harvest/sample/gold-set pure logic and the `--ids` reconciliation |
 | `scripts/arxiv-corpus.mjs` | corpus loading, dedup, deterministic sampling |
 | `scripts/arxiv-berget.mjs` | Berget client: embeddings, rerank, JSON chat, adaptive re-truncation |
 | `scripts/arxiv-index.mjs` | the index builder |

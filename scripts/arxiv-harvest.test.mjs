@@ -521,6 +521,16 @@ test("harvestIds refuses to write a shard when arXiv did not answer with a feed"
       () => harvestIds(["2401.10001"], dir, { pauseMs: 0, fetchXml: async () => "<html><body>Bad Request</body></html>" }),
       /did not answer with an Atom feed/,
     );
+    // THE 0-BYTE BODY. `http://export.arxiv.org/api/query?…` answers through
+    // this environment's egress proxy with an empty body and no error at all
+    // (measured 2026-08-09; https is fine, which is why the endpoint is https
+    // and says so). Without this guard a whole run would come back as "N
+    // requested, 0 returned" with every id in missing.txt — exactly what a
+    // correct run against a list of unknown ids looks like.
+    await assert.rejects(
+      () => harvestIds(["2401.10001"], dir, { pauseMs: 0, fetchXml: async () => "" }),
+      /did not answer with an Atom feed/,
+    );
     // A feed with zero results is a legitimate answer and must fail differently
     // — as "kept 0", not as "the channel is broken".
     await assert.rejects(
