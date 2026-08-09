@@ -104,6 +104,32 @@
 // down, and it can persist for many minutes. So flow control now has its own
 // generous attempt ceiling and a progressive backoff (honouring Retry-After
 // when sent), while genuine errors keep a short one.
+//
+// ---- WHAT IS SLOW HERE IS THE DATESTAMP WINDOW, NOT OAI-PMH ----------------
+//
+// The verdict this file's history carries — OAI-PMH is unreliable, and
+// enumeration therefore belongs to the Atom query API — is too broad, and the
+// broad form is wrong. Corrected 2026-08-09, by measurement rather than by
+// re-reading the docs:
+//
+//   * what is slow and throttle-prone is THIS path, a `from`/`until` sweep of
+//     the whole archive: ~1,300 records a page at one request per 3 s, ~15 h
+//     for a year, and the 503 run above;
+//   * a request with NO set and only `from=` is worse than slow — it does not
+//     answer at all (no response in 100 s, measured twice with different
+//     dates), and neither does a whole-archive `set=cs` (no response in 120 s);
+//   * but the same feed scoped to a LEAF category set is fast and did not
+//     throttle once: `set=cs:cs:CR` paged to exhaustion in 41 requests with no
+//     sleep at all — 50,798 records, 369 s, 138 rec/s, zero 503s, abstracts on
+//     every record. Cross-checked against an independent snapshot of the same
+//     category (50,560) to within 0.47%.
+//
+// So the channel is not the problem; the SCOPE is. scripts/arxiv-oai-sets.mjs
+// is that scope — it harvests whole categories through `set=`, emits these
+// same rows (it imports parseRecord and parsePage from here rather than
+// reimplementing them), and refuses the two shapes above by name. Use it when
+// the target is a CATEGORY; this file when the target is a submission-month
+// band across all of arXiv; --ids when the target is a named list.
 
 import { createWriteStream } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
@@ -588,6 +614,12 @@ const FLOW_CONTROL_ATTEMPTS = 40; // ~40 min of waiting at the 60s+ steps
 const ERROR_ATTEMPTS = 8;
 
 /**
+ * Exported so the leaf-set harvester (scripts/arxiv-oai-sets.mjs) runs the
+ * SAME flow-control policy rather than a second copy of it. That channel has
+ * never been seen throttled — 0 × 503 across 41 consecutive requests with no
+ * sleep, measured 2026-08-09 — which is exactly the condition under which a
+ * private copy would drift back into impatience.
+ *
  * @param {URL} url
  * @param {(m: string) => void} log
  * @param {{ allow400?: boolean }} [opts] `allow400` returns a 400 body instead
@@ -595,7 +627,7 @@ const ERROR_ATTEMPTS = 8;
  *   whose body NAMES it, and that name is what lets the caller peel the id off
  *   and keep the other ~360.
  */
-async function fetchOai(url, log, opts = {}) {
+export async function fetchOai(url, log, opts = {}) {
   let flowControl = 0;
   let errors = 0;
   for (let attempt = 0; attempt < ERROR_ATTEMPTS + FLOW_CONTROL_ATTEMPTS; attempt++) {
