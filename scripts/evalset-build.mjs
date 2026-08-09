@@ -113,7 +113,16 @@ export const citedAll = (item) => [...citedPmids(item), ...citedArxiv(item)];
  * anything tagged `sv` actually carries Swedish letters.
  * @param {string} s
  */
-const isLatinOnly = (s) => /^[\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]*$/u.test(s);
+/**
+ * The risk being guarded against is a CONFUSABLE character pasted mid-word —
+ * a Cyrillic `е` inside an otherwise Latin word is invisible on screen and
+ * matches nothing. Greek is a different matter: ε, σ, μ, φ and Δ are ordinary
+ * mathematical notation in these fields, and an epsilon in a certified-
+ * robustness question is correct rather than corrupt. So this denies the
+ * confusable scripts instead of allowing only Latin.
+ * @param {string} s
+ */
+const hasConfusableScript = (s) => /[\p{Script=Cyrillic}\p{Script=Armenian}]/u.test(String(s));
 const hasSwedishLetters = (/** @type {string} */ s) => /[åäöÅÄÖ]/.test(s);
 
 /**
@@ -133,11 +142,15 @@ const looksSwedish = (s) => {
   const seen = new Set(words.filter((w) => SWEDISH_FUNCTION_WORDS.has(w)));
   return seen.size >= 2;
 };
+// Every word here must be Swedish AND NOT also an English word, or an English
+// question trips it: "de" falls out of "de-identified", and `man`, `under`,
+// `till`, `men` and `en` are all ordinary English. Both of those fired as false
+// positives on real items before this list was pruned.
 const SWEDISH_FUNCTION_WORDS = new Set([
   "och", "att", "är", "som", "för", "inte", "med", "vad", "hur", "vilka", "vilken", "vilket",
-  "den", "det", "de", "en", "ett", "på", "av", "till", "från", "eller", "men", "har", "hade",
-  "kan", "kunde", "ska", "skulle", "man", "sig", "när", "där", "här", "över", "under", "mellan",
-  "efter", "före", "genom", "mot", "utan", "varför", "vilka", "sina", "sitt", "deras",
+  "den", "det", "ett", "på", "av", "från", "eller", "har", "hade", "kan", "kunde", "ska",
+  "skulle", "sig", "när", "där", "här", "över", "mellan", "efter", "före", "genom", "mot",
+  "utan", "varför", "sina", "sitt", "deras", "denna", "detta", "dessa", "hos", "samt",
 ]);
 
 /**
@@ -170,7 +183,7 @@ export function validateItems(items, excludePmids = new Set()) {
     if (!tags.some((t) => DIFFICULTY.has(t))) errors.push(`${where}: no difficulty tag (${[...DIFFICULTY].join("|")})`);
 
     for (const [field, text] of [["question", it.question], ["answer", it.answer]]) {
-      if (text && !isLatinOnly(text)) errors.push(`${where}: ${field} contains non-Latin script`);
+      if (text && hasConfusableScript(text)) errors.push(`${where}: ${field} contains a confusable non-Latin character`);
     }
     // A Swedish item with no Swedish letters at all is the diacritic-stripping
     // failure, not a stylistic choice — no natural Swedish sentence of this
@@ -216,18 +229,31 @@ async function resolvePmids(pmids) {
  */
 async function resolveArxiv(ids) {
   const found = new Set();
+  /** @type {Record<string, number>} */
+  const categories = {};
   for (let i = 0; i < ids.length; i += ARXIV_BATCH) {
     const slice = ids.slice(i, i + ARXIV_BATCH);
     const url = `${ARXIV_API}?id_list=${slice.join(",")}&max_results=${slice.length}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`arXiv API HTTP ${res.status}`);
     const xml = await res.text();
-    for (const m of xml.matchAll(/<id>https?:\/\/arxiv\.org\/abs\/([^<]+)<\/id>/g)) {
-      found.add(m[1].replace(/v\d+$/, ""));
+    for (const entry of xml.split("<entry>").slice(1)) {
+      const id = (entry.match(/<id>https?:\/\/arxiv\.org\/abs\/([^<]+)<\/id>/) || [])[1];
+      if (!id) continue;
+      found.add(id.replace(/v\d+$/, ""));
+      // The PRIMARY category is a cheap coherence signal. Resolution proves a
+      // paper exists; it cannot prove it is the paper the question is about.
+      // With several authors working in one shared scratch directory, a
+      // clobbered helper script once produced a batch of astro-ph results for
+      // a security query — real ids, real papers, entirely wrong subject. A
+      // category histogram makes that visible in one line instead of needing
+      // 45 abstracts read back.
+      const cat = (entry.match(/<arxiv:primary_category[^>]*term="([^"]+)"/) || [])[1];
+      if (cat) categories[cat] = (categories[cat] || 0) + 1;
     }
     if (i + ARXIV_BATCH < ids.length) await new Promise((r) => setTimeout(r, ARXIV_PACE_MS));
   }
-  return found;
+  return { found, categories };
 }
 
 /** @param {any[]} items */
@@ -298,11 +324,13 @@ async function main() {
     }
     if (arxiv.length) {
       console.log(`Resolving ${arxiv.length} cited arXiv ids against the arXiv API …`);
-      const found = await resolveArxiv(arxiv);
+      const { found, categories } = await resolveArxiv(arxiv);
       for (const it of items) {
         for (const a of citedArxiv(it)) if (!found.has(a)) errors.push(`${it.id}: arXiv ${a} does not resolve — invented or mistyped`);
       }
       console.log(`  ${found.size}/${arxiv.length} resolve`);
+      const byCount = Object.entries(categories).sort((a, b) => b[1] - a[1]);
+      console.log(`  primary categories: ${byCount.map(([c, n]) => `${c} ${n}`).join(", ")}`);
     }
   } else {
     console.log("\n! --offline: citations NOT verified against either corpus");

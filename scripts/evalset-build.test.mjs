@@ -126,8 +126,33 @@ test("one stray Swedish-looking token is not enough to call a question Swedish",
   assert.deepEqual(validateItems([q]), []);
 });
 
-test("non-Latin script pasted into a question is rejected — it is invisible and matches nothing", () => {
+test("a confusable character pasted into a question is rejected — it is invisible and matches nothing", () => {
   // A Cyrillic 'е' inside an otherwise Latin word.
   const errs = validateItems([ok({ question: "What did the first draft Nеanderthal genome show about it?" })]);
-  assert.ok(errs.some((e) => e.includes("non-Latin script")), errs.join("; "));
+  assert.ok(errs.some((e) => e.includes("confusable")), errs.join("; "));
+});
+
+test("Greek mathematical notation is allowed — an epsilon is correct, not corrupt", () => {
+  // This fired as a false positive on a real certified-robustness question.
+  const math = ok({
+    question: "Which bound did the two early provable defences promise on MNIST at ε = 0.1 in the ∞-norm?",
+    answer: "They gave differing certified bounds under the same perturbation budget.",
+  });
+  assert.deepEqual(validateItems([math]), []);
+  const swedishMath = ok({
+    id: "aisec-a017",
+    question: "Vilka gränser lovade de två tidiga bevisbara försvaren på MNIST vid störningsbudgeten ε = 0,1?",
+    answer: "De gav olika garanterade gränser under samma störningsbudget.",
+    tags: ["model-security", "multihop", "sv"],
+  });
+  assert.deepEqual(validateItems([swedishMath]), []);
+});
+
+test("English words that are also Swedish function words do not make a question Swedish", () => {
+  // "de" falls out of "de-identified"; `under`, `till`, `men`, `man` and `en`
+  // are all ordinary English. This exact sentence fired as a false positive.
+  const q = ok({
+    question: '"De-identified health data is safe to release" - what does the work establish, and under what conditions?',
+  });
+  assert.deepEqual(validateItems([q]), []);
 });
