@@ -1,7 +1,14 @@
 ---
 name: commit-analytics
 description: >-
-  Load when updating the "Project pulse" page (the commit-analytics dashboard
+  Load when asked to UPDATE THE ACTIVITY GRAPH — the bare phrases "update
+  activity graph", "update the activity graph", "refresh the activity graph",
+  "refresh the activity chart", "update the work-done graph", "What work has
+  been done and when", and the Swedish "uppdatera aktivitetsgrafen",
+  "uppdatera aktivitetsdiagrammet", "uppdatera aktivitetsgrafiken" all name
+  THIS skill and mean the full pulse refresh (the landing card plus all three
+  /pulse datasets). ALSO load when updating the "Project pulse" page (the
+  commit-analytics dashboard
   at deepresearch.se/pulse) with the latest commits — "update the pulse page",
   "refresh the commit dashboard", "add the new commits to the graphs" — or when
   touching scripts/build-pulse.mjs, public/pulse/ (index.html + data.json), or
@@ -26,6 +33,15 @@ description: >-
 ---
 
 # Updating Project pulse (the commit-analytics dashboard)
+
+**Trigger phrases.** "update activity graph" / "update the activity graph" /
+"refresh the activity chart" / "update the work-done graph" / "What work has
+been done and when", and in Swedish "uppdatera aktivitetsgrafen" / "uppdatera
+aktivitetsdiagrammet" / "uppdatera aktivitetsgrafiken" — the **activity graph**
+is the user's name for the landing card *What work has been done and when*
+(`public/welcome/index.html`) and the `/pulse` charts behind it. Any of those
+phrases, bare and with no further detail, means the whole refresh in
+§"The update workflow" below — all three datasets, not just the landing card.
 
 ## What this is
 
@@ -87,12 +103,17 @@ pass and about ten minutes, most of it the artifact re-embedding.
    `git fetch --unshallow origin` — session clones are shallow and a shallow
    clone silently produces a dataset that starts a few days ago. Verify with
    `git log --oneline | wc -l` (four figures, not dozens).
-2. **Regenerate all three datasets:**
+2. **Regenerate all three datasets** — `npm run pulse:all` runs the three in
+   order, and is the command to reach for so a pass cannot refresh one and
+   forget the others:
    ```bash
+   npm run pulse:all        # the three below, in order
    npm run pulse            # public/pulse/data.json      — commits / lines / features
    npm run pulse:timeline   # public/pulse/timeline.json  — focus over time + the code-volume series
    npm run pulse:size       # public/pulse/size.json      — code-size snapshot
    ```
+   (They are independent, so running the three separately in parallel is fine
+   and faster; `pulse:all` is the sequential convenience.)
    `pulse:timeline` also refreshes the **code-volume series** the landing card
    draws behind the curves — one measured reading per day, so it takes about a
    minute rather than ten seconds and grows with the history. That is the whole

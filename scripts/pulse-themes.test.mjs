@@ -71,6 +71,11 @@ const CASES = [
   ["Starship launch scene: hot-staging and a tower catch", ["games"]],
   ["Run the browser suite against a local Worker, in CI", ["tests"]],
   ["Add an invite / add-user interface for admins", ["admin"]],
+  ["Ingest the whole ancient-DNA literature, and measure what it costs", ["ingest", "science"]],
+  ["Harvest arXiv by leaf category set, and correct the OAI abandonment verdict", ["ingest", "arxiv"]],
+  ["Commit the gold needle sets, and pin what committing them exposed", ["tests"]],
+  ["Add 180 ancient-DNA questions, and fix a needle the index could never answer", ["science", "tests"]],
+  ["The research planner stops reading the method we wrote to ourselves", ["pipeline"]],
 ];
 
 // Swedish forms must tag the same subject as their English counterpart — the
@@ -85,6 +90,11 @@ const SV_PARITY = [
   ["Expertgranskade källor och haplogrupperna som saknades", "science"],
   ["Rymdanimationen: stegseparation utan att tappa höjden", "games"],
   ["OAuth-flödet: kopplare mot Claude och ChatGPT", "mcp"],
+  ["Skörda arXiv per kategorimängd och läs in båda domänerna", "ingest"],
+  ["Inläsningarna körs om från kontrollpunkten", "ingest"],
+  ["Frågebanken utökas med 180 forntida-DNA-frågor", "tests"],
+  ["Forntida-DNA-frågorna som indexet aldrig kunde svara på", "science"],
+  ["Frågeskrivningen läser inte längre metoden vi skrev till oss själva", "pipeline"],
 ];
 
 for (const [line, key] of SV_PARITY) {
