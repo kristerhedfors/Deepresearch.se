@@ -37,7 +37,7 @@
 // 1,000 ids per request. Run it after a fill, not on every deploy.
 
 import { writeFile, mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { idMonth } from "./arxiv-harvest.mjs";
@@ -220,7 +220,12 @@ async function main() {
     domains: DOMAINS,
     totals: { vectors: corpora.reduce((a, c) => a + c.vectors, 0) },
   };
-  const outPath = join(ROOT, opts.out);
+  // resolve, NOT join(ROOT, …): an ABSOLUTE --out under join() silently lands
+  // inside the checkout (join('/repo', '/tmp/x') === '/repo/tmp/x'), and the
+  // next `git add -A` tracks it. That is not hypothetical — a probe written to
+  // /tmp during this script's own development ended up committed, and surfaced
+  // as an unrelated CI failure about a stale source snapshot.
+  const outPath = resolve(ROOT, opts.out);
   await mkdir(dirname(outPath), { recursive: true });
   await writeFile(outPath, JSON.stringify(payload, null, 2) + "\n");
   console.log(
