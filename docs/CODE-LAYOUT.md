@@ -1168,7 +1168,16 @@ of the deployed Worker, though `src/arxiv-rag.js` serves the resulting index): t
 the sliding-window splitter), the Unicode-aware tokenizer and BM25 index, RRF
 fusion, max-pool doc scoring over the packed int8 matrix (`denseSearchPacked` /
 `packedNorms`), the evaluation metrics, and `recapForContext` — the recovery
-from Berget's hard 512-token rejection. Vector maths is not reimplemented: the
+from Berget's hard 512-token rejection. It also holds `INDEX_ABSTRACT_FLOOR`,
+the 200-char membership rule (moved here 2026-08-09 from three separate
+declarations): `arxiv-vectorize.mjs` APPLIES it, `arxiv-corpus.mjs` draws the
+local pack from the same population so the local and hosted nDCG columns stay
+comparable, and `arxiv-harvest.mjs` only PREDICTS the drop so a named `--ids`
+list can be answered before a paid fill — three consumers of one number, where
+a drifted copy reports confidently wrong and fails nothing.
+`rag-eval.mjs`'s own `--min-abstract` default deliberately stays a literal: it
+runs over BOTH corpora, so binding it here would make a PubMed sample follow an
+arXiv constant. Vector maths is not reimplemented: the
 int8 codec and cosine come from `introspect-core.js`, the project's one
 implementation. Around it, `scripts/arxiv-harvest.mjs` (OAI-PMH bulk harvest,
 month-sharded and resumable), `arxiv-corpus.mjs` (dedup + deterministic

@@ -38,6 +38,17 @@ not:
   `docs/coverage-baseline.json`, and fails with no tolerance when a module
   that *was* reached stops being reached. It runs in CI after the suite.
 
+Because it re-runs the suite in order to measure it, the script carries its own
+copy of the test globs beside the one in `package.json`'s `test` script. That
+copy is forced — `package.json` cannot import a module, and deriving the list
+means parsing an npm command string, where a flag added to `test` would arrive
+as a glob. So it is **pinned** instead (`scripts/coverage.test.mjs`, 2026-08-09):
+the two lists are compared in both directions, because either drift is silent
+and both corrupt the ratchet. A glob added to `package.json` alone makes the
+baseline describe a smaller suite than CI runs; one left behind after
+`package.json` drops it gives the baseline credit for tests nobody runs. If you
+change the suite's file layout, change both.
+
 There is deliberately **no per-module coverage threshold**. A blanket "every
 file ≥80%" is satisfied by testing whatever is easiest to reach, which is
 rarely what is worth testing. The ratchet asks only that the number not fall.

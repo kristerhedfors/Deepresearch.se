@@ -28,6 +28,40 @@ export { b64ToInt8, cosineF32Int8, int8ToB64, quantizeInt8 };
  * @typedef {{ id: string, title: string, abstract: string, authors?: string[], categories?: string[], primary?: string, updated?: string, doi?: string }} ArxivPaper
  */
 
+/**
+ * The abstract floor the index applies to itself: a row whose abstract is
+ * shorter than this is not embedded. It exists so a bulk sweep does not fill
+ * the index with rows that carry no content — above all arXiv's ADMINISTRATIVE
+ * stubs, whose whole abstract is "This paper has been withdrawn by the
+ * author(s)" (46 chars) or "This article is taken out." (26).
+ *
+ * It is a blunt proxy, and on a NAMED list of ids it is blunt in a way that
+ * shows: of 1,218 explicitly requested AI-consciousness papers, exactly 8 never
+ * reached the index and all 8 were floor drops — two administrative stubs and
+ * six real one-or-two-sentence abstracts (81-188 chars), including a 1995
+ * quant-ph paper whose abstract is its table of contents. Nothing was broken;
+ * the corpus-wide default simply does not fit a list somebody wrote out by
+ * hand. Hence `--min-abstract`: the DEFAULT is unchanged, so every existing
+ * pipeline behaves exactly as before, and a named-id fill can lower it
+ * deliberately and say so.
+ *
+ * It lives HERE, beside the other constants describing what an indexed arXiv
+ * row is, because three arXiv scripts each need the same number and only one
+ * of them applies it: `indexableRow` in scripts/arxiv-vectorize.mjs decides
+ * index membership, `loadCorpus` in scripts/arxiv-corpus.mjs draws the local
+ * pack from the same population so the two nDCG columns in docs/ARXIV-RAG.md
+ * stay comparable, and `harvestIds` in scripts/arxiv-harvest.mjs only PREDICTS
+ * the drop so a named list can be answered before a paid fill. A copy that
+ * drifted would make the prediction quietly wrong and the local pack quietly
+ * a different corpus — neither of which fails a test or a run.
+ *
+ * The PubMed sibling keeps its own floor in public/js/pubmed-core.js. The two
+ * corpora are not required to agree, and must not be coupled through one
+ * constant (docs/RAG-EVAL-LEDGER.md); each is half of a contract with the
+ * index it was built for.
+ */
+export const INDEX_ABSTRACT_FLOOR = 200;
+
 // e5 asks for asymmetric prefixes: documents are "passage: …", questions are
 // "query: …". Applied at the ONE seam every caller goes through, the same
 // discipline src/rag.js uses server-side, so builder and searcher cannot

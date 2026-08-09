@@ -12,6 +12,8 @@ import { createInterface } from "node:readline";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { INDEX_ABSTRACT_FLOOR } from "../public/js/arxiv-rag-core.js";
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
@@ -70,7 +72,10 @@ export async function loadCorpus(opts = {}) {
   }
   if (opts.months?.length) files = files.filter((f) => opts.months.includes(f.replace(".jsonl", "")));
   const catFilter = opts.categories?.length ? new Set(opts.categories) : null;
-  const minAbstract = opts.minAbstract ?? 200;
+  // The index's own floor, not a local one: the local pack and the hosted
+  // index are reported side by side, so a sample drawn on a different floor
+  // silently compares two different populations.
+  const minAbstract = opts.minAbstract ?? INDEX_ABSTRACT_FLOOR;
   // A paper updated inside the window appears in every month shard it was
   // touched in, so dedup by id is mandatory, not defensive.
   /** @type {Map<string, any>} */

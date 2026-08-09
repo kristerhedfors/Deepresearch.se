@@ -48,8 +48,19 @@ const MEASURED = ["src", "public/js"];
 /** Not product code: helpers that exist only to serve the suite. */
 const EXCLUDE = [/^src\/test-helpers\//];
 
-/** The glob `npm test` runs, kept in sync with package.json's `test` script. */
-const TEST_GLOBS = [
+/**
+ * The glob `npm test` runs, kept in sync with package.json's `test` script.
+ *
+ * The copy is forced — package.json cannot import a module, and deriving these
+ * by splitting an npm script string means parsing it (a flag added to `test`
+ * would arrive here as a glob). So it is PINNED instead: scripts/coverage.test.mjs
+ * compares the two in both directions, because either drift is silent and both
+ * corrupt the ratchet. A glob added to package.json but not here makes CI's
+ * `coverage:check` measure a smaller suite than CI runs; one left here after
+ * package.json drops it gives the baseline credit for tests nobody runs. Neither
+ * fails a build — the number just quietly stops describing the suite.
+ */
+export const TEST_GLOBS = [
   "src/*.test.js",
   "public/js/*.test.js",
   "public/games/*/js/*.test.js",
@@ -270,21 +281,26 @@ function check(report) {
 
 // ---- main -------------------------------------------------------------------
 
-const argv = process.argv.slice(2);
-const report = buildReport(runCoverage());
+// Behind the same guard every other script in here uses, so TEST_GLOBS can be
+// imported and pinned. Without it, `import`ing this module runs the entire
+// suite under coverage — which is why the glob list had no test.
+if (process.argv[1]?.endsWith("coverage.mjs")) {
+  const argv = process.argv.slice(2);
+  const report = buildReport(runCoverage());
 
-if (argv.includes("--json")) {
-  console.log(JSON.stringify(report, null, 2));
-} else {
-  printSummary(report);
-  if (argv.includes("--list")) printList(report);
-}
+  if (argv.includes("--json")) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    printSummary(report);
+    if (argv.includes("--list")) printList(report);
+  }
 
-if (argv.includes("--save")) {
-  writeFileSync(BASELINE, JSON.stringify(report, null, 2) + "\n");
-  console.log(`\nBaseline written to ${BASELINE}`);
-}
+  if (argv.includes("--save")) {
+    writeFileSync(BASELINE, JSON.stringify(report, null, 2) + "\n");
+    console.log(`\nBaseline written to ${BASELINE}`);
+  }
 
-if (argv.includes("--check")) {
-  process.exitCode = check(report) || process.exitCode || 0;
+  if (argv.includes("--check")) {
+    process.exitCode = check(report) || process.exitCode || 0;
+  }
 }
