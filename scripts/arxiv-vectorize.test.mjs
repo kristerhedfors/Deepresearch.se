@@ -13,8 +13,53 @@
 // and the boundary is pinned here so lowering it stays a deliberate act.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 import { INDEX_ABSTRACT_FLOOR, indexableRow, parseArgs, vectorMetadata } from "./arxiv-vectorize.mjs";
+import { INDEX_ABSTRACT_FLOOR as CORE_FLOOR } from "../public/js/arxiv-rag-core.js";
+import { INDEX_ABSTRACT_FLOOR as HARVEST_FLOOR } from "./arxiv-harvest.mjs";
+import { loadCorpus } from "./arxiv-corpus.mjs";
+
+test("the three arXiv scripts read ONE floor, not three copies of a number", async () => {
+  // Only this module APPLIES the floor. arxiv-corpus.mjs draws the local pack
+  // from the same population so the local and hosted nDCG columns in
+  // docs/ARXIV-RAG.md stay comparable, and arxiv-harvest.mjs only PREDICTS the
+  // drop so a named list can be answered before a paid fill. All three carried
+  // their own 200 until 2026-08-09; a copy that drifted would have reported a
+  // confident wrong number and sampled a quietly different corpus, and neither
+  // fails a test or a run. So the sharing itself is what is pinned here: this
+  // goes red if any site re-declares the constant and lets it move.
+  assert.equal(INDEX_ABSTRACT_FLOOR, CORE_FLOOR);
+  assert.equal(HARVEST_FLOOR, CORE_FLOOR);
+  assert.equal(CORE_FLOOR, 200, "the historical floor every hosted vector was built under");
+
+  // arxiv-corpus.mjs consumes it as a default rather than re-exporting it, so
+  // the pin there is behavioural. loadCorpus resolves `dir` under the repo
+  // root, so the shard has to live there too.
+  const dir = await mkdtemp(join(ROOT, "data-arxiv-floor-"));
+  try {
+    await mkdir(join(dir, "raw"), { recursive: true });
+    await writeFile(
+      join(dir, "raw", "2401.jsonl"),
+      [
+        JSON.stringify({ id: "2401.00001", title: "under", abstract: "x".repeat(CORE_FLOOR - 1) }),
+        JSON.stringify({ id: "2401.00002", title: "at", abstract: "x".repeat(CORE_FLOOR) }),
+      ].join("\n") + "\n",
+    );
+    const papers = await loadCorpus({ dir: basename(dir) });
+    assert.deepEqual(
+      papers.map((p) => p.id),
+      ["2401.00002"],
+      "the local pack must apply the same floor the index does",
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test("parseArgs defaults leave every existing pipeline unchanged", () => {
   const args = parseArgs([]);

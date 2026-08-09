@@ -35,7 +35,7 @@ import { createInterface } from "node:readline";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { PASSAGE_PREFIX, buildPassage, storedAuthors, truncateChars } from "../public/js/arxiv-rag-core.js";
+import { INDEX_ABSTRACT_FLOOR, PASSAGE_PREFIX, buildPassage, storedAuthors, truncateChars } from "../public/js/arxiv-rag-core.js";
 import { embedBatch } from "./embed-providers.mjs";
 import {
   assertVectors,
@@ -52,24 +52,11 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 // machinery lives in scripts/vectorize-upsert.mjs, shared with the PubMed fill.
 const EMBED_BATCH = 256;
 
-/**
- * The abstract floor the index applies to itself: a row whose abstract is
- * shorter than this is not embedded. It exists so a bulk sweep does not fill
- * the index with rows that carry no content — above all arXiv's ADMINISTRATIVE
- * stubs, whose whole abstract is "This paper has been withdrawn by the
- * author(s)" (46 chars) or "This article is taken out." (26).
- *
- * It is a blunt proxy, and on a NAMED list of ids it is blunt in a way that
- * shows: of 1,218 explicitly requested AI-consciousness papers, exactly 8 never
- * reached the index and all 8 were floor drops — two administrative stubs and
- * six real one-or-two-sentence abstracts (81-188 chars), including a 1995
- * quant-ph paper whose abstract is its table of contents. Nothing was broken;
- * the corpus-wide default simply does not fit a list somebody wrote out by
- * hand. Hence `--min-abstract`: the DEFAULT is unchanged, so every existing
- * pipeline behaves exactly as before, and a named-id fill can lower it
- * deliberately and say so.
- */
-export const INDEX_ABSTRACT_FLOOR = 200;
+// The floor itself lives in public/js/arxiv-rag-core.js beside the other
+// constants describing an indexed arXiv row, because arxiv-corpus.mjs and
+// arxiv-harvest.mjs need the same number. Re-exported so this module's own
+// importers (and its test) are unchanged.
+export { INDEX_ABSTRACT_FLOOR };
 
 /**
  * Is this corpus row one the index should hold?

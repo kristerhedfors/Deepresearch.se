@@ -136,6 +136,8 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { INDEX_ABSTRACT_FLOOR } from "../public/js/arxiv-rag-core.js";
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OAI = "https://oaipmh.arxiv.org/oai";
 // HTTPS, and it is NOT interchangeable with the `http://` form arXiv's own API
@@ -813,8 +815,12 @@ export async function fetchIdList(ids, log = () => {}) {
  * skip a paper under 200 characters. The harvest does NOT drop those rows (the
  * OAI path does not either, so the JSONL stays the same corpus), but with a
  * named list "why is my paper not in the index" has to be answerable at harvest
- * time rather than after a paid fill, so they are counted and reported. */
-export const INDEX_ABSTRACT_FLOOR = 200;
+ * time rather than after a paid fill, so they are counted and reported.
+ *
+ * Imported rather than declared: this file only PREDICTS the drop, so a local
+ * copy that drifted from the applier's would report a confident wrong number
+ * and nothing would fail. Re-exported so this module's test is unchanged. */
+export { INDEX_ABSTRACT_FLOOR };
 
 /**
  * Harvest an EXPLICIT list of arXiv ids through the Atom query API into the
