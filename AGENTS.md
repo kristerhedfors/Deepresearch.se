@@ -115,7 +115,9 @@ the summaries below with the parser in `introspect-core.js` if a skill's
 - **chat-logs** — the full-visibility chat interaction log (`src/chatlog.js`,
   D1 `chat_logs`) for debugging real interactions.
 - **commit-analytics** — the "Project pulse" dashboard at `/pulse`
-  (`scripts/build-pulse.mjs`, `public/pulse/`).
+  (`scripts/build-pulse.mjs`, `public/pulse/`) and the landing's "What work has
+  been done and when" card — the **activity graph**, so a bare "update activity
+  graph" / "uppdatera aktivitetsgrafen" loads this skill.
 - **decision-boards** — building/extending an admin DECISION BOARD; the shared
   core `src/board.js` and the panel ⇄ loop mechanism.
 - **deploy** — how code reaches production (push-to-main auto-deploy, direct

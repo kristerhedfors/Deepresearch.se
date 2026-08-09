@@ -1,10 +1,10 @@
 {
-  "generated": "2026-08-06T08:34:56.521Z",
+  "generated": "2026-08-09T19:22:23.607Z",
   "totals": {
-    "files": 1030,
-    "lines": 307729,
-    "chars": 18057111,
-    "languages": 13,
+    "files": 1081,
+    "lines": 333959,
+    "chars": 19672081,
+    "languages": 14,
     "dependencies": 0,
     "devDependencies": 4
   },
@@ -22,30 +22,30 @@
     {
       "ext": "js, mjs",
       "label": "JavaScript",
-      "files": 672,
-      "lines": 219925,
-      "chars": 10024309
+      "files": 702,
+      "lines": 233943,
+      "chars": 10694005
     },
     {
       "ext": "md",
       "label": "Markdown",
-      "files": 175,
-      "lines": 61770,
-      "chars": 4089353
-    },
-    {
-      "ext": "html",
-      "label": "HTML",
-      "files": 21,
-      "lines": 8290,
-      "chars": 461114
+      "files": 179,
+      "lines": 64348,
+      "chars": 4303997
     },
     {
       "ext": "json, webmanifest",
       "label": "JSON",
-      "files": 66,
-      "lines": 7715,
-      "chars": 3040942
+      "files": 79,
+      "lines": 17004,
+      "chars": 3733193
+    },
+    {
+      "ext": "html",
+      "label": "HTML",
+      "files": 22,
+      "lines": 8625,
+      "chars": 478272
     },
     {
       "ext": "css",
@@ -102,6 +102,13 @@
       "files": 2,
       "lines": 136,
       "chars": 12276
+    },
+    {
+      "ext": "txt",
+      "label": "TXT",
+      "files": 2,
+      "lines": 10,
+      "chars": 21221
     },
     {
       "ext": "ini",

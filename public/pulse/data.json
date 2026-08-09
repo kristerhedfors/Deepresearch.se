@@ -1,15 +1,15 @@
 {
-  "generated": "2026-08-06T08:38:15.517Z",
+  "generated": "2026-08-09T19:23:35.012Z",
   "repo": "kristerhedfors/deepresearch.se",
   "range": {
     "from": "2026-07-04",
-    "to": "2026-08-06"
+    "to": "2026-08-09"
   },
   "totals": {
-    "commits": 1397,
-    "added": 446948,
-    "removed": 110261,
-    "features": 166
+    "commits": 1449,
+    "added": 475469,
+    "removed": 111537,
+    "features": 171
   },
   "commits": [
     {
@@ -8365,6 +8365,12 @@
       "f": 0
     },
     {
+      "t": "2026-08-06T09:08:40+02:00",
+      "a": 28,
+      "r": 5,
+      "f": 0
+    },
+    {
       "t": "2026-08-06T09:19:53+02:00",
       "a": 459,
       "r": 96,
@@ -8392,6 +8398,312 @@
       "t": "2026-08-06T10:26:15+02:00",
       "a": 4,
       "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-08-06T10:41:16+02:00",
+      "a": 47,
+      "r": 23,
+      "f": 0
+    },
+    {
+      "t": "2026-08-06T10:57:32+02:00",
+      "a": 298,
+      "r": 21,
+      "f": 0
+    },
+    {
+      "t": "2026-08-06T11:04:28+02:00",
+      "a": 4,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-08-06T11:46:40+02:00",
+      "a": 2,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-08-06T11:53:40+02:00",
+      "a": 4,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-08-07T14:27:25+02:00",
+      "a": 6802,
+      "r": 42,
+      "f": 0
+    },
+    {
+      "t": "2026-08-07T14:55:59+02:00",
+      "a": 2,
+      "r": 2,
+      "f": 1
+    },
+    {
+      "t": "2026-08-07T15:07:43+02:00",
+      "a": 1,
+      "r": 0,
+      "f": 0
+    },
+    {
+      "t": "2026-08-07T15:23:02+02:00",
+      "a": 4,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-08-07T15:24:38+02:00",
+      "a": 141,
+      "r": 12,
+      "f": 0
+    },
+    {
+      "t": "2026-08-07T15:47:13+02:00",
+      "a": 1450,
+      "r": 23,
+      "f": 0
+    },
+    {
+      "t": "2026-08-07T16:58:30+02:00",
+      "a": 862,
+      "r": 43,
+      "f": 0
+    },
+    {
+      "t": "2026-08-07T17:24:45+02:00",
+      "a": 0,
+      "r": 0,
+      "f": 1
+    },
+    {
+      "t": "2026-08-07T18:13:05+02:00",
+      "a": 819,
+      "r": 18,
+      "f": 0
+    },
+    {
+      "t": "2026-08-07T18:31:17+02:00",
+      "a": 5,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-08-07T21:18:21+02:00",
+      "a": 82,
+      "r": 16,
+      "f": 0
+    },
+    {
+      "t": "2026-08-07T21:22:44+02:00",
+      "a": 7,
+      "r": 6,
+      "f": 0
+    },
+    {
+      "t": "2026-08-07T21:49:41+02:00",
+      "a": 30,
+      "r": 26,
+      "f": 0
+    },
+    {
+      "t": "2026-08-07T21:51:53+02:00",
+      "a": 108,
+      "r": 93,
+      "f": 0
+    },
+    {
+      "t": "2026-08-07T21:52:50+02:00",
+      "a": 15,
+      "r": 10,
+      "f": 0
+    },
+    {
+      "t": "2026-08-07T21:59:02+02:00",
+      "a": 109,
+      "r": 7,
+      "f": 0
+    },
+    {
+      "t": "2026-08-07T22:48:46+02:00",
+      "a": 4,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-08-08T22:52:31+02:00",
+      "a": 1784,
+      "r": 24,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T09:09:52+02:00",
+      "a": 93,
+      "r": 16,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T09:47:10+02:00",
+      "a": 361,
+      "r": 0,
+      "f": 1
+    },
+    {
+      "t": "2026-08-09T10:07:20+02:00",
+      "a": 2653,
+      "r": 7,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T11:21:35+02:00",
+      "a": 181,
+      "r": 4,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T11:24:51+02:00",
+      "a": 55,
+      "r": 1,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T12:24:20+02:00",
+      "a": 350,
+      "r": 224,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T12:29:58+02:00",
+      "a": 986,
+      "r": 8,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T12:32:48+02:00",
+      "a": 51,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T12:38:07+02:00",
+      "a": 64,
+      "r": 11,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T12:40:34+02:00",
+      "a": 215,
+      "r": 28,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T12:47:01+02:00",
+      "a": 5166,
+      "r": 0,
+      "f": 1
+    },
+    {
+      "t": "2026-08-09T13:57:55+02:00",
+      "a": 45,
+      "r": 7,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T14:35:09+02:00",
+      "a": 280,
+      "r": 2,
+      "f": 1
+    },
+    {
+      "t": "2026-08-09T15:23:44+02:00",
+      "a": 52,
+      "r": 7,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T15:43:29+02:00",
+      "a": 750,
+      "r": 112,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T16:04:04+02:00",
+      "a": 32,
+      "r": 8,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T17:00:35+02:00",
+      "a": 1164,
+      "r": 5,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T17:02:20+02:00",
+      "a": 157,
+      "r": 8,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T17:15:03+02:00",
+      "a": 422,
+      "r": 2,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T17:28:08+02:00",
+      "a": 247,
+      "r": 57,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T17:35:31+02:00",
+      "a": 37,
+      "r": 3,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T17:43:37+02:00",
+      "a": 407,
+      "r": 10,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T18:27:32+02:00",
+      "a": 1143,
+      "r": 11,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T20:42:53+02:00",
+      "a": 639,
+      "r": 222,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T20:46:45+02:00",
+      "a": 99,
+      "r": 22,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T20:51:04+02:00",
+      "a": 40,
+      "r": 89,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T20:55:36+02:00",
+      "a": 90,
+      "r": 16,
+      "f": 0
+    },
+    {
+      "t": "2026-08-09T21:02:11+02:00",
+      "a": 134,
+      "r": 6,
       "f": 0
     }
   ],
@@ -10147,11 +10459,16 @@
     },
     {
       "date": "2026-08-06",
-      "commits": 11,
-      "added": 1949,
-      "removed": 469,
+      "commits": 17,
+      "added": 2332,
+      "removed": 524,
       "features": 1,
       "subjects": [
+        "ledger: record PRs #396, #397 and #400, and the e2e flake that briefly held #397",
+        "ledger: record PR #397, and what its CI detour actually produced",
+        "ledger: stamp PR #400, and regenerate the artifacts that edit staled",
+        "person-research: the guardrails never attached to the people who need them most",
+        "pulse + artifacts: regenerate against the merged tree",
         "owners: occurrences 13-14 of the CI e2e crash, and the signature that moved",
         "pulse + artifacts: regenerate against the merged tree",
         "ledger: record PR #398 and the bug class it closes",
@@ -10159,12 +10476,92 @@
         "pulse: refresh commit analytics, feature timeline and code-size through 2026-08-06",
         "docs: reconcile the documentation surface with the code",
         "Refactor pass 17: the source digest moves out of the registry",
+        "landing: the browser-only tier is one capability, not the whole property",
         "ledger: record PRs #394 and #395, and the branch-reuse rule break",
         "ledger: stamp PR #395 into the owners registry, and regenerate",
         "docs + artifacts: reconcile with the five corrections, and regenerate",
         "pipeline: five defects #392 introduced, found by adversarially reviewing it"
       ],
-      "summary": "A maintenance day, and an adversarial review of the day before it: reviewing the previous day's pipeline work turned up five defects it had introduced, all fixed, and Agent Studio learned to finish a build the output ceiling had cut off rather than show half a file. Refactor pass 17 then moved the source digest out of the registry into its own module, taking the max-min fair-share solver with it and giving it property tests it never had while it was private. The documentation pass reconciled fifteen undocumented test suites and one client module back into TESTING.md and CODE-LAYOUT.md, the pulse datasets were refreshed — the tagger widened first, since the OAuth connector had been landing untagged — and occurrences 13-14 of the CI e2e crash were measured and routed to the PR that owns them.",
+      "summary": "An adversarial review of the previous day's pipeline fix found five defects it had introduced, among them bilingual routing gates that were silent in Swedish and a search ledger attesting to queries nothing had issued. Agent Studio now resumes a build cut off at the output ceiling instead of showing half a file, person research reached streamers and handles, and the rest was refactor, docs and ledger upkeep.",
+      "curated": true
+    },
+    {
+      "date": "2026-08-07",
+      "commits": 17,
+      "added": 10441,
+      "removed": 309,
+      "features": 2,
+      "subjects": [
+        "Fill this row's own PR number instead of owing a follow-up",
+        "Record refactor pass 18: the declines, the ledger, the artifacts",
+        "Refactor pass 18: exa.js reaches the shared search digest instead of copying it",
+        "Refactor pass 18: target extraction moves to shodan-text.js, making it a leaf",
+        "Refactor pass 18: the SDK continuation turns move to pipeline-inputs.js",
+        "Keep the retired promise out of the page it was retired from",
+        "Say where the conversation actually goes, and what is actually kept",
+        "Record PR #407 as the owner of the query-writing phases",
+        "Enforce the subject-vs-format rule instead of asking for it",
+        "Fold the new test-request file into the source snapshot",
+        "The research planner stops reading the method we wrote to ourselves",
+        "Ask which entity, then write the report at the size the slider bought",
+        "The sandbox no longer opens by searching the disk for a name it has never heard of",
+        "Record PR #403 as the Shodan integration's maintenance owner",
+        "ledger: record PR #403 — Shodan had no intent gate, and a truncated host leaked",
+        "Regenerate the introspection artifacts with the new files tracked",
+        "Shodan: an intent gate, a walk-back and a search leg — plus the trigger-path tests every integration was missing"
+      ],
+      "summary": "Shodan gained an intent gate, a host walk-back and an org search leg, plus the trigger-path tests no integration had — which exposed three fail-soft holes. An OSINT feedback thread added entity disambiguation and slider-scaled report depth, and a user report corrected privacy copy that called Claude and GPT EU-hosted.",
+      "curated": true
+    },
+    {
+      "date": "2026-08-08",
+      "commits": 1,
+      "added": 1784,
+      "removed": 24,
+      "features": 0,
+      "subjects": [
+        "Index Love Dalén's work, and measure what vernacular Swedish costs"
+      ],
+      "summary": "An explicit-id channel in the PubMed harvester filled out the palaeogenomics literature, which the load-order window had never reached. A committed gold set then put vernacular Swedish recall at 63.2 against 98.2 for English, most of the loss being the relevance floor discarding documents the reranker had already ranked first.",
+      "curated": true
+    },
+    {
+      "date": "2026-08-09",
+      "commits": 28,
+      "added": 15913,
+      "removed": 888,
+      "features": 3,
+      "subjects": [
+        "Record refactor pass 19: the declines, the ledger, the docs, the artifacts",
+        "Refactor pass 19: pin the coverage ratchet's forced copy of the test globs",
+        "Stop join() reparenting an absolute --out into the checkout",
+        "Refactor pass 19: the arXiv index abstract floor becomes one constant",
+        "De-identify the palaeogenomics evaluation set",
+        "Publish what is ingested, and generate it so it cannot rot",
+        "Commit the gold needle sets, and pin what committing them exposed",
+        "Name the untracked file when the snapshot goes stale",
+        "Measure the arXiv window, and stop calling contiguity coverage",
+        "Derive the arXiv window from the index instead of asserting it",
+        "Give the abstract floor a flag, because a named list is not a bulk sweep",
+        "Harvest arXiv by leaf category set, and correct the OAI abandonment verdict",
+        "Ingest the second arm, and confirm the density rule at 1.44x the volume",
+        "Rebuild the arXiv enumerator around what the API actually charges for",
+        "Ingest 19,548 AI-security arXiv papers, and falsify my own prediction",
+        "Ingest both new domains, and find what makes a domain hard to retrieve",
+        "Fix the arXiv id_list request line, which URLSearchParams was inflating",
+        "Add 360 AI-security and AI-consciousness questions, and index what they cite",
+        "Complete the arXiv explicit-id ingest, with docs and skill",
+        "Stop the validator rejecting correct items, and give it a coherence signal",
+        "Fix two ways the eval-set validator was wrong about Swedish and arXiv",
+        "WIP: arXiv explicit-id ingest (--ids), tests green",
+        "Generalize the eval-set builder for arXiv citations and any domain",
+        "Persist the field-wide ingest and the corpus-growth lesson as skills",
+        "Ingest the whole ancient-DNA literature, and measure what it costs",
+        "Add 180 ancient-DNA questions, and fix a needle the index could never answer",
+        "Add the merge/validate step four parallel question authors need",
+        "Persist the ingest mode and the register trap as skills"
+      ],
+      "summary": "The arXiv enumerator was rebuilt around the 30-second timeout the API actually charges for and gained leaf-category harvesting plus an explicit-id mode, and three literatures went in through them: the whole ancient-DNA record back to 1961, AI security and AI consciousness, with paired measurement finding that retrieval cost tracks neighbourhood density rather than corpus size. 540 new gold questions across those domains landed with the needle sets committed rather than left in a container, a fixed and de-identified evaluation set, and /corpora/ published as a generated answer to what the indexes actually hold.",
       "curated": true
     }
   ]
