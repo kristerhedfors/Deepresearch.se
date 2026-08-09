@@ -1,9 +1,9 @@
 {
  "set": "adna",
  "kind": "domain-expert",
- "origin": "Hand-authored against PubMed abstracts fetched through NCBI E-utilities; every cited PMID resolved before this file was written.",
- "license": "Questions and gold answers are original; the underlying facts are from the cited PubMed abstracts.",
- "note": "Ancient-DNA questions BEYOND one researcher's own output — the companion to tests/evalsets/dalen.json, which covers Love Dalén's own papers. Nothing here cites a paper he authored; that is enforced by scripts/adna-evalset.mjs against data/dalen/pmids-all.txt rather than trusted. Four domains: ancient humans and hominins, megafauna and palaeoecology, methods and chemistry, and the applied edge (pathogens, domestication, conservation, de-extinction). Swedish items are tagged `sv` and written in the VERNACULAR register, which is the register hosted retrieval is measurably worst at (docs/RAG-EVAL-LEDGER.md, 2026-08-08) — they are the hard half of this set deliberately. Items tagged `trap` are ones where the naive answer is a common misconception or a superseded result, and the gold answer states the correction.",
+ "origin": "Hand-authored against abstracts fetched from NCBI E-utilities and the arXiv API; every cited id resolved against its corpus before this file was written.",
+ "license": "Questions and gold answers are original; the underlying facts are from the cited abstracts.",
+ "note": "Ancient-DNA questions BEYOND one researcher's own output — the companion to tests/evalsets/dalen.json, which covers Love Dalén's own papers. Nothing here cites a paper he authored; that is enforced against data/dalen/pmids-all.txt rather than trusted. Four domains: ancient humans and hominins, megafauna and palaeoecology, methods and chemistry, and the applied edge (pathogens, domestication, conservation, de-extinction). Swedish items are tagged `sv` and written in the VERNACULAR register, which is the register hosted retrieval is measurably worst at (docs/RAG-EVAL-LEDGER.md, 2026-08-08) — they are the hard half of this set deliberately. Items tagged `trap` are ones where the naive answer is a common misconception or a superseded result, and the gold answer states the correction.",
  "items": [
   {
    "id": "adna-p001",

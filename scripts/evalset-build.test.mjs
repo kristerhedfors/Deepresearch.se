@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { citedPmids, validateItems } from "./adna-evalset.mjs";
+import { citedArxiv, citedPmids, validateItems } from "./evalset-build.mjs";
 
 /** A minimal valid item; each test breaks exactly one thing. */
 const ok = (over = {}) => ({
@@ -42,12 +42,35 @@ test("an item citing the excluded author is rejected", () => {
 });
 
 test("a missing or unusable goldUrl is a missing citation", () => {
-  assert.ok(validateItems([ok({ goldUrls: [] })]).some((e) => e.includes("no resolvable PubMed goldUrl")));
+  assert.ok(validateItems([ok({ goldUrls: [] })]).some((e) => e.includes("no resolvable PubMed or arXiv goldUrl")));
   assert.ok(
     validateItems([ok({ goldUrls: ["https://www.nature.com/articles/nature09710"] })]).some((e) =>
-      e.includes("no resolvable PubMed goldUrl"),
+      e.includes("no resolvable PubMed or arXiv goldUrl"),
     ),
   );
+});
+
+test("citedArxiv reads both id eras and strips the version", () => {
+  // The index keys on the version-less id, so `v2` must not survive into a lookup.
+  assert.deepEqual(citedArxiv({ goldUrls: ["https://arxiv.org/abs/2307.15043"] }), ["2307.15043"]);
+  assert.deepEqual(citedArxiv({ goldUrls: ["https://arxiv.org/abs/2307.15043v2"] }), ["2307.15043"]);
+  assert.deepEqual(citedArxiv({ goldUrls: ["https://arxiv.org/pdf/1412.6572v4"] }), ["1412.6572"]);
+  // Pre-2007 ids, which the older half of these literatures still uses.
+  assert.deepEqual(citedArxiv({ goldUrls: ["https://arxiv.org/abs/cs/0501001"] }), ["cs/0501001"]);
+  assert.deepEqual(citedArxiv({ goldUrls: ["https://arxiv.org/abs/math.GT/0309136"] }), ["math.GT/0309136"]);
+  // Five-digit ids arrived in 2015 when arXiv passed 9,999 submissions a month.
+  assert.deepEqual(citedArxiv({ goldUrls: ["https://arxiv.org/abs/2501.12345"] }), ["2501.12345"]);
+  assert.deepEqual(citedArxiv({ goldUrls: ["https://pubmed.ncbi.nlm.nih.gov/20448178/"] }), []);
+});
+
+test("an arXiv-only item is valid — which corpus holds a paper is a property of the domain", () => {
+  const arxivItem = ok({
+    question: "What did the FGSM paper show about the cause of adversarial examples?",
+    answer: "That they arise from the linear behaviour of models in high-dimensional spaces.",
+    goldUrls: ["https://arxiv.org/abs/1412.6572"],
+    tags: ["model-security", "single-fact"],
+  });
+  assert.deepEqual(validateItems([arxivItem]), []);
 });
 
 test("a difficulty tag is required, so the set's mix can be reported honestly", () => {
