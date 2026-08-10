@@ -466,6 +466,16 @@ export function renderSummary(me) {
       <button id="docsbtn" type="button">Documentation</button>
       ${me.role === "admin" ? '<button id="articlesbtn" type="button">Article collection</button>' : ""}
       ${me.role === "admin" ? '<a href="/admin" target="_blank" rel="noopener">Admin interface</a>' : ""}
+      <!-- Capture reviews (/captures/) — the recorded-run swipe deck. It sits
+           BESIDE "Admin interface" rather than inside it because it stopped
+           being an admin panel on 2026-08-10; it is gated on the SAME
+           admin-role condition as the link above (the server redirects a
+           non-admin away regardless — this is what stops us showing a door
+           that closes in their face). The title/aria-label says what it is:
+           the row's other entries are self-describing and "Capture reviews"
+           alone is not. NOTE: no backticks in this comment — it lives inside
+           a template literal. -->
+      ${me.role === "admin" ? '<a href="/captures/" target="_blank" rel="noopener" title="Review recorded runs of the research pipeline — keep a clip or send it back with a note" aria-label="Capture reviews — review recorded runs of the research pipeline">Capture reviews</a>' : ""}
       <button id="logoutbtn" type="button">Sign out</button>
     </div>`;
 }

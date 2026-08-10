@@ -1,7 +1,16 @@
 // @ts-check
-// Capture reviews — the admin swipe deck. One recorded clip at a time: the
-// video, what produced it, and the facts of the edit. Swipe RIGHT to keep it,
-// LEFT to say what is wrong with it.
+// Capture reviews — the swipe deck that DRIVES THE /captures/ PAGE. One
+// recorded clip at a time: the video, what produced it, and the facts of the
+// edit. Swipe RIGHT to keep it, LEFT to say what is wrong with it.
+//
+// It used to be one panel section among a dozen on /admin (`#captures-sec`).
+// It moved up a level to its own admin-gated page on 2026-08-10 (owner
+// directive) because it is a REVIEW tool, not an ops panel: the owner watches
+// a recorded research run and files it. The move is a MOVE — the gesture math,
+// the fly-out, the feedback field, the filters and the fail-soft fetch posture
+// are all unchanged. What went away is the panel plumbing: the section id, the
+// `hidden` unhide, the count-badge callback, and the keyboard handler's
+// "is this fold open?" guard (there is no fold on a dedicated page).
 //
 // The left swipe does NOT post. It reveals a feedback field in the card's
 // place, because the server REQUIRES a note on a `feedback` verdict — a left
@@ -10,10 +19,9 @@
 // mechanism that makes the gesture complete, not decoration on top of it.
 //
 // All the gesture MATH is public/js/captures-core.js (pure, Node-tested);
-// this file is DOM + fetch only. Everything here is fail-soft: this panel is
-// one of a dozen on /admin and it must never take the page down with it — a
-// non-admin's 401, a missing endpoint, or a failed POST all end in a calm
-// inline message.
+// this file is DOM + fetch only. Everything here stays fail-soft: a non-admin
+// who somehow lands here, a missing endpoint, or a failed POST all end in a
+// calm inline message rather than a thrown error or a half-broken deck.
 
 import {
   DECK_FILTERS,
@@ -31,7 +39,9 @@ import {
 } from "./captures-core.js";
 
 const API = "/api/admin/captures";
-const SEC_ID = "captures-sec";
+/** Where the deck renders, and where the queue count is written. */
+const DECK_ID = "captures";
+const COUNT_ID = "cap-count";
 
 /**
  * @typedef {{ id: number|string, label?: string, agent?: string, model?: string,
@@ -51,12 +61,10 @@ const state = {
   /** @type {number} how many were in the queue when it was fetched — the "N of M" denominator */
   total: 0,
   /** @type {number} unreviewed captures at the last queue fetch. Held separately
-   * from the rendered rows because the badge must keep reporting the REVIEW
-   * QUEUE while the owner browses the liked/needs-work filters — zeroing it
-   * there would tell a collapsed panel there is no work when there is. */
+   * from the rendered rows because the heading count must keep reporting the
+   * REVIEW QUEUE while the owner browses the liked/needs-work filters —
+   * zeroing it there would claim there is no work left when there is. */
   queueCount: 0,
-  /** @type {((n: number) => void)|null} */
-  onCount: null,
   /** @type {boolean} true while a card is flying out / a POST is in flight */
   busy: false,
   /** @type {boolean} true while the feedback field is open (arrow keys must not file) */
@@ -92,10 +100,12 @@ function byId(id) {
 }
 
 /**
- * Admin JSON fetch. Returns null on ANY failure (401 for a non-admin, a 503
- * with no D1, a missing endpoint while the server half is still being built)
- * — the caller renders an empty state rather than an alarming error, because
- * a signed-out visitor hitting /admin is not an incident.
+ * Admin JSON fetch. Returns an `__error` envelope on ANY failure (403 for a
+ * non-admin, a 503 with no D1, a missing endpoint) — the caller renders a calm
+ * message rather than an alarming error, because someone arriving here without
+ * the role is not an incident. The route in src/index.js already redirects a
+ * non-admin away, so this is the second line: a session that expires with the
+ * page open must degrade to a sentence, not to a broken deck.
  *
  * @param {string} path
  * @param {{ method?: string, body?: any }} [opts] body is a plain object, JSON-encoded here
@@ -119,22 +129,35 @@ async function api(path, opts = {}) {
 // ---- entry point -----------------------------------------------------------
 
 /**
- * Load the Capture reviews panel. Called from admin.js's load(); never throws.
+ * Start the deck on the /captures/ page. Exported (rather than run straight
+ * from module scope) so the module can be imported and reasoned about without
+ * a DOM, and so the bootstrap below stays one readable line.
  *
- * @param {{ onCount?: (n: number) => void }} [opts]
+ * Never throws: a rendering bug must leave the page's explanation standing
+ * rather than replacing it with a broken deck.
+ *
+ * @returns {Promise<void>}
  */
-export async function loadCaptures({ onCount } = {}) {
-  state.onCount = typeof onCount === "function" ? onCount : null;
-  const box = byId("captures");
-  const sec = byId(SEC_ID);
-  if (!box || !sec) return; // the section isn't on this page — nothing to do
+export async function startCaptures() {
+  const box = byId(DECK_ID);
+  if (!box) return; // not this page — nothing to do
   try {
     await refresh(box);
-    sec.hidden = false;
   } catch {
-    // A rendering bug in one panel must not stop the other eleven; leave the
-    // section hidden rather than showing a broken deck.
+    box.textContent = "The review deck could not be loaded.";
+    box.className = "muted";
   }
+}
+
+// Self-start. `type="module"` scripts are deferred, so by the time this runs
+// the document is normally parsed and #captures exists; the readyState check
+// covers the one case that isn't (a dynamic import from a still-parsing
+// document), because a start that silently found no container would look
+// exactly like an empty queue.
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => { startCaptures(); });
+} else {
+  startCaptures();
 }
 
 /**
@@ -165,7 +188,7 @@ function render(box, error) {
 
   if (error) {
     box.appendChild(el("p", "muted", error));
-    countBadge(state.queueCount);
+    showCount(state.queueCount);
     return;
   }
 
@@ -179,7 +202,7 @@ function render(box, error) {
   const deck = nextDeck(state.rows, { reviewedIds: state.reviewed });
   state.total = state.rows.length;
   state.queueCount = deck.length;
-  countBadge(deck.length);
+  showCount(deck.length);
 
   if (!deck.length) {
     box.appendChild(emptyState());
@@ -319,7 +342,7 @@ function actionRow(box, capture) {
 function renderList(box) {
   if (!state.rows.length) {
     box.appendChild(el("p", "muted", "Nothing here."));
-    countBadge(state.queueCount);
+    showCount(state.queueCount);
     return;
   }
   const list = el("div", "cap-list");
@@ -344,19 +367,24 @@ function renderList(box) {
     list.appendChild(row);
   }
   box.appendChild(list);
-  // The badge always counts the REVIEW QUEUE, never the filtered list — a
-  // collapsed panel showing "12" while the owner browses likes would be
-  // reporting the wrong number entirely.
-  countBadge(state.queueCount);
+  // The count always reports the REVIEW QUEUE, never the filtered list — a
+  // heading reading "12" while the owner browses likes would be reporting the
+  // wrong number entirely.
+  showCount(state.queueCount);
 }
 
 /**
+ * Write the queue count into the page heading. This is what replaced the admin
+ * panel's collapsed-header badge: on a dedicated page nothing is folded, so
+ * the number lives in the heading instead of in a callback the host page owns.
+ * Zero renders as empty, which the stylesheet hides (`h2 .count:empty`) — a
+ * blank pill saying "0" is worse than no pill.
+ *
  * @param {number} n
  */
-function countBadge(n) {
-  if (state.onCount) {
-    try { state.onCount(n); } catch {}
-  }
+function showCount(n) {
+  const badge = byId(COUNT_ID);
+  if (badge) badge.textContent = n > 0 ? String(n) : "";
 }
 
 /**
@@ -612,22 +640,31 @@ function advance(capture, box) {
 }
 
 // ---- keyboard --------------------------------------------------------------
-// Bound once at the document, active only while the panel is OPEN and the deck
-// has a top card. A global arrow-key handler that fired while the owner was
-// editing a quota field or scrolling another panel would file captures behind
-// their back — which is exactly the failure the guards below prevent.
+// Bound once at the document, active whenever the deck has a top card.
+//
+// The panel version also required its <section> to be OPEN, because the module
+// was loaded on /admin whether or not the owner had that fold expanded — an
+// arrow key pressed while editing a quota in another panel would otherwise
+// have filed a capture behind their back. On a dedicated page there is no
+// fold and nothing else on screen to be typing into, so that guard went with
+// the panel. The two guards that carry real weight STAY:
+//
+//   1. no modifier keys — ⌘←/Alt← are browser navigation, never a verdict;
+//   2. never steal an arrow key while focus is in a text field — the feedback
+//      textarea is right there, and left/right move a text cursor.
+//
+// `state.composing` covers the same textarea a third way (nothing files while
+// the feedback field is open at all), and the missing top card covers the
+// read-only filters.
 
 document.addEventListener("keydown", (e) => {
   const verdict = KEY_VERDICTS[e.key];
   if (!verdict) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (state.busy || state.composing) return;
-  const sec = byId(SEC_ID);
-  if (!sec || sec.hidden || !sec.classList.contains("open")) return;
-  // Never steal an arrow key from a field: left/right move a text cursor.
   const t = e.target;
   if (t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
-  const box = byId("captures");
+  const box = byId(DECK_ID);
   const card = box?.querySelector(".cap-card--top");
   if (!(box instanceof HTMLElement) || !(card instanceof HTMLElement)) return;
   const capture = nextDeck(state.rows, { reviewedIds: state.reviewed })[0];

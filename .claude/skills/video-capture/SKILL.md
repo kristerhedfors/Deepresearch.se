@@ -8,7 +8,7 @@ description: >-
   "speed the video up", "why is the clip four minutes of nothing" — or when
   touching tests/capture.mjs, scripts/capture-core.mjs, scripts/capture-edit.mjs,
   src/captures.js, public/js/captures.js / captures-core.js, scripts/captures,
-  or the Capture reviews panel on /admin. Covers the four stages (record →
+  or the Capture reviews page at /captures/. Covers the four stages (record →
   plan → encode → review), how selected AGENTS and selected MODELS become a run
   matrix over the shipped example prompts, the activity timeline that is what
   makes cutting dead air possible at all, the ffmpeg settings LinkedIn actually
@@ -28,7 +28,7 @@ Four stages, three commands, one shared core.
 | **Record** | `npm run capture -- --agents … --models …` | the site, live | `captures/<date>/<slug>/raw.webm` + `timeline.json` + `meta.json` |
 | **Plan + encode** | `npm run capture:edit -- <dir>` | those three | `final.mp4`, `poster.jpg`, `edit.json` |
 | **Publish** | `scripts/captures --add … --upload …` | `edit.json` | a D1 row + two R2 objects |
-| **Review** | `/admin` → Capture reviews | the API | a like, or feedback |
+| **Review** | `/captures/` → Capture reviews | the API | a like, or feedback |
 
 `scripts/capture-core.mjs` is the pure core all of it shares — the run matrix,
 the dead-air detector, the cut plan, the ffmpeg argv, the LinkedIn limits. It
@@ -197,10 +197,12 @@ live in R2 under `captures/<id>/`. The video endpoint implements real HTTP
 Range, because the whole point is a `<video>` element being scrubbed in a
 deck.
 
-**The swipe deck** is the Capture reviews panel on `/admin` (admin-only, like
-every board here). One card at a time: the clip, the agent, the model, the
-prompt it answered, and the facts that describe the edit (size, length, speed,
-how much was cut).
+**The swipe deck** is its own admin-gated page at **`/captures/`** — reached
+from the account panel's admin row, beside "Admin interface". (It lived inside
+`/admin` until 2026-08-10; the owner moved it up a level because reviewing a
+run is not an ops task. It is no longer in `src/panels.js`, on purpose.) One
+card at a time: the clip, the agent, the model, the prompt it answered, and
+the facts that describe the edit (size, length, speed, how much was cut).
 
 - **Swipe right → like.** Posts `{verdict:"like"}`, the capture becomes
   `liked`, the deck advances.
@@ -232,20 +234,36 @@ npm run capture -- --agents research,introspection --models <a>,<b> \
 # 2. look at ONE plan before encoding forty of them
 npm run capture:edit -- captures/<date>/<first-slug> --dry-run
 
-# 3. encode the batch once the knobs are right
-npm run capture:edit -- --all captures/<date> --speed 1.4 --wait speed --max-mb 30
+# 3. encode the batch once the knobs are right. --min-still 3500 because a
+#    research run's activity bar ticks every ~2 s and the 1500 default
+#    strobes; --wait speed keeps the search rounds visible.
+npm run capture:edit -- --all captures/<date> --speed 1.25 --wait speed --min-still 3500
 
 # 4. publish and review
 scripts/captures --upload …          # per clip
-open https://deepresearch.se/admin   # Capture reviews → swipe
+open https://deepresearch.se/captures/   # the swipe deck
 ```
 
 ## Traps
 
+- **`--min-still 1500` is wrong for a run with an activity log.** The default
+  suits a direct answer with no search phase. A research run posts a new
+  search step every couple of seconds, so nearly every gap qualifies as dead
+  air and the plan comes out strobing between the action speed and 8× —
+  measured at thirteen segments on a 54 s run. **Use `--min-still 3500`** for
+  anything with a visible activity bar; the same clip becomes five segments
+  and only the genuine waits accelerate. Always read the segment table in
+  `--dry-run` before encoding a batch; that is what it is for.
 - **ffmpeg is not installed in the agent containers.** `--dry-run` works
-  anyway, on purpose: the plan is reviewable without an encoder. Encoding
-  needs `apt-get install ffmpeg` (or `brew install ffmpeg`) on a machine that
-  has package access; the CLI says so instead of failing obscurely.
+  anyway, on purpose: the plan is reviewable without an encoder. To encode:
+  `apt-get update && apt-get install -y --no-install-recommends ffmpeg`. The
+  `--no-install-recommends` is load-bearing — a recommended VA-API driver 404s
+  against the mirror and takes the whole install down with it, which is a
+  confusing failure for something that has nothing to do with ffmpeg.
+- **Playwright's bundled ffmpeg is not a substitute.**
+  `/opt/pw-browsers/ffmpeg-*/ffmpeg-linux` exists and runs, so it is tempting.
+  It ships **libvpx only** — it can cut a webm but cannot produce H.264, which
+  is the one codec the deck and LinkedIn both need.
 - **Playwright only flushes the video file on `context.close()`.** A run that
   returns without closing its context leaves a zero-byte `raw.webm`. The
   harness closes in a `finally` for that reason — keep it there.
@@ -274,7 +292,9 @@ open https://deepresearch.se/admin   # Capture reviews → swipe
 | `scripts/capture-edit.mjs` | Plan → ffmpeg → `final.mp4` + `poster.jpg` + `edit.json`. |
 | `src/captures.js` | D1 + R2 + `/api/admin/captures*`, including the like/feedback verdict. |
 | `public/js/captures-core.js` | Pure swipe/deck logic (thresholds, tilt, hints, formatting). |
-| `public/js/captures.js` | The admin deck UI. |
+| `public/captures/index.html` | The `/captures/` page shell (admin-gated in `src/index.js`). |
+| `public/css/captures.css` | Its styles, incl. the deck (moved out of `admin.css` when the page split off). |
+| `public/js/captures.js` | The deck UI that drives that page. |
 | `scripts/captures` | The CLI over the admin API — publish, list, review. |
 | `docs/VIDEO-CAPTURE.md` | The reference: file formats, API surface, field-by-field. |
 | `references/ffmpeg-recipes.md` | Recipes beyond the default pipeline (captions, music, GIF, side-by-side). |

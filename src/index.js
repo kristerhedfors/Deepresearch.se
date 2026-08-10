@@ -848,6 +848,31 @@ async function routeAuthed(request, env, url, log, identity, ctx, requestId) {
     return serveAsset(request, env);
   }
 
+  // CAPTURE REVIEWS (/captures/) — the video-capture swipe deck. It was a
+  // panel section on /admin until 2026-08-10, when the owner moved it up a
+  // level: watching a recorded research run and filing it right (keep) or left
+  // (feedback) is a review task, not an ops task, so it gets its own door.
+  //
+  // The gate is /admin's, deliberately duplicated rather than generalised: a
+  // non-admin must get EXACTLY what /admin gives them (the same 302 to /rver,
+  // no 403 body naming a surface they cannot see), and two three-line blocks
+  // that agree are easier to verify than one helper that has to be read
+  // first. Signed-out visitors never reach here at all — the identity gate
+  // above answers with the sign-in page, and neither this page nor its
+  // CSS/JS is on the public allowlist in src/assets.js.
+  //
+  // Both spellings are matched so `/captures` reaches the assets binding and
+  // gets its trailing-slash redirect instead of falling through to the SPA
+  // fallback — the same reason /admin matches its own bare form. It is NOT a
+  // prefix match: there is exactly one page here, and a prefix would put every
+  // future /captures/<anything> behind a rule nobody revisited.
+  if (url.pathname === "/captures" || url.pathname === "/captures/") {
+    if (identity.role !== "admin") {
+      return new Response(null, { status: 302, headers: { Location: "/rver" } });
+    }
+    return serveAsset(request, env);
+  }
+
   // Publishing (PUT/DELETE /api/pub/:slug) is the ONE write surface of the
   // published-replays feature — admin only (the public reads are routed
   // before the identity gate).

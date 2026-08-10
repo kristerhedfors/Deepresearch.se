@@ -1,0 +1,228 @@
+/* Capture reviews (/captures/) — the standalone review surface.
+
+   This file used to be the tail of public/css/admin.css, when the swipe deck
+   was one panel among a dozen on /admin. It moved out with the page (owner
+   directive, 2026-08-10): reviewing a recorded run is not an ops task, so it
+   gets its own door and its own stylesheet rather than riding the admin
+   page's.
+
+   Two halves:
+     1. the page chrome — deliberately the SAME palette and the same element
+        conventions as admin.css (the variables, header, main/section, .muted,
+        .badge, the button/input rules), because the two pages sit behind the
+        same gate and a reviewer moving between them should not feel a change
+        of product. It is a copy rather than an import: admin.css carries a
+        dozen panels' worth of rules this page has no use for, and a shared
+        base file would be a third thing to keep in sync for no gain at two
+        pages. Keep them visually aligned by hand, as admin.css already does
+        with app.css.
+     2. the .cap-* deck rules, moved here VERBATIM from admin.css — the swipe
+        behaviour is unchanged by the move.
+*/
+
+:root {
+  --bg: #6fc3fd;
+  --panel: #f2f9ff;
+  --panel-2: #e2f1ff;
+  --border: #8ec4ec;
+  --text: #0a2e5c;
+  --muted: #2f5d8e;
+  --accent: #0d4fa0;
+  --ok: #157a4b;
+  --warn: #9a1c1c;
+}
+* { box-sizing: border-box; }
+/* The page scrolls north–south ONLY. It matters more here than on /admin: a
+   card that is being dragged sideways must not be able to drag the PAGE
+   sideways with it (see .cap-card's touch-action below). */
+html, body { margin: 0; min-height: 100%; overflow-x: hidden; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+header {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+header .title a { text-decoration: none; color: var(--accent); margin-right: .4rem; }
+main {
+  /* Narrower than /admin's 980px: one card at a time reads better in a column
+     roughly the width of a portrait clip, and this page is reviewed on a phone
+     as often as on a desktop. */
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+section {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+}
+h2 { margin: 0 0 .8rem; font-size: 1rem; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+/* The queue count. It replaced the admin panel's collapsed-header badge when
+   the deck moved out: on its own page nothing is collapsed, so the number has
+   to live somewhere a reader can see it — here, next to the heading. Empty
+   means zero, and an empty badge is hidden rather than rendered as a blank
+   pill. */
+h2 .count {
+  background: var(--accent); color: #fff; border-radius: 10px;
+  font-size: .75rem; padding: .1rem .5rem; vertical-align: middle;
+}
+h2 .count:empty { display: none; }
+.lead { margin: 0 0 .9rem; font-size: .85rem; color: var(--muted); }
+.muted { color: var(--muted); font-size: .8rem; }
+.err { color: var(--warn); font-size: .85rem; }
+code { background: var(--panel-2); border-radius: 4px; padding: 0 .25rem; }
+
+/* Generic list rows — the read-only liked / needs-work / all filters render
+   into these (same shape as admin.css's .rowitem). */
+.rowitem {
+  border: 1px solid var(--border); border-radius: 10px; background: #fff;
+  padding: .65rem .8rem; margin-bottom: .55rem;
+}
+.rowitem .head { display: flex; flex-wrap: wrap; gap: .5rem .8rem; align-items: center; }
+.rowitem .head b { overflow-wrap: anywhere; }
+.rowitem .spacer { flex: 1; }
+.badge {
+  font-size: .7rem; padding: .12rem .45rem; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+}
+/* A liked capture carries the same green as a shipped board item. */
+.badge.shipped { background: #e3f2e3; color: #2c662c; border-color: #9cc79c; }
+
+/* Buttons & inputs */
+button {
+  background: var(--accent); color: #fff; border: 0; border-radius: 8px;
+  padding: .42rem .8rem; font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer;
+}
+button.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+button:disabled { opacity: .5; cursor: default; }
+input, select, textarea {
+  background: #fff; color: inherit; border: 1px solid var(--border);
+  border-radius: 8px; padding: .42rem .55rem; font: inherit; font-size: .85rem;
+}
+
+/* ===========================================================================
+   Capture reviews — the swipe deck (public/js/captures.js).
+   One clip at a time on a positioned stack: swipe right to keep it, left to
+   open the feedback field. Everything below serves one of three jobs — make
+   the top card draggable without breaking page scroll, make the direction of
+   a drag legible before it commits, and keep a portrait clip from blowing the
+   page open.
+   =========================================================================== */
+
+.cap-filters { display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: .6rem; }
+.cap-filter { padding: .28rem .6rem; font-size: .76rem; }
+.cap-filter.is-on { background: var(--accent); color: #fff; border: 1px solid var(--accent); }
+
+.cap-progress { margin: 0 0 .4rem; font-variant-numeric: tabular-nums; }
+.cap-hintline { margin: .5rem 0 0; }
+.cap-empty { padding: .8rem 0; }
+.cap-empty p { margin: 0 0 .35rem; }
+
+/* The stack. position:relative + absolutely-stacked cards is what lets the
+   top card fly out without the ones behind it jumping up to fill the gap. */
+.cap-deck { position: relative; min-height: 12rem; }
+
+.cap-card {
+  position: relative;
+  border: 1px solid var(--border); border-radius: 12px; background: #fff;
+  padding: .6rem .7rem;
+  box-shadow: 0 2px 8px rgba(10, 46, 92, .12);
+  overflow: hidden;
+  /* pan-y is the whole reason a horizontal drag works inside a long scrolling
+     page: the browser keeps vertical scrolling for itself and hands us the
+     horizontal axis, so the page still scrolls under a swipe that turns out to
+     be a scroll. touch-action:none here would trap the page. */
+  touch-action: pan-y;
+  user-select: none;
+  will-change: transform;
+}
+/* The cards behind the top one: only their edges show, as depth. They are
+   stacked absolutely so they occupy no extra height. */
+.cap-card--behind {
+  position: absolute; inset: 0;
+  transform: scale(.97) translateY(10px);
+  opacity: .55; pointer-events: none;
+}
+.cap-card--top { z-index: 10; cursor: grab; }
+.cap-card--dragging { cursor: grabbing; transition: none; }
+/* Spring back after an uncommitted drag, and the two fly-outs. The fly-out
+   distance is in vw so the card clears the viewport on any screen. */
+.cap-card--spring { transition: transform .22s ease-out, opacity .22s ease-out; }
+.cap-card--out-left,
+.cap-card--out-right {
+  transition: transform .28s ease-in, opacity .28s ease-in;
+  opacity: 0; pointer-events: none;
+}
+.cap-card--out-left { transform: translateX(-120vw) rotate(-14deg); }
+.cap-card--out-right { transform: translateX(120vw) rotate(14deg); }
+
+.cap-card video {
+  display: block; width: 100%;
+  /* A portrait 4:5 clip is taller than it is wide; without a ceiling one card
+     pushes the deck's own controls below the fold. */
+  max-height: 42vh;
+  border-radius: 8px; background: #000;
+  object-fit: contain;
+}
+
+.cap-body { padding-top: .5rem; }
+.cap-title { margin: 0 0 .35rem; font-size: .9rem; overflow-wrap: anywhere; }
+.cap-chips { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: .35rem; }
+.cap-prompt {
+  margin: 0 0 .35rem; font-size: .82rem; color: var(--text);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.cap-facts { margin: 0; font-variant-numeric: tabular-nums; }
+.cap-review { margin: .35rem 0 0; font-size: .8rem; color: var(--muted); overflow-wrap: anywhere; }
+
+/* The drag overlays. Opacity is set from JS (swipeHint's progress), so they
+   fade in exactly in step with how close the gesture is to committing — the
+   overlay reaching full strength IS the "let go now" signal. */
+.cap-hint {
+  position: absolute; top: .6rem; z-index: 20;
+  opacity: 0; pointer-events: none;
+  font-size: .8rem; font-weight: 700; letter-spacing: .02em;
+  padding: .25rem .6rem; border-radius: 8px; border: 2px solid;
+}
+.cap-hint.like { right: .6rem; color: var(--ok); border-color: var(--ok); background: #eaf7f0; transform: rotate(8deg); }
+.cap-hint.feedback { left: .6rem; color: var(--warn); border-color: var(--warn); background: #fdeeee; transform: rotate(-8deg); }
+
+.cap-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-top: .7rem; }
+.cap-act-like { background: var(--ok); }
+.cap-err { margin: 0; flex: 1 1 100%; }
+
+/* The feedback field — revealed in the card's place by a left swipe. It sits
+   INSIDE the deck so it lands exactly where the card was, which is what makes
+   the swipe read as "the card turned into a question". */
+.cap-feedback {
+  position: relative; z-index: 30;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--panel-2);
+  padding: .7rem .8rem;
+}
+.cap-feedback-lead { margin: 0 0 .2rem; }
+.cap-feedback-title { margin: 0 0 .5rem; font-size: .85rem; overflow-wrap: anywhere; }
+.cap-feedback-note { width: 100%; font-size: .85rem; resize: vertical; }
+.cap-feedback-err { margin: .4rem 0 0; }
+.cap-feedback-actions { display: flex; gap: .5rem; margin-top: .6rem; }
+
+/* Read-only rendering for the liked / needs-work / all filters. */
+.cap-row .cap-facts, .cap-row .cap-review { margin-top: .3rem; }
+.cap-link { font-size: .8rem; color: var(--accent); }
+
+/* Reduced motion: the transforms ARE the animation here, so a reduced-motion
+   reviewer gets the same state changes with no travel — the card simply is,
+   or is not, in the deck. The verdicts and the feedback field are unchanged. */
+@media (prefers-reduced-motion: reduce) {
+  .cap-card, .cap-card--spring, .cap-card--out-left, .cap-card--out-right { transition: none; }
+  .cap-card--out-left, .cap-card--out-right { transform: none; }
+  .cap-card--behind { transform: none; }
+  .cap-hint.like, .cap-hint.feedback { transform: none; }
+}

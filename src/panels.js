@@ -100,12 +100,11 @@ export const PANEL_ITEMS = [
     summary:
       "FEATURES.md §3's feature backlog with votes/effort/note/priority — the feature-build loop's work order.",
   },
-  {
-    id: "captures",
-    title: "Capture reviews",
-    summary:
-      "Recorded runs of the research pipeline across agents and models, edited for sharing — a card deck where swiping right keeps a clip and swiping left opens a note saying what is wrong with it.",
-  },
+  // (No `captures` entry: Capture reviews left /admin on 2026-08-10 for its
+  // own page at /captures/. This board's items ARE the admin panels — an id
+  // here with no matching <section data-panel> on the page would render a
+  // vote widget for a surface that is not there, and would tell the attention
+  // loop to work an admin panel that no longer exists.)
   {
     id: "websearch_service",
     title: "Web search service",
