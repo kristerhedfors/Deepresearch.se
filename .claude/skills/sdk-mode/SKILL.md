@@ -314,6 +314,53 @@ consumer; extend the core. Unit suite: `public/js/sdk-core.test.js`.
   so `node /src/sdk/pair-cli.mjs …` works in-guest when the image ships
   node (bashAgentPrompt teaches this, with a cat/grep fallback).
 
+## The app kit — the standard key + model picker (feedback #66, 2026-08-10)
+
+Every generated agent that talks to a model needs the same three things: an
+API-key input, the models that key can actually reach, and an honest statement
+of WHERE the conversation is processed. Builds kept reinventing them — the
+role-play agent that prompted this shipped a bare key field and a hardcoded
+model id. The owner's ask: **paste a key, the models load themselves, and the
+dropdown looks like this site's own — flags included, same providers.**
+
+- **The kit is a shipped file, not prose the model reproduces.**
+  `public/app-kit/dr-provider-kit.js` is a dependency-free CLASSIC script
+  (one global, `DRKit`) carrying a COPY of `public/js/drc-providers.js`'s
+  browser-callable registry plus `provider-region.js`'s flags: key detection,
+  the live `/models` fetch with the static fallback, the curation rules, the
+  flag-prefixed dropdown, and both wire dialects (`chat` / `chatStream`,
+  Anthropic adapted at the wire).
+- **It is INJECTED at the publish boundary**, not written by the model:
+  `src/app-kit.js` `withAppKit` reads it through the ASSETS binding and
+  `publishBuild` adds it whenever `buildNeedsAppKit` sees a staged file
+  reference `js/dr-provider-kit.js` or `DRKit`. One choke point, so the tool
+  path, the FILE-block fallback and the admin manual publish behave alike.
+  That path is RESERVED — a file the model wrote there is replaced. Why inject:
+  ~15 KB of verbatim reproduction per build is exactly the truncation the two
+  prior build failures were (feedback #13, #30), and a copy the model retypes
+  drifts from the registry the site actually runs on.
+- **The model is briefed by ONE string**, `APP_KIT_NOTE` in sdk-core.js,
+  carried by both `sdkBuild*` prompts AND `buildSdkContextBlock`. It names the
+  exact API, because a note that drifts from the shipped kit produces an app
+  that loads a kit and then calls it wrongly. Change the kit's API and change
+  that note in the same edit.
+- **`publishBuild` returns `paths`** — what SHIPPED, which is no longer what
+  the model staged. `sdkReplyTail`'s build summary lists those, or its count
+  and its file names disagree in front of the user.
+- **Parity is a test, not a habit.** `public/app-kit/dr-provider-kit.test.js`
+  evaluates the script the way a browser does and pins ids, base URLs, key
+  patterns, fallback catalogs, curation verdicts and flags against
+  `DRC_PROVIDERS` + `PROVIDER_REGIONS`. Add or re-curate a provider on the site
+  and this file changes in the same commit, or the suite fails. Every published
+  app carries a frozen snapshot of the kit, so a silent divergence ships
+  forever.
+- **Verified in a real browser, not only against a DOM stub** — Chromium at
+  `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`, a file:// page with
+  `fetch` mocked: paste-without-blur detects the provider, curates the catalog,
+  and fills a real `<select>` with `🇺🇸 gpt-5.6-sol` / `Processed in United
+  States`, no page errors. Do that again after touching the picker; the stub
+  can lie about `textContent`-clearing and `hidden`.
+
 ## Known build pitfalls in generated apps (feedback #5, build-urx0, 2026-07-23)
 
 Two bugs that shipped in a real Agent Studio build and left it dead on

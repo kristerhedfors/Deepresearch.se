@@ -267,7 +267,7 @@ export const endsWithQuestion = (text) => /[?？][*_`")\]]*$/.test(String(text |
  * both build paths. With `published` null: the honest no-publish note.
  * @param {string} prose The model-written reply text already emitted ("" when none).
  * @param {Array<{ path: string, content: string }>} files
- * @param {{ slug: string, url: string, files: number, bytes: number } | null} published
+ * @param {{ slug: string, url: string, files: number, bytes: number, paths?: string[] } | null} published
  * @returns {string}
  */
 export function sdkReplyTail(prose, files, published) {
@@ -275,7 +275,12 @@ export function sdkReplyTail(prose, files, published) {
   const parts = [];
   if (published) {
     const kb = (published.bytes / 1024).toFixed(1);
-    parts.push(`**Build summary:** ${published.files} file${published.files === 1 ? "" : "s"}, ${kb} KB — ${files.map((f) => f.path).join(" · ")}`);
+    // What SHIPPED, not what the model staged: the publish layer injects the
+    // app kit (feedback #66), so the staged list would undercount the summary
+    // it is printed beside. Falls back to the staged paths for any caller that
+    // predates `paths`.
+    const paths = published.paths?.length ? published.paths : files.map((f) => f.path);
+    parts.push(`**Build summary:** ${published.files} file${published.files === 1 ? "" : "s"}, ${kb} KB — ${paths.join(" · ")}`);
     if (!replyLinksTo(prose, published.url)) {
       parts.push(`**Try it live:** [${published.url}](${published.url})`);
     }

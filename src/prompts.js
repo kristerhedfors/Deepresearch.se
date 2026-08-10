@@ -9,6 +9,7 @@ import { extensionCapabilities } from "./extensions.js";
 import { sourcePromptNotes } from "./search-sources.js";
 import { MAX_READ_TOTAL_CHARS, MERMAID_DIAGRAM_NOTE } from "./introspect-tools.js";
 import { AI_MODEL_NOT_A_PACKAGE_NOTE, AI_MODEL_RESEARCH_NOTE } from "./ai-models.js";
+import { APP_KIT_NOTE } from "./sdk-tools.js";
 
 /**
  * The per-call options every JSON-mode prompt builder accepts:
@@ -679,6 +680,11 @@ const SDK_BUILD_SHARED = (target) =>
   "WHAT SDK MODE DISTILLS: this site — above all the client-side Se/cure tier (DeepResearch.Se/cure, the never-cloud research assistant) — is the original you distill into a new FLAVOUR. Most builds are a reshaped Se/cure: a minimal single-purpose research client, a themed or domain-specific variant, a stripped-down single-file build, a different UI entirely. When the flavour keeps Se/cure's client-side, browser-direct nature, UPHOLD its privacy invariants (they are the whole point): the app is fully client-side; NO server in the data path; provider calls (LLM/search) go from the browser DIRECTLY to the provider using the user's own API key held in memory; secrets never leave the device or appear in any log; any third-party request carries the minimum (a query, a coordinate) — never the conversation or identity. State the privacy posture of what you built, plainly, in the reply.\n" +
   "TECHNICAL RULES for the generated app: plain static HTML/CSS/JS only, fully self-contained — every asset a relative path in the build, NO external CDNs, fonts, or network calls EXCEPT the direct provider API calls a Se/cure-style flavour configures at runtime (the published page runs in a sandboxed opaque origin: no cookies, no storage APIs that require an origin, no credentialed requests — use in-memory state). Always include index.html as the entry point. Prefer a handful of files (index.html, css/…, js/…) over many.\n" +
   SDK_METHOD_NOTE(target) +
+  // Feedback #66 (2026-08-10): a build that asked for an API key invented its
+  // own key field and hardcoded a model id — no model list, no country of
+  // processing. The kit is shipped and injected; the prompt's job is to make
+  // the model reference it and call it correctly.
+  APP_KIT_NOTE + "\n" +
   "THE REPLY the user reads: short and warm — what you built, the key decisions, the privacy posture, and 2-3 concrete next-iteration ideas. Never paste whole files into the reply prose; the app itself is the deliverable and its live URL is included with the reply. END the reply by asking, in the user's own language, whether the app works as they hoped or whether they'd like to add or change anything.";
 
 /** @param {{ target?: "agent" | "platform" }} [opts] @returns {string} */

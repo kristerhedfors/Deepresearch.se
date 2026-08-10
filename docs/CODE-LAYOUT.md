@@ -55,6 +55,7 @@ Server (`src/`):
 | — (DRC has no server module) | DRC — "deep research secure", C for CLIENT-side: the public tier at `DeepResearch.Se/cure` (saved projects at `/my/project-<hash>`; `/free*` legacy aliases — all routed BEFORE the identity gate in `index.js`; the root `/` serves the promotional landing to visitors — which links /cure — and 302s signed-in arrivals to /rver). MINIMAL SERVER BY DESIGN: the Worker serves the static page (`public/cure/`) and the public replay JSONs (`pub.js`) and is in no other DRC path — model calls go directly (cross-origin) from the browser to the user's own CORS-capable providers (OpenAI, Anthropic, Groq, Hugging Face, Berget, or any other OpenAI-compatible endpoint — `public/js/drc-providers.js`), the deep-research flow runs client-side (`drc-research.js`), and the sealed project state rests in BROWSER-LOCAL storage (`drc-store.js`). Its remote sibling DRS — "deep research server", R for REMOTE — is the signed-in app at `/rver` (sign-in/terms redirects land there; PWA manifest starts there): everything else in this table |
 | `pub.js` | Published research replays — the `DeepResearch.Se/cure/<slug>` ("deep research SECURE <slug>") surface, R2 `pub/{slug}`: frozen deep-research sessions as read-only public pages (`GET /api/pub[/:slug]` public, routed pre-auth; `PUT/DELETE /api/pub/:slug` admin-only), each opened IN PLACE by the DRC app (`/cure/<slug>` seeds a DRC conversation, so continuing on the visitor's own keys is just typing; `/?continue=<slug>` legacy) — see the **publish-research** skill |
 | `build-pub.js` | SDK-mode BUILD publications — the live `/app/<slug>/` "try it" surface (R2 `build/{slug}`): `publishBuild` (called from `pipeline.js` `runSdkBuild` — validates/caps the generated files, enforces slug ownership so only the minting user republishes their URL, prunes dropped files) and the PUBLIC serving face `handleBuildGet`, whose every response carries `Content-Security-Policy: sandbox allow-scripts …` — the published page runs in an OPAQUE ORIGIN (no cookies, no credentialed same-origin fetch), so a generated app can never act as the signed-in visitor despite being served from the site's hostname. Admin-only `DELETE /api/build/:slug` unpublishes — see the **sdk-mode** skill. `PUT /api/build/:slug` (`handleBuildManualPublish`, admin-only) is the ONE other write surface: a bypass of the chat/tool loop that calls the same `publishBuild` for a bundle already built elsewhere (the execution sandbox's outbox, a hand-assembled directory) — `scripts/publish-app`, see the **publish-app** skill |
+| `app-kit.js` | The APP KIT's server side (feedback #66, 2026-08-10): reads the shipped `public/app-kit/dr-provider-kit.js` through the ASSETS binding (the `src/introspect.js` pattern, cached per binding) and `withAppKit` adds it to a published Agent Studio build. Called from `build-pub.js` `publishBuild` — the single publish choke point, so the tool path, the FILE-block fallback and the admin manual publish all get it on the same terms — and only when `buildNeedsAppKit` sees the build reference it. The kit's path inside a build (`js/dr-provider-kit.js`) is RESERVED: a file the model wrote there is replaced, so a generated app always runs the real kit rather than an approximation of its API. Fail-soft per invariant 2: an unreadable kit publishes the app without it. Node-tested (`build-pub.test.js`) |
 | `grant-http.js` | The grant subsystems' shared pure PRESENTATION leaf (imports only `http.js`'s `jsonResponse`): the response fragments `websearch.js` and `proxy.js` must keep in lockstep — `budgetExceeded409`, the `adjustResultResponse` ladder, the `resolveQuotaPatch` set/±/pause clamp arithmetic, the granted-web-search result projections (`emptyWebResultResponse`/`webResultResponse`), `readTokenBody`, the `posInt` positive-int config clamp the defaults resolvers share, and the shared `QUERY_MAX`/`GRANTS_LIST_MAX`/`GRANT_DEPTH` constants. Each subsystem keeps its OWN mint/meter/adjust logic (deliberately different tables and claims); only the pure response/clamp layer lives here. Node-tested |
 | `llm-proxy.js` | The shared LLM reverse-proxy FORWARDERS — a pure upstream leaf (imports only `http.js`'s `jsonResponse`) behind BOTH server-touching grant surfaces' `/llm/*` endpoints: `forwardLlmModels` (the thin Berget /models forward) and `forwardLlmCompletion` (one OpenAI-wire completion on the SERVER key — known-fields-only re-serialization, output clamp, the refund-on-failure discipline, SSE pipe-through). The caller owns token verification and the quota reserve. Kept a leaf so `server-grants.js`'s pinned module graph imports it without dragging in the proxy-bundle machinery. Node-tested |
 | `websearch-key.js` | The temporary web-search GRANT TOKEN half (near-leaf: imports only the `token-crypto.js` primitives): mint/verify of `wsk1.<payload>.<hmac>` tokens (claims: `jti`, `uid`, `quota`, `iat`, `exp`) HMAC-signed with `SESSION_SECRET` under an independent `websearch.` namespace, so a grant token can never be confused with a session/state HMAC — the signed capability that lets an otherwise server-less Se/cure session run bounded web searches (invariant 4's ONE bounded exception). Node-tested |
@@ -420,7 +421,10 @@ because the commands belong to the platform rather than to a tier or a mode. A
 Escape closes, a tap picks; the keydown listener is bound to `document` in the
 CAPTURE phase so it out-ranks the composer's Enter-sends handler (UX-8)),
 `sdk-core.js` (the shared PURE core behind BOTH SDKs' tool surfaces —
-Platform-SDK manifest ops + the Agents SDK's build tools; see the
+Platform-SDK manifest ops + the Agents SDK's build tools, plus the APP KIT's
+pure half: `APP_KIT_PATH`, the `buildNeedsAppKit` injection trigger, and
+`APP_KIT_NOTE`, the one briefing both the build prompts and the SDK context
+block carry so the model cannot call the kit by an API it does not have; see the
 `src/sdk-tools.js` row above; lives under `public/` per the pure-core
 convention, imported by the
 Worker, the `sdk/pair-cli.mjs` CLI, and Node tests — Node-tested),
@@ -856,6 +860,23 @@ its onnxruntime WASM, loaded only by the on-device inference worker; the
 CheerpX engine stays a CDN load pending its license question). Per-library
 versions, sizes, licenses, load triggers, rationale, and the full SHA-256
 manifest: **`docs/DEPENDENCIES.md`**.
+
+The app kit (`public/app-kit/dr-provider-kit.js` — the standard API-key +
+model picker every Agent Studio build ships, feedback #66, 2026-08-10). It is
+the one file here that is NOT part of this site's own UI: it is a dependency-free
+CLASSIC script (one global, `DRKit`; no imports, because an opaque-origin
+sandbox is the least forgiving place to rely on module resolution) that
+`src/app-kit.js` INJECTS into a published build. It carries a copy of the
+browser-callable provider registry — the same ids, base URLs, key patterns,
+curation rules and static fallbacks as `public/js/drc-providers.js`, and the
+country-of-processing flags of `public/js/provider-region.js` — plus the live
+`/models` fetch, the flag-prefixed dropdown, and both wire dialects, so a
+generated agent gets the site's own key→models→flags behaviour instead of
+inventing a bare key field and a hardcoded model id. A copy that drifts is
+worse than no copy (every published app carries a frozen snapshot of it), so
+`dr-provider-kit.test.js` PINS the copy against both originals — evaluating the
+script the way a browser does — and a provider added or re-curated on the site
+must be added or re-curated here in the same commit.
 
 Games (`public/games/<id>/` — reached from the account panel's **Games**
 view in `account.js`, which renders the shelf from `GET /api/games`, the

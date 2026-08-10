@@ -35,9 +35,11 @@ import {
   MAX_BUILD_FILES,
   MAX_BUILD_FILE_BYTES,
   MAX_BUILD_TOTAL_BYTES,
+  buildNeedsAppKit,
   sanitizeBuildPath,
   slugify,
 } from "./sdk-tools.js";
+import { withAppKit } from "./app-kit.js";
 
 /** @typedef {import('./types.js').Env} Env */
 /** @typedef {import('./types.js').Logger} Logger */
@@ -127,11 +129,19 @@ const BUILD_CSP =
  * @param {Env} env
  * @param {Logger} log
  * @param {{ slug?: string | null, title: string, files: Array<{ path: string, content: string }>, userId: string, keepOwner?: boolean }} opts
- * @returns {Promise<{ slug: string, url: string, files: number, bytes: number } | { error: string }>}
+ * @returns {Promise<{ slug: string, url: string, files: number, bytes: number, paths: string[] } | { error: string }>}
  */
 export async function publishBuild(env, log, { slug, title, files, userId, keepOwner = false }) {
   if (!env.STORAGE) return { error: "Publishing is not configured on this server (no R2 bucket)." };
   const cleanTitle = String(title || "").trim().slice(0, 120) || "Untitled build";
+
+  // The app kit rides in HERE rather than in either build path, so every
+  // publish surface gets it on the same terms: the tool path, the FILE-block
+  // fallback, and the admin manual publish (feedback #66). A build that never
+  // references it is left exactly as it was.
+  const withKit = buildNeedsAppKit(Array.isArray(files) ? files : [])
+    ? await withAppKit(env, log, /** @type {any} */ (files))
+    : files;
 
   // Re-validate every file at the publish boundary (defense in depth — the
   // staging layer already enforced this for the tool path, but the FILE-block
@@ -139,7 +149,7 @@ export async function publishBuild(env, log, { slug, title, files, userId, keepO
   /** @type {Map<string, string>} */
   const clean = new Map();
   let bytes = 0;
-  for (const f of Array.isArray(files) ? files : []) {
+  for (const f of Array.isArray(withKit) ? withKit : []) {
     const p = sanitizeBuildPath(f?.path);
     if (!p || typeof f?.content !== "string") continue;
     const size = new TextEncoder().encode(f.content).length;
@@ -206,7 +216,10 @@ export async function publishBuild(env, log, { slug, title, files, userId, keepO
     await bucket(env).put(fileKey(finalSlug, p), c);
   }
   log.info("build.published", { slug: finalSlug, files: clean.size, bytes, user_id: userId });
-  return { slug: finalSlug, url: `/app/${finalSlug}/`, files: clean.size, bytes };
+  // `paths` is what actually shipped — which is not the same as what the model
+  // staged once the app kit is injected here (feedback #66). The reply's build
+  // summary lists these, so its count and its file names cannot disagree.
+  return { slug: finalSlug, url: `/app/${finalSlug}/`, files: clean.size, bytes, paths: [...clean.keys()] };
 }
 
 /**

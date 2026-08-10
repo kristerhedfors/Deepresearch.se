@@ -293,6 +293,62 @@ export function stageBuildFile(staged, rawPath, rawContent) {
   return { ok: true, path, bytes };
 }
 
+// ---- the app kit (feedback #66, 2026-08-10) ----------------------------------
+//
+// Every generated agent that talks to a model needs the same three things: an
+// API-key input, the models that key can actually reach, and an honest
+// statement of where the conversation is processed. Builds kept reinventing
+// them — a bare key field, a hardcoded model id, no country of processing — so
+// the owner asked for ONE standard: paste a key, the models load themselves,
+// and the dropdown looks like this site's own, flags included, over the same
+// providers Se/cure supports.
+//
+// The kit is a real shipped file (public/app-kit/dr-provider-kit.js), not
+// prose the model is asked to reproduce: it is INJECTED into the published
+// bundle (src/app-kit.js → src/build-pub.js) whenever a staged file references
+// it. So the model writes one script tag and a few lines of wiring, and cannot
+// truncate, mis-copy, or drift from the registry the site itself uses.
+
+/** Where the kit lands INSIDE a published build (and what a build references). */
+export const APP_KIT_PATH = "js/dr-provider-kit.js";
+
+/** Where the kit is served from in this repo's assets (the injection source). */
+export const APP_KIT_ASSET_PATH = "/app-kit/dr-provider-kit.js";
+
+/**
+ * Does this build reference the app kit — i.e. should the publish layer inject
+ * it? True when any staged file mentions the kit's path or its one global,
+ * which covers both the `<script src>` tag and the `DRKit.` call sites. A file
+ * the model wrote AT the kit's own path counts too: it is about to be replaced
+ * by the real kit, and the reference that matters is elsewhere anyway.
+ * @param {Array<{ path?: string, content?: string }> | Map<string, string>} files
+ * @returns {boolean}
+ */
+export function buildNeedsAppKit(files) {
+  const entries = files instanceof Map
+    ? [...files].map(([path, content]) => ({ path, content }))
+    : Array.isArray(files) ? files : [];
+  return entries.some(({ path, content }) =>
+    path === APP_KIT_PATH ||
+    (typeof content === "string" && (content.includes(APP_KIT_PATH) || content.includes("DRKit"))),
+  );
+}
+
+/**
+ * The kit briefing every build prompt and the SDK context block carry. ONE
+ * definition, because the model has to call the kit's API exactly — a note
+ * that drifts from the shipped file produces an app that loads a kit it then
+ * calls wrongly. Re-exported to the Worker through src/sdk-tools.js.
+ */
+export const APP_KIT_NOTE =
+  "THE API-KEY INPUT IS STANDARDISED — never hand-roll one. If the app you build takes an API key (nearly every agent does), it MUST use this site's app kit, which is added to your build automatically:\n" +
+  `  1. Load it first: <script src="${APP_KIT_PATH}"></script> — do NOT write this file yourself, do NOT inline a copy of it, and do not reference it if the app needs no key. Referencing it is what makes the server add it.\n` +
+  "  2. Give it a key <input> and a model <select> (plus optional status/provider/base-URL elements) and let it wire them:\n" +
+  "       const picker = DRKit.mountModelPicker({ keyInput, modelSelect, status, lang: 'en' });\n" +
+  "  3. Send with the picker's state: DRKit.chat(picker.state(), messages, { maxTokens: 1024 }) for a whole reply, or DRKit.chatStream(picker.state(), messages, onDelta) to stream one. `messages` is the OpenAI shape ([{role:'system'|'user'|'assistant', content:'…'}]); the kit adapts Anthropic's wire itself.\n" +
+  "WHAT THAT BUYS THE USER: pasting a key auto-detects the provider, auto-loads the models that key can actually reach (live from the provider, with a static fallback), and renders the DeepResearch.se standard dropdown — each model prefixed with the flag of the country the conversation is processed in. The kit supports the same providers this site does: OpenAI, Anthropic, Groq, Hugging Face, Berget, and any OpenAI-compatible endpoint. Do not narrow that list, hardcode a model id, or invent your own provider table.\n" +
+  "The key stays in the page, is sent only to the provider, and never reaches this site's server — say so in the app's own UI (picker.note() returns that sentence for the active provider).";
+
 /**
  * Slug fragment from a title: lowercase words joined by hyphens, bounded.
  * (The publish layer appends a random suffix for uniqueness.)
@@ -852,6 +908,8 @@ export function buildSdkContextBlock(manifest, opts = {}) {
     platform
       ? "FLAVOUR: distill freely — a stripped-down two-tier product, a themed or domain-specific platform, a different UI entirely. Study the Se/cure source and the relevant Platform SDK modules/skills for HOW the tier does browser-direct calls and its pipeline, then build YOUR platform; you need not copy the source verbatim. For requests that go beyond the SDK's scope, still build them well — the SDK guides, it never blocks."
       : "THE AGENT: single-purpose and opinionated — it does ONE job well. Study the Se/cure source for HOW a browser-direct, client-side agent actually calls its provider and runs its pipeline in the page, then build YOUR agent; you need not copy the source verbatim. For requests that go beyond either SDK's scope, still build them well — the SDK guides, it never blocks.",
+    "",
+    APP_KIT_NOTE,
   );
   if (opts.buildUrl) {
     parts.push("", `This conversation already published a build at ${opts.buildUrl} — iterate on it (republishing keeps the same URL).`);
