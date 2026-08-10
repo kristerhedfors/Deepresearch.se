@@ -306,6 +306,34 @@ were wrong at some point in this build:
   path — and the gap went unnoticed for days because nothing had ever run a
   query set against production.
 
+### 10.0 For a TOPIC corpus, the query is the corpus definition
+
+Settle it against measured counts, not adjectives, and measure several tiers
+before choosing one. The longevity fill (`docs/PUBMED-RAG.md` §7.11) drafted the
+obvious query — mechanism vocabulary ANDed with a loose topic anchor — and
+enumerated **248,590** records against a target near 31,000. Eight tiers were
+then measured end to end, from a 34,193-record core to a 101,699-record
+everything.
+
+**A number that matches your target is not evidence the scope is right.** The
+34,193 tier hit that target almost exactly and was the WRONG corpus: it silently
+dropped model organisms, interventions and demography, all of which the brief
+named. Had nobody measured the alternatives, it would have shipped looking like
+a success.
+
+Two habits follow. Keep the EXCLUDED blocks in the query file verbatim, so
+widening later is a one-line edit rather than an archaeology exercise. And state
+which tier shipped and what it leaves out, because the corpus's edges are
+invisible from inside it — a search that returns nothing looks identical whether
+the subject is absent or merely out of scope.
+
+A related trap on the other side: a topic term that is ordinary vocabulary in a
+neighbouring field. On arXiv, `ti:aging` matches 7,535 papers that are mostly
+about glassy dynamics, stellar populations and network ageing, and "an ageing
+population" appears in fall-detection and elder-care robotics work — and in a
+Chandra catalogue of M31 whose ageing population is X-ray binaries. Check what a
+filter KEEPS, not only what it drops.
+
 ### 10.1 Publish the shape, and generate it
 
 State what the corpus holds somewhere a USER can read, not only a maintainer:

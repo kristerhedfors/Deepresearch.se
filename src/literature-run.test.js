@@ -686,7 +686,7 @@ test("the arXiv window's upper bound matches the recorded fill", () => {
   assert.ok(Number(to) > Number(from), "the window's upper bound must be after its start");
   // Not a magic number: it is the figure `node scripts/arxiv-window.mjs`
   // measured off the live index, and the pair moves together or not at all.
-  assert.equal(vectors_at_fill, 823097, "update BOTH the window and the fill after an ingest");
+  assert.equal(vectors_at_fill, 823722, "update BOTH the window and the fill after an ingest");
   // 2607, NOT the 2608 delta marker in docs/ARXIV-RAG.md §1 — and the gap is
   // the point rather than an oversight. The marker records how far the last
   // sweep REACHED; this window records how far the index is actually DENSE.

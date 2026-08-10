@@ -80,8 +80,9 @@ abstracts are longer than the embedder's window** and are stored truncated.
 That last figure is a real retrieval limit, not a footnote: for most PubMed
 records, the final third of the abstract is not what gets searched.
 
-Measured 2026-07-31; the live vector count on the page includes the
-domain fills below.
+Measured 2026-07-31 on the bulk sweep. The live vector count on the page is
+larger, because the domain fills below reach outside that window — the
+longevity fill alone added 56,688 records reaching back to the 1950s.
 
 ## 4. The domains filled deliberately
 
