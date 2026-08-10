@@ -7,6 +7,8 @@
 import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import {
+  APP_KIT_NOTE,
+  APP_KIT_PATH,
   BUILD_TOOLS,
   MANIFEST_PATH,
   MAX_BUILD_FILES,
@@ -14,6 +16,7 @@ import {
   SDK_TOOLS,
   SECURE_DIGEST_BUDGET,
   buildFilesSummary,
+  buildNeedsAppKit,
   buildSdkContextBlock,
   buildSecureSourceDigest,
   buildTargetFor,
@@ -392,4 +395,53 @@ test("buildSdkContextBlock: injects the Se/cure source digest when provided", ()
   assert.match(withDigest, /digest above is your starting material/i); // tool-path guidance leans on it
   const without = buildSdkContextBlock(m, { toolMode: true });
   assert.doesNotMatch(without, /reference SOURCE/);
+});
+
+// ---- the app kit (feedback #66) ---------------------------------------------
+
+describe("buildNeedsAppKit", () => {
+  test("a script tag or a call site is the trigger", () => {
+    assert.equal(
+      buildNeedsAppKit([{ path: "index.html", content: `<script src="${APP_KIT_PATH}"></script>` }]),
+      true,
+    );
+    assert.equal(buildNeedsAppKit([{ path: "js/app.js", content: "DRKit.mountModelPicker({})" }]), true);
+    // A staged file AT the kit's path counts: it is about to be replaced by
+    // the real one, and the app clearly means to use it.
+    assert.equal(buildNeedsAppKit([{ path: APP_KIT_PATH, content: "…" }]), true);
+  });
+
+  test("a build with no key input asks for nothing", () => {
+    assert.equal(buildNeedsAppKit([{ path: "index.html", content: "<h1>a game</h1>" }]), false);
+    assert.equal(buildNeedsAppKit([]), false);
+    assert.equal(buildNeedsAppKit(null), false);
+  });
+
+  test("reads a staging Map as readily as a file list", () => {
+    // The tool path stages into a Map; the FILE-block path produces an array.
+    assert.equal(buildNeedsAppKit(new Map([["js/app.js", "DRKit.chat(...)"]])), true);
+    assert.equal(buildNeedsAppKit(new Map([["index.html", "<h1>hi</h1>"]])), false);
+  });
+});
+
+test("APP_KIT_NOTE names the exact API a build has to call", () => {
+  // The note is what the model reads; if it drifts from the shipped kit, the
+  // build loads a kit it then calls wrongly.
+  assert.match(APP_KIT_NOTE, new RegExp(APP_KIT_PATH.replace(/[.]/g, "\\.")));
+  for (const fn of ["mountModelPicker", "DRKit.chat", "DRKit.chatStream", "picker.state()"]) {
+    assert.ok(APP_KIT_NOTE.includes(fn), `${fn} is documented for the model`);
+  }
+  // The point of the feedback: same providers, flags, no hardcoded model id.
+  for (const provider of ["OpenAI", "Anthropic", "Groq", "Hugging Face", "Berget"]) {
+    assert.ok(APP_KIT_NOTE.includes(provider), `${provider} is named`);
+  }
+  assert.match(APP_KIT_NOTE, /flag/i);
+  assert.match(APP_KIT_NOTE, /never write this file yourself|do NOT write this file yourself/);
+});
+
+test("the SDK context block carries the app-kit note on both targets", () => {
+  for (const target of ["agent", "platform"]) {
+    const block = buildSdkContextBlock(null, { target });
+    assert.ok(block.includes(APP_KIT_PATH), `${target} build is told about the kit`);
+  }
 });

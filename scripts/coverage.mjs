@@ -63,6 +63,7 @@ const EXCLUDE = [/^src\/test-helpers\//];
 export const TEST_GLOBS = [
   "src/*.test.js",
   "public/js/*.test.js",
+  "public/app-kit/*.test.js",
   "public/games/*/js/*.test.js",
   "sdk/*.test.mjs",
   "scripts/*.test.mjs",

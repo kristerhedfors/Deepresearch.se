@@ -89,6 +89,18 @@ The **Agent Studio** is where the platform folds back on itself — it is the
 [`pair-studio`](../sdk/skills/pair-studio/SKILL.md) module made real: prompt →
 generate in the VM → preview → publish at `/app/<slug>/`.
 
+A published agent does not have to reinvent how it reaches a model. Every build
+that takes an API key loads the **app kit**
+(`public/app-kit/dr-provider-kit.js`), which the publish step adds to the bundle
+on its own: pasting a key detects the provider, loads the models that key can
+actually reach, and fills the same flag-prefixed dropdown this site uses — over
+the same providers, with the country each conversation is processed in stated on
+every option. The key stays in the page and goes only to that provider, which is
+what lets a generated agent inherit Se/cure's posture rather than approximate it.
+The kit's registry is pinned by test against the platform's own
+(`public/js/drc-providers.js`), so an agent published today and one published a
+year ago disagree about nothing.
+
 ### 2.1 Agents are not chat modes, and not tiers
 
 Four different lists get confused for one another, so here they are side by

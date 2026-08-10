@@ -286,3 +286,77 @@ test("replyLinksTo: only a real markdown link to the url counts as clickable", (
   assert.equal(replyLinksTo("", url), false);
   assert.equal(replyLinksTo("text", ""), false);
 });
+
+// ---- the app kit (feedback #66) ---------------------------------------------
+//
+// The kit is INJECTED at the publish boundary rather than written by the model,
+// so these tests are about the boundary: it arrives when a build asks for it,
+// it does not when a build has no key input, and an unreadable kit never costs
+// the user their app.
+
+const KIT_PATH = "js/dr-provider-kit.js";
+const KIT_SOURCE = "/* stub */ window.DRKit = {};";
+
+const kitEnv = (assets) => ({ STORAGE: mockBucket(), ASSETS: assets });
+const servingKit = () => ({
+  fetch: async (req) =>
+    new URL(req.url).pathname === "/app-kit/dr-provider-kit.js"
+      ? new Response(KIT_SOURCE, { status: 200 })
+      : new Response("nope", { status: 404 }),
+});
+
+const keyedApp = () => [
+  {
+    path: "index.html",
+    content: `<!doctype html><script src="${KIT_PATH}"></script><script src="js/app.js"></script>`,
+  },
+  { path: "js/app.js", content: "const p = DRKit.mountModelPicker({});" },
+];
+
+test("app kit: a build that references it gets the real file, served", async () => {
+  const env = kitEnv(servingKit());
+  const pub = await publishBuild(env, log, { slug: null, title: "Keyed", files: keyedApp(), userId: "u1" });
+  assert.ok(!("error" in pub));
+  assert.equal(pub.files, 3, "the kit is published alongside the two authored files");
+  assert.ok(pub.paths.includes(KIT_PATH));
+
+  const kit = await handleBuildGet(env, pub.slug, KIT_PATH);
+  assert.equal(kit.status, 200);
+  assert.equal(await kit.text(), KIT_SOURCE);
+  assert.match(kit.headers.get("content-type"), /javascript/);
+});
+
+test("app kit: a build with no key input is left exactly as it was", async () => {
+  const env = kitEnv(servingKit());
+  const pub = await publishBuild(env, log, { slug: null, title: "Plain", files: appFiles(), userId: "u1" });
+  assert.equal(pub.files, 2);
+  assert.ok(!pub.paths.includes(KIT_PATH));
+});
+
+test("app kit: the model's own version of the path is replaced by the shipped one", async () => {
+  // The reserved path exists so an app runs the real kit rather than a
+  // hallucinated approximation of its API.
+  const env = kitEnv(servingKit());
+  const files = [...keyedApp(), { path: KIT_PATH, content: "window.DRKit = { chat: null };" }];
+  const pub = await publishBuild(env, log, { slug: null, title: "Overwrite", files, userId: "u1" });
+  assert.equal(pub.files, 3);
+  assert.equal(await (await handleBuildGet(env, pub.slug, KIT_PATH)).text(), KIT_SOURCE);
+});
+
+test("app kit: an unreadable kit still publishes the app (fail-soft)", async () => {
+  const env = kitEnv({ fetch: async () => new Response("gone", { status: 404 }) });
+  const pub = await publishBuild(env, log, { slug: null, title: "Keyed", files: keyedApp(), userId: "u1" });
+  assert.ok(!("error" in pub), "publishing is never blocked by the kit");
+  assert.equal(pub.files, 2);
+  assert.equal((await handleBuildGet(env, pub.slug, "index.html")).status, 200);
+});
+
+test("app kit: no ASSETS binding at all is not an error either", async () => {
+  const pub = await publishBuild({ STORAGE: mockBucket() }, log, {
+    slug: null,
+    title: "Keyed",
+    files: keyedApp(),
+    userId: "u1",
+  });
+  assert.equal(pub.files, 2);
+});
