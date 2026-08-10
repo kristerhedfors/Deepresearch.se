@@ -194,7 +194,14 @@ export function editCapture(dir, opts) {
 
   // The poster comes from the EDITED file, so its offset is output time — a
   // frame taken from the raw recording would usually land inside a cut.
-  const posterAt = n(opts["poster-at"], Math.min(1500, plan.outMs / 3));
+  // 60% in, not near the start. The first seconds of every capture are the app
+  // with an empty composer — a thumbnail of that says nothing about the run and
+  // is the same picture for every clip in the deck. Measured on the first batch
+  // (2026-08-10): at 1.5 s all four posters showed the empty starter strip; at
+  // 60% each shows its own answer with sources on screen, which is both a
+  // better feed thumbnail and the only way a reviewer can tell two cards apart
+  // before pressing play.
+  const posterAt = n(opts["poster-at"], plan.outMs * 0.6);
   spawnSync("ffmpeg", posterArgs({ input: output, output: poster, atMs: posterAt, width: shape.out?.width }), {
     stdio: "ignore",
   });

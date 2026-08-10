@@ -288,6 +288,21 @@ function buildCard(c, top) {
     v.playsInline = true;
     // metadata only: a deck of 50 clips must not pull 50 MP4s on panel open.
     v.preload = "metadata";
+    // A clip the browser cannot decode otherwise renders as a silent black box
+    // with a dead scrubber, and the reviewer has no way to tell that from "the
+    // recording is broken" — so say which it is. This is not hypothetical: the
+    // clips are H.264 (the one codec LinkedIn and every phone want), and
+    // Playwright's bundled Chromium ships WITHOUT proprietary codecs, so it
+    // fails exactly here. A real browser plays them; a stripped build says so.
+    v.addEventListener("error", () => {
+      if (v.parentElement !== card) return;
+      const note = el("p", "muted", "This browser could not play the clip (it is H.264/MP4). The file itself is fine — open it directly: ");
+      const a = document.createElement("a");
+      a.textContent = "download the MP4";
+      a.href = String(c.video_url);
+      note.appendChild(a);
+      card.replaceChild(note, v);
+    });
     card.appendChild(v);
   } else {
     card.appendChild(el("p", "muted", "No video uploaded for this capture yet."));

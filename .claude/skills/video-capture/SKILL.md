@@ -260,6 +260,16 @@ open https://deepresearch.se/captures/   # the swipe deck
   `--no-install-recommends` is load-bearing — a recommended VA-API driver 404s
   against the mirror and takes the whole install down with it, which is a
   confusing failure for something that has nothing to do with ffmpeg.
+- **You cannot verify MP4 PLAYBACK in Playwright's Chromium.** It ships
+  without proprietary codecs, so `canPlayType('video/mp4; codecs="avc1.42E01E"')`
+  returns `''` and the deck's `<video>` fails with
+  `DEMUXER_ERROR_NO_SUPPORTED_STREAMS`. This looks exactly like a corrupt
+  upload and is not one — verified 2026-08-10 by fetching the served bytes and
+  finding them sha256-identical to the local encode, which `ffprobe` read as
+  clean H.264. **Verify a clip with `ffprobe` plus a real browser**; use the
+  headless one for layout, the poster, the fetches and the gesture, never for
+  decoding. (VP8/VP9 webm *does* play there, which is a tempting wrong turn:
+  do not switch the delivery codec to satisfy a test browser.)
 - **Playwright's bundled ffmpeg is not a substitute.**
   `/opt/pw-browsers/ffmpeg-*/ffmpeg-linux` exists and runs, so it is tempting.
   It ships **libvpx only** — it can cut a webm but cannot produce H.264, which
