@@ -114,6 +114,20 @@ export const ADMIN_BOARDS = [
     skill: "live-verify",
   },
   {
+    id: "captures",
+    title: "Capture review deck",
+    purpose:
+      "The finished video clips of the site answering (agent x model x example prompt, dead air cut) awaiting the owner's swipe — 👍 like or ✍️ feedback-with-a-note. The feedback notes are the re-shoot loop's work order: which clip to record again and what to change.",
+    feeds_loop: true,
+    api: "/api/admin/captures",
+    text_query: "format=text&queue=1",
+    orderings: ["queue", "all"],
+    order_help:
+      "queue=1 (default) is the un-swiped deck (status=new); drop it for every clip regardless of status. status=<new|liked|needs_work|archived> filters to one state — status=needs_work is the re-shoot list, the one a loop acts on; agent=<id> and model=<id> narrow to one run axis, q=<term> substring-matches label OR prompt. Always newest first; limit=N sizes the window. Fetch one clip with /api/admin/captures/:id?format=text.",
+    script: "scripts/captures",
+    skill: "video-capture",
+  },
+  {
     id: "chatlogs",
     title: "Chat interaction log",
     purpose:

@@ -1,0 +1,959 @@
+#!/usr/bin/env node
+// @ts-check
+// Video capture: drive the deployed site through real research runs and record
+// the browser. The first half of the capture pipeline — this RECORDS,
+// `scripts/capture-edit.mjs` EDITS. The run matrix, the shapes and the timeline
+// contract are shared with the editor through `scripts/capture-core.mjs`, which
+// is the only place any of them is defined. See the **video-capture** skill.
+//
+//   node tests/capture.mjs --agents research --models mistralai/Devstral-Small-2505
+//   node tests/capture.mjs --agents research,introspection --per-agent 2 --lang sv
+//   node tests/capture.mjs --agents research --models x --dry-run
+//   cd tests && npm run capture -- --agents research
+//
+// It writes one directory per run under `--out`:
+//
+//   <out>/<slug>/raw.webm      the recording, exactly as Playwright wrote it
+//   <out>/<slug>/timeline.json the activity samples + markers the editor cuts on
+//   <out>/<slug>/meta.json     what was run (agent, model, prompt, shape, timing)
+//   <out>/batch.json           the whole batch: options + one row per run
+//
+// OPTIONS
+//   --agents <csv>      agent ids (default research). Unknown ids are refused.
+//   --models <csv>      model ids as they appear in the #model dropdown.
+//                       Omitted: the site's own first up model from /api/models.
+//   --per-agent <n>     example prompts per agent (default 1)
+//   --lang en|sv        restrict the example prompts to one language
+//   --offset <n>        walk further down the starter queue (a second batch)
+//   --shape portrait|square|landscape|raw   capture viewport (default portrait)
+//   --out <dir>         capture root (default captures/<YYYY-MM-DD>)
+//   --base <url>        target site (default $BASE_URL or https://deepresearch.se)
+//   --budget <seconds>  the research time budget the app is opened with (default 60)
+//   --search on|off     the web-search knob (default on)
+//   --sample <ms>       activity sampling interval (default 250)
+//   --timeout <ms>      per-run ceiling waiting for the turn to finish (default 300000)
+//   --limit <n>         stop after n runs (a smoke run)
+//   --headed            run headful, to watch it happen
+//   --dry-run           print the expanded matrix and exit; no browser
+//
+// AUTH. The Se/rver app is behind the identity gate, so an unauthenticated `/`
+// 302s to the anonymous `/cure` tier and `#form` never appears. The suite's
+// break-glass Basic Auth is what makes `/` resolve to the signed-in app:
+// BASIC_AUTH_USER / BASIC_AUTH_PASS, or — when the target is loopback — the
+// wrangler.dev credentials `tests/playwright.config.js` declares, which are not
+// secrets. The header is STRIPPED cross-origin (see stripCrossOriginAuth).
+//
+// WHY THE TIMELINE IS SAMPLED FROM NODE. A deep-research run is mostly waiting,
+// and the editor cuts that wait by comparing consecutive content signatures
+// (scripts/capture-core.mjs). An in-page `setInterval` would stop sampling
+// exactly when the page stalls — which is the one recording worth watching
+// closely — so the loop lives here and reaches in with `page.evaluate`. Every
+// tick is caught: a sample lost to a navigation is a missing row, never a dead
+// run.
+
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import {
+  CAPTURABLE_AGENTS,
+  DEFAULT_SHAPE,
+  SHAPES,
+  expandMatrix,
+  formatDuration,
+  resolveShape,
+} from "../scripts/capture-core.mjs";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const ROOT = resolve(HERE, "..");
+
+/** Where this repo's dev containers pre-install Chromium. Absent on CI. */
+export const PREINSTALLED_CHROMIUM = "/opt/pw-browsers/chromium";
+
+// Local-mode Basic Auth. Not secrets: the [vars] of wrangler.dev.toml, accepted
+// only by a Worker running on this machine. Kept in step with
+// tests/playwright.config.js, which is where they are declared.
+const LOCAL_USER = "e2e";
+const LOCAL_PASS = "e2e-local-worker-no-secret";
+
+export const DEFAULTS = {
+  agents: ["research"],
+  perAgent: 1,
+  offset: 0,
+  shape: DEFAULT_SHAPE,
+  base: "https://deepresearch.se",
+  budget: 60,
+  search: true,
+  sample: 250,
+  timeout: 300_000,
+};
+
+/** Flags that take no value. */
+export const BOOLEAN_FLAGS = new Set(["dry-run", "headed", "help"]);
+
+/** Languages the starter registry is written in (invariant 6). */
+export const LANGS = ["en", "sv"];
+
+// ---------------------------------------------------------------------------
+// Options
+// ---------------------------------------------------------------------------
+
+/**
+ * @typedef {Object} CaptureOptions
+ * @property {string[]} agents
+ * @property {string[] | null} models   null = resolve the site's own default
+ * @property {number} perAgent
+ * @property {string | null} lang
+ * @property {number} offset
+ * @property {string} shape
+ * @property {string} out
+ * @property {string} base
+ * @property {number} budget
+ * @property {boolean} search
+ * @property {number} sample
+ * @property {number} timeout
+ * @property {number | null} limit
+ * @property {boolean} headed
+ * @property {boolean} dryRun
+ * @property {boolean} help
+ */
+
+/**
+ * argv -> fully resolved options. Pure: the clock and the environment are
+ * injected, so the default `--out` (which carries today's date) is testable
+ * without freezing time globally.
+ * @param {string[]} argv
+ * @param {{ env?: Record<string, any>, now?: Date }} [ctx]
+ * @returns {CaptureOptions}
+ */
+export function parseArgs(argv, ctx = {}) {
+  const env = ctx.env || process.env;
+  const now = ctx.now || new Date();
+  /** @type {Record<string, any>} */
+  const raw = {};
+  for (let i = 0; i < argv.length; i++) {
+    const a = String(argv[i] ?? "");
+    if (!a.startsWith("--")) continue; // positional args mean nothing here
+    const eq = a.indexOf("=");
+    const key = eq === -1 ? a.slice(2) : a.slice(2, eq);
+    if (BOOLEAN_FLAGS.has(key)) {
+      raw[key] = true;
+      continue;
+    }
+    raw[key] = eq === -1 ? argv[++i] : a.slice(eq + 1);
+  }
+
+  const pad = (/** @type {number} */ n) => String(n).padStart(2, "0");
+  const dateDir = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+  return {
+    agents: csv(raw.agents, DEFAULTS.agents),
+    // Distinguish "not asked for" (resolve from /api/models) from "asked for
+    // nothing" (an empty --models, which validation refuses).
+    models: raw.models == null ? null : csv(raw.models, []),
+    perAgent: int(raw["per-agent"], DEFAULTS.perAgent),
+    lang: raw.lang == null ? null : String(raw.lang).toLowerCase(),
+    offset: int(raw.offset, DEFAULTS.offset),
+    shape: String(raw.shape || DEFAULTS.shape),
+    out: raw.out ? String(raw.out) : join("captures", dateDir),
+    // A trailing slash on the base would put `//api/models` on the wire and
+    // move the cookie/strip origin comparisons off by one character.
+    base: String(raw.base || env.BASE_URL || DEFAULTS.base).replace(/\/+$/, ""),
+    budget: int(raw.budget, DEFAULTS.budget),
+    search: onOff(raw.search, DEFAULTS.search),
+    sample: int(raw.sample, DEFAULTS.sample),
+    timeout: int(raw.timeout, DEFAULTS.timeout),
+    limit: raw.limit == null ? null : int(raw.limit, 0),
+    headed: raw.headed === true,
+    dryRun: raw["dry-run"] === true,
+    help: raw.help === true,
+  };
+}
+
+/**
+ * Everything wrong with a set of options, as sentences an operator can act on.
+ * Returned rather than thrown so the CLI can print all of them at once — a
+ * typo'd agent AND a typo'd shape should cost one run, not two.
+ * @param {CaptureOptions} opts
+ * @returns {string[]}
+ */
+export function validateOptions(opts) {
+  const errors = [];
+  if (!opts.agents.length) {
+    errors.push(`No agents selected. Valid agents: ${CAPTURABLE_AGENTS.join(", ")}.`);
+  }
+  for (const agent of opts.agents) {
+    if (!CAPTURABLE_AGENTS.includes(agent)) {
+      errors.push(`Unknown agent “${agent}”. Valid agents: ${CAPTURABLE_AGENTS.join(", ")}.`);
+    }
+  }
+  if (!SHAPES[opts.shape]) {
+    errors.push(`Unknown shape “${opts.shape}”. Valid shapes: ${Object.keys(SHAPES).join(", ")}.`);
+  }
+  if (opts.lang && !LANGS.includes(opts.lang)) {
+    errors.push(`Unknown language “${opts.lang}”. Valid languages: ${LANGS.join(", ")}.`);
+  }
+  if (opts.models && !opts.models.length) {
+    errors.push("--models was given with no model ids. Drop the flag to use the site's default model.");
+  }
+  if (opts.perAgent < 1) errors.push("--per-agent must be at least 1.");
+  if (opts.limit != null && opts.limit < 1) errors.push("--limit must be at least 1.");
+  // Below ~50 ms the evaluate round-trip dominates and the sampler just queues
+  // behind itself; the editor's resolution is bounded by this number anyway.
+  if (opts.sample < 50) errors.push("--sample must be at least 50 ms.");
+  if (opts.timeout < 1000) errors.push("--timeout must be at least 1000 ms.");
+  return errors;
+}
+
+/** @param {any} v @param {string[]} fallback */
+function csv(v, fallback) {
+  if (v == null) return fallback.slice();
+  return String(v)
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/** @param {any} v @param {number} fallback */
+function int(v, fallback) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.trunc(n) : fallback;
+}
+
+/** @param {any} v @param {boolean} fallback */
+function onOff(v, fallback) {
+  if (v == null) return fallback;
+  const s = String(v).toLowerCase();
+  if (["on", "true", "1", "yes"].includes(s)) return true;
+  if (["off", "false", "0", "no"].includes(s)) return false;
+  return fallback;
+}
+
+// ---------------------------------------------------------------------------
+// The content signature
+// ---------------------------------------------------------------------------
+
+/**
+ * @typedef {Object} SampleParts   the raw numbers read out of the page
+ * @property {number} msgs         `.msg` elements (a turn appeared)
+ * @property {number} steps        `.step` elements (a pipeline phase started)
+ * @property {number} finished     `.step.finished` (a phase completed)
+ * @property {number} answerLen    trimmed length of the last assistant answer
+ * @property {string} step         the last step's label text
+ * @property {boolean} stats       the turn's `.stats` footer carries text
+ */
+
+/**
+ * One short string that changes when — and only when — something VISIBLE
+ * changed. This is the whole basis of the edit: the editor treats a run of
+ * identical signatures as provably dead time and cuts it, so anything left out
+ * of the signature becomes motion the edit will happily delete, and anything
+ * spurious put IN (a clock, a scroll offset, a spinner frame) defeats dead-time
+ * detection completely and the clip stays as long as the run.
+ *
+ * Pure by design: the page half only reads numbers, the composition happens
+ * here, and the format is pinned by a unit test rather than by whatever the DOM
+ * did that afternoon.
+ * @param {Partial<SampleParts>} [parts]
+ * @returns {string}
+ */
+export function contentSignature(parts = {}) {
+  return [
+    n0(parts.msgs),
+    n0(parts.steps),
+    n0(parts.finished),
+    n0(parts.answerLen),
+    // `|` is the field separator and whitespace churns as a label re-renders,
+    // so both are normalised out; the label is a phase name, not prose, so 60
+    // characters is more than enough to tell two phases apart.
+    String(parts.step ?? "").replace(/\s+/g, " ").replace(/\|/g, "/").trim().slice(0, 60),
+    parts.stats ? 1 : 0,
+  ].join("|");
+}
+
+/** @param {any} v */
+function n0(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.trunc(n) : 0;
+}
+
+/**
+ * The page half of the sampler, serialized into the browser on every tick.
+ *
+ * `.content` rather than the whole `.msg.assistant`: the activity steps and the
+ * stats footer live in the same element and are already represented by their
+ * own fields, so counting their text into the answer length would make the
+ * signature move for reasons the editor has already accounted for.
+ * @returns {SampleParts}
+ */
+/* c8 ignore start — runs in the browser, not in Node */
+function readPage() {
+  const steps = document.querySelectorAll(".step");
+  const assistants = document.querySelectorAll(".msg.assistant");
+  const last = assistants[assistants.length - 1] || null;
+  const body = last ? last.querySelector(".content") : null;
+  const statsEl = last ? last.querySelector(".stats") : null;
+  const lastStep = steps[steps.length - 1] || null;
+  const label = lastStep ? lastStep.querySelector("summary") || lastStep : null;
+  return {
+    msgs: document.querySelectorAll(".msg").length,
+    steps: steps.length,
+    finished: document.querySelectorAll(".step.finished").length,
+    answerLen: ((body || last)?.textContent || "").trim().length,
+    step: (label?.textContent || "").trim(),
+    stats: !!(statsEl?.textContent || "").trim(),
+  };
+}
+/* c8 ignore stop */
+
+// ---------------------------------------------------------------------------
+// Output paths, timeline and meta — the contract scripts/capture-edit.mjs reads
+// ---------------------------------------------------------------------------
+
+/**
+ * Where one run's four files live. `raw.webm` is the name the editor looks for
+ * (`isCaptureDir`), so it is not a preference.
+ * @param {string} outRoot
+ * @param {string} slug
+ */
+export function runPaths(outRoot, slug) {
+  const dir = join(outRoot, slug);
+  return {
+    dir,
+    video: join(dir, "raw.webm"),
+    timeline: join(dir, "timeline.json"),
+    meta: join(dir, "meta.json"),
+    // Playwright names the video file itself, so it is recorded into a scratch
+    // directory and moved afterwards.
+    videoTmp: join(dir, "_video"),
+  };
+}
+
+/** Human labels for the markers, used as chapter titles by the editor. */
+export const MARKER_LABELS = {
+  open: "app opened",
+  send: "prompt sent",
+  first_token: "first token",
+  done: "answer complete",
+  timeout: "run timed out",
+  error: "run failed",
+};
+
+/**
+ * Samples + markers -> the exact `timeline.json` shape the editor reads.
+ * Defensive about its inputs because a sampler tick that half-failed must not
+ * be able to produce a file `planEdit` chokes on: non-finite offsets and
+ * signature-less rows are dropped, and everything is sorted by time.
+ * @param {{ samples?: Array<{t:number, sig:string}>, markers?: Array<{t:number, id:string, label?:string}>,
+ *           durationMs?: number, sampleMs?: number }} input
+ */
+export function buildTimeline(input = {}) {
+  const samples = (input.samples || [])
+    .filter((s) => s && Number.isFinite(s.t) && typeof s.sig === "string")
+    .map((s) => ({ t: Math.max(0, Math.round(s.t)), sig: s.sig }))
+    .sort((a, b) => a.t - b.t);
+  const markers = (input.markers || [])
+    .filter((m) => m && m.id && Number.isFinite(m.t))
+    .map((m) => ({
+      t: Math.max(0, Math.round(m.t)),
+      id: String(m.id),
+      label: m.label || MARKER_LABELS[/** @type {keyof typeof MARKER_LABELS} */ (m.id)] || String(m.id),
+    }))
+    .sort((a, b) => a.t - b.t);
+  return {
+    durationMs: Math.max(0, Math.round(Number(input.durationMs) || 0)),
+    sampleMs: Math.max(1, Math.round(Number(input.sampleMs) || DEFAULTS.sample)),
+    samples,
+    markers,
+  };
+}
+
+/**
+ * The `meta.json` shape — read by the editor (for the header line and the
+ * default shape) and by the admin uploader.
+ * @param {import("../scripts/capture-core.mjs").CaptureRun} run
+ * @param {CaptureOptions} opts
+ * @param {{ startedAt: number, endedAt: number, ok: boolean, error?: string | null }} timing
+ */
+export function buildMeta(run, opts, timing) {
+  const shape = resolveShape(opts.shape);
+  return {
+    slug: run.slug,
+    agent: run.agent,
+    mode: run.mode,
+    model: run.model,
+    prompt: run.prompt,
+    starter: run.starter,
+    xp: run.xp == null ? null : run.xp,
+    lang: run.lang,
+    shape: shape.id,
+    viewport: { ...shape.viewport },
+    base: opts.base,
+    budget_s: opts.budget,
+    search: !!opts.search,
+    started_at: timing.startedAt,
+    ended_at: timing.endedAt,
+    durationMs: Math.max(0, timing.endedAt - timing.startedAt),
+    ok: !!timing.ok,
+    error: timing.error || null,
+  };
+}
+
+/**
+ * The batch summary, as a table an operator reads in the terminal.
+ * @param {Array<{ slug: string, agent: string, model: string, starter: string, ok: boolean, durationMs: number, error: string | null }>} rows
+ * @returns {string}
+ */
+export function formatSummary(rows) {
+  if (!rows.length) return "No runs.\n";
+  const width = Math.min(64, Math.max(...rows.map((r) => r.slug.length)));
+  const lines = rows.map(
+    (r) =>
+      `  ${r.ok ? "✓" : "✗"} ${r.slug.padEnd(width)}  ${formatDuration(r.durationMs).padStart(7)}` +
+      (r.error ? `  ${r.error}` : ""),
+  );
+  const ok = rows.filter((r) => r.ok).length;
+  return [...lines, "", `${ok}/${rows.length} captured.`].join("\n") + "\n";
+}
+
+// ---------------------------------------------------------------------------
+// Browser plumbing
+// ---------------------------------------------------------------------------
+
+/** Same test as tests/playwright.config.js: a loopback target is the dev Worker. */
+/** @param {string} base */
+export function isLoopback(base) {
+  return /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|\/|$)/.test(String(base || ""));
+}
+
+/**
+ * The break-glass Authorization header, or a reason there isn't one.
+ *
+ * Loopback needs no configuration: the dev Worker's credentials are published
+ * in wrangler.dev.toml, and requiring env vars there is what stopped anyone
+ * running the e2e suite for free (docs/TESTING-GAP-ANALYSIS.md, gap A4).
+ * @param {string} base
+ * @param {Record<string, any>} [env]
+ * @returns {{ local: boolean, headers: Record<string, string> | null, reason?: string }}
+ */
+export function resolveAuth(base, env = process.env) {
+  const local = isLoopback(base);
+  const user = local ? LOCAL_USER : env.BASIC_AUTH_USER;
+  const pass = local ? LOCAL_PASS : env.BASIC_AUTH_PASS;
+  if (!user || !pass) {
+    return {
+      local,
+      headers: null,
+      reason:
+        `${base} needs break-glass credentials: set BASIC_AUTH_USER / BASIC_AUTH_PASS, ` +
+        "or point --base at a local Worker (http://127.0.0.1:8787).",
+    };
+  }
+  return { local, headers: { authorization: "Basic " + Buffer.from(`${user}:${pass}`).toString("base64") } };
+}
+
+/**
+ * Chromium launch options, matching tests/playwright.config.js.
+ *
+ * The container pre-installs Chromium at a fixed path and sets
+ * PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD, so Playwright's own resolution finds
+ * nothing — but hard-coding that path makes the harness unrunnable anywhere
+ * else, hence the existence check. Outbound HTTPS here goes through an agent
+ * proxy that re-signs TLS and resets Chromium's TLS 1.3 ClientHello, so the
+ * browser leg is capped at 1.2; none of that applies to loopback, where routing
+ * through an external proxy would fail outright.
+ * @param {{ base: string, env?: Record<string, any>, headed?: boolean, exists?: (p: string) => boolean }} o
+ */
+export function launchOptions(o) {
+  const env = o.env || process.env;
+  const exists = o.exists || existsSync;
+  const proxied = !isLoopback(o.base) && !!env.HTTPS_PROXY;
+  return {
+    headless: !o.headed,
+    ...(exists(PREINSTALLED_CHROMIUM) ? { executablePath: PREINSTALLED_CHROMIUM } : {}),
+    args: proxied ? ["--ssl-version-max=tls1.2"] : [],
+    ...(proxied ? { proxy: { server: String(env.HTTPS_PROXY) } } : {}),
+  };
+}
+
+/**
+ * Strip the break-glass `Authorization` header from CROSS-ORIGIN requests.
+ *
+ * Ported from tests/e2e/helpers.js rather than imported, because that module
+ * pulls in `@playwright/test` at the top level and this file must stay
+ * importable — for its unit tests — on a checkout with no tests/node_modules.
+ *
+ * It is not optional. Playwright attaches `extraHTTPHeaders` to EVERY request
+ * the context makes, third-party ones included: it hands the admin password to
+ * other hosts, and it breaks the sandbox outright (the CheerpX runtime is a
+ * cross-origin dynamic import, which fails with an `authorization` header on
+ * it, so the VM dies at "loading CheerpX…" every time). A capture of that is a
+ * capture of the fail-soft fallback, silently.
+ * @param {any} context
+ * @param {string} base
+ */
+export async function stripCrossOriginAuth(context, base) {
+  const siteOrigin = new URL(base).origin;
+  await context.route(
+    (/** @type {string} */ url) => {
+      try {
+        return new URL(url).origin !== siteOrigin;
+      } catch {
+        return false;
+      }
+    },
+    async (/** @type {any} */ route) => {
+      const headers = { ...route.request().headers() };
+      delete headers.authorization;
+      delete headers.Authorization;
+      await route.continue({ headers });
+    },
+  );
+}
+
+/** @param {number} ms */
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Poll a predicate from NODE until it holds or the deadline passes. Node-side
+ * on purpose: the same reason the sampler is (a wedged page must not be able to
+ * stop the clock), and it means the "done" signal is read off the samples the
+ * timeline already carries instead of a second in-page watcher.
+ * @param {() => boolean} predicate
+ * @param {number} timeoutMs
+ * @param {number} [stepMs]
+ */
+async function waitUntil(predicate, timeoutMs, stepMs = 100) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return true;
+    await sleep(stepMs);
+  }
+  return predicate();
+}
+
+// ---------------------------------------------------------------------------
+// One run
+// ---------------------------------------------------------------------------
+
+/**
+ * Record one CaptureRun. Never throws: a failure becomes `{ ok: false, error }`
+ * with whatever video and timeline were produced still on disk, because a
+ * stalled run is exactly the recording worth looking at (invariant 2 — a
+ * helper phase degrades, it does not break the request).
+ * @param {any} browser
+ * @param {import("../scripts/capture-core.mjs").CaptureRun} run
+ * @param {CaptureOptions} opts
+ * @param {{ headers: Record<string, string>, ignoreHTTPSErrors: boolean }} net
+ */
+export async function captureRun(browser, run, opts, net) {
+  const shape = resolveShape(opts.shape);
+  const paths = runPaths(resolve(ROOT, opts.out), run.slug);
+  mkdirSync(paths.videoTmp, { recursive: true });
+
+  /** @type {Array<{t:number, sig:string}>} */
+  const samples = [];
+  /** @type {Array<{t:number, id:string}>} */
+  const markers = [];
+  const state = { armed: false, firstToken: false, done: false };
+
+  const startedAt = Date.now();
+  let t0 = startedAt;
+  /** @type {string | null} */
+  let error = null;
+  let context = null;
+  let page = null;
+  let stopSampler = () => {};
+
+  const mark = (/** @type {string} */ id) => markers.push({ t: Date.now() - t0, id });
+
+  try {
+    context = await browser.newContext({
+      viewport: shape.viewport,
+      // Recording the CSS viewport 1:1 keeps the type as large relative to the
+      // frame as the site laid it out; the editor upscales to the delivery
+      // frame afterwards (capture-core.mjs, "why the capture viewport is
+      // smaller than the output").
+      recordVideo: { dir: paths.videoTmp, size: shape.viewport },
+      extraHTTPHeaders: net.headers,
+      ignoreHTTPSErrors: net.ignoreHTTPSErrors,
+    });
+    await stripCrossOriginAuth(context, opts.base);
+    await context.addCookies([{ name: "dr_privacy_ack", value: "1", url: opts.base }]);
+    // The same three keys openApp pins, so the app opens in a known state
+    // rather than in whatever the last session on this profile left behind.
+    // `dr_chat_mode` is what puts the composer into this run's agent.
+    await context.addInitScript(
+      ([ws, budget, mode]) => {
+        localStorage.setItem("web_search", ws);
+        localStorage.setItem("budget_s", budget);
+        localStorage.setItem("dr_chat_mode", mode);
+      },
+      [opts.search ? "on" : "off", String(opts.budget), run.mode],
+    );
+
+    page = await context.newPage();
+    // Recording starts with the page, so this is frame zero for every offset
+    // written into timeline.json.
+    t0 = Date.now();
+    // A dialog left unanswered blocks the page forever and the capture records
+    // a frozen screen for the whole timeout.
+    page.on("dialog", (/** @type {any} */ d) => d.accept().catch(() => {}));
+
+    await page.goto(opts.base, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await page.waitForSelector("#form", { state: "visible", timeout: 60_000 });
+
+    // The chat mode is read in TWO places — the `dr_chat_mode` cache pinned
+    // above (first paint and the send path) and the server's `chat_mode`,
+    // which app.js adopts once /api/settings resolves. e2e pins the second by
+    // patching the response; a capture must show the REAL control instead, so
+    // it drives `#modesel` itself once the app has settled. Mode before model:
+    // several modes narrow the model list, so selecting a model first can have
+    // it replaced out from under the run.
+    await selectMode(page, run.mode);
+
+    // The model select is `hidden` in some modes, so wait for ATTACHED and
+    // force the selection past the actionability check — an agent whose
+    // dropdown is not on screen still runs on the model it is told to.
+    await page.waitForSelector("#model", { state: "attached", timeout: 30_000 });
+    // WAIT for the option, don't just read the list: the dropdown is filled
+    // asynchronously from /api/models, so an immediate read finds an empty
+    // <select> and every run fails on a model that is perfectly present.
+    const present = await page
+      .waitForFunction(
+        (/** @type {string} */ id) =>
+          Array.from(document.querySelectorAll("#model option")).some(
+            (o) => /** @type {HTMLOptionElement} */ (o).value === id,
+          ),
+        run.model,
+        { timeout: 30_000 },
+      )
+      .then(
+        () => true,
+        () => false,
+      );
+    if (!present) {
+      const options = await page.$$eval("#model option", (/** @type {any[]} */ els) => els.map((e) => e.value));
+      throw new Error(
+        `model “${run.model}” is not in the #model dropdown (${options.length} options; e.g. ${options.slice(0, 3).join(", ") || "none"})`,
+      );
+    }
+    await page.selectOption("#model", run.model, { force: true, timeout: 15_000 });
+
+    stopSampler = startSampler(page, { sampleMs: opts.sample, samples, markers, state, t0 });
+    mark("open");
+
+    await page.fill("#input", run.prompt);
+    await page.click("#send");
+    state.armed = true;
+    mark("send");
+
+    // The turn is complete when the `done` stats land in the footer — the same
+    // signal helpers.js waitForDone uses, here read off the sampler.
+    const finished = await waitUntil(() => state.done, opts.timeout);
+    mark(finished ? "done" : "timeout");
+    if (!finished) error = `no answer within ${Math.round(opts.timeout / 1000)}s`;
+
+    // Let the last paint settle so the final frame is not mid-render — a clip
+    // that ends on a half-drawn answer reads as a crash.
+    await sleep(1500);
+  } catch (e) {
+    error = e instanceof Error ? e.message : String(e);
+    mark("error");
+  } finally {
+    stopSampler();
+    const video = page?.video?.() || null;
+    // ALWAYS close: Playwright only flushes the video file on context close, so
+    // an early return here is a lost recording.
+    try {
+      await context?.close();
+    } catch {
+      /* already gone */
+    }
+    await saveVideo(video, paths);
+  }
+
+  const endedAt = Date.now();
+  const durationMs = Math.max(0, endedAt - t0);
+  writeFileSync(
+    paths.timeline,
+    JSON.stringify(buildTimeline({ samples, markers, durationMs, sampleMs: opts.sample }), null, 2),
+  );
+  const meta = buildMeta(run, opts, { startedAt, endedAt, ok: !error, error });
+  writeFileSync(paths.meta, JSON.stringify(meta, null, 2));
+
+  return { slug: run.slug, agent: run.agent, model: run.model, starter: run.starter, ok: !error, durationMs, error };
+}
+
+/**
+ * Put the composer into a chat mode through its own dropdown.
+ *
+ * A mode this deployment does not offer is a HARD failure for the run: a batch
+ * that silently recorded the wrong agent is worse than one that recorded
+ * nothing, and the difference is invisible in the finished clip.
+ * @param {any} page
+ * @param {string} mode
+ */
+async function selectMode(page, mode) {
+  await page.waitForSelector("#modesel", { state: "attached", timeout: 30_000 });
+  const options = await page.$$eval("#modesel option", (/** @type {any[]} */ els) => els.map((e) => e.value));
+  if (!options.includes(mode)) {
+    throw new Error(`chat mode “${mode}” is not offered by this deployment (has: ${options.join(", ") || "none"})`);
+  }
+  const current = await page.$eval("#modesel", (/** @type {any} */ el) => el.value);
+  // Already there (the localStorage pin took): selecting again would fire a
+  // change event and replay the mode's entry animation mid-recording.
+  if (current === mode) return;
+  await page.selectOption("#modesel", mode, { force: true, timeout: 15_000 });
+  // The mode swap re-themes the composer and can rebuild the model list.
+  await sleep(500);
+}
+
+/**
+ * Move the recording Playwright named for itself to `raw.webm`.
+ * `video.saveAs` waits for the file to finish being written; the readdir path
+ * is the fallback for a context that died before the Video handle existed.
+ * @param {any} video
+ * @param {ReturnType<typeof runPaths>} paths
+ */
+async function saveVideo(video, paths) {
+  try {
+    if (video) {
+      await video.saveAs(paths.video);
+      await video.delete().catch(() => {});
+    } else {
+      const found = readdirSync(paths.videoTmp).find((f) => f.endsWith(".webm"));
+      if (found) renameSync(join(paths.videoTmp, found), paths.video);
+    }
+  } catch {
+    /* no recording — the timeline and meta are still worth keeping */
+  }
+  try {
+    rmSync(paths.videoTmp, { recursive: true, force: true });
+  } catch {
+    /* leftovers are harmless */
+  }
+}
+
+/**
+ * The Node-driven activity sampler. One tick in flight at a time (`busy`): a
+ * slow evaluate must not queue ticks behind itself and then dump a burst of
+ * same-instant samples into the timeline.
+ * @param {any} page
+ * @param {{ sampleMs: number, samples: Array<{t:number,sig:string}>, markers: Array<{t:number,id:string}>,
+ *           state: { armed: boolean, firstToken: boolean, done: boolean }, t0: number }} ctx
+ * @returns {() => void} stop
+ */
+function startSampler(page, ctx) {
+  let busy = false;
+  let stopped = false;
+  const tick = async () => {
+    if (busy || stopped) return;
+    busy = true;
+    try {
+      const parts = await page.evaluate(readPage);
+      if (parts && !stopped) {
+        const t = Date.now() - ctx.t0;
+        ctx.samples.push({ t, sig: contentSignature(parts) });
+        if (ctx.state.armed && parts.answerLen > 0 && !ctx.state.firstToken) {
+          ctx.state.firstToken = true;
+          ctx.markers.push({ t, id: "first_token" });
+        }
+        if (ctx.state.armed && parts.stats) ctx.state.done = true;
+      }
+    } catch {
+      // A navigation in flight, a closed page, a detached context: skip this
+      // sample. The editor tolerates gaps; it does not tolerate a dead run.
+    } finally {
+      busy = false;
+    }
+  };
+  const timer = setInterval(() => {
+    void tick();
+  }, ctx.sampleMs);
+  return () => {
+    stopped = true;
+    clearInterval(timer);
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The batch
+// ---------------------------------------------------------------------------
+
+/**
+ * The site's own default model: the first one it reports as up. Asking the
+ * deployment rather than hard-coding an id means a capture never records a
+ * model the catalog has since dropped.
+ * @param {CaptureOptions} opts
+ * @param {Record<string, string>} headers
+ * @returns {Promise<string[]>}
+ */
+async function siteDefaultModels(opts, headers) {
+  const res = await fetch(`${opts.base}/api/models`, { headers });
+  if (!res.ok) throw new Error(`GET ${opts.base}/api/models -> ${res.status}`);
+  const body = /** @type {any} */ (await res.json());
+  const pick = (body?.models || []).find((/** @type {any} */ m) => m && m.up !== false);
+  if (!pick) throw new Error(`no up model in ${opts.base}/api/models — pass --models`);
+  return [pick.id];
+}
+
+/** @param {import("../scripts/capture-core.mjs").CaptureRun[]} runs @param {CaptureOptions} opts */
+function printMatrix(runs, opts) {
+  const shape = resolveShape(opts.shape);
+  console.log(
+    `${runs.length} run${runs.length === 1 ? "" : "s"} · ${shape.label} ` +
+      `${shape.viewport.width}x${shape.viewport.height} · ${opts.base} · search ${opts.search ? "on" : "off"} · ` +
+      `budget ${opts.budget}s → ${opts.out}`,
+  );
+  for (const [i, r] of runs.entries()) {
+    console.log(`  ${String(i + 1).padStart(3)}  ${r.agent} · ${r.mode} · ${r.model} · ${r.starter} [${r.lang}]`);
+    console.log(`       “${truncate(r.prompt, 100)}”`);
+    console.log(`       → ${join(opts.out, r.slug)}/raw.webm`);
+  }
+}
+
+/** @param {string} s @param {number} max */
+function truncate(s, max) {
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+}
+
+/**
+ * @param {CaptureOptions} opts
+ * @returns {Promise<number>} process exit code
+ */
+export async function runBatch(opts) {
+  const errors = validateOptions(opts);
+  if (errors.length) {
+    for (const e of errors) console.error(`✗ ${e}`);
+    return 1;
+  }
+
+  const auth = resolveAuth(opts.base);
+  // A dry run that already names its models touches nothing: no credentials, no
+  // network, no browser. Printing the matrix is how a batch is argued about
+  // before it is spent, so it must work on a machine with no secrets — the same
+  // reason the edit CLI's --dry-run works without ffmpeg.
+  const needsSite = !opts.models || !opts.dryRun;
+  if (needsSite && !auth.headers) {
+    console.error(`✗ ${auth.reason}`);
+    return 1;
+  }
+
+  let models = opts.models;
+  if (!models) {
+    try {
+      models = await siteDefaultModels(opts, auth.headers || {});
+      console.log(`No --models given; using the site's default: ${models.join(", ")}`);
+    } catch (e) {
+      console.error(`✗ could not resolve a model (${e instanceof Error ? e.message : e}). Pass --models.`);
+      return 1;
+    }
+  }
+
+  let runs = expandMatrix({
+    agents: opts.agents,
+    models,
+    perAgent: opts.perAgent,
+    ...(opts.lang ? { lang: opts.lang } : {}),
+    offset: opts.offset,
+  });
+  if (opts.limit != null && opts.limit >= 0) runs = runs.slice(0, opts.limit);
+  if (!runs.length) {
+    console.error("✗ Nothing to capture: the matrix expanded to no runs.");
+    return 1;
+  }
+
+  printMatrix(runs, opts);
+  if (opts.dryRun) return 0;
+
+  const outRoot = resolve(ROOT, opts.out);
+  mkdirSync(outRoot, { recursive: true });
+
+  // Lazy, so the pure helpers above stay importable (and unit-testable) on a
+  // checkout where `cd tests && npm install` has never been run.
+  const { chromium } = await import("@playwright/test");
+  const browser = await chromium.launch(launchOptions({ base: opts.base, headed: opts.headed }));
+  const net = {
+    headers: auth.headers || {},
+    ignoreHTTPSErrors: !auth.local && !!process.env.HTTPS_PROXY,
+  };
+
+  const startedAt = Date.now();
+  const rows = [];
+  try {
+    for (const [i, run] of runs.entries()) {
+      console.log(`\n── ${i + 1}/${runs.length}  ${run.slug}`);
+      // captureRun is total: one bad run costs its own recording, never the
+      // batch. Guarded anyway, because a browser-level failure (a crashed
+      // Chromium) surfaces here rather than inside it.
+      let row;
+      try {
+        row = await captureRun(browser, run, opts, net);
+      } catch (e) {
+        row = {
+          slug: run.slug,
+          agent: run.agent,
+          model: run.model,
+          starter: run.starter,
+          ok: false,
+          durationMs: 0,
+          error: e instanceof Error ? e.message : String(e),
+        };
+      }
+      rows.push(row);
+      console.log(
+        `   ${row.ok ? "✓" : "✗"} ${formatDuration(row.durationMs)}${row.error ? `  ${row.error}` : ""}`,
+      );
+    }
+  } finally {
+    await browser.close().catch(() => {});
+  }
+
+  writeFileSync(
+    join(outRoot, "batch.json"),
+    JSON.stringify(
+      { started_at: startedAt, ended_at: Date.now(), options: { ...opts, models }, runs: rows },
+      null,
+      2,
+    ),
+  );
+  console.log(`\n${formatSummary(rows)}`);
+  console.log(`→ ${join(outRoot, "batch.json")}`);
+  console.log(`Next: node scripts/capture-edit.mjs --all ${opts.out}`);
+
+  // Non-zero only when NOTHING was captured: a batch that lost one run to a
+  // stalled pipeline still produced footage, and a red exit would hide that.
+  return rows.every((r) => !r.ok) ? 1 : 0;
+}
+
+/** The CLI's own header block, so the help text cannot drift from the source. */
+function helpText() {
+  const lines = readFileSync(new URL(import.meta.url), "utf8").split("\n").slice(2);
+  const out = [];
+  for (const line of lines) {
+    if (!line.startsWith("//")) break;
+    out.push(line.replace(/^\/\/ ?/, ""));
+  }
+  return out.join("\n");
+}
+
+async function main() {
+  const opts = parseArgs(process.argv.slice(2));
+  if (opts.help) {
+    console.log(helpText());
+    return 0;
+  }
+  return await runBatch(opts);
+}
+
+// Importable for tests; only the CLI invocation runs main.
+if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+  main().then(
+    (code) => process.exit(code),
+    (e) => {
+      console.error(e);
+      process.exit(1);
+    },
+  );
+}

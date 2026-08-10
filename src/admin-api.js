@@ -40,6 +40,15 @@
 //                                    surface (src/websearch.js): GET list +
 //                                    defaults, POST mint a shareable link,
 //                                    DELETE /:jti revoke
+//   *      /api/admin/captures*     the video-capture review deck
+//                                    (src/captures.js): GET list/deck
+//                                    (?queue=1 ?status= ?agent= ?model= ?q=
+//                                    ?format=text), POST create a clip's
+//                                    metadata row, GET/PATCH/DELETE /:id,
+//                                    PUT|GET /:id/video (MP4 bytes in R2, real
+//                                    Range support), PUT|GET /:id/poster, and
+//                                    POST /:id/review — THE SWIPE: 👍 like or
+//                                    ✍️ feedback (which requires a note)
 //   GET    /api/admin/boards         the admin-BOARDS discovery index
 //                                    (src/admin-boards.js — one entry per
 //                                    Claude-fetchable list + how to fetch its
@@ -58,6 +67,7 @@ import { handleAdminSecurity } from "./security-risks.js";
 import { handleAdminFeatures } from "./features.js";
 import { handleAdminPanels } from "./panels.js";
 import { handleAdminTestpoints } from "./testpoints.js";
+import { handleAdminCaptures } from "./captures.js";
 import { handleAdminBoards } from "./admin-boards.js";
 import { handleAdminServerErrors } from "./server-errors.js";
 import { handleAdminSpaceFeedback } from "./space.js";
@@ -187,6 +197,14 @@ export async function handleAdminApi(request, env, url, log, identity) {
     // producer/reader CLI. See the testable-interaction-points skill.
     if (path === "/testpoints" || path.startsWith("/testpoints/")) {
       return handleAdminTestpoints(request, env, url, log);
+    }
+    // The video-capture review deck (src/captures.js): the finished clips the
+    // capture pipeline produced — metadata in D1, the MP4 + poster in R2 — and
+    // the owner's swipe over them (👍 like / ✍️ feedback-with-a-note). The
+    // admin deck UI and scripts/captures both read this surface; ?format=text
+    // is what the re-shoot loop reads. See the video-capture skill.
+    if (path === "/captures" || path.startsWith("/captures/")) {
+      return handleAdminCaptures(request, env, url, log);
     }
     // The server-ERROR fix queue (src/server-errors.js): the runtime-recorded
     // uncaught top-level 500s, deduped per bug — list, read, set status
