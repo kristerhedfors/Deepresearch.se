@@ -73,16 +73,29 @@ export function isPublicAsset(url, method) {
     // comment above describes this file's own behaviour — the probe hit the
     // identity gate, got an HTML 401, and the client drew a letter tile.
     rootIconAlias(url.pathname) !== null ||
+    // Each of these takes its BARE spelling as well as the directory form, for
+    // the reason spelled out at /space below: the assets binding's
+    // trailing-slash redirect runs AFTER the identity gate, so a signed-out
+    // visitor who types or is sent `…/help` rather than `…/help/` is bounced to
+    // sign-in on a page that is meant to need no account. `/corpora` and
+    // `/space` were written with both forms; these six predate that and were
+    // not revisited (found 2026-08-10 while auditing the /captures/ gate).
+    url.pathname === "/welcome" ||
     url.pathname.startsWith("/welcome/") ||
+    url.pathname === "/help" ||
     url.pathname.startsWith("/help/") ||
+    url.pathname === "/build" ||
     url.pathname.startsWith("/build/") ||
+    url.pathname === "/story" ||
     url.pathname.startsWith("/story/") ||
+    url.pathname === "/architecture" ||
     url.pathname.startsWith("/architecture/") ||
     // The MCP setup page (/connect/, and the whole of the dedicated mcp. host):
     // how to point Claude Code or any other MCP client at this site's research
     // pipeline. Public on purpose — it is setup instructions, and the person
     // reading them is typically looking at a terminal, not a signed-in tab. The
     // page tells you where to mint a key; it never contains one.
+    url.pathname === "/connect" ||
     url.pathname.startsWith("/connect/") ||
     // The documentation viewer (/docs/): renders every repo doc from the
     // committed docs-corpus.json. The docs are de-smelled in place by the
@@ -94,6 +107,7 @@ export function isPublicAsset(url, method) {
     // BOTH tiers (the signed-in app links it, and the /cure client tier can
     // open it without an account). The dataset is derived from the public
     // git history, so serving it unauthenticated exposes nothing new.
+    url.pathname === "/pulse" ||
     url.pathname.startsWith("/pulse/") ||
     // What is ingested (/corpora/): the page plus its generated dataset
     // (corpora/data.json), describing what the two hosted research indexes

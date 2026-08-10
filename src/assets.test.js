@@ -47,6 +47,28 @@ describe("isPublicAsset", () => {
     assert.equal(isPublicAsset(u("/welcome/"), "HEAD"), true);
   });
 
+  test("a public page is public at its BARE path too, not only with the slash", () => {
+    // The assets binding's trailing-slash redirect runs AFTER the identity
+    // gate, so a surface allowlisted only as `startsWith("/x/")` bounces a
+    // signed-out visitor who types or is sent `/x` — on a page whose whole
+    // point is needing no account. `/corpora` and `/space` were written with
+    // both forms and six older entries were not; this pins every one of them
+    // so the next public surface cannot regress to half of itself.
+    for (const dir of ["/welcome", "/help", "/build", "/story", "/architecture", "/connect", "/pulse", "/corpora", "/space"]) {
+      assert.equal(isPublicAsset(u(dir), "GET"), true, `${dir} (bare) should be public`);
+      assert.equal(isPublicAsset(u(`${dir}/`), "GET"), true, `${dir}/ should be public`);
+    }
+  });
+
+  test("the bare-path rule did not widen anything that must stay gated", () => {
+    // The inverse assertion, because the fix above adds `pathname === "…"`
+    // arms: an exact match must not have leaked a gated surface, and a
+    // near-miss must not ride along on a prefix.
+    for (const p of ["/admin", "/captures", "/captures/", "/api/admin/captures", "/rver", "/cure", "/welcomes", "/helper", "/pulsex"]) {
+      assert.equal(isPublicAsset(u(p), "GET"), false, `${p} must NOT be public`);
+    }
+  });
+
   test("promotional + branding surfaces are public", () => {
     for (const p of ["/favicon.ico", "/manifest.webmanifest", "/icons/x.png", "/welcome/", "/help/x", "/build/", "/story/", "/architecture/"]) {
       assert.equal(isPublicAsset(u(p), "GET"), true, p);
