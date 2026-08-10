@@ -4,13 +4,13 @@
   "requested_at": "2026-08-10",
   "points": [
     {
-      "label": "Capture reviews panel appears on /admin",
+      "label": "Capture reviews has its own page at /captures/",
       "summary": "A dedicated admin-only page at /captures/ holds the recorded video clips of the site answering (one per agent x model x example prompt) and is where each one is judged. PASS: signed in as admin, open /captures/ (or tap 'Capture reviews' in the account panel, beside 'Admin interface') — the page loads with its title and explanation, and FOUR clips are waiting to review (a Swedish and an English Deep Research run, a Deep Science run, and an Introspection run, all recorded 2026-08-10). FAIL: the page 404ing or redirecting an admin away, a JS error in the console, an empty deck when four clips exist, or a non-admin account being able to reach /captures/ at all.",
       "target": "/captures/",
       "actions": [
         {
           "type": "note",
-          "text": "This one is worth checking BEFORE any clip exists — the empty state is the state the panel will be in most often, and it is the one most likely to have been left unhandled."
+          "text": "Also worth one check a non-admin cannot do for you: the page must be admin-only. Signed in as a regular account, /captures/ must redirect to /rver, and the 'Capture reviews' link must not appear in the account panel at all."
         }
       ],
       "runs": 1,
@@ -24,7 +24,7 @@
       "actions": [
         {
           "type": "note",
-          "text": "Needs at least one uploaded clip. A vertical drag on the card must still scroll the admin page — that is the case most likely to be wrong on a phone."
+          "text": "A vertical drag on the card must still scroll the page — that is the case most likely to be wrong on a phone, and it is what `touch-action: pan-y` on the card is there for."
         }
       ],
       "runs": 2,
@@ -52,7 +52,7 @@
       "actions": [
         {
           "type": "note",
-          "text": "Needs an uploaded clip. Scrubbing is the specific thing to try — a video element that plays but cannot seek means Range support is broken, and it looks fine until you try."
+          "text": "Scrubbing is the specific thing to try — a video element that plays but cannot seek means Range support is broken, and it looks fine until you drag the scrubber."
         }
       ],
       "runs": 1,
